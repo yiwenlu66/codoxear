@@ -1,0 +1,94 @@
+from __future__ import annotations
+
+from typing import Any
+
+
+SESSION_MANAGER_FORWARD_METHODS: tuple[tuple[str, str, str], ...] = (
+    ("_hide_session", "_ui_state_coordinator_for_manager", "hide_session"),
+    ("_unhide_session", "_ui_state_coordinator_for_manager", "unhide_session"),
+    ("alias_set", "_ui_state_coordinator_for_manager", "alias_set"),
+    ("alias_get", "_ui_state_coordinator_for_manager", "alias_get"),
+    ("alias_clear", "_ui_state_coordinator_for_manager", "alias_clear"),
+    ("sidebar_meta_get", "_ui_state_coordinator_for_manager", "sidebar_meta_get"),
+    ("sidebar_meta_set", "_ui_state_coordinator_for_manager", "sidebar_meta_set"),
+    ("edit_session", "_ui_state_coordinator_for_manager", "edit_session"),
+    ("_prune_stale_socket_without_metadata", "_cleanup_coordinator_for_manager", "prune_stale_socket_without_metadata"),
+    ("_clear_deleted_session_state", "_cleanup_coordinator_for_manager", "clear_deleted_session_state"),
+    ("_set_pending_attachment", "_pending_state_coordinator_for_manager", "set_pending_attachment"),
+    ("clear_pending_attachment", "_pending_state_coordinator_for_manager", "clear_pending_attachment"),
+    ("_clean_commit_unknown_send_record", "_pending_state_coordinator_for_manager", "clean_commit_unknown_send_record"),
+    ("_set_commit_unknown_send", "_pending_state_coordinator_for_manager", "set_commit_unknown_send"),
+    ("clear_commit_unknown_send", "_pending_state_coordinator_for_manager", "clear_commit_unknown_send"),
+    ("_prune_missing_commit_unknown_sends", "_pending_state_coordinator_for_manager", "prune_missing_commit_unknown_sends"),
+    ("_remember_recent_cwd", "_recent_cwd_coordinator_for_manager", "remember"),
+    ("_backfill_recent_cwds_from_logs", "_recent_cwd_coordinator_for_manager", "backfill_from_logs"),
+    ("recent_cwds", "_recent_cwd_coordinator_for_manager", "list_recent"),
+    ("_queue_len", "_queue_coordinator_for_manager", "queue_len"),
+    ("_mark_queue_orphan_recovery_locked", "_queue_coordinator_for_manager", "mark_orphan_recovery_locked"),
+    ("_queue_has_recovery_items_locked", "_queue_coordinator_for_manager", "has_recovery_items_locked"),
+    ("_queue_list_local", "_queue_coordinator_for_manager", "list_local"),
+    ("_queue_append_item_local", "_queue_coordinator_for_manager", "append_item_local"),
+    ("_queue_enqueue_local", "_queue_coordinator_for_manager", "enqueue_local"),
+    ("_queue_delete_local", "_queue_coordinator_for_manager", "delete_local"),
+    ("_queue_update_local", "_queue_coordinator_for_manager", "update_local"),
+    ("_queue_move_local", "_queue_coordinator_for_manager", "move_local"),
+    ("_queue_session_state", "_queue_coordinator_for_manager", "session_state"),
+    ("_promote_queue_head_if_sendable", "_queue_coordinator_for_manager", "promote_head_if_sendable"),
+    ("_remote_ready_from_state_and_log", "_readiness_coordinator_for_manager", "remote_ready_from_state_and_log"),
+    ("_remote_state_after_metadata_probe", "_readiness_coordinator_for_manager", "remote_state_after_metadata_probe"),
+    ("_send_remote_ready", "_readiness_coordinator_for_manager", "send_remote_ready"),
+    ("_queue_remote_ready", "_readiness_coordinator_for_manager", "queue_remote_ready"),
+    ("attachment_injection_ready", "_readiness_coordinator_for_manager", "attachment_injection_ready"),
+    ("_files_key_for_session", "_files_coordinator_for_manager", "files_key_for_session"),
+    ("files_get", "_files_coordinator_for_manager", "get"),
+    ("files_add", "_files_coordinator_for_manager", "add"),
+    ("files_clear", "_files_coordinator_for_manager", "clear"),
+    ("unattended_get", "_unattended_config_coordinator_for_manager", "get"),
+    ("unattended_set", "_unattended_config_coordinator_for_manager", "set"),
+    ("_session_display_name", "_voice_runtime_for_manager", "session_display_name"),
+    ("_observe_rollout_delta", "_voice_runtime_for_manager", "observe_rollout_delta"),
+    ("_voice_push_scan_sweep", "_voice_runtime_for_manager", "scan_sweep"),
+    ("_unattended_sweep", "_unattended_sweep_coordinator_for_manager", "sweep"),
+    ("_queue_sweep", "_queue_sweep_coordinator_for_manager", "sweep"),
+    ("_apply_discovery_result", "_discovery_registry_for_manager", "apply_result"),
+    ("_upsert_discovery_registration", "_discovery_registry_for_manager", "upsert_registration"),
+    ("_refresh_session_state", "_prune_coordinator_for_manager", "refresh_session_state"),
+    ("_prune_dead_sessions", "_prune_coordinator_for_manager", "prune_dead_sessions"),
+    ("_update_meta_counters", "_log_runtime_for_manager", "update_meta_counters"),
+    ("list_sessions", "_list_coordinator_for_manager", "list_sessions"),
+    ("_attach_notification_texts", "_voice_runtime_for_manager", "attach_notification_texts"),
+    ("mark_log_delta", "_log_runtime_for_manager", "mark_log_delta"),
+    ("idle_from_log", "_log_runtime_for_manager", "idle_from_log"),
+    ("idle_from_log_path", "_log_runtime_for_manager", "idle_from_log_path"),
+    ("_kill_session_via_pids", "_lifecycle_coordinator_for_manager", "kill_session_via_pids"),
+    ("kill_session", "_lifecycle_coordinator_for_manager", "kill_session"),
+    ("_live_session_for_resume_target", "_lifecycle_coordinator_for_manager", "live_session_for_resume_target"),
+    ("delete_session", "_lifecycle_coordinator_for_manager", "delete_session"),
+    ("_record_prelog_user_message", "_prelog_user_message_recorder_for_manager", "record"),
+    ("enqueue", "_queue_coordinator_for_manager", "enqueue"),
+    ("queue_list", "_queue_coordinator_for_manager", "list_local"),
+    ("queue_delete", "_queue_coordinator_for_manager", "delete_local"),
+    ("queue_update", "_queue_coordinator_for_manager", "update_local"),
+    ("queue_move", "_queue_coordinator_for_manager", "move_local"),
+    ("get_state", "_control_coordinator_for_manager", "get_state"),
+    ("get_tail", "_control_coordinator_for_manager", "get_tail"),
+    ("inject_attachment_keys", "_attachment_coordinator_for_manager", "inject_attachment_keys"),
+)
+
+
+def coordinator_forwarder(public_name: str, coordinator_factory_name: str, method_name: str) -> Any:
+    def method(manager: Any, *args: Any, **kwargs: Any) -> Any:
+        coordinator = getattr(manager, coordinator_factory_name)()
+        return getattr(coordinator, method_name)(*args, **kwargs)
+
+    method.__name__ = public_name
+    method.__qualname__ = public_name
+    return method
+
+
+def bind_session_manager_forwarders(cls: type[Any]) -> type[Any]:
+    for public_name, coordinator_factory_name, method_name in SESSION_MANAGER_FORWARD_METHODS:
+        method = coordinator_forwarder(public_name, coordinator_factory_name, method_name)
+        method.__qualname__ = f"{cls.__qualname__}.{public_name}"
+        setattr(cls, public_name, method)
+    return cls

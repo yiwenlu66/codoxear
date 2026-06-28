@@ -204,6 +204,7 @@ from .session_manager_factories import unattended_sweep_coordinator_for_manager 
 from .session_manager_factories import ui_state_coordinator_for_manager as _ui_state_coordinator_for_manager_impl
 from .session_manager_factories import voice_runtime_for_manager as _voice_runtime_for_manager_impl
 from .session_manager_factories import web_launch_coordinator_for_manager as _web_launch_coordinator_for_manager_impl
+from .session_manager_method_bindings import bind_session_manager_forwarders as _bind_session_manager_forwarders
 from .session_manager_store import create_session_store as _create_session_store_impl
 from .session_manager_store_attrs import load_store_attr as _load_store_attr
 from .session_manager_store_attrs import save_dict_store_attr as _save_dict_store_attr
@@ -1374,6 +1375,7 @@ def _session_store_paths_for_manager() -> SessionStorePaths:
     )
 
 
+@_bind_session_manager_forwarders
 class SessionManager:
     _unattended = _store_backed_attr("unattended")
     _aliases = _store_backed_attr("aliases")
@@ -1478,62 +1480,6 @@ class SessionManager:
         self._store = store
         return store
 
-    def _hide_session(self, session_id: str) -> None:
-        return self._ui_state_coordinator_for_manager().hide_session(session_id)
-
-    def _unhide_session(self, session_id: str) -> None:
-        return self._ui_state_coordinator_for_manager().unhide_session(session_id)
-
-    def alias_set(self, session_id: str, name: str) -> str:
-        return self._ui_state_coordinator_for_manager().alias_set(session_id, name)
-
-    def alias_get(self, session_id: str) -> str:
-        return self._ui_state_coordinator_for_manager().alias_get(session_id)
-
-    def alias_clear(self, session_id: str) -> None:
-        return self._ui_state_coordinator_for_manager().alias_clear(session_id)
-
-    def sidebar_meta_get(self, session_id: str) -> dict[str, Any]:
-        return self._ui_state_coordinator_for_manager().sidebar_meta_get(session_id)
-
-    def sidebar_meta_set(
-        self,
-        session_id: str,
-        *,
-        priority_offset: Any,
-        snooze_until: Any,
-        dependency_session_id: Any,
-    ) -> dict[str, Any]:
-        return self._ui_state_coordinator_for_manager().sidebar_meta_set(
-            session_id,
-            priority_offset=priority_offset,
-            snooze_until=snooze_until,
-            dependency_session_id=dependency_session_id,
-        )
-
-    def edit_session(
-        self,
-        session_id: str,
-        *,
-        name: str,
-        priority_offset: Any,
-        snooze_until: Any,
-        dependency_session_id: Any,
-    ) -> tuple[str, dict[str, Any]]:
-        return self._ui_state_coordinator_for_manager().edit_session(
-            session_id,
-            name=name,
-            priority_offset=priority_offset,
-            snooze_until=snooze_until,
-            dependency_session_id=dependency_session_id,
-        )
-
-    def _prune_stale_socket_without_metadata(self, session_id: str, sock: Path) -> None:
-        return self._cleanup_coordinator_for_manager().prune_stale_socket_without_metadata(session_id, sock)
-
-    def _clear_deleted_session_state(self, session_id: str, *, clear_recovery: bool = False) -> None:
-        return self._cleanup_coordinator_for_manager().clear_deleted_session_state(session_id, clear_recovery=clear_recovery)
-
     def _queue_store_for_manager(self) -> QueueStore:
         return self._session_store_for_manager().queue_store
 
@@ -1542,87 +1488,6 @@ class SessionManager:
 
     def _input_lock_for_session(self, session_id: str) -> threading.RLock:
         return _input_lock_for_session_impl(self, session_id)
-
-    def _set_pending_attachment(self, session_id: str, value: bool) -> None:
-        return self._pending_state_coordinator_for_manager().set_pending_attachment(session_id, value)
-
-    def clear_pending_attachment(self, session_id: str) -> dict[str, Any]:
-        return self._pending_state_coordinator_for_manager().clear_pending_attachment(session_id)
-
-    def _clean_commit_unknown_send_record(self, raw: Any) -> dict[str, Any] | None:
-        return self._pending_state_coordinator_for_manager().clean_commit_unknown_send_record(raw)
-
-    def _set_commit_unknown_send(self, session_id: str, record: dict[str, Any] | None) -> None:
-        return self._pending_state_coordinator_for_manager().set_commit_unknown_send(session_id, record)
-
-    def clear_commit_unknown_send(self, session_id: str) -> dict[str, Any]:
-        return self._pending_state_coordinator_for_manager().clear_commit_unknown_send(session_id)
-
-    def _prune_missing_commit_unknown_sends(self, *, max_age_seconds: float = COMMIT_UNKNOWN_ORPHAN_PRUNE_SECONDS) -> bool:
-        return self._pending_state_coordinator_for_manager().prune_missing_commit_unknown_sends(max_age_seconds=max_age_seconds)
-
-    def _remember_recent_cwd(self, cwd: Any, *, ts: Any = None) -> bool:
-        return self._recent_cwd_coordinator_for_manager().remember(cwd, ts=ts)
-
-    def _backfill_recent_cwds_from_logs(self) -> None:
-        return self._recent_cwd_coordinator_for_manager().backfill_from_logs()
-
-    def recent_cwds(self, *, limit: int = RECENT_CWD_MAX) -> list[str]:
-        return self._recent_cwd_coordinator_for_manager().list_recent(limit=limit)
-
-    def _queue_len(self, session_id: str) -> int:
-        return self._queue_coordinator_for_manager().queue_len(session_id)
-
-    def _mark_queue_orphan_recovery_locked(self, session_id: str) -> bool:
-        return self._queue_coordinator_for_manager().mark_orphan_recovery_locked(session_id)
-
-    def _queue_has_recovery_items_locked(self, session_id: str) -> bool:
-        return self._queue_coordinator_for_manager().has_recovery_items_locked(session_id)
-
-    def _queue_list_local(self, session_id: str) -> list[dict[str, Any]]:
-        return self._queue_coordinator_for_manager().list_local(session_id)
-
-    def _queue_append_item_local(self, session_id: str, text: str, *, reject_recovery_barrier: bool = False) -> tuple[dict[str, Any], int]:
-        return self._queue_coordinator_for_manager().append_item_local(
-            session_id,
-            text,
-            reject_recovery_barrier=reject_recovery_barrier,
-        )
-
-    def _queue_enqueue_local(self, session_id: str, text: str) -> dict[str, Any]:
-        return self._queue_coordinator_for_manager().enqueue_local(session_id, text)
-
-    def _queue_delete_local(self, session_id: str, item_id: str, *, allow_commit_unknown: bool = False, allow_orphan_recovery: bool = False) -> dict[str, Any]:
-        return self._queue_coordinator_for_manager().delete_local(
-            session_id,
-            item_id,
-            allow_commit_unknown=allow_commit_unknown,
-            allow_orphan_recovery=allow_orphan_recovery,
-        )
-
-    def _queue_update_local(self, session_id: str, item_id: str, text: str) -> dict[str, Any]:
-        return self._queue_coordinator_for_manager().update_local(session_id, item_id, text)
-
-    def _queue_move_local(self, session_id: str, item_id: str, to_index: int) -> dict[str, Any]:
-        return self._queue_coordinator_for_manager().move_local(session_id, item_id, to_index)
-
-    def _queue_session_state(self, session_id: str) -> tuple[Session, Path | None]:
-        return self._queue_coordinator_for_manager().session_state(session_id)
-
-    def _promote_queue_head_if_sendable(
-        self,
-        session_id: str,
-        *,
-        require_idle_grace: bool,
-        now_ts: float | None = None,
-        expected_item_id: str | None = None,
-    ) -> dict[str, Any] | None:
-        return self._queue_coordinator_for_manager().promote_head_if_sendable(
-            session_id,
-            require_idle_grace=require_idle_grace,
-            now_ts=now_ts,
-            expected_item_id=expected_item_id,
-        )
 
     def _broker_busy_queue_from_state(self, state: dict[str, Any]) -> tuple[bool, int]:
         return _broker_busy_queue_from_state(state)
@@ -1638,79 +1503,11 @@ class SessionManager:
             s = self._sessions.get(session_id)
             return _consume_session_confirmed_send_boundary(s, log_path, log_size)
 
-    def _remote_ready_from_state_and_log(self, session_id: str, state: dict[str, Any], log_path: Path | None) -> bool:
-        return self._readiness_coordinator_for_manager().remote_ready_from_state_and_log(session_id, state, log_path)
-
-    def _remote_state_after_metadata_probe(self, session_id: str, *, log_path_before_state: Path | None) -> tuple[dict[str, Any], Path | None]:
-        return self._readiness_coordinator_for_manager().remote_state_after_metadata_probe(
-            session_id,
-            log_path_before_state=log_path_before_state,
-        )
-
-    def _send_remote_ready(self, session_id: str, *, allow_pending_attachment: bool = False) -> bool:
-        return self._readiness_coordinator_for_manager().send_remote_ready(
-            session_id,
-            allow_pending_attachment=allow_pending_attachment,
-        )
-
-    def _queue_remote_ready(self, session_id: str, *, log_path: Path | None) -> bool:
-        return self._readiness_coordinator_for_manager().queue_remote_ready(session_id, log_path=log_path)
-
-    def _files_key_for_session(self, session_id: str) -> tuple[str, list[str], "Session"]:
-        return self._files_coordinator_for_manager().files_key_for_session(session_id)
-
-    def files_get(self, session_id: str) -> list[str]:
-        return self._files_coordinator_for_manager().get(session_id)
-
-    def files_add(self, session_id: str, path: str) -> list[str]:
-        return self._files_coordinator_for_manager().add(session_id, path)
-
-    def files_clear(self, session_id: str) -> None:
-        return self._files_coordinator_for_manager().clear(session_id)
-
-    def unattended_get(self, session_id: str) -> dict[str, Any]:
-        return self._unattended_config_coordinator_for_manager().get(session_id)
-
-    def unattended_set(
-        self,
-        session_id: str,
-        *,
-        enabled: bool | None = None,
-        request: str | None = None,
-        cooldown_minutes: int | None = None,
-        remaining_injections: int | None = None,
-    ) -> dict[str, Any]:
-        return self._unattended_config_coordinator_for_manager().set(
-            session_id,
-            enabled=enabled,
-            request=request,
-            cooldown_minutes=cooldown_minutes,
-            remaining_injections=remaining_injections,
-        )
-
-    def _session_display_name(self, session_id: str) -> str:
-        return self._voice_runtime_for_manager().session_display_name(session_id)
-
-    def _observe_rollout_delta(self, session_id: str, *, log_path: Path | None = None, old_off: int = 0, objs: list[dict[str, Any]], new_off: int) -> None:
-        return self._voice_runtime_for_manager().observe_rollout_delta(
-            session_id,
-            log_path=log_path,
-            old_off=old_off,
-            objs=objs,
-            new_off=new_off,
-        )
-
     def _voice_push_scan_loop(self) -> None:
         return _voice_push_scan_loop_impl(self, wait_seconds=VOICE_PUSH_SWEEP_SECONDS, stderr=sys.stderr, print_exc=traceback.print_exc)
 
-    def _voice_push_scan_sweep(self) -> None:
-        return self._voice_runtime_for_manager().scan_sweep()
-
     def _unattended_loop(self) -> None:
         return _unattended_loop_impl(self, wait_seconds=UNATTENDED_SWEEP_SECONDS, stderr=sys.stderr, print_exc=traceback.print_exc)
-
-    def _unattended_sweep(self) -> None:
-        return self._unattended_sweep_coordinator_for_manager().sweep()
 
     def _queue_loop(self) -> None:
         return _queue_loop_impl(self, wait_seconds=QUEUE_SWEEP_SECONDS, stderr=sys.stderr)
@@ -1719,17 +1516,8 @@ class SessionManager:
         resp = self._promote_queue_head_if_sendable(session_id, require_idle_grace=True, now_ts=now_ts)
         return isinstance(resp, dict)
 
-    def _queue_sweep(self) -> None:
-        return self._queue_sweep_coordinator_for_manager().sweep()
-
     def _discovery_deps(self) -> DiscoveryDeps:
         return _discovery_deps_for_manager_impl(self, sys.modules[__name__])
-
-    def _apply_discovery_result(self, result: DiscoveryResult) -> None:
-        return self._discovery_registry_for_manager().apply_result(result)
-
-    def _upsert_discovery_registration(self, registration: DiscoveryRegistration) -> None:
-        return self._discovery_registry_for_manager().upsert_registration(registration)
 
     def _discover_existing(self, *, force: bool = False) -> None:
         return _discover_existing_for_manager_impl(
@@ -1742,36 +1530,12 @@ class SessionManager:
             now=time.time,
         )
 
-    def _refresh_session_state(self, session_id: str, sock_path: Path, timeout_s: float = 0.4) -> tuple[bool, BaseException | None]:
-        return self._prune_coordinator_for_manager().refresh_session_state(session_id, sock_path, timeout_s=timeout_s)
-
-    def _prune_dead_sessions(self) -> None:
-        return self._prune_coordinator_for_manager().prune_dead_sessions()
-
-    def _update_meta_counters(self) -> None:
-        return self._log_runtime_for_manager().update_meta_counters()
-
-    def list_sessions(self) -> list[dict[str, Any]]:
-        return self._list_coordinator_for_manager().list_sessions()
-
     def get_session(self, session_id: str) -> Session | None:
         with self._lock:
             return self._sessions.get(session_id)
 
     def refresh_session_meta(self, session_id: str, *, drain_queue: bool = False) -> None:
         return self._refresh_coordinator_for_manager().refresh_session_meta(session_id, drain_queue=drain_queue)
-
-    def _attach_notification_texts(self, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        return self._voice_runtime_for_manager().attach_notification_texts(events)
-
-    def mark_log_delta(self, session_id: str, *, objs: list[dict[str, Any]], new_off: int) -> None:
-        return self._log_runtime_for_manager().mark_log_delta(session_id, objs=objs, new_off=new_off)
-
-    def idle_from_log(self, session_id: str) -> bool:
-        return self._log_runtime_for_manager().idle_from_log(session_id)
-
-    def idle_from_log_path(self, session_id: str, log_path: Path) -> bool:
-        return self._log_runtime_for_manager().idle_from_log_path(session_id, log_path)
 
     def _sock_call(self, sock_path: Path, req: dict[str, Any], timeout_s: float | None = 2.0, *, track_request_sent: bool = False) -> dict[str, Any]:
         return _call_control_socket_impl(sock_path, req, timeout_s=timeout_s, track_request_sent=track_request_sent)
@@ -1836,15 +1600,6 @@ class SessionManager:
     def _prelog_user_message_recorder_for_manager(self) -> PrelogUserMessageRecorder:
         return _prelog_user_message_recorder_for_manager_impl(self, sys.modules[__name__])
 
-    def _kill_session_via_pids(self, s: Session) -> bool:
-        return self._lifecycle_coordinator_for_manager().kill_session_via_pids(s)
-
-    def kill_session(self, session_id: str) -> bool:
-        return self._lifecycle_coordinator_for_manager().kill_session(session_id)
-
-    def _live_session_for_resume_target(self, resume_id: str, resume_row: dict[str, Any] | None) -> Session | None:
-        return self._lifecycle_coordinator_for_manager().live_session_for_resume_target(resume_id, resume_row)
-
     def _web_launch_coordinator_for_manager(self) -> SessionWebLaunchCoordinator:
         return _web_launch_coordinator_for_manager_impl(self, sys.modules[__name__])
 
@@ -1877,12 +1632,6 @@ class SessionManager:
             create_in_tmux=create_in_tmux,
         )
 
-    def delete_session(self, session_id: str) -> bool:
-        return self._lifecycle_coordinator_for_manager().delete_session(session_id)
-
-    def _record_prelog_user_message(self, session: Session, text: str, *, source: str) -> None:
-        return self._prelog_user_message_recorder_for_manager().record(session, text, source=source)
-
     def send(self, session_id: str, text: str, *, allow_pending_attachment: bool = False, queue_item_id: str | None = None) -> dict[str, Any]:
         return self._send_coordinator_for_manager().send(
             session_id,
@@ -1890,27 +1639,6 @@ class SessionManager:
             allow_pending_attachment=allow_pending_attachment,
             queue_item_id=queue_item_id,
         )
-
-    def enqueue(self, session_id: str, text: str) -> dict[str, Any]:
-        return self._queue_coordinator_for_manager().enqueue(session_id, text)
-
-    def queue_list(self, session_id: str) -> list[dict[str, Any]]:
-        return self._queue_list_local(session_id)
-
-    def queue_delete(self, session_id: str, item_id: str, *, allow_commit_unknown: bool = False, allow_orphan_recovery: bool = False) -> dict[str, Any]:
-        return self._queue_delete_local(session_id, item_id, allow_commit_unknown=allow_commit_unknown, allow_orphan_recovery=allow_orphan_recovery)
-
-    def queue_update(self, session_id: str, item_id: str, text: str) -> dict[str, Any]:
-        return self._queue_update_local(session_id, item_id, text)
-
-    def queue_move(self, session_id: str, item_id: str, to_index: int) -> dict[str, Any]:
-        return self._queue_move_local(session_id, item_id, to_index)
-
-    def get_state(self, session_id: str) -> dict[str, Any]:
-        return self._control_coordinator_for_manager().get_state(session_id)
-
-    def get_tail(self, session_id: str) -> str:
-        return self._control_coordinator_for_manager().get_tail(session_id)
 
     def _refresh_session_meta_if_sidecar_exists(self, session_id: str, *, drain_queue: bool = False) -> None:
         with self._lock:
@@ -1920,12 +1648,6 @@ class SessionManager:
             meta_path = s.sock_path.with_suffix(".json")
         if meta_path.exists():
             self.refresh_session_meta(session_id, drain_queue=drain_queue)
-
-    def attachment_injection_ready(self, session_id: str) -> bool:
-        return self._readiness_coordinator_for_manager().attachment_injection_ready(session_id)
-
-    def inject_attachment_keys(self, session_id: str, seq: str) -> dict[str, Any]:
-        return self._attachment_coordinator_for_manager().inject_attachment_keys(session_id, seq)
 
     def inject_keys(self, session_id: str, seq: str, *, track_request_sent: bool = False, interrupt: bool = False) -> dict[str, Any]:
         return self._control_coordinator_for_manager().inject_keys(
