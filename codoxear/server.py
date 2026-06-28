@@ -138,15 +138,12 @@ from .transcript_search import search_chat_events as _search_chat_events
 from .transcript_search import search_chat_log_bounded as _search_chat_log_bounded
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
-from .queue_runtime import clear_queue_promotion as _queue_runtime_clear_promotion
-from .queue_runtime import queue_idle_grace_ready as _queue_runtime_idle_grace_ready
-from .queue_runtime import reset_queue_idle as _queue_runtime_reset_idle
-from .queue_runtime import start_queue_promotion as _queue_runtime_start_promotion
 from .queue_routes import QueueRouteDeps
 from .queue_routes import handle_queue_get_route as _handle_queue_get_route
 from .queue_routes import handle_queue_post_route as _handle_queue_post_route
 from .queue_store import QueueStore
 from .queue_store import coerce_queue_item as _queue_store_coerce_item
+from .session_queue import SessionQueueCoordinator
 from .session_routes import SessionRouteDeps
 from .session_routes import handle_session_get_route as _handle_session_get_route
 from .session_routes import handle_session_post_route as _handle_session_post_route
@@ -2351,6 +2348,23 @@ class SessionManager:
     def _queue_store_for_manager(self) -> QueueStore:
         return self._session_store_for_manager().queue_store
 
+    def _queue_coordinator_for_manager(self) -> SessionQueueCoordinator:
+        return SessionQueueCoordinator(
+            lock=self._lock,
+            sessions=lambda: self._sessions,
+            queues=lambda: self._queues,
+            queue_store=self._queue_store_for_manager,
+            commit_unknown_sends=lambda: self._commit_unknown_sends,
+            save_queues=self._save_queues,
+            remote_ready=lambda session_id, log_path: self._queue_remote_ready(session_id, log_path=log_path),
+            send=self.send,
+            not_ready_error=SessionNotReadyError,
+            retryable_send_errors=(SessionNotReadyError, SessionInjectionError),
+            commit_unknown_error=SessionCommitUnknownError,
+            queue_idle_grace_seconds=QUEUE_IDLE_GRACE_SECONDS,
+            now=time.time,
+        )
+
     def _input_lock_for_session(self, session_id: str) -> threading.RLock:
         with self._lock:
             locks = getattr(self, "_input_locks", None)
@@ -2561,143 +2575,58 @@ class SessionManager:
         return [cwd for cwd, _ts in items[: max(0, int(limit))]]
 
     def _queue_len(self, session_id: str) -> int:
-        with self._lock:
-            qmap = getattr(self, "_queues", None)
-            if not isinstance(qmap, dict):
-                return 0
-            return self._queue_store_for_manager().queue_len(qmap, session_id)
+        return self._queue_coordinator_for_manager().queue_len(session_id)
 
     def _mark_queue_orphan_recovery_locked(self, session_id: str) -> bool:
-        qmap = getattr(self, "_queues", None)
-        if not isinstance(qmap, dict):
-            return False
-        q = qmap.get(session_id)
-        if not isinstance(q, list) or not q:
-            return False
-        changed = False
-        for item in q:
-            if isinstance(item, dict) and not bool(item.get("orphan_recovery")):
-                item["orphan_recovery"] = True
-                changed = True
-        return changed
+        return self._queue_coordinator_for_manager().mark_orphan_recovery_locked(session_id)
 
     def _queue_has_recovery_items_locked(self, session_id: str) -> bool:
-        qmap = getattr(self, "_queues", None)
-        if not isinstance(qmap, dict):
-            return False
-        has_direct_unknown = session_id in getattr(self, "_commit_unknown_sends", {})
-        return has_direct_unknown or self._queue_store_for_manager().has_recovery_items(qmap, session_id)
+        return self._queue_coordinator_for_manager().has_recovery_items_locked(session_id)
 
     def _queue_list_local(self, session_id: str) -> list[dict[str, Any]]:
-        with self._lock:
-            qmap = getattr(self, "_queues", None)
-            if not isinstance(qmap, dict):
-                return []
-            s = self._sessions.get(session_id)
-            if s is None and not self._queue_has_recovery_items_locked(session_id):
-                raise KeyError("unknown session")
-            sending_id = s.queue_sending_item_id if s else None
-            items = self._queue_store_for_manager().list_items(qmap, session_id, sending_item_id=sending_id)
-            if self._queue_has_recovery_items_locked(session_id):
-                for item in items:
-                    if not bool(item.get("sending")) and not bool(item.get("commit_unknown")):
-                        item["orphan_recovery"] = True
-            return items
+        return self._queue_coordinator_for_manager().list_local(session_id)
 
     def _queue_append_item_local(self, session_id: str, text: str, *, reject_recovery_barrier: bool = False) -> tuple[dict[str, Any], int]:
-        t = str(text)
-        if not t.strip():
-            raise ValueError("text required")
-        with self._lock:
-            if session_id not in self._sessions:
-                raise KeyError("unknown session")
-            if reject_recovery_barrier and self._queue_has_recovery_items_locked(session_id):
-                raise SessionNotReadyError("resolve the recovery queue before queueing another prompt")
-            item, ql = self._queue_store_for_manager().append(self._queues, session_id, text)
-        self._save_queues()
-        return item, int(ql)
+        return self._queue_coordinator_for_manager().append_item_local(
+            session_id,
+            text,
+            reject_recovery_barrier=reject_recovery_barrier,
+        )
 
     def _queue_enqueue_local(self, session_id: str, text: str) -> dict[str, Any]:
-        item, ql = self._queue_append_item_local(session_id, text, reject_recovery_barrier=True)
-        return {"queued": True, "queue_len": int(ql), "item": item}
+        return self._queue_coordinator_for_manager().enqueue_local(session_id, text)
 
     def _queue_delete_local(self, session_id: str, item_id: str, *, allow_commit_unknown: bool = False, allow_orphan_recovery: bool = False) -> dict[str, Any]:
-        item_id_clean = str(item_id).strip()
-        if not item_id_clean:
-            raise ValueError("id required")
-        with self._lock:
-            s = self._sessions.get(session_id)
-            queue_recovery = self._queue_has_recovery_items_locked(session_id)
-            if s is None and not queue_recovery:
-                raise KeyError("unknown session")
-            target_item = None
-            q_before = self._queues.get(session_id)
-            if isinstance(q_before, list):
-                target_item = next((item for item in q_before if isinstance(item, dict) and item.get("id") == item_id_clean), None)
-            if queue_recovery and isinstance(target_item, dict):
-                if not bool(target_item.get("commit_unknown")) and not bool(target_item.get("orphan_recovery")):
-                    if not allow_orphan_recovery:
-                        raise ValueError("orphan recovery item requires explicit confirmation")
-                    target_item["orphan_recovery"] = True
-            sending_id = s.queue_sending_item_id if s else None
-            ql = self._queue_store_for_manager().delete(
-                self._queues,
-                session_id,
-                item_id_clean,
-                sending_item_id=sending_id,
-                allow_commit_unknown=allow_commit_unknown,
-                allow_orphan_recovery=allow_orphan_recovery,
-            )
-            deleted_recovery = isinstance(target_item, dict) and (
-                bool(target_item.get("commit_unknown")) or bool(target_item.get("orphan_recovery"))
-            )
-            if deleted_recovery and (allow_commit_unknown or allow_orphan_recovery):
-                self._mark_queue_orphan_recovery_locked(session_id)
-        self._save_queues()
-        return {"ok": True, "queue_len": int(ql)}
+        return self._queue_coordinator_for_manager().delete_local(
+            session_id,
+            item_id,
+            allow_commit_unknown=allow_commit_unknown,
+            allow_orphan_recovery=allow_orphan_recovery,
+        )
 
     def _queue_update_local(self, session_id: str, item_id: str, text: str) -> dict[str, Any]:
-        item_id_clean = str(item_id).strip()
-        t = str(text)
-        if not item_id_clean:
-            raise ValueError("id required")
-        if not t.strip():
-            raise ValueError("text required")
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if self._queue_has_recovery_items_locked(session_id):
-                raise ValueError("item is preserved for recovery")
-            if s is None:
-                raise KeyError("unknown session")
-            sending_id = s.queue_sending_item_id if s else None
-            item, ql = self._queue_store_for_manager().update(self._queues, session_id, item_id_clean, t, sending_item_id=sending_id)
-        self._save_queues()
-        return {"ok": True, "queue_len": int(ql), "item": item}
+        return self._queue_coordinator_for_manager().update_local(session_id, item_id, text)
 
     def _queue_move_local(self, session_id: str, item_id: str, to_index: int) -> dict[str, Any]:
-        item_id_clean = str(item_id).strip()
-        if not item_id_clean:
-            raise ValueError("id required")
-        if isinstance(to_index, bool):
-            raise ValueError("to_index must be an integer")
-        target = int(to_index)
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if self._queue_has_recovery_items_locked(session_id):
-                raise ValueError("item is preserved for recovery")
-            if s is None:
-                raise KeyError("unknown session")
-            sending_id = s.queue_sending_item_id if s else None
-            ql = self._queue_store_for_manager().move(self._queues, session_id, item_id_clean, target, sending_item_id=sending_id)
-        self._save_queues()
-        return {"ok": True, "queue_len": int(ql)}
+        return self._queue_coordinator_for_manager().move_local(session_id, item_id, to_index)
 
     def _queue_session_state(self, session_id: str) -> tuple[Session, Path | None]:
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                raise KeyError("unknown session")
-            return s, s.log_path
+        return self._queue_coordinator_for_manager().session_state(session_id)
+
+    def _promote_queue_head_if_sendable(
+        self,
+        session_id: str,
+        *,
+        require_idle_grace: bool,
+        now_ts: float | None = None,
+        expected_item_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        return self._queue_coordinator_for_manager().promote_head_if_sendable(
+            session_id,
+            require_idle_grace=require_idle_grace,
+            now_ts=now_ts,
+            expected_item_id=expected_item_id,
+        )
 
     def _broker_busy_queue_from_state(self, state: dict[str, Any]) -> tuple[bool, int]:
         return _broker_busy_queue_from_state(state)
@@ -2769,121 +2698,6 @@ class SessionManager:
             if not _session_allows_queue_promotion(s):
                 return False
         return self._remote_ready_from_state_and_log(session_id, state, log_path)
-
-    def _promote_queue_head_if_sendable(
-        self,
-        session_id: str,
-        *,
-        require_idle_grace: bool,
-        now_ts: float | None = None,
-        expected_item_id: str | None = None,
-    ) -> dict[str, Any] | None:
-        if now_ts is None:
-            now_ts = time.time()
-        _session, log_path = self._queue_session_state(session_id)
-        with self._lock:
-            s0 = self._sessions.get(session_id)
-            if not s0:
-                return None
-            queue_store = self._queue_store_for_manager()
-            if queue_store.queue_len(self._queues, session_id) <= 0:
-                _queue_runtime_reset_idle(s0)
-                return None
-            if s0.queue_sending_item_id is not None:
-                return None
-            if queue_store.has_recovery_items(self._queues, session_id):
-                _queue_runtime_reset_idle(s0)
-                return None
-            head = queue_store.promotion_head(self._queues, session_id, expected_item_id=expected_item_id)
-            if head is None:
-                return None
-            head_id = head.item_id
-        try:
-            ready = self._queue_remote_ready(session_id, log_path=log_path)
-        except Exception:
-            with self._lock:
-                s0 = self._sessions.get(session_id)
-                if s0:
-                    _queue_runtime_reset_idle(s0)
-            return None
-        with self._lock:
-            s0 = self._sessions.get(session_id)
-            if not s0:
-                return None
-            queue_store = self._queue_store_for_manager()
-            if queue_store.queue_len(self._queues, session_id) <= 0:
-                _queue_runtime_reset_idle(s0)
-                return None
-            if s0.queue_sending_item_id is not None:
-                return None
-            if queue_store.has_recovery_items(self._queues, session_id):
-                _queue_runtime_reset_idle(s0)
-                return None
-            head = queue_store.promotion_head(self._queues, session_id, expected_item_id=expected_item_id)
-            if head is None:
-                return None
-            head_id = head.item_id
-            if not ready:
-                _queue_runtime_reset_idle(s0)
-                return None
-            if not _queue_runtime_idle_grace_ready(
-                s0,
-                now_ts=float(now_ts),
-                grace_seconds=QUEUE_IDLE_GRACE_SECONDS,
-                require_idle_grace=require_idle_grace,
-            ):
-                return None
-            _queue_runtime_start_promotion(s0, head_id)
-            text = queue_store.mark_promotion_commit_unknown(
-                self._queues,
-                session_id,
-                head_id,
-                ts=time.time(),
-            )
-            if text is None:
-                _queue_runtime_clear_promotion(s0, head_id)
-                return None
-        self._save_queues()
-        try:
-            resp = self.send(session_id, text, queue_item_id=head_id)
-        except (SessionNotReadyError, SessionInjectionError):
-            with self._lock:
-                s0 = self._sessions.get(session_id)
-                if s0:
-                    _queue_runtime_clear_promotion(s0, head_id)
-                self._queue_store_for_manager().clear_commit_unknown_marker(self._queues, session_id, head_id)
-            self._save_queues()
-            return None
-        except SessionCommitUnknownError:
-            unknown_item: dict[str, Any] | None = None
-            queue_len = 0
-            with self._lock:
-                s0 = self._sessions.get(session_id)
-                if s0:
-                    _queue_runtime_clear_promotion(s0, head_id)
-                unknown_item, queue_len = self._queue_store_for_manager().preserve_commit_unknown_marker(
-                    self._queues,
-                    session_id,
-                    head_id,
-                    ts=time.time(),
-                )
-            self._save_queues()
-            return {"queued": True, "queue_len": int(queue_len), "item": unknown_item, "commit_unknown": True}
-        except Exception:
-            with self._lock:
-                s0 = self._sessions.get(session_id)
-                if s0:
-                    _queue_runtime_clear_promotion(s0, head_id)
-                self._queue_store_for_manager().clear_commit_unknown_marker(self._queues, session_id, head_id)
-            self._save_queues()
-            return None
-        with self._lock:
-            s0 = self._sessions.get(session_id)
-            if s0:
-                _queue_runtime_clear_promotion(s0, head_id)
-            self._queue_store_for_manager().pop_sent(self._queues, session_id, head_id)
-        self._save_queues()
-        return resp
 
     def _files_key_for_session(self, session_id: str) -> tuple[str, list[str], "Session"]:
         s = self._sessions.get(session_id)
