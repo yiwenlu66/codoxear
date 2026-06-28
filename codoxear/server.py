@@ -183,6 +183,10 @@ from .session_listing import clip01 as _listing_clip01
 from .session_listing import priority_from_elapsed_seconds as _listing_priority_from_elapsed_seconds
 from .session_listing import sidebar_priority_elapsed_seconds as _listing_sidebar_priority_elapsed_seconds
 from .session_listing import sidebar_time_priority_from_elapsed_seconds as _listing_sidebar_time_priority_from_elapsed_seconds
+from .session_manager_bootstrap import create_voice_push_coordinator as _create_voice_push_coordinator_impl
+from .session_manager_bootstrap import load_manager_persistent_state as _load_manager_persistent_state_impl
+from .session_manager_bootstrap import seed_manager_in_memory_state as _seed_manager_in_memory_state_impl
+from .session_manager_bootstrap import start_manager_worker_threads as _start_manager_worker_threads_impl
 from .session_manager_store import create_session_store as _create_session_store_impl
 from .session_manager_store import session_store_for_manager as _session_store_for_manager_impl
 from .session_manager_store import session_store_paths as _session_store_paths_impl
@@ -1544,30 +1548,10 @@ class SessionManager:
         self._stop = threading.Event()
         self._last_discover_ts = 0.0
         self._store = self._new_session_store_for_manager(_session_store_paths_for_manager())
-        self._unattended: dict[str, dict[str, Any]] = {}
-        self._aliases: dict[str, str] = {}
-        self._sidebar_meta: dict[str, dict[str, Any]] = {}
-        self._hidden_sessions: set[str] = set()
-        self._files: dict[str, list[str]] = {}
-        self._queues: dict[str, list[dict[str, Any]]] = {}
-        self._pending_attachment_ids: set[str] = set()
-        self._commit_unknown_sends: dict[str, dict[str, Any]] = {}
-        self._input_locks: dict[str, threading.RLock] = {}
-        self._recent_cwds: dict[str, float] = {}
-        self._include_launch_attempts = True
-        self._unattended_last_injected: dict[str, float] = {}
-        self._unattended_last_injected_scope: dict[str, float] = {}
-        self._load_unattended()
-        self._load_aliases()
-        self._load_sidebar_meta()
-        self._load_hidden_sessions()
-        self._load_files()
-        self._load_queues()
-        self._load_pending_attachments()
-        self._load_commit_unknown_sends()
-        self._load_recent_cwds()
-        self._backfill_recent_cwds_from_logs()
-        self._voice_push = VoicePushCoordinator(
+        _seed_manager_in_memory_state_impl(self)
+        _load_manager_persistent_state_impl(self)
+        self._voice_push = _create_voice_push_coordinator_impl(
+            voice_push_factory=VoicePushCoordinator,
             app_dir=APP_DIR,
             stop_event=self._stop,
             settings_path=VOICE_SETTINGS_PATH,
@@ -1577,12 +1561,7 @@ class SessionManager:
         )
         self._discover_existing(force=True)
         self._prune_missing_commit_unknown_sends()
-        self._unattended_thr = threading.Thread(target=self._unattended_loop, name="unattended", daemon=True)
-        self._unattended_thr.start()
-        self._queue_thr = threading.Thread(target=self._queue_loop, name="queue", daemon=True)
-        self._queue_thr.start()
-        self._voice_push_scan_thr = threading.Thread(target=self._voice_push_scan_loop, name="voice-push-scan", daemon=True)
-        self._voice_push_scan_thr.start()
+        _start_manager_worker_threads_impl(manager=self, thread_factory=threading.Thread)
 
     def stop(self) -> None:
         self._stop.set()
