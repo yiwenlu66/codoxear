@@ -72,7 +72,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn("{\"cmd\": \"send\", \"text\": text, \"sync\": True}", control_runtime_source)
         self.assertIn("except self.control_socket_call_error as exc:", control_runtime_source)
         self.assertIn("raise_commit_unknown(\"send commit status unknown; broker response failed\", exc)", control_runtime_source)
-        self.assertIn("session_commit_unknown_error=server.SessionCommitUnknownError", route_deps_source)
+        self.assertIn("session_commit_unknown_error=caps.SessionCommitUnknownError", route_deps_source)
         self.assertIn("except deps.session_commit_unknown_error as e:", route_source)
         self.assertIn('"commit_unknown": True', route_source + source)
         self.assertIn("if bool(response.get(\"commit_unknown\")):\n        raise_commit_unknown(\"send commit status unknown; broker marked commit unknown\")", input_source)

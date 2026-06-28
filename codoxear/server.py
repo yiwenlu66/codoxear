@@ -243,6 +243,7 @@ from .server_metrics import metric_percentile as _metric_percentile_impl
 from .server_metrics import metrics_snapshot as _metrics_snapshot_impl
 from .server_metrics import record_metric as _record_metric_impl
 from .server_route_deps import ServerRouteDepsFactory
+from .server_route_deps import server_route_caps as _server_route_caps_impl
 from .server_routing import match_session_route as _match_session_route_impl
 from .server_routing import normalize_url_prefix as _normalize_url_prefix_impl
 from .server_routing import strip_url_prefix as _strip_url_prefix_impl
@@ -1411,7 +1412,8 @@ def _read_static_bytes(path: Path) -> bytes:
     return _read_static_bytes_impl(path, attach_upload_max_bytes=ATTACH_UPLOAD_MAX_BYTES)
 
 def _route_deps_factory() -> ServerRouteDepsFactory:
-    return ServerRouteDepsFactory(sys.modules[__name__])
+    server_module = sys.modules[__name__]
+    return ServerRouteDepsFactory(_server_route_caps_impl(server_module))
 
 def _message_runtime_snapshot(
     session_id: str,
