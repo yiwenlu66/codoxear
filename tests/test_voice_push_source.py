@@ -7,6 +7,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 VOICE_PUSH = ROOT / "codoxear" / "voice_push.py"
+VOICE_PUSH_STATE = ROOT / "codoxear" / "voice_push_state.py"
+VOICE_OPENAI_CLIENT = ROOT / "codoxear" / "voice_openai_client.py"
+VOICE_HLS = ROOT / "codoxear" / "voice_hls.py"
+VOICE_WEBPUSH = ROOT / "codoxear" / "voice_webpush.py"
+VOICE_PERSISTENCE = ROOT / "codoxear" / "voice_persistence.py"
+VOICE_PROJECTION = ROOT / "codoxear" / "voice_projection.py"
 VOICE_ROUTES = ROOT / "codoxear" / "voice_routes.py"
 SERVICE_WORKER = ROOT / "codoxear" / "static" / "service-worker.js"
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
@@ -84,43 +90,62 @@ def eval_desktop_notification_clickthrough() -> dict:
 
 class TestVoicePushSource(unittest.TestCase):
     def test_summary_prompts_cover_final_and_narration_targets(self) -> None:
-        source = VOICE_PUSH.read_text(encoding="utf-8")
+        source = VOICE_OPENAI_CLIENT.read_text(encoding="utf-8")
         self.assertIn("about 30 words", source)
         self.assertIn("roughly 24 to 36 words", source)
         self.assertIn("about 15 words", source)
         self.assertIn("roughly 12 to 18 words", source)
 
     def test_keepalive_silence_is_enabled(self) -> None:
-        source = VOICE_PUSH.read_text(encoding="utf-8")
-        self.assertIn("HLS_KEEPALIVE_SECONDS", source)
-        self.assertIn("append_silence", source)
-        self.assertIn("anullsrc", source)
+        hls_source = VOICE_HLS.read_text(encoding="utf-8")
+        self.assertIn("HLS_KEEPALIVE_SECONDS", hls_source)
+        self.assertIn("append_silence", hls_source)
+        self.assertIn("anullsrc", hls_source)
 
     def test_voice_pool_includes_full_verified_set(self) -> None:
+        state_source = VOICE_PUSH_STATE.read_text(encoding="utf-8")
+        self.assertIn('"cedar"', state_source)
+        self.assertIn('"marin"', state_source)
+        self.assertIn('"verse"', state_source)
+
+    def test_voice_push_facade_uses_extracted_runtime_modules(self) -> None:
         source = VOICE_PUSH.read_text(encoding="utf-8")
-        self.assertIn('"cedar"', source)
-        self.assertIn('"marin"', source)
-        self.assertIn('"verse"', source)
+        self.assertIn("from .voice_hls import MergedHLSStream", source)
+        self.assertIn("from .voice_openai_client import OpenAICompatibleClient", source)
+        self.assertIn("from .voice_webpush import send_web_push_notifications", source)
+        self.assertIn("from .voice_persistence import load_voice_settings", source)
+        self.assertIn("from .voice_projection import voice_settings_snapshot_payload", source)
+        self.assertIn("from .voice_task_queue import enqueue_announcement_task", source)
+        self.assertIn("from .voice_ledger import set_ledger_fields_many", source)
+        self.assertNotIn("from pywebpush import webpush", source)
+        self.assertNotIn("from py_vapid import Vapid", source)
 
     def test_notification_text_is_canonical_backend_field(self) -> None:
         source = VOICE_PUSH.read_text(encoding="utf-8")
+        projection_source = VOICE_PROJECTION.read_text(encoding="utf-8")
         self.assertIn('"notification_text"', source)
-        self.assertIn('row.get("notification_text")', source)
+        self.assertIn('row.get("notification_text")', projection_source)
         self.assertNotIn('"preview_text": notification_text', source)
         sw_source = SERVICE_WORKER.read_text(encoding="utf-8")
         self.assertIn("payload.notification_text", sw_source)
 
     def test_voice_settings_redact_api_key_and_preserve_blank_save(self) -> None:
         voice_source = VOICE_PUSH.read_text(encoding="utf-8")
+        voice_state_source = VOICE_PUSH_STATE.read_text(encoding="utf-8")
+        voice_webpush_source = VOICE_WEBPUSH.read_text(encoding="utf-8")
+        voice_persistence_source = VOICE_PERSISTENCE.read_text(encoding="utf-8")
+        voice_projection_source = VOICE_PROJECTION.read_text(encoding="utf-8")
         voice_route_source = VOICE_ROUTES.read_text(encoding="utf-8")
         app_source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("def _chmod_private_file(path: Path) -> None:", voice_source)
-        self.assertIn("os.chmod(path, 0o600)", voice_source)
-        self.assertIn("_chmod_private_file(self._settings_path)", voice_source)
-        self.assertIn("_chmod_private_file(self._vapid_private_key_path)", voice_source)
+        self.assertIn("def _chmod_private_file(path: Path) -> None:", voice_state_source)
+        self.assertIn("os.chmod(path, 0o600)", voice_state_source)
+        self.assertIn("save_voice_settings(self._settings_path, payload)", voice_source)
+        self.assertIn("_chmod_private_file(path)", voice_persistence_source)
+        self.assertIn("ensure_vapid_public_key(self._vapid_private_key_path)", voice_source)
+        self.assertIn("_chmod_private_file(path)", voice_webpush_source)
         self.assertIn("def settings_snapshot(self, *, redact_secrets: bool = False)", voice_source)
-        self.assertIn('settings["tts_api_key"] = ""', voice_source)
-        self.assertIn('settings["has_tts_api_key"] = has_tts_api_key', voice_source)
+        self.assertIn('settings["tts_api_key"] = ""', voice_projection_source)
+        self.assertIn('settings["has_tts_api_key"] = has_tts_api_key', voice_projection_source)
         self.assertIn("preserve_blank_api_key: bool = False", voice_source)
         self.assertIn('obj["tts_api_key"] = str(self._voice_settings.get("tts_api_key") or "")', voice_source)
         self.assertIn("settings_snapshot(redact_secrets=True)", voice_route_source)

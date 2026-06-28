@@ -6,6 +6,11 @@ ROLLOUT_LOG = Path(__file__).resolve().parents[1] / "codoxear" / "rollout_log.py
 
 
 class TestRolloutLogHelpersSource(unittest.TestCase):
+    def test_delivery_message_record_import_is_lightweight(self) -> None:
+        source = ROLLOUT_LOG.read_text(encoding="utf-8")
+        self.assertIn("from .voice_push_state import ClassifiedAssistantMessage", source)
+        self.assertNotIn("from .voice_push import ClassifiedAssistantMessage", source)
+
     def test_chat_event_timestamp_and_message_id_helpers_are_not_redeclared(self) -> None:
         source = ROLLOUT_LOG.read_text(encoding="utf-8")
         self.assertEqual(source.count("def _event_ts("), 1)

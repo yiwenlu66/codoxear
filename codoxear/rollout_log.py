@@ -30,7 +30,7 @@ from .pi_log import pi_message_role
 from .pi_log import pi_context_token_update
 from .pi_log import pi_token_update
 from .pi_log import pi_user_text
-from .voice_push import ClassifiedAssistantMessage
+from .voice_push_state import ClassifiedAssistantMessage
 
 
 _OAI_MEM_CITATION_TAIL_RE = re.compile(r"\s*<oai-mem-citation>\s*.*?</oai-mem-citation>\s*\Z", re.DOTALL)
