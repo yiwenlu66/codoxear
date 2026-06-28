@@ -23,7 +23,6 @@ import sys
 import threading
 import time
 import traceback
-import urllib.parse
 from pathlib import Path
 from typing import Any, Iterator, Mapping
 
@@ -37,25 +36,17 @@ from .auth import set_auth_cookie as _set_auth_cookie_impl
 from .auth import sign_cookie as _sign_cookie_impl
 from .auth import verify_cookie as _verify_cookie_impl
 from .auth_routes import AuthRouteDeps
-from .auth_routes import handle_auth_get_route as _handle_auth_get_route
-from .auth_routes import handle_auth_post_route as _handle_auth_post_route
 from . import rollout_log as _rollout_log
 from .control_socket import ControlSocketCallError
 from .control_socket import call_control_socket as _call_control_socket_impl
 from .control_routes import ControlRouteDeps
-from .control_routes import handle_control_post_route as _handle_control_post_route
 from .diagnostics_routes import DiagnosticsRouteDeps
-from .diagnostics_routes import handle_diagnostics_get_route as _handle_diagnostics_get_route
 from .file_response import send_attachment_file_response as _send_attachment_file_response
 from .file_response import send_inline_file_response as _send_inline_file_response
 from .file_response import single_byte_range as _single_byte_range
 from .file_routes import FileGetRouteDeps
 from .file_routes import FileWriteRouteDeps
 from .file_routes import GlobalFileRouteDeps
-from .file_routes import handle_absolute_file_preview_route as _handle_absolute_file_preview_route
-from .file_routes import handle_file_get_route as _handle_file_get_route
-from .file_routes import handle_file_write_post_route as _handle_file_write_post_route
-from .file_routes import handle_global_file_post_route as _handle_global_file_post_route
 from .file_search import FILE_LIST_IGNORED_DIRS
 from .file_search import FILE_SEARCH_LIMIT
 from .file_search import file_search_score as _file_search_score
@@ -67,9 +58,7 @@ from .file_upload import attachment_inject_text as _attachment_inject_text
 from .file_upload import stage_uploaded_file as _stage_uploaded_file_impl
 from . import git_ops as _git_ops
 from .git_routes import GitRouteDeps
-from .git_routes import handle_git_get_route as _handle_git_get_route
 from .hook_routes import HookRouteDeps
-from .hook_routes import handle_hook_post_route as _handle_hook_post_route
 from .launch_config import LaunchConfigPaths
 from .launch_config import LaunchRequestValidationError
 from .launch_config import NewSessionLaunchRequest
@@ -110,7 +99,6 @@ from .launch_ledger import latest_launch_attempt as _latest_launch_attempt_impl
 from .launch_ledger import record_launch_attempt as _record_launch_attempt_impl
 from .launch_ledger import submitted_user_messages as _submitted_user_messages_impl
 from .message_routes import MessageRouteDeps
-from .message_routes import handle_messages_get_route as _handle_messages_get_route
 from .file_view import ClientFileView
 from .file_view import download_disposition as _download_disposition
 from .file_view import inspect_client_path as _inspect_client_path
@@ -141,15 +129,11 @@ from .transcript_search import search_chat_log_bounded as _search_chat_log_bound
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
 from .queue_routes import QueueRouteDeps
-from .queue_routes import handle_queue_get_route as _handle_queue_get_route
-from .queue_routes import handle_queue_post_route as _handle_queue_post_route
 from .queue_store import QueueStore
 from .queue_store import coerce_queue_item as _queue_store_coerce_item
 from .queue_sweep import QueueSweepCoordinator
 from .session_queue import SessionQueueCoordinator
 from .session_routes import SessionRouteDeps
-from .session_routes import handle_session_get_route as _handle_session_get_route
-from .session_routes import handle_session_post_route as _handle_session_post_route
 from .session_attachment import SessionAttachmentCoordinator
 from .session_cleanup import SessionCleanupCoordinator
 from .session_discovery import DiscoveryDeps
@@ -190,6 +174,8 @@ from .session_runtime import select_runtime_token as _select_runtime_token
 from .session_store import SessionStore
 from .session_store import SessionStorePaths
 from .session_web_launch import SessionWebLaunchCoordinator
+from .server_handler import ServerHandlerDeps
+from .server_handler import make_handler_class
 from .session_ui_state import SessionUiStateCoordinator
 from .session_unattended_config import SessionUnattendedConfigCoordinator
 from .static_routes import CONTENT_SECURITY_POLICY
@@ -200,7 +186,6 @@ from .static_routes import STATIC_ATTACH_MAX_BYTES_PLACEHOLDER
 from .static_routes import STATIC_DIR
 from .static_routes import TOP_LEVEL_STATIC_ASSETS
 from .static_routes import StaticRouteDeps
-from .static_routes import handle_static_get_route as _handle_static_get_route
 from .static_routes import read_static_bytes as _read_static_bytes_impl
 from .static_routes import static_asset_version as _static_asset_version
 from .static_routes import static_cache_control_headers as _static_cache_control_headers_impl
@@ -239,8 +224,6 @@ from .unattended_sweep import UnattendedSweepCoordinator
 from .voice_push import VoicePushCoordinator
 from .voice_runtime import VoiceRuntimeCoordinator
 from .voice_routes import VoiceRouteDeps
-from .voice_routes import handle_voice_get_route as _handle_voice_get_route
-from .voice_routes import handle_voice_post_route as _handle_voice_post_route
 
 
 def _load_env_file(path: Path) -> dict[str, str]:
@@ -3230,259 +3213,36 @@ def _git_route_deps() -> GitRouteDeps:
     )
 
 
-class Handler(http.server.BaseHTTPRequestHandler):
-    server_version = "codoxear/0.1"
 
-    def handle_one_request(self) -> None:
-        try:
-            super().handle_one_request()
-        except Exception as e:
-            if _is_client_disconnect(e):
-                return
-            raise
+def _handler_deps() -> ServerHandlerDeps:
+    return ServerHandlerDeps(
+        url_prefix=URL_PREFIX,
+        strip_url_prefix=_strip_url_prefix,
+        is_client_disconnect=_is_client_disconnect,
+        json_response=_json_response,
+        handle_route_exception=_handle_route_exception,
+        read_body=_read_body,
+        bad_request_error=BadRequestError,
+        request_payload_too_large_error=RequestPayloadTooLargeError,
+        manager=lambda: MANAGER,
+        match_session_route=_match_session_route,
+        static_route_deps=_static_route_deps,
+        auth_route_deps=_auth_route_deps,
+        voice_route_deps=_voice_route_deps,
+        session_route_deps=_session_route_deps,
+        diagnostics_route_deps=_diagnostics_route_deps,
+        queue_route_deps=_queue_route_deps,
+        file_get_route_deps=_file_get_route_deps,
+        file_write_route_deps=_file_write_route_deps,
+        global_file_route_deps=_global_file_route_deps,
+        git_route_deps=_git_route_deps,
+        message_route_deps=_message_route_deps,
+        control_route_deps=_control_route_deps,
+        hook_route_deps=_hook_route_deps,
+    )
 
-    def finish(self) -> None:
-        try:
-            super().finish()
-        except Exception as e:
-            if _is_client_disconnect(e):
-                return
-            raise
 
-    def _unauthorized(self) -> None:
-        _json_response(self, 401, {"error": "unauthorized"})
-
-    def _parse_prefixed_request_path(self) -> tuple[urllib.parse.ParseResult, str] | None:
-        u = urllib.parse.urlparse(self.path)
-        path = u.path
-        if URL_PREFIX:
-            if path == URL_PREFIX:
-                loc = URL_PREFIX + "/"
-                if u.query:
-                    loc = loc + "?" + u.query
-                self.send_response(308)
-                self.send_header("Location", loc)
-                self.end_headers()
-                return None
-            stripped = _strip_url_prefix(URL_PREFIX, path)
-            if stripped is None:
-                self.send_error(404)
-                return None
-            path = stripped
-        return u, path
-
-    def _handle_static_get(self, path: str) -> bool:
-        return _handle_static_get_route(
-            self,
-            path=path,
-            deps=_static_route_deps(),
-        )
-
-    def _handle_voice_get(self, path: str, query: str) -> bool:
-        return _handle_voice_get_route(
-            self,
-            path=path,
-            query=query,
-            voice_push=getattr(MANAGER, "_voice_push", None),
-            deps=_voice_route_deps(),
-        )
-
-    def _read_json_body(self, *, limit: int = 2 * 1024 * 1024, too_large_error: str | None = None) -> dict[str, Any]:
-        try:
-            body = _read_body(self, limit=limit)
-        except RequestPayloadTooLargeError as e:
-            if too_large_error:
-                raise RequestPayloadTooLargeError(too_large_error) from e
-            raise
-        try:
-            body_text = body.decode("utf-8")
-        except UnicodeDecodeError as e:
-            raise BadRequestError("request body must be utf-8") from e
-        if not body_text.strip():
-            raise BadRequestError("empty request body")
-        try:
-            obj = json.loads(body_text)
-        except json.JSONDecodeError as e:
-            raise BadRequestError("invalid json body") from e
-        if not isinstance(obj, dict):
-            raise BadRequestError("invalid json body (expected object)")
-        return obj
-
-    def _handle_voice_post(self, path: str) -> bool:
-        return _handle_voice_post_route(
-            self,
-            path=path,
-            voice_push=getattr(MANAGER, "_voice_push", None),
-            deps=_voice_route_deps(),
-        )
-
-    def do_GET(self) -> None:
-        try:
-            parsed = self._parse_prefixed_request_path()
-            if parsed is None:
-                return
-            u, path = parsed
-            if self._handle_static_get(path):
-                return
-
-            if _handle_auth_get_route(
-                self,
-                path=path,
-                deps=_auth_route_deps(),
-            ):
-                return
-
-            if self._handle_voice_get(path, u.query):
-                return
-
-            if _handle_session_get_route(
-                self,
-                path=path,
-                query=u.query,
-                manager=MANAGER,
-                deps=_session_route_deps(),
-                match_session_route=_match_session_route,
-            ):
-                return
-
-            if _handle_diagnostics_get_route(
-                self,
-                path=path,
-                manager=MANAGER,
-                deps=_diagnostics_route_deps(),
-                match_session_route=_match_session_route,
-            ):
-                return
-
-            if _handle_queue_get_route(
-                self,
-                path=path,
-                manager=MANAGER,
-                deps=_queue_route_deps(),
-                match_session_route=_match_session_route,
-            ):
-                return
-
-            if _handle_file_get_route(
-                self,
-                path=path,
-                query=u.query,
-                manager=MANAGER,
-                deps=_file_get_route_deps(),
-                match_session_route=_match_session_route,
-            ):
-                return
-
-            if _handle_git_get_route(
-                self,
-                path=path,
-                query=u.query,
-                manager=MANAGER,
-                deps=_git_route_deps(),
-                match_session_route=_match_session_route,
-            ):
-                return
-
-            if _handle_messages_get_route(
-                self,
-                path=path,
-                query=u.query,
-                manager=MANAGER,
-                deps=_message_route_deps(),
-                match_session_route=_match_session_route,
-            ):
-                return
-
-            self.send_error(404)
-        except KeyError:
-            _json_response(self, 404, {"error": "unknown session"})
-        except Exception as e:
-            _handle_route_exception(self, e)
-
-    def do_POST(self) -> None:
-        try:
-            parsed = self._parse_prefixed_request_path()
-            if parsed is None:
-                return
-            u, path = parsed
-
-            if _handle_auth_post_route(
-                self,
-                path=path,
-                deps=_auth_route_deps(),
-            ):
-                return
-
-            if self._handle_voice_post(path):
-                return
-
-            if _handle_session_post_route(
-                self,
-                path=path,
-                manager=MANAGER,
-                deps=_session_route_deps(),
-            ):
-                return
-
-            if _handle_global_file_post_route(
-                self,
-                path=path,
-                manager=MANAGER,
-                deps=_global_file_route_deps(),
-            ):
-                return
-
-            if _handle_absolute_file_preview_route(
-                self,
-                path=path,
-                query=u.query,
-                deps=_file_get_route_deps(),
-            ):
-                return
-
-            if _handle_file_write_post_route(
-                self,
-                path=path,
-                manager=MANAGER,
-                deps=_file_write_route_deps(),
-                match_session_route=_match_session_route,
-            ):
-                return
-
-            if _handle_control_post_route(
-                self,
-                path=path,
-                manager=MANAGER,
-                deps=_control_route_deps(),
-                match_session_route=_match_session_route,
-            ):
-                return
-
-            if _handle_queue_post_route(
-                self,
-                path=path,
-                manager=MANAGER,
-                deps=_queue_route_deps(),
-                match_session_route=_match_session_route,
-            ):
-                return
-
-            if _handle_hook_post_route(
-                self,
-                path=path,
-                deps=_hook_route_deps(),
-            ):
-                return
-
-            self.send_error(404)
-        except KeyError:
-            _json_response(self, 404, {"error": "unknown session"})
-        except Exception as e:
-            _handle_route_exception(self, e)
-
-    def log_message(self, fmt: str, *args: Any) -> None:
-        # Quiet default logging to keep terminal usable.
-        return
+Handler = make_handler_class(_handler_deps())
 
 
 class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):

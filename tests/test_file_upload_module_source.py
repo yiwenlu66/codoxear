@@ -50,7 +50,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         route_source = CONTROL_ROUTES_PY.read_text(encoding="utf-8")
         start = route_source.index("def _handle_inject_attachment")
         block = route_source[start:]
-        self.assertIn("_handle_control_post_route(", source)
+        self.assertIn("if handle_control_post_route(", (ROOT / "codoxear" / "server_handler.py").read_text(encoding="utf-8"))
         self.assertIn("stage_uploaded_file=_stage_uploaded_file", source)
         self.assertIn("attachment_inject_text=_attachment_inject_text", source)
         self.assertIn("ready_for_attachment = manager.attachment_injection_ready(session_id)", block)
