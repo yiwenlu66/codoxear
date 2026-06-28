@@ -169,6 +169,7 @@ from .session_input import parse_confirmed_send_response as _parse_confirmed_sen
 from .session_input import require_send_preconditions as _require_send_preconditions
 from .session_control import SessionControlCoordinator
 from .session_launch_plan import prepare_launch_plan as _prepare_launch_plan
+from .session_log_runtime import SessionLogRuntimeCoordinator
 from .session_list import SessionListCoordinator
 from .session_refresh import SessionRefreshCoordinator
 from .session_readiness import SessionReadinessCoordinator
@@ -3132,57 +3133,13 @@ class SessionManager:
         return self._voice_runtime_for_manager().attach_notification_texts(events)
 
     def mark_log_delta(self, session_id: str, *, objs: list[dict[str, Any]], new_off: int) -> None:
-        _th, _tools, _sys, last_ts, token_update, _chat_events = _analyze_log_chunk(objs)
-        model = None
-        reasoning_effort = None
-        for obj in reversed(objs):
-            if not isinstance(obj, dict) or obj.get("type") != "turn_context":
-                continue
-            model, reasoning_effort = _turn_context_run_settings(obj.get("payload"))
-            break
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if s:
-                if isinstance(last_ts, (int, float)):
-                    tsf = float(last_ts)
-                    s.last_chat_ts = tsf if s.last_chat_ts is None else max(s.last_chat_ts, tsf)
-                if model is not None:
-                    s.model = model
-                if reasoning_effort is not None:
-                    s.reasoning_effort = reasoning_effort
-                s.idle_cache_log_off = -1
+        return self._log_runtime_for_manager().mark_log_delta(session_id, objs=objs, new_off=new_off)
 
     def idle_from_log(self, session_id: str) -> bool:
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                raise KeyError("unknown session")
-            lp = s.log_path
-        if lp is None:
-            raise FileNotFoundError(f"missing rollout log for session {session_id}")
-        return self.idle_from_log_path(session_id, lp)
+        return self._log_runtime_for_manager().idle_from_log(session_id)
 
     def idle_from_log_path(self, session_id: str, log_path: Path) -> bool:
-        lp = log_path
-        with self._lock:
-            s = self._sessions.get(session_id)
-            cache_matches_path = bool(s and s.log_path == lp)
-            cached_off = int(s.idle_cache_log_off) if cache_matches_path and s else -1
-            cached_idle = s.idle_cache_value if cache_matches_path and s else None
-        if not lp.exists():
-            raise FileNotFoundError(f"missing rollout log for session {session_id}")
-        sz = int(lp.stat().st_size)
-        if cache_matches_path and (sz >= 0) and (cached_off == sz) and isinstance(cached_idle, bool):
-            return bool(cached_idle)
-        idle = _compute_idle_from_log(lp)
-        with self._lock:
-            s2 = self._sessions.get(session_id)
-            if s2 and s2.log_path == lp:
-                s2.idle_cache_log_off = sz
-                s2.idle_cache_value = idle
-        if idle is None:
-            raise RuntimeError("unable to compute idle state from log")
-        return bool(idle)
+        return self._log_runtime_for_manager().idle_from_log_path(session_id, log_path)
 
     def _sock_call(self, sock_path: Path, req: dict[str, Any], timeout_s: float | None = 2.0, *, track_request_sent: bool = False) -> dict[str, Any]:
         return _call_control_socket_impl(sock_path, req, timeout_s=timeout_s, track_request_sent=track_request_sent)
@@ -3323,6 +3280,15 @@ class SessionManager:
             read_jsonl_from_offset=_read_jsonl_from_offset,
             extract_delivery_messages=lambda objs, **kwargs: _extract_delivery_messages(objs, **kwargs),
             cc_pending_tool_ids_before=_rollout_log._cc_pending_tool_ids_before,
+        )
+
+    def _log_runtime_for_manager(self) -> SessionLogRuntimeCoordinator:
+        return SessionLogRuntimeCoordinator(
+            lock=self._lock,
+            sessions=lambda: self._sessions,
+            analyze_log_chunk=_analyze_log_chunk,
+            turn_context_run_settings=_turn_context_run_settings,
+            compute_idle_from_log=_compute_idle_from_log,
         )
 
     def _kill_session_via_pids(self, s: Session) -> bool:
