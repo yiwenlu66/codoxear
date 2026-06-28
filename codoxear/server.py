@@ -224,6 +224,9 @@ from .server_main import ThreadingHTTPServer
 from .server_main import ThreadingHTTPServerV6
 from .server_main import run_main as _run_server_main
 from .server_route_deps import ServerRouteDepsFactory
+from .server_routing import match_session_route as _match_session_route_impl
+from .server_routing import normalize_url_prefix as _normalize_url_prefix_impl
+from .server_routing import strip_url_prefix as _strip_url_prefix_impl
 from .session_ui_state import SessionUiStateCoordinator
 from .session_unattended_config import SessionUnattendedConfigCoordinator
 from .static_routes import CONTENT_SECURITY_POLICY
@@ -277,46 +280,15 @@ def _load_env_file(path: Path) -> dict[str, str]:
 
 
 def _normalize_url_prefix(raw: str | None) -> str:
-    if raw is None:
-        return ""
-    s = str(raw).strip()
-    if not s or s == "/":
-        return ""
-    if "://" in s:
-        raise ValueError("CODEX_WEB_URL_PREFIX must be a path prefix (not a URL)")
-    if "?" in s or "#" in s:
-        raise ValueError("CODEX_WEB_URL_PREFIX must not include '?' or '#'")
-    if not s.startswith("/"):
-        raise ValueError("CODEX_WEB_URL_PREFIX must start with '/'")
-    while len(s) > 1 and s.endswith("/"):
-        s = s[:-1]
-    if s == "/":
-        return ""
-    return s
+    return _normalize_url_prefix_impl(raw)
 
 
 def _match_session_route(path: str, *suffix: str) -> str | None:
-    parts = path.split("/")
-    if len(parts) != 4 + len(suffix):
-        return None
-    if parts[:3] != ["", "api", "sessions"]:
-        return None
-    session_id = parts[3]
-    if not session_id:
-        return None
-    if tuple(parts[4:]) != tuple(suffix):
-        return None
-    return session_id
+    return _match_session_route_impl(path, *suffix)
 
 
 def _strip_url_prefix(prefix: str, path: str) -> str | None:
-    if not prefix:
-        return path
-    if path == prefix:
-        return "/"
-    if path.startswith(prefix + "/"):
-        return path[len(prefix) :]
-    return None
+    return _strip_url_prefix_impl(prefix, path)
 
 
 APP_DIR = _default_app_dir()
