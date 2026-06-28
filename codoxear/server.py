@@ -192,6 +192,7 @@ from .session_runtime import select_runtime_token as _select_runtime_token
 from .session_store import SessionStore
 from .session_store import SessionStorePaths
 from .session_ui_state import SessionUiStateCoordinator
+from .session_unattended_config import SessionUnattendedConfigCoordinator
 from .static_routes import CONTENT_SECURITY_POLICY
 from .static_routes import FRONTEND_ASSET_FILES
 from .static_routes import STATIC_ASSET_VERSION_FILES
@@ -2579,24 +2580,7 @@ class SessionManager:
         return self._files_coordinator_for_manager().clear(session_id)
 
     def unattended_get(self, session_id: str) -> dict[str, Any]:
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                raise KeyError("unknown session")
-            cfg0 = self._unattended.get(session_id)
-            cfg = dict(cfg0) if isinstance(cfg0, dict) else {}
-        request = cfg.get("request")
-        if not isinstance(request, str):
-            request = ""
-        cooldown_minutes = _clean_unattended_cooldown_minutes(cfg.get("cooldown_minutes"))
-        remaining_injections = _clean_unattended_remaining_injections(cfg.get("remaining_injections"), allow_zero=True)
-        enabled = bool(cfg.get("enabled")) and remaining_injections > 0
-        return {
-            "enabled": enabled,
-            "request": request,
-            "cooldown_minutes": cooldown_minutes,
-            "remaining_injections": remaining_injections,
-        }
+        return self._unattended_config_coordinator_for_manager().get(session_id)
 
     def unattended_set(
         self,
@@ -2607,31 +2591,13 @@ class SessionManager:
         cooldown_minutes: int | None = None,
         remaining_injections: int | None = None,
     ) -> dict[str, Any]:
-        input_lock = self._input_lock_for_session(session_id)
-        with input_lock:
-            with self._lock:
-                s = self._sessions.get(session_id)
-                if not s:
-                    raise KeyError("unknown session")
-                cur0 = self._unattended.get(session_id)
-                cur = dict(cur0) if isinstance(cur0, dict) else {}
-                if enabled is not None:
-                    cur["enabled"] = bool(enabled)
-                if request is not None:
-                    cur["request"] = str(request)
-                if cooldown_minutes is not None:
-                    cur["cooldown_minutes"] = _clean_unattended_cooldown_minutes(cooldown_minutes)
-                if remaining_injections is not None:
-                    cur["remaining_injections"] = _clean_unattended_remaining_injections(remaining_injections, allow_zero=True)
-                cur["cooldown_minutes"] = _clean_unattended_cooldown_minutes(cur.get("cooldown_minutes"))
-                cur["remaining_injections"] = _clean_unattended_remaining_injections(cur.get("remaining_injections"), allow_zero=True)
-                if int(cur["remaining_injections"]) <= 0:
-                    cur["enabled"] = False
-                self._unattended[session_id] = cur
-                if not bool(cur.get("enabled")):
-                    self._unattended_last_injected.pop(session_id, None)
-            self._save_unattended()
-        return self.unattended_get(session_id)
+        return self._unattended_config_coordinator_for_manager().set(
+            session_id,
+            enabled=enabled,
+            request=request,
+            cooldown_minutes=cooldown_minutes,
+            remaining_injections=remaining_injections,
+        )
 
     def _session_display_name(self, session_id: str) -> str:
         return self._voice_runtime_for_manager().session_display_name(session_id)
@@ -3214,6 +3180,18 @@ class SessionManager:
             clean_priority_offset=_clean_priority_offset,
             clean_snooze_until=_clean_snooze_until,
             clean_dependency_session_id=_clean_dependency_session_id,
+        )
+
+    def _unattended_config_coordinator_for_manager(self) -> SessionUnattendedConfigCoordinator:
+        return SessionUnattendedConfigCoordinator(
+            lock=self._lock,
+            sessions=lambda: self._sessions,
+            unattended=lambda: self._unattended,
+            unattended_last_injected=lambda: self._unattended_last_injected,
+            input_lock_for_session=self._input_lock_for_session,
+            save_unattended=self._save_unattended,
+            clean_unattended_cooldown_minutes=_clean_unattended_cooldown_minutes,
+            clean_unattended_remaining_injections=_clean_unattended_remaining_injections,
         )
 
     def _kill_session_via_pids(self, s: Session) -> bool:
