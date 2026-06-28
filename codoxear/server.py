@@ -166,6 +166,7 @@ from .session_launch_plan import LaunchPlanRequest
 from .session_input import apply_confirmed_send_success as _apply_confirmed_send_success
 from .session_input import parse_confirmed_send_response as _parse_confirmed_send_response
 from .session_input import require_send_preconditions as _require_send_preconditions
+from .session_control import SessionControlCoordinator
 from .session_launch_plan import prepare_launch_plan as _prepare_launch_plan
 from .session_listing import clip01 as _listing_clip01
 from .session_listing import priority_from_elapsed_seconds as _listing_priority_from_elapsed_seconds
@@ -3651,6 +3652,20 @@ class SessionManager:
     def _sock_call(self, sock_path: Path, req: dict[str, Any], timeout_s: float | None = 2.0, *, track_request_sent: bool = False) -> dict[str, Any]:
         return _call_control_socket_impl(sock_path, req, timeout_s=timeout_s, track_request_sent=track_request_sent)
 
+    def _control_coordinator_for_manager(self) -> SessionControlCoordinator:
+        return SessionControlCoordinator(
+            lock=self._lock,
+            sessions=lambda: self._sessions,
+            sock_call=lambda sock, req, **kwargs: self._sock_call(sock, req, **kwargs),
+            pid_alive=_pid_alive,
+            unlink_quiet=_unlink_quiet,
+            clear_deleted_session_state=self._clear_deleted_session_state,
+            broker_busy_queue=self._broker_busy_queue_from_state,
+            broker_interrupted_idle=_broker_interrupted_idle_from_state,
+            control_socket_call_error=ControlSocketCallError,
+            commit_unknown_error=SessionCommitUnknownError,
+        )
+
     def _kill_session_via_pids(self, s: Session) -> bool:
         group_alive = _process_group_alive(int(s.codex_pid))
         broker_alive = _pid_alive(int(s.broker_pid))
@@ -3958,60 +3973,10 @@ class SessionManager:
         return self._queue_move_local(session_id, item_id, to_index)
 
     def get_state(self, session_id: str) -> dict[str, Any]:
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                raise KeyError("unknown session")
-            sock = s.sock_path
-        try:
-            resp = self._sock_call(sock, {"cmd": "state"}, timeout_s=1.5)
-        except Exception:
-            if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
-                with self._lock:
-                    self._sessions.pop(session_id, None)
-                self._clear_deleted_session_state(session_id)
-                _unlink_quiet(sock)
-                _unlink_quiet(sock.with_suffix(".json"))
-                raise KeyError("unknown session")
-            raise
-        with self._lock:
-            s2 = self._sessions.get(session_id)
-            if s2:
-                busy_val, queue_len = self._broker_busy_queue_from_state(resp)
-                interrupted_idle = _broker_interrupted_idle_from_state(resp)
-                s2.busy = busy_val
-                s2.queue_len = queue_len
-                s2.interrupted_idle = interrupted_idle
-                if "token" in resp:
-                    tok = resp.get("token")
-                    if isinstance(tok, dict) or tok is None:
-                        log_available = s2.log_path is not None and s2.log_path.exists()
-                        if not log_available:
-                            s2.token = tok
-        return resp
+        return self._control_coordinator_for_manager().get_state(session_id)
 
     def get_tail(self, session_id: str) -> str:
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                raise KeyError("unknown session")
-            sock = s.sock_path
-        try:
-            resp = self._sock_call(sock, {"cmd": "tail"}, timeout_s=1.5)
-        except Exception:
-            if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
-                with self._lock:
-                    self._sessions.pop(session_id, None)
-                _unlink_quiet(sock)
-                _unlink_quiet(sock.with_suffix(".json"))
-                raise KeyError("unknown session")
-            raise
-        if "tail" not in resp:
-            raise ValueError("invalid broker tail response")
-        tail = resp.get("tail")
-        if not isinstance(tail, str):
-            raise ValueError("invalid broker tail response")
-        return tail
+        return self._control_coordinator_for_manager().get_tail(session_id)
 
     def _refresh_session_meta_if_sidecar_exists(self, session_id: str, *, drain_queue: bool = False) -> None:
         with self._lock:
@@ -4083,35 +4048,12 @@ class SessionManager:
             return resp
 
     def inject_keys(self, session_id: str, seq: str, *, track_request_sent: bool = False, interrupt: bool = False) -> dict[str, Any]:
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                raise KeyError("unknown session")
-            sock = s.sock_path
-        try:
-            req: dict[str, Any] = {"cmd": "keys", "seq": seq}
-            if interrupt:
-                req["interrupt"] = True
-            resp = self._sock_call(sock, req, timeout_s=2.0, track_request_sent=track_request_sent)
-        except ControlSocketCallError as e:
-            if track_request_sent and e.request_sent:
-                raise SessionCommitUnknownError("attachment commit status unknown; broker response failed") from e
-            if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
-                with self._lock:
-                    self._sessions.pop(session_id, None)
-                _unlink_quiet(sock)
-                _unlink_quiet(sock.with_suffix(".json"))
-                raise KeyError("unknown session")
-            raise
-        except Exception:
-            if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
-                with self._lock:
-                    self._sessions.pop(session_id, None)
-                _unlink_quiet(sock)
-                _unlink_quiet(sock.with_suffix(".json"))
-                raise KeyError("unknown session")
-            raise
-        return resp
+        return self._control_coordinator_for_manager().inject_keys(
+            session_id,
+            seq,
+            track_request_sent=track_request_sent,
+            interrupt=interrupt,
+        )
 
     def mark_turn_complete(self, session_id: str, payload: dict[str, Any]) -> None:
         return

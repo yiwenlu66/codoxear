@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SERVER_PY = ROOT / "codoxear" / "server.py"
 SESSION_LISTING_PY = ROOT / "codoxear" / "session_listing.py"
 SESSION_INPUT_PY = ROOT / "codoxear" / "session_input.py"
+SESSION_CONTROL_PY = ROOT / "codoxear" / "session_control.py"
 FILE_UPLOAD_PY = ROOT / "codoxear" / "file_upload.py"
 CONTROL_ROUTES_PY = ROOT / "codoxear" / "control_routes.py"
 BROKER_PY = ROOT / "codoxear" / "broker.py"
@@ -37,6 +38,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         source = SERVER_PY.read_text(encoding="utf-8")
         listing_source = SESSION_LISTING_PY.read_text(encoding="utf-8")
         input_source = SESSION_INPUT_PY.read_text(encoding="utf-8")
+        control_runtime_source = SESSION_CONTROL_PY.read_text(encoding="utf-8")
         route_source = CONTROL_ROUTES_PY.read_text(encoding="utf-8")
         start = route_source.index("def _handle_inject_attachment")
         block = route_source[start:]
@@ -70,7 +72,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn("if not (s.sync_send_supported and s.key_write_errors_supported):", source)
         self.assertIn("resp = self.inject_keys(session_id, seq, track_request_sent=True)", source)
         self.assertIn("def inject_keys(self, session_id: str, seq: str, *, track_request_sent: bool = False, interrupt: bool = False)", source)
-        self.assertIn("attachment commit status unknown; broker response failed", source)
+        self.assertIn("attachment commit status unknown; broker response failed", control_runtime_source)
         self.assertIn("except deps.session_not_ready_error as e:", block)
         self.assertIn("if s.pending_attachment:\n                    raise SessionNotReadyError(\"send the pending attachment before queueing another prompt\")", source)
         self.assertNotIn("self._record_prelog_user_message(s, text, source=\"enqueue\")", source)
