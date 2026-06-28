@@ -3679,3 +3679,19 @@
   - Full local `python3 -m pytest -q` returned `1173 passed, 107 subtests passed`.
   - `git diff --check` passed after removing one EOF whitespace issue in `voice_hls.py` before commit.
 - Scope note: Docker evidence was not rerun and must not be claimed for promotion/acceptance for this tranche.
+
+## 2026-06-28T23:25:00Z Rollout JSONL reader split
+- Functional commit `f5a76d2 Extract rollout JSONL readers` moved low-level byte/offset JSONL mechanics out of `codoxear/rollout_log.py` into `codoxear/rollout_jsonl.py`:
+  - `JsonlRecord`
+  - `_parse_jsonl_line`
+  - `_read_jsonl_tail`
+  - `_read_jsonl_records_from_offset`
+  - `_iter_jsonl_objects_reverse`
+  - `_iter_jsonl_records_reverse`
+- Compatibility preserved: `rollout_log.py` imports/re-exports those names, so existing callers/tests importing `codoxear.rollout_log._read_jsonl_records_from_offset`, `JsonlRecord`, or `_parse_jsonl_line` continue to work. `transcript_search.py` and `message_routes.py` keep using the `rollout_log` facade unchanged.
+- Source sentinel update: `tests/test_rollout_log_helpers_source.py` now asserts JSONL reader primitives are owned by `rollout_jsonl.py` and that `rollout_log.py` imports rather than redefines them.
+- Size observation: `codoxear/rollout_log.py` is now 1164 lines; `codoxear/rollout_jsonl.py` is 176 lines.
+- Validation after `f5a76d2`:
+  - Focused rollout/jsonl/idle/message group returned `121 passed, 4 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1174 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for promotion/acceptance for this tranche.
