@@ -167,9 +167,6 @@ from .session_launcher import wait_for_spawned_broker_meta as _wait_for_spawned_
 from .session_launcher import wait_or_raise as _wait_or_raise_impl
 from .session_launch_plan import LaunchPlanDeps
 from .session_launch_plan import LaunchPlanRequest
-from .session_input import apply_confirmed_send_success as _apply_confirmed_send_success
-from .session_input import parse_confirmed_send_response as _parse_confirmed_send_response
-from .session_input import require_send_preconditions as _require_send_preconditions
 from .session_control import SessionControlCoordinator
 from .session_launch_plan import prepare_launch_plan as _prepare_launch_plan
 from .session_lifecycle import SessionLifecycleCoordinator
@@ -185,6 +182,8 @@ from .session_listing import sidebar_time_priority_from_elapsed_seconds as _list
 from .session_model import Session
 from .session_pending_state import SessionPendingStateCoordinator
 from .session_prune import SessionPruneCoordinator
+from .session_send import PrelogUserMessageRecorder
+from .session_send import SessionSendCoordinator
 from .session_runtime import ListingRuntimeProbes
 from .session_runtime import clear_session_confirmed_send_boundary as _clear_session_confirmed_send_boundary
 from .session_runtime import consume_session_confirmed_send_boundary as _consume_session_confirmed_send_boundary
@@ -2845,6 +2844,35 @@ class SessionManager:
             stderr=sys.stderr,
         )
 
+    def _send_coordinator_for_manager(self) -> SessionSendCoordinator:
+        return SessionSendCoordinator(
+            lock=self._lock,
+            sessions=lambda: self._sessions,
+            input_lock_for_session=self._input_lock_for_session,
+            queue_len=lambda session_id: self._queue_store_for_manager().queue_len(getattr(self, "_queues", {}), session_id),
+            send_remote_ready=self._send_remote_ready,
+            log_size_or_none=self._log_size_or_none,
+            call_confirmed_send=lambda session_id, **kwargs: self._control_coordinator_for_manager().call_confirmed_send(session_id, **kwargs),
+            set_pending_attachment=self._set_pending_attachment,
+            set_commit_unknown_send=self._set_commit_unknown_send,
+            record_prelog_user_message=lambda session, text: self._record_prelog_user_message(session, text, source="send"),
+            now=time.time,
+            send_commit_timeout_seconds=SEND_COMMIT_TIMEOUT_SECONDS,
+            not_ready_error=SessionNotReadyError,
+            commit_unknown_error=SessionCommitUnknownError,
+            injection_error=SessionInjectionError,
+            timeout_errors=(TimeoutError, socket.timeout),
+        )
+
+    def _prelog_user_message_recorder_for_manager(self) -> PrelogUserMessageRecorder:
+        return PrelogUserMessageRecorder(
+            latest_launch_attempt=_latest_launch_attempt,
+            submitted_user_messages=_submitted_user_messages,
+            clean_optional_text=_clean_optional_text,
+            record_launch_attempt=_record_launch_attempt,
+            now=time.time,
+        )
+
     def _kill_session_via_pids(self, s: Session) -> bool:
         return self._lifecycle_coordinator_for_manager().kill_session_via_pids(s)
 
@@ -2938,100 +2966,15 @@ class SessionManager:
         return self._lifecycle_coordinator_for_manager().delete_session(session_id)
 
     def _record_prelog_user_message(self, session: Session, text: str, *, source: str) -> None:
-        if not session.owned or session.log_path is not None or not session.launch_id:
-            return
-        previous = _latest_launch_attempt(session.launch_id)
-        messages = _submitted_user_messages(previous)
-        messages.append({"text": text, "ts": time.time(), "source": source})
-        if len(messages) > 20:
-            messages = messages[-20:]
-        base: dict[str, Any] = dict(previous) if isinstance(previous, dict) else {}
-        base.update(
-            {
-                "launch_id": session.launch_id,
-                "state": _clean_optional_text(base.get("state")) or "broker_meta_bound",
-                "agent_backend": session.agent_backend,
-                "cwd": session.cwd,
-                "created_ts": base.get("created_ts", session.start_ts),
-                "updated_ts": time.time(),
-                "broker_pid": session.broker_pid,
-                "agent_pid": session.codex_pid,
-                "transport": session.transport,
-                "tmux_session": session.tmux_session,
-                "tmux_window": session.tmux_window,
-                "spawn_nonce": session.spawn_nonce,
-                "model_provider": session.model_provider,
-                "preferred_auth_method": session.preferred_auth_method,
-                "model": session.model,
-                "reasoning_effort": session.reasoning_effort,
-                "service_tier": session.service_tier,
-                "submitted_user_messages": messages,
-            }
-        )
-        _record_launch_attempt(base)
+        return self._prelog_user_message_recorder_for_manager().record(session, text, source=source)
 
     def send(self, session_id: str, text: str, *, allow_pending_attachment: bool = False, queue_item_id: str | None = None) -> dict[str, Any]:
-        input_lock = self._input_lock_for_session(session_id)
-        with input_lock:
-            with self._lock:
-                s = self._sessions.get(session_id)
-                if not s:
-                    raise KeyError("unknown session")
-                local_queue_len = self._queue_store_for_manager().queue_len(self._queues, session_id)
-                sock = _require_send_preconditions(
-                    s,
-                    local_queue_len=local_queue_len,
-                    queue_item_id=queue_item_id,
-                    allow_pending_attachment=allow_pending_attachment,
-                    not_ready_error=SessionNotReadyError,
-                )
-            if not self._send_remote_ready(session_id, allow_pending_attachment=allow_pending_attachment):
-                raise SessionNotReadyError("session is busy; wait before sending")
-            with self._lock:
-                s_current = self._sessions.get(session_id)
-                pre_send_log_path = s_current.log_path if s_current is not None else None
-                pre_send_log_size = self._log_size_or_none(pre_send_log_path)
-
-            def raise_commit_unknown(message: str, cause: BaseException | None = None) -> None:
-                if queue_item_id is None:
-                    self._set_commit_unknown_send(
-                        session_id,
-                        {"text": text, "created_ts": time.time(), "error": message},
-                    )
-                if cause is None:
-                    raise SessionCommitUnknownError(message)
-                raise SessionCommitUnknownError(message) from cause
-
-            timeout_s = SEND_COMMIT_TIMEOUT_SECONDS if SEND_COMMIT_TIMEOUT_SECONDS > 0 else None
-            resp = self._control_coordinator_for_manager().call_confirmed_send(
-                session_id,
-                session=s,
-                sock=sock,
-                text=text,
-                timeout_s=timeout_s,
-                raise_commit_unknown=raise_commit_unknown,
-                not_ready_error=SessionNotReadyError,
-                timeout_errors=(TimeoutError, socket.timeout),
-            )
-            parsed_send = _parse_confirmed_send_response(
-                resp,
-                raise_commit_unknown=raise_commit_unknown,
-                injection_error=SessionInjectionError,
-            )
-            with self._lock:
-                self._record_prelog_user_message(s, text, source="send")
-                s2 = self._sessions.get(session_id)
-                if s2:
-                    _apply_confirmed_send_success(
-                        s2,
-                        result=parsed_send,
-                        pre_send_log_path=pre_send_log_path,
-                        pre_send_log_size=pre_send_log_size,
-                    )
-            self._set_pending_attachment(session_id, False)
-            if queue_item_id is None:
-                self._set_commit_unknown_send(session_id, None)
-        return resp
+        return self._send_coordinator_for_manager().send(
+            session_id,
+            text,
+            allow_pending_attachment=allow_pending_attachment,
+            queue_item_id=queue_item_id,
+        )
 
     def enqueue(self, session_id: str, text: str) -> dict[str, Any]:
         input_lock = self._input_lock_for_session(session_id)

@@ -8,6 +8,7 @@ SESSION_LISTING_PY = ROOT / "codoxear" / "session_listing.py"
 SESSION_INPUT_PY = ROOT / "codoxear" / "session_input.py"
 SESSION_CONTROL_PY = ROOT / "codoxear" / "session_control.py"
 SESSION_READINESS_PY = ROOT / "codoxear" / "session_readiness.py"
+SESSION_SEND_PY = ROOT / "codoxear" / "session_send.py"
 FILE_UPLOAD_PY = ROOT / "codoxear" / "file_upload.py"
 CONTROL_ROUTES_PY = ROOT / "codoxear" / "control_routes.py"
 BROKER_PY = ROOT / "codoxear" / "broker.py"
@@ -41,6 +42,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         input_source = SESSION_INPUT_PY.read_text(encoding="utf-8")
         control_runtime_source = SESSION_CONTROL_PY.read_text(encoding="utf-8")
         readiness_source = SESSION_READINESS_PY.read_text(encoding="utf-8")
+        send_source = SESSION_SEND_PY.read_text(encoding="utf-8")
         route_source = CONTROL_ROUTES_PY.read_text(encoding="utf-8")
         start = route_source.index("def _handle_inject_attachment")
         block = route_source[start:]
@@ -58,9 +60,9 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertLess(block.index("ready_for_attachment = manager.attachment_injection_ready(session_id)"), block.index("out_path = deps.stage_uploaded_file"))
         self.assertIn("with input_lock:\n            with self._lock:\n                s = self._sessions.get(session_id)", source)
         self.assertIn("if session.pending_attachment and not allow_pending_attachment:\n        raise not_ready_error", input_source)
-        self.assertIn("if not self._send_remote_ready(session_id, allow_pending_attachment=allow_pending_attachment):\n                raise SessionNotReadyError(\"session is busy; wait before sending\")", source)
-        self.assertIn("timeout_s = SEND_COMMIT_TIMEOUT_SECONDS if SEND_COMMIT_TIMEOUT_SECONDS > 0 else None", source)
-        self.assertIn("resp = self._control_coordinator_for_manager().call_confirmed_send", source)
+        self.assertIn("if not self.send_remote_ready(session_id, allow_pending_attachment=allow_pending_attachment):\n                raise self.not_ready_error(\"session is busy; wait before sending\")", send_source)
+        self.assertIn("timeout_s = self.send_commit_timeout_seconds if self.send_commit_timeout_seconds > 0 else None", send_source)
+        self.assertIn("response = self.call_confirmed_send", send_source)
         self.assertIn("{\"cmd\": \"send\", \"text\": text, \"sync\": True}", control_runtime_source)
         self.assertIn("except self.control_socket_call_error as exc:", control_runtime_source)
         self.assertIn("raise_commit_unknown(\"send commit status unknown; broker response failed\", exc)", control_runtime_source)
@@ -84,7 +86,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn("raise SessionInjectionError(err)", source)
         self.assertIn("except deps.session_injection_error as e:", block)
         self.assertIn("self._set_pending_attachment(session_id, True)", source)
-        self.assertIn("self._set_pending_attachment(session_id, False)", source)
+        self.assertIn("self.set_pending_attachment(session_id, False)", send_source)
         self.assertIn("PENDING_ATTACHMENTS_PATH", source)
         self.assertIn("if session.pending_attachment and not allow_pending_attachment:", input_source)
         self.assertIn("if s.pending_attachment:\n                    raise SessionNotReadyError(\"send the pending attachment before queueing another prompt\")", source)
