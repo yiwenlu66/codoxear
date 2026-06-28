@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import subprocess
+import threading
+import time
 from typing import Any, Callable
 
 
@@ -9,6 +11,29 @@ def _clean_optional_text(value: Any) -> str | None:
         return None
     out = value.strip()
     return out or None
+
+
+def tmux_available(
+    *,
+    ttl_seconds: float,
+    cache_lock: threading.Lock,
+    get_cache: Callable[[], tuple[float, bool] | None],
+    set_cache: Callable[[tuple[float, bool]], None],
+    which: Callable[[str], str | None],
+    now: Callable[[], float] = time.time,
+) -> bool:
+    now_ts = now()
+    ttl = max(0.0, float(ttl_seconds))
+    with cache_lock:
+        cache = get_cache()
+        if cache is not None:
+            cached_at, cached = cache
+            if ttl > 0 and (now_ts - cached_at) < ttl:
+                return bool(cached)
+    available = which("tmux") is not None
+    with cache_lock:
+        set_cache((now_ts, bool(available)))
+    return bool(available)
 
 
 def tmux_pane_snapshot(

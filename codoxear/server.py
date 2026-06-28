@@ -242,6 +242,7 @@ from .static_routes import TOP_LEVEL_STATIC_ASSETS
 from .static_routes import read_static_bytes as _read_static_bytes_impl
 from .static_routes import static_asset_version as _static_asset_version
 from .static_routes import static_cache_control_headers as _static_cache_control_headers_impl
+from .tmux_runtime import tmux_available as _tmux_available_impl
 from .tmux_runtime import tmux_pane_snapshot as _tmux_pane_snapshot_impl
 from .queue_store import copy_queue_item as _queue_store_copy_item
 from .queue_store import new_queue_item as _queue_store_new_item
@@ -479,17 +480,19 @@ def _drain_stream(f: Any) -> None:
 
 def _tmux_available() -> bool:
     global _TMUX_AVAILABLE_CACHE
-    now = time.time()
-    ttl = max(0.0, float(TMUX_AVAILABLE_TTL_SECONDS))
-    with _TMUX_AVAILABLE_CACHE_LOCK:
-        if _TMUX_AVAILABLE_CACHE is not None:
-            cached_at, cached = _TMUX_AVAILABLE_CACHE
-            if ttl > 0 and (now - cached_at) < ttl:
-                return bool(cached)
-    available = shutil.which("tmux") is not None
-    with _TMUX_AVAILABLE_CACHE_LOCK:
-        _TMUX_AVAILABLE_CACHE = (now, bool(available))
-    return bool(available)
+
+    def _set_cache(value: tuple[float, bool]) -> None:
+        global _TMUX_AVAILABLE_CACHE
+        _TMUX_AVAILABLE_CACHE = value
+
+    return _tmux_available_impl(
+        ttl_seconds=TMUX_AVAILABLE_TTL_SECONDS,
+        cache_lock=_TMUX_AVAILABLE_CACHE_LOCK,
+        get_cache=lambda: _TMUX_AVAILABLE_CACHE,
+        set_cache=_set_cache,
+        which=shutil.which,
+        now=time.time,
+    )
 
 
 def _wait_for_spawned_broker_meta(spawn_nonce: str, *, timeout_s: float = TMUX_META_WAIT_SECONDS) -> dict[str, Any]:
