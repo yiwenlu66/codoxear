@@ -7,15 +7,12 @@ from contextlib import contextmanager
 import hashlib
 import hmac
 import http.server
-import json
 import math
 import os
 import posixpath
-import re
 import signal
 import shutil
 import socket
-import stat
 import subprocess
 import sys
 import threading
@@ -97,6 +94,12 @@ from .launch_ledger import launch_failure_tail as _launch_failure_tail_impl
 from .launch_ledger import latest_launch_attempt as _latest_launch_attempt_impl
 from .launch_ledger import record_launch_attempt as _record_launch_attempt_impl
 from .launch_ledger import submitted_user_messages as _submitted_user_messages_impl
+from .launch_path_runtime import codex_trust_override_for_path as _codex_trust_override_for_path_impl
+from .launch_path_runtime import expand_user_path as _expand_user_path_impl
+from .launch_path_runtime import load_env_file as _load_env_file_impl
+from .launch_path_runtime import resolve_dir_target as _resolve_dir_target_impl
+from .launch_path_runtime import resolve_existing_dir as _resolve_existing_dir_impl
+from .launch_path_runtime import resolve_new_path as _resolve_new_path_impl
 from .launch_defaults_runtime import launch_defaults_for_request as _launch_defaults_for_request_impl
 from .launch_defaults_runtime import launch_defaults_signature as _launch_defaults_signature_impl
 from .launch_defaults_runtime import path_signature as _path_signature_impl
@@ -260,25 +263,7 @@ from .voice_runtime import VoiceRuntimeCoordinator
 
 
 def _load_env_file(path: Path) -> dict[str, str]:
-    data = path.read_text("utf-8")
-
-    out: dict[str, str] = {}
-    for raw in data.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("export "):
-            line = line[len("export ") :].strip()
-        if "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        k = k.strip()
-        v = v.strip()
-        if len(v) >= 2 and ((v[0] == v[-1] == '"') or (v[0] == v[-1] == "'")):
-            v = v[1:-1]
-        if k:
-            out[k] = v
-    return out
+    return _load_env_file_impl(path)
 
 
 def _normalize_url_prefix(raw: str | None) -> str:
@@ -870,41 +855,23 @@ def _run_git(cwd: Path, args: list[str], *, timeout_s: float, max_bytes: int, li
     return _git_ops.run_git(cwd, args, timeout_s=timeout_s, max_bytes=max_bytes, literal_pathspecs=literal_pathspecs)
 
 def _expand_user_path(raw: str) -> Path:
-    home = str(Path.home())
-    expanded = raw.strip().replace("${HOME}", home)
-    expanded = re.sub(r"\$HOME(?![A-Za-z0-9_])", home, expanded)
-    return Path(os.path.expanduser(os.path.expandvars(expanded)))
+    return _expand_user_path_impl(raw)
 
 
 def _resolve_existing_dir(raw: str, *, field_name: str) -> Path:
-    if not isinstance(raw, str) or not raw.strip():
-        raise ValueError(f"{field_name} required")
-    path = _expand_user_path(raw)
-    if not path.is_dir():
-        raise ValueError(f"{field_name} is not a directory: {path}")
-    return path.resolve()
+    return _resolve_existing_dir_impl(raw, field_name=field_name)
 
 
 def _resolve_dir_target(raw: str, *, field_name: str) -> Path:
-    if not isinstance(raw, str) or not raw.strip():
-        raise ValueError(f"{field_name} required")
-    path = _expand_user_path(raw).resolve()
-    if path.exists() and not path.is_dir():
-        raise ValueError(f"{field_name} is not a directory: {path}")
-    return path
+    return _resolve_dir_target_impl(raw, field_name=field_name)
 
 
 def _codex_trust_override_for_path(path: Path) -> str:
-    return f'projects={{ {json.dumps(str(path.resolve()))} = {{ trust_level = "trusted" }} }}'
+    return _codex_trust_override_for_path_impl(path)
 
 
 def _resolve_new_path(raw: str, *, field_name: str) -> Path:
-    if not isinstance(raw, str) or not raw.strip():
-        raise ValueError(f"{field_name} required")
-    path = _expand_user_path(raw).resolve()
-    if path.exists():
-        raise ValueError(f"{field_name} already exists: {path}")
-    return path
+    return _resolve_new_path_impl(raw, field_name=field_name)
 
 
 def _clean_worktree_branch(raw: str) -> str:
