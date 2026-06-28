@@ -3695,3 +3695,19 @@
   - Focused rollout/jsonl/idle/message group returned `121 passed, 4 subtests passed`.
   - Full local `python3 -m pytest -q` returned `1174 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for promotion/acceptance for this tranche.
+
+## 2026-06-28T23:33:00Z Rollout event identity helper split
+- Functional commit `87e0fe4 Extract rollout event helpers` moved pure event-identity/text helpers from `rollout_log.py` into `rollout_events.py`:
+  - `_parse_iso8601_to_epoch`
+  - `_event_ts`
+  - `_strip_oai_mem_citation_tail`
+  - `_codex_error_affects_turn_status`
+  - `_codex_event_text`
+  - `_text_message_id`
+- Compatibility preserved: `rollout_log.py` imports/re-exports those helper names and keeps `_with_chat_position` local because positioned tail/live-delta page composition still belongs with chat pagination.
+- Negative evidence: the first focused run failed because `_with_chat_position` was accidentally removed during extraction, producing `NameError` in CC positioned tail/live-delta and message route tail tests. Restoring `_with_chat_position` in `rollout_log.py` repaired the failure; this rules out moving/deleting that helper as part of pure event identity extraction.
+- Size observation: `rollout_log.py` is now 1103 lines; `rollout_events.py` is 62 lines.
+- Validation after `87e0fe4`:
+  - Focused rollout/jsonl/idle/message group returned `121 passed, 4 subtests passed` after the `_with_chat_position` repair.
+  - Full local `python3 -m pytest -q` returned `1174 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for promotion/acceptance for this tranche.
