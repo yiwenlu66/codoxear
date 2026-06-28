@@ -3,9 +3,33 @@ from __future__ import annotations
 import threading
 from typing import Any
 
+from .queue_sweep import QueueSweepCoordinator
+from .session_attachment import SessionAttachmentCoordinator
+from .session_cleanup import SessionCleanupCoordinator
+from .session_control import SessionControlCoordinator
+from .session_discovery_registry import SessionDiscoveryRegistryCoordinator
+from .session_files import SessionFilesCoordinator
+from .session_lifecycle import SessionLifecycleCoordinator
+from .session_list import SessionListCoordinator
+from .session_log_runtime import SessionLogRuntimeCoordinator
+from .session_pending_state import SessionPendingStateCoordinator
+from .session_prune import SessionPruneCoordinator
+from .session_queue import SessionQueueCoordinator
+from .session_readiness import SessionReadinessCoordinator
+from .session_recent_cwd import SessionRecentCwdCoordinator
+from .session_refresh import SessionRefreshCoordinator
+from .session_runtime import ListingRuntimeProbes
+from .session_send import PrelogUserMessageRecorder
+from .session_send import SessionSendCoordinator
+from .session_ui_state import SessionUiStateCoordinator
+from .session_unattended_config import SessionUnattendedConfigCoordinator
+from .session_web_launch import SessionWebLaunchCoordinator
+from .unattended_sweep import UnattendedSweepCoordinator
+from .voice_runtime import VoiceRuntimeCoordinator
+
 
 def queue_coordinator_for_manager(manager: Any, server: Any) -> Any:
-    return server.SessionQueueCoordinator(
+    return SessionQueueCoordinator(
         lock=manager._lock,
         sessions=lambda: manager._sessions,
         queues=lambda: manager._queues,
@@ -25,7 +49,7 @@ def queue_coordinator_for_manager(manager: Any, server: Any) -> Any:
 
 
 def control_coordinator_for_manager(manager: Any, server: Any) -> Any:
-    return server.SessionControlCoordinator(
+    return SessionControlCoordinator(
         lock=manager._lock,
         sessions=lambda: manager._sessions,
         sock_call=lambda sock, req, **kwargs: manager._sock_call(sock, req, **kwargs),
@@ -40,7 +64,7 @@ def control_coordinator_for_manager(manager: Any, server: Any) -> Any:
 
 
 def attachment_coordinator_for_manager(manager: Any, server: Any) -> Any:
-    return server.SessionAttachmentCoordinator(
+    return SessionAttachmentCoordinator(
         input_lock_for_session=manager._input_lock_for_session,
         attachment_injection_ready=manager.attachment_injection_ready,
         inject_keys=manager.inject_keys,
@@ -52,7 +76,7 @@ def attachment_coordinator_for_manager(manager: Any, server: Any) -> Any:
 
 
 def list_coordinator_for_manager(manager: Any, server: Any) -> Any:
-    return server.SessionListCoordinator(
+    return SessionListCoordinator(
         lock=manager._lock,
         sessions=lambda: manager._sessions,
         queues=lambda: manager._queues,
@@ -68,7 +92,7 @@ def list_coordinator_for_manager(manager: Any, server: Any) -> Any:
         save_sidebar_meta=manager._save_sidebar_meta,
         save_recent_cwds=manager._save_recent_cwds,
         now=server.time.time,
-        runtime_probes=server.ListingRuntimeProbes(
+        runtime_probes=ListingRuntimeProbes(
             last_conversation_ts_from_tail=lambda path: server._last_conversation_ts_from_tail(path),
             read_run_settings_from_log=lambda path, agent_backend: server._read_run_settings_from_log(path, agent_backend=agent_backend),
             log_size_or_none=manager._log_size_or_none,
@@ -91,7 +115,7 @@ def list_coordinator_for_manager(manager: Any, server: Any) -> Any:
 
 
 def refresh_coordinator_for_manager(manager: Any, server: Any) -> Any:
-    return server.SessionRefreshCoordinator(
+    return SessionRefreshCoordinator(
         lock=manager._lock,
         sessions=lambda: manager._sessions,
         prune_stale_socket_without_metadata=manager._prune_stale_socket_without_metadata,
@@ -114,7 +138,7 @@ def refresh_coordinator_for_manager(manager: Any, server: Any) -> Any:
 
 
 def readiness_coordinator_for_manager(manager: Any, server: Any) -> Any:
-    return server.SessionReadinessCoordinator(
+    return SessionReadinessCoordinator(
         lock=manager._lock,
         sessions=lambda: manager._sessions,
         refresh_session_meta_if_sidecar_exists=manager._refresh_session_meta_if_sidecar_exists,
@@ -128,7 +152,7 @@ def readiness_coordinator_for_manager(manager: Any, server: Any) -> Any:
 
 
 def unattended_sweep_coordinator_for_manager(manager: Any, server: Any) -> Any:
-    return server.UnattendedSweepCoordinator(
+    return UnattendedSweepCoordinator(
         lock=manager._lock,
         sessions=lambda: manager._sessions,
         unattended=lambda: manager._unattended,
@@ -152,7 +176,7 @@ def unattended_sweep_coordinator_for_manager(manager: Any, server: Any) -> Any:
 
 
 def queue_sweep_coordinator_for_manager(manager: Any, server: Any) -> Any:
-    return server.QueueSweepCoordinator(
+    return QueueSweepCoordinator(
         lock=manager._lock,
         sessions=lambda: manager._sessions,
         queues=lambda: manager._queues,
@@ -167,7 +191,7 @@ def queue_sweep_coordinator_for_manager(manager: Any, server: Any) -> Any:
 
 
 def voice_runtime_for_manager(manager: Any, server: Any) -> Any:
-    return server.VoiceRuntimeCoordinator(
+    return VoiceRuntimeCoordinator(
         lock=manager._lock,
         sessions=lambda: manager._sessions,
         aliases=lambda: manager._aliases,
@@ -182,7 +206,7 @@ def voice_runtime_for_manager(manager: Any, server: Any) -> Any:
 
 
 def log_runtime_for_manager(manager: Any, server: Any) -> Any:
-    return server.SessionLogRuntimeCoordinator(
+    return SessionLogRuntimeCoordinator(
         lock=manager._lock,
         sessions=lambda: manager._sessions,
         analyze_log_chunk=server._analyze_log_chunk,
@@ -194,7 +218,7 @@ def log_runtime_for_manager(manager: Any, server: Any) -> Any:
 
 
 def files_coordinator_for_manager(manager: Any, server: Any) -> Any:
-    return server.SessionFilesCoordinator(
+    return SessionFilesCoordinator(
         lock=manager._lock,
         sessions=lambda: manager._sessions,
         store=manager._session_store_for_manager(),
@@ -203,7 +227,7 @@ def files_coordinator_for_manager(manager: Any, server: Any) -> Any:
 
 
 def ui_state_coordinator_for_manager(manager: Any, server: Any) -> Any:
-    return server.SessionUiStateCoordinator(
+    return SessionUiStateCoordinator(
         lock=manager._lock,
         sessions=lambda: manager._sessions,
         aliases=lambda: manager._aliases,
@@ -223,7 +247,7 @@ def ui_state_coordinator_for_manager(manager: Any, server: Any) -> Any:
 
 
 def unattended_config_coordinator_for_manager(manager: Any, server: Any) -> Any:
-    return server.SessionUnattendedConfigCoordinator(
+    return SessionUnattendedConfigCoordinator(
         lock=manager._lock,
         sessions=lambda: manager._sessions,
         unattended=lambda: manager._unattended,
@@ -236,7 +260,7 @@ def unattended_config_coordinator_for_manager(manager: Any, server: Any) -> Any:
 
 
 def cleanup_coordinator_for_manager(manager: Any, server: Any) -> Any:
-    return server.SessionCleanupCoordinator(
+    return SessionCleanupCoordinator(
         lock=manager._lock,
         sessions=lambda: manager._sessions,
         aliases=lambda: manager._aliases,
@@ -261,7 +285,7 @@ def cleanup_coordinator_for_manager(manager: Any, server: Any) -> Any:
 
 
 def pending_state_coordinator_for_manager(manager: Any, server: Any) -> Any:
-    return server.SessionPendingStateCoordinator(
+    return SessionPendingStateCoordinator(
         lock=manager._lock,
         sessions=lambda: manager._sessions,
         pending_attachment_ids=lambda: getattr(manager, "_pending_attachment_ids", None),
@@ -278,7 +302,7 @@ def pending_state_coordinator_for_manager(manager: Any, server: Any) -> Any:
 
 
 def recent_cwd_coordinator_for_manager(manager: Any, server: Any) -> Any:
-    return server.SessionRecentCwdCoordinator(
+    return SessionRecentCwdCoordinator(
         lock=manager._lock,
         recent_cwds=lambda: getattr(manager, "_recent_cwds", None),
         set_recent_cwds=lambda value: setattr(manager, "_recent_cwds", value),
@@ -292,7 +316,7 @@ def recent_cwd_coordinator_for_manager(manager: Any, server: Any) -> Any:
 
 
 def lifecycle_coordinator_for_manager(manager: Any, server: Any) -> Any:
-    return server.SessionLifecycleCoordinator(
+    return SessionLifecycleCoordinator(
         lock=getattr(manager, "_lock", threading.RLock()),
         sessions=lambda: getattr(manager, "_sessions", {}),
         sock_call=lambda sock, req, **kwargs: manager._sock_call(sock, req, **kwargs),
@@ -314,7 +338,7 @@ def lifecycle_coordinator_for_manager(manager: Any, server: Any) -> Any:
 
 
 def discovery_registry_for_manager(manager: Any, server: Any) -> Any:
-    return server.SessionDiscoveryRegistryCoordinator(
+    return SessionDiscoveryRegistryCoordinator(
         lock=manager._lock,
         sessions=lambda: manager._sessions,
         pending_attachment_ids=lambda: getattr(manager, "_pending_attachment_ids", set()),
@@ -331,7 +355,7 @@ def discovery_registry_for_manager(manager: Any, server: Any) -> Any:
 
 
 def prune_coordinator_for_manager(manager: Any, server: Any) -> Any:
-    return server.SessionPruneCoordinator(
+    return SessionPruneCoordinator(
         lock=manager._lock,
         sessions=lambda: manager._sessions,
         sock_call=lambda sock, req, **kwargs: manager._sock_call(sock, req, **kwargs),
@@ -353,7 +377,7 @@ def prune_coordinator_for_manager(manager: Any, server: Any) -> Any:
 
 
 def send_coordinator_for_manager(manager: Any, server: Any) -> Any:
-    return server.SessionSendCoordinator(
+    return SessionSendCoordinator(
         lock=manager._lock,
         sessions=lambda: manager._sessions,
         input_lock_for_session=manager._input_lock_for_session,
@@ -374,7 +398,7 @@ def send_coordinator_for_manager(manager: Any, server: Any) -> Any:
 
 
 def prelog_user_message_recorder_for_manager(manager: Any, server: Any) -> Any:
-    return server.PrelogUserMessageRecorder(
+    return PrelogUserMessageRecorder(
         latest_launch_attempt=server._latest_launch_attempt,
         submitted_user_messages=server._submitted_user_messages,
         clean_optional_text=server._clean_optional_text,
@@ -384,7 +408,7 @@ def prelog_user_message_recorder_for_manager(manager: Any, server: Any) -> Any:
 
 
 def web_launch_coordinator_for_manager(manager: Any, server: Any) -> Any:
-    return server.SessionWebLaunchCoordinator(
+    return SessionWebLaunchCoordinator(
         resolve_dir_target=server._resolve_dir_target,
         create_git_worktree=server._create_git_worktree,
         codex_trust_override_for_path=server._codex_trust_override_for_path,
