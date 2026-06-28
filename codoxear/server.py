@@ -142,6 +142,13 @@ from .session_list import SessionListCoordinator
 from .session_refresh import SessionRefreshCoordinator
 from .session_readiness import SessionReadinessCoordinator
 from .session_recent_cwd import SessionRecentCwdCoordinator
+from .session_resume import coerce_main_thread_log as _coerce_main_thread_log_impl
+from .session_resume import first_user_message_preview_from_log as _first_user_message_preview_from_log_impl
+from .session_resume import is_scaffold_user_text as _is_scaffold_user_text_impl
+from .session_resume import list_resume_candidates_for_cwd as _list_resume_candidates_for_cwd_impl
+from .session_resume import resume_candidate_from_log as _resume_candidate_from_log_impl
+from .session_resume import resume_preview_from_text as _resume_preview_from_text_impl
+from .session_resume import user_message_text as _user_message_text_impl
 from .session_listing import clip01 as _listing_clip01
 from .session_listing import priority_from_elapsed_seconds as _listing_priority_from_elapsed_seconds
 from .session_listing import sidebar_priority_elapsed_seconds as _listing_sidebar_priority_elapsed_seconds
@@ -1484,151 +1491,55 @@ def _parse_new_session_launch_request(obj: dict[str, Any]) -> NewSessionLaunchRe
     )
 
 def _resume_candidate_from_log(log_path: Path, *, agent_backend: str = "codex") -> dict[str, Any] | None:
-    backend_name = normalize_agent_backend(agent_backend)
-    meta = _read_session_meta(log_path, agent_backend=backend_name)
-    if backend_name == "codex" and _is_subagent_session_meta(meta):
-        return None
-    session_id = meta.get("id")
-    cwd = meta.get("cwd")
-    if not isinstance(session_id, str) or not session_id:
-        return None
-    if not isinstance(cwd, str) or not cwd:
-        return None
-    try:
-        stat = log_path.stat()
-        updated_ts = float(stat.st_mtime)
-    except FileNotFoundError:
-        return None
-    except Exception:
-        updated_ts = 0.0
-    git_branch = ""
-    if backend_name in {"codex", "cc"}:
-        git_info = meta.get("git")
-        if isinstance(git_info, dict):
-            branch_raw = git_info.get("branch")
-            if isinstance(branch_raw, str):
-                git_branch = branch_raw
-    return {
-        "session_id": session_id,
-        "cwd": cwd,
-        "log_path": str(log_path),
-        "updated_ts": updated_ts,
-        "timestamp": meta.get("timestamp"),
-        "git_branch": git_branch,
-        "agent_backend": backend_name,
-    }
+    return _resume_candidate_from_log_impl(
+        log_path,
+        agent_backend=agent_backend,
+        read_session_meta=_read_session_meta,
+        is_subagent_session_meta=_is_subagent_session_meta,
+    )
 
 
 def _list_resume_candidates_for_cwd(cwd: str, *, agent_backend: str = "codex", limit: int = 12) -> list[dict[str, Any]]:
-    backend_name = normalize_agent_backend(agent_backend)
-    cwd2 = str(Path(cwd).expanduser().resolve())
-    out: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for log_path in _iter_session_logs(agent_backend=backend_name):
-        try:
-            row = _resume_candidate_from_log(log_path, agent_backend=backend_name)
-        except Exception:
-            continue
-        if not isinstance(row, dict):
-            continue
-        session_id = row.get("session_id")
-        row_cwd = row.get("cwd")
-        if not (isinstance(session_id, str) and session_id):
-            continue
-        if not (isinstance(row_cwd, str) and row_cwd == cwd2):
-            continue
-        if session_id in seen:
-            continue
-        out.append(row)
-        seen.add(session_id)
-        if len(out) >= limit:
-            break
-    return out
+    return _list_resume_candidates_for_cwd_impl(
+        cwd,
+        agent_backend=agent_backend,
+        limit=limit,
+        iter_session_logs=_iter_session_logs,
+        resume_candidate_from_log_func=_resume_candidate_from_log,
+    )
 
 
 def _resume_preview_from_text(text: str, *, max_chars: int = 120) -> str:
-    lines = [line.strip() for line in text.splitlines()]
-    compact = " ".join(line for line in lines if line)
-    compact = re.sub(r"\s+", " ", compact).strip()
-    if len(compact) <= max_chars:
-        return compact
-    head = compact[: max_chars - 1].rstrip()
-    cut = head.rfind(" ")
-    if cut >= max_chars * 0.6:
-        head = head[:cut].rstrip()
-    return head + "..."
+    return _resume_preview_from_text_impl(text, max_chars=max_chars)
 
 
 def _user_message_text(payload: dict[str, Any]) -> str:
-    content = payload.get("content")
-    if not isinstance(content, list):
-        return ""
-    parts: list[str] = []
-    for item in content:
-        if not isinstance(item, dict):
-            continue
-        item_type = item.get("type")
-        if item_type not in ("input_text", "output_text", "text"):
-            continue
-        text = item.get("text")
-        if isinstance(text, str) and text.strip():
-            parts.append(text)
-    return "\n".join(parts).strip()
+    return _user_message_text_impl(payload)
 
 
 def _is_scaffold_user_text(text: str) -> bool:
-    s = text.strip()
-    return s.startswith("# AGENTS.md instructions") or s.startswith("<environment_context>")
+    return _is_scaffold_user_text_impl(text)
 
 
 def _first_user_message_preview_from_log(log_path: Path, *, max_scan_bytes: int = 256 * 1024) -> str:
-    try:
-        with log_path.open("rb") as f:
-            total = 0
-            for raw in f:
-                total += len(raw)
-                if total > max_scan_bytes:
-                    break
-                try:
-                    obj = json.loads(raw.decode("utf-8"))
-                except Exception:
-                    continue
-                if not isinstance(obj, dict):
-                    continue
-                if obj.get("type") == "message":
-                    text = _pi_user_text(obj) or ""
-                elif obj.get("type") == "user":
-                    text = _cc_user_text(obj) or ""
-                elif obj.get("type") == "response_item":
-                    payload = obj.get("payload")
-                    if not isinstance(payload, dict):
-                        continue
-                    if payload.get("type") != "message" or payload.get("role") != "user":
-                        continue
-                    text = _user_message_text(payload)
-                else:
-                    continue
-                if not text or _is_scaffold_user_text(text):
-                    continue
-                return _resume_preview_from_text(text)
-    except FileNotFoundError:
-        return ""
-    return ""
+    return _first_user_message_preview_from_log_impl(
+        log_path,
+        pi_user_text=_pi_user_text,
+        cc_user_text=_cc_user_text,
+        max_scan_bytes=max_scan_bytes,
+    )
 
 
 def _coerce_main_thread_log(*, thread_id: str, log_path: Path) -> tuple[str, Path]:
-    sm = _read_session_meta_or_none(log_path, agent_backend="codex", context="main-thread coercion")
-    if not sm:
-        return thread_id, log_path
-    if not _is_subagent_session_meta(sm):
-        return thread_id, log_path
-    parent = _subagent_parent_thread_id(sm)
-    if not parent:
-        return thread_id, log_path
-    parent_log = _find_session_log_for_session_id_impl(CODEX_SESSIONS_DIR, parent)
-    if parent_log is None or not parent_log.exists():
-        return thread_id, log_path
-    return parent, parent_log
+    return _coerce_main_thread_log_impl(
+        thread_id=thread_id,
+        log_path=log_path,
+        read_session_meta_or_none=_read_session_meta_or_none,
+        is_subagent_session_meta=_is_subagent_session_meta,
+        subagent_parent_thread_id=_subagent_parent_thread_id,
+        find_session_log_for_session_id=lambda parent: _find_session_log_for_session_id_impl(CODEX_SESSIONS_DIR, parent),
+    )
+
 
 
 def _extract_chat_events(
