@@ -234,6 +234,7 @@ from .unattended import clean_unattended_remaining_injections as _clean_unattend
 from .unattended import render_unattended_prompt as _render_unattended_prompt_impl
 from .unattended_sweep import UnattendedSweepCoordinator
 from .voice_push import VoicePushCoordinator
+from .voice_runtime import VoiceRuntimeCoordinator
 from .voice_routes import VoiceRouteDeps
 from .voice_routes import handle_voice_get_route as _handle_voice_get_route
 from .voice_routes import handle_voice_post_route as _handle_voice_post_route
@@ -2734,41 +2735,16 @@ class SessionManager:
         return self.unattended_get(session_id)
 
     def _session_display_name(self, session_id: str) -> str:
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                return "Session"
-            alias = self._aliases.get(session_id)
-            if isinstance(alias, str) and alias.strip():
-                return alias.strip()
-            cwd_name = Path(str(s.cwd)).name.strip()
-            return cwd_name or "Session"
+        return self._voice_runtime_for_manager().session_display_name(session_id)
 
     def _observe_rollout_delta(self, session_id: str, *, log_path: Path | None = None, old_off: int = 0, objs: list[dict[str, Any]], new_off: int) -> None:
-        voice_push = getattr(self, "_voice_push", None)
-        if voice_push is None:
-            with self._lock:
-                s = self._sessions.get(session_id)
-                if s is not None:
-                    s.delivery_log_off = max(int(s.delivery_log_off), int(new_off))
-            return
-        with self._lock:
-            s0 = self._sessions.get(session_id)
-            resume_muted = bool(s0 and s0.resume_session_id)
-        initial_cc_pending = _rollout_log._cc_pending_tool_ids_before(log_path, old_off) if log_path is not None and old_off > 0 else set()
-        messages = _extract_delivery_messages(objs, initial_cc_pending_tool_ids=initial_cc_pending)
-        if (not messages) or resume_muted:
-            with self._lock:
-                s = self._sessions.get(session_id)
-                if s is not None:
-                    s.delivery_log_off = max(int(s.delivery_log_off), int(new_off))
-            return
-        session_name = self._session_display_name(session_id)
-        voice_push.observe_messages(session_id=session_id, session_display_name=session_name, messages=messages)
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if s is not None:
-                s.delivery_log_off = max(int(s.delivery_log_off), int(new_off))
+        return self._voice_runtime_for_manager().observe_rollout_delta(
+            session_id,
+            log_path=log_path,
+            old_off=old_off,
+            objs=objs,
+            new_off=new_off,
+        )
 
     def _voice_push_scan_loop(self) -> None:
         while not self._stop.is_set():
@@ -2781,36 +2757,7 @@ class SessionManager:
             self._stop.wait(VOICE_PUSH_SWEEP_SECONDS)
 
     def _voice_push_scan_sweep(self) -> None:
-        self._discover_existing_if_stale()
-        self._prune_dead_sessions()
-        with self._lock:
-            session_ids = list(self._sessions.keys())
-        for sid in session_ids:
-            try:
-                self.refresh_session_meta(sid)
-            except Exception:
-                continue
-            with self._lock:
-                s = self._sessions.get(sid)
-                if s is None:
-                    continue
-                log_path = s.log_path
-                delivery_off = int(s.delivery_log_off)
-            if log_path is None or (not log_path.exists()):
-                continue
-            try:
-                size = int(log_path.stat().st_size)
-            except FileNotFoundError:
-                continue
-            off = 0 if size < delivery_off else int(delivery_off)
-            loops = 0
-            while off < size and loops < 16:
-                objs, new_off = _read_jsonl_from_offset(log_path, off, max_bytes=256 * 1024)
-                if new_off <= off:
-                    break
-                self._observe_rollout_delta(sid, log_path=log_path, old_off=off, objs=objs, new_off=new_off)
-                off = new_off
-                loops += 1
+        return self._voice_runtime_for_manager().scan_sweep()
 
     def _unattended_loop(self) -> None:
         # Persist across browser disconnects: server is the scheduler.
@@ -3182,29 +3129,7 @@ class SessionManager:
         return self._refresh_coordinator_for_manager().refresh_session_meta(session_id, drain_queue=drain_queue)
 
     def _attach_notification_texts(self, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        voice_push = getattr(self, "_voice_push", None)
-        if voice_push is None:
-            return list(events)
-        out: list[dict[str, Any]] = []
-        for ev in events:
-            if not isinstance(ev, dict):
-                out.append(ev)
-                continue
-            if ev.get("role") != "assistant" or ev.get("message_class") != "final_response":
-                out.append(ev)
-                continue
-            message_id = ev.get("message_id")
-            if not isinstance(message_id, str) or not message_id:
-                out.append(ev)
-                continue
-            notification_text = voice_push.notification_text_for_message(message_id)
-            if not notification_text:
-                out.append(ev)
-                continue
-            ev2 = dict(ev)
-            ev2["notification_text"] = notification_text
-            out.append(ev2)
-        return out
+        return self._voice_runtime_for_manager().attach_notification_texts(events)
 
     def mark_log_delta(self, session_id: str, *, objs: list[dict[str, Any]], new_off: int) -> None:
         _th, _tools, _sys, last_ts, token_update, _chat_events = _analyze_log_chunk(objs)
@@ -3384,6 +3309,20 @@ class SessionManager:
             mark_queue_orphan_recovery_locked=self._mark_queue_orphan_recovery_locked,
             save_queues=self._save_queues,
             maybe_drain_session_queue=self._maybe_drain_session_queue,
+        )
+
+    def _voice_runtime_for_manager(self) -> VoiceRuntimeCoordinator:
+        return VoiceRuntimeCoordinator(
+            lock=self._lock,
+            sessions=lambda: self._sessions,
+            aliases=lambda: self._aliases,
+            voice_push=lambda: getattr(self, "_voice_push", None),
+            discover_existing_if_stale=self._discover_existing_if_stale,
+            prune_dead_sessions=self._prune_dead_sessions,
+            refresh_session_meta=lambda session_id: self.refresh_session_meta(session_id),
+            read_jsonl_from_offset=_read_jsonl_from_offset,
+            extract_delivery_messages=lambda objs, **kwargs: _extract_delivery_messages(objs, **kwargs),
+            cc_pending_tool_ids_before=_rollout_log._cc_pending_tool_ids_before,
         )
 
     def _kill_session_via_pids(self, s: Session) -> bool:
