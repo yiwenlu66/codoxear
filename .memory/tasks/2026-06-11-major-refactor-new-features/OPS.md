@@ -3468,3 +3468,11 @@
 - What intentionally remains in `SessionManager`: `_sock_call` as a patch seam; stale session cleanup on state/tail/send/key failures; process liveness checks; unlinking sidecar/socket artifacts; and higher-level response semantics.
 - Size observation: `server.py` is now 4637 lines; `control_socket.py` is 80 lines.
 - Validation: py-compile of `control_socket.py`, `server.py`, and `test_control_socket.py` passed. Focused control/send/session group returned `137 passed, 22 subtests`; full local `pytest -q` returned `1146 passed, 107 subtests`.
+
+## 2026-06-27T01:00:00Z Session control coordinator checkpoint
+- Functional commit `c25b4a1 Extract session control coordinator`: introduced `codoxear/session_control.py` and moved `get_state`, `get_tail`, and `inject_keys` control-operation orchestration out of `SessionManager`.
+- Actual architecture moved: `SessionControlCoordinator` now owns session/sock lookup for control operations, state-command dispatch and runtime cache update, tail-command dispatch and tail response validation, key-command request construction including interrupt marker, tracked attachment commit-unknown conversion after request-sent key write failures, dead broker/agent detection after state/tail/key failures, socket/sidecar unlinking, session removal, and the old distinction that state failures clear deleted-session state while tail/key failures only unlink/remove.
+- What intentionally remains in `SessionManager`: `_sock_call` as patch seam, `_control_coordinator_for_manager` dependency wiring, process liveness primitive, `_clear_deleted_session_state` implementation, direct send socket call, attachment response classification, and public wrapper methods for routes/tests.
+- Source sentinel update: file-upload and interrupt source tests now check `session_control.py` for key-injection request/commit-unknown/interrupt semantics while preserving manager wrapper expectations.
+- Size observation: `server.py` is now 4582 lines; `session_control.py` is 101 lines.
+- Validation: py-compile of `session_control.py`, `server.py`, and `test_session_control.py` passed. Focused control/source/send/stale/diagnostics/session-route group returned `173 passed, 26 subtests`; full local `pytest -q` returned `1151 passed, 107 subtests`.
