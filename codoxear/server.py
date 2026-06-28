@@ -209,6 +209,10 @@ from .session_manager_factories import ui_state_coordinator_for_manager as _ui_s
 from .session_manager_factories import voice_runtime_for_manager as _voice_runtime_for_manager_impl
 from .session_manager_factories import web_launch_coordinator_for_manager as _web_launch_coordinator_for_manager_impl
 from .session_manager_store import create_session_store as _create_session_store_impl
+from .session_manager_store_attrs import load_store_attr as _load_store_attr
+from .session_manager_store_attrs import save_dict_store_attr as _save_dict_store_attr
+from .session_manager_store_attrs import save_pending_attachment_ids_attr as _save_pending_attachment_ids_attr
+from .session_manager_store_attrs import save_set_store_attr as _save_set_store_attr
 from .session_manager_store_attrs import store_backed_attr as _store_backed_attr
 from .session_manager_store import session_store_for_manager as _session_store_for_manager_impl
 from .session_manager_store import session_store_paths as _session_store_paths_impl
@@ -1386,6 +1390,25 @@ class SessionManager:
     _pending_attachment_ids = _store_backed_attr("pending_attachment_ids")
     _commit_unknown_sends = _store_backed_attr("commit_unknown_sends")
     _recent_cwds = _store_backed_attr("recent_cwds")
+    _load_unattended = _load_store_attr("_unattended", "load_unattended")
+    _save_unattended = _save_dict_store_attr("_unattended", "save_unattended")
+    _load_aliases = _load_store_attr("_aliases", "load_aliases")
+    _save_aliases = _save_dict_store_attr("_aliases", "save_aliases")
+    _load_sidebar_meta = _load_store_attr("_sidebar_meta", "load_sidebar_meta")
+    _save_sidebar_meta = _save_dict_store_attr("_sidebar_meta", "save_sidebar_meta")
+    _load_hidden_sessions = _load_store_attr("_hidden_sessions", "load_hidden_sessions")
+    _save_hidden_sessions = _save_set_store_attr("_hidden_sessions", "save_hidden_sessions")
+    _load_files = _load_store_attr("_files", "load_files")
+    _save_files = _save_dict_store_attr("_files", "save_files")
+    _load_queues = _load_store_attr("_queues", "load_queues")
+    _save_queues = _save_dict_store_attr("_queues", "save_queues")
+    _load_pending_attachments = _load_store_attr("_pending_attachment_ids", "load_pending_attachments")
+    _save_pending_attachments = _save_pending_attachment_ids_attr("_pending_attachment_ids", "save_pending_attachments")
+    _load_commit_unknown_sends = _load_store_attr("_commit_unknown_sends", "load_commit_unknown_sends")
+    _save_commit_unknown_sends = _save_dict_store_attr("_commit_unknown_sends", "save_commit_unknown_sends")
+    _load_recent_cwds = _load_store_attr("_recent_cwds", "load_recent_cwds")
+    _save_recent_cwds = _save_dict_store_attr("_recent_cwds", "save_recent_cwds")
+
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -1462,45 +1485,13 @@ class SessionManager:
         self._store = store
         return store
 
-    def _load_unattended(self) -> None:
-        cleaned = self._session_store_for_manager().load_unattended()
-        with self._lock:
-            self._unattended = cleaned
 
-    def _save_unattended(self) -> None:
-        with self._lock:
-            obj = dict(self._unattended)
-        self._session_store_for_manager().save_unattended(obj)
 
-    def _load_aliases(self) -> None:
-        cleaned = self._session_store_for_manager().load_aliases()
-        with self._lock:
-            self._aliases = cleaned
 
-    def _save_aliases(self) -> None:
-        with self._lock:
-            obj = dict(self._aliases)
-        self._session_store_for_manager().save_aliases(obj)
 
-    def _load_sidebar_meta(self) -> None:
-        cleaned = self._session_store_for_manager().load_sidebar_meta()
-        with self._lock:
-            self._sidebar_meta = cleaned
 
-    def _save_sidebar_meta(self) -> None:
-        with self._lock:
-            obj = dict(self._sidebar_meta)
-        self._session_store_for_manager().save_sidebar_meta(obj)
 
-    def _load_hidden_sessions(self) -> None:
-        cleaned = self._session_store_for_manager().load_hidden_sessions()
-        with self._lock:
-            self._hidden_sessions = cleaned
 
-    def _save_hidden_sessions(self) -> None:
-        with self._lock:
-            obj = set(getattr(self, "_hidden_sessions", set()))
-        self._session_store_for_manager().save_hidden_sessions(obj)
 
     def _hide_session(self, session_id: str) -> None:
         return self._ui_state_coordinator_for_manager().hide_session(session_id)
@@ -1558,15 +1549,7 @@ class SessionManager:
     def _clear_deleted_session_state(self, session_id: str, *, clear_recovery: bool = False) -> None:
         return self._cleanup_coordinator_for_manager().clear_deleted_session_state(session_id, clear_recovery=clear_recovery)
 
-    def _load_files(self) -> None:
-        cleaned = self._session_store_for_manager().load_files()
-        with self._lock:
-            self._files = cleaned
 
-    def _save_files(self) -> None:
-        with self._lock:
-            obj = dict(self._files)
-        self._session_store_for_manager().save_files(obj)
 
     def _queue_store_for_manager(self) -> QueueStore:
         return self._session_store_for_manager().queue_store
@@ -1577,25 +1560,9 @@ class SessionManager:
     def _input_lock_for_session(self, session_id: str) -> threading.RLock:
         return _input_lock_for_session_impl(self, session_id)
 
-    def _load_queues(self) -> None:
-        cleaned = self._session_store_for_manager().load_queues()
-        with self._lock:
-            self._queues = cleaned
 
-    def _save_queues(self) -> None:
-        with self._lock:
-            obj = dict(self._queues)
-        self._session_store_for_manager().save_queues(obj)
 
-    def _load_pending_attachments(self) -> None:
-        cleaned = self._session_store_for_manager().load_pending_attachments()
-        with self._lock:
-            self._pending_attachment_ids = cleaned
 
-    def _save_pending_attachments(self) -> None:
-        with self._lock:
-            ids = set(str(item) for item in getattr(self, "_pending_attachment_ids", set()) if str(item).strip())
-        self._session_store_for_manager().save_pending_attachments(ids)
 
     def _set_pending_attachment(self, session_id: str, value: bool) -> None:
         return self._pending_state_coordinator_for_manager().set_pending_attachment(session_id, value)
@@ -1606,15 +1573,7 @@ class SessionManager:
     def _clean_commit_unknown_send_record(self, raw: Any) -> dict[str, Any] | None:
         return self._pending_state_coordinator_for_manager().clean_commit_unknown_send_record(raw)
 
-    def _load_commit_unknown_sends(self) -> None:
-        cleaned = self._session_store_for_manager().load_commit_unknown_sends()
-        with self._lock:
-            self._commit_unknown_sends = cleaned
 
-    def _save_commit_unknown_sends(self) -> None:
-        with self._lock:
-            source = dict(getattr(self, "_commit_unknown_sends", {}))
-        self._session_store_for_manager().save_commit_unknown_sends(source)
 
     def _set_commit_unknown_send(self, session_id: str, record: dict[str, Any] | None) -> None:
         return self._pending_state_coordinator_for_manager().set_commit_unknown_send(session_id, record)
@@ -1625,15 +1584,7 @@ class SessionManager:
     def _prune_missing_commit_unknown_sends(self, *, max_age_seconds: float = COMMIT_UNKNOWN_ORPHAN_PRUNE_SECONDS) -> bool:
         return self._pending_state_coordinator_for_manager().prune_missing_commit_unknown_sends(max_age_seconds=max_age_seconds)
 
-    def _load_recent_cwds(self) -> None:
-        cleaned = self._session_store_for_manager().load_recent_cwds()
-        with self._lock:
-            self._recent_cwds = cleaned
 
-    def _save_recent_cwds(self) -> None:
-        with self._lock:
-            obj = dict(getattr(self, "_recent_cwds", {}))
-        self._session_store_for_manager().save_recent_cwds(obj)
 
     def _remember_recent_cwd(self, cwd: Any, *, ts: Any = None) -> bool:
         return self._recent_cwd_coordinator_for_manager().remember(cwd, ts=ts)
