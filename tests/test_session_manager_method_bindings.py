@@ -1,6 +1,9 @@
+import sys
+import types
 from pathlib import Path
 
 from codoxear.session_manager_method_bindings import bind_session_manager_forwarders
+from codoxear.session_manager_method_bindings import bind_session_manager_server_factories
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,15 +64,47 @@ def test_forwarder_preserves_public_name_when_target_method_differs() -> None:
     assert manager.unattended.calls == [("set", ("session-a",), {"enabled": True})]
 
 
+def test_server_factory_binding_uses_live_server_module_lookup() -> None:
+    module_name = "_codoxear_test_server_binding"
+    module = types.SimpleNamespace()
+    calls: list[tuple[object, object]] = []
+
+    def impl(manager: object, server_module: object) -> dict[str, object]:
+        calls.append((manager, server_module))
+        return {"server": server_module}
+
+    module._queue_coordinator_for_manager_impl = impl
+    sys.modules[module_name] = module  # type: ignore[assignment]
+    try:
+        class FactoryBound:
+            pass
+
+        bind_session_manager_server_factories(FactoryBound, server_module_name=module_name)
+        manager = FactoryBound()
+
+        assert FactoryBound._queue_coordinator_for_manager.__name__ == "_queue_coordinator_for_manager"
+        assert manager._queue_coordinator_for_manager() == {"server": module}
+        assert calls == [(manager, module)]
+
+        replacement = types.SimpleNamespace()
+        replacement._queue_coordinator_for_manager_impl = lambda manager, server_module: {"server": server_module, "manager": manager}
+        sys.modules[module_name] = replacement  # type: ignore[assignment]
+        assert manager._queue_coordinator_for_manager() == {"server": replacement, "manager": manager}
+    finally:
+        sys.modules.pop(module_name, None)
+
+
 def test_session_manager_compatibility_forwards_live_outside_server() -> None:
     server_source = (ROOT / "codoxear" / "server.py").read_text(encoding="utf-8")
     binding_source = (ROOT / "codoxear" / "session_manager_method_bindings.py").read_text(encoding="utf-8")
 
-    assert "@_bind_session_manager_forwarders\nclass SessionManager" in server_source
+    assert "@_bind_session_manager_methods(__name__)\nclass SessionManager" in server_source
     assert "def alias_set(" not in server_source
     assert "def queue_delete(" not in server_source
     assert "def inject_attachment_keys(" not in server_source
+    assert "def _queue_coordinator_for_manager(" not in server_source
     assert '("alias_set", "_ui_state_coordinator_for_manager", "alias_set")' in binding_source
     assert '("queue_delete", "_queue_coordinator_for_manager", "delete_local")' in binding_source
     assert '("inject_attachment_keys", "_attachment_coordinator_for_manager", "inject_attachment_keys")' in binding_source
+    assert '("_queue_coordinator_for_manager", "_queue_coordinator_for_manager_impl")' in binding_source
     assert "def inject_keys(self, session_id: str, seq: str, *, track_request_sent: bool = False, interrupt: bool = False)" in server_source

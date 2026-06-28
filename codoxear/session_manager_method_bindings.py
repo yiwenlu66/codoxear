@@ -1,6 +1,34 @@
 from __future__ import annotations
 
+import sys
 from typing import Any
+
+
+SESSION_MANAGER_SERVER_FACTORY_METHODS: tuple[tuple[str, str], ...] = (
+    ("_discovery_deps", "_discovery_deps_for_manager_impl"),
+    ("_queue_coordinator_for_manager", "_queue_coordinator_for_manager_impl"),
+    ("_control_coordinator_for_manager", "_control_coordinator_for_manager_impl"),
+    ("_attachment_coordinator_for_manager", "_attachment_coordinator_for_manager_impl"),
+    ("_list_coordinator_for_manager", "_list_coordinator_for_manager_impl"),
+    ("_refresh_coordinator_for_manager", "_refresh_coordinator_for_manager_impl"),
+    ("_readiness_coordinator_for_manager", "_readiness_coordinator_for_manager_impl"),
+    ("_unattended_sweep_coordinator_for_manager", "_unattended_sweep_coordinator_for_manager_impl"),
+    ("_queue_sweep_coordinator_for_manager", "_queue_sweep_coordinator_for_manager_impl"),
+    ("_voice_runtime_for_manager", "_voice_runtime_for_manager_impl"),
+    ("_log_runtime_for_manager", "_log_runtime_for_manager_impl"),
+    ("_files_coordinator_for_manager", "_files_coordinator_for_manager_impl"),
+    ("_ui_state_coordinator_for_manager", "_ui_state_coordinator_for_manager_impl"),
+    ("_unattended_config_coordinator_for_manager", "_unattended_config_coordinator_for_manager_impl"),
+    ("_cleanup_coordinator_for_manager", "_cleanup_coordinator_for_manager_impl"),
+    ("_pending_state_coordinator_for_manager", "_pending_state_coordinator_for_manager_impl"),
+    ("_recent_cwd_coordinator_for_manager", "_recent_cwd_coordinator_for_manager_impl"),
+    ("_lifecycle_coordinator_for_manager", "_lifecycle_coordinator_for_manager_impl"),
+    ("_discovery_registry_for_manager", "_discovery_registry_for_manager_impl"),
+    ("_prune_coordinator_for_manager", "_prune_coordinator_for_manager_impl"),
+    ("_send_coordinator_for_manager", "_send_coordinator_for_manager_impl"),
+    ("_prelog_user_message_recorder_for_manager", "_prelog_user_message_recorder_for_manager_impl"),
+    ("_web_launch_coordinator_for_manager", "_web_launch_coordinator_for_manager_impl"),
+)
 
 
 SESSION_MANAGER_FORWARD_METHODS: tuple[tuple[str, str, str], ...] = (
@@ -86,9 +114,36 @@ def coordinator_forwarder(public_name: str, coordinator_factory_name: str, metho
     return method
 
 
+def server_factory_method(public_name: str, impl_name: str, server_module_name: str) -> Any:
+    def method(manager: Any) -> Any:
+        server_module = sys.modules[server_module_name]
+        return getattr(server_module, impl_name)(manager, server_module)
+
+    method.__name__ = public_name
+    method.__qualname__ = public_name
+    return method
+
+
 def bind_session_manager_forwarders(cls: type[Any]) -> type[Any]:
     for public_name, coordinator_factory_name, method_name in SESSION_MANAGER_FORWARD_METHODS:
         method = coordinator_forwarder(public_name, coordinator_factory_name, method_name)
         method.__qualname__ = f"{cls.__qualname__}.{public_name}"
         setattr(cls, public_name, method)
     return cls
+
+
+def bind_session_manager_server_factories(cls: type[Any], *, server_module_name: str) -> type[Any]:
+    for public_name, impl_name in SESSION_MANAGER_SERVER_FACTORY_METHODS:
+        method = server_factory_method(public_name, impl_name, server_module_name)
+        method.__qualname__ = f"{cls.__qualname__}.{public_name}"
+        setattr(cls, public_name, method)
+    return cls
+
+
+def bind_session_manager_methods(server_module_name: str) -> Any:
+    def decorator(cls: type[Any]) -> type[Any]:
+        bind_session_manager_forwarders(cls)
+        bind_session_manager_server_factories(cls, server_module_name=server_module_name)
+        return cls
+
+    return decorator

@@ -204,7 +204,7 @@ from .session_manager_factories import unattended_sweep_coordinator_for_manager 
 from .session_manager_factories import ui_state_coordinator_for_manager as _ui_state_coordinator_for_manager_impl
 from .session_manager_factories import voice_runtime_for_manager as _voice_runtime_for_manager_impl
 from .session_manager_factories import web_launch_coordinator_for_manager as _web_launch_coordinator_for_manager_impl
-from .session_manager_method_bindings import bind_session_manager_forwarders as _bind_session_manager_forwarders
+from .session_manager_method_bindings import bind_session_manager_methods as _bind_session_manager_methods
 from .session_manager_store import create_session_store as _create_session_store_impl
 from .session_manager_store_attrs import load_store_attr as _load_store_attr
 from .session_manager_store_attrs import save_dict_store_attr as _save_dict_store_attr
@@ -1375,7 +1375,7 @@ def _session_store_paths_for_manager() -> SessionStorePaths:
     )
 
 
-@_bind_session_manager_forwarders
+@_bind_session_manager_methods(__name__)
 class SessionManager:
     _unattended = _store_backed_attr("unattended")
     _aliases = _store_backed_attr("aliases")
@@ -1483,9 +1483,6 @@ class SessionManager:
     def _queue_store_for_manager(self) -> QueueStore:
         return self._session_store_for_manager().queue_store
 
-    def _queue_coordinator_for_manager(self) -> SessionQueueCoordinator:
-        return _queue_coordinator_for_manager_impl(self, sys.modules[__name__])
-
     def _input_lock_for_session(self, session_id: str) -> threading.RLock:
         return _input_lock_for_session_impl(self, session_id)
 
@@ -1516,9 +1513,6 @@ class SessionManager:
         resp = self._promote_queue_head_if_sendable(session_id, require_idle_grace=True, now_ts=now_ts)
         return isinstance(resp, dict)
 
-    def _discovery_deps(self) -> DiscoveryDeps:
-        return _discovery_deps_for_manager_impl(self, sys.modules[__name__])
-
     def _discover_existing(self, *, force: bool = False) -> None:
         return _discover_existing_for_manager_impl(
             self,
@@ -1539,69 +1533,6 @@ class SessionManager:
 
     def _sock_call(self, sock_path: Path, req: dict[str, Any], timeout_s: float | None = 2.0, *, track_request_sent: bool = False) -> dict[str, Any]:
         return _call_control_socket_impl(sock_path, req, timeout_s=timeout_s, track_request_sent=track_request_sent)
-
-    def _control_coordinator_for_manager(self) -> SessionControlCoordinator:
-        return _control_coordinator_for_manager_impl(self, sys.modules[__name__])
-
-    def _attachment_coordinator_for_manager(self) -> SessionAttachmentCoordinator:
-        return _attachment_coordinator_for_manager_impl(self, sys.modules[__name__])
-
-    def _list_coordinator_for_manager(self) -> SessionListCoordinator:
-        return _list_coordinator_for_manager_impl(self, sys.modules[__name__])
-
-    def _refresh_coordinator_for_manager(self) -> SessionRefreshCoordinator:
-        return _refresh_coordinator_for_manager_impl(self, sys.modules[__name__])
-
-    def _readiness_coordinator_for_manager(self) -> SessionReadinessCoordinator:
-        return _readiness_coordinator_for_manager_impl(self, sys.modules[__name__])
-
-    def _unattended_sweep_coordinator_for_manager(self) -> UnattendedSweepCoordinator:
-        return _unattended_sweep_coordinator_for_manager_impl(self, sys.modules[__name__])
-
-    def _queue_sweep_coordinator_for_manager(self) -> QueueSweepCoordinator:
-        return _queue_sweep_coordinator_for_manager_impl(self, sys.modules[__name__])
-
-    def _voice_runtime_for_manager(self) -> VoiceRuntimeCoordinator:
-        return _voice_runtime_for_manager_impl(self, sys.modules[__name__])
-
-    def _log_runtime_for_manager(self) -> SessionLogRuntimeCoordinator:
-        return _log_runtime_for_manager_impl(self, sys.modules[__name__])
-
-    def _files_coordinator_for_manager(self) -> SessionFilesCoordinator:
-        return _files_coordinator_for_manager_impl(self, sys.modules[__name__])
-
-    def _ui_state_coordinator_for_manager(self) -> SessionUiStateCoordinator:
-        return _ui_state_coordinator_for_manager_impl(self, sys.modules[__name__])
-
-    def _unattended_config_coordinator_for_manager(self) -> SessionUnattendedConfigCoordinator:
-        return _unattended_config_coordinator_for_manager_impl(self, sys.modules[__name__])
-
-    def _cleanup_coordinator_for_manager(self) -> SessionCleanupCoordinator:
-        return _cleanup_coordinator_for_manager_impl(self, sys.modules[__name__])
-
-    def _pending_state_coordinator_for_manager(self) -> SessionPendingStateCoordinator:
-        return _pending_state_coordinator_for_manager_impl(self, sys.modules[__name__])
-
-    def _recent_cwd_coordinator_for_manager(self) -> SessionRecentCwdCoordinator:
-        return _recent_cwd_coordinator_for_manager_impl(self, sys.modules[__name__])
-
-    def _lifecycle_coordinator_for_manager(self) -> SessionLifecycleCoordinator:
-        return _lifecycle_coordinator_for_manager_impl(self, sys.modules[__name__])
-
-    def _discovery_registry_for_manager(self) -> SessionDiscoveryRegistryCoordinator:
-        return _discovery_registry_for_manager_impl(self, sys.modules[__name__])
-
-    def _prune_coordinator_for_manager(self) -> SessionPruneCoordinator:
-        return _prune_coordinator_for_manager_impl(self, sys.modules[__name__])
-
-    def _send_coordinator_for_manager(self) -> SessionSendCoordinator:
-        return _send_coordinator_for_manager_impl(self, sys.modules[__name__])
-
-    def _prelog_user_message_recorder_for_manager(self) -> PrelogUserMessageRecorder:
-        return _prelog_user_message_recorder_for_manager_impl(self, sys.modules[__name__])
-
-    def _web_launch_coordinator_for_manager(self) -> SessionWebLaunchCoordinator:
-        return _web_launch_coordinator_for_manager_impl(self, sys.modules[__name__])
 
     def spawn_web_session(
         self,
