@@ -20,6 +20,7 @@ from .session_queue import SessionQueueCoordinator
 from .session_readiness import SessionReadinessCoordinator
 from .session_recent_cwd import SessionRecentCwdCoordinator
 from .session_refresh import SessionRefreshCoordinator
+from .session_registry import session_registry_for_manager
 from .session_runtime import ListingRuntimeProbes
 from .session_send import PrelogUserMessageRecorder
 from .session_send import SessionSendCoordinator
@@ -28,6 +29,18 @@ from .session_unattended_config import SessionUnattendedConfigCoordinator
 from .session_web_launch import SessionWebLaunchCoordinator
 from .unattended_sweep import UnattendedSweepCoordinator
 from .voice_runtime import VoiceRuntimeCoordinator
+
+
+def _registry_lock(manager: Any) -> Any:
+    return session_registry_for_manager(manager).lock
+
+
+def _registry_sessions(manager: Any) -> dict[str, Any]:
+    return session_registry_for_manager(manager).sessions
+
+
+def _registry_input_locks(manager: Any) -> dict[str, Any]:
+    return session_registry_for_manager(manager).input_locks
 
 
 @dataclass(frozen=True)
@@ -231,8 +244,8 @@ def discovery_deps_for_manager(manager: Any, caps: SessionManagerFactoryCaps) ->
 
 def queue_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
     return SessionQueueCoordinator(
-        lock=manager._lock,
-        sessions=lambda: manager._sessions,
+        lock=_registry_lock(manager),
+        sessions=lambda: _registry_sessions(manager),
         queues=lambda: manager._queues,
         queue_store=manager._queue_store_for_manager,
         commit_unknown_sends=lambda: manager._commit_unknown_sends,
@@ -251,8 +264,8 @@ def queue_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps)
 
 def control_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
     return SessionControlCoordinator(
-        lock=manager._lock,
-        sessions=lambda: manager._sessions,
+        lock=_registry_lock(manager),
+        sessions=lambda: _registry_sessions(manager),
         sock_call=lambda sock, req, **kwargs: manager._sock_call(sock, req, **kwargs),
         pid_alive=caps.pid_alive,
         unlink_quiet=caps.unlink_quiet,
@@ -278,8 +291,8 @@ def attachment_coordinator_for_manager(manager: Any, caps: SessionManagerFactory
 
 def list_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
     return SessionListCoordinator(
-        lock=manager._lock,
-        sessions=lambda: manager._sessions,
+        lock=_registry_lock(manager),
+        sessions=lambda: _registry_sessions(manager),
         queues=lambda: manager._queues,
         unattended=lambda: manager._unattended,
         aliases=lambda: manager._aliases,
@@ -317,8 +330,8 @@ def list_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) 
 
 def refresh_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
     return SessionRefreshCoordinator(
-        lock=manager._lock,
-        sessions=lambda: manager._sessions,
+        lock=_registry_lock(manager),
+        sessions=lambda: _registry_sessions(manager),
         prune_stale_socket_without_metadata=manager._prune_stale_socket_without_metadata,
         log_invalid_sidecar_metadata=caps.log_invalid_sidecar_metadata,
         session_transport=manager._session_transport,
@@ -340,8 +353,8 @@ def refresh_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCap
 
 def readiness_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
     return SessionReadinessCoordinator(
-        lock=manager._lock,
-        sessions=lambda: manager._sessions,
+        lock=_registry_lock(manager),
+        sessions=lambda: _registry_sessions(manager),
         refresh_session_meta_if_sidecar_exists=manager._refresh_session_meta_if_sidecar_exists,
         get_state=manager.get_state,
         log_size_or_none=manager._log_size_or_none,
@@ -354,8 +367,8 @@ def readiness_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryC
 
 def unattended_sweep_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
     return UnattendedSweepCoordinator(
-        lock=manager._lock,
-        sessions=lambda: manager._sessions,
+        lock=_registry_lock(manager),
+        sessions=lambda: _registry_sessions(manager),
         unattended=lambda: manager._unattended,
         unattended_last_injected=lambda: manager._unattended_last_injected,
         unattended_last_injected_scope=lambda: manager._unattended_last_injected_scope,
@@ -378,8 +391,8 @@ def unattended_sweep_coordinator_for_manager(manager: Any, caps: SessionManagerF
 
 def queue_sweep_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
     return QueueSweepCoordinator(
-        lock=manager._lock,
-        sessions=lambda: manager._sessions,
+        lock=_registry_lock(manager),
+        sessions=lambda: _registry_sessions(manager),
         queues=lambda: manager._queues,
         commit_unknown_sends=lambda: manager._commit_unknown_sends,
         queue_store=manager._queue_store_for_manager(),
@@ -393,8 +406,8 @@ def queue_sweep_coordinator_for_manager(manager: Any, caps: SessionManagerFactor
 
 def voice_runtime_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
     return VoiceRuntimeCoordinator(
-        lock=manager._lock,
-        sessions=lambda: manager._sessions,
+        lock=_registry_lock(manager),
+        sessions=lambda: _registry_sessions(manager),
         aliases=lambda: manager._aliases,
         voice_push=lambda: getattr(manager, "_voice_push", None),
         discover_existing_if_stale=manager._discover_existing_if_stale,
@@ -408,8 +421,8 @@ def voice_runtime_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> 
 
 def log_runtime_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
     return SessionLogRuntimeCoordinator(
-        lock=manager._lock,
-        sessions=lambda: manager._sessions,
+        lock=_registry_lock(manager),
+        sessions=lambda: _registry_sessions(manager),
         analyze_log_chunk=caps.analyze_log_chunk,
         turn_context_run_settings=caps.turn_context_run_settings,
         compute_idle_from_log=caps.compute_idle_from_log,
@@ -420,8 +433,8 @@ def log_runtime_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> An
 
 def files_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
     return SessionFilesCoordinator(
-        lock=manager._lock,
-        sessions=lambda: manager._sessions,
+        lock=_registry_lock(manager),
+        sessions=lambda: _registry_sessions(manager),
         store=manager._session_store_for_manager(),
         save_files=manager._save_files,
     )
@@ -429,8 +442,8 @@ def files_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps)
 
 def ui_state_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
     return SessionUiStateCoordinator(
-        lock=manager._lock,
-        sessions=lambda: manager._sessions,
+        lock=_registry_lock(manager),
+        sessions=lambda: _registry_sessions(manager),
         aliases=lambda: manager._aliases,
         set_aliases=lambda value: setattr(manager, "_aliases", value),
         sidebar_meta=lambda: manager._sidebar_meta,
@@ -449,8 +462,8 @@ def ui_state_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCa
 
 def unattended_config_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
     return SessionUnattendedConfigCoordinator(
-        lock=manager._lock,
-        sessions=lambda: manager._sessions,
+        lock=_registry_lock(manager),
+        sessions=lambda: _registry_sessions(manager),
         unattended=lambda: manager._unattended,
         unattended_last_injected=lambda: manager._unattended_last_injected,
         input_lock_for_session=manager._input_lock_for_session,
@@ -462,15 +475,15 @@ def unattended_config_coordinator_for_manager(manager: Any, caps: SessionManager
 
 def cleanup_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
     return SessionCleanupCoordinator(
-        lock=manager._lock,
-        sessions=lambda: manager._sessions,
+        lock=_registry_lock(manager),
+        sessions=lambda: _registry_sessions(manager),
         aliases=lambda: manager._aliases,
         sidebar_meta=lambda: manager._sidebar_meta,
         unattended=lambda: manager._unattended,
         files=lambda: manager._files,
         queues=lambda: manager._queues,
         commit_unknown_sends=lambda: manager._commit_unknown_sends,
-        input_locks=lambda: getattr(manager, "_input_locks", {}),
+        input_locks=lambda: _registry_input_locks(manager),
         pending_attachment_ids=lambda: getattr(manager, "_pending_attachment_ids", set()),
         unhide_session=manager._unhide_session,
         mark_queue_orphan_recovery_locked=manager._mark_queue_orphan_recovery_locked,
@@ -487,8 +500,8 @@ def cleanup_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCap
 
 def pending_state_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
     return SessionPendingStateCoordinator(
-        lock=manager._lock,
-        sessions=lambda: manager._sessions,
+        lock=_registry_lock(manager),
+        sessions=lambda: _registry_sessions(manager),
         pending_attachment_ids=lambda: getattr(manager, "_pending_attachment_ids", None),
         set_pending_attachment_ids=lambda value: setattr(manager, "_pending_attachment_ids", value),
         commit_unknown_sends=lambda: getattr(manager, "_commit_unknown_sends", None),
@@ -504,7 +517,7 @@ def pending_state_coordinator_for_manager(manager: Any, caps: SessionManagerFact
 
 def recent_cwd_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
     return SessionRecentCwdCoordinator(
-        lock=manager._lock,
+        lock=_registry_lock(manager),
         recent_cwds=lambda: getattr(manager, "_recent_cwds", None),
         set_recent_cwds=lambda value: setattr(manager, "_recent_cwds", value),
         clean_recent_cwd=caps.clean_recent_cwd,
@@ -540,8 +553,8 @@ def lifecycle_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryC
 
 def discovery_registry_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
     return SessionDiscoveryRegistryCoordinator(
-        lock=manager._lock,
-        sessions=lambda: manager._sessions,
+        lock=_registry_lock(manager),
+        sessions=lambda: _registry_sessions(manager),
         pending_attachment_ids=lambda: getattr(manager, "_pending_attachment_ids", set()),
         commit_unknown_sends=lambda: getattr(manager, "_commit_unknown_sends", {}),
         reset_log_caches=lambda session, log_off: manager._reset_log_caches(session, meta_log_off=log_off),
@@ -557,8 +570,8 @@ def discovery_registry_for_manager(manager: Any, caps: SessionManagerFactoryCaps
 
 def prune_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
     return SessionPruneCoordinator(
-        lock=manager._lock,
-        sessions=lambda: manager._sessions,
+        lock=_registry_lock(manager),
+        sessions=lambda: _registry_sessions(manager),
         sock_call=lambda sock, req, **kwargs: manager._sock_call(sock, req, **kwargs),
         broker_busy_queue_from_state=manager._broker_busy_queue_from_state,
         broker_interrupted_idle_from_state=caps.broker_interrupted_idle_from_state,
@@ -579,8 +592,8 @@ def prune_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps)
 
 def send_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
     return SessionSendCoordinator(
-        lock=manager._lock,
-        sessions=lambda: manager._sessions,
+        lock=_registry_lock(manager),
+        sessions=lambda: _registry_sessions(manager),
         input_lock_for_session=manager._input_lock_for_session,
         queue_len=lambda session_id: manager._queue_store_for_manager().queue_len(getattr(manager, "_queues", {}), session_id),
         send_remote_ready=manager._send_remote_ready,

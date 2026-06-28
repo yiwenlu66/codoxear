@@ -179,6 +179,9 @@ from .session_manager_store_attrs import store_backed_attr as _store_backed_attr
 from .session_manager_store import session_store_for_manager as _session_store_for_manager_impl
 from .session_manager_store import session_store_paths as _session_store_paths_impl
 from .session_model import Session
+from .session_registry import SessionRegistry
+from .session_registry import registry_backed_attr as _registry_backed_attr
+from .session_registry import session_registry_for_manager as _session_registry_for_manager
 from .session_runtime import clear_session_confirmed_send_boundary as _clear_session_confirmed_send_boundary
 from .session_runtime import consume_session_confirmed_send_boundary as _consume_session_confirmed_send_boundary
 from .session_runtime import log_path_size_or_none as _log_path_size_or_none
@@ -937,6 +940,12 @@ def _session_store_paths_for_manager() -> SessionStorePaths:
 
 @_bind_session_manager_methods(__name__)
 class SessionManager:
+    _lock = _registry_backed_attr("lock")
+    _sessions = _registry_backed_attr("sessions")
+    _stop = _registry_backed_attr("stop_event")
+    _last_discover_ts = _registry_backed_attr("last_discover_ts")
+    _input_locks = _registry_backed_attr("input_locks")
+    _store = _registry_backed_attr("store")
     _unattended = _store_backed_attr("unattended")
     _aliases = _store_backed_attr("aliases")
     _sidebar_meta = _store_backed_attr("sidebar_meta")
@@ -966,17 +975,14 @@ class SessionManager:
     _save_recent_cwds = _save_dict_store_attr("_recent_cwds", "save_recent_cwds")
 
     def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._sessions: dict[str, Session] = {}
-        self._stop = threading.Event()
-        self._last_discover_ts = 0.0
+        self._registry = SessionRegistry()
         self._store = self._new_session_store_for_manager(_session_store_paths_for_manager())
         _seed_manager_in_memory_state_impl(self)
         _load_manager_persistent_state_impl(self)
         self._voice_push = _create_voice_push_coordinator_impl(
             voice_push_factory=VoicePushCoordinator,
             app_dir=APP_DIR,
-            stop_event=self._stop,
+            stop_event=self._registry.stop_event,
             settings_path=VOICE_SETTINGS_PATH,
             subscriptions_path=PUSH_SUBSCRIPTIONS_PATH,
             delivery_ledger_path=DELIVERY_LEDGER_PATH,
@@ -987,7 +993,7 @@ class SessionManager:
         _start_manager_worker_threads_impl(manager=self, thread_factory=threading.Thread)
 
     def stop(self) -> None:
-        self._stop.set()
+        self._registry.stop_event.set()
 
     def _reset_log_caches(self, s: Session, *, meta_log_off: int) -> None:
         return _reset_session_log_caches_impl(s, meta_log_off=meta_log_off)
@@ -1056,8 +1062,9 @@ class SessionManager:
         _clear_session_confirmed_send_boundary(s)
 
     def _confirmed_send_boundary_unresolved_for_session(self, session_id: str, log_path: Path | None, log_size: int | None) -> bool:
-        with self._lock:
-            s = self._sessions.get(session_id)
+        registry = _session_registry_for_manager(self)
+        with registry.lock:
+            s = registry.sessions.get(session_id)
             return _consume_session_confirmed_send_boundary(s, log_path, log_size)
 
     def _voice_push_scan_loop(self) -> None:
@@ -1085,8 +1092,9 @@ class SessionManager:
         )
 
     def get_session(self, session_id: str) -> Session | None:
-        with self._lock:
-            return self._sessions.get(session_id)
+        registry = _session_registry_for_manager(self)
+        with registry.lock:
+            return registry.sessions.get(session_id)
 
     def refresh_session_meta(self, session_id: str, *, drain_queue: bool = False) -> None:
         return self._refresh_coordinator_for_manager().refresh_session_meta(session_id, drain_queue=drain_queue)
@@ -1132,8 +1140,9 @@ class SessionManager:
         )
 
     def _refresh_session_meta_if_sidecar_exists(self, session_id: str, *, drain_queue: bool = False) -> None:
-        with self._lock:
-            s = self._sessions.get(session_id)
+        registry = _session_registry_for_manager(self)
+        with registry.lock:
+            s = registry.sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
             meta_path = s.sock_path.with_suffix(".json")
