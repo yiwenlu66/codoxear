@@ -289,3 +289,33 @@ def make_handler_class(deps: ServerHandlerDeps) -> type[CodoxearHandler]:
     Handler.__name__ = "Handler"
     Handler.__qualname__ = "Handler"
     return Handler
+
+
+def make_server_handler(server: Any) -> type[CodoxearHandler]:
+    return make_handler_class(
+        ServerHandlerDeps(
+            url_prefix=server.URL_PREFIX,
+            strip_url_prefix=server._strip_url_prefix,
+            is_client_disconnect=server._is_client_disconnect,
+            json_response=lambda handler, status, obj: server._json_response(handler, status, obj),
+            handle_route_exception=lambda handler, exc: server._handle_route_exception(handler, exc),
+            read_body=server._read_body,
+            bad_request_error=server.BadRequestError,
+            request_payload_too_large_error=server.RequestPayloadTooLargeError,
+            manager=lambda: server.MANAGER,
+            match_session_route=server._match_session_route,
+            static_route_deps=lambda: server._route_deps_factory().static_route_deps(),
+            auth_route_deps=lambda: server._route_deps_factory().auth_route_deps(),
+            voice_route_deps=lambda: server._route_deps_factory().voice_route_deps(),
+            session_route_deps=lambda: server._route_deps_factory().session_route_deps(),
+            diagnostics_route_deps=lambda: server._route_deps_factory().diagnostics_route_deps(),
+            queue_route_deps=lambda: server._route_deps_factory().queue_route_deps(),
+            file_get_route_deps=lambda: server._route_deps_factory().file_get_route_deps(),
+            file_write_route_deps=lambda: server._route_deps_factory().file_write_route_deps(),
+            global_file_route_deps=lambda: server._route_deps_factory().global_file_route_deps(),
+            git_route_deps=lambda: server._route_deps_factory().git_route_deps(),
+            message_route_deps=lambda: server._route_deps_factory().message_route_deps(),
+            control_route_deps=lambda: server._route_deps_factory().control_route_deps(),
+            hook_route_deps=lambda: server._route_deps_factory().hook_route_deps(),
+        )
+    )

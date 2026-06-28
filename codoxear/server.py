@@ -16,7 +16,6 @@ import re
 import signal
 import shutil
 import socket
-import socketserver
 import stat
 import subprocess
 import sys
@@ -163,8 +162,10 @@ from .session_runtime import select_runtime_token as _select_runtime_token
 from .session_store import SessionStore
 from .session_store import SessionStorePaths
 from .session_web_launch import SessionWebLaunchCoordinator
-from .server_handler import ServerHandlerDeps
-from .server_handler import make_handler_class
+from .server_handler import make_server_handler
+from .server_main import ThreadingHTTPServer
+from .server_main import ThreadingHTTPServerV6
+from .server_main import run_main as _run_server_main
 from .server_route_deps import ServerRouteDepsFactory
 from .session_ui_state import SessionUiStateCoordinator
 from .session_unattended_config import SessionUnattendedConfigCoordinator
@@ -2999,76 +3000,13 @@ def _message_runtime_snapshot(
     return _route_deps_factory().message_runtime_snapshot(session_id, s, token_update=token_update)
 
 
-def _handler_deps() -> ServerHandlerDeps:
-    return ServerHandlerDeps(
-        url_prefix=URL_PREFIX,
-        strip_url_prefix=_strip_url_prefix,
-        is_client_disconnect=_is_client_disconnect,
-        json_response=lambda handler, status, obj: _json_response(handler, status, obj),
-        handle_route_exception=lambda handler, exc: _handle_route_exception(handler, exc),
-        read_body=_read_body,
-        bad_request_error=BadRequestError,
-        request_payload_too_large_error=RequestPayloadTooLargeError,
-        manager=lambda: MANAGER,
-        match_session_route=_match_session_route,
-        static_route_deps=lambda: _route_deps_factory().static_route_deps(),
-        auth_route_deps=lambda: _route_deps_factory().auth_route_deps(),
-        voice_route_deps=lambda: _route_deps_factory().voice_route_deps(),
-        session_route_deps=lambda: _route_deps_factory().session_route_deps(),
-        diagnostics_route_deps=lambda: _route_deps_factory().diagnostics_route_deps(),
-        queue_route_deps=lambda: _route_deps_factory().queue_route_deps(),
-        file_get_route_deps=lambda: _route_deps_factory().file_get_route_deps(),
-        file_write_route_deps=lambda: _route_deps_factory().file_write_route_deps(),
-        global_file_route_deps=lambda: _route_deps_factory().global_file_route_deps(),
-        git_route_deps=lambda: _route_deps_factory().git_route_deps(),
-        message_route_deps=lambda: _route_deps_factory().message_route_deps(),
-        control_route_deps=lambda: _route_deps_factory().control_route_deps(),
-        hook_route_deps=lambda: _route_deps_factory().hook_route_deps(),
-    )
 
+Handler = make_server_handler(sys.modules[__name__])
 
-Handler = make_handler_class(_handler_deps())
-
-
-class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
-    daemon_threads = True
-
-
-class ThreadingHTTPServerV6(ThreadingHTTPServer):
-    address_family = socket.AF_INET6
-
-    def server_bind(self) -> None:
-        v6only = getattr(socket, "IPV6_V6ONLY", None)
-        if v6only is not None:
-            self.socket.setsockopt(socket.IPPROTO_IPV6, v6only, 0)
-        super().server_bind()
 
 
 def main() -> None:
-    os.makedirs(APP_DIR, exist_ok=True)
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    try:
-        _require_password()
-    except Exception as e:
-        sys.stderr.write(f"error: {e}\n")
-        raise SystemExit(2)
-
-    host = DEFAULT_HOST
-    server: ThreadingHTTPServer
-    if ":" in host:
-        server = ThreadingHTTPServerV6((host, DEFAULT_PORT), Handler)
-    else:
-        server = ThreadingHTTPServer((host, DEFAULT_PORT), Handler)
-
-    def _sigterm(_signo: int, _frame: Any) -> None:
-        # BaseServer.shutdown() must not run in the serve_forever thread.
-        MANAGER.stop()
-        threading.Thread(target=server.shutdown, daemon=True).start()
-
-    signal.signal(signal.SIGTERM, _sigterm)
-    signal.signal(signal.SIGINT, _sigterm)
-
-    server.serve_forever()
+    return _run_server_main(sys.modules[__name__])
 
 
 if __name__ == "__main__":
