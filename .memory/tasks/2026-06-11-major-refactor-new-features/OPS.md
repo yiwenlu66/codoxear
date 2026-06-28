@@ -3515,3 +3515,10 @@
   - Dead-prune slice: py-compile of `session_prune.py`/`server.py`; focused prune/discovery/list tests returned `163 passed, 34 subtests`; full local `pytest -q` returned `1157 passed, 107 subtests`.
   - Send/prelog slice: py-compile of `session_send.py`/`server.py`/file-upload source sentinel; focused send/control/source tests returned `115 passed, 22 subtests`; full local `pytest -q` returned `1157 passed, 107 subtests`.
 - Size observation: after `e140a0d`, `server.py` is 3592 lines. The manager is now dominated by wrappers, dependency assembly, launch-web-session orchestration, route dependency assembly, and compatibility helper exports; discovery application, dead-session pruning, log meta-counter scanning, and confirmed-send orchestration no longer live inline in the manager.
+
+## 2026-06-28T18:00:00Z Web launch coordinator checkpoint
+- Functional commit `816082a Extract web session launch coordinator`: introduced `codoxear/session_web_launch.py` and moved `SessionManager.spawn_web_session` orchestration into `SessionWebLaunchCoordinator`.
+- Actual architecture moved: the coordinator now owns web-owned session launch glue across `LaunchPlanRequest`/`LaunchPlanDeps`, `LaunchContextRequest`, `LaunchProcessDeps`, `launch_broker_process`, and `LaunchProcessFailure` to `SessionLaunchError` mapping. Existing lower-level launch-plan and launch-process modules remain the source of truth for argv/env/worktree/resume/tmux/process behavior.
+- What remains in `SessionManager`: public `spawn_web_session` wrapper, dependency assembly, live resume target seam through the lifecycle coordinator, and `SessionLaunchError` class definition for route/error compatibility.
+- Validation: py-compile of `session_web_launch.py` and `server.py` passed. Focused launch/session tests (`test_session_resume.py`, `test_session_launch_plan.py`, `test_session_launcher.py`, `test_session_routes.py`, `test_launch_provenance.py`, `test_new_session_launch_request.py`) returned `84 passed, 12 subtests`; full local `pytest -q` returned `1157 passed, 107 subtests`.
+- Size observation: after `816082a`, `server.py` is 3561 lines.
