@@ -161,6 +161,9 @@ from .session_launcher import wait_for_spawned_broker_meta as _wait_for_spawned_
 from .session_launcher import wait_or_raise as _wait_or_raise_impl
 from .session_launch_plan import LaunchPlanDeps
 from .session_launch_plan import LaunchPlanRequest
+from .session_input import apply_confirmed_send_success as _apply_confirmed_send_success
+from .session_input import parse_confirmed_send_response as _parse_confirmed_send_response
+from .session_input import require_send_preconditions as _require_send_preconditions
 from .session_launch_plan import prepare_launch_plan as _prepare_launch_plan
 from .session_listing import clip01 as _listing_clip01
 from .session_listing import priority_from_elapsed_seconds as _listing_priority_from_elapsed_seconds
@@ -3884,18 +3887,14 @@ class SessionManager:
                 s = self._sessions.get(session_id)
                 if not s:
                     raise KeyError("unknown session")
-                if s.commit_unknown_send:
-                    raise SessionNotReadyError("resolve the unknown send before submitting more text")
-                if s.pending_attachment and not allow_pending_attachment:
-                    raise SessionNotReadyError("send the pending attachment explicitly before submitting other text")
                 local_queue_len = self._queue_store_for_manager().queue_len(self._queues, session_id)
-                if queue_item_id is None and (local_queue_len > 0 or s.queue_sending_item_id is not None):
-                    raise SessionNotReadyError("send queued prompts before submitting new text")
-                if queue_item_id is not None and s.queue_sending_item_id != queue_item_id:
-                    raise SessionNotReadyError("queued prompt is no longer active")
-                if not s.sync_send_supported:
-                    raise SessionNotReadyError("broker must be restarted before confirmed sends are available")
-                sock = s.sock_path
+                sock = _require_send_preconditions(
+                    s,
+                    local_queue_len=local_queue_len,
+                    queue_item_id=queue_item_id,
+                    allow_pending_attachment=allow_pending_attachment,
+                    not_ready_error=SessionNotReadyError,
+                )
             if not self._send_remote_ready(session_id, allow_pending_attachment=allow_pending_attachment):
                 raise SessionNotReadyError("session is busy; wait before sending")
             with self._lock:
@@ -3929,39 +3928,21 @@ class SessionManager:
                 raise SessionNotReadyError("session control socket unavailable") from e
             except (TimeoutError, socket.timeout) as e:
                 raise_commit_unknown("send commit status unknown; broker did not reply before timeout", e)
-            if not isinstance(resp, dict):
-                raise_commit_unknown("send commit status unknown; broker response was malformed")
-            if bool(resp.get("commit_unknown")):
-                raise_commit_unknown("send commit status unknown; broker marked commit unknown")
-            if resp.get("error"):
-                err = str(resp.get("error"))
-                if err == "empty response":
-                    raise_commit_unknown("send commit status unknown; broker response was empty")
-                if bool(resp.get("commit_unknown")):
-                    raise_commit_unknown(f"send commit status unknown; {err}")
-                raise SessionInjectionError(err)
-            if "queue_len" not in resp:
-                raise_commit_unknown("send commit status unknown; broker response was incomplete")
-            busy_resp: bool | None = None
-            if "busy" in resp:
-                busy_raw = resp.get("busy")
-                if not isinstance(busy_raw, bool):
-                    raise_commit_unknown("send commit status unknown; broker response was invalid")
-                busy_resp = busy_raw
-            queue_len_raw = resp.get("queue_len")
-            if isinstance(queue_len_raw, bool) or not isinstance(queue_len_raw, int) or queue_len_raw < 0:
-                raise_commit_unknown("send commit status unknown; broker response was invalid")
-            queue_len = int(queue_len_raw)
+            parsed_send = _parse_confirmed_send_response(
+                resp,
+                raise_commit_unknown=raise_commit_unknown,
+                injection_error=SessionInjectionError,
+            )
             with self._lock:
                 self._record_prelog_user_message(s, text, source="send")
                 s2 = self._sessions.get(session_id)
                 if s2:
-                    s2.busy = busy_resp if busy_resp is not None else True
-                    s2.interrupted_idle = False
-                    s2.queue_len = queue_len
-                    s2.last_send_boundary_active = True
-                    s2.last_send_log_path = pre_send_log_path
-                    s2.last_send_log_size = pre_send_log_size
+                    _apply_confirmed_send_success(
+                        s2,
+                        result=parsed_send,
+                        pre_send_log_path=pre_send_log_path,
+                        pre_send_log_size=pre_send_log_size,
+                    )
             self._set_pending_attachment(session_id, False)
             if queue_item_id is None:
                 self._set_commit_unknown_send(session_id, None)
