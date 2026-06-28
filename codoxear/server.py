@@ -228,16 +228,10 @@ from .util import read_session_meta_payload as _read_session_meta_payload_impl
 from .util import session_id_from_rollout_path as _session_id_from_rollout_path
 from .util import subagent_parent_thread_id as _subagent_parent_thread_id
 from .unattended import UnattendedStore
-from .unattended import disable_unattended_if_exhausted as _disable_unattended_if_exhausted
 from .unattended import clean_unattended_cooldown_minutes as _clean_unattended_cooldown_minutes_impl
 from .unattended import clean_unattended_remaining_injections as _clean_unattended_remaining_injections_impl
-from .unattended import record_unattended_success as _record_unattended_success
 from .unattended import render_unattended_prompt as _render_unattended_prompt_impl
-from .unattended import unattended_config_state as _unattended_config_state
-from .unattended import unattended_cooldown_blocked as _unattended_cooldown_blocked
-from .unattended import unattended_prompt_decision as _unattended_prompt_decision
-from .unattended import unattended_scope_key as _unattended_scope_key
-from .unattended import unattended_tail_allows_injection as _unattended_tail_allows_injection
+from .unattended_sweep import UnattendedSweepCoordinator
 from .voice_push import VoicePushCoordinator
 from .voice_routes import VoiceRouteDeps
 from .voice_routes import handle_voice_get_route as _handle_voice_get_route
@@ -2829,126 +2823,7 @@ class SessionManager:
             self._stop.wait(UNATTENDED_SWEEP_SECONDS)
 
     def _unattended_sweep(self) -> None:
-        now = time.time()
-        # Keep discovery fresh; sessions can appear/disappear without UI polling.
-        self._discover_existing_if_stale()
-        self._prune_dead_sessions()
-        with self._lock:
-            items: list[tuple[str, Session, dict[str, Any], float]] = []
-            for sid, s in self._sessions.items():
-                cfg0 = self._unattended.get(sid)
-                cfg = dict(cfg0) if isinstance(cfg0, dict) else {}
-                last_inj = float(self._unattended_last_injected.get(sid, 0.0))
-                items.append((sid, s, cfg, last_inj))
-
-        for sid, s, cfg, last_inj in items:
-            if not bool(cfg.get("enabled")):
-                continue
-            try:
-                state = _unattended_config_state(
-                    cfg,
-                    default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
-                    default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
-                )
-                if state.remaining_injections <= 0:
-                    input_lock = self._input_lock_for_session(sid)
-                    save_zero_cleanup = False
-                    with input_lock:
-                        with self._lock:
-                            cur0 = self._unattended.get(sid)
-                            cur = dict(cur0) if isinstance(cur0, dict) else {}
-                            disabled, did_disable = _disable_unattended_if_exhausted(
-                                cur,
-                                default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
-                            )
-                            if did_disable:
-                                self._unattended[sid] = disabled
-                                self._unattended_last_injected.pop(sid, None)
-                                save_zero_cleanup = True
-                    if save_zero_cleanup:
-                        self._save_unattended()
-                    continue
-                lp = s.log_path
-                if lp is None or (not lp.exists()):
-                    continue
-                scope_key = _unattended_scope_key(thread_id=s.thread_id, log_path=lp)
-                with self._lock:
-                    scope_last = float(self._unattended_last_injected_scope.get(scope_key, 0.0))
-                if _unattended_cooldown_blocked(
-                    now_ts=now,
-                    cooldown_seconds=state.cooldown_seconds,
-                    session_last_ts=last_inj,
-                    scope_last_ts=scope_last,
-                ):
-                    continue
-                st = self.get_state(sid)
-                if not isinstance(st, dict):
-                    raise ValueError("invalid broker state response")
-                busy, ql = self._broker_busy_queue_from_state(st)
-                if busy or ql > 0 or self._queue_len(sid) > 0:
-                    continue
-                last = _last_chat_role_ts_from_tail(lp, max_scan_bytes=UNATTENDED_MAX_SCAN_BYTES, final_assistant_only=True)
-                if not _unattended_tail_allows_injection(last, now_ts=now, cooldown_seconds=state.cooldown_seconds):
-                    continue
-                with self._lock:
-                    scope_last = float(self._unattended_last_injected_scope.get(scope_key, 0.0))
-                if _unattended_cooldown_blocked(
-                    now_ts=now,
-                    cooldown_seconds=state.cooldown_seconds,
-                    session_last_ts=0.0,
-                    scope_last_ts=scope_last,
-                ):
-                    continue
-                input_lock = self._input_lock_for_session(sid)
-                save_after_disable = False
-                prompt = ""
-                live_cooldown_seconds = state.cooldown_seconds
-                with input_lock:
-                    with self._lock:
-                        cur0 = self._unattended.get(sid)
-                        cur = dict(cur0) if isinstance(cur0, dict) else {}
-                        live_last_inj = float(self._unattended_last_injected.get(sid, 0.0))
-                        live_scope_last = float(self._unattended_last_injected_scope.get(scope_key, 0.0))
-                        decision = _unattended_prompt_decision(
-                            cur,
-                            now_ts=now,
-                            session_last_ts=live_last_inj,
-                            scope_last_ts=live_scope_last,
-                            prompt_prefix=UNATTENDED_PROMPT_PREFIX,
-                            default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
-                            default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
-                        )
-                        live_cooldown_seconds = decision.cooldown_seconds
-                        if decision.disabled_exhausted:
-                            self._unattended[sid] = decision.config
-                            self._unattended_last_injected.pop(sid, None)
-                            save_after_disable = True
-                        prompt = decision.prompt
-                    if save_after_disable:
-                        self._save_unattended()
-                    if not prompt:
-                        continue
-                    live_last = _last_chat_role_ts_from_tail(lp, max_scan_bytes=UNATTENDED_MAX_SCAN_BYTES, final_assistant_only=True)
-                    if not _unattended_tail_allows_injection(live_last, now_ts=now, cooldown_seconds=live_cooldown_seconds):
-                        continue
-                    self.send(sid, prompt)
-                    with self._lock:
-                        self._unattended_last_injected[sid] = now
-                        self._unattended_last_injected_scope[scope_key] = now
-                        cur0 = self._unattended.get(sid)
-                        cur = dict(cur0) if isinstance(cur0, dict) else {}
-                        update = _record_unattended_success(
-                            cur,
-                            default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
-                        )
-                        if not update.enabled:
-                            self._unattended_last_injected.pop(sid, None)
-                        self._unattended[sid] = update.config
-                    self._save_unattended()
-            except Exception as e:
-                sys.stderr.write(f"error: unattended session {sid} skipped: {type(e).__name__}: {e}\n")
-                traceback.print_exc(file=sys.stderr)
-                sys.stderr.flush()
+        return self._unattended_sweep_coordinator_for_manager().sweep()
 
     def _queue_loop(self) -> None:
         while not self._stop.is_set():
@@ -3489,6 +3364,29 @@ class SessionManager:
             idle_from_log=self.idle_from_log,
             queue_len=lambda session_id: self._queue_store_for_manager().queue_len(self._queues, session_id),
             not_ready_error=SessionNotReadyError,
+        )
+
+    def _unattended_sweep_coordinator_for_manager(self) -> UnattendedSweepCoordinator:
+        return UnattendedSweepCoordinator(
+            lock=self._lock,
+            sessions=lambda: self._sessions,
+            unattended=lambda: self._unattended,
+            unattended_last_injected=lambda: self._unattended_last_injected,
+            unattended_last_injected_scope=lambda: self._unattended_last_injected_scope,
+            discover_existing_if_stale=self._discover_existing_if_stale,
+            prune_dead_sessions=self._prune_dead_sessions,
+            input_lock_for_session=self._input_lock_for_session,
+            save_unattended=self._save_unattended,
+            get_state=self.get_state,
+            broker_busy_queue_from_state=self._broker_busy_queue_from_state,
+            queue_len=self._queue_len,
+            last_chat_role_ts_from_tail=_last_chat_role_ts_from_tail,
+            send=self.send,
+            now=time.time,
+            prompt_prefix=UNATTENDED_PROMPT_PREFIX,
+            default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
+            default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
+            max_scan_bytes=UNATTENDED_MAX_SCAN_BYTES,
         )
 
     def _kill_session_via_pids(self, s: Session) -> bool:
