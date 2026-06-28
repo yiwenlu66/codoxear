@@ -11,6 +11,7 @@ SESSION_READINESS_PY = ROOT / "codoxear" / "session_readiness.py"
 SESSION_SEND_PY = ROOT / "codoxear" / "session_send.py"
 SESSION_QUEUE_PY = ROOT / "codoxear" / "session_queue.py"
 SESSION_ATTACHMENT_PY = ROOT / "codoxear" / "session_attachment.py"
+SERVER_ROUTE_DEPS_PY = ROOT / "codoxear" / "server_route_deps.py"
 FILE_UPLOAD_PY = ROOT / "codoxear" / "file_upload.py"
 CONTROL_ROUTES_PY = ROOT / "codoxear" / "control_routes.py"
 BROKER_PY = ROOT / "codoxear" / "broker.py"
@@ -47,12 +48,13 @@ class TestFileUploadModuleSource(unittest.TestCase):
         send_source = SESSION_SEND_PY.read_text(encoding="utf-8")
         queue_source = SESSION_QUEUE_PY.read_text(encoding="utf-8")
         attachment_source = SESSION_ATTACHMENT_PY.read_text(encoding="utf-8")
+        route_deps_source = SERVER_ROUTE_DEPS_PY.read_text(encoding="utf-8")
         route_source = CONTROL_ROUTES_PY.read_text(encoding="utf-8")
         start = route_source.index("def _handle_inject_attachment")
         block = route_source[start:]
         self.assertIn("if handle_control_post_route(", (ROOT / "codoxear" / "server_handler.py").read_text(encoding="utf-8"))
-        self.assertIn("stage_uploaded_file=_stage_uploaded_file", source)
-        self.assertIn("attachment_inject_text=_attachment_inject_text", source)
+        self.assertIn("stage_uploaded_file=server._stage_uploaded_file", route_deps_source)
+        self.assertIn("attachment_inject_text=server._attachment_inject_text", route_deps_source)
         self.assertIn("ready_for_attachment = manager.attachment_injection_ready(session_id)", block)
         self.assertIn("resp = manager.inject_attachment_keys(session_id, seq)", block)
         self.assertIn("self.refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)", readiness_source)
@@ -70,7 +72,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn("{\"cmd\": \"send\", \"text\": text, \"sync\": True}", control_runtime_source)
         self.assertIn("except self.control_socket_call_error as exc:", control_runtime_source)
         self.assertIn("raise_commit_unknown(\"send commit status unknown; broker response failed\", exc)", control_runtime_source)
-        self.assertIn("session_commit_unknown_error=SessionCommitUnknownError", source)
+        self.assertIn("session_commit_unknown_error=server.SessionCommitUnknownError", route_deps_source)
         self.assertIn("except deps.session_commit_unknown_error as e:", route_source)
         self.assertIn('"commit_unknown": True', route_source + source)
         self.assertIn("if bool(response.get(\"commit_unknown\")):\n        raise_commit_unknown(\"send commit status unknown; broker marked commit unknown\")", input_source)

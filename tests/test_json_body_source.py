@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SERVER_PY = ROOT / "codoxear" / "server.py"
 SERVER_HANDLER_PY = ROOT / "codoxear" / "server_handler.py"
+SERVER_ROUTE_DEPS_PY = ROOT / "codoxear" / "server_route_deps.py"
 AUTH_ROUTES_PY = ROOT / "codoxear" / "auth_routes.py"
 CONTROL_ROUTES_PY = ROOT / "codoxear" / "control_routes.py"
 
@@ -13,6 +14,7 @@ class TestJsonBodySource(unittest.TestCase):
     def test_post_json_parsing_uses_bad_request_helper(self) -> None:
         source = SERVER_PY.read_text(encoding="utf-8")
         handler_source = SERVER_HANDLER_PY.read_text(encoding="utf-8")
+        route_deps_source = SERVER_ROUTE_DEPS_PY.read_text(encoding="utf-8")
         helper_start = handler_source.index("    def _read_json_body(")
         helper_end = handler_source.index("    def _handle_voice_post", helper_start)
         post_start = handler_source.index("    def do_POST(self) -> None:")
@@ -26,7 +28,7 @@ class TestJsonBodySource(unittest.TestCase):
         self.assertIn("except self.deps.request_payload_too_large_error as exc:", helper_block)
         self.assertNotIn("body_text = body.decode(\"utf-8\")", post_block)
         self.assertNotIn("json.loads(body_text)", post_block)
-        self.assertIn("read_json_body=lambda handler, **kwargs: handler._read_json_body(**kwargs)", source)
+        self.assertIn("read_json_body=lambda handler, **kwargs: handler._read_json_body(**kwargs)", route_deps_source)
         self.assertIn("obj = deps.read_json_body(handler)", auth_source)
         self.assertIn("too_large_error=f\"file too large (max {deps.attach_upload_max_bytes} bytes)\"", control_source)
 

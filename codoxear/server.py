@@ -35,18 +35,12 @@ from .auth import require_auth as _require_auth_impl
 from .auth import set_auth_cookie as _set_auth_cookie_impl
 from .auth import sign_cookie as _sign_cookie_impl
 from .auth import verify_cookie as _verify_cookie_impl
-from .auth_routes import AuthRouteDeps
 from . import rollout_log as _rollout_log
 from .control_socket import ControlSocketCallError
 from .control_socket import call_control_socket as _call_control_socket_impl
-from .control_routes import ControlRouteDeps
-from .diagnostics_routes import DiagnosticsRouteDeps
 from .file_response import send_attachment_file_response as _send_attachment_file_response
 from .file_response import send_inline_file_response as _send_inline_file_response
 from .file_response import single_byte_range as _single_byte_range
-from .file_routes import FileGetRouteDeps
-from .file_routes import FileWriteRouteDeps
-from .file_routes import GlobalFileRouteDeps
 from .file_search import FILE_LIST_IGNORED_DIRS
 from .file_search import FILE_SEARCH_LIMIT
 from .file_search import file_search_score as _file_search_score
@@ -57,8 +51,6 @@ from .file_types import file_kind as _file_kind
 from .file_upload import attachment_inject_text as _attachment_inject_text
 from .file_upload import stage_uploaded_file as _stage_uploaded_file_impl
 from . import git_ops as _git_ops
-from .git_routes import GitRouteDeps
-from .hook_routes import HookRouteDeps
 from .launch_config import LaunchConfigPaths
 from .launch_config import LaunchRequestValidationError
 from .launch_config import NewSessionLaunchRequest
@@ -98,7 +90,6 @@ from .launch_ledger import launch_failure_tail as _launch_failure_tail_impl
 from .launch_ledger import latest_launch_attempt as _latest_launch_attempt_impl
 from .launch_ledger import record_launch_attempt as _record_launch_attempt_impl
 from .launch_ledger import submitted_user_messages as _submitted_user_messages_impl
-from .message_routes import MessageRouteDeps
 from .file_view import ClientFileView
 from .file_view import download_disposition as _download_disposition
 from .file_view import inspect_client_path as _inspect_client_path
@@ -128,12 +119,10 @@ from .transcript_search import search_chat_events as _search_chat_events
 from .transcript_search import search_chat_log_bounded as _search_chat_log_bounded
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
-from .queue_routes import QueueRouteDeps
 from .queue_store import QueueStore
 from .queue_store import coerce_queue_item as _queue_store_coerce_item
 from .queue_sweep import QueueSweepCoordinator
 from .session_queue import SessionQueueCoordinator
-from .session_routes import SessionRouteDeps
 from .session_attachment import SessionAttachmentCoordinator
 from .session_cleanup import SessionCleanupCoordinator
 from .session_discovery import DiscoveryDeps
@@ -176,6 +165,7 @@ from .session_store import SessionStorePaths
 from .session_web_launch import SessionWebLaunchCoordinator
 from .server_handler import ServerHandlerDeps
 from .server_handler import make_handler_class
+from .server_route_deps import ServerRouteDepsFactory
 from .session_ui_state import SessionUiStateCoordinator
 from .session_unattended_config import SessionUnattendedConfigCoordinator
 from .static_routes import CONTENT_SECURITY_POLICY
@@ -185,7 +175,6 @@ from .static_routes import STATIC_ASSET_VERSION_PLACEHOLDER
 from .static_routes import STATIC_ATTACH_MAX_BYTES_PLACEHOLDER
 from .static_routes import STATIC_DIR
 from .static_routes import TOP_LEVEL_STATIC_ASSETS
-from .static_routes import StaticRouteDeps
 from .static_routes import read_static_bytes as _read_static_bytes_impl
 from .static_routes import static_asset_version as _static_asset_version
 from .static_routes import static_cache_control_headers as _static_cache_control_headers_impl
@@ -223,7 +212,6 @@ from .unattended import render_unattended_prompt as _render_unattended_prompt_im
 from .unattended_sweep import UnattendedSweepCoordinator
 from .voice_push import VoicePushCoordinator
 from .voice_runtime import VoiceRuntimeCoordinator
-from .voice_routes import VoiceRouteDeps
 
 
 def _load_env_file(path: Path) -> dict[str, str]:
@@ -2997,221 +2985,18 @@ def _read_static_bytes(path: Path) -> bytes:
     return _read_static_bytes_impl(path, attach_upload_max_bytes=ATTACH_UPLOAD_MAX_BYTES)
 
 
+
+def _route_deps_factory() -> ServerRouteDepsFactory:
+    return ServerRouteDepsFactory(sys.modules[__name__])
+
+
 def _message_runtime_snapshot(
     session_id: str,
     s: Session,
     *,
     token_update: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], bool, int, dict[str, Any] | None]:
-    state = MANAGER.get_state(session_id)
-    broker = _runtime_broker_state(state)
-    log_available = s.log_path is not None and s.log_path.exists()
-    log_size = _log_path_size_or_none(s.log_path)
-    boundary_checker = getattr(MANAGER, "_confirmed_send_boundary_unresolved_for_session", None)
-    if callable(boundary_checker):
-        boundary_unresolved = bool(boundary_checker(session_id, s.log_path, log_size))
-    else:
-        boundary_unresolved = _consume_session_confirmed_send_boundary(s, s.log_path, log_size)
-    log_idle = MANAGER.idle_from_log(session_id) if log_available and not boundary_unresolved else None
-    runtime = _resolve_runtime_status(
-        broker=broker,
-        log_exists=log_available,
-        log_idle=log_idle,
-        send_boundary_unresolved=boundary_unresolved,
-    )
-    queue_val = MANAGER._queue_len(session_id)
-    token_val = _select_runtime_token(
-        broker_state=state,
-        session_token=s.token,
-        token_update=token_update,
-        log_available=log_available,
-    )
-    return state, bool(runtime.busy), int(queue_val), token_val
-
-
-
-
-def _static_route_deps() -> StaticRouteDeps:
-    return StaticRouteDeps(
-        static_dir=STATIC_DIR,
-        top_level_static_assets=TOP_LEVEL_STATIC_ASSETS,
-        read_static_bytes=_read_static_bytes,
-        static_cache_control_headers=_static_cache_control_headers,
-        content_security_policy=CONTENT_SECURITY_POLICY,
-    )
-
-
-def _message_route_deps() -> MessageRouteDeps:
-    return MessageRouteDeps(
-        require_auth=_require_auth,
-        json_response=_json_response,
-        launch_attempt_transcript_for_session_id=_launch_attempt_transcript_for_session_id,
-        transcript_export_max_bytes=TRANSCRIPT_EXPORT_MAX_BYTES,
-        transcript_search_max_line_bytes=TRANSCRIPT_SEARCH_MAX_LINE_BYTES,
-        decode_message_cursor=_decode_message_cursor,
-        encode_message_cursor=_encode_message_cursor,
-        record_metric=_record_metric,
-        message_runtime_snapshot=_message_runtime_snapshot,
-    )
-
-
-def _queue_route_deps() -> QueueRouteDeps:
-    return QueueRouteDeps(
-        require_auth=_require_auth,
-        json_response=_json_response,
-        read_json_body=lambda handler: handler._read_json_body(),
-        session_not_ready_error=SessionNotReadyError,
-    )
-
-
-def _hook_route_deps() -> HookRouteDeps:
-    return HookRouteDeps(
-        read_body=_read_body,
-        json_response=_json_response,
-    )
-
-
-def _control_route_deps() -> ControlRouteDeps:
-    return ControlRouteDeps(
-        require_auth=_require_auth,
-        json_response=_json_response,
-        read_body=_read_body,
-        read_json_body=lambda handler, **kwargs: handler._read_json_body(**kwargs),
-        attach_upload_body_max_bytes=ATTACH_UPLOAD_BODY_MAX_BYTES,
-        attach_upload_max_bytes=ATTACH_UPLOAD_MAX_BYTES,
-        stage_uploaded_file=_stage_uploaded_file,
-        attachment_inject_text=_attachment_inject_text,
-        clean_unattended_cooldown_minutes=_clean_unattended_cooldown_minutes,
-        clean_unattended_remaining_injections=_clean_unattended_remaining_injections,
-        session_not_ready_error=SessionNotReadyError,
-        session_injection_error=SessionInjectionError,
-        session_commit_unknown_error=SessionCommitUnknownError,
-    )
-
-
-def _diagnostics_route_deps() -> DiagnosticsRouteDeps:
-    return DiagnosticsRouteDeps(
-        require_auth=_require_auth,
-        json_response=_json_response,
-        provider_choice_for_settings=_provider_choice_for_settings,
-        read_run_settings_from_log=_read_run_settings_from_log,
-        resolve_session_cwd=_resolve_session_cwd,
-        current_git_branch=_current_git_branch,
-        sidebar_time_priority_from_elapsed_seconds=_sidebar_time_priority_from_elapsed_seconds,
-        clip01=_clip01,
-        time_fn=time.time,
-    )
-
-
-def _auth_route_deps() -> AuthRouteDeps:
-    return AuthRouteDeps(
-        require_auth=_require_auth,
-        json_response=_json_response,
-        read_json_body=lambda handler, **kwargs: handler._read_json_body(**kwargs),
-        is_same_password=_is_same_password,
-        set_auth_cookie=_set_auth_cookie,
-        cookie_name=COOKIE_NAME,
-        cookie_path=COOKIE_PATH,
-    )
-
-
-def _session_route_deps() -> SessionRouteDeps:
-    return SessionRouteDeps(
-        require_auth=_require_auth,
-        json_response=_json_response,
-        json_response_with_etag=_json_response_with_etag,
-        read_json_body=lambda handler, **kwargs: handler._read_json_body(**kwargs),
-        read_new_session_defaults=_read_new_session_defaults,
-        static_asset_version=_static_asset_version,
-        tmux_available=_tmux_available,
-        tmux_session_name=TMUX_SESSION_NAME,
-        metrics_snapshot=_metrics_snapshot,
-        record_metric=_record_metric,
-        perf_counter=time.perf_counter,
-        normalize_agent_backend=normalize_agent_backend,
-        default_agent_backend=DEFAULT_AGENT_BACKEND,
-        resolve_dir_target=_resolve_dir_target,
-        describe_session_cwd=_describe_session_cwd,
-        list_resume_candidates_for_cwd=_list_resume_candidates_for_cwd,
-        first_user_message_preview_from_log=_first_user_message_preview_from_log,
-        parse_new_session_launch_request=_parse_new_session_launch_request,
-        launch_request_validation_error=LaunchRequestValidationError,
-        session_launch_error=SessionLaunchError,
-    )
-
-
-def _voice_route_deps() -> VoiceRouteDeps:
-    return VoiceRouteDeps(
-        require_auth=_require_auth,
-        json_response=_json_response,
-        read_json_body=lambda handler, **kwargs: handler._read_json_body(**kwargs),
-    )
-
-
-def _file_get_route_deps() -> FileGetRouteDeps:
-    return FileGetRouteDeps(
-        require_auth=_require_auth,
-        json_response=_json_response,
-        resolve_session_cwd=_resolve_session_cwd,
-        resolve_existing_session_file=_resolve_existing_session_file,
-        resolve_session_path=_resolve_session_path,
-        resolve_git_client_file_view=_resolve_git_client_file_view,
-        resolve_git_existing_regular_file=_resolve_git_existing_regular_file,
-        resolve_existing_absolute_file=_resolve_existing_absolute_file,
-        read_client_file_view=_read_client_file_view,
-        search_session_relative_files=_search_session_relative_files,
-        list_session_relative_files=_list_session_relative_files,
-        file_kind=_file_kind,
-        ensure_video_preview=_ensure_video_preview,
-        inspect_downloadable_file=_inspect_downloadable_file,
-        download_disposition=_download_disposition,
-        send_inline_file_response=_send_inline_file_response,
-        send_attachment_file_response=_send_attachment_file_response,
-        file_search_limit=FILE_SEARCH_LIMIT,
-    )
-
-
-def _file_write_route_deps() -> FileWriteRouteDeps:
-    return FileWriteRouteDeps(
-        require_auth=_require_auth,
-        json_response=_json_response,
-        read_json_body=lambda handler, **kwargs: handler._read_json_body(**kwargs),
-        resolve_session_cwd=_resolve_session_cwd,
-        resolve_create_path=_resolve_under,
-        resolve_git_existing_regular_file=_resolve_git_existing_regular_file,
-        file_write_lock=_file_write_lock,
-    )
-
-
-def _global_file_route_deps() -> GlobalFileRouteDeps:
-    return GlobalFileRouteDeps(
-        require_auth=_require_auth,
-        json_response=_json_response,
-        read_json_body=lambda handler, **kwargs: handler._read_json_body(**kwargs),
-        resolve_git_client_file_view=_resolve_git_client_file_view,
-        resolve_client_file_path=_resolve_client_file_path,
-        read_client_file_view=_read_client_file_view,
-    )
-
-
-def _git_route_deps() -> GitRouteDeps:
-    return GitRouteDeps(
-        require_auth=_require_auth,
-        json_response=_json_response,
-        resolve_session_cwd=_resolve_session_cwd,
-        require_git_repo=_require_git_repo,
-        split_git_nul_paths=_split_git_nul_paths,
-        run_git=_run_git,
-        parse_git_numstat=_parse_git_numstat,
-        resolve_git_path=_resolve_git_path,
-        read_text_file_strict=_read_text_file_strict,
-        git_head_blob_oid=_git_head_blob_oid,
-        git_changed_files_max=GIT_CHANGED_FILES_MAX,
-        git_diff_timeout_seconds=GIT_DIFF_TIMEOUT_SECONDS,
-        git_diff_max_bytes=GIT_DIFF_MAX_BYTES,
-        file_read_max_bytes=FILE_READ_MAX_BYTES,
-    )
-
+    return _route_deps_factory().message_runtime_snapshot(session_id, s, token_update=token_update)
 
 
 def _handler_deps() -> ServerHandlerDeps:
@@ -3219,26 +3004,26 @@ def _handler_deps() -> ServerHandlerDeps:
         url_prefix=URL_PREFIX,
         strip_url_prefix=_strip_url_prefix,
         is_client_disconnect=_is_client_disconnect,
-        json_response=_json_response,
-        handle_route_exception=_handle_route_exception,
+        json_response=lambda handler, status, obj: _json_response(handler, status, obj),
+        handle_route_exception=lambda handler, exc: _handle_route_exception(handler, exc),
         read_body=_read_body,
         bad_request_error=BadRequestError,
         request_payload_too_large_error=RequestPayloadTooLargeError,
         manager=lambda: MANAGER,
         match_session_route=_match_session_route,
-        static_route_deps=_static_route_deps,
-        auth_route_deps=_auth_route_deps,
-        voice_route_deps=_voice_route_deps,
-        session_route_deps=_session_route_deps,
-        diagnostics_route_deps=_diagnostics_route_deps,
-        queue_route_deps=_queue_route_deps,
-        file_get_route_deps=_file_get_route_deps,
-        file_write_route_deps=_file_write_route_deps,
-        global_file_route_deps=_global_file_route_deps,
-        git_route_deps=_git_route_deps,
-        message_route_deps=_message_route_deps,
-        control_route_deps=_control_route_deps,
-        hook_route_deps=_hook_route_deps,
+        static_route_deps=lambda: _route_deps_factory().static_route_deps(),
+        auth_route_deps=lambda: _route_deps_factory().auth_route_deps(),
+        voice_route_deps=lambda: _route_deps_factory().voice_route_deps(),
+        session_route_deps=lambda: _route_deps_factory().session_route_deps(),
+        diagnostics_route_deps=lambda: _route_deps_factory().diagnostics_route_deps(),
+        queue_route_deps=lambda: _route_deps_factory().queue_route_deps(),
+        file_get_route_deps=lambda: _route_deps_factory().file_get_route_deps(),
+        file_write_route_deps=lambda: _route_deps_factory().file_write_route_deps(),
+        global_file_route_deps=lambda: _route_deps_factory().global_file_route_deps(),
+        git_route_deps=lambda: _route_deps_factory().git_route_deps(),
+        message_route_deps=lambda: _route_deps_factory().message_route_deps(),
+        control_route_deps=lambda: _route_deps_factory().control_route_deps(),
+        hook_route_deps=lambda: _route_deps_factory().hook_route_deps(),
     )
 
 
