@@ -7,6 +7,7 @@ ROLLOUT_LOG = ROOT / "codoxear" / "rollout_log.py"
 ROLLOUT_JSONL = ROOT / "codoxear" / "rollout_jsonl.py"
 ROLLOUT_EVENTS = ROOT / "codoxear" / "rollout_events.py"
 ROLLOUT_CHAT_EVENTS = ROOT / "codoxear" / "rollout_chat_events.py"
+ROLLOUT_TOKENS = ROOT / "codoxear" / "rollout_tokens.py"
 
 
 class TestRolloutLogHelpersSource(unittest.TestCase):
@@ -33,6 +34,14 @@ class TestRolloutLogHelpersSource(unittest.TestCase):
         self.assertNotIn("def _dedupe_assistant_chat_events", source)
         self.assertIn("def _single_chat_event", chat_source)
         self.assertIn("def _dedupe_assistant_chat_events", chat_source)
+
+    def test_token_context_scanners_have_dedicated_owner(self) -> None:
+        source = ROLLOUT_LOG.read_text(encoding="utf-8")
+        token_source = ROLLOUT_TOKENS.read_text(encoding="utf-8")
+        self.assertIn("from .rollout_tokens import _extract_token_update", source)
+        self.assertNotIn("def _extract_token_update", source)
+        self.assertIn("def _extract_token_update", token_source)
+        self.assertIn("def _find_latest_turn_context", token_source)
 
     def test_chat_event_timestamp_and_message_id_helpers_are_not_redeclared(self) -> None:
         source = ROLLOUT_LOG.read_text(encoding="utf-8")

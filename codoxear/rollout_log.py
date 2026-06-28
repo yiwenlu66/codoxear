@@ -20,8 +20,6 @@ from .pi_log import pi_assistant_is_aborted_turn
 from .pi_log import pi_assistant_text
 from .pi_log import pi_assistant_is_final_turn_end
 from .pi_log import pi_message_role
-from .pi_log import pi_context_token_update
-from .pi_log import pi_token_update
 from .pi_log import pi_user_text
 from .voice_push_state import ClassifiedAssistantMessage
 from .rollout_jsonl import JsonlRecord
@@ -43,6 +41,9 @@ from .rollout_chat_events import _pi_message_keeps_turn_busy
 from .rollout_chat_events import _sidebar_conversation_ts
 from .rollout_chat_events import _single_chat_event
 from .rollout_chat_events import _update_cc_pending_tool_ids
+from .rollout_tokens import _extract_token_update
+from .rollout_tokens import _find_latest_token_update
+from .rollout_tokens import _find_latest_turn_context
 
 
 def _with_chat_position(event: dict[str, Any], *, before_byte: int | None = None) -> dict[str, Any]:
@@ -59,35 +60,6 @@ def _with_chat_position(event: dict[str, Any], *, before_byte: int | None = None
 
 
 
-def _extract_token_update(objs: list[dict[str, Any]]) -> dict[str, Any] | None:
-    # Prefer the newest token_count in this batch.
-    for obj in reversed(objs):
-        pi_token = pi_token_update(obj)
-        if pi_token is not None:
-            return pi_token
-        if obj.get("type") != "event_msg":
-            continue
-        p = obj.get("payload")
-        if not isinstance(p, dict):
-            raise ValueError("invalid token_count payload")
-        if p.get("type") != "token_count":
-            continue
-        info = p.get("info")
-        if not isinstance(info, dict) or not isinstance(info.get("total_token_usage"), dict):
-            continue
-        ctx = info.get("model_context_window")
-        last = info.get("last_token_usage")
-        if not isinstance(ctx, int) or not isinstance(last, dict):
-            continue
-        tt = last.get("total_tokens")
-        if not isinstance(tt, int):
-            continue
-        return pi_context_token_update(
-            context_window=ctx,
-            tokens_in_context=tt,
-            as_of=obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None,
-        )
-    return None
 
 
 
@@ -198,34 +170,8 @@ def _read_chat_live_delta(
     return events, next_after, meta, flags, diag, token_update
 
 
-def _find_latest_token_update(log_path: Path, max_scan_bytes: int = 32 * 1024 * 1024) -> dict[str, Any] | None:
-    scan = min(256 * 1024, max_scan_bytes)
-    if scan <= 0:
-        return None
-    while scan <= max_scan_bytes:
-        token = _extract_token_update(_read_jsonl_tail(log_path, scan))
-        if token is not None:
-            return token
-        scan *= 2
 
 
-def _find_latest_turn_context(log_path: Path, max_scan_bytes: int = 8 * 1024 * 1024) -> dict[str, Any] | None:
-    scan = min(256 * 1024, max_scan_bytes)
-    if scan <= 0:
-        return None
-    while scan <= max_scan_bytes:
-        objs = _read_jsonl_tail(log_path, scan)
-        for obj in reversed(objs):
-            if not isinstance(obj, dict):
-                continue
-            if obj.get("type") != "turn_context":
-                continue
-            payload = obj.get("payload")
-            if isinstance(payload, dict):
-                return payload
-        scan *= 2
-    return None
-    return None
 
 
 def _extract_chat_events(
