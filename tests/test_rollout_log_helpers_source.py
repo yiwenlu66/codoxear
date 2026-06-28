@@ -7,6 +7,7 @@ ROLLOUT_LOG = ROOT / "codoxear" / "rollout_log.py"
 ROLLOUT_JSONL = ROOT / "codoxear" / "rollout_jsonl.py"
 ROLLOUT_EVENTS = ROOT / "codoxear" / "rollout_events.py"
 ROLLOUT_CHAT_EVENTS = ROOT / "codoxear" / "rollout_chat_events.py"
+ROLLOUT_CHAT_BATCH = ROOT / "codoxear" / "rollout_chat_batch.py"
 ROLLOUT_TOKENS = ROOT / "codoxear" / "rollout_tokens.py"
 ROLLOUT_DELIVERY = ROOT / "codoxear" / "rollout_delivery.py"
 
@@ -36,6 +37,15 @@ class TestRolloutLogHelpersSource(unittest.TestCase):
         self.assertIn("def _single_chat_event", chat_source)
         self.assertIn("def _dedupe_assistant_chat_events", chat_source)
 
+    def test_chat_batch_extraction_has_dedicated_owner(self) -> None:
+        source = ROLLOUT_LOG.read_text(encoding="utf-8")
+        batch_source = ROLLOUT_CHAT_BATCH.read_text(encoding="utf-8")
+        self.assertIn("from .rollout_chat_batch import _extract_chat_events", source)
+        self.assertNotIn("def _extract_chat_events", source)
+        self.assertIn("def _extract_chat_events", batch_source)
+        self.assertIn("event = _single_chat_event(obj, cc_pending_tool_ids=cc_pending_tool_ids)", batch_source)
+        self.assertIn("events.append(event)", batch_source)
+
     def test_token_context_scanners_have_dedicated_owner(self) -> None:
         source = ROLLOUT_LOG.read_text(encoding="utf-8")
         token_source = ROLLOUT_TOKENS.read_text(encoding="utf-8")
@@ -61,13 +71,11 @@ class TestRolloutLogHelpersSource(unittest.TestCase):
         self.assertNotIn("def _text_message_id(", source)
         self.assertEqual(event_source.count("def _event_ts("), 1)
         self.assertEqual(event_source.count("def _text_message_id("), 1)
-        extract_start = source.index("def _extract_chat_events(")
-        extract_end = source.index("def _read_chat_tail_snapshot", extract_start)
-        extract_block = source[extract_start:extract_end]
+        extract_start = event_source.index("def _event_ts(")
+        extract_end = event_source.index("def _strip_oai_mem_citation_tail", extract_start)
+        extract_block = event_source[extract_start:extract_end]
         self.assertNotIn("def event_ts(", extract_block)
         self.assertNotIn("def text_message_id(", extract_block)
-        self.assertIn("event = _single_chat_event(obj, cc_pending_tool_ids=cc_pending_tool_ids)", extract_block)
-        self.assertIn("events.append(event)", extract_block)
 
 
 if __name__ == "__main__":
