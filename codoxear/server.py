@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import base64
 import errno
-from contextlib import contextmanager
 import hashlib
 import hmac
 import http.server
@@ -19,7 +18,7 @@ import threading
 import time
 import traceback
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any, Mapping
 
 from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
@@ -43,6 +42,7 @@ from . import rollout_log as _rollout_log
 from .control_socket import ControlSocketCallError
 from .control_socket import call_control_socket as _call_control_socket_impl
 from .file_response import send_attachment_file_response as _send_attachment_file_response
+from .file_lock_runtime import file_write_lock as _file_write_lock_impl
 from .file_response import send_inline_file_response as _send_inline_file_response
 from .file_response import single_byte_range as _single_byte_range
 from .file_search import FILE_LIST_IGNORED_DIRS
@@ -223,6 +223,9 @@ from .server_http import read_body as _read_body_impl
 from .server_main import ThreadingHTTPServer
 from .server_main import ThreadingHTTPServerV6
 from .server_main import run_main as _run_server_main
+from .server_metrics import metric_percentile as _metric_percentile_impl
+from .server_metrics import metrics_snapshot as _metrics_snapshot_impl
+from .server_metrics import record_metric as _record_metric_impl
 from .server_route_deps import ServerRouteDepsFactory
 from .server_routing import match_session_route as _match_session_route_impl
 from .server_routing import normalize_url_prefix as _normalize_url_prefix_impl
@@ -444,75 +447,26 @@ def _path_signature(path: Path) -> tuple[str, bool, int | None, int | None]:
     return _path_signature_impl(path)
 
 
-@contextmanager
-def _file_write_lock(path: Path) -> Iterator[None]:
-    key = str(path)
-    with _FILE_WRITE_LOCKS_LOCK:
-        entry = _FILE_WRITE_LOCKS.get(key)
-        if entry is None:
-            lock = threading.Lock()
-            refcount = 0
-        else:
-            lock, refcount = entry
-        _FILE_WRITE_LOCKS[key] = (lock, refcount + 1)
-    try:
-        with lock:
-            yield
-    finally:
-        with _FILE_WRITE_LOCKS_LOCK:
-            entry = _FILE_WRITE_LOCKS.get(key)
-            if entry is not None and entry[0] is lock:
-                refcount = entry[1] - 1
-                if refcount <= 0:
-                    _FILE_WRITE_LOCKS.pop(key, None)
-                else:
-                    _FILE_WRITE_LOCKS[key] = (lock, refcount)
+def _file_write_lock(path: Path) -> Any:
+    return _file_write_lock_impl(path, locks_lock=_FILE_WRITE_LOCKS_LOCK, locks=_FILE_WRITE_LOCKS)
 
 
 def _record_metric(name: str, value_ms: float) -> None:
-    if not isinstance(name, str) or not name:
-        return
-    v = float(value_ms)
-    if not (v >= 0):
-        return
-    with _METRICS_LOCK:
-        arr = _METRICS.get(name)
-        if arr is None:
-            arr = []
-            _METRICS[name] = arr
-        arr.append(v)
-        if len(arr) > METRICS_WINDOW:
-            del arr[: len(arr) - METRICS_WINDOW]
+    return _record_metric_impl(
+        name,
+        value_ms,
+        metrics_lock=_METRICS_LOCK,
+        metrics=_METRICS,
+        metrics_window=METRICS_WINDOW,
+    )
 
 
 def _metric_percentile(sorted_values: list[float], p: float) -> float:
-    if not sorted_values:
-        return 0.0
-    if len(sorted_values) == 1:
-        return float(sorted_values[0])
-    pos = max(0.0, min(1.0, float(p))) * float(len(sorted_values) - 1)
-    lo = int(pos)
-    hi = min(lo + 1, len(sorted_values) - 1)
-    frac = pos - float(lo)
-    return float(sorted_values[lo] * (1.0 - frac) + sorted_values[hi] * frac)
+    return _metric_percentile_impl(sorted_values, p)
 
 
 def _metrics_snapshot() -> dict[str, dict[str, float | int]]:
-    out: dict[str, dict[str, float | int]] = {}
-    with _METRICS_LOCK:
-        items = list(_METRICS.items())
-    for name, samples in items:
-        if not samples:
-            continue
-        srt = sorted(float(x) for x in samples)
-        out[name] = {
-            "count": len(srt),
-            "last_ms": float(samples[-1]),
-            "p50_ms": _metric_percentile(srt, 0.50),
-            "p95_ms": _metric_percentile(srt, 0.95),
-            "max_ms": float(srt[-1]),
-        }
-    return out
+    return _metrics_snapshot_impl(metrics_lock=_METRICS_LOCK, metrics=_METRICS)
 
 
 def _wait_or_raise(proc: subprocess.Popen[bytes], *, label: str, timeout_s: float = 1.5) -> None:
