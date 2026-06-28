@@ -191,6 +191,7 @@ from .session_runtime import resolve_runtime_status as _resolve_runtime_status
 from .session_runtime import select_runtime_token as _select_runtime_token
 from .session_store import SessionStore
 from .session_store import SessionStorePaths
+from .session_ui_state import SessionUiStateCoordinator
 from .static_routes import CONTENT_SECURITY_POLICY
 from .static_routes import FRONTEND_ASSET_FILES
 from .static_routes import STATIC_ASSET_VERSION_FILES
@@ -2113,61 +2114,22 @@ class SessionManager:
         self._session_store_for_manager().save_hidden_sessions(obj)
 
     def _hide_session(self, session_id: str) -> None:
-        with self._lock:
-            hidden = getattr(self, "_hidden_sessions", None)
-            if not isinstance(hidden, set):
-                self._hidden_sessions = set()
-                hidden = self._hidden_sessions
-            hidden.add(session_id)
-        self._save_hidden_sessions()
+        return self._ui_state_coordinator_for_manager().hide_session(session_id)
 
     def _unhide_session(self, session_id: str) -> None:
-        changed = False
-        with self._lock:
-            hidden = getattr(self, "_hidden_sessions", None)
-            if isinstance(hidden, set) and session_id in hidden:
-                hidden.remove(session_id)
-                changed = True
-        if changed:
-            self._save_hidden_sessions()
+        return self._ui_state_coordinator_for_manager().unhide_session(session_id)
 
     def alias_set(self, session_id: str, name: str) -> str:
-        alias = _clean_alias(name)
-        with self._lock:
-            if session_id not in self._sessions:
-                raise KeyError("unknown session")
-            if alias:
-                self._aliases[session_id] = alias
-            else:
-                self._aliases.pop(session_id, None)
-        self._save_aliases()
-        return alias
+        return self._ui_state_coordinator_for_manager().alias_set(session_id, name)
 
     def alias_get(self, session_id: str) -> str:
-        with self._lock:
-            alias = self._aliases.get(session_id)
-        return alias if isinstance(alias, str) else ""
+        return self._ui_state_coordinator_for_manager().alias_get(session_id)
 
     def alias_clear(self, session_id: str) -> None:
-        with self._lock:
-            if session_id not in self._aliases:
-                return
-            self._aliases.pop(session_id, None)
-        self._save_aliases()
+        return self._ui_state_coordinator_for_manager().alias_clear(session_id)
 
     def sidebar_meta_get(self, session_id: str) -> dict[str, Any]:
-        with self._lock:
-            if session_id not in self._sessions:
-                raise KeyError("unknown session")
-            meta_map = getattr(self, "_sidebar_meta", None)
-            entry = meta_map.get(session_id) if isinstance(meta_map, dict) else None
-        if not isinstance(entry, dict):
-            return {"priority_offset": 0.0, "snooze_until": None, "dependency_session_id": None}
-        return {
-            "priority_offset": _clean_priority_offset(entry.get("priority_offset")),
-            "snooze_until": _clean_snooze_until(entry.get("snooze_until")),
-            "dependency_session_id": _clean_dependency_session_id(entry.get("dependency_session_id")),
-        }
+        return self._ui_state_coordinator_for_manager().sidebar_meta_get(session_id)
 
     def sidebar_meta_set(
         self,
@@ -2177,28 +2139,12 @@ class SessionManager:
         snooze_until: Any,
         dependency_session_id: Any,
     ) -> dict[str, Any]:
-        offset = _clean_priority_offset(priority_offset)
-        snooze_until_clean = _clean_snooze_until(snooze_until)
-        dependency_clean = _clean_dependency_session_id(dependency_session_id)
-        with self._lock:
-            if session_id not in self._sessions:
-                raise KeyError("unknown session")
-            if dependency_clean == session_id:
-                raise ValueError("session cannot depend on itself")
-            if dependency_clean is not None and dependency_clean not in self._sessions:
-                raise ValueError("dependency session not found")
-            entry = {"priority_offset": offset}
-            if snooze_until_clean is not None:
-                entry["snooze_until"] = snooze_until_clean
-            if dependency_clean is not None:
-                entry["dependency_session_id"] = dependency_clean
-            meta_map = getattr(self, "_sidebar_meta", None)
-            if not isinstance(meta_map, dict):
-                self._sidebar_meta = {}
-                meta_map = self._sidebar_meta
-            meta_map[session_id] = entry
-        self._save_sidebar_meta()
-        return {"priority_offset": offset, "snooze_until": snooze_until_clean, "dependency_session_id": dependency_clean}
+        return self._ui_state_coordinator_for_manager().sidebar_meta_set(
+            session_id,
+            priority_offset=priority_offset,
+            snooze_until=snooze_until,
+            dependency_session_id=dependency_session_id,
+        )
 
     def edit_session(
         self,
@@ -2209,38 +2155,13 @@ class SessionManager:
         snooze_until: Any,
         dependency_session_id: Any,
     ) -> tuple[str, dict[str, Any]]:
-        alias = _clean_alias(name)
-        offset = _clean_priority_offset(priority_offset)
-        snooze_until_clean = _clean_snooze_until(snooze_until)
-        dependency_clean = _clean_dependency_session_id(dependency_session_id)
-        with self._lock:
-            if session_id not in self._sessions:
-                raise KeyError("unknown session")
-            if dependency_clean == session_id:
-                raise ValueError("session cannot depend on itself")
-            if dependency_clean is not None and dependency_clean not in self._sessions:
-                raise ValueError("dependency session not found")
-            aliases = getattr(self, "_aliases", None)
-            if not isinstance(aliases, dict):
-                self._aliases = {}
-                aliases = self._aliases
-            if alias:
-                aliases[session_id] = alias
-            else:
-                aliases.pop(session_id, None)
-            meta_map = getattr(self, "_sidebar_meta", None)
-            if not isinstance(meta_map, dict):
-                self._sidebar_meta = {}
-                meta_map = self._sidebar_meta
-            entry = {"priority_offset": offset}
-            if snooze_until_clean is not None:
-                entry["snooze_until"] = snooze_until_clean
-            if dependency_clean is not None:
-                entry["dependency_session_id"] = dependency_clean
-            meta_map[session_id] = entry
-        self._save_aliases()
-        self._save_sidebar_meta()
-        return alias, {"priority_offset": offset, "snooze_until": snooze_until_clean, "dependency_session_id": dependency_clean}
+        return self._ui_state_coordinator_for_manager().edit_session(
+            session_id,
+            name=name,
+            priority_offset=priority_offset,
+            snooze_until=snooze_until,
+            dependency_session_id=dependency_session_id,
+        )
 
     def _prune_stale_socket_without_metadata(self, session_id: str, sock: Path) -> None:
         with self._lock:
@@ -3274,6 +3195,25 @@ class SessionManager:
             sessions=lambda: self._sessions,
             store=self._session_store_for_manager(),
             save_files=self._save_files,
+        )
+
+    def _ui_state_coordinator_for_manager(self) -> SessionUiStateCoordinator:
+        return SessionUiStateCoordinator(
+            lock=self._lock,
+            sessions=lambda: self._sessions,
+            aliases=lambda: self._aliases,
+            set_aliases=lambda value: setattr(self, "_aliases", value),
+            sidebar_meta=lambda: self._sidebar_meta,
+            set_sidebar_meta=lambda value: setattr(self, "_sidebar_meta", value),
+            hidden_sessions=lambda: self._hidden_sessions,
+            set_hidden_sessions=lambda value: setattr(self, "_hidden_sessions", value),
+            save_aliases=self._save_aliases,
+            save_sidebar_meta=self._save_sidebar_meta,
+            save_hidden_sessions=self._save_hidden_sessions,
+            clean_alias=_clean_alias,
+            clean_priority_offset=_clean_priority_offset,
+            clean_snooze_until=_clean_snooze_until,
+            clean_dependency_session_id=_clean_dependency_session_id,
         )
 
     def _kill_session_via_pids(self, s: Session) -> bool:
