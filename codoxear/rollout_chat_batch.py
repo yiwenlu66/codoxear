@@ -156,4 +156,3 @@ def _extract_chat_events(
         {"turn_start": turn_start, "turn_end": turn_end, "turn_aborted": turn_aborted},
         {"tool_names": sorted(tool_names), "last_tool": last_tool},
     )
-

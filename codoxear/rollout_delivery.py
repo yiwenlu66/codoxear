@@ -101,4 +101,3 @@ def _extract_delivery_messages(
         last_text_key = text_key
         out.append(ClassifiedAssistantMessage(message_id=message_id, message_class=message_class, text=text, ts=ts))
     return out
-

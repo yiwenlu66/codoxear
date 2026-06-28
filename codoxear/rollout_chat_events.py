@@ -278,4 +278,3 @@ def _dedupe_assistant_chat_events(events: list[dict[str, Any]]) -> list[dict[str
             continue
         out.append(event)
     return out
-
