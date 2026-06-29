@@ -4372,3 +4372,14 @@
   - Focused frontend/static group returned `61 passed`.
   - Full local `python3 -m pytest -q` returned `1227 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+## 2026-06-29T08:36:16Z JSONL offset reader split
+- Functional commit `6c83f80 Extract JSONL offset reader` moved bounded JSONL offset parsing from `codoxear/util.py` into new `codoxear/jsonl_offset.py`.
+- `util.py` remains the compatibility facade for `read_jsonl_from_offset` and injects `util._log_exception` into the new helper, preserving the existing error logging seam without creating a `jsonl_offset -> util` import cycle.
+- `util.py` reduced from 436 lines to 385 lines; `jsonl_offset.py` is 77 lines.
+- Source sentinel `tests/test_jsonl_offset_source.py` asserts the new owner handles bounded reads, oversized unterminated behavior, newline offset advancement, JSON decode skipping, and no util import, while `util.py` remains a wrapper that passes `_log_exception`.
+- Validation after `6c83f80`:
+  - `python3 -m py_compile codoxear/util.py codoxear/jsonl_offset.py` passed.
+  - Focused JSONL/broker/sessiond group returned `110 passed`.
+  - Full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
