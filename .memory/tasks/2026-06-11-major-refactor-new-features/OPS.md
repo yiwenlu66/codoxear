@@ -3810,3 +3810,31 @@
   - Focused broker/reducer group returned `127 passed`.
   - Full local `python3 -m pytest -q` returned `1181 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T00:19:34Z Broker launch helper split
+- Functional commit `56f4bf3 Extract broker launch helpers` moved broker launch/session/path derivation out of `codoxear/broker.py` into new `codoxear/broker_launch.py`:
+  - `SHELL_PRE_EXEC_MARKER` / `SHELL_PRE_EXEC_MARKER_BYTES`
+  - `_resume_session_id_from_args`
+  - `_session_log_path_from_args`
+  - `_pi_session_dir_name`
+  - `_pi_session_dir_from_args`
+  - `_pi_new_session_log_path`
+  - `_pi_active_session_marker_path`
+  - `_pi_bridge_extension_path`
+  - `_ensure_pi_bridge_args`
+  - `_reset_pi_active_session_marker`
+  - `_read_pi_active_session_marker`
+  - `_ensure_pi_session_arg`
+  - `_expand_cwd`
+  - `_user_shell`
+  - `_shell_argv_for_command`
+  - `_agent_shell_command`
+- Compatibility preserved: `codoxear.broker` still exports the historical private helper names used by tests/callers. Patch-sensitive wrappers remain in `broker.py` for `_resume_session_id_from_args`, `_ensure_pi_bridge_args`, `_ensure_pi_session_arg`, and `_shell_argv_for_command` so patched `codoxear.broker.AGENT_BACKEND` and `codoxear.broker._user_shell` still affect behavior.
+- Process boundary preserved: actual `os.chdir`/`os.execvpe` wrappers `_exec_agent` and `_exec_agent_via_login_shell` remain in `broker.py`; this split moved derivation policy, not PTY process replacement.
+- Negative evidence repaired before commit: the first import cleanup removed `_read_session_meta_payload`, but log binding still needs it in `_maybe_register_or_switch_rollout`; focused broker tests caught `NameError`, and the import was restored.
+- Source sentinel update: new `tests/test_broker_launch_source.py` pins launch/path helper ownership in `broker_launch.py` and wrapper injection in `broker.py`.
+- Size observation: `broker.py` is now 1365 lines; `broker_launch.py` is 230 lines; `broker_turn_state.py` remains 428 lines.
+- Validation after `56f4bf3`:
+  - Focused broker/launch group returned `121 passed`.
+  - Full local `python3 -m pytest -q` returned `1183 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
