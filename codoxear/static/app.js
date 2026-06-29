@@ -9790,6 +9790,15 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return true;
         }
 
+        function finalizeFileOpenSuccess(rel, absPath = null) {
+          applyFileMode();
+          rememberOpenedFile(rel, absPath);
+          rememberActiveFileSelection();
+          updateFileEditButton();
+          renderFilePickerMenu();
+          return true;
+        }
+
         async function openFilePath(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {}) {
           if (blockUnavailableFileAction()) return false;
           if (!fileViewerSessionId) return false;
@@ -9817,8 +9826,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               const currentText = res && typeof res.current_text === "string" ? res.current_text : "";
               const loaded = await applyFileLoadResult(rel, { kind: "diff", baseText, currentText, baseExists: res && res.base_exists, currentExists: res && res.current_exists }, request, { viewMode });
               if (!loaded) return false;
-              applyFileMode();
-              rememberOpenedFile(rel, res && typeof res.abs_path === "string" ? res.abs_path : null);
+              return finalizeFileOpenSuccess(rel, res && typeof res.abs_path === "string" ? res.abs_path : null);
             } else {
               const gitPathQuery = request.gitPath ? "&git_path=1" : "";
               const pathTokenQuery = request.gitPath && request.apiPath ? `&path_token=${encodeURIComponent(request.apiPath)}` : "";
@@ -9828,13 +9836,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               if (!isCurrentFileOpenRequest(request)) return false;
               const loaded = await applyFileLoadResult(rel, res, request, { viewMode });
               if (!loaded) return false;
-              applyFileMode();
-              rememberOpenedFile(rel, typeof res.path === "string" ? res.path : null);
+              return finalizeFileOpenSuccess(rel, typeof res.path === "string" ? res.path : null);
             }
-            rememberActiveFileSelection();
-            updateFileEditButton();
-            renderFilePickerMenu();
-            return true;
           } catch (e) {
             if (e && e.name === "AbortError") return false;
             if (!isCurrentFileOpenRequest(request)) return false;

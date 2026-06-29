@@ -861,6 +861,38 @@ def eval_active_file_load_state_writers() -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_file_open_success_finalizer() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("function finalizeFileOpenSuccess(")
+    end = source.index("async function openFilePath", start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{
+          calls: [],
+          applyFileMode: () => ctx.calls.push(["applyFileMode"]),
+          rememberOpenedFile: (...args) => ctx.calls.push(["rememberOpenedFile", ...args]),
+          rememberActiveFileSelection: () => ctx.calls.push(["rememberActiveFileSelection"]),
+          updateFileEditButton: () => ctx.calls.push(["updateFileEditButton"]),
+          renderFilePickerMenu: () => ctx.calls.push(["renderFilePickerMenu"]),
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_finalize_open = finalizeFileOpenSuccess;\n")}, ctx);
+        const ok = ctx.__test_finalize_open("src/app.py", "/abs/src/app.py");
+        process.stdout.write(JSON.stringify({{ ok, calls: ctx.calls }}));
+        """
+    )
+    proc = subprocess.run(
+        ["node", "-e", js],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return json.loads(proc.stdout)
+
+
 def eval_file_load_result_dispatcher() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     state_start = source.index("function applyActiveFileTextState(")
@@ -1252,6 +1284,21 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('applyActiveFileNonTextState("download_only");', source)
         self.assertIn('applyActiveFileTextState({ kind: result.kind === "markdown" ? "markdown" : "text", text: result.text, editable: Boolean(result.editable), version: typeof result.version === "string" ? result.version : "" });', source)
 
+    def test_file_open_success_finalizer_is_single_owned(self) -> None:
+        result = eval_file_open_success_finalizer()
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["calls"], [
+            ["applyFileMode"],
+            ["rememberOpenedFile", "src/app.py", "/abs/src/app.py"],
+            ["rememberActiveFileSelection"],
+            ["updateFileEditButton"],
+            ["renderFilePickerMenu"],
+        ])
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("function finalizeFileOpenSuccess(rel, absPath = null)", source)
+        self.assertIn("return finalizeFileOpenSuccess(rel, res && typeof res.abs_path === \"string\" ? res.abs_path : null);", source)
+        self.assertIn("return finalizeFileOpenSuccess(rel, typeof res.path === \"string\" ? res.path : null);", source)
+
     def test_file_load_result_dispatcher_preserves_branch_state_and_rendering(self) -> None:
         result = eval_file_load_result_dispatcher()
         self.assertTrue(result["diff"]["ok"])
@@ -1495,6 +1542,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function setFileRenderSurface(surface)", source)
         self.assertIn('throw new Error("invalid file render surface")', source)
         self.assertIn("async function applyFileLoadResult(rel, result, request, { viewMode = \"file\" } = {})", source)
+        self.assertIn("function finalizeFileOpenSuccess(rel, absPath = null)", source)
         self.assertIn('const loaded = await applyFileLoadResult(rel, { kind: "diff", baseText, currentText, baseExists: res && res.base_exists, currentExists: res && res.current_exists }, request, { viewMode });', source)
         self.assertIn("const loaded = await applyFileLoadResult(rel, res, request, { viewMode });", source)
         self.assertEqual(source.count('setFileRenderSurface("diff");'), 6)
