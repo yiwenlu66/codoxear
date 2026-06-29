@@ -2117,7 +2117,9 @@
           typeof codoxearMessageRows.clearChatSearchMarks !== "function" ||
           typeof codoxearMessageRows.applyChatSearchMarks !== "function" ||
           typeof codoxearMessageRows.oldestRenderedHistoryCursor !== "function" ||
-          typeof codoxearMessageRows.firstVisibleMessageRow !== "function"
+          typeof codoxearMessageRows.firstVisibleMessageRow !== "function" ||
+          typeof codoxearMessageRows.trimRenderedRowTargets !== "function" ||
+          typeof codoxearMessageRows.trimRowsBeforeViewportTargets !== "function"
         )
           throw new Error("Codoxear message row helpers failed to load");
 
@@ -2163,6 +2165,14 @@
 
         function firstVisibleMessageRow() {
           return codoxearMessageRows.firstVisibleMessageRow(renderedMessageRows(), chat.scrollTop + 1);
+        }
+
+        function trimRenderedRowTargets(rows, fromTop, maxRows) {
+          return codoxearMessageRows.trimRenderedRowTargets(rows, fromTop, maxRows, CHAT_DOM_WINDOW);
+        }
+
+        function trimRowsBeforeViewportTargets(rows, maxRows, viewportTop) {
+          return codoxearMessageRows.trimRowsBeforeViewportTargets(rows, maxRows, CHAT_DOM_WINDOW, viewportTop);
         }
 
         function syncMessageCopyTabStops() {
@@ -2930,38 +2940,16 @@
         }
 
         function trimRenderedRows({ fromTop, maxRows = CHAT_DOM_WINDOW }) {
-          const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row") && !x.classList.contains("recovery-panel-row"));
-          const allowedRows = Number.isFinite(Number(maxRows))
-            ? Math.max(1, Math.floor(Number(maxRows)))
-            : CHAT_DOM_WINDOW;
-          if (rows.length <= allowedRows) return;
-          const extra = rows.length - allowedRows;
-          if (fromTop) {
-            for (const row of rows.slice(0, extra)) row.remove();
-            renderedAtLiveTail = true;
-          } else {
-            for (const row of rows.slice(rows.length - extra)) row.remove();
-            renderedAtLiveTail = false;
-          }
+          const targets = trimRenderedRowTargets(renderedMessageRows(), fromTop, maxRows);
+          if (!targets.length) return;
+          for (const row of targets) row.remove();
+          renderedAtLiveTail = Boolean(fromTop);
         }
 
         function trimRenderedRowsBeforeViewport({ maxRows = CHAT_DOM_WINDOW } = {}) {
-          const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row") && !x.classList.contains("recovery-panel-row"));
-          const allowedRows = Number.isFinite(Number(maxRows))
-            ? Math.max(CHAT_DOM_WINDOW, Math.floor(Number(maxRows)))
-            : CHAT_DOM_WINDOW;
-          if (rows.length <= allowedRows) return;
-          const extra = rows.length - allowedRows;
-          const viewportTop = chat.scrollTop + 1;
-          let firstVisible = 0;
-          while (firstVisible < rows.length) {
-            const row = rows[firstVisible];
-            if ((row.offsetTop + row.offsetHeight) > viewportTop) break;
-            firstVisible += 1;
-          }
-          const removable = Math.min(extra, firstVisible);
-          if (removable <= 0) return;
-          for (const row of rows.slice(0, removable)) row.remove();
+          const targets = trimRowsBeforeViewportTargets(renderedMessageRows(), maxRows, chat.scrollTop + 1);
+          if (!targets.length) return;
+          for (const row of targets) row.remove();
         }
 
         function messageRowDeps() {

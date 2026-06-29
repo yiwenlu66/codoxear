@@ -213,6 +213,32 @@
     return rows.length ? rows[rows.length - 1] : null;
   }
 
+  function trimRenderedRowTargets(rows, fromTop, maxRows, defaultMaxRows) {
+    const allowedRows = Number.isFinite(Number(maxRows))
+      ? Math.max(1, Math.floor(Number(maxRows)))
+      : defaultMaxRows;
+    if (rows.length <= allowedRows) return [];
+    const extra = rows.length - allowedRows;
+    return fromTop ? rows.slice(0, extra) : rows.slice(rows.length - extra);
+  }
+
+  function trimRowsBeforeViewportTargets(rows, maxRows, defaultMaxRows, viewportTop) {
+    const allowedRows = Number.isFinite(Number(maxRows))
+      ? Math.max(defaultMaxRows, Math.floor(Number(maxRows)))
+      : defaultMaxRows;
+    if (rows.length <= allowedRows) return [];
+    const extra = rows.length - allowedRows;
+    let firstVisible = 0;
+    while (firstVisible < rows.length) {
+      const row = rows[firstVisible];
+      if ((row.offsetTop + row.offsetHeight) > viewportTop) break;
+      firstVisible += 1;
+    }
+    const removable = Math.min(extra, firstVisible);
+    if (removable <= 0) return [];
+    return rows.slice(0, removable);
+  }
+
   window.CodoxearMessageRows = Object.freeze({
     makeRow,
     safeMakeRow,
@@ -229,5 +255,7 @@
     applyChatSearchMarks,
     oldestRenderedHistoryCursor,
     firstVisibleMessageRow,
+    trimRenderedRowTargets,
+    trimRowsBeforeViewportTargets,
   });
 })();
