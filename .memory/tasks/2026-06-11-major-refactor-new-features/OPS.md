@@ -4453,3 +4453,12 @@
   - Focused frontend/static group returned `61 passed`.
   - Full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+## 2026-06-29T09:14:34Z Frontend chat search mark helper split clean-room review PASS
+- Async clean-room review `d3c78b12-b162-4058-ae49-04a3f3122d51` returned `PASS` for functional commit `1219fb1` and docs `f4df409`.
+- Reviewer verified `app_message_rows.js` owns pure `clearChatSearchMarks(rows)` and `applyChatSearchMarks(matches, currentRow)` row-class helpers with no `chatSearch*` state references.
+- Reviewer verified `app.js` retains chatSearchMatches/chatSearchIndex/chatSearchQuery/all-count/loading state, status text computation, match computation, forced-query markers, older-message loading policy, scrolling/reduced-motion, and pulse behavior.
+- Reviewer verified exact class names and multi-token remove/add behavior, current-row-only marking, fail-closed guard coverage, source/runtime tests, node syntax checks, no secrets/runtime artifacts, docs-only docs commit, no protected checkout mutation, and no Docker overclaim.
+- Reviewer validation: focused frontend/static group passed and full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
+- Reviewer found no blockers; residual note was test-clarity-only that emitted search-mark JSON values should also have explicit Python assertions. The follow-up row-selection test edit adds those assertions.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
