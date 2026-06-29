@@ -4643,3 +4643,12 @@
   - Focused broker-proc/session-log/process group returned `100 passed`.
   - Full local `python3 -m pytest -q` returned `1239 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+
+## 2026-06-29T12:59:24Z Proc-open log discovery clean-room review PASS
+- Async reviewer run `93124bae-3535-4d70-8f7f-a3707500f984` returned `RESULT: PASS` for functional commit `abf820e` and docs commit `89a55e1`.
+- Review evidence: `proc_find_open_rollout_log` filtering policy moved from `codoxear/util.py` to `codoxear/session_log_discovery.py` with identical step structure; `codoxear.util.proc_find_open_rollout_log()` preserves the public signature and injects backend normalization, writable-open-log enumeration, metadata reading, subagent filtering, and cwd matching dependencies.
+- Review verified exact policy semantics: empty candidates `None`, ignored-path resolution, newest-first sort with exception guard, candidate resolve fallback, metadata zero-timeout read, missing metadata skip, Codex subagent skip, cwd matching when provided, and exactly-one-match return.
+- Review verified `codoxear.util.os.path.samefile` cwd-alias patching remains effective through shared `os` module state and `_payload_cwd_matches`, and that broker/server/sessiond imports remain compatible.
+- Review observed py_compile, focused tests, and full local pytest evidence (`1239 passed, 107 subtests passed`); no import cycles, no protected checkout mutation, no secrets/runtime artifacts, docs-only docs commit, and no Docker overclaim.
+- Reviewer noted a focused-count documentation ambiguity; full local evidence is correct.
