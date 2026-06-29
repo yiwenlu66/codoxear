@@ -746,6 +746,7 @@ class TestFileViewerSource(unittest.TestCase):
         config_source = (SERVER_PY.parent / "server_config.py").read_text(encoding="utf-8")
         module_source = (SERVER_PY.parent / "video_preview.py").read_text(encoding="utf-8")
         file_routes_source = (SERVER_PY.parent / "file_routes.py").read_text(encoding="utf-8")
+        file_get_routes_source = (SERVER_PY.parent / "file_get_routes.py").read_text(encoding="utf-8")
         file_global_routes_source = (SERVER_PY.parent / "file_global_routes.py").read_text(encoding="utf-8")
         route_deps_source = (SERVER_PY.parent / "server_route_deps.py").read_text(encoding="utf-8")
         self.assertIn('VIDEO_PREVIEW_DIR=app_dir / "video_previews"', config_source)
@@ -758,7 +759,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('"-pix_fmt"', module_source)
         self.assertIn('"yuv420p"', module_source)
         self.assertIn('"aac"', module_source)
-        self.assertIn('"video preview failed:', file_routes_source)
+        self.assertIn("from .file_get_routes import handle_absolute_file_preview_route", file_routes_source)
+        self.assertIn('"video preview failed:', file_get_routes_source)
         self.assertIn('"preview_content_type": "video/mp4"', module_source)
         self.assertIn('"video_preview_url": preview_url', module_source)
         self.assertIn('VIDEO_PREVIEW_CACHE_MAX_FILES = _positive_int_env("CODEX_WEB_VIDEO_PREVIEW_MAX_FILES", 256)', module_source)
@@ -766,8 +768,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('def prune_video_preview_cache(', module_source)
         self.assertIn('prune_video_preview_cache(preview_dir, keep=out)', module_source)
         self.assertIn("preview_url=media_preview_url", file_global_routes_source)
-        self.assertIn('deps.send_inline_file_response(handler, path_obj, content_type or "application/octet-stream")', file_routes_source)
-        self.assertIn('deps.send_inline_file_response(handler, preview, "video/mp4")', file_routes_source)
+        self.assertIn('deps.send_inline_file_response(handler, path_obj, content_type or "application/octet-stream")', file_get_routes_source)
+        self.assertIn('deps.send_inline_file_response(handler, preview, "video/mp4")', file_get_routes_source)
 
     def test_attach_limit_comes_from_server_constant(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
