@@ -150,7 +150,7 @@ def eval_open_file_reference_nonliteral() -> dict:
 
 def eval_file_paste_dialog_fallback() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
-    predicate_start = source.index("function activeFileEditorWritable() {")
+    predicate_start = source.index("function currentFileEditorState() {")
     predicate_end = source.index("function syncFileEditorReadOnly()", predicate_start)
     start = source.index("function hideFilePasteDialog({ restoreFocus = false } = {}) {")
     end = source.index("function insertIntoActiveFileEditor(text)", start)
@@ -174,7 +174,15 @@ def eval_file_paste_dialog_fallback() -> dict:
             activeFileEditable: true,
             fileViewMode: "file",
             activeFileKind: "text",
+            activeFilePath: "note.txt",
+            activeFileApiPath: "",
+            activeFileGitPath: false,
+            activeFileVersion: "v1",
+            activeFileDraft: false,
+            fileEditorKind: "file",
+            fileDirty: false,
             fileSavePending: false,
+            fileViewerSessionId: "sid-1",
             filePasteBackdrop: {{ style: {{ display: "none" }} }},
             filePasteDialog: {{ style: {{ display: "none" }} }},
             filePasteInput: {{
@@ -240,22 +248,28 @@ def eval_file_paste_dialog_fallback() -> dict:
 
 def eval_file_editor_capability_predicates() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function activeFileCanEnterEditMode() {")
+    start = source.index("function currentFileEditorState() {")
     end = source.index("function syncFileEditorReadOnly()", start)
     snippet = source[start:end]
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const snippet = {json.dumps(snippet + "\nglobalThis.__test_eval = () => ({ canEnter: activeFileCanEnterEditMode(), writable: activeFileEditorWritable(), idleWritable: activeFileEditorIdleWritable(), idleTextWritable: activeFileEditorIdleTextWritable(), editModeAllowed: activeFileEditModeAllowedInCurrentView() });\n")};
+        const snippet = {json.dumps(snippet + "\nglobalThis.__test_eval = () => { const state = currentFileEditorState(); return { state, capabilities: fileEditorCapabilities(state), wrappers: { canEnter: activeFileCanEnterEditMode(), writable: activeFileEditorWritable(), idleWritable: activeFileEditorIdleWritable(), idleTextWritable: activeFileEditorIdleTextWritable(), editModeAllowed: activeFileEditModeAllowedInCurrentView() } }; };\n")};
         function runCase(overrides = {{}}) {{
           const ctx = {{
             activeFilePath: overrides.path === false ? "" : "note.md",
+            activeFileApiPath: overrides.apiPath || "",
+            activeFileGitPath: Boolean(overrides.gitPath),
             activeFileKind: overrides.kind || "markdown",
             activeFileEditable: overrides.editable !== false,
+            activeFileVersion: overrides.version || "v1",
+            activeFileDraft: Boolean(overrides.draft),
             fileViewMode: overrides.viewMode || "file",
             fileEditorKind: overrides.editorKind || "file",
             fileEditMode: overrides.editMode !== false,
+            fileDirty: Boolean(overrides.dirty),
             fileSavePending: Boolean(overrides.pending),
+            fileViewerSessionId: overrides.sessionId === false ? "" : "sid-1",
             unavailable: Boolean(overrides.unavailable),
             isTextFileKind: (kind) => kind === "text" || kind === "markdown",
             isFileViewerSessionUnavailable: () => ctx.unavailable,
@@ -289,7 +303,7 @@ def eval_file_editor_capability_predicates() -> dict:
 
 def eval_file_editor_save_shortcut() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
-    predicate_start = source.index("function activeFileEditorWritable() {")
+    predicate_start = source.index("function currentFileEditorState() {")
     predicate_end = source.index("function syncFileEditorReadOnly()", predicate_start)
     handler_start = source.index("function isActiveFileEditorInput(target) {")
     handler_end = source.index("function isFileEditorNativeDeleteEvent(e)", handler_start)
@@ -321,6 +335,12 @@ def eval_file_editor_save_shortcut() -> dict:
             activeFileEditable: overrides.editable !== false,
             fileViewMode: overrides.fileViewMode || "file",
             activeFileKind: overrides.kind || "text",
+            activeFileApiPath: overrides.apiPath || "",
+            activeFileGitPath: Boolean(overrides.gitPath),
+            activeFileVersion: overrides.version || "v1",
+            activeFileDraft: Boolean(overrides.draft),
+            fileEditorKind: overrides.editorKind || "file",
+            fileDirty: Boolean(overrides.dirty),
             fileSavePending: Boolean(overrides.pending),
             fileViewerSessionId: overrides.sessionId === false ? "" : "sid-1",
             activeFilePath: overrides.path === false ? "" : "note.txt",
@@ -473,7 +493,7 @@ def eval_file_touch_selection_keydown() -> dict:
 
 def eval_file_editor_delete_shortcut() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
-    predicate_start = source.index("function activeFileEditorWritable() {")
+    predicate_start = source.index("function currentFileEditorState() {")
     predicate_end = source.index("function syncFileEditorReadOnly()", predicate_start)
     handler_start = source.index("function isActiveFileEditorInput(target) {")
     handler_end = source.index("function isFileEditorNativeDeleteEvent(e)", handler_start)
@@ -505,6 +525,16 @@ def eval_file_editor_delete_shortcut() -> dict:
             fileEditMode: overrides.editMode !== false,
             activeFileEditable: overrides.editable !== false,
             fileViewMode: overrides.fileViewMode || "file",
+            activeFileKind: overrides.kind || "text",
+            activeFilePath: overrides.path === false ? "" : "note.txt",
+            activeFileApiPath: overrides.apiPath || "",
+            activeFileGitPath: Boolean(overrides.gitPath),
+            activeFileVersion: overrides.version || "v1",
+            activeFileDraft: Boolean(overrides.draft),
+            fileEditorKind: overrides.editorKind || "file",
+            fileDirty: Boolean(overrides.dirty),
+            fileSavePending: Boolean(overrides.pending),
+            fileViewerSessionId: overrides.sessionId === false ? "" : "sid-1",
             unavailable: Boolean(overrides.unavailable),
             fileTouchSelectMode: overrides.selectMode !== false,
             fileTouchDeleteNativeSuppressUntil: 0,
@@ -519,6 +549,7 @@ def eval_file_editor_delete_shortcut() -> dict:
               getDomNode: () => editorNode,
               trigger: (source, command, payload) => ctx.triggers.push({{ source, command, payload }}),
             }}),
+            isTextFileKind: (kind) => kind === "text" || kind === "markdown",
             isFileViewerSessionUnavailable: () => ctx.unavailable,
             fileEditorDeleteCommandForKey: (key) => key === "backspace" ? "deleteLeft" : key === "delete" ? "deleteRight" : "",
             focusActiveFileCodeEditor: () => {{ ctx.focusCount += 1; }},
@@ -872,7 +903,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("syncFileEditorReadOnly();", helper_block)
         self.assertIn("updateFileEditButton();", helper_block)
         self.assertIn("fileViewerUnavailableSessionId = \"\";", source)
-        self.assertIn("if (isFileViewerSessionUnavailable()) return false;", source)
+        self.assertIn("unavailable: isFileViewerSessionUnavailable(),", source)
+        self.assertIn("const unavailable = Boolean(state.unavailable);", source)
         self.assertIn("if (blockUnavailableFileAction()) return false;", source)
         open_primitive_start = source.index("async function openFilePath(nextPath")
         open_primitive_end = source.index("fileBtn.onclick", open_primitive_start)
@@ -988,22 +1020,53 @@ class TestFileViewerSource(unittest.TestCase):
 
     def test_file_editor_capability_predicates_preserve_distinctions(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("function activeFileEditorWritable()", source)
-        self.assertIn("function activeFileEditorIdleWritable()", source)
-        self.assertIn("function activeFileEditorIdleTextWritable()", source)
-        self.assertIn("function activeFileEditModeAllowedInCurrentView()", source)
+        self.assertIn("function currentFileEditorState()", source)
+        self.assertIn("function fileEditorCapabilities(state)", source)
+        self.assertIn("function activeFileEditorCapabilities()", source)
+        self.assertIn("return fileEditorCapabilities(currentFileEditorState());", source)
+        self.assertIn("Object.freeze({", source)
         self.assertIn("fileEditor.updateOptions({ readOnly: !activeFileEditorWritable() });", source)
         self.assertIn("const canPaste = activeFileEditorIdleTextWritable();", source)
         self.assertIn("fileEditMode = Boolean(nextMode) && activeFileEditModeAllowedInCurrentView();", source)
         result = eval_file_editor_capability_predicates()
-        self.assertEqual(result["editableText"], {"canEnter": True, "writable": True, "idleWritable": True, "idleTextWritable": True, "editModeAllowed": True})
-        self.assertEqual(result["savePending"], {"canEnter": False, "writable": True, "idleWritable": False, "idleTextWritable": False, "editModeAllowed": True})
-        self.assertEqual(result["previewMode"], {"canEnter": True, "writable": False, "idleWritable": False, "idleTextWritable": False, "editModeAllowed": False})
-        self.assertEqual(result["binaryKind"], {"canEnter": False, "writable": True, "idleWritable": True, "idleTextWritable": False, "editModeAllowed": False})
-        self.assertEqual(result["unavailable"], {"canEnter": False, "writable": False, "idleWritable": False, "idleTextWritable": False, "editModeAllowed": False})
-        self.assertEqual(result["plainFallback"], {"canEnter": False, "writable": True, "idleWritable": True, "idleTextWritable": True, "editModeAllowed": True})
-        self.assertEqual(result["notEditing"], {"canEnter": True, "writable": False, "idleWritable": False, "idleTextWritable": False, "editModeAllowed": True})
-        self.assertEqual(result["missingPath"], {"canEnter": False, "writable": True, "idleWritable": True, "idleTextWritable": True, "editModeAllowed": True})
+
+        def assert_capability_case(name: str, expected: dict[str, bool]) -> None:
+            case = result[name]
+            self.assertEqual(
+                case["wrappers"],
+                {
+                    "canEnter": expected["canEnter"],
+                    "writable": expected["writable"],
+                    "idleWritable": expected["idleWritable"],
+                    "idleTextWritable": expected["idleTextWritable"],
+                    "editModeAllowed": expected["editModeAllowed"],
+                },
+            )
+            self.assertEqual(
+                case["capabilities"],
+                {
+                    "canEnterEditMode": expected["canEnter"],
+                    "writable": expected["writable"],
+                    "idleWritable": expected["idleWritable"],
+                    "idleTextWritable": expected["idleTextWritable"],
+                    "editModeAllowedInCurrentView": expected["editModeAllowed"],
+                },
+            )
+
+        assert_capability_case("editableText", {"canEnter": True, "writable": True, "idleWritable": True, "idleTextWritable": True, "editModeAllowed": True})
+        assert_capability_case("savePending", {"canEnter": False, "writable": True, "idleWritable": False, "idleTextWritable": False, "editModeAllowed": True})
+        assert_capability_case("previewMode", {"canEnter": True, "writable": False, "idleWritable": False, "idleTextWritable": False, "editModeAllowed": False})
+        assert_capability_case("binaryKind", {"canEnter": False, "writable": True, "idleWritable": True, "idleTextWritable": False, "editModeAllowed": False})
+        assert_capability_case("unavailable", {"canEnter": False, "writable": False, "idleWritable": False, "idleTextWritable": False, "editModeAllowed": False})
+        assert_capability_case("plainFallback", {"canEnter": False, "writable": True, "idleWritable": True, "idleTextWritable": True, "editModeAllowed": True})
+        assert_capability_case("notEditing", {"canEnter": True, "writable": False, "idleWritable": False, "idleTextWritable": False, "editModeAllowed": True})
+        assert_capability_case("missingPath", {"canEnter": False, "writable": True, "idleWritable": True, "idleTextWritable": True, "editModeAllowed": True})
+        self.assertEqual(result["editableText"]["state"]["path"], "note.md")
+        self.assertEqual(result["editableText"]["state"]["kind"], "markdown")
+        self.assertEqual(result["editableText"]["state"]["sessionId"], "sid-1")
+        self.assertFalse(result["editableText"]["state"]["unavailable"])
+        self.assertTrue(result["savePending"]["state"]["savePending"])
+        self.assertEqual(result["missingPath"]["state"]["path"], "")
 
     def test_file_editor_save_shortcut_is_scoped_to_active_edit_mode(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

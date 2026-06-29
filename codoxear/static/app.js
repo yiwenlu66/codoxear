@@ -7397,29 +7397,65 @@
           return fileViewer.style.display === "flex";
         }
 
+        function currentFileEditorState() {
+          return Object.freeze({
+            path: String(activeFilePath || ""),
+            apiPath: String(activeFileApiPath || ""),
+            gitPath: Boolean(activeFileGitPath),
+            kind: String(activeFileKind || ""),
+            editable: Boolean(activeFileEditable),
+            version: String(activeFileVersion || ""),
+            draft: Boolean(activeFileDraft),
+            viewMode: String(fileViewMode || ""),
+            editorKind: String(fileEditorKind || ""),
+            editMode: Boolean(fileEditMode),
+            dirty: Boolean(fileDirty),
+            savePending: Boolean(fileSavePending),
+            sessionId: String(fileViewerSessionId || ""),
+            unavailable: isFileViewerSessionUnavailable(),
+          });
+        }
+
+        function fileEditorCapabilities(state) {
+          if (!state || typeof state !== "object") throw new Error("file editor state required");
+          const kind = String(state.kind || "");
+          const textKind = isTextFileKind(kind);
+          const editable = Boolean(state.editable);
+          const unavailable = Boolean(state.unavailable);
+          const viewMode = String(state.viewMode || "");
+          const editorKind = String(state.editorKind || "");
+          const editMode = Boolean(state.editMode);
+          const savePending = Boolean(state.savePending);
+          const canEnterEditMode = Boolean(!unavailable && String(state.path || "") && !savePending && (!kind || textKind) && editorKind !== "plain-fallback" && editable);
+          const writable = Boolean(editMode && editable && viewMode === "file" && !unavailable);
+          const idleWritable = Boolean(writable && !savePending);
+          const idleTextWritable = Boolean(idleWritable && textKind);
+          const editModeAllowedInCurrentView = Boolean(viewMode === "file" && textKind && editable && !unavailable);
+          return Object.freeze({ canEnterEditMode, writable, idleWritable, idleTextWritable, editModeAllowedInCurrentView });
+        }
+
+        function activeFileEditorCapabilities() {
+          return fileEditorCapabilities(currentFileEditorState());
+        }
+
         function activeFileCanEnterEditMode() {
-          if (isFileViewerSessionUnavailable()) return false;
-          if (!activeFilePath || fileSavePending) return false;
-          if (activeFileKind && !isTextFileKind(activeFileKind)) return false;
-          if (fileEditorKind === "plain-fallback") return false;
-          if (fileViewMode === "file") return Boolean(activeFileEditable);
-          return Boolean(activeFileEditable);
+          return activeFileEditorCapabilities().canEnterEditMode;
         }
 
         function activeFileEditorWritable() {
-          return Boolean(fileEditMode && activeFileEditable && fileViewMode === "file" && !isFileViewerSessionUnavailable());
+          return activeFileEditorCapabilities().writable;
         }
 
         function activeFileEditorIdleWritable() {
-          return Boolean(activeFileEditorWritable() && !fileSavePending);
+          return activeFileEditorCapabilities().idleWritable;
         }
 
         function activeFileEditorIdleTextWritable() {
-          return Boolean(activeFileEditorIdleWritable() && isTextFileKind(activeFileKind));
+          return activeFileEditorCapabilities().idleTextWritable;
         }
 
         function activeFileEditModeAllowedInCurrentView() {
-          return Boolean(fileViewMode === "file" && isTextFileKind(activeFileKind) && activeFileEditable && !isFileViewerSessionUnavailable());
+          return activeFileEditorCapabilities().editModeAllowedInCurrentView;
         }
 
         function syncFileEditorReadOnly() {
