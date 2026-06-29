@@ -4841,3 +4841,18 @@
 - Clean-room review `d799b111-6995-41b4-bc8d-d756d22ca1af` returned PASS before the functional commit. Review confirmed image bytes are hash inputs, dynamic URLs carry the version query, routing/CSP/cache semantics are unchanged, URL-prefix behavior is preserved, no unrelated/protected/secrets/runtime changes were present, and browser cache lifecycle proof remains scoped out.
 - Recording note: an earlier uncommitted docs append attempt failed before writing because Python interpreted the literal `{backend}` in this prose as an f-string variable. The corrected append used explicit placeholder substitution.
 - Scope note: this closes deterministic UI image asset freshness for app icon/backend logos. It does not claim browser-level cache lifecycle behavior beyond changed same-origin resource URLs.
+
+
+
+## 2026-06-29T15:14:45Z Queue sweep drain budget
+- Functional commit `65a578e Budget queue sweep drains` changed the queue sweeper from stopping after the first successful `maybe_drain_session_queue()` promotion to stopping after `max_drains_per_sweep` successful promotions. Failed/unready drain attempts still do not consume the budget.
+- Mechanism: `QueueSweepCoordinator` still discovers/prunes sessions, marks orphan-recovery queues, drops missing sessions, builds active nonempty session IDs, and invokes the existing per-session drain path. The only changed behavior is the global success stop condition: default direct coordinator construction remains `max_drains_per_sweep=1`, while the manager factory passes the configured `QUEUE_SWEEP_MAX_DRAINS`.
+- Added `CODEX_WEB_QUEUE_SWEEP_MAX_DRAINS`, exported as `QUEUE_SWEEP_MAX_DRAINS`, defaulting to 4 and clamped to at least 1. `SessionManagerFactoryCaps` passes this through to `queue_sweep_coordinator_for_manager()`.
+- Tests add a three-session ready-drain case with budget 2, proving two sessions drain in one sweep and the third remains queued. Existing queue tests continue to cover idle grace, busy/confirmed-send-boundary handling, duplicate text by item ID, commit-unknown/recovery barriers, and persistence.
+- Validation before commit:
+  - `python3 -m py_compile codoxear/queue_sweep.py codoxear/server_config.py codoxear/session_manager_factories.py tests/test_queue_sweep_idle_guard.py tests/test_server_config.py` passed.
+  - Focused local queue/config group `python3 -m pytest -q tests/test_queue_sweep_idle_guard.py tests/test_session_queue.py tests/test_server_queue_persistence.py tests/test_server_config.py` returned `99 passed, 22 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1243 passed, 107 subtests passed`.
+  - Focused isolated Docker `scripts/codoxear-docker-sandbox test tests/test_queue_sweep_idle_guard.py tests/test_session_queue.py tests/test_server_queue_persistence.py tests/test_server_config.py -q` returned success with 99 tests.
+- Clean-room review `751d3b98-c239-4253-b6f3-a1353ae633db` returned PASS before the functional commit. Review confirmed multiple ready sessions drain up to budget, per-session readiness/idle/recovery/commit-unknown barriers remain in the unchanged drain path, unready sessions are still scanned, direct coordinator construction preserves old default behavior, no lock regression was introduced, and no unrelated/protected/secrets/runtime changes were present.
+- Scope note: this is a queue sweep latency/reliability change for cross-session queued prompts. It does not implement send retry budgets, readiness probe caching, unattended sweep budgets, or browser/UI changes.

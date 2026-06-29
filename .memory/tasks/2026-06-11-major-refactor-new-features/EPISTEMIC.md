@@ -2742,3 +2742,6 @@ Scoped claim: the current branch has a validated backend/server architecture che
 
 
 - UI image asset freshness is now deterministic: `codoxear-icon.png` and backend logo SVG bytes participate in `static_asset_version()`, and dynamic app-icon/backend-logo URLs carry the injected asset version while preserving URL-prefix resolution. Evidence includes focused local/Docker static/launch tests, full local pytest, and clean-room review `d799b111-6995-41b4-bc8d-d756d22ca1af`; browser cache lifecycle behavior remains outside the claim. See OPS UI image asset versioning.
+
+
+- Queue sweep cross-session latency is now bounded by a configurable success budget rather than one successful promotion per sweep: manager-created sweep coordinators use `QUEUE_SWEEP_MAX_DRAINS` (default 4, min 1), while all per-session readiness, idle-grace, recovery, and commit-unknown gates remain in the existing drain path. Evidence includes a three-session budget test, focused local/Docker queue/config validation, full local pytest, and clean-room review `751d3b98-c239-4253-b6f3-a1353ae633db`. See OPS Queue sweep drain budget.
