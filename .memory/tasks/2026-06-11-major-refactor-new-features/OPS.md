@@ -4803,3 +4803,11 @@
   - Full local `python3 -m pytest -q` returned `1241 passed, 107 subtests passed` before commit.
   - Focused isolated Docker `scripts/codoxear-docker-sandbox test tests/test_launch_ui_source.py tests/test_new_session_model_options_source.py tests/test_static_assets.py -q` returned success with 40 tests.
 - Scope note: this is a bounded display-format helper split. It does not claim new provider/model selection behavior, launch validation changes, or broader new-session dialog state extraction.
+
+
+## 2026-06-29T14:29:23Z Provider/model display clean-room review PASS
+- Async reviewer run `6ff54e86-33a4-414d-bb42-f58a1e573377` returned PASS for functional commit `8814928` and docs commit `885c393`.
+- Review evidence: the old inline `newSessionProviderModelDisplay` formatting logic is mechanically equivalent to `app_launch.js::providerModelDisplay` with `newSessionHasProviderChoices()` and `newSessionAllowsCustomProvider()` evaluated in `app.js` and passed as explicit booleans.
+- Review verified the boundary: `app.js` retains live new-session state decisions, provider/model parsing, validation, remembered choices, menu rendering, and selection behavior; `app_launch.js` owns only pure formatting and has no DOM/API/dialog-state references.
+- Review verified fail-closed guard/export, unchanged static load order, VM/source test coverage for no-provider/provider/custom/default cases, local full-suite and focused validation evidence, no unrelated/protected/secrets/runtime changes, and docs that avoid new provider/model selection claims.
+- Residual notes were non-blocking: wrapper name shadowing is intentional and matches existing patterns; raw options passthrough is safe due to helper destructuring defaults; no browser integration test was run.
