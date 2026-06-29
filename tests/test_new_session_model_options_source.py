@@ -58,6 +58,7 @@ def eval_pi_provider_model_runtime(query: str, *, provider_choices: list[str], r
         vm.createContext(ctx);
         vm.runInContext({json.dumps(launch_source)}, ctx);
         ctx.codoxearLaunch = ctx.window.CodoxearLaunch;
+        ctx.providerModelDisplay = (model, providerChoice = "", options = {{}}) => ctx.codoxearLaunch.providerModelDisplay(model, providerChoice, options);
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_dialog = { parseNewSessionProviderModelInput, currentReasoningChoices, setNewSessionProvider, newSessionProviderModelDisplay };\n")}, ctx);
         const parsed = ctx.__test_dialog.parseNewSessionProviderModelInput();
         const choices = ctx.__test_dialog.currentReasoningChoices();
@@ -258,6 +259,7 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
         self.assertIn("setNewSessionProvider(item.providerChoice);", source)
         self.assertIn("const selectedProvider = item.providerAbsent ? \"\" : item.providerChoice || newSessionProvider;", source)
         self.assertIn("newSessionProviderModelDisplay(item.model || \"default\", selectedProvider)", source)
+        self.assertIn('return providerModelDisplay(model, providerChoice, {', source)
         self.assertIn("rememberProviderModelChoice(newSessionBackend, selectedProvider, item.model || \"default\", { providerAbsent: Boolean(item.providerAbsent) });", source)
         self.assertIn("item.recent ? \"Recent\" : item.configured ? \"Configured\"", source)
 

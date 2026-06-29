@@ -169,6 +169,7 @@
         typeof codoxearLaunch.providerChoiceToSettings !== "function" ||
         typeof codoxearLaunch.sessionProviderChoice !== "function" ||
         typeof codoxearLaunch.modelOptionMatches !== "function" ||
+        typeof codoxearLaunch.providerModelDisplay !== "function" ||
         typeof codoxearLaunch.redactedLaunchErrorText !== "function"
       )
         throw new Error("Codoxear launch helpers failed to load");
@@ -451,6 +452,9 @@
       }
       function modelOptionMatches(option, query) {
         return codoxearLaunch.modelOptionMatches(option, query);
+      }
+      function providerModelDisplay(model, providerChoice = "", options = {}) {
+        return codoxearLaunch.providerModelDisplay(model, providerChoice, options);
       }
 
 	      function fmtIdleAge(seconds) {
@@ -6036,10 +6040,10 @@
         }
 
         function newSessionProviderModelDisplay(model, providerChoice = "") {
-          const cleanModel = String(model || "").trim() || "default";
-          const cleanProvider = String(providerChoice || "").trim();
-          if ((newSessionHasProviderChoices() || newSessionAllowsCustomProvider()) && cleanProvider) return `${cleanProvider}/${cleanModel}`;
-          return cleanModel;
+          return providerModelDisplay(model, providerChoice, {
+            hasProviderChoices: newSessionHasProviderChoices(),
+            allowCustomProvider: newSessionAllowsCustomProvider(),
+          });
         }
 
         function newSessionAllowsCustomProvider() {

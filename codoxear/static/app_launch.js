@@ -240,6 +240,13 @@
     return text === query || text.startsWith(query) || text.includes(query);
   }
 
+  function providerModelDisplay(model, providerChoice = "", { hasProviderChoices = false, allowCustomProvider = false } = {}) {
+    const cleanModel = String(model || "").trim() || "default";
+    const cleanProvider = String(providerChoice || "").trim();
+    if ((hasProviderChoices || allowCustomProvider) && cleanProvider) return `${cleanProvider}/${cleanModel}`;
+    return cleanModel;
+  }
+
   function redactedLaunchErrorText(value) {
     let text = String(value || "").trim();
     if (!text) return "";
@@ -277,6 +284,7 @@
     providerChoiceToSettings,
     sessionProviderChoice,
     modelOptionMatches,
+    providerModelDisplay,
     redactedLaunchErrorText,
   });
 })();
