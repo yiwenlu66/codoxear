@@ -329,6 +329,100 @@ def eval_file_editor_save_shortcut() -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_file_editor_delete_shortcut() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("function isActiveFileEditorInput(target) {")
+    end = source.index("function isFileEditorNativeDeleteEvent(e)", start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        class FakeElement {{
+          constructor(opts = {{}}) {{
+            this.textEntry = Boolean(opts.textEntry);
+            this.editorInput = Boolean(opts.editorInput);
+            this._inputarea = Boolean(opts.inputarea);
+            this.classList = {{ contains: (name) => name === "inputarea" && this._inputarea }};
+          }}
+        }}
+        const snippet = {json.dumps(snippet + "\nglobalThis.__test_deleteShortcut = handleFileEditorDeleteKeydown;\n")};
+        function runCase(overrides = {{}}) {{
+          const editorNode = {{ contains: (node) => Boolean(node && node.editorInput) }};
+          const fileViewer = {{ style: {{ display: overrides.viewerOpen === false ? "none" : "flex" }} }};
+          const filePasteDialog = {{ style: {{ display: overrides.nestedDialog ? "flex" : "none" }} }};
+          const fileUnsavedDialog = {{ style: {{ display: "none" }} }};
+          const ctx = {{
+            HTMLElement: FakeElement,
+            Date: {{ now: () => 123456 }},
+            fileViewer,
+            filePasteDialog,
+            fileUnsavedDialog,
+            modalIsolationTargets: [fileViewer, filePasteDialog, fileUnsavedDialog],
+            fileEditMode: overrides.editMode !== false,
+            activeFileEditable: overrides.editable !== false,
+            fileViewMode: overrides.fileViewMode || "file",
+            unavailable: Boolean(overrides.unavailable),
+            fileTouchSelectMode: overrides.selectMode !== false,
+            fileTouchDeleteNativeSuppressUntil: 0,
+            triggers: [],
+            focusCount: 0,
+            resetCount: 0,
+            toasts: [],
+            isFileViewerOpen: () => fileViewer.style.display === "flex",
+            isModalTargetOpen: (node) => node && node.style && node.style.display === "flex",
+            isTextEntryElement: (target) => Boolean(target && target.textEntry),
+            getActiveFileCodeEditor: () => ({{
+              getDomNode: () => editorNode,
+              trigger: (source, command, payload) => ctx.triggers.push({{ source, command, payload }}),
+            }}),
+            isFileViewerSessionUnavailable: () => ctx.unavailable,
+            fileEditorDeleteCommandForKey: (key) => key === "backspace" ? "deleteLeft" : key === "delete" ? "deleteRight" : "",
+            focusActiveFileCodeEditor: () => {{ ctx.focusCount += 1; }},
+            resetFileTouchSelectionState: () => {{ ctx.resetCount += 1; }},
+            setToast: (message) => ctx.toasts.push(message),
+          }};
+          vm.createContext(ctx);
+          vm.runInContext(snippet, ctx);
+          const event = {{
+            key: overrides.key || "Backspace",
+            ctrlKey: Boolean(overrides.ctrl),
+            metaKey: Boolean(overrides.meta),
+            altKey: Boolean(overrides.alt),
+            isComposing: Boolean(overrides.composing),
+            defaultPrevented: Boolean(overrides.defaultPrevented),
+            target: overrides.target || new FakeElement({{ textEntry: true, inputarea: true, editorInput: true }}),
+            prevented: 0,
+            stopped: 0,
+            preventDefault() {{ this.prevented += 1; }},
+            stopPropagation() {{ this.stopped += 1; }},
+          }};
+          const handled = ctx.__test_deleteShortcut(event);
+          return {{ handled, prevented: event.prevented, stopped: event.stopped, triggers: ctx.triggers, focusCount: ctx.focusCount, resetCount: ctx.resetCount, suppressUntil: ctx.fileTouchDeleteNativeSuppressUntil, toasts: ctx.toasts }};
+        }}
+        (() => {{
+          const editorInput = new FakeElement({{ textEntry: true, inputarea: true, editorInput: true }});
+          const otherInput = new FakeElement({{ textEntry: true, inputarea: false, editorInput: false }});
+          const validBackspace = runCase({{ target: editorInput }});
+          const validDelete = runCase({{ target: editorInput, key: "Delete" }});
+          const nestedDialog = runCase({{ target: editorInput, nestedDialog: true }});
+          const viewerClosed = runCase({{ target: editorInput, viewerOpen: false }});
+          const otherTextEntry = runCase({{ target: otherInput }});
+          const notEdit = runCase({{ target: editorInput, editMode: false }});
+          const unavailable = runCase({{ target: editorInput, unavailable: true }});
+          process.stdout.write(JSON.stringify({{ validBackspace, validDelete, nestedDialog, viewerClosed, otherTextEntry, notEdit, unavailable }}));
+        }})();
+        """
+    )
+    proc = subprocess.run(
+        ["node", "-e", js],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return json.loads(proc.stdout)
+
+
 def eval_file_open_request_sequence() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("let fileOpenRequestId = 0;")
@@ -802,6 +896,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertNotIn('if (key === "backspace") return "deleteLeft";', source)
         self.assertIn("fileTouchDeleteNativeSuppressUntil = Date.now() + 250;", source)
         self.assertIn('editor.trigger("file-editor-delete-key", command, null);', source)
+        self.assertIn("if (fileEditorShortcutBlocked(target)) return false;", source)
         self.assertIn("function isFileEditorNativeDeleteEvent(e)", source)
         self.assertIn('inputType !== "deleteContentBackward" && inputType !== "deleteContentForward"', source)
         self.assertIn('addAppEvent(document, "keydown", handleFileEditorDeleteKeydown, true);', source)
@@ -810,6 +905,30 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("e.preventDefault();\n          e.stopPropagation();", source)
         self.assertNotIn("const allowEditorDelete =", source)
         self.assertIn("if (fileTouchSelectMode) resetFileTouchSelectionState();", source)
+        result = eval_file_editor_delete_shortcut()
+        expected = {
+            "validBackspace": "deleteLeft",
+            "validDelete": "deleteRight",
+        }
+        for key, command in expected.items():
+            with self.subTest(key=key):
+                case = result[key]
+                self.assertTrue(case["handled"])
+                self.assertEqual(case["prevented"], 1)
+                self.assertEqual(case["stopped"], 1)
+                self.assertEqual(case["triggers"], [{"source": "file-editor-delete-key", "command": command, "payload": None}])
+                self.assertEqual(case["focusCount"], 1)
+                self.assertEqual(case["resetCount"], 1)
+                self.assertEqual(case["suppressUntil"], 123706)
+        for key in ("nestedDialog", "viewerClosed", "otherTextEntry", "notEdit", "unavailable"):
+            with self.subTest(key=key):
+                case = result[key]
+                self.assertFalse(case["handled"])
+                self.assertEqual(case["prevented"], 0)
+                self.assertEqual(case["stopped"], 0)
+                self.assertEqual(case["triggers"], [])
+                self.assertEqual(case["focusCount"], 0)
+                self.assertEqual(case["resetCount"], 0)
 
     def test_range_selection_does_not_collapse_back_to_cursor(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

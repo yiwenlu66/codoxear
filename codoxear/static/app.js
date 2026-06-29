@@ -7609,6 +7609,7 @@
           if (!command) return false;
           if (!(fileEditMode && activeFileEditable && fileViewMode === "file" && !isFileViewerSessionUnavailable())) return false;
           const target = e.target instanceof HTMLElement ? e.target : null;
+          if (fileEditorShortcutBlocked(target)) return false;
           if (!isActiveFileEditorInput(target)) return false;
           const editor = getActiveFileCodeEditor();
           if (!editor || typeof editor.trigger !== "function") return false;
