@@ -4233,7 +4233,7 @@
 ## 2026-06-29T06:09:53Z Launch attempt store split
 - Functional commit `96a0134 Extract launch attempt store` moved launch-attempt redaction, JSON normalization, append/read persistence, and latest-record collapse from `codoxear/util.py` into new `codoxear/launch_attempt_store.py`.
 - `util.py` remains the compatibility facade for `launch_attempts_path`, redaction helper imports, `append_launch_attempt`, and `read_launch_attempts`. The append/read wrappers deliberately call `util.now()` before delegating so tests and callers patching `codoxear.util.now` still control launch-attempt timestamps.
-- `util.py` reduced from 844 lines to 711 lines; `launch_attempt_store.py` is 166 lines.
+- `util.py` reduced from 844 lines to 712 lines; `launch_attempt_store.py` is 166 lines.
 - Source/behavior sentinel `tests/test_launch_attempt_store_source.py` asserts store ownership of redaction/persistence, util facade imports/wrappers, direct redaction helper object identity, and `patch("codoxear.util.now")` control over append/read default timestamps.
 - Negative evidence: a combined focused pytest command including `test_broker_fail_closed.py` before `test_server_config.py` failed because pre-existing `test_web_login_shell_exec_uses_attach_trampoline` calls `_exec_agent_via_login_shell(cwd=<TemporaryDirectory>)` with `os.execvpe` mocked, leaving that pytest process in a deleted cwd. This is test-order hygiene unrelated to the launch store split; rerunning the affected groups in isolated pytest processes passed.
 - Validation after `96a0134`:
@@ -4257,3 +4257,12 @@
   - Focused sessiond control/state/send/packaging/pty group returned `23 passed`.
   - Full local `python3 -m pytest -q` returned `1223 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+
+## 2026-06-29T06:16:38Z Launch attempt store split clean-room review PASS
+- Async clean-room review `996a7df3-5a1b-4831-b0c9-a15f6be5a671` returned `PASS` for functional commit `96a0134` and docs `f3c2b61`.
+- Reviewer verified byte-identical movement of `_jsonable`, redaction helpers, redacted persist/response projection, append/read persistence, and launch-attempt redaction constants into `launch_attempt_store.py`, with only intentional store signatures requiring explicit `path` and `now_ts` supplied by the util facade.
+- Reviewer verified `codoxear.util` preserves `LAUNCH_ATTEMPTS_FILENAME`, `launch_attempts_path`, redaction helper object identity, `_jsonable`/redaction constants, `append_launch_attempt`, `read_launch_attempts`, default path resolution through `util.launch_attempts_path()`, explicit `now_ts` override, and the critical `patch("codoxear.util.now")` timestamp seam.
+- Reviewer behavior checks covered JSON normalization, redaction regexes/sensitive-key field redaction, append defaults/parent mkdir/sort_keys JSONL, read missing-file/invalid-row skipping/age filtering/latest-collapse/sorting/max_records, no import cycles, no secrets/runtime artifacts, docs-only docs commit, and no Docker overclaim.
+- Reviewer validation: `tests/test_launch_attempt_store_source.py` passed, isolated `tests/test_broker_fail_closed.py` passed, full local `python3 -m pytest -q` returned `1222 passed, 107 subtests passed`, and py_compile was clean.
+- Reviewer note: the original OPS line count said `util.py` was 711 lines; actual is 712 lines. This entry corrects that documentation inaccuracy.
