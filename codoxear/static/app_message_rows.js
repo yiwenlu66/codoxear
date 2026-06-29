@@ -133,6 +133,21 @@
     return Boolean(documentLike.activeElement && documentLike.activeElement.classList && documentLike.activeElement.classList.contains("msg-copy-btn"));
   }
 
+  function rowSearchText(row) {
+    const md = row ? row.querySelector(".md") : null;
+    return String((md || row || {}).textContent || "");
+  }
+
+  function compareRowsInDomOrder(a, b, nodeLike) {
+    if (a === b) return 0;
+    if (!a || !b || !a.compareDocumentPosition) return 0;
+    const pos = a.compareDocumentPosition(b);
+    const nodeConstants = nodeLike || window.Node;
+    if (pos & nodeConstants.DOCUMENT_POSITION_FOLLOWING) return -1;
+    if (pos & nodeConstants.DOCUMENT_POSITION_PRECEDING) return 1;
+    return 0;
+  }
+
   window.CodoxearMessageRows = Object.freeze({
     makeRow,
     safeMakeRow,
@@ -141,5 +156,7 @@
     loadedUserMessageRows,
     loadedCopyMessageRows,
     activeElementIsMessageCopyButton,
+    rowSearchText,
+    compareRowsInDomOrder,
   });
 })();

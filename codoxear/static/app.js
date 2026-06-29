@@ -2109,7 +2109,9 @@
           typeof codoxearMessageRows.renderedMessageRows !== "function" ||
           typeof codoxearMessageRows.loadedUserMessageRows !== "function" ||
           typeof codoxearMessageRows.loadedCopyMessageRows !== "function" ||
-          typeof codoxearMessageRows.activeElementIsMessageCopyButton !== "function"
+          typeof codoxearMessageRows.activeElementIsMessageCopyButton !== "function" ||
+          typeof codoxearMessageRows.rowSearchText !== "function" ||
+          typeof codoxearMessageRows.compareRowsInDomOrder !== "function"
         )
           throw new Error("Codoxear message row helpers failed to load");
 
@@ -2131,6 +2133,14 @@
 
         function activeElementIsMessageCopyButton() {
           return codoxearMessageRows.activeElementIsMessageCopyButton(document);
+        }
+
+        function rowSearchText(row) {
+          return codoxearMessageRows.rowSearchText(row);
+        }
+
+        function compareRowsInDomOrder(a, b) {
+          return codoxearMessageRows.compareRowsInDomOrder(a, b, Node);
         }
 
         function syncMessageCopyTabStops() {
@@ -2287,11 +2297,6 @@
           for (const row of renderedMessageRows()) row.classList.remove("chat-search-hit", "chat-search-current");
         }
 
-        function rowSearchText(row) {
-          const md = row ? row.querySelector(".md") : null;
-          return String((md || row || {}).textContent || "");
-        }
-
         function compactChatSearchSnippet(text, query, limit = 96) {
           return codoxearDisplay.compactChatSearchSnippet(text, query, limit);
         }
@@ -2403,15 +2408,6 @@
             row.scrollIntoView({ block: "center", behavior: prefersReducedMotion() ? "auto" : "smooth" });
             pulseNavigatedRow(row);
           }
-        }
-
-        function compareRowsInDomOrder(a, b) {
-          if (a === b) return 0;
-          if (!a || !b || !a.compareDocumentPosition) return 0;
-          const pos = a.compareDocumentPosition(b);
-          if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
-          if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
-          return 0;
         }
 
         function ensureChatSearchTargetRow(historyCursor) {
