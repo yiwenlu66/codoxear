@@ -41,6 +41,14 @@ def set_winsize(fd: int, rows: int, cols: int) -> None:
     fcntl.ioctl(fd, termios.TIOCSWINSZ, ws)
 
 
+def term_size(stdin) -> tuple[int, int]:
+    try:
+        sz = os.get_terminal_size(stdin.fileno())
+        return int(sz.lines), int(sz.columns)
+    except Exception:
+        return 40, 120
+
+
 def seq_bytes(raw: str) -> bytes:
     t = raw.strip().upper()
     if t in ("NONE", "EMPTY", "NOENTER", "NO_ENTER"):

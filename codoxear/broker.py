@@ -242,11 +242,7 @@ def _set_winsize(fd: int, rows: int, cols: int) -> None:
 
 
 def _term_size() -> tuple[int, int]:
-    try:
-        sz = os.get_terminal_size(sys.stdin.fileno())
-        return int(sz.lines), int(sz.columns)
-    except Exception:
-        return 40, 120
+    return _pty_util.term_size(sys.stdin)
 
 
 
