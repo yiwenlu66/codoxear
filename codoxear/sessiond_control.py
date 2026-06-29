@@ -51,7 +51,6 @@ def handle_sessiond_control_connection(conn: Any, *, deps: SessiondControlDeps) 
             with deps.lock:
                 if deps.state() is st:
                     st.busy = prev_busy
-                    st.busy = prev_busy
 
         if sync_commit:
             if fd is None:
