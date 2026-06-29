@@ -4266,3 +4266,21 @@
 - Reviewer behavior checks covered JSON normalization, redaction regexes/sensitive-key field redaction, append defaults/parent mkdir/sort_keys JSONL, read missing-file/invalid-row skipping/age filtering/latest-collapse/sorting/max_records, no import cycles, no secrets/runtime artifacts, docs-only docs commit, and no Docker overclaim.
 - Reviewer validation: `tests/test_launch_attempt_store_source.py` passed, isolated `tests/test_broker_fail_closed.py` passed, full local `python3 -m pytest -q` returned `1222 passed, 107 subtests passed`, and py_compile was clean.
 - Reviewer note: the original OPS line count said `util.py` was 711 lines; actual is 712 lines. This entry corrects that documentation inaccuracy.
+
+## 2026-06-29T06:21:38Z Session log path helper split
+- Functional commit `22f66a8 Extract session log path helpers` moved session-log path predicates and comparison helpers from `codoxear/util.py` into new `codoxear/session_log_paths.py`:
+  - `session_id_from_rollout_path`;
+  - `_is_codex_rollout_log_path`;
+  - `_is_pi_session_log_path`;
+  - `_is_cc_session_log_path`;
+  - `_paths_match`;
+  - `_path_in_set`;
+  - `_payload_cwd_matches`.
+- `util.py` imports/re-exports those names, preserving existing imports from `broker.py`, `broker_metadata.py`, `broker_log_binding.py`, `server.py`, and tests.
+- `util.py` reduced from 712 lines to 647 lines; `session_log_paths.py` is 78 lines.
+- Source sentinel `tests/test_path_helpers_source.py` now asserts the dedicated owner and util facade imports while preserving existing consumer imports from `codoxear.util`.
+- Validation after `22f66a8`:
+  - `python3 -m py_compile codoxear/util.py codoxear/session_log_paths.py` passed.
+  - Focused session-log path/proc/resume/source group returned `64 passed`.
+  - Full local `python3 -m pytest -q` returned `1223 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
