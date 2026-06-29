@@ -21,6 +21,8 @@ from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
 from .control_socket import handle_control_socket_connection as _handle_control_socket_connection
 from . import pty_util as _pty_util
+from .sessiond_control import SessiondControlDeps
+from .sessiond_control import handle_sessiond_control_connection
 from .sessiond_state import State
 from .sessiond_state import _busy_value_after_log_batch
 from .sessiond_state import _log_busy_signals
@@ -228,87 +230,21 @@ class Sessiond:
             traceback.print_exc()
 
     def _handle_conn(self, conn: socket.socket) -> None:
-        def state_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
-            with self._lock:
-                st = self.state
-                if not st:
-                    return {"error": "no state"}, None
-                return {"busy": st.busy, "queue_len": 0}, None
-
-        def tail_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
-            with self._lock:
-                st = self.state
-                return {"tail": st.output_tail if st else ""}, None
-
-        def send_handler(req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
-            text = req.get("text")
-            if not isinstance(text, str) or not text.strip():
-                return {"error": "text required"}, None
-            fd: int | None = None
-            enter = _encode_enter()
-            sync_commit = bool(req.get("sync"))
-            with self._lock:
-                st = self.state
-                if not st:
-                    return {"error": "no state"}, None
-                prev_busy = st.busy
-                st.busy = True
-                fd = st.pty_master_fd
-            def restore_state_after_inject_failure() -> None:
-                with self._lock:
-                    if self.state is st:
-                        st.busy = prev_busy
-
-            if sync_commit:
-                if fd is None:
-                    restore_state_after_inject_failure()
-                    return {"error": "no pty", "commit_unknown": False}, None
-                try:
-                    _inject(fd, text=text, suffix=enter)
-                except Exception as e:
-                    restore_state_after_inject_failure()
-                    return {"error": str(e), "commit_unknown": True}, None
-                return {"queued": False, "queue_len": 0}, None
-            def after_reply() -> None:
-                if fd is None:
-                    restore_state_after_inject_failure()
-                    return
-                try:
-                    _inject(fd, text=text, suffix=enter)
-                except Exception:
-                    restore_state_after_inject_failure()
-                    traceback.print_exc()
-            return {"queued": False, "queue_len": 0}, after_reply
-
-        def keys_handler(req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
-            seq = req.get("seq")
-            if not isinstance(seq, str) or not seq:
-                return {"error": "seq required"}, None
-            b = _seq_bytes(seq)
-            with self._lock:
-                st = self.state
-                if not st:
-                    return {"error": "no state"}, None
-                try:
-                    _write_all(st.pty_master_fd, b)
-                    return {"ok": True}, None
-                except Exception as e:
-                    return {"error": str(e), "commit_unknown": True}, None
-
-        def shutdown_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
-            return {"ok": True}, self._teardown_managed_process_group
-
-        _handle_control_socket_connection(
+        handle_sessiond_control_connection(
             conn,
-            handlers={
-                "state": state_handler,
-                "tail": tail_handler,
-                "send": send_handler,
-                "keys": keys_handler,
-                "shutdown": shutdown_handler,
-            },
-            send_json_line=_send_socket_json_line,
-            socket_peer_disconnected=_socket_peer_disconnected,
+            deps=SessiondControlDeps(
+                lock=self._lock,
+                state=lambda: self.state,
+                encode_enter=_encode_enter,
+                seq_bytes=_seq_bytes,
+                write_all=_write_all,
+                inject=_inject,
+                teardown_managed_process_group=self._teardown_managed_process_group,
+                handle_control_socket_connection=_handle_control_socket_connection,
+                send_json_line=_send_socket_json_line,
+                socket_peer_disconnected=_socket_peer_disconnected,
+                print_exception=traceback.print_exc,
+            ),
         )
 
     def _ensure_root_repo(self) -> None:
