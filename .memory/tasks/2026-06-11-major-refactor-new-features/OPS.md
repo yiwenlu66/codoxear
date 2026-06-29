@@ -4727,3 +4727,15 @@
   - Focused navigation/chat/static group returned `49 passed`.
   - Full local `python3 -m pytest -q` returned `1240 passed, 107 subtests passed`.
 - Scoped conclusion: Smooth Jump-to-latest remains parked until a deliberate scroll-scheduler/runtime-harness design can constrain every bottom-scroll scheduler, not just the explicit button handler. Docker evidence was not rerun.
+
+
+## 2026-06-29T13:48:46Z Shell static asset versioning fix
+- Functional commit `f890f1c Version shell static assets` closed a static freshness gap: favicon, manifest, and service-worker files now participate in the same asset-version digest as frontend JS/CSS.
+- Added `SHELL_ASSET_FILES = ("favicon.png", "manifest.webmanifest", "service-worker.js")`; `STATIC_ASSET_VERSION_FILES` is now `FRONTEND_ASSET_FILES + SHELL_ASSET_FILES`.
+- `index.html` now appends `?v=__CODOXEAR_ASSET_VERSION__` to favicon and manifest links, and `ensureVoiceServiceWorker()` registers `service-worker.js` through `versionedShellAssetPath()` so service-worker script URL changes with the asset version while keeping scope `/`.
+- Validation:
+  - `python3 -m py_compile codoxear/static_routes.py tests/test_static_assets.py` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused static/voice group `python3 -m pytest -q tests/test_static_assets.py tests/test_static_routes.py tests/test_voice_push_source.py` returned `26 passed`.
+  - Full local `python3 -m pytest -q` returned `1241 passed, 107 subtests passed` before commit.
+- Scope note: this closes the deterministic static version-hash/reference gap. Browser-level service-worker update lifecycle remains unmeasured, and Docker evidence was not rerun for this split.

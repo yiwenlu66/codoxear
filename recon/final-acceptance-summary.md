@@ -48,7 +48,7 @@ A final pre-summary clean-room review (`90a8597a-fa0a-4a8a-b240-8e5989960b39`) r
 - URL/base-path resolution moved to `codoxear/static/app_url.js`; `app.js` fails loudly if `window.CodoxearUrls` is absent.
 - Local-storage access moved to `codoxear/static/app_storage.js`; denied/throwing storage still yields `null` for reads and `false` for writes/removes.
 - Performance sampling moved to `codoxear/static/app_perf.js`; the 200-sample window, nonnegative filter, percentile/rounding policy, and public `window.codoxearPerf` entry point are preserved.
-- Frontend static registration now uses `FRONTEND_ASSET_FILES` for version-hashed assets and `TOP_LEVEL_STATIC_ASSETS` for exact top-level static routes. Public static URLs, `/static/*`, CSP/cache/content-type behavior, package-data globs, and URL-prefix behavior remain unchanged.
+- Frontend static registration now uses `FRONTEND_ASSET_FILES` for frontend JS/CSS routes, `SHELL_ASSET_FILES` for favicon/manifest/service-worker version-hash inputs, and `TOP_LEVEL_STATIC_ASSETS` for exact top-level static routes. Public static URLs, `/static/*`, CSP/cache/content-type behavior, package-data globs, and URL-prefix behavior remain unchanged.
 
 ## Validation evidence
 
@@ -96,7 +96,7 @@ Recent clean-room reviews returned no blockers after fixes for the Pi busy repai
 - Smooth Jump to latest remains parked until scheduler/runtime harness evidence exists.
 - Non-UTF-8 Git filenames are replacement-decoded rather than byte-literal end-to-end.
 - Symlink containment checks are pre-open/read/write, not atomic against concurrent local filesystem mutation.
-- Service worker, manifest, and favicon remain outside the frontend asset-version hash; this is pre-existing behavior, not a new claim from the static registry refactor.
+- Browser-level service-worker update lifecycle remains uncollected. Static shell asset freshness is now locally constrained: favicon, manifest, and service worker participate in the asset-version hash, favicon/manifest links carry the version token, and service-worker registration uses the versioned script URL.
 - A stale cached old shell plus new helper-dependent `app.js` would fail loudly instead of silently recomputing missing helpers; default no-store/versioning mitigate this within existing freshness semantics.
 
 ## User decision required
