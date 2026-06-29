@@ -3885,3 +3885,15 @@
   - Focused broker/sidecar/source group returned `130 passed, 3 subtests passed`.
   - Full local `python3 -m pytest -q` returned `1187 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T00:41:57Z Broker control handler split
+- Functional commit `02b2fb5 Extract broker control handlers` moved broker control-socket command semantics from `Broker._handle_conn` into new `codoxear/broker_control.py`:
+  - `_handle_broker_control_connection`
+- Ownership boundary: `broker_control.py` owns `state`, `tail`, `send`, `keys`, and `shutdown` command semantics, including sync-send rollback, commit-unknown marking, key-write errors, and interrupt-key state marking. `broker.py` keeps `_handle_conn` as a dependency wrapper supplying state, lock, PTY write/inject helpers, time, and teardown.
+- Source sentinel updates:
+  - `tests/test_broker_control_source.py` pins control-command ownership and ensures the module does not own PTY fork/open logic.
+  - `tests/test_interrupt_semantics_source.py` now checks the interrupt-key marker in `broker_control.py` while preserving the route/server/session-control chain.
+- Validation after `02b2fb5`:
+  - Focused send/control/interrupt group returned `86 passed`.
+  - Full local `python3 -m pytest -q` returned `1189 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
