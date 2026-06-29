@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from codoxear.server import Session
+from codoxear.server import SessionCommitUnknownError
 from codoxear.server import SessionManager
 
 
@@ -210,6 +211,37 @@ class TestUnattendedSweep(unittest.TestCase):
                     ("sid-b", "PFX\n\n---\n\nAdditional request from user: B\n"),
                 ],
             )
+
+    def test_send_commit_unknown_preserves_budget_and_cooldown_state(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "rollout.jsonl"
+            p.write_text("{}", encoding="utf-8")
+
+            mgr = _make_manager()
+            saves: list[bool] = []
+            mgr._save_unattended = lambda: saves.append(True)  # type: ignore[method-assign]
+            mgr._sessions["sid-a"] = _make_session(sid="sid-a", thread_id="thread-1", log_path=p)
+            mgr._unattended["sid-a"] = {"enabled": True, "request": "A", "cooldown_minutes": 5, "remaining_injections": 3}
+            mgr.get_state = lambda sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+            attempts: list[tuple[str, str]] = []
+
+            def commit_unknown_send(sid: str, text: str) -> dict[str, bool]:
+                attempts.append((sid, text))
+                raise SessionCommitUnknownError("send commit status unknown; broker did not reply before timeout")
+
+            mgr.send = commit_unknown_send  # type: ignore[method-assign]
+
+            with patch("codoxear.server.time.time", return_value=1000.0), patch(
+                "codoxear.server._last_chat_role_ts_from_tail", return_value=("assistant", 600.0)
+            ):
+                mgr._unattended_sweep()
+
+            self.assertEqual(len(attempts), 1)
+            self.assertEqual(mgr._unattended["sid-a"]["remaining_injections"], 3)
+            self.assertTrue(mgr._unattended["sid-a"]["enabled"])
+            self.assertNotIn("sid-a", mgr._unattended_last_injected)
+            self.assertNotIn("thread:thread-1", mgr._unattended_last_injected_scope)
+            self.assertEqual(saves, [])
 
     def test_session_timeout_does_not_kill_other_injections(self) -> None:
         with TemporaryDirectory() as td:
