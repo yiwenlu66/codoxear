@@ -5064,3 +5064,23 @@
   - `git diff --check` passed.
 - Clean-room review `7574564e-a8f8-4df1-9737-10679e5795c3` returned PASS with no blockers. Review confirmed guard placement before side effects, consistency with save shortcut, beforeinput/input suppression correctness, and preserved delete-handler invariants. Non-blocking note: `handleFileTouchSelectionKeydown()` still has its own ad-hoc isolation and should be audited next if modal-isolation rules are being unified.
 - Scope note: this is a frontend file-editor keyboard isolation hardening. It does not claim a full keyboard architecture refactor, browser-manual evidence, or touch-selection arrow-key guard unification.
+
+
+
+## 2026-06-29T19:12:07Z File touch-selection guard unification
+- Functional commit `3410671 Unify file touch selection guard` resolved the remaining adjacent file-editor keyboard isolation inconsistency: `handleFileTouchSelectionKeydown()` no longer uses a bespoke text-entry class check while save/delete use `fileEditorShortcutBlocked()`.
+- Mechanism: the handler now calls `fileEditorShortcutBlocked(target)` before interpreting Escape, h/j/k/l, or printable/edit keys. This gives touch-selection the same viewer-open, nested-modal, and non-editor text-entry isolation as save/delete. The handler-specific `target && !target.closest("#fileViewer")` rule remains, so touch-selection movement still only acts on key events originating inside the file viewer.
+- Boundary preserved: valid h/j/k/l movement from the active Monaco input still calls `moveFileTouchSelection(direction)` with preventDefault/stopPropagation; Escape still collapses selection; printable keys are still blocked from editing while touch-selection mode is active; non-text controls inside the viewer still participate in the pre-existing touch-selection movement contract.
+- Tests added/updated:
+  - `tests/test_file_viewer_source.py::test_touch_select_mode_refocuses_editor_and_blocks_printable_edits` now runs a Node VM harness over the real `isActiveFileEditorInput()`, `fileEditorShortcutBlocked()`, and `handleFileTouchSelectionKeydown()` code.
+  - Coverage includes valid move, valid Escape, printable-key block, nested-dialog block, viewer-closed block, other-text-entry block, outside-viewer button block, and inactive-toolbar block.
+  - Source assertions pin `fileEditorShortcutBlocked(target)` and absence of the old `isTextEntryElement(target) && !target.classList.contains("inputarea")` predicate.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused touch-selection VM test returned `1 passed, 5 subtests passed`.
+  - Focused frontend/source/static group returned `53 passed, 25 subtests passed` locally and passed in Docker.
+  - Full local `python3 -m pytest -q` returned `1262 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed.
+- Clean-room review `ed5674eb-efb3-4b86-beca-b70f98a641d5` returned PASS with no blockers. Review confirmed the shared guard is stronger than the old class-only check, the `closest("#fileViewer")` gate is correctly preserved and non-redundant, and cross-handler consistency is intact. Non-blocking notes: null/non-HTMLElement key targets and h/j/k/l movement from non-text controls inside the viewer remain pre-existing low-risk/design behaviors, not regressions.
+- Scope note: this completes modal/text-entry guard unification for the three current file-editor document-capture key handlers. It does not claim a full file-editor state object or browser-manual keyboard UX evidence.
