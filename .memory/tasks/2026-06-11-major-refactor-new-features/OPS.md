@@ -4663,3 +4663,11 @@
   - Focused PTY/broker group returned `53 passed`.
   - Full local `python3 -m pytest -q` returned `1240 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+
+## 2026-06-29T13:03:33Z PTY terminal-size clean-room review PASS
+- Async reviewer run `f518eb94-6d44-4409-ab78-eeae73182559` returned `RESULT: PASS` for functional commit `f79178a` and docs commit `3634813`.
+- Review evidence: `codoxear/pty_util.py::term_size(stdin)` exactly preserves broker's original terminal-size read/fallback logic: `os.get_terminal_size(stdin.fileno())`, return `(int(sz.lines), int(sz.columns))`, and fallback `(40, 120)` on any exception.
+- Review verified `codoxear.broker._term_size()` remains the patch seam and delegates to `_pty_util.term_size(sys.stdin)`; startup and SIGWINCH paths still call `_term_size()`, and tests patching `codoxear.broker._term_size` still work.
+- Review observed py_compile, focused broker/PTY tests, no import cycles, no protected checkout mutation, no secrets/runtime artifacts, docs-only docs commit, and no Docker overclaim.
+- Reviewer noted a focused-count documentation ambiguity; full local evidence from the implementation pass remains `1240 passed, 107 subtests passed`.
