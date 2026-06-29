@@ -24,6 +24,7 @@ FRONTEND_ASSET_FILES = (
     "app_polling.js",
     "app_conversation_copy.js",
     "app_modal.js",
+    "app_clipboard.js",
     "app.js",
     "app.css",
 )

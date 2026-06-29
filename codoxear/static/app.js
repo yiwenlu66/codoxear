@@ -1935,6 +1935,10 @@
           return codoxearModal.focusModalCloseButton(viewer, closeBtn);
         }
 
+        const codoxearClipboard = window.CodoxearClipboard;
+        if (!codoxearClipboard || typeof codoxearClipboard.copyTextViaSelection !== "function" || typeof codoxearClipboard.copyToClipboard !== "function")
+          throw new Error("Codoxear clipboard helpers failed to load");
+
         function setToast(text) {
           toast.textContent = text || "";
           if (!text) return;
@@ -1944,39 +1948,11 @@
         }
 
         function copyTextViaSelection(text) {
-          if (typeof document.execCommand !== "function") {
-            throw new Error("Selection copy unavailable");
-          }
-          const value = String(text ?? "");
-          const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-          const ta = el("textarea", { "aria-hidden": "true" });
-          ta.value = value;
-          ta.setAttribute("readonly", "");
-          ta.style.position = "fixed";
-          ta.style.top = "0";
-          ta.style.left = "0";
-          ta.style.width = "1px";
-          ta.style.height = "1px";
-          ta.style.padding = "0";
-          ta.style.border = "0";
-          ta.style.opacity = "0";
-          ta.style.pointerEvents = "none";
-          document.body.appendChild(ta);
-          ta.focus({ preventScroll: true });
-          ta.select();
-          ta.setSelectionRange(0, value.length);
-          const ok = document.execCommand("copy");
-          ta.remove();
-          if (active) active.focus({ preventScroll: true });
-          if (!ok) throw new Error("Selection copy failed");
+          return codoxearClipboard.copyTextViaSelection(text);
         }
 
         async function copyToClipboard(text) {
-          if (window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-            await navigator.clipboard.writeText(String(text ?? ""));
-            return;
-          }
-          copyTextViaSelection(text);
+          return codoxearClipboard.copyToClipboard(text);
         }
 
         function formatConversationForCopy(events) {
