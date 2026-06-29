@@ -10077,7 +10077,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (!fileTouchSelectMode || !isFileTouchToolbarActive()) return;
           if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
           const target = e.target instanceof HTMLElement ? e.target : null;
-          if (target && isTextEntryElement(target) && !target.classList.contains("inputarea")) return;
+          if (fileEditorShortcutBlocked(target)) return;
           if (target && !target.closest("#fileViewer")) return;
           const key = String(e.key || "").toLowerCase();
           if (key === "escape") {

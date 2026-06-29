@@ -329,6 +329,95 @@ def eval_file_editor_save_shortcut() -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_file_touch_selection_keydown() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    helper_start = source.index("function isActiveFileEditorInput(target) {")
+    helper_end = source.index("function handleFileEditorSaveShortcut(e)", helper_start)
+    handler_start = source.index("function handleFileTouchSelectionKeydown(e) {")
+    handler_end = source.index('addAppEvent(document, "keydown", handleFileTouchSelectionKeydown, true);', handler_start)
+    snippet = source[helper_start:helper_end] + "\n" + source[handler_start:handler_end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        class FakeElement {{
+          constructor(opts = {{}}) {{
+            this.textEntry = Boolean(opts.textEntry);
+            this.editorInput = Boolean(opts.editorInput);
+            this.inViewer = opts.inViewer !== false;
+            this._inputarea = Boolean(opts.inputarea);
+            this.classList = {{ contains: (name) => name === "inputarea" && this._inputarea }};
+          }}
+          closest(selector) {{
+            return selector === "#fileViewer" && this.inViewer ? this : null;
+          }}
+        }}
+        const snippet = {json.dumps(snippet + "\nglobalThis.__test_touchSelectionKeydown = handleFileTouchSelectionKeydown;\n")};
+        function runCase(overrides = {{}}) {{
+          const editorNode = {{ contains: (node) => Boolean(node && node.editorInput) }};
+          const fileViewer = {{ style: {{ display: overrides.viewerOpen === false ? "none" : "flex" }} }};
+          const filePasteDialog = {{ style: {{ display: overrides.nestedDialog ? "flex" : "none" }} }};
+          const fileUnsavedDialog = {{ style: {{ display: "none" }} }};
+          const ctx = {{
+            HTMLElement: FakeElement,
+            fileViewer,
+            filePasteDialog,
+            fileUnsavedDialog,
+            modalIsolationTargets: [fileViewer, filePasteDialog, fileUnsavedDialog],
+            fileTouchSelectMode: overrides.selectMode !== false,
+            toolbarActive: overrides.toolbarActive !== false,
+            moves: [],
+            resetArgs: [],
+            isFileViewerOpen: () => fileViewer.style.display === "flex",
+            isModalTargetOpen: (node) => node && node.style && node.style.display === "flex",
+            isTextEntryElement: (target) => Boolean(target && target.textEntry),
+            getActiveFileCodeEditor: () => ({{ getDomNode: () => editorNode }}),
+            isFileTouchToolbarActive: () => ctx.toolbarActive,
+            resetFileTouchSelectionState: (opts) => ctx.resetArgs.push(opts || {{}}),
+            moveFileTouchSelection: (direction) => ctx.moves.push(direction),
+          }};
+          vm.createContext(ctx);
+          vm.runInContext(snippet, ctx);
+          const target = Object.prototype.hasOwnProperty.call(overrides, "target") ? overrides.target : new FakeElement({{ inViewer: true }});
+          const event = {{
+            key: overrides.key || "h",
+            ctrlKey: Boolean(overrides.ctrl),
+            metaKey: Boolean(overrides.meta),
+            altKey: Boolean(overrides.alt),
+            defaultPrevented: Boolean(overrides.defaultPrevented),
+            target,
+            prevented: 0,
+            stopped: 0,
+            preventDefault() {{ this.prevented += 1; }},
+            stopPropagation() {{ this.stopped += 1; }},
+          }};
+          ctx.__test_touchSelectionKeydown(event);
+          return {{ prevented: event.prevented, stopped: event.stopped, moves: ctx.moves, resetArgs: ctx.resetArgs }};
+        }}
+        (() => {{
+          const editorInput = new FakeElement({{ textEntry: true, inputarea: true, editorInput: true, inViewer: true }});
+          const otherInput = new FakeElement({{ textEntry: true, inputarea: false, editorInput: false, inViewer: false }});
+          const validMove = runCase({{ target: editorInput, key: "l" }});
+          const validEscape = runCase({{ target: editorInput, key: "Escape" }});
+          const printableBlocked = runCase({{ target: editorInput, key: "x" }});
+          const nestedDialog = runCase({{ target: editorInput, nestedDialog: true, key: "l" }});
+          const viewerClosed = runCase({{ target: editorInput, viewerOpen: false, key: "l" }});
+          const otherTextEntry = runCase({{ target: otherInput, key: "l" }});
+          const outsideViewerButton = runCase({{ target: new FakeElement({{ textEntry: false, inViewer: false }}), key: "l" }});
+          const toolbarInactive = runCase({{ target: editorInput, toolbarActive: false, key: "l" }});
+          process.stdout.write(JSON.stringify({{ validMove, validEscape, printableBlocked, nestedDialog, viewerClosed, otherTextEntry, outsideViewerButton, toolbarInactive }}));
+        }})();
+        """
+    )
+    proc = subprocess.run(
+        ["node", "-e", js],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return json.loads(proc.stdout)
+
+
 def eval_file_editor_delete_shortcut() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function isActiveFileEditorInput(target) {")
@@ -881,6 +970,15 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('key === "backspace"', source)
         self.assertIn('key.length === 1', source)
         self.assertIn('resetFileTouchSelectionState({ collapse: true });', source)
+        self.assertIn('if (fileEditorShortcutBlocked(target)) return;', source)
+        self.assertNotIn('isTextEntryElement(target) && !target.classList.contains("inputarea")', source)
+        result = eval_file_touch_selection_keydown()
+        self.assertEqual(result["validMove"], {"prevented": 1, "stopped": 1, "moves": ["right"], "resetArgs": []})
+        self.assertEqual(result["validEscape"], {"prevented": 1, "stopped": 1, "moves": [], "resetArgs": [{"collapse": True}]})
+        self.assertEqual(result["printableBlocked"], {"prevented": 1, "stopped": 1, "moves": [], "resetArgs": []})
+        for key in ("nestedDialog", "viewerClosed", "otherTextEntry", "outsideViewerButton", "toolbarInactive"):
+            with self.subTest(key=key):
+                self.assertEqual(result[key], {"prevented": 0, "stopped": 0, "moves": [], "resetArgs": []})
 
     def test_delete_backspace_is_single_owned_in_touch_select_edit_mode(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
