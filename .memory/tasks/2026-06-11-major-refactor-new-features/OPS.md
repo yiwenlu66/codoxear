@@ -4921,3 +4921,31 @@
 - Clean-room review `ef65d2f5-d6bf-4d73-b062-ce55ff8e1b6f` returned PASS before the functional commit. Review confirmed fail-closed guards, load order, static asset registration, removal of old app-local search state, cleanup disposal, behavior equivalence for all visible-entry states, unchanged draft/pending-session semantics, and preserved app ownership of candidate store/rendering/file viewer/inline references.
 - Review note reconciliation: the review's full-suite summary mentioned a pre-existing unrelated Pi mock failure, but the parent-session full local validation immediately before review completed successfully with `1249 passed, 107 subtests passed`; the scoped review verdict remained PASS.
 - Scope note: this is a frontend state-ownership extraction for file-picker search/composition. It does not extract the full picker factory, candidate store, DOM renderer, file viewer lifecycle, inline file-reference machinery, or provide browser/manual UX evidence.
+
+
+
+## 2026-06-29T17:16:39Z Non-UTF Git path round-trip repair
+- Functional commit `8171358 Round trip non-UTF git paths` closed the parked byte-literal Git filename gap for Git-backed changed-file flows.
+- Mechanism: Git path-bearing command output now opts into `decode_errors="surrogateescape"` at the path pipeline (`diff --name-only -z`, `diff --numstat -z`, `ls-tree -z`, and repo-root resolution), preserving arbitrary filename bytes internally as Python surrogateescape strings instead of replacing them with U+FFFD.
+- JSON/API boundary: `git_ops.py` now provides `path_json_text()`, `git_path_token()`, `git_path_from_token()`, `git_path_response_fields()`, and `git_path_query()`. Response payloads use display-safe text and emit `api_path`/`path_token` only when surrogate bytes exist; raw surrogate code points are not sent through JSON. Token ingress is explicit (`path_token` query/body field) and is gated behind Git-path contexts rather than overloading ordinary `path` strings.
+- Server route coverage:
+  - `/git/changed_files` emits safe display paths plus `api_path` for non-UTF entries while preserving stats correlation by the internal surrogate path key.
+  - `/git/diff` and `/git/file_versions` accept `path_token` and resolve it back to the original repo-relative bytes.
+  - `/file/read`, `/file/blob`, `/file/video_preview`, and `/file/download` accept `path_token` when `git_path=1`.
+  - `/api/files/inspect`, `/api/files/read`, and `/file/write` accept `path_token` in JSON bodies for Git-backed paths.
+  - File/read/global/video/write responses and session-file recording use `path_json_text()` at JSON/persistence boundaries that could otherwise see surrogate-bearing `Path` strings.
+- Frontend coverage: `app.js` now tracks `activeFileApiPath`, stores candidate `apiPath`, keys Git candidates by token when present, carries `apiPath` through picker click and keyboard open, session sync, set/open request ownership, inspect/mode resolution, diff/file reads, media/download URLs, conflict reload, save requests, and save-current guards. Stale token reuse is limited to unchanged display paths.
+- Tests added/updated:
+  - `tests/test_git_ops.py` covers surrogate-preserving split/numstat parsing, token round-trip, JSON-safe response fields, invalid-token rejection, and `run_git(..., decode_errors="surrogateescape")`.
+  - `tests/test_file_inspect.py::test_git_changed_files_non_utf8_path_token_round_trips_to_file_versions` creates a real POSIX Git repo with byte filename `b"caf\\xe9.py"` and verifies changed-files emits a safe display path plus token, JSON encoding succeeds, file_versions returns base/current text, `/file/read?git_path=1`, `/api/files/inspect`, and `/file/write` all resolve the token back to the real file and write the intended file.
+  - Frontend source/VM tests now assert `apiPath` propagation through file-picker candidates, session selections, active-open guards, inspect/open/read/save/reload/download paths, and JSON-safe recorder boundaries in file route source tests.
+- Validation before commit:
+  - `python3 -m py_compile codoxear/git_ops.py codoxear/git_routes.py codoxear/file_get_routes.py codoxear/file_global_routes.py codoxear/file_write_routes.py codoxear/video_preview.py codoxear/server.py tests/test_git_ops.py tests/test_file_inspect.py tests/test_file_picker_search_source.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local touched group `python3 -m pytest -q tests/test_git_ops.py tests/test_file_inspect.py tests/test_file_picker_search_source.py tests/test_file_viewer_source.py tests/test_auth_cleanup_source.py` returned `133 passed, 56 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1254 passed, 111 subtests passed`.
+  - Focused isolated Docker `scripts/codoxear-docker-sandbox test tests/test_git_ops.py tests/test_file_inspect.py tests/test_file_get_routes_source.py tests/test_file_global_routes_source.py tests/test_file_write_routes_source.py tests/test_file_picker_session_state.py tests/test_file_picker_search_source.py tests/test_file_viewer_source.py tests/test_auth_cleanup_source.py -q` returned success with the focused group.
+  - Full isolated Docker `scripts/codoxear-docker-sandbox test -q` returned success for the full suite.
+  - `git diff --check` passed and `codoxear/static/app.js` contained zero NUL bytes after an intermediate edit artifact was corrected.
+- Clean-room review `aef947e6-3f1a-4355-b46d-4fc6268636f3` returned PASS before the functional commit. Review confirmed byte identity preservation, JSON safety, explicit token ingress, ordinary UTF-8/whitespace/backslash/slash compatibility, frontend token propagation, stale-token handling, and route coverage. Non-blocking notes: absolute non-git file routes do not accept `path_token`, and behavior is POSIX/Linux-scoped because arbitrary non-UTF filenames are not portable to every filesystem.
+- Scope note: this closes non-UTF byte-literal round-trip for Git-in-repo changed-file/viewer flows under POSIX filesystem semantics. It does not claim absolute non-git file routes, browser manual UX evidence, non-POSIX filename behavior, or atomic symlink containment under concurrent filesystem mutation.
