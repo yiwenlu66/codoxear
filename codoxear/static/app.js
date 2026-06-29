@@ -5,31 +5,25 @@
 	        if (!Number.isFinite(raw) || raw <= 0) return 16 * 1024 * 1024;
 	        return Math.max(1, Math.floor(raw));
 	      })();
+      const codoxearViewport = window.CodoxearViewport;
+      if (
+        !codoxearViewport ||
+        typeof codoxearViewport.isMobile !== "function" ||
+        typeof codoxearViewport.prefersReducedMotion !== "function" ||
+        typeof codoxearViewport.useDesktopSessionActions !== "function" ||
+        typeof codoxearViewport.useTouchFileEditorControls !== "function" ||
+        typeof codoxearViewport.isTextEntryElement !== "function" ||
+        typeof codoxearViewport.updateAppHeightVar !== "function"
+      )
+        throw new Error("Codoxear viewport helpers failed to load");
       function isTextEntryElement(target) {
-	        const el = target instanceof Element ? target.closest("textarea, input, [contenteditable], [contenteditable=''], [contenteditable='true']") : null;
-	        if (!(el instanceof HTMLElement)) return false;
-	        if (el.tagName !== "INPUT") return true;
-	        const type = String(el.getAttribute("type") || "text").toLowerCase();
-	        return !["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"].includes(type);
-	      }
-	      function updateAppHeightVar() {
-	        const vv = window.visualViewport;
-	        const layoutH = Math.round(window.innerHeight);
-	        const visualH = Math.round(vv ? vv.height : window.innerHeight);
-	        const visualTop = Math.max(0, Math.round(vv ? vv.offsetTop : 0));
-	        const visualBottom = Math.max(0, layoutH - visualH - visualTop);
-	        if (updateAppHeightVar._h === visualH && updateAppHeightVar._l === layoutH && updateAppHeightVar._t === visualTop && updateAppHeightVar._b === visualBottom) return;
-	        updateAppHeightVar._h = visualH;
-	        updateAppHeightVar._l = layoutH;
-	        updateAppHeightVar._t = visualTop;
-	        updateAppHeightVar._b = visualBottom;
-	        document.documentElement.style.setProperty("--appH", `${visualH}px`);
-	        document.documentElement.style.setProperty("--layoutH", `${layoutH}px`);
-	        document.documentElement.style.setProperty("--vvTop", `${visualTop}px`);
-	        document.documentElement.style.setProperty("--vvBottom", `${visualBottom}px`);
-	      }
-	      updateAppHeightVar();
-	      window.addEventListener("resize", updateAppHeightVar);
+        return codoxearViewport.isTextEntryElement(target);
+      }
+      function updateAppHeightVar() {
+        return codoxearViewport.updateAppHeightVar();
+      }
+      updateAppHeightVar();
+      window.addEventListener("resize", updateAppHeightVar);
       const codoxearDisplay = window.CodoxearDisplay;
       if (
         !codoxearDisplay ||
@@ -327,16 +321,6 @@
       function normalizeQueueItems(data) {
         return codoxearSessionHelpers.normalizeQueueItems(data);
       }
-
-      const codoxearViewport = window.CodoxearViewport;
-      if (
-        !codoxearViewport ||
-        typeof codoxearViewport.isMobile !== "function" ||
-        typeof codoxearViewport.prefersReducedMotion !== "function" ||
-        typeof codoxearViewport.useDesktopSessionActions !== "function" ||
-        typeof codoxearViewport.useTouchFileEditorControls !== "function"
-      )
-        throw new Error("Codoxear viewport helpers failed to load");
 
       const codoxearPolling = window.CodoxearPolling;
       if (
