@@ -80,6 +80,7 @@ Interpretation:
 - Sessiond control-socket command semantics now live in `codoxear/sessiond_control.py`; `codoxear/sessiond.py` remains process/socket/PTY coordinator and preserves call-time dependency seams for `_inject`, `_encode_enter`, `_seq_bytes`, `_write_all`, and control-socket transport. Evidence covers focused sessiond/send tests and full local pytest, not Docker. See OPS 2026-06-29 Sessiond control handler split.
 - Clean-room review `b445f344-3541-4e5f-82b8-9d1a3a54d499` accepted the sessiond control split after one strict-fidelity repair: duplicate busy rollback assignment removed in `0457ca1`; focused sessiond tests and full local pytest pass (`1223 passed, 107 subtests`). See OPS 2026-06-29 Sessiond control split clean-room review repair.
 - Session-log path predicates, path comparison, cwd matching, and rollout session-id extraction now live in `codoxear/session_log_paths.py`; `codoxear/util.py` re-exports the old names for existing broker/server imports. Evidence covers focused session-log/proc/resume tests and full local pytest, not Docker. See OPS 2026-06-29 Session log path helper split.
+- Clean-room review `d84f1489-b485-4059-965f-7a626157df0d` accepted the session-log path helper split as verbatim, facade-compatible, cycle-free, and locally validated (`1223 passed, 107 subtests`), with no blockers. See OPS 2026-06-29 Session log path helper split clean-room review PASS.
 
 Commitments:
 - Do not weaken source sentinels to chase line count; update them only when ownership truly moves.

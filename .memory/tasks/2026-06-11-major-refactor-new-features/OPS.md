@@ -4294,3 +4294,11 @@
   - Focused sessiond control/state/send/packaging/pty group returned `23 passed`.
   - Full local `python3 -m pytest -q` returned `1223 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this repair.
+
+## 2026-06-29T06:28:30Z Session log path helper split clean-room review PASS
+- Async clean-room review `d84f1489-b485-4059-965f-7a626157df0d` returned `PASS` for functional commit `22f66a8` and docs `61a6a40`.
+- Reviewer verified verbatim movement of `_SESSION_ID_RE`, `session_id_from_rollout_path`, `_is_codex_rollout_log_path`, `_is_pi_session_log_path`, `_is_cc_session_log_path`, `_paths_match`, `_path_in_set`, and `_payload_cwd_matches` into `session_log_paths.py`.
+- Reviewer verified `codoxear.util` re-exports all moved names, existing broker/server consumers still import through `codoxear.util`, runtime import identities are preserved, `util.py` removed now-unused `re`, and no import cycle exists because `session_log_paths.py` depends only on stdlib.
+- Reviewer validation: source sentinel passed, focused session-log/proc/resume/source group passed, py_compile was clean, and full local `python3 -m pytest -q` returned `1223 passed, 107 subtests passed`.
+- Reviewer found no blockers and no required fixes; residual risk is only that future direct imports from `session_log_paths.py` would require sentinel-policy updates.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
