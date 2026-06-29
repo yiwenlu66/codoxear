@@ -7,6 +7,7 @@ from pathlib import Path
 from codoxear.agent_backend import normalize_agent_backend
 from codoxear.broker_turn_state import State
 from codoxear.broker_turn_state import _close_turn_state
+from codoxear.broker_turn_state import _hint_seen_in_new_text
 from codoxear.cc_log import cc_current_turn_state_before as _cc_current_turn_state_before
 from codoxear.pi_log import PiPendingToolCallId as _PiPendingToolCallId
 from codoxear.pi_log import pi_complete_jsonl_offset_before as _pi_complete_jsonl_offset_before
@@ -16,6 +17,8 @@ from codoxear.util import find_session_log_for_session_id as _find_session_log_f
 from codoxear.util import is_subagent_session_meta as _is_subagent_session_meta
 from codoxear.util import read_session_meta_payload as _read_session_meta_payload
 from codoxear.util import subagent_parent_thread_id as _subagent_parent_thread_id
+
+_DETACH_TRIGGER_PHRASES: dict[str, tuple[str, ...]] = {"codex": ("To continue this session, run ",)}
 
 
 @dataclass(frozen=True)
@@ -141,3 +144,31 @@ def _apply_broker_log_binding_to_state(
     elif seed.idle is True:
         _close_turn_state(st)
     return BrokerLogStateApplyResult(have_sock=have_sock, previous_log_path=prev_lp)
+
+
+def _detach_current_session_binding(st: "State") -> None:
+    for p in (st.log_path, st.last_rollout_path, st.last_detected_rollout_path):
+        if p is not None:
+            st.ignored_rollout_paths.add(p)
+    st.log_path = None
+    st.session_id = None
+    st.log_off = 0
+    st.last_interrupt_request_ts = 0.0
+    st.last_interrupted_idle_ts = 0.0
+    st.last_rollout_path = None
+    st.last_detected_rollout_path = None
+    st.detach_trigger_tail = ""
+
+
+def _detach_trigger_seen(*, agent_backend: str, tail: str, cleaned: str) -> bool:
+    for phrase in _DETACH_TRIGGER_PHRASES.get(agent_backend, ()):
+        if _hint_seen_in_new_text(tail=tail, cleaned=cleaned, phrase=phrase):
+            return True
+    return False
+
+
+def _maybe_detach_on_session_switch_trigger(*, st: "State", tail: str, cleaned: str, agent_backend: str) -> bool:
+    if not _detach_trigger_seen(agent_backend=agent_backend, tail=tail, cleaned=cleaned):
+        return False
+    _detach_current_session_binding(st)
+    return True

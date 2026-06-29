@@ -22,6 +22,9 @@ class TestBrokerLogBindingSource(unittest.TestCase):
             "_resolve_broker_log_binding",
             "_seed_broker_log_state",
             "_apply_broker_log_binding_to_state",
+            "_detach_current_session_binding",
+            "_detach_trigger_seen",
+            "_maybe_detach_on_session_switch_trigger",
         }
         self.assertTrue(owned_names <= binding_defs)
         self.assertFalse(owned_names & broker_defs)
@@ -35,6 +38,8 @@ class TestBrokerLogBindingSource(unittest.TestCase):
         self.assertIn("result = _apply_broker_log_binding_to_state", broker_source)
         self.assertIn("self._register_from_log(log_path=binding.log_path)", broker_source)
         self.assertIn("self._write_meta()", broker_source)
+        self.assertIn('_DETACH_TRIGGER_PHRASES: dict[str, tuple[str, ...]] = {"codex": ("To continue this session, run ",)}', binding_source)
+        self.assertIn("from codoxear.broker_log_binding import _maybe_detach_on_session_switch_trigger", broker_source)
         self.assertNotIn("threading.Thread", binding_source)
         self.assertNotIn("SOCK_DIR", binding_source)
 

@@ -41,6 +41,9 @@ from codoxear.broker_launch import _session_log_path_from_args
 from codoxear.broker_launch import _shell_argv_for_command as _shell_argv_for_command_impl
 from codoxear.broker_launch import _user_shell
 from codoxear.broker_log_binding import _apply_broker_log_binding_to_state
+from codoxear.broker_log_binding import _detach_current_session_binding
+from codoxear.broker_log_binding import _detach_trigger_seen
+from codoxear.broker_log_binding import _maybe_detach_on_session_switch_trigger
 from codoxear.broker_log_binding import _resolve_broker_log_binding
 from codoxear.broker_log_binding import _seed_broker_log_state
 from codoxear.broker_turn_state import INTERRUPT_HINT_TAIL_MAX
@@ -324,35 +327,10 @@ def _claimed_log_paths_from_sock_meta(*, sock_dir: Path, exclude_sock: Path | No
     return out
 
 
-_DETACH_TRIGGER_PHRASES: dict[str, tuple[str, ...]] = {"codex": ("To continue this session, run ",)}
 
 
-def _detach_current_session_binding(st: "State") -> None:
-    for p in (st.log_path, st.last_rollout_path, st.last_detected_rollout_path):
-        if p is not None:
-            st.ignored_rollout_paths.add(p)
-    st.log_path = None
-    st.session_id = None
-    st.log_off = 0
-    st.last_interrupt_request_ts = 0.0
-    st.last_interrupted_idle_ts = 0.0
-    st.last_rollout_path = None
-    st.last_detected_rollout_path = None
-    st.detach_trigger_tail = ""
 
 
-def _detach_trigger_seen(*, agent_backend: str, tail: str, cleaned: str) -> bool:
-    for phrase in _DETACH_TRIGGER_PHRASES.get(agent_backend, ()):
-        if _hint_seen_in_new_text(tail=tail, cleaned=cleaned, phrase=phrase):
-            return True
-    return False
-
-
-def _maybe_detach_on_session_switch_trigger(*, st: "State", tail: str, cleaned: str, agent_backend: str) -> bool:
-    if not _detach_trigger_seen(agent_backend=agent_backend, tail=tail, cleaned=cleaned):
-        return False
-    _detach_current_session_binding(st)
-    return True
 
 
 def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 256 * 1024) -> tuple[list[dict[str, Any]], int]:
