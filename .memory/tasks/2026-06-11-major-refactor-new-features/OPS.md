@@ -4573,3 +4573,14 @@
 - Review verified fail-closed `CodoxearVoiceHelpers` guard, `Object.freeze`, script order before `app.js`, static asset registration/cache versioning/packaging, docs-only `c4a9aaa`, and no protected checkout mutation/secrets/runtime artifacts.
 - Residual risks are limited to the explicit script-order dependency and wrapper argument contract, both guarded by source/runtime tests and fail-closed loading.
 - Reviewer noted a minor docs count ambiguity: the focused test count in OPS included the broader voice/static/frontend command, while the two named files alone produce fewer tests. This does not affect correctness of the reviewed split.
+
+
+## 2026-06-29T12:28:56Z Process liveness helper split
+- Functional commit `a1f9df0 Extract process liveness helpers` moved `pid_alive` and `process_group_alive` from `codoxear/util.py` into `codoxear/process_runtime.py`, colocating process liveness checks with process termination helpers.
+- `codoxear.util` remains an import-compatible facade by importing and re-exporting the same function objects; existing consumers in `server.py`, `broker_metadata.py`, and `sessiond.py` continue to import through `util.py`.
+- Full-suite anomaly: removing `import os` from `util.py` broke tests patching `codoxear.util.os.path.samefile` for cwd alias matching. The repair kept `import os` in `util.py` to preserve that legacy monkeypatch seam while still removing duplicate liveness implementations.
+- Validation after repair:
+  - `python3 -m py_compile codoxear/util.py codoxear/process_runtime.py` passed.
+  - Focused process/session/proc group returned `98 passed`.
+  - Full local `python3 -m pytest -q` returned `1232 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
