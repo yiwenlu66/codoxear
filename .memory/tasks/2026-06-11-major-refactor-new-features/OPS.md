@@ -5262,3 +5262,29 @@
 - Clean-room review `3b633f15-485c-475b-b58e-41b12e2b04be` returned PASS with no blockers. Review confirmed semantic equivalence for every call site, safe explicit non-text field clearing, unchanged video callback/applyFileMode semantics, untouched request guards/catch resets, fail-loud invalid-kind behavior, and VM/source test fidelity. Non-blocking notes: `applyActiveFileDiffState()` intentionally models only current-text/current-exists state, version double-checking is redundant but harmless, default `draft: false` in server file-read branches is correct, and this is a good prerequisite to a later `applyFileLoadResult()`.
 - Next transition seam: build on these state writers to extract an `applyFileLoadResult()`/load-result dispatcher that owns response-kind rendering/status decisions, while preserving HTTP fetch, mode resolution, request guards, `applyFileMode()` timing, video callback wiring, PDF lifecycle, and save/session state.
 - Scope note: this is load-state field ownership only. It does not claim full load-result dispatch ownership, finalization choreography extraction, save-token ownership, or browser-manual rendering evidence.
+
+
+
+## 2026-06-29T21:11:27Z File load-result dispatcher extraction
+- Functional commit `81469af Extract file load result dispatcher` moved result-kind state/render/status dispatch out of `openFilePath()` into `applyFileLoadResult(rel, result, request, { viewMode = "file" } = {})`.
+- Mechanism: `applyFileLoadResult()` validates/stale-guards the result, dispatches diff/image/pdf/video/download/text/markdown cases, uses the committed active-file state writers and render-surface helper, invokes the appropriate render primitive or DOM setup, preserves branch-specific status text, and returns `true`/`false` for success or stale/render failure.
+- Branch coverage in the helper:
+  - synthetic `kind: "diff"` handles base/current text, no-diff status, Monaco diff render, and stale guard.
+  - image/pdf/video/download/text/markdown preserve their prior validation, state assignment, render/surface/status behavior.
+  - video preserves its branch-internal `applyFileMode()` before handler wiring plus preview/original loading behavior; caller still performs the final `applyFileMode()` after helper success.
+- Boundary preserved: `openFilePath()` still owns unavailable/session/path checks, `beginFileOpenRequest()`, loading status, `resetFileViewerPanel()`, view-mode normalization, HTTP fetches, query-string composition, post-fetch current-request guards, final `applyFileMode()`, `rememberOpenedFile()`, shared success tail, catch reset/error status, and `finalizeFileOpenRequest()`. `openDraftFilePath()` was intentionally untouched because draft has a different `applyFileMode()`-before-render invariant.
+- Tests added/updated:
+  - `eval_file_load_result_dispatcher()` executes the real state writers, `setFileRenderSurface()`, and `applyFileLoadResult()` in a Node VM with mocked render primitives.
+  - VM cases cover diff render success, no-diff, image, unsafe video preview path, markdown preview/read-only status, and PDF stale-after-render false return.
+  - Source sentinels pin the dispatcher signature and both `openFilePath()` call sites.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused dispatcher/state/race/media tests passed.
+  - Focused file-viewer/file-picker/static group returned `82 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1266 passed, 136 subtests passed`.
+  - Focused Docker file-viewer/file-picker/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed.
+- Clean-room review `630cb585-8dde-4844-b149-dd2bb96b3ec0` returned PASS with no blockers. Review verified semantic equivalence for every moved branch, caller ownership of request/finalization behavior, correct diff field-name mapping, preserved error messages and stale guards, correct render-surface behavior, and adequate VM/source coverage. Non-blocking notes: the helper's top-level current-request guard is redundant but useful defense-in-depth; dispatcher VM coverage does not directly exercise download-only or non-markdown text but those remain low-risk/source-covered.
+- Next transition seam: extract `finalizeFileOpenSuccess(rel, absPath)` from the post-dispatch success path in `openFilePath()`, preserving the diff `res.abs_path` vs read `res.path` distinction and leaving draft loading untouched.
+- Scope note: this is result-kind dispatch ownership for `openFilePath()` only. It does not claim draft loading unification, success-finalization ownership, PDF lifecycle repair, save-token ownership, or browser-manual rendering evidence.
