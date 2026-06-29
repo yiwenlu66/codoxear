@@ -4716,3 +4716,14 @@
 - Review verified `app_launch.js` loads before `app.js` in `index.html`, exports `redactedLaunchErrorText` in the frozen helper object, and the server-side launch-attempt redactor is independent/untouched.
 - Review observed node syntax checks, focused launch/chat tests, full local `1240 passed, 107 subtests passed`, no unrelated/protected/secrets/runtime changes, docs-only docs commit, and no Docker overclaim.
 - Residual review notes are non-blocking: pattern-3 edge cases are not directly VM-tested but body identity covers the extraction; no browser runtime test was run; `Object.freeze` remains the existing shallow frontend-module pattern.
+
+
+## 2026-06-29T13:43:00Z Narrow smooth Jump-to-latest rejected again
+- Functional commit `c36584c Smooth explicit jump to latest` briefly reintroduced an opt-in smooth `scrollToBottom({ behavior: "smooth" })` call from `jumpToLatest()` while leaving default auto-scroll calls instant.
+- Prior task memory from 2026-06-13 already falsified this narrow mechanism: post-render smooth scrolling can be neutralized by render/decorations/typing/pending/live-poll bottom-scroll schedulers, and a previous series of clean-room reviews ended in a rollback decision.
+- Corrective action: reverted the narrow patch in `85598b7 Revert "Smooth explicit jump to latest"`, restoring the previously validated instant Jump-to-latest behavior.
+- Validation after revert:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused navigation/chat/static group returned `49 passed`.
+  - Full local `python3 -m pytest -q` returned `1240 passed, 107 subtests passed`.
+- Scoped conclusion: Smooth Jump-to-latest remains parked until a deliberate scroll-scheduler/runtime-harness design can constrain every bottom-scroll scheduler, not just the explicit button handler. Docker evidence was not rerun.
