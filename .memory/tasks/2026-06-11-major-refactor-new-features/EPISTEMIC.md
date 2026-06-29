@@ -66,6 +66,7 @@ Interpretation:
 - Pi message/tool-call parsing now lives in `codoxear/pi_message.py`; `codoxear/pi_log.py` re-exports public names and retains context-window, session-header, reverse-scan, current-turn, and token-update ownership. Evidence covers focused broker/sessiond/idle/server-chat tests and full local pytest, not Docker. See OPS 2026-06-29 Pi message helper split.
 - Clean-room review `b1ec0840-d6ad-47c6-bf1d-75842f17e39c` accepted the Pi message split but found one strict-fidelity drift in `pi_message_role` empty-role handling; repair commit `ddbaee4` restored the original `None` behavior and full local now passes `1212 passed, 107 subtests`. See OPS 2026-06-29 Pi message split clean-room review PASS and repair.
 - Generic JSON state load/write helpers now live in `codoxear/json_state.py`; `codoxear/util.py` re-exports old names. Evidence covers stores that use these helpers and full local pytest, not Docker. See OPS 2026-06-29 JSON state helper split.
+- Clean-room review `532884be-5338-43d7-88d8-ae1266ea78fc` accepted the JSON state helper split as verbatim, re-export-compatible, cycle-free, and fully locally validated (`1212 passed, 107 subtests`). See OPS 2026-06-29 JSON state split clean-room review PASS.
 
 Commitments:
 - Do not weaken source sentinels to chase line count; update them only when ownership truly moves.

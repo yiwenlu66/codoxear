@@ -4137,3 +4137,10 @@
   - Focused Pi message/server-chat/broker-busy/sessiond/idle group returned `136 passed`.
   - Full local `python3 -m pytest -q` returned `1212 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T02:26:42Z JSON state split clean-room review PASS
+- Async clean-room review `532884be-5338-43d7-88d8-ae1266ea78fc` returned `PASS` for functional commit `48e6810` and docs `a959a8e`.
+- Reviewer verified byte-identical moved bodies for `load_json_file` and `atomic_write_json`, object identity through `codoxear.util` re-exports, all call sites still importing from `codoxear.util`, no import cycles, no protected checkout mutation, no secrets/runtime artifacts, no Docker overclaim, and docs-only docs commit.
+- Reviewer behavior checks covered missing-file defaults, propagation of non-FileNotFound errors and JSON decode errors, sorted/indented/non-ASCII/trailing-newline JSON output, same-directory temp naming, `os.replace`, and temp cleanup.
+- Reviewer validation matched OPS claims: focused JSON/store group `54 passed`; full local `1212 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
