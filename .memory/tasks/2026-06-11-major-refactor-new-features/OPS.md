@@ -3782,3 +3782,31 @@
   - Full local `python3 -m pytest -q` returned `1179 passed, 107 subtests passed`.
   - `git diff --check` caught and the commit fixed an EOF whitespace issue in `rollout_log.py`.
 - Scope note: Docker evidence was not rerun and must not be claimed for promotion/acceptance for this tranche.
+
+
+## 2026-06-29T00:11:01Z Broker turn-state reducer split
+- Functional commit `bfb6705 Extract broker turn state reducer` moved broker busy/turn reducer ownership from `codoxear/broker.py` into new `codoxear/broker_turn_state.py`:
+  - `State`
+  - `_strip_ansi`
+  - `_hint_seen_in_new_text`
+  - `_update_busy_from_pty_text`
+  - `_response_call_started`
+  - `_response_call_finished`
+  - `_should_clear_busy_state`
+  - `_mark_explicit_interrupt_request`
+  - `_mark_busy_state_idle`
+  - `_close_turn_state`
+  - `_apply_rollout_obj_to_state`
+  - `_codex_error_affects_turn_status`
+- Compatibility preserved: `codoxear.broker` imports/re-exports `State` and reducer helpers, so existing broker tests and callers still import from the broker facade.
+- Policy boundary made explicit: `broker.py` keeps environment-derived `BUSY_QUIET_SECONDS` and `BUSY_INTERRUPT_GRACE_SECONDS`; its wrapper injects those values into `broker_turn_state._should_clear_busy_state` rather than letting the reducer module read broker globals.
+- Negative evidence repaired before commit:
+  - Initial extraction lost the `@dataclass` decorator on `State`, causing `TypeError: State() takes no arguments`; focused broker tests caught the break and `@dataclass` was restored in the new owner module.
+  - Initial `_should_clear_busy_state` still referenced broker timing constants indirectly and rejected injected keyword policy; focused tests caught the mismatch and the reducer signature was changed to explicit timing-policy parameters.
+  - `git diff --check` caught an EOF blank line in `broker_turn_state.py`; trimmed before commit.
+- Source sentinel update: new `tests/test_broker_turn_state_source.py` pins reducer ownership in `broker_turn_state.py` and broker facade imports/timing injection; `tests/test_interrupt_semantics_source.py` now checks interrupt-clear policy in the new owner module while preserving broker interrupt request wiring.
+- Size observation: `broker.py` is now 1518 lines; `broker_turn_state.py` is 428 lines after EOF cleanup.
+- Validation after `bfb6705`:
+  - Focused broker/reducer group returned `127 passed`.
+  - Full local `python3 -m pytest -q` returned `1181 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
