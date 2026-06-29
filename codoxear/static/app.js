@@ -7581,6 +7581,27 @@
           return Boolean(node && node.contains(target));
         }
 
+        function fileEditorShortcutBlocked(target) {
+          if (!isFileViewerOpen()) return true;
+          if (modalIsolationTargets.some((node) => node !== fileViewer && isModalTargetOpen(node))) return true;
+          if (target && isTextEntryElement(target) && !isActiveFileEditorInput(target)) return true;
+          return false;
+        }
+
+        function handleFileEditorSaveShortcut(e) {
+          if (e.defaultPrevented || e.isComposing) return false;
+          const key = String(e.key || "").toLowerCase();
+          if (key !== "s" || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return false;
+          const target = e.target instanceof HTMLElement ? e.target : null;
+          if (fileEditorShortcutBlocked(target)) return false;
+          if (!(fileEditMode && activeFileEditable && fileViewMode === "file" && isTextFileKind(activeFileKind) && !fileSavePending && !isFileViewerSessionUnavailable())) return false;
+          if (!fileViewerSessionId || !activeFilePath) return false;
+          e.preventDefault();
+          e.stopPropagation();
+          void saveActiveFileEdits({ exitEditMode: false });
+          return true;
+        }
+
         function handleFileEditorDeleteKeydown(e) {
           if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return false;
           const key = String(e.key || "").toLowerCase();
@@ -10083,6 +10104,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           moveFileTouchSelection(direction);
         }
         addAppEvent(document, "keydown", handleFileTouchSelectionKeydown, true);
+        addAppEvent(document, "keydown", handleFileEditorSaveShortcut, true);
         addAppEvent(document, "keydown", handleFileEditorDeleteKeydown, true);
         addAppEvent(
           document,

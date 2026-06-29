@@ -236,6 +236,99 @@ def eval_file_paste_dialog_fallback() -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_file_editor_save_shortcut() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("function isActiveFileEditorInput(target) {")
+    end = source.index("function isFileEditorNativeDeleteEvent(e)", start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        class FakeElement {{
+          constructor(opts = {{}}) {{
+            this.textEntry = Boolean(opts.textEntry);
+            this.editorInput = Boolean(opts.editorInput);
+            this._inputarea = Boolean(opts.inputarea);
+            this.classList = {{ contains: (name) => name === "inputarea" && this._inputarea }};
+          }}
+        }}
+        const snippet = {json.dumps(snippet + "\nglobalThis.__test_saveShortcut = handleFileEditorSaveShortcut;\n")};
+        async function runCase(overrides = {{}}) {{
+          const editorNode = {{ contains: (node) => Boolean(node && node.editorInput) }};
+          const fileViewer = {{ style: {{ display: overrides.viewerOpen === false ? "none" : "flex" }} }};
+          const filePasteDialog = {{ style: {{ display: overrides.nestedDialog ? "flex" : "none" }} }};
+          const fileUnsavedDialog = {{ style: {{ display: "none" }} }};
+          const ctx = {{
+            HTMLElement: FakeElement,
+            fileViewer,
+            filePasteDialog,
+            fileUnsavedDialog,
+            modalIsolationTargets: [fileViewer, filePasteDialog, fileUnsavedDialog],
+            fileEditMode: overrides.editMode !== false,
+            activeFileEditable: overrides.editable !== false,
+            fileViewMode: overrides.fileViewMode || "file",
+            activeFileKind: overrides.kind || "text",
+            fileSavePending: Boolean(overrides.pending),
+            fileViewerSessionId: overrides.sessionId === false ? "" : "sid-1",
+            activeFilePath: overrides.path === false ? "" : "note.txt",
+            unavailable: Boolean(overrides.unavailable),
+            saves: [],
+            isFileViewerOpen: () => fileViewer.style.display === "flex",
+            isModalTargetOpen: (node) => node && node.style && node.style.display === "flex",
+            isTextEntryElement: (target) => Boolean(target && target.textEntry),
+            getActiveFileCodeEditor: () => ({{ getDomNode: () => editorNode }}),
+            isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+            isFileViewerSessionUnavailable: () => ctx.unavailable,
+            saveActiveFileEdits: async (opts) => {{ ctx.saves.push(opts); return true; }},
+          }};
+          vm.createContext(ctx);
+          vm.runInContext(snippet, ctx);
+          const event = {{
+            key: overrides.key || "s",
+            ctrlKey: overrides.ctrl !== false,
+            metaKey: Boolean(overrides.meta),
+            altKey: Boolean(overrides.alt),
+            shiftKey: Boolean(overrides.shift),
+            isComposing: Boolean(overrides.composing),
+            defaultPrevented: Boolean(overrides.defaultPrevented),
+            target: overrides.target || null,
+            prevented: 0,
+            stopped: 0,
+            preventDefault() {{ this.prevented += 1; }},
+            stopPropagation() {{ this.stopped += 1; }},
+          }};
+          const handled = ctx.__test_saveShortcut(event);
+          await Promise.resolve();
+          return {{ handled, prevented: event.prevented, stopped: event.stopped, saves: ctx.saves }};
+        }}
+        (async () => {{
+          const editorInput = new FakeElement({{ textEntry: true, inputarea: true, editorInput: true }});
+          const otherInput = new FakeElement({{ textEntry: true, inputarea: false, editorInput: false }});
+          const validCtrl = await runCase();
+          const validMeta = await runCase({{ ctrl: false, meta: true, target: editorInput }});
+          const noModifier = await runCase({{ ctrl: false }});
+          const wrongKey = await runCase({{ key: "p" }});
+          const notEdit = await runCase({{ editMode: false }});
+          const pending = await runCase({{ pending: true }});
+          const unavailable = await runCase({{ unavailable: true }});
+          const nestedDialog = await runCase({{ nestedDialog: true }});
+          const otherTextEntry = await runCase({{ target: otherInput }});
+          const noPath = await runCase({{ path: false }});
+          const viewerClosed = await runCase({{ viewerOpen: false }});
+          process.stdout.write(JSON.stringify({{ validCtrl, validMeta, noModifier, wrongKey, notEdit, pending, unavailable, nestedDialog, otherTextEntry, noPath, viewerClosed }}));
+        }})().catch((err) => {{ console.error(err && err.stack ? err.stack : err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(
+        ["node", "-e", js],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return json.loads(proc.stdout)
+
+
 def eval_file_open_request_sequence() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("let fileOpenRequestId = 0;")
@@ -653,6 +746,29 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("justify-content: space-between;", css_source)
         self.assertIn("pointer-events: none;", css_source)
         self.assertIn("margin-left: auto;", css_source)
+
+    def test_file_editor_save_shortcut_is_scoped_to_active_edit_mode(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("function handleFileEditorSaveShortcut(e)", source)
+        self.assertIn('key !== "s" || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey', source)
+        self.assertIn("fileEditorShortcutBlocked(target)", source)
+        self.assertIn("void saveActiveFileEdits({ exitEditMode: false });", source)
+        self.assertIn('addAppEvent(document, "keydown", handleFileEditorSaveShortcut, true);', source)
+        result = eval_file_editor_save_shortcut()
+        for key in ("validCtrl", "validMeta"):
+            with self.subTest(key=key):
+                case = result[key]
+                self.assertTrue(case["handled"])
+                self.assertEqual(case["prevented"], 1)
+                self.assertEqual(case["stopped"], 1)
+                self.assertEqual(case["saves"], [{"exitEditMode": False}])
+        for key in ("noModifier", "wrongKey", "notEdit", "pending", "unavailable", "nestedDialog", "otherTextEntry", "noPath", "viewerClosed"):
+            with self.subTest(key=key):
+                case = result[key]
+                self.assertFalse(case["handled"])
+                self.assertEqual(case["prevented"], 0)
+                self.assertEqual(case["stopped"], 0)
+                self.assertEqual(case["saves"], [])
 
     def test_touch_select_mode_refocuses_editor_and_blocks_printable_edits(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
