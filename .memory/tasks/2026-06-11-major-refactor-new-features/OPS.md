@@ -4383,3 +4383,11 @@
   - Focused JSONL/broker/sessiond group returned `110 passed`.
   - Full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+## 2026-06-29T08:37:26Z Frontend row query helper split clean-room review PASS
+- Async clean-room review `6756b41c-31cf-4fb1-9642-bfcda8c8b65b` returned `PASS` for functional commit `5c5629f` and docs `59bbf62`.
+- Reviewer verified behavior-preserving extraction of `messageCopyButtonForRow`, `renderedMessageRows`, `loadedUserMessageRows`, `loadedCopyMessageRows`, and `activeElementIsMessageCopyButton`, with only closure variables made explicit as `chatInner`/`documentLike` parameters.
+- Reviewer verified the fail-closed `CodoxearMessageRows` guard covers all seven row helpers, wrappers delegate with `chatInner`/`document`, active copy-row state and roving-tab-stop mutation remain in `app.js`, no stateful mutation moved to the helper, and the helper export remains frozen.
+- Reviewer behavior checks covered typing/recovery-row exclusion, user/copy row filtering, active copy-button detection, source sentinels, node syntax checks, no secrets/runtime artifacts, docs-only docs commit, no protected checkout mutation, and no Docker overclaim.
+- Reviewer validation: focused row/navigation/scrollback tests passed and full local `python3 -m pytest -q` returned `1227 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
