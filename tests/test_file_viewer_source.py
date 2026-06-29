@@ -941,10 +941,13 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("unavailable: isFileViewerSessionUnavailable(),", source)
         self.assertIn("const unavailable = Boolean(state.unavailable);", source)
         self.assertIn("if (blockUnavailableFileAction()) return false;", source)
+        self.assertEqual(source.count("resetFileViewerPanel();"), 6)
         open_primitive_start = source.index("async function openFilePath(nextPath")
         open_primitive_end = source.index("fileBtn.onclick", open_primitive_start)
         open_primitive_block = source[open_primitive_start:open_primitive_end]
         self.assertIn("if (blockUnavailableFileAction()) return false;", open_primitive_block)
+        self.assertIn("fileStatus.textContent = \"Loading...\";\n          resetFileViewerPanel();\n          try {", open_primitive_block)
+        self.assertNotIn("disposeFileEditor();\n          resetActiveFileBufferState();\n          fileImage.removeAttribute", open_primitive_block)
         file_picker_source = APP_FILE_PICKER_JS.read_text(encoding="utf-8")
         self.assertIn("if (blocked()) return [];", file_picker_source)
         draft_guard_start = source.index("async function openDraftFilePathWithGuard")
@@ -955,6 +958,8 @@ class TestFileViewerSource(unittest.TestCase):
         draft_end = source.index("function cloneFileCandidateEntry", draft_start)
         draft_block = source[draft_start:draft_end]
         self.assertIn("if (blockUnavailableFileAction()) return;", draft_block)
+        self.assertIn("fileStatus.textContent = \"Preparing new file...\";\n          resetFileViewerPanel();\n          try {", draft_block)
+        self.assertNotIn("disposeFileEditor();\n          resetActiveFileBufferState();\n          fileImage.removeAttribute", draft_block)
         self.assertIn("if (blockUnavailableFileAction()) return;", source)
         self.assertIn("if (blockUnavailableFileAction()) return;\n            if (!text)", source)
         self.assertIn("function insertIntoActiveFileEditor(text)", source)

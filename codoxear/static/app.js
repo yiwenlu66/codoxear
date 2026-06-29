@@ -8853,12 +8853,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             return;
           }
           fileStatus.textContent = "Preparing new file...";
-          disposeFileEditor();
-          resetActiveFileBufferState();
-          fileImage.removeAttribute("src");
-          fileImage.style.display = "none";
-          clearFileVideo();
-          fileDiff.style.display = "block";
+          resetFileViewerPanel();
           try {
             if (fileViewMode !== "file") setFileViewMode("file");
             activeFileDraft = true;
@@ -9674,12 +9669,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             return false;
           }
           fileStatus.textContent = "Loading...";
-          disposeFileEditor();
-          resetActiveFileBufferState();
-          fileImage.removeAttribute("src");
-          fileImage.style.display = "none";
-          clearFileVideo();
-          fileDiff.style.display = "block";
+          resetFileViewerPanel();
           try {
             const activeEntry = activeFileEntry();
             const canUseDiffView = request.gitPath && fileCandidateGitStateFresh && Boolean(activeEntry && activeEntry.changed);
