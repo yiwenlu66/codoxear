@@ -3954,3 +3954,16 @@
   - `_require_proc` direct calls default to real `sys.platform`, while broker wrapper passes platform explicitly.
   - New source sentinels are ownership checks and rely on existing behavioral tests for semantics.
   - Evidence remains local pytest only for this tranche; Docker was not rerun.
+
+## 2026-06-29T01:10:52Z Frontend URL hash helper split
+- Functional commit `788b480 Move session hash helpers to URL module` moved session-hash parsing/mutation from `codoxear/static/app.js` into `codoxear/static/app_url.js`:
+  - `sessionIdFromHash`
+  - `setSessionHash`
+- Compatibility preserved: `app.js` keeps wrapper functions named `sessionIdFromHash` and `setSessionHash`, now delegating to `window.CodoxearUrls`, so existing app call sites and source tests retain the same names.
+- Behavior directly tested: URL module test now verifies `session` hash values are decoded/trimmed and clearing the session hash preserves path/search plus unrelated hash parameters.
+- Negative evidence repaired before commit: the Node VM test context lacked `URLSearchParams`; adding the browser global to the harness fixed the measurement artifact without changing production code.
+- Validation after `788b480`:
+  - `node --check codoxear/static/app_url.js` and `node --check codoxear/static/app.js` passed.
+  - Focused frontend URL/static/voice/file-viewer source group returned `48 passed, 3 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1201 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
