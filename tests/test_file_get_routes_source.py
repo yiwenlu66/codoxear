@@ -45,6 +45,9 @@ class TestFileGetRoutesSource(unittest.TestCase):
         self.assertIn('except KeyError:', get_source)
         self.assertIn('deps.json_response(handler, 400, {"error": f"{name} required"})', get_source)
         self.assertIn('deps.json_response(handler, 500, {"error": f"video preview failed: {e}"})', get_source)
+        self.assertIn('read_regular_file_prefix: Callable[[Path, int], tuple[bytes, int]]', get_source)
+        self.assertIn('prefix, _size = deps.read_regular_file_prefix(path_obj, 4096)', get_source)
+        self.assertNotIn('path_obj.open("rb")', get_source)
         self.assertIn('deps.send_attachment_file_response(handler, path_obj, size=size, content_disposition=deps.download_disposition(path_obj))', get_source)
 
 

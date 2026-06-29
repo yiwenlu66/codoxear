@@ -1,8 +1,13 @@
 import contextlib
 import io
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+from codoxear import file_response
+from codoxear import file_text
 
 from codoxear.file_response import _stream_open_file_bytes
 from codoxear.file_response import send_attachment_file_response
@@ -63,6 +68,8 @@ class TestFileResponseModuleSource(unittest.TestCase):
         self.assertNotIn("def _send_attachment_file_response(", server_source)
 
         self.assertIn("def _open_file_for_response(", module_source)
+        self.assertIn("open_regular_file_no_symlink(path)", module_source)
+        self.assertNotIn('path.open("rb")', module_source)
         self.assertIn("def _stream_open_file_bytes(", module_source)
         self.assertIn("def _log_late_stream_error(", module_source)
         self.assertIn("def _stream_file_bytes(", module_source)
@@ -75,7 +82,8 @@ class TestFileResponseModuleSource(unittest.TestCase):
         self.assertIn('handler.send_header("Content-Disposition", content_disposition)', module_source)
         self.assertIn("def _open_file_size(", module_source)
         self.assertIn("os.fstat(f.fileno()).st_size", module_source)
-        self.assertIn("_stream_open_file_bytes(handler, stream, length=length)", module_source)
+        self.assertIn("with stream as opened_stream:", module_source)
+        self.assertIn("_stream_open_file_bytes(handler, opened_stream, length=length)", module_source)
         self.assertIn("file response stream failed after headers", module_source)
 
     def test_inline_response_maps_missing_file_before_headers(self) -> None:
@@ -92,15 +100,23 @@ class TestFileResponseModuleSource(unittest.TestCase):
             path = Path(td) / "blob.bin"
             path.write_bytes(b"hello")
             handler = FakeHandler()
-            original_open = Path.open
-            try:
-                Path.open = lambda self, *args, **kwargs: (_ for _ in ()).throw(PermissionError("denied"))  # type: ignore[assignment]
+            with patch.object(file_response, "open_regular_file_no_symlink", side_effect=PermissionError("denied")):
                 send_inline_file_response(handler, path, "application/octet-stream")
-            finally:
-                Path.open = original_open  # type: ignore[assignment]
 
         self.assertEqual(handler.status, 403)
         self.assertEqual(handler.error, "denied")
+        self.assertEqual(handler.wfile.getvalue(), b"")
+
+    def test_inline_response_maps_symlink_rejection_before_headers(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "blob.bin"
+            path.write_bytes(b"hello")
+            handler = FakeHandler()
+            with patch.object(file_response, "open_regular_file_no_symlink", side_effect=ValueError("symlink file not supported")):
+                send_inline_file_response(handler, path, "application/octet-stream")
+
+        self.assertEqual(handler.status, 400)
+        self.assertEqual(handler.error, "symlink file not supported")
         self.assertEqual(handler.wfile.getvalue(), b"")
 
     def test_inline_response_uses_open_file_size_for_range_headers(self) -> None:
@@ -160,6 +176,54 @@ class TestFileResponseModuleSource(unittest.TestCase):
         self.assertTrue(any("disk read failed" in msg for msg in handler.logged_errors))
         self.assertIn("error: file response stream failed after headers: OSError: disk read failed", stderr.getvalue())
         self.assertEqual(handler.wfile.getvalue(), b"")
+
+    @unittest.skipIf(not hasattr(os, "symlink"), "symlink required")
+    def test_inline_response_parent_swap_streams_opened_directory_not_symlink_target(self) -> None:
+        with tempfile.TemporaryDirectory() as td, tempfile.TemporaryDirectory() as outside_td:
+            base = Path(td)
+            parent = base / "dir"
+            parent.mkdir()
+            path = parent / "blob.bin"
+            raw = b"safe bytes"
+            path.write_bytes(raw)
+            outside = Path(outside_td)
+            outside_parent = outside / "dir"
+            outside_parent.mkdir()
+            outside_target = outside_parent / "blob.bin"
+            outside_target.write_bytes(b"attacker bytes")
+            moved_parent = base / "dir-original"
+            real_os_open = os.open
+            real_path_open = Path.open
+            swapped = False
+
+            def swap_parent_once() -> None:
+                nonlocal swapped
+                if swapped:
+                    return
+                parent.rename(moved_parent)
+                os.symlink(outside_parent, parent)
+                swapped = True
+
+            def racing_os_open(path_arg, flags, mode=0o777, *, dir_fd=None):
+                if path_arg == "blob.bin" and dir_fd is not None:
+                    swap_parent_once()
+                if dir_fd is None:
+                    return real_os_open(path_arg, flags, mode)
+                return real_os_open(path_arg, flags, mode, dir_fd=dir_fd)
+
+            def racing_path_open(self, *args, **kwargs):
+                if self == path:
+                    swap_parent_once()
+                return real_path_open(self, *args, **kwargs)
+
+            handler = FakeHandler()
+            with patch.object(file_text.os, "open", side_effect=racing_os_open), patch.object(Path, "open", racing_path_open):
+                send_inline_file_response(handler, path, "application/octet-stream")
+
+            self.assertTrue(swapped)
+            self.assertEqual(handler.status, 200)
+            self.assertEqual(handler.wfile.getvalue(), raw)
+            self.assertEqual(outside_target.read_bytes(), b"attacker bytes")
 
     def test_attachment_response_streams_without_read_bytes_and_caps_to_declared_size(self) -> None:
         with tempfile.TemporaryDirectory() as td:

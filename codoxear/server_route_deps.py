@@ -72,6 +72,7 @@ class ServerRouteCaps:
     _read_body: Any
     _read_client_file_view: Any
     _read_new_session_defaults: Any
+    _read_regular_file_prefix_no_symlink: Any
     _read_run_settings_from_log: Any
     _read_static_bytes: Any
     _read_text_file_strict: Any
@@ -160,6 +161,7 @@ def server_route_caps(server: Any) -> ServerRouteCaps:
         _read_body=server._read_body,
         _read_client_file_view=server._read_client_file_view,
         _read_new_session_defaults=server._read_new_session_defaults,
+        _read_regular_file_prefix_no_symlink=server._read_regular_file_prefix_no_symlink,
         _read_run_settings_from_log=server._read_run_settings_from_log,
         _read_static_bytes=server._read_static_bytes,
         _read_text_file_strict=server._read_text_file_strict,
@@ -362,6 +364,7 @@ class ServerRouteDepsFactory:
             resolve_git_existing_regular_file=caps._resolve_git_existing_regular_file,
             resolve_existing_absolute_file=caps._resolve_existing_absolute_file,
             read_client_file_view=caps._read_client_file_view,
+            read_regular_file_prefix=caps._read_regular_file_prefix_no_symlink,
             search_session_relative_files=caps._search_session_relative_files,
             list_session_relative_files=caps._list_session_relative_files,
             file_kind=caps._file_kind,

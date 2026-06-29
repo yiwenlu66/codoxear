@@ -44,6 +44,7 @@ from .file_search import FILE_SEARCH_LIMIT
 from .file_search import file_search_score as _file_search_score
 from .file_search import search_session_relative_files as _search_session_relative_files_impl
 from .file_text import FILE_READ_MAX_BYTES
+from .file_text import read_regular_file_prefix_no_symlink as _read_regular_file_prefix_no_symlink
 from .file_text import read_text_file_strict as _read_text_file_strict
 from .file_types import file_kind as _file_kind
 from .file_upload import attachment_inject_text as _attachment_inject_text

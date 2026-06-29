@@ -90,6 +90,7 @@ class FileGetRouteDeps:
     resolve_git_existing_regular_file: Callable[..., tuple[Path, str]]
     resolve_existing_absolute_file: Callable[[str], Path]
     read_client_file_view: Callable[[Path], ClientFileView]
+    read_regular_file_prefix: Callable[[Path, int], tuple[bytes, int]]
     search_session_relative_files: Callable[..., dict[str, Any]]
     list_session_relative_files: Callable[[Path], list[str]]
     file_kind: Callable[[Path, bytes], tuple[str, str | None]]
@@ -409,13 +410,16 @@ def _absolute_file_path(handler: Any, *, query: str, deps: FileGetRouteDeps) -> 
 
 def _read_prefix(handler: Any, *, path_obj: Path, deps: FileGetRouteDeps) -> bytes | None:
     try:
-        with path_obj.open("rb") as f:
-            return f.read(4096)
+        prefix, _size = deps.read_regular_file_prefix(path_obj, 4096)
+        return prefix
     except FileNotFoundError as e:
         deps.json_response(handler, 404, {"error": str(e)})
         return None
     except PermissionError as e:
         deps.json_response(handler, 403, {"error": str(e)})
+        return None
+    except ValueError as e:
+        deps.json_response(handler, 400, {"error": str(e)})
         return None
 
 

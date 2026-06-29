@@ -431,7 +431,7 @@ class TestInspectOpenableFile(unittest.TestCase):
                         handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
                         responses = []
                         with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                            Path, "open", side_effect=exc
+                            server, "_read_regular_file_prefix_no_symlink", side_effect=exc
                         ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
                             server.Handler.do_GET(handler)
                         self.assertEqual(len(responses), 1)

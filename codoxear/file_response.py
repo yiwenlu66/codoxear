@@ -5,7 +5,9 @@ import os
 import sys
 import urllib.parse
 from pathlib import Path
-from typing import BinaryIO
+from typing import Any, BinaryIO
+
+from .file_text import open_regular_file_no_symlink
 
 
 def single_byte_range(header: str | None, size: int) -> tuple[int, int] | None:
@@ -41,15 +43,32 @@ def _send_file_open_error(handler: http.server.BaseHTTPRequestHandler, exc: Base
     if isinstance(exc, PermissionError):
         handler.send_error(403, str(exc))
         return
+    if isinstance(exc, ValueError):
+        handler.send_error(400, str(exc))
+        return
     raise exc
 
 
-def _open_file_for_response(handler: http.server.BaseHTTPRequestHandler, path: Path) -> BinaryIO | None:
+class FileResponseStream:
+    def __init__(self, context: Any, file_obj: BinaryIO) -> None:
+        self.context = context
+        self.file_obj = file_obj
+
+    def __enter__(self) -> BinaryIO:
+        return self.file_obj
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> object:
+        return self.context.__exit__(exc_type, exc, tb)
+
+
+def _open_file_for_response(handler: http.server.BaseHTTPRequestHandler, path: Path) -> FileResponseStream | None:
     try:
-        return path.open("rb")
-    except (FileNotFoundError, PermissionError) as e:
+        opened = open_regular_file_no_symlink(path)
+        file_obj, _stat_result = opened.__enter__()
+    except (FileNotFoundError, PermissionError, ValueError) as e:
         _send_file_open_error(handler, e)
         return None
+    return FileResponseStream(opened, file_obj)
 
 
 def _open_file_size(f: BinaryIO) -> int:
@@ -98,7 +117,10 @@ def _stream_open_file_bytes(handler: http.server.BaseHTTPRequestHandler, f: Bina
 
 
 def _stream_file_bytes(handler: http.server.BaseHTTPRequestHandler, path: Path, *, start: int = 0, length: int | None = None) -> None:
-    with path.open("rb") as f:
+    stream = _open_file_for_response(handler, path)
+    if stream is None:
+        return
+    with stream as f:
         _stream_open_file_bytes(handler, f, start=start, length=length)
 
 
@@ -106,8 +128,8 @@ def send_inline_file_response(handler: http.server.BaseHTTPRequestHandler, path:
     stream = _open_file_for_response(handler, path)
     if stream is None:
         return
-    with stream:
-        size = _open_file_size(stream)
+    with stream as opened_stream:
+        size = _open_file_size(opened_stream)
         try:
             byte_range = single_byte_range(handler.headers.get("Range"), size)
         except ValueError:
@@ -130,7 +152,7 @@ def send_inline_file_response(handler: http.server.BaseHTTPRequestHandler, path:
         handler.send_header("Pragma", "no-cache")
         handler.send_header("Expires", "0")
         handler.end_headers()
-        _stream_open_file_bytes(handler, stream, start=start, length=length)
+        _stream_open_file_bytes(handler, opened_stream, start=start, length=length)
 
 
 def send_attachment_file_response(
@@ -143,8 +165,8 @@ def send_attachment_file_response(
     stream = _open_file_for_response(handler, path)
     if stream is None:
         return
-    with stream:
-        actual_size = _open_file_size(stream)
+    with stream as opened_stream:
+        actual_size = _open_file_size(opened_stream)
         length = min(max(0, int(size)), actual_size)
         handler.send_response(200)
         handler.send_header("Content-Type", "application/octet-stream")
@@ -154,4 +176,4 @@ def send_attachment_file_response(
         handler.send_header("Pragma", "no-cache")
         handler.send_header("Expires", "0")
         handler.end_headers()
-        _stream_open_file_bytes(handler, stream, length=length)
+        _stream_open_file_bytes(handler, opened_stream, length=length)

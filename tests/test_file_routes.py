@@ -208,6 +208,7 @@ def _file_get_deps(**overrides):
             editable=True,
             version="v1",
         ),
+        read_regular_file_prefix=lambda path, byte_count: (path.read_bytes()[:byte_count], path.stat().st_size),
         search_session_relative_files=lambda base, *, query, limit: {
             "query": query,
             "mode": "literal",
@@ -281,6 +282,24 @@ def test_handle_absolute_file_preview_route_streams_previewable_blob() -> None:
         assert handled is True
         assert responses == []
         assert inline == [(image, "image/png")]
+
+
+def test_handle_absolute_file_preview_route_maps_prefix_symlink_rejection() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        image = Path(td) / "preview.png"
+        image.write_bytes(b"\x89PNG\r\n\x1a\nbody")
+        deps, responses, inline, _attachments = _file_get_deps(
+            read_regular_file_prefix=lambda _path, _byte_count: (_ for _ in ()).throw(ValueError("symlink file not supported")),
+        )
+        handled = handle_absolute_file_preview_route(
+            _FakeHandler(),
+            path="/api/files/blob",
+            query="path=" + urllib.parse.quote(str(image)),
+            deps=deps,
+        )
+        assert handled is True
+        assert responses == [(400, {"error": "symlink file not supported"})]
+        assert inline == []
 
 
 def test_handle_absolute_file_preview_route_maps_video_preview_runtime_error() -> None:

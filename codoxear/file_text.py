@@ -99,7 +99,7 @@ def stat_path_no_symlink(path: Path) -> os.stat_result:
 
 
 @contextmanager
-def _open_regular_file_no_symlink(path: Path) -> Iterator[tuple[BinaryIO, os.stat_result]]:
+def open_regular_file_no_symlink(path: Path) -> Iterator[tuple[BinaryIO, os.stat_result]]:
     name = _path_leaf_name(Path(path))
     with _open_parent_dir_fd_no_symlink(path) as parent_fd:
         try:
@@ -137,12 +137,12 @@ def _open_regular_file_no_symlink(path: Path) -> Iterator[tuple[BinaryIO, os.sta
 
 
 def read_regular_file_prefix_no_symlink(path: Path, byte_count: int) -> tuple[bytes, int]:
-    with _open_regular_file_no_symlink(path) as (fh, st):
+    with open_regular_file_no_symlink(path) as (fh, st):
         return fh.read(byte_count), int(st.st_size)
 
 
 def read_regular_file_bytes_no_symlink(path: Path, *, max_bytes: int | None = None) -> tuple[bytes, int]:
-    with _open_regular_file_no_symlink(path) as (fh, st):
+    with open_regular_file_no_symlink(path) as (fh, st):
         if max_bytes is not None and int(st.st_size) > max_bytes:
             raise ValueError(f"file too large (max {max_bytes} bytes)")
         data = fh.read()
