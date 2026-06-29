@@ -148,6 +148,94 @@ def eval_open_file_reference_nonliteral() -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_file_paste_dialog_fallback() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("function hideFilePasteDialog({ restoreFocus = false } = {}) {")
+    end = source.index("function insertIntoActiveFileEditor(text)", start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const snippet = {json.dumps(snippet + "\nglobalThis.__test_paste = pasteFromClipboardIntoActiveFile;\nglobalThis.__test_showPaste = showFilePasteDialog;\nglobalThis.__test_hidePaste = hideFilePasteDialog;\n")};
+        async function runCase(opts) {{
+          const ctx = {{
+            window: {{ isSecureContext: Boolean(opts.secure) }},
+            navigator: opts.clipboard === "missing" ? {{}} : {{
+              clipboard: {{
+                readText: async () => {{
+                  if (opts.clipboard === "denied") throw new Error("denied");
+                  return opts.clipboardText || "";
+                }},
+              }},
+            }},
+            fileEditMode: true,
+            activeFileEditable: true,
+            fileViewMode: "file",
+            activeFileKind: "text",
+            fileSavePending: false,
+            filePasteBackdrop: {{ style: {{ display: "none" }} }},
+            filePasteDialog: {{ style: {{ display: "none" }} }},
+            filePasteInput: {{
+              value: "stale",
+              focusCount: 0,
+              selectCount: 0,
+              focus() {{ this.focusCount += 1; }},
+              select() {{ this.selectCount += 1; }},
+            }},
+            toastMessages: [],
+            inserted: [],
+            focusEditorCount: 0,
+            prepareCount: 0,
+            modalSyncCount: 0,
+            rafCount: 0,
+            isTextFileKind: (kind) => kind === "text",
+            isFileViewerSessionUnavailable: () => false,
+            blockUnavailableFileAction: () => false,
+            prepareModalOpen: () => {{ ctx.prepareCount += 1; }},
+            afterModalVisibilityChanged: () => {{ ctx.modalSyncCount += 1; }},
+            requestAnimationFrame: (cb) => {{ ctx.rafCount += 1; cb(); }},
+            setToast: (message) => ctx.toastMessages.push(String(message)),
+            focusActiveFileCodeEditor: () => {{ ctx.focusEditorCount += 1; }},
+            insertIntoActiveFileEditor: (text) => {{ ctx.inserted.push(String(text)); return opts.insertOk !== false; }},
+          }};
+          vm.createContext(ctx);
+          vm.runInContext(snippet, ctx);
+          await ctx.__test_paste();
+          if (opts.hideAfter) ctx.__test_hidePaste({{ restoreFocus: true }});
+          return {{
+            backdrop: ctx.filePasteBackdrop.style.display,
+            dialog: ctx.filePasteDialog.style.display,
+            inputValue: ctx.filePasteInput.value,
+            focusCount: ctx.filePasteInput.focusCount,
+            selectCount: ctx.filePasteInput.selectCount,
+            toasts: ctx.toastMessages,
+            inserted: ctx.inserted,
+            focusEditorCount: ctx.focusEditorCount,
+            prepareCount: ctx.prepareCount,
+            modalSyncCount: ctx.modalSyncCount,
+            rafCount: ctx.rafCount,
+          }};
+        }}
+        (async () => {{
+          const missing = await runCase({{ secure: false, clipboard: "missing" }});
+          const denied = await runCase({{ secure: true, clipboard: "denied" }});
+          const direct = await runCase({{ secure: true, clipboard: "ok", clipboardText: "hello" }});
+          const empty = await runCase({{ secure: true, clipboard: "ok", clipboardText: "" }});
+          const dismissed = await runCase({{ secure: false, clipboard: "missing", hideAfter: true }});
+          process.stdout.write(JSON.stringify({{ missing, denied, direct, empty, dismissed }}));
+        }})().catch((err) => {{ console.error(err && err.stack ? err.stack : err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(
+        ["node", "-e", js],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return json.loads(proc.stdout)
+
+
 def eval_file_open_request_sequence() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("let fileOpenRequestId = 0;")
@@ -799,16 +887,50 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('"zip"', source)
         self.assertIn('"tar"', source)
 
-    def test_touch_paste_tries_direct_clipboard_before_bridge(self) -> None:
+    def test_touch_paste_tries_clipboard_then_manual_dialog_fallback(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("navigator.clipboard", source)
         self.assertIn("readText", source)
         self.assertIn('setToast("pasted")', source)
+        self.assertIn('function showFilePasteDialog()', source)
+        self.assertIn('function hideFilePasteDialog({ restoreFocus = false } = {})', source)
+        self.assertIn('hideFilePasteDialog({ restoreFocus: true });', source)
+        self.assertIn('filePasteDialog.style.display = "flex";', source)
+        self.assertIn('filePasteInput.focus({ preventScroll: true });', source)
+        self.assertIn('setToast("paste manually")', source)
         self.assertIn('function pasteFromClipboardIntoActiveFile()', source)
         self.assertIn('setToast("paste unavailable")', source)
         self.assertIn('setToast("clipboard empty")', source)
         self.assertIn('bindFileTouchClick(fileTouchPasteBtn, () => {', source)
         self.assertNotIn('bindFileTouchPress(fileTouchPasteBtn, () => {', source)
+
+    def test_touch_paste_manual_dialog_fallback_behavior(self) -> None:
+        result = eval_file_paste_dialog_fallback()
+        for key in ("missing", "denied"):
+            with self.subTest(key=key):
+                case = result[key]
+                self.assertEqual(case["backdrop"], "block")
+                self.assertEqual(case["dialog"], "flex")
+                self.assertEqual(case["inputValue"], "")
+                self.assertEqual(case["focusCount"], 1)
+                self.assertEqual(case["selectCount"], 1)
+                self.assertEqual(case["toasts"], ["paste manually"])
+                self.assertEqual(case["inserted"], [])
+                self.assertEqual(case["focusEditorCount"], 0)
+                self.assertEqual(case["prepareCount"], 1)
+                self.assertEqual(case["modalSyncCount"], 1)
+                self.assertEqual(case["rafCount"], 1)
+        self.assertEqual(result["direct"]["dialog"], "none")
+        self.assertEqual(result["direct"]["inserted"], ["hello"])
+        self.assertEqual(result["direct"]["toasts"], ["pasted"])
+        self.assertEqual(result["direct"]["focusEditorCount"], 1)
+        self.assertEqual(result["empty"]["dialog"], "none")
+        self.assertEqual(result["empty"]["toasts"], ["clipboard empty"])
+        self.assertEqual(result["empty"]["focusEditorCount"], 1)
+        self.assertEqual(result["dismissed"]["backdrop"], "none")
+        self.assertEqual(result["dismissed"]["dialog"], "none")
+        self.assertEqual(result["dismissed"]["focusEditorCount"], 1)
+        self.assertEqual(result["dismissed"]["modalSyncCount"], 2)
 
     def test_touch_copy_uses_click_activation_not_press_wrapper(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

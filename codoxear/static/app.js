@@ -7681,18 +7681,39 @@
           focusActiveFileCodeEditor();
         }
 
-        function hideFilePasteDialog() {
+        function hideFilePasteDialog({ restoreFocus = false } = {}) {
           filePasteBackdrop.style.display = "none";
           filePasteDialog.style.display = "none";
           filePasteInput.value = "";
           afterModalVisibilityChanged();
+          if (restoreFocus) focusActiveFileCodeEditor();
+        }
+
+        function showFilePasteDialog() {
+          if (!(fileEditMode && activeFileEditable && fileViewMode === "file" && isTextFileKind(activeFileKind) && !fileSavePending && !isFileViewerSessionUnavailable())) return false;
+          prepareModalOpen();
+          filePasteInput.value = "";
+          filePasteBackdrop.style.display = "block";
+          filePasteDialog.style.display = "flex";
+          afterModalVisibilityChanged();
+          requestAnimationFrame(() => {
+            if (filePasteDialog.style.display !== "flex") return;
+            try {
+              filePasteInput.focus({ preventScroll: true });
+              filePasteInput.select();
+            } catch {}
+          });
+          return true;
         }
 
         async function pasteFromClipboardIntoActiveFile() {
           if (!(fileEditMode && activeFileEditable && fileViewMode === "file" && isTextFileKind(activeFileKind) && !fileSavePending && !isFileViewerSessionUnavailable())) return;
           if (!(window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.readText === "function")) {
-            setToast("paste unavailable");
-            focusActiveFileCodeEditor();
+            if (showFilePasteDialog()) setToast("paste manually");
+            else {
+              setToast("paste unavailable");
+              focusActiveFileCodeEditor();
+            }
             return;
           }
           try {
@@ -7709,10 +7730,14 @@
               return;
             }
             setToast("pasted");
+            focusActiveFileCodeEditor();
           } catch (e) {
-            setToast(`paste error: ${e && e.message ? e.message : "clipboard denied"}`);
+            if (showFilePasteDialog()) setToast("paste manually");
+            else {
+              setToast(`paste error: ${e && e.message ? e.message : "clipboard denied"}`);
+              focusActiveFileCodeEditor();
+            }
           }
-          focusActiveFileCodeEditor();
         }
 
         function insertIntoActiveFileEditor(text) {
@@ -9904,8 +9929,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             setToast("text inserted");
           }
         };
-        $("#filePasteCancelBtn").onclick = () => hideFilePasteDialog();
-        filePasteBackdrop.onclick = () => hideFilePasteDialog();
+        $("#filePasteCancelBtn").onclick = () => hideFilePasteDialog({ restoreFocus: true });
+        filePasteBackdrop.onclick = () => hideFilePasteDialog({ restoreFocus: true });
         async function openAmbiguousFileReferenceChoice(query, line = null) {
           const rawQuery = String(query ?? "");
           if (rawQuery === "") return;
@@ -10078,7 +10103,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         addAppEvent(document, "keydown", (e) => {
           if (e.key !== "Escape") return;
           if (filePasteDialog.style.display === "flex") {
-            hideFilePasteDialog();
+            hideFilePasteDialog({ restoreFocus: true });
             return;
           }
           if (fileUnsavedDialog.style.display === "flex") {
