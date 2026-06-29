@@ -50,6 +50,8 @@ from codoxear.broker_log_watcher import _clear_resume_delivery_mute_if_idle
 from codoxear.broker_log_watcher import _pop_key_queue_if_idle
 from codoxear.broker_metadata import _claimed_log_paths_from_sock_meta
 from codoxear.broker_metadata import _write_broker_sidecar_meta
+from codoxear.broker_process import _require_proc as _require_proc_impl
+from codoxear.broker_process import _set_pdeathsig
 from codoxear.broker_control import _handle_broker_control_connection
 from codoxear.broker_terminal import _reply_to_terminal_queries
 from codoxear.broker_turn_state import INTERRUPT_HINT_TAIL_MAX
@@ -184,29 +186,10 @@ def _shell_argv_for_command(cmd: str) -> list[str]:
     return _shell_argv_for_command_impl(cmd, user_shell=_user_shell)
 
 
-def _set_pdeathsig(sig: int) -> None:
-    if not sys.platform.startswith("linux"):
-        return
-    try:
-        import ctypes
-
-        libc = ctypes.CDLL("libc.so.6", use_errno=True)
-        PR_SET_PDEATHSIG = 1
-        libc.prctl(PR_SET_PDEATHSIG, sig, 0, 0, 0)
-    except Exception:
-        return
 
 
 def _require_proc() -> None:
-    if sys.platform.startswith("linux"):
-        if not (PROC_ROOT / "self" / "fd").is_dir():
-            sys.stderr.write("error: codoxear-broker requires /proc (missing /proc/self/fd).\n")
-            raise SystemExit(2)
-    elif sys.platform == "darwin":
-        pass  # macOS is supported via lsof/pgrep
-    else:
-        sys.stderr.write(f"error: codoxear-broker requires Linux or macOS (unsupported: {sys.platform}).\n")
-        raise SystemExit(2)
+    _require_proc_impl(proc_root=PROC_ROOT, platform=sys.platform, stderr=sys.stderr)
 
 
 
