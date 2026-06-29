@@ -18,6 +18,7 @@ FRONTEND_ASSET_FILES = (
     "app_markdown.js",
     "app_launch.js",
     "app_display.js",
+    "app_dom.js",
     "app_file_helpers.js",
     "app_session_helpers.js",
     "app_viewport.js",

@@ -27,6 +27,7 @@ APP_API_JS = ROOT / "codoxear" / "static" / "app_api.js"
 APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
 APP_LAUNCH_JS = ROOT / "codoxear" / "static" / "app_launch.js"
 APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
+APP_DOM_JS = ROOT / "codoxear" / "static" / "app_dom.js"
 APP_FILE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_file_helpers.js"
 APP_SESSION_HELPERS_JS = ROOT / "codoxear" / "static" / "app_session_helpers.js"
 APP_VIEWPORT_JS = ROOT / "codoxear" / "static" / "app_viewport.js"
@@ -48,6 +49,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn(f"app_markdown.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_launch.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_display.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
+        self.assertIn(f"app_dom.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_file_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_session_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_viewport.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
@@ -62,7 +64,8 @@ class TestStaticAssets(unittest.TestCase):
         self.assertLess(source.index(f"app_api.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_markdown.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_markdown.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_launch.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_launch.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_display.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
-        self.assertLess(source.index(f"app_display.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_file_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_display.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_dom.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_dom.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_file_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_file_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_session_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_session_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_viewport.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_viewport.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_polling.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
@@ -81,6 +84,7 @@ class TestStaticAssets(unittest.TestCase):
         app_markdown = APP_MARKDOWN_JS.read_text(encoding="utf-8")
         app_launch = APP_LAUNCH_JS.read_text(encoding="utf-8")
         app_display = APP_DISPLAY_JS.read_text(encoding="utf-8")
+        app_dom = APP_DOM_JS.read_text(encoding="utf-8")
         app_file_helpers = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
         app_session_helpers = APP_SESSION_HELPERS_JS.read_text(encoding="utf-8")
         app_viewport = APP_VIEWPORT_JS.read_text(encoding="utf-8")
@@ -103,6 +107,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertNotIn(forbidden, app_markdown)
             self.assertNotIn(forbidden, app_launch)
             self.assertNotIn(forbidden, app_display)
+            self.assertNotIn(forbidden, app_dom)
             self.assertNotIn(forbidden, app_file_helpers)
             self.assertNotIn(forbidden, app_session_helpers)
             self.assertNotIn(forbidden, app_viewport)
@@ -139,6 +144,7 @@ class TestStaticAssets(unittest.TestCase):
             "app_markdown.js": "window.CodoxearMarkdown = {};\n",
             "app_launch.js": "window.CodoxearLaunch = {};\n",
             "app_display.js": "window.CodoxearDisplay = {};\n",
+            "app_dom.js": "window.CodoxearDom = {};\n",
             "app_file_helpers.js": "window.CodoxearFileHelpers = {};\n",
             "app_session_helpers.js": "window.CodoxearSessionHelpers = {};\n",
             "app_viewport.js": "window.CodoxearViewport = {};\n",
@@ -176,6 +182,7 @@ class TestStaticAssets(unittest.TestCase):
                     '<script src="app_markdown.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_launch.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_display.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
+                    '<script src="app_dom.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_file_helpers.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_session_helpers.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_viewport.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
@@ -199,6 +206,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertIn(f"app_markdown.js?v={version}", rendered)
             self.assertIn(f"app_launch.js?v={version}", rendered)
             self.assertIn(f"app_display.js?v={version}", rendered)
+            self.assertIn(f"app_dom.js?v={version}", rendered)
             self.assertIn(f"app_file_helpers.js?v={version}", rendered)
             self.assertIn(f"app_session_helpers.js?v={version}", rendered)
             self.assertIn(f"app_viewport.js?v={version}", rendered)
@@ -274,6 +282,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn("codoxear/static/app_markdown.js", names)
         self.assertIn("codoxear/static/app_launch.js", names)
         self.assertIn("codoxear/static/app_display.js", names)
+        self.assertIn("codoxear/static/app_dom.js", names)
         self.assertIn("codoxear/static/app_file_helpers.js", names)
         self.assertIn("codoxear/static/app_session_helpers.js", names)
         self.assertIn("codoxear/static/app_viewport.js", names)

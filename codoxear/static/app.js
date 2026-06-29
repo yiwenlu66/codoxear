@@ -47,21 +47,9 @@
         return codoxearDisplay.defaultButtonTooltip(attrs, node);
       }
 
-      const el = (tag, attrs = {}, children = []) => {
-        const n = document.createElement(tag);
-        for (const [k, v] of Object.entries(attrs)) {
-          if (k === "class") n.className = v;
-          else if (k === "text") n.textContent = v;
-          else if (k === "html") n.innerHTML = v;
-          else n.setAttribute(k, v);
-        }
-        if (tag === "button" && !n.getAttribute("title")) {
-          const tooltip = defaultButtonTooltip(attrs, n);
-          if (tooltip) n.setAttribute("title", tooltip);
-        }
-        for (const c of children) n.appendChild(c);
-        return n;
-      };
+      const codoxearDom = window.CodoxearDom;
+      if (!codoxearDom || typeof codoxearDom.createElement !== "function") throw new Error("Codoxear DOM helpers failed to load");
+      const el = (tag, attrs = {}, children = []) => codoxearDom.createElement(tag, attrs, children, defaultButtonTooltip);
 
       const codoxearPerfHelpers = window.CodoxearPerf;
       if (!codoxearPerfHelpers || typeof codoxearPerfHelpers.pushSample !== "function" || typeof codoxearPerfHelpers.summarize !== "function") throw new Error("Codoxear performance helpers failed to load");
