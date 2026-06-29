@@ -4,7 +4,6 @@ import datetime
 import errno
 import json
 import os
-import re
 import socket
 import sys
 import time
@@ -28,6 +27,13 @@ from .launch_attempt_store import redact_launch_failure_text
 from .launch_attempt_store import redact_launch_failure_value
 from .launch_attempt_store import redacted_launch_attempt_persist_record
 from .launch_attempt_store import redacted_launch_attempt_response_record
+from .session_log_paths import _is_cc_session_log_path
+from .session_log_paths import _is_codex_rollout_log_path
+from .session_log_paths import _is_pi_session_log_path
+from .session_log_paths import _path_in_set
+from .session_log_paths import _paths_match
+from .session_log_paths import _payload_cwd_matches
+from .session_log_paths import session_id_from_rollout_path
 from .pi_log import read_pi_log_cwd
 from .pi_log import read_pi_session_header
 from .pi_log import read_pi_session_id
@@ -35,7 +41,6 @@ from .pi_log import read_pi_session_id
 
 _LEGACY_WARNED = False
 LAUNCH_ATTEMPTS_FILENAME = "session_launches.jsonl"
-_SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 
 
 def _log_error(msg: str) -> None:
@@ -136,61 +141,6 @@ def read_launch_attempts(
 
 def now() -> float:
     return time.time()
-
-
-def session_id_from_rollout_path(log_path: Path) -> str | None:
-    matches = _SESSION_ID_RE.findall(log_path.name)
-    return matches[-1] if matches else None
-
-
-def _is_codex_rollout_log_path(path: Path) -> bool:
-    return path.name.startswith("rollout-") and path.suffix == ".jsonl"
-
-
-def _is_pi_session_log_path(path: Path, *, sessions_dir: Path | None = None) -> bool:
-    if path.suffix != ".jsonl":
-        return False
-    if sessions_dir is None:
-        return "/.pi/agent/sessions/" in str(path).replace("\\", "/")
-    try:
-        path.resolve().relative_to(sessions_dir.resolve())
-    except Exception:
-        return False
-    return True
-
-
-def _is_cc_session_log_path(path: Path, *, sessions_dir: Path | None = None) -> bool:
-    if path.suffix != ".jsonl":
-        return False
-    path_text = str(path).replace("\\", "/")
-    if "/subagents/" in path_text:
-        return False
-    if path.name == "history.jsonl":
-        return False
-    if sessions_dir is None:
-        return "/.claude/projects/" in path_text
-    try:
-        path.resolve().relative_to(sessions_dir.resolve())
-    except Exception:
-        return False
-    return True
-
-
-def _paths_match(a: Path, b: Path) -> bool:
-    try:
-        return a.resolve() == b.resolve()
-    except Exception:
-        try:
-            return a.absolute() == b.absolute()
-        except Exception:
-            return str(a) == str(b)
-
-
-def _path_in_set(path: Path, paths: set[Path]) -> bool:
-    for candidate in paths:
-        if _paths_match(path, candidate):
-            return True
-    return False
 
 
 def _read_session_meta_payload_once(log_path: Path, *, max_bytes: int) -> dict[str, Any] | None:
@@ -316,21 +266,6 @@ def find_session_log_for_session_id(sessions_dir: Path, session_id: str, *, agen
         if backend_name == "cc" and read_cc_session_id(p) == session_id:
             return p
     return None
-
-
-def _payload_cwd_matches(payload_cwd: object, cwd: str) -> bool:
-    if not isinstance(payload_cwd, str):
-        return False
-    if payload_cwd == cwd:
-        return True
-    payload_path = Path(payload_cwd)
-    cwd_path = Path(cwd)
-    if not (payload_path.is_absolute() and cwd_path.is_absolute()):
-        return False
-    try:
-        return bool(os.path.samefile(payload_path, cwd_path))
-    except Exception:
-        return False
 
 
 def find_new_session_log(
