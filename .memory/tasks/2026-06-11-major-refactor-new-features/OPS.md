@@ -4623,3 +4623,12 @@
   - Focused app-dir/launch/server group returned `34 passed`.
   - Full local `python3 -m pytest -q` returned `1239 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+
+## 2026-06-29T12:52:11Z App directory runtime clean-room review PASS
+- Async reviewer run `65c94e93-4cae-4cf9-ab8f-43f7606328bb` returned `RESULT: PASS` for functional commit `ec3cb12` and docs commit `a5fd762`.
+- Review evidence: path resolution is preserved (`Path.home() / ".local" / "share"`, new dir `codoxear`, old dir `codex-web`), warning text is unchanged, and return value is always the new app-dir path.
+- Review verified `codoxear.util._LEGACY_WARNED` still controls warning-once behavior and can be reset, while `codoxear.util._log_error` remains the warning emission hook.
+- Review verified `launch_attempts_path(app_dir=None)` remains in `util.py`, defaults through `default_app_dir()`, and broker/sessiond/server_config/broker_launch imports remain compatible.
+- Review observed py_compile, focused tests, and full local pytest evidence (`1239 passed, 107 subtests passed`); no protected checkout mutation, no secrets/runtime artifacts, docs-only docs commit, and no Docker overclaim.
+- Reviewer noted a focused-count documentation ambiguity (`34 passed` was the narrower command/subtest framing), but full local evidence is correct.
