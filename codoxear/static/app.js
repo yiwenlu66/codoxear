@@ -6287,13 +6287,6 @@
           newSessionFastToggle.checked = newSessionFast;
         }
 
-        function worktreePathSlug(branch) {
-          return String(branch || "")
-            .trim()
-            .replace(/[^A-Za-z0-9._-]+/g, "-")
-            .replace(/^[.-]+|[.-]+$/g, "") || "worktree";
-        }
-
         function syncNewSessionCwdHint() {
           const errorText = String(newSessionCwdError || "").trim();
           const hintText = !errorText && newSessionCwdInfo && newSessionCwdInfo.will_create ? "Directory will be created when you start the session." : "";
