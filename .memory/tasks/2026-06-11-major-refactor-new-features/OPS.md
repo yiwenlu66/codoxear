@@ -3933,3 +3933,15 @@
   - Focused broker launch-record group returned `46 passed, 12 subtests passed`.
   - Full local `python3 -m pytest -q` returned `1199 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T00:57:18Z Broker process helper split
+- Functional commit `6f0468f Extract broker process helpers` moved broker process precondition/parent-death-signal helpers from `codoxear/broker.py` into new `codoxear/broker_process.py`:
+  - `_set_pdeathsig`
+  - `_require_proc`
+- Compatibility preserved: broker-level `_require_proc` remains as a patch seam used by fail-closed tests; it injects `PROC_ROOT`, `sys.platform`, and `sys.stderr` into the new helper. `_set_pdeathsig` is imported from the new module.
+- Tests added: `tests/test_broker_process_source.py` pins process helper ownership and wrapper behavior.
+- Size observation: `broker.py` is now 994 lines.
+- Validation after `6f0468f`:
+  - Focused broker process/fail-closed group returned `29 passed`.
+  - Full local `python3 -m pytest -q` returned `1201 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
