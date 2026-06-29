@@ -4825,3 +4825,19 @@
 - Clean-room review `ce4a37fc-c393-4257-b0dc-a61cd282fe54` returned PASS before the functional commit. Review confirmed no hidden call sites, frontend raw-branch send behavior, backend slug ownership, no runtime behavior change, no unrelated/protected/secrets/runtime changes, and only low residual risk from structural source assertions.
 - Recording anomaly: the first uncommitted OPS append used an unquoted heredoc with markdown backticks. Bash interpreted those backticks, mangled the uncommitted OPS text, and re-ran `node --check codoxear/static/app.js`, full local `python3 -m pytest -q` (again `1242 passed, 107 subtests passed`), and the focused Docker worktree command (again 47 tests). The malformed uncommitted OPS tail was repaired before the docs commit.
 - Scope note: this cleanup does not implement a worktree path preview, change branch validation, or change backend worktree creation behavior. It removes dead frontend slug logic that could mislead future ownership decisions.
+
+
+
+## 2026-06-29T15:01:30Z UI image asset versioning
+- Functional commit `851d12c Version UI image assets` added `UI_IMAGE_ASSET_FILES` for `codoxear-icon.png` and `logos/codex.svg`, `logos/pi.svg`, `logos/cc.svg`; `STATIC_ASSET_VERSION_FILES` is now `FRONTEND_ASSET_FILES + SHELL_ASSET_FILES + UI_IMAGE_ASSET_FILES`.
+- Mechanism: changing any app icon/backend logo bytes changes `static_asset_version()`, and runtime image URLs include `?v=<CODOXEAR_ASSET_VERSION>` so optional immutable static caching cannot pin stale UI images after a deploy.
+- `app_launch.js::agentBackendLogoPath()` now resolves `versionedStaticAssetPath("/static/logos/{backend}.svg")`; `app.js` now renders the sidebar app icon through `resolveAppUrl(versionedShellAssetPath("/static/codoxear-icon.png"))`. URL-prefix behavior remains delegated to `resolveAppUrl()`.
+- Tests cover version-file composition, hash changes for each UI image asset, versioned backend logo URLs under a prefixed app base, versioned sidebar icon source construction, package inclusion of nested logos/app icon, and unchanged `/static` route behavior.
+- Validation before commit:
+  - `node --check codoxear/static/app_launch.js` and `node --check codoxear/static/app.js` passed.
+  - Focused local static/routes/launch/url group returned `26 passed, 3 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1242 passed, 107 subtests passed`.
+  - Focused isolated Docker `scripts/codoxear-docker-sandbox test tests/test_static_assets.py tests/test_static_routes.py tests/test_launch_ui_source.py tests/test_frontend_url_module_source.py -q` returned success with 26 tests.
+- Clean-room review `d799b111-6995-41b4-bc8d-d756d22ca1af` returned PASS before the functional commit. Review confirmed image bytes are hash inputs, dynamic URLs carry the version query, routing/CSP/cache semantics are unchanged, URL-prefix behavior is preserved, no unrelated/protected/secrets/runtime changes were present, and browser cache lifecycle proof remains scoped out.
+- Recording note: an earlier uncommitted docs append attempt failed before writing because Python interpreted the literal `{backend}` in this prose as an f-string variable. The corrected append used explicit placeholder substitution.
+- Scope note: this closes deterministic UI image asset freshness for app icon/backend logos. It does not claim browser-level cache lifecycle behavior beyond changed same-origin resource URLs.
