@@ -4441,3 +4441,15 @@
 - Reviewer validation: full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
 - Reviewer found no blockers; residual notes were only unrelated in-flight search-mark WIP and inherited direction=0-as-forward behavior.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+## 2026-06-29T09:08:11Z Frontend chat search mark helper split
+- Functional commit `1219fb1 Extract frontend search mark helpers` moved row-class search-mark mutations from `codoxear/static/app.js` into `codoxear/static/app_message_rows.js`:
+  - `clearChatSearchMarks(rows)` removes `chat-search-hit` and `chat-search-current` from supplied rows;
+  - `applyChatSearchMarks(matches, currentRow)` adds `chat-search-hit` to matches and `chat-search-current` to the current row.
+- `app.js` keeps chatSearchMatches, chatSearchIndex, status text, match computation, forced-query markers, older-message loading policy, scrolling, reduced-motion, and pulse behavior. The `CodoxearMessageRows` fail-closed guard now checks both mark helpers.
+- Runtime/source tests validate multi-token class add/remove behavior, hit/current mark application, and app/helper source ownership.
+- Validation after `1219fb1`:
+  - `node --check codoxear/static/app_message_rows.js` and `node --check codoxear/static/app.js` passed.
+  - Focused frontend/static group returned `61 passed`.
+  - Full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
