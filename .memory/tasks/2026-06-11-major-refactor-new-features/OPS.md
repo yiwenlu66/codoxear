@@ -4127,3 +4127,13 @@
   - Focused JSON-state/queue/session/unattended/voice store group returned `54 passed`.
   - Full local `python3 -m pytest -q` returned `1212 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T02:26:10Z Pi message split clean-room review PASS and repair
+- Async clean-room review `b1ec0840-d6ad-47c6-bf1d-75842f17e39c` returned `PASS` for functional commit `75d21c8` and docs `7ec1d83`, with one non-blocking semantic drift note.
+- Reviewer verified 19/20 moved definitions were verbatim by AST/body comparison, all 20 public names are importable from `codoxear.pi_log` and object-identical to `codoxear.pi_message`, no import cycles, existing consumers still import from `pi_log`, patch-sensitive context/model/token helpers remained in `pi_log.py`, focused tests passed, and full local `1211 passed, 107 subtests`.
+- Reviewer found one real drift: `pi_message_role` returned `""` for an empty string role, while the original returned `None` (`role if isinstance(role, str) and role else None`). Current callers compare explicit role strings so this was low-risk, but strict fidelity required repair.
+- Functional repair commit `ddbaee4 Restore Pi empty role guard` restored the `and role` guard and added a regression assertion that an empty role returns `None`.
+- Validation after `ddbaee4`:
+  - Focused Pi message/server-chat/broker-busy/sessiond/idle group returned `136 passed`.
+  - Full local `python3 -m pytest -q` returned `1212 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
