@@ -50,6 +50,47 @@
         return codoxearDisplay.defaultButtonTooltip(attrs, node);
       }
 
+      const codoxearVoiceHelpers = window.CodoxearVoiceHelpers;
+      if (
+        !codoxearVoiceHelpers ||
+        typeof codoxearVoiceHelpers.browserSupportsNativeLiveAudioPlayback !== "function" ||
+        typeof codoxearVoiceHelpers.browserSupportsMseLiveAudioPlayback !== "function" ||
+        typeof codoxearVoiceHelpers.shouldPreferNativeLiveAudioPlayback !== "function" ||
+        typeof codoxearVoiceHelpers.browserSupportsLiveAudioPlayback !== "function" ||
+        typeof codoxearVoiceHelpers.base64UrlToUint8Array !== "function" ||
+        typeof codoxearVoiceHelpers.isMobileNotificationDevice !== "function" ||
+        typeof codoxearVoiceHelpers.notificationDeviceClass !== "function"
+      )
+        throw new Error("Codoxear voice helpers failed to load");
+
+      function browserSupportsNativeLiveAudioPlayback() {
+        return codoxearVoiceHelpers.browserSupportsNativeLiveAudioPlayback(liveAudio);
+      }
+
+      function browserSupportsMseLiveAudioPlayback() {
+        return codoxearVoiceHelpers.browserSupportsMseLiveAudioPlayback(window);
+      }
+
+      function shouldPreferNativeLiveAudioPlayback() {
+        return codoxearVoiceHelpers.shouldPreferNativeLiveAudioPlayback(liveAudio, navigator);
+      }
+
+      function browserSupportsLiveAudioPlayback() {
+        return codoxearVoiceHelpers.browserSupportsLiveAudioPlayback(liveAudio, window);
+      }
+
+      function base64UrlToUint8Array(value) {
+        return codoxearVoiceHelpers.base64UrlToUint8Array(value, atob);
+      }
+
+      function isMobileNotificationDevice() {
+        return codoxearVoiceHelpers.isMobileNotificationDevice(navigator);
+      }
+
+      function notificationDeviceClass() {
+        return codoxearVoiceHelpers.notificationDeviceClass(navigator);
+      }
+
       const codoxearDom = window.CodoxearDom;
       if (!codoxearDom || typeof codoxearDom.createElement !== "function") throw new Error("Codoxear DOM helpers failed to load");
       const el = (tag, attrs = {}, children = []) => codoxearDom.createElement(tag, attrs, children, defaultButtonTooltip);
@@ -4976,31 +5017,6 @@
           );
         }
 
-        function browserSupportsNativeLiveAudioPlayback() {
-          if (!liveAudio || typeof liveAudio.canPlayType !== "function") return false;
-          return ["application/vnd.apple.mpegurl", "audio/mpegurl"].some((kind) => {
-            const result = liveAudio.canPlayType(kind);
-            return result === "probably" || result === "maybe";
-          });
-        }
-
-        function browserSupportsMseLiveAudioPlayback() {
-          const HlsCtor = window.Hls;
-          return !!(HlsCtor && typeof HlsCtor.isSupported === "function" && HlsCtor.isSupported());
-        }
-
-        function shouldPreferNativeLiveAudioPlayback() {
-          if (!browserSupportsNativeLiveAudioPlayback()) return false;
-          const vendor = String(navigator.vendor || "");
-          const ua = String(navigator.userAgent || "");
-          if (/Apple/i.test(vendor)) return true;
-          return /AppleWebKit/i.test(ua) && !/(?:Chrom(?:e|ium)|CriOS|Edg|OPR|Firefox|FxiOS)/i.test(ua);
-        }
-
-        function browserSupportsLiveAudioPlayback() {
-          return browserSupportsNativeLiveAudioPlayback() || browserSupportsMseLiveAudioPlayback();
-        }
-
         function liveAudioHasReadySegments() {
           const audio = voiceSettings && voiceSettings.audio ? voiceSettings.audio : {};
           return Number(audio.segment_count || 0) > 0;
@@ -5227,16 +5243,6 @@
           }
         }
 
-        function base64UrlToUint8Array(value) {
-          const raw = String(value || "");
-          const pad = "=".repeat((4 - (raw.length % 4 || 4)) % 4);
-          const base64 = (raw + pad).replace(/-/g, "+").replace(/_/g, "/");
-          const data = atob(base64);
-          const out = new Uint8Array(data.length);
-          for (let i = 0; i < data.length; i += 1) out[i] = data.charCodeAt(i);
-          return out;
-        }
-
         function setDesktopNotificationsEnabled(enabled) {
           if (enabled) storageSetItem("codoxear.desktopNotificationsEnabled", "1");
           else storageRemoveItem("codoxear.desktopNotificationsEnabled");
@@ -5252,17 +5258,6 @@
             notificationState.notifications_enabled &&
             notificationState.endpoint
           );
-        }
-
-        function isMobileNotificationDevice() {
-          const ua = navigator.userAgent || "";
-          if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return true;
-          if (/Macintosh/i.test(ua) && Number(navigator.maxTouchPoints || 0) > 1) return true;
-          return false;
-        }
-
-        function notificationDeviceClass() {
-          return isMobileNotificationDevice() ? "mobile" : "desktop";
         }
 
         function activeNotificationTransport() {

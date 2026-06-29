@@ -29,6 +29,7 @@ FRONTEND_ASSET_FILES = (
     "app_conversation_copy.js",
     "app_modal.js",
     "app_clipboard.js",
+    "app_voice_helpers.js",
     "app.js",
     "app.css",
 )

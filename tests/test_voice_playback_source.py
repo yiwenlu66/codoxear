@@ -1,32 +1,115 @@
+import json
+import subprocess
+import textwrap
 import unittest
 from pathlib import Path
 
 
-APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
+ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_VOICE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_voice_helpers.js"
+INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
+
+
+def eval_voice_helpers() -> dict:
+    source = APP_VOICE_HELPERS_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(source)}, ctx);
+        const helpers = ctx.window.CodoxearVoiceHelpers;
+        function canPlay(result) {{ return {{ canPlayType: () => result }}; }}
+        const decoded = Array.from(helpers.base64UrlToUint8Array("SGVsbG8td29ybGQ", (value) => Buffer.from(value, "base64").toString("binary")));
+        process.stdout.write(JSON.stringify({{
+          frozen: Object.isFrozen(helpers),
+          nativeProbably: helpers.browserSupportsNativeLiveAudioPlayback(canPlay("probably")),
+          nativeMaybe: helpers.browserSupportsNativeLiveAudioPlayback(canPlay("maybe")),
+          nativeNo: helpers.browserSupportsNativeLiveAudioPlayback(canPlay("")),
+          nativeMissingAudio: helpers.browserSupportsNativeLiveAudioPlayback(null),
+          mseYes: helpers.browserSupportsMseLiveAudioPlayback({{ Hls: {{ isSupported: () => true }} }}),
+          mseNo: helpers.browserSupportsMseLiveAudioPlayback({{ Hls: {{ isSupported: () => false }} }}),
+          preferVendorApple: helpers.shouldPreferNativeLiveAudioPlayback(canPlay("probably"), {{ vendor: "Apple Computer, Inc.", userAgent: "whatever" }}),
+          preferWebKitNotChrome: helpers.shouldPreferNativeLiveAudioPlayback(canPlay("maybe"), {{ vendor: "", userAgent: "Mozilla AppleWebKit Safari" }}),
+          preferChromeFalse: helpers.shouldPreferNativeLiveAudioPlayback(canPlay("maybe"), {{ vendor: "", userAgent: "AppleWebKit Chrome" }}),
+          livePlaybackViaMse: helpers.browserSupportsLiveAudioPlayback(canPlay(""), {{ Hls: {{ isSupported: () => true }} }}),
+          decodedText: String.fromCharCode(...decoded),
+          androidMobile: helpers.isMobileNotificationDevice({{ userAgent: "Mozilla Android Mobile" }}),
+          ipadDesktopUa: helpers.isMobileNotificationDevice({{ userAgent: "Macintosh", maxTouchPoints: 5 }}),
+          desktopClass: helpers.notificationDeviceClass({{ userAgent: "X11 Linux", maxTouchPoints: 0 }}),
+          mobileClass: helpers.notificationDeviceClass({{ userAgent: "iPhone" }}),
+        }}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
 
 
 class TestVoicePlaybackSource(unittest.TestCase):
+    def test_voice_helpers_runtime_behavior(self) -> None:
+        result = eval_voice_helpers()
+        self.assertTrue(result["frozen"])
+        self.assertTrue(result["nativeProbably"])
+        self.assertTrue(result["nativeMaybe"])
+        self.assertFalse(result["nativeNo"])
+        self.assertFalse(result["nativeMissingAudio"])
+        self.assertTrue(result["mseYes"])
+        self.assertFalse(result["mseNo"])
+        self.assertTrue(result["preferVendorApple"])
+        self.assertTrue(result["preferWebKitNotChrome"])
+        self.assertFalse(result["preferChromeFalse"])
+        self.assertTrue(result["livePlaybackViaMse"])
+        self.assertEqual(result["decodedText"], "Hello-world")
+        self.assertTrue(result["androidMobile"])
+        self.assertTrue(result["ipadDesktopUa"])
+        self.assertEqual(result["desktopClass"], "desktop")
+        self.assertEqual(result["mobileClass"], "mobile")
+
+    def test_voice_helpers_load_before_app(self) -> None:
+        source = INDEX_HTML.read_text(encoding="utf-8")
+        self.assertIn('app_voice_helpers.js?v=__CODOXEAR_ASSET_VERSION__', source)
+        self.assertLess(source.index('app_clipboard.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app_voice_helpers.js?v=__CODOXEAR_ASSET_VERSION__'))
+        self.assertLess(source.index('app_voice_helpers.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app.js?v=__CODOXEAR_ASSET_VERSION__'))
+
     def test_live_audio_support_is_checked_before_play(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("function browserSupportsNativeLiveAudioPlayback() {")
-        end = source.index("function base64UrlToUint8Array", start)
+        helper_source = APP_VOICE_HELPERS_JS.read_text(encoding="utf-8")
+        self.assertIn("const codoxearVoiceHelpers = window.CodoxearVoiceHelpers;", source)
+        self.assertIn('throw new Error("Codoxear voice helpers failed to load")', source)
+        self.assertIn('typeof codoxearVoiceHelpers.browserSupportsNativeLiveAudioPlayback !== "function"', source)
+        self.assertIn('typeof codoxearVoiceHelpers.browserSupportsMseLiveAudioPlayback !== "function"', source)
+        self.assertIn('typeof codoxearVoiceHelpers.shouldPreferNativeLiveAudioPlayback !== "function"', source)
+        self.assertIn('typeof codoxearVoiceHelpers.browserSupportsLiveAudioPlayback !== "function"', source)
+        self.assertIn('typeof codoxearVoiceHelpers.base64UrlToUint8Array !== "function"', source)
+        self.assertIn('typeof codoxearVoiceHelpers.isMobileNotificationDevice !== "function"', source)
+        self.assertIn('typeof codoxearVoiceHelpers.notificationDeviceClass !== "function"', source)
+        self.assertIn("return codoxearVoiceHelpers.browserSupportsNativeLiveAudioPlayback(liveAudio);", source)
+        self.assertIn("return codoxearVoiceHelpers.browserSupportsMseLiveAudioPlayback(window);", source)
+        self.assertIn("return codoxearVoiceHelpers.shouldPreferNativeLiveAudioPlayback(liveAudio, navigator);", source)
+        self.assertIn("return codoxearVoiceHelpers.browserSupportsLiveAudioPlayback(liveAudio, window);", source)
+        self.assertIn("return codoxearVoiceHelpers.base64UrlToUint8Array(value, atob);", source)
+        self.assertIn('"application/vnd.apple.mpegurl"', helper_source)
+        self.assertIn('"audio/mpegurl"', helper_source)
+        self.assertIn("liveAudio.canPlayType(kind)", helper_source)
+        self.assertIn("function browserSupportsMseLiveAudioPlayback(windowLike)", helper_source)
+        self.assertIn("const HlsCtor = windowLike && windowLike.Hls;", helper_source)
+        self.assertIn("HlsCtor.isSupported()", helper_source)
+        self.assertIn("function shouldPreferNativeLiveAudioPlayback(liveAudio, navigatorLike)", helper_source)
+        self.assertIn("navigatorLike && navigatorLike.vendor", helper_source)
+        self.assertIn("navigatorLike && navigatorLike.userAgent", helper_source)
+        self.assertIn("function base64UrlToUint8Array(value, atobFunc)", helper_source)
+        self.assertNotIn("const pad = \"=\".repeat((4 - (raw.length % 4 || 4)) % 4);", source)
+        start = source.index("async function ensureLiveAudioPlaybackSource(nextSrc, { resetSource = false } = {})")
+        end = source.index("async function sendAnnouncementHeartbeat", start)
         block = source[start:end]
-        self.assertIn('"application/vnd.apple.mpegurl"', block)
-        self.assertIn('"audio/mpegurl"', block)
-        self.assertIn("liveAudio.canPlayType(kind)", block)
-        self.assertIn("function browserSupportsMseLiveAudioPlayback()", block)
-        self.assertIn("const HlsCtor = window.Hls;", block)
-        self.assertIn("HlsCtor.isSupported()", block)
-        self.assertIn("function shouldPreferNativeLiveAudioPlayback()", block)
-        self.assertIn("navigator.vendor", block)
-        self.assertIn("navigator.userAgent", block)
         self.assertIn("function ensureLiveAudioPlaybackSource(nextSrc, { resetSource = false } = {})", block)
         self.assertIn("const hls = new HlsCtor();", block)
         self.assertIn("hls.attachMedia(liveAudio);", block)
         self.assertIn("hls.loadSource(nextSrc);", block)
         self.assertIn("destroyLiveAudioHls();", block)
         self.assertIn("if (shouldPreferNativeLiveAudioPlayback())", block)
-        self.assertIn("function liveAudioHasReadySegments()", block)
+        self.assertIn("function liveAudioHasReadySegments()", source)
 
         play_start = source.index("async function startLiveAudioPlayback({ resetSource = false } = {}) {")
         play_end = source.index("function describeLiveAudioStartError(error) {", play_start)
@@ -82,8 +165,11 @@ class TestVoicePlaybackSource(unittest.TestCase):
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("desktop_supported", source)
         self.assertIn("push_supported", source)
-        self.assertIn("function isMobileNotificationDevice()", source)
-        self.assertIn("function notificationDeviceClass()", source)
+        helper_source = APP_VOICE_HELPERS_JS.read_text(encoding="utf-8")
+        self.assertIn("function isMobileNotificationDevice(navigatorLike)", helper_source)
+        self.assertIn("function notificationDeviceClass(navigatorLike)", helper_source)
+        self.assertIn("return codoxearVoiceHelpers.isMobileNotificationDevice(navigator);", source)
+        self.assertIn("return codoxearVoiceHelpers.notificationDeviceClass(navigator);", source)
         self.assertIn("function pushNotificationsEnabledForCurrentDevice()", source)
         self.assertIn('if (notificationDeviceClass() === "mobile") {', source)
         self.assertIn('return pushNotificationsEnabledForCurrentDevice() ? "push" : "none";', source)
