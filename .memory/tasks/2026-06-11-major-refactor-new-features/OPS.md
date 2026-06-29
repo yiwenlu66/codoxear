@@ -5233,3 +5233,32 @@
 - Clean-room review `09c59eb0-77dc-4343-97c4-86e7d227b417` returned PASS with no blockers. Review verified the exactly-one-surface invariant, correct centralization, retained video teardown ownership, explicit non-Monaco diff-surface claims, correct image/video branch timing, correct Monaco exclusion, reasonable catch-path behavior, and validation gates. Non-blocking notes: source-count sentinels are intentionally string-coupled; the video branch relies on the top-level `resetFileViewerPanel()` for teardown while the image branch also calls `clearFileVideo()` defensively.
 - Next transition seam: centralize core active-file load-state writers for `activeFileKind`, `activeFileText`, `activeFileEditable`, `activeFileVersion`, and `activeFileDraft` in draft/diff/text branches, while leaving async rendering, video/PDF lifecycle, request guards, `applyFileMode()`, save tokens, and finalization caller-owned.
 - Scope note: this is render-surface visibility ownership only. It does not claim load-result state ownership, PDF teardown lifecycle repair, save-token ownership, or browser-manual rendering evidence.
+
+
+
+## 2026-06-29T20:52:40Z Active file load-state writer centralization
+- Functional commit `db59780 Centralize active file load state` introduced named owners for the five active-file buffer/load fields: `activeFileKind`, `activeFileText`, `activeFileEditable`, `activeFileVersion`, and `activeFileDraft`.
+- Mechanism:
+  - `applyActiveFileTextState({ kind = "text", text = "", editable = false, version = "", draft = false } = {})` accepts only `"text"`/`"markdown"`, fails loudly with `"invalid active file text kind"`, and assigns the five buffer/load fields for text-like results.
+  - `applyActiveFileDiffState({ currentText = "", currentExists = false } = {})` delegates to text state with kind `"text"`, current text, current-exists editability, empty version, and draft false.
+  - `applyActiveFileNonTextState(kind)` accepts only `"image"`, `"pdf"`, `"video"`, or `"download_only"`, fails loudly with `"invalid active file non-text kind"`, sets the kind, and clears text/editable/version/draft.
+- Replacement sites:
+  - `openDraftFilePath()` now uses `applyActiveFileTextState({ text: "", editable: true, version: "", draft: true })` before the existing `applyFileMode()`.
+  - `openFilePath()` diff branch now uses `applyActiveFileDiffState({ currentText, currentExists: res && res.current_exists })` before the existing no-diff/render/status logic.
+  - `openFilePath()` image/pdf/video/download branches now use `applyActiveFileNonTextState(...)` where they previously set only `activeFileKind`; branch-local validation, surface transitions, callbacks, rendering, and status remain local.
+  - `openFilePath()` text/markdown branch now uses `applyActiveFileTextState({ kind: ..., text: res.text, editable: Boolean(res.editable), version: ... })` before the existing markdown/Monaco render and status logic.
+- Boundary preserved: no request guard, HTTP fetch, render primitive, video callback, PDF render lifecycle, `applyFileMode()`, `setFileEditMode()`, `rememberOpenedFile()`, `rememberActiveFileSelection()`, `updateFileEditButton()`, `renderFilePickerMenu()`, catch-path reset, file identity, session/unavailable, or save/finalization behavior moved.
+- Tests added/updated:
+  - `eval_active_file_load_state_writers()` executes the real helper functions in a Node VM and verifies stale-field overwrite for markdown, draft, diff, and image/non-text states, plus invalid text/non-text fail-loud behavior.
+  - Source assertions pin helper signatures, error strings, and call placement for draft/diff/image/pdf/video/download/text branches.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused tests passed: new load-state writer VM test, capability predicate test, and PDF/video/download-only source test.
+  - Focused file-viewer/file-picker/static group returned `81 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1265 passed, 136 subtests passed`.
+  - Focused Docker file-viewer/file-picker/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed.
+- Clean-room review `3b633f15-485c-475b-b58e-41b12e2b04be` returned PASS with no blockers. Review confirmed semantic equivalence for every call site, safe explicit non-text field clearing, unchanged video callback/applyFileMode semantics, untouched request guards/catch resets, fail-loud invalid-kind behavior, and VM/source test fidelity. Non-blocking notes: `applyActiveFileDiffState()` intentionally models only current-text/current-exists state, version double-checking is redundant but harmless, default `draft: false` in server file-read branches is correct, and this is a good prerequisite to a later `applyFileLoadResult()`.
+- Next transition seam: build on these state writers to extract an `applyFileLoadResult()`/load-result dispatcher that owns response-kind rendering/status decisions, while preserving HTTP fetch, mode resolution, request guards, `applyFileMode()` timing, video callback wiring, PDF lifecycle, and save/session state.
+- Scope note: this is load-state field ownership only. It does not claim full load-result dispatch ownership, finalization choreography extraction, save-token ownership, or browser-manual rendering evidence.
