@@ -4954,3 +4954,26 @@
 ## 2026-06-29T17:26:11Z Long-run unattended directive update
 - User supplied an expanded unattended-mode operating directive: maintain internal Deliverables/Completed/Next actions/Parked decisions, optimize for 8+ hour unattended progress, avoid bounded stopping posture, reason before each action, avoid trial-and-error repetition, use strongest verification, and run clean-room adversarial review before any necessary yield.
 - Durable task prompt updated so future continuations preserve the same yield gate and aggressive refactor/recovery posture.
+
+
+
+## 2026-06-29T17:53:36Z Directory-fd file text/read/write hardening
+- Functional commit `fd2e58d Anchor file text operations to directory fds` hardens the file text/view primitives against symlink-parent swaps after path validation.
+- Mechanism: `codoxear/file_text.py` now opens parent directories component-by-component with directory file descriptors and no-follow flags, then performs file stat/open/read/write/create/replace/link/unlink operations via `dir_fd`. Leaf files are checked with `follow_symlinks=False`, opened with no-follow flags, and revalidated with `fstat()` on the opened descriptor. Existing write mode behavior remains `st_mode & 0o777`; new file creation preserves prior umask semantics through `os.open(..., 0o666)`.
+- Route-facing consumer change: `codoxear/file_view.py` no longer uses final `path_obj.exists()`, `path_obj.is_file()`, `path_obj.stat()`, `path_obj.open("rb")`, or `path_obj.read_bytes()` for inspect/read/download metadata. It consumes `stat_path_no_symlink()`, `read_regular_file_prefix_no_symlink()`, and `read_regular_file_bytes_no_symlink()` from `file_text.py`.
+- Tests added/updated:
+  - `tests/test_file_inspect.py::test_read_text_file_for_write_does_not_reopen_path_after_parent_check` guards against the old post-check `Path.read_bytes()` reopen mechanism.
+  - `tests/test_file_inspect.py::test_write_text_file_atomic_parent_swap_does_not_replace_symlink_target` swaps the parent path to a symlink during `os.replace()` and verifies the write lands in the originally opened directory rather than the symlink target.
+  - `tests/test_file_inspect.py::test_write_new_text_file_atomic_parent_swap_does_not_create_in_symlink_target` performs the same attack during `os.link()` for new file creation.
+  - `tests/test_file_view_module_source.py` now guards that `file_view.py` stays on the hardened primitives instead of reintroducing raw path opens.
+- Validation after the final commit:
+  - `python3 -m pytest -q` returned `1257 passed, 111 subtests passed`.
+  - Focused Docker `scripts/codoxear-docker-sandbox test tests/test_file_inspect.py tests/test_file_routes.py tests/test_file_text_module_source.py tests/test_file_view_module_source.py tests/test_file_get_routes_source.py tests/test_file_global_routes_source.py tests/test_file_write_routes_source.py tests/test_file_response_module_source.py -q` passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+- Clean-room review `65580aff-5f98-41b3-aa95-74f91f2418de` returned PASS. Review confirmed descriptor walk correctness, fd lifetime correctness, leaf symlink rejection, update/create write atomicity, preserved umask/mode behavior, consistent error mapping, and that the new tests discriminate the old bugs. Applied review cleanup: removed obsolete dead path-based symlink guard functions before commit.
+- Residuals from review, intentionally not claimed closed by this split:
+  - `codoxear/file_response.py` still streams final response bytes through raw `Path.open("rb")` after inspection; this leaves an adjacent post-inspection delivery TOCTOU window.
+  - `codoxear/file_get_routes.py::_read_prefix()` still opens raw paths for content-type detection.
+  - `codoxear/file_write_routes.py` has a low-severity path-based `path_obj.is_file()` in create-conflict error recovery.
+  - `stat_path_no_symlink()` has a low-risk root/empty-name fallback, and the guarantee remains POSIX/Linux-oriented.
+- Scope note: this closes descriptor-anchored text reads, file-view metadata reads, existing text writes, and new text-file creation against symlink-parent redirection after validation. It does not yet close streaming response delivery opens, every raw file prefix read, multi-process writer races, or non-POSIX filesystem behavior.
