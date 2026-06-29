@@ -64,6 +64,7 @@ Interpretation:
 - Sessiond pure state/log busy reduction now lives in `codoxear/sessiond_state.py`; `sessiond.py` retains process/socket/PTY coordination and import-reexports the old helper names. Evidence covers focused sessiond/send tests and full local pytest, not Docker or live backend startup. See OPS 2026-06-29 sessiond state helper split.
 - Clean-room review `a2e0618b-6513-443c-a14a-575d891ae6b5` accepted the sessiond state split as verbatim/compatible/cycle-free with full local `1209 passed, 107 subtests`; residual risks are only the new direct import path and inherited dependency on Pi message helper semantics. See OPS 2026-06-29 sessiond state split clean-room review PASS.
 - Pi message/tool-call parsing now lives in `codoxear/pi_message.py`; `codoxear/pi_log.py` re-exports public names and retains context-window, session-header, reverse-scan, current-turn, and token-update ownership. Evidence covers focused broker/sessiond/idle/server-chat tests and full local pytest, not Docker. See OPS 2026-06-29 Pi message helper split.
+- Generic JSON state load/write helpers now live in `codoxear/json_state.py`; `codoxear/util.py` re-exports old names. Evidence covers stores that use these helpers and full local pytest, not Docker. See OPS 2026-06-29 JSON state helper split.
 
 Commitments:
 - Do not weaken source sentinels to chase line count; update them only when ownership truly moves.

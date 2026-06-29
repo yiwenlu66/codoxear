@@ -4115,3 +4115,15 @@
   - Focused Pi message/server-chat/broker-busy/sessiond/idle group returned `136 passed`.
   - Full local `python3 -m pytest -q` returned `1211 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T02:22:03Z JSON state helper split
+- Functional commit `48e6810 Extract JSON state helpers` moved generic JSON state helpers from `codoxear/util.py` into new `codoxear/json_state.py`:
+  - `load_json_file`;
+  - `atomic_write_json`.
+- `util.py` imports/re-exports both names, preserving existing imports from queue/session/voice/unattended stores and tests.
+- Source sentinel `tests/test_json_state_source.py` asserts ownership moved out of `util.py`, helper object identity is preserved through `codoxear.util`, missing-file default behavior remains in the new owner, and atomic-write temp creation/replacement/cleanup remain owned by `json_state.py`.
+- Validation after `48e6810`:
+  - `python3 -m py_compile codoxear/json_state.py codoxear/util.py` passed.
+  - Focused JSON-state/queue/session/unattended/voice store group returned `54 passed`.
+  - Full local `python3 -m pytest -q` returned `1212 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
