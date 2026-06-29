@@ -7406,9 +7406,25 @@
           return Boolean(activeFileEditable);
         }
 
+        function activeFileEditorWritable() {
+          return Boolean(fileEditMode && activeFileEditable && fileViewMode === "file" && !isFileViewerSessionUnavailable());
+        }
+
+        function activeFileEditorIdleWritable() {
+          return Boolean(activeFileEditorWritable() && !fileSavePending);
+        }
+
+        function activeFileEditorIdleTextWritable() {
+          return Boolean(activeFileEditorIdleWritable() && isTextFileKind(activeFileKind));
+        }
+
+        function activeFileEditModeAllowedInCurrentView() {
+          return Boolean(fileViewMode === "file" && isTextFileKind(activeFileKind) && activeFileEditable && !isFileViewerSessionUnavailable());
+        }
+
         function syncFileEditorReadOnly() {
           if (fileEditorKind !== "file" || !fileEditor || typeof fileEditor.updateOptions !== "function") return;
-          fileEditor.updateOptions({ readOnly: !(fileEditMode && activeFileEditable && fileViewMode === "file" && !isFileViewerSessionUnavailable()) });
+          fileEditor.updateOptions({ readOnly: !activeFileEditorWritable() });
         }
 
         function getActiveFileCodeEditor() {
@@ -7498,7 +7514,7 @@
             fileTouchPasteBtn.style.display = "none";
             return;
           }
-          const canPaste = fileEditMode && activeFileEditable && fileViewMode === "file" && !fileSavePending && !isFileViewerSessionUnavailable();
+          const canPaste = activeFileEditorIdleTextWritable();
           const hasSelection = Boolean(getActiveFileSelectionText());
           fileTouchSelectBtn.classList.toggle("active", fileTouchSelectMode);
           fileTouchDpad.style.display = fileTouchSelectMode ? "grid" : "none";
@@ -7594,7 +7610,7 @@
           if (key !== "s" || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return false;
           const target = e.target instanceof HTMLElement ? e.target : null;
           if (fileEditorShortcutBlocked(target)) return false;
-          if (!(fileEditMode && activeFileEditable && fileViewMode === "file" && isTextFileKind(activeFileKind) && !fileSavePending && !isFileViewerSessionUnavailable())) return false;
+          if (!activeFileEditorIdleTextWritable()) return false;
           if (!fileViewerSessionId || !activeFilePath) return false;
           e.preventDefault();
           e.stopPropagation();
@@ -7607,7 +7623,7 @@
           const key = String(e.key || "").toLowerCase();
           const command = fileEditorDeleteCommandForKey(key);
           if (!command) return false;
-          if (!(fileEditMode && activeFileEditable && fileViewMode === "file" && !isFileViewerSessionUnavailable())) return false;
+          if (!activeFileEditorWritable()) return false;
           const target = e.target instanceof HTMLElement ? e.target : null;
           if (fileEditorShortcutBlocked(target)) return false;
           if (!isActiveFileEditorInput(target)) return false;
@@ -7712,7 +7728,7 @@
         }
 
         function showFilePasteDialog() {
-          if (!(fileEditMode && activeFileEditable && fileViewMode === "file" && isTextFileKind(activeFileKind) && !fileSavePending && !isFileViewerSessionUnavailable())) return false;
+          if (!activeFileEditorIdleTextWritable()) return false;
           prepareModalOpen();
           filePasteInput.value = "";
           filePasteBackdrop.style.display = "block";
@@ -7729,7 +7745,7 @@
         }
 
         async function pasteFromClipboardIntoActiveFile() {
-          if (!(fileEditMode && activeFileEditable && fileViewMode === "file" && isTextFileKind(activeFileKind) && !fileSavePending && !isFileViewerSessionUnavailable())) return;
+          if (!activeFileEditorIdleTextWritable()) return;
           if (!(window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.readText === "function")) {
             if (showFilePasteDialog()) setToast("paste manually");
             else {
@@ -7763,7 +7779,7 @@
         }
 
         function insertIntoActiveFileEditor(text) {
-          if (!(fileEditMode && activeFileEditable && fileViewMode === "file" && !fileSavePending && !isFileViewerSessionUnavailable())) return false;
+          if (!activeFileEditorIdleWritable()) return false;
           const editor = getActiveFileCodeEditor();
           if (!editor || !monacoNs || typeof editor.executeEdits !== "function") return false;
           const current = normalizeFileEditorPosition(editor, editor.getPosition && editor.getPosition()) || { lineNumber: 1, column: 1 };
@@ -8325,7 +8341,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function setFileEditMode(nextMode) {
-          fileEditMode = Boolean(nextMode) && fileViewMode === "file" && isTextFileKind(activeFileKind) && activeFileEditable && !isFileViewerSessionUnavailable();
+          fileEditMode = Boolean(nextMode) && activeFileEditModeAllowedInCurrentView();
           syncFileEditorReadOnly();
           updateFileEditButton();
         }
