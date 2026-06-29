@@ -4739,3 +4739,8 @@
   - Focused static/voice group `python3 -m pytest -q tests/test_static_assets.py tests/test_static_routes.py tests/test_voice_push_source.py` returned `26 passed`.
   - Full local `python3 -m pytest -q` returned `1241 passed, 107 subtests passed` before commit.
 - Scope note: this closes the deterministic static version-hash/reference gap. Browser-level service-worker update lifecycle remains unmeasured, and Docker evidence was not rerun for this split.
+
+
+## 2026-06-29T13:52:58Z Shell static asset focused Docker validation
+- Focused isolated Docker validation for `f890f1c` passed: `scripts/codoxear-docker-sandbox test tests/test_static_assets.py tests/test_static_routes.py tests/test_voice_push_source.py -q` returned success with 26 tests.
+- Scope note: this Docker evidence covers the shell/static/voice source tests for the shell asset versioning split only. It does not prove browser service-worker update lifecycle and does not retroactively validate unrelated recent helper splits under Docker.
