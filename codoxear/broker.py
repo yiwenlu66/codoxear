@@ -19,10 +19,7 @@ from typing import Any
 
 from codoxear.agent_backend import get_agent_backend
 from codoxear.agent_backend import normalize_agent_backend
-from codoxear.cc_log import cc_current_turn_state_before as _cc_current_turn_state_before
-from codoxear.pi_log import PiPendingToolCallId as _PiPendingToolCallId
 from codoxear.pi_log import pi_complete_jsonl_offset_before as _pi_complete_jsonl_offset_before
-from codoxear.pi_log import pi_current_turn_state_before as _pi_current_turn_state_before
 from codoxear.pi_log import pi_context_token_update as _pi_context_token_update
 from codoxear.pi_log import pi_token_update as _pi_token_update
 from codoxear import pty_util as _pty_util
@@ -43,6 +40,9 @@ from codoxear.broker_launch import _resume_session_id_from_args as _resume_sessi
 from codoxear.broker_launch import _session_log_path_from_args
 from codoxear.broker_launch import _shell_argv_for_command as _shell_argv_for_command_impl
 from codoxear.broker_launch import _user_shell
+from codoxear.broker_log_binding import _apply_broker_log_binding_to_state
+from codoxear.broker_log_binding import _resolve_broker_log_binding
+from codoxear.broker_log_binding import _seed_broker_log_state
 from codoxear.broker_turn_state import INTERRUPT_HINT_TAIL_MAX
 from codoxear.broker_turn_state import State
 from codoxear.broker_turn_state import _apply_rollout_obj_to_state
@@ -57,8 +57,6 @@ from codoxear.control_socket import handle_control_socket_connection as _handle_
 from codoxear.util import append_launch_attempt as _append_launch_attempt
 from codoxear.util import default_app_dir as _default_app_dir
 from codoxear.util import find_new_session_log as _find_new_session_log
-from codoxear.util import find_session_log_for_session_id as _find_session_log_for_session_id
-from codoxear.util import is_subagent_session_meta as _is_subagent_session_meta
 from codoxear.util import iter_session_logs as _iter_session_logs
 from codoxear.util import launch_attempts_path as _launch_attempts_path
 from codoxear.util import pid_alive as _pid_alive
@@ -68,11 +66,9 @@ from codoxear.util import _paths_match as _paths_match
 from codoxear.util import read_launch_attempts as _read_launch_attempts
 from codoxear.util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 from codoxear.util import redacted_launch_attempt_persist_record as _redacted_launch_attempt_persist_record
-from codoxear.util import read_session_meta_payload as _read_session_meta_payload
 from codoxear.util import session_id_from_rollout_path as _session_id_from_rollout_path
 from codoxear.util import _send_socket_json_line as _send_socket_json_line
 from codoxear.util import _socket_peer_disconnected as _socket_peer_disconnected
-from codoxear.util import subagent_parent_thread_id as _subagent_parent_thread_id
 
 
 APP_DIR = _default_app_dir()
@@ -1025,100 +1021,31 @@ class Broker:
         return _session_id_from_rollout_path(log_path)
 
     def _maybe_register_or_switch_rollout(self, *, log_path: Path) -> None:
-        try:
-            lp = log_path.resolve()
-        except Exception:
-            lp = log_path
-        try:
-            lp.resolve().relative_to(self.sessions_dir.resolve())
-        except Exception:
+        binding = _resolve_broker_log_binding(
+            log_path=log_path,
+            sessions_dir=self.sessions_dir,
+            agent_backend=AGENT_BACKEND,
+            session_id_from_rollout_path=self._session_id_from_rollout_path,
+        )
+        if binding is None:
             return
-        if AGENT_BACKEND == "codex":
-            if not (lp.name.startswith("rollout-") and lp.name.endswith(".jsonl")):
-                return
-        elif lp.suffix != ".jsonl":
-            return
-
-        payload = _read_session_meta_payload(lp, agent_backend=AGENT_BACKEND, timeout_s=1.5)
-        if not payload:
-            return
-        if AGENT_BACKEND == "codex" and _is_subagent_session_meta(payload):
-            parent = _subagent_parent_thread_id(payload)
-            if not parent:
-                return
-            parent_log = _find_session_log_for_session_id(self.sessions_dir, parent, agent_backend=AGENT_BACKEND)
-            if not parent_log:
-                return
-            parent_payload = _read_session_meta_payload(parent_log, agent_backend=AGENT_BACKEND, timeout_s=0.2)
-            if not parent_payload:
-                return
-            if _is_subagent_session_meta(parent_payload):
-                return
-            lp = parent_log
-            payload = parent_payload
-
-        sid = payload.get("id")
-        if not isinstance(sid, str) or not sid:
-            sid = self._session_id_from_rollout_path(lp)
-            if sid is None:
-                raise RuntimeError(f"unable to determine session_id from rollout filename: {lp}")
-        if not sid:
-            return
-
-        try:
-            log_size = int(lp.stat().st_size)
-        except Exception:
-            log_size = 0
-        seed_pending: set[str | _PiPendingToolCallId] = set()
-        seed_idle: bool | None = None
-        seed_log_off = log_size
-        if AGENT_BACKEND == "cc" and log_size > 0:
-            try:
-                seed_pending, seed_idle = _cc_current_turn_state_before(lp, log_size)
-            except Exception:
-                seed_pending = set()
-                seed_idle = None
-        elif AGENT_BACKEND == "pi" and log_size > 0:
-            try:
-                seed_log_off = _pi_complete_jsonl_offset_before(lp, log_size)
-                seed_pending, seed_idle = _pi_current_turn_state_before(lp, seed_log_off)
-            except Exception:
-                seed_log_off = 0
-                seed_pending = set()
-                seed_idle = None
+        seed = _seed_broker_log_state(log_path=binding.log_path, agent_backend=AGENT_BACKEND)
 
         with self._lock:
             st = self.state
             if not st:
                 return
-            last = st.last_rollout_path
-            if last is not None and _paths_match(last, lp):
+            result = _apply_broker_log_binding_to_state(st, binding=binding, seed=seed)
+            if result is None:
                 return
-            st.last_rollout_path = lp
-            have_sock = st.sock_path is not None
-            prev_lp = st.log_path
-            if prev_lp is None or not _paths_match(prev_lp, lp):
-                st.last_interrupt_request_ts = 0.0
-                st.last_interrupted_idle_ts = 0.0
-            st.session_id = sid
-            st.log_path = lp
-            st.known_rollout_paths.add(lp)
-            st.log_off = seed_log_off
-            st.pending_calls = set(seed_pending)
-            if seed_pending or seed_idle is False:
-                st.busy = True
-                st.turn_open = True
-                st.turn_has_completion_candidate = False
-            elif seed_idle is True:
-                _close_turn_state(st)
 
-        if not have_sock:
+        if not result.have_sock:
             try:
-                self._register_from_log(log_path=lp)
+                self._register_from_log(log_path=binding.log_path)
             except Exception:
                 _dprint(f"broker: register_from_rollout failed: {traceback.format_exc()}")
                 return
-        elif prev_lp is None or not _paths_match(prev_lp, lp):
+        elif result.previous_log_path is None or not _paths_match(result.previous_log_path, binding.log_path):
             self._write_meta()
 
     def run(self) -> int:
