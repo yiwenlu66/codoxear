@@ -4326,3 +4326,18 @@
   - Focused frontend/static group returned `69 passed`.
   - Full local `python3 -m pytest -q` returned `1226 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T08:16:39Z Process log path helper split
+- Functional commit `f343807 Extract process log path helpers` moved raw macOS and `/proc` open-log enumeration from `codoxear/util.py` into new `codoxear/process_log_paths.py`:
+  - `_macos_children`, `_macos_descendants`, `_macos_open_rollout_logs`;
+  - `_proc_pid_uid`, `_proc_children`, `_proc_descendants`, `_proc_fd_flags`, `_fd_has_write_intent`;
+  - `proc_open_rollout_logs`, `proc_open_rollout_logs_for_backend`;
+  - `proc_open_writable_rollout_logs`, `proc_open_writable_rollout_logs_for_backend`.
+- `util.py` imports/re-exports those names and keeps higher-level `proc_find_open_rollout_log`, preserving payload parsing/subagent/cwd policy and existing imports from broker/server/session discovery code.
+- `util.py` reduced from 647 lines to 436 lines; `process_log_paths.py` is 234 lines.
+- Source sentinel `tests/test_process_log_paths_source.py` asserts open-log enumeration moved out of util, util remains the facade, and `proc_find_open_rollout_log` still owns payload parsing through `read_session_meta_payload`.
+- Validation after `f343807`:
+  - `python3 -m py_compile codoxear/util.py codoxear/process_log_paths.py` passed.
+  - Focused process/session discovery group returned `95 passed`.
+  - Full local `python3 -m pytest -q` returned `1227 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
