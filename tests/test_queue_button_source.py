@@ -8,6 +8,7 @@ APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
 class TestQueueButtonSource(unittest.TestCase):
     def test_queue_button_reflects_session_selection(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        helper_source = (Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app_session_helpers.js").read_text(encoding="utf-8")
 
         self.assertIn('function selectedSessionHasUnknownSend() {', source)
         self.assertIn('function selectedSessionIsOrphanRecovery() {', source)
@@ -18,7 +19,10 @@ class TestQueueButtonSource(unittest.TestCase):
         self.assertIn('const unknownSend = selectedSessionHasUnknownSend();', source)
         self.assertIn('const orphanQueueRecovery = selectedSessionHasOrphanQueueRecovery();', source)
         self.assertIn('const launchFailed = selectedSessionLaunchFailed();', source)
-        self.assertIn('return Boolean(s && (s.queue_recovery || s.orphan_recovery) && Number(s.queue_len || 0) > 0);', source)
+        self.assertIn('return sessionHasUnknownSend(selected ? sessionIndex.get(selected) : null);', source)
+        self.assertIn('return sessionIsOrphanRecovery(selected ? sessionIndex.get(selected) : null);', source)
+        self.assertIn('return sessionHasOrphanQueueRecovery(selected ? sessionIndex.get(selected) : null);', source)
+        self.assertIn('return !!(s && (s.queue_recovery || s.orphan_recovery) && Number(s.queue_len || 0) > 0);', helper_source)
         self.assertIn('queueControl.disabled = !!queueSubmitBusy || !selected || launchFailed || (unknownSend && !orphanQueueRecovery);', source)
         self.assertIn('Failed launch cannot receive queued messages', source)
         self.assertIn('Resolve the unknown send before queueing', source)

@@ -288,6 +288,9 @@
         typeof codoxearSessionHelpers.sessionLaunchPending !== "function" ||
         typeof codoxearSessionHelpers.sessionLaunchKind !== "function" ||
         typeof codoxearSessionHelpers.sessionLaunchIcon !== "function" ||
+        typeof codoxearSessionHelpers.sessionHasUnknownSend !== "function" ||
+        typeof codoxearSessionHelpers.sessionIsOrphanRecovery !== "function" ||
+        typeof codoxearSessionHelpers.sessionHasOrphanQueueRecovery !== "function" ||
         typeof codoxearSessionHelpers.sessionNeedsReview !== "function" ||
         typeof codoxearSessionHelpers.sessionSidebarGroupKey !== "function" ||
         typeof codoxearSessionHelpers.sidebarSessionEntries !== "function" ||
@@ -315,6 +318,18 @@
 
       function sessionLaunchPending(s) {
         return codoxearSessionHelpers.sessionLaunchPending(s);
+      }
+
+      function sessionHasUnknownSend(s) {
+        return codoxearSessionHelpers.sessionHasUnknownSend(s);
+      }
+
+      function sessionIsOrphanRecovery(s) {
+        return codoxearSessionHelpers.sessionIsOrphanRecovery(s);
+      }
+
+      function sessionHasOrphanQueueRecovery(s) {
+        return codoxearSessionHelpers.sessionHasOrphanQueueRecovery(s);
       }
 
       function sessionNeedsReview(s) {
@@ -10276,18 +10291,15 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         let queueViewerItems = [];
 
         function selectedSessionHasUnknownSend() {
-          const s = selected ? sessionIndex.get(selected) : null;
-          return Boolean(s && s.commit_unknown_send);
+          return sessionHasUnknownSend(selected ? sessionIndex.get(selected) : null);
         }
 
         function selectedSessionIsOrphanRecovery() {
-          const s = selected ? sessionIndex.get(selected) : null;
-          return Boolean(s && s.orphan_recovery);
+          return sessionIsOrphanRecovery(selected ? sessionIndex.get(selected) : null);
         }
 
         function selectedSessionHasOrphanQueueRecovery() {
-          const s = selected ? sessionIndex.get(selected) : null;
-          return Boolean(s && (s.queue_recovery || s.orphan_recovery) && Number(s.queue_len || 0) > 0);
+          return sessionHasOrphanQueueRecovery(selected ? sessionIndex.get(selected) : null);
         }
 
         function selectedSessionLaunchFailed() {

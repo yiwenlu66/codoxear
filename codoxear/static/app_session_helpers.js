@@ -31,6 +31,18 @@
     return kind === "web" ? "web" : "terminal";
   }
 
+  function sessionHasUnknownSend(s) {
+    return !!(s && s.commit_unknown_send);
+  }
+
+  function sessionIsOrphanRecovery(s) {
+    return !!(s && s.orphan_recovery);
+  }
+
+  function sessionHasOrphanQueueRecovery(s) {
+    return !!(s && (s.queue_recovery || s.orphan_recovery) && Number(s.queue_len || 0) > 0);
+  }
+
   function sessionNeedsReview(s) {
     return !!(s && (sessionLaunchFailed(s) || s.orphan_recovery || s.queue_recovery || s.commit_unknown_send));
   }
@@ -131,6 +143,9 @@
     sessionLaunchPending,
     sessionLaunchKind,
     sessionLaunchIcon,
+    sessionHasUnknownSend,
+    sessionIsOrphanRecovery,
+    sessionHasOrphanQueueRecovery,
     sessionNeedsReview,
     sessionSidebarGroupKey,
     sidebarSessionEntries,

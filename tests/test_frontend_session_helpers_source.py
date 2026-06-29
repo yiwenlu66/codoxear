@@ -40,6 +40,14 @@ def eval_session_helpers() -> dict:
           tmuxIcon: helpers.sessionLaunchIcon({{ transport: "tmux" }}),
           webIcon: helpers.sessionLaunchIcon({{ owned: true }}),
           terminalIcon: helpers.sessionLaunchIcon({{}}),
+          hasUnknownSend: helpers.sessionHasUnknownSend({{ commit_unknown_send: true }}),
+          noUnknownSend: helpers.sessionHasUnknownSend({{ commit_unknown_send: false }}),
+          orphanRecovery: helpers.sessionIsOrphanRecovery({{ orphan_recovery: true }}),
+          noOrphanRecovery: helpers.sessionIsOrphanRecovery(null),
+          orphanQueueFromQueueRecovery: helpers.sessionHasOrphanQueueRecovery({{ queue_recovery: true, queue_len: 1 }}),
+          orphanQueueFromOrphanRecovery: helpers.sessionHasOrphanQueueRecovery({{ orphan_recovery: true, queue_len: "2" }}),
+          orphanQueueZeroLen: helpers.sessionHasOrphanQueueRecovery({{ queue_recovery: true, queue_len: 0 }}),
+          orphanQueuePlain: helpers.sessionHasOrphanQueueRecovery({{ queue_len: 5 }}),
           reviewKey: helpers.sessionSidebarGroupKey(sessions[0]),
           waitingKey: helpers.sessionSidebarGroupKey(sessions[1]),
           laterKey: helpers.sessionSidebarGroupKey(sessions[2]),
@@ -90,6 +98,9 @@ class TestFrontendSessionHelpersSource(unittest.TestCase):
             "sessionLaunchPending",
             "sessionLaunchKind",
             "sessionLaunchIcon",
+            "sessionHasUnknownSend",
+            "sessionIsOrphanRecovery",
+            "sessionHasOrphanQueueRecovery",
             "sessionNeedsReview",
             "sessionSidebarGroupKey",
             "sidebarSessionEntries",
@@ -104,10 +115,22 @@ class TestFrontendSessionHelpersSource(unittest.TestCase):
             self.assertIn(f"function {helper}", source)
         self.assertIn("window.CodoxearSessionHelpers = Object.freeze({", helper_source)
         self.assertIn("const SESSION_SIDEBAR_GROUPS = Object.freeze([", helper_source)
+        self.assertIn("return codoxearSessionHelpers.sessionHasUnknownSend(s);", source)
+        self.assertIn("return codoxearSessionHelpers.sessionIsOrphanRecovery(s);", source)
+        self.assertIn("return codoxearSessionHelpers.sessionHasOrphanQueueRecovery(s);", source)
+        self.assertIn("return sessionHasUnknownSend(selected ? sessionIndex.get(selected) : null);", source)
+        self.assertIn("return sessionIsOrphanRecovery(selected ? sessionIndex.get(selected) : null);", source)
+        self.assertIn("return sessionHasOrphanQueueRecovery(selected ? sessionIndex.get(selected) : null);", source)
+        self.assertIn("function sessionHasUnknownSend(s) {", helper_source)
+        self.assertIn("function sessionIsOrphanRecovery(s) {", helper_source)
+        self.assertIn("function sessionHasOrphanQueueRecovery(s) {", helper_source)
         self.assertNotIn("redactedLaunchErrorText", helper_source)
         self.assertNotIn("sessionLaunchLabel", helper_source)
         self.assertNotIn("function sidebarSessionEntries(sessions) {\n        const buckets", source)
         self.assertNotIn("function sessionIsFast(s) {\n        return !!(s && typeof s.service_tier", source)
+        self.assertNotIn("return Boolean(s && s.commit_unknown_send);", source)
+        self.assertNotIn("return Boolean(s && s.orphan_recovery);", source)
+        self.assertNotIn("return Boolean(s && (s.queue_recovery || s.orphan_recovery) && Number(s.queue_len || 0) > 0);", source)
 
     def test_session_helpers_preserve_grouping_and_launch_contracts(self) -> None:
         result = eval_session_helpers()
@@ -124,6 +147,14 @@ class TestFrontendSessionHelpersSource(unittest.TestCase):
         self.assertEqual(result["tmuxIcon"], "tmux")
         self.assertEqual(result["webIcon"], "web")
         self.assertEqual(result["terminalIcon"], "terminal")
+        self.assertTrue(result["hasUnknownSend"])
+        self.assertFalse(result["noUnknownSend"])
+        self.assertTrue(result["orphanRecovery"])
+        self.assertFalse(result["noOrphanRecovery"])
+        self.assertTrue(result["orphanQueueFromQueueRecovery"])
+        self.assertTrue(result["orphanQueueFromOrphanRecovery"])
+        self.assertFalse(result["orphanQueueZeroLen"])
+        self.assertFalse(result["orphanQueuePlain"])
         self.assertEqual(result["reviewKey"], "review")
         self.assertEqual(result["waitingKey"], "waiting")
         self.assertEqual(result["laterKey"], "later")
