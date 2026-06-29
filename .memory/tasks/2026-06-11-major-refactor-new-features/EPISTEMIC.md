@@ -74,6 +74,7 @@ Interpretation:
 - Pi context-window/model registry/settings reserve-token/token math helpers now live in `codoxear/pi_context.py`; `codoxear/pi_log.py` remains the facade for session-log parsing and token APIs while preserving monkeypatch seams such as `_query_pi_context_windows`, `_default_pi_models_path`, and `pi_context_token_update`. Evidence covers focused Pi token/source tests and full local pytest, not Docker. See OPS 2026-06-29 Pi context helper split.
 - Clean-room review `664229ff-5cd1-46cf-a070-6d3b739abdc6` accepted the Pi context split as byte-equivalent, facade-compatible, monkeypatch-seam preserving, offline/fail-closed, and locally validated (`1218 passed, 107 subtests`), with only harmless duplicate `pi_reserved_tokens` wrapper noted. See OPS 2026-06-29 Pi context split clean-room review PASS.
 - Session/absolute file GET routes now live in `codoxear/file_get_routes.py`; `codoxear/file_routes.py` is a compatibility facade over GET/global/write/common route modules. Evidence covers focused file/static tests and full local pytest, not Docker. See OPS 2026-06-29 File GET route split.
+- Clean-room review `335bb753-db46-4a50-bdbd-e461d6736757` accepted the file GET split as byte-identical, facade-compatible, cycle-free, route-order preserving, and locally validated (`1219 passed, 107 subtests`), with only inherited non-blocking alias/exception-scope notes. See OPS 2026-06-29 File GET route split clean-room review PASS.
 
 Commitments:
 - Do not weaken source sentinels to chase line count; update them only when ownership truly moves.

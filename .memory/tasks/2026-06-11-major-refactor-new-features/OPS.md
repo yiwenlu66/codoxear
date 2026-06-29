@@ -4222,3 +4222,10 @@
   - Focused file/static group `python3 -m pytest -q tests/test_file_*.py tests/test_route_decomposition_source.py tests/test_static_assets.py` returned `180 passed, 52 subtests passed`.
   - Full local `python3 -m pytest -q` returned `1219 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T06:03:37Z File GET route split clean-room review PASS
+- Async clean-room review `335bb753-db46-4a50-bdbd-e461d6736757` returned `PASS` for functional commit `499a483` and docs `fa41fd4`.
+- Reviewer verified the 440-line moved block from `session_file_read_payload` through `_handle_session_file_download` is byte-identical, all 19 private GET/preview/download handlers moved out of `file_routes.py`, the 25-line facade re-exports all six public names, existing consumers still import from the facade, and no import cycle exists.
+- Reviewer verified route matching order, source sentinels, video-preview sentinel relocation, docs-only docs commit, no secrets/runtime artifacts, clean working tree at review time, and no Docker overclaim.
+- Reviewer validation: py_compile for route modules, focused file/static tests `180 passed, 52 subtests passed`, and full local `1219 passed, 107 subtests passed` across independent runs.
+- Residual notes were non-blocking inherited patterns: local `JsonResponse`/`RouteMatcher` alias duplication and pre-existing `_absolute_file_path` exception narrowing.
