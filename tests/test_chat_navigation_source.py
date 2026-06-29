@@ -56,21 +56,6 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn(".msg-row.nav-pulse .msg", css)
         self.assertIn("@keyframes navPulse", css)
 
-    def test_jump_to_latest_uses_smooth_scroll_without_changing_auto_scroll(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        scroll_block = source[source.index('function scrollToBottom({ behavior = "auto" } = {})') : source.index('function ymd(d)', source.index('function scrollToBottom'))]
-        self.assertIn('const top = chat.scrollHeight;', scroll_block)
-        self.assertIn('const scrollBehavior = prefersReducedMotion() ? "auto" : behavior;', scroll_block)
-        self.assertIn('if (scrollBehavior === "smooth" && typeof chat.scrollTo === "function") {', scroll_block)
-        self.assertIn('chat.scrollTo({ top, behavior: "smooth" });', scroll_block)
-        self.assertIn('chat.scrollTop = top;', scroll_block)
-        self.assertIn('lastScrollTop = chat.scrollTop;', scroll_block)
-        jump_block = source[source.index('async function jumpToLatest()') : source.index('async function selectSession(id)', source.index('async function jumpToLatest()'))]
-        self.assertIn('scrollToBottom({ behavior: "smooth" });', jump_block)
-        self.assertIn('autoScroll = true;', jump_block)
-        self.assertIn('function scrollToBottom({ behavior = "auto" } = {})', source)
-        self.assertIn('if (autoScroll) requestAnimationFrame(() => scrollToBottom());', source)
-
     def test_visible_time_indicator_uses_first_visible_message(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         css = APP_CSS.read_text(encoding="utf-8")
@@ -86,7 +71,7 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('chatTimeChip.textContent = `${dayLabel(d)} · ${time24(d)}`;', block)
         self.assertIn('chatTimeChip.style.display = "inline-flex";', block)
         self.assertIn('chatTimeChip.style.display = "none";', block)
-        jump_block = source[source.index("function syncJumpButton()") : source.index('function scrollToBottom({ behavior = "auto" } = {})')]
+        jump_block = source[source.index("function syncJumpButton()") : source.index("function scrollToBottom()")]
         self.assertIn("syncVisibleTimeIndicator();", jump_block)
         self.assertIn("syncVisibleTimeIndicator();\n          refreshLoadedChatSearch", source)
         self.assertIn("chatSearchLoadingOlder = false;\n          syncVisibleTimeIndicator();", source)
