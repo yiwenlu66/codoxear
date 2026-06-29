@@ -19,6 +19,8 @@ from .agent_backend import infer_agent_backend_from_log_path
 from .agent_backend import normalize_agent_backend
 from .cc_log import read_cc_session_header
 from .cc_log import read_cc_session_id
+from .json_state import atomic_write_json
+from .json_state import load_json_file
 from .pi_log import read_pi_log_cwd
 from .pi_log import read_pi_session_header
 from .pi_log import read_pi_session_id
@@ -206,27 +208,6 @@ def redacted_launch_attempt_response_record(record: dict[str, Any]) -> dict[str,
         for key in _LAUNCH_ERROR_RESPONSE_FIELDS
         if key in record
     }
-
-
-def load_json_file(path: Path, default: Any = None) -> Any:
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return default
-    return json.loads(raw)
-
-
-def atomic_write_json(path: Path, obj: Any, *, sort_keys: bool = True, indent: int | None = 2) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")
-    try:
-        tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=sort_keys, indent=indent) + "\n", encoding="utf-8")
-        os.replace(tmp, path)
-    finally:
-        try:
-            tmp.unlink()
-        except OSError:
-            pass
 
 
 def append_launch_attempt(record: dict[str, Any], *, path: Path | None = None) -> dict[str, Any]:
