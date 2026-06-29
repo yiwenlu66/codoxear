@@ -4188,3 +4188,14 @@
 - Reviewer observed the split improves the `_map_resolve_error` type annotation for global POST deps while preserving runtime logic.
 - Reviewer validation: py_compile for `file_routes.py`/`file_global_routes.py`, import-cycle smoke, focused file tests `193 passed, 52 subtests passed`, full local `1216 passed, 107 subtests passed`.
 - Reviewer verified docs commit was docs-only, no secrets/runtime artifacts, clean git state, and no Docker overclaim.
+
+## 2026-06-29T05:51:14Z Pi context helper split
+- Functional commit `2a07a99 Extract Pi context helpers` moved Pi context-window, RPC model-registry query, settings reserve-token, and context token math helpers from `codoxear/pi_log.py` into new `codoxear/pi_context.py`.
+- `pi_log.py` remains the facade/coordinator for session header/log parsing and public token update APIs. It preserves patch-sensitive names/wrappers: `PI_DEFAULT_RESERVED_TOKENS`, `PI_MODEL_QUERY_TIMEOUT_SECONDS`, `PI_MODEL_QUERY_ID`, `_context_percent_remaining`, `_context_token_update`, `_context_windows_from_model_rows`, `_context_windows_from_models_file`, `_default_pi_models_path`, `_default_pi_settings_path`, `_file_mtime_ns`, `_pi_context_windows`, `_pi_reserved_tokens`, `_pi_rpc_context_windows`, `_query_pi_context_windows`, `pi_model_context_window`, `pi_reserved_tokens`, `pi_context_token_update`, and `pi_token_update`.
+- `pi_log.py` reduced from 501 lines to 358 lines; `pi_context.py` is 206 lines.
+- Source sentinel `tests/test_pi_context_source.py` asserts `pi_context.py` owns offline RPC/settings/cache details and `pi_log.py` keeps wrapper/patch seams, including `pi_model_context_window` calling `_query_pi_context_windows(path).get(key)` rather than bypassing the facade.
+- Validation after `2a07a99`:
+  - `python3 -m py_compile codoxear/pi_log.py codoxear/pi_context.py` passed.
+  - Focused Pi context/token/source group `python3 -m pytest -q tests/test_pi_context_source.py tests/test_server_chat_flags.py tests/test_pi_message_source.py` returned `27 passed`.
+  - Full local `python3 -m pytest -q` returned `1218 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
