@@ -8,6 +8,7 @@ import traceback
 from pathlib import Path
 from typing import Any
 
+from .app_dir_runtime import resolve_default_app_dir as _resolve_default_app_dir
 from .agent_backend import get_agent_backend
 from .agent_backend import infer_agent_backend_from_log_path
 from .agent_backend import normalize_agent_backend
@@ -77,18 +78,12 @@ def _log_exception(context: str, exc: BaseException) -> None:
 
 
 def default_app_dir() -> Path:
-    base = Path.home() / ".local" / "share"
-    new = base / "codoxear"
-    old = base / "codex-web"
-    if old.exists():
-        global _LEGACY_WARNED
-        if not _LEGACY_WARNED:
-            _LEGACY_WARNED = True
-            _log_error(
-                f"error: legacy runtime dir detected at {old}; it is no longer used. "
-                f"migrate runtime state to {new}."
-            )
-    return new
+    global _LEGACY_WARNED
+    resolution = _resolve_default_app_dir(legacy_warned=_LEGACY_WARNED)
+    _LEGACY_WARNED = resolution.legacy_warned
+    if resolution.warning:
+        _log_error(resolution.warning)
+    return resolution.app_dir
 
 
 def launch_attempts_path(app_dir: Path | None = None) -> Path:
