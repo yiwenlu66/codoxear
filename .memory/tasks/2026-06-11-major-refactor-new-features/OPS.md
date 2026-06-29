@@ -3909,3 +3909,15 @@
   - Focused broker/terminal group returned `99 passed`.
   - Full local `python3 -m pytest -q` returned `1193 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T00:49:49Z Broker log watcher helper split
+- Functional commit `db3092f Extract broker log watcher helpers` moved deterministic log-watcher state mechanics from `codoxear/broker.py` into new `codoxear/broker_log_watcher.py`:
+  - `_pop_key_queue_if_idle`
+  - `_clear_resume_delivery_mute_if_idle`
+  - `_apply_log_objects_to_state`
+- Ownership boundary: `broker_log_watcher.py` owns key-queue drain eligibility, resume-delivery mute clearing, token update extraction, and per-row busy/turn state application. `broker.py` keeps the watcher loop, locking, sleeping, stale-batch check, and PTY writes.
+- Tests added: `tests/test_broker_log_watcher.py` directly covers key-queue drain and resume mute clearing; `tests/test_broker_log_watcher_source.py` pins broker delegation.
+- Validation after `db3092f`:
+  - Focused log-watcher/busy/send group returned `83 passed`.
+  - Full local `python3 -m pytest -q` returned `1197 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
