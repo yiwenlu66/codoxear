@@ -4764,3 +4764,22 @@
   - Full local `python3 -m pytest -q` returned `1241 passed, 107 subtests passed` before commit.
   - Focused isolated Docker `scripts/codoxear-docker-sandbox test tests/test_frontend_file_helpers_source.py tests/test_file_picker_search_source.py tests/test_file_viewer_source.py tests/test_static_assets.py -q` returned success with 63 tests.
 - Scope note: this is a bounded ownership split for file-picker labels/hints only. It does not claim new file-picker UX, browser interaction evidence, or extraction of cache/API/timer/render/open state machines.
+
+
+## 2026-06-29T14:12:10Z File picker hint helper clean-room review PASS
+- Async reviewer run `232b05e9-7e72-4b3f-a350-8f58577a22a9` returned PASS for functional commit `f78f8dc` and docs commit `7ecc090`.
+- Review evidence: `duplicateFilePickerPaths`, `filePickerIdentityHint`, and `filePickerTitle` moved from `app.js` to `app_file_helpers.js` with byte-for-byte identical logic after indentation normalization; `app.js` retains wrappers and all file-picker call sites use the wrappers.
+- Review verified fail-closed load checks, unchanged static load order, app-owned file-picker state/cache/API/timer/DOM/open behavior, updated helper-owner VM tests, focused 63-test and full local validation evidence, no unrelated/protected/secrets/runtime changes, and docs that avoid broad file-picker state-machine claims.
+- Residual notes were non-blocking: indentation changed to helper-module style, wrappers intentionally shadow helper names, and focused Docker evidence is scoped to this split.
+
+
+## 2026-06-29T14:12:10Z Session recovery predicate split
+- Functional commit `d0fb88d Extract session recovery predicates` moved explicit-session recovery predicates into `codoxear/static/app_session_helpers.js`: `sessionHasUnknownSend`, `sessionIsOrphanRecovery`, and `sessionHasOrphanQueueRecovery`.
+- `app.js` keeps selected-session wrappers that read `selected`/`sessionIndex`, plus all button labels, disabled-state composition, queue/send/attach/recovery behavior, DOM mutation, and API calls.
+- Tests now cover direct helper behavior for commit-unknown, orphan recovery, queue/orphan recovery with queue length, wrapper delegation, and source ownership in `app_session_helpers.js`.
+- Validation:
+  - `node --check codoxear/static/app_session_helpers.js` and `node --check codoxear/static/app.js` passed.
+  - Focused local session/queue/chat/static group returned `44 passed`.
+  - Full local `python3 -m pytest -q` returned `1241 passed, 107 subtests passed` before commit.
+  - Focused isolated Docker `scripts/codoxear-docker-sandbox test tests/test_frontend_session_helpers_source.py tests/test_queue_button_source.py tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` returned success with 44 tests.
+- Scope note: this is a bounded session-state interpretation split. It does not claim new queue/send UX behavior or extraction of queue mutation/rendering state machines.
