@@ -3997,3 +3997,17 @@
   - Focused modal/static/navigation/file-viewer/send/unattended source group returned `65 passed`.
   - Full local `python3 -m pytest -q` returned `1202 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T01:35:45Z Frontend clipboard helper split
+- Functional commit `89779fe Extract frontend clipboard helpers` added `codoxear/static/app_clipboard.js` and moved reusable copy mechanics out of `app.js`:
+  - `copyTextViaSelection`
+  - `copyToClipboard`
+- `app.js` keeps wrapper functions with the same names and still owns toast messaging / user-facing copy outcomes. This preserves app call sites while moving Clipboard API and selection-fallback mechanics into a loaded module.
+- Runtime asset wiring updated: `index.html`, `FRONTEND_ASSET_FILES`, static route/version tests, and wheel packaging sentinels now include `app_clipboard.js` between modal helpers and `app.js`.
+- Behavior directly tested in `tests/test_frontend_clipboard_module_source.py`: secure-context `writeText` path, non-secure hidden-textarea fallback, selection range, `execCommand("copy")`, textarea removal, focus restoration, and frozen helper export.
+- Negative evidence repaired before commit: initial source sentinel expected literal `navigator.clipboard`, but the module normalizes `navigator` to `nav` for VM/browser compatibility; sentinel was corrected to check the actual invariant (`nav.clipboard`).
+- Validation after `89779fe`:
+  - `node --check codoxear/static/app_clipboard.js` and `node --check codoxear/static/app.js` passed.
+  - Focused clipboard/static/file-viewer/diagnostics/chat-scrollback group returned `69 passed`.
+  - Full local `python3 -m pytest -q` returned `1205 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
