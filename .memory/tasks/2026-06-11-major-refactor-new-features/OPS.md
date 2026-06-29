@@ -4199,3 +4199,10 @@
   - Focused Pi context/token/source group `python3 -m pytest -q tests/test_pi_context_source.py tests/test_server_chat_flags.py tests/test_pi_message_source.py` returned `27 passed`.
   - Full local `python3 -m pytest -q` returned `1218 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T05:56:10Z Pi context split clean-room review PASS
+- Async clean-room review `664229ff-5cd1-46cf-a070-6d3b739abdc6` returned `PASS` for functional commit `2a07a99` and docs `bd73896`.
+- Reviewer verified byte-identical movement of low-level context helpers into `pi_context.py`, `pi_log.py` facade compatibility for all constants/private helpers/public token APIs, and monkeypatch-sensitive behavior for `codoxear.pi_log._query_pi_context_windows` and `_default_pi_models_path`.
+- Reviewer verified explicit `models_path` still avoids RPC query, RPC remains offline/fail-closed, reserve-token fallback behavior is unchanged, no import cycles exist, docs commit is docs-only, no secrets/runtime artifacts were added, and no Docker evidence was claimed.
+- Reviewer validation: focused `test_pi_context_source.py` plus `test_server_chat_flags.py` passed, and full local `python3 -m pytest -q` returned `1218 passed, 107 subtests passed`.
+- Reviewer residual note: `pi_reserved_tokens` currently exists in both `pi_log.py` and `pi_context.py` with identical bodies; harmless duplication because both route through the same cached `_pi_reserved_tokens`, but a possible future cleanup.
