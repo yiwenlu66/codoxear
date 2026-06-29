@@ -227,4 +227,4 @@ def pi_message_role(obj: dict[str, Any]) -> str | None:
     if not isinstance(message, dict):
         return None
     role = message.get("role")
-    return role if isinstance(role, str) else None
+    return role if isinstance(role, str) and role else None

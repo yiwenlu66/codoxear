@@ -95,6 +95,7 @@ class TestPiMessageSource(unittest.TestCase):
             },
         }
         self.assertTrue(pi_message.pi_assistant_is_final_turn_end(final))
+        self.assertIsNone(pi_message.pi_message_role({"type": "message", "message": {"role": ""}}))
 
 
 if __name__ == "__main__":
