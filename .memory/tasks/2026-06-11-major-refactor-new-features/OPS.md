@@ -4462,3 +4462,15 @@
 - Reviewer validation: focused frontend/static group passed and full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
 - Reviewer found no blockers; residual note was test-clarity-only that emitted search-mark JSON values should also have explicit Python assertions. The follow-up row-selection test edit adds those assertions.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+## 2026-06-29T09:21:43Z Frontend row selection helper split
+- Functional commit `b5d6646 Extract frontend row selection helpers` moved two row-selection helpers from `codoxear/static/app.js` into `codoxear/static/app_message_rows.js`:
+  - `oldestRenderedHistoryCursor(rows)` selects the first non-empty rendered-row history cursor;
+  - `firstVisibleMessageRow(rows, viewportTop)` selects the first row intersecting the viewport threshold, falling back to the last row or `null`.
+- `app.js` keeps rendered-row filtering, scroll threshold calculation (`chat.scrollTop + 1`), history API use, time-chip display policy, viewport preservation, and all transcript/search state. The `CodoxearMessageRows` fail-closed guard now checks both selectors.
+- Source/runtime tests validate cursor selection, empty-cursor `null`, first-visible selection, last-row fallback, empty-row `null`, helper/app ownership, and explicit search-mark class assertions from the previous reviewer clarity note.
+- Validation after `b5d6646`:
+  - `node --check codoxear/static/app_message_rows.js` and `node --check codoxear/static/app.js` passed.
+  - Focused frontend/static group returned `61 passed`.
+  - Full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
