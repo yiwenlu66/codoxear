@@ -4604,3 +4604,11 @@
   - Focused socket/control/session group returned `33 passed`.
   - Full local `python3 -m pytest -q` returned `1236 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+
+## 2026-06-29T12:39:32Z Socket JSON helper clean-room review PASS
+- Async reviewer run `f6a204fb-81c8-4969-8992-a5bfa1ca6b5d` returned `RESULT: PASS` for functional commit `5591fe5` and docs commit `37de049`.
+- Review evidence: `socket_peer_disconnected` and `send_socket_json_line` live in `codoxear/socket_json.py`; `codoxear.util` re-exports them as `_socket_peer_disconnected` and `_send_socket_json_line`; broker/sessiond/control-socket call sites remain behavior-compatible.
+- Review verified peer-disconnect semantics for `BrokenPipeError`, `ConnectionResetError`, `ConnectionAbortedError`, `OSError` errnos `EPIPE`, `ECONNRESET`, `ECONNABORTED`, `ENOTCONN`, `ESHUTDOWN`, wrong-errno false, and non-`OSError` false.
+- Review verified JSON-line send semantics (`json.dumps(payload) + "\n"`, UTF-8, `sendall`), facade identity, single definitions, all local tests passing, no protected checkout mutation, no secrets/runtime artifacts, docs-only docs commit, and no Docker overclaim.
+- Reviewer noted a minor focused-count ambiguity in the docs; full local `1236 passed, 107 subtests passed` remains the accepted validation evidence.
