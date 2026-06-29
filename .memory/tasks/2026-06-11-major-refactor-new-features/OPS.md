@@ -4977,3 +4977,27 @@
   - `codoxear/file_write_routes.py` has a low-severity path-based `path_obj.is_file()` in create-conflict error recovery.
   - `stat_path_no_symlink()` has a low-risk root/empty-name fallback, and the guarantee remains POSIX/Linux-oriented.
 - Scope note: this closes descriptor-anchored text reads, file-view metadata reads, existing text writes, and new text-file creation against symlink-parent redirection after validation. It does not yet close streaming response delivery opens, every raw file prefix read, multi-process writer races, or non-POSIX filesystem behavior.
+
+
+
+## 2026-06-29T18:18:32Z No-follow file response streaming hardening
+- Functional commit `82ce8d9 Stream file responses from no-follow descriptors` closed the adjacent delivery gap left after `fd2e58d`: final file response streams and preview content-type prefix reads no longer reopen validated paths through raw `Path.open("rb")`.
+- Mechanism: `file_text.py` exposes `open_regular_file_no_symlink()` as the public no-follow descriptor context. `file_response.py` enters that context in `_open_file_for_response()`, keeps the context alive through `FileResponseStream`, sizes headers with `os.fstat()` on the opened file descriptor, and streams bytes from that same descriptor. `file_get_routes.py::_read_prefix()` now uses an injected `read_regular_file_prefix` dependency wired through `server.py` and `server_route_deps.py` to `read_regular_file_prefix_no_symlink()`.
+- Error-boundary behavior: response streaming maps no-follow open `FileNotFoundError`, `PermissionError`, and `ValueError` to pre-header 404/403/400 `send_error()` responses; preview prefix reads map those errors to route-local JSON 404/403/400 before any inline stream is sent. Existing bad Range handling still maps to 416 after the file descriptor is opened and sized.
+- Tests added/updated:
+  - `tests/test_file_response_module_source.py::test_inline_response_parent_swap_streams_opened_directory_not_symlink_target` swaps the parent path to a symlink during the leaf fd open and verifies inline response bytes come from the originally opened directory, not the symlink target.
+  - `tests/test_file_response_module_source.py::test_inline_response_maps_symlink_rejection_before_headers` verifies descriptor-open `ValueError` maps to 400 before headers/body.
+  - `tests/test_file_routes.py::test_handle_absolute_file_preview_route_maps_prefix_symlink_rejection` verifies prefix read `ValueError` returns JSON 400 and does not call the inline response sender.
+  - Source tests now guard that `file_response.py` uses `open_regular_file_no_symlink(path)`, that `file_get_routes.py` depends on `read_regular_file_prefix`, and that neither target module contains the old `path.open("rb")` / `path_obj.open("rb")` patterns.
+  - Stale tests that patched `Path.open` for prefix errors now patch `server._read_regular_file_prefix_no_symlink`, preserving the original route-local 403/404 assertions on the actual seam.
+- Validation before commit:
+  - `python3 -m py_compile` on touched modules/tests passed.
+  - Focused local file route group returned `122 passed, 56 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1260 passed, 111 subtests passed`.
+  - Focused Docker file route group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed.
+  - Supplemental fd-count smoke over 100 inline responses showed `/proc/self/fd` count stable at `4 -> 4`.
+- Clean-room review `2c93f4f7-fd6b-4428-ba28-175c3317897a` returned PASS with no blockers. Review confirmed no raw `Path.open("rb")` remains in the target modules, descriptor/context lifetime is correct under normal request flow, server caps wiring is complete, error mappings are appropriate, and the parent-swap test exercises the old bug.
+- Residuals from review, intentionally not claimed closed: `_stream_file_bytes()` remains uncalled retained code now made safe; file response open errors still use `send_error()` plain text while prefix errors use JSON; the stream wrapper manually enters a context manager and therefore depends on normal synchronous control flow between returned wrapper and caller `with`; unrelated log/static/voice file reads remain ordinary IO and are outside this file-viewer delivery claim.
+- Scope note: this closes no-follow descriptor anchoring for file viewer/blob/download final response delivery and preview prefix detection. It does not claim every repository file read path, real browser media behavior, or non-POSIX filesystem behavior.
