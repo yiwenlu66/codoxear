@@ -97,6 +97,7 @@ class SessionManagerFactoryCaps:
     provider_choice_for_settings: Any
     python_executable: str
     queue_idle_grace_seconds: float
+    queue_sweep_max_drains: int
     read_jsonl_from_offset: Any
     read_launch_attempts: Any
     read_run_settings_from_log: Any
@@ -181,6 +182,7 @@ def session_manager_factory_caps(server: Any) -> SessionManagerFactoryCaps:
         provider_choice_for_settings=server._provider_choice_for_settings,
         python_executable=server.sys.executable,
         queue_idle_grace_seconds=server.QUEUE_IDLE_GRACE_SECONDS,
+        queue_sweep_max_drains=server.QUEUE_SWEEP_MAX_DRAINS,
         read_jsonl_from_offset=server._read_jsonl_from_offset,
         read_launch_attempts=server._read_launch_attempts,
         read_run_settings_from_log=server._read_run_settings_from_log,
@@ -400,6 +402,7 @@ def queue_sweep_coordinator_for_manager(manager: Any, caps: SessionManagerFactor
         mark_queue_orphan_recovery_locked=manager._mark_queue_orphan_recovery_locked,
         save_queues=manager._save_queues,
         maybe_drain_session_queue=manager._maybe_drain_session_queue,
+        max_drains_per_sweep=caps.queue_sweep_max_drains,
     )
 
 

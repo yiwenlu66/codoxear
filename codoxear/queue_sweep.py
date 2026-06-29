@@ -19,6 +19,7 @@ class QueueSweepCoordinator:
     mark_queue_orphan_recovery_locked: Callable[[str], bool]
     save_queues: Callable[[], None]
     maybe_drain_session_queue: Callable[[str], bool]
+    max_drains_per_sweep: int = 1
 
     def sweep(self) -> None:
         self.discover_existing_if_stale()
@@ -36,6 +37,10 @@ class QueueSweepCoordinator:
             session_ids = [sid for sid in self.queue_store.nonempty_session_ids(self.queues()) if sid in active_ids]
         if dropped or marked_recovery:
             self.save_queues()
+        max_drains = max(1, int(self.max_drains_per_sweep))
+        drained = 0
         for sid in session_ids:
             if self.maybe_drain_session_queue(sid):
-                break
+                drained += 1
+                if drained >= max_drains:
+                    break

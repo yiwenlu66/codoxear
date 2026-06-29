@@ -22,6 +22,7 @@ def test_server_config_applies_dotenv_before_deriving_paths_without_overriding_e
                     "CODEX_WEB_DEFAULT_AGENT_BACKEND=pi",
                     "CODEX_WEB_PORT=12345",
                     "CODEX_WEB_UNATTENDED_SWEEP_SECONDS=7.5",
+                    "CODEX_WEB_QUEUE_SWEEP_MAX_DRAINS=6",
                 ]
             ),
             encoding="utf-8",
@@ -46,6 +47,7 @@ def test_server_config_applies_dotenv_before_deriving_paths_without_overriding_e
     assert config.DEFAULT_AGENT_BACKEND == "pi"
     assert config.DEFAULT_PORT == 12345
     assert config.UNATTENDED_SWEEP_SECONDS == 7.5
+    assert config.QUEUE_SWEEP_MAX_DRAINS == 6
     assert config.ATTACH_UPLOAD_MAX_BYTES == 6
     assert config.ATTACH_UPLOAD_BODY_MAX_BYTES == 65544
     assert config.UNATTENDED_PATH == config.APP_DIR / "unattended.json"
