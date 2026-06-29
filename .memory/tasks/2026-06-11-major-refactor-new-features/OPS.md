@@ -4593,3 +4593,14 @@
 - Review verified the legacy `codoxear.util.os.path.samefile` monkeypatch seam remains available and that samefile-patching cwd alias tests pass.
 - Review observed py_compile, focused process/session/proc tests, and full local pytest evidence; no protected checkout mutation, no secrets/runtime artifacts, docs-only memory commit, and no Docker overclaim.
 - Residual risk: future cleanup must not remove `import os` from `util.py` unless the samefile monkeypatch seam is deliberately moved with tests updated.
+
+
+## 2026-06-29T12:34:54Z Socket JSON helper split
+- Functional commit `5591fe5 Extract socket JSON helpers` moved `_socket_peer_disconnected` and `_send_socket_json_line` logic from `codoxear/util.py` into new `codoxear/socket_json.py` as `socket_peer_disconnected` and `send_socket_json_line`.
+- `codoxear.util` remains the import-compatible facade by re-exporting the helpers under the existing private names used by `broker_control.py`, `sessiond.py`, and tests.
+- Extracted semantics preserved: peer-disconnect detection covers `BrokenPipeError`, `ConnectionResetError`, `ConnectionAbortedError`, and `OSError` errnos `EPIPE`, `ECONNRESET`, `ECONNABORTED`, `ENOTCONN`, `ESHUTDOWN`; JSON sending writes one UTF-8 JSON object plus trailing newline via `sendall`.
+- Validation:
+  - `python3 -m py_compile codoxear/util.py codoxear/socket_json.py codoxear/control_socket.py codoxear/broker_control.py codoxear/sessiond.py` passed.
+  - Focused socket/control/session group returned `33 passed`.
+  - Full local `python3 -m pytest -q` returned `1236 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
