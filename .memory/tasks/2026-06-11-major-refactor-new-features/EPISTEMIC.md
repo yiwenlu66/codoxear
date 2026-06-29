@@ -56,6 +56,7 @@ Interpretation:
 - Frontend viewport reusable DOM helpers now live in `codoxear/static/app_viewport.js`; `app.js` retains wrapper names for text-entry detection and app-height CSS updates. Evidence covers the moved helpers and wrapper guard, not all mobile keyboard behavior. See OPS 2026-06-29 frontend viewport DOM helper split.
 - Frontend modal reusable DOM policy now lives in `codoxear/static/app_modal.js`; `app.js` retains app-specific overlay closure and wrapper names. Evidence covers modal open/isolation/focus primitives plus static asset wiring. See OPS 2026-06-29 frontend modal helper split.
 - Frontend clipboard copy mechanics now live in `codoxear/static/app_clipboard.js`; `app.js` retains copy wrapper names and owns toast/user-facing outcomes. Evidence covers secure Clipboard API and hidden-textarea fallback paths plus static asset wiring. See OPS 2026-06-29 frontend clipboard helper split.
+- Frontend DOM node construction now lives in `codoxear/static/app_dom.js`; `app.js` retains the `el(...)` wrapper and passes in `defaultButtonTooltip` so tooltip policy remains separate. Evidence covers creation semantics and static asset wiring. See OPS 2026-06-29 frontend DOM helper split.
 
 Commitments:
 - Do not weaken source sentinels to chase line count; update them only when ownership truly moves.

@@ -4011,3 +4011,15 @@
   - Focused clipboard/static/file-viewer/diagnostics/chat-scrollback group returned `69 passed`.
   - Full local `python3 -m pytest -q` returned `1205 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T01:40:52Z Frontend DOM helper split
+- Functional commit `3d691e4 Extract frontend DOM helper` added `codoxear/static/app_dom.js` and moved DOM node construction out of `app.js`:
+  - `CodoxearDom.createElement`
+- `app.js` keeps the legacy `el(tag, attrs, children)` wrapper and passes the existing `defaultButtonTooltip` function into the module. This preserves tooltip policy and all `el(...)` call sites while moving reusable element construction into a loaded module.
+- Runtime asset wiring updated: `index.html`, `FRONTEND_ASSET_FILES`, static route/version tests, and wheel packaging sentinels now include `app_dom.js` between display helpers and file helpers.
+- Behavior directly tested in `tests/test_button_tooltips_source.py`: class/text/html/attribute mapping, child appending, existing title preservation, untitled button fallback title generation, and frozen helper export.
+- Validation after `3d691e4`:
+  - `node --check codoxear/static/app_dom.js` and `node --check codoxear/static/app.js` passed.
+  - Focused DOM/static/login/file-viewer/chat-scrollback group returned `66 passed`.
+  - Full local `python3 -m pytest -q` returned `1206 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
