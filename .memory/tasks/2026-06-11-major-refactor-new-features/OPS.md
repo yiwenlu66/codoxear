@@ -4144,3 +4144,18 @@
 - Reviewer behavior checks covered missing-file defaults, propagation of non-FileNotFound errors and JSON decode errors, sorted/indented/non-ASCII/trailing-newline JSON output, same-directory temp naming, `os.replace`, and temp cleanup.
 - Reviewer validation matched OPS claims: focused JSON/store group `54 passed`; full local `1212 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T02:31:48Z Frontend message identity helper split
+- Functional commit `eaf87c5 Extract frontend message identity helpers` added `codoxear/static/app_message_identity.js` and moved pure chat message identity/key helpers out of `app.js`:
+  - `normalizeTextForPendingMatch`;
+  - `pendingMatchKey`;
+  - `eventKey`;
+  - `chatAssistantDedupeKey`.
+- `app.js` keeps wrapper functions with the same historical names and still owns stateful duplicate tracking (`recentEventKeySet`), adjacent rendered-row checks, pending-user matching, and DOM mutations.
+- Runtime asset wiring updated: `index.html`, `FRONTEND_ASSET_FILES`, static route/version tests, and wheel packaging sentinels now include `app_message_identity.js` between transcript helpers and conversation-copy helpers.
+- Behavior directly tested in `tests/test_frontend_message_identity_source.py`: CRLF/CR normalization, trailing whitespace trimming, timestamp rounding in event keys, invalid-role rejection, assistant message-class/text dedupe keys, and frozen export.
+- Validation after `eaf87c5`:
+  - `node --check codoxear/static/app_message_identity.js` and `node --check codoxear/static/app.js` passed.
+  - Focused message-identity/transcript/scrollback/static group returned `50 passed`.
+  - Full local `python3 -m pytest -q` returned `1215 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
