@@ -4411,3 +4411,12 @@
   - Focused frontend/static group returned `61 passed`.
   - Full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+## 2026-06-29T08:53:56Z Frontend row search/order helper split clean-room review PASS
+- Async clean-room review `4a05e523-6c84-4ebd-af85-523a4d216067` returned `PASS` for functional commit `6c93b0d` and docs `4662f90`.
+- Reviewer verified `rowSearchText` and `compareRowsInDomOrder` live in `app_message_rows.js`, are exported on frozen `window.CodoxearMessageRows`, and are wrapped in `app.js` with browser `Node` constants injected for DOM-order comparison.
+- Reviewer verified chat search state, match arrays, forced-query markers, all-count async state, and older-load policy remain in `app.js`; `app_message_rows.js` has no chat-search state/policy references.
+- Reviewer behavior checks covered `.md`-preferred text extraction with row fallback, DOM-order bitmask behavior, fail-closed guard coverage, source sentinels, node syntax checks, no secrets/runtime artifacts, docs-only docs commit, no protected checkout mutation, and no Docker overclaim.
+- Reviewer validation: focused frontend-related tests passed and full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
+- Reviewer found no blockers; residual note was only a pre-existing `textContent = 0` falsy edge, not introduced by this split.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
