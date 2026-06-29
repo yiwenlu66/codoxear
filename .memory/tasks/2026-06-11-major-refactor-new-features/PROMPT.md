@@ -29,3 +29,8 @@ Continue aggressive product-gap recovery, reliability hardening, and structural/
 - Do not print secrets, credentials, tokens, private logs, or provider configuration values.
 - Do not commit runtime artifacts, sockets, live app state, bulky scratch data, or secrets.
 - Do not use `git add -A`, `git add .`, or broad staging.
+
+## Continuation correction
+- Do not define a small "tranche" as a completion boundary for the user's broad refactor/recovery request.
+- Reporting that the broad work is not done is not useful progress; continue with the next constructive intervention unless blocked by a real user decision or irreversible/high-risk action.
+- Completion claims require the actual broad recovery/refactor objective to be satisfied, not merely a reviewed subset.

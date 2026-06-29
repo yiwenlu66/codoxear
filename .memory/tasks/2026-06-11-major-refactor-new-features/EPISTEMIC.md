@@ -83,6 +83,7 @@ Interpretation:
 - Clean-room review `d84f1489-b485-4059-965f-7a626157df0d` accepted the session-log path helper split as verbatim, facade-compatible, cycle-free, and locally validated (`1223 passed, 107 subtests`), with no blockers. See OPS 2026-06-29 Session log path helper split clean-room review PASS.
 
 Commitments:
+- User explicitly rejected invented "tranche" boundaries as a stopping/reporting substitute. The operative commitment is continuous constructive refactor/product-gap work until the broad recovery objective is actually complete or blocked by a real decision.
 - Do not weaken source sentinels to chase line count; update them only when ownership truly moves.
 - Keep `SessionManager` as runtime registry/cache authority unless a later tranche explicitly moves that authority with tests.
 - Preserve launch ledger ordering, redaction boundary, direct/tmux process sequencing, metadata wait semantics, launch marker/base-record parity, wait/drain behavior, tmux snapshot behavior, launch-plan sequencing, and existing monkeypatch seams while moving the next seam.

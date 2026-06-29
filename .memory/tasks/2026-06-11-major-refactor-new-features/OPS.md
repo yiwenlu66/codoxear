@@ -4302,3 +4302,7 @@
 - Reviewer validation: source sentinel passed, focused session-log/proc/resume/source group passed, py_compile was clean, and full local `python3 -m pytest -q` returned `1223 passed, 107 subtests passed`.
 - Reviewer found no blockers and no required fixes; residual risk is only that future direct imports from `session_log_paths.py` would require sentinel-policy updates.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T07:54:45Z User correction: no invented tranche boundary
+- User rejected the assistant-defined "tranche" framing and stated that reporting "not done" is failure when the requested refactor remains unfinished.
+- Operational consequence: do not use tranche completion as a stopping substitute. Continue constructive refactor/product-gap work until the broader requested recovery objective is actually complete or a hard user/blocking decision is required.
