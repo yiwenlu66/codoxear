@@ -81,7 +81,13 @@
       window.codoxearPerf = summarizePerf;
 
       const codoxearUrls = window.CodoxearUrls;
-      if (!codoxearUrls || typeof codoxearUrls.resolveAppUrl !== "function") throw new Error("Codoxear URL helpers failed to load");
+      if (
+        !codoxearUrls ||
+        typeof codoxearUrls.resolveAppUrl !== "function" ||
+        typeof codoxearUrls.sessionIdFromHash !== "function" ||
+        typeof codoxearUrls.setSessionHash !== "function"
+      )
+        throw new Error("Codoxear URL helpers failed to load");
       function resolveAppUrl(path) {
         return codoxearUrls.resolveAppUrl(path);
       }
@@ -232,19 +238,11 @@
       }
 
       function sessionIdFromHash() {
-        const raw = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "";
-        const params = new URLSearchParams(raw);
-        const sid = params.get("session");
-        return sid && sid.trim() ? sid.trim() : "";
+        return codoxearUrls.sessionIdFromHash();
       }
 
       function setSessionHash(sessionId) {
-        const params = new URLSearchParams(window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "");
-        if (sessionId) params.set("session", sessionId);
-        else params.delete("session");
-        const next = params.toString();
-        const target = `${window.location.pathname}${window.location.search}${next ? `#${next}` : ""}`;
-        history.replaceState(null, "", target);
+        codoxearUrls.setSessionHash(sessionId);
       }
 
       const codoxearSessionHelpers = window.CodoxearSessionHelpers;
