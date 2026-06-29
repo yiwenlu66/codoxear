@@ -614,6 +614,7 @@ def eval_file_open_request_sequence() -> dict:
             this.signal.aborted = true;
           }}
         }}
+        const fileApiPathCalls = [];
         const ctx = {{
           activeFilePath: "old.txt",
           activeFileApiPath: "",
@@ -623,12 +624,15 @@ def eval_file_open_request_sequence() -> dict:
           selected: "",
           AbortController,
           disposePdfRender: () => {{}},
-          fileApiPathForPath: (_path, apiPath = "") => apiPath || "",
+          fileApiPathForPath: (path, apiPath = "") => {{
+            fileApiPathCalls.push([String(path), String(apiPath || "")]);
+            return apiPath ? `kept:${{apiPath}}` : `derived:${{path}}`;
+          }},
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           normalizeLineNumber: (value) => value == null ? null : Number(value),
         }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_file_open = { beginFileOpenRequest, isCurrentFileOpenRequest, cancelPendingFileOpen, currentFileSessionId };\n")}, ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_file_open = { beginFileOpenRequest, isCurrentFileOpenRequest, cancelPendingFileOpen, currentFileSessionId, currentActiveFileIdentity, nextActiveFileIdentity };\n")}, ctx);
         const first = ctx.__test_file_open.beginFileOpenRequest("first.txt", {{ line: 3 }});
         const firstCurrent = ctx.__test_file_open.isCurrentFileOpenRequest(first);
         const second = ctx.__test_file_open.beginFileOpenRequest(" trail.md ", {{ line: 8, gitPath: true }});
@@ -639,9 +643,28 @@ def eval_file_open_request_sequence() -> dict:
           firstAfterSecond: ctx.__test_file_open.isCurrentFileOpenRequest(first),
           secondCurrent: ctx.__test_file_open.isCurrentFileOpenRequest(second),
           secondGitPath: second.gitPath,
+          secondApiPath: second.apiPath,
           activeFilePath: ctx.activeFilePath,
           activeFileLine: ctx.activeFileLine,
         }};
+        ctx.activeFilePath = "same.py";
+        ctx.activeFileGitPath = true;
+        ctx.activeFileApiPath = "tok-same";
+        const same = ctx.__test_file_open.beginFileOpenRequest(null, {{}});
+        const explicit = ctx.__test_file_open.beginFileOpenRequest("explicit.py", {{ gitPath: true, apiPath: "explicit-token" }});
+        const nongit = ctx.__test_file_open.beginFileOpenRequest("plain.py", {{ gitPath: false }});
+        result.sameApiPath = same.apiPath;
+        result.sameGitPath = same.gitPath;
+        result.explicitApiPath = explicit.apiPath;
+        result.nongitApiPath = nongit.apiPath;
+        result.nongitGitPath = nongit.gitPath;
+        result.helperRejectsMissingCurrent = false;
+        try {{
+          ctx.__test_file_open.nextActiveFileIdentity(null, "x.py");
+        }} catch (_) {{
+          result.helperRejectsMissingCurrent = true;
+        }}
+        result.fileApiPathCalls = fileApiPathCalls;
         ctx.__test_file_open.cancelPendingFileOpen();
         result.secondAfterCancel = ctx.__test_file_open.isCurrentFileOpenRequest(second);
         process.stdout.write(JSON.stringify(result));
@@ -968,7 +991,15 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertTrue(result["secondCurrent"])
         self.assertEqual(result["activeFilePath"], " trail.md ")
         self.assertTrue(result["secondGitPath"])
+        self.assertEqual(result["secondApiPath"], "derived: trail.md ")
         self.assertEqual(result["activeFileLine"], 8)
+        self.assertEqual(result["sameApiPath"], "kept:tok-same")
+        self.assertTrue(result["sameGitPath"])
+        self.assertEqual(result["explicitApiPath"], "explicit-token")
+        self.assertEqual(result["nongitApiPath"], "")
+        self.assertFalse(result["nongitGitPath"])
+        self.assertTrue(result["helperRejectsMissingCurrent"])
+        self.assertEqual(result["fileApiPathCalls"], [[" trail.md ", ""], ["same.py", "tok-same"]])
         self.assertFalse(result["secondAfterCancel"])
 
     def test_touch_file_editor_controls_target_touch_capabilities(self) -> None:
@@ -1175,6 +1206,9 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("let fileOpenRequestId = 0;", source)
         self.assertIn("let fileOpenAbortController = null;", source)
         self.assertIn("function cancelPendingFileOpen()", source)
+        self.assertIn("function nextActiveFileIdentity(current, nextPath", source)
+        self.assertIn("function currentActiveFileIdentity()", source)
+        self.assertIn("const identity = nextActiveFileIdentity(currentActiveFileIdentity()", source)
         self.assertIn("const request = beginFileOpenRequest(nextPath, { line, gitPath, apiPath });", source)
         self.assertIn("signal: request.signal", source)
         self.assertIn("if (!isCurrentFileOpenRequest(request)) return false;", source)

@@ -7096,23 +7096,37 @@
           fileOpenAbortController = null;
         }
 
+        function nextActiveFileIdentity(current, nextPath, { gitPath = undefined, apiPath = undefined } = {}) {
+          if (!current || typeof current !== "object") throw new Error("current file identity required");
+          const previousPath = String(current.path ?? "");
+          const previousApiPath = String(current.apiPath || "");
+          const rel = String(nextPath ?? "");
+          const useGitPath = gitPath === undefined ? Boolean(current.gitPath) : Boolean(gitPath);
+          const reusableApiPath = rel === previousPath ? previousApiPath : "";
+          return Object.freeze({
+            path: rel,
+            gitPath: useGitPath,
+            apiPath: apiPath === undefined ? (useGitPath ? fileApiPathForPath(rel, reusableApiPath) : "") : normalizeFileApiPath(apiPath),
+          });
+        }
+
+        function currentActiveFileIdentity() {
+          return Object.freeze({ path: String(activeFilePath ?? ""), gitPath: Boolean(activeFileGitPath), apiPath: String(activeFileApiPath || "") });
+        }
+
         function beginFileOpenRequest(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {}) {
           cancelPendingFileOpen();
-          const previousPath = String(activeFilePath ?? "");
-          const previousApiPath = String(activeFileApiPath || "");
-          const rel = String(nextPath == null ? activeFilePath : nextPath);
-          const useGitPath = gitPath === undefined ? activeFileGitPath : Boolean(gitPath);
-          const reusableApiPath = rel === previousPath ? previousApiPath : "";
-          activeFilePath = rel;
-          activeFileGitPath = useGitPath;
-          activeFileApiPath = apiPath === undefined ? (useGitPath ? fileApiPathForPath(rel, reusableApiPath) : "") : normalizeFileApiPath(apiPath);
+          const identity = nextActiveFileIdentity(currentActiveFileIdentity(), nextPath == null ? activeFilePath : nextPath, { gitPath, apiPath });
+          activeFilePath = identity.path;
+          activeFileGitPath = identity.gitPath;
+          activeFileApiPath = identity.apiPath;
           activeFileLine = line === undefined ? activeFileLine : normalizeLineNumber(line);
           const controller = typeof AbortController === "function" ? new AbortController() : null;
           if (controller) fileOpenAbortController = controller;
           return {
             requestId: fileOpenRequestId,
             sessionId: currentFileSessionId(),
-            path: rel,
+            path: identity.path,
             apiPath: activeFileApiPath,
             gitPath: activeFileGitPath,
             line: activeFileLine,
@@ -8712,14 +8726,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function setFilePath(rel, { line = null, gitPath = undefined, apiPath = undefined } = {}) {
-          const previousPath = String(activeFilePath ?? "");
-          const previousApiPath = String(activeFileApiPath || "");
-          const next = String(rel ?? "");
-          const useGitPath = gitPath === undefined ? activeFileGitPath : Boolean(gitPath);
-          const reusableApiPath = next === previousPath ? previousApiPath : "";
-          activeFilePath = next;
-          activeFileGitPath = useGitPath;
-          activeFileApiPath = apiPath === undefined ? (useGitPath ? fileApiPathForPath(next, reusableApiPath) : "") : normalizeFileApiPath(apiPath);
+          const identity = nextActiveFileIdentity(currentActiveFileIdentity(), rel, { gitPath, apiPath });
+          activeFilePath = identity.path;
+          activeFileGitPath = identity.gitPath;
+          activeFileApiPath = identity.apiPath;
           activeFileLine = normalizeLineNumber(line);
           resetFilePickerInput();
           fileMenuOpen = false;
