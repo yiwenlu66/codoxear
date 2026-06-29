@@ -4687,3 +4687,23 @@
   - Focused frontend/file/static group returned `24 passed`.
   - Full local `python3 -m pytest -q` returned `1240 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+
+## 2026-06-29T13:29:55Z Frontend attachment upload helper clean-room review PASS
+- Async reviewer run `df2840d9-d520-476e-8037-e261fc2de0fa` returned PASS for functional commit `6d90b2c` and docs commit `31fe53e`.
+- Review evidence: `attachmentSafeStem` and `attachmentExtensionLower` are byte-for-byte equivalent to the old inline `safeStem`/`extLower`; `attachmentLooksLikeImage` preserves the old logic while calling the renamed extension helper; `bytesToBase64` preserves chunked binary assembly with the app wrapper passing browser `btoa`.
+- Review noted one intentional strengthening in `attachmentIsLikelyHeic`: `file && file.type` / `file && file.name` guards make nullish input fail closed without changing reachable upload-handler behavior.
+- Review verified `app.js` keeps upload orchestration, session/running/sending guards, compression, size/toast/API/polling/auth/commit-unknown behavior, and fail-closed helper loading; `app_file_helpers.js` owns only the five pure helpers.
+- Review observed node syntax checks, focused helper tests, full local `1240 passed, 107 subtests passed` at the reviewed commit, docs-only docs commit, no secrets/runtime artifacts, no protected checkout mutation, and no Docker overclaim.
+
+
+## 2026-06-29T13:29:55Z Launch error redaction helper split
+- Functional commit `82fc5d2 Extract launch error redaction helper` moved `redactedLaunchErrorText` regex/redaction policy from `codoxear/static/app.js` into `codoxear/static/app_launch.js` and exported it through `window.CodoxearLaunch`.
+- `app.js` keeps the legacy wrapper name and all call sites for failed-session labels, badges, details, and recovery prompts; it now delegates to `codoxearLaunch.redactedLaunchErrorText(value)` and adds a fail-closed guard requiring that helper to load.
+- Tests were updated so launch-helper VM coverage exercises redaction behavior directly through `app_launch.js`, and chat-recovery VM coverage loads `app_launch.js` alongside display helpers before evaluating recovery snippets.
+- Validation:
+  - `node --check codoxear/static/app_launch.js` and `node --check codoxear/static/app.js` passed.
+  - Focused launch/chat/static group `python3 -m pytest -q tests/test_launch_ui_source.py tests/test_chat_scrollback_source.py tests/test_static_assets.py` returned `44 passed`.
+  - Full local `python3 -m pytest -q` returned `1240 passed, 107 subtests passed` before the functional commit.
+  - `git diff --check` passed after a whitespace-only cleanup.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split; clean-room review has not yet been dispatched for this new functional commit.
