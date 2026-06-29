@@ -4341,3 +4341,11 @@
   - Focused process/session discovery group returned `95 passed`.
   - Full local `python3 -m pytest -q` returned `1227 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T08:18:25Z Frontend message row helper split clean-room review PASS
+- Async clean-room review `de8258d8-43ba-4fe0-bba6-b7a6af94ba38` returned `PASS` for functional commit `8751694` and docs `39cf4fc`.
+- Reviewer verified behavior-preserving extraction of `makeRow` and `safeMakeRow`, app.js wrapper integrity, fail-closed `window.CodoxearMessageRows` guard, call-time dependency injection including app-owned `selected`, no movement of stateful transcript/dedupe arrays, frozen export, script order, static asset manifest, wheel packaging, source sentinels, no protected checkout mutation, no secrets/runtime artifacts, docs-only docs commit, and no Docker overclaim.
+- Reviewer behavior checks covered role selection, row/bubble classes, dataset role/ts/historyCursor/assistantDedupeKey, warning/error classes, markdown HTML insertion, file-ref upgrade callback, timestamp rendering, copy button attributes/click/toast/timeout behavior, and safe fallback text rendering/error logging.
+- Reviewer validation: node syntax checks passed, focused frontend/static tests passed (count depends on subset), and full local `python3 -m pytest -q` returned `1227 passed, 107 subtests passed` on the reviewed head.
+- Reviewer noted the OPS focused-test count was a subset-specific count, not a behavioral issue.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
