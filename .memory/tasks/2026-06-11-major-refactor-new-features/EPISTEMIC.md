@@ -2751,3 +2751,6 @@ Scoped claim: the current branch has a validated backend/server architecture che
 
 
 - The queue sweep drain budget is now operator-discoverable in canonical docs: `CODEX_WEB_QUEUE_SWEEP_MAX_DRAINS` appears in README and `.env.example`, with a config-source test guarding the docs/default alignment. Evidence: commit `8844f48` and focused local/Docker config-doc validation. See OPS Queue sweep budget operator config documentation.
+
+
+- Queue sweep aggregate work is now bounded by both successful drains and attempted sessions: `QUEUE_SWEEP_MAX_DRAINS` caps successful promotions while `QUEUE_SWEEP_MAX_ATTEMPTS` (default 16, clamped >= drains) caps per-sweep readiness/send attempts. Manager-created sweeps keep an in-memory cursor so unready prefixes do not starve later ready sessions across cycles. Evidence includes commit `50044d7`, a two-sweep unready-prefix rotation test, focused local/Docker queue/config validation, full local pytest, and clean-room review `d443ceb3-2073-40ae-bf5c-5eba1d112d4d`. Per-session readiness, idle-grace, recovery, and commit-unknown semantics remain delegated to the existing drain path. See OPS Queue sweep attempt budget and rotation.

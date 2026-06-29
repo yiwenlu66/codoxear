@@ -4880,3 +4880,23 @@
   - Focused local `python3 -m pytest -q tests/test_server_config.py tests/test_unattended_mode_source.py` returned `10 passed`.
   - Focused isolated Docker `scripts/codoxear-docker-sandbox test tests/test_server_config.py tests/test_unattended_mode_source.py -q` returned success with 10 tests.
 - Scope note: this is canonical documentation/test follow-up for `65a578e`; it does not change runtime behavior.
+
+
+
+## 2026-06-29T15:45:30Z Queue sweep attempt budget and rotation
+- Functional commit `50044d7 Budget queue sweep attempts` added `CODEX_WEB_QUEUE_SWEEP_MAX_ATTEMPTS`, exported as `QUEUE_SWEEP_MAX_ATTEMPTS`, defaulting to 16 and clamped at config-build time to at least `QUEUE_SWEEP_MAX_DRAINS`.
+- Mechanism: `QueueSweepCoordinator.sweep()` now bounds attempted queued sessions separately from successful drains. Manager-created coordinators pass both the configured attempt budget and an in-memory `_queue_sweep_cursor`; direct `QueueSweepCoordinator` construction preserves the old behavior because `max_attempts_per_sweep=None` scans all sessions linearly and cursor callbacks are optional.
+- The cursor advances after every attempted session and resets when no queued sessions remain. A stale/unready prefix can therefore consume one bounded sweep, but the next sweep resumes after that prefix and can reach later ready sessions instead of restarting at index 0.
+- Per-session queue semantics are intentionally unchanged: `maybe_drain_session_queue()` is still the only promotion callback, so readiness, idle-grace, confirmed-send boundary, duplicate item-id popping, recovery barriers, and commit-unknown preservation remain in the existing queue coordinator path.
+- Tests added/updated:
+  - `test_queue_sweep_attempt_budget_rotates_past_unready_prefix` proves attempts are capped at two sessions, cursor advances past the unready prefix, and the second sweep reaches/drains the later ready session.
+  - `test_queue_sweep_drains_multiple_ready_sessions_up_to_budget` now also asserts cursor advancement after a successful drain-budget stop.
+  - `test_queue_sweep_attempts_are_clamped_to_success_budget` proves attempts=2 with drains=5 becomes attempts=5.
+  - Config docs/source tests assert the new env var appears in README and `.env.example`.
+- Validation before commit:
+  - `python3 -m py_compile codoxear/queue_sweep.py codoxear/server_config.py codoxear/session_manager_factories.py codoxear/session_manager_bootstrap.py tests/test_queue_sweep_idle_guard.py tests/test_server_config.py` passed.
+  - Focused local queue/config group `python3 -m pytest -q tests/test_queue_sweep_idle_guard.py tests/test_session_queue.py tests/test_server_queue_persistence.py tests/test_server_config.py` returned `102 passed, 22 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1247 passed, 107 subtests passed`.
+  - Focused isolated Docker `scripts/codoxear-docker-sandbox test tests/test_queue_sweep_idle_guard.py tests/test_session_queue.py tests/test_server_queue_persistence.py tests/test_server_config.py -q` returned success with the queue/config group.
+- Clean-room review `d443ceb3-2073-40ae-bf5c-5eba1d112d4d` returned PASS before the functional commit. Review confirmed default/clamp semantics, cursor rotation, direct-constructor compatibility, unchanged per-session readiness/idle-grace/commit-unknown/recovery behavior, accurate README/`.env.example` docs, and only low residual risk from dynamic session-list reordering.
+- Scope note: this bounds aggregate work per queue sweep and improves fairness across many queued sessions. It does not implement per-item retry freezes, readiness-probe caching, or a guarantee that every broker failure mode delivers faster; stalled sessions are retried in later bounded sweeps rather than hidden.
