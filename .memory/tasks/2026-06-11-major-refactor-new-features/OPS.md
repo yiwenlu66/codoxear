@@ -4483,3 +4483,15 @@
 - Reviewer validation: full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
 - Reviewer found no blockers; residual notes were inherited `null` cursor error behavior and inherited `chat.scrollTop + 1` fudge factor.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+## 2026-06-29T09:31:24Z Frontend trim target helper split
+- Functional commit `23de1ac Extract frontend trim target helpers` moved pure transcript DOM-window trim target selection from `codoxear/static/app.js` into `codoxear/static/app_message_rows.js`:
+  - `trimRenderedRowTargets(rows, fromTop, maxRows, defaultMaxRows)` selects top or bottom rows to remove for the transcript DOM window;
+  - `trimRowsBeforeViewportTargets(rows, maxRows, defaultMaxRows, viewportTop)` selects removable rows before the viewport without trimming visible rows.
+- `app.js` keeps rendered-row filtering, DOM `row.remove()` mutation, `renderedAtLiveTail` mutation, `chat.scrollTop + 1` viewport threshold calculation, and caller policy for live-tail/history-window preservation. The `CodoxearMessageRows` fail-closed guard now checks both trim helpers.
+- Source/runtime tests validate top and bottom trim target selection, no-trim cases, default max fallback, before-viewport target limits, pinned-visible-row behavior, app/helper ownership, and preservation of recovery/typing-row exclusion through `renderedMessageRows()` delegation.
+- Validation after `23de1ac`:
+  - `node --check codoxear/static/app_message_rows.js` and `node --check codoxear/static/app.js` passed.
+  - Focused frontend/static group returned `61 passed`.
+  - Full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
