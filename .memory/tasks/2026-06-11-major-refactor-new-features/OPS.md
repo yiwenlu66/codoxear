@@ -4565,3 +4565,11 @@
   - Focused voice/static/frontend group returned `29 passed`.
   - Full local `python3 -m pytest -q` returned `1231 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+
+## 2026-06-29T12:28:10Z Frontend voice helper clean-room review PASS
+- Async reviewer run `d37a4798-04e1-4f3e-8272-b60d41960378` returned `RESULT: PASS` for functional commit `d0e3b0b` and docs commit `c4a9aaa`.
+- Review evidence: all seven moved helpers preserve native/MSE/HLS support detection, Apple/WebKit native preference, combined live-audio support, VAPID base64url decode, mobile notification detection, and notification device classification semantics. `app.js` preserves wrapper names/call sites and retains live audio state, HLS lifecycle, watchdog/retry policy, notification state/settings, subscription/network calls, UI updates, and desktop notification behavior.
+- Review verified fail-closed `CodoxearVoiceHelpers` guard, `Object.freeze`, script order before `app.js`, static asset registration/cache versioning/packaging, docs-only `c4a9aaa`, and no protected checkout mutation/secrets/runtime artifacts.
+- Residual risks are limited to the explicit script-order dependency and wrapper argument contract, both guarded by source/runtime tests and fail-closed loading.
+- Reviewer noted a minor docs count ambiguity: the focused test count in OPS included the broader voice/static/frontend command, while the two named files alone produce fewer tests. This does not affect correctness of the reviewed split.
