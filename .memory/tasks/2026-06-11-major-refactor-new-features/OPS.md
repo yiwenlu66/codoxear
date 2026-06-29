@@ -4078,3 +4078,17 @@
   - `JsonResponse` and `RouteMatcher` aliases are duplicated in `file_routes.py` and `file_write_routes.py`; possible future common-module consolidation.
   - `resolve_session_write_update_path` retains a redundant double `resolved_base.resolve()` from the original implementation.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T02:09:08Z Sessiond state helper split
+- Functional commit `f1faf7b Extract sessiond state helpers` moved pure sessiond state/log helpers from `codoxear/sessiond.py` into `codoxear/sessiond_state.py`:
+  - `State` dataclass;
+  - `_read_jsonl_from_offset` missing-file wrapper;
+  - `_log_busy_signals`;
+  - `_busy_value_after_log_batch`.
+- `sessiond.py` remains the process/socket/PTY coordinator and imports/re-exports the old helper names, preserving existing tests/imports and patch seams for `_inject`, `_write_all`, etc.
+- Source sentinel `tests/test_sessiond_state_source.py` asserts sessiond imports the helpers and the new owner keeps the rollout/Pi busy signal logic, invalid event payload failure, token_count turn-end recognition, Pi aborted/error/final-text turn-end recognition, and missing-file JSONL contract.
+- Validation after `f1faf7b`:
+  - `python3 -m py_compile codoxear/sessiond.py codoxear/sessiond_state.py` passed.
+  - Focused sessiond/send/process/PTY source group returned `23 passed`.
+  - Full local `python3 -m pytest -q` returned `1209 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
