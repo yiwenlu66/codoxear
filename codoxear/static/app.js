@@ -5508,12 +5508,18 @@
           }, 250);
         }
 
+        function versionedShellAssetPath(path) {
+          const version = String(window.CODOXEAR_ASSET_VERSION || "").trim();
+          if (!version) return path;
+          return `${path}?v=${encodeURIComponent(version)}`;
+        }
+
         async function ensureVoiceServiceWorker() {
           if (!("serviceWorker" in navigator) || !("PushManager" in window) || typeof Notification === "undefined") {
             throw new Error("push notifications are not supported in this browser");
           }
           if (!swRegistration) {
-            swRegistration = await navigator.serviceWorker.register(resolveAppUrl("/service-worker.js"), { scope: resolveAppUrl("/") });
+            swRegistration = await navigator.serviceWorker.register(resolveAppUrl(versionedShellAssetPath("/service-worker.js")), { scope: resolveAppUrl("/") });
           }
           return swRegistration;
         }

@@ -14,6 +14,7 @@ from codoxear.server import TOP_LEVEL_STATIC_ASSETS
 from codoxear.server import _read_static_bytes
 from codoxear.server import _static_asset_version
 from codoxear.server import _static_cache_control_headers
+from codoxear.static_routes import SHELL_ASSET_FILES
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -144,16 +145,23 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn('import(resolveAppUrl("pdf.mjs"))', app)
 
     def test_frontend_asset_manifest_drives_version_files(self) -> None:
-        self.assertEqual(STATIC_ASSET_VERSION_FILES, FRONTEND_ASSET_FILES)
+        self.assertEqual(STATIC_ASSET_VERSION_FILES, FRONTEND_ASSET_FILES + SHELL_ASSET_FILES)
 
     def test_versioned_index_assets_exist_and_are_registered(self) -> None:
         source = INDEX_HTML.read_text(encoding="utf-8")
         versioned_refs = re.findall(r'(?:src|href)="([^"?]+)\?v=__CODOXEAR_ASSET_VERSION__"', source)
-        self.assertEqual(set(versioned_refs), set(FRONTEND_ASSET_FILES))
+        self.assertEqual(set(versioned_refs), set(FRONTEND_ASSET_FILES + ("favicon.png", "manifest.webmanifest")))
         routes = dict(TOP_LEVEL_STATIC_ASSETS)
         for name in versioned_refs:
             self.assertTrue((ROOT / "codoxear" / "static" / name).is_file(), name)
             self.assertEqual(routes.get(f"/{name}"), name)
+
+    def test_service_worker_registration_uses_asset_version(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("function versionedShellAssetPath(path)", source)
+        self.assertIn('return `${path}?v=${encodeURIComponent(version)}`;', source)
+        self.assertIn('navigator.serviceWorker.register(resolveAppUrl(versionedShellAssetPath("/service-worker.js")), { scope: resolveAppUrl("/") });', source)
+        self.assertNotIn('navigator.serviceWorker.register(resolveAppUrl("/service-worker.js")', source)
 
     def test_static_asset_version_changes_when_frontend_assets_change(self) -> None:
         initial_content = {
@@ -178,13 +186,16 @@ class TestStaticAssets(unittest.TestCase):
             "app_voice_helpers.js": "window.CodoxearVoiceHelpers = {};\n",
             "app.js": "console.log('one');\n",
             "app.css": "body { color: black; }\n",
+            "favicon.png": "png bytes\n",
+            "manifest.webmanifest": '{"name":"one"}\n',
+            "service-worker.js": "self.addEventListener('push', () => {});\n",
         }
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             for name, content in initial_content.items():
                 (root / name).write_text(content, encoding="utf-8")
             versions = [_static_asset_version(root)]
-            for name in FRONTEND_ASSET_FILES:
+            for name in STATIC_ASSET_VERSION_FILES:
                 (root / name).write_text(initial_content[name] + "/* changed */\n", encoding="utf-8")
                 versions.append(_static_asset_version(root))
             self.assertEqual(len(versions), len(set(versions)))
@@ -198,6 +209,8 @@ class TestStaticAssets(unittest.TestCase):
             index.write_text(
                 (
                     '<script>window.CODOXEAR_ASSET_VERSION = "__CODOXEAR_ASSET_VERSION__";</script>\n'
+                    '<link rel="icon" type="image/png" href="favicon.png?v=__CODOXEAR_ASSET_VERSION__" />\n'
+                    '<link rel="manifest" href="manifest.webmanifest?v=__CODOXEAR_ASSET_VERSION__" />\n'
                     '<link rel="stylesheet" href="app.css?v=__CODOXEAR_ASSET_VERSION__" />\n'
                     '<script src="app_url.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_storage.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
@@ -226,6 +239,8 @@ class TestStaticAssets(unittest.TestCase):
             version = _static_asset_version(root)
             self.assertNotIn(STATIC_ASSET_VERSION_PLACEHOLDER, rendered)
             self.assertIn(f'window.CODOXEAR_ASSET_VERSION = "{version}"', rendered)
+            self.assertIn(f"favicon.png?v={version}", rendered)
+            self.assertIn(f"manifest.webmanifest?v={version}", rendered)
             self.assertIn(f"app.css?v={version}", rendered)
             self.assertIn(f"app_url.js?v={version}", rendered)
             self.assertIn(f"app_storage.js?v={version}", rendered)

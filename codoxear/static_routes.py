@@ -33,7 +33,12 @@ FRONTEND_ASSET_FILES = (
     "app.js",
     "app.css",
 )
-STATIC_ASSET_VERSION_FILES = FRONTEND_ASSET_FILES
+SHELL_ASSET_FILES = (
+    "favicon.png",
+    "manifest.webmanifest",
+    "service-worker.js",
+)
+STATIC_ASSET_VERSION_FILES = FRONTEND_ASSET_FILES + SHELL_ASSET_FILES
 TOP_LEVEL_STATIC_ASSETS = (
     ("/favicon.ico", "favicon.png"),
     ("/manifest.webmanifest", "manifest.webmanifest"),
