@@ -4056,3 +4056,16 @@
   - `app_clipboard.js` intentionally uses raw `document.createElement("textarea")` to avoid a DOM-helper dependency cycle.
   - Transcript identity fallback remains dual field-name based and covered indirectly by tests.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T02:02:44Z File write route helper split
+- Functional commit `37aacdc Split file write route helpers` split write-route ownership out of `codoxear/file_routes.py`:
+  - new `codoxear/file_route_common.py` owns shared `FileRouteResponse`, `FileRouteError`, `SessionFileWriteRequest`, `body_flag`, and `resolve_session_write_update_path`;
+  - new `codoxear/file_write_routes.py` owns `FileWriteRouteDeps`, `handle_file_write_post_route`, request parsing, session write response composition, create/update write mechanics, conflict/error mapping, and file recording;
+  - `codoxear/file_routes.py` remains the public facade/coordinator for existing imports and GET/global file routes.
+- Size effect: `file_routes.py` reduced from 899 lines to 629 lines; new modules are 58 and 245 lines.
+- Compatibility preserved: tests still import old public names from `codoxear.file_routes`; source sentinel `tests/test_file_write_routes_source.py` asserts write logic is no longer in the facade and checks conflict/status mapping ownership in `file_write_routes.py`.
+- Validation after `37aacdc`:
+  - `python3 -m py_compile codoxear/file_route_common.py codoxear/file_write_routes.py codoxear/file_routes.py` passed.
+  - Focused file route/upload/inspect/viewer/source group returned `119 passed, 52 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1208 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.

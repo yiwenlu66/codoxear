@@ -59,6 +59,7 @@ Interpretation:
 - Frontend DOM node construction now lives in `codoxear/static/app_dom.js`; `app.js` retains the `el(...)` wrapper and passes in `defaultButtonTooltip` so tooltip policy remains separate. Evidence covers creation semantics and static asset wiring. See OPS 2026-06-29 frontend DOM helper split.
 - Frontend transcript normalization/identity/tail-cache mechanics now live in `codoxear/static/app_transcript.js`; `app.js` retains wrappers and stateful DOM/slot ownership. Evidence covers pure/cache transcript behavior and static asset wiring, not a full transcript renderer extraction. See OPS 2026-06-29 frontend transcript helper split.
 - Clean-room review `8e7d2bcd-925f-4208-af3c-d11f65c33acd` accepted the frontend helper tranche through `d43825c` with full local `1207 passed, 107 subtests`; residual risks are low and scoped to browser-global edge assumptions, not blockers. See OPS 2026-06-29 frontend helper tranche clean-room review PASS.
+- File write POST ownership now lives in `codoxear/file_write_routes.py`, with shared route error/response/request/path helpers in `codoxear/file_route_common.py`; `codoxear/file_routes.py` remains the facade for old imports and GET/global routes. Evidence covers focused file route behavior and full local pytest, not Docker. See OPS 2026-06-29 file write route helper split.
 
 Commitments:
 - Do not weaken source sentinels to chase line count; update them only when ownership truly moves.
