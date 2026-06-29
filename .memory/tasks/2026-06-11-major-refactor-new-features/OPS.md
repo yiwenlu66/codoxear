@@ -4399,3 +4399,15 @@
 - Reviewer validation: py_compile passed, focused JSONL/broker/sessiond group returned `110 passed`, JSONL behavioral/adversarial tests passed, and full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
 - Reviewer found no blockers; residual note was inherited/readability-only duplication of the read-cap formula.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+## 2026-06-29T08:45:32Z Frontend row search/order helper split
+- Functional commit `6c93b0d Extract frontend row search helpers` moved row-local search/order helpers from `codoxear/static/app.js` into `codoxear/static/app_message_rows.js`:
+  - `rowSearchText`;
+  - `compareRowsInDomOrder`.
+- `app.js` keeps chat search state, match arrays, forced-query markers, older-message loading policy, and wrapper names. The `CodoxearMessageRows` fail-closed guard now checks `rowSearchText` and `compareRowsInDomOrder`; wrappers delegate with `row` and browser `Node` constants.
+- Runtime/source tests in `tests/test_frontend_message_rows_source.py` now validate `.md` text extraction and DOM order comparison using injected Node constants, alongside existing row construction/query behavior.
+- Validation after `6c93b0d`:
+  - `node --check codoxear/static/app_message_rows.js` and `node --check codoxear/static/app.js` passed.
+  - Focused frontend/static group returned `61 passed`.
+  - Full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
