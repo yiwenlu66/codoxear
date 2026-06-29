@@ -4632,3 +4632,14 @@
 - Review verified `launch_attempts_path(app_dir=None)` remains in `util.py`, defaults through `default_app_dir()`, and broker/sessiond/server_config/broker_launch imports remain compatible.
 - Review observed py_compile, focused tests, and full local pytest evidence (`1239 passed, 107 subtests passed`); no protected checkout mutation, no secrets/runtime artifacts, docs-only docs commit, and no Docker overclaim.
 - Reviewer noted a focused-count documentation ambiguity (`34 passed` was the narrower command/subtest framing), but full local evidence is correct.
+
+
+## 2026-06-29T12:53:22Z Proc-open log discovery policy split
+- Functional commit `abf820e Move proc log discovery policy` moved `proc_find_open_rollout_log` filtering policy from `codoxear/util.py` into `codoxear/session_log_discovery.py`.
+- `codoxear.util.proc_find_open_rollout_log()` remains the import-compatible facade and injects patch-sensitive dependencies: `normalize_agent_backend`, `proc_open_writable_rollout_logs_for_backend`, `read_session_meta_payload`, `is_subagent_session_meta`, and `_payload_cwd_matches`.
+- Preserved policy: normalize backend, enumerate writable open rollout logs for backend, ignore resolved paths, newest-first candidate sorting, read metadata with zero timeout, skip missing metadata, skip Codex subagent logs, enforce cwd matching when provided, return the single matching path only.
+- Validation:
+  - `python3 -m py_compile codoxear/util.py codoxear/session_log_discovery.py` passed.
+  - Focused broker-proc/session-log/process group returned `100 passed`.
+  - Full local `python3 -m pytest -q` returned `1239 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
