@@ -4811,3 +4811,17 @@
 - Review verified the boundary: `app.js` retains live new-session state decisions, provider/model parsing, validation, remembered choices, menu rendering, and selection behavior; `app_launch.js` owns only pure formatting and has no DOM/API/dialog-state references.
 - Review verified fail-closed guard/export, unchanged static load order, VM/source test coverage for no-provider/provider/custom/default cases, local full-suite and focused validation evidence, no unrelated/protected/secrets/runtime changes, and docs that avoid new provider/model selection claims.
 - Residual notes were non-blocking: wrapper name shadowing is intentional and matches existing patterns; raw options passthrough is safe due to helper destructuring defaults; no browser integration test was run.
+
+
+## 2026-06-29T14:40:23Z Worktree slug ownership cleanup
+- Functional commit `50f7f04 Remove unused worktree slug helper` removed orphaned frontend `worktreePathSlug()` from `codoxear/static/app.js`.
+- Mechanism: the frontend never called `worktreePathSlug`; new-session worktree launch still reads the trimmed branch input and sends raw `worktree_branch` to `/api/sessions`. `codoxear/git_ops.py` remains the source of truth for `clean_worktree_branch()`, `worktree_path_slug()`, `default_worktree_path()`, and `create_git_worktree()`.
+- Added `tests/test_new_session_worktree_source.py` to guard that frontend code does not own worktree path slug policy, still sends raw `worktree_branch`, and backend `git_ops.py` retains the slug/default-path chain.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local worktree group returned `47 passed`.
+  - Full local `python3 -m pytest -q` returned `1242 passed, 107 subtests passed`.
+  - Focused isolated Docker `scripts/codoxear-docker-sandbox test tests/test_new_session_worktree_source.py tests/test_new_session_launch_request.py tests/test_session_launch_plan.py tests/test_session_resume.py -q` returned success with 47 tests.
+- Clean-room review `ce4a37fc-c393-4257-b0dc-a61cd282fe54` returned PASS before the functional commit. Review confirmed no hidden call sites, frontend raw-branch send behavior, backend slug ownership, no runtime behavior change, no unrelated/protected/secrets/runtime changes, and only low residual risk from structural source assertions.
+- Recording anomaly: the first uncommitted OPS append used an unquoted heredoc with markdown backticks. Bash interpreted those backticks, mangled the uncommitted OPS text, and re-ran `node --check codoxear/static/app.js`, full local `python3 -m pytest -q` (again `1242 passed, 107 subtests passed`), and the focused Docker worktree command (again 47 tests). The malformed uncommitted OPS tail was repaired before the docs commit.
+- Scope note: this cleanup does not implement a worktree path preview, change branch validation, or change backend worktree creation behavior. It removes dead frontend slug logic that could mislead future ownership decisions.
