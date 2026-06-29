@@ -4791,3 +4791,15 @@
 - Review verified all call-site semantics remain app-owned: queue/send/attach button labels and disabled-state composition, DOM mutation, API calls, recovery behavior, and session-index mutations stayed in `app.js`.
 - Review verified fail-closed load guards, unchanged static load order, no DOM/API/selected/sessionIndex references in `app_session_helpers.js`, source/VM tests, local focused/full validation, focused Docker evidence, no unrelated/protected/secrets/runtime changes, and accurately scoped docs.
 - Residual notes were non-blocking: `sessionNeedsReview` still reads raw fields because its semantics differ from queue-active recovery, `!!` style differs from some existing helpers but is equivalent, and Docker evidence remains focused rather than browser/queue integration proof.
+
+
+## 2026-06-29T14:24:32Z Provider/model display helper split
+- Functional commit `8814928 Extract provider model display helper` moved pure provider/model display formatting from `codoxear/static/app.js` into `codoxear/static/app_launch.js` as `providerModelDisplay(model, providerChoice, { hasProviderChoices, allowCustomProvider })`.
+- `app.js` keeps dialog state ownership: `newSessionProviderModelDisplay()` still decides the current `hasProviderChoices` and `allowCustomProvider` values from live new-session state, while parsing provider/model input, provider validation, remembered choices, menu rendering, and selection behavior remain in `app.js`.
+- Tests cover helper behavior for no-provider, configured-provider, custom-provider/default-model, and blank/default cases; source tests assert the old inline provider-display condition left `app.js`, the helper export is fail-closed, and new-session VM fixtures delegate through the launch helper.
+- Validation:
+  - `node --check codoxear/static/app_launch.js` and `node --check codoxear/static/app.js` passed.
+  - Focused local launch/new-session/static group returned `40 passed`.
+  - Full local `python3 -m pytest -q` returned `1241 passed, 107 subtests passed` before commit.
+  - Focused isolated Docker `scripts/codoxear-docker-sandbox test tests/test_launch_ui_source.py tests/test_new_session_model_options_source.py tests/test_static_assets.py -q` returned success with 40 tests.
+- Scope note: this is a bounded display-format helper split. It does not claim new provider/model selection behavior, launch validation changes, or broader new-session dialog state extraction.
