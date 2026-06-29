@@ -3856,3 +3856,18 @@
   - Focused broker/log-binding group returned `121 passed`.
   - Full local `python3 -m pytest -q` returned `1185 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T00:29:17Z Broker detach policy split
+- Functional commit `dfd89c2 Move broker detach policy to log binding` moved backend session-switch/detach policy from `codoxear/broker.py` into `codoxear/broker_log_binding.py`:
+  - `_DETACH_TRIGGER_PHRASES`
+  - `_detach_current_session_binding`
+  - `_detach_trigger_seen`
+  - `_maybe_detach_on_session_switch_trigger`
+- Compatibility preserved: `codoxear.broker` still imports/re-exports the detach helper names, so existing focused tests import from the broker facade unchanged.
+- Negative evidence repaired before commit: initial function move left `_DETACH_TRIGGER_PHRASES` in `broker.py`, causing focused detach tests to fail with `NameError`; moving the trigger table with the policy repaired the ownership boundary. `git diff --check` then caught an EOF blank in `broker_log_binding.py`; trimmed before commit.
+- Source sentinel update: `tests/test_broker_log_binding_source.py` now pins detach helper ownership and the Codex detach trigger phrase table in `broker_log_binding.py`.
+- Size observation: `broker.py` is now 1270 lines; `broker_log_binding.py` is 174 lines.
+- Validation after `dfd89c2`:
+  - Focused broker/detach group returned `121 passed`.
+  - Full local `python3 -m pytest -q` returned `1185 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
