@@ -4495,3 +4495,12 @@
   - Focused frontend/static group returned `61 passed`.
   - Full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+## 2026-06-29T09:37:15Z Frontend trim target helper split clean-room review PASS
+- Async clean-room review `77ef4301-0c76-4712-ad11-96077d88197d` returned `PASS` for functional commit `23de1ac` and docs `8fca98a`.
+- Reviewer verified `trimRenderedRowTargets` and `trimRowsBeforeViewportTargets` preserve allowed-row calculations, top/bottom extra-row selection, default fallback, before-viewport `firstVisible`/`removable` calculation, no-trim cases, and visible-row pinning.
+- Reviewer verified `app.js` retains rendered-row filtering through `renderedMessageRows()`, DOM `row.remove()` mutation, `renderedAtLiveTail` mutation, `chat.scrollTop + 1` threshold calculation, live-tail/history-window caller policy, and recovery/typing-row exclusion through delegation.
+- Reviewer verified fail-closed guard coverage, source/runtime test coverage, node syntax checks, no secrets/runtime artifacts, docs-only docs commit, no protected checkout mutation, and no Docker overclaim.
+- Reviewer validation: full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
+- Reviewer found no blockers; residual notes were inherited `chat.scrollTop + 1` fudge factor and Docker not rerun.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
