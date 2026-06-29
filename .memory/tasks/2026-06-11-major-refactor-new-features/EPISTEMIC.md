@@ -109,6 +109,7 @@ Interpretation:
 - Clean-room review `96c720be-6fe8-4c63-9590-79362d9fe511` accepted the process-liveness split; the only durable caveat is that `util.py` must keep an `os` module attribute unless the `codoxear.util.os.path.samefile` monkeypatch seam is intentionally migrated. See OPS Process liveness clean-room review PASS.
 - Socket JSON-line transport helpers now live in `codoxear/socket_json.py`; `codoxear.util` re-exports `_socket_peer_disconnected` and `_send_socket_json_line` for existing broker/sessiond/control-socket imports. Evidence covers focused socket/control/session tests and full local pytest, not Docker. See OPS Socket JSON helper split.
 - Clean-room review `f6a204fb-81c8-4969-8992-a5bfa1ca6b5d` accepted the socket JSON helper split as behavior-preserving and facade-compatible; only a focused-count ambiguity was noted, with full local pytest evidence intact. See OPS Socket JSON helper clean-room review PASS.
+- Runtime app-dir path and legacy `codex-web` warning-message policy now live in `codoxear/app_dir_runtime.py`; `codoxear.util.default_app_dir()` remains the facade and preserves `util._LEGACY_WARNED` plus `util._log_error` seams. Evidence covers focused app-dir/launch/server tests and full local pytest, not Docker. See OPS App directory runtime helper split.
 
 Commitments:
 - User explicitly rejected invented "tranche" boundaries as a stopping/reporting substitute. The operative commitment is continuous constructive refactor/product-gap work until the broad recovery objective is actually complete or blocked by a real decision.

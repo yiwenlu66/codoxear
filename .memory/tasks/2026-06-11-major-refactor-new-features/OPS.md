@@ -4612,3 +4612,14 @@
 - Review verified peer-disconnect semantics for `BrokenPipeError`, `ConnectionResetError`, `ConnectionAbortedError`, `OSError` errnos `EPIPE`, `ECONNRESET`, `ECONNABORTED`, `ENOTCONN`, `ESHUTDOWN`, wrong-errno false, and non-`OSError` false.
 - Review verified JSON-line send semantics (`json.dumps(payload) + "\n"`, UTF-8, `sendall`), facade identity, single definitions, all local tests passing, no protected checkout mutation, no secrets/runtime artifacts, docs-only docs commit, and no Docker overclaim.
 - Reviewer noted a minor focused-count ambiguity in the docs; full local `1236 passed, 107 subtests passed` remains the accepted validation evidence.
+
+
+## 2026-06-29T12:44:24Z App directory runtime helper split
+- Functional commit `ec3cb12 Extract app directory runtime helper` moved default runtime app-dir path and legacy `codex-web` warning-message policy from `codoxear/util.py` into new `codoxear/app_dir_runtime.py`.
+- `codoxear.util.default_app_dir()` remains the public facade and preserves existing private patch/state seams: `util._LEGACY_WARNED` still controls warning-once behavior, and `util._log_error` is still the emitted-warning hook.
+- `launch_attempts_path(app_dir=None)` remains in `util.py` and still defaults through `default_app_dir()` so broker/server/sessiond import paths remain compatible.
+- Validation:
+  - `python3 -m py_compile codoxear/util.py codoxear/app_dir_runtime.py codoxear/server_config.py codoxear/broker.py codoxear/sessiond.py codoxear/broker_launch.py` passed.
+  - Focused app-dir/launch/server group returned `34 passed`.
+  - Full local `python3 -m pytest -q` returned `1239 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
