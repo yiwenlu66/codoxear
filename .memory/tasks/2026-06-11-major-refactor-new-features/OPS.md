@@ -4870,3 +4870,13 @@
   - Focused isolated Docker `scripts/codoxear-docker-sandbox test tests/test_unattended_sweep.py tests/test_unattended_store.py tests/test_unattended_mode_source.py tests/test_send_ack.py -q` returned success with 37 tests.
 - Clean-room review `593d6444-a93e-4f04-bcdd-b6798710cdf4` returned PASS before the test commit. Review confirmed the test exercises the production sweep path, uses the correct exception type, validates the intended commit-unknown semantics, and changes no production/config/secrets/runtime files. Residual notes are non-blocking: the broad sweep `except Exception` is pre-existing and stderr output is not asserted because the protected invariant is state mutation.
 - Scope note: this is test-only evidence for an existing invariant. It does not alter unattended send behavior, queue behavior, or the broad exception handling policy.
+
+
+
+## 2026-06-29T15:29:36Z Queue sweep budget operator config documentation
+- Commit `8844f48 Document queue sweep max drains config` added the implemented `CODEX_WEB_QUEUE_SWEEP_MAX_DRAINS` knob to README configuration docs and `.env.example`.
+- Added `tests/test_server_config.py::test_queue_sweep_max_drains_config_is_documented` to guard that the config source default, README, and `.env.example` stay aligned for this operator-facing queue sweep budget setting.
+- Validation:
+  - Focused local `python3 -m pytest -q tests/test_server_config.py tests/test_unattended_mode_source.py` returned `10 passed`.
+  - Focused isolated Docker `scripts/codoxear-docker-sandbox test tests/test_server_config.py tests/test_unattended_mode_source.py -q` returned success with 10 tests.
+- Scope note: this is canonical documentation/test follow-up for `65a578e`; it does not change runtime behavior.

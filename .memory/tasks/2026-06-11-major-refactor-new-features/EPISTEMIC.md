@@ -2748,3 +2748,6 @@ Scoped claim: the current branch has a validated backend/server architecture che
 
 
 - Unattended commit-unknown send failures are now regression-pinned: a `SessionCommitUnknownError` during unattended `send()` leaves injection budget, enabled state, cooldown markers, and unattended persistence unchanged because success mutations occur only after `send()` returns. Evidence includes test commit `895cab6`, focused local/Docker unattended/send validation, full local pytest, and clean-room review `593d6444-a93e-4f04-bcdd-b6798710cdf4`; no production behavior change is claimed. See OPS Unattended commit-unknown budget invariant test.
+
+
+- The queue sweep drain budget is now operator-discoverable in canonical docs: `CODEX_WEB_QUEUE_SWEEP_MAX_DRAINS` appears in README and `.env.example`, with a config-source test guarding the docs/default alignment. Evidence: commit `8844f48` and focused local/Docker config-doc validation. See OPS Queue sweep budget operator config documentation.
