@@ -4023,3 +4023,19 @@
   - Focused DOM/static/login/file-viewer/chat-scrollback group returned `66 passed`.
   - Full local `python3 -m pytest -q` returned `1206 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T01:52:42Z Frontend transcript helper split
+- Functional commit `d43825c Extract frontend transcript helpers` added `codoxear/static/app_transcript.js` and moved the pure transcript data/cache layer out of `app.js`:
+  - tail event normalization;
+  - transcript state/key/snapshot/identity helpers;
+  - tail-cache session matching;
+  - tail snapshot remember/append trimming and metadata projection.
+- `app.js` keeps wrapper functions with the same historical names and still owns DOM/stateful mechanics (`sessionTranscriptSlots`, active-slot mutation, pending row removal, rendered transcript rows). App-specific maps and max-event limits are passed explicitly into the helper module.
+- Runtime asset wiring updated: `index.html`, `FRONTEND_ASSET_FILES`, static route/version tests, and wheel packaging sentinels now include `app_transcript.js` between polling helpers and conversation-copy helpers.
+- Behavior directly tested in `tests/test_chat_transcript_runtime.py`: normalized failed state, transcript keying, authoritative tail identity, session-metadata fallback identity on append, event trimming, pending-bind cache deletion, and frozen helper export. Existing renewal test now loads the transcript module before app slot wrappers.
+- Negative evidence repaired before commit: source sentinels in chat scrollback and launch UI still looked for moved transcript normalization in `app.js`; they were corrected to check `app_transcript.js` as the owner and app wrappers as delegation points.
+- Validation after `d43825c`:
+  - `node --check codoxear/static/app_transcript.js` and `node --check codoxear/static/app.js` passed.
+  - Focused transcript/launch/static group returned `53 passed`.
+  - Full local `python3 -m pytest -q` returned `1207 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
