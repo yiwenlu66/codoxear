@@ -4504,3 +4504,17 @@
 - Reviewer validation: full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
 - Reviewer found no blockers; residual notes were inherited `chat.scrollTop + 1` fudge factor and Docker not rerun.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+## 2026-06-29T09:38:25Z Frontend date label display helper split
+- Functional commit `515002c Extract frontend date label helpers` moved date/time presentation helpers from `codoxear/static/app.js` into `codoxear/static/app_display.js`:
+  - `ymd(d)`;
+  - `dayLabel(d)`;
+  - `time24(d)`.
+- `app.js` keeps wrapper names and call sites for time-chip text, day separators, row timestamp updates, and row-helper dependency injection; the display helper guard now fails closed if any date-label helper is missing.
+- `fmtTs` now reuses display-owned `ymd(d)`, preserving output format while removing duplicate date formatting logic.
+- Source/runtime tests validate guard/wrapper ownership, display helper ownership, fixed UTC `ymd`/`time24` outputs under test TZ, dynamic Today/Yesterday/old-date label behavior, and absence of the old `diffDays` implementation in `app.js`.
+- Validation after `515002c`:
+  - `node --check codoxear/static/app_display.js` and `node --check codoxear/static/app.js` passed.
+  - Focused display/frontend group returned `39 passed`.
+  - Full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
