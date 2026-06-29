@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BROKER_PY = ROOT / "codoxear" / "broker.py"
 BROKER_TURN_STATE_PY = ROOT / "codoxear" / "broker_turn_state.py"
+BROKER_CONTROL_PY = ROOT / "codoxear" / "broker_control.py"
 SERVER_PY = ROOT / "codoxear" / "server.py"
 SERVER_HANDLER_PY = ROOT / "codoxear" / "server_handler.py"
 SESSION_CONTROL_PY = ROOT / "codoxear" / "session_control.py"
@@ -16,6 +17,7 @@ class TestInterruptSemanticsSource(unittest.TestCase):
         server_source = SERVER_PY.read_text(encoding="utf-8")
         handler_source = SERVER_HANDLER_PY.read_text(encoding="utf-8")
         broker_source = BROKER_PY.read_text(encoding="utf-8")
+        broker_control_source = BROKER_CONTROL_PY.read_text(encoding="utf-8")
         control_runtime_source = SESSION_CONTROL_PY.read_text(encoding="utf-8")
         control_source = CONTROL_ROUTES_PY.read_text(encoding="utf-8")
 
@@ -23,9 +25,10 @@ class TestInterruptSemanticsSource(unittest.TestCase):
         self.assertIn('if handle_control_post_route(', handler_source)
         self.assertIn('def inject_keys(self, session_id: str, seq: str, *, track_request_sent: bool = False, interrupt: bool = False)', server_source)
         self.assertIn('if interrupt:\n                request["interrupt"] = True', control_runtime_source)
-        self.assertIn('mark_interrupt = req.get("interrupt") is True and b == b"\\x1b"', broker_source)
-        self.assertIn('_mark_explicit_interrupt_request(st, _now())', broker_source)
-        self.assertIn('"interrupted_idle": (not st.busy) and st.last_interrupted_idle_ts > 0.0', broker_source)
+        self.assertIn('from codoxear.broker_control import _handle_broker_control_connection', broker_source)
+        self.assertIn('mark_interrupt = req.get("interrupt") is True and b == b"\\x1b"', broker_control_source)
+        self.assertIn('_mark_explicit_interrupt_request(st, now())', broker_control_source)
+        self.assertIn('"interrupted_idle": (not st.busy) and st.last_interrupted_idle_ts > 0.0', broker_control_source)
 
     def test_explicit_interrupt_is_the_only_no_candidate_idle_relaxation(self) -> None:
         broker_source = BROKER_PY.read_text(encoding="utf-8")
