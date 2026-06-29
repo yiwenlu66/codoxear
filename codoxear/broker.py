@@ -48,6 +48,7 @@ from codoxear.broker_log_binding import _seed_broker_log_state
 from codoxear.broker_metadata import _claimed_log_paths_from_sock_meta
 from codoxear.broker_metadata import _write_broker_sidecar_meta
 from codoxear.broker_control import _handle_broker_control_connection
+from codoxear.broker_terminal import _reply_to_terminal_queries
 from codoxear.broker_turn_state import INTERRUPT_HINT_TAIL_MAX
 from codoxear.broker_turn_state import State
 from codoxear.broker_turn_state import _apply_rollout_obj_to_state
@@ -514,49 +515,12 @@ class Broker:
     def _maybe_reply_to_terminal_queries(self, *, fd: int, b: bytes) -> None:
         if not self._emulate_terminal:
             return
-        self._term_query_buf = (self._term_query_buf + b)[-256:]
-        if b"\x1b[5n" in self._term_query_buf:
-            try:
-                _write_all(fd, b"\x1b[0n")
-            except Exception:
-                traceback.print_exc()
-            self._term_query_buf = self._term_query_buf.replace(b"\x1b[5n", b"")
-        if b"\x1b[6n" in self._term_query_buf:
-            try:
-                _write_all(fd, b"\x1b[1;1R")
-            except Exception:
-                traceback.print_exc()
-            self._term_query_buf = self._term_query_buf.replace(b"\x1b[6n", b"")
-        if b"\x1b[c" in self._term_query_buf:
-            try:
-                _write_all(fd, b"\x1b[?1;2c")
-            except Exception:
-                traceback.print_exc()
-            self._term_query_buf = self._term_query_buf.replace(b"\x1b[c", b"")
-        if b"\x1b[>c" in self._term_query_buf:
-            try:
-                _write_all(fd, b"\x1b[>0;0;0c")
-            except Exception:
-                traceback.print_exc()
-            self._term_query_buf = self._term_query_buf.replace(b"\x1b[>c", b"")
-        if b"\x1b[?u" in self._term_query_buf:
-            try:
-                _write_all(fd, b"\x1b[?1u")
-            except Exception:
-                traceback.print_exc()
-            self._term_query_buf = self._term_query_buf.replace(b"\x1b[?u", b"")
-        if b"\x1b]10;?\x1b\\" in self._term_query_buf:
-            try:
-                _write_all(fd, b"\x1b]10;rgb:c0c0/c0c0/c0c0\x1b\\")
-            except Exception:
-                traceback.print_exc()
-            self._term_query_buf = self._term_query_buf.replace(b"\x1b]10;?\x1b\\", b"")
-        if b"\x1b]11;?\x1b\\" in self._term_query_buf:
-            try:
-                _write_all(fd, b"\x1b]11;rgb:0000/0000/0000\x1b\\")
-            except Exception:
-                traceback.print_exc()
-            self._term_query_buf = self._term_query_buf.replace(b"\x1b]11;?\x1b\\", b"")
+        self._term_query_buf = _reply_to_terminal_queries(
+            term_query_buf=self._term_query_buf,
+            fd=fd,
+            chunk=b,
+            write_all=_write_all,
+        )
 
     def _pty_to_stdout(self) -> None:
         st = self.state
