@@ -62,6 +62,7 @@ Interpretation:
 - File write POST ownership now lives in `codoxear/file_write_routes.py`, with shared route error/response/request/path helpers in `codoxear/file_route_common.py`; `codoxear/file_routes.py` remains the facade for old imports and GET/global routes. Evidence covers focused file route behavior and full local pytest, not Docker. See OPS 2026-06-29 file write route helper split.
 - Clean-room review `a91c9eba-40a0-4133-b04a-6293a9e6b99b` accepted the file write route split with AST-level moved-definition equivalence, facade compatibility, cycle-free imports, and full local `1208 passed, 107 subtests`; residual risks are minor duplicate type aliases and pre-existing redundant resolve. See OPS 2026-06-29 file write route split clean-room review PASS.
 - Sessiond pure state/log busy reduction now lives in `codoxear/sessiond_state.py`; `sessiond.py` retains process/socket/PTY coordination and import-reexports the old helper names. Evidence covers focused sessiond/send tests and full local pytest, not Docker or live backend startup. See OPS 2026-06-29 sessiond state helper split.
+- Clean-room review `a2e0618b-6513-443c-a14a-575d891ae6b5` accepted the sessiond state split as verbatim/compatible/cycle-free with full local `1209 passed, 107 subtests`; residual risks are only the new direct import path and inherited dependency on Pi message helper semantics. See OPS 2026-06-29 sessiond state split clean-room review PASS.
 
 Commitments:
 - Do not weaken source sentinels to chase line count; update them only when ownership truly moves.

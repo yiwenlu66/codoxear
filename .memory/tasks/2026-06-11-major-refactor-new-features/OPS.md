@@ -4092,3 +4092,12 @@
   - Focused sessiond/send/process/PTY source group returned `23 passed`.
   - Full local `python3 -m pytest -q` returned `1209 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T02:17:05Z Sessiond state split clean-room review PASS
+- Async clean-room review `a2e0618b-6513-443c-a14a-575d891ae6b5` returned `PASS` for functional commit `f1faf7b` and docs `9d58fdf`.
+- Reviewer verified verbatim moved bodies for `State`, `_read_jsonl_from_offset`, `_log_busy_signals`, and `_busy_value_after_log_batch`; public re-export compatibility from `codoxear.sessiond`; no import cycles; no heavyweight imports; broker/server isolation; focused sessiond/send/process/PTY tests; and full local `1209 passed, 107 subtests`.
+- Reviewer semantics checked: `State` dataclass defaults, missing-file JSONL `([], offset)` contract, rollout `event_msg` busy/end/error semantics including invalid payload failure, Pi user/aborted/error/final-assistant semantics, and last-wins batch reduction.
+- Reviewer residual risks are low/non-blocking:
+  - `codoxear.sessiond_state` is now a new viable direct import path in addition to `codoxear.sessiond` re-exports.
+  - Future `pi_log` helper semantic changes affect `sessiond_state.py`, same as before extraction.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
