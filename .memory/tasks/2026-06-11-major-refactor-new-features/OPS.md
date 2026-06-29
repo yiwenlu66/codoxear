@@ -5131,3 +5131,27 @@
 - Clean-room review `32588b94-7705-4548-ba0f-d876b6d823f6` returned PASS with no blockers. Review confirmed predicate semantics are preserved, wrappers delegate correctly, the snapshot captures required predicate state plus forward-looking fields, call sites are unchanged, Monaco creation read-only behavior is preserved, and VM harnesses execute the real functions. Non-blocking notes: per-call frozen snapshot/capability allocation is acceptable, tests do not runtime-assert `Object.isFrozen`, and `updateFileEditButton()` still samples unavailable state directly plus through the wrapper because call-site snapshot plumbing is intentionally future work.
 - Next transition seam identified: active file identity normalization is duplicated in `beginFileOpenRequest()` and `setFilePath()` around path/git/api-token reuse. A pure helper for that identity calculation is the next small write-adjacent state refactor; save pending/token finalization should remain separate because it is tied to `saveStillCurrent()` race guards.
 - Scope note: this is a snapshot/capability layer only. It does not claim a complete file-editor state object, move write ownership, or add browser-manual evidence.
+
+
+
+## 2026-06-29T20:01:10Z Active file identity helper extraction
+- Functional commit `356c44b Extract active file identity helper` moved duplicated active-file identity calculation out of `beginFileOpenRequest()` and `setFilePath()` without changing request ownership, picker side effects, or save/write state.
+- Mechanism: `nextActiveFileIdentity(current, nextPath, { gitPath, apiPath })` computes the next visible path, git-path flag, and API path token from an explicit current identity. It preserves the old token rule: reuse the previous API token only when the visible path is unchanged; explicit `apiPath` wins; non-git clears `apiPath`; otherwise `fileApiPathForPath(path, reusableApiPath)` computes the token. `currentActiveFileIdentity()` snapshots the current path/git/api fields.
+- Boundary preserved:
+  - `beginFileOpenRequest()` still owns cancellation, request id, AbortController, current session id, line handling, signal, and request-shape return.
+  - `setFilePath()` still owns line normalization, picker-input reset, menu close/state, and `applyFileMode()`.
+  - `activeFileSaveToken`, `fileSavePending`, buffer text/kind/editability/version, save finalization, and `saveStillCurrent()` were untouched.
+- Tests added/updated:
+  - `tests/test_file_viewer_source.py::test_file_open_requests_are_single_owner` extends the existing VM harness to cover old open-request ownership plus path-change token derivation, same-path token reuse, explicit token override, non-git clearing, helper fail-loud behavior, and exact `fileApiPathForPath` calls.
+  - Source assertions pin `nextActiveFileIdentity()`, `currentActiveFileIdentity()`, and use from the two identity-mutating call sites.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused open-request VM test passed after the first run caught and fixed a real refactor bug where `beginFileOpenRequest()` returned the removed local `rel` instead of `identity.path`.
+  - Focused file-viewer/file-picker/static group returned `79 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1263 passed, 136 subtests passed`.
+  - Focused Docker file-viewer/file-picker/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed.
+- Clean-room review `cd2dc83d-83b3-46e0-85bd-6ce6d00a8ecb` returned PASS with no blockers. Review confirmed exact old logic, safe state snapshotting, preserved owners, untouched save/write state, safe hoisting, read-only request return usage, and correct VM snippet boundaries. Non-blocking notes: a theoretical null-path fallback asymmetry is unreachable under current string-only assignment invariants; `Object.freeze` overhead is negligible for user-initiated file opens; one existing VM slice that mocks `setFilePath` would need helper stubs only if a future test calls real `setFilePath` inside that slice.
+- Next transition seam identified: empty active-file identity reset is repeated across `resetFileViewerPanel()`, query-open `showFileViewer()`, and no-candidate `showFileViewer()`. A small helper for clearing path/git/api/line can continue the state refactor without touching buffer reset or save-token mechanisms.
+- Scope note: this is identity calculation extraction only. It does not claim full file-editor state transition ownership or browser-manual file viewer evidence.
