@@ -52,3 +52,4 @@ Continue aggressive product-gap recovery, reliability hardening, and structural/
 - Yield only when all deliverables are finished and supported, only a parked user decision remains, or the next step is irreversible/high-risk and needs explicit confirmation.
 - Before any necessary yield, run a clean-room adversarial review with user intent, deliverables, completed evidence, remaining next actions, parked decisions, constraints, and changed artifacts; apply findings before reporting unless the finding requires the user.
 - Additional user emphasis: refactor aggressively and push product/reliability recovery to the limit; no bounded-action posture.
+- Latest user reinforcement: keep pushing refactor/product recovery aggressively (“refactor! refactor!! refactor!!!!! push refactor to the limit!!!!! no bounded action”); do not treat committed or reviewed features as a yield boundary.
