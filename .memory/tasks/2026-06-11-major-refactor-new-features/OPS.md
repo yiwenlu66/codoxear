@@ -4783,3 +4783,11 @@
   - Full local `python3 -m pytest -q` returned `1241 passed, 107 subtests passed` before commit.
   - Focused isolated Docker `scripts/codoxear-docker-sandbox test tests/test_frontend_session_helpers_source.py tests/test_queue_button_source.py tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` returned success with 44 tests.
 - Scope note: this is a bounded session-state interpretation split. It does not claim new queue/send UX behavior or extraction of queue mutation/rendering state machines.
+
+
+## 2026-06-29T14:16:59Z Session recovery predicate clean-room review PASS
+- Async reviewer run `d191303f-0fd7-4279-af6d-8b858d0352e1` returned PASS for functional commit `d0fb88d` and docs commit `1b45993`.
+- Review evidence: the three moved predicates are behavior-preserving (`Boolean(...)` inline app checks became equivalent `!!(...)` helper predicates), and selected-session wrappers still read `selected ? sessionIndex.get(selected) : null` before delegating.
+- Review verified all call-site semantics remain app-owned: queue/send/attach button labels and disabled-state composition, DOM mutation, API calls, recovery behavior, and session-index mutations stayed in `app.js`.
+- Review verified fail-closed load guards, unchanged static load order, no DOM/API/selected/sessionIndex references in `app_session_helpers.js`, source/VM tests, local focused/full validation, focused Docker evidence, no unrelated/protected/secrets/runtime changes, and accurately scoped docs.
+- Residual notes were non-blocking: `sessionNeedsReview` still reads raw fields because its semantics differ from queue-active recovery, `!!` style differs from some existing helpers but is equivalent, and Docker evidence remains focused rather than browser/queue integration proof.

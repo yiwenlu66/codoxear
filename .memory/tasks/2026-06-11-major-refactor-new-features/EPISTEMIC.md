@@ -2731,3 +2731,5 @@ Scoped claim: the current branch has a validated backend/server architecture che
 
 - Clean-room review `232b05e9-7e72-4b3f-a350-8f58577a22a9` accepted the file-picker hint helper split as byte-equivalent, fail-closed, state-boundary preserving, and locally/focused-Docker validated. See OPS File picker hint helper clean-room review PASS.
 - Session recovery predicates for commit-unknown, orphan recovery, and preserved recovery queue now live in `app_session_helpers.js`; `app.js` still owns selected-session lookup and all button/queue/send behavior. Evidence covers direct helper behavior, wrapper/source ownership, full local pytest, and focused Docker; no new queue UX is claimed. See OPS Session recovery predicate split.
+
+- Clean-room review `d191303f-0fd7-4279-af6d-8b858d0352e1` accepted the session recovery predicate split as behavior-preserving and boundary-correct: reusable session-object predicates live in `app_session_helpers.js`, while selected-session lookup and all queue/send/attach UI mechanics remain in `app.js`. Residual risks are stylistic or intentionally scoped. See OPS Session recovery predicate clean-room review PASS.
