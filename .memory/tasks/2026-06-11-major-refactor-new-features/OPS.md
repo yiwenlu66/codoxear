@@ -4551,3 +4551,17 @@
 - Reviewer validation: focused session-log/broker-proc/CC/resume groups passed, source sentinels passed, py_compile passed, and isolated full local validation for the reviewed state returned `1229 passed, 107 subtests passed`.
 - Reviewer found no blockers; residual notes were unrelated dirty frontend voice-helper WIP during review isolation, a pre-existing default-Codex `iter_session_logs` design choice for recent cwd, and Docker not rerun.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+## 2026-06-29T10:06:11Z Frontend voice helper module split
+- Functional commit `d0e3b0b Extract frontend voice helper module` moved pure voice/notification capability helpers from `codoxear/static/app.js` into new `codoxear/static/app_voice_helpers.js`:
+  - HLS/native audio support detection (`browserSupportsNativeLiveAudioPlayback`, `browserSupportsMseLiveAudioPlayback`, `shouldPreferNativeLiveAudioPlayback`, `browserSupportsLiveAudioPlayback`);
+  - VAPID base64url decoding (`base64UrlToUint8Array`);
+  - notification device classification (`isMobileNotificationDevice`, `notificationDeviceClass`).
+- `app.js` keeps wrapper names/call sites and still owns live audio state, HLS instance lifecycle, watchdog/retry state, notification settings/state, subscription/network calls, UI updates, and desktop-notification behavior. The `CodoxearVoiceHelpers` guard fails closed before wrappers can execute.
+- Static wiring adds `app_voice_helpers.js` between `app_clipboard.js` and `app.js` in `index.html` and `FRONTEND_ASSET_FILES`, so cache versioning, static routes, and packaging include it.
+- Source/runtime tests validate helper script order, fail-closed guard/wrapper ownership, native/MSE support detection, Apple/Safari native preference, base64url decoding, Android/iPad/mobile/desktop classification, and preservation of stateful audio/notification policy in `app.js`.
+- Validation after `d0e3b0b`:
+  - `node --check codoxear/static/app_voice_helpers.js` and `node --check codoxear/static/app.js` passed.
+  - Focused voice/static/frontend group returned `29 passed`.
+  - Full local `python3 -m pytest -q` returned `1231 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
