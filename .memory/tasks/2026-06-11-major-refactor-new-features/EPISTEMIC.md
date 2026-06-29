@@ -75,6 +75,7 @@ Interpretation:
 - Clean-room review `664229ff-5cd1-46cf-a070-6d3b739abdc6` accepted the Pi context split as byte-equivalent, facade-compatible, monkeypatch-seam preserving, offline/fail-closed, and locally validated (`1218 passed, 107 subtests`), with only harmless duplicate `pi_reserved_tokens` wrapper noted. See OPS 2026-06-29 Pi context split clean-room review PASS.
 - Session/absolute file GET routes now live in `codoxear/file_get_routes.py`; `codoxear/file_routes.py` is a compatibility facade over GET/global/write/common route modules. Evidence covers focused file/static tests and full local pytest, not Docker. See OPS 2026-06-29 File GET route split.
 - Clean-room review `335bb753-db46-4a50-bdbd-e461d6736757` accepted the file GET split as byte-identical, facade-compatible, cycle-free, route-order preserving, and locally validated (`1219 passed, 107 subtests`), with only inherited non-blocking alias/exception-scope notes. See OPS 2026-06-29 File GET route split clean-room review PASS.
+- Launch-attempt redaction/persistence/latest-record collapse now lives in `codoxear/launch_attempt_store.py`; `codoxear/util.py` remains the compatibility facade and preserves the `util.now` patch seam for append/read timestamps. Evidence covers focused launch/broker/server tests and full local pytest, not Docker. See OPS 2026-06-29 Launch attempt store split.
 
 Commitments:
 - Do not weaken source sentinels to chase line count; update them only when ownership truly moves.

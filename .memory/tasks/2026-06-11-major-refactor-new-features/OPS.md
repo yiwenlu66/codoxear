@@ -4229,3 +4229,16 @@
 - Reviewer verified route matching order, source sentinels, video-preview sentinel relocation, docs-only docs commit, no secrets/runtime artifacts, clean working tree at review time, and no Docker overclaim.
 - Reviewer validation: py_compile for route modules, focused file/static tests `180 passed, 52 subtests passed`, and full local `1219 passed, 107 subtests passed` across independent runs.
 - Residual notes were non-blocking inherited patterns: local `JsonResponse`/`RouteMatcher` alias duplication and pre-existing `_absolute_file_path` exception narrowing.
+
+## 2026-06-29T06:09:53Z Launch attempt store split
+- Functional commit `96a0134 Extract launch attempt store` moved launch-attempt redaction, JSON normalization, append/read persistence, and latest-record collapse from `codoxear/util.py` into new `codoxear/launch_attempt_store.py`.
+- `util.py` remains the compatibility facade for `launch_attempts_path`, redaction helper imports, `append_launch_attempt`, and `read_launch_attempts`. The append/read wrappers deliberately call `util.now()` before delegating so tests and callers patching `codoxear.util.now` still control launch-attempt timestamps.
+- `util.py` reduced from 844 lines to 711 lines; `launch_attempt_store.py` is 166 lines.
+- Source/behavior sentinel `tests/test_launch_attempt_store_source.py` asserts store ownership of redaction/persistence, util facade imports/wrappers, direct redaction helper object identity, and `patch("codoxear.util.now")` control over append/read default timestamps.
+- Negative evidence: a combined focused pytest command including `test_broker_fail_closed.py` before `test_server_config.py` failed because pre-existing `test_web_login_shell_exec_uses_attach_trampoline` calls `_exec_agent_via_login_shell(cwd=<TemporaryDirectory>)` with `os.execvpe` mocked, leaving that pytest process in a deleted cwd. This is test-order hygiene unrelated to the launch store split; rerunning the affected groups in isolated pytest processes passed.
+- Validation after `96a0134`:
+  - `python3 -m py_compile codoxear/util.py codoxear/launch_attempt_store.py` passed.
+  - Focused launch/server group excluding the cwd-mutating broker test process returned `23 passed, 12 subtests passed`.
+  - Isolated `python3 -m pytest -q tests/test_broker_fail_closed.py` returned `27 passed`.
+  - Full local `python3 -m pytest -q` returned `1222 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
