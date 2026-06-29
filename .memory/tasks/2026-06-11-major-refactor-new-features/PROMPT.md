@@ -42,3 +42,13 @@ Continue aggressive product-gap recovery, reliability hardening, and structural/
 - Before yielding, run a clean-room adversarial review with user intent, deliverables, completed evidence, next actions, parked decisions, constraints, and changed artifacts; apply findings before reporting unless the finding itself requires a user decision.
 - Avoid trial-and-error loops: use reading, tracing, inspection, causal reasoning, and the strongest available verification. Do not repeat commands or edits without a new discriminating reason.
 - User directive: push refactor/product recovery aggressively rather than treating any bounded tranche as a stopping point; continue into the next justified reliability/refactor/product target after each committed checkpoint.
+
+## Long-run unattended directive update
+- Maintain internal sections during the run: Deliverables, Completed, Next actions, and Parked user decisions. Keep them internal unless a yield is required.
+- Optimize for 8+ hour unattended progress with minimal turns and minimal repetition. Default to continuing in the same turn; do not treat reviewed or committed subsets as a stopping boundary.
+- Before each action, reason through the mechanism, failure modes, and verification path. Explore by reading, tracing, inspection, and causal reasoning rather than trial-and-error.
+- Resolve crashes, bugs, and design mistakes directly unless the remaining issue is a true user-only decision or an irreversible/high-risk step.
+- Use the strongest available verification and do not repeat commands, edits, or analysis without a concrete new discriminating reason.
+- Yield only when all deliverables are finished and supported, only a parked user decision remains, or the next step is irreversible/high-risk and needs explicit confirmation.
+- Before any necessary yield, run a clean-room adversarial review with user intent, deliverables, completed evidence, remaining next actions, parked decisions, constraints, and changed artifacts; apply findings before reporting unless the finding requires the user.
+- Additional user emphasis: refactor aggressively and push product/reliability recovery to the limit; no bounded-action posture.

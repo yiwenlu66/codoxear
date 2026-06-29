@@ -4949,3 +4949,8 @@
   - `git diff --check` passed and `codoxear/static/app.js` contained zero NUL bytes after an intermediate edit artifact was corrected.
 - Clean-room review `aef947e6-3f1a-4355-b46d-4fc6268636f3` returned PASS before the functional commit. Review confirmed byte identity preservation, JSON safety, explicit token ingress, ordinary UTF-8/whitespace/backslash/slash compatibility, frontend token propagation, stale-token handling, and route coverage. Non-blocking notes: absolute non-git file routes do not accept `path_token`, and behavior is POSIX/Linux-scoped because arbitrary non-UTF filenames are not portable to every filesystem.
 - Scope note: this closes non-UTF byte-literal round-trip for Git-in-repo changed-file/viewer flows under POSIX filesystem semantics. It does not claim absolute non-git file routes, browser manual UX evidence, non-POSIX filename behavior, or atomic symlink containment under concurrent filesystem mutation.
+
+
+## 2026-06-29T17:26:11Z Long-run unattended directive update
+- User supplied an expanded unattended-mode operating directive: maintain internal Deliverables/Completed/Next actions/Parked decisions, optimize for 8+ hour unattended progress, avoid bounded stopping posture, reason before each action, avoid trial-and-error repetition, use strongest verification, and run clean-room adversarial review before any necessary yield.
+- Durable task prompt updated so future continuations preserve the same yield gate and aggressive refactor/recovery posture.
