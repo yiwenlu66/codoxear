@@ -1871,6 +1871,16 @@
         newSessionViewer.appendChild(newSessionReasoningMenu);
         newSessionViewer.appendChild(newSessionResumeMenu);
 
+        const codoxearModal = window.CodoxearModal;
+        if (
+          !codoxearModal ||
+          typeof codoxearModal.isModalTargetOpen !== "function" ||
+          typeof codoxearModal.syncModalIsolation !== "function" ||
+          typeof codoxearModal.restoreModalFocus !== "function" ||
+          typeof codoxearModal.focusModalCloseButton !== "function"
+        )
+          throw new Error("Codoxear modal helpers failed to load");
+
         const modalIsolationTargets = [
           fileViewer,
           fileUnsavedDialog,
@@ -1885,16 +1895,11 @@
         ];
 
         function isModalTargetOpen(node) {
-          if (!node) return false;
-          if (typeof HTMLDialogElement !== "undefined" && node instanceof HTMLDialogElement && node.open) return true;
-          return !!(node.style && node.style.display && node.style.display !== "none");
+          return codoxearModal.isModalTargetOpen(node);
         }
 
         function syncModalIsolation() {
-          const active = modalIsolationTargets.some(isModalTargetOpen);
-          app.toggleAttribute("inert", active);
-          if (active) app.setAttribute("aria-hidden", "true");
-          else app.removeAttribute("aria-hidden");
+          return codoxearModal.syncModalIsolation(app, modalIsolationTargets);
         }
 
         function closeTransientOverlays({ closeSearch = false } = {}) {
@@ -1923,23 +1928,11 @@
         }
 
         function restoreModalFocus(target, isStillOpen) {
-          if (!target || !target.isConnected || typeof target.focus !== "function") return;
-          if (typeof target.disabled === "boolean" && target.disabled) return;
-          requestAnimationFrame(() => {
-            if (typeof isStillOpen === "function" && isStillOpen()) return;
-            try {
-              target.focus({ preventScroll: true });
-            } catch {}
-          });
+          return codoxearModal.restoreModalFocus(target, isStillOpen);
         }
 
         function focusModalCloseButton(viewer, closeBtn) {
-          requestAnimationFrame(() => {
-            if (!isModalTargetOpen(viewer)) return;
-            try {
-              closeBtn.focus({ preventScroll: true });
-            } catch {}
-          });
+          return codoxearModal.focusModalCloseButton(viewer, closeBtn);
         }
 
         function setToast(text) {

@@ -1,17 +1,69 @@
+import json
+import subprocess
+import textwrap
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_MODAL_JS = ROOT / "codoxear" / "static" / "app_modal.js"
+
+
+def eval_modal_helpers() -> dict:
+    source = APP_MODAL_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const calls = [];
+        class FakeDialog {{ constructor(open) {{ this.open = open; }} }}
+        const app = {{
+          attrs: {{}},
+          toggleAttribute(name, active) {{ if (active) this.attrs[name] = ""; else delete this.attrs[name]; }},
+          setAttribute(name, value) {{ this.attrs[name] = value; }},
+          removeAttribute(name) {{ delete this.attrs[name]; }},
+        }};
+        const focusTarget = {{ isConnected: true, disabled: false, focus(opts) {{ calls.push(["focus", opts && opts.preventScroll]); }} }};
+        const ctx = {{
+          HTMLDialogElement: FakeDialog,
+          requestAnimationFrame: (fn) => {{ calls.push(["raf"]); fn(); }},
+          window: {{}},
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(source)}, ctx);
+        const modal = ctx.window.CodoxearModal;
+        const dialogOpen = new FakeDialog(true);
+        const displayOpen = {{ style: {{ display: "flex" }} }};
+        const hidden = {{ style: {{ display: "none" }} }};
+        const active = modal.syncModalIsolation(app, [hidden, displayOpen]);
+        modal.restoreModalFocus(focusTarget, () => false, ctx.requestAnimationFrame);
+        modal.restoreModalFocus(focusTarget, () => true, ctx.requestAnimationFrame);
+        process.stdout.write(JSON.stringify({{
+          dialogOpen: modal.isModalTargetOpen(dialogOpen),
+          displayOpen: modal.isModalTargetOpen(displayOpen),
+          hidden: modal.isModalTargetOpen(hidden),
+          active,
+          attrs: app.attrs,
+          calls,
+          frozen: Object.isFrozen(modal),
+        }}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
 
 
 class TestOverlayAccessibilitySource(unittest.TestCase):
     def test_custom_modals_isolate_background_app(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        modal_source = APP_MODAL_JS.read_text(encoding="utf-8")
+        self.assertIn('app_modal.js?v=__CODOXEAR_ASSET_VERSION__', (ROOT / "codoxear" / "static" / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("const codoxearModal = window.CodoxearModal;", source)
+        self.assertIn('throw new Error("Codoxear modal helpers failed to load")', source)
         self.assertIn("const modalIsolationTargets = [", source)
-        self.assertIn('app.toggleAttribute("inert", active);', source)
-        self.assertIn('app.setAttribute("aria-hidden", "true");', source)
+        self.assertIn('app.toggleAttribute("inert", active);', modal_source)
+        self.assertIn('app.setAttribute("aria-hidden", "true");', modal_source)
+        self.assertIn("return codoxearModal.syncModalIsolation(app, modalIsolationTargets);", source)
         self.assertIn("function prepareModalOpen(options = {})", source)
         self.assertIn("closeTransientOverlays(options);", source)
 
@@ -124,7 +176,9 @@ class TestOverlayAccessibilitySource(unittest.TestCase):
         self.assertIn("let helpReturnFocusEl = null;", source)
         self.assertIn("let diagReturnFocusEl = null;", source)
         self.assertIn("function restoreModalFocus(target, isStillOpen)", source)
+        self.assertIn("return codoxearModal.restoreModalFocus(target, isStillOpen);", source)
         self.assertIn("function focusModalCloseButton(viewer, closeBtn)", source)
+        self.assertIn("return codoxearModal.focusModalCloseButton(viewer, closeBtn);", source)
         for name, close_id in [("Queue", "queueCloseBtn"), ("Help", "helpCloseBtn"), ("Diag", "diagCloseBtn")]:
             show_start = source.index(f"function show{name}Viewer")
             hide_start = source.index(f"function hide{name}Viewer", show_start)
@@ -148,6 +202,16 @@ class TestOverlayAccessibilitySource(unittest.TestCase):
         self.assertIn("showQueueViewer({ opener: e.currentTarget });", source)
         self.assertIn("showHelpViewer({ opener: e.currentTarget });", source)
         self.assertIn("showDiagViewer({ opener: e.currentTarget });", source)
+
+    def test_modal_module_preserves_open_isolation_and_focus_contracts(self) -> None:
+        result = eval_modal_helpers()
+        self.assertTrue(result["dialogOpen"])
+        self.assertTrue(result["displayOpen"])
+        self.assertFalse(result["hidden"])
+        self.assertTrue(result["active"])
+        self.assertEqual(result["attrs"], {"inert": "", "aria-hidden": "true"})
+        self.assertEqual(result["calls"], [["raf"], ["focus", True], ["raf"]])
+        self.assertTrue(result["frozen"])
 
     def test_help_copy_lists_claude_backend(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
