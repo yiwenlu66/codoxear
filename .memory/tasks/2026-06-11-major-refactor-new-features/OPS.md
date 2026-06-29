@@ -3921,3 +3921,15 @@
   - Focused log-watcher/busy/send group returned `83 passed`.
   - Full local `python3 -m pytest -q` returned `1197 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T00:54:21Z Broker launch record helper split
+- Functional commit `efb28b9 Extract broker launch record helpers` moved broker launch-failure record composition/persistence mechanics from `codoxear/broker.py` into new `codoxear/broker_launch_record.py`:
+  - `_record_broker_launch_attempt`
+  - `_broker_launch_record`
+- Compatibility preserved: broker-level `_record_launch_attempt` and `_broker_launch_record` wrappers remain for tests and patch seams; they inject `OWNER_TAG`, `LAUNCH_ATTEMPTS_PATH`, stderr, backend, and launch setting overrides.
+- Negative evidence repaired before commit: the first automated wrapper replacement malformed the broker `_broker_launch_record` definition; `py_compile` caught the syntax error and the wrapper block was repaired before tests.
+- Tests added: `tests/test_broker_launch_record_source.py` pins ownership and broker wrapper injection.
+- Validation after `efb28b9`:
+  - Focused broker launch-record group returned `46 passed, 12 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1199 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
