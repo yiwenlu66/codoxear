@@ -4474,3 +4474,12 @@
   - Focused frontend/static group returned `61 passed`.
   - Full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+## 2026-06-29T09:27:01Z Frontend row selection helper split clean-room review PASS
+- Async clean-room review `ee7ad15f-e27a-48de-b584-607b6fd5ca55` returned `PASS` for functional commit `b5d6646` and docs `50e74df`.
+- Reviewer verified `oldestRenderedHistoryCursor(rows)` and `firstVisibleMessageRow(rows, viewportTop)` are behavior-preserving mechanical extractions with only `renderedMessageRows()` and `chat.scrollTop + 1` parameterized.
+- Reviewer verified `app_message_rows.js` owns only pure selection logic, while `app.js` retains rendered-row filtering, `chat.scrollTop + 1` threshold calculation, history API use, time-chip display policy, viewport preservation, transcript/search state, and wrappers.
+- Reviewer verified cursor edge cases, first-visible strict-threshold semantics, last-row fallback, empty-row `null`, fail-closed guard/export parity, explicit search-mark assertions added from the prior reviewer note, node syntax checks, no secrets/runtime artifacts, docs-only docs commit, no protected checkout mutation, and no Docker overclaim.
+- Reviewer validation: full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
+- Reviewer found no blockers; residual notes were inherited `null` cursor error behavior and inherited `chat.scrollTop + 1` fudge factor.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
