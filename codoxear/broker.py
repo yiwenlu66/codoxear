@@ -37,6 +37,8 @@ from codoxear.broker_launch import _resume_session_id_from_args as _resume_sessi
 from codoxear.broker_launch import _session_log_path_from_args
 from codoxear.broker_launch import _shell_argv_for_command as _shell_argv_for_command_impl
 from codoxear.broker_launch import _user_shell
+from codoxear.broker_launch_record import _broker_launch_record as _broker_launch_record_impl
+from codoxear.broker_launch_record import _record_broker_launch_attempt
 from codoxear.broker_log_binding import _apply_broker_log_binding_to_state
 from codoxear.broker_log_binding import _detach_current_session_binding
 from codoxear.broker_log_binding import _detach_trigger_seen
@@ -60,7 +62,6 @@ from codoxear.broker_turn_state import _mark_explicit_interrupt_request
 from codoxear.broker_turn_state import _should_clear_busy_state as _should_clear_busy_state_impl
 from codoxear.broker_turn_state import _strip_ansi
 from codoxear.broker_turn_state import _update_busy_from_pty_text
-from codoxear.util import append_launch_attempt as _append_launch_attempt
 from codoxear.util import default_app_dir as _default_app_dir
 from codoxear.util import find_new_session_log as _find_new_session_log
 from codoxear.util import iter_session_logs as _iter_session_logs
@@ -68,9 +69,7 @@ from codoxear.util import launch_attempts_path as _launch_attempts_path
 from codoxear.util import process_group_alive as _process_group_alive
 from codoxear.util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from codoxear.util import _paths_match as _paths_match
-from codoxear.util import read_launch_attempts as _read_launch_attempts
 from codoxear.util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
-from codoxear.util import redacted_launch_attempt_persist_record as _redacted_launch_attempt_persist_record
 from codoxear.util import session_id_from_rollout_path as _session_id_from_rollout_path
 
 
@@ -116,29 +115,12 @@ def _now() -> float:
 
 
 def _record_launch_attempt(record: dict[str, Any]) -> None:
-    if OWNER_TAG != "web":
-        return
-    try:
-        launch_id = record.get("launch_id")
-        if isinstance(launch_id, str) and launch_id and "submitted_user_messages" not in record:
-            for prev in _read_launch_attempts(path=LAUNCH_ATTEMPTS_PATH, max_records=100, max_age_s=24 * 3600):
-                if prev.get("launch_id") != launch_id:
-                    continue
-                submitted = prev.get("submitted_user_messages")
-                if isinstance(submitted, list) and submitted:
-                    record = dict(record)
-                    record["submitted_user_messages"] = submitted
-                break
-        rec = _append_launch_attempt(_redacted_launch_attempt_persist_record(record), path=LAUNCH_ATTEMPTS_PATH)
-        if rec.get("state") == "failed":
-            sys.stderr.write(
-                "error: session launch failed: "
-                f"{rec.get('launch_id')}: {rec.get('stage')}: {rec.get('error')}\n"
-            )
-            sys.stderr.flush()
-    except Exception as e:
-        sys.stderr.write(f"error: failed to write launch attempt record: {type(e).__name__}: {e}\n")
-        sys.stderr.flush()
+    _record_broker_launch_attempt(
+        record,
+        owner_tag=OWNER_TAG,
+        launch_attempts_path=LAUNCH_ATTEMPTS_PATH,
+        stderr=sys.stderr,
+    )
 
 
 def _broker_launch_record(
@@ -151,36 +133,21 @@ def _broker_launch_record(
     log_path: Path | None = None,
     exit_code: int | None = None,
 ) -> dict[str, Any]:
-    return {
-        "launch_id": (os.environ.get("CODEX_WEB_LAUNCH_ID") or "").strip() or None,
-        "state": "failed",
-        "stage": stage,
-        "error": error,
-        "agent_backend": AGENT_BACKEND,
-        "cwd": cwd,
-        "created_ts": start_ts,
-        "updated_ts": time.time(),
-        "broker_pid": os.getpid(),
-        "agent_pid": agent_pid,
-        "exit_code": exit_code,
-        "log_path": str(log_path) if log_path else None,
-        "transport": (os.environ.get("CODEX_WEB_TRANSPORT") or "").strip() or None,
-        "tmux_session": (os.environ.get("CODEX_WEB_TMUX_SESSION") or "").strip() or None,
-        "tmux_window": (os.environ.get("CODEX_WEB_TMUX_WINDOW") or "").strip() or None,
-        "spawn_nonce": (os.environ.get("CODEX_WEB_SPAWN_NONCE") or "").strip() or None,
-        "model_provider": MODEL_PROVIDER_OVERRIDE or None,
-        "preferred_auth_method": PREFERRED_AUTH_METHOD_OVERRIDE or None,
-        "model": MODEL_OVERRIDE or None,
-        "reasoning_effort": REASONING_EFFORT_OVERRIDE or None,
-        "service_tier": SERVICE_TIER_OVERRIDE or None,
-        "resume_session_id": (os.environ.get("CODEX_WEB_RESUME_SESSION_ID") or "").strip() or None,
-    }
-
-
-
-
-
-
+    return _broker_launch_record_impl(
+        stage=stage,
+        error=error,
+        cwd=cwd,
+        start_ts=start_ts,
+        agent_backend=AGENT_BACKEND,
+        model_provider=MODEL_PROVIDER_OVERRIDE,
+        preferred_auth_method=PREFERRED_AUTH_METHOD_OVERRIDE,
+        model=MODEL_OVERRIDE,
+        reasoning_effort=REASONING_EFFORT_OVERRIDE,
+        service_tier=SERVICE_TIER_OVERRIDE,
+        agent_pid=agent_pid,
+        log_path=log_path,
+        exit_code=exit_code,
+    )
 
 
 
