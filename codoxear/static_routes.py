@@ -23,6 +23,7 @@ FRONTEND_ASSET_FILES = (
     "app_session_helpers.js",
     "app_viewport.js",
     "app_polling.js",
+    "app_transcript.js",
     "app_conversation_copy.js",
     "app_modal.js",
     "app_clipboard.js",

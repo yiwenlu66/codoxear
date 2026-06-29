@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
+APP_TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
 APP_CSS = ROOT / "codoxear" / "static" / "app.css"
 
 
@@ -120,23 +121,23 @@ class TestChatScrollbackSource(unittest.TestCase):
 
     def test_tail_cache_identity_uses_authoritative_tail_payload(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        identity_start = source.index("function transcriptIdentityFromData(data, fallback = null)")
-        identity_end = source.index("function getSessionTranscriptSlot", identity_start)
-        identity_block = source[identity_start:identity_end]
-        self.assertIn("const dataThreadId = typeof data?.thread_id", identity_block)
-        self.assertIn("const dataLogPath = typeof data?.log_path", identity_block)
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        self.assertIn("function transcriptIdentityFromData(data, fallback = null)", transcript_source)
+        self.assertIn("const dataThreadId = typeof data?.thread_id", transcript_source)
+        self.assertIn("const dataLogPath = typeof data?.log_path", transcript_source)
+        self.assertIn("const identity = transcriptIdentityFromData(data, session);", transcript_source)
+        self.assertIn("const identity = transcriptIdentityFromData(identityData, meta || current || null);", transcript_source)
+        self.assertIn("threadId: identity.threadId", transcript_source)
+        self.assertIn("logPath: identity.logPath", transcript_source)
         remember_start = source.index("function rememberTailSnapshot(sessionId, session, data)")
         remember_end = source.index("function appendTailSnapshotEvents", remember_start)
         remember_block = source[remember_start:remember_end]
-        self.assertIn("const identity = transcriptIdentityFromData(data, session);", remember_block)
-        self.assertIn("threadId: identity.threadId", remember_block)
-        self.assertIn("logPath: identity.logPath", remember_block)
+        self.assertIn("return codoxearTranscript.rememberTailSnapshot(sessionTailCache, sessionId, session, data", remember_block)
         append_start = source.index("function appendTailSnapshotEvents(sessionId, events")
         append_end = source.index("function restorePendingUserRowsForSession", append_start)
         append_block = source[append_start:append_end]
         self.assertIn("identityData = null", append_block)
-        self.assertIn("const identity = transcriptIdentityFromData(identityData, meta || current || null);", append_block)
-        self.assertIn("threadId: identity.threadId", append_block)
+        self.assertIn("return codoxearTranscript.appendTailSnapshotEvents(sessionTailCache, sessionIndex, sessionId, events", append_block)
         poll_start = source.index("appendTailSnapshotEvents(sid, evs")
         poll_end = source.index("});", poll_start)
         poll_block = source[poll_start:poll_end]
@@ -279,7 +280,8 @@ class TestChatScrollbackSource(unittest.TestCase):
 
     def test_rendered_rows_keep_server_history_cursor(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('if (typeof ev.history_cursor === "string" && ev.history_cursor) out.history_cursor = ev.history_cursor;', source)
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        self.assertIn('if (typeof ev.history_cursor === "string" && ev.history_cursor) out.history_cursor = ev.history_cursor;', transcript_source)
         start = source.index("function makeRow(ev, { ts, pending }) {")
         end = source.index("function safeMakeRow(ev, opts) {", start)
         block = source[start:end]

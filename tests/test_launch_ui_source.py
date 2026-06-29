@@ -10,6 +10,7 @@ APP_URL_JS = ROOT / "codoxear" / "static" / "app_url.js"
 APP_STORAGE_JS = ROOT / "codoxear" / "static" / "app_storage.js"
 APP_LAUNCH_JS = ROOT / "codoxear" / "static" / "app_launch.js"
 APP_SESSION_HELPERS_JS = ROOT / "codoxear" / "static" / "app_session_helpers.js"
+APP_TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
 
 
 def eval_provider_choice_to_settings() -> dict:
@@ -142,11 +143,12 @@ def test_launch_attempt_rows_use_dismiss_language() -> None:
 def test_failed_launch_rows_are_clickable_transcripts() -> None:
     source = APP_JS.read_text(encoding="utf-8")
     session_helper_source = APP_SESSION_HELPERS_JS.read_text(encoding="utf-8")
+    transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
 
     assert 'function sessionSelectable(s) {' in source
     assert 'return codoxearSessionHelpers.sessionSelectable(s);' in source
     assert 'return !!(s && !sessionLaunchPending(s));' in session_helper_source
-    assert 'raw === "bound" || raw === "pending_bind" || raw === "failed"' in source
+    assert 'raw === "bound" || raw === "pending_bind" || raw === "failed"' in transcript_source
     assert 'if (slotChange.current.state !== "failed") kickPoll(900);' in source
     assert 'if (activeTranscriptState === "failed") return;' in source
     assert 'failed session cannot receive messages' in source

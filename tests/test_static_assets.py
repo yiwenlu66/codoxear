@@ -32,6 +32,7 @@ APP_FILE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_file_helpers.js"
 APP_SESSION_HELPERS_JS = ROOT / "codoxear" / "static" / "app_session_helpers.js"
 APP_VIEWPORT_JS = ROOT / "codoxear" / "static" / "app_viewport.js"
 APP_POLLING_JS = ROOT / "codoxear" / "static" / "app_polling.js"
+APP_TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
 APP_CONVERSATION_COPY_JS = ROOT / "codoxear" / "static" / "app_conversation_copy.js"
 APP_MODAL_JS = ROOT / "codoxear" / "static" / "app_modal.js"
 APP_CLIPBOARD_JS = ROOT / "codoxear" / "static" / "app_clipboard.js"
@@ -54,6 +55,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn(f"app_session_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_viewport.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_polling.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
+        self.assertIn(f"app_transcript.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_conversation_copy.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_modal.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_clipboard.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
@@ -69,7 +71,8 @@ class TestStaticAssets(unittest.TestCase):
         self.assertLess(source.index(f"app_file_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_session_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_session_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_viewport.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_viewport.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_polling.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
-        self.assertLess(source.index(f"app_polling.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_conversation_copy.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_polling.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_transcript.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_transcript.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_conversation_copy.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_conversation_copy.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_modal.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_modal.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_clipboard.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_clipboard.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
@@ -89,6 +92,7 @@ class TestStaticAssets(unittest.TestCase):
         app_session_helpers = APP_SESSION_HELPERS_JS.read_text(encoding="utf-8")
         app_viewport = APP_VIEWPORT_JS.read_text(encoding="utf-8")
         app_polling = APP_POLLING_JS.read_text(encoding="utf-8")
+        app_transcript = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         app_conversation_copy = APP_CONVERSATION_COPY_JS.read_text(encoding="utf-8")
         app_modal = APP_MODAL_JS.read_text(encoding="utf-8")
         app_clipboard = APP_CLIPBOARD_JS.read_text(encoding="utf-8")
@@ -112,6 +116,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertNotIn(forbidden, app_session_helpers)
             self.assertNotIn(forbidden, app_viewport)
             self.assertNotIn(forbidden, app_polling)
+            self.assertNotIn(forbidden, app_transcript)
             self.assertNotIn(forbidden, app_conversation_copy)
             self.assertNotIn(forbidden, app_modal)
             self.assertNotIn(forbidden, app_clipboard)
@@ -149,6 +154,7 @@ class TestStaticAssets(unittest.TestCase):
             "app_session_helpers.js": "window.CodoxearSessionHelpers = {};\n",
             "app_viewport.js": "window.CodoxearViewport = {};\n",
             "app_polling.js": "window.CodoxearPolling = {};\n",
+            "app_transcript.js": "window.CodoxearTranscript = {};\n",
             "app_conversation_copy.js": "window.CodoxearConversationCopy = {};\n",
             "app_modal.js": "window.CodoxearModal = {};\n",
             "app_clipboard.js": "window.CodoxearClipboard = {};\n",
@@ -187,6 +193,7 @@ class TestStaticAssets(unittest.TestCase):
                     '<script src="app_session_helpers.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_viewport.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_polling.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
+                    '<script src="app_transcript.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_conversation_copy.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_modal.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_clipboard.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
@@ -211,6 +218,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertIn(f"app_session_helpers.js?v={version}", rendered)
             self.assertIn(f"app_viewport.js?v={version}", rendered)
             self.assertIn(f"app_polling.js?v={version}", rendered)
+            self.assertIn(f"app_transcript.js?v={version}", rendered)
             self.assertIn(f"app_conversation_copy.js?v={version}", rendered)
             self.assertIn(f"app_modal.js?v={version}", rendered)
             self.assertIn(f"app_clipboard.js?v={version}", rendered)
@@ -287,6 +295,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn("codoxear/static/app_session_helpers.js", names)
         self.assertIn("codoxear/static/app_viewport.js", names)
         self.assertIn("codoxear/static/app_polling.js", names)
+        self.assertIn("codoxear/static/app_transcript.js", names)
         self.assertIn("codoxear/static/app_conversation_copy.js", names)
         self.assertIn("codoxear/static/app_modal.js", names)
         self.assertIn("codoxear/static/app_clipboard.js", names)

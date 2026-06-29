@@ -2608,58 +2608,38 @@
           return OLDER_PAGE_LIMIT;
         }
 
+        const codoxearTranscript = window.CodoxearTranscript;
+        if (
+          !codoxearTranscript ||
+          typeof codoxearTranscript.normalizeTailEvent !== "function" ||
+          typeof codoxearTranscript.normalizeTranscriptState !== "function" ||
+          typeof codoxearTranscript.transcriptKey !== "function" ||
+          typeof codoxearTranscript.transcriptSnapshotFromData !== "function" ||
+          typeof codoxearTranscript.transcriptIdentityFromData !== "function" ||
+          typeof codoxearTranscript.tailCacheMatchesSession !== "function" ||
+          typeof codoxearTranscript.rememberTailSnapshot !== "function" ||
+          typeof codoxearTranscript.appendTailSnapshotEvents !== "function"
+        )
+          throw new Error("Codoxear transcript helpers failed to load");
+
         function normalizeTailEvent(ev) {
-          if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return null;
-          if (typeof ev.text !== "string" || !ev.text.trim()) return null;
-          const out = { role: ev.role, text: ev.text };
-          if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) out.ts = ev.ts;
-          if (typeof ev.message_class === "string") out.message_class = ev.message_class;
-          if (typeof ev.message_id === "string") out.message_id = ev.message_id;
-          if (typeof ev.notification_text === "string") out.notification_text = ev.notification_text;
-          if (typeof ev.history_cursor === "string" && ev.history_cursor) out.history_cursor = ev.history_cursor;
-          return out;
+          return codoxearTranscript.normalizeTailEvent(ev);
         }
 
         function normalizeTranscriptState(data) {
-          const raw = data && typeof data.transcript_state === "string" ? data.transcript_state : "";
-          if (raw === "bound" || raw === "pending_bind" || raw === "failed") return raw;
-          return data && typeof data.log_path === "string" && data.log_path ? "bound" : "pending_bind";
+          return codoxearTranscript.normalizeTranscriptState(data);
         }
 
         function transcriptKey(threadId, logPath) {
-          if (typeof threadId !== "string" || !threadId) return null;
-          if (typeof logPath !== "string" || !logPath) return null;
-          return `${threadId}\n${logPath}`;
+          return codoxearTranscript.transcriptKey(threadId, logPath);
         }
 
         function transcriptSnapshotFromData(data) {
-          const state = normalizeTranscriptState(data);
-          const threadId = state === "bound" && typeof data?.thread_id === "string" && data.thread_id ? data.thread_id : null;
-          const logPath = state === "bound" && typeof data?.log_path === "string" && data.log_path ? data.log_path : null;
-          return {
-            state,
-            threadId,
-            logPath,
-            key: state === "bound" ? transcriptKey(threadId, logPath) : null,
-          };
+          return codoxearTranscript.transcriptSnapshotFromData(data);
         }
 
         function transcriptIdentityFromData(data, fallback = null) {
-          const dataThreadId = typeof data?.thread_id === "string" && data.thread_id ? data.thread_id : null;
-          const dataLogPath = typeof data?.log_path === "string" && data.log_path ? data.log_path : null;
-          const fallbackThreadId =
-            fallback && typeof fallback.thread_id === "string" && fallback.thread_id
-              ? fallback.thread_id
-              : fallback && typeof fallback.threadId === "string" && fallback.threadId
-                ? fallback.threadId
-                : null;
-          const fallbackLogPath =
-            fallback && typeof fallback.log_path === "string" && fallback.log_path
-              ? fallback.log_path
-              : fallback && typeof fallback.logPath === "string" && fallback.logPath
-                ? fallback.logPath
-                : null;
-          return { threadId: dataThreadId || fallbackThreadId, logPath: dataLogPath || fallbackLogPath };
+          return codoxearTranscript.transcriptIdentityFromData(data, fallback);
         }
 
         function getSessionTranscriptSlot(sessionId) {
@@ -2744,62 +2724,22 @@
         }
 
         function tailCacheMatchesSession(cache, session) {
-          if (!cache || !session) return false;
-          const cacheThreadId = typeof cache.threadId === "string" ? cache.threadId : null;
-          const cacheLogPath = typeof cache.logPath === "string" ? cache.logPath : null;
-          const sessionThreadId = typeof session.thread_id === "string" ? session.thread_id : null;
-          const sessionLogPath = typeof session.log_path === "string" ? session.log_path : null;
-          return cacheThreadId === sessionThreadId && cacheLogPath === sessionLogPath;
+          return codoxearTranscript.tailCacheMatchesSession(cache, session);
         }
 
         function rememberTailSnapshot(sessionId, session, data) {
-          if (!sessionId || !session || !data || typeof data !== "object") return;
-          if (normalizeTranscriptState(data) !== "bound") {
-            sessionTailCache.delete(sessionId);
-            return;
-          }
-          const events = [];
-          for (const ev of Array.isArray(data.events) ? data.events : []) {
-            const norm = normalizeTailEvent(ev);
-            if (norm) events.push(norm);
-          }
-          const maxEvents = Math.max(INIT_PAGE_LIMIT_DESKTOP, INIT_PAGE_LIMIT_MOBILE);
-          if (events.length > maxEvents) events.splice(0, events.length - maxEvents);
-          const identity = transcriptIdentityFromData(data, session);
-          sessionTailCache.set(sessionId, {
-            threadId: identity.threadId,
-            logPath: identity.logPath,
-            liveCursor: typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null,
-            hasOlder: Boolean(data.has_older),
-            busy: Boolean(data.busy),
-            queueLen: Number.isFinite(Number(data.queue_len)) ? Number(data.queue_len) : 0,
-            token: data.token || null,
-            events,
-          });
+          return codoxearTranscript.rememberTailSnapshot(sessionTailCache, sessionId, session, data, Math.max(INIT_PAGE_LIMIT_DESKTOP, INIT_PAGE_LIMIT_MOBILE));
         }
 
         function appendTailSnapshotEvents(sessionId, events, { session = null, identityData = null, liveCursor: nextLiveCursor, busy, queueLen, token } = {}) {
-          if (!sessionId || !events || !events.length) return;
-          const current = sessionTailCache.get(sessionId);
-          const list = current && Array.isArray(current.events) ? current.events.slice() : [];
-          for (const ev of events) {
-            const norm = normalizeTailEvent(ev);
-            if (!norm) continue;
-            list.push(norm);
-          }
-          const maxEvents = Math.max(INIT_PAGE_LIMIT_DESKTOP, INIT_PAGE_LIMIT_MOBILE);
-          if (list.length > maxEvents) list.splice(0, list.length - maxEvents);
-          const meta = session || sessionIndex.get(sessionId) || null;
-          const identity = transcriptIdentityFromData(identityData, meta || current || null);
-          sessionTailCache.set(sessionId, {
-            threadId: identity.threadId,
-            logPath: identity.logPath,
-            liveCursor: typeof nextLiveCursor === "string" && nextLiveCursor ? nextLiveCursor : current ? current.liveCursor : null,
-            hasOlder: current ? Boolean(current.hasOlder) : false,
-            busy: typeof busy === "boolean" ? busy : current ? Boolean(current.busy) : false,
-            queueLen: Number.isFinite(Number(queueLen)) ? Number(queueLen) : current ? Number(current.queueLen || 0) : 0,
-            token: token !== undefined ? token : current ? current.token : null,
-            events: list,
+          return codoxearTranscript.appendTailSnapshotEvents(sessionTailCache, sessionIndex, sessionId, events, {
+            session,
+            identityData,
+            liveCursor: nextLiveCursor,
+            busy,
+            queueLen,
+            token,
+            maxEvents: Math.max(INIT_PAGE_LIMIT_DESKTOP, INIT_PAGE_LIMIT_MOBILE),
           });
         }
 

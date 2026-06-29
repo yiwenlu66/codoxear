@@ -5,7 +5,9 @@ import unittest
 from pathlib import Path
 
 
-APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
+ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
 
 
 def _run_node(js: str) -> dict:
@@ -27,7 +29,58 @@ def _source_between(start: str, end: str) -> str:
 
 
 class TestChatTranscriptRuntime(unittest.TestCase):
+    def test_transcript_module_normalizes_and_trims_tail_cache(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const ctx = {{ window: {{}} }};
+            const vm = require("vm");
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            const tx = ctx.window.CodoxearTranscript;
+            const tailCache = new Map();
+            const sessionIndex = new Map([["sid", {{ thread_id: "session-thread", log_path: "/session.jsonl" }}]]);
+            tx.rememberTailSnapshot(tailCache, "sid", {{ thread_id: "fallback-thread", log_path: "/fallback.jsonl" }}, {{
+              transcript_state: "bound",
+              thread_id: "tail-thread",
+              log_path: "/tail.jsonl",
+              live_cursor: "c1",
+              has_older: true,
+              busy: true,
+              queue_len: "2",
+              token: {{ pct: 10 }},
+              events: [
+                {{ role: "system", text: "skip" }},
+                {{ role: "user", text: "one", ts: 1, history_cursor: "h1" }},
+                {{ role: "assistant", text: "two", message_id: "m2" }},
+                {{ role: "assistant", text: "three" }},
+              ],
+            }}, 2);
+            tx.appendTailSnapshotEvents(tailCache, sessionIndex, "sid", [{{ role: "user", text: "four" }}, {{ role: "assistant", text: "" }}], {{ maxEvents: 2, identityData: {{}} }});
+            const afterAppend = tailCache.get("sid");
+            tx.rememberTailSnapshot(tailCache, "sid", {{ thread_id: "fallback-thread", log_path: "/fallback.jsonl" }}, {{ transcript_state: "pending_bind" }}, 2);
+            process.stdout.write(JSON.stringify({{
+              afterAppend,
+              deleted: !tailCache.has("sid"),
+              key: tx.transcriptKey("thread", "/log"),
+              failedState: tx.normalizeTranscriptState({{ transcript_state: "failed" }}),
+              frozen: Object.isFrozen(tx),
+            }}));
+            """
+        )
+        out = _run_node(js)
+        self.assertEqual(out["afterAppend"]["threadId"], "session-thread")
+        self.assertEqual(out["afterAppend"]["logPath"], "/session.jsonl")
+        self.assertEqual([ev["text"] for ev in out["afterAppend"]["events"]], ["three", "four"])
+        self.assertEqual(out["afterAppend"]["queueLen"], 2)
+        self.assertTrue(out["afterAppend"]["busy"])
+        self.assertTrue(out["deleted"])
+        self.assertEqual(out["key"], "thread\n/log")
+        self.assertEqual(out["failedState"], "failed")
+        self.assertTrue(out["frozen"])
+
     def test_transcript_renewal_ignores_old_bound_identity_until_new_log_arrives(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         snippet = _source_between("function normalizeTranscriptState(data) {", "function tailCacheMatchesSession(")
         js = textwrap.dedent(
             f"""
@@ -39,9 +92,12 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               sessionTranscriptSlots: new Map(),
               pendingUser: [],
               chatInner: {{ querySelector: () => null }},
+              window: {{}},
             }};
             vm = require("vm");
             vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            ctx.codoxearTranscript = ctx.window.CodoxearTranscript;
             vm.runInContext({json.dumps(snippet)}, ctx);
             ctx.updateSessionTranscriptSlot("sid", {{
               transcript_state: "bound",
