@@ -7114,6 +7114,13 @@
           return Object.freeze({ path: String(activeFilePath ?? ""), gitPath: Boolean(activeFileGitPath), apiPath: String(activeFileApiPath || "") });
         }
 
+        function clearActiveFileIdentity({ line = null } = {}) {
+          activeFilePath = "";
+          activeFileApiPath = "";
+          activeFileGitPath = false;
+          activeFileLine = normalizeLineNumber(line);
+        }
+
         function beginFileOpenRequest(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {}) {
           cancelPendingFileOpen();
           const identity = nextActiveFileIdentity(currentActiveFileIdentity(), nextPath == null ? activeFilePath : nextPath, { gitPath, apiPath });
@@ -7327,10 +7334,7 @@
           }
           if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
           resetFileViewerPanel();
-          activeFilePath = "";
-          activeFileApiPath = "";
-          activeFileGitPath = false;
-          activeFileLine = null;
+          clearActiveFileIdentity();
           resetFilePickerInput();
           renderFilePickerMenu();
           fileStatus.textContent = "Type to search files.";
@@ -9571,10 +9575,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           else applyFileMode();
           if (queryOpen) {
             resetFileViewerPanel();
-            activeFilePath = "";
-            activeFileApiPath = "";
-            activeFileGitPath = false;
-            activeFileLine = normalizeLineNumber(line);
+            clearActiveFileIdentity({ line });
             fileStatus.textContent = "Choose which file to open.";
             openFilePickerSearchQuery(query, { line, suppressDraft: true });
             filePickerPreserveSearchOnFocus = true;
@@ -9613,10 +9614,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             return;
           }
           resetFileViewerPanel();
-          activeFilePath = "";
-          activeFileApiPath = "";
-          activeFileGitPath = false;
-          activeFileLine = null;
+          clearActiveFileIdentity();
           resetFilePickerInput();
           renderFilePickerMenu();
           fileStatus.textContent = "Type to search files.";

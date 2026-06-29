@@ -632,7 +632,7 @@ def eval_file_open_request_sequence() -> dict:
           normalizeLineNumber: (value) => value == null ? null : Number(value),
         }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_file_open = { beginFileOpenRequest, isCurrentFileOpenRequest, cancelPendingFileOpen, currentFileSessionId, currentActiveFileIdentity, nextActiveFileIdentity };\n")}, ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_file_open = { beginFileOpenRequest, isCurrentFileOpenRequest, cancelPendingFileOpen, currentFileSessionId, currentActiveFileIdentity, nextActiveFileIdentity, clearActiveFileIdentity };\n")}, ctx);
         const first = ctx.__test_file_open.beginFileOpenRequest("first.txt", {{ line: 3 }});
         const firstCurrent = ctx.__test_file_open.isCurrentFileOpenRequest(first);
         const second = ctx.__test_file_open.beginFileOpenRequest(" trail.md ", {{ line: 8, gitPath: true }});
@@ -665,6 +665,18 @@ def eval_file_open_request_sequence() -> dict:
           result.helperRejectsMissingCurrent = true;
         }}
         result.fileApiPathCalls = fileApiPathCalls;
+        ctx.activeFilePath = "clear.py";
+        ctx.activeFileGitPath = true;
+        ctx.activeFileApiPath = "tok-clear";
+        ctx.activeFileLine = 99;
+        ctx.__test_file_open.clearActiveFileIdentity({{ line: "12" }});
+        result.clearWithLine = {{ path: ctx.activeFilePath, gitPath: ctx.activeFileGitPath, apiPath: ctx.activeFileApiPath, line: ctx.activeFileLine }};
+        ctx.activeFilePath = "clear-again.py";
+        ctx.activeFileGitPath = true;
+        ctx.activeFileApiPath = "tok-again";
+        ctx.activeFileLine = 12;
+        ctx.__test_file_open.clearActiveFileIdentity();
+        result.clearDefault = {{ path: ctx.activeFilePath, gitPath: ctx.activeFileGitPath, apiPath: ctx.activeFileApiPath, line: ctx.activeFileLine }};
         ctx.__test_file_open.cancelPendingFileOpen();
         result.secondAfterCancel = ctx.__test_file_open.isCurrentFileOpenRequest(second);
         process.stdout.write(JSON.stringify(result));
@@ -1000,6 +1012,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertFalse(result["nongitGitPath"])
         self.assertTrue(result["helperRejectsMissingCurrent"])
         self.assertEqual(result["fileApiPathCalls"], [[" trail.md ", ""], ["same.py", "tok-same"]])
+        self.assertEqual(result["clearWithLine"], {"path": "", "gitPath": False, "apiPath": "", "line": 12})
+        self.assertEqual(result["clearDefault"], {"path": "", "gitPath": False, "apiPath": "", "line": None})
         self.assertFalse(result["secondAfterCancel"])
 
     def test_touch_file_editor_controls_target_touch_capabilities(self) -> None:
@@ -1208,6 +1222,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function cancelPendingFileOpen()", source)
         self.assertIn("function nextActiveFileIdentity(current, nextPath", source)
         self.assertIn("function currentActiveFileIdentity()", source)
+        self.assertIn("function clearActiveFileIdentity({ line = null } = {})", source)
+        self.assertIn("clearActiveFileIdentity({ line });", source)
         self.assertIn("const identity = nextActiveFileIdentity(currentActiveFileIdentity()", source)
         self.assertIn("const request = beginFileOpenRequest(nextPath, { line, gitPath, apiPath });", source)
         self.assertIn("signal: request.signal", source)
