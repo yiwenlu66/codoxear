@@ -86,6 +86,16 @@ def eval_message_rows() -> dict:
           const disconnectedRow = {{ name: "old", offsetTop: 30, isConnected: false }};
           const markA = fakeEl("div", {{ class: "msg-row chat-search-hit chat-search-current" }});
           const markB = fakeEl("div", {{ class: "msg-row chat-search-hit chat-search-current" }});
+          const cursorRows = [
+            {{ dataset: {{ historyCursor: "" }} }},
+            {{ dataset: {{ historyCursor: "cursor-2" }} }},
+            {{ dataset: {{ historyCursor: "cursor-3" }} }},
+          ];
+          const visibleRows = [
+            {{ name: "above", offsetTop: 0, offsetHeight: 5 }},
+            {{ name: "visible", offsetTop: 10, offsetHeight: 10 }},
+            {{ name: "below", offsetTop: 30, offsetHeight: 10 }},
+          ];
           rows.clearChatSearchMarks([markA, markB]);
           const marksCleared = !markA.classList.has("chat-search-hit") && !markA.classList.has("chat-search-current") && !markB.classList.has("chat-search-hit") && !markB.classList.has("chat-search-current");
           rows.applyChatSearchMarks([markA, markB], markB);
@@ -132,6 +142,11 @@ def eval_message_rows() -> dict:
             markACurrent: markA.classList.has("chat-search-current"),
             markBHit: markB.classList.has("chat-search-hit"),
             markBCurrent: markB.classList.has("chat-search-current"),
+            oldestCursor: rows.oldestRenderedHistoryCursor(cursorRows),
+            emptyCursor: rows.oldestRenderedHistoryCursor([{{ dataset: {{ historyCursor: "" }} }}]),
+            firstVisible: rows.firstVisibleMessageRow(visibleRows, 6).name,
+            fallbackVisible: rows.firstVisibleMessageRow(visibleRows, 99).name,
+            emptyVisible: rows.firstVisibleMessageRow([], 1),
           }}));
         }}).catch((err) => {{ process.stderr.write(String(err && err.stack || err)); process.exit(1); }});
         """
@@ -157,6 +172,8 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
         self.assertIn("typeof codoxearMessageRows.renderedMessageRows !== \"function\"", source)
         self.assertIn("typeof codoxearMessageRows.clearChatSearchMarks !== \"function\"", source)
         self.assertIn("typeof codoxearMessageRows.applyChatSearchMarks !== \"function\"", source)
+        self.assertIn("typeof codoxearMessageRows.oldestRenderedHistoryCursor !== \"function\"", source)
+        self.assertIn("typeof codoxearMessageRows.firstVisibleMessageRow !== \"function\"", source)
         self.assertIn("return codoxearMessageRows.loadedUserMessageRows(chatInner);", source)
         self.assertIn("return codoxearMessageRows.messageCopyButtonForRow(row);", source)
         self.assertIn("return codoxearMessageRows.activeElementIsMessageCopyButton(document);", source)
@@ -164,6 +181,10 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
         self.assertIn("return codoxearMessageRows.compareRowsInDomOrder(a, b, Node);", source)
         self.assertIn("return codoxearMessageRows.loadedUserJumpTarget(rows, direction, threshold);", source)
         self.assertIn("return codoxearMessageRows.loadedCopyJumpTarget(rows, activeRow, direction, threshold);", source)
+        self.assertIn("codoxearMessageRows.clearChatSearchMarks(renderedMessageRows());", source)
+        self.assertIn("codoxearMessageRows.applyChatSearchMarks(matches, currentRow);", source)
+        self.assertIn("return codoxearMessageRows.oldestRenderedHistoryCursor(renderedMessageRows());", source)
+        self.assertIn("return codoxearMessageRows.firstVisibleMessageRow(renderedMessageRows(), chat.scrollTop + 1);", source)
         self.assertIn("chatAssistantDedupeKey,", source)
         self.assertIn("consoleError: console.error.bind(console)", source)
         self.assertNotIn("function makeRow(ev, { ts, pending }) {\n          const role = ev.role", source)
@@ -177,6 +198,10 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
         self.assertIn("function compareRowsInDomOrder(a, b, nodeLike)", helper_source)
         self.assertIn("function loadedUserJumpTarget(rows, direction, threshold)", helper_source)
         self.assertIn("function loadedCopyJumpTarget(rows, activeRow, direction, threshold)", helper_source)
+        self.assertIn("function clearChatSearchMarks(rows)", helper_source)
+        self.assertIn("function applyChatSearchMarks(matches, currentRow)", helper_source)
+        self.assertIn("function oldestRenderedHistoryCursor(rows)", helper_source)
+        self.assertIn("function firstVisibleMessageRow(rows, viewportTop)", helper_source)
         self.assertIn("consoleError(\"makeRow failed\", err);", helper_source)
 
     def test_message_rows_builds_copyable_rows_and_safe_fallback(self) -> None:
@@ -222,6 +247,16 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
         self.assertEqual(result["copyFirstBoundary"], "first")
         self.assertEqual(result["copyLastBoundary"], "last")
         self.assertEqual(result["copyEmptyBoundary"], "none")
+        self.assertTrue(result["marksCleared"])
+        self.assertTrue(result["markAHit"])
+        self.assertFalse(result["markACurrent"])
+        self.assertTrue(result["markBHit"])
+        self.assertTrue(result["markBCurrent"])
+        self.assertEqual(result["oldestCursor"], "cursor-2")
+        self.assertIsNone(result["emptyCursor"])
+        self.assertEqual(result["firstVisible"], "visible")
+        self.assertEqual(result["fallbackVisible"], "below")
+        self.assertIsNone(result["emptyVisible"])
 
 
 if __name__ == "__main__":

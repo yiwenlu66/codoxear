@@ -198,6 +198,21 @@
     if (currentRow) currentRow.classList.add("chat-search-current");
   }
 
+  function oldestRenderedHistoryCursor(rows) {
+    for (const row of rows) {
+      const cursor = typeof row.dataset.historyCursor === "string" ? row.dataset.historyCursor : "";
+      if (cursor) return cursor;
+    }
+    return null;
+  }
+
+  function firstVisibleMessageRow(rows, viewportTop) {
+    for (const row of rows) {
+      if ((row.offsetTop + row.offsetHeight) > viewportTop) return row;
+    }
+    return rows.length ? rows[rows.length - 1] : null;
+  }
+
   window.CodoxearMessageRows = Object.freeze({
     makeRow,
     safeMakeRow,
@@ -212,5 +227,7 @@
     loadedCopyJumpTarget,
     clearChatSearchMarks,
     applyChatSearchMarks,
+    oldestRenderedHistoryCursor,
+    firstVisibleMessageRow,
   });
 })();

@@ -263,12 +263,14 @@ class TestChatScrollbackSource(unittest.TestCase):
 
     def test_history_request_cursor_is_derived_from_rendered_rows(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        row_source = APP_MESSAGE_ROWS_JS.read_text(encoding="utf-8")
         start = source.index("function oldestRenderedHistoryCursor() {")
         end = source.index("function clearRenderedTranscriptRange()", start)
         block = source[start:end]
-        self.assertIn("for (const row of renderedMessageRows())", block)
-        self.assertIn("row.dataset.historyCursor", block)
-        self.assertIn("return cursor;", block)
+        self.assertIn("return codoxearMessageRows.oldestRenderedHistoryCursor(renderedMessageRows());", block)
+        self.assertIn("function oldestRenderedHistoryCursor(rows)", row_source)
+        self.assertIn("row.dataset.historyCursor", row_source)
+        self.assertIn("return cursor;", row_source)
 
     def test_history_prepend_does_not_trim_newly_fetched_older_rows(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -441,7 +443,8 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn('if (typeof renderRecoveryPanelIfNeeded === "function") renderRecoveryPanelIfNeeded(typeof selected === "undefined" ? null : selected);', source)
         self.assertGreaterEqual(source.count('!row.classList.contains("typing-row") && !row.classList.contains("recovery-panel-row")'), 1)
         self.assertGreaterEqual(row_source.count('!row.classList.contains("typing-row") && !row.classList.contains("recovery-panel-row")'), 1)
-        self.assertGreaterEqual(source.count('!x.classList.contains("typing-row") && !x.classList.contains("recovery-panel-row")'), 3)
+        self.assertGreaterEqual(source.count('!x.classList.contains("typing-row") && !x.classList.contains("recovery-panel-row")'), 2)
+        self.assertIn('return codoxearMessageRows.firstVisibleMessageRow(renderedMessageRows(), chat.scrollTop + 1);', source)
         self.assertIn('document.querySelector(".recovery-panel .icon-btn") || queueBtn || null', source)
         self.assertIn('function selectedSessionLaunchFailed()', source)
         self.assertIn('queueControl.disabled = !!queueSubmitBusy || !selected || launchFailed || (unknownSend && !orphanQueueRecovery);', source)

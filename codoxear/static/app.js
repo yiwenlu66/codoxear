@@ -2115,7 +2115,9 @@
           typeof codoxearMessageRows.loadedUserJumpTarget !== "function" ||
           typeof codoxearMessageRows.loadedCopyJumpTarget !== "function" ||
           typeof codoxearMessageRows.clearChatSearchMarks !== "function" ||
-          typeof codoxearMessageRows.applyChatSearchMarks !== "function"
+          typeof codoxearMessageRows.applyChatSearchMarks !== "function" ||
+          typeof codoxearMessageRows.oldestRenderedHistoryCursor !== "function" ||
+          typeof codoxearMessageRows.firstVisibleMessageRow !== "function"
         )
           throw new Error("Codoxear message row helpers failed to load");
 
@@ -2157,6 +2159,10 @@
 
         function applyChatSearchMarks(matches, currentRow) {
           codoxearMessageRows.applyChatSearchMarks(matches, currentRow);
+        }
+
+        function firstVisibleMessageRow() {
+          return codoxearMessageRows.firstVisibleMessageRow(renderedMessageRows(), chat.scrollTop + 1);
         }
 
         function syncMessageCopyTabStops() {
@@ -2569,11 +2575,7 @@
         });
 
         function oldestRenderedHistoryCursor() {
-          for (const row of renderedMessageRows()) {
-            const cursor = typeof row.dataset.historyCursor === "string" ? row.dataset.historyCursor : "";
-            if (cursor) return cursor;
-          }
-          return null;
+          return codoxearMessageRows.oldestRenderedHistoryCursor(renderedMessageRows());
         }
 
         function clearRenderedTranscriptRange() {
@@ -2941,15 +2943,6 @@
             for (const row of rows.slice(rows.length - extra)) row.remove();
             renderedAtLiveTail = false;
           }
-        }
-
-        function firstVisibleMessageRow() {
-          const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row") && !x.classList.contains("recovery-panel-row"));
-          const viewportTop = chat.scrollTop + 1;
-          for (const row of rows) {
-            if ((row.offsetTop + row.offsetHeight) > viewportTop) return row;
-          }
-          return rows.length ? rows[rows.length - 1] : null;
         }
 
         function trimRenderedRowsBeforeViewport({ maxRows = CHAT_DOM_WINDOW } = {}) {
