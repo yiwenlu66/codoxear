@@ -5180,3 +5180,27 @@
 - Clean-room review `c0a9834f-6cec-475a-8d07-89fb46be0565` returned PASS with no blockers. Review verified exact semantic equivalence at all three replacement sites, buffer/save/session state exclusion, correct `hideFileViewer()` exclusion, and no remaining orphan `activeFilePath = ""` runtime clears outside the helper. Non-blocking notes: VM line-normalization mock differs for zero/negative inputs not used by the test; `clearActiveFileIdentity(null)` would throw but all module-internal callers use safe forms.
 - Next transition seam: full panel reset duplication remains in `openDraftFilePath()` and `openFilePath()`, where the exact `resetFileViewerPanel()` sequence appears inline. Render-specific partial resets must not be collapsed into that full helper because they intentionally avoid clearing active buffer state.
 - Scope note: this is an active-file identity clearing extraction only. It does not claim full panel reset consolidation, file buffer state ownership, save-token ownership, or browser-manual evidence.
+
+
+
+## 2026-06-29T20:22:26Z File viewer panel reset reuse
+- Functional commit `a6035f4 Reuse file viewer panel reset` removed the two remaining inline duplicates of the full viewer-panel reset sequence.
+- Mechanism: `resetFileViewerPanel()` already performs the six-step full reset (`disposeFileEditor()`, `resetActiveFileBufferState()`, image src clear, image hide, `clearFileVideo()`, and `fileDiff.style.display = "block"`). `openDraftFilePath()` now calls it after `"Preparing new file..."` and before its try block; `openFilePath()` now calls it after `"Loading..."` and before its try block. Execution position and operation order are unchanged.
+- Boundary preserved:
+  - `beginFileOpenRequest()` still sets request identity before the panel reset; the helper does not clear `activeFilePath`, `activeFileApiPath`, `activeFileGitPath`, `activeFileLine`, request ids, or session tokens.
+  - Render-specific partial resets (`renderPlainTextFallback`, `renderDownloadFallback`, `renderMarkdownPreview`, `renderBlockedFileNotice`, `renderPdfFile`, `renderMonacoFile`, `renderMonacoDiff`) were untouched because they must preserve active file buffer state populated by callers.
+  - Catch paths that call only `resetActiveFileBufferState()` were untouched.
+  - Save/finalization, `clearActiveFileIdentity()`, session/unavailable state, and image/video/pdf/text branch-specific overrides were untouched.
+- Tests added/updated:
+  - `tests/test_file_viewer_source.py::test_file_viewer_handles_selected_session_removal` now asserts exactly six `resetFileViewerPanel();` calls, verifies `openFilePath()` and `openDraftFilePath()` contain the status line followed by `resetFileViewerPanel();` and the try block, and rejects the old inline full-reset duplicate inside those scoped function blocks.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - The initial targeted command used a stale test name and ran no tests; corrected targeted tests then passed: `test_file_viewer_handles_selected_session_removal` and `test_file_open_race_guard_is_wired_through_fetch_and_render`.
+  - Focused file-viewer/file-picker/static group returned `79 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1263 passed, 136 subtests passed`.
+  - Focused Docker file-viewer/file-picker/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed.
+- Clean-room review `ff79a43e-898e-46df-81d1-a57dd734d7ff` returned PASS with no blockers. Review confirmed mechanical equivalence, unchanged execution order, preserved request/draft identity timing, unchanged catch paths, untouched render functions, safe branch-specific image/video/pdf/text overrides, no remaining stale full-reset duplicates outside the helper, and unchanged clear-identity/save/session semantics. Non-blocking notes: source count/whitespace sentinels are intentionally coupled to this checkpoint; a standalone diff-branch `disposeFileEditor()` and double-dispose in render branches are pre-existing safe behaviors.
+- Next transition seam under read-only review: possible non-Monaco render-surface reset helper for shared `disposeFileEditor()`/`clearFileVideo()`/`fileDiff.innerHTML = ""` patterns, with explicit PDF/display options. This is separate from full panel reset because render functions must not clear active buffer state.
+- Scope note: this is a full panel-reset reuse extraction only. It does not claim render-surface helper extraction, load-result state transition ownership, save-token ownership, or browser-manual evidence.
