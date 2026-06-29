@@ -92,6 +92,18 @@ def eval_file_helpers_real_order() -> dict:
           deleteBackspaceUpper: helpers.fileEditorDeleteCommandForKey("Backspace"),
           deleteUnknown: helpers.fileEditorDeleteCommandForKey("x"),
           deleteBlank: helpers.fileEditorDeleteCommandForKey(""),
+          attachmentStemPath: helpers.attachmentSafeStem("/tmp/hello world.HEIC"),
+          attachmentStemNoExt: helpers.attachmentSafeStem("no ext??"),
+          attachmentStemFallback: helpers.attachmentSafeStem("$$$"),
+          attachmentExtUpper: helpers.attachmentExtensionLower("Photo.HEIC"),
+          attachmentExtNone: helpers.attachmentExtensionLower("README"),
+          attachmentHeicType: helpers.attachmentIsLikelyHeic({{ type: "image/heif", name: "x.bin" }}),
+          attachmentHeicExt: helpers.attachmentIsLikelyHeic({{ type: "", name: "x.HEIC" }}),
+          attachmentHeicNo: helpers.attachmentIsLikelyHeic({{ type: "image/jpeg", name: "x.jpg" }}),
+          attachmentImageType: helpers.attachmentLooksLikeImage({{ type: "image/svg+xml", name: "x.txt" }}),
+          attachmentImageExt: helpers.attachmentLooksLikeImage({{ type: "", name: "x.webp" }}),
+          attachmentImageNo: helpers.attachmentLooksLikeImage({{ type: "application/pdf", name: "x.pdf" }}),
+          attachmentBytesB64: helpers.bytesToBase64(new Uint8Array([104, 101, 108, 108, 111]), (bin) => Buffer.from(bin, "binary").toString("base64")),
           frozen: Object.isFrozen(helpers),
         }}));
         """
@@ -135,6 +147,14 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         ]:
             self.assertIn(f"typeof codoxearFileHelpers.{helper} !== \"function\"", source)
             self.assertIn(f"function {helper}", source)
+        for helper in [
+            "attachmentSafeStem",
+            "attachmentExtensionLower",
+            "attachmentIsLikelyHeic",
+            "attachmentLooksLikeImage",
+            "bytesToBase64",
+        ]:
+            self.assertIn(f"typeof codoxearFileHelpers.{helper} !== \"function\"", source)
         self.assertIn("window.CodoxearFileHelpers = Object.freeze({", helper_source)
         self.assertIn('throw new Error("Codoxear display helpers failed to load")', helper_source)
         self.assertIn('typeof codoxearDisplay.baseName !== "function"', helper_source)
@@ -145,14 +165,26 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertIn("return codoxearFileHelpers.filePickerSectionLabel(source);", source)
         self.assertIn("return codoxearFileHelpers.positionAfterInsertedText(start, text);", source)
         self.assertIn("return codoxearFileHelpers.fileEditorDeleteCommandForKey(key);", source)
+        self.assertIn("return codoxearFileHelpers.attachmentSafeStem(name);", source)
+        self.assertIn("return codoxearFileHelpers.attachmentIsLikelyHeic(file);", source)
+        self.assertIn("return codoxearFileHelpers.attachmentLooksLikeImage(file);", source)
+        self.assertIn("return codoxearFileHelpers.bytesToBase64(bytes, btoa);", source)
         self.assertIn('return ["changed", "mentioned", "recent"].includes(value) ? value : "";', helper_source)
         self.assertIn('if (source === "changed") return "Changed files";', helper_source)
         self.assertIn('const parts = value.replace(/\\r\\n?/g, "\\n").split("\\n");', helper_source)
         self.assertIn('if (key === "backspace") return "deleteLeft";', helper_source)
         self.assertIn('if (key === "delete") return "deleteRight";', helper_source)
+        self.assertIn('function attachmentSafeStem(name) {', helper_source)
+        self.assertIn('function attachmentExtensionLower(name) {', helper_source)
+        self.assertIn('function attachmentIsLikelyHeic(file) {', helper_source)
+        self.assertIn('function attachmentLooksLikeImage(file) {', helper_source)
+        self.assertIn('function bytesToBase64(bytes, btoaFunc) {', helper_source)
         file_search_region_start = source.index("function collectMessageFileRefs()")
         file_search_region_end = source.index("function appendHighlightedFileMenuPath(parent, text, query)", file_search_region_start)
         file_search_region = source[file_search_region_start:file_search_region_end]
+        attachment_upload_start = source.index('imgInput.addEventListener("change", async () => {')
+        attachment_upload_end = source.index("function clearComposer()", attachment_upload_start)
+        attachment_upload_block = source[attachment_upload_start:attachment_upload_end]
         self.assertNotIn("const raw = String(rawPath ?? \"\");", source)
         self.assertNotIn("const out = [];\n        for (const v of val)", source)
         self.assertNotIn("const raw = err && err.message ? String(err.message)", source)
@@ -164,6 +196,13 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertNotIn('const parts = value.replace(/\\r\\n?/g, "\\n").split("\\n");', source)
         self.assertNotIn('if (key === "backspace") return "deleteLeft";', source)
         self.assertNotIn('if (key === "delete") return "deleteRight";', source)
+        self.assertNotIn("function safeStem(name)", attachment_upload_block)
+        self.assertNotIn("function extLower(name)", attachment_upload_block)
+        self.assertNotIn("function isLikelyHeic(file)", attachment_upload_block)
+        self.assertNotIn("function looksLikeImage(file)", attachment_upload_block)
+        self.assertNotIn("String.fromCharCode.apply(null, bytes.subarray", attachment_upload_block)
+        self.assertIn("const stem = safeAttachmentStem(f.name);", attachment_upload_block)
+        self.assertIn("const b64 = b64FromBytes(new Uint8Array(ab));", attachment_upload_block)
 
     def test_file_helpers_preserve_literal_and_formatting_contracts(self) -> None:
         result = eval_file_helpers_real_order()
@@ -234,6 +273,18 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertEqual(result["deleteBackspaceUpper"], "")
         self.assertEqual(result["deleteUnknown"], "")
         self.assertEqual(result["deleteBlank"], "")
+        self.assertEqual(result["attachmentStemPath"], "hello_world")
+        self.assertEqual(result["attachmentStemNoExt"], "no_ext_")
+        self.assertEqual(result["attachmentStemFallback"], "_")
+        self.assertEqual(result["attachmentExtUpper"], "heic")
+        self.assertEqual(result["attachmentExtNone"], "")
+        self.assertTrue(result["attachmentHeicType"])
+        self.assertTrue(result["attachmentHeicExt"])
+        self.assertFalse(result["attachmentHeicNo"])
+        self.assertTrue(result["attachmentImageType"])
+        self.assertTrue(result["attachmentImageExt"])
+        self.assertFalse(result["attachmentImageNo"])
+        self.assertEqual(result["attachmentBytesB64"], "aGVsbG8=")
         self.assertTrue(result["frozen"])
 
 

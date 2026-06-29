@@ -240,7 +240,12 @@
         typeof codoxearFileHelpers.normalizeFileCandidateSource !== "function" ||
         typeof codoxearFileHelpers.filePickerSectionLabel !== "function" ||
         typeof codoxearFileHelpers.positionAfterInsertedText !== "function" ||
-        typeof codoxearFileHelpers.fileEditorDeleteCommandForKey !== "function"
+        typeof codoxearFileHelpers.fileEditorDeleteCommandForKey !== "function" ||
+        typeof codoxearFileHelpers.attachmentSafeStem !== "function" ||
+        typeof codoxearFileHelpers.attachmentExtensionLower !== "function" ||
+        typeof codoxearFileHelpers.attachmentIsLikelyHeic !== "function" ||
+        typeof codoxearFileHelpers.attachmentLooksLikeImage !== "function" ||
+        typeof codoxearFileHelpers.bytesToBase64 !== "function"
       )
         throw new Error("Codoxear file helpers failed to load");
       function listFromFilesField(val) {
@@ -516,6 +521,22 @@
 
       function fileEditorDeleteCommandForKey(key) {
         return codoxearFileHelpers.fileEditorDeleteCommandForKey(key);
+      }
+
+      function safeAttachmentStem(name) {
+        return codoxearFileHelpers.attachmentSafeStem(name);
+      }
+
+      function isLikelyHeic(file) {
+        return codoxearFileHelpers.attachmentIsLikelyHeic(file);
+      }
+
+      function looksLikeImage(file) {
+        return codoxearFileHelpers.attachmentLooksLikeImage(file);
+      }
+
+      function b64FromBytes(bytes) {
+        return codoxearFileHelpers.bytesToBase64(bytes, btoa);
       }
 
       const codoxearMarkdown = window.CodoxearMarkdown;
@@ -11268,36 +11289,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 		          }
 		          if (sending) return;
 		          try {
-	            function safeStem(name) {
-	              const s = String(name || "file");
-	              const base = s.split("/").pop() || s;
-	              const dot = base.lastIndexOf(".");
-	              return (dot > 0 ? base.slice(0, dot) : base).replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "file";
-	            }
-	            function extLower(name) {
-	              const s = String(name || "");
-	              const dot = s.lastIndexOf(".");
-	              return dot >= 0 ? s.slice(dot + 1).toLowerCase() : "";
-	            }
-	            function isLikelyHeic(file) {
-	              const t = String(file.type || "").toLowerCase();
-	              const e = extLower(file.name);
-	              return t.includes("heic") || t.includes("heif") || e === "heic" || e === "heif";
-	            }
-	            function looksLikeImage(file) {
-	              const t = String(file && file.type ? file.type : "").toLowerCase();
-	              if (t.startsWith("image/")) return true;
-	              const e = extLower(file && file.name ? file.name : "");
-	              return ["png", "jpg", "jpeg", "webp", "gif", "bmp", "svg", "avif", "heic", "heif"].includes(e);
-	            }
-	            function b64FromBytes(bytes) {
-	              let bin = "";
-	              const chunk = 0x8000;
-	              for (let i = 0; i < bytes.length; i += chunk) {
-	                bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-	              }
-	              return btoa(bin);
-	            }
 	            async function toJpegBlob(file, { maxDim = 2048, quality = 0.86 } = {}) {
 	              const url = URL.createObjectURL(file);
 	              try {
@@ -11336,7 +11327,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	            let uploadName = f.name || "file";
 	            if (looksLikeImage(f) && (f.size > maxBytes || isLikelyHeic(f))) {
 	              setToast("compressing image...");
-	              const stem = safeStem(f.name);
+	              const stem = safeAttachmentStem(f.name);
 	              uploadName = `${stem}.jpg`;
 	              // Try a few (dim, quality) pairs until it fits.
 	              const tries = [

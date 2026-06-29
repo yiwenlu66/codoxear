@@ -221,6 +221,41 @@
     return "";
   }
 
+  function attachmentSafeStem(name) {
+    const s = String(name || "file");
+    const base = s.split("/").pop() || s;
+    const dot = base.lastIndexOf(".");
+    return (dot > 0 ? base.slice(0, dot) : base).replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "file";
+  }
+
+  function attachmentExtensionLower(name) {
+    const s = String(name || "");
+    const dot = s.lastIndexOf(".");
+    return dot >= 0 ? s.slice(dot + 1).toLowerCase() : "";
+  }
+
+  function attachmentIsLikelyHeic(file) {
+    const t = String(file && file.type ? file.type : "").toLowerCase();
+    const e = attachmentExtensionLower(file && file.name ? file.name : "");
+    return t.includes("heic") || t.includes("heif") || e === "heic" || e === "heif";
+  }
+
+  function attachmentLooksLikeImage(file) {
+    const t = String(file && file.type ? file.type : "").toLowerCase();
+    if (t.startsWith("image/")) return true;
+    const e = attachmentExtensionLower(file && file.name ? file.name : "");
+    return ["png", "jpg", "jpeg", "webp", "gif", "bmp", "svg", "avif", "heic", "heif"].includes(e);
+  }
+
+  function bytesToBase64(bytes, btoaFunc) {
+    let bin = "";
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return btoaFunc(bin);
+  }
+
   window.CodoxearFileHelpers = Object.freeze({
     listFromFilesField,
     stripPathLocationSuffix,
@@ -241,5 +276,10 @@
     filePickerSectionLabel,
     positionAfterInsertedText,
     fileEditorDeleteCommandForKey,
+    attachmentSafeStem,
+    attachmentExtensionLower,
+    attachmentIsLikelyHeic,
+    attachmentLooksLikeImage,
+    bytesToBase64,
   });
 })();
