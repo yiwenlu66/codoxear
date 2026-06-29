@@ -80,6 +80,24 @@ def eval_file_helpers_real_order() -> dict:
           sectionMentioned: helpers.filePickerSectionLabel("mentioned"),
           sectionRecent: helpers.filePickerSectionLabel("recent"),
           sectionUnknown: helpers.filePickerSectionLabel("other"),
+          duplicatePaths: Array.from(helpers.duplicateFilePickerPaths([
+            {{ path: "src/a.py", gitPath: true }},
+            {{ path: "src/a.py", gitPath: false }},
+            {{ path: "src/b.py", createNew: true }},
+            {{ path: "src/b.py" }},
+            {{ path: "" }},
+            null,
+          ])).sort(),
+          duplicatePathsNonArray: Array.from(helpers.duplicateFilePickerPaths(null)),
+          identityPending: helpers.filePickerIdentityHint({{ path: "src/a.py", pendingSessionPath: true }}, new Set(), {{ showSourceSections: true }}),
+          identityGitDuplicateChanged: helpers.filePickerIdentityHint({{ path: "src/a.py", gitPath: true, changed: true }}, new Set(["src/a.py"]), {{ showSourceSections: true }}),
+          identityGitNoSection: helpers.filePickerIdentityHint({{ path: "src/a.py", gitPath: true, changed: false }}, new Set(), {{ showSourceSections: false }}),
+          identitySessionDuplicate: helpers.filePickerIdentityHint({{ path: "src/a.py", gitPath: false }}, new Set(["src/a.py"]), {{ showSourceSections: true }}),
+          identityBlank: helpers.filePickerIdentityHint({{ path: "src/a.py", gitPath: false }}, new Set(), {{ showSourceSections: true }}),
+          identityCreate: helpers.filePickerIdentityHint({{ path: "src/a.py", createNew: true }}, new Set(["src/a.py"]), {{ showSourceSections: false }}),
+          titlePlain: helpers.filePickerTitle({{ path: "src/a.py" }}, ""),
+          titleHint: helpers.filePickerTitle({{ path: "src/a.py" }}, "git root"),
+          titleNull: helpers.filePickerTitle(null, "hint"),
           positionEmpty: helpers.positionAfterInsertedText({{ lineNumber: 2, column: 5 }}, ""),
           positionNull: helpers.positionAfterInsertedText({{ lineNumber: 2, column: 5 }}, null),
           positionSingleLine: helpers.positionAfterInsertedText({{ lineNumber: 2, column: 5 }}, "abc"),
@@ -142,6 +160,9 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
             "compareFilePickerEntries",
             "normalizeFileCandidateSource",
             "filePickerSectionLabel",
+            "duplicateFilePickerPaths",
+            "filePickerIdentityHint",
+            "filePickerTitle",
             "positionAfterInsertedText",
             "fileEditorDeleteCommandForKey",
         ]:
@@ -163,6 +184,9 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertIn("return codoxearFileHelpers.filePickerCandidateScore(path, query);", source)
         self.assertIn("return codoxearFileHelpers.normalizeFileCandidateSource(source);", source)
         self.assertIn("return codoxearFileHelpers.filePickerSectionLabel(source);", source)
+        self.assertIn("return codoxearFileHelpers.duplicateFilePickerPaths(entries);", source)
+        self.assertIn("return codoxearFileHelpers.filePickerIdentityHint(entry, duplicatePaths, options);", source)
+        self.assertIn("return codoxearFileHelpers.filePickerTitle(entry, hint);", source)
         self.assertIn("return codoxearFileHelpers.positionAfterInsertedText(start, text);", source)
         self.assertIn("return codoxearFileHelpers.fileEditorDeleteCommandForKey(key);", source)
         self.assertIn("return codoxearFileHelpers.attachmentSafeStem(name);", source)
@@ -171,6 +195,9 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertIn("return codoxearFileHelpers.bytesToBase64(bytes, btoa);", source)
         self.assertIn('return ["changed", "mentioned", "recent"].includes(value) ? value : "";', helper_source)
         self.assertIn('if (source === "changed") return "Changed files";', helper_source)
+        self.assertIn('function duplicateFilePickerPaths(entries) {', helper_source)
+        self.assertIn('function filePickerIdentityHint(entry, duplicatePaths, options) {', helper_source)
+        self.assertIn('function filePickerTitle(entry, hint = "") {', helper_source)
         self.assertIn('const parts = value.replace(/\\r\\n?/g, "\\n").split("\\n");', helper_source)
         self.assertIn('if (key === "backspace") return "deleteLeft";', helper_source)
         self.assertIn('if (key === "delete") return "deleteRight";', helper_source)
@@ -193,6 +220,9 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertNotIn("function filePickerCandidateScore(path, query)", file_search_region)
         self.assertNotIn('return ["changed", "mentioned", "recent"].includes(value) ? value : "";', source)
         self.assertNotIn('if (source === "changed") return "Changed files";', source)
+        self.assertNotIn('function duplicateFilePickerPaths(entries) {\n          const counts = new Map();', source)
+        self.assertNotIn('function filePickerIdentityHint(entry, duplicatePaths, options) {\n          const showSourceSections = Boolean(options && options.showSourceSections);', source)
+        self.assertNotIn('function filePickerTitle(entry, hint = "") {\n          const path = String(entry && entry.path || "");', source)
         self.assertNotIn('const parts = value.replace(/\\r\\n?/g, "\\n").split("\\n");', source)
         self.assertNotIn('if (key === "backspace") return "deleteLeft";', source)
         self.assertNotIn('if (key === "delete") return "deleteRight";', source)
@@ -261,6 +291,17 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertEqual(result["sectionMentioned"], "Mentioned in chat")
         self.assertEqual(result["sectionRecent"], "Recently opened")
         self.assertEqual(result["sectionUnknown"], "")
+        self.assertEqual(result["duplicatePaths"], ["src/a.py"])
+        self.assertEqual(result["duplicatePathsNonArray"], [])
+        self.assertEqual(result["identityPending"], "current folder")
+        self.assertEqual(result["identityGitDuplicateChanged"], "git root · changed")
+        self.assertEqual(result["identityGitNoSection"], "git root")
+        self.assertEqual(result["identitySessionDuplicate"], "current folder")
+        self.assertEqual(result["identityBlank"], "")
+        self.assertEqual(result["identityCreate"], "")
+        self.assertEqual(result["titlePlain"], "src/a.py")
+        self.assertEqual(result["titleHint"], "src/a.py — git root")
+        self.assertEqual(result["titleNull"], " — hint")
         self.assertEqual(result["positionEmpty"], {"lineNumber": 2, "column": 5})
         self.assertEqual(result["positionNull"], {"lineNumber": 2, "column": 5})
         self.assertEqual(result["positionSingleLine"], {"lineNumber": 2, "column": 8})

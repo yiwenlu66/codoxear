@@ -205,6 +205,38 @@
     return "";
   }
 
+  function duplicateFilePickerPaths(entries) {
+    const counts = new Map();
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      if (!entry || entry.createNew) continue;
+      const path = String(entry.path || "");
+      if (!path) continue;
+      counts.set(path, Number(counts.get(path) || 0) + 1);
+    }
+    const out = new Set();
+    for (const [path, count] of counts.entries()) {
+      if (count > 1) out.add(path);
+    }
+    return out;
+  }
+
+  function filePickerIdentityHint(entry, duplicatePaths, options) {
+    const showSourceSections = Boolean(options && options.showSourceSections);
+    if (!entry || entry.createNew) return "";
+    const path = String(entry.path || "");
+    const duplicated = duplicatePaths && duplicatePaths.has(path);
+    if (entry.pendingSessionPath) return "current folder";
+    if (entry.gitPath && (duplicated || !showSourceSections)) return entry.changed ? "git root · changed" : "git root";
+    if (!entry.gitPath && duplicated) return "current folder";
+    return "";
+  }
+
+  function filePickerTitle(entry, hint = "") {
+    const path = String(entry && entry.path || "");
+    if (!hint) return path;
+    return `${path} — ${hint}`;
+  }
+
   function positionAfterInsertedText(start, text) {
     const value = String(text || "");
     if (!value) return { lineNumber: start.lineNumber, column: start.column };
@@ -274,6 +306,9 @@
     compareFilePickerEntries,
     normalizeFileCandidateSource,
     filePickerSectionLabel,
+    duplicateFilePickerPaths,
+    filePickerIdentityHint,
+    filePickerTitle,
     positionAfterInsertedText,
     fileEditorDeleteCommandForKey,
     attachmentSafeStem,

@@ -252,30 +252,29 @@ def eval_inline_file_ref_inspection_cases() -> dict:
 
 
 def eval_file_picker_identity_helpers() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    snippet = "\n".join(
-        js_function(source, name)
-        for name in ["filePickerIdentityHint", "filePickerTitle", "duplicateFilePickerPaths"]
-    )
+    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
+    helper_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const ctx = {{}};
+        const ctx = {{ window: {{}} }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet)}, ctx);
+        vm.runInContext({json.dumps(display_source)}, ctx);
+        vm.runInContext({json.dumps(helper_source)}, ctx);
+        const helpers = ctx.window.CodoxearFileHelpers;
         const duplicateEntries = [
           {{ path: "foo.py", gitPath: false, changed: false }},
           {{ path: "foo.py", gitPath: true, changed: true, additions: 1, deletions: 0 }},
           {{ path: "bar.py", gitPath: true, changed: true }},
           {{ path: "draft.py", createNew: true }},
         ];
-        const duplicatePaths = ctx.duplicateFilePickerPaths(duplicateEntries);
-        const sessionHint = ctx.filePickerIdentityHint(duplicateEntries[0], duplicatePaths);
-        const gitHint = ctx.filePickerIdentityHint(duplicateEntries[1], duplicatePaths);
-        const changedOnlySectionHint = ctx.filePickerIdentityHint(duplicateEntries[2], duplicatePaths, {{ showSourceSections: true }});
-        const changedOnlySearchHint = ctx.filePickerIdentityHint(duplicateEntries[2], duplicatePaths, {{ showSourceSections: false }});
-        const createHint = ctx.filePickerIdentityHint(duplicateEntries[3], duplicatePaths);
-        const pendingHint = ctx.filePickerIdentityHint({{ path: "foo.py", gitPath: false, pendingSessionPath: true }}, new Set(["foo.py"]));
+        const duplicatePaths = helpers.duplicateFilePickerPaths(duplicateEntries);
+        const sessionHint = helpers.filePickerIdentityHint(duplicateEntries[0], duplicatePaths);
+        const gitHint = helpers.filePickerIdentityHint(duplicateEntries[1], duplicatePaths);
+        const changedOnlySectionHint = helpers.filePickerIdentityHint(duplicateEntries[2], duplicatePaths, {{ showSourceSections: true }});
+        const changedOnlySearchHint = helpers.filePickerIdentityHint(duplicateEntries[2], duplicatePaths, {{ showSourceSections: false }});
+        const createHint = helpers.filePickerIdentityHint(duplicateEntries[3], duplicatePaths);
+        const pendingHint = helpers.filePickerIdentityHint({{ path: "foo.py", gitPath: false, pendingSessionPath: true }}, new Set(["foo.py"]));
         process.stdout.write(JSON.stringify({{
           duplicatePaths: Array.from(duplicatePaths),
           sessionHint,
@@ -284,8 +283,8 @@ def eval_file_picker_identity_helpers() -> dict:
           changedOnlySearchHint,
           createHint,
           pendingHint,
-          title: ctx.filePickerTitle(duplicateEntries[1], gitHint),
-          plainTitle: ctx.filePickerTitle({{ path: "plain.txt" }}, ""),
+          title: helpers.filePickerTitle(duplicateEntries[1], gitHint),
+          plainTitle: helpers.filePickerTitle({{ path: "plain.txt" }}, ""),
         }}));
         """
     )
