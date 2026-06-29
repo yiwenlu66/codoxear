@@ -4159,3 +4159,19 @@
   - Focused message-identity/transcript/scrollback/static group returned `50 passed`.
   - Full local `python3 -m pytest -q` returned `1215 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T02:38:04Z Global file route split
+- Functional commit `9085501 Split global file routes` moved global file POST ownership from `codoxear/file_routes.py` into new `codoxear/file_global_routes.py`:
+  - `GlobalFileRequest`;
+  - `GlobalFileRouteDeps`;
+  - `handle_global_file_post_route`;
+  - global file request parsing/view resolution/read/inspect handlers;
+  - `global_file_read_payload` media/text/download payload projection.
+- `file_routes.py` remains the public facade for existing imports and now owns session GET/blob/download/absolute-preview route mechanics. `file_routes.py` reduced from 629 lines to 468 lines.
+- Source sentinel `tests/test_file_global_routes_source.py` asserts global route logic is out of the facade and checks path-required/session-id validation, session file-history recording with `KeyError` swallow, and video preview URL ownership in the new module.
+- Negative evidence repaired before commit: `tests/test_file_viewer_source.py` still expected global video preview URL construction in `file_routes.py`; it now checks `file_global_routes.py` for `preview_url=media_preview_url` while keeping inline/transcode route checks in `file_routes.py`.
+- Validation after `9085501`:
+  - `python3 -m py_compile codoxear/file_routes.py codoxear/file_global_routes.py` passed.
+  - Focused file global/routes/inspect/viewer/source group returned `108 passed, 52 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1216 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.

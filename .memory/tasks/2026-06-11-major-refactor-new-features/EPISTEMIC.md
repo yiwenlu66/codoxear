@@ -68,6 +68,7 @@ Interpretation:
 - Generic JSON state load/write helpers now live in `codoxear/json_state.py`; `codoxear/util.py` re-exports old names. Evidence covers stores that use these helpers and full local pytest, not Docker. See OPS 2026-06-29 JSON state helper split.
 - Clean-room review `532884be-5338-43d7-88d8-ae1266ea78fc` accepted the JSON state helper split as verbatim, re-export-compatible, cycle-free, and fully locally validated (`1212 passed, 107 subtests`). See OPS 2026-06-29 JSON state split clean-room review PASS.
 - Frontend chat message identity/key construction now lives in `codoxear/static/app_message_identity.js`; `app.js` retains stateful duplicate tracking, pending-user matching, and DOM mutation. Evidence covers pure key/normalization behavior and full local pytest, not Docker. See OPS 2026-06-29 frontend message identity helper split.
+- Global file POST routes now live in `codoxear/file_global_routes.py`; `codoxear/file_routes.py` re-exports old global route names and retains session GET/blob/download/absolute-preview mechanics. Evidence covers focused file route tests and full local pytest, not Docker. See OPS 2026-06-29 global file route split.
 
 Commitments:
 - Do not weaken source sentinels to chase line count; update them only when ownership truly moves.
