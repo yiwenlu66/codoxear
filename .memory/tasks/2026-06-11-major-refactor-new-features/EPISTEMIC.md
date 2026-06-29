@@ -2745,3 +2745,6 @@ Scoped claim: the current branch has a validated backend/server architecture che
 
 
 - Queue sweep cross-session latency is now bounded by a configurable success budget rather than one successful promotion per sweep: manager-created sweep coordinators use `QUEUE_SWEEP_MAX_DRAINS` (default 4, min 1), while all per-session readiness, idle-grace, recovery, and commit-unknown gates remain in the existing drain path. Evidence includes a three-session budget test, focused local/Docker queue/config validation, full local pytest, and clean-room review `751d3b98-c239-4253-b6f3-a1353ae633db`. See OPS Queue sweep drain budget.
+
+
+- Unattended commit-unknown send failures are now regression-pinned: a `SessionCommitUnknownError` during unattended `send()` leaves injection budget, enabled state, cooldown markers, and unattended persistence unchanged because success mutations occur only after `send()` returns. Evidence includes test commit `895cab6`, focused local/Docker unattended/send validation, full local pytest, and clean-room review `593d6444-a93e-4f04-bcdd-b6798710cdf4`; no production behavior change is claimed. See OPS Unattended commit-unknown budget invariant test.

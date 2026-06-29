@@ -4856,3 +4856,17 @@
   - Focused isolated Docker `scripts/codoxear-docker-sandbox test tests/test_queue_sweep_idle_guard.py tests/test_session_queue.py tests/test_server_queue_persistence.py tests/test_server_config.py -q` returned success with 99 tests.
 - Clean-room review `751d3b98-c239-4253-b6f3-a1353ae633db` returned PASS before the functional commit. Review confirmed multiple ready sessions drain up to budget, per-session readiness/idle/recovery/commit-unknown barriers remain in the unchanged drain path, unready sessions are still scanned, direct coordinator construction preserves old default behavior, no lock regression was introduced, and no unrelated/protected/secrets/runtime changes were present.
 - Scope note: this is a queue sweep latency/reliability change for cross-session queued prompts. It does not implement send retry budgets, readiness probe caching, unattended sweep budgets, or browser/UI changes.
+
+
+
+## 2026-06-29T15:23:36Z Unattended commit-unknown budget invariant test
+- Test commit `895cab6 Test unattended commit unknown budget` added regression coverage for the existing unattended sweep invariant: if `send()` raises `SessionCommitUnknownError`, the sweep must not debit `remaining_injections`, must not disable unattended mode, must not set per-session or per-scope cooldown markers, and must not save unattended state as if an injection succeeded.
+- Mechanism confirmed by inspection and test: `UnattendedSweepCoordinator.sweep()` calls `self.send(sid, prompt)` before writing `unattended_last_injected`, `unattended_last_injected_scope`, or `record_unattended_success()`. A commit-unknown exception exits to the sweep's error handler before those success mutations.
+- The test creates an eligible idle unattended session with three remaining injections, mocks `mgr.send` to raise `SessionCommitUnknownError`, runs the production `_unattended_sweep()` path, and asserts exactly one send attempt occurred while budget/enabled/cooldown/save state stayed unchanged.
+- Validation before commit:
+  - `python3 -m py_compile tests/test_unattended_sweep.py` passed.
+  - Focused local unattended/send group `python3 -m pytest -q tests/test_unattended_sweep.py tests/test_unattended_store.py tests/test_unattended_mode_source.py tests/test_send_ack.py` returned `37 passed`.
+  - Full local `python3 -m pytest -q` returned `1244 passed, 107 subtests passed`.
+  - Focused isolated Docker `scripts/codoxear-docker-sandbox test tests/test_unattended_sweep.py tests/test_unattended_store.py tests/test_unattended_mode_source.py tests/test_send_ack.py -q` returned success with 37 tests.
+- Clean-room review `593d6444-a93e-4f04-bcdd-b6798710cdf4` returned PASS before the test commit. Review confirmed the test exercises the production sweep path, uses the correct exception type, validates the intended commit-unknown semantics, and changes no production/config/secrets/runtime files. Residual notes are non-blocking: the broad sweep `except Exception` is pre-existing and stderr output is not asserted because the protected invariant is state mutation.
+- Scope note: this is test-only evidence for an existing invariant. It does not alter unattended send behavior, queue behavior, or the broad exception handling policy.
