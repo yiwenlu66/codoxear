@@ -380,6 +380,7 @@ class TestChatScrollbackSource(unittest.TestCase):
 
     def test_recovery_state_renders_in_chat_pane(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        row_source = APP_MESSAGE_ROWS_JS.read_text(encoding="utf-8")
         css = APP_CSS.read_text(encoding="utf-8")
         self.assertIn("function renderRecoveryPanelIfNeeded(sessionId)", source)
         self.assertIn(".recovery-panel-row", source)
@@ -438,7 +439,8 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn('syncRecoveryUiForSession(sid);', source)
         self.assertIn('syncRecoveryUiForSession(selected);', source)
         self.assertIn('if (typeof renderRecoveryPanelIfNeeded === "function") renderRecoveryPanelIfNeeded(typeof selected === "undefined" ? null : selected);', source)
-        self.assertGreaterEqual(source.count('!row.classList.contains("typing-row") && !row.classList.contains("recovery-panel-row")'), 2)
+        self.assertGreaterEqual(source.count('!row.classList.contains("typing-row") && !row.classList.contains("recovery-panel-row")'), 1)
+        self.assertGreaterEqual(row_source.count('!row.classList.contains("typing-row") && !row.classList.contains("recovery-panel-row")'), 1)
         self.assertGreaterEqual(source.count('!x.classList.contains("typing-row") && !x.classList.contains("recovery-panel-row")'), 3)
         self.assertIn('document.querySelector(".recovery-panel .icon-btn") || queueBtn || null', source)
         self.assertIn('function selectedSessionLaunchFailed()', source)

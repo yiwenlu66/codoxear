@@ -37,8 +37,10 @@ class TestChatNavigationSource(unittest.TestCase):
 
     def test_jump_logic_is_loaded_user_rows_only(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        row_source = APP_MESSAGE_ROWS_JS.read_text(encoding="utf-8")
         self.assertIn('function loadedUserMessageRows() {', source)
-        self.assertIn('row.dataset.role === "user"', source)
+        self.assertIn('return codoxearMessageRows.loadedUserMessageRows(chatInner);', source)
+        self.assertIn('row.dataset.role === "user"', row_source)
         self.assertIn('function jumpToLoadedUserMessage(direction)', source)
         self.assertIn('setToast("No loaded user messages")', source)
         self.assertIn('setToast("At first loaded user message")', source)

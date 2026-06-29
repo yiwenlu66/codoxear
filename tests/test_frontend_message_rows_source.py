@@ -35,6 +35,7 @@ def eval_message_rows() -> dict:
               add(name) {{ this.values.add(name); }},
               remove(name) {{ this.values.delete(name); }},
               has(name) {{ return this.values.has(name); }},
+              contains(name) {{ return this.values.has(name); }},
             }},
             appendChild(child) {{ this.children.push(child); return child; }},
             setAttribute(name, value) {{ this.attrs[name] = String(value); }},
@@ -60,6 +61,15 @@ def eval_message_rows() -> dict:
         copyBtn.onclick({{ preventDefault() {{}}, stopPropagation() {{}} }}).then(() => {{
           const fallbackDeps = {{ ...deps, chatMarkdownHtmlCached: () => {{ throw new Error("markdown boom"); }} }};
           const fallback = rows.safeMakeRow({{ role: "assistant", text: "raw", history_cursor: "h2", message_class: "error" }}, {{ ts: 14, pending: true }}, fallbackDeps);
+          const userRow = fakeEl("div", {{ class: "msg-row user" }});
+          userRow.dataset.role = "user";
+          userRow.querySelector = (selector) => selector === ".msg-copy-btn" ? fakeEl("button", {{ class: "msg-copy-btn" }}) : null;
+          const assistantRow = fakeEl("div", {{ class: "msg-row assistant" }});
+          assistantRow.dataset.role = "assistant";
+          assistantRow.querySelector = () => null;
+          const typingRow = fakeEl("div", {{ class: "msg-row assistant typing-row" }});
+          const recoveryRow = fakeEl("div", {{ class: "msg-row assistant recovery-panel-row" }});
+          const container = {{ querySelectorAll: () => [userRow, assistantRow, typingRow, recoveryRow] }};
           process.stdout.write(JSON.stringify({{
             frozen: Object.isFrozen(rows),
             role: made.row.dataset.role,
@@ -79,6 +89,11 @@ def eval_message_rows() -> dict:
             fallbackPending: fallback.bubble.attrs["data-pending"],
             fallbackText: fallback.bubble.children[0].textContent,
             fallbackClasses: Array.from(fallback.bubble.classList.values).sort(),
+            renderedCount: rows.renderedMessageRows(container).length,
+            userCount: rows.loadedUserMessageRows(container).length,
+            copyCount: rows.loadedCopyMessageRows(container).length,
+            copyButtonFound: Boolean(rows.messageCopyButtonForRow(userRow)),
+            activeCopy: rows.activeElementIsMessageCopyButton({{ activeElement: {{ classList: {{ contains: (name) => name === "msg-copy-btn" }} }} }}),
           }}));
         }}).catch((err) => {{ process.stderr.write(String(err && err.stack || err)); process.exit(1); }});
         """
@@ -101,12 +116,19 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
         self.assertIn('throw new Error("Codoxear message row helpers failed to load")', source)
         self.assertIn("return codoxearMessageRows.makeRow(ev, { ts, pending }, messageRowDeps());", source)
         self.assertIn("return codoxearMessageRows.safeMakeRow(ev, opts, messageRowDeps());", source)
+        self.assertIn("typeof codoxearMessageRows.renderedMessageRows !== \"function\"", source)
+        self.assertIn("return codoxearMessageRows.loadedUserMessageRows(chatInner);", source)
+        self.assertIn("return codoxearMessageRows.messageCopyButtonForRow(row);", source)
+        self.assertIn("return codoxearMessageRows.activeElementIsMessageCopyButton(document);", source)
         self.assertIn("chatAssistantDedupeKey,", source)
         self.assertIn("consoleError: console.error.bind(console)", source)
         self.assertNotIn("function makeRow(ev, { ts, pending }) {\n          const role = ev.role", source)
         self.assertNotIn("console.error(\"makeRow failed\", err);", source)
         self.assertIn("function makeRow(ev, { ts, pending }, deps)", helper_source)
         self.assertIn("function safeMakeRow(ev, opts, deps)", helper_source)
+        self.assertIn("function renderedMessageRows(chatInner)", helper_source)
+        self.assertIn("function loadedUserMessageRows(chatInner)", helper_source)
+        self.assertIn("function messageCopyButtonForRow(row)", helper_source)
         self.assertIn("consoleError(\"makeRow failed\", err);", helper_source)
 
     def test_message_rows_builds_copyable_rows_and_safe_fallback(self) -> None:
@@ -133,6 +155,11 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
         self.assertEqual(result["fallbackPending"], "1")
         self.assertEqual(result["fallbackText"], "raw")
         self.assertIn("error", result["fallbackClasses"])
+        self.assertEqual(result["renderedCount"], 2)
+        self.assertEqual(result["userCount"], 1)
+        self.assertEqual(result["copyCount"], 1)
+        self.assertTrue(result["copyButtonFound"])
+        self.assertTrue(result["activeCopy"])
 
 
 if __name__ == "__main__":

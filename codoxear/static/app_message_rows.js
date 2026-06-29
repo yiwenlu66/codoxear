@@ -113,8 +113,33 @@
     }
   }
 
+  function messageCopyButtonForRow(row) {
+    return row && typeof row.querySelector === "function" ? row.querySelector(".msg-copy-btn") : null;
+  }
+
+  function renderedMessageRows(chatInner) {
+    return Array.from(chatInner.querySelectorAll(".msg-row")).filter((row) => !row.classList.contains("typing-row") && !row.classList.contains("recovery-panel-row"));
+  }
+
+  function loadedUserMessageRows(chatInner) {
+    return renderedMessageRows(chatInner).filter((row) => row.dataset.role === "user");
+  }
+
+  function loadedCopyMessageRows(chatInner) {
+    return renderedMessageRows(chatInner).filter((row) => messageCopyButtonForRow(row));
+  }
+
+  function activeElementIsMessageCopyButton(documentLike) {
+    return Boolean(documentLike.activeElement && documentLike.activeElement.classList && documentLike.activeElement.classList.contains("msg-copy-btn"));
+  }
+
   window.CodoxearMessageRows = Object.freeze({
     makeRow,
     safeMakeRow,
+    messageCopyButtonForRow,
+    renderedMessageRows,
+    loadedUserMessageRows,
+    loadedCopyMessageRows,
+    activeElementIsMessageCopyButton,
   });
 })();

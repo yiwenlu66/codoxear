@@ -2100,24 +2100,37 @@
           if (loadingOlder || !hasOlder) clearOlderLoadError();
         }
 
+        const codoxearMessageRows = window.CodoxearMessageRows;
+        if (
+          !codoxearMessageRows ||
+          typeof codoxearMessageRows.makeRow !== "function" ||
+          typeof codoxearMessageRows.safeMakeRow !== "function" ||
+          typeof codoxearMessageRows.messageCopyButtonForRow !== "function" ||
+          typeof codoxearMessageRows.renderedMessageRows !== "function" ||
+          typeof codoxearMessageRows.loadedUserMessageRows !== "function" ||
+          typeof codoxearMessageRows.loadedCopyMessageRows !== "function" ||
+          typeof codoxearMessageRows.activeElementIsMessageCopyButton !== "function"
+        )
+          throw new Error("Codoxear message row helpers failed to load");
+
         function renderedMessageRows() {
-          return Array.from(chatInner.querySelectorAll(".msg-row")).filter((row) => !row.classList.contains("typing-row") && !row.classList.contains("recovery-panel-row"));
+          return codoxearMessageRows.renderedMessageRows(chatInner);
         }
 
         function loadedUserMessageRows() {
-          return renderedMessageRows().filter((row) => row.dataset.role === "user");
+          return codoxearMessageRows.loadedUserMessageRows(chatInner);
         }
 
         function loadedCopyMessageRows() {
-          return renderedMessageRows().filter((row) => messageCopyButtonForRow(row));
+          return codoxearMessageRows.loadedCopyMessageRows(chatInner);
         }
 
         function messageCopyButtonForRow(row) {
-          return row && typeof row.querySelector === "function" ? row.querySelector(".msg-copy-btn") : null;
+          return codoxearMessageRows.messageCopyButtonForRow(row);
         }
 
         function activeElementIsMessageCopyButton() {
-          return Boolean(document.activeElement && document.activeElement.classList && document.activeElement.classList.contains("msg-copy-btn"));
+          return codoxearMessageRows.activeElementIsMessageCopyButton(document);
         }
 
         function syncMessageCopyTabStops() {
@@ -2989,14 +3002,6 @@
           if (removable <= 0) return;
           for (const row of rows.slice(0, removable)) row.remove();
         }
-
-        const codoxearMessageRows = window.CodoxearMessageRows;
-        if (
-          !codoxearMessageRows ||
-          typeof codoxearMessageRows.makeRow !== "function" ||
-          typeof codoxearMessageRows.safeMakeRow !== "function"
-        )
-          throw new Error("Codoxear message row helpers failed to load");
 
         function messageRowDeps() {
           return {
