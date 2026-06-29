@@ -4744,3 +4744,11 @@
 ## 2026-06-29T13:52:58Z Shell static asset focused Docker validation
 - Focused isolated Docker validation for `f890f1c` passed: `scripts/codoxear-docker-sandbox test tests/test_static_assets.py tests/test_static_routes.py tests/test_voice_push_source.py -q` returned success with 26 tests.
 - Scope note: this Docker evidence covers the shell/static/voice source tests for the shell asset versioning split only. It does not prove browser service-worker update lifecycle and does not retroactively validate unrelated recent helper splits under Docker.
+
+
+## 2026-06-29T13:57:00Z Shell static asset clean-room review PASS
+- Async reviewer run `b692756e-8b75-4559-a211-b12d3e83899c` returned PASS for functional commit `f890f1c` and docs commit `ee10eb4`.
+- Review evidence: the change is focused to shell asset versioning; `SHELL_ASSET_FILES` extends `STATIC_ASSET_VERSION_FILES`; favicon/manifest HTML links carry the asset version; service-worker registration uses the versioned script URL while preserving scope `/`; `TOP_LEVEL_STATIC_ASSETS` and static route/content-type behavior remain unchanged.
+- Review verified tests cover the version-file tuple, versioned index refs, service-worker registration source, hash changes for shell files, and placeholder replacement; full local pytest evidence was `1241 passed, 107 subtests passed`.
+- Review found no unrelated/protected/secrets/runtime changes and no blockers.
+- Reconciliation note: the review read the pre-Docker docs state and noted no Docker evidence. Subsequent docs commit `a033c64` records focused Docker validation for this split only; browser service-worker lifecycle remains unmeasured.
