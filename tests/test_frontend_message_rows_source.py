@@ -32,8 +32,8 @@ def eval_message_rows() -> dict:
             onclick: null,
             classList: {{
               values: new Set(String(attrs.class || "").split(/\\s+/).filter(Boolean)),
-              add(name) {{ this.values.add(name); }},
-              remove(name) {{ this.values.delete(name); }},
+              add(...names) {{ for (const name of names) this.values.add(name); }},
+              remove(...names) {{ for (const name of names) this.values.delete(name); }},
               has(name) {{ return this.values.has(name); }},
               contains(name) {{ return this.values.has(name); }},
             }},
@@ -84,6 +84,11 @@ def eval_message_rows() -> dict:
             {{ name: "r3", offsetTop: 50, isConnected: true }},
           ];
           const disconnectedRow = {{ name: "old", offsetTop: 30, isConnected: false }};
+          const markA = fakeEl("div", {{ class: "msg-row chat-search-hit chat-search-current" }});
+          const markB = fakeEl("div", {{ class: "msg-row chat-search-hit chat-search-current" }});
+          rows.clearChatSearchMarks([markA, markB]);
+          const marksCleared = !markA.classList.has("chat-search-hit") && !markA.classList.has("chat-search-current") && !markB.classList.has("chat-search-hit") && !markB.classList.has("chat-search-current");
+          rows.applyChatSearchMarks([markA, markB], markB);
           process.stdout.write(JSON.stringify({{
             frozen: Object.isFrozen(rows),
             role: made.row.dataset.role,
@@ -122,6 +127,11 @@ def eval_message_rows() -> dict:
             copyFirstBoundary: rows.loadedCopyJumpTarget(navRows, navRows[0], -1, 0).reason,
             copyLastBoundary: rows.loadedCopyJumpTarget(navRows, navRows[2], 1, 0).reason,
             copyEmptyBoundary: rows.loadedCopyJumpTarget([], null, 1, 0).reason,
+            marksCleared,
+            markAHit: markA.classList.has("chat-search-hit"),
+            markACurrent: markA.classList.has("chat-search-current"),
+            markBHit: markB.classList.has("chat-search-hit"),
+            markBCurrent: markB.classList.has("chat-search-current"),
           }}));
         }}).catch((err) => {{ process.stderr.write(String(err && err.stack || err)); process.exit(1); }});
         """
@@ -145,6 +155,8 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
         self.assertIn("return codoxearMessageRows.makeRow(ev, { ts, pending }, messageRowDeps());", source)
         self.assertIn("return codoxearMessageRows.safeMakeRow(ev, opts, messageRowDeps());", source)
         self.assertIn("typeof codoxearMessageRows.renderedMessageRows !== \"function\"", source)
+        self.assertIn("typeof codoxearMessageRows.clearChatSearchMarks !== \"function\"", source)
+        self.assertIn("typeof codoxearMessageRows.applyChatSearchMarks !== \"function\"", source)
         self.assertIn("return codoxearMessageRows.loadedUserMessageRows(chatInner);", source)
         self.assertIn("return codoxearMessageRows.messageCopyButtonForRow(row);", source)
         self.assertIn("return codoxearMessageRows.activeElementIsMessageCopyButton(document);", source)

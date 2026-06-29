@@ -2113,7 +2113,9 @@
           typeof codoxearMessageRows.rowSearchText !== "function" ||
           typeof codoxearMessageRows.compareRowsInDomOrder !== "function" ||
           typeof codoxearMessageRows.loadedUserJumpTarget !== "function" ||
-          typeof codoxearMessageRows.loadedCopyJumpTarget !== "function"
+          typeof codoxearMessageRows.loadedCopyJumpTarget !== "function" ||
+          typeof codoxearMessageRows.clearChatSearchMarks !== "function" ||
+          typeof codoxearMessageRows.applyChatSearchMarks !== "function"
         )
           throw new Error("Codoxear message row helpers failed to load");
 
@@ -2151,6 +2153,10 @@
 
         function loadedCopyJumpTarget(rows, activeRow, direction, threshold) {
           return codoxearMessageRows.loadedCopyJumpTarget(rows, activeRow, direction, threshold);
+        }
+
+        function applyChatSearchMarks(matches, currentRow) {
+          codoxearMessageRows.applyChatSearchMarks(matches, currentRow);
         }
 
         function syncMessageCopyTabStops() {
@@ -2261,7 +2267,7 @@
         };
 
         function clearChatSearchMarks() {
-          for (const row of renderedMessageRows()) row.classList.remove("chat-search-hit", "chat-search-current");
+          codoxearMessageRows.clearChatSearchMarks(renderedMessageRows());
         }
 
         function compactChatSearchSnippet(text, query, limit = 96) {
@@ -2368,8 +2374,7 @@
           const total = chatSearchMatches.length;
           chatSearchIndex = ((index % total) + total) % total;
           const row = chatSearchMatches[chatSearchIndex];
-          for (const match of chatSearchMatches) match.classList.add("chat-search-hit");
-          row.classList.add("chat-search-current");
+          applyChatSearchMarks(chatSearchMatches, row);
           syncChatSearchStatus();
           if (jump) {
             row.scrollIntoView({ block: "center", behavior: prefersReducedMotion() ? "auto" : "smooth" });

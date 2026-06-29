@@ -189,6 +189,15 @@
     return { reason: "target", target: rows[nextIndex] };
   }
 
+  function clearChatSearchMarks(rows) {
+    for (const row of rows) row.classList.remove("chat-search-hit", "chat-search-current");
+  }
+
+  function applyChatSearchMarks(matches, currentRow) {
+    for (const match of matches) match.classList.add("chat-search-hit");
+    if (currentRow) currentRow.classList.add("chat-search-current");
+  }
+
   window.CodoxearMessageRows = Object.freeze({
     makeRow,
     safeMakeRow,
@@ -201,5 +210,7 @@
     compareRowsInDomOrder,
     loadedUserJumpTarget,
     loadedCopyJumpTarget,
+    clearChatSearchMarks,
+    applyChatSearchMarks,
   });
 })();
