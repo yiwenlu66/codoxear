@@ -861,6 +861,108 @@ def eval_active_file_load_state_writers() -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_file_load_result_dispatcher() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    state_start = source.index("function applyActiveFileTextState(")
+    state_end = source.index("function getFileEditorText()", state_start)
+    surface_start = source.index("function setFileRenderSurface(surface)")
+    surface_end = source.index("function resetFileViewerPanel()", surface_start)
+    load_start = source.index("async function applyFileLoadResult(")
+    load_end = source.index("async function openFilePath", load_start)
+    snippet = source[state_start:state_end] + "\n" + source[surface_start:surface_end] + "\n" + source[load_start:load_end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{
+          activeFileKind: "",
+          activeFileText: "",
+          activeFileEditable: false,
+          activeFileVersion: "",
+          activeFileDraft: false,
+          activeVideoFallback: null,
+          current: true,
+          calls: [],
+          fileDiff: {{ style: {{ display: "" }}, innerHTML: "" }},
+          fileImage: {{ style: {{ display: "" }}, src: "", alt: "" }},
+          fileVideo: {{ style: {{ display: "" }}, src: "", onerror: null, onloadedmetadata: null }},
+          fileStatus: {{ textContent: "" }},
+          Date: {{ now: () => 4242 }},
+          isCurrentFileOpenRequest: () => ctx.current,
+          applyFileMode: () => ctx.calls.push(["applyFileMode"]),
+          disposeFileEditor: () => ctx.calls.push(["disposeFileEditor"]),
+          clearFileVideo: () => {{ ctx.calls.push(["clearFileVideo"]); ctx.fileVideo.style.display = "none"; ctx.fileVideo.src = ""; }},
+          renderMonacoDiff: async (...args) => {{ ctx.calls.push(["renderMonacoDiff", ...args.slice(0, 4)]); return ctx.renderOk !== false; }},
+          renderPdfFile: async (...args) => {{ ctx.calls.push(["renderPdfFile", ...args]); if (ctx.staleAfterRender) ctx.current = false; return ctx.renderOk !== false; }},
+          renderMonacoFile: async (...args) => {{ ctx.calls.push(["renderMonacoFile", ...args.slice(0, 4)]); return ctx.renderOk !== false; }},
+          renderMarkdownPreview: (...args) => ctx.calls.push(["renderMarkdownPreview", ...args]),
+          renderBlockedFileNotice: (...args) => ctx.calls.push(["renderBlockedFileNotice", ...args]),
+          loadCompatibleVideoPreview: (token, opts) => {{ ctx.calls.push(["loadCompatibleVideoPreview", token, opts]); return Promise.resolve(true); }},
+          resolveAppUrl: (path) => `app:${{path}}`,
+          fmtBytes: (n) => `${{n}}B`,
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_load_result = applyFileLoadResult;\n")}, ctx);
+        const request = {{ requestId: 7, line: 5 }};
+        function reset() {{
+          ctx.activeFileKind = "stale";
+          ctx.activeFileText = "stale text";
+          ctx.activeFileEditable = true;
+          ctx.activeFileVersion = "stale-version";
+          ctx.activeFileDraft = true;
+          ctx.activeVideoFallback = null;
+          ctx.current = true;
+          ctx.renderOk = true;
+          ctx.staleAfterRender = false;
+          ctx.calls = [];
+          ctx.fileDiff.style.display = "";
+          ctx.fileImage.style.display = "";
+          ctx.fileImage.src = "";
+          ctx.fileImage.alt = "";
+          ctx.fileVideo.style.display = "";
+          ctx.fileVideo.src = "";
+          ctx.fileVideo.onerror = null;
+          ctx.fileVideo.onloadedmetadata = null;
+          ctx.fileStatus.textContent = "";
+        }}
+        function snapshot(ok) {{
+          return {{
+            ok,
+            state: {{ kind: ctx.activeFileKind, text: ctx.activeFileText, editable: ctx.activeFileEditable, version: ctx.activeFileVersion, draft: ctx.activeFileDraft }},
+            surface: {{ diff: ctx.fileDiff.style.display, image: ctx.fileImage.style.display, video: ctx.fileVideo.style.display }},
+            calls: ctx.calls,
+            status: ctx.fileStatus.textContent,
+            image: {{ src: ctx.fileImage.src, alt: ctx.fileImage.alt }},
+            video: {{ src: ctx.fileVideo.src, fallback: ctx.activeVideoFallback }},
+          }};
+        }}
+        async function run(result, opts = {{}}) {{
+          reset();
+          Object.assign(ctx, opts);
+          const ok = await ctx.__test_load_result("doc.md", result, request, opts.helperOptions || {{}});
+          return snapshot(ok);
+        }}
+        (async () => {{
+          const result = {{}};
+          result.diff = await run({{ kind: "diff", baseText: "base", currentText: "current", baseExists: true, currentExists: true }});
+          result.noDiff = await run({{ kind: "diff", baseText: "", currentText: "", baseExists: false, currentExists: false }});
+          result.image = await run({{ kind: "image", image_url: "/img.png", size: 4 }});
+          result.videoPreview = await run({{ kind: "video", video_url: "/video.mov", video_preview_url: "/preview.mp4", content_type: "video/quicktime", size: 9 }});
+          result.markdownPreview = await run({{ kind: "markdown", text: "# h", editable: false, version: "v3", size: 3 }}, {{ helperOptions: {{ viewMode: "preview" }} }});
+          result.pdfStale = await run({{ kind: "pdf", pdf_url: "/doc.pdf", size: 8 }}, {{ staleAfterRender: true }});
+          process.stdout.write(JSON.stringify(result));
+        }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(
+        ["node", "-e", js],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return json.loads(proc.stdout)
+
+
 def eval_file_render_surface_visibility() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function setFileRenderSurface(surface)")
@@ -1143,12 +1245,37 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('throw new Error("invalid active file text kind")', source)
         self.assertIn('throw new Error("invalid active file non-text kind")', source)
         self.assertIn('applyActiveFileTextState({ text: "", editable: true, version: "", draft: true });', source)
-        self.assertIn("applyActiveFileDiffState({ currentText, currentExists: res && res.current_exists });", source)
+        self.assertIn("applyActiveFileDiffState({ currentText, currentExists: result.currentExists });", source)
         self.assertIn('applyActiveFileNonTextState("image");', source)
         self.assertIn('applyActiveFileNonTextState("pdf");', source)
         self.assertIn('applyActiveFileNonTextState("video");', source)
         self.assertIn('applyActiveFileNonTextState("download_only");', source)
-        self.assertIn('applyActiveFileTextState({ kind: res.kind === "markdown" ? "markdown" : "text", text: res.text, editable: Boolean(res.editable), version: typeof res.version === "string" ? res.version : "" });', source)
+        self.assertIn('applyActiveFileTextState({ kind: result.kind === "markdown" ? "markdown" : "text", text: result.text, editable: Boolean(result.editable), version: typeof result.version === "string" ? result.version : "" });', source)
+
+    def test_file_load_result_dispatcher_preserves_branch_state_and_rendering(self) -> None:
+        result = eval_file_load_result_dispatcher()
+        self.assertTrue(result["diff"]["ok"])
+        self.assertEqual(result["diff"]["state"], {"kind": "text", "text": "current", "editable": True, "version": "", "draft": False})
+        self.assertEqual(result["diff"]["calls"], [["renderMonacoDiff", "doc.md", "base", "current", 5]])
+        self.assertEqual(result["diff"]["status"], "doc.md - diff")
+        self.assertTrue(result["noDiff"]["ok"])
+        self.assertEqual(result["noDiff"]["calls"], [["disposeFileEditor"]])
+        self.assertEqual(result["noDiff"]["status"], "doc.md - no diff")
+        self.assertTrue(result["image"]["ok"])
+        self.assertEqual(result["image"]["state"], {"kind": "image", "text": "", "editable": False, "version": "", "draft": False})
+        self.assertEqual(result["image"]["surface"], {"diff": "none", "image": "block", "video": "none"})
+        self.assertEqual(result["image"]["image"], {"src": "app:/img.png", "alt": "doc.md"})
+        self.assertTrue(result["videoPreview"]["ok"])
+        self.assertEqual(result["videoPreview"]["state"]["kind"], "video")
+        self.assertEqual(result["videoPreview"]["surface"], {"diff": "none", "image": "none", "video": "block"})
+        self.assertEqual(result["videoPreview"]["calls"], [["applyFileMode"], ["loadCompatibleVideoPreview", "7:doc.md:4242", {"explicit": False}]])
+        self.assertEqual(result["videoPreview"]["video"]["fallback"], {"token": "7:doc.md:4242", "previewUrl": "/preview.mp4", "used": False, "preparing": False, "rel": "doc.md", "size": 9})
+        self.assertTrue(result["markdownPreview"]["ok"])
+        self.assertEqual(result["markdownPreview"]["state"], {"kind": "markdown", "text": "# h", "editable": False, "version": "v3", "draft": False})
+        self.assertEqual(result["markdownPreview"]["calls"], [["renderMarkdownPreview", "doc.md", "# h"]])
+        self.assertEqual(result["markdownPreview"]["status"], "doc.md - preview - read-only - 3B")
+        self.assertFalse(result["pdfStale"]["ok"])
+        self.assertEqual(result["pdfStale"]["calls"], [["renderPdfFile", "doc.md", "app:/doc.pdf", {"requestId": 7, "line": 5}]])
 
     def test_file_render_surface_visibility_is_single_owned(self) -> None:
         result = eval_file_render_surface_visibility()
@@ -1367,6 +1494,9 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("clearActiveFileIdentity({ line });", source)
         self.assertIn("function setFileRenderSurface(surface)", source)
         self.assertIn('throw new Error("invalid file render surface")', source)
+        self.assertIn("async function applyFileLoadResult(rel, result, request, { viewMode = \"file\" } = {})", source)
+        self.assertIn('const loaded = await applyFileLoadResult(rel, { kind: "diff", baseText, currentText, baseExists: res && res.base_exists, currentExists: res && res.current_exists }, request, { viewMode });', source)
+        self.assertIn("const loaded = await applyFileLoadResult(rel, res, request, { viewMode });", source)
         self.assertEqual(source.count('setFileRenderSurface("diff");'), 6)
         self.assertIn('setFileRenderSurface("image");', source)
         self.assertIn('setFileRenderSurface("video");', source)
@@ -1442,7 +1572,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertNotIn('el("iframe"', source)
         self.assertIn('import(resolveAppUrl("pdf.mjs"))', source)
         self.assertIn('resolveAppUrl("pdf.worker.mjs")', source)
-        self.assertIn('res.kind === "pdf"', source)
+        self.assertIn('result.kind === "pdf"', source)
         self.assertIn("const MONACO_LOADER_TIMEOUT_MS = 4000;", source)
         self.assertIn("const PDFJS_LOADER_TIMEOUT_MS = 6000;", source)
         self.assertIn("function renderPlainTextFallback(rel, text, lineNumber = null", source)
@@ -1461,11 +1591,11 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('id: "fileVideoPreviewBtn"', source)
         self.assertIn('title: "Use compatible MP4 preview"', source)
         self.assertIn('const fileVideo = el("video", { id: "fileVideo", class: "fileVideo", controls: true, preload: "metadata" });', source)
-        self.assertIn('res.kind === "video"', source)
+        self.assertIn('result.kind === "video"', source)
         self.assertIn("function clearFileVideo()", source)
         self.assertIn("fileVideo.pause();", source)
-        self.assertIn('fileVideo.src = resolveAppUrl(res.video_url);', source)
-        self.assertIn("const previewUrl = typeof res.video_preview_url === \"string\" ? res.video_preview_url : \"\";", source)
+        self.assertIn('fileVideo.src = resolveAppUrl(result.video_url);', source)
+        self.assertIn("const previewUrl = typeof result.video_preview_url === \"string\" ? result.video_preview_url : \"\";", source)
         self.assertIn('const browserSafeVideoTypes = new Set(["video/mp4", "video/webm", "video/ogg"]);', source)
         self.assertIn('const shouldPreviewFirst = Boolean(previewUrl && contentType && !browserSafeVideoTypes.has(contentType));', source)
         self.assertIn('async function prepareCompatibleVideoPreview(previewUrl) {', source)
@@ -1487,8 +1617,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("fileStatus.textContent = `${rel} - video preview unavailable after conversion`;", source)
         self.assertIn('setFileRenderSurface("video");', source)
         self.assertIn('fileStatus.textContent = `${rel} - video - ${fmtBytes(size)}`;', source)
-        self.assertIn('res.kind === "download_only"', source)
-        self.assertIn("renderBlockedFileNotice(rel, String(res.reason || \"\"), Number(res.viewer_max_bytes || 0), size);", source)
+        self.assertIn('result.kind === "download_only"', source)
+        self.assertIn("renderBlockedFileNotice(rel, String(result.reason || \"\"), Number(result.viewer_max_bytes || 0), size);", source)
         self.assertIn('fileStatus.textContent = `${rel} - PDF - ${fmtBytes(size)}`;', source)
         self.assertIn(".filePdfPages {", css_source)
         self.assertIn(".filePlainFallback {", css_source)

@@ -9687,6 +9687,109 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           updateFileEditButton();
           updateFileTouchToolbar();
         }
+        async function applyFileLoadResult(rel, result, request, { viewMode = "file" } = {}) {
+          if (!isCurrentFileOpenRequest(request)) return false;
+          if (!result || typeof result.kind !== "string") throw new Error("invalid response");
+          if (result.kind === "diff") {
+            const baseText = typeof result.baseText === "string" ? result.baseText : "";
+            const currentText = typeof result.currentText === "string" ? result.currentText : "";
+            applyActiveFileDiffState({ currentText, currentExists: result.currentExists });
+            if (!result.baseExists && !result.currentExists) {
+              disposeFileEditor();
+              fileStatus.textContent = `${rel} - no diff`;
+              return true;
+            }
+            const rendered = await renderMonacoDiff(rel, baseText, currentText, request.line, request);
+            if (!rendered || !isCurrentFileOpenRequest(request)) return false;
+            fileStatus.textContent = `${rel} - diff`;
+            return true;
+          }
+          if (result.kind === "image") {
+            applyActiveFileNonTextState("image");
+            if (typeof result.image_url !== "string" || !result.image_url) throw new Error("invalid image response");
+            clearFileVideo();
+            fileImage.src = resolveAppUrl(result.image_url);
+            fileImage.alt = rel;
+            setFileRenderSurface("image");
+            const size = typeof result.size === "number" ? result.size : 0;
+            fileStatus.textContent = `${rel} - ${fmtBytes(size)}`;
+            return true;
+          }
+          if (result.kind === "pdf") {
+            applyActiveFileNonTextState("pdf");
+            if (typeof result.pdf_url !== "string" || !result.pdf_url) throw new Error("invalid pdf response");
+            const rendered = await renderPdfFile(rel, resolveAppUrl(result.pdf_url), request);
+            if (!rendered || !isCurrentFileOpenRequest(request)) return false;
+            const size = typeof result.size === "number" ? result.size : 0;
+            fileStatus.textContent = `${rel} - PDF - ${fmtBytes(size)}`;
+            return true;
+          }
+          if (result.kind === "video") {
+            applyActiveFileNonTextState("video");
+            if (typeof result.video_url !== "string" || !result.video_url) throw new Error("invalid video response");
+            const previewUrl = typeof result.video_preview_url === "string" ? result.video_preview_url : "";
+            const size = typeof result.size === "number" ? result.size : 0;
+            const contentType = typeof result.content_type === "string" ? result.content_type.split(";", 1)[0].trim().toLowerCase() : "";
+            const videoToken = `${request.requestId}:${rel}:${Date.now()}`;
+            const browserSafeVideoTypes = new Set(["video/mp4", "video/webm", "video/ogg"]);
+            const shouldPreviewFirst = Boolean(previewUrl && contentType && !browserSafeVideoTypes.has(contentType));
+            activeVideoFallback = previewUrl ? { token: videoToken, previewUrl, used: false, preparing: false, rel, size } : null;
+            applyFileMode();
+            fileVideo.onerror = () => {
+              const state = activeVideoFallback;
+              if (!state || state.token !== videoToken) {
+                if (!previewUrl) fileStatus.textContent = `${rel} - video unsupported`;
+                return;
+              }
+              if (state.used) {
+                activeVideoFallback = null;
+                applyFileMode();
+                fileVideo.onerror = null;
+                fileVideo.onloadedmetadata = null;
+                fileStatus.textContent = `${rel} - video preview unavailable after conversion`;
+                return;
+              }
+              void loadCompatibleVideoPreview(videoToken, { explicit: false });
+            };
+            fileVideo.onloadedmetadata = () => {
+              const state = activeVideoFallback;
+              if (state && state.token === videoToken && state.used) {
+                fileStatus.textContent = `${rel} - compatible video preview - ${fmtBytes(size)}`;
+              }
+            };
+            setFileRenderSurface("video");
+            if (shouldPreviewFirst) {
+              void loadCompatibleVideoPreview(videoToken, { explicit: false });
+            } else {
+              fileVideo.src = resolveAppUrl(result.video_url);
+              fileStatus.textContent = `${rel} - video - ${fmtBytes(size)}`;
+            }
+            return true;
+          }
+          if (result.kind === "download_only") {
+            applyActiveFileNonTextState("download_only");
+            const size = typeof result.size === "number" ? result.size : 0;
+            renderBlockedFileNotice(rel, String(result.reason || ""), Number(result.viewer_max_bytes || 0), size);
+            fileStatus.textContent = `${rel} - download only - ${fmtBytes(size)}`;
+            return true;
+          }
+          if (typeof result.text !== "string") throw new Error("invalid response");
+          applyActiveFileTextState({ kind: result.kind === "markdown" ? "markdown" : "text", text: result.text, editable: Boolean(result.editable), version: typeof result.version === "string" ? result.version : "" });
+          if (viewMode === "preview" && activeFileKind === "markdown") {
+            renderMarkdownPreview(rel, result.text);
+          } else {
+            const rendered = await renderMonacoFile(rel, result.text, request.line, "", request);
+            if (!rendered || !isCurrentFileOpenRequest(request)) return false;
+          }
+          const size = typeof result.size === "number" ? result.size : result.text.length;
+          const statusParts = [rel];
+          if (viewMode === "preview" && activeFileKind === "markdown") statusParts.push("preview");
+          if (!activeFileEditable) statusParts.push("read-only");
+          statusParts.push(fmtBytes(size));
+          fileStatus.textContent = statusParts.join(" - ");
+          return true;
+        }
+
         async function openFilePath(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {}) {
           if (blockUnavailableFileAction()) return false;
           if (!fileViewerSessionId) return false;
@@ -9712,15 +9815,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               if (!isCurrentFileOpenRequest(request)) return false;
               const baseText = res && typeof res.base_text === "string" ? res.base_text : "";
               const currentText = res && typeof res.current_text === "string" ? res.current_text : "";
-              applyActiveFileDiffState({ currentText, currentExists: res && res.current_exists });
-              if (!res.base_exists && !res.current_exists) {
-                disposeFileEditor();
-                fileStatus.textContent = `${rel} - no diff`;
-              } else {
-                const rendered = await renderMonacoDiff(rel, baseText, currentText, request.line, request);
-                if (!rendered || !isCurrentFileOpenRequest(request)) return false;
-                fileStatus.textContent = `${rel} - diff`;
-              }
+              const loaded = await applyFileLoadResult(rel, { kind: "diff", baseText, currentText, baseExists: res && res.base_exists, currentExists: res && res.current_exists }, request, { viewMode });
+              if (!loaded) return false;
               applyFileMode();
               rememberOpenedFile(rel, res && typeof res.abs_path === "string" ? res.abs_path : null);
             } else {
@@ -9730,84 +9826,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 signal: request.signal,
               });
               if (!isCurrentFileOpenRequest(request)) return false;
-              if (!res || typeof res.kind !== "string") throw new Error("invalid response");
-              if (res.kind === "image") {
-                applyActiveFileNonTextState("image");
-                if (typeof res.image_url !== "string" || !res.image_url) throw new Error("invalid image response");
-                clearFileVideo();
-                fileImage.src = resolveAppUrl(res.image_url);
-                fileImage.alt = rel;
-                setFileRenderSurface("image");
-                const size = typeof res.size === "number" ? res.size : 0;
-                fileStatus.textContent = `${rel} - ${fmtBytes(size)}`;
-              } else if (res.kind === "pdf") {
-                applyActiveFileNonTextState("pdf");
-                if (typeof res.pdf_url !== "string" || !res.pdf_url) throw new Error("invalid pdf response");
-                const rendered = await renderPdfFile(rel, resolveAppUrl(res.pdf_url), request);
-                if (!rendered || !isCurrentFileOpenRequest(request)) return false;
-                const size = typeof res.size === "number" ? res.size : 0;
-                fileStatus.textContent = `${rel} - PDF - ${fmtBytes(size)}`;
-              } else if (res.kind === "video") {
-                applyActiveFileNonTextState("video");
-                if (typeof res.video_url !== "string" || !res.video_url) throw new Error("invalid video response");
-                const previewUrl = typeof res.video_preview_url === "string" ? res.video_preview_url : "";
-                const size = typeof res.size === "number" ? res.size : 0;
-                const contentType = typeof res.content_type === "string" ? res.content_type.split(";", 1)[0].trim().toLowerCase() : "";
-                const videoToken = `${request.requestId}:${rel}:${Date.now()}`;
-                const browserSafeVideoTypes = new Set(["video/mp4", "video/webm", "video/ogg"]);
-                const shouldPreviewFirst = Boolean(previewUrl && contentType && !browserSafeVideoTypes.has(contentType));
-                activeVideoFallback = previewUrl ? { token: videoToken, previewUrl, used: false, preparing: false, rel, size } : null;
-                applyFileMode();
-                fileVideo.onerror = () => {
-                  const state = activeVideoFallback;
-                  if (!state || state.token !== videoToken) {
-                    if (!previewUrl) fileStatus.textContent = `${rel} - video unsupported`;
-                    return;
-                  }
-                  if (state.used) {
-                    activeVideoFallback = null;
-                    applyFileMode();
-                    fileVideo.onerror = null;
-                    fileVideo.onloadedmetadata = null;
-                    fileStatus.textContent = `${rel} - video preview unavailable after conversion`;
-                    return;
-                  }
-                  void loadCompatibleVideoPreview(videoToken, { explicit: false });
-                };
-                fileVideo.onloadedmetadata = () => {
-                  const state = activeVideoFallback;
-                  if (state && state.token === videoToken && state.used) {
-                    fileStatus.textContent = `${rel} - compatible video preview - ${fmtBytes(size)}`;
-                  }
-                };
-                setFileRenderSurface("video");
-                if (shouldPreviewFirst) {
-                  void loadCompatibleVideoPreview(videoToken, { explicit: false });
-                } else {
-                  fileVideo.src = resolveAppUrl(res.video_url);
-                  fileStatus.textContent = `${rel} - video - ${fmtBytes(size)}`;
-                }
-              } else if (res.kind === "download_only") {
-                applyActiveFileNonTextState("download_only");
-                const size = typeof res.size === "number" ? res.size : 0;
-                renderBlockedFileNotice(rel, String(res.reason || ""), Number(res.viewer_max_bytes || 0), size);
-                fileStatus.textContent = `${rel} - download only - ${fmtBytes(size)}`;
-              } else {
-                if (typeof res.text !== "string") throw new Error("invalid response");
-                applyActiveFileTextState({ kind: res.kind === "markdown" ? "markdown" : "text", text: res.text, editable: Boolean(res.editable), version: typeof res.version === "string" ? res.version : "" });
-                if (viewMode === "preview" && activeFileKind === "markdown") {
-                  renderMarkdownPreview(rel, res.text);
-                } else {
-                  const rendered = await renderMonacoFile(rel, res.text, request.line, "", request);
-                  if (!rendered || !isCurrentFileOpenRequest(request)) return false;
-                }
-                const size = typeof res.size === "number" ? res.size : res.text.length;
-                const statusParts = [rel];
-                if (viewMode === "preview" && activeFileKind === "markdown") statusParts.push("preview");
-                if (!activeFileEditable) statusParts.push("read-only");
-                statusParts.push(fmtBytes(size));
-                fileStatus.textContent = statusParts.join(" - ");
-              }
+              const loaded = await applyFileLoadResult(rel, res, request, { viewMode });
+              if (!loaded) return false;
               applyFileMode();
               rememberOpenedFile(rel, typeof res.path === "string" ? res.path : null);
             }
