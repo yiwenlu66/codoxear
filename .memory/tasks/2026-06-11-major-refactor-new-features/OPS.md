@@ -5204,3 +5204,32 @@
 - Clean-room review `ff79a43e-898e-46df-81d1-a57dd734d7ff` returned PASS with no blockers. Review confirmed mechanical equivalence, unchanged execution order, preserved request/draft identity timing, unchanged catch paths, untouched render functions, safe branch-specific image/video/pdf/text overrides, no remaining stale full-reset duplicates outside the helper, and unchanged clear-identity/save/session semantics. Non-blocking notes: source count/whitespace sentinels are intentionally coupled to this checkpoint; a standalone diff-branch `disposeFileEditor()` and double-dispose in render branches are pre-existing safe behaviors.
 - Next transition seam under read-only review: possible non-Monaco render-surface reset helper for shared `disposeFileEditor()`/`clearFileVideo()`/`fileDiff.innerHTML = ""` patterns, with explicit PDF/display options. This is separate from full panel reset because render functions must not clear active buffer state.
 - Scope note: this is a full panel-reset reuse extraction only. It does not claim render-surface helper extraction, load-result state transition ownership, save-token ownership, or browser-manual evidence.
+
+
+
+## 2026-06-29T20:39:19Z File render surface visibility centralization
+- Functional commit `11fc5ee Centralize file render surface visibility` made the file viewer's diff/image/video display state explicit.
+- Mechanism: `setFileRenderSurface(surface)` accepts only `"diff"`, `"image"`, or `"video"`; invalid input throws `new Error("invalid file render surface")`. For valid inputs it sets `fileDiff.style.display`, `fileImage.style.display`, and `fileVideo.style.display` so exactly one render surface is visible.
+- Replacement sites:
+  - `resetFileViewerPanel()` now clears image src, calls `clearFileVideo()`, then claims the diff surface via `setFileRenderSurface("diff")`.
+  - Non-Monaco diff-surface renderers (`renderPlainTextFallback`, `renderDownloadFallback`, `renderMarkdownPreview`, `renderBlockedFileNotice`, `renderPdfFile`) explicitly call `setFileRenderSurface("diff")` after teardown/`fileDiff.innerHTML = ""`.
+  - The image branch assigns image src/alt while hidden, then calls `setFileRenderSurface("image")`.
+  - The video branch wires fallback/event state, then calls `setFileRenderSurface("video")` before loading preview/original source.
+- Boundary preserved:
+  - `clearFileVideo()` still owns video teardown (`activeVideoFallback`, handlers, src/load, preview button, video hide). Its `fileVideo.style.display = "none"` remains a teardown-side defense, not a surface transition.
+  - `renderMonacoFile()` and `renderMonacoDiff()` remain excluded because they rely on caller-established diff surface and have editor-specific reuse/creation semantics.
+  - No buffer fields, file identity, request guards, save/finalization state, session/unavailable state, PDF lifecycle, or catch-path buffer resets were moved.
+- Tests added/updated:
+  - `eval_file_render_surface_visibility()` executes the real helper in a Node VM and verifies diff/image/video mode snapshots plus invalid-surface fail-loud behavior.
+  - Source sentinels pin the helper declaration/error, six diff calls, one image call, one video call, and centralization of display writes (`fileDiff`/`fileImage` display writes only in the helper; `fileVideo` display writes in the helper plus `clearFileVideo()` teardown).
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused tests passed: new surface VM test, file-open race/source test, and PDF/video/download-only source test.
+  - Focused file-viewer/file-picker/static group returned `80 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1264 passed, 136 subtests passed`.
+  - Focused Docker file-viewer/file-picker/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed.
+- Clean-room review `09c59eb0-77dc-4343-97c4-86e7d227b417` returned PASS with no blockers. Review verified the exactly-one-surface invariant, correct centralization, retained video teardown ownership, explicit non-Monaco diff-surface claims, correct image/video branch timing, correct Monaco exclusion, reasonable catch-path behavior, and validation gates. Non-blocking notes: source-count sentinels are intentionally string-coupled; the video branch relies on the top-level `resetFileViewerPanel()` for teardown while the image branch also calls `clearFileVideo()` defensively.
+- Next transition seam: centralize core active-file load-state writers for `activeFileKind`, `activeFileText`, `activeFileEditable`, `activeFileVersion`, and `activeFileDraft` in draft/diff/text branches, while leaving async rendering, video/PDF lifecycle, request guards, `applyFileMode()`, save tokens, and finalization caller-owned.
+- Scope note: this is render-surface visibility ownership only. It does not claim load-result state ownership, PDF teardown lifecycle repair, save-token ownership, or browser-manual rendering evidence.

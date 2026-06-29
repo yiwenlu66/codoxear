@@ -2793,3 +2793,6 @@ Scoped claim: the current branch has a validated backend/server architecture che
 
 
 - Full file-viewer panel reset now has one caller-owned helper path: `openDraftFilePath()` and `openFilePath()` reuse `resetFileViewerPanel()` rather than duplicating its six-step body. Evidence includes commit `a6035f4`, scoped source sentinels, full local pytest (`1263 passed, 136 subtests passed`), focused/full Docker validation, and clean-room review `ff79a43e-898e-46df-81d1-a57dd734d7ff`. Boundary: render functions still perform partial surface resets because they preserve caller-populated buffer state; catch paths still reset only buffer state. See OPS File viewer panel reset reuse.
+
+
+- File viewer render-surface visibility now has an explicit owner: `setFileRenderSurface()` controls diff/image/video display and fails loudly on invalid surfaces. Evidence includes commit `11fc5ee`, VM coverage for all three modes plus invalid input, full local pytest (`1264 passed, 136 subtests passed`), focused/full Docker validation, and clean-room review `09c59eb0-77dc-4343-97c4-86e7d227b417`. Boundaries remain important: `clearFileVideo()` owns video teardown, Monaco renderers remain caller-surface-dependent, and no buffer/save/request/session state moved. Next meaningful seam is core active-file load-state writers. See OPS File render surface visibility centralization.
