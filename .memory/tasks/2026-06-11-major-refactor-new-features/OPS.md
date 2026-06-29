@@ -5155,3 +5155,28 @@
 - Clean-room review `cd2dc83d-83b3-46e0-85bd-6ce6d00a8ecb` returned PASS with no blockers. Review confirmed exact old logic, safe state snapshotting, preserved owners, untouched save/write state, safe hoisting, read-only request return usage, and correct VM snippet boundaries. Non-blocking notes: a theoretical null-path fallback asymmetry is unreachable under current string-only assignment invariants; `Object.freeze` overhead is negligible for user-initiated file opens; one existing VM slice that mocks `setFilePath` would need helper stubs only if a future test calls real `setFilePath` inside that slice.
 - Next transition seam identified: empty active-file identity reset is repeated across `resetFileViewerPanel()`, query-open `showFileViewer()`, and no-candidate `showFileViewer()`. A small helper for clearing path/git/api/line can continue the state refactor without touching buffer reset or save-token mechanisms.
 - Scope note: this is identity calculation extraction only. It does not claim full file-editor state transition ownership or browser-manual file viewer evidence.
+
+
+
+## 2026-06-29T20:12:19Z Active file identity reset extraction
+- Functional commit `cfa7e8d Extract active file identity reset` extracted repeated empty active-file identity reset into `clearActiveFileIdentity({ line = null } = {})`.
+- Mechanism: the helper clears exactly `activeFilePath`, `activeFileApiPath`, and `activeFileGitPath`, and assigns `activeFileLine = normalizeLineNumber(line)`. This preserves old direct-null branches because `normalizeLineNumber(null)` returns `null`, and preserves query-open line behavior by passing `{ line }` through the same normalizer.
+- Replacement sites:
+  - `ensureCurrentFileViewerSession()` no-candidate path after `resetFileViewerPanel()` now calls `clearActiveFileIdentity()`.
+  - `showFileViewer()` query-open path after `resetFileViewerPanel()` now calls `clearActiveFileIdentity({ line })`.
+  - `showFileViewer()` no-candidate path after `resetFileViewerPanel()` now calls `clearActiveFileIdentity()`.
+- Boundary preserved: the helper does not touch `activeFileKind`, `activeFileText`, `activeFileEditable`, `activeFileVersion`, `activeFileDraft`, `fileEditMode`, `fileSavePending`, `activeFileSaveToken`, session ids, unavailable state, dirty state, or media/editor DOM. `hideFileViewer()` intentionally remains excluded because closing the viewer resets panel contents but preserves file identity for the next show cycle.
+- Tests added/updated:
+  - `tests/test_file_viewer_source.py::test_file_open_requests_are_single_owner` now exports the helper in the VM harness and asserts explicit-line clearing (`line: "12" -> 12`) plus default clearing (`line -> null`) while path/git/api are cleared.
+  - Source assertions pin the helper signature and the query-open call form.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused reset/open-request VM tests passed.
+  - Focused file-viewer/file-picker/static group returned `79 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1263 passed, 136 subtests passed`.
+  - Focused Docker file-viewer/file-picker/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed.
+- Clean-room review `c0a9834f-6cec-475a-8d07-89fb46be0565` returned PASS with no blockers. Review verified exact semantic equivalence at all three replacement sites, buffer/save/session state exclusion, correct `hideFileViewer()` exclusion, and no remaining orphan `activeFilePath = ""` runtime clears outside the helper. Non-blocking notes: VM line-normalization mock differs for zero/negative inputs not used by the test; `clearActiveFileIdentity(null)` would throw but all module-internal callers use safe forms.
+- Next transition seam: full panel reset duplication remains in `openDraftFilePath()` and `openFilePath()`, where the exact `resetFileViewerPanel()` sequence appears inline. Render-specific partial resets must not be collapsed into that full helper because they intentionally avoid clearing active buffer state.
+- Scope note: this is an active-file identity clearing extraction only. It does not claim full panel reset consolidation, file buffer state ownership, save-token ownership, or browser-manual evidence.
