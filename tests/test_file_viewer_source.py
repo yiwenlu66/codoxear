@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
 APP_FILE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_file_helpers.js"
+APP_FILE_PICKER_JS = ROOT / "codoxear" / "static" / "app_file_picker.js"
 APP_VIEWPORT_JS = ROOT / "codoxear" / "static" / "app_viewport.js"
 APP_CSS = ROOT / "codoxear" / "static" / "app.css"
 SERVER_PY = ROOT / "codoxear" / "server.py"
@@ -452,7 +453,8 @@ class TestFileViewerSource(unittest.TestCase):
         open_primitive_end = source.index("fileBtn.onclick", open_primitive_start)
         open_primitive_block = source[open_primitive_start:open_primitive_end]
         self.assertIn("if (blockUnavailableFileAction()) return false;", open_primitive_block)
-        self.assertIn("if (blockUnavailableFileAction()) return [];", source)
+        file_picker_source = APP_FILE_PICKER_JS.read_text(encoding="utf-8")
+        self.assertIn("if (blocked()) return [];", file_picker_source)
         draft_guard_start = source.index("async function openDraftFilePathWithGuard")
         draft_guard_end = source.index("async function setFileViewModeWithGuard", draft_guard_start)
         draft_guard_block = source[draft_guard_start:draft_guard_end]

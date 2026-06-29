@@ -565,6 +565,15 @@
         return codoxearFileHelpers.bytesToBase64(bytes, btoa);
       }
 
+      const codoxearFilePicker = window.CodoxearFilePicker;
+      if (
+        !codoxearFilePicker ||
+        typeof codoxearFilePicker.createSearchState !== "function" ||
+        typeof codoxearFilePicker.localFilePickerSearchEntries !== "function" ||
+        typeof codoxearFilePicker.visibleFilePickerEntries !== "function"
+      )
+        throw new Error("Codoxear file picker helpers failed to load");
+
       const codoxearMarkdown = window.CodoxearMarkdown;
       if (
         !codoxearMarkdown ||
@@ -928,8 +937,7 @@
           unattendedSaveInFlight.clear();
           if (liveAudioRetryTimer) clearTimeout(liveAudioRetryTimer);
           liveAudioRetryTimer = null;
-          if (fileSearchTimer) clearTimeout(fileSearchTimer);
-          fileSearchTimer = null;
+          filePickerSearchState.dispose();
           if (iosViewportGuardTimer) clearTimeout(iosViewportGuardTimer);
           iosViewportGuardTimer = null;
           desktopNotificationTimers.forEach((timer) => clearTimeout(timer));
@@ -946,8 +954,6 @@
           olderLoadController = null;
           abortController(fileOpenAbortController);
           fileOpenAbortController = null;
-          abortController(fileSearchAbort);
-          fileSearchAbort = null;
           stopAnnouncementHeartbeat();
           stopLiveAudioWatchdog();
           resetLiveAudioState();
@@ -7026,16 +7032,15 @@
         let filePickerReferenceLine = null;
         let filePickerPreserveSearchOnFocus = false;
         let filePickerSuppressDraftQuery = "";
-        let fileSearchResults = [];
-        let fileSearchLoadedQuery = "";
-        let fileSearchPendingQuery = "";
-        let fileSearchErrorQuery = "";
-        let fileSearchError = "";
-        let fileSearchTruncatedQuery = "";
-        let fileSearchSessionId = "";
-        let fileSearchSeq = 0;
-        let fileSearchTimer = null;
-        let fileSearchAbort = null;
+        const filePickerSearchState = codoxearFilePicker.createSearchState({
+          blocked: () => blockUnavailableFileAction(),
+          currentSessionId: () => fileViewerSessionId || selected || "",
+          api,
+          inputValue: () => filePickerInput.value,
+          isMenuOpen: () => fileMenuOpen,
+          renderMenu: () => renderFilePickerMenu(),
+          applyMenuState: () => applyFileMenuState(),
+        });
         let monacoReadyPromise = null;
         let monacoNs = null;
         let monacoThemeReady = false;
@@ -7267,9 +7272,9 @@
           rememberActiveFileSelection(fileViewerSessionId);
           fileViewerSessionId = sid;
           fileViewerUnavailableSessionId = "";
-          if (fileSearchSessionId !== fileViewerSessionId) {
+          if (filePickerSearchSnapshot().sessionId !== fileViewerSessionId) {
             resetFileSearchState();
-            fileSearchSessionId = fileViewerSessionId;
+            filePickerSearchState.setSessionId(fileViewerSessionId);
           }
           await refreshFileCandidates({ sessionId: sid, syncToken });
           if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
@@ -8864,185 +8869,55 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function resetFileSearchState() {
-          if (fileSearchTimer) {
-            clearTimeout(fileSearchTimer);
-            fileSearchTimer = null;
-          }
-          if (fileSearchAbort) {
-            try {
-              fileSearchAbort.abort();
-            } catch (_) {}
-            fileSearchAbort = null;
-          }
-          fileSearchResults = [];
-          fileSearchLoadedQuery = "";
-          fileSearchPendingQuery = "";
-          fileSearchErrorQuery = "";
-          fileSearchError = "";
-          fileSearchTruncatedQuery = "";
-          fileSearchSeq += 1;
+          filePickerSearchState.reset();
         }
 
         async function requestSessionFileSearch(query) {
-          if (blockUnavailableFileAction()) return [];
-          const trimmed = String(query || "").trim();
-          const sid = fileViewerSessionId || selected || "";
-          if (!trimmed || !sid) {
-            resetFileSearchState();
-            fileSearchSessionId = sid;
-            return [];
-          }
-          if (fileSearchSessionId !== sid) {
-            resetFileSearchState();
-            fileSearchSessionId = sid;
-          }
-          if (fileSearchLoadedQuery === trimmed) return fileSearchResults;
-          const seq = ++fileSearchSeq;
-          fileSearchPendingQuery = trimmed;
-          fileSearchErrorQuery = "";
-          fileSearchError = "";
-          fileSearchTruncatedQuery = "";
-          if (fileSearchAbort) {
-            try {
-              fileSearchAbort.abort();
-            } catch (_) {}
-          }
-          const controller = typeof AbortController === "function" ? new AbortController() : null;
-          fileSearchAbort = controller;
-          try {
-            const res = await api(`/api/sessions/${sid}/file/search?q=${encodeURIComponent(trimmed)}&limit=120`, {
-              signal: controller ? controller.signal : undefined,
-            });
-            if (seq !== fileSearchSeq || fileSearchSessionId !== sid) return [];
-            const matches = [];
-            const seen = new Set();
-            for (const item of Array.isArray(res && res.matches) ? res.matches : []) {
-              const path = item && typeof item.path === "string" ? item.path : "";
-              if (path === "" || path === "." || seen.has(path)) continue;
-              seen.add(path);
-              const score = Number.isFinite(item && item.score) ? Number(item.score) : 0;
-              matches.push({ path, score });
-            }
-            fileSearchResults = matches;
-            fileSearchLoadedQuery = trimmed;
-            fileSearchPendingQuery = "";
-            fileSearchTruncatedQuery = res && res.truncated ? trimmed : "";
-            return matches;
-          } catch (err) {
-            if (controller && controller.signal && controller.signal.aborted) return [];
-            if (seq !== fileSearchSeq || fileSearchSessionId !== sid) return [];
-            fileSearchResults = [];
-            fileSearchLoadedQuery = "";
-            fileSearchPendingQuery = "";
-            fileSearchErrorQuery = trimmed;
-            fileSearchError = err && err.message ? err.message : "Unable to search files";
-            fileSearchTruncatedQuery = "";
-            throw err;
-          } finally {
-            if (fileSearchAbort === controller) fileSearchAbort = null;
-          }
+          return await filePickerSearchState.request(query);
         }
 
         function scheduleSessionFileSearch(query) {
-          if (blockUnavailableFileAction()) return;
-          const trimmed = String(query || "").trim();
-          const sid = fileViewerSessionId || selected || "";
-          if (fileSearchTimer) {
-            clearTimeout(fileSearchTimer);
-            fileSearchTimer = null;
-          }
-          if (!trimmed || !sid) {
-            resetFileSearchState();
-            fileSearchSessionId = sid;
-            return;
-          }
-          if (fileSearchSessionId !== sid) {
-            resetFileSearchState();
-            fileSearchSessionId = sid;
-          }
-          if (fileSearchAbort) {
-            try {
-              fileSearchAbort.abort();
-            } catch (_) {}
-            fileSearchAbort = null;
-          }
-          fileSearchPendingQuery = trimmed;
-          fileSearchErrorQuery = "";
-          fileSearchError = "";
-          fileSearchTruncatedQuery = "";
-          fileSearchTimer = setTimeout(() => {
-            fileSearchTimer = null;
-            void requestSessionFileSearch(trimmed)
-              .then(() => {
-                if (!fileMenuOpen) return;
-                if (String(filePickerInput.value || "").trim() !== trimmed) return;
-                renderFilePickerMenu();
-                applyFileMenuState();
-              })
-              .catch(() => {
-                if (!fileMenuOpen) return;
-                if (String(filePickerInput.value || "").trim() !== trimmed) return;
-                renderFilePickerMenu();
-                applyFileMenuState();
-              });
-          }, 120);
+          return filePickerSearchState.schedule(query);
         }
 
-        function normalizeSamePathFilePickerScores(entries) {
-          const scoreByPath = new Map();
-          for (const entry of entries) {
-            const path = String(entry && entry.path || "");
-            const score = Number(entry && entry.score || 0);
-            if (!scoreByPath.has(path) || score > Number(scoreByPath.get(path) || 0)) scoreByPath.set(path, score);
-          }
-          for (const entry of entries) {
-            const path = String(entry && entry.path || "");
-            if (scoreByPath.has(path)) entry.score = Number(scoreByPath.get(path) || 0);
-          }
-          return entries;
+        function filePickerSearchSnapshot() {
+          return filePickerSearchState.snapshot();
         }
 
-        function localFilePickerSearchEntries(query) {
-          const out = [];
-          const seen = new Set();
-          for (const key of fileCandidateList) {
-            if (seen.has(key)) continue;
-            const entry = fileEntryMap.get(key);
-            if (!entry) continue;
-            const score = filePickerCandidateScore(entry.path, query);
-            if (score < 0) continue;
-            seen.add(key);
-            const pickerEntry = pickerEntryForKey(key, { score });
-            if (pickerEntry) out.push(pickerEntry);
-          }
-          normalizeSamePathFilePickerScores(out).sort(compareFilePickerEntries);
-          return out.slice(0, 120);
-        }
-
-        function pendingSessionPathEntry(path) {
+        function filePickerEntryContext(query = "") {
           return {
-            path,
-            gitPath: false,
-            additions: null,
-            deletions: null,
-            changed: false,
-            added: false,
-            score: 0,
-            source: "",
-            pendingSessionPath: true,
+            candidateKeys: fileCandidateList.slice(),
+            entryForKey: (key) => fileEntryMap.get(key),
+            pickerEntryForKey,
+            pickerEntryForPath,
+            keyForPath: fileCandidateKey,
+            draftEntry: draftFileEntry,
+            activeFileDraft,
+            activeFilePath,
+            searchActive: filePickerSearchActive,
+            query,
+            searchState: filePickerSearchSnapshot(),
+            draftSuppressed: () => filePickerDraftSuppressed(),
           };
         }
 
+        function normalizeSamePathFilePickerScores(entries) {
+          return codoxearFilePicker.normalizeSamePathFilePickerScores(entries);
+        }
+
+        function localFilePickerSearchEntries(query) {
+          return codoxearFilePicker.localFilePickerSearchEntries(filePickerEntryContext(query), query);
+        }
+
+        function pendingSessionPathEntry(path) {
+          return codoxearFilePicker.pendingSessionPathEntry(path);
+        }
+
         function prependPendingSessionPathEntry(entries, query) {
-          const draftPath = normalizeDraftFilePath(query);
-          if (!draftPath) return entries;
-          if (entries.some((entry) => entry.path === draftPath && !entry.gitPath)) return entries;
-          if (!entries.some((entry) => entry.path === draftPath && entry.gitPath)) return entries;
-          return [pendingSessionPathEntry(draftPath), ...entries];
+          return codoxearFilePicker.prependPendingSessionPathEntry(entries, query);
         }
 
         function filePickerDraftSuppressed() {
-          if (typeof filePickerSuppressDraftQuery === "undefined") return false;
           const rawQuery = String(filePickerInput.value || "");
           return Boolean(filePickerSuppressDraftQuery && rawQuery === filePickerSuppressDraftQuery);
         }
@@ -9062,48 +8937,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function visibleFilePickerEntries() {
           const query = filePickerSearchActive ? String(filePickerInput.value || "").trim() : "";
-          if (!query) {
-            const entries = fileCandidateList.map((key) => pickerEntryForKey(key)).filter(Boolean);
-            if (activeFileDraft && activeFilePath && !entries.some((entry) => entry.path === activeFilePath && !entry.gitPath)) {
-              entries.unshift(draftFileEntry(activeFilePath));
-            }
-            return entries;
-          }
-          if (fileSearchPendingQuery === query) {
-            const localEntries = prependDraftFileEntry(prependPendingSessionPathEntry(localFilePickerSearchEntries(query), query), query);
-            return localEntries.length ? localEntries : null;
-          }
-          if (fileSearchErrorQuery === query) {
-            const localEntries = prependDraftFileEntry(prependPendingSessionPathEntry(localFilePickerSearchEntries(query), query), query);
-            return localEntries.length ? localEntries : [];
-          }
-          if (fileSearchLoadedQuery !== query) {
-            const localEntries = prependDraftFileEntry(prependPendingSessionPathEntry(localFilePickerSearchEntries(query), query), query);
-            return localEntries.length ? localEntries : null;
-          }
-          const out = [];
-          const seen = new Set();
-          for (const item of fileSearchResults) {
-            const path = item && typeof item.path === "string" ? item.path : "";
-            const key = fileCandidateKey(path, false);
-            if (path === "" || path === "." || seen.has(key)) continue;
-            seen.add(key);
-            const score = Number.isFinite(item && item.score) ? Number(item.score) : 0;
-            const pickerEntry = pickerEntryForPath(path, { score, gitPath: false });
-            if (pickerEntry) out.push(pickerEntry);
-          }
-          for (const key of fileCandidateList) {
-            if (seen.has(key)) continue;
-            const entry = fileEntryMap.get(key);
-            if (!entry) continue;
-            const score = filePickerCandidateScore(entry.path, query);
-            if (score < 0) continue;
-            const pickerEntry = pickerEntryForKey(key, { score });
-            if (pickerEntry) out.push(pickerEntry);
-          }
-          normalizeSamePathFilePickerScores(out).sort(compareFilePickerEntries);
-          const limited = out.slice(0, 120);
-          return prependDraftFileEntry(prependPendingSessionPathEntry(limited, query), query);
+          return codoxearFilePicker.visibleFilePickerEntries(filePickerEntryContext(query));
         }
 
         async function getKnownFileRefCandidates() {
@@ -9176,6 +9010,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           filePickerMenu.innerHTML = "";
           const entries = visibleFilePickerEntries();
           const query = filePickerSearchActive ? String(filePickerInput.value || "").trim() : "";
+          const searchState = filePickerSearchSnapshot();
           const draftPath = normalizeDraftFilePath(query);
           if (entries === null) {
             const showDraft = draftPath && !filePickerDraftSuppressed();
@@ -9191,8 +9026,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               return [draftFileEntry(draftPath)];
             }
             const emptyText = query
-              ? fileSearchErrorQuery === query
-                ? fileSearchError || "Unable to search files"
+              ? searchState.errorQuery === query
+                ? searchState.error || "Unable to search files"
                 : "No matching files"
               : "Type to search files.";
             filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: emptyText }));
@@ -9248,11 +9083,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             };
             filePickerMenu.appendChild(btn);
           }
-          if (query && fileSearchPendingQuery === query) {
+          if (query && searchState.pendingQuery === query) {
             filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: "Searching full project..." }));
-          } else if (query && fileSearchErrorQuery === query) {
-            filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: fileSearchError || "Full project search unavailable." }));
-          } else if (query && fileSearchTruncatedQuery === query) {
+          } else if (query && searchState.errorQuery === query) {
+            filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: searchState.error || "Full project search unavailable." }));
+          } else if (query && searchState.truncatedQuery === query) {
             filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: "Search capped at top matches." }));
           }
           if (fileMenuFocus >= 0) filePickerInput.setAttribute("aria-activedescendant", `filePickerOption-${fileMenuFocus}`);
@@ -9558,9 +9393,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const syncToken = ++fileViewerSessionSyncToken;
           fileViewerSessionId = sid;
           fileViewerUnavailableSessionId = "";
-          if (fileSearchSessionId !== fileViewerSessionId) {
+          if (filePickerSearchSnapshot().sessionId !== fileViewerSessionId) {
             resetFileSearchState();
-            fileSearchSessionId = fileViewerSessionId;
+            filePickerSearchState.setSessionId(fileViewerSessionId);
           }
           if (mode === "file" || mode === "diff" || mode === "preview") setFileViewMode(mode);
           else applyFileMode();
@@ -9625,7 +9460,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           resetFileViewerPanel();
           closeFilePickerMenu({ restoreInput: true });
           resetFileSearchState();
-          fileSearchSessionId = "";
+          filePickerSearchState.setSessionId("");
           fileBackdrop.style.display = "none";
           fileViewer.style.display = "none";
           fileViewerSessionId = "";
@@ -9857,7 +9692,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           applyFileMenuState();
           if (!query || !(fileViewerSessionId || selected)) {
             resetFileSearchState();
-            fileSearchSessionId = fileViewerSessionId || selected || "";
+            filePickerSearchState.setSessionId(fileViewerSessionId || selected || "");
             renderFilePickerMenu();
             applyFileMenuState();
             return;

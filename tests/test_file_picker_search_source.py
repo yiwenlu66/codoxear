@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
 APP_FILE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_file_helpers.js"
+APP_FILE_PICKER_JS = ROOT / "codoxear" / "static" / "app_file_picker.js"
 
 
 def js_function(source: str, name: str) -> str:
@@ -44,9 +45,10 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
         "normalizeFileCandidateSource",
     ]
     snippet = "\n".join(js_function(source, name) for name in wrapper_names) + "\n" + source[start:end]
-    snippet_with_helpers = "const codoxearFileHelpers = window.CodoxearFileHelpers;\n" + snippet + "\nglobalThis.__test_file_picker_search = { applyFileCandidateEntries, visibleFilePickerEntries, localFilePickerSearchEntries };\n"
+    snippet_with_helpers = "const codoxearFileHelpers = window.CodoxearFileHelpers;\nconst codoxearFilePicker = window.CodoxearFilePicker;\n" + snippet + "\nglobalThis.__test_file_picker_search = { applyFileCandidateEntries, visibleFilePickerEntries, localFilePickerSearchEntries };\n"
     display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
     file_helpers_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
+    file_picker_source = APP_FILE_PICKER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -59,15 +61,24 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
           activeFilePath: state.activeFilePath || "",
           filePickerSearchActive: Boolean(state.filePickerSearchActive),
           filePickerInput: {{ value: state.filePickerInputValue || "" }},
-          fileSearchResults: state.fileSearchResults || [],
-          fileSearchLoadedQuery: state.fileSearchLoadedQuery || "",
-          fileSearchPendingQuery: state.fileSearchPendingQuery || "",
-          fileSearchErrorQuery: state.fileSearchErrorQuery || "",
+          filePickerSuppressDraftQuery: state.filePickerSuppressDraftQuery || "",
+          filePickerSearchState: {{
+            snapshot: () => ({{
+              results: state.fileSearchResults || [],
+              loadedQuery: state.fileSearchLoadedQuery || "",
+              pendingQuery: state.fileSearchPendingQuery || "",
+              errorQuery: state.fileSearchErrorQuery || "",
+              error: state.fileSearchError || "",
+              truncatedQuery: state.fileSearchTruncatedQuery || "",
+              sessionId: state.fileSearchSessionId || "",
+            }}),
+          }},
           baseName: (path) => String(path || "").split("/").pop() || "",
         }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(display_source)}, ctx);
         vm.runInContext({json.dumps(file_helpers_source)}, ctx);
+        vm.runInContext({json.dumps(file_picker_source)}, ctx);
         vm.runInContext({json.dumps(snippet_with_helpers)}, ctx);
         const seedEntries = state.fileEntries || (state.fileCandidateList || []).map((path) => ({{ path }}));
         ctx.__test_file_picker_search.applyFileCandidateEntries(seedEntries);
@@ -1004,6 +1015,7 @@ class TestFilePickerSearchSource(unittest.TestCase):
     def test_file_picker_candidate_sections_and_cache_are_present(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         helper_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
+        picker_source = APP_FILE_PICKER_JS.read_text(encoding="utf-8")
         css = (APP_JS.parent / "app.css").read_text(encoding="utf-8")
         self.assertIn("function filePickerSectionLabel(source)", source)
         self.assertIn("return codoxearFileHelpers.filePickerSectionLabel(source);", source)
@@ -1018,7 +1030,10 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertIn("openFilePathWithResolvedMode(path, { line: filePickerSelectionLine(), changed: Boolean(entry.changed), gitPath: Boolean(entry.gitPath) })", source)
         self.assertIn("openFilePathWithResolvedMode(active.path, { line: filePickerSelectionLine(), changed: Boolean(active.changed), gitPath: Boolean(active.gitPath) })", source)
         self.assertIn("compareFilePickerEntries", source)
-        self.assertIn("prependPendingSessionPathEntry(localFilePickerSearchEntries(query), query)", source)
+        self.assertIn("filePickerSearchState = codoxearFilePicker.createSearchState", source)
+        self.assertIn("function createSearchState(host)", picker_source)
+        self.assertIn("function visibleFilePickerEntries(context)", picker_source)
+        self.assertIn("prependPendingSessionPathEntry(localFilePickerSearchEntries(context, query), query)", picker_source)
         self.assertIn("function filePickerCandidateScore(path, query)", source)
         self.assertIn("applyFileMode();\n            renderFilePickerMenu();", source)
         self.assertIn("const diffable = canToggleMode && activeFileGitPath && fileCandidateGitStateFresh", source)
