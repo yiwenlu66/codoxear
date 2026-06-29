@@ -19,8 +19,6 @@ from typing import Any
 from codoxear.agent_backend import get_agent_backend
 from codoxear.agent_backend import normalize_agent_backend
 from codoxear.pi_log import pi_complete_jsonl_offset_before as _pi_complete_jsonl_offset_before
-from codoxear.pi_log import pi_context_token_update as _pi_context_token_update
-from codoxear.pi_log import pi_token_update as _pi_token_update
 from codoxear import pty_util as _pty_util
 from codoxear.broker_launch import SHELL_PRE_EXEC_MARKER
 from codoxear.broker_launch import SHELL_PRE_EXEC_MARKER_BYTES
@@ -45,6 +43,9 @@ from codoxear.broker_log_binding import _detach_trigger_seen
 from codoxear.broker_log_binding import _maybe_detach_on_session_switch_trigger
 from codoxear.broker_log_binding import _resolve_broker_log_binding
 from codoxear.broker_log_binding import _seed_broker_log_state
+from codoxear.broker_log_watcher import _apply_log_objects_to_state
+from codoxear.broker_log_watcher import _clear_resume_delivery_mute_if_idle
+from codoxear.broker_log_watcher import _pop_key_queue_if_idle
 from codoxear.broker_metadata import _claimed_log_paths_from_sock_meta
 from codoxear.broker_metadata import _write_broker_sidecar_meta
 from codoxear.broker_control import _handle_broker_control_connection
@@ -655,22 +656,13 @@ class Broker:
 
             objs, new_off = _read_jsonl_from_offset(log_path, off, max_bytes=256 * 1024)
             def maybe_drain_one_if_idle() -> None:
-                fd: int | None = None
-                kq: list[bytes] = []
                 with self._lock:
                     st3 = self.state
                     if not st3:
                         return
-                    if st3.busy or st3.turn_open or st3.pending_calls:
-                        return
-                    if not st3.key_queue:
-                        return
-                    fd = st3.pty_master_fd
-                    if fd is None:
-                        return
-                    if st3.key_queue:
-                        kq = st3.key_queue[:]
-                        st3.key_queue.clear()
+                    fd, kq = _pop_key_queue_if_idle(st3)
+                if fd is None:
+                    return
                 for b in kq:
                     try:
                         _write_all(fd, b)
@@ -688,9 +680,8 @@ class Broker:
                 clear_meta = False
                 with self._lock:
                     st3 = self.state
-                    if st3 and st3.resume_session_id and (not st3.busy) and (not st3.turn_open) and (not st3.pending_calls):
-                        st3.resume_session_id = None
-                        clear_meta = True
+                    if st3:
+                        clear_meta = _clear_resume_delivery_mute_if_idle(st3)
                 if clear_meta:
                     self._write_meta()
 
@@ -711,31 +702,7 @@ class Broker:
                 st2 = self.state
                 if not st2 or st2.log_path is None or (not _paths_match(st2.log_path, log_path)) or st2.log_off != off:
                     continue
-                for obj in objs:
-                    now_ts = _now()
-                    token_update = _pi_token_update(obj)
-                    if token_update is not None:
-                        st2.token = token_update
-                    if obj.get("type") == "event_msg":
-                        p = obj.get("payload")
-                        if not isinstance(p, dict):
-                            raise ValueError("invalid rollout event_msg payload")
-                        pt = p.get("type")
-                        if pt == "token_count":
-                            info = p.get("info")
-                            if isinstance(info, dict) and isinstance(info.get("total_token_usage"), dict):
-                                ctx = info.get("model_context_window")
-                                last = info.get("last_token_usage")
-                                if isinstance(ctx, int) and isinstance(last, dict):
-                                    tt = last.get("total_tokens")
-                                    if isinstance(tt, int):
-                                        token_update = _pi_context_token_update(
-                                            context_window=ctx,
-                                            tokens_in_context=tt,
-                                            as_of=obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None,
-                                        )
-                                        st2.token = token_update
-                    _apply_rollout_obj_to_state(st2, obj, now_ts=now_ts)
+                _apply_log_objects_to_state(st2, objs, now=_now)
                 st2.log_off = new_off
 
             maybe_mark_idle()
