@@ -5,6 +5,9 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 import urllib.parse
 
+from .git_ops import git_path_from_token
+from .git_ops import git_path_query
+from .git_ops import path_json_text
 from .file_route_common import body_flag
 from .file_view import ClientFileView
 from .video_preview import video_response_payload
@@ -65,6 +68,7 @@ def _map_resolve_error(handler: Any, exc: BaseException, deps: GlobalFileRouteDe
 def _global_file_request(handler: Any, deps: GlobalFileRouteDeps) -> GlobalFileRequest | None:
     body = deps.read_json_body(handler)
     raw_path = body.get("path")
+    raw_token = body.get("path_token")
     if not isinstance(raw_path, str) or raw_path == "":
         deps.json_response(handler, 400, {"error": "path required"})
         return None
@@ -73,7 +77,14 @@ def _global_file_request(handler: Any, deps: GlobalFileRouteDeps) -> GlobalFileR
         deps.json_response(handler, 400, {"error": "session_id must be a string"})
         return None
     session_id = session_id_raw if isinstance(session_id_raw, str) and session_id_raw else ""
-    return GlobalFileRequest(path=raw_path, session_id=session_id, git_path=body_flag(body, "git_path"))
+    git_path = body_flag(body, "git_path")
+    if git_path and isinstance(raw_token, str) and raw_token:
+        try:
+            raw_path = git_path_from_token(raw_token)
+        except ValueError as e:
+            deps.json_response(handler, 400, {"error": str(e)})
+            return None
+    return GlobalFileRequest(path=raw_path, session_id=session_id, git_path=git_path)
 
 
 def _global_file_view(request: GlobalFileRequest, deps: GlobalFileRouteDeps) -> tuple[Path, str, ClientFileView]:
@@ -97,7 +108,7 @@ def _handle_global_file_read(handler: Any, *, manager: Any, deps: GlobalFileRout
         return
     if request.session_id:
         try:
-            manager.files_add(request.session_id, str(path_obj))
+            manager.files_add(request.session_id, path_json_text(path_obj))
         except KeyError:
             pass
     deps.json_response(handler, 200, global_file_read_payload(request=request, path_obj=path_obj, rel_for_url=rel_for_url, view=view))
@@ -120,7 +131,7 @@ def _handle_global_file_inspect(handler: Any, *, deps: GlobalFileRouteDeps) -> N
         200,
         {
             "ok": True,
-            "path": str(path_obj),
+            "path": path_json_text(path_obj),
             "kind": view.kind,
             "content_type": view.content_type,
             "size": int(view.size),
@@ -138,21 +149,21 @@ def global_file_read_payload(
     view: ClientFileView,
 ) -> dict[str, Any]:
     media_blob_url = (
-        f"/api/sessions/{request.session_id}/file/blob?path={urllib.parse.quote(rel_for_url)}&git_path=1"
+        f"/api/sessions/{request.session_id}/file/blob?{git_path_query(rel_for_url)}&git_path=1"
         if request.git_path and request.session_id and rel_for_url
-        else f"/api/files/blob?path={urllib.parse.quote(str(path_obj))}"
+        else f"/api/files/blob?path={urllib.parse.quote(path_json_text(path_obj), safe='')}"
     )
     media_preview_url = (
-        f"/api/sessions/{request.session_id}/file/video_preview?path={urllib.parse.quote(rel_for_url)}&git_path=1"
+        f"/api/sessions/{request.session_id}/file/video_preview?{git_path_query(rel_for_url)}&git_path=1"
         if request.git_path and request.session_id and rel_for_url
-        else f"/api/files/video_preview?path={urllib.parse.quote(str(path_obj))}"
+        else f"/api/files/video_preview?path={urllib.parse.quote(path_json_text(path_obj), safe='')}"
     )
     if view.kind == "image":
         return {
             "ok": True,
             "kind": "image",
             "content_type": view.content_type,
-            "path": str(path_obj),
+            "path": path_json_text(path_obj),
             "size": int(view.size),
             "image_url": media_blob_url,
         }
@@ -161,7 +172,7 @@ def global_file_read_payload(
             "ok": True,
             "kind": "pdf",
             "content_type": view.content_type,
-            "path": str(path_obj),
+            "path": path_json_text(path_obj),
             "size": int(view.size),
             "pdf_url": media_blob_url,
         }
@@ -177,7 +188,7 @@ def global_file_read_payload(
         return {
             "ok": True,
             "kind": "download_only",
-            "path": str(path_obj),
+            "path": path_json_text(path_obj),
             "size": int(view.size),
             "reason": view.blocked_reason,
             "viewer_max_bytes": view.viewer_max_bytes,
@@ -185,7 +196,7 @@ def global_file_read_payload(
     return {
         "ok": True,
         "kind": view.kind,
-        "path": str(path_obj),
+        "path": path_json_text(path_obj),
         "size": int(view.size),
         "text": view.text,
         "editable": bool(view.editable),

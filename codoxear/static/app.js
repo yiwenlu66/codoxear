@@ -7018,6 +7018,7 @@
         let fileViewerSessionId = "";
         let fileViewerUnavailableSessionId = "";
         let activeFilePath = "";
+        let activeFileApiPath = "";
         let activeFileGitPath = false;
         let activeFileKind = "";
         let activeFileText = "";
@@ -7095,11 +7096,16 @@
           fileOpenAbortController = null;
         }
 
-        function beginFileOpenRequest(nextPath = null, { line = undefined, gitPath = undefined } = {}) {
+        function beginFileOpenRequest(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {}) {
           cancelPendingFileOpen();
+          const previousPath = String(activeFilePath ?? "");
+          const previousApiPath = String(activeFileApiPath || "");
           const rel = String(nextPath == null ? activeFilePath : nextPath);
+          const useGitPath = gitPath === undefined ? activeFileGitPath : Boolean(gitPath);
+          const reusableApiPath = rel === previousPath ? previousApiPath : "";
           activeFilePath = rel;
-          if (gitPath !== undefined) activeFileGitPath = Boolean(gitPath);
+          activeFileGitPath = useGitPath;
+          activeFileApiPath = apiPath === undefined ? (useGitPath ? fileApiPathForPath(rel, reusableApiPath) : "") : normalizeFileApiPath(apiPath);
           activeFileLine = line === undefined ? activeFileLine : normalizeLineNumber(line);
           const controller = typeof AbortController === "function" ? new AbortController() : null;
           if (controller) fileOpenAbortController = controller;
@@ -7107,6 +7113,7 @@
             requestId: fileOpenRequestId,
             sessionId: currentFileSessionId(),
             path: rel,
+            apiPath: activeFileApiPath,
             gitPath: activeFileGitPath,
             line: activeFileLine,
             signal: controller ? controller.signal : null,
@@ -7118,7 +7125,8 @@
           return (
             request.requestId === fileOpenRequestId &&
             request.sessionId === currentFileSessionId() &&
-            request.path === String(activeFilePath ?? "")
+            request.path === String(activeFilePath ?? "") &&
+            String(request.apiPath || "") === String(activeFileApiPath || "")
           );
         }
 
@@ -7153,6 +7161,7 @@
           if (!sid || path === "") return;
           fileSessionSelections.set(sid, {
             path,
+            apiPath: activeFileApiPath || "",
             line: activeFileLine == null ? null : activeFileLine,
             gitPath: Boolean(activeFileGitPath),
           });
@@ -7180,6 +7189,7 @@
           if (rememberedPath !== "") {
             return {
               path: rememberedPath,
+              apiPath: normalizeFileApiPath(remembered.apiPath),
               line: normalizeLineNumber(remembered.line),
               gitPath: Boolean(remembered.gitPath),
             };
@@ -7280,9 +7290,9 @@
           if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
           const preferred = preferredFileSelectionForSession(sid);
           if (preferred.path) {
-            setFilePath(preferred.path, { line: preferred.line, gitPath: preferred.gitPath });
+            setFilePath(preferred.path, { line: preferred.line, gitPath: preferred.gitPath, apiPath: preferred.apiPath });
             try {
-              await openFilePathWithResolvedMode(preferred.path, { line: preferred.line, gitPath: preferred.gitPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) });
+              await openFilePathWithResolvedMode(preferred.path, { line: preferred.line, gitPath: preferred.gitPath, apiPath: preferred.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) });
             } catch (e) {
               if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
               fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
@@ -7292,9 +7302,9 @@
           const firstKey = fileCandidateList.length ? fileCandidateList[0] : "";
           const first = firstKey ? fileEntryMap.get(firstKey) : null;
           if (first) {
-            setFilePath(first.path, { line: null, gitPath: first.gitPath });
+            setFilePath(first.path, { line: null, gitPath: first.gitPath, apiPath: first.apiPath });
             try {
-              await openFilePathWithResolvedMode(first.path, { line: null, changed: Boolean(first.changed), gitPath: Boolean(first.gitPath), isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) });
+              await openFilePathWithResolvedMode(first.path, { line: null, changed: Boolean(first.changed), gitPath: Boolean(first.gitPath), apiPath: first.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) });
             } catch (e) {
               if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
               fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
@@ -7304,6 +7314,7 @@
           if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
           resetFileViewerPanel();
           activeFilePath = "";
+          activeFileApiPath = "";
           activeFileGitPath = false;
           activeFileLine = null;
           resetFilePickerInput();
@@ -8358,7 +8369,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const ok = window.confirm(`Reload ${savePath} from disk and discard your unsaved editor draft?`);
             if (!ok) return;
             fileStatus.textContent = `Reloading ${savePath}...`;
-            const reloaded = await openFilePath(savePath, { line: activeFileLine, gitPath: activeFileGitPath });
+            const reloaded = await openFilePath(savePath, { line: activeFileLine, gitPath: activeFileGitPath, apiPath: activeFileApiPath });
             if (!reloaded && activeFilePath === savePath) fileStatus.textContent = `${savePath} - reload failed`;
           };
           keepBtn.onclick = (e) => {
@@ -8382,12 +8393,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
           const saveSessionId = fileViewerSessionId;
           const savePath = activeFilePath;
+          const saveApiPath = activeFileApiPath || "";
           const saveDraft = Boolean(activeFileDraft);
           const saveVersion = activeFileVersion;
           const text = getFileEditorText();
           const saveToken = ++fileSaveSeq;
           activeFileSaveToken = saveToken;
-          const saveStillCurrent = () => fileViewerSessionId === saveSessionId && activeFilePath === savePath && activeFileSaveToken === saveToken && !isFileViewerSessionUnavailable();
+          const saveStillCurrent = () => fileViewerSessionId === saveSessionId && activeFilePath === savePath && activeFileApiPath === saveApiPath && activeFileSaveToken === saveToken && !isFileViewerSessionUnavailable();
           fileSavePending = true;
           updateFileEditButton();
           syncFileEditorReadOnly();
@@ -8396,6 +8408,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const saveBody = saveDraft
               ? { path: savePath, text, create: true }
               : { path: savePath, text, version: saveVersion, git_path: Boolean(activeFileGitPath) };
+            if (!saveDraft && activeFileGitPath && saveApiPath) saveBody.path_token = saveApiPath;
             const res = await api(`/api/sessions/${saveSessionId}/file/write`, {
               method: "POST",
               body: saveBody,
@@ -8405,7 +8418,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             if (res && typeof res.version === "string") activeFileVersion = res.version;
             if (res && typeof res.editable === "boolean") activeFileEditable = res.editable;
             activeFileDraft = false;
-            if (saveDraft) activeFileGitPath = false;
+            if (saveDraft) {
+              activeFileGitPath = false;
+              activeFileApiPath = "";
+            }
             applyFileMode();
             setFileDirty(false);
             if (exitEditMode) setFileEditMode(false);
@@ -8443,17 +8459,17 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return false;
         }
 
-        async function openFilePathWithGuard(path, { line = null, mode = null, isCurrent = null, gitPath = false } = {}) {
+        async function openFilePathWithGuard(path, { line = null, mode = null, isCurrent = null, gitPath = false, apiPath = "" } = {}) {
           if (blockUnavailableFileAction()) return false;
           const sessionAtStart = currentFileSessionId();
           const currentGuard = typeof isCurrent === "function" ? isCurrent : () => currentFileSessionId() === sessionAtStart && !isFileViewerSessionUnavailable();
           if (!(await maybeHandleUnsavedFileChanges())) return false;
           if (blockUnavailableFileAction()) return false;
           if (!currentGuard()) return false;
-          setFilePath(path, { line });
+          setFilePath(path, { line, gitPath, apiPath });
           if (mode) setFileViewMode(mode);
           renderFilePickerMenu();
-          await openFilePath(path, { line, gitPath });
+          await openFilePath(path, { line, gitPath, apiPath });
           return Boolean(currentGuard());
         }
 
@@ -8498,7 +8514,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (blockUnavailableFileAction()) return false;
           setFileViewMode(next);
           renderFilePickerMenu();
-          await openFilePath(activeFilePath, { line: activeFileLine, gitPath: activeFileGitPath });
+          await openFilePath(activeFilePath, { line: activeFileLine, gitPath: activeFileGitPath, apiPath: activeFileApiPath });
           return true;
         }
 
@@ -8592,10 +8608,19 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return true;
         }
 
-        function setFilePath(rel, { line = null, gitPath = undefined } = {}) {
+        function normalizeFileApiPath(value) {
+          return typeof value === "string" && value !== "" ? value : "";
+        }
+
+        function setFilePath(rel, { line = null, gitPath = undefined, apiPath = undefined } = {}) {
+          const previousPath = String(activeFilePath ?? "");
+          const previousApiPath = String(activeFileApiPath || "");
           const next = String(rel ?? "");
+          const useGitPath = gitPath === undefined ? activeFileGitPath : Boolean(gitPath);
+          const reusableApiPath = next === previousPath ? previousApiPath : "";
           activeFilePath = next;
-          if (gitPath !== undefined) activeFileGitPath = Boolean(gitPath);
+          activeFileGitPath = useGitPath;
+          activeFileApiPath = apiPath === undefined ? (useGitPath ? fileApiPathForPath(next, reusableApiPath) : "") : normalizeFileApiPath(apiPath);
           activeFileLine = normalizeLineNumber(line);
           resetFilePickerInput();
           fileMenuOpen = false;
@@ -8603,34 +8628,59 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           applyFileMode();
         }
 
-        function fileCandidateKey(path, gitPath = false) {
-          return `${gitPath ? "git" : "session"}\u0000${String(path ?? "")}`;
+        function fileCandidateKey(path, gitPath = false, apiPath = "") {
+          const identity = gitPath && apiPath ? apiPath : String(path ?? "");
+          return `${gitPath ? "git" : "session"}\u0000${identity}`;
         }
 
         function fileCandidateKeyForEntry(entry) {
-          return fileCandidateKey(entry && entry.path, Boolean(entry && entry.gitPath));
+          return fileCandidateKey(entry && entry.path, Boolean(entry && entry.gitPath), normalizeFileApiPath(entry && entry.apiPath));
+        }
+
+        function fileEntryForPath(path, gitPath = false, apiPath = "") {
+          const preferred = fileEntryMap.get(fileCandidateKey(path, gitPath, apiPath));
+          if (preferred) return preferred;
+          const fallback = fileEntryMap.get(fileCandidateKey(path, gitPath));
+          if (fallback && (!apiPath || !fallback.apiPath || fallback.apiPath === apiPath)) return fallback;
+          for (const key of fileCandidateList) {
+            const entry = fileEntryMap.get(key);
+            if (!entry || entry.path !== path || Boolean(entry.gitPath) !== Boolean(gitPath)) continue;
+            if (!apiPath || normalizeFileApiPath(entry.apiPath) === apiPath) return entry;
+          }
+          return null;
+        }
+
+        function fileApiPathForPath(path, apiPath = "") {
+          const existing = normalizeFileApiPath(apiPath);
+          if (existing) return existing;
+          const entry = fileEntryForPath(path, true);
+          return normalizeFileApiPath(entry && entry.apiPath);
         }
 
         function activeFileEntry() {
           if (!activeFilePath) return null;
-          return fileEntryMap.get(fileCandidateKey(activeFilePath, activeFileGitPath)) || null;
+          return fileEntryForPath(activeFilePath, activeFileGitPath, activeFileApiPath);
         }
 
-        function isGitFileCandidatePath(path, changed = null, gitPath = null) {
+        function isGitFileCandidatePath(path, changed = null, gitPath = null, apiPath = "") {
           if (gitPath !== null && gitPath !== undefined) return Boolean(gitPath);
           if (changed !== null && changed !== undefined) return Boolean(changed);
-          const gitEntry = fileEntryMap.get(fileCandidateKey(path, true));
+          const gitEntry = fileEntryForPath(path, true, apiPath);
           if (gitEntry) return true;
-          const sessionEntry = fileEntryMap.get(fileCandidateKey(path, false));
+          const sessionEntry = fileEntryForPath(path, false);
           return Boolean(sessionEntry && sessionEntry.gitPath);
         }
 
-        async function inspectSessionFilePath(path, { gitPath = false } = {}) {
+        async function inspectSessionFilePath(path, { gitPath = false, apiPath = "" } = {}) {
           const sid = fileViewerSessionId || selected || "";
           if (!sid) throw new Error("select a session first");
           try {
             const body = { session_id: sid, path };
-            if (gitPath) body.git_path = true;
+            if (gitPath) {
+              body.git_path = true;
+              const token = normalizeFileApiPath(apiPath);
+              if (token) body.path_token = token;
+            }
             const res = await api("/api/files/inspect", {
               method: "POST",
               body,
@@ -8642,11 +8692,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
         }
 
-        async function resolveFileOpenMode(path, { changed = null, gitPath = null } = {}) {
-          const useGitPath = gitPath === null || gitPath === undefined ? isGitFileCandidatePath(path, changed) : Boolean(gitPath);
-          const identityEntry = fileEntryMap.get(fileCandidateKey(path, useGitPath));
+        async function resolveFileOpenMode(path, { changed = null, gitPath = null, apiPath = "" } = {}) {
+          const token = normalizeFileApiPath(apiPath);
+          const useGitPath = gitPath === null || gitPath === undefined ? isGitFileCandidatePath(path, changed, null, token) : Boolean(gitPath);
+          const identityEntry = fileEntryForPath(path, useGitPath, token);
+          const requestApiPath = token || normalizeFileApiPath(identityEntry && identityEntry.apiPath);
           const candidateChanged = useGitPath && (changed === null || changed === undefined ? Boolean(identityEntry && identityEntry.changed) : Boolean(changed));
-          const inspect = await inspectSessionFilePath(path, { gitPath: useGitPath });
+          const inspect = await inspectSessionFilePath(path, { gitPath: useGitPath, apiPath: requestApiPath });
           if (!inspect || !inspect.exists) {
             if (fileCandidateGitStateFresh && candidateChanged) return "diff";
             throw new Error("file not found");
@@ -8658,20 +8710,23 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return "file";
         }
 
-        async function openFilePathWithResolvedMode(path, { line = null, changed = null, isCurrent = null, gitPath = null } = {}) {
+        async function openFilePathWithResolvedMode(path, { line = null, changed = null, isCurrent = null, gitPath = null, apiPath = "" } = {}) {
           if (blockUnavailableFileAction()) return false;
           const sessionAtStart = currentFileSessionId();
           const currentGuard = typeof isCurrent === "function" ? isCurrent : () => currentFileSessionId() === sessionAtStart && !isFileViewerSessionUnavailable();
-          const useGitPath = gitPath === null || gitPath === undefined ? isGitFileCandidatePath(path, changed) : Boolean(gitPath);
+          const token = normalizeFileApiPath(apiPath);
+          const useGitPath = gitPath === null || gitPath === undefined ? isGitFileCandidatePath(path, changed, null, token) : Boolean(gitPath);
+          const entry = fileEntryForPath(path, useGitPath, token);
+          const requestApiPath = token || normalizeFileApiPath(entry && entry.apiPath);
           let mode;
           try {
-            mode = await resolveFileOpenMode(path, { changed, gitPath: useGitPath });
+            mode = await resolveFileOpenMode(path, { changed, gitPath: useGitPath, apiPath: requestApiPath });
           } catch (e) {
             if (blockUnavailableFileAction()) return false;
             throw e;
           }
           if (!currentGuard()) return false;
-          return await openFilePathWithGuard(path, { line, mode, isCurrent: currentGuard, gitPath: useGitPath });
+          return await openFilePathWithGuard(path, { line, mode, isCurrent: currentGuard, gitPath: useGitPath, apiPath: requestApiPath });
         }
 
         async function openDraftFilePath(path, { line = null } = {}) {
@@ -8719,10 +8774,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (!entry || typeof entry.path !== "string" || entry.path === "") return null;
           const source = normalizeFileCandidateSource(entry.source);
           const gitPath = entry.gitPath === undefined ? Boolean(entry.changed && source === "changed") : Boolean(entry.gitPath);
+          const apiPath = normalizeFileApiPath(entry.apiPath || entry.api_path);
           const cloned = {
             path: entry.path,
+            apiPath,
             gitPath,
-            key: fileCandidateKey(entry.path, gitPath),
+            key: fileCandidateKey(entry.path, gitPath, apiPath),
             additions: entry.additions ?? null,
             deletions: entry.deletions ?? null,
             changed: Boolean(entry.changed),
@@ -8777,9 +8834,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const rel = sessionRelativePath(raw, sid) || raw;
           if (!rel) return;
           const gitPath = Boolean(activeFileGitPath);
-          const current = fileEntryMap.get(fileCandidateKey(rel, gitPath));
+          const current = fileEntryForPath(rel, gitPath, activeFileApiPath);
           upsertFileEntry({
             path: rel,
+            apiPath: gitPath ? activeFileApiPath : "",
             gitPath,
             additions: current && current.changed ? current.additions : null,
             deletions: current && current.changed ? current.deletions : null,
@@ -8948,10 +9006,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const task = (async () => {
             const out = new Set();
             const s = sessionIndex.get(sid);
-            const addCandidate = (path, gitPath = false) => {
+            const addCandidate = (path, gitPath = false, apiPath = "") => {
               const rel = String(path || "");
               if (!rel || rel === ".") return;
-              out.add(JSON.stringify({ path: rel, gitPath: Boolean(gitPath) }));
+              const token = normalizeFileApiPath(apiPath);
+              out.add(JSON.stringify({ path: rel, gitPath: Boolean(gitPath), apiPath: token }));
             };
             for (const abs of listFromFilesField(s && s.files)) {
               const rel = sessionRelativePath(abs);
@@ -8966,7 +9025,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               for (const entry of entries) {
                 if (!entry || typeof entry.path !== "string") continue;
                 const path = entry.path;
-                if (path !== "") addCandidate(path, true);
+                if (path !== "") addCandidate(path, true, entry.api_path || entry.apiPath || "");
               }
             } catch {}
             return [...out].map((raw) => {
@@ -9046,7 +9105,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             }
             const path = entry.path;
             const identityHint = filePickerIdentityHint(entry, duplicatePaths, { showSourceSections });
-            const active = fileMenuFocus === idx || (fileMenuFocus < 0 && activeFilePath === path && activeFileGitPath === Boolean(entry.gitPath) && !query);
+            const entryApiPath = normalizeFileApiPath(entry.apiPath);
+            const active = fileMenuFocus === idx || (fileMenuFocus < 0 && activeFilePath === path && activeFileGitPath === Boolean(entry.gitPath) && activeFileApiPath === entryApiPath && !query);
             const btn = el("button", {
               id: `filePickerOption-${idx}`,
               class: "fileMenuItem" + (entry.createNew ? " fileMenuCreate" : "") + (active ? " active" : ""),
@@ -9076,7 +9136,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 return;
               }
               try {
-                await openFilePathWithResolvedMode(path, { line: filePickerSelectionLine(), changed: Boolean(entry.changed), gitPath: Boolean(entry.gitPath) });
+                await openFilePathWithResolvedMode(path, { line: filePickerSelectionLine(), changed: Boolean(entry.changed), gitPath: Boolean(entry.gitPath), apiPath: entry.apiPath });
               } catch (e) {
                 fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
               }
@@ -9345,6 +9405,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               .filter((entry) => entry && typeof entry.path === "string" && entry.path !== "")
               .map((entry) => ({
                 path: entry.path,
+                apiPath: normalizeFileApiPath(entry.api_path || entry.apiPath),
                 additions:
                   typeof entry.additions === "number" && Number.isFinite(entry.additions) ? entry.additions : entry.additions == null ? null : null,
                 deletions:
@@ -9402,6 +9463,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (queryOpen) {
             resetFileViewerPanel();
             activeFilePath = "";
+            activeFileApiPath = "";
             activeFileGitPath = false;
             activeFileLine = normalizeLineNumber(line);
             fileStatus.textContent = "Choose which file to open.";
@@ -9422,9 +9484,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const preferred = explicitPath || preferredSelection.path;
           const preferredLine = explicitPath ? normalizeLineNumber(line) : preferredSelection.line;
           const preferredGitPath = explicitPath ? false : Boolean(preferredSelection.gitPath);
+          const preferredApiPath = explicitPath ? "" : normalizeFileApiPath(preferredSelection.apiPath);
           if (preferred) {
-            setFilePath(preferred, { line: preferredLine, gitPath: preferredGitPath });
-            void openFilePathWithResolvedMode(preferred, { line: preferredLine, gitPath: preferredGitPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) }).catch((e) => {
+            setFilePath(preferred, { line: preferredLine, gitPath: preferredGitPath, apiPath: preferredApiPath });
+            void openFilePathWithResolvedMode(preferred, { line: preferredLine, gitPath: preferredGitPath, apiPath: preferredApiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) }).catch((e) => {
               if (!isFileViewerSessionCurrent(sid, syncToken)) return;
               fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
             });
@@ -9433,8 +9496,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const firstKey = fileCandidateList.length ? fileCandidateList[0] : "";
           const first = firstKey ? fileEntryMap.get(firstKey) : null;
           if (first) {
-            setFilePath(first.path, { line: null, gitPath: first.gitPath });
-            void openFilePathWithResolvedMode(first.path, { line: null, changed: Boolean(first.changed), gitPath: Boolean(first.gitPath), isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) }).catch((e) => {
+            setFilePath(first.path, { line: null, gitPath: first.gitPath, apiPath: first.apiPath });
+            void openFilePathWithResolvedMode(first.path, { line: null, changed: Boolean(first.changed), gitPath: Boolean(first.gitPath), apiPath: first.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) }).catch((e) => {
               if (!isFileViewerSessionCurrent(sid, syncToken)) return;
               fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
             });
@@ -9442,6 +9505,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
           resetFileViewerPanel();
           activeFilePath = "";
+          activeFileApiPath = "";
           activeFileGitPath = false;
           activeFileLine = null;
           resetFilePickerInput();
@@ -9492,10 +9556,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           updateFileEditButton();
           updateFileTouchToolbar();
         }
-        async function openFilePath(nextPath = null, { line = undefined, gitPath = undefined } = {}) {
+        async function openFilePath(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {}) {
           if (blockUnavailableFileAction()) return false;
           if (!fileViewerSessionId) return false;
-          const request = beginFileOpenRequest(nextPath, { line, gitPath });
+          const request = beginFileOpenRequest(nextPath, { line, gitPath, apiPath });
           const rel = request.path;
           if (!rel) {
             fileStatus.textContent = "Choose a file first.";
@@ -9515,7 +9579,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const viewMode = fileViewMode === "preview" && !isMarkdownPreviewable(rel) ? "file" : fileViewMode === "diff" && !canUseDiffView ? "file" : fileViewMode;
             if (viewMode !== fileViewMode) setFileViewMode(viewMode);
             if (viewMode === "diff") {
-              const res = await api(`/api/sessions/${request.sessionId}/git/file_versions?path=${encodeURIComponent(rel)}`, {
+              const pathTokenQuery = request.apiPath ? `&path_token=${encodeURIComponent(request.apiPath)}` : "";
+              const res = await api(`/api/sessions/${request.sessionId}/git/file_versions?path=${encodeURIComponent(rel)}${pathTokenQuery}`, {
                 signal: request.signal,
               });
               if (!isCurrentFileOpenRequest(request)) return false;
@@ -9536,7 +9601,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               rememberOpenedFile(rel, res && typeof res.abs_path === "string" ? res.abs_path : null);
             } else {
               const gitPathQuery = request.gitPath ? "&git_path=1" : "";
-              const res = await api(`/api/sessions/${request.sessionId}/file/read?path=${encodeURIComponent(rel)}${gitPathQuery}`, {
+              const pathTokenQuery = request.gitPath && request.apiPath ? `&path_token=${encodeURIComponent(request.apiPath)}` : "";
+              const res = await api(`/api/sessions/${request.sessionId}/file/read?path=${encodeURIComponent(rel)}${pathTokenQuery}${gitPathQuery}`, {
                 signal: request.signal,
               });
               if (!isCurrentFileOpenRequest(request)) return false;
@@ -9731,7 +9797,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               void openDraftFilePathWithGuard(active.path);
               return;
             }
-            void openFilePathWithResolvedMode(active.path, { line: filePickerSelectionLine(), changed: Boolean(active.changed), gitPath: Boolean(active.gitPath) }).catch((err) => {
+            void openFilePathWithResolvedMode(active.path, { line: filePickerSelectionLine(), changed: Boolean(active.changed), gitPath: Boolean(active.gitPath), apiPath: active.apiPath }).catch((err) => {
               fileStatus.textContent = `error: ${err && err.message ? err.message : "unable to inspect path"}`;
             });
             return;
@@ -9784,7 +9850,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           e.stopPropagation();
           if (blockUnavailableFileAction()) return;
           if (!fileViewerSessionId || !activeFilePath) return;
-          const url = resolveAppUrl(`/api/sessions/${fileViewerSessionId}/file/download?path=${encodeURIComponent(activeFilePath)}${activeFileGitPath ? "&git_path=1" : ""}`);
+          const tokenQuery = activeFileGitPath && activeFileApiPath ? `&path_token=${encodeURIComponent(activeFileApiPath)}` : "";
+          const url = resolveAppUrl(`/api/sessions/${fileViewerSessionId}/file/download?path=${encodeURIComponent(activeFilePath)}${tokenQuery}${activeFileGitPath ? "&git_path=1" : ""}`);
           const link = document.createElement("a");
           link.href = url;
           link.rel = "noopener";

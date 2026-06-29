@@ -31,7 +31,7 @@ def js_function(source: str, name: str) -> str:
 
 def eval_file_picker_search_helpers(state: dict) -> dict:
     source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function fileCandidateKey(path")
+    start = source.index("function normalizeFileApiPath(value)")
     end = source.index("async function getKnownFileRefCandidates() {", start)
     wrapper_names = [
         "fileSearchScore",
@@ -59,6 +59,7 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
           fileEntryMap: new Map(),
           activeFileDraft: Boolean(state.activeFileDraft),
           activeFilePath: state.activeFilePath || "",
+          activeFileApiPath: state.activeFileApiPath || "",
           filePickerSearchActive: Boolean(state.filePickerSearchActive),
           filePickerInput: {{ value: state.filePickerInputValue || "" }},
           filePickerSuppressDraftQuery: state.filePickerSuppressDraftQuery || "",
@@ -305,12 +306,13 @@ def eval_file_picker_identity_helpers() -> dict:
 
 def eval_resolve_file_open_mode_cases() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
-    snippet = "\n".join(js_function(source, name) for name in ["fileCandidateKey", "isGitFileCandidatePath", "resolveFileOpenMode"])
+    snippet = "\n".join(js_function(source, name) for name in ["normalizeFileApiPath", "fileCandidateKey", "fileEntryForPath", "isGitFileCandidatePath", "resolveFileOpenMode"])
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
         const ctx = {{
           fileEntryMap: new Map(),
+          fileCandidateList: [],
           fileCandidateGitStateFresh: false,
           fileNonDiffMode: "file",
           inspectedKind: "text",
@@ -321,7 +323,9 @@ def eval_resolve_file_open_mode_cases() -> dict:
         vm.createContext(ctx);
         vm.runInContext({json.dumps(snippet)}, ctx);
         (async () => {{
-          ctx.fileEntryMap.set(ctx.fileCandidateKey("changed.py", true), {{ path: "changed.py", gitPath: true, changed: true }});
+          const changedKey = ctx.fileCandidateKey("changed.py", true);
+          ctx.fileCandidateList.push(changedKey);
+          ctx.fileEntryMap.set(changedKey, {{ path: "changed.py", gitPath: true, changed: true }});
           ctx.fileCandidateGitStateFresh = true;
           ctx.inspectedKind = "text";
           const freshChanged = await ctx.resolveFileOpenMode("changed.py");
@@ -367,6 +371,7 @@ def eval_file_candidates_while_changed_files_pending() -> dict:
     names = [
         "listFromFilesField",
         "stripPathLocationSuffix",
+        "normalizeFileApiPath",
         "fileCandidateKey",
         "fileCandidateKeyForEntry",
         "normalizeFileCandidateSource",
@@ -453,6 +458,7 @@ def eval_file_candidates_after_changed_files_failure() -> dict:
     names = [
         "listFromFilesField",
         "stripPathLocationSuffix",
+        "normalizeFileApiPath",
         "fileCandidateKey",
         "fileCandidateKeyForEntry",
         "normalizeFileCandidateSource",
@@ -540,6 +546,7 @@ def eval_file_candidate_cache_helpers() -> dict:
     names = [
         "listFromFilesField",
         "stripPathLocationSuffix",
+        "normalizeFileApiPath",
         "fileCandidateKey",
         "fileCandidateKeyForEntry",
         "normalizeFileCandidateSource",
@@ -1027,8 +1034,8 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertIn("const FILE_CANDIDATE_CACHE_TTL_MS = 15000;", source)
         self.assertIn("fileCandidateCache.set(sid, { key, ts: Date.now(), entries: currentFileCandidateEntries() });", source)
         self.assertIn("fileCandidateCache.delete(sid);", source)
-        self.assertIn("openFilePathWithResolvedMode(path, { line: filePickerSelectionLine(), changed: Boolean(entry.changed), gitPath: Boolean(entry.gitPath) })", source)
-        self.assertIn("openFilePathWithResolvedMode(active.path, { line: filePickerSelectionLine(), changed: Boolean(active.changed), gitPath: Boolean(active.gitPath) })", source)
+        self.assertIn("openFilePathWithResolvedMode(path, { line: filePickerSelectionLine(), changed: Boolean(entry.changed), gitPath: Boolean(entry.gitPath), apiPath: entry.apiPath })", source)
+        self.assertIn("openFilePathWithResolvedMode(active.path, { line: filePickerSelectionLine(), changed: Boolean(active.changed), gitPath: Boolean(active.gitPath), apiPath: active.apiPath })", source)
         self.assertIn("compareFilePickerEntries", source)
         self.assertIn("filePickerSearchState = codoxearFilePicker.createSearchState", source)
         self.assertIn("function createSearchState(host)", picker_source)

@@ -10,6 +10,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .git_ops import path_json_text
+
 
 def _positive_int_env(name: str, default: int) -> int:
     raw = os.environ.get(name)
@@ -54,7 +56,7 @@ def video_response_payload(
         "kind": "video",
         "content_type": content_type or "application/octet-stream",
         "preview_content_type": "video/mp4",
-        "path": str(path_obj),
+        "path": path_json_text(path_obj),
         "size": int(size),
         "video_url": video_url,
         "video_preview_url": preview_url,

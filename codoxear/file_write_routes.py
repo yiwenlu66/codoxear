@@ -10,6 +10,8 @@ from .file_route_common import FileRouteResponse
 from .file_route_common import SessionFileWriteRequest
 from .file_route_common import body_flag
 from .file_route_common import resolve_session_write_update_path
+from .git_ops import git_path_from_token
+from .git_ops import path_json_text
 from .file_text import FILE_READ_MAX_BYTES
 from .file_text import read_text_file_for_write
 from .file_text import write_new_text_file_atomic
@@ -82,6 +84,7 @@ def handle_file_write_post_route(
 
 def parse_session_file_write_request(obj: Mapping[str, Any]) -> SessionFileWriteRequest:
     path_raw = obj.get("path")
+    path_token_raw = obj.get("path_token")
     if not isinstance(path_raw, str) or path_raw == "":
         raise FileRouteError(400, {"error": "path required"})
     text_raw = obj.get("text")
@@ -90,6 +93,11 @@ def parse_session_file_write_request(obj: Mapping[str, Any]) -> SessionFileWrite
     create_raw = obj.get("create")
     create = create_raw if isinstance(create_raw, bool) else False
     git_path = body_flag(obj, "git_path")
+    if git_path and isinstance(path_token_raw, str) and path_token_raw:
+        try:
+            path_raw = git_path_from_token(path_token_raw)
+        except ValueError as e:
+            raise FileRouteError(400, {"error": str(e)}) from e
     if create and git_path:
         raise FileRouteError(400, {"error": "git_path is only supported for existing files"})
     version_raw = obj.get("version")
@@ -157,13 +165,13 @@ def write_session_file(
         )
     if record_file is not None:
         try:
-            record_file(str(path_obj))
+            record_file(path_json_text(path_obj))
         except KeyError:
             pass
     return {
         "ok": True,
-        "path": str(path_obj),
-        "rel": str(request.path),
+        "path": path_json_text(path_obj),
+        "rel": path_json_text(request.path),
         "size": int(size),
         "version": next_version,
         "editable": True,
@@ -183,7 +191,7 @@ def _create_session_file(
     try:
         size, next_version = write_new_text_file_atomic(path_obj, text=request.text)
     except FileExistsError as e:
-        payload: dict[str, Any] = {"error": "file already exists", "conflict": True, "path": str(path_obj)}
+        payload: dict[str, Any] = {"error": "file already exists", "conflict": True, "path": path_json_text(path_obj)}
         if path_obj.is_file():
             try:
                 _current_text, _current_size, current_version = read_text_file_for_write(path_obj, max_bytes=FILE_READ_MAX_BYTES)
@@ -232,7 +240,7 @@ def _update_session_file(
         if current_version != request.version:
             raise FileRouteError(
                 409,
-                {"error": "file changed on disk", "conflict": True, "path": str(path_obj), "version": current_version},
+                {"error": "file changed on disk", "conflict": True, "path": path_json_text(path_obj), "version": current_version},
             )
         try:
             size, next_version = write_text_file_atomic(path_obj, text=request.text)

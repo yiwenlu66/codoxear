@@ -32,7 +32,7 @@ class TestFileGlobalRoutesSource(unittest.TestCase):
         self.assertIn("def global_file_read_payload(", global_source)
         self.assertIn('deps.json_response(handler, 400, {"error": "path required"})', global_source)
         self.assertIn('deps.json_response(handler, 400, {"error": "session_id must be a string"})', global_source)
-        self.assertIn('manager.files_add(request.session_id, str(path_obj))', global_source)
+        self.assertIn('manager.files_add(request.session_id, path_json_text(path_obj))', global_source)
         self.assertIn('except KeyError:', global_source)
         self.assertIn("preview_url=media_preview_url", global_source)
 

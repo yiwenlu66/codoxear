@@ -36,7 +36,7 @@ class TestFileWriteRoutesSource(unittest.TestCase):
         self.assertIn('raise FileRouteError(400, {"error": "git_path is only supported for existing files"})', write_source)
         self.assertIn('raise FileRouteError(409, payload) from e', write_source)
         self.assertIn('raise FileRouteError(409, {"error": str(e)}) from e', write_source)
-        self.assertIn("record_file(str(path_obj))", write_source)
+        self.assertIn("record_file(path_json_text(path_obj))", write_source)
 
         self.assertIn("class FileRouteResponse:", common_source)
         self.assertIn("class FileRouteError(Exception):", common_source)

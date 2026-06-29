@@ -527,8 +527,23 @@ def _list_session_relative_files(base: Path) -> list[str]:
     return _list_session_relative_files_impl(base, expanduser_path=_expanduser_path)
 
 
-def _run_git(cwd: Path, args: list[str], *, timeout_s: float, max_bytes: int, literal_pathspecs: bool = False) -> str:
-    return _git_ops.run_git(cwd, args, timeout_s=timeout_s, max_bytes=max_bytes, literal_pathspecs=literal_pathspecs)
+def _run_git(
+    cwd: Path,
+    args: list[str],
+    *,
+    timeout_s: float,
+    max_bytes: int,
+    literal_pathspecs: bool = False,
+    decode_errors: str = "replace",
+) -> str:
+    return _git_ops.run_git(
+        cwd,
+        args,
+        timeout_s=timeout_s,
+        max_bytes=max_bytes,
+        literal_pathspecs=literal_pathspecs,
+        decode_errors=decode_errors,
+    )
 
 
 _resolve_dir_target = _resolve_dir_target_impl

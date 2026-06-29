@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import tempfile
 import unittest
@@ -50,6 +51,46 @@ class TestGitOps(unittest.TestCase):
         self.assertEqual(git_ops.current_git_branch(Path("."), run_git_func=lambda *_args, **_kwargs: "HEAD\n", timeout_s=1.0), "HEAD")
         self.assertEqual(git_ops.current_git_branch(Path("."), run_git_func=lambda *_args, **_kwargs: "main\n", timeout_s=1.0), "main")
         self.assertIsNone(git_ops.current_git_branch(Path("."), run_git_func=lambda *_args, **_kwargs: "\n", timeout_s=1.0))
+
+    def test_split_and_numstat_preserve_surrogateescaped_path_bytes(self) -> None:
+        rel = b"caf\xe9.py".decode("utf-8", errors="surrogateescape")
+        paths = git_ops.split_git_nul_paths(f"{rel}\0other.py\0")
+        self.assertEqual(paths[0].encode("utf-8", errors="surrogateescape"), b"caf\xe9.py")
+        self.assertEqual(paths[1], "other.py")
+        stats = git_ops.parse_git_numstat(f"1\t2\t{rel}\0")
+        self.assertIn(rel, stats)
+        self.assertEqual(stats[rel], {"additions": 1, "deletions": 2})
+
+    def test_git_path_token_roundtrips_and_stays_json_safe(self) -> None:
+        rel = b"dir/caf\xe9.py".decode("utf-8", errors="surrogateescape")
+        token = git_ops.git_path_token(rel)
+        self.assertTrue(token.startswith(git_ops.GIT_PATH_TOKEN_PREFIX))
+        restored = git_ops.git_path_from_token(token)
+        self.assertEqual(restored.encode("utf-8", errors="surrogateescape"), b"dir/caf\xe9.py")
+        fields = git_ops.git_path_response_fields(rel)
+        self.assertEqual(fields["path"], "dir/caf\\xe9.py")
+        self.assertEqual(fields["api_path"], token)
+        self.assertTrue(fields["non_utf8_path"])
+        json.dumps(fields, ensure_ascii=False).encode("utf-8")
+
+    def test_git_path_token_rejects_invalid_payloads(self) -> None:
+        for token in ["", "not-a-token", git_ops.GIT_PATH_TOKEN_PREFIX, f"{git_ops.GIT_PATH_TOKEN_PREFIX}!!!!"]:
+            with self.subTest(token=token):
+                with self.assertRaisesRegex(ValueError, "invalid path token"):
+                    git_ops.git_path_from_token(token)
+        nul_token = git_ops.git_path_token("bad\0path")
+        with self.assertRaisesRegex(ValueError, "invalid path"):
+            git_ops.git_path_from_token(nul_token)
+
+    def test_run_git_can_preserve_surrogateescaped_stdout(self) -> None:
+        class Proc:
+            returncode = 0
+            stdout = b"caf\xe9.py\0"
+            stderr = b""
+
+        with patch.object(subprocess, "run", return_value=Proc()):
+            out = git_ops.run_git(Path("."), ["diff", "--name-only", "-z"], timeout_s=1.0, max_bytes=4096, decode_errors="surrogateescape")
+        self.assertEqual(out.encode("utf-8", errors="surrogateescape"), b"caf\xe9.py\0")
 
     def test_run_git_literal_pathspecs_sets_literal_environment(self) -> None:
         captured: dict[str, object] = {}

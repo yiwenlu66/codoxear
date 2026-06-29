@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -10,6 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from codoxear import git_ops
 from codoxear import server
 from codoxear.server import _current_git_branch
 from codoxear.server import _download_disposition
@@ -509,6 +511,118 @@ class TestInspectOpenableFile(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertCountEqual(payload["files"], paths)
             self.assertCountEqual([entry["path"] for entry in payload["entries"]], paths)
+
+    @unittest.skipIf(shutil.which("git") is None or os.name != "posix", "git and posix surrogateescape paths required")
+    def test_git_changed_files_non_utf8_path_token_round_trips_to_file_versions(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.email", "codoxear@example.invalid"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "Codoxear Test"], cwd=repo, check=True)
+            rel = os.fsdecode(b"caf\xe9.py")
+            path = repo / rel
+            path.write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "--", rel], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-m", "add nonutf path"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            path.write_text("current\n", encoding="utf-8")
+
+            class FakeManager:
+                def __init__(self) -> None:
+                    self.added: list[str] = []
+
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+                def files_add(self, _session_id: str, path_value: str) -> None:
+                    self.added.append(path_value)
+
+            manager = FakeManager()
+
+            def route_get(route: str) -> tuple[int, dict]:
+                parsed = urllib.parse.urlparse(route)
+                handler = server.Handler.__new__(server.Handler)
+                handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+                handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+                handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+                responses = []
+                with patch.object(server, "MANAGER", manager), patch.object(server, "_require_auth", return_value=True), patch.object(
+                    server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+                ):
+                    server.Handler.do_GET(handler)
+                self.assertEqual(len(responses), 1)
+                status, payload = responses[0]
+                json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                return status, payload
+
+            status, payload = route_get("/api/sessions/s/git/changed_files")
+            self.assertEqual(status, 200)
+            entry = payload["entries"][0]
+            self.assertEqual(entry["path"], "caf\\xe9.py")
+            self.assertTrue(entry["non_utf8_path"])
+            self.assertEqual(git_ops.git_path_from_token(entry["api_path"]).encode("utf-8", errors="surrogateescape"), b"caf\xe9.py")
+            self.assertEqual(payload["files"], ["caf\\xe9.py"])
+
+            route = "/api/sessions/s/git/file_versions?path={}&path_token={}".format(
+                urllib.parse.quote(entry["path"]),
+                urllib.parse.quote(entry["api_path"]),
+            )
+            status, versions = route_get(route)
+            self.assertEqual(status, 200)
+            self.assertEqual(versions["path"], "caf\\xe9.py")
+            self.assertEqual(versions["current_text"], "current\n")
+            self.assertEqual(versions["base_text"], "base\n")
+            self.assertEqual(git_ops.git_path_from_token(versions["api_path"]).encode("utf-8", errors="surrogateescape"), b"caf\xe9.py")
+
+            read_route = "/api/sessions/s/file/read?path={}&path_token={}&git_path=1".format(
+                urllib.parse.quote(entry["path"]),
+                urllib.parse.quote(entry["api_path"]),
+            )
+            status, read_payload = route_get(read_route)
+            self.assertEqual(status, 200)
+            self.assertEqual(read_payload["rel"], "caf\\xe9.py")
+            self.assertEqual(read_payload["text"], "current\n")
+            self.assertTrue(read_payload["editable"])
+
+            def route_post(route: str, body: dict) -> tuple[int, dict]:
+                parsed = urllib.parse.urlparse(route)
+                handler = server.Handler.__new__(server.Handler)
+                handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+                handler._handle_voice_post = lambda _path: False  # type: ignore[attr-defined]
+                handler._read_json_body = lambda **_kwargs: body  # type: ignore[attr-defined]
+                responses = []
+                with patch.object(server, "MANAGER", manager), patch.object(server, "_require_auth", return_value=True), patch.object(
+                    server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+                ):
+                    server.Handler.do_POST(handler)
+                self.assertEqual(len(responses), 1)
+                status, payload = responses[0]
+                json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                return status, payload
+
+            status, inspect_payload = route_post(
+                "/api/files/inspect",
+                {"path": entry["path"], "path_token": entry["api_path"], "session_id": "s", "git_path": True},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(inspect_payload["kind"], "text")
+
+            status, write_payload = route_post(
+                "/api/sessions/s/file/write",
+                {
+                    "path": entry["path"],
+                    "path_token": entry["api_path"],
+                    "text": "saved\n",
+                    "version": read_payload["version"],
+                    "git_path": True,
+                },
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(write_payload["rel"], "caf\\xe9.py")
+            self.assertEqual(path.read_text(encoding="utf-8"), "saved\n")
+            self.assertEqual(manager.added, [str(repo / "caf\\xe9.py"), str(repo / "caf\\xe9.py"), str(repo / "caf\\xe9.py")])
 
     @unittest.skipIf(shutil.which("git") is None, "git required")
     def test_git_changed_files_parses_nul_numstat_rename_record(self) -> None:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import os
 import posixpath
 import re
@@ -10,8 +12,79 @@ from typing import Callable
 RunGit = Callable[..., str]
 GitRepoRoot = Callable[[Path], Path | None]
 
+GIT_PATH_TOKEN_PREFIX = "codoxear-git-path-bytes-v1:"
 
-def run_git(cwd: Path, args: list[str], *, timeout_s: float, max_bytes: int, literal_pathspecs: bool = False) -> str:
+
+def _surrogate_path_bytes(value: str) -> bytes:
+    return str(value).encode("utf-8", errors="surrogateescape")
+
+
+def path_has_surrogate_bytes(value: str) -> bool:
+    return any(0xDC80 <= ord(ch) <= 0xDCFF for ch in str(value))
+
+
+def path_json_text(value: str | Path) -> str:
+    text = str(value)
+    if not path_has_surrogate_bytes(text):
+        return text
+    return _surrogate_path_bytes(text).decode("utf-8", errors="backslashreplace")
+
+
+def git_path_token(value: str) -> str:
+    raw = _surrogate_path_bytes(value)
+    encoded = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+    return f"{GIT_PATH_TOKEN_PREFIX}{encoded}"
+
+
+def git_path_from_token(token: str) -> str:
+    raw_token = str(token or "")
+    if not raw_token.startswith(GIT_PATH_TOKEN_PREFIX):
+        raise ValueError("invalid path token")
+    payload = raw_token[len(GIT_PATH_TOKEN_PREFIX) :]
+    if not payload or not re.fullmatch(r"[A-Za-z0-9_-]+", payload):
+        raise ValueError("invalid path token")
+    padding = "=" * (-len(payload) % 4)
+    try:
+        raw = base64.urlsafe_b64decode((payload + padding).encode("ascii"))
+    except (binascii.Error, ValueError) as e:
+        raise ValueError("invalid path token") from e
+    if b"\x00" in raw:
+        raise ValueError("invalid path")
+    return raw.decode("utf-8", errors="surrogateescape")
+
+
+def git_path_response_fields(path: str) -> dict[str, object]:
+    fields: dict[str, object] = {"path": path_json_text(path)}
+    if path_has_surrogate_bytes(path):
+        fields["api_path"] = git_path_token(path)
+        fields["non_utf8_path"] = True
+    return fields
+
+
+def git_path_query(path: str) -> str:
+    display = path_json_text(path)
+    query = f"path={posixpath_quote(display)}"
+    if path_has_surrogate_bytes(path):
+        query += f"&path_token={posixpath_quote(git_path_token(path))}"
+    return query
+
+
+def posixpath_quote(value: str) -> str:
+    # Local import keeps urllib out of the git subprocess path unless URL assembly is needed.
+    import urllib.parse
+
+    return urllib.parse.quote(str(value))
+
+
+def run_git(
+    cwd: Path,
+    args: list[str],
+    *,
+    timeout_s: float,
+    max_bytes: int,
+    literal_pathspecs: bool = False,
+    decode_errors: str = "replace",
+) -> str:
     cmd = ["git", *args]
     env = None
     if literal_pathspecs:
@@ -36,11 +109,19 @@ def run_git(cwd: Path, args: list[str], *, timeout_s: float, max_bytes: int, lit
         raise RuntimeError(err or f"git failed with code {proc.returncode}")
     if len(proc.stdout) > max_bytes:
         raise ValueError(f"git output too large (max {max_bytes} bytes)")
-    return proc.stdout.decode("utf-8", errors="replace")
+    return proc.stdout.decode("utf-8", errors=decode_errors)
 
 
 def resolve_git_path(cwd: Path, raw_path: str, *, run_git_func: RunGit, timeout_s: float) -> tuple[Path, Path, str]:
-    repo_root = Path(run_git_func(cwd, ["rev-parse", "--show-toplevel"], timeout_s=timeout_s, max_bytes=64 * 1024).strip()).resolve()
+    repo_root = Path(
+        run_git_func(
+            cwd,
+            ["rev-parse", "--show-toplevel"],
+            timeout_s=timeout_s,
+            max_bytes=64 * 1024,
+            decode_errors="surrogateescape",
+        ).strip()
+    ).resolve()
     if not isinstance(raw_path, str) or raw_path == "":
         raise ValueError("path required")
     if "\x00" in raw_path:
@@ -76,6 +157,7 @@ def git_head_blob_oid(cwd: Path, rel: str, *, run_git_func: RunGit, timeout_s: f
             timeout_s=timeout_s,
             max_bytes=64 * 1024,
             literal_pathspecs=True,
+            decode_errors="surrogateescape",
         )
     except RuntimeError as e:
         if git_error_is_missing_head(str(e)):
@@ -101,7 +183,13 @@ def require_git_repo(cwd: Path, *, run_git_func: RunGit, timeout_s: float) -> No
 
 def git_repo_root(cwd: Path, *, run_git_func: RunGit, timeout_s: float) -> Path | None:
     try:
-        root = run_git_func(cwd, ["rev-parse", "--show-toplevel"], timeout_s=timeout_s, max_bytes=64 * 1024).strip()
+        root = run_git_func(
+            cwd,
+            ["rev-parse", "--show-toplevel"],
+            timeout_s=timeout_s,
+            max_bytes=64 * 1024,
+            decode_errors="surrogateescape",
+        ).strip()
     except (RuntimeError, FileNotFoundError):
         return None
     if not root:

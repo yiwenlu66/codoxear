@@ -6,6 +6,10 @@ from typing import Any, Callable
 import os
 import urllib.parse
 
+from .git_ops import git_path_from_token
+from .git_ops import git_path_response_fields
+from .git_ops import path_json_text
+
 
 JsonResponse = Callable[[Any, int, dict[str, Any]], None]
 RouteMatcher = Callable[..., str | None]
@@ -89,6 +93,20 @@ def _norm_changed_list(paths: list[str], *, limit: int) -> list[str]:
     return out
 
 
+def _path_from_query(qs: dict[str, list[str]]) -> str:
+    token_q = qs.get("path_token")
+    if token_q and token_q[0]:
+        return git_path_from_token(token_q[0])
+    path_q = qs.get("path")
+    if not path_q or not path_q[0]:
+        raise ValueError("path required")
+    return path_q[0]
+
+
+def _safe_path_list(paths: list[str]) -> list[str]:
+    return [path_json_text(path) for path in paths]
+
+
 def _handle_changed_files(handler: Any, *, session_id: str, manager: Any, deps: GitRouteDeps) -> None:
     if not _authorized(handler, deps):
         return
@@ -103,6 +121,7 @@ def _handle_changed_files(handler: Any, *, session_id: str, manager: Any, deps: 
                 ["diff", "--name-only", "-z"],
                 timeout_s=deps.git_diff_timeout_seconds,
                 max_bytes=64 * 1024,
+                decode_errors="surrogateescape",
             )
         )
         staged = deps.split_git_nul_paths(
@@ -111,6 +130,7 @@ def _handle_changed_files(handler: Any, *, session_id: str, manager: Any, deps: 
                 ["diff", "--name-only", "--cached", "-z"],
                 timeout_s=deps.git_diff_timeout_seconds,
                 max_bytes=64 * 1024,
+                decode_errors="surrogateescape",
             )
         )
         unstaged_numstat = deps.run_git(
@@ -118,12 +138,14 @@ def _handle_changed_files(handler: Any, *, session_id: str, manager: Any, deps: 
             ["diff", "--numstat", "-z"],
             timeout_s=deps.git_diff_timeout_seconds,
             max_bytes=128 * 1024,
+            decode_errors="surrogateescape",
         )
         staged_numstat = deps.run_git(
             cwd,
             ["diff", "--numstat", "--cached", "-z"],
             timeout_s=deps.git_diff_timeout_seconds,
             max_bytes=128 * 1024,
+            decode_errors="surrogateescape",
         )
     except ValueError as e:
         deps.json_response(handler, 400, {"error": str(e)})
@@ -157,7 +179,7 @@ def _handle_changed_files(handler: Any, *, session_id: str, manager: Any, deps: 
         vals = stats.get(path_key, {})
         entries.append(
             {
-                "path": path_key,
+                **git_path_response_fields(path_key),
                 "additions": vals.get("additions"),
                 "deletions": vals.get("deletions"),
                 "changed": True,
@@ -166,7 +188,14 @@ def _handle_changed_files(handler: Any, *, session_id: str, manager: Any, deps: 
     deps.json_response(
         handler,
         200,
-        {"ok": True, "cwd": str(cwd), "files": merged, "entries": entries, "unstaged": unstaged2, "staged": staged2},
+        {
+            "ok": True,
+            "cwd": path_json_text(cwd),
+            "files": _safe_path_list(merged),
+            "entries": entries,
+            "unstaged": _safe_path_list(unstaged2),
+            "staged": _safe_path_list(staged2),
+        },
     )
 
 
@@ -178,11 +207,11 @@ def _handle_diff(handler: Any, *, session_id: str, query: str, manager: Any, dep
         return
     _session, cwd = session_cwd
     qs = urllib.parse.parse_qs(query)
-    path_q = qs.get("path")
-    if not path_q or not path_q[0]:
-        deps.json_response(handler, 400, {"error": "path required"})
+    try:
+        rel = _path_from_query(qs)
+    except ValueError as e:
+        deps.json_response(handler, 400, {"error": str(e)})
         return
-    rel = path_q[0]
     staged_q = qs.get("staged")
     staged = bool(staged_q and staged_q[0] == "1")
     try:
@@ -211,7 +240,11 @@ def _handle_diff(handler: Any, *, session_id: str, query: str, manager: Any, dep
     except RuntimeError as e:
         deps.json_response(handler, 409, {"error": str(e)})
         return
-    deps.json_response(handler, 200, {"ok": True, "cwd": str(cwd), "path": rel, "staged": staged, "diff": diff})
+    deps.json_response(
+        handler,
+        200,
+        {"ok": True, "cwd": path_json_text(cwd), **git_path_response_fields(rel), "staged": staged, "diff": diff},
+    )
 
 
 def _handle_file_versions(handler: Any, *, session_id: str, query: str, manager: Any, deps: GitRouteDeps) -> None:
@@ -222,11 +255,11 @@ def _handle_file_versions(handler: Any, *, session_id: str, query: str, manager:
         return
     _session, cwd = session_cwd
     qs = urllib.parse.parse_qs(query)
-    path_q = qs.get("path")
-    if not path_q or not path_q[0]:
-        deps.json_response(handler, 400, {"error": "path required"})
+    try:
+        rel = _path_from_query(qs)
+    except ValueError as e:
+        deps.json_response(handler, 400, {"error": str(e)})
         return
-    rel = path_q[0]
     try:
         p, repo_root, rel = deps.resolve_git_path(cwd, rel)
     except ValueError as e:
@@ -280,7 +313,7 @@ def _handle_file_versions(handler: Any, *, session_id: str, query: str, manager:
                 deps.json_response(handler, 400, {"error": str(e)})
                 return
     try:
-        manager.files_add(session_id, str(p))
+        manager.files_add(session_id, path_json_text(p))
     except KeyError:
         pass
     base_exists = False
@@ -306,9 +339,9 @@ def _handle_file_versions(handler: Any, *, session_id: str, query: str, manager:
         200,
         {
             "ok": True,
-            "cwd": str(cwd),
-            "path": rel,
-            "abs_path": str(p),
+            "cwd": path_json_text(cwd),
+            **git_path_response_fields(rel),
+            "abs_path": path_json_text(p),
             "current_exists": current_exists,
             "current_size": int(current_size),
             "current_text": current_text,

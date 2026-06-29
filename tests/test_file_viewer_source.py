@@ -166,12 +166,15 @@ def eval_file_open_request_sequence() -> dict:
         }}
         const ctx = {{
           activeFilePath: "old.txt",
+          activeFileApiPath: "",
           activeFileGitPath: false,
           activeFileLine: 1,
           fileViewerSessionId: "sid-1",
           selected: "",
           AbortController,
           disposePdfRender: () => {{}},
+          fileApiPathForPath: (_path, apiPath = "") => apiPath || "",
+          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           normalizeLineNumber: (value) => value == null ? null : Number(value),
         }};
         vm.createContext(ctx);
@@ -218,6 +221,7 @@ def eval_file_viewer_session_sync_race() -> dict:
           selected: "sid-b",
           fileViewerSessionId: "sid-a",
           activeFilePath: "old.txt",
+          activeFileApiPath: "",
           activeFileGitPath: false,
           activeFileLine: 1,
           fileSearchSessionId: "sid-a",
@@ -291,6 +295,8 @@ def eval_resolved_open_current_guard() -> dict:
           currentFileSessionId: () => "sid-b",
           blockUnavailableFileAction: () => false,
           isGitFileCandidatePath: () => true,
+          fileEntryForPath: () => null,
+          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           resolveFileOpenMode: () => new Promise((resolve) => {{ resolveMode = resolve; }}),
         }};
         vm.createContext(ctx);
@@ -362,10 +368,10 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("if (!isFileViewerSelectionCurrent(sid, syncToken)) return false;", ensure_block)
         self.assertIn("await refreshFileCandidates({ sessionId: sid, syncToken });", ensure_block)
         self.assertIn("if (!isFileViewerSessionCurrent(sid, syncToken)) return false;", ensure_block)
-        self.assertIn("setFilePath(preferred.path, { line: preferred.line, gitPath: preferred.gitPath });", ensure_block)
-        self.assertIn("openFilePathWithResolvedMode(preferred.path, { line: preferred.line, gitPath: preferred.gitPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) })", ensure_block)
+        self.assertIn("setFilePath(preferred.path, { line: preferred.line, gitPath: preferred.gitPath, apiPath: preferred.apiPath });", ensure_block)
+        self.assertIn("openFilePathWithResolvedMode(preferred.path, { line: preferred.line, gitPath: preferred.gitPath, apiPath: preferred.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) })", ensure_block)
         self.assertIn("const first = firstKey ? fileEntryMap.get(firstKey) : null;", ensure_block)
-        self.assertIn("openFilePathWithResolvedMode(first.path, { line: null, changed: Boolean(first.changed), gitPath: Boolean(first.gitPath), isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) })", ensure_block)
+        self.assertIn("openFilePathWithResolvedMode(first.path, { line: null, changed: Boolean(first.changed), gitPath: Boolean(first.gitPath), apiPath: first.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) })", ensure_block)
         refresh_start = source.index("async function refreshFileCandidates(")
         refresh_end = source.index("async function showFileViewer", refresh_start)
         refresh_block = source[refresh_start:refresh_end]
@@ -379,9 +385,9 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("await refreshFileCandidates({ sessionId: sid, syncToken });", show_block)
         self.assertIn("if (!isFileViewerSessionCurrent(sid, syncToken)) return;", show_block)
         self.assertIn("const preferredGitPath = explicitPath ? false : Boolean(preferredSelection.gitPath);", show_block)
-        self.assertIn("openFilePathWithResolvedMode(preferred, { line: preferredLine, gitPath: preferredGitPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) })", show_block)
+        self.assertIn("openFilePathWithResolvedMode(preferred, { line: preferredLine, gitPath: preferredGitPath, apiPath: preferredApiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) })", show_block)
         self.assertIn("const first = firstKey ? fileEntryMap.get(firstKey) : null;", show_block)
-        self.assertIn("openFilePathWithResolvedMode(first.path, { line: null, changed: Boolean(first.changed), gitPath: Boolean(first.gitPath), isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) })", show_block)
+        self.assertIn("openFilePathWithResolvedMode(first.path, { line: null, changed: Boolean(first.changed), gitPath: Boolean(first.gitPath), apiPath: first.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) })", show_block)
         self.assertIn("fileViewerSessionSyncToken += 1;\n          cancelPendingFileOpen();", source)
         open_start = source.index("async function openSession(sessionId")
         open_end = source.index("async function pollMessages", open_start)
@@ -400,10 +406,10 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const currentGuard = typeof isCurrent === \"function\" ? isCurrent : () => currentFileSessionId() === sessionAtStart && !isFileViewerSessionUnavailable();", resolved_block)
         self.assertIn("if (!currentGuard()) return false;", resolved_block)
         self.assertIn("try {", resolved_block)
-        self.assertIn("const useGitPath = gitPath === null || gitPath === undefined ? isGitFileCandidatePath(path, changed) : Boolean(gitPath);", resolved_block)
-        self.assertIn("mode = await resolveFileOpenMode(path, { changed, gitPath: useGitPath });", resolved_block)
+        self.assertIn("const useGitPath = gitPath === null || gitPath === undefined ? isGitFileCandidatePath(path, changed, null, token) : Boolean(gitPath);", resolved_block)
+        self.assertIn("mode = await resolveFileOpenMode(path, { changed, gitPath: useGitPath, apiPath: requestApiPath });", resolved_block)
         self.assertIn("if (blockUnavailableFileAction()) return false;", resolved_block)
-        self.assertIn("return await openFilePathWithGuard(path, { line, mode, isCurrent: currentGuard, gitPath: useGitPath });", resolved_block)
+        self.assertIn("return await openFilePathWithGuard(path, { line, mode, isCurrent: currentGuard, gitPath: useGitPath, apiPath: requestApiPath });", resolved_block)
         guard_start = source.index("async function openFilePathWithGuard")
         guard_end = source.index("async function openFilePathWithResolvedMode", guard_start)
         guard_block = source[guard_start:guard_end]
@@ -412,17 +418,17 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const sessionAtStart = currentFileSessionId();", guard_block)
         self.assertIn("const currentGuard = typeof isCurrent === \"function\" ? isCurrent : () => currentFileSessionId() === sessionAtStart && !isFileViewerSessionUnavailable();", guard_block)
         self.assertIn("if (!currentGuard()) return false;", guard_block)
-        self.assertIn("await openFilePath(path, { line, gitPath });", guard_block)
+        self.assertIn("await openFilePath(path, { line, gitPath, apiPath });", guard_block)
         self.assertIn("return Boolean(currentGuard());", guard_block)
         self.assertIn("const diffable = canToggleMode && activeFileGitPath && fileCandidateGitStateFresh && Boolean(entry && entry.changed) && isDiffableFileKind(activeFileKind);", source)
         self.assertIn("const canUseDiffView = request.gitPath && fileCandidateGitStateFresh && Boolean(activeEntry && activeEntry.changed);", source)
         self.assertIn('fileViewMode === "diff" && !canUseDiffView ? "file"', source)
-        self.assertIn("if (gitPath) body.git_path = true;", source)
+        self.assertIn("if (gitPath) {\n              body.git_path = true;", source)
         self.assertIn('const gitPathQuery = request.gitPath ? "&git_path=1" : "";', source)
         self.assertIn("git_path: Boolean(activeFileGitPath)", source)
         self.assertIn("beginFileOpenRequest(path, { line, gitPath: false })", source)
         self.assertIn("setFilePath(rel, { line: null, gitPath: false })", source)
-        self.assertIn("if (saveDraft) activeFileGitPath = false;", source)
+        self.assertIn("if (saveDraft) {\n              activeFileGitPath = false;", source)
 
     def test_file_viewer_handles_selected_session_removal(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -610,10 +616,10 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("let fileOpenRequestId = 0;", source)
         self.assertIn("let fileOpenAbortController = null;", source)
         self.assertIn("function cancelPendingFileOpen()", source)
-        self.assertIn("const request = beginFileOpenRequest(nextPath, { line, gitPath });", source)
+        self.assertIn("const request = beginFileOpenRequest(nextPath, { line, gitPath, apiPath });", source)
         self.assertIn("signal: request.signal", source)
         self.assertIn("if (!isCurrentFileOpenRequest(request)) return false;", source)
-        self.assertIn("async function openFilePathWithResolvedMode(path, { line = null, changed = null, isCurrent = null, gitPath = null } = {})", source)
+        self.assertIn("async function openFilePathWithResolvedMode(path, { line = null, changed = null, isCurrent = null, gitPath = null, apiPath = \"\" } = {})", source)
         self.assertIn("async function renderMonacoFile(rel, text, lineNumber = null, langOverride = \"\", request = null)", source)
         self.assertIn("async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null)", source)
         self.assertIn("if (request && !isCurrentFileOpenRequest(request)) return false;", source)
@@ -633,13 +639,15 @@ class TestFileViewerSource(unittest.TestCase):
         block = source[start:end]
         self.assertIn("const saveSessionId = fileViewerSessionId;", block)
         self.assertIn("const savePath = activeFilePath;", block)
+        self.assertIn("const saveApiPath = activeFileApiPath || \"\";", block)
         self.assertIn("const saveDraft = Boolean(activeFileDraft);", block)
         self.assertIn("const saveVersion = activeFileVersion;", block)
         self.assertIn("const saveToken = ++fileSaveSeq;", block)
         self.assertIn("activeFileSaveToken = saveToken;", block)
-        self.assertIn("const saveStillCurrent = () => fileViewerSessionId === saveSessionId && activeFilePath === savePath && activeFileSaveToken === saveToken && !isFileViewerSessionUnavailable();", block)
+        self.assertIn("const saveStillCurrent = () => fileViewerSessionId === saveSessionId && activeFilePath === savePath && activeFileApiPath === saveApiPath && activeFileSaveToken === saveToken && !isFileViewerSessionUnavailable();", block)
         self.assertIn("? { path: savePath, text, create: true }", block)
         self.assertIn(": { path: savePath, text, version: saveVersion, git_path: Boolean(activeFileGitPath) };", block)
+        self.assertIn("if (!saveDraft && activeFileGitPath && saveApiPath) saveBody.path_token = saveApiPath;", block)
         self.assertIn("await api(`/api/sessions/${saveSessionId}/file/write`", block)
         self.assertIn("if (!saveStillCurrent()) return true;", block)
         self.assertIn("if (!saveStillCurrent()) return false;", block)
@@ -656,7 +664,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('text: "Keep editing"', block)
         self.assertIn("window.confirm(`Reload ${savePath} from disk and discard your unsaved editor draft?`);", block)
         self.assertIn("if (fileViewerSessionId !== saveSessionId || activeFilePath !== savePath) return;", block)
-        self.assertIn("await openFilePath(savePath, { line: activeFileLine, gitPath: activeFileGitPath });", block)
+        self.assertIn("await openFilePath(savePath, { line: activeFileLine, gitPath: activeFileGitPath, apiPath: activeFileApiPath });", block)
         self.assertIn("getActiveFileCodeEditor();", block)
         self.assertIn("fileStatus.replaceChildren(label, actions);", block)
         save_start = source.index("async function saveActiveFileEdits")

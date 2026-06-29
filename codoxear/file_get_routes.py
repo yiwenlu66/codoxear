@@ -5,6 +5,9 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 import urllib.parse
 
+from .git_ops import git_path_from_token
+from .git_ops import git_path_query
+from .git_ops import path_json_text
 from .file_view import ClientFileView
 from .video_preview import video_response_payload
 
@@ -18,42 +21,44 @@ def session_file_read_payload(
     git_path: bool,
 ) -> dict[str, Any]:
     git_suffix = "&git_path=1" if git_path else ""
-    rel_for_url = urllib.parse.quote(rel)
+    rel_for_url = git_path_query(rel) if git_path else f"path={urllib.parse.quote(rel)}"
+    path_text = path_json_text(path_obj)
+    rel_text = path_json_text(rel)
     if view.kind == "image":
         return {
             "ok": True,
             "kind": "image",
             "content_type": view.content_type,
-            "path": str(path_obj),
-            "rel": str(rel),
+            "path": path_text,
+            "rel": rel_text,
             "size": int(view.size),
-            "image_url": f"/api/sessions/{session_id}/file/blob?path={rel_for_url}{git_suffix}",
+            "image_url": f"/api/sessions/{session_id}/file/blob?{rel_for_url}{git_suffix}",
         }
     if view.kind == "pdf":
         return {
             "ok": True,
             "kind": "pdf",
             "content_type": view.content_type,
-            "path": str(path_obj),
-            "rel": str(rel),
+            "path": path_text,
+            "rel": rel_text,
             "size": int(view.size),
-            "pdf_url": f"/api/sessions/{session_id}/file/blob?path={rel_for_url}{git_suffix}",
+            "pdf_url": f"/api/sessions/{session_id}/file/blob?{rel_for_url}{git_suffix}",
         }
     if view.kind == "video":
         return video_response_payload(
             path_obj=path_obj,
-            rel=str(rel),
+            rel=rel_text,
             size=int(view.size),
             content_type=view.content_type,
-            video_url=f"/api/sessions/{session_id}/file/blob?path={rel_for_url}{git_suffix}",
-            preview_url=f"/api/sessions/{session_id}/file/video_preview?path={rel_for_url}{git_suffix}",
+            video_url=f"/api/sessions/{session_id}/file/blob?{rel_for_url}{git_suffix}",
+            preview_url=f"/api/sessions/{session_id}/file/video_preview?{rel_for_url}{git_suffix}",
         )
     if view.kind == "download_only":
         return {
             "ok": True,
             "kind": "download_only",
-            "path": str(path_obj),
-            "rel": str(rel),
+            "path": path_text,
+            "rel": rel_text,
             "size": int(view.size),
             "reason": view.blocked_reason,
             "viewer_max_bytes": view.viewer_max_bytes,
@@ -61,8 +66,8 @@ def session_file_read_payload(
     return {
         "ok": True,
         "kind": view.kind,
-        "path": str(path_obj),
-        "rel": str(rel),
+        "path": path_text,
+        "rel": rel_text,
         "size": int(view.size),
         "text": view.text,
         "editable": bool(view.editable),
@@ -192,6 +197,24 @@ def _required_query_value(handler: Any, values: Mapping[str, list[str]], deps: F
     return value[0]
 
 
+def _git_or_plain_query_path(
+    handler: Any,
+    values: Mapping[str, list[str]],
+    deps: FileGetRouteDeps,
+    *,
+    git_path: bool,
+) -> str | None:
+    if git_path:
+        token = values.get("path_token")
+        if token and token[0]:
+            try:
+                return git_path_from_token(token[0])
+            except ValueError as e:
+                deps.json_response(handler, 400, {"error": str(e)})
+                return None
+    return _required_query_value(handler, values, deps, "path")
+
+
 def _map_resolve_error(handler: Any, exc: BaseException, deps: FileGetRouteDeps, *, runtime_status: int = 409) -> None:
     if isinstance(exc, FileNotFoundError):
         deps.json_response(handler, 404, {"error": str(exc)})
@@ -213,10 +236,10 @@ def _handle_session_file_read(handler: Any, *, session_id: str, query: str, mana
     if session is None:
         return
     qs = _query_values(query)
-    rel = _required_query_value(handler, qs, deps, "path")
+    git_path = _query_flag(qs, "git_path")
+    rel = _git_or_plain_query_path(handler, qs, deps, git_path=git_path)
     if rel is None:
         return
-    git_path = _query_flag(qs, "git_path")
     try:
         if git_path:
             path_obj, rel, view = deps.resolve_git_client_file_view(session_id=session_id, raw_path=rel)
@@ -228,7 +251,7 @@ def _handle_session_file_read(handler: Any, *, session_id: str, query: str, mana
         _map_resolve_error(handler, e, deps)
         return
     try:
-        manager.files_add(session_id, str(path_obj))
+        manager.files_add(session_id, path_json_text(path_obj))
     except KeyError:
         pass
     deps.json_response(
@@ -321,10 +344,10 @@ def _session_file_path_for_preview(
     if session is None:
         return None
     qs = _query_values(query)
-    rel = _required_query_value(handler, qs, deps, "path")
+    git_path = _query_flag(qs, "git_path")
+    rel = _git_or_plain_query_path(handler, qs, deps, git_path=git_path)
     if rel is None:
         return None
-    git_path = _query_flag(qs, "git_path")
     try:
         if git_path:
             path_obj, _rel = deps.resolve_git_existing_regular_file(session_id=session_id, raw_path=rel)
