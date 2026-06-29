@@ -4181,3 +4181,10 @@
 - Reviewer verified byte-identical moved helper bodies modulo indentation, fail-closed `window.CodoxearMessageIdentity` guard, preserved app.js wrapper names, stateful dedupe/pending/DOM logic remaining in app.js, correct script order and asset manifest wiring, frozen export, adapted live-delta VM test, no secrets/runtime artifacts, docs-only docs commit, no Docker overclaim, and full local `1215 passed, 107 subtests`.
 - Reviewer found no residual risks; only notes were cosmetic indentation and expected Node VM/browser test pattern.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T05:50:34Z Global file route split clean-room review PASS
+- Async clean-room review `bf10a696-fd8b-46be-bcd2-6bdc5b24a803` returned `PASS` for functional commit `9085501` and docs `0f0cccb`.
+- Reviewer verified all moved global file route bodies were byte-for-byte identical, public `codoxear.file_routes` facade re-exports remain intact, `/api/files/read` and `/api/files/inspect` route matching is preserved, auth occurs before JSON body parsing, `path` and `session_id` validation are unchanged, `git_path` uses `body_flag`, git vs client path resolution is unchanged, error mapping preserves 404/403/400/409 behavior, `manager.files_add` with `KeyError` swallow remains, read/inspect payloads and media preview/blob URLs are unchanged, and no import cycle exists.
+- Reviewer observed the split improves the `_map_resolve_error` type annotation for global POST deps while preserving runtime logic.
+- Reviewer validation: py_compile for `file_routes.py`/`file_global_routes.py`, import-cycle smoke, focused file tests `193 passed, 52 subtests passed`, full local `1216 passed, 107 subtests passed`.
+- Reviewer verified docs commit was docs-only, no secrets/runtime artifacts, clean git state, and no Docker overclaim.

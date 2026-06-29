@@ -70,6 +70,7 @@ Interpretation:
 - Frontend chat message identity/key construction now lives in `codoxear/static/app_message_identity.js`; `app.js` retains stateful duplicate tracking, pending-user matching, and DOM mutation. Evidence covers pure key/normalization behavior and full local pytest, not Docker. See OPS 2026-06-29 frontend message identity helper split.
 - Clean-room review `ccb5c307-7d18-49c5-bd70-7b2efcc62a7e` accepted the frontend message identity split as byte-equivalent, fail-closed, asset-wired, and fully locally validated (`1215 passed, 107 subtests`), with no residual risks. See OPS 2026-06-29 frontend message identity split clean-room review PASS.
 - Global file POST routes now live in `codoxear/file_global_routes.py`; `codoxear/file_routes.py` re-exports old global route names and retains session GET/blob/download/absolute-preview mechanics. Evidence covers focused file route tests and full local pytest, not Docker. See OPS 2026-06-29 global file route split.
+- Clean-room review `bf10a696-fd8b-46be-bcd2-6bdc5b24a803` accepted the global file route split as byte-identical, facade-compatible, route/error/payload preserving, and locally validated (`1216 passed, 107 subtests` plus focused file tests), with no residual blocker. See OPS 2026-06-29 global file route split clean-room review PASS.
 
 Commitments:
 - Do not weaken source sentinels to chase line count; update them only when ownership truly moves.
