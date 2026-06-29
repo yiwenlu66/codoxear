@@ -4707,3 +4707,12 @@
   - Full local `python3 -m pytest -q` returned `1240 passed, 107 subtests passed` before the functional commit.
   - `git diff --check` passed after a whitespace-only cleanup.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split; clean-room review has not yet been dispatched for this new functional commit.
+
+
+## 2026-06-29T13:35:23Z Launch error redaction clean-room review PASS
+- Async reviewer run `81601931-e53f-4173-abf5-de18531297fa` returned PASS for functional commit `82fc5d2` and docs commit `1df86d9`.
+- Review evidence: the moved `redactedLaunchErrorText` body in `codoxear/static/app_launch.js` is byte-for-byte identical to the previous inline `app.js` body after indentation normalization, preserving all five regex replacement chains and ordering.
+- Review verified `app.js` keeps the local wrapper name, all launch-failure label/badge/details/recovery call sites use the wrapper rather than reaching into `CodoxearLaunch`, and the fail-closed launch-helper guard now requires `codoxearLaunch.redactedLaunchErrorText`.
+- Review verified `app_launch.js` loads before `app.js` in `index.html`, exports `redactedLaunchErrorText` in the frozen helper object, and the server-side launch-attempt redactor is independent/untouched.
+- Review observed node syntax checks, focused launch/chat tests, full local `1240 passed, 107 subtests passed`, no unrelated/protected/secrets/runtime changes, docs-only docs commit, and no Docker overclaim.
+- Residual review notes are non-blocking: pattern-3 edge cases are not directly VM-tested but body identity covers the extraction; no browser runtime test was run; `Object.freeze` remains the existing shallow frontend-module pattern.
