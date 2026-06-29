@@ -3897,3 +3897,15 @@
   - Focused send/control/interrupt group returned `86 passed`.
   - Full local `python3 -m pytest -q` returned `1189 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T00:45:32Z Broker terminal query split
+- Functional commit `ba202f1 Extract broker terminal query handling` moved broker terminal query emulation from `Broker._maybe_reply_to_terminal_queries` into new `codoxear/broker_terminal.py`:
+  - `_TERMINAL_QUERY_RESPONSES`
+  - `_reply_to_terminal_queries`
+- Ownership boundary: `broker_terminal.py` owns deterministic terminal query buffer matching and response writes; `broker.py` keeps the `_emulate_terminal` gate and PTY stream loop.
+- Behavior preserved: per-query write exceptions are still caught and printed while the query is consumed, matching the old broker method.
+- Tests added: `tests/test_broker_terminal.py` directly covers multi-query replies and cross-chunk matching; `tests/test_broker_terminal_source.py` pins ownership and broker wrapper behavior.
+- Validation after `ba202f1`:
+  - Focused broker/terminal group returned `99 passed`.
+  - Full local `python3 -m pytest -q` returned `1193 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
