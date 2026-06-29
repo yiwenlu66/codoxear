@@ -52,6 +52,8 @@ def eval_provider_choice_to_settings() -> dict:
           modelMatchContains: launch.modelOptionMatches({{ searchText: "crs/gpt-5.4 gpt-5.4" }}, "gpt-5"),
           modelMatchFallbackModel: launch.modelOptionMatches({{ model: "o4-mini" }}, "o4"),
           modelMatchNoMatch: launch.modelOptionMatches({{ searchText: "crs/gpt-5.4 gpt-5.4" }}, "claude"),
+          redactedEquals: launch.redactedLaunchErrorText("API_TOKEN=secret password: hunter2 Authorization: Bearer abcdefghijklmnop sk-abcdefghijklmnop"),
+          redactedBlank: launch.redactedLaunchErrorText("   "),
         }}));
         """
     )
@@ -110,10 +112,15 @@ def test_app_js_requires_launch_module_without_fallback() -> None:
     assert "function providerChoiceToSettings(choice, agentBackend = \"codex\")" in source
     assert "return codoxearLaunch.providerChoiceToSettings(choice, agentBackend);" in source
     assert 'typeof codoxearLaunch.modelOptionMatches !== "function"' in source
+    assert 'typeof codoxearLaunch.redactedLaunchErrorText !== "function"' in source
     assert "function modelOptionMatches(option, query)" in source
     assert "return codoxearLaunch.modelOptionMatches(option, query);" in source
+    assert "function redactedLaunchErrorText(value)" in source
+    assert "return codoxearLaunch.redactedLaunchErrorText(value);" in source
     assert 'const text = String(option && option.searchText ? option.searchText : option && option.model ? option.model : "").toLowerCase();' not in source
+    assert 'const sensitiveKey = "[A-Z0-9_.-]*(?:TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL|AUTH)[A-Z0-9_.-]*";' not in source
     assert 'const text = String(option && option.searchText ? option.searchText : option && option.model ? option.model : "").toLowerCase();' in launch_source
+    assert 'const sensitiveKey = "[A-Z0-9_.-]*(?:TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL|AUTH)[A-Z0-9_.-]*";' in launch_source
     assert "const LAST_BACKEND_KEY" not in source
     assert "const LAST_BACKEND_KEY" in launch_source
     assert "window.CodoxearLaunch = Object.freeze({" in launch_source
@@ -171,3 +178,5 @@ def test_provider_choice_mapping_is_backend_specific() -> None:
     assert result["modelMatchContains"] is True
     assert result["modelMatchFallbackModel"] is True
     assert result["modelMatchNoMatch"] is False
+    assert result["redactedEquals"] == "API_TOKEN=[redacted] password: [redacted] Authorization: [redacted]"
+    assert result["redactedBlank"] == ""

@@ -240,6 +240,19 @@
     return text === query || text.startsWith(query) || text.includes(query);
   }
 
+  function redactedLaunchErrorText(value) {
+    let text = String(value || "").trim();
+    if (!text) return "";
+    const sensitiveKey = "[A-Z0-9_.-]*(?:TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL|AUTH)[A-Z0-9_.-]*";
+    const secretValue = "(?:(?:Bearer|Basic)\\s+[A-Za-z0-9._~+/=-]+|\\\"[^\\\"]*(?:\\\"|$)|'[^']*(?:'|$)|[^\\s\\\"',;}\\[\\]]+)";
+    text = text.replace(new RegExp(`\\b(${sensitiveKey})\\s*=\\s*${secretValue}`, "gi"), "$1=[redacted]");
+    text = text.replace(new RegExp(`(^|[^A-Z0-9_.-])([\\\"']?${sensitiveKey}[\\\"']?\\s*:\\s*)${secretValue}`, "gi"), "$1$2[redacted]");
+    text = text.replace(new RegExp(`(^|[^A-Z0-9_.-])([\\\"']?${sensitiveKey}[\\\"']?\\s*[:=]\\s*)\\[redacted\\]\\s+[A-Za-z0-9._~+/=-]{12,}(?=$|[\\s,;}\\]])`, "gi"), "$1$2[redacted]");
+    text = text.replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+\/-]+=*/gi, "$1 [redacted]");
+    text = text.replace(/\b(sk-[A-Za-z0-9_-]{12,}|xox[baprs]-[A-Za-z0-9-]{12,})\b/g, "[redacted-token]");
+    return text;
+  }
+
   window.CodoxearLaunch = Object.freeze({
     lastProviderKey,
     lastProviderModelKey,
@@ -264,5 +277,6 @@
     providerChoiceToSettings,
     sessionProviderChoice,
     modelOptionMatches,
+    redactedLaunchErrorText,
   });
 })();

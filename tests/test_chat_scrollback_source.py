@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
+APP_LAUNCH_JS = ROOT / "codoxear" / "static" / "app_launch.js"
 APP_TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
 APP_MESSAGE_ROWS_JS = ROOT / "codoxear" / "static" / "app_message_rows.js"
 APP_CSS = ROOT / "codoxear" / "static" / "app.css"
@@ -16,6 +17,7 @@ APP_CSS = ROOT / "codoxear" / "static" / "app.css"
 def eval_launch_recovery_helpers() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
+    launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
     redactor_start = source.index("function redactedLaunchErrorText(value) {")
     redactor_end = source.index("function sessionLaunchLabel(s)", redactor_start)
     start = source.index("function recoverySessionInfo(sessionId) {")
@@ -42,11 +44,19 @@ def eval_launch_recovery_helpers() -> dict:
           tmux_window: "work-abc123",
           submitted_user_message_count: 2,
         }};
-        const moduleCtx = {{ window: {{}} }};
+        const moduleCtx = {{
+          URL,
+          window: {{
+            CodoxearUrls: {{ resolveAppUrl: (path) => String(path) }},
+            CodoxearStorage: {{ getItem: () => null, setItem: () => true, removeItem: () => true }},
+          }},
+        }};
         vm.createContext(moduleCtx);
         vm.runInContext({json.dumps(display_source)}, moduleCtx);
+        vm.runInContext({json.dumps(launch_source)}, moduleCtx);
         const ctx = {{
           codoxearDisplay: moduleCtx.window.CodoxearDisplay,
+          codoxearLaunch: moduleCtx.window.CodoxearLaunch,
           sessionIndex: new Map([["launch-dead", launchRow]]),
           selected: "launch-dead",
           sessionLaunchFailed: (s) => Boolean(s && String(s.launch_state || "").toLowerCase() === "failed"),
@@ -382,6 +392,7 @@ class TestChatScrollbackSource(unittest.TestCase):
 
     def test_recovery_state_renders_in_chat_pane(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
         row_source = APP_MESSAGE_ROWS_JS.read_text(encoding="utf-8")
         css = APP_CSS.read_text(encoding="utf-8")
         self.assertIn("function renderRecoveryPanelIfNeeded(sessionId)", source)
@@ -409,10 +420,17 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn('if (launchFailed) {', source)
         self.assertIn('text: "This web-owned session failed before a usable session log was bound."', source)
         self.assertIn('function redactedLaunchErrorText(value)', source)
-        self.assertIn('const sensitiveKey = "[A-Z0-9_.-]*(?:TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL|AUTH)[A-Z0-9_.-]*";', source)
-        self.assertIn('const secretValue = "(?:(?:Bearer|Basic)\\\\s+[A-Za-z0-9._~+/=-]+|\\\\\\\"[^\\\\\\\"]*(?:\\\\\\\"|$)|\'[^\']*(?:\'|$)|[^\\\\s\\\\\\\"\',;}\\\\[\\\\]]+)";', source)
-        self.assertIn('new RegExp(`(^|[^A-Z0-9_.-])([\\\\\\\"\']?${sensitiveKey}[\\\\\\\"\']?\\\\s*:\\\\s*)${secretValue}`, "gi")', source)
-        self.assertIn('new RegExp(`(^|[^A-Z0-9_.-])([\\\\\\\"\']?${sensitiveKey}[\\\\\\\"\']?\\\\s*[:=]\\\\s*)\\\\[redacted\\\\]\\\\s+[A-Za-z0-9._~+/=-]{12,}(?=$|[\\\\s,;}\\\\]])`, "gi")', source)
+        self.assertIn('return codoxearLaunch.redactedLaunchErrorText(value);', source)
+        self.assertIn('typeof codoxearLaunch.redactedLaunchErrorText !== "function"', source)
+        self.assertIn('function redactedLaunchErrorText(value)', launch_source)
+        self.assertIn('const sensitiveKey = "[A-Z0-9_.-]*(?:TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL|AUTH)[A-Z0-9_.-]*";', launch_source)
+        self.assertIn('const secretValue = "', launch_source)
+        self.assertIn('(?:Bearer|Basic)', launch_source)
+        self.assertIn('[^\\\\s\\\\\\"\',;}\\\\[\\\\]]+', launch_source)
+        self.assertIn('$1=[redacted]', launch_source)
+        self.assertIn('$1$2[redacted]', launch_source)
+        self.assertIn('[A-Za-z0-9._~+/=-]{12,}', launch_source)
+        self.assertNotIn('const sensitiveKey = "[A-Z0-9_.-]*(?:TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL|AUTH)[A-Z0-9_.-]*";', source)
         self.assertIn('return redactedLaunchErrorText(s && s.launch_error) || "session launch failed";', source)
         self.assertIn('title: redactedLaunchErrorText(s.launch_error) || "Session launch failed"', source)
         self.assertIn('const safeLaunchError = redactedLaunchErrorText(s.launch_error);', source)
