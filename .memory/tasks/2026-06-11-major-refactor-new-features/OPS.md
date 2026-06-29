@@ -4671,3 +4671,19 @@
 - Review verified `codoxear.broker._term_size()` remains the patch seam and delegates to `_pty_util.term_size(sys.stdin)`; startup and SIGWINCH paths still call `_term_size()`, and tests patching `codoxear.broker._term_size` still work.
 - Review observed py_compile, focused broker/PTY tests, no import cycles, no protected checkout mutation, no secrets/runtime artifacts, docs-only docs commit, and no Docker overclaim.
 - Reviewer noted a focused-count documentation ambiguity; full local evidence from the implementation pass remains `1240 passed, 107 subtests passed`.
+
+
+## 2026-06-29T13:11:47Z Frontend attachment upload helper split
+- Functional commit `6d90b2c Extract attachment upload file helpers` moved pure attachment-upload helpers from the `imgInput` change handler in `codoxear/static/app.js` into `codoxear/static/app_file_helpers.js`:
+  - filename stem sanitization (`attachmentSafeStem`);
+  - lowercase extension extraction (`attachmentExtensionLower`);
+  - HEIC/HEIF detection (`attachmentIsLikelyHeic`);
+  - image type/extension detection (`attachmentLooksLikeImage`);
+  - chunked bytes-to-base64 conversion (`bytesToBase64`).
+- `app.js` keeps the upload event flow, selected-session checks, running/sending guards, image decode/canvas compression, size limits, toasts, API request, attachment count mutation, polling, auth handling, and commit-unknown handling. It keeps wrapper names used by the handler and passes browser `btoa` into `bytesToBase64`.
+- Static/helper tests validate fail-closed guard coverage, helper export ownership, removal of nested pure helpers from the upload handler, filename/type/base64 behavior, and preservation of app-owned upload/compression/network policy.
+- Validation:
+  - `node --check codoxear/static/app_file_helpers.js` and `node --check codoxear/static/app.js` passed.
+  - Focused frontend/file/static group returned `24 passed`.
+  - Full local `python3 -m pytest -q` returned `1240 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.

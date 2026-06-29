@@ -115,6 +115,7 @@ Interpretation:
 - Clean-room review `93124bae-3535-4d70-8f7f-a3707500f984` accepted the proc-open log discovery policy split as behavior-preserving and seam-preserving; only a focused-count documentation ambiguity was noted, with full local pytest evidence intact. See OPS Proc-open log discovery clean-room review PASS.
 - PTY terminal-size read/fallback logic now lives in `codoxear/pty_util.py` as `term_size(stdin)`; `codoxear.broker._term_size()` remains the patch seam and delegates with `sys.stdin`. Evidence covers focused PTY/broker tests and full local pytest, not Docker. See OPS PTY terminal-size helper split.
 - Clean-room review `f518eb94-6d44-4409-ab78-eeae73182559` accepted the PTY terminal-size split as behavior-preserving and seam-preserving; only a focused-count documentation ambiguity was noted, with full local pytest evidence intact. See OPS PTY terminal-size clean-room review PASS.
+- Pure frontend attachment-upload filename/type/base64 helpers now live in `codoxear/static/app_file_helpers.js`; `app.js` keeps upload state, image compression, network/API, toast, polling, auth, and commit-unknown behavior. Evidence covers focused frontend/file/static tests and full local pytest, not Docker. See OPS Frontend attachment upload helper split.
 
 Commitments:
 - User explicitly rejected invented "tranche" boundaries as a stopping/reporting substitute. The operative commitment is continuous constructive refactor/product-gap work until the broad recovery objective is actually complete or blocked by a real decision.
