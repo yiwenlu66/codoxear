@@ -4432,3 +4432,12 @@
   - Focused frontend/static group returned `61 passed`.
   - Full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+## 2026-06-29T09:06:46Z Frontend jump target helper split clean-room review PASS
+- Async clean-room review `43a63a49-0864-4a48-8cf7-22eb104baf84` returned `PASS` for functional commit `247eae2` and docs `0d043e4`.
+- Reviewer verified semantic equivalence of loaded-user and loaded-copy jump target extraction: same iteration order, same `<`/`>` threshold comparisons, same `chat.scrollTop + 24` wrapper threshold, same active-row index math, and same first/last/empty boundary handling.
+- Reviewer verified `app_message_rows.js` owns only pure `loadedUserJumpTarget` and `loadedCopyJumpTarget`, while `app.js` retains active copy-row state, no-loaded and first/last toast strings, scrolling/reduced-motion policy, pulse effects, updateChatNavButtons, keyboard shortcuts, and pointer/focus handlers.
+- Reviewer verified fail-closed guard coverage, no stateful mutation moved to the helper, source/runtime test coverage, node syntax checks, no secrets/runtime artifacts, docs-only docs commit, no protected checkout mutation, and no Docker overclaim.
+- Reviewer validation: full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
+- Reviewer found no blockers; residual notes were only unrelated in-flight search-mark WIP and inherited direction=0-as-forward behavior.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
