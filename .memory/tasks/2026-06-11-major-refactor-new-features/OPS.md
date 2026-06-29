@@ -4542,3 +4542,12 @@
   - Focused session-log/broker-proc/CC/resume/source group returned `63 passed`.
   - Full local `python3 -m pytest -q` returned `1229 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+## 2026-06-29T10:03:26Z Session log discovery helper split clean-room review PASS
+- Async clean-room review `93186121-46e0-4197-920d-ce0253728834` returned `PASS` for functional commit `55ddca9` and docs `28001b8`.
+- Reviewer verified all moved session-log functions live in `session_log_discovery.py` and `codoxear.util` preserves old public/private wrapper names for consumers.
+- Reviewer verified util facade dependency injection for `now`, `time.sleep`, `_log_exception`, `iter_session_logs`, `read_session_meta_payload`, and `is_subagent_session_meta`, with no import cycle and no consumer import breakage.
+- Reviewer verified Codex `session_meta` parsing and invalid-payload errors, Pi/CC header/id paths, timeout/poll loops, subagent classification and parent extraction, log iteration ordering/path filters, find-by-session-id behavior, new-log cwd/exclude/preexisting/st_mtime/subagent filtering, and `proc_find_open_rollout_log` remaining in util.
+- Reviewer validation: focused session-log/broker-proc/CC/resume groups passed, source sentinels passed, py_compile passed, and isolated full local validation for the reviewed state returned `1229 passed, 107 subtests passed`.
+- Reviewer found no blockers; residual notes were unrelated dirty frontend voice-helper WIP during review isolation, a pre-existing default-Codex `iter_session_logs` design choice for recent cwd, and Docker not rerun.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
