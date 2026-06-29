@@ -3982,3 +3982,18 @@
   - Focused viewport/navigation/auth-cleanup/static group returned `35 passed`.
   - Full local `python3 -m pytest -q` returned `1201 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T01:29:52Z Frontend modal helper split
+- Functional commit `dfb4c22 Extract frontend modal helpers` added `codoxear/static/app_modal.js` and moved reusable modal primitives out of `app.js`:
+  - `isModalTargetOpen`
+  - `syncModalIsolation`
+  - `restoreModalFocus`
+  - `focusModalCloseButton`
+- `app.js` keeps wrapper functions with the same names and still owns app-specific transient-overlay closure (`closeTransientOverlays` / `prepareModalOpen`). This preserves modal call sites while moving reusable DOM policy into a loaded module.
+- Runtime asset wiring updated: `index.html`, `FRONTEND_ASSET_FILES`, static route/version tests, and wheel packaging sentinels now include `app_modal.js` between conversation-copy helpers and `app.js`.
+- Behavior directly tested in `tests/test_overlay_accessibility_source.py`: dialog and display-open detection, hidden target rejection, inert/aria-hidden background isolation, focus restoration, and suppression while a modal remains open.
+- Validation after `dfb4c22`:
+  - `node --check codoxear/static/app_modal.js` and `node --check codoxear/static/app.js` passed.
+  - Focused modal/static/navigation/file-viewer/send/unattended source group returned `65 passed`.
+  - Full local `python3 -m pytest -q` returned `1202 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
