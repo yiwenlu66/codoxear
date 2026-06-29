@@ -4039,3 +4039,20 @@
   - Focused transcript/launch/static group returned `53 passed`.
   - Full local `python3 -m pytest -q` returned `1207 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T02:02:06Z Frontend helper tranche clean-room review PASS
+- Async clean-room review `8e7d2bcd-925f-4208-af3c-d11f65c33acd` returned `PASS` for frontend helper commits:
+  - `788b480` URL hash helpers;
+  - `3a7753c` viewport DOM helpers;
+  - `dfb4c22` modal helpers;
+  - `89779fe` clipboard helpers;
+  - `3d691e4` DOM helper;
+  - `d43825c` transcript helpers;
+  - docs commits `940ff3f`, `6b68e8c`, `fb0d721`, `8798c8d`, `6e448d3`, `f6ccfff`.
+- Reviewer verified strict script ordering before `app.js`, fail-closed guards, `FRONTEND_ASSET_FILES`/versioning/static routes/wheel packaging, wrapper delegation, Node VM behavior tests, no protected checkout mutation, no secrets/runtime artifacts, docs-only docs commits, no Docker overclaim, and full local `1207 passed, 107 subtests`.
+- Reviewer residual risks are low/non-blocking:
+  - `isMobile()` returns `undefined` without `matchMedia`; existing test captures the falsy contract and browsers normally provide `matchMedia`.
+  - `updateAppHeightVar` stores internal cache fields on the function object, as before.
+  - `app_clipboard.js` intentionally uses raw `document.createElement("textarea")` to avoid a DOM-helper dependency cycle.
+  - Transcript identity fallback remains dual field-name based and covered indirectly by tests.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
