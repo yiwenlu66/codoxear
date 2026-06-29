@@ -5109,3 +5109,25 @@
   - `git diff --check` passed.
 - Clean-room review `03a8b2d4-2670-4092-8ba4-33e43eb51e0c` returned PASS with no blockers. Review confirmed all seven replacement sites match their old raw expressions exactly, save-pending behavior is preserved, the paste-toolbar kind check is redundant due to the outer toolbar-active guard, Monaco creation read-only behavior is deliberately preserved, and old repeated raw expressions were eliminated. Non-blocking note: `activeFileCanEnterEditMode()` remains an asymmetric pre-existing predicate with path/pending/plain-fallback and non-file-view semantics; that should be handled in a later state-object extraction.
 - Scope note: this centralizes capability checks only. It does not move mutable file-editor state, introduce a module boundary, rewrite transitions, or claim a full state object.
+
+
+
+## 2026-06-29T19:48:35Z File editor state snapshot layer
+- Functional commit `8ada96a Snapshot file editor state` added a read-only state/capability layer over the existing flat file-editor variables without moving write transitions.
+- Mechanism: `currentFileEditorState()` returns a frozen snapshot of file identity and transient state (`path`, `apiPath`, `gitPath`, `kind`, `editable`, `version`, `draft`, `viewMode`, `editorKind`, `editMode`, `dirty`, `savePending`, `sessionId`, `unavailable`). `fileEditorCapabilities(state)` computes the existing capability predicates from an explicit state object and fails loudly on invalid input. `activeFileEditorCapabilities()` bridges current mutable state to the pure capability function, and the legacy predicate wrappers delegate to that bridge.
+- Boundary preserved: no mutable state writes moved, no module boundary was added, no existing predicate call sites changed, and Monaco creation's initial `readOnly` expression remains deliberately unchanged because it has a pre-sync behavior that differs from the normalized wrapper.
+- Tests added/updated:
+  - `tests/test_file_viewer_source.py::test_file_editor_capability_predicates_preserve_distinctions` now verifies snapshot fields, pure capability output, and legacy wrapper output across editable text, save-pending, preview mode, binary kind, unavailable session, plain fallback, not editing, and missing-path states.
+  - Existing paste/save/delete VM harnesses now include `currentFileEditorState()` and `fileEditorCapabilities()` so they exercise the real wrapper path.
+  - Source sentinels now assert unavailable state flows through the snapshot/capability boundary.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused predicate/save/delete/paste VM tests passed.
+  - Focused frontend/source/static group returned `54 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1263 passed, 136 subtests passed`.
+  - Focused Docker frontend/source/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed.
+- Clean-room review `32588b94-7705-4548-ba0f-d876b6d823f6` returned PASS with no blockers. Review confirmed predicate semantics are preserved, wrappers delegate correctly, the snapshot captures required predicate state plus forward-looking fields, call sites are unchanged, Monaco creation read-only behavior is preserved, and VM harnesses execute the real functions. Non-blocking notes: per-call frozen snapshot/capability allocation is acceptable, tests do not runtime-assert `Object.isFrozen`, and `updateFileEditButton()` still samples unavailable state directly plus through the wrapper because call-site snapshot plumbing is intentionally future work.
+- Next transition seam identified: active file identity normalization is duplicated in `beginFileOpenRequest()` and `setFilePath()` around path/git/api-token reuse. A pure helper for that identity calculation is the next small write-adjacent state refactor; save pending/token finalization should remain separate because it is tied to `saveStillCurrent()` race guards.
+- Scope note: this is a snapshot/capability layer only. It does not claim a complete file-editor state object, move write ownership, or add browser-manual evidence.
