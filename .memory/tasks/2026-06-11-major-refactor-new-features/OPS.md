@@ -4101,3 +4101,17 @@
   - `codoxear.sessiond_state` is now a new viable direct import path in addition to `codoxear.sessiond` re-exports.
   - Future `pi_log` helper semantic changes affect `sessiond_state.py`, same as before extraction.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T02:17:43Z Pi message helper split
+- Functional commit `75d21c8 Extract Pi message helpers` moved Pi message/tool-call parsing from `codoxear/pi_log.py` into new `codoxear/pi_message.py`:
+  - `PiUnknownToolCallId`, `PiDuplicateToolCallId`, `PiPendingToolCallId`;
+  - user/assistant text/content/error/aborted/final-turn helpers;
+  - tool-call counting, unknown/duplicate pending IDs, tool-result application, assistant tool-call pending application;
+  - assistant thinking count and message-role helpers.
+- `pi_log.py` remains the public facade for existing imports and retains context-window/model/settings logic, session header/cwd/id readers, reverse JSONL scanning, current-turn reconstruction, and token update functions. Patch-sensitive context-window seams such as `codoxear.pi_log._query_pi_context_windows` were intentionally not moved.
+- Source/behavior sentinel `tests/test_pi_message_source.py` asserts `pi_log.py` re-export identity for moved public names, that message parsing definitions are no longer in `pi_log.py`, and that duplicate/unknown tool-call IDs plus final-answer signature semantics are preserved.
+- Validation after `75d21c8`:
+  - `python3 -m py_compile codoxear/pi_message.py codoxear/pi_log.py` passed.
+  - Focused Pi message/server-chat/broker-busy/sessiond/idle group returned `136 passed`.
+  - Full local `python3 -m pytest -q` returned `1211 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
