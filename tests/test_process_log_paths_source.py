@@ -32,8 +32,11 @@ class TestProcessLogPathsSource(unittest.TestCase):
             self.assertNotIn(f"def {name}(", util_source)
 
         self.assertIn("def proc_find_open_rollout_log(", util_source)
-        self.assertIn("proc_open_writable_rollout_logs_for_backend(proc_root, root_pid, agent_backend=backend_name)", util_source)
-        self.assertIn("payload = read_session_meta_payload(p, agent_backend=backend_name, timeout_s=0.0)", util_source)
+        self.assertIn("return _proc_find_open_rollout_log_impl(", util_source)
+        self.assertIn("proc_open_writable_rollout_logs_for_backend_func=proc_open_writable_rollout_logs_for_backend", util_source)
+        self.assertIn("read_session_meta_payload_func=read_session_meta_payload", util_source)
+        self.assertNotIn("cands = list(proc_open_writable_rollout_logs_for_backend(", util_source)
+        self.assertNotIn("matches: list[Path] = []", util_source)
         self.assertIn("from .session_log_paths import _is_codex_rollout_log_path", process_source)
         self.assertIn("from .agent_backend import normalize_agent_backend", process_source)
         self.assertIn('if sys.platform == "darwin":', process_source)

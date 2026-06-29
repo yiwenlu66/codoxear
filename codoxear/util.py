@@ -51,6 +51,7 @@ from .session_log_discovery import _read_session_meta_payload_once as _read_sess
 from .session_log_discovery import classify_session_log as _classify_session_log_impl
 from .session_log_discovery import find_new_session_log as _find_new_session_log_impl
 from .session_log_discovery import find_session_log_for_session_id as _find_session_log_for_session_id_impl
+from .session_log_discovery import proc_find_open_rollout_log as _proc_find_open_rollout_log_impl
 from .session_log_discovery import is_subagent_session_meta as _is_subagent_session_meta_impl
 from .session_log_discovery import iter_session_logs as _iter_session_logs_impl
 from .session_log_discovery import read_session_meta_payload as _read_session_meta_payload_impl
@@ -202,40 +203,18 @@ def proc_find_open_rollout_log(
     cwd: str | None = None,
     ignored_paths: set[Path] | None = None,
 ) -> Path | None:
-    backend_name = normalize_agent_backend(agent_backend)
-    cands = list(proc_open_writable_rollout_logs_for_backend(proc_root, root_pid, agent_backend=backend_name))
-    if not cands:
-        return None
-    ignored_resolved: set[Path] = set()
-    for p in ignored_paths or set():
-        try:
-            ignored_resolved.add(p.resolve())
-        except Exception:
-            ignored_resolved.add(p)
-    try:
-        cands.sort(key=lambda p: float(p.stat().st_mtime), reverse=True)
-    except Exception:
-        pass
-    matches: list[Path] = []
-    for p in cands:
-        try:
-            rp = p.resolve()
-        except Exception:
-            rp = p
-        if rp in ignored_resolved:
-            continue
-        payload = read_session_meta_payload(p, agent_backend=backend_name, timeout_s=0.0)
-        if not payload:
-            continue
-        if backend_name == "codex" and is_subagent_session_meta(payload):
-            continue
-        if cwd is not None:
-            if not _payload_cwd_matches(payload.get("cwd"), cwd):
-                continue
-        matches.append(p)
-    if len(matches) != 1:
-        return None
-    return matches[0]
+    return _proc_find_open_rollout_log_impl(
+        proc_root=proc_root,
+        root_pid=root_pid,
+        agent_backend=agent_backend,
+        cwd=cwd,
+        ignored_paths=ignored_paths,
+        normalize_agent_backend_func=normalize_agent_backend,
+        proc_open_writable_rollout_logs_for_backend_func=proc_open_writable_rollout_logs_for_backend,
+        read_session_meta_payload_func=read_session_meta_payload,
+        is_subagent_session_meta_func=is_subagent_session_meta,
+        payload_cwd_matches_func=_payload_cwd_matches,
+    )
 
 
 def read_jsonl_from_offset(path: Path, offset: int, *, max_bytes: int, advance_on_oversized_unterminated: bool = True) -> tuple[list[dict[str, Any]], int]:

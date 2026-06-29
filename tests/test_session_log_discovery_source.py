@@ -14,6 +14,7 @@ class TestSessionLogDiscoverySource(unittest.TestCase):
 
         self.assertIn("from .session_log_discovery import read_session_meta_payload as _read_session_meta_payload_impl", util_source)
         self.assertIn("from .session_log_discovery import find_new_session_log as _find_new_session_log_impl", util_source)
+        self.assertIn("from .session_log_discovery import proc_find_open_rollout_log as _proc_find_open_rollout_log_impl", util_source)
         self.assertIn("def read_session_meta_payload(", util_source)
         self.assertIn("return _read_session_meta_payload_impl(", util_source)
         self.assertIn("now_func=now", util_source)
@@ -48,6 +49,13 @@ class TestSessionLogDiscoverySource(unittest.TestCase):
         self.assertIn("def find_new_session_log(", discovery_source)
         self.assertIn("_payload_cwd_matches(payload.get(\"cwd\"), cwd)", discovery_source)
         self.assertIn("sleep_func(0.2)", discovery_source)
+        self.assertIn("def proc_find_open_rollout_log(", discovery_source)
+        self.assertIn("proc_open_writable_rollout_logs_for_backend_func(proc_root, root_pid, agent_backend=backend_name)", discovery_source)
+        self.assertIn("payload = read_session_meta_payload_func(p, agent_backend=backend_name, timeout_s=0.0)", discovery_source)
+        self.assertIn("payload_cwd_matches_func(payload.get(\"cwd\"), cwd)", discovery_source)
+        self.assertIn("normalize_agent_backend_func=normalize_agent_backend", util_source)
+        self.assertIn("is_subagent_session_meta_func=is_subagent_session_meta", util_source)
+        self.assertIn("payload_cwd_matches_func=_payload_cwd_matches", util_source)
         self.assertNotIn("from .util", discovery_source)
 
 

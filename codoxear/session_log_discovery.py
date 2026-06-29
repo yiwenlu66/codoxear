@@ -24,6 +24,9 @@ SleepFunc = Callable[[float], None]
 ReadMetaFunc = Callable[..., dict[str, Any] | None]
 IsSubagentFunc = Callable[[dict[str, Any]], bool]
 IterLogsFunc = Callable[..., Iterable[Path]]
+NormalizeBackendFunc = Callable[[object], str]
+ProcOpenWritableLogsFunc = Callable[..., Iterable[Path]]
+PayloadCwdMatchesFunc = Callable[[object, str], bool]
 
 
 def _read_session_meta_payload_once(log_path: Path, *, max_bytes: int, log_exception: LogException) -> dict[str, Any] | None:
@@ -220,3 +223,52 @@ def find_new_session_log(
         if now_func() >= deadline:
             return None
         sleep_func(0.2)
+
+
+def proc_find_open_rollout_log(
+    *,
+    proc_root: Path,
+    root_pid: int,
+    agent_backend: str = "codex",
+    cwd: str | None = None,
+    ignored_paths: set[Path] | None = None,
+    normalize_agent_backend_func: NormalizeBackendFunc,
+    proc_open_writable_rollout_logs_for_backend_func: ProcOpenWritableLogsFunc,
+    read_session_meta_payload_func: ReadMetaFunc,
+    is_subagent_session_meta_func: IsSubagentFunc,
+    payload_cwd_matches_func: PayloadCwdMatchesFunc = _payload_cwd_matches,
+) -> Path | None:
+    backend_name = normalize_agent_backend_func(agent_backend)
+    cands = list(proc_open_writable_rollout_logs_for_backend_func(proc_root, root_pid, agent_backend=backend_name))
+    if not cands:
+        return None
+    ignored_resolved: set[Path] = set()
+    for p in ignored_paths or set():
+        try:
+            ignored_resolved.add(p.resolve())
+        except Exception:
+            ignored_resolved.add(p)
+    try:
+        cands.sort(key=lambda p: float(p.stat().st_mtime), reverse=True)
+    except Exception:
+        pass
+    matches: list[Path] = []
+    for p in cands:
+        try:
+            rp = p.resolve()
+        except Exception:
+            rp = p
+        if rp in ignored_resolved:
+            continue
+        payload = read_session_meta_payload_func(p, agent_backend=backend_name, timeout_s=0.0)
+        if not payload:
+            continue
+        if backend_name == "codex" and is_subagent_session_meta_func(payload):
+            continue
+        if cwd is not None:
+            if not payload_cwd_matches_func(payload.get("cwd"), cwd):
+                continue
+        matches.append(p)
+    if len(matches) != 1:
+        return None
+    return matches[0]
