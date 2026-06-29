@@ -4584,3 +4584,12 @@
   - Focused process/session/proc group returned `98 passed`.
   - Full local `python3 -m pytest -q` returned `1232 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+
+## 2026-06-29T12:34:08Z Process liveness clean-room review PASS
+- Async reviewer run `96c720be-6fe8-4c63-9590-79362d9fe511` returned `RESULT: PASS` for functional commit `a1f9df0` and docs commit `7e17aa2`.
+- Review evidence: `pid_alive` and `process_group_alive` are implemented exactly once in `codoxear/process_runtime.py`; `codoxear.util` re-exports the same function objects; existing consumer imports through `util.py` continue to resolve.
+- Review verified exact semantics: non-positive PID/group false, successful `os.kill(pid, 0)`/`os.killpg(root_pid, 0)` true, `ProcessLookupError` false, `PermissionError` true, generic exception false.
+- Review verified the legacy `codoxear.util.os.path.samefile` monkeypatch seam remains available and that samefile-patching cwd alias tests pass.
+- Review observed py_compile, focused process/session/proc tests, and full local pytest evidence; no protected checkout mutation, no secrets/runtime artifacts, docs-only memory commit, and no Docker overclaim.
+- Residual risk: future cleanup must not remove `import os` from `util.py` unless the samefile monkeypatch seam is deliberately moved with tests updated.
