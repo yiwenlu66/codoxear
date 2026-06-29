@@ -4242,3 +4242,18 @@
   - Isolated `python3 -m pytest -q tests/test_broker_fail_closed.py` returned `27 passed`.
   - Full local `python3 -m pytest -q` returned `1222 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T06:15:29Z Sessiond control handler split
+- Functional commit `ef9cc8c Extract sessiond control handlers` moved sessiond control-socket command semantics from `codoxear/sessiond.py` into new `codoxear/sessiond_control.py`:
+  - `SessiondControlDeps`;
+  - `handle_sessiond_control_connection`;
+  - state/tail/send/keys/shutdown handler behavior;
+  - sync-send error responses, async after-reply injection, busy rollback, key write errors, and shutdown callback response.
+- `sessiond.py` remains process/socket/PTY coordinator and `_handle_conn` now constructs deps at call time, preserving patch seams for `codoxear.sessiond._inject`, `_encode_enter`, `_seq_bytes`, `_write_all`, `_handle_control_socket_connection`, `_send_socket_json_line`, `_socket_peer_disconnected`, and `traceback.print_exc`.
+- `sessiond.py` reduced from 502 lines to 438 lines; `sessiond_control.py` is 108 lines.
+- Source sentinel `tests/test_sessiond_control_source.py` asserts control handlers moved out of `sessiond.py`, dependency wiring remains in `_handle_conn`, and the new owner contains required send/keys/shutdown response contracts.
+- Validation after `ef9cc8c`:
+  - `python3 -m py_compile codoxear/sessiond.py codoxear/sessiond_control.py` passed.
+  - Focused sessiond control/state/send/packaging/pty group returned `23 passed`.
+  - Full local `python3 -m pytest -q` returned `1223 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
