@@ -4518,3 +4518,12 @@
   - Focused display/frontend group returned `39 passed`.
   - Full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+## 2026-06-29T09:44:43Z Frontend date label display helper split clean-room review PASS
+- Async clean-room review `568180db-e9f0-4b09-9405-448f9b21753c` returned `PASS` for functional commit `515002c` and docs `cff94da`.
+- Reviewer verified `ymd`, `dayLabel`, and `time24` are behavior-preserving extractions from `app.js` into `app_display.js`, with identical padding, local-date Today/Yesterday/old-date behavior, and HH:MM formatting.
+- Reviewer verified `fmtTs` reuses `ymd(d)` without changing output or the try/catch fallback, and that all app call sites remain wrapper-based for time-chip text, day separators, row timestamp updates, row-helper dependency injection, and diagnostics timestamp formatting.
+- Reviewer verified fail-closed display guard coverage, module load order, source/runtime tests, node syntax checks, no secrets/runtime artifacts, docs-only docs commit, no protected checkout mutation, and no Docker overclaim.
+- Reviewer validation: full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`; reviewer also ran focused display/frontend checks. Reviewer noted the OPS focused-test count was narrower than their focused selector, not a correctness issue.
+- Reviewer found no blockers; residual note was pre-existing timezone sensitivity in display tests, with current environment passing.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
