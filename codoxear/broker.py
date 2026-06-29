@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import pty
 import re
@@ -46,6 +45,8 @@ from codoxear.broker_log_binding import _detach_trigger_seen
 from codoxear.broker_log_binding import _maybe_detach_on_session_switch_trigger
 from codoxear.broker_log_binding import _resolve_broker_log_binding
 from codoxear.broker_log_binding import _seed_broker_log_state
+from codoxear.broker_metadata import _claimed_log_paths_from_sock_meta
+from codoxear.broker_metadata import _write_broker_sidecar_meta
 from codoxear.broker_turn_state import INTERRUPT_HINT_TAIL_MAX
 from codoxear.broker_turn_state import State
 from codoxear.broker_turn_state import _apply_rollout_obj_to_state
@@ -62,7 +63,6 @@ from codoxear.util import default_app_dir as _default_app_dir
 from codoxear.util import find_new_session_log as _find_new_session_log
 from codoxear.util import iter_session_logs as _iter_session_logs
 from codoxear.util import launch_attempts_path as _launch_attempts_path
-from codoxear.util import pid_alive as _pid_alive
 from codoxear.util import process_group_alive as _process_group_alive
 from codoxear.util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from codoxear.util import _paths_match as _paths_match
@@ -298,33 +298,6 @@ def _term_size() -> tuple[int, int]:
     except Exception:
         return 40, 120
 
-def _claimed_log_paths_from_sock_meta(*, sock_dir: Path, exclude_sock: Path | None = None) -> set[Path]:
-    out: set[Path] = set()
-    if not sock_dir.exists():
-        return out
-    for meta_path in sock_dir.glob("*.json"):
-        sock_path = meta_path.with_suffix(".sock")
-        if exclude_sock is not None and _paths_match(sock_path, exclude_sock):
-            continue
-        try:
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        if not isinstance(meta, dict):
-            continue
-        log_path_raw = meta.get("log_path")
-        if not isinstance(log_path_raw, str) or not log_path_raw.strip():
-            continue
-        broker_pid = int(meta.get("broker_pid")) if isinstance(meta.get("broker_pid"), int) else 0
-        agent_pid = int(meta.get("codex_pid")) if isinstance(meta.get("codex_pid"), int) else 0
-        if (broker_pid > 0 or agent_pid > 0) and (not _pid_alive(broker_pid)) and (not _pid_alive(agent_pid)):
-            continue
-        path = Path(log_path_raw)
-        try:
-            out.add(path.resolve())
-        except Exception:
-            out.add(path)
-    return out
 
 
 
@@ -811,36 +784,17 @@ class Broker:
         st = self.state
         if not st or not st.sock_path:
             return
-        meta = {
-            "session_id": st.session_id,
-            "owner": OWNER_TAG if OWNER_TAG else None,
-            "broker_pid": os.getpid(),
-            "sessiond_pid": os.getpid(),
-            "codex_pid": st.codex_pid,
-            "cwd": st.cwd,
-            "start_ts": st.start_ts,
-            "log_path": str(st.log_path) if st.log_path else None,
-            "ignored_rollout_paths": sorted(str(p) for p in st.ignored_rollout_paths),
-            "sock_path": str(st.sock_path),
-            "agent_backend": AGENT_BACKEND,
-            "launch_id": (os.environ.get("CODEX_WEB_LAUNCH_ID") or "").strip() or None,
-            "resume_session_id": st.resume_session_id,
-            "model_provider": MODEL_PROVIDER_OVERRIDE or None,
-            "preferred_auth_method": PREFERRED_AUTH_METHOD_OVERRIDE or None,
-            "model": MODEL_OVERRIDE or None,
-            "reasoning_effort": REASONING_EFFORT_OVERRIDE or None,
-            "service_tier": SERVICE_TIER_OVERRIDE or None,
-            "transport": (os.environ.get("CODEX_WEB_TRANSPORT") or "").strip() or None,
-            "tmux_session": (os.environ.get("CODEX_WEB_TMUX_SESSION") or "").strip() or None,
-            "tmux_window": (os.environ.get("CODEX_WEB_TMUX_WINDOW") or "").strip() or None,
-            "spawn_nonce": (os.environ.get("CODEX_WEB_SPAWN_NONCE") or "").strip() or None,
-            "control_protocol_version": 2,
-            "control_capabilities": {"sync_send": True, "key_write_errors": True},
-        }
-        meta_path = st.sock_path.with_suffix(".json")
-        SOCK_DIR.mkdir(parents=True, exist_ok=True)
-        meta_path.write_text(json.dumps(meta), encoding="utf-8")
-        os.chmod(meta_path, 0o600)
+        _write_broker_sidecar_meta(
+            st,
+            sock_dir=SOCK_DIR,
+            owner_tag=OWNER_TAG,
+            agent_backend=AGENT_BACKEND,
+            model_provider=MODEL_PROVIDER_OVERRIDE,
+            preferred_auth_method=PREFERRED_AUTH_METHOD_OVERRIDE,
+            model=MODEL_OVERRIDE,
+            reasoning_effort=REASONING_EFFORT_OVERRIDE,
+            service_tier=SERVICE_TIER_OVERRIDE,
+        )
 
     def _sock_server(self) -> None:
         st = self.state

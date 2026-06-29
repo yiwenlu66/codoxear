@@ -15,6 +15,7 @@ SERVER_ROUTE_DEPS_PY = ROOT / "codoxear" / "server_route_deps.py"
 FILE_UPLOAD_PY = ROOT / "codoxear" / "file_upload.py"
 CONTROL_ROUTES_PY = ROOT / "codoxear" / "control_routes.py"
 BROKER_PY = ROOT / "codoxear" / "broker.py"
+BROKER_METADATA_PY = ROOT / "codoxear" / "broker_metadata.py"
 SESSIOND_PY = ROOT / "codoxear" / "sessiond.py"
 SESSION_LAUNCHER_PY = ROOT / "codoxear" / "session_launcher.py"
 
@@ -108,9 +109,11 @@ class TestFileUploadModuleSource(unittest.TestCase):
 
     def test_control_sidecars_advertise_sync_send_capability(self) -> None:
         broker_source = BROKER_PY.read_text(encoding="utf-8")
+        broker_metadata_source = BROKER_METADATA_PY.read_text(encoding="utf-8")
         sessiond_source = SESSIOND_PY.read_text(encoding="utf-8")
 
-        for source in [broker_source, sessiond_source]:
+        self.assertIn("from codoxear.broker_metadata import _write_broker_sidecar_meta", broker_source)
+        for source in [broker_metadata_source, sessiond_source]:
             self.assertIn('"control_protocol_version": 2', source)
             self.assertIn('"control_capabilities": {"sync_send": True, "key_write_errors": True}', source)
 

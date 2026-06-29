@@ -13,7 +13,7 @@ class TestProcessLivenessSource(unittest.TestCase):
         self.assertIn("def pid_alive(pid: int) -> bool:", sources[ROOT / "codoxear" / "util.py"])
         self.assertIn("def process_group_alive(root_pid: int) -> bool:", sources[ROOT / "codoxear" / "util.py"])
         self.assertIn("from .util import pid_alive as _pid_alive", sources[ROOT / "codoxear" / "server.py"])
-        self.assertIn("from codoxear.util import pid_alive as _pid_alive", sources[ROOT / "codoxear" / "broker.py"])
+        self.assertIn("from codoxear.util import pid_alive as _pid_alive", sources[ROOT / "codoxear" / "broker_metadata.py"])
         self.assertIn("from .util import process_group_alive as _process_group_alive", sources[ROOT / "codoxear" / "sessiond.py"])
 
 
