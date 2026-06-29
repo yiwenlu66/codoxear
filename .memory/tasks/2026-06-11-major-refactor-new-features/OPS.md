@@ -4206,3 +4206,19 @@
 - Reviewer verified explicit `models_path` still avoids RPC query, RPC remains offline/fail-closed, reserve-token fallback behavior is unchanged, no import cycles exist, docs commit is docs-only, no secrets/runtime artifacts were added, and no Docker evidence was claimed.
 - Reviewer validation: focused `test_pi_context_source.py` plus `test_server_chat_flags.py` passed, and full local `python3 -m pytest -q` returned `1218 passed, 107 subtests passed`.
 - Reviewer residual note: `pi_reserved_tokens` currently exists in both `pi_log.py` and `pi_context.py` with identical bodies; harmless duplication because both route through the same cached `_pi_reserved_tokens`, but a possible future cleanup.
+
+## 2026-06-29T05:58:15Z File GET route split
+- Functional commit `499a483 Split file GET routes` moved session/absolute file GET ownership from `codoxear/file_routes.py` into new `codoxear/file_get_routes.py`:
+  - `FileGetRouteDeps`, `JsonResponse`, `RouteMatcher`;
+  - `session_file_read_payload`;
+  - `handle_file_get_route` and `handle_absolute_file_preview_route`;
+  - session read/search/list/blob/video_preview/download handlers;
+  - auth/session lookup, query parsing, error mapping, preview/blob/video/download helpers.
+- `file_routes.py` is now a 25-line compatibility facade re-exporting GET/global/write/common file route names. This preserves existing imports from `server_handler.py`, `server_route_deps.py`, and tests.
+- Source sentinel `tests/test_file_get_routes_source.py` asserts GET route ownership moved out of the facade and checks all session route branches, absolute preview endpoints, session refresh, file-history recording with `KeyError` swallow, required-query handling, video-preview failure mapping, and download response construction.
+- Negative evidence repaired before commit: `tests/test_file_viewer_source.py` still expected video preview failure/streaming mechanics in `file_routes.py`; it now checks `file_get_routes.py` while verifying the facade imports `handle_absolute_file_preview_route`.
+- Validation after `499a483`:
+  - `python3 -m py_compile codoxear/file_routes.py codoxear/file_get_routes.py codoxear/file_global_routes.py codoxear/file_write_routes.py` passed.
+  - Focused file/static group `python3 -m pytest -q tests/test_file_*.py tests/test_route_decomposition_source.py tests/test_static_assets.py` returned `180 passed, 52 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1219 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
