@@ -5001,3 +5001,27 @@
 - Clean-room review `2c93f4f7-fd6b-4428-ba28-175c3317897a` returned PASS with no blockers. Review confirmed no raw `Path.open("rb")` remains in the target modules, descriptor/context lifetime is correct under normal request flow, server caps wiring is complete, error mappings are appropriate, and the parent-swap test exercises the old bug.
 - Residuals from review, intentionally not claimed closed: `_stream_file_bytes()` remains uncalled retained code now made safe; file response open errors still use `send_error()` plain text while prefix errors use JSON; the stream wrapper manually enters a context manager and therefore depends on normal synchronous control flow between returned wrapper and caller `with`; unrelated log/static/voice file reads remain ordinary IO and are outside this file-viewer delivery claim.
 - Scope note: this closes no-follow descriptor anchoring for file viewer/blob/download final response delivery and preview prefix detection. It does not claim every repository file read path, real browser media behavior, or non-POSIX filesystem behavior.
+
+
+
+## 2026-06-29T18:38:36Z Manual file paste fallback restored
+- Functional commit `5523c13 Restore manual file paste fallback` fixed a touch-file-editor regression: `filePasteDialog` existed with Insert/Cancel/backdrop/Escape handlers but no reachable opener when the Clipboard API was missing or denied.
+- Mechanism: `showFilePasteDialog()` now shares the same editability/session guards as `pasteFromClipboardIntoActiveFile()`, closes transient overlays, clears the textarea, shows the existing backdrop/dialog, syncs modal isolation, and requestAnimationFrame-focuses/selects the textarea with a display guard. Direct clipboard paste remains the primary path when available.
+- Behavior now covered:
+  - Missing Clipboard API or denied `readText()` opens the manual paste dialog and shows `paste manually`.
+  - Direct non-empty clipboard text still inserts through `insertIntoActiveFileEditor()`, shows `pasted`, and focuses the editor.
+  - Empty clipboard still shows `clipboard empty` and focuses the editor without opening the dialog.
+  - Cancel button, backdrop click, and Escape hide the dialog with `restoreFocus: true`; programmatic cleanup, mode changes, file-viewer close, and Insert success hide it without extra focus restoration.
+- Tests added/updated:
+  - `tests/test_file_viewer_source.py::test_touch_paste_manual_dialog_fallback_behavior` runs a Node VM harness covering missing, denied, direct, empty, and dismissed-dialog cases, including display state, textarea clear/focus/select, toast messages, editor focus, modal sync, and rAF counts.
+  - Source assertions now pin `showFilePasteDialog()`, `hideFilePasteDialog({ restoreFocus = false } = {})`, dialog display/focus behavior, `paste manually`, and the existing click activation binding.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused paste VM tests passed.
+  - Focused frontend/source/static group returned `52 passed, 2 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1261 passed, 113 subtests passed`.
+  - Focused Docker frontend/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed.
+- Clean-room review `852b5028-2e6b-4592-8a18-e9671093ee93` PASSed the initial fix and identified a now-visible focus-dismissal gap. The final diff applied that focus repair, then review `d74e74f9-2101-467d-af49-ebe5ef42f328` returned PASS with no blockers and verified all hide call sites have correct `restoreFocus` semantics.
+- Scope note: this is a frontend touch-file-editor paste fallback fix. It does not add backend APIs, change state formats, implement keyboard save shortcuts, or provide real mobile-browser/manual clipboard-permission evidence.
