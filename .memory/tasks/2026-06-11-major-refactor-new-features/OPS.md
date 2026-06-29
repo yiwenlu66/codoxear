@@ -4420,3 +4420,15 @@
 - Reviewer validation: focused frontend-related tests passed and full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
 - Reviewer found no blockers; residual note was only a pre-existing `textContent = 0` falsy edge, not introduced by this split.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+## 2026-06-29T09:00:09Z Frontend jump target helper split
+- Functional commit `247eae2 Extract frontend jump target helpers` moved pure loaded-row target selection from `codoxear/static/app.js` into `codoxear/static/app_message_rows.js`:
+  - `loadedUserJumpTarget` chooses previous/next loaded user-message rows from a row list, direction, and scroll threshold;
+  - `loadedCopyJumpTarget` chooses previous/next copyable message rows from a row list, active row, direction, and scroll threshold.
+- `app.js` keeps user-facing toast strings, scroll behavior, reduced-motion policy, active copy-row state, pulse effects, keyboard/mouse handlers, and navigation wrappers. The `CodoxearMessageRows` fail-closed guard now checks both selector helpers.
+- Runtime/source tests validate active-row stepping, scroll-threshold fallback, first/last/empty boundary reasons, loaded-user boundaries, copyable-message boundaries, and app/helper source ownership.
+- Validation after `247eae2`:
+  - `node --check codoxear/static/app_message_rows.js` and `node --check codoxear/static/app.js` passed.
+  - Focused frontend/static group returned `61 passed`.
+  - Full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
