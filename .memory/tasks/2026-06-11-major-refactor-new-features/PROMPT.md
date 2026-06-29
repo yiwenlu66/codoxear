@@ -34,3 +34,11 @@ Continue aggressive product-gap recovery, reliability hardening, and structural/
 - Do not define a small "tranche" as a completion boundary for the user's broad refactor/recovery request.
 - Reporting that the broad work is not done is not useful progress; continue with the next constructive intervention unless blocked by a real user decision or irreversible/high-risk action.
 - Completion claims require the actual broad recovery/refactor objective to be satisfied, not merely a reviewed subset.
+
+
+## Unattended-mode operating directive
+- Maintain internal Deliverables, Completed, Next actions, and Parked user decisions during long-running work; surface them only when yielding is necessary.
+- Default to continuing in the same turn. Yield only when all deliverables are finished, only a true user decision remains, or the next step is irreversible/high-risk and needs explicit confirmation.
+- Before yielding, run a clean-room adversarial review with user intent, deliverables, completed evidence, next actions, parked decisions, constraints, and changed artifacts; apply findings before reporting unless the finding itself requires a user decision.
+- Avoid trial-and-error loops: use reading, tracing, inspection, causal reasoning, and the strongest available verification. Do not repeat commands or edits without a new discriminating reason.
+- User directive: push refactor/product recovery aggressively rather than treating any bounded tranche as a stopping point; continue into the next justified reliability/refactor/product target after each committed checkpoint.
