@@ -4391,3 +4391,11 @@
 - Reviewer behavior checks covered typing/recovery-row exclusion, user/copy row filtering, active copy-button detection, source sentinels, node syntax checks, no secrets/runtime artifacts, docs-only docs commit, no protected checkout mutation, and no Docker overclaim.
 - Reviewer validation: focused row/navigation/scrollback tests passed and full local `python3 -m pytest -q` returned `1227 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+## 2026-06-29T08:44:01Z JSONL offset reader split clean-room review PASS
+- Async clean-room review `42d211e5-ba98-4911-b936-2eaabbfe5201` returned `PASS` for functional commit `6c83f80` and docs `dad6668`.
+- Reviewer verified behavior-preserving movement of `read_jsonl_from_offset` into `jsonl_offset.py`, with only intentional `_log_exception` injection from the `util.py` facade and no `jsonl_offset -> util` import cycle.
+- Reviewer verified facade compatibility for existing server/broker/sessiond/voice/session-log consumers, missing/empty data behavior, bounded reads, oversized unterminated fragment handling, broker no-advance semantics, newline offset advancement, UTF-8 truncation handling, JSON/Unicode decode skipping, non-object row skipping, and injected exception logging contexts.
+- Reviewer validation: py_compile passed, focused JSONL/broker/sessiond group returned `110 passed`, JSONL behavioral/adversarial tests passed, and full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`.
+- Reviewer found no blockers; residual note was inherited/readability-only duplication of the read-cap formula.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
