@@ -4527,3 +4527,18 @@
 - Reviewer validation: full local `python3 -m pytest -q` returned `1228 passed, 107 subtests passed`; reviewer also ran focused display/frontend checks. Reviewer noted the OPS focused-test count was narrower than their focused selector, not a correctness issue.
 - Reviewer found no blockers; residual note was pre-existing timezone sensitivity in display tests, with current environment passing.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+## 2026-06-29T09:48:50Z Session log discovery helper split
+- Functional commit `55ddca9 Extract session log discovery helpers` moved session-log metadata parsing and session-log discovery policy from `codoxear/util.py` into new `codoxear/session_log_discovery.py`:
+  - `_read_session_meta_payload_once` and `read_session_meta_payload`;
+  - `is_subagent_session_meta`, `subagent_parent_thread_id`, and `classify_session_log`;
+  - `iter_session_logs`, `find_session_log_for_session_id`, and `find_new_session_log`.
+- `codoxear.util` remains the compatibility facade for all old public/private names and injects patch-sensitive dependencies into the new module: `now`, `time.sleep`, `_log_exception`, `iter_session_logs`, `read_session_meta_payload`, and `is_subagent_session_meta`.
+- `proc_find_open_rollout_log` remains in `util.py`, preserving its higher-level proc-open-log policy and use of the util facade for payload/subagent/cwd filtering.
+- `util.py` reduced from 385 lines to 297 lines; `session_log_discovery.py` is 222 lines.
+- Source sentinel `tests/test_session_log_discovery_source.py` asserts the new owner contains file reads, backend-specific Pi/CC header/id reads, directory iteration, cwd filtering, and wait loops, while `util.py` contains facade wrappers without the moved loops.
+- Validation after `55ddca9`:
+  - `python3 -m py_compile codoxear/util.py codoxear/session_log_discovery.py` passed.
+  - Focused session-log/broker-proc/CC/resume/source group returned `63 passed`.
+  - Full local `python3 -m pytest -q` returned `1229 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
