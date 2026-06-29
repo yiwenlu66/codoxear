@@ -7282,13 +7282,20 @@
           fileVideo.style.display = "none";
         }
 
+        function setFileRenderSurface(surface) {
+          const next = String(surface || "");
+          if (next !== "diff" && next !== "image" && next !== "video") throw new Error("invalid file render surface");
+          fileDiff.style.display = next === "diff" ? "block" : "none";
+          fileImage.style.display = next === "image" ? "block" : "none";
+          fileVideo.style.display = next === "video" ? "block" : "none";
+        }
+
         function resetFileViewerPanel() {
           disposeFileEditor();
           resetActiveFileBufferState();
           fileImage.removeAttribute("src");
-          fileImage.style.display = "none";
           clearFileVideo();
-          fileDiff.style.display = "block";
+          setFileRenderSurface("diff");
         }
 
         async function ensureCurrentFileViewerSession() {
@@ -7942,7 +7949,7 @@
           disposeFileEditor();
           clearFileVideo();
           fileDiff.innerHTML = "";
-          fileDiff.style.display = "block";
+          setFileRenderSurface("diff");
           fileEditorKind = "plain-fallback";
           fileEditMode = false;
           const targetLine = normalizeLineNumber(lineNumber) || 1;
@@ -7967,7 +7974,7 @@
           disposePdfRender();
           clearFileVideo();
           fileDiff.innerHTML = "";
-          fileDiff.style.display = "block";
+          setFileRenderSurface("diff");
           const link = el("a", { href: url, target: "_blank", rel: "noopener", text: "Open or download file" });
           const body = el("div", { class: "fileBlockedNotice fileDownloadFallback" }, [
             el("div", { class: "title", text: "Preview unavailable" }),
@@ -8266,6 +8273,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           disposeFileEditor();
           clearFileVideo();
           fileDiff.innerHTML = "";
+          setFileRenderSurface("diff");
           const preview = el("div", {
             class: "md fileMarkdownPreview",
             html: markdownPreviewHtml(String(text || ""), { filePath: rel, sessionId: fileViewerSessionId || selected || "" }),
@@ -8279,6 +8287,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           disposeFileEditor();
           clearFileVideo();
           fileDiff.innerHTML = "";
+          setFileRenderSurface("diff");
           const body = el("div", { class: "fileBlockedNotice" }, [
             el("div", { class: "title", text: "Preview unavailable" }),
             el("p", { text: blockedFileMessage(rel, reason, viewerMaxBytes, size) }),
@@ -8292,7 +8301,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           disposePdfRender();
           clearFileVideo();
           fileDiff.innerHTML = "";
-          fileDiff.style.display = "block";
+          setFileRenderSurface("diff");
           fileDiff.scrollTop = 0;
           const container = el("div", { class: "filePdfPages", role: "document", "aria-label": `${rel} PDF preview` });
           fileDiff.appendChild(container);
@@ -9708,10 +9717,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 activeFileKind = "image";
                 if (typeof res.image_url !== "string" || !res.image_url) throw new Error("invalid image response");
                 clearFileVideo();
-                fileDiff.style.display = "none";
                 fileImage.src = resolveAppUrl(res.image_url);
                 fileImage.alt = rel;
-                fileImage.style.display = "block";
+                setFileRenderSurface("image");
                 const size = typeof res.size === "number" ? res.size : 0;
                 fileStatus.textContent = `${rel} - ${fmtBytes(size)}`;
               } else if (res.kind === "pdf") {
@@ -9754,8 +9762,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                     fileStatus.textContent = `${rel} - compatible video preview - ${fmtBytes(size)}`;
                   }
                 };
-                fileDiff.style.display = "none";
-                fileVideo.style.display = "block";
+                setFileRenderSurface("video");
                 if (shouldPreviewFirst) {
                   void loadCompatibleVideoPreview(videoToken, { explicit: false });
                 } else {

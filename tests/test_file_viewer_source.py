@@ -798,6 +798,50 @@ def eval_resolved_open_current_guard() -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_file_render_surface_visibility() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("function setFileRenderSurface(surface)")
+    end = source.index("function resetFileViewerPanel()", start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{
+          fileDiff: {{ style: {{ display: "" }} }},
+          fileImage: {{ style: {{ display: "" }} }},
+          fileVideo: {{ style: {{ display: "" }} }},
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_surface = setFileRenderSurface;\n")}, ctx);
+        function snapshot() {{
+          return {{ diff: ctx.fileDiff.style.display, image: ctx.fileImage.style.display, video: ctx.fileVideo.style.display }};
+        }}
+        const result = {{}};
+        ctx.__test_surface("diff");
+        result.diff = snapshot();
+        ctx.__test_surface("image");
+        result.image = snapshot();
+        ctx.__test_surface("video");
+        result.video = snapshot();
+        result.invalidThrows = false;
+        try {{
+          ctx.__test_surface("audio");
+        }} catch (err) {{
+          result.invalidThrows = err && err.message === "invalid file render surface";
+        }}
+        process.stdout.write(JSON.stringify(result));
+        """
+    )
+    proc = subprocess.run(
+        ["node", "-e", js],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return json.loads(proc.stdout)
+
+
 class TestFileViewerSource(unittest.TestCase):
     def test_file_editor_disables_monaco_suggestions(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -1021,6 +1065,13 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(result["clearDefault"], {"path": "", "gitPath": False, "apiPath": "", "line": None})
         self.assertFalse(result["secondAfterCancel"])
 
+    def test_file_render_surface_visibility_is_single_owned(self) -> None:
+        result = eval_file_render_surface_visibility()
+        self.assertEqual(result["diff"], {"diff": "block", "image": "none", "video": "none"})
+        self.assertEqual(result["image"], {"diff": "none", "image": "block", "video": "none"})
+        self.assertEqual(result["video"], {"diff": "none", "image": "none", "video": "block"})
+        self.assertTrue(result["invalidThrows"])
+
     def test_touch_file_editor_controls_target_touch_capabilities(self) -> None:
         self.assertTrue(eval_use_touch_file_editor_controls({"(pointer: coarse)": True, "(hover: none)": False}))
         self.assertTrue(eval_use_touch_file_editor_controls({"(pointer: coarse)": False, "(hover: none)": True}))
@@ -1229,6 +1280,14 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function currentActiveFileIdentity()", source)
         self.assertIn("function clearActiveFileIdentity({ line = null } = {})", source)
         self.assertIn("clearActiveFileIdentity({ line });", source)
+        self.assertIn("function setFileRenderSurface(surface)", source)
+        self.assertIn('throw new Error("invalid file render surface")', source)
+        self.assertEqual(source.count('setFileRenderSurface("diff");'), 6)
+        self.assertIn('setFileRenderSurface("image");', source)
+        self.assertIn('setFileRenderSurface("video");', source)
+        self.assertEqual(source.count("fileDiff.style.display ="), 1)
+        self.assertEqual(source.count("fileImage.style.display ="), 1)
+        self.assertEqual(source.count("fileVideo.style.display ="), 2)
         self.assertIn("const identity = nextActiveFileIdentity(currentActiveFileIdentity()", source)
         self.assertIn("const request = beginFileOpenRequest(nextPath, { line, gitPath, apiPath });", source)
         self.assertIn("signal: request.signal", source)
@@ -1341,7 +1400,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("fileVideo.src = resolveAppUrl(state.previewUrl);", source)
         self.assertIn("fileStatus.textContent = `${rel} - compatible video preview - ${fmtBytes(size)}`;", source)
         self.assertIn("fileStatus.textContent = `${rel} - video preview unavailable after conversion`;", source)
-        self.assertIn('fileVideo.style.display = "block";', source)
+        self.assertIn('setFileRenderSurface("video");', source)
         self.assertIn('fileStatus.textContent = `${rel} - video - ${fmtBytes(size)}`;', source)
         self.assertIn('res.kind === "download_only"', source)
         self.assertIn("renderBlockedFileNotice(rel, String(res.reason || \"\"), Number(res.viewer_max_bytes || 0), size);", source)
