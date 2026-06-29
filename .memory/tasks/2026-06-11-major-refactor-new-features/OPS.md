@@ -4306,3 +4306,23 @@
 ## 2026-06-29T07:54:45Z User correction: no invented tranche boundary
 - User rejected the assistant-defined "tranche" framing and stated that reporting "not done" is failure when the requested refactor remains unfinished.
 - Operational consequence: do not use tranche completion as a stopping substitute. Continue constructive refactor/product-gap work until the broader requested recovery objective is actually complete or a hard user/blocking decision is required.
+
+## 2026-06-29T08:09:52Z Frontend message row helper split
+- Functional commit `8751694 Extract frontend message row helpers` moved single-message row DOM construction from `codoxear/static/app.js` into new `codoxear/static/app_message_rows.js`:
+  - `makeRow`;
+  - `safeMakeRow`;
+  - rich markdown row construction;
+  - copy-button DOM and click behavior;
+  - warning/error assistant classes;
+  - pending-row visual markers;
+  - safe plaintext fallback row construction.
+- `app.js` remains transcript/render-state owner. It now fail-closed checks `window.CodoxearMessageRows`, preserves wrapper names `makeRow` and `safeMakeRow`, and injects app-owned dependencies at call time: DOM creation, markdown rendering/cache, active `selected` session id, file-ref upgrading, time formatting, icon SVG, clipboard/toast behavior, assistant dedupe key, timer, and console error logging.
+- Runtime asset wiring updated: `index.html`, `FRONTEND_ASSET_FILES`, static route/version tests, and wheel packaging sentinels now include `app_message_rows.js` between message identity and conversation-copy helpers.
+- Source/runtime tests updated or added:
+  - `tests/test_frontend_message_rows_source.py` validates fail-closed app wiring, frozen export, rich row construction, copy button behavior, assistant dedupe dataset, warning/error class rendering, and safe fallback behavior when markdown rendering fails.
+  - Existing chat scrollback/navigation sentinels now check `app_message_rows.js` for row-owned history cursor, warning/error, and initial copy-button hidden attributes while retaining `app.js` assertions for transcript and roving-tab-stop state.
+- Validation after `8751694`:
+  - `node --check codoxear/static/app_message_rows.js` and `node --check codoxear/static/app.js` passed.
+  - Focused frontend/static group returned `69 passed`.
+  - Full local `python3 -m pytest -q` returned `1226 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
