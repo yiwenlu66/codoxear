@@ -14,6 +14,7 @@ def seed_manager_in_memory_state(manager: Any) -> None:
     manager._hidden_sessions = set()
     manager._files = {}
     manager._queues = {}
+    manager._queue_sweep_cursor = 0
     manager._pending_attachment_ids = set()
     manager._commit_unknown_sends = {}
     session_registry_for_manager(manager).input_locks = {}

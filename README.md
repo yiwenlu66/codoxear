@@ -202,6 +202,7 @@ Set these in `.env` (or in the process environment):
 - `CODEX_WEB_UNATTENDED_SWEEP_SECONDS` (default `2.5`)
 - `CODEX_WEB_QUEUE_SWEEP_SECONDS` (default `1.0`)
 - `CODEX_WEB_QUEUE_SWEEP_MAX_DRAINS` (default `4`; maximum successful queued-prompt promotions per sweep)
+- `CODEX_WEB_QUEUE_SWEEP_MAX_ATTEMPTS` (default `16`; maximum queued sessions attempted per sweep, clamped to at least `CODEX_WEB_QUEUE_SWEEP_MAX_DRAINS`)
 - `CODEX_WEB_QUEUE_IDLE_GRACE_SECONDS` (default `10.0`)
 - `CODEX_WEB_DISCOVER_MIN_INTERVAL_SECONDS` (default `1.0`)
 - `CODEX_WEB_METRICS_WINDOW` (default `256`)

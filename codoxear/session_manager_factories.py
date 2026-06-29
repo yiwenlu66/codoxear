@@ -98,6 +98,7 @@ class SessionManagerFactoryCaps:
     python_executable: str
     queue_idle_grace_seconds: float
     queue_sweep_max_drains: int
+    queue_sweep_max_attempts: int
     read_jsonl_from_offset: Any
     read_launch_attempts: Any
     read_run_settings_from_log: Any
@@ -183,6 +184,7 @@ def session_manager_factory_caps(server: Any) -> SessionManagerFactoryCaps:
         python_executable=server.sys.executable,
         queue_idle_grace_seconds=server.QUEUE_IDLE_GRACE_SECONDS,
         queue_sweep_max_drains=server.QUEUE_SWEEP_MAX_DRAINS,
+        queue_sweep_max_attempts=server.QUEUE_SWEEP_MAX_ATTEMPTS,
         read_jsonl_from_offset=server._read_jsonl_from_offset,
         read_launch_attempts=server._read_launch_attempts,
         read_run_settings_from_log=server._read_run_settings_from_log,
@@ -403,6 +405,9 @@ def queue_sweep_coordinator_for_manager(manager: Any, caps: SessionManagerFactor
         save_queues=manager._save_queues,
         maybe_drain_session_queue=manager._maybe_drain_session_queue,
         max_drains_per_sweep=caps.queue_sweep_max_drains,
+        max_attempts_per_sweep=caps.queue_sweep_max_attempts,
+        queue_sweep_cursor=lambda: int(getattr(manager, "_queue_sweep_cursor", 0)),
+        set_queue_sweep_cursor=lambda value: setattr(manager, "_queue_sweep_cursor", int(value)),
     )
 
 

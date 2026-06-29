@@ -26,6 +26,7 @@ def test_server_config_applies_dotenv_before_deriving_paths_without_overriding_e
                     "CODEX_WEB_PORT=12345",
                     "CODEX_WEB_UNATTENDED_SWEEP_SECONDS=7.5",
                     "CODEX_WEB_QUEUE_SWEEP_MAX_DRAINS=6",
+                    "CODEX_WEB_QUEUE_SWEEP_MAX_ATTEMPTS=8",
                 ]
             ),
             encoding="utf-8",
@@ -51,6 +52,7 @@ def test_server_config_applies_dotenv_before_deriving_paths_without_overriding_e
     assert config.DEFAULT_PORT == 12345
     assert config.UNATTENDED_SWEEP_SECONDS == 7.5
     assert config.QUEUE_SWEEP_MAX_DRAINS == 6
+    assert config.QUEUE_SWEEP_MAX_ATTEMPTS == 8
     assert config.ATTACH_UPLOAD_MAX_BYTES == 6
     assert config.ATTACH_UPLOAD_BODY_MAX_BYTES == 65544
     assert config.UNATTENDED_PATH == config.APP_DIR / "unattended.json"
@@ -73,12 +75,23 @@ def test_export_server_config_populates_legacy_server_global_names() -> None:
     assert set(SERVER_CONFIG_EXPORT_NAMES).issubset(target)
 
 
+def test_queue_sweep_attempts_are_clamped_to_success_budget() -> None:
+    config = build_server_config(environ={"CODEX_WEB_QUEUE_SWEEP_MAX_DRAINS": "5", "CODEX_WEB_QUEUE_SWEEP_MAX_ATTEMPTS": "2"})
+
+    assert config.QUEUE_SWEEP_MAX_DRAINS == 5
+    assert config.QUEUE_SWEEP_MAX_ATTEMPTS == 5
+
+
 def test_queue_sweep_max_drains_config_is_documented() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
     config_source = (ROOT / "codoxear" / "server_config.py").read_text(encoding="utf-8")
 
     assert 'CODEX_WEB_QUEUE_SWEEP_MAX_DRAINS", "4"' in config_source
+    assert 'CODEX_WEB_QUEUE_SWEEP_MAX_ATTEMPTS", "16"' in config_source
     assert "CODEX_WEB_QUEUE_SWEEP_MAX_DRAINS" in readme
     assert "maximum successful queued-prompt promotions per sweep" in readme
+    assert "CODEX_WEB_QUEUE_SWEEP_MAX_ATTEMPTS" in readme
+    assert "maximum queued sessions attempted per sweep" in readme
     assert "# CODEX_WEB_QUEUE_SWEEP_MAX_DRAINS=4" in env_example
+    assert "# CODEX_WEB_QUEUE_SWEEP_MAX_ATTEMPTS=16" in env_example

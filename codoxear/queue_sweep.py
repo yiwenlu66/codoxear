@@ -20,6 +20,9 @@ class QueueSweepCoordinator:
     save_queues: Callable[[], None]
     maybe_drain_session_queue: Callable[[str], bool]
     max_drains_per_sweep: int = 1
+    max_attempts_per_sweep: int | None = None
+    queue_sweep_cursor: Callable[[], int] | None = None
+    set_queue_sweep_cursor: Callable[[int], None] | None = None
 
     def sweep(self) -> None:
         self.discover_existing_if_stale()
@@ -37,10 +40,31 @@ class QueueSweepCoordinator:
             session_ids = [sid for sid in self.queue_store.nonempty_session_ids(self.queues()) if sid in active_ids]
         if dropped or marked_recovery:
             self.save_queues()
+        if not session_ids:
+            if self.set_queue_sweep_cursor is not None:
+                self.set_queue_sweep_cursor(0)
+            return
         max_drains = max(1, int(self.max_drains_per_sweep))
+        session_count = len(session_ids)
+        if self.max_attempts_per_sweep is None:
+            max_attempts = session_count
+        else:
+            max_attempts = max(1, min(session_count, int(self.max_attempts_per_sweep)))
+        cursor = 0
+        if self.queue_sweep_cursor is not None:
+            cursor = int(self.queue_sweep_cursor()) % session_count
         drained = 0
-        for sid in session_ids:
+        attempts = 0
+        next_cursor = cursor
+        for offset in range(session_count):
+            if attempts >= max_attempts:
+                break
+            sid = session_ids[(cursor + offset) % session_count]
+            attempts += 1
+            next_cursor = (cursor + offset + 1) % session_count
             if self.maybe_drain_session_queue(sid):
                 drained += 1
                 if drained >= max_drains:
                     break
+        if self.set_queue_sweep_cursor is not None and attempts:
+            self.set_queue_sweep_cursor(next_cursor)

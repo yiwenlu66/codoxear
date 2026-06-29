@@ -62,6 +62,7 @@ SERVER_CONFIG_EXPORT_NAMES = (
     "UNATTENDED_SWEEP_SECONDS",
     "QUEUE_SWEEP_SECONDS",
     "QUEUE_SWEEP_MAX_DRAINS",
+    "QUEUE_SWEEP_MAX_ATTEMPTS",
     "VOICE_PUSH_SWEEP_SECONDS",
     "QUEUE_IDLE_GRACE_SECONDS",
     "UNATTENDED_MAX_SCAN_BYTES",
@@ -136,6 +137,7 @@ class ServerConfig:
     UNATTENDED_SWEEP_SECONDS: float
     QUEUE_SWEEP_SECONDS: float
     QUEUE_SWEEP_MAX_DRAINS: int
+    QUEUE_SWEEP_MAX_ATTEMPTS: int
     VOICE_PUSH_SWEEP_SECONDS: float
     QUEUE_IDLE_GRACE_SECONDS: float
     UNATTENDED_MAX_SCAN_BYTES: int
@@ -217,6 +219,8 @@ def build_server_config(
         "CODEX_WEB_ATTACH_BODY_MAX_BYTES",
         str((4 * ((attach_upload_max_bytes + 2) // 3)) + (64 * 1024)),
     )
+    queue_sweep_max_drains = max(1, _env_int(env, "CODEX_WEB_QUEUE_SWEEP_MAX_DRAINS", "4"))
+    queue_sweep_max_attempts = max(queue_sweep_max_drains, _env_int(env, "CODEX_WEB_QUEUE_SWEEP_MAX_ATTEMPTS", "16"))
 
     return ServerConfig(
         APP_DIR=app_dir,
@@ -268,7 +272,8 @@ def build_server_config(
         UNATTENDED_DEFAULT_MAX_INJECTIONS=10,
         UNATTENDED_SWEEP_SECONDS=_env_float(env, "CODEX_WEB_UNATTENDED_SWEEP_SECONDS", "2.5"),
         QUEUE_SWEEP_SECONDS=_env_float(env, "CODEX_WEB_QUEUE_SWEEP_SECONDS", "1.0"),
-        QUEUE_SWEEP_MAX_DRAINS=max(1, _env_int(env, "CODEX_WEB_QUEUE_SWEEP_MAX_DRAINS", "4")),
+        QUEUE_SWEEP_MAX_DRAINS=queue_sweep_max_drains,
+        QUEUE_SWEEP_MAX_ATTEMPTS=queue_sweep_max_attempts,
         VOICE_PUSH_SWEEP_SECONDS=_env_float(env, "CODEX_WEB_VOICE_PUSH_SWEEP_SECONDS", "1.0"),
         QUEUE_IDLE_GRACE_SECONDS=_env_float(env, "CODEX_WEB_QUEUE_IDLE_GRACE_SECONDS", "10.0"),
         UNATTENDED_MAX_SCAN_BYTES=_env_int(env, "CODEX_WEB_UNATTENDED_MAX_SCAN_BYTES", str(8 * 1024 * 1024)),

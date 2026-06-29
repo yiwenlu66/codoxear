@@ -16,6 +16,7 @@ class TestQueueSweepIdleGuard(unittest.TestCase):
         mgr._lock = threading.Lock()
         mgr._sessions = {}
         mgr._queues = {}
+        mgr._queue_sweep_cursor = 0
         mgr._save_queues = lambda: None
         mgr._discover_existing_if_stale = lambda: None
         mgr._prune_dead_sessions = lambda: None
@@ -228,7 +229,45 @@ class TestQueueSweepIdleGuard(unittest.TestCase):
         self.assertEqual(sent, [("s1", "queued-1"), ("s2", "queued-2")])
         self.assertNotIn("s1", mgr._queues)
         self.assertNotIn("s2", mgr._queues)
+        self.assertEqual(mgr._queue_sweep_cursor, 2)
         self.assertEqual([item["text"] for item in mgr._queues["s3"]], ["queued-3"])
+
+    def test_queue_sweep_attempt_budget_rotates_past_unready_prefix(self) -> None:
+        mgr = self._mgr()
+        for idx, sid in enumerate(["s1", "s2", "s3", "s4"], start=1):
+            mgr._sessions[sid] = Session(
+                session_id=sid,
+                thread_id=f"t{idx}",
+                broker_pid=idx,
+                codex_pid=idx,
+                agent_backend="codex",
+                owned=False,
+                start_ts=0.0,
+                cwd="/tmp",
+                log_path=None,
+                sock_path=Path(f"/tmp/{sid}.sock"),
+            )
+            mgr._queues[sid] = [_queue_item(f"q{idx}", f"queued-{idx}")]
+        attempts: list[str] = []
+
+        def maybe_drain(session_id: str) -> bool:
+            attempts.append(session_id)
+            return session_id == "s3"
+
+        mgr._maybe_drain_session_queue = maybe_drain  # type: ignore[method-assign]
+
+        with patch("codoxear.server.QUEUE_SWEEP_MAX_DRAINS", 1), patch("codoxear.server.QUEUE_SWEEP_MAX_ATTEMPTS", 2):
+            SessionManager._queue_sweep(mgr)
+
+        self.assertEqual(attempts, ["s1", "s2"])
+        self.assertEqual(mgr._queue_sweep_cursor, 2)
+
+        attempts.clear()
+        with patch("codoxear.server.QUEUE_SWEEP_MAX_DRAINS", 1), patch("codoxear.server.QUEUE_SWEEP_MAX_ATTEMPTS", 2):
+            SessionManager._queue_sweep(mgr)
+
+        self.assertEqual(attempts, ["s3"])
+        self.assertEqual(mgr._queue_sweep_cursor, 3)
 
 
 if __name__ == "__main__":
