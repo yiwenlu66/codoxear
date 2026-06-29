@@ -5084,3 +5084,28 @@
   - `git diff --check` passed.
 - Clean-room review `ed5674eb-efb3-4b86-beca-b70f98a641d5` returned PASS with no blockers. Review confirmed the shared guard is stronger than the old class-only check, the `closest("#fileViewer")` gate is correctly preserved and non-redundant, and cross-handler consistency is intact. Non-blocking notes: null/non-HTMLElement key targets and h/j/k/l movement from non-text controls inside the viewer remain pre-existing low-risk/design behaviors, not regressions.
 - Scope note: this completes modal/text-entry guard unification for the three current file-editor document-capture key handlers. It does not claim a full file-editor state object or browser-manual keyboard UX evidence.
+
+
+
+## 2026-06-29T19:32:30Z File editor capability predicate centralization
+- Functional commit `6df06bc Centralize file editor capability predicates` took the first safe step toward a coherent file-editor state object by replacing repeated raw guard expressions with local pure predicates while leaving mutable state ownership in `app.js` unchanged.
+- Mechanism: four predicates now encode distinct existing capabilities:
+  - `activeFileEditorWritable()` = current read-only/delete predicate: edit mode, editable, file view, and available session.
+  - `activeFileEditorIdleWritable()` = writable and not save-pending.
+  - `activeFileEditorIdleTextWritable()` = idle writable and text-like active file kind.
+  - `activeFileEditModeAllowedInCurrentView()` = the previous `setFileEditMode(true)` eligibility in the current file view.
+- Replacement sites: `syncFileEditorReadOnly()`, touch-toolbar paste visibility, Ctrl/Cmd+S save shortcut, Delete/Backspace handler, manual paste dialog opener, Clipboard paste entry guard, `insertIntoActiveFileEditor()`, and `setFileEditMode()` now use the named predicates. Monaco creation's initial read-only expression was intentionally left as-is because it has a slightly different pre-sync behavior and is immediately followed by `syncFileEditorReadOnly()`.
+- Tests added/updated:
+  - `tests/test_file_viewer_source.py::test_file_editor_capability_predicates_preserve_distinctions` runs a VM truth table across editable text, save-pending, preview mode, binary kind, unavailable session, plain fallback, not editing, and missing path states.
+  - Existing paste/save/delete VM harnesses now include the real predicate definitions plus handler slices so the tests exercise the new predicate path rather than reimplemented guards.
+  - Stale source assertions that pinned raw guard expressions were updated to pin the predicate boundary.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused predicate/save/delete/paste VM tests passed.
+  - Focused frontend/source/static group returned `54 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1263 passed, 136 subtests passed`.
+  - Focused Docker frontend/source/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed.
+- Clean-room review `03a8b2d4-2670-4092-8ba4-33e43eb51e0c` returned PASS with no blockers. Review confirmed all seven replacement sites match their old raw expressions exactly, save-pending behavior is preserved, the paste-toolbar kind check is redundant due to the outer toolbar-active guard, Monaco creation read-only behavior is deliberately preserved, and old repeated raw expressions were eliminated. Non-blocking note: `activeFileCanEnterEditMode()` remains an asymmetric pre-existing predicate with path/pending/plain-fallback and non-file-view semantics; that should be handled in a later state-object extraction.
+- Scope note: this centralizes capability checks only. It does not move mutable file-editor state, introduce a module boundary, rewrite transitions, or claim a full state object.
