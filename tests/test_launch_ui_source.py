@@ -83,6 +83,7 @@ def test_launch_module_loads_after_real_url_and_storage_helpers() -> None:
           window: {{
             location: {{ href: "http://localhost/codoxear/", origin: "http://localhost", pathname: "/codoxear/" }},
             localStorage,
+            CODOXEAR_ASSET_VERSION: "asset-v1",
           }},
         }};
         vm.createContext(ctx);
@@ -102,7 +103,7 @@ def test_launch_module_loads_after_real_url_and_storage_helpers() -> None:
     result = json.loads(proc.stdout)
     assert result["hasLaunch"] is True
     assert result["backend"] == "cc"
-    assert result["logo"] == "http://localhost/codoxear/static/logos/cc.svg"
+    assert result["logo"] == "http://localhost/codoxear/static/logos/cc.svg?v=asset-v1"
 
 
 def test_app_js_requires_launch_module_without_fallback() -> None:
@@ -130,6 +131,8 @@ def test_app_js_requires_launch_module_without_fallback() -> None:
     assert 'const text = String(option && option.searchText ? option.searchText : option && option.model ? option.model : "").toLowerCase();' in launch_source
     assert 'if ((hasProviderChoices || allowCustomProvider) && cleanProvider) return `${cleanProvider}/${cleanModel}`;' in launch_source
     assert 'const sensitiveKey = "[A-Z0-9_.-]*(?:TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL|AUTH)[A-Z0-9_.-]*";' in launch_source
+    assert "function versionedStaticAssetPath(path)" in launch_source
+    assert 'return resolveAppUrl(versionedStaticAssetPath(`/static/logos/${backend}.svg`));' in launch_source
     assert "const LAST_BACKEND_KEY" not in source
     assert "const LAST_BACKEND_KEY" in launch_source
     assert "window.CodoxearLaunch = Object.freeze({" in launch_source

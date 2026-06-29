@@ -15,6 +15,7 @@ from codoxear.server import _read_static_bytes
 from codoxear.server import _static_asset_version
 from codoxear.server import _static_cache_control_headers
 from codoxear.static_routes import SHELL_ASSET_FILES
+from codoxear.static_routes import UI_IMAGE_ASSET_FILES
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -145,7 +146,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn('import(resolveAppUrl("pdf.mjs"))', app)
 
     def test_frontend_asset_manifest_drives_version_files(self) -> None:
-        self.assertEqual(STATIC_ASSET_VERSION_FILES, FRONTEND_ASSET_FILES + SHELL_ASSET_FILES)
+        self.assertEqual(STATIC_ASSET_VERSION_FILES, FRONTEND_ASSET_FILES + SHELL_ASSET_FILES + UI_IMAGE_ASSET_FILES)
 
     def test_versioned_index_assets_exist_and_are_registered(self) -> None:
         source = INDEX_HTML.read_text(encoding="utf-8")
@@ -189,14 +190,21 @@ class TestStaticAssets(unittest.TestCase):
             "favicon.png": "png bytes\n",
             "manifest.webmanifest": '{"name":"one"}\n',
             "service-worker.js": "self.addEventListener('push', () => {});\n",
+            "codoxear-icon.png": "icon bytes\n",
+            "logos/codex.svg": "<svg>codex</svg>\n",
+            "logos/pi.svg": "<svg>pi</svg>\n",
+            "logos/cc.svg": "<svg>cc</svg>\n",
         }
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             for name, content in initial_content.items():
-                (root / name).write_text(content, encoding="utf-8")
+                target = root / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content, encoding="utf-8")
             versions = [_static_asset_version(root)]
             for name in STATIC_ASSET_VERSION_FILES:
-                (root / name).write_text(initial_content[name] + "/* changed */\n", encoding="utf-8")
+                target = root / name
+                target.write_text(initial_content[name] + "/* changed */\n", encoding="utf-8")
                 versions.append(_static_asset_version(root))
             self.assertEqual(len(versions), len(set(versions)))
 
@@ -286,10 +294,10 @@ class TestStaticAssets(unittest.TestCase):
         self.assertEqual(routes.get("/"), "index.html")
         self.assertEqual(len(routes), len(TOP_LEVEL_STATIC_ASSETS))
 
-    def test_sidebar_logo_uses_url_prefix_safe_relative_path(self) -> None:
+    def test_sidebar_logo_uses_versioned_url_prefix_safe_path(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('src="static/codoxear-icon.png"', source)
-        self.assertNotIn('src="/static/codoxear-icon.png"', source)
+        self.assertIn('src="${resolveAppUrl(versionedShellAssetPath("/static/codoxear-icon.png"))}"', source)
+        self.assertNotIn('src="static/codoxear-icon.png"', source)
 
     def test_refresh_sessions_does_not_rebuild_backend_tabs_while_modal_is_open(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -341,6 +349,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn("codoxear/static/app_modal.js", names)
         self.assertIn("codoxear/static/app_clipboard.js", names)
         self.assertIn("codoxear/static/app_voice_helpers.js", names)
+        self.assertIn("codoxear/static/codoxear-icon.png", names)
         self.assertIn("codoxear/static/logos/codex.svg", names)
         self.assertIn("codoxear/static/logos/pi.svg", names)
         self.assertIn("codoxear/static/logos/cc.svg", names)

@@ -38,7 +38,13 @@ SHELL_ASSET_FILES = (
     "manifest.webmanifest",
     "service-worker.js",
 )
-STATIC_ASSET_VERSION_FILES = FRONTEND_ASSET_FILES + SHELL_ASSET_FILES
+UI_IMAGE_ASSET_FILES = (
+    "codoxear-icon.png",
+    "logos/codex.svg",
+    "logos/pi.svg",
+    "logos/cc.svg",
+)
+STATIC_ASSET_VERSION_FILES = FRONTEND_ASSET_FILES + SHELL_ASSET_FILES + UI_IMAGE_ASSET_FILES
 TOP_LEVEL_STATIC_ASSETS = (
     ("/favicon.ico", "favicon.png"),
     ("/manifest.webmanifest", "manifest.webmanifest"),

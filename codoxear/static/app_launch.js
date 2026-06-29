@@ -88,9 +88,16 @@
     return "Codex";
   }
 
+  function versionedStaticAssetPath(path) {
+    const version = String(window.CODOXEAR_ASSET_VERSION || "").trim();
+    if (!version) return path;
+    const separator = String(path).includes("?") ? "&" : "?";
+    return `${path}${separator}v=${encodeURIComponent(version)}`;
+  }
+
   function agentBackendLogoPath(value) {
     const backend = normalizeAgentBackendName(value);
-    return resolveAppUrl(`/static/logos/${backend}.svg`);
+    return resolveAppUrl(versionedStaticAssetPath(`/static/logos/${backend}.svg`));
   }
 
   function sessionAgentBackend(s) {
