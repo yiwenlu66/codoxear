@@ -3967,3 +3967,18 @@
   - Focused frontend URL/static/voice/file-viewer source group returned `48 passed, 3 subtests passed`.
   - Full local `python3 -m pytest -q` returned `1201 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T01:23:08Z Frontend viewport DOM helper split
+- Functional commit `3a7753c Move viewport DOM helpers to module` moved reusable viewport/input helpers from `codoxear/static/app.js` into `codoxear/static/app_viewport.js`:
+  - `isTextEntryElement`
+  - `updateAppHeightVar`
+- Compatibility preserved: `app.js` keeps same function names as wrappers, requires the new module functions fail-closed, and retains existing call sites (`updateAppHeightVar()`, resize listener, keyboard/overlay callers).
+- Behavior directly tested in `tests/test_frontend_viewport_module_source.py`:
+  - text input is accepted, button input rejected, textarea accepted;
+  - visual viewport `{height: 640, offsetTop: 20}` with layout height `720` sets `--appH=640px`, `--layoutH=720px`, `--vvTop=20px`, `--vvBottom=60px`;
+  - app guard rejects partial viewport modules and accepts only the complete helper set.
+- Validation after `3a7753c`:
+  - `node --check codoxear/static/app_viewport.js` and `node --check codoxear/static/app.js` passed.
+  - Focused viewport/navigation/auth-cleanup/static group returned `35 passed`.
+  - Full local `python3 -m pytest -q` returned `1201 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
