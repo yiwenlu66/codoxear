@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
+APP_MESSAGE_IDENTITY_JS = ROOT / "codoxear" / "static" / "app_message_identity.js"
 
 
 def _run_node(js: str) -> dict:
@@ -382,6 +383,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertFalse(out["painted"])
 
     def test_live_delta_dedupes_adjacent_assistant_text_across_polls(self) -> None:
+        identity_source = APP_MESSAGE_IDENTITY_JS.read_text(encoding="utf-8")
         helper_snippet = _source_between("function eventKey(ev) {", "function isTranscriptRenewalCommand(")
         append_snippet = _source_between("function appendEvent(ev) {", "function renderTranscript(")
         js = textwrap.dedent(
@@ -395,7 +397,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               made: 0,
               inserted: 0,
               rows: [{{ dataset: {{ role: "assistant", assistantDedupeKey: "final_response|same final text" }} }}],
-              normalizeTextForPendingMatch: (s) => String(s || ""),
+              window: {{}},
               renderedMessageRows: () => ctx.rows,
               consumePendingUserIfMatches: () => false,
               isNearBottom: () => true,
@@ -415,6 +417,8 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             }};
             vm = require("vm");
             vm.createContext(ctx);
+            vm.runInContext({json.dumps(identity_source)}, ctx);
+            ctx.codoxearMessageIdentity = ctx.window.CodoxearMessageIdentity;
             vm.runInContext({json.dumps(helper_snippet)}, ctx);
             vm.runInContext({json.dumps(append_snippet)}, ctx);
             ctx.appendEvent({{ role: "assistant", text: "same final text", message_class: "final_response", ts: 2.4 }});

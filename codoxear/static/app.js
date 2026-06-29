@@ -3082,18 +3082,22 @@
           }
         }
 
+      const codoxearMessageIdentity = window.CodoxearMessageIdentity;
+      if (
+        !codoxearMessageIdentity ||
+        typeof codoxearMessageIdentity.normalizeTextForPendingMatch !== "function" ||
+        typeof codoxearMessageIdentity.pendingMatchKey !== "function" ||
+        typeof codoxearMessageIdentity.eventKey !== "function" ||
+        typeof codoxearMessageIdentity.chatAssistantDedupeKey !== "function"
+      )
+        throw new Error("Codoxear message identity helpers failed to load");
+
       function normalizeTextForPendingMatch(s) {
-        // Normalize common platform newline differences to improve pending->ack reconciliation.
-        return String(s || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        return codoxearMessageIdentity.normalizeTextForPendingMatch(s);
       }
 
       function eventKey(ev) {
-        if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return "";
-        const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
-        if (ts === null) return "";
-        const tsMs = Math.round(ts * 1000);
-        const text = typeof ev.text === "string" ? pendingMatchKey(ev.text) : "";
-        return `${ev.role}|${tsMs}|${text}`;
+        return codoxearMessageIdentity.eventKey(ev);
       }
 
         function markEventSeen(ev) {
@@ -3115,12 +3119,7 @@
         }
 
         function chatAssistantDedupeKey(ev) {
-          if (!ev || ev.role !== "assistant") return "";
-          const raw = typeof ev.text === "string" ? ev.text : "";
-          const text = pendingMatchKey(raw).replace(/\s+/g, " ").trim();
-          if (!text) return "";
-          const messageClass = typeof ev.message_class === "string" ? ev.message_class : "";
-          return `${messageClass}|${text}`;
+          return codoxearMessageIdentity.chatAssistantDedupeKey(ev);
         }
 
         function isAdjacentAssistantDuplicateEvent(ev) {
@@ -3133,10 +3132,7 @@
         }
 
         function pendingMatchKey(s) {
-          // Codex log serialization can trim trailing whitespace/newlines; match on a slightly
-          // normalized key to avoid duplicating the optimistic local echo bubble.
-          const t = normalizeTextForPendingMatch(s);
-          return t.replace(/[ \t]+$/gm, "").replace(/\s+$/, "");
+          return codoxearMessageIdentity.pendingMatchKey(s);
         }
 
       function isTranscriptRenewalCommand(raw, sessionId = selected) {
