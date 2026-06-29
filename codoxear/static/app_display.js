@@ -13,15 +13,36 @@
   function fmtTs(ts) {
     try {
       const d = new Date(ts * 1000);
-      const y = String(d.getFullYear()).padStart(4, "0");
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
       const hh = String(d.getHours()).padStart(2, "0");
       const mm = String(d.getMinutes()).padStart(2, "0");
-      return `${y}-${m}-${day} ${hh}:${mm}`;
+      return `${ymd(d)} ${hh}:${mm}`;
     } catch {
       return String(ts);
     }
+  }
+
+  function ymd(d) {
+    const y = String(d.getFullYear()).padStart(4, "0");
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
+  function dayLabel(d) {
+    const today = new Date();
+    const a = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    const b = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const diffDays = Math.round((a - b) / 86400000);
+    const date = ymd(d);
+    if (diffDays === 0) return `Today (${date})`;
+    if (diffDays === 1) return `Yesterday (${date})`;
+    return date;
+  }
+
+  function time24(d) {
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${hh}:${mm}`;
   }
 
   function fmtBytes(n) {
@@ -237,6 +258,9 @@
   window.CodoxearDisplay = Object.freeze({
     defaultButtonTooltip,
     fmtTs,
+    ymd,
+    dayLabel,
+    time24,
     fmtBytes,
     baseName,
     shortSessionId,

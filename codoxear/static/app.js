@@ -29,6 +29,9 @@
         !codoxearDisplay ||
         typeof codoxearDisplay.defaultButtonTooltip !== "function" ||
         typeof codoxearDisplay.fmtTs !== "function" ||
+        typeof codoxearDisplay.ymd !== "function" ||
+        typeof codoxearDisplay.dayLabel !== "function" ||
+        typeof codoxearDisplay.time24 !== "function" ||
         typeof codoxearDisplay.fmtBytes !== "function" ||
         typeof codoxearDisplay.baseName !== "function" ||
         typeof codoxearDisplay.shortSessionId !== "function" ||
@@ -2874,27 +2877,15 @@
         }
 
         function ymd(d) {
-          const y = String(d.getFullYear()).padStart(4, "0");
-          const m = String(d.getMonth() + 1).padStart(2, "0");
-          const day = String(d.getDate()).padStart(2, "0");
-          return `${y}-${m}-${day}`;
+          return codoxearDisplay.ymd(d);
         }
 
         function dayLabel(d) {
-          const today = new Date();
-          const a = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-          const b = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-          const diffDays = Math.round((a - b) / 86400000);
-          const date = ymd(d);
-          if (diffDays === 0) return `Today (${date})`;
-          if (diffDays === 1) return `Yesterday (${date})`;
-          return date;
+          return codoxearDisplay.dayLabel(d);
         }
 
         function time24(d) {
-          const hh = String(d.getHours()).padStart(2, "0");
-          const mm = String(d.getMinutes()).padStart(2, "0");
-          return `${hh}:${mm}`;
+          return codoxearDisplay.time24(d);
         }
 
         function rebuildDecorations({ preserveScroll }) {

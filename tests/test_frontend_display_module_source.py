@@ -34,11 +34,23 @@ def eval_display_module() -> dict:
         vm.createContext(ctx);
         vm.runInContext({json.dumps(source)}, ctx);
         const display = ctx.window.CodoxearDisplay;
+        const now = new Date();
+        const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 34);
+        const yesterdayDate = new Date(todayDate.getTime() - 86400000);
+        const oldDate = new Date(todayDate.getTime() - 3 * 86400000);
         process.stdout.write(JSON.stringify({{
           tooltipAria: display.defaultButtonTooltip({{ "aria-label": " Send " }}),
           tooltipNode: display.defaultButtonTooltip({{}}, {{ textContent: " Queue " }}),
           fmtEpoch: display.fmtTs(0),
           fmtKnown: display.fmtTs(1710000000),
+          ymdKnown: display.ymd(new Date(1710000000 * 1000)),
+          time24Known: display.time24(new Date(1710000000 * 1000)),
+          dayLabelToday: display.dayLabel(todayDate),
+          dayLabelYesterday: display.dayLabel(yesterdayDate),
+          dayLabelOld: display.dayLabel(oldDate),
+          todayYmd: display.ymd(todayDate),
+          yesterdayYmd: display.ymd(yesterdayDate),
+          oldYmd: display.ymd(oldDate),
           bytesSmall: display.fmtBytes(12),
           bytes1023: display.fmtBytes(1023),
           bytes1024: display.fmtBytes(1024),
@@ -124,6 +136,9 @@ class TestFrontendDisplayModuleSource(unittest.TestCase):
         display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
         self.assertIn("const codoxearDisplay = window.CodoxearDisplay;", source)
         self.assertIn('throw new Error("Codoxear display helpers failed to load")', source)
+        self.assertIn('typeof codoxearDisplay.ymd !== "function"', source)
+        self.assertIn('typeof codoxearDisplay.dayLabel !== "function"', source)
+        self.assertIn('typeof codoxearDisplay.time24 !== "function"', source)
         self.assertIn("function fmtBytes(n) {", source)
         self.assertIn("return codoxearDisplay.fmtBytes(n);", source)
         self.assertIn("function iconSvg(name) {", source)
@@ -140,6 +155,15 @@ class TestFrontendDisplayModuleSource(unittest.TestCase):
         self.assertIn("return codoxearDisplay.compactChatSearchSnippet(text, query, limit);", source)
         self.assertIn("function chatSearchTranscriptHint(match, query)", source)
         self.assertIn("return codoxearDisplay.chatSearchTranscriptHint(match, query);", source)
+        self.assertIn("function ymd(d)", source)
+        self.assertIn("return codoxearDisplay.ymd(d);", source)
+        self.assertIn("function dayLabel(d)", source)
+        self.assertIn("return codoxearDisplay.dayLabel(d);", source)
+        self.assertIn("function time24(d)", source)
+        self.assertIn("return codoxearDisplay.time24(d);", source)
+        self.assertIn("function ymd(d)", display_source)
+        self.assertIn("function dayLabel(d)", display_source)
+        self.assertIn("function time24(d)", display_source)
         self.assertIn("function compactChatSearchSnippet(text, query, limit = 96)", display_source)
         self.assertIn("function chatSearchTranscriptHint(match, query)", display_source)
         self.assertIn("window.CodoxearDisplay = Object.freeze({", display_source)
@@ -151,6 +175,7 @@ class TestFrontendDisplayModuleSource(unittest.TestCase):
         self.assertNotIn("function fuzzyRecentCwdScore(candidate, query)", recent_cwd_block)
         self.assertNotIn('const raw = String(query || "").trim().toLowerCase();', recent_cwd_block)
         self.assertNotIn("function iconSvg(name) {\n    if (name ===", source)
+        self.assertNotIn("const diffDays = Math.round((a - b) / 86400000);", source)
 
     def test_display_module_preserves_presentation_helpers(self) -> None:
         result = eval_display_module()
@@ -158,6 +183,11 @@ class TestFrontendDisplayModuleSource(unittest.TestCase):
         self.assertEqual(result["tooltipNode"], "Queue")
         self.assertEqual(result["fmtEpoch"], "1970-01-01 00:00")
         self.assertEqual(result["fmtKnown"], "2024-03-09 16:00")
+        self.assertEqual(result["ymdKnown"], "2024-03-09")
+        self.assertEqual(result["time24Known"], "16:00")
+        self.assertEqual(result["dayLabelToday"], f"Today ({result['todayYmd']})")
+        self.assertEqual(result["dayLabelYesterday"], f"Yesterday ({result['yesterdayYmd']})")
+        self.assertEqual(result["dayLabelOld"], result["oldYmd"])
         self.assertEqual(result["bytesSmall"], "12 B")
         self.assertEqual(result["bytes1023"], "1023 B")
         self.assertEqual(result["bytes1024"], "1.00 KB")
