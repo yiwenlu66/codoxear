@@ -4652,3 +4652,14 @@
 - Review verified `codoxear.util.os.path.samefile` cwd-alias patching remains effective through shared `os` module state and `_payload_cwd_matches`, and that broker/server/sessiond imports remain compatible.
 - Review observed py_compile, focused tests, and full local pytest evidence (`1239 passed, 107 subtests passed`); no import cycles, no protected checkout mutation, no secrets/runtime artifacts, docs-only docs commit, and no Docker overclaim.
 - Reviewer noted a focused-count documentation ambiguity; full local evidence is correct.
+
+
+## 2026-06-29T13:00:33Z PTY terminal-size helper split
+- Functional commit `f79178a Extract PTY terminal size helper` moved broker terminal-size read/fallback logic from `codoxear/broker.py` into `codoxear/pty_util.py` as `term_size(stdin)`.
+- `codoxear.broker._term_size()` remains the compatibility/patch seam used by broker tests and signal handling; it now delegates to `_pty_util.term_size(sys.stdin)`.
+- Preserved semantics: call `os.get_terminal_size(stdin.fileno())`, return `(lines, columns)` as integers, and return fallback `(40, 120)` on any exception.
+- Validation:
+  - `python3 -m py_compile codoxear/pty_util.py codoxear/broker.py` passed.
+  - Focused PTY/broker group returned `53 passed`.
+  - Full local `python3 -m pytest -q` returned `1240 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
