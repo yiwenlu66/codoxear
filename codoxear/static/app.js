@@ -2923,10 +2923,16 @@
           syncVisibleTimeIndicator();
         }
 
-        function scrollToBottom() {
+        function scrollToBottom({ behavior = "auto" } = {}) {
           // Avoid scrollIntoView() on mobile Safari, which can scroll the whole page when the
           // on-screen keyboard opens/closes.
-          chat.scrollTop = chat.scrollHeight;
+          const top = chat.scrollHeight;
+          const scrollBehavior = prefersReducedMotion() ? "auto" : behavior;
+          if (scrollBehavior === "smooth" && typeof chat.scrollTo === "function") {
+            chat.scrollTo({ top, behavior: "smooth" });
+          } else {
+            chat.scrollTop = top;
+          }
           lastScrollTop = chat.scrollTop;
         }
 
@@ -4546,7 +4552,7 @@
           }
           if (selected !== sid) return;
           requestAnimationFrame(() => {
-            scrollToBottom();
+            scrollToBottom({ behavior: "smooth" });
             syncJumpButton();
           });
           kickPoll(0);
