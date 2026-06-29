@@ -3945,3 +3945,12 @@
   - Focused broker process/fail-closed group returned `29 passed`.
   - Full local `python3 -m pytest -q` returned `1201 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T01:06:15Z Broker tranche clean-room review PASS
+- Async clean-room review `6d783bec-de27-43c6-a5af-9393bb7782d7` returned `PASS` for broker refactor commits through `6f0468f` and docs through `0019ce3`.
+- Reviewer verified full local pytest `1201 passed, 107 subtests`, new/updated source sentinels, import seams, control handler semantics, log binding/watcher semantics, sidecar metadata compatibility, launch helper/record/process extraction, no import cycles, no protected checkout mutation, no secrets/runtime artifacts, and docs-only memory commits.
+- Reviewer residual risks are non-blocking:
+  - `pending_calls` is not restored on inject failure because the send action itself clears pending tool calls; future reviewers should keep that invariant explicit.
+  - `_require_proc` direct calls default to real `sys.platform`, while broker wrapper passes platform explicitly.
+  - New source sentinels are ownership checks and rely on existing behavioral tests for semantics.
+  - Evidence remains local pytest only for this tranche; Docker was not rerun.
