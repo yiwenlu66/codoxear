@@ -5045,3 +5045,22 @@
 - Clean-room review `e67ab726-7d27-4eaf-8772-180d1f210f2f` returned PASS with no blockers before the functional commit. The only actionable coverage note was the lack of a runtime viewer-closed test; that test-only evidence was added before commit and revalidated. Remaining notes are cosmetic/pre-existing: clean-file Ctrl/Cmd+S is a fast no-op through `saveActiveFileEdits()`, and the adjacent delete key handler lacks the same nested-modal guard.
 - User directive reinforcement: the user repeated the unattended/refactor mandate, including “refactor! refactor!! refactor!!!!! push refactor to the limit!!!!! no bounded action.” The operative interpretation remains continuous aggressive refactor/product/reliability work after each checkpoint, not yielding at this feature boundary.
 - Scope note: this is a frontend keyboard shortcut/productivity fix for file-editor save. It does not claim browser-manual Monaco evidence, edit-toggle shortcut behavior, or broader keyboard-command architecture.
+
+
+
+## 2026-06-29T19:04:14Z File editor delete/backspace modal isolation
+- Functional commit `4bd9c1f Isolate file editor delete shortcuts` closed a pre-existing keyboard isolation gap in the file editor: Backspace/Delete could use a narrower guard than the new save shortcut and therefore did not explicitly share nested-modal/viewer-closed isolation before triggering Monaco deletion.
+- Mechanism: `handleFileEditorDeleteKeydown()` now calls `fileEditorShortcutBlocked(target)` before `isActiveFileEditorInput(target)`, before `getActiveFileCodeEditor()`, before setting `fileTouchDeleteNativeSuppressUntil`, and before `preventDefault()`/`stopPropagation()`/`editor.trigger()`. The destructive key path now shares the same open-viewer, nested-modal, and non-editor text-entry guard used by Ctrl/Cmd+S save.
+- Boundary preserved: valid Backspace/Delete in the active Monaco editor still maps through `fileEditorDeleteCommandForKey()`, focuses the editor, triggers `editor.trigger("file-editor-delete-key", command, null)`, suppresses duplicate native beforeinput/input events for 250ms, and resets touch selection when active. Blocked paths leave native events alone by not changing `fileTouchDeleteNativeSuppressUntil`.
+- Tests added/updated:
+  - `tests/test_file_viewer_source.py::test_delete_backspace_is_single_owned_in_touch_select_edit_mode` now runs a Node VM harness over the real handler slice and covers valid Backspace/Delete plus nested-dialog, viewer-closed, other-text-entry, not-edit, and unavailable-session blocks.
+  - Source assertions pin the shared `fileEditorShortcutBlocked(target)` guard inside the delete handler.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused delete-key VM test returned `1 passed, 7 subtests passed`.
+  - Focused frontend/source/static group returned `53 passed, 20 subtests passed` locally and passed in Docker.
+  - Full local `python3 -m pytest -q` initially exposed an unrelated order/cache-sensitive Pi-token mock seam (`_query_pi_context_windows` called eight times instead of once). The isolated failing test passed immediately, then the full local suite reran without code changes and passed (`1262 passed, 131 subtests passed`). This is negative evidence for a pre-existing flaky/cache-sensitive Pi test seam, not for the frontend diff.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed.
+- Clean-room review `7574564e-a8f8-4df1-9737-10679e5795c3` returned PASS with no blockers. Review confirmed guard placement before side effects, consistency with save shortcut, beforeinput/input suppression correctness, and preserved delete-handler invariants. Non-blocking note: `handleFileTouchSelectionKeydown()` still has its own ad-hoc isolation and should be audited next if modal-isolation rules are being unified.
+- Scope note: this is a frontend file-editor keyboard isolation hardening. It does not claim a full keyboard architecture refactor, browser-manual evidence, or touch-selection arrow-key guard unification.
