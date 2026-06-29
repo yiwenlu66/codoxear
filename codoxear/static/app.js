@@ -7904,6 +7904,30 @@
           setFileDirty(false);
         }
 
+        function applyActiveFileTextState({ kind = "text", text = "", editable = false, version = "", draft = false } = {}) {
+          const nextKind = String(kind || "text");
+          if (nextKind !== "text" && nextKind !== "markdown") throw new Error("invalid active file text kind");
+          activeFileKind = nextKind;
+          activeFileText = String(text ?? "");
+          activeFileEditable = Boolean(editable);
+          activeFileVersion = typeof version === "string" ? version : "";
+          activeFileDraft = Boolean(draft);
+        }
+
+        function applyActiveFileDiffState({ currentText = "", currentExists = false } = {}) {
+          applyActiveFileTextState({ kind: "text", text: currentText, editable: Boolean(currentExists), version: "", draft: false });
+        }
+
+        function applyActiveFileNonTextState(kind) {
+          const nextKind = String(kind || "");
+          if (nextKind !== "image" && nextKind !== "pdf" && nextKind !== "video" && nextKind !== "download_only") throw new Error("invalid active file non-text kind");
+          activeFileKind = nextKind;
+          activeFileText = "";
+          activeFileEditable = false;
+          activeFileVersion = "";
+          activeFileDraft = false;
+        }
+
         function getFileEditorText() {
           if (fileEditorKind === "file" && fileEditor && typeof fileEditor.getModel === "function") {
             const model = fileEditor.getModel();
@@ -8865,11 +8889,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           resetFileViewerPanel();
           try {
             if (fileViewMode !== "file") setFileViewMode("file");
-            activeFileDraft = true;
-            activeFileKind = "text";
-            activeFileText = "";
-            activeFileEditable = true;
-            activeFileVersion = "";
+            applyActiveFileTextState({ text: "", editable: true, version: "", draft: true });
             applyFileMode();
             const rendered = await renderMonacoFile(rel, "", request.line, "", request);
             if (!rendered || !isCurrentFileOpenRequest(request)) return;
@@ -9692,9 +9712,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               if (!isCurrentFileOpenRequest(request)) return false;
               const baseText = res && typeof res.base_text === "string" ? res.base_text : "";
               const currentText = res && typeof res.current_text === "string" ? res.current_text : "";
-              activeFileKind = "text";
-              activeFileText = currentText;
-              activeFileEditable = Boolean(res && res.current_exists);
+              applyActiveFileDiffState({ currentText, currentExists: res && res.current_exists });
               if (!res.base_exists && !res.current_exists) {
                 disposeFileEditor();
                 fileStatus.textContent = `${rel} - no diff`;
@@ -9714,7 +9732,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               if (!isCurrentFileOpenRequest(request)) return false;
               if (!res || typeof res.kind !== "string") throw new Error("invalid response");
               if (res.kind === "image") {
-                activeFileKind = "image";
+                applyActiveFileNonTextState("image");
                 if (typeof res.image_url !== "string" || !res.image_url) throw new Error("invalid image response");
                 clearFileVideo();
                 fileImage.src = resolveAppUrl(res.image_url);
@@ -9723,14 +9741,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 const size = typeof res.size === "number" ? res.size : 0;
                 fileStatus.textContent = `${rel} - ${fmtBytes(size)}`;
               } else if (res.kind === "pdf") {
-                activeFileKind = "pdf";
+                applyActiveFileNonTextState("pdf");
                 if (typeof res.pdf_url !== "string" || !res.pdf_url) throw new Error("invalid pdf response");
                 const rendered = await renderPdfFile(rel, resolveAppUrl(res.pdf_url), request);
                 if (!rendered || !isCurrentFileOpenRequest(request)) return false;
                 const size = typeof res.size === "number" ? res.size : 0;
                 fileStatus.textContent = `${rel} - PDF - ${fmtBytes(size)}`;
               } else if (res.kind === "video") {
-                activeFileKind = "video";
+                applyActiveFileNonTextState("video");
                 if (typeof res.video_url !== "string" || !res.video_url) throw new Error("invalid video response");
                 const previewUrl = typeof res.video_preview_url === "string" ? res.video_preview_url : "";
                 const size = typeof res.size === "number" ? res.size : 0;
@@ -9770,16 +9788,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                   fileStatus.textContent = `${rel} - video - ${fmtBytes(size)}`;
                 }
               } else if (res.kind === "download_only") {
-                activeFileKind = "download_only";
+                applyActiveFileNonTextState("download_only");
                 const size = typeof res.size === "number" ? res.size : 0;
                 renderBlockedFileNotice(rel, String(res.reason || ""), Number(res.viewer_max_bytes || 0), size);
                 fileStatus.textContent = `${rel} - download only - ${fmtBytes(size)}`;
               } else {
                 if (typeof res.text !== "string") throw new Error("invalid response");
-                activeFileKind = res.kind === "markdown" ? "markdown" : "text";
-                activeFileText = res.text;
-                activeFileEditable = Boolean(res.editable);
-                activeFileVersion = typeof res.version === "string" ? res.version : "";
+                applyActiveFileTextState({ kind: res.kind === "markdown" ? "markdown" : "text", text: res.text, editable: Boolean(res.editable), version: typeof res.version === "string" ? res.version : "" });
                 if (viewMode === "preview" && activeFileKind === "markdown") {
                   renderMarkdownPreview(rel, res.text);
                 } else {

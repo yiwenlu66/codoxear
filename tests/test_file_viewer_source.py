@@ -798,6 +798,69 @@ def eval_resolved_open_current_guard() -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_active_file_load_state_writers() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("function applyActiveFileTextState(")
+    end = source.index("function getFileEditorText()", start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{
+          activeFileKind: "",
+          activeFileText: "",
+          activeFileEditable: false,
+          activeFileVersion: "",
+          activeFileDraft: false,
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_load_state = { applyActiveFileTextState, applyActiveFileDiffState, applyActiveFileNonTextState };\n")}, ctx);
+        function stale() {{
+          ctx.activeFileKind = "stale";
+          ctx.activeFileText = "stale text";
+          ctx.activeFileEditable = true;
+          ctx.activeFileVersion = "stale-version";
+          ctx.activeFileDraft = true;
+        }}
+        function state() {{
+          return {{
+            kind: ctx.activeFileKind,
+            text: ctx.activeFileText,
+            editable: ctx.activeFileEditable,
+            version: ctx.activeFileVersion,
+            draft: ctx.activeFileDraft,
+          }};
+        }}
+        const result = {{}};
+        stale();
+        ctx.__test_load_state.applyActiveFileTextState({{ kind: "markdown", text: "# hi", editable: false, version: "v2", draft: false }});
+        result.markdown = state();
+        stale();
+        ctx.__test_load_state.applyActiveFileTextState({{ text: "", editable: true, version: "", draft: true }});
+        result.draft = state();
+        stale();
+        ctx.__test_load_state.applyActiveFileDiffState({{ currentText: "current", currentExists: true }});
+        result.diff = state();
+        stale();
+        ctx.__test_load_state.applyActiveFileNonTextState("image");
+        result.image = state();
+        result.invalidTextThrows = false;
+        try {{ ctx.__test_load_state.applyActiveFileTextState({{ kind: "image" }}); }} catch (err) {{ result.invalidTextThrows = err && err.message === "invalid active file text kind"; }}
+        result.invalidNonTextThrows = false;
+        try {{ ctx.__test_load_state.applyActiveFileNonTextState("text"); }} catch (err) {{ result.invalidNonTextThrows = err && err.message === "invalid active file non-text kind"; }}
+        process.stdout.write(JSON.stringify(result));
+        """
+    )
+    proc = subprocess.run(
+        ["node", "-e", js],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return json.loads(proc.stdout)
+
+
 def eval_file_render_surface_visibility() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function setFileRenderSurface(surface)")
@@ -1064,6 +1127,28 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(result["clearWithLine"], {"path": "", "gitPath": False, "apiPath": "", "line": 12})
         self.assertEqual(result["clearDefault"], {"path": "", "gitPath": False, "apiPath": "", "line": None})
         self.assertFalse(result["secondAfterCancel"])
+
+    def test_active_file_load_state_writers_are_single_owned(self) -> None:
+        result = eval_active_file_load_state_writers()
+        self.assertEqual(result["markdown"], {"kind": "markdown", "text": "# hi", "editable": False, "version": "v2", "draft": False})
+        self.assertEqual(result["draft"], {"kind": "text", "text": "", "editable": True, "version": "", "draft": True})
+        self.assertEqual(result["diff"], {"kind": "text", "text": "current", "editable": True, "version": "", "draft": False})
+        self.assertEqual(result["image"], {"kind": "image", "text": "", "editable": False, "version": "", "draft": False})
+        self.assertTrue(result["invalidTextThrows"])
+        self.assertTrue(result["invalidNonTextThrows"])
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("function applyActiveFileTextState({ kind = \"text\", text = \"\", editable = false, version = \"\", draft = false } = {})", source)
+        self.assertIn("function applyActiveFileDiffState({ currentText = \"\", currentExists = false } = {})", source)
+        self.assertIn("function applyActiveFileNonTextState(kind)", source)
+        self.assertIn('throw new Error("invalid active file text kind")', source)
+        self.assertIn('throw new Error("invalid active file non-text kind")', source)
+        self.assertIn('applyActiveFileTextState({ text: "", editable: true, version: "", draft: true });', source)
+        self.assertIn("applyActiveFileDiffState({ currentText, currentExists: res && res.current_exists });", source)
+        self.assertIn('applyActiveFileNonTextState("image");', source)
+        self.assertIn('applyActiveFileNonTextState("pdf");', source)
+        self.assertIn('applyActiveFileNonTextState("video");', source)
+        self.assertIn('applyActiveFileNonTextState("download_only");', source)
+        self.assertIn('applyActiveFileTextState({ kind: res.kind === "markdown" ? "markdown" : "text", text: res.text, editable: Boolean(res.editable), version: typeof res.version === "string" ? res.version : "" });', source)
 
     def test_file_render_surface_visibility_is_single_owned(self) -> None:
         result = eval_file_render_surface_visibility()
