@@ -4357,3 +4357,18 @@
 - Reviewer validation: full local `python3 -m pytest -q` returned `1227 passed, 107 subtests passed`; focused process/session/proc tests passed.
 - Reviewer residual note: the source sentinel is structural; runtime behavior remains covered by broader session-discovery/integration tests that passed.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+## 2026-06-29T08:31:14Z Frontend row query helper split
+- Functional commit `5c5629f Extract frontend row query helpers` moved reusable message-row DOM query helpers from `codoxear/static/app.js` into existing `codoxear/static/app_message_rows.js`:
+  - `messageCopyButtonForRow`;
+  - `renderedMessageRows`;
+  - `loadedUserMessageRows`;
+  - `loadedCopyMessageRows`;
+  - `activeElementIsMessageCopyButton`.
+- `app.js` keeps active copy-row state, roving tab-stop mutation, navigation handlers, transcript rendering state, and wrapper names. The `CodoxearMessageRows` fail-closed guard now checks all row-construction and row-query helper functions before wrappers execute.
+- Source/runtime tests updated so row-query ownership assertions point to `app_message_rows.js` while app-specific state/mutation assertions remain in `app.js`. Runtime test coverage now directly validates exclusion of typing/recovery rows, user-row filtering, copy-button row filtering, and active copy-button detection.
+- Validation after `5c5629f`:
+  - `node --check codoxear/static/app_message_rows.js` and `node --check codoxear/static/app.js` passed.
+  - Focused frontend/static group returned `61 passed`.
+  - Full local `python3 -m pytest -q` returned `1227 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
