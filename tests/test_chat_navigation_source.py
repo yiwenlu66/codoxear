@@ -5,6 +5,7 @@ from pathlib import Path
 APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
 APP_CSS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.css"
 APP_DISPLAY_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app_display.js"
+APP_MESSAGE_ROWS_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app_message_rows.js"
 
 
 class TestChatNavigationSource(unittest.TestCase):
@@ -153,6 +154,7 @@ class TestChatNavigationSource(unittest.TestCase):
 
     def test_message_copy_buttons_use_roving_tab_stop(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        row_source = APP_MESSAGE_ROWS_JS.read_text(encoding="utf-8")
         css = APP_CSS.read_text(encoding="utf-8")
         self.assertIn('let activeMessageCopyRow = null;', source)
         self.assertIn('function syncMessageCopyTabStops()', source)
@@ -161,9 +163,9 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('btn.disabled = !active;', source)
         self.assertIn('if (active) btn.removeAttribute("aria-hidden");', source)
         self.assertIn('else btn.setAttribute("aria-hidden", "true");', source)
-        self.assertIn('tabindex: "-1",', source)
-        self.assertIn('disabled: "true",', source)
-        self.assertIn('"aria-hidden": "true",', source)
+        self.assertIn('tabindex: "-1",', row_source)
+        self.assertIn('disabled: "true",', row_source)
+        self.assertIn('"aria-hidden": "true",', row_source)
         self.assertIn('.msg-copy-btn[aria-hidden="true"],', css)
         self.assertIn('visibility: hidden;', css)
         self.assertIn('pointer-events: none;', css)

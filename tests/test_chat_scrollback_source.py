@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
 APP_TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
+APP_MESSAGE_ROWS_JS = ROOT / "codoxear" / "static" / "app_message_rows.js"
 APP_CSS = ROOT / "codoxear" / "static" / "app.css"
 
 
@@ -280,12 +281,11 @@ class TestChatScrollbackSource(unittest.TestCase):
 
     def test_rendered_rows_keep_server_history_cursor(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        row_source = APP_MESSAGE_ROWS_JS.read_text(encoding="utf-8")
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         self.assertIn('if (typeof ev.history_cursor === "string" && ev.history_cursor) out.history_cursor = ev.history_cursor;', transcript_source)
-        start = source.index("function makeRow(ev, { ts, pending }) {")
-        end = source.index("function safeMakeRow(ev, opts) {", start)
-        block = source[start:end]
-        self.assertIn('row.dataset.historyCursor = ev.history_cursor;', block)
+        self.assertIn('row.dataset.historyCursor = ev.history_cursor;', row_source)
+        self.assertIn('return codoxearMessageRows.makeRow(ev, { ts, pending }, messageRowDeps());', source)
         self.assertNotIn("let historyCursor", source)
 
     def test_poll_messages_uses_live_cursor_only(self) -> None:
@@ -373,11 +373,10 @@ class TestChatScrollbackSource(unittest.TestCase):
 
     def test_error_and_warning_message_classes_are_rendered(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("function makeRow(ev, { ts, pending }) {")
-        end = source.index("function safeMakeRow(ev, opts) {", start)
-        block = source[start:end]
-        self.assertIn('messageClass === "error" || messageClass === "warning"', block)
-        self.assertIn("bubble.classList.add(messageClass);", block)
+        row_source = APP_MESSAGE_ROWS_JS.read_text(encoding="utf-8")
+        self.assertIn('messageClass === "error" || messageClass === "warning"', row_source)
+        self.assertIn("bubble.classList.add(messageClass);", row_source)
+        self.assertIn('return codoxearMessageRows.makeRow(ev, { ts, pending }, messageRowDeps());', source)
 
     def test_recovery_state_renders_in_chat_pane(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
