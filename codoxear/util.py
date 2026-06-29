@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 import datetime
-import errno
-import json
 import os
-import socket
 import sys
 import time
 import traceback
@@ -57,6 +54,8 @@ from .session_log_discovery import is_subagent_session_meta as _is_subagent_sess
 from .session_log_discovery import iter_session_logs as _iter_session_logs_impl
 from .session_log_discovery import read_session_meta_payload as _read_session_meta_payload_impl
 from .session_log_discovery import subagent_parent_thread_id as _subagent_parent_thread_id_impl
+from .socket_json import send_socket_json_line as _send_socket_json_line
+from .socket_json import socket_peer_disconnected as _socket_peer_disconnected
 from .pi_log import read_pi_log_cwd
 
 
@@ -75,22 +74,6 @@ def _log_exception(context: str, exc: BaseException) -> None:
     tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)).rstrip("\n")
     if tb:
         _log_error(f"traceback ({ts}):\n{tb}")
-
-
-def _socket_peer_disconnected(exc: BaseException) -> bool:
-    if isinstance(exc, (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)):
-        return True
-    return isinstance(exc, OSError) and exc.errno in (
-        errno.EPIPE,
-        errno.ECONNRESET,
-        errno.ECONNABORTED,
-        errno.ENOTCONN,
-        errno.ESHUTDOWN,
-    )
-
-
-def _send_socket_json_line(conn: socket.socket, payload: dict[str, Any]) -> None:
-    conn.sendall((json.dumps(payload) + "\n").encode("utf-8"))
 
 
 def default_app_dir() -> Path:
