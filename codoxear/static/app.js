@@ -2111,7 +2111,9 @@
           typeof codoxearMessageRows.loadedCopyMessageRows !== "function" ||
           typeof codoxearMessageRows.activeElementIsMessageCopyButton !== "function" ||
           typeof codoxearMessageRows.rowSearchText !== "function" ||
-          typeof codoxearMessageRows.compareRowsInDomOrder !== "function"
+          typeof codoxearMessageRows.compareRowsInDomOrder !== "function" ||
+          typeof codoxearMessageRows.loadedUserJumpTarget !== "function" ||
+          typeof codoxearMessageRows.loadedCopyJumpTarget !== "function"
         )
           throw new Error("Codoxear message row helpers failed to load");
 
@@ -2141,6 +2143,14 @@
 
         function compareRowsInDomOrder(a, b) {
           return codoxearMessageRows.compareRowsInDomOrder(a, b, Node);
+        }
+
+        function loadedUserJumpTarget(rows, direction, threshold) {
+          return codoxearMessageRows.loadedUserJumpTarget(rows, direction, threshold);
+        }
+
+        function loadedCopyJumpTarget(rows, activeRow, direction, threshold) {
+          return codoxearMessageRows.loadedCopyJumpTarget(rows, activeRow, direction, threshold);
         }
 
         function syncMessageCopyTabStops() {
@@ -2213,31 +2223,12 @@
             setToast("No loaded user messages");
             return;
           }
-          const threshold = chat.scrollTop + 24;
-          let target = null;
-          if (direction < 0) {
-            for (let i = rows.length - 1; i >= 0; i -= 1) {
-              if (rows[i].offsetTop < threshold) {
-                target = rows[i];
-                break;
-              }
-            }
-            if (!target) {
-              setToast("At first loaded user message");
-              return;
-            }
-          } else {
-            for (const row of rows) {
-              if (row.offsetTop > threshold) {
-                target = row;
-                break;
-              }
-            }
-            if (!target) {
-              setToast("At last loaded user message");
-              return;
-            }
+          const result = loadedUserJumpTarget(rows, direction, chat.scrollTop + 24);
+          if (!result.target) {
+            setToast(result.reason === "first" ? "At first loaded user message" : "At last loaded user message");
+            return;
           }
+          const target = result.target;
           target.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "auto" : "smooth" });
           pulseNavigatedRow(target);
         }
@@ -2248,36 +2239,12 @@
             setToast("No loaded messages");
             return;
           }
-          let idx = activeMessageCopyRow && activeMessageCopyRow.isConnected ? rows.indexOf(activeMessageCopyRow) : -1;
-          if (idx < 0) {
-            const threshold = chat.scrollTop + 24;
-            if (direction < 0) {
-              for (let i = rows.length - 1; i >= 0; i -= 1) {
-                if (rows[i].offsetTop < threshold) {
-                  idx = i + 1;
-                  break;
-                }
-              }
-            } else {
-              for (let i = 0; i < rows.length; i += 1) {
-                if (rows[i].offsetTop > threshold) {
-                  idx = i - 1;
-                  break;
-                }
-              }
-            }
-            if (idx < 0) idx = direction < 0 ? rows.length : -1;
-          }
-          const nextIndex = idx + (direction < 0 ? -1 : 1);
-          if (nextIndex < 0) {
-            setToast("At first loaded message");
+          const result = loadedCopyJumpTarget(rows, activeMessageCopyRow, direction, chat.scrollTop + 24);
+          if (!result.target) {
+            setToast(result.reason === "first" ? "At first loaded message" : "At last loaded message");
             return;
           }
-          if (nextIndex >= rows.length) {
-            setToast("At last loaded message");
-            return;
-          }
-          const target = rows[nextIndex];
+          const target = result.target;
           target.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "auto" : "smooth" });
           pulseNavigatedRow(target);
         }

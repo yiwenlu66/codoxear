@@ -148,6 +148,47 @@
     return 0;
   }
 
+  function loadedUserJumpTarget(rows, direction, threshold) {
+    if (!rows.length) return { reason: "none", target: null };
+    if (direction < 0) {
+      for (let i = rows.length - 1; i >= 0; i -= 1) {
+        if (rows[i].offsetTop < threshold) return { reason: "target", target: rows[i] };
+      }
+      return { reason: "first", target: null };
+    }
+    for (const row of rows) {
+      if (row.offsetTop > threshold) return { reason: "target", target: row };
+    }
+    return { reason: "last", target: null };
+  }
+
+  function loadedCopyJumpTarget(rows, activeRow, direction, threshold) {
+    if (!rows.length) return { reason: "none", target: null };
+    let idx = activeRow && activeRow.isConnected ? rows.indexOf(activeRow) : -1;
+    if (idx < 0) {
+      if (direction < 0) {
+        for (let i = rows.length - 1; i >= 0; i -= 1) {
+          if (rows[i].offsetTop < threshold) {
+            idx = i + 1;
+            break;
+          }
+        }
+      } else {
+        for (let i = 0; i < rows.length; i += 1) {
+          if (rows[i].offsetTop > threshold) {
+            idx = i - 1;
+            break;
+          }
+        }
+      }
+      if (idx < 0) idx = direction < 0 ? rows.length : -1;
+    }
+    const nextIndex = idx + (direction < 0 ? -1 : 1);
+    if (nextIndex < 0) return { reason: "first", target: null };
+    if (nextIndex >= rows.length) return { reason: "last", target: null };
+    return { reason: "target", target: rows[nextIndex] };
+  }
+
   window.CodoxearMessageRows = Object.freeze({
     makeRow,
     safeMakeRow,
@@ -158,5 +199,7 @@
     activeElementIsMessageCopyButton,
     rowSearchText,
     compareRowsInDomOrder,
+    loadedUserJumpTarget,
+    loadedCopyJumpTarget,
   });
 })();

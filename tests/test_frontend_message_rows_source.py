@@ -78,6 +78,12 @@ def eval_message_rows() -> dict:
           const nodeConstants = {{ DOCUMENT_POSITION_FOLLOWING: 4, DOCUMENT_POSITION_PRECEDING: 2 }};
           const first = {{ compareDocumentPosition: (other) => other === second ? 4 : 0 }};
           const second = {{ compareDocumentPosition: (other) => other === first ? 2 : 0 }};
+          const navRows = [
+            {{ name: "r1", offsetTop: 10, isConnected: true }},
+            {{ name: "r2", offsetTop: 30, isConnected: true }},
+            {{ name: "r3", offsetTop: 50, isConnected: true }},
+          ];
+          const disconnectedRow = {{ name: "old", offsetTop: 30, isConnected: false }};
           process.stdout.write(JSON.stringify({{
             frozen: Object.isFrozen(rows),
             role: made.row.dataset.role,
@@ -105,6 +111,17 @@ def eval_message_rows() -> dict:
             rowSearchText: rows.rowSearchText(searchRow),
             compareForward: rows.compareRowsInDomOrder(first, second, nodeConstants),
             compareBackward: rows.compareRowsInDomOrder(second, first, nodeConstants),
+            userPrevTarget: rows.loadedUserJumpTarget(navRows, -1, 35).target.name,
+            userPrevBoundary: rows.loadedUserJumpTarget(navRows, -1, 5).reason,
+            userNextTarget: rows.loadedUserJumpTarget(navRows, 1, 35).target.name,
+            userNextBoundary: rows.loadedUserJumpTarget(navRows, 1, 55).reason,
+            copyActiveNextTarget: rows.loadedCopyJumpTarget(navRows, navRows[1], 1, 0).target.name,
+            copyActivePrevTarget: rows.loadedCopyJumpTarget(navRows, navRows[1], -1, 0).target.name,
+            copyThresholdPrevTarget: rows.loadedCopyJumpTarget(navRows, disconnectedRow, -1, 35).target.name,
+            copyThresholdNextTarget: rows.loadedCopyJumpTarget(navRows, null, 1, 35).target.name,
+            copyFirstBoundary: rows.loadedCopyJumpTarget(navRows, navRows[0], -1, 0).reason,
+            copyLastBoundary: rows.loadedCopyJumpTarget(navRows, navRows[2], 1, 0).reason,
+            copyEmptyBoundary: rows.loadedCopyJumpTarget([], null, 1, 0).reason,
           }}));
         }}).catch((err) => {{ process.stderr.write(String(err && err.stack || err)); process.exit(1); }});
         """
@@ -133,6 +150,8 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
         self.assertIn("return codoxearMessageRows.activeElementIsMessageCopyButton(document);", source)
         self.assertIn("return codoxearMessageRows.rowSearchText(row);", source)
         self.assertIn("return codoxearMessageRows.compareRowsInDomOrder(a, b, Node);", source)
+        self.assertIn("return codoxearMessageRows.loadedUserJumpTarget(rows, direction, threshold);", source)
+        self.assertIn("return codoxearMessageRows.loadedCopyJumpTarget(rows, activeRow, direction, threshold);", source)
         self.assertIn("chatAssistantDedupeKey,", source)
         self.assertIn("consoleError: console.error.bind(console)", source)
         self.assertNotIn("function makeRow(ev, { ts, pending }) {\n          const role = ev.role", source)
@@ -144,6 +163,8 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
         self.assertIn("function messageCopyButtonForRow(row)", helper_source)
         self.assertIn("function rowSearchText(row)", helper_source)
         self.assertIn("function compareRowsInDomOrder(a, b, nodeLike)", helper_source)
+        self.assertIn("function loadedUserJumpTarget(rows, direction, threshold)", helper_source)
+        self.assertIn("function loadedCopyJumpTarget(rows, activeRow, direction, threshold)", helper_source)
         self.assertIn("consoleError(\"makeRow failed\", err);", helper_source)
 
     def test_message_rows_builds_copyable_rows_and_safe_fallback(self) -> None:
@@ -178,6 +199,17 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
         self.assertEqual(result["rowSearchText"], " searchable body ")
         self.assertEqual(result["compareForward"], -1)
         self.assertEqual(result["compareBackward"], 1)
+        self.assertEqual(result["userPrevTarget"], "r2")
+        self.assertEqual(result["userPrevBoundary"], "first")
+        self.assertEqual(result["userNextTarget"], "r3")
+        self.assertEqual(result["userNextBoundary"], "last")
+        self.assertEqual(result["copyActiveNextTarget"], "r3")
+        self.assertEqual(result["copyActivePrevTarget"], "r1")
+        self.assertEqual(result["copyThresholdPrevTarget"], "r2")
+        self.assertEqual(result["copyThresholdNextTarget"], "r3")
+        self.assertEqual(result["copyFirstBoundary"], "first")
+        self.assertEqual(result["copyLastBoundary"], "last")
+        self.assertEqual(result["copyEmptyBoundary"], "none")
 
 
 if __name__ == "__main__":

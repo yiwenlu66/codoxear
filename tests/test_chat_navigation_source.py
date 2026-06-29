@@ -41,10 +41,12 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('function loadedUserMessageRows() {', source)
         self.assertIn('return codoxearMessageRows.loadedUserMessageRows(chatInner);', source)
         self.assertIn('row.dataset.role === "user"', row_source)
+        self.assertIn('function loadedUserJumpTarget(rows, direction, threshold)', row_source)
+        self.assertIn('return codoxearMessageRows.loadedUserJumpTarget(rows, direction, threshold);', source)
         self.assertIn('function jumpToLoadedUserMessage(direction)', source)
         self.assertIn('setToast("No loaded user messages")', source)
-        self.assertIn('setToast("At first loaded user message")', source)
-        self.assertIn('setToast("At last loaded user message")', source)
+        self.assertIn('"At first loaded user message"', source)
+        self.assertIn('"At last loaded user message"', source)
         self.assertIn('target.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "auto" : "smooth" })', source)
 
     def test_jump_target_has_temporary_pulse_style(self) -> None:
@@ -176,6 +178,8 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('if (activeElementIsMessageCopyButton()) return;', source)
         self.assertIn('addAppEvent(chatInner, "focusin"', source)
         self.assertIn('setActiveMessageCopyRow(row, { focusCopy: activeElementIsMessageCopyButton() });', source)
+        self.assertIn('function loadedCopyJumpTarget(rows, activeRow, direction, threshold)', row_source)
+        self.assertIn('return codoxearMessageRows.loadedCopyJumpTarget(rows, activeRow, direction, threshold);', source)
         self.assertIn('function jumpToLoadedMessage(direction)', source)
         self.assertIn('const rows = loadedCopyMessageRows();', source)
         self.assertIn('jumpToLoadedMessage(e.key === "ArrowUp" ? -1 : 1);', source)
