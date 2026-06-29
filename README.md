@@ -201,6 +201,7 @@ Set these in `.env` (or in the process environment):
 - `CODEX_WEB_TRANSCRIPT_EXPORT_MAX_BYTES` (default `52428800`; maximum backend log size eligible for full-conversation copy/export)
 - `CODEX_WEB_UNATTENDED_SWEEP_SECONDS` (default `2.5`)
 - `CODEX_WEB_QUEUE_SWEEP_SECONDS` (default `1.0`)
+- `CODEX_WEB_QUEUE_SWEEP_MAX_DRAINS` (default `4`; maximum successful queued-prompt promotions per sweep)
 - `CODEX_WEB_QUEUE_IDLE_GRACE_SECONDS` (default `10.0`)
 - `CODEX_WEB_DISCOVER_MIN_INTERVAL_SECONDS` (default `1.0`)
 - `CODEX_WEB_METRICS_WINDOW` (default `256`)

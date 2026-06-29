@@ -6,6 +6,9 @@ from tempfile import TemporaryDirectory
 from codoxear.server_config import SERVER_CONFIG_EXPORT_NAMES, build_server_config, export_server_config
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
 def test_server_config_applies_dotenv_before_deriving_paths_without_overriding_env() -> None:
     with TemporaryDirectory() as td:
         cwd = Path(td)
@@ -68,3 +71,14 @@ def test_export_server_config_populates_legacy_server_global_names() -> None:
     assert target["CC_SETTINGS_PATH"] == config.CC_SETTINGS_PATH
     assert target["ATTACH_UPLOAD_MAX_BYTES"] == config.ATTACH_UPLOAD_MAX_BYTES
     assert set(SERVER_CONFIG_EXPORT_NAMES).issubset(target)
+
+
+def test_queue_sweep_max_drains_config_is_documented() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+    config_source = (ROOT / "codoxear" / "server_config.py").read_text(encoding="utf-8")
+
+    assert 'CODEX_WEB_QUEUE_SWEEP_MAX_DRAINS", "4"' in config_source
+    assert "CODEX_WEB_QUEUE_SWEEP_MAX_DRAINS" in readme
+    assert "maximum successful queued-prompt promotions per sweep" in readme
+    assert "# CODEX_WEB_QUEUE_SWEEP_MAX_DRAINS=4" in env_example
