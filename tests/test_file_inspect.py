@@ -11,6 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from codoxear import file_text
 from codoxear import git_ops
 from codoxear import server
 from codoxear.server import _current_git_branch
@@ -1895,6 +1896,40 @@ class TestInspectOpenableFile(unittest.TestCase):
                 _read_text_file_for_write(base / "link" / "note.py", max_bytes=1024)
 
     @unittest.skipIf(not hasattr(os, "symlink"), "symlink required")
+    def test_read_text_file_for_write_does_not_reopen_path_after_parent_check(self) -> None:
+        with tempfile.TemporaryDirectory() as td, tempfile.TemporaryDirectory() as outside_td:
+            base = Path(td)
+            parent = base / "dir"
+            parent.mkdir()
+            path = parent / "note.py"
+            path.write_text("old\n", encoding="utf-8")
+            outside = Path(outside_td)
+            outside_parent = outside / "dir"
+            outside_parent.mkdir()
+            outside_target = outside_parent / "note.py"
+            outside_target.write_text("outside\n", encoding="utf-8")
+            moved_parent = base / "dir-original"
+            original_read_bytes = Path.read_bytes
+            swapped = False
+
+            def racing_read_bytes(self):
+                nonlocal swapped
+                if self == path and not swapped:
+                    parent.rename(moved_parent)
+                    os.symlink(outside_parent, parent)
+                    swapped = True
+                return original_read_bytes(self)
+
+            with patch.object(Path, "read_bytes", racing_read_bytes):
+                text, size, version = _read_text_file_for_write(path, max_bytes=1024)
+
+            self.assertFalse(swapped)
+            self.assertEqual(text, "old\n")
+            self.assertEqual(size, len(b"old\n"))
+            self.assertEqual(version, hashlib.sha256(b"old\n").hexdigest())
+            self.assertEqual(outside_target.read_text(encoding="utf-8"), "outside\n")
+
+    @unittest.skipIf(not hasattr(os, "symlink"), "symlink required")
     def test_write_text_file_atomic_rejects_symlink_parent_directory(self) -> None:
         with tempfile.TemporaryDirectory() as td, tempfile.TemporaryDirectory() as outside_td:
             base = Path(td)
@@ -1905,6 +1940,76 @@ class TestInspectOpenableFile(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "symlink parent"):
                 _write_text_file_atomic(base / "link" / "note.py", text="new\n")
             self.assertEqual(target.read_text(encoding="utf-8"), "outside\n")
+
+    @unittest.skipIf(not hasattr(os, "symlink"), "symlink required")
+    def test_write_text_file_atomic_parent_swap_does_not_replace_symlink_target(self) -> None:
+        with tempfile.TemporaryDirectory() as td, tempfile.TemporaryDirectory() as outside_td:
+            base = Path(td)
+            parent = base / "dir"
+            parent.mkdir()
+            path = parent / "note.py"
+            path.write_text("old\n", encoding="utf-8")
+            outside = Path(outside_td)
+            outside_parent = outside / "dir"
+            outside_parent.mkdir()
+            outside_target = outside_parent / "note.py"
+            outside_target.write_text("outside\n", encoding="utf-8")
+            (outside_parent / ".note.py.codoxear-tmp-race").write_text("attacker tmp\n", encoding="utf-8")
+            moved_parent = base / "dir-original"
+            real_replace = os.replace
+            swapped = False
+
+            def racing_replace(src, dst, *args, **kwargs):
+                nonlocal swapped
+                if not swapped:
+                    parent.rename(moved_parent)
+                    os.symlink(outside_parent, parent)
+                    swapped = True
+                return real_replace(src, dst, *args, **kwargs)
+
+            with patch.object(file_text.secrets, "token_hex", return_value="race"), patch.object(file_text.os, "replace", side_effect=racing_replace):
+                size, version = _write_text_file_atomic(path, text="new\n")
+
+            self.assertTrue(swapped)
+            self.assertEqual(size, len(b"new\n"))
+            self.assertEqual(version, hashlib.sha256(b"new\n").hexdigest())
+            self.assertEqual((moved_parent / "note.py").read_text(encoding="utf-8"), "new\n")
+            self.assertEqual(outside_target.read_text(encoding="utf-8"), "outside\n")
+
+    @unittest.skipIf(not hasattr(os, "symlink"), "symlink required")
+    def test_write_new_text_file_atomic_parent_swap_does_not_create_in_symlink_target(self) -> None:
+        with tempfile.TemporaryDirectory() as td, tempfile.TemporaryDirectory() as outside_td:
+            base = Path(td)
+            parent = base / "dir"
+            parent.mkdir()
+            path = parent / "note.py"
+            outside = Path(outside_td)
+            outside_parent = outside / "dir"
+            outside_parent.mkdir()
+            outside_target = outside_parent / "note.py"
+            outside_tmp = outside_parent / ".note.py.codoxear-tmp-race"
+            outside_tmp.write_text("attacker tmp\n", encoding="utf-8")
+            moved_parent = base / "dir-original"
+            real_link = os.link
+            swapped = False
+
+            def racing_link(src, dst, *args, **kwargs):
+                nonlocal swapped
+                if not swapped:
+                    parent.rename(moved_parent)
+                    os.symlink(outside_parent, parent)
+                    swapped = True
+                return real_link(src, dst, *args, **kwargs)
+
+            with patch.object(file_text.secrets, "token_hex", return_value="race"), patch.object(file_text.os, "link", side_effect=racing_link):
+                size, version = _write_new_text_file_atomic(path, text="new\n")
+
+            self.assertTrue(swapped)
+            self.assertEqual(size, len(b"new\n"))
+            self.assertEqual(version, hashlib.sha256(b"new\n").hexdigest())
+            self.assertEqual((moved_parent / "note.py").read_text(encoding="utf-8"), "new\n")
+            self.assertFalse(outside_target.exists())
+            self.assertEqual(outside_tmp.read_text(encoding="utf-8"), "attacker tmp\n")
 
     def test_binary_download_inspection_returns_size_without_buffering(self) -> None:
         with tempfile.TemporaryDirectory() as td:

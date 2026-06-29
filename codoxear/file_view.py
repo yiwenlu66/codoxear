@@ -3,10 +3,14 @@ from __future__ import annotations
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
+import stat
 
 from .file_text import FILE_READ_MAX_BYTES
 from .file_text import decode_text_view_for_client
 from .file_text import markdown_kind
+from .file_text import read_regular_file_bytes_no_symlink
+from .file_text import read_regular_file_prefix_no_symlink
+from .file_text import stat_path_no_symlink
 from .file_types import file_kind
 
 
@@ -30,8 +34,8 @@ def inspect_openable_file(path_obj: Path) -> tuple[bytes, int, str, str | None]:
         if view.blocked_reason == "too_large":
             raise ValueError(f"file too large (max {FILE_READ_MAX_BYTES} bytes)")
         raise ValueError("binary file not supported")
-    raw = path_obj.read_bytes()
-    return raw, view.size, view.kind, view.content_type
+    raw, size = read_regular_file_bytes_no_symlink(path_obj)
+    return raw, size, view.kind, view.content_type
 
 
 def inspect_path_metadata(path_obj: Path) -> tuple[int, str, str | None]:
@@ -40,16 +44,16 @@ def inspect_path_metadata(path_obj: Path) -> tuple[int, str, str | None]:
 
 
 def read_client_file_view(path_obj: Path) -> ClientFileView:
-    if not path_obj.exists():
+    try:
+        stat_result = stat_path_no_symlink(path_obj)
+    except FileNotFoundError:
         raise FileNotFoundError("file not found")
-    if path_obj.is_dir():
+    if stat.S_ISDIR(stat_result.st_mode):
         return ClientFileView(kind="directory", size=0)
-    if not path_obj.is_file():
+    if not stat.S_ISREG(stat_result.st_mode):
         raise ValueError("path is not a file")
     try:
-        size = int(path_obj.stat().st_size)
-        with path_obj.open("rb") as f:
-            prefix = f.read(4096)
+        prefix, size = read_regular_file_prefix_no_symlink(path_obj, 4096)
     except PermissionError as e:
         raise PermissionError("permission denied") from e
     kind, content_type = file_kind(path_obj, prefix)
@@ -62,7 +66,7 @@ def read_client_file_view(path_obj: Path) -> ClientFileView:
             blocked_reason="too_large",
             viewer_max_bytes=FILE_READ_MAX_BYTES,
         )
-    raw = path_obj.read_bytes()
+    raw, size = read_regular_file_bytes_no_symlink(path_obj, max_bytes=FILE_READ_MAX_BYTES)
     text_payload = decode_text_view_for_client(path_obj, raw)
     if text_payload is None:
         return ClientFileView(kind="download_only", size=size, blocked_reason="binary")
@@ -80,19 +84,19 @@ def read_text_or_image(path_obj: Path) -> tuple[str, int, str | None, bytes | No
     view = read_client_file_view(path_obj)
     if view.kind in {"image", "pdf", "video", "download_only", "directory"}:
         return view.kind, view.size, view.content_type, None
-    raw = path_obj.read_bytes()
-    return view.kind, view.size, view.content_type, raw
+    raw, size = read_regular_file_bytes_no_symlink(path_obj)
+    return view.kind, size, view.content_type, raw
 
 
 def inspect_downloadable_file(path_obj: Path) -> int:
-    if not path_obj.exists():
+    try:
+        stat_result = stat_path_no_symlink(path_obj)
+    except FileNotFoundError:
         raise FileNotFoundError("file not found")
-    if not path_obj.is_file():
+    if not stat.S_ISREG(stat_result.st_mode):
         raise ValueError("path is not a file")
     try:
-        size = int(path_obj.stat().st_size)
-        with path_obj.open("rb"):
-            pass
+        _prefix, size = read_regular_file_prefix_no_symlink(path_obj, 0)
     except PermissionError as e:
         raise PermissionError("permission denied") from e
     return size
