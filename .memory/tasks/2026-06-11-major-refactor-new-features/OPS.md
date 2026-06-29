@@ -3838,3 +3838,21 @@
   - Focused broker/launch group returned `121 passed`.
   - Full local `python3 -m pytest -q` returned `1183 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T00:25:36Z Broker log binding split
+- Functional commit `517b304 Extract broker log binding policy` moved broker log trust/seed/apply policy out of `codoxear/broker.py` into new `codoxear/broker_log_binding.py`:
+  - `BrokerLogBinding`
+  - `BrokerLogSeed`
+  - `BrokerLogStateApplyResult`
+  - `_resolve_broker_log_binding`
+  - `_seed_broker_log_state`
+  - `_apply_broker_log_binding_to_state`
+- Ownership boundary: `broker_log_binding.py` validates candidate log containment/backend shape, handles Codex subagent-parent rebinding, derives session id, seeds Pi/Claude pending/idle state, and mutates `State` for a trusted binding. `broker.py` keeps side effects that start socket/log-watcher threads, write metadata, and coordinate `_register_from_log`.
+- Compatibility preserved: `Broker._maybe_register_or_switch_rollout` remains the public/patch seam and still accepts `log_path`; `Broker._session_id_from_rollout_path` remains injectable for tests and is passed into the new resolver.
+- Negative evidence repaired before commit: focused broker tests were run after extraction and passed without further behavioral repairs, confirming the previous import-overtrim issue from the launch split did not recur here.
+- Source sentinel update: new `tests/test_broker_log_binding_source.py` pins log-binding policy ownership in `broker_log_binding.py` and asserts socket/thread side effects remain absent from that module.
+- Size observation: `broker.py` is now 1292 lines; `broker_log_binding.py` is 143 lines; `broker_launch.py` is 230 lines; `broker_turn_state.py` is 428 lines.
+- Validation after `517b304`:
+  - Focused broker/log-binding group returned `121 passed`.
+  - Full local `python3 -m pytest -q` returned `1185 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
