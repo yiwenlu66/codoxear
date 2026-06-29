@@ -3871,3 +3871,17 @@
   - Focused broker/detach group returned `121 passed`.
   - Full local `python3 -m pytest -q` returned `1185 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T00:35:31Z Broker sidecar metadata split
+- Functional commit `cdbf960 Extract broker sidecar metadata` moved broker sidecar projection and claimed-log sidecar scanning out of `codoxear/broker.py` into new `codoxear/broker_metadata.py`:
+  - `_claimed_log_paths_from_sock_meta`
+  - `_broker_sidecar_meta`
+  - `_write_broker_sidecar_meta`
+- Compatibility preserved: `Broker._write_meta` remains the method/patch seam and now delegates to `_write_broker_sidecar_meta` with the same owner/backend/model/reasoning/service-tier fields.
+- Source sentinel updates:
+  - New `tests/test_broker_metadata_source.py` pins sidecar metadata ownership in `broker_metadata.py` and keeps `broker.py` JSON-free for this projection path.
+  - Existing source tests now check sidecar control capability literals and pid-liveness use in the new metadata owner rather than in `broker.py`.
+- Validation after `cdbf960`:
+  - Focused broker/sidecar/source group returned `130 passed, 3 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1187 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
