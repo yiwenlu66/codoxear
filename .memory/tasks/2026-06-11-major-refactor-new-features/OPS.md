@@ -4284,3 +4284,13 @@
   - Focused session-log path/proc/resume/source group returned `64 passed`.
   - Full local `python3 -m pytest -q` returned `1223 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for this tranche.
+
+## 2026-06-29T06:25:46Z Sessiond control split clean-room review repair
+- Async clean-room review `b445f344-3541-4e5f-82b8-9d1a3a54d499` returned `PASS` for `ef9cc8c` / `e09c6c0` with one strict-fidelity repair finding.
+- Reviewer verified handler extraction, dependency wiring, patch seam preservation for `codoxear.sessiond._inject`, `_encode_enter`, `_seq_bytes`, `_write_all`, `_handle_control_socket_connection`, `_send_socket_json_line`, `_socket_peer_disconnected`, and `traceback.print_exc`, no import cycles, no secrets/runtime artifacts, docs-only docs commit, and no Docker overclaim.
+- Finding repaired: `sessiond_control.py` had duplicated `st.busy = prev_busy` inside `restore_state_after_inject_failure()`. It was idempotent under lock but not byte-structurally faithful to the original. Functional repair commit `0457ca1 Remove duplicate sessiond busy rollback` deleted the duplicate assignment.
+- Validation after `0457ca1`:
+  - `python3 -m py_compile codoxear/sessiond.py codoxear/sessiond_control.py` passed.
+  - Focused sessiond control/state/send/packaging/pty group returned `23 passed`.
+  - Full local `python3 -m pytest -q` returned `1223 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for this repair.
