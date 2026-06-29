@@ -4349,3 +4349,11 @@
 - Reviewer validation: node syntax checks passed, focused frontend/static tests passed (count depends on subset), and full local `python3 -m pytest -q` returned `1227 passed, 107 subtests passed` on the reviewed head.
 - Reviewer noted the OPS focused-test count was a subset-specific count, not a behavioral issue.
 - Scope note: Docker evidence was not rerun and must not be claimed for this split.
+
+## 2026-06-29T08:20:55Z Process log path helper split clean-room review PASS
+- Async clean-room review `476682ca-3bba-4bb0-becc-2ea1b755e69f` returned `PASS` for functional commit `f343807` and docs `7544890`.
+- Reviewer verified all 12 moved functions were recreated verbatim in `process_log_paths.py`, `codoxear.util` re-exports all moved names, `proc_find_open_rollout_log` remains in `util.py` with unchanged payload parsing/subagent/cwd filtering policy, and no consumer imports were broken.
+- Reviewer verified no import cycles, docs-only docs commit, line counts matching docs, no secrets/runtime artifacts, no Docker overclaim, and py_compile success.
+- Reviewer validation: full local `python3 -m pytest -q` returned `1227 passed, 107 subtests passed`; focused process/session/proc tests passed.
+- Reviewer residual note: the source sentinel is structural; runtime behavior remains covered by broader session-discovery/integration tests that passed.
+- Scope note: Docker evidence was not rerun and must not be claimed for this split.
