@@ -4752,3 +4752,15 @@
 - Review verified tests cover the version-file tuple, versioned index refs, service-worker registration source, hash changes for shell files, and placeholder replacement; full local pytest evidence was `1241 passed, 107 subtests passed`.
 - Review found no unrelated/protected/secrets/runtime changes and no blockers.
 - Reconciliation note: the review read the pre-Docker docs state and noted no Docker evidence. Subsequent docs commit `a033c64` records focused Docker validation for this split only; browser service-worker lifecycle remains unmeasured.
+
+
+## 2026-06-29T14:05:00Z File picker hint helper split
+- Functional commit `f78f8dc Extract file picker hint helpers` moved three pure picker presentation helpers from `codoxear/static/app.js` into `codoxear/static/app_file_helpers.js`: `duplicateFilePickerPaths`, `filePickerIdentityHint`, and `filePickerTitle`.
+- `app.js` keeps file-picker state, caches, API search, timers, menu DOM rendering, click handlers, draft creation, file-open mode resolution, and viewer orchestration. It now keeps wrapper names for the moved helpers and adds fail-closed load checks for the new helper exports.
+- Existing identity-helper VM coverage in `tests/test_file_picker_search_source.py` now evaluates `app_file_helpers.js` in real display-helper load order; `tests/test_frontend_file_helpers_source.py` adds direct duplicate-path, identity-hint, and title-format cases plus source ownership assertions.
+- Validation:
+  - `node --check codoxear/static/app_file_helpers.js` and `node --check codoxear/static/app.js` passed.
+  - Focused local file-helper/picker/viewer/static group returned `63 passed`.
+  - Full local `python3 -m pytest -q` returned `1241 passed, 107 subtests passed` before commit.
+  - Focused isolated Docker `scripts/codoxear-docker-sandbox test tests/test_frontend_file_helpers_source.py tests/test_file_picker_search_source.py tests/test_file_viewer_source.py tests/test_static_assets.py -q` returned success with 63 tests.
+- Scope note: this is a bounded ownership split for file-picker labels/hints only. It does not claim new file-picker UX, browser interaction evidence, or extraction of cache/API/timer/render/open state machines.
