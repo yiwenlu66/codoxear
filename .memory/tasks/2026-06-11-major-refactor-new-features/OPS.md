@@ -5680,3 +5680,23 @@
   - `git diff --check` passed before staging/commit.
 - Initial reviewer run `03b44f4d-204d-4f68-8c2a-a3da14c4ff1a` failed due to `402 Insufficient Balance` and produced no usable review artifact. Clean-room critic rerun `96a3a20f-395c-4b76-9960-57578fb40691` returned PASS with no blockers; report saved at `/tmp/codoxear-unavailable-file-viewer-helper-review2.md`. Review verified guard preservation, helper body completeness/order, safety of explicit early selection persistence, dirty copy-only identity preservation, unchanged `blockUnavailableFileAction()` policy, and real-function VM/source tests. Non-blocking residual risks: pre-existing paste dialog persistence, idempotent double-call behavior, pre-existing save-token-zero edge, and a fragile but currently valid hide-block source slice.
 - Scope note: this is dirty unavailable-session file-viewer transition ownership only. It does not claim file-viewer session rebind extraction, async open choreography changes, paste-dialog unavailable cleanup, cache policy changes, browser-manual file-viewer evidence, or completion of the broad refactor/recovery request.
+
+
+## 2026-06-30T05:05:00Z Manual paste Insert unavailable guard
+- Functional commit `3cda62c Guard manual paste insert when session unavailable` added the existing unavailable-session guard to the manual file-paste Insert button.
+- Mechanism: `$("#filePasteInsertBtn").onclick` now returns immediately when `blockUnavailableFileAction()` reports the file viewer session is unavailable, before calling `insertIntoActiveFileEditor(filePasteInput.value)`, `hideFilePasteDialog()`, or `setToast("text inserted")`.
+- Intentional UX choice: the dirty unavailable transition may leave a manual paste dialog open; closing it on unavailable entry would discard user-typed text. The guard instead preserves `filePasteInput.value`, keeps the dialog open, and uses the existing `blockUnavailableFileAction()` status message. Available-session Insert behavior remains the old insert -> hide dialog -> `text inserted` toast path.
+- Boundary preserved: clipboard-read paste flow, manual dialog fallback/opening, cancel/backdrop/Escape dismissal, `hideFilePasteDialog()` behavior, `insertIntoActiveFileEditor()` as a generic editor mutation primitive, dirty unavailable copy-only transition, and all open/save/download guards were not changed.
+- Tests added/updated:
+  - `eval_file_paste_insert_button_guard()` extracts and executes the real `#filePasteInsertBtn` handler assignment in a Node VM. It verifies unavailable Insert preserves typed text, does not insert, does not hide, and emits the unavailable status through the guard; then verifies available Insert still inserts text, hides/clears the dialog, and emits the existing toast.
+  - Source sentinel pins the guard directly inside the Insert-button handler before `insertIntoActiveFileEditor(filePasteInput.value)`.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused paste tests passed.
+  - Focused local file-viewer/file-picker/static group returned `84 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1283 passed, 136 subtests passed`.
+  - Focused Docker file-viewer/file-picker/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed before staging/commit.
+- Clean-room critic review `04b692d1-9e59-4229-9aee-9b8276b622a7` returned PASS with no blockers; report saved at `/tmp/codoxear-paste-insert-unavailable-review.md`. Review verified exact two-file diff scope, unavailable Insert early return before mutation/hide/toast, typed text preservation, unchanged available Insert, unchanged clipboard/fallback/cancel paths, real extracted-handler VM coverage, and matching source sentinel. Residual risk was limited to normal production unknowns.
+- Scope note: this is manual paste Insert unavailable-session guarding only. It does not claim paste-dialog closure on unavailable transition, broader file-dialog action registry work, browser-manual paste evidence, async file-viewer choreography changes, or completion of the broad refactor/recovery request.
