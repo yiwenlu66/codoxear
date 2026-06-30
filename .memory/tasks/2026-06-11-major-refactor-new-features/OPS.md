@@ -6365,3 +6365,20 @@
 - Intended review output file: `/tmp/codoxear-current-file-viewer-controller-review.md`; no review finding was produced or applied.
 - Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against the current code. The code-evidence basis through `24565b2` remains syntax checks, focused tests, full local pytest, Docker sandbox, and diff checks recorded above.
 - Decision: continue workbench progress; retry clean-room review only at the next necessary yield or if review infrastructure becomes required for a user-facing checkpoint.
+
+## 2026-06-30T14:48:50Z File mode button policy controller ownership
+- Functional commit `ee3f78a Move file mode button policy into viewer controller` moved diff/preview mode button decision policy from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `handleFileDiffModeButtonPress(nonDiffMode)` now owns toggling diff mode against the remembered non-diff mode, and `handleFilePreviewModeButtonPress()` now owns markdown-preview eligibility plus preview/file toggle. Both delegate final transition/currentness/unsaved handling to existing controller-owned `setFileViewModeWithGuard(mode)`.
+- App-side changes: `fileModeDiffBtn.onclick` and `fileModePreviewBtn.onclick` now only prevent/stop browser events and delegate to wrappers. App still owns persisted `fileNonDiffMode`, raw DOM button rendering, and `setFileViewMode(mode)` DOM application.
+- Tests updated: source assertions require controller-owned diff/preview button handlers, app wrapper delegation, markdown-preview gating in the controller, and absence of direct `isMarkdownPreviewable(activeFilePathValue())` in app event wiring.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - File-viewer focused `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader focused frontend/file-viewer/static/auth group returned `119 passed, 28 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: file mode button action policy belongs to the file-viewer controller. App still owns persisted file mode storage, raw mode DOM application, raw load-result rendering, active file content metadata/text baseline, `fileEditMode` state, paste/unsaved dialog DOM, touch toolbar DOM, and raw Monaco selection helpers.
