@@ -5858,3 +5858,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: draft load success choreography moved. Draft inspect/open guard behavior and draft catch/error rendering remain app-owned; generic file-open result rendering/application, save request lifecycle, unavailable transition policy, paste/editor actions, and toolbar/editability policy also remain partly `app.js`-owned.
+
+## 2026-06-30T08:48:49Z Draft file error rendering controller ownership
+- Functional commit `2a5058f Move draft file error rendering into viewer controller` moved draft/new-file catch error rendering from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `renderDraftFileOpenError(request, error)` reuses the controller's abort/stale-currentness logic, resets active file buffer state for current non-abort errors, and writes `error: <message>`/`error: unknown error` through `fileStatus`. Unlike normal open-file errors, it intentionally does not call `updateFileTouchToolbar()`, preserving the old draft catch behavior.
+- `openDraftFilePath()` now delegates its catch block to the controller and returns immediately, while still owning draft path validation, unavailable/session guards, panel reset, request creation, load call, and finally cleanup.
+- Tests updated:
+  - `tests/test_frontend_file_viewer_module_source.py` executes the real controller for current draft error, abort draft error, and stale draft error, verifying no touch-toolbar refresh.
+  - `tests/test_file_viewer_source.py` source sentinels require app catch delegation and forbid `updateFileTouchToolbar()` inside the controller draft-error block.
+- Validation before commit:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `90 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1286 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: draft error rendering moved. Draft inspect/open guard behavior remains app-owned; generic file-open result rendering/application, save request lifecycle, unavailable transition policy, paste/editor actions, and toolbar/editability policy remain partly `app.js`-owned.
