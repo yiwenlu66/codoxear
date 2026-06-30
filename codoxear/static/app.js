@@ -8446,6 +8446,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return await fileViewerController.handleFileEditButtonPress();
         }
 
+        async function handleFileVideoPreviewButtonPress() {
+          const token = activeVideoFallback && activeVideoFallback.token ? activeVideoFallback.token : "";
+          return await fileViewerController.handleFileVideoPreviewButtonPress(token, (nextToken, options) => loadCompatibleVideoPreview(nextToken, options));
+        }
+
         function activeFileDownloadApiPath() {
           return fileViewerController.activeFileDownloadApiPath();
         }
@@ -9624,8 +9629,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         fileVideoPreviewBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          const token = activeVideoFallback && activeVideoFallback.token ? activeVideoFallback.token : "";
-          void loadCompatibleVideoPreview(token, { explicit: true });
+          void handleFileVideoPreviewButtonPress();
         };
 
         fileDownloadBtn.onclick = (e) => {

@@ -906,6 +906,11 @@
       return true;
     }
 
+    async function handleFileVideoPreviewButtonPress(token, loadPreview) {
+      const loadCompatiblePreview = requireFunction(loadPreview, "loadCompatibleVideoPreview");
+      return await loadCompatiblePreview(token || "", { explicit: true });
+    }
+
     function activeFileDownloadApiPath() {
       if (blockUnavailableFileAction()) return "";
       const sessionId = normalizeSessionId(currentSessionId());
@@ -1133,6 +1138,7 @@
       handleFileDiffModeButtonPress,
       handleFilePreviewModeButtonPress,
       handleFileEditButtonPress,
+      handleFileVideoPreviewButtonPress,
       activeFileDownloadApiPath,
       finalizeFileOpenSuccess,
       applyDraftFileLoad,
