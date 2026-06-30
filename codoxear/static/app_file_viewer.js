@@ -419,6 +419,20 @@
       return false;
     }
 
+    async function setFileViewModeWithGuard(mode) {
+      if (blockUnavailableFileAction()) return false;
+      const next = mode === "preview" ? "preview" : mode === "file" ? "file" : "diff";
+      if (next === currentFileViewMode()) return true;
+      if (currentActiveFileDraft() && next !== "file") return false;
+      if (!(await maybeHandleUnsavedFileChanges())) return false;
+      if (blockUnavailableFileAction()) return false;
+      setFileViewMode(next);
+      renderFilePickerMenu();
+      const identity = currentActiveFileIdentity();
+      await openFilePath(identity.path, { line: activeFileLine, gitPath: identity.gitPath, apiPath: identity.apiPath });
+      return true;
+    }
+
     function finalizeFileOpenSuccess(rel, absPath = null) {
       applyFileMode();
       rememberOpenedFile(rel, absPath);
@@ -559,6 +573,7 @@
       submitActiveFileSave,
       saveActiveFileEdits,
       maybeHandleUnsavedFileChanges,
+      setFileViewModeWithGuard,
       nextActiveFileIdentity,
       currentActiveFileIdentity,
       currentActiveFileLine,

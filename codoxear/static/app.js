@@ -8581,16 +8581,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function setFileViewModeWithGuard(mode) {
-          if (blockUnavailableFileAction()) return false;
-          const next = mode === "preview" ? "preview" : mode === "file" ? "file" : "diff";
-          if (next === fileViewMode) return true;
-          if (activeFileDraft && next !== "file") return false;
-          if (!(await maybeHandleUnsavedFileChanges())) return false;
-          if (blockUnavailableFileAction()) return false;
-          setFileViewMode(next);
-          renderFilePickerMenu();
-          await openFilePath(activeFilePathValue(), { line: activeFileLineValue(), gitPath: activeFileGitPathValue(), apiPath: activeFileApiPathValue() });
-          return true;
+          return await fileViewerController.setFileViewModeWithGuard(mode);
         }
 
         async function requestHideFileViewer() {

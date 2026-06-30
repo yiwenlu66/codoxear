@@ -172,6 +172,7 @@ def controller_identity_ctx_js(
             syncFileEditorReadOnly() {{ if (typeof ctx.syncFileEditorReadOnly === "function") return ctx.syncFileEditorReadOnly(); }},
             updateFileEditButton() {{ if (typeof ctx.updateFileEditButton === "function") return ctx.updateFileEditButton(); }},
             maybeHandleUnsavedFileChanges() {{ return typeof ctx.maybeHandleUnsavedFileChanges === "function" ? ctx.maybeHandleUnsavedFileChanges() : !ctx.fileDirty; }},
+            setFileViewModeWithGuard(mode) {{ return typeof ctx.setFileViewModeWithGuard === "function" ? ctx.setFileViewModeWithGuard(mode) : Promise.resolve(true); }},
             renderFileOpenError(request, error) {{
               if (this.isFileOpenAbortError(error)) return false;
               if (!this.isCurrentFileOpenRequest(request)) return false;
@@ -3281,6 +3282,10 @@ class TestFileViewerSource(unittest.TestCase):
         maybe_end = source.index("async function openFilePathWithGuard", maybe_start)
         maybe_block = source[maybe_start:maybe_end]
         self.assertIn("return await fileViewerController.maybeHandleUnsavedFileChanges();", maybe_block)
+        view_mode_start = source.index("async function setFileViewModeWithGuard")
+        view_mode_end = source.index("async function requestHideFileViewer", view_mode_start)
+        view_mode_block = source[view_mode_start:view_mode_end]
+        self.assertIn("return await fileViewerController.setFileViewModeWithGuard(mode);", view_mode_block)
         self.assertIn("async function saveActiveFileEdits({ exitEditMode = true } = {})", viewer_source)
         self.assertIn("if (blockUnavailableFileAction()) return false;", viewer_source)
         self.assertIn("const identity = currentActiveFileIdentity();", viewer_source)
@@ -3294,6 +3299,10 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const choice = await promptUnsavedFileChoice();", viewer_source)
         self.assertIn("discardActiveFileEdits();", viewer_source)
         self.assertIn("if (choice === \"save\") return await saveActiveFileEdits({ exitEditMode: true });", viewer_source)
+        self.assertIn("async function setFileViewModeWithGuard(mode)", viewer_source)
+        self.assertIn("if (currentActiveFileDraft() && next !== \"file\") return false;", viewer_source)
+        self.assertIn("if (!(await maybeHandleUnsavedFileChanges())) return false;", viewer_source)
+        self.assertIn("await openFilePath(identity.path, { line: activeFileLine, gitPath: identity.gitPath, apiPath: identity.apiPath });", viewer_source)
         self.assertIn("? { path: save.path, text: save.text, create: true }", viewer_source)
         self.assertIn(": { path: save.path, text: save.text, version: save.version, git_path: save.gitPath };", viewer_source)
         self.assertIn("if (!save.draft && save.gitPath && save.apiPath) body.path_token = save.apiPath;", viewer_source)

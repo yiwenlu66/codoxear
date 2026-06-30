@@ -334,6 +334,29 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           events.length = 0;
           const cancelUnsaved = {{ result: await renderController.maybeHandleUnsavedFileChanges(), events: events.slice() }};
           state.unsavedChoice = "";
+          async function runViewModeCase({{ startMode = "file", target = "preview", draft = false, dirty = false, choice = "", unavailable = false }} = {{}}) {{
+            state.viewMode = startMode;
+            state.draft = draft;
+            state.dirty = dirty;
+            state.unsavedChoice = choice;
+            state.unavailable = unavailable;
+            events.length = 0;
+            fileStatus.textContent = "";
+            renderController.setActiveFileIdentity("state.md", {{ line: 11, gitPath: true, apiPath: "state-token" }});
+            const result = await renderController.setFileViewModeWithGuard(target);
+            const output = {{ result, viewMode: state.viewMode, status: fileStatus.textContent, events: events.slice() }};
+            state.unavailable = false;
+            state.unsavedChoice = "";
+            state.draft = false;
+            return output;
+          }}
+          const viewModeSame = await runViewModeCase({{ startMode: "file", target: "file", dirty: true, choice: "discard" }});
+          const viewModeDraftBlocked = await runViewModeCase({{ startMode: "file", target: "diff", draft: true }});
+          const viewModeDiscardOpen = await runViewModeCase({{ startMode: "file", target: "preview", dirty: true, choice: "discard" }});
+          const viewModeCancel = await runViewModeCase({{ startMode: "file", target: "preview", dirty: true, choice: "cancel" }});
+          const viewModeUnavailable = await runViewModeCase({{ startMode: "file", target: "preview", unavailable: true }});
+          state.viewMode = "file";
+          state.dirty = true;
           const editableCapabilities = renderController.fileEditorCapabilities({{ path: "src/app.py", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
           const pendingCapabilities = renderController.fileEditorCapabilities({{ path: "src/app.py", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: true }});
           const binaryCapabilities = renderController.fileEditorCapabilities({{ path: "img.png", kind: "image", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
@@ -357,6 +380,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             editorState: {{ editorState, editorStateFrozen }},
             editabilityUi: {{ editButtonEditMode, readOnlyWritable, editButtonViewMode, editButtonUnavailable, editButtonSavePending }},
             unsavedDecision: {{ cleanUnsaved, discardUnsaved, cancelUnsaved }},
+            viewModeGuard: {{ viewModeSame, viewModeDraftBlocked, viewModeDiscardOpen, viewModeCancel, viewModeUnavailable }},
             capabilities: {{ derivedCapabilities, editableCapabilities, pendingCapabilities, binaryCapabilities, missingPathCapabilities, editableFrozen: Object.isFrozen(editableCapabilities) }},
           }};
           const availableReloadFailure = await runReloadCase("");
@@ -508,6 +532,18 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "cleanUnsaved": {"result": True, "events": []},
             "discardUnsaved": {"result": True, "events": [["promptUnsaved", "discard"], ["discardActiveFileEdits"]]},
             "cancelUnsaved": {"result": False, "events": [["promptUnsaved", "cancel"]]},
+        })
+        self.assertEqual(result["render"]["viewModeGuard"], {
+            "viewModeSame": {"result": True, "viewMode": "file", "status": "", "events": []},
+            "viewModeDraftBlocked": {"result": False, "viewMode": "file", "status": "", "events": []},
+            "viewModeDiscardOpen": {
+                "result": True,
+                "viewMode": "preview",
+                "status": "",
+                "events": [["promptUnsaved", "discard"], ["discardActiveFileEdits"], ["setFileViewMode", "preview"], ["renderFilePickerMenu"], ["open", "state.md", {"line": 11, "gitPath": True, "apiPath": "state-token"}]],
+            },
+            "viewModeCancel": {"result": False, "viewMode": "file", "status": "", "events": [["promptUnsaved", "cancel"]]},
+            "viewModeUnavailable": {"result": False, "viewMode": "file", "status": "Session is no longer available; copy unsaved edits before closing.", "events": []},
         })
         self.assertEqual(result["render"]["capabilities"], {
             "derivedCapabilities": {
