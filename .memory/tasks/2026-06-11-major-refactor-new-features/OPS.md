@@ -6402,3 +6402,24 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: active-file download URL policy belongs to the file-viewer controller. App still owns browser URL prefix resolution and the raw DOM anchor-click side effect, plus persisted file mode storage, raw mode DOM application, raw load-result rendering, active file content metadata/text baseline, `fileEditMode` state, paste/unsaved dialog DOM, touch toolbar DOM, and raw Monaco selection helpers.
+
+
+## 2026-06-30T15:15:55Z File selection copy policy controller ownership
+- Functional commit `77698c4 Move file selection copy policy into viewer controller` moved touch-selection copy action policy from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `copyActiveFileSelection()` now owns selected-text presence handling, clipboard-copy invocation, copy-error reporting, post-copy touch-selection collapse, success/error toast outcomes, and editor refocus after attempted clipboard operations. App supplies raw `getActiveFileSelectionText()` and `copyToClipboard(text)` dependencies and keeps event binding/DOM touch buttons.
+- Tests updated:
+  - Controller behavior probe executes empty-selection, successful copy, and clipboard-error paths.
+  - Older VM fixtures inject inert selection/clipboard dependencies because the controller factory now fails loudly when these required primitives are absent.
+  - Source assertions require controller-owned copy logic and app wrapper delegation, scoped so unrelated app clipboard code remains allowed.
+- Negative evidence during validation: adding fail-loud dependencies initially broke older controller fixtures that did not inject selection/clipboard primitives; this exposed fixture wiring incompleteness rather than product behavior drift. The copy behavior probe also initially inherited `editMode=false` from an unavailable-session case, causing read-only sync to report true; resetting the fake app state before the copy probe isolated the intended editable-selection condition.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - File-viewer focused `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader focused frontend/file-viewer/static/auth group returned `119 passed, 28 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: file selection copy action policy belongs to the file-viewer controller. App still owns raw selection extraction, raw clipboard implementation, touch button DOM binding, browser URL prefix/download anchor side effects, persisted file mode storage, raw mode DOM application, raw load-result rendering, active file content metadata/text baseline, `fileEditMode` state, paste/unsaved dialog DOM, touch toolbar DOM, and raw Monaco selection helpers.
