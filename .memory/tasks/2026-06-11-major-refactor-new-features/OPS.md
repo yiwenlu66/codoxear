@@ -6073,3 +6073,8 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: guarded view-mode transition policy now belongs to the file-viewer controller. App still owns raw view-mode DOM application, unsaved modal DOM, discard implementation, touch selection state/actions, paste dialog/insert actions, generic file-open result rendering/application, draft inspect/open currentness behavior, and dirty unavailable transition choreography.
+
+## 2026-06-30T11:08:42Z Clean-room review runner failure
+- Attempted end-of-tranche clean-room adversarial review with async critic run `56ff7b07-b704-4537-8619-58df235fd4e5`, output target `/tmp/codoxear-file-viewer-controller-turn-review.md`.
+- Observation: async runner process exited or disappeared before writing a result and stale-run reconciliation marked the run failed. No review artifact or concrete code finding was produced.
+- Interpretation: this is infrastructure negative evidence only; it does not validate or invalidate the file-viewer controller commits. Continued work proceeds from local/Docker validation and direct inspection, with a future clean-room review still required before yielding.
