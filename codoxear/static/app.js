@@ -8460,6 +8460,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           discardActiveFileEdits: () => discardActiveFileEdits(),
           hideFileViewer: () => hideFileViewer(),
           openFilePath: (path, options) => openFilePath(path, options),
+          openFilePathWithGuard: (path, options) => openFilePathWithGuard(path, options),
+          setFilePath: (path, options) => setFilePath(path, options),
+          openDraftFilePath: (path, options) => openDraftFilePath(path, options),
+          normalizeDraftFilePath: (path) => normalizeDraftFilePath(path),
+          inspectSessionFilePath: (path, options) => inspectSessionFilePath(path, options),
           api: (url, options) => api(url, options),
           focusEditor: () => getActiveFileCodeEditor(),
           disposeOpenRender: () => disposePdfRender(),
@@ -8553,35 +8558,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function openDraftFilePathWithGuard(path) {
-          if (blockUnavailableFileAction()) return false;
-          const rel = normalizeDraftFilePath(path);
-          if (!rel) {
-            fileStatus.textContent = "Choose a valid relative file path.";
-            return false;
-          }
-          if (!(await maybeHandleUnsavedFileChanges())) return false;
-          if (blockUnavailableFileAction()) return false;
-          try {
-            const inspect = await inspectSessionFilePath(rel);
-            if (blockUnavailableFileAction()) return false;
-            if (inspect && inspect.exists) {
-              if (inspect.kind === "directory") {
-                fileStatus.textContent = `${rel} - path is a directory`;
-                return false;
-              }
-              return await openFilePathWithGuard(rel, { line: null, mode: "file" });
-            }
-          } catch (e) {
-            if (blockUnavailableFileAction()) return false;
-            fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
-            return false;
-          }
-          if (blockUnavailableFileAction()) return false;
-          setFileViewMode("file");
-          setFilePath(rel, { line: null, gitPath: false });
-          renderFilePickerMenu();
-          await openDraftFilePath(rel, { line: null });
-          return true;
+          return await fileViewerController.openDraftFilePathWithGuard(path);
         }
 
         async function setFileViewModeWithGuard(mode) {

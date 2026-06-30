@@ -199,6 +199,7 @@ def controller_identity_ctx_js(
             maybeHandleUnsavedFileChanges() {{ return typeof ctx.maybeHandleUnsavedFileChanges === "function" ? ctx.maybeHandleUnsavedFileChanges() : !ctx.fileDirty; }},
             setFileViewModeWithGuard(mode) {{ return typeof ctx.setFileViewModeWithGuard === "function" ? ctx.setFileViewModeWithGuard(mode) : Promise.resolve(true); }},
             requestHideFileViewer() {{ return typeof ctx.requestHideFileViewer === "function" ? ctx.requestHideFileViewer() : Promise.resolve(true); }},
+            openDraftFilePathWithGuard(path) {{ return typeof ctx.openDraftFilePathWithGuard === "function" ? ctx.openDraftFilePathWithGuard(path) : Promise.resolve(true); }},
             renderFileOpenError(request, error) {{
               if (this.isFileOpenAbortError(error)) return false;
               if (!this.isCurrentFileOpenRequest(request)) return false;
@@ -1129,6 +1130,11 @@ def eval_file_open_request_sequence() -> dict:
           discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async () => true,
+          openFilePathWithGuard: async (...args) => {{ calls.push(["openFilePathWithGuard", ...args]); return true; }},
+          setFilePath: (...args) => calls.push(["setFilePath", ...args]),
+          openDraftFilePath: async (...args) => calls.push(["openDraftFilePath", ...args]),
+          normalizeDraftFilePath: (value) => String(value || "").trim(),
+          inspectSessionFilePath: async () => ({{ exists: false }}),
           api: async () => ({{}}),
           focusEditor: () => null,
           disposeOpenRender: () => {{ disposeCalls += 1; }},
@@ -1580,6 +1586,11 @@ def eval_active_file_save_request_helpers() -> dict:
           discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async () => true,
+          openFilePathWithGuard: async (...args) => {{ calls.push(["openFilePathWithGuard", ...args]); return true; }},
+          setFilePath: (...args) => calls.push(["setFilePath", ...args]),
+          openDraftFilePath: async (...args) => calls.push(["openDraftFilePath", ...args]),
+          normalizeDraftFilePath: (value) => String(value || "").trim(),
+          inspectSessionFilePath: async () => ({{ exists: false }}),
           api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
           focusEditor: () => ({{ updateOptions: (opts) => calls.push(["updateOptions", opts]) }}),
           disposeOpenRender: () => calls.push(["disposeOpenRender"]),
@@ -1776,6 +1787,11 @@ def eval_active_file_save_success() -> dict:
           discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async () => true,
+          openFilePathWithGuard: async (...args) => {{ calls.push(["openFilePathWithGuard", ...args]); return true; }},
+          setFilePath: (...args) => calls.push(["setFilePath", ...args]),
+          openDraftFilePath: async (...args) => calls.push(["openDraftFilePath", ...args]),
+          normalizeDraftFilePath: (value) => String(value || "").trim(),
+          inspectSessionFilePath: async () => ({{ exists: false }}),
           api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
           focusEditor: () => null,
           disposeOpenRender: () => calls.push(["disposeOpenRender"]),
@@ -1905,6 +1921,11 @@ def eval_active_file_save_transport() -> dict:
           discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async () => true,
+          openFilePathWithGuard: async (...args) => {{ calls.push(["openFilePathWithGuard", ...args]); return true; }},
+          setFilePath: (...args) => calls.push(["setFilePath", ...args]),
+          openDraftFilePath: async (...args) => calls.push(["openDraftFilePath", ...args]),
+          normalizeDraftFilePath: (value) => String(value || "").trim(),
+          inspectSessionFilePath: async () => ({{ exists: false }}),
           api: async (url, options = {{}}) => {{
             calls.push(["api", url, options.method, options.body]);
             if (state.behavior === "success-stale") {{
@@ -2073,6 +2094,11 @@ def eval_draft_file_load_choreography() -> dict:
           discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async () => true,
+          openFilePathWithGuard: async (...args) => {{ calls.push(["openFilePathWithGuard", ...args]); return true; }},
+          setFilePath: (...args) => calls.push(["setFilePath", ...args]),
+          openDraftFilePath: async (...args) => calls.push(["openDraftFilePath", ...args]),
+          normalizeDraftFilePath: (value) => String(value || "").trim(),
+          inspectSessionFilePath: async () => ({{ exists: false }}),
           api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
           focusEditor: () => null,
           disposeOpenRender: () => calls.push(["disposeOpenRender"]),
@@ -2605,7 +2631,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertNotIn('const gitPathQuery = request.gitPath ? "&git_path=1" : "";', source)
         self.assertIn("if (gitPath) {\n              body.git_path = true;", source)
         self.assertIn("startFileOpenRequest(path, { line, gitPath: false })", source)
-        self.assertIn("setFilePath(rel, { line: null, gitPath: false })", source)
+        self.assertIn("setFilePath(rel, { line: null, gitPath: false })", viewer_source)
         self.assertIn("if (save.draft) {\n        setActiveFileIdentity(save.path", viewer_source)
 
     def test_file_viewer_handles_selected_session_removal(self) -> None:
@@ -2671,7 +2697,14 @@ class TestFileViewerSource(unittest.TestCase):
         draft_guard_start = source.index("async function openDraftFilePathWithGuard")
         draft_guard_end = source.index("async function setFileViewModeWithGuard", draft_guard_start)
         draft_guard_block = source[draft_guard_start:draft_guard_end]
-        self.assertGreaterEqual(draft_guard_block.count("if (blockUnavailableFileAction()) return false;"), 4)
+        self.assertIn("return await fileViewerController.openDraftFilePathWithGuard(path);", draft_guard_block)
+        self.assertIn("async function openDraftFilePathWithGuard(path)", viewer_source)
+        self.assertIn("const rel = normalizeDraftFilePath(path);", viewer_source)
+        self.assertIn("fileStatus.textContent = \"Choose a valid relative file path.\";", viewer_source)
+        self.assertIn("const inspect = await inspectSessionFilePath(rel);", viewer_source)
+        self.assertIn("fileStatus.textContent = `${rel} - path is a directory`;", viewer_source)
+        self.assertIn("return await openFilePathWithGuard(rel, { line: null, mode: \"file\" });", viewer_source)
+        self.assertIn("await openDraftFilePath(rel, { line: null });", viewer_source)
         draft_start = source.index("async function openDraftFilePath(path")
         draft_end = source.index("function cloneFileCandidateEntry", draft_start)
         draft_block = source[draft_start:draft_end]
@@ -3421,6 +3454,11 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("discardActiveFileEdits: () => discardActiveFileEdits()", controller_block)
         self.assertIn("hideFileViewer: () => hideFileViewer()", controller_block)
         self.assertIn("openFilePath: (path, options) => openFilePath(path, options)", controller_block)
+        self.assertIn("openFilePathWithGuard: (path, options) => openFilePathWithGuard(path, options)", controller_block)
+        self.assertIn("setFilePath: (path, options) => setFilePath(path, options)", controller_block)
+        self.assertIn("openDraftFilePath: (path, options) => openDraftFilePath(path, options)", controller_block)
+        self.assertIn("normalizeDraftFilePath: (path) => normalizeDraftFilePath(path)", controller_block)
+        self.assertIn("inspectSessionFilePath: (path, options) => inspectSessionFilePath(path, options)", controller_block)
         self.assertIn("focusEditor: () => getActiveFileCodeEditor()", controller_block)
         save_start = source.index("async function saveActiveFileEdits")
         save_end = source.index("async function maybeHandleUnsavedFileChanges", save_start)

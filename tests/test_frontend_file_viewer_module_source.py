@@ -115,6 +115,11 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
               }}
               return state.openResult === true;
             }},
+            openFilePathWithGuard: async (path, opts) => {{ events.push(["openWithGuard", path, opts]); return state.openGuardResult !== false; }},
+            setFilePath: (path, opts) => events.push(["setFilePath", path, opts]),
+            openDraftFilePath: async (path, opts) => {{ events.push(["openDraft", path, opts]); return state.openDraftResult !== false; }},
+            normalizeDraftFilePath: (value) => String(value || "").trim().replace(/^[/]+/, ""),
+            inspectSessionFilePath: async (path) => {{ events.push(["inspect", path]); if (state.inspectError) throw new Error(state.inspectError); return state.inspectResult || {{ exists: false }}; }},
             api: async (url, options = {{}}) => {{
               events.push(["api", url, Boolean(options.signal)]);
               if (url.includes("/git/file_versions")) return {{ base_text: "old", current_text: "new", base_exists: true, current_exists: false, abs_path: "/abs/diff" }};
@@ -398,6 +403,27 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const unavailableHandleDirty = runUnavailableHandlerCase({{ dirty: true }});
           const unavailableHandleMismatch = runUnavailableHandlerCase({{ sid: "sid-2", currentSession: "sid-1", dirty: true }});
           const unavailableHandleClosed = runUnavailableHandlerCase({{ viewerOpen: false, dirty: true }});
+          async function runDraftGuardCase({{ path = "draft/new.txt", inspectResult = {{ exists: false }}, inspectError = "", dirty = false, choice = "" }} = {{}}) {{
+            renderController.clearFileViewerUnavailableSession();
+            state.inspectResult = inspectResult;
+            state.inspectError = inspectError;
+            state.dirty = dirty;
+            state.unsavedChoice = choice;
+            state.viewMode = "diff";
+            events.length = 0;
+            fileStatus.textContent = "";
+            const result = await renderController.openDraftFilePathWithGuard(path);
+            const output = {{ result, status: fileStatus.textContent, viewMode: state.viewMode, events: events.slice() }};
+            state.inspectResult = null;
+            state.inspectError = "";
+            state.unsavedChoice = "";
+            return output;
+          }}
+          const draftInvalidPath = await runDraftGuardCase({{ path: "/" }});
+          const draftDirectory = await runDraftGuardCase({{ inspectResult: {{ exists: true, kind: "directory" }} }});
+          const draftExisting = await runDraftGuardCase({{ inspectResult: {{ exists: true, kind: "text" }} }});
+          const draftInspectError = await runDraftGuardCase({{ inspectError: "inspect boom" }});
+          const draftNew = await runDraftGuardCase({{ inspectResult: {{ exists: false }} }});
           state.dirty = true;
           const editableCapabilities = renderController.fileEditorCapabilities({{ path: "src/app.py", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
           const pendingCapabilities = renderController.fileEditorCapabilities({{ path: "src/app.py", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: true }});
@@ -425,6 +451,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             viewModeGuard: {{ viewModeSame, viewModeDraftBlocked, viewModeDiscardOpen, viewModeCancel, viewModeUnavailable }},
             hideRequest: {{ hideClean, hideCancel, hideDiscard }},
             unavailableHandler: {{ unavailableHandleClean, unavailableHandleDirty, unavailableHandleMismatch, unavailableHandleClosed }},
+            draftGuard: {{ draftInvalidPath, draftDirectory, draftExisting, draftInspectError, draftNew }},
             capabilities: {{ derivedCapabilities, editableCapabilities, pendingCapabilities, binaryCapabilities, missingPathCapabilities, editableFrozen: Object.isFrozen(editableCapabilities) }},
           }};
           const availableReloadFailure = await runReloadCase("");
@@ -620,6 +647,13 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             },
             "unavailableHandleMismatch": {"result": False, "unavailable": False, "status": "", "events": []},
             "unavailableHandleClosed": {"result": False, "unavailable": False, "status": "", "events": []},
+        })
+        self.assertEqual(result["render"]["draftGuard"], {
+            "draftInvalidPath": {"result": False, "status": "Choose a valid relative file path.", "viewMode": "diff", "events": []},
+            "draftDirectory": {"result": False, "status": "draft/new.txt - path is a directory", "viewMode": "diff", "events": [["inspect", "draft/new.txt"]]},
+            "draftExisting": {"result": True, "status": "", "viewMode": "diff", "events": [["inspect", "draft/new.txt"], ["openWithGuard", "draft/new.txt", {"line": None, "mode": "file"}]]},
+            "draftInspectError": {"result": False, "status": "error: inspect boom", "viewMode": "diff", "events": [["inspect", "draft/new.txt"]]},
+            "draftNew": {"result": True, "status": "", "viewMode": "file", "events": [["inspect", "draft/new.txt"], ["setFileViewMode", "file"], ["setFilePath", "draft/new.txt", {"line": None, "gitPath": False}], ["renderFilePickerMenu"], ["openDraft", "draft/new.txt", {"line": None}]]},
         })
         self.assertEqual(result["render"]["capabilities"], {
             "derivedCapabilities": {

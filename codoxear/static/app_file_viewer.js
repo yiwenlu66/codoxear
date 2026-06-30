@@ -42,6 +42,11 @@
     const discardActiveFileEdits = requireFunction(deps && deps.discardActiveFileEdits, "discardActiveFileEdits");
     const hideFileViewer = requireFunction(deps && deps.hideFileViewer, "hideFileViewer");
     const openFilePath = requireFunction(deps && deps.openFilePath, "openFilePath");
+    const openFilePathWithGuard = requireFunction(deps && deps.openFilePathWithGuard, "openFilePathWithGuard");
+    const setFilePath = requireFunction(deps && deps.setFilePath, "setFilePath");
+    const openDraftFilePath = requireFunction(deps && deps.openDraftFilePath, "openDraftFilePath");
+    const normalizeDraftFilePath = requireFunction(deps && deps.normalizeDraftFilePath, "normalizeDraftFilePath");
+    const inspectSessionFilePath = requireFunction(deps && deps.inspectSessionFilePath, "inspectSessionFilePath");
     const api = requireFunction(deps && deps.api, "api");
     const focusEditor = requireFunction(deps && deps.focusEditor, "focusEditor");
     const disposeOpenRender = requireFunction(deps && deps.disposeOpenRender, "disposeOpenRender");
@@ -493,6 +498,38 @@
       return true;
     }
 
+    async function openDraftFilePathWithGuard(path) {
+      if (blockUnavailableFileAction()) return false;
+      const rel = normalizeDraftFilePath(path);
+      if (!rel) {
+        fileStatus.textContent = "Choose a valid relative file path.";
+        return false;
+      }
+      if (!(await maybeHandleUnsavedFileChanges())) return false;
+      if (blockUnavailableFileAction()) return false;
+      try {
+        const inspect = await inspectSessionFilePath(rel);
+        if (blockUnavailableFileAction()) return false;
+        if (inspect && inspect.exists) {
+          if (inspect.kind === "directory") {
+            fileStatus.textContent = `${rel} - path is a directory`;
+            return false;
+          }
+          return await openFilePathWithGuard(rel, { line: null, mode: "file" });
+        }
+      } catch (error) {
+        if (blockUnavailableFileAction()) return false;
+        fileStatus.textContent = `error: ${error && error.message ? error.message : "unable to inspect path"}`;
+        return false;
+      }
+      if (blockUnavailableFileAction()) return false;
+      setFileViewMode("file");
+      setFilePath(rel, { line: null, gitPath: false });
+      renderFilePickerMenu();
+      await openDraftFilePath(rel, { line: null });
+      return true;
+    }
+
     function finalizeFileOpenSuccess(rel, absPath = null) {
       applyFileMode();
       rememberOpenedFile(rel, absPath);
@@ -639,6 +676,7 @@
       maybeHandleUnsavedFileChanges,
       setFileViewModeWithGuard,
       requestHideFileViewer,
+      openDraftFilePathWithGuard,
       nextActiveFileIdentity,
       currentActiveFileIdentity,
       currentActiveFileLine,
