@@ -6184,3 +6184,20 @@
 - Intended review output file: `/tmp/codoxear-existing-open-primitive-review.md`; no review finding was produced or applied.
 - Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against the code changes. The code-evidence basis remains the committed validation for `a60123f`: focused tests, full local pytest, Docker sandbox, syntax checks, and diff checks.
 - Decision: continue refactor work; rerun a clean-room review before yielding a final checkpoint if the async runner is available.
+
+## 2026-06-30T12:58:01Z Touch selection keydown controller ownership
+- Functional commit `878e899 Move touch selection keydown policy into viewer controller` moved `handleFileTouchSelectionKeydown(event)` from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the controller now owns touch-selection keyboard decision policy: selected-mode/toolbar-active gating, modifier/default-prevented gating, shortcut-block and viewer-target checks, Escape collapse handling, H/J/K/L direction mapping, printable/edit-blocking key suppression, and delegated selection movement.
+- App-owned primitives remain explicit dependencies: `currentFileTouchSelectMode`, `isFileTouchToolbarActive`, `fileEditorShortcutBlocked`, `eventTargetElement`, `resetFileTouchSelectionState`, and `moveFileTouchSelection`. App keeps toolbar DOM, touch-selection state variables, selection reset/move mechanics, and editor/modal target predicates.
+- Tests updated:
+  - `tests/test_file_viewer_source.py` now executes the real controller method for valid move, Escape collapse, printable blocking, nested modal, closed viewer, other text entry, outside viewer, and inactive toolbar cases.
+  - Source assertions now check app wrapper delegation and controller-owned printable/direction policy while preserving app-owned toolbar DOM/action primitives.
+- Validation before commit:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `91 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: touch-selection keydown policy now belongs to the file-viewer controller. App still owns touch toolbar DOM state, selection reset/move mechanics, delete-key suppression, paste dialog/insert actions, raw load-result rendering, raw view-mode DOM application, unsaved modal DOM, and discard implementation.
