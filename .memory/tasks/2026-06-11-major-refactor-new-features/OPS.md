@@ -6440,3 +6440,22 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: touch movement button action policy belongs to the file-viewer controller. App still owns touch press normalization/binding mechanics, raw selection extraction, raw clipboard implementation, browser URL prefix/download anchor side effects, persisted file mode storage, raw mode DOM application, raw load-result rendering, active file content metadata/text baseline, `fileEditMode` state, paste/unsaved dialog DOM, touch toolbar DOM, and raw Monaco selection helpers.
+
+
+## 2026-06-30T15:30:36Z Unsaved choice policy controller ownership
+- Functional commit `34c330f Move unsaved choice policy into viewer controller` moved unsaved-modal save/discard/cancel choice policy from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `handleFileUnsavedSaveChoice()` now owns unavailable-session blocking before accepting a save choice; `handleFileUnsavedDiscardChoice()` and `handleFileUnsavedCancelChoice()` own their explicit modal choice values. App still owns unsaved modal DOM rendering/show/hide mechanics through the injected `hideFileUnsavedDialog(choice)` primitive and button/backdrop event binding.
+- Tests updated:
+  - Controller behavior probe executes available save, unavailable save, discard, and cancel choice paths.
+  - Source assertions require controller-owned choice handlers and wrapper-only app button/backdrop delegation.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - File-viewer focused `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader focused frontend/file-viewer/static/auth group returned `119 passed, 28 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: unsaved-modal choice policy belongs to the file-viewer controller. App still owns unsaved modal DOM rendering/show/hide internals, touch press normalization/binding mechanics, raw selection extraction, raw clipboard implementation, browser URL prefix/download anchor side effects, persisted file mode storage, raw mode DOM application, raw load-result rendering, active file content metadata/text baseline, `fileEditMode` state, paste dialog DOM, touch toolbar DOM, and raw Monaco selection helpers.
