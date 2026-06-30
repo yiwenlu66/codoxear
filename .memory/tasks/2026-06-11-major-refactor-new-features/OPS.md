@@ -6783,3 +6783,11 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: file-candidate refresh sequence currentness belongs to the file-viewer controller. App still owns candidate refresh API/cache/render mechanics, session sync/currentness tokens, file-candidate data structures, session history fallback derivation, first-candidate fallback, raw Monaco editor/diff-editor objects, model disposal and setValue side effects, fallback DOM construction/scrolling, raw renderer/DOM plan application, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, raw mode/download/video-preview DOM mutation, compatible-preview fetch/load mechanics, and raw Monaco selection helpers.
+
+## 2026-06-30T20:45:19Z Clean-room review runner failure after candidate-sequence checkpoint
+- Observation: async clean-room review run `6332d65d-07c8-4cc8-a6be-ee0bbebee174` failed before writing a result.
+- Raw failure reported by runner/user: `Async runner process 1091025 exited or disappeared before writing a result. Marked run failed by stale-run reconciliation.`
+- Intended review output file: `/tmp/codoxear-candidate-sequence-review.md`; direct check returned `missing-or-empty`.
+- Scope of requested review: functional commit `35a56a2` plus matching tests, with memory commit `34a09a9` for accuracy.
+- Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against the file-candidate sequence code. The evidence basis remains syntax checks, focused tests, available broader frontend/file/auth/static route tests, full local pytest, Docker sandbox, and diff checks recorded in the candidate-sequence OPS entry.
+- Decision: continue workbench progress and do not treat absent reviewer output as a product blocker. A future review should be retried only at a real yield/decision gate or if the runner produces concrete findings.
