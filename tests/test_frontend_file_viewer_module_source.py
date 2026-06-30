@@ -99,6 +99,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             confirmReload: (message) => {{ events.push(["confirm", message]); return state.confirmResult !== false; }},
             promptUnsavedFileChoice: async () => {{ events.push(["promptUnsaved", state.unsavedChoice || "cancel"]); return state.unsavedChoice || "cancel"; }},
             discardActiveFileEdits: () => events.push(["discardActiveFileEdits"]),
+            hideFileViewer: () => events.push(["hideFileViewer"]),
             openFilePath: async (path, opts) => {{
               events.push(["open", path, opts]);
               if (state.openEffect === "unavailable") {{
@@ -356,6 +357,17 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const viewModeCancel = await runViewModeCase({{ startMode: "file", target: "preview", dirty: true, choice: "cancel" }});
           const viewModeUnavailable = await runViewModeCase({{ startMode: "file", target: "preview", unavailable: true }});
           state.viewMode = "file";
+          state.dirty = false;
+          events.length = 0;
+          const hideClean = {{ result: await renderController.requestHideFileViewer(), events: events.slice() }};
+          state.dirty = true;
+          state.unsavedChoice = "cancel";
+          events.length = 0;
+          const hideCancel = {{ result: await renderController.requestHideFileViewer(), events: events.slice() }};
+          state.unsavedChoice = "discard";
+          events.length = 0;
+          const hideDiscard = {{ result: await renderController.requestHideFileViewer(), events: events.slice() }};
+          state.unsavedChoice = "";
           state.dirty = true;
           const editableCapabilities = renderController.fileEditorCapabilities({{ path: "src/app.py", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
           const pendingCapabilities = renderController.fileEditorCapabilities({{ path: "src/app.py", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: true }});
@@ -381,6 +393,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             editabilityUi: {{ editButtonEditMode, readOnlyWritable, editButtonViewMode, editButtonUnavailable, editButtonSavePending }},
             unsavedDecision: {{ cleanUnsaved, discardUnsaved, cancelUnsaved }},
             viewModeGuard: {{ viewModeSame, viewModeDraftBlocked, viewModeDiscardOpen, viewModeCancel, viewModeUnavailable }},
+            hideRequest: {{ hideClean, hideCancel, hideDiscard }},
             capabilities: {{ derivedCapabilities, editableCapabilities, pendingCapabilities, binaryCapabilities, missingPathCapabilities, editableFrozen: Object.isFrozen(editableCapabilities) }},
           }};
           const availableReloadFailure = await runReloadCase("");
@@ -544,6 +557,11 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             },
             "viewModeCancel": {"result": False, "viewMode": "file", "status": "", "events": [["promptUnsaved", "cancel"]]},
             "viewModeUnavailable": {"result": False, "viewMode": "file", "status": "Session is no longer available; copy unsaved edits before closing.", "events": []},
+        })
+        self.assertEqual(result["render"]["hideRequest"], {
+            "hideClean": {"result": True, "events": [["hideFileViewer"]]},
+            "hideCancel": {"result": False, "events": [["promptUnsaved", "cancel"]]},
+            "hideDiscard": {"result": True, "events": [["promptUnsaved", "discard"], ["discardActiveFileEdits"], ["hideFileViewer"]]},
         })
         self.assertEqual(result["render"]["capabilities"], {
             "derivedCapabilities": {

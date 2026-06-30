@@ -173,6 +173,7 @@ def controller_identity_ctx_js(
             updateFileEditButton() {{ if (typeof ctx.updateFileEditButton === "function") return ctx.updateFileEditButton(); }},
             maybeHandleUnsavedFileChanges() {{ return typeof ctx.maybeHandleUnsavedFileChanges === "function" ? ctx.maybeHandleUnsavedFileChanges() : !ctx.fileDirty; }},
             setFileViewModeWithGuard(mode) {{ return typeof ctx.setFileViewModeWithGuard === "function" ? ctx.setFileViewModeWithGuard(mode) : Promise.resolve(true); }},
+            requestHideFileViewer() {{ return typeof ctx.requestHideFileViewer === "function" ? ctx.requestHideFileViewer() : Promise.resolve(true); }},
             renderFileOpenError(request, error) {{
               if (this.isFileOpenAbortError(error)) return false;
               if (!this.isCurrentFileOpenRequest(request)) return false;
@@ -1096,6 +1097,7 @@ def eval_file_open_request_sequence() -> dict:
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "cancel",
           discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
+          hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async () => true,
           api: async () => ({{}}),
           focusEditor: () => null,
@@ -1541,6 +1543,7 @@ def eval_active_file_save_request_helpers() -> dict:
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "cancel",
           discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
+          hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async () => true,
           api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
           focusEditor: () => ({{ updateOptions: (opts) => calls.push(["updateOptions", opts]) }}),
@@ -1730,6 +1733,7 @@ def eval_active_file_save_success() -> dict:
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "cancel",
           discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
+          hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async () => true,
           api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
           focusEditor: () => null,
@@ -1853,6 +1857,7 @@ def eval_active_file_save_transport() -> dict:
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "cancel",
           discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
+          hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async () => true,
           api: async (url, options = {{}}) => {{
             calls.push(["api", url, options.method, options.body]);
@@ -2010,6 +2015,7 @@ def eval_draft_file_load_choreography() -> dict:
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "cancel",
           discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
+          hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async () => true,
           api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
           focusEditor: () => null,
@@ -3303,6 +3309,14 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("if (currentActiveFileDraft() && next !== \"file\") return false;", viewer_source)
         self.assertIn("if (!(await maybeHandleUnsavedFileChanges())) return false;", viewer_source)
         self.assertIn("await openFilePath(identity.path, { line: activeFileLine, gitPath: identity.gitPath, apiPath: identity.apiPath });", viewer_source)
+        hide_request_start = source.index("async function requestHideFileViewer")
+        hide_request_end = source.index("function setFileViewMode", hide_request_start)
+        hide_request_block = source[hide_request_start:hide_request_end]
+        self.assertIn("return await fileViewerController.requestHideFileViewer();", hide_request_block)
+        self.assertIn("async function requestHideFileViewer()", viewer_source)
+        self.assertIn("if (!(await maybeHandleUnsavedFileChanges())) return false;", viewer_source)
+        self.assertIn("hideFileViewer();", viewer_source)
+        self.assertIn("return true;", viewer_source)
         self.assertIn("? { path: save.path, text: save.text, create: true }", viewer_source)
         self.assertIn(": { path: save.path, text: save.text, version: save.version, git_path: save.gitPath };", viewer_source)
         self.assertIn("if (!save.draft && save.gitPath && save.apiPath) body.path_token = save.apiPath;", viewer_source)
@@ -3338,6 +3352,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("confirmReload: (message) => window.confirm(message)", controller_block)
         self.assertIn("promptUnsavedFileChoice: () => promptFileUnsavedChoice()", controller_block)
         self.assertIn("discardActiveFileEdits: () => discardActiveFileEdits()", controller_block)
+        self.assertIn("hideFileViewer: () => hideFileViewer()", controller_block)
         self.assertIn("openFilePath: (path, options) => openFilePath(path, options)", controller_block)
         self.assertIn("focusEditor: () => getActiveFileCodeEditor()", controller_block)
         save_start = source.index("async function saveActiveFileEdits")

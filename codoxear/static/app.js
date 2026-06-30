@@ -8455,6 +8455,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           confirmReload: (message) => window.confirm(message),
           promptUnsavedFileChoice: () => promptFileUnsavedChoice(),
           discardActiveFileEdits: () => discardActiveFileEdits(),
+          hideFileViewer: () => hideFileViewer(),
           openFilePath: (path, options) => openFilePath(path, options),
           api: (url, options) => api(url, options),
           focusEditor: () => getActiveFileCodeEditor(),
@@ -8585,8 +8586,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function requestHideFileViewer() {
-          if (!(await maybeHandleUnsavedFileChanges())) return;
-          hideFileViewer();
+          return await fileViewerController.requestHideFileViewer();
         }
 
         function setFileViewMode(mode) {

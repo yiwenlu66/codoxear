@@ -36,6 +36,7 @@
     const confirmReload = requireFunction(deps && deps.confirmReload, "confirmReload");
     const promptUnsavedFileChoice = requireFunction(deps && deps.promptUnsavedFileChoice, "promptUnsavedFileChoice");
     const discardActiveFileEdits = requireFunction(deps && deps.discardActiveFileEdits, "discardActiveFileEdits");
+    const hideFileViewer = requireFunction(deps && deps.hideFileViewer, "hideFileViewer");
     const openFilePath = requireFunction(deps && deps.openFilePath, "openFilePath");
     const api = requireFunction(deps && deps.api, "api");
     const focusEditor = requireFunction(deps && deps.focusEditor, "focusEditor");
@@ -433,6 +434,12 @@
       return true;
     }
 
+    async function requestHideFileViewer() {
+      if (!(await maybeHandleUnsavedFileChanges())) return false;
+      hideFileViewer();
+      return true;
+    }
+
     function finalizeFileOpenSuccess(rel, absPath = null) {
       applyFileMode();
       rememberOpenedFile(rel, absPath);
@@ -574,6 +581,7 @@
       saveActiveFileEdits,
       maybeHandleUnsavedFileChanges,
       setFileViewModeWithGuard,
+      requestHideFileViewer,
       nextActiveFileIdentity,
       currentActiveFileIdentity,
       currentActiveFileLine,
