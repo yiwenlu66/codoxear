@@ -331,6 +331,7 @@ def eval_disable_file_viewer_for_unavailable_session() -> dict:
           fileStatus: {{ textContent: "old" }},
           savedSelections: [],
           currentFileSessionId: () => String(ctx.fileViewerSessionId || ctx.selected || "").trim(),
+          clearActiveFileSaveState: () => {{ ctx.activeFileSaveToken = 0; ctx.fileSavePending = false; calls.push(["clearActiveFileSaveState", ctx.fileViewerSessionSyncToken]); }},
           hideFileUnsavedDialog: (choice) => calls.push(["hideFileUnsavedDialog", choice, ctx.fileViewerSessionSyncToken]),
           cancelPendingFileOpen: () => calls.push(["cancelPendingFileOpen", ctx.fileViewerSessionSyncToken]),
           resetFileSearchState: () => calls.push(["resetFileSearchState", ctx.fileViewerSessionSyncToken]),
@@ -538,6 +539,7 @@ def eval_file_paste_dialog_fallback() -> dict:
             fileEditorKind: "file",
             fileDirty: false,
             fileSavePending: false,
+            fileSavePendingValue: () => ctx.fileSavePending,
             fileViewerSessionId: "sid-1",
             filePasteBackdrop: {{ style: {{ display: "none" }} }},
             filePasteDialog: {{ style: {{ display: "none" }} }},
@@ -681,6 +683,7 @@ def eval_file_editor_capability_predicates() -> dict:
             fileEditMode: overrides.editMode !== false,
             fileDirty: Boolean(overrides.dirty),
             fileSavePending: Boolean(overrides.pending),
+            fileSavePendingValue: () => ctx.fileSavePending,
             fileViewerSessionId: overrides.sessionId === false ? "" : "sid-1",
             unavailable: Boolean(overrides.unavailable),
             isTextFileKind: (kind) => kind === "text" || kind === "markdown",
@@ -754,6 +757,7 @@ def eval_file_editor_save_shortcut() -> dict:
             fileEditorKind: overrides.editorKind || "file",
             fileDirty: Boolean(overrides.dirty),
             fileSavePending: Boolean(overrides.pending),
+            fileSavePendingValue: () => ctx.fileSavePending,
             fileViewerSessionId: overrides.sessionId === false ? "" : "sid-1",
             unavailable: Boolean(overrides.unavailable),
             saves: [],
@@ -944,6 +948,7 @@ def eval_file_editor_delete_shortcut() -> dict:
             fileEditorKind: overrides.editorKind || "file",
             fileDirty: Boolean(overrides.dirty),
             fileSavePending: Boolean(overrides.pending),
+            fileSavePendingValue: () => ctx.fileSavePending,
             fileViewerSessionId: overrides.sessionId === false ? "" : "sid-1",
             unavailable: Boolean(overrides.unavailable),
             fileTouchSelectMode: overrides.selectMode !== false,
@@ -1054,6 +1059,10 @@ def eval_file_open_request_sequence() -> dict:
           applyActiveFileTextState: () => {{}},
           renderMonacoFile: async () => true,
           setFileEditMode: () => {{}},
+          currentActiveFileDraft: () => false,
+          currentActiveFileVersion: () => "",
+          getFileEditorText: () => "",
+          syncFileEditorReadOnly: () => {{}},
           applyFileMode: () => {{}},
           rememberOpenedFile: () => {{}},
           rememberActiveFileSelection: () => {{}},
@@ -1435,60 +1444,82 @@ def eval_active_file_load_state_writers() -> dict:
 
 
 def eval_active_file_save_request_helpers() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function beginActiveFileSaveRequest(")
-    end = source.index("async function saveActiveFileEdits", start)
-    snippet = source[start:end]
+    source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const ctx = {{
-          fileViewerSessionId: "sid-1",
-{controller_identity_ctx_js("src/app.py", "token-1", True, 42)}
-          activeFileDraft: true,
-          activeFileVersion: "v1",
-          activeFileSaveToken: 0,
-          fileSaveSeq: 0,
-          fileSavePending: false,
-          unavailable: false,
-          fileStatus: {{ textContent: "" }},
-          calls: [],
-          getFileEditorText: () => {{ ctx.calls.push(["getFileEditorText"]); return "body text"; }},
-          isFileViewerSessionUnavailable: () => ctx.unavailable,
-          updateFileEditButton: () => ctx.calls.push(["updateFileEditButton"]),
-          syncFileEditorReadOnly: () => ctx.calls.push(["syncFileEditorReadOnly"]),
-        }};
+        const ctx = {{ window: {{}} }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_save_request = { beginActiveFileSaveRequest, isCurrentActiveFileSaveRequest, markActiveFileSavePending, finishActiveFileSaveRequest };\n")}, ctx);
-        const save = ctx.__test_save_request.beginActiveFileSaveRequest();
+        vm.runInContext({json.dumps(source)}, ctx);
+        const state = {{
+          sessionId: "sid-1",
+          draft: true,
+          version: "v1",
+          text: "body text",
+          unavailable: false,
+        }};
+        const calls = [];
+        const fileStatus = {{ textContent: "", replaceChildren() {{}} }};
+        const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
+          el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children }}),
+          fileStatus,
+          currentSessionId: () => state.sessionId,
+          normalizeLineNumber: (value) => value == null ? null : Number(value),
+          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+          fileApiPathForPath: (_path, existing = "") => existing || "derived-token",
+          isUnavailable: () => state.unavailable,
+          confirmReload: () => true,
+          openFilePath: async () => true,
+          api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
+          focusEditor: () => null,
+          disposeOpenRender: () => calls.push(["disposeOpenRender"]),
+          currentFileViewMode: () => "file",
+          activeFileEntry: () => null,
+          fileCandidateGitStateFresh: () => false,
+          isMarkdownPreviewable: () => true,
+          resetActiveFileBufferState: () => calls.push(["resetActiveFileBufferState"]),
+          updateFileTouchToolbar: () => calls.push(["updateFileTouchToolbar"]),
+          setFileViewMode: () => {{}},
+          applyActiveFileTextState: () => {{}},
+          renderMonacoFile: async () => true,
+          setFileEditMode: () => {{}},
+          currentActiveFileDraft: () => state.draft,
+          currentActiveFileVersion: () => state.version,
+          getFileEditorText: () => {{ calls.push(["getFileEditorText"]); return state.text; }},
+          syncFileEditorReadOnly: () => calls.push(["syncFileEditorReadOnly"]),
+          applyFileMode: () => {{}},
+          rememberOpenedFile: () => {{}},
+          rememberActiveFileSelection: () => {{}},
+          updateFileEditButton: () => calls.push(["updateFileEditButton"]),
+          renderFilePickerMenu: () => {{}},
+        }});
+        controller.setActiveFileIdentity("src/app.py", {{ line: 42, gitPath: true, apiPath: "token-1" }});
+        const save = controller.beginActiveFileSaveRequest();
         const result = {{
           save,
           frozen: Object.isFrozen(save),
-          tokenAfterBegin: ctx.activeFileSaveToken,
-          seqAfterBegin: ctx.fileSaveSeq,
-          callsAfterBegin: ctx.calls.slice(),
-          currentInitial: ctx.__test_save_request.isCurrentActiveFileSaveRequest(save),
+          pendingAfterBegin: controller.isFileSavePending(),
+          callsAfterBegin: calls.slice(),
+          currentInitial: controller.isCurrentActiveFileSaveRequest(save),
         }};
-        ctx.__test_save_request.markActiveFileSavePending(save);
-        result.pendingAfterMark = ctx.fileSavePending;
-        result.statusAfterMark = ctx.fileStatus.textContent;
-        result.callsAfterMark = ctx.calls.slice();
-        ctx.identity.apiPath = "other-token";
-        result.currentWrongApiPath = ctx.__test_save_request.isCurrentActiveFileSaveRequest(save);
-        ctx.identity.apiPath = "token-1";
-        ctx.identity.gitPath = false;
-        result.currentWrongGitPath = ctx.__test_save_request.isCurrentActiveFileSaveRequest(save);
-        ctx.identity.gitPath = true;
-        ctx.unavailable = true;
-        result.currentUnavailable = ctx.__test_save_request.isCurrentActiveFileSaveRequest(save);
-        ctx.unavailable = false;
-        ctx.activeFileSaveToken = 999;
-        ctx.fileSavePending = true;
-        ctx.__test_save_request.finishActiveFileSaveRequest(save);
-        result.afterMismatchedFinish = {{ token: ctx.activeFileSaveToken, pending: ctx.fileSavePending }};
-        ctx.activeFileSaveToken = save.token;
-        ctx.__test_save_request.finishActiveFileSaveRequest(save);
-        result.afterMatchedFinish = {{ token: ctx.activeFileSaveToken, pending: ctx.fileSavePending, calls: ctx.calls.slice() }};
+        controller.markActiveFileSavePending(save);
+        result.pendingAfterMark = controller.isFileSavePending();
+        result.statusAfterMark = fileStatus.textContent;
+        result.callsAfterMark = calls.slice();
+        controller.setActiveFileIdentity("src/app.py", {{ line: 42, gitPath: true, apiPath: "other-token" }});
+        result.currentWrongApiPath = controller.isCurrentActiveFileSaveRequest(save);
+        controller.setActiveFileIdentity("src/app.py", {{ line: 42, gitPath: false, apiPath: "token-1" }});
+        result.currentWrongGitPath = controller.isCurrentActiveFileSaveRequest(save);
+        controller.setActiveFileIdentity("src/app.py", {{ line: 42, gitPath: true, apiPath: "token-1" }});
+        state.unavailable = true;
+        result.currentUnavailable = controller.isCurrentActiveFileSaveRequest(save);
+        state.unavailable = false;
+        const save2 = controller.beginActiveFileSaveRequest();
+        controller.markActiveFileSavePending(save2);
+        controller.finishActiveFileSaveRequest(save);
+        result.afterMismatchedFinish = {{ pending: controller.isFileSavePending(), calls: calls.slice() }};
+        controller.finishActiveFileSaveRequest(save2);
+        result.afterMatchedFinish = {{ pending: controller.isFileSavePending(), calls: calls.slice() }};
         process.stdout.write(JSON.stringify(result));
         """
     )
@@ -1691,6 +1722,10 @@ def eval_draft_file_load_choreography() -> dict:
           applyActiveFileTextState: (nextState) => calls.push(["applyActiveFileTextState", nextState]),
           renderMonacoFile: async (...args) => {{ calls.push(["renderMonacoFile", ...args.slice(0, 4)]); if (state.staleAfterRender) state.sessionId = "sid-2"; return state.renderOk; }},
           setFileEditMode: (mode) => calls.push(["setFileEditMode", mode]),
+          currentActiveFileDraft: () => false,
+          currentActiveFileVersion: () => "",
+          getFileEditorText: () => "",
+          syncFileEditorReadOnly: () => calls.push(["syncFileEditorReadOnly"]),
           applyFileMode: () => calls.push(["applyFileMode"]),
           rememberOpenedFile: (...args) => calls.push(["rememberOpenedFile", ...args]),
           rememberActiveFileSelection: () => calls.push(["rememberActiveFileSelection"]),
@@ -2204,6 +2239,7 @@ class TestFileViewerSource(unittest.TestCase):
 
     def test_file_viewer_handles_selected_session_removal(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertIn("let fileViewerUnavailableSessionId = \"\";", source)
         self.assertIn("function isFileViewerSessionUnavailable()", source)
         self.assertIn("function blockUnavailableFileAction()", source)
@@ -2222,8 +2258,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("rememberActiveFileSelection(sid);", transition_block)
         self.assertIn("fileViewerSessionSyncToken += 1;", transition_block)
         self.assertIn("fileViewerUnavailableSessionId = sid;", transition_block)
-        self.assertIn("activeFileSaveToken = 0;", transition_block)
-        self.assertIn("fileSavePending = false;", transition_block)
+        self.assertIn("clearActiveFileSaveState();", transition_block)
         self.assertIn("fileEditMode = false;", transition_block)
         self.assertIn('hideFileUnsavedDialog("cancel");', transition_block)
         self.assertIn("cancelPendingFileOpen();", transition_block)
@@ -2275,7 +2310,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function activeFileEditorIdleWritable()", source)
         self.assertIn("if (!activeFileEditorIdleWritable()) return false;", source)
         self.assertIn("!isFileViewerSessionUnavailable()", source)
-        self.assertIn("activeFileSaveToken === save.token", source)
+        self.assertIn("activeFileSaveToken === save.token", viewer_source)
         self.assertIn("fileEditMode = Boolean(nextMode) && activeFileEditModeAllowedInCurrentView();", source)
         self.assertIn("function syncFileUnsavedDialogMode()", source)
         self.assertIn('title.textContent = unavailable ? "Session unavailable" : "Unsaved changes"', source)
@@ -2717,8 +2752,7 @@ class TestFileViewerSource(unittest.TestCase):
             "token": 1,
         })
         self.assertTrue(result["frozen"])
-        self.assertEqual(result["tokenAfterBegin"], 1)
-        self.assertEqual(result["seqAfterBegin"], 1)
+        self.assertFalse(result["pendingAfterBegin"])
         self.assertEqual(result["callsAfterBegin"], [["getFileEditorText"]])
         self.assertTrue(result["currentInitial"])
         self.assertTrue(result["pendingAfterMark"])
@@ -2727,22 +2761,29 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertFalse(result["currentWrongApiPath"])
         self.assertFalse(result["currentWrongGitPath"])
         self.assertFalse(result["currentUnavailable"])
-        self.assertEqual(result["afterMismatchedFinish"], {"token": 999, "pending": True})
-        self.assertEqual(result["afterMatchedFinish"]["token"], 0)
+        self.assertTrue(result["afterMismatchedFinish"]["pending"])
         self.assertFalse(result["afterMatchedFinish"]["pending"])
         self.assertEqual(result["afterMatchedFinish"]["calls"][-2:], [["syncFileEditorReadOnly"], ["updateFileEditButton"]])
         source = APP_JS.read_text(encoding="utf-8")
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+        self.assertIn("function fileSavePendingValue()", source)
+        self.assertIn("return fileViewerController.isFileSavePending();", source)
         self.assertIn("function beginActiveFileSaveRequest()", source)
-        self.assertIn("return Object.freeze({ sessionId, path, apiPath, draft, gitPath, version, text, token });", source)
-        self.assertIn("function isCurrentActiveFileSaveRequest(save)", source)
-        self.assertIn("fileViewerSessionId === save.sessionId", source)
-        self.assertIn("currentActiveFileIdentity().path === save.path", source)
-        self.assertIn("currentActiveFileIdentity().apiPath === save.apiPath", source)
-        self.assertIn("currentActiveFileIdentity().gitPath === save.gitPath", source)
-        self.assertIn("activeFileSaveToken === save.token", source)
-        self.assertIn("!isFileViewerSessionUnavailable()", source)
-        self.assertIn("function markActiveFileSavePending(save)", source)
-        self.assertIn("function finishActiveFileSaveRequest(save)", source)
+        self.assertIn("return fileViewerController.beginActiveFileSaveRequest();", source)
+        self.assertIn("function beginActiveFileSaveRequest()", viewer_source)
+        self.assertIn("return Object.freeze({ sessionId, path, apiPath, draft, gitPath, version, text, token });", viewer_source)
+        self.assertIn("function isCurrentActiveFileSaveRequest(save)", viewer_source)
+        self.assertIn("currentSessionId() === save.sessionId", viewer_source)
+        self.assertIn("identity.path === save.path", viewer_source)
+        self.assertIn("identity.apiPath === save.apiPath", viewer_source)
+        self.assertIn("identity.gitPath === save.gitPath", viewer_source)
+        self.assertIn("activeFileSaveToken === save.token", viewer_source)
+        self.assertIn("!isUnavailable()", viewer_source)
+        self.assertIn("function markActiveFileSavePending(save)", viewer_source)
+        self.assertIn("function finishActiveFileSaveRequest(save)", viewer_source)
+        self.assertNotIn("let fileSavePending", source)
+        self.assertNotIn("let fileSaveSeq", source)
+        self.assertNotIn("let activeFileSaveToken", source)
 
     def test_active_file_save_body_builder_preserves_api_contract(self) -> None:
         result = eval_active_file_save_body_builder()
@@ -2823,16 +2864,17 @@ class TestFileViewerSource(unittest.TestCase):
         start = source.index("async function saveActiveFileEdits")
         end = source.index("async function maybeHandleUnsavedFileChanges", start)
         block = source[start:end]
-        self.assertIn("const sessionId = fileViewerSessionId;", source)
-        self.assertIn("const identity = currentActiveFileIdentity();", source)
-        self.assertIn("const path = identity.path;", source)
-        self.assertIn("const apiPath = identity.apiPath || \"\";", source)
-        self.assertIn("const draft = Boolean(activeFileDraft);", source)
-        self.assertIn("const version = activeFileVersion;", source)
-        self.assertIn("const text = getFileEditorText();", source)
-        self.assertIn("const token = ++fileSaveSeq;", source)
-        self.assertIn("activeFileSaveToken = token;", source)
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+        self.assertIn("return fileViewerController.beginActiveFileSaveRequest();", source)
+        self.assertIn("const sessionId = currentSessionId();", viewer_source)
+        self.assertIn("const identity = currentActiveFileIdentity();", viewer_source)
+        self.assertIn("const path = identity.path;", viewer_source)
+        self.assertIn("const apiPath = identity.apiPath || \"\";", viewer_source)
+        self.assertIn("const draft = Boolean(currentActiveFileDraft());", viewer_source)
+        self.assertIn("const version = currentActiveFileVersion();", viewer_source)
+        self.assertIn("const text = getFileEditorText();", viewer_source)
+        self.assertIn("const token = ++fileSaveSeq;", viewer_source)
+        self.assertIn("activeFileSaveToken = token;", viewer_source)
         self.assertIn("const saveStillCurrent = () => isCurrentActiveFileSaveRequest(save);", block)
         self.assertIn("? { path: save.path, text: save.text, create: true }", viewer_source)
         self.assertIn(": { path: save.path, text: save.text, version: save.version, git_path: save.gitPath };", viewer_source)
@@ -2868,9 +2910,11 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("renderActiveFileSaveError(save, e);", save_block)
         self.assertIn("renderSaveConflict(save.sessionId, save.path, error && error.message ? error.message : \"conflict\");", viewer_source)
         self.assertNotIn("function renderFileSaveConflict", source)
-        self.assertIn("let fileSaveSeq = 0;", source)
-        self.assertIn("let activeFileSaveToken = 0;", source)
-        self.assertIn("if (!save || activeFileSaveToken !== save.token) return;", source)
+        self.assertNotIn("let fileSaveSeq = 0;", source)
+        self.assertNotIn("let activeFileSaveToken = 0;", source)
+        self.assertIn("let fileSaveSeq = 0;", viewer_source)
+        self.assertIn("let activeFileSaveToken = 0;", viewer_source)
+        self.assertIn("if (!save || activeFileSaveToken !== save.token) return;", viewer_source)
         self.assertIn("finishActiveFileSaveRequest(save);", save_block)
         self.assertIn(".fileConflictActions", css_source)
 

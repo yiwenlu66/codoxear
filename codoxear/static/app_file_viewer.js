@@ -38,6 +38,10 @@
     const applyActiveFileTextState = requireFunction(deps && deps.applyActiveFileTextState, "applyActiveFileTextState");
     const renderMonacoFile = requireFunction(deps && deps.renderMonacoFile, "renderMonacoFile");
     const setFileEditMode = requireFunction(deps && deps.setFileEditMode, "setFileEditMode");
+    const currentActiveFileDraft = requireFunction(deps && deps.currentActiveFileDraft, "currentActiveFileDraft");
+    const currentActiveFileVersion = requireFunction(deps && deps.currentActiveFileVersion, "currentActiveFileVersion");
+    const getFileEditorText = requireFunction(deps && deps.getFileEditorText, "getFileEditorText");
+    const syncFileEditorReadOnly = requireFunction(deps && deps.syncFileEditorReadOnly, "syncFileEditorReadOnly");
     const applyFileMode = requireFunction(deps && deps.applyFileMode, "applyFileMode");
     const rememberOpenedFile = requireFunction(deps && deps.rememberOpenedFile, "rememberOpenedFile");
     const rememberActiveFileSelection = requireFunction(deps && deps.rememberActiveFileSelection, "rememberActiveFileSelection");
@@ -46,6 +50,9 @@
     let activeSaveConflict = null;
     let fileOpenRequestId = 0;
     let fileOpenAbortController = null;
+    let fileSaveSeq = 0;
+    let activeFileSaveToken = 0;
+    let fileSavePending = false;
     let activeFilePath = "";
     let activeFileApiPath = "";
     let activeFileGitPath = false;
@@ -172,6 +179,56 @@
 
     function isFileOpenAbortError(error) {
       return Boolean(error && error.name === "AbortError");
+    }
+
+    function isFileSavePending() {
+      return Boolean(fileSavePending);
+    }
+
+    function clearActiveFileSaveState() {
+      activeFileSaveToken = 0;
+      fileSavePending = false;
+    }
+
+    function beginActiveFileSaveRequest() {
+      const sessionId = currentSessionId();
+      const identity = currentActiveFileIdentity();
+      const path = identity.path;
+      const apiPath = identity.apiPath || "";
+      const draft = Boolean(currentActiveFileDraft());
+      const gitPath = Boolean(identity.gitPath);
+      const version = currentActiveFileVersion();
+      const text = getFileEditorText();
+      const token = ++fileSaveSeq;
+      activeFileSaveToken = token;
+      return Object.freeze({ sessionId, path, apiPath, draft, gitPath, version, text, token });
+    }
+
+    function isCurrentActiveFileSaveRequest(save) {
+      const identity = currentActiveFileIdentity();
+      return Boolean(
+        save &&
+          currentSessionId() === save.sessionId &&
+          identity.path === save.path &&
+          identity.apiPath === save.apiPath &&
+          identity.gitPath === save.gitPath &&
+          activeFileSaveToken === save.token &&
+          !isUnavailable()
+      );
+    }
+
+    function markActiveFileSavePending(save) {
+      fileSavePending = true;
+      updateFileEditButton();
+      syncFileEditorReadOnly();
+      fileStatus.textContent = `Saving ${save.path}...`;
+    }
+
+    function finishActiveFileSaveRequest(save) {
+      if (!save || activeFileSaveToken !== save.token) return;
+      clearActiveFileSaveState();
+      syncFileEditorReadOnly();
+      updateFileEditButton();
     }
 
     function buildActiveFileSaveBody(save) {
@@ -318,6 +375,12 @@
       keepEditingSaveConflict,
       isSaveConflictCurrent,
       currentSaveConflict,
+      isFileSavePending,
+      clearActiveFileSaveState,
+      beginActiveFileSaveRequest,
+      isCurrentActiveFileSaveRequest,
+      markActiveFileSavePending,
+      finishActiveFileSaveRequest,
       buildActiveFileSaveBody,
       renderActiveFileSaveError,
       nextActiveFileIdentity,

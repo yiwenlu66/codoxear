@@ -7059,9 +7059,6 @@
         let fileEditorChangeDisposable = null;
         let fileEditMode = false;
         let fileDirty = false;
-        let fileSavePending = false;
-        let fileSaveSeq = 0;
-        let activeFileSaveToken = 0;
         let fileEditorProgrammaticChange = false;
         let fileUnsavedReturnFocusEl = null;
         let fileUnsavedResolver = null;
@@ -7426,7 +7423,7 @@
             editorKind: String(fileEditorKind || ""),
             editMode: Boolean(fileEditMode),
             dirty: Boolean(fileDirty),
-            savePending: Boolean(fileSavePending),
+            savePending: fileSavePendingValue(),
             sessionId: String(fileViewerSessionId || ""),
             unavailable: isFileViewerSessionUnavailable(),
           });
@@ -7864,15 +7861,16 @@
           const unavailable = isFileViewerSessionUnavailable();
           const canEdit = activeFileCanEnterEditMode();
           fileEditBtn.disabled = unavailable || !canEdit;
-          const saveStyle = fileEditMode || fileSavePending;
+          const savePending = fileSavePendingValue();
+          const saveStyle = fileEditMode || savePending;
           fileEditBtn.classList.toggle("active", saveStyle);
           fileEditBtn.classList.toggle("primary", saveStyle);
           fileEditBtn.classList.toggle("dirty", fileDirty);
-          if (fileSavePending) fileEditBtn.innerHTML = iconSvg("save");
+          if (savePending) fileEditBtn.innerHTML = iconSvg("save");
           else if (fileEditMode) fileEditBtn.innerHTML = iconSvg("save");
           else fileEditBtn.innerHTML = iconSvg("edit");
-          fileEditBtn.title = unavailable ? "Session unavailable; copy edits before closing" : fileSavePending ? "Saving file" : fileEditMode ? "Save file" : canEdit ? "Edit file" : "File is read-only";
-          fileEditBtn.setAttribute("aria-label", unavailable ? "Session unavailable; copy edits before closing" : fileSavePending ? "Saving file" : fileEditMode ? "Save file" : "Edit file");
+          fileEditBtn.title = unavailable ? "Session unavailable; copy edits before closing" : savePending ? "Saving file" : fileEditMode ? "Save file" : canEdit ? "Edit file" : "File is read-only";
+          fileEditBtn.setAttribute("aria-label", unavailable ? "Session unavailable; copy edits before closing" : savePending ? "Saving file" : fileEditMode ? "Save file" : "Edit file");
           updateFileTouchToolbar();
         }
 
@@ -7889,8 +7887,7 @@
           activeFileVersion = "";
           activeFileDraft = false;
           fileEditMode = false;
-          fileSavePending = false;
-          activeFileSaveToken = 0;
+          clearActiveFileSaveState();
           resetFileTouchSelectionState();
           setFileDirty(false);
         }
@@ -8512,6 +8509,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           applyActiveFileTextState: (state) => applyActiveFileTextState(state),
           renderMonacoFile: (rel, text, lineNumber, langOverride, request) => renderMonacoFile(rel, text, lineNumber, langOverride, request),
           setFileEditMode: (enabled) => setFileEditMode(enabled),
+          currentActiveFileDraft: () => activeFileDraft,
+          currentActiveFileVersion: () => activeFileVersion,
+          getFileEditorText: () => getFileEditorText(),
+          syncFileEditorReadOnly: () => syncFileEditorReadOnly(),
           applyFileMode: () => applyFileMode(),
           rememberOpenedFile: (rel, absPath) => rememberOpenedFile(rel, absPath),
           rememberActiveFileSelection: () => rememberActiveFileSelection(),
@@ -8519,45 +8520,28 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           renderFilePickerMenu: () => renderFilePickerMenu(),
         });
 
+        function fileSavePendingValue() {
+          return fileViewerController.isFileSavePending();
+        }
+
+        function clearActiveFileSaveState() {
+          fileViewerController.clearActiveFileSaveState();
+        }
+
         function beginActiveFileSaveRequest() {
-          const sessionId = fileViewerSessionId;
-          const identity = currentActiveFileIdentity();
-          const path = identity.path;
-          const apiPath = identity.apiPath || "";
-          const draft = Boolean(activeFileDraft);
-          const gitPath = Boolean(identity.gitPath);
-          const version = activeFileVersion;
-          const text = getFileEditorText();
-          const token = ++fileSaveSeq;
-          activeFileSaveToken = token;
-          return Object.freeze({ sessionId, path, apiPath, draft, gitPath, version, text, token });
+          return fileViewerController.beginActiveFileSaveRequest();
         }
 
         function isCurrentActiveFileSaveRequest(save) {
-          return Boolean(
-            save &&
-              fileViewerSessionId === save.sessionId &&
-              currentActiveFileIdentity().path === save.path &&
-              currentActiveFileIdentity().apiPath === save.apiPath &&
-              currentActiveFileIdentity().gitPath === save.gitPath &&
-              activeFileSaveToken === save.token &&
-              !isFileViewerSessionUnavailable()
-          );
+          return fileViewerController.isCurrentActiveFileSaveRequest(save);
         }
 
         function markActiveFileSavePending(save) {
-          fileSavePending = true;
-          updateFileEditButton();
-          syncFileEditorReadOnly();
-          fileStatus.textContent = `Saving ${save.path}...`;
+          return fileViewerController.markActiveFileSavePending(save);
         }
 
         function finishActiveFileSaveRequest(save) {
-          if (!save || activeFileSaveToken !== save.token) return;
-          fileSavePending = false;
-          activeFileSaveToken = 0;
-          syncFileEditorReadOnly();
-          updateFileEditButton();
+          return fileViewerController.finishActiveFileSaveRequest(save);
         }
 
         function buildActiveFileSaveBody(save) {
@@ -9662,8 +9646,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           rememberActiveFileSelection(sid);
           fileViewerSessionSyncToken += 1;
           fileViewerUnavailableSessionId = sid;
-          activeFileSaveToken = 0;
-          fileSavePending = false;
+          clearActiveFileSaveState();
           fileEditMode = false;
           hideFileUnsavedDialog("cancel");
           cancelPendingFileOpen();
@@ -9946,7 +9929,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         fileEditBtn.onclick = async (e) => {
           e.preventDefault();
           e.stopPropagation();
-          if (fileSavePending) return;
+          if (fileSavePendingValue()) return;
           if (fileEditMode) {
             await saveActiveFileEdits({ exitEditMode: true });
             return;
