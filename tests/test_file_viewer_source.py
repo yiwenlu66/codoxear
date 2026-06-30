@@ -882,6 +882,7 @@ def eval_active_file_save_request_helpers() -> dict:
           fileViewerSessionId: "sid-1",
           activeFilePath: "src/app.py",
           activeFileApiPath: "token-1",
+          activeFileGitPath: true,
           activeFileDraft: true,
           activeFileVersion: "v1",
           activeFileSaveToken: 0,
@@ -913,6 +914,9 @@ def eval_active_file_save_request_helpers() -> dict:
         ctx.activeFileApiPath = "other-token";
         result.currentWrongApiPath = ctx.__test_save_request.isCurrentActiveFileSaveRequest(save);
         ctx.activeFileApiPath = "token-1";
+        ctx.activeFileGitPath = false;
+        result.currentWrongGitPath = ctx.__test_save_request.isCurrentActiveFileSaveRequest(save);
+        ctx.activeFileGitPath = true;
         ctx.unavailable = true;
         result.currentUnavailable = ctx.__test_save_request.isCurrentActiveFileSaveRequest(save);
         ctx.unavailable = false;
@@ -944,14 +948,14 @@ def eval_active_file_save_body_builder() -> dict:
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const ctx = {{ activeFileGitPath: true }};
+        const ctx = {{ activeFileGitPath: false }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_save_body = buildActiveFileSaveBody;\n")}, ctx);
-        const draft = ctx.__test_save_body({{ path: "new.py", text: "NEW", draft: true, version: "v1", apiPath: "tok" }});
-        const gitToken = ctx.__test_save_body({{ path: "existing.py", text: "BODY", draft: false, version: "v2", apiPath: "tok" }});
-        const gitNoToken = ctx.__test_save_body({{ path: "existing.py", text: "BODY", draft: false, version: "v2", apiPath: "" }});
-        ctx.activeFileGitPath = false;
-        const plainToken = ctx.__test_save_body({{ path: "plain.py", text: "TEXT", draft: false, version: "v3", apiPath: "tok" }});
+        const draft = ctx.__test_save_body({{ path: "new.py", text: "NEW", draft: true, gitPath: true, version: "v1", apiPath: "tok" }});
+        const gitToken = ctx.__test_save_body({{ path: "existing.py", text: "BODY", draft: false, gitPath: true, version: "v2", apiPath: "tok" }});
+        const gitNoToken = ctx.__test_save_body({{ path: "existing.py", text: "BODY", draft: false, gitPath: true, version: "v2", apiPath: "" }});
+        ctx.activeFileGitPath = true;
+        const plainToken = ctx.__test_save_body({{ path: "plain.py", text: "TEXT", draft: false, gitPath: false, version: "v3", apiPath: "tok" }});
         process.stdout.write(JSON.stringify({{ draft, gitToken, gitNoToken, plainToken }}));
         """
     )
@@ -1425,7 +1429,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('fileViewMode === "diff" && !canUseDiffView ? "file"', source)
         self.assertIn("if (gitPath) {\n              body.git_path = true;", source)
         self.assertIn('const gitPathQuery = request.gitPath ? "&git_path=1" : "";', source)
-        self.assertIn("git_path: Boolean(activeFileGitPath)", source)
+        self.assertIn("git_path: save.gitPath", source)
         self.assertIn("startFileOpenRequest(path, { line, gitPath: false })", source)
         self.assertIn("setFilePath(rel, { line: null, gitPath: false })", source)
         self.assertIn("if (save.draft) {\n            activeFileGitPath = false;", source)
@@ -1889,6 +1893,7 @@ class TestFileViewerSource(unittest.TestCase):
             "path": "src/app.py",
             "apiPath": "token-1",
             "draft": True,
+            "gitPath": True,
             "version": "v1",
             "text": "body text",
             "token": 1,
@@ -1902,6 +1907,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(result["statusAfterMark"], "Saving src/app.py...")
         self.assertEqual(result["callsAfterMark"], [["getFileEditorText"], ["updateFileEditButton"], ["syncFileEditorReadOnly"]])
         self.assertFalse(result["currentWrongApiPath"])
+        self.assertFalse(result["currentWrongGitPath"])
         self.assertFalse(result["currentUnavailable"])
         self.assertEqual(result["afterMismatchedFinish"], {"token": 999, "pending": True})
         self.assertEqual(result["afterMatchedFinish"]["token"], 0)
@@ -1909,11 +1915,12 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(result["afterMatchedFinish"]["calls"][-2:], [["syncFileEditorReadOnly"], ["updateFileEditButton"]])
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("function beginActiveFileSaveRequest()", source)
-        self.assertIn("return Object.freeze({ sessionId, path, apiPath, draft, version, text, token });", source)
+        self.assertIn("return Object.freeze({ sessionId, path, apiPath, draft, gitPath, version, text, token });", source)
         self.assertIn("function isCurrentActiveFileSaveRequest(save)", source)
         self.assertIn("fileViewerSessionId === save.sessionId", source)
         self.assertIn("activeFilePath === save.path", source)
         self.assertIn("activeFileApiPath === save.apiPath", source)
+        self.assertIn("activeFileGitPath === save.gitPath", source)
         self.assertIn("activeFileSaveToken === save.token", source)
         self.assertIn("!isFileViewerSessionUnavailable()", source)
         self.assertIn("function markActiveFileSavePending(save)", source)
@@ -1928,7 +1935,7 @@ class TestFileViewerSource(unittest.TestCase):
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("function buildActiveFileSaveBody(save)", source)
         self.assertIn("const saveBody = buildActiveFileSaveBody(save);", source)
-        self.assertIn("if (!save.draft && activeFileGitPath && save.apiPath) body.path_token = save.apiPath;", source)
+        self.assertIn("if (!save.draft && save.gitPath && save.apiPath) body.path_token = save.apiPath;", source)
 
     def test_active_file_save_error_renderer_preserves_conflict_and_generic_status(self) -> None:
         result = eval_active_file_save_error_renderer()
@@ -2000,8 +2007,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("activeFileSaveToken = token;", source)
         self.assertIn("const saveStillCurrent = () => isCurrentActiveFileSaveRequest(save);", block)
         self.assertIn("? { path: save.path, text: save.text, create: true }", source)
-        self.assertIn(": { path: save.path, text: save.text, version: save.version, git_path: Boolean(activeFileGitPath) };", source)
-        self.assertIn("if (!save.draft && activeFileGitPath && save.apiPath) body.path_token = save.apiPath;", source)
+        self.assertIn(": { path: save.path, text: save.text, version: save.version, git_path: save.gitPath };", source)
+        self.assertIn("if (!save.draft && save.gitPath && save.apiPath) body.path_token = save.apiPath;", source)
         self.assertIn("const saveBody = buildActiveFileSaveBody(save);", block)
         self.assertIn("await api(`/api/sessions/${save.sessionId}/file/write`", block)
         self.assertIn("if (!saveStillCurrent()) return true;", block)

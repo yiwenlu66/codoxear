@@ -8548,11 +8548,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const path = activeFilePath;
           const apiPath = activeFileApiPath || "";
           const draft = Boolean(activeFileDraft);
+          const gitPath = Boolean(activeFileGitPath);
           const version = activeFileVersion;
           const text = getFileEditorText();
           const token = ++fileSaveSeq;
           activeFileSaveToken = token;
-          return Object.freeze({ sessionId, path, apiPath, draft, version, text, token });
+          return Object.freeze({ sessionId, path, apiPath, draft, gitPath, version, text, token });
         }
 
         function isCurrentActiveFileSaveRequest(save) {
@@ -8561,6 +8562,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               fileViewerSessionId === save.sessionId &&
               activeFilePath === save.path &&
               activeFileApiPath === save.apiPath &&
+              activeFileGitPath === save.gitPath &&
               activeFileSaveToken === save.token &&
               !isFileViewerSessionUnavailable()
           );
@@ -8584,8 +8586,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         function buildActiveFileSaveBody(save) {
           const body = save.draft
             ? { path: save.path, text: save.text, create: true }
-            : { path: save.path, text: save.text, version: save.version, git_path: Boolean(activeFileGitPath) };
-          if (!save.draft && activeFileGitPath && save.apiPath) body.path_token = save.apiPath;
+            : { path: save.path, text: save.text, version: save.version, git_path: save.gitPath };
+          if (!save.draft && save.gitPath && save.apiPath) body.path_token = save.apiPath;
           return body;
         }
 
