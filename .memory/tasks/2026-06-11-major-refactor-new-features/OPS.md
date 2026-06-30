@@ -6603,3 +6603,21 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: file view-mode state and persistence semantics belong to the file-viewer controller. App still owns raw mode/download/video-preview DOM mutation, active video fallback state/loading, raw load-result rendering, raw restore text implementation, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, and raw Monaco selection helpers.
+
+## 2026-06-30T18:23:20Z Active video fallback state controller ownership
+- Functional commit `ca712ed Move video fallback state into viewer controller` moved compatible-video fallback state from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the controller now owns `activeVideoFallback`, frozen fallback snapshots, `setActiveVideoFallback()`, `clearActiveVideoFallback()`, `currentActiveVideoFallback()`, `currentActiveVideoPreviewToken()`, `beginCompatibleVideoPreview()`, `completeCompatibleVideoPreview()`, `failCompatibleVideoPreview()`, and `clearUsedCompatibleVideoPreview()`. `currentFileModeControlState()` now derives compatible-preview button visibility/preparing state from controller-owned fallback state instead of receiving app-owned booleans.
+- App-side boundary: `app.js` no longer declares `let activeVideoFallback`; it asks the controller to begin/complete/fail/clear compatible-preview state, while retaining raw video DOM mutation, preview URL resolution, preview fetch/prepare, status text rendering, `fileVideo` event handlers, and load-result rendering.
+- Test updates: file-viewer VM fixtures now provide controller video-state mocks for the load-result/video-preview snippets; the real-controller mode-control probe now seeds video fallback state through `setActiveVideoFallback()` and calls `currentFileModeControlState()` without app-owned video booleans.
+- Negative evidence preserved: the first focused validation failed in `test_video_preview_failure_path_surfaces_route_error` because the VM slice executed the new controller call without a `fileViewerController` fixture; adding a controller stub matched the browser dependency wiring and made the focused suite pass.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused file-viewer validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader focused frontend/file-viewer/static/auth validation returned `131 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: compatible-video fallback state belongs to the file-viewer controller. App still owns raw video rendering/loading side effects, raw load-result rendering, raw restore text implementation, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, raw mode/download/video-preview DOM mutation, and raw Monaco selection helpers.
