@@ -518,6 +518,22 @@
       return false;
     }
 
+    function handleFileUnsavedSaveChoice() {
+      if (blockUnavailableFileAction()) return false;
+      hideFileUnsavedDialog("save");
+      return true;
+    }
+
+    function handleFileUnsavedDiscardChoice() {
+      hideFileUnsavedDialog("discard");
+      return true;
+    }
+
+    function handleFileUnsavedCancelChoice() {
+      hideFileUnsavedDialog("cancel");
+      return true;
+    }
+
     async function setFileViewModeWithGuard(mode) {
       if (blockUnavailableFileAction()) return false;
       const next = mode === "preview" ? "preview" : mode === "file" ? "file" : "diff";
@@ -1065,6 +1081,9 @@
       saveActiveFileEdits,
       discardActiveFileEdits,
       maybeHandleUnsavedFileChanges,
+      handleFileUnsavedSaveChoice,
+      handleFileUnsavedDiscardChoice,
+      handleFileUnsavedCancelChoice,
       setFileViewModeWithGuard,
       requestHideFileViewer,
       openFilePathWithGuard,

@@ -341,6 +341,22 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           fileStatus.textContent = "old unavailable status";
           const unavailableBlocked = renderController.blockUnavailableFileAction();
           const unavailableBlockStatus = fileStatus.textContent;
+          const unsavedChoiceController = makeController();
+          unsavedChoiceController.clearFileViewerUnavailableSession();
+          state.sessionId = "sid-1";
+          events.length = 0;
+          fileStatus.textContent = "old unsaved status";
+          const unsavedSaveAvailable = {{ result: unsavedChoiceController.handleFileUnsavedSaveChoice(), status: fileStatus.textContent, events: events.slice() }};
+          unsavedChoiceController.disableFileViewerForUnavailableSession("sid-1");
+          events.length = 0;
+          fileStatus.textContent = "old unsaved status";
+          const unsavedSaveUnavailable = {{ result: unsavedChoiceController.handleFileUnsavedSaveChoice(), status: fileStatus.textContent, events: events.slice() }};
+          unsavedChoiceController.clearFileViewerUnavailableSession();
+          events.length = 0;
+          const unsavedDiscard = {{ result: unsavedChoiceController.handleFileUnsavedDiscardChoice(), events: events.slice() }};
+          events.length = 0;
+          const unsavedCancel = {{ result: unsavedChoiceController.handleFileUnsavedCancelChoice(), events: events.slice() }};
+          const unsavedChoices = {{ unsavedSaveAvailable, unsavedSaveUnavailable, unsavedDiscard, unsavedCancel }};
           renderController.clearFileViewerUnavailableSession();
           state.editMode = true;
           state.dirty = false;
@@ -528,6 +544,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             saveBodies,
             saveErrors: {{ saveConflict, genericSaveError, unknownSaveError }},
             unavailableAction: {{ availableBlocked, availableBlockStatus, unavailableBlocked, unavailableBlockStatus, unavailableTransitionEvents }},
+            unsavedChoices,
             copySelection: {{ copyNoSelection, copySelectionSuccess, copySelectionError }},
             editorState: {{ editorState, editorStateFrozen }},
             editabilityUi: {{ editButtonEditMode, readOnlyWritable, editButtonViewMode, editButtonUnavailable, editButtonSavePending }},
@@ -666,6 +683,12 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
                 ["touchToolbar"],
                 ["touchToolbar"],
             ],
+        })
+        self.assertEqual(result["render"]["unsavedChoices"], {
+            "unsavedSaveAvailable": {"result": True, "status": "old unsaved status", "events": [["hideFileUnsavedDialog", "save"]]},
+            "unsavedSaveUnavailable": {"result": False, "status": "Session is no longer available; copy unsaved edits before closing.", "events": []},
+            "unsavedDiscard": {"result": True, "events": [["hideFileUnsavedDialog", "discard"]]},
+            "unsavedCancel": {"result": True, "events": [["hideFileUnsavedDialog", "cancel"]]},
         })
         self.assertEqual(result["render"]["copySelection"], {
             "copyNoSelection": {"result": False, "events": [["toast", "nothing selected"]]},

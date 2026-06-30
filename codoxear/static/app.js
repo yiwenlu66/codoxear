@@ -8406,6 +8406,18 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return await fileViewerController.maybeHandleUnsavedFileChanges();
         }
 
+        function handleFileUnsavedSaveChoice() {
+          return fileViewerController.handleFileUnsavedSaveChoice();
+        }
+
+        function handleFileUnsavedDiscardChoice() {
+          return fileViewerController.handleFileUnsavedDiscardChoice();
+        }
+
+        function handleFileUnsavedCancelChoice() {
+          return fileViewerController.handleFileUnsavedCancelChoice();
+        }
+
         async function openFilePathWithGuard(path, { line = null, mode = null, isCurrent = null, gitPath = false, apiPath = "" } = {}) {
           return await fileViewerController.openFilePathWithGuard(path, { line, mode, isCurrent, gitPath, apiPath });
         }
@@ -9657,13 +9669,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           void requestHideFileViewer();
         };
         fileBackdrop.onclick = () => void requestHideFileViewer();
-        $("#fileUnsavedSaveBtn").onclick = () => {
-          if (blockUnavailableFileAction()) return;
-          hideFileUnsavedDialog("save");
-        };
-        $("#fileUnsavedDiscardBtn").onclick = () => hideFileUnsavedDialog("discard");
-        $("#fileUnsavedCancelBtn").onclick = () => hideFileUnsavedDialog("cancel");
-        fileUnsavedBackdrop.onclick = () => hideFileUnsavedDialog("cancel");
+        $("#fileUnsavedSaveBtn").onclick = () => handleFileUnsavedSaveChoice();
+        $("#fileUnsavedDiscardBtn").onclick = () => handleFileUnsavedDiscardChoice();
+        $("#fileUnsavedCancelBtn").onclick = () => handleFileUnsavedCancelChoice();
+        fileUnsavedBackdrop.onclick = () => handleFileUnsavedCancelChoice();
         $("#filePasteInsertBtn").onclick = () => {
           handleFilePasteInsert(filePasteInput.value);
         };
