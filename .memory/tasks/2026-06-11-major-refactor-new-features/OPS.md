@@ -6225,3 +6225,23 @@
 - Intended review output file: `/tmp/codoxear-controller-keyboard-open-review.md`; no review finding was produced or applied.
 - Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against the code changes. The code-evidence basis remains the committed validation through `84b78d1`: focused tests, full local pytest, Docker sandbox, syntax checks, and diff checks.
 - Decision: continue refactor work; retry clean-room review before a final/checkpoint response if the async runner is available.
+
+## 2026-06-30T13:26:54Z Native delete suppression controller ownership
+- Functional commit `37d1845 Move native delete suppression into viewer controller` moved the native beforeinput/input delete suppression timestamp and suppression predicate/action from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: synthetic Monaco delete commands set a controller-owned short suppression window; subsequent native `deleteContentBackward` / `deleteContentForward` events are suppressed only if they target the active file editor input and fall within that window. The suppression window is cleared after the first native event, preserving the old one-shot behavior while co-locating it with the delete-key policy that creates the window.
+- App-owned surface after this move: document `beforeinput`/`input` listeners still exist in `app.js`, but they delegate directly to `fileViewerController.suppressFileEditorNativeDelete(event)`. App still provides `isActiveFileEditorInput`, `eventTargetElement`, and `nowMs` as explicit dependencies.
+- Tests updated:
+  - `tests/test_file_viewer_source.py` delete-key probe now verifies that a valid synthetic delete suppresses one subsequent native delete event and does not suppress a second native event.
+  - Source assertions verify no app-owned `fileTouchDeleteNativeSuppressUntil`, no app-owned native delete predicate, no obsolete suppression setter dependency, and controller-owned native delete predicate/timestamp.
+  - Save-shortcut fixture boundary was updated because the old app-owned native delete predicate no longer exists.
+- Validation:
+  - Initial focused command failed with `file or directory not found: tests/test_frontend_module_boundaries_source.py`; this was command selection against a file absent from this checkout, not product evidence.
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused existing frontend/file-viewer/static/auth group returned `119 passed, 28 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: delete-key policy and native delete suppression now both belong to the file-viewer controller. App still owns touch toolbar DOM state, selection reset/move mechanics, paste dialog/insert actions, raw load-result rendering, raw view-mode DOM application, unsaved modal DOM, and discard implementation.
