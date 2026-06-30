@@ -6698,3 +6698,21 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: plain fallback state reset belongs to the file-viewer controller. App still owns raw fileEditorKind storage, fallback DOM construction/scrolling, raw renderer/DOM plan application, raw restore text implementation, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, raw mode/download/video-preview DOM mutation, compatible-preview fetch/load mechanics, and raw Monaco selection helpers.
+
+## 2026-06-30T19:51:44Z File editor-kind state controller ownership
+- Functional commit `06b62b0 Move file editor kind state into viewer controller` moved `fileEditorKind` storage and validation from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: renderer/editor kind is policy state consumed by controller-owned editor capability/read-only/affordance logic. The controller now owns `fileEditorKind`, `currentFileEditorKind()`, `setFileEditorKind(kind)`, and fail-loud validation for `""`, `"file"`, `"diff"`, and `"plain-fallback"`. `app.js` now delegates kind reads/writes through wrappers while retaining raw Monaco/plain-fallback editor objects, DOM construction, model disposal, selection helpers, and renderer side effects.
+- Test updates: source sentinels reject app-owned `let fileEditorKind` and the removed `currentFileEditorKind: () => fileEditorKind` dependency; they require controller-owned accessors and app wrappers. Real-controller probe covers editor-kind transitions and invalid-kind failure. Fixtures that previously mutated an external editor-kind dependency now seed controller-owned kind through `setFileEditorKind("file")` where raw editor read-only behavior is expected.
+- Negative evidence preserved: the first focused validation after the move failed because stale fixtures still assumed the controller would read `fileEditorKind` through an injected dependency. The missing `updateOptions` events in save/open-error traces identified fixture drift, not a product behavior change; repairing fixtures to seed controller-owned kind restored the same mechanism.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused file-viewer validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - One attempted broad command referenced absent `tests/test_frontend_module_boundaries_source.py` and ran no tests; it is not product evidence.
+  - Available broader frontend/file/auth/static route validation returned `252 passed, 80 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: file editor-kind state belongs to the file-viewer controller. App still owns raw Monaco editor/diff-editor objects and model disposal, fallback DOM construction/scrolling, raw renderer/DOM plan application, raw restore text implementation, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, raw mode/download/video-preview DOM mutation, compatible-preview fetch/load mechanics, and raw Monaco selection helpers.
