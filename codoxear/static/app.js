@@ -8508,6 +8508,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           isMarkdownPreviewable,
           resetActiveFileBufferState: () => resetActiveFileBufferState(),
           updateFileTouchToolbar: () => updateFileTouchToolbar(),
+          applyFileMode: () => applyFileMode(),
+          rememberOpenedFile: (rel, absPath) => rememberOpenedFile(rel, absPath),
+          rememberActiveFileSelection: () => rememberActiveFileSelection(),
+          updateFileEditButton: () => updateFileEditButton(),
+          renderFilePickerMenu: () => renderFilePickerMenu(),
         });
 
         function beginActiveFileSaveRequest() {
@@ -9799,12 +9804,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function finalizeFileOpenSuccess(rel, absPath = null) {
-          applyFileMode();
-          rememberOpenedFile(rel, absPath);
-          rememberActiveFileSelection();
-          updateFileEditButton();
-          renderFilePickerMenu();
-          return true;
+          return fileViewerController.finalizeFileOpenSuccess(rel, absPath);
         }
 
         function normalizeExplicitFileOpenMode(requestedMode) {

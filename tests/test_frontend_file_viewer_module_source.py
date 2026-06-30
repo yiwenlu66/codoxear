@@ -86,6 +86,11 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             isMarkdownPreviewable: () => state.markdownPreviewable,
             resetActiveFileBufferState: () => {{ state.resetCount += 1; events.push(["resetBuffer"]); }},
             updateFileTouchToolbar: () => {{ state.touchCount += 1; events.push(["touchToolbar"]); }},
+            applyFileMode: () => events.push(["applyFileMode"]),
+            rememberOpenedFile: (rel, absPath) => events.push(["rememberOpenedFile", rel, absPath]),
+            rememberActiveFileSelection: () => events.push(["rememberActiveFileSelection"]),
+            updateFileEditButton: () => events.push(["updateFileEditButton"]),
+            renderFilePickerMenu: () => events.push(["renderFilePickerMenu"]),
           }});
         }}
         function event() {{
@@ -177,6 +182,9 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           events.length = 0;
           const unknownResult = renderController.renderFileOpenError(currentRequest, {{}});
           const unknownError = {{ result: unknownResult, status: fileStatus.textContent, resetCount: state.resetCount, touchCount: state.touchCount, events: events.slice() }};
+          events.length = 0;
+          const finalizeResult = renderController.finalizeFileOpenSuccess("src/app.py", "/abs/src/app.py");
+          const finalize = {{ result: finalizeResult, events: events.slice() }};
           const render = {{
             exportFrozen: Object.isFrozen(fileViewer),
             exports: Object.keys(fileViewer).sort(),
@@ -187,6 +195,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             modeResolution: {{ diffFallback, diffAllowed, previewFallback, explicitDiff, invalidModeMessage }},
             fetchResults: {{ diffFetch, diffFetchEvents, readFetch, readFetchEvents }},
             openErrors: {{ currentError, abortErrorResult, staleError, unknownError }},
+            finalize,
           }};
           const availableReloadFailure = await runReloadCase("");
           const canceledReload = await runReloadCase("", false);
@@ -243,6 +252,16 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "abortErrorResult": {"result": False, "status": "error: boom", "resetCount": 1, "touchCount": 1, "events": [], "abortCheck": True},
             "staleError": {"result": False, "status": "error: boom", "resetCount": 1, "touchCount": 1, "events": []},
             "unknownError": {"result": False, "status": "error: unknown error", "resetCount": 2, "touchCount": 2, "events": [["resetBuffer"], ["touchToolbar"]]},
+        })
+        self.assertEqual(result["render"]["finalize"], {
+            "result": True,
+            "events": [
+                ["applyFileMode"],
+                ["rememberOpenedFile", "src/app.py", "/abs/src/app.py"],
+                ["rememberActiveFileSelection"],
+                ["updateFileEditButton"],
+                ["renderFilePickerMenu"],
+            ],
         })
         self.assertIn("file viewer dependency missing: el", result["missingDependencyError"])
 

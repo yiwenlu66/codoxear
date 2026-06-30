@@ -34,6 +34,11 @@
     const isMarkdownPreviewable = requireFunction(deps && deps.isMarkdownPreviewable, "isMarkdownPreviewable");
     const resetActiveFileBufferState = requireFunction(deps && deps.resetActiveFileBufferState, "resetActiveFileBufferState");
     const updateFileTouchToolbar = requireFunction(deps && deps.updateFileTouchToolbar, "updateFileTouchToolbar");
+    const applyFileMode = requireFunction(deps && deps.applyFileMode, "applyFileMode");
+    const rememberOpenedFile = requireFunction(deps && deps.rememberOpenedFile, "rememberOpenedFile");
+    const rememberActiveFileSelection = requireFunction(deps && deps.rememberActiveFileSelection, "rememberActiveFileSelection");
+    const updateFileEditButton = requireFunction(deps && deps.updateFileEditButton, "updateFileEditButton");
+    const renderFilePickerMenu = requireFunction(deps && deps.renderFilePickerMenu, "renderFilePickerMenu");
     let activeSaveConflict = null;
     let fileOpenRequestId = 0;
     let fileOpenAbortController = null;
@@ -165,6 +170,15 @@
       return Boolean(error && error.name === "AbortError");
     }
 
+    function finalizeFileOpenSuccess(rel, absPath = null) {
+      applyFileMode();
+      rememberOpenedFile(rel, absPath);
+      rememberActiveFileSelection();
+      updateFileEditButton();
+      renderFilePickerMenu();
+      return true;
+    }
+
     function renderFileOpenError(request, error) {
       if (isFileOpenAbortError(error)) return false;
       if (!isCurrentFileOpenRequest(request)) return false;
@@ -279,6 +293,7 @@
       resolveFileOpenViewMode,
       fetchFileOpenResult,
       isFileOpenAbortError,
+      finalizeFileOpenSuccess,
       renderFileOpenError,
     });
   }

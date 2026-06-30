@@ -1031,6 +1031,11 @@ def eval_file_open_request_sequence() -> dict:
           isMarkdownPreviewable: () => true,
           resetActiveFileBufferState: () => {{}},
           updateFileTouchToolbar: () => {{}},
+          applyFileMode: () => {{}},
+          rememberOpenedFile: () => {{}},
+          rememberActiveFileSelection: () => {{}},
+          updateFileEditButton: () => {{}},
+          renderFilePickerMenu: () => {{}},
         }});
         controller.setActiveFileIdentity("old.txt", {{ line: 1, gitPath: false, apiPath: "" }});
         const first = controller.beginFileOpenRequest("first.txt", {{ line: 3 }});
@@ -1682,11 +1687,16 @@ def eval_file_open_success_finalizer() -> dict:
         const vm = require("vm");
         const ctx = {{
           calls: [],
-          applyFileMode: () => ctx.calls.push(["applyFileMode"]),
-          rememberOpenedFile: (...args) => ctx.calls.push(["rememberOpenedFile", ...args]),
-          rememberActiveFileSelection: () => ctx.calls.push(["rememberActiveFileSelection"]),
-          updateFileEditButton: () => ctx.calls.push(["updateFileEditButton"]),
-          renderFilePickerMenu: () => ctx.calls.push(["renderFilePickerMenu"]),
+          fileViewerController: {{
+            finalizeFileOpenSuccess: (rel, absPath = null) => {{
+              ctx.calls.push(["applyFileMode"]);
+              ctx.calls.push(["rememberOpenedFile", rel, absPath]);
+              ctx.calls.push(["rememberActiveFileSelection"]);
+              ctx.calls.push(["updateFileEditButton"]);
+              ctx.calls.push(["renderFilePickerMenu"]);
+              return true;
+            }},
+          }},
         }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_finalize_open = finalizeFileOpenSuccess;\n")}, ctx);
@@ -2326,8 +2336,11 @@ class TestFileViewerSource(unittest.TestCase):
         ])
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("function finalizeFileOpenSuccess(rel, absPath = null)", source)
+        self.assertIn("return fileViewerController.finalizeFileOpenSuccess(rel, absPath);", source)
         self.assertIn("return finalizeFileOpenSuccess(rel, openResult.absPath);", source)
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+        self.assertIn("function finalizeFileOpenSuccess(rel, absPath = null)", viewer_source)
+        self.assertIn("rememberOpenedFile(rel, absPath);", viewer_source)
         self.assertIn('absPath: res && typeof res.abs_path === "string" ? res.abs_path : null', viewer_source)
         self.assertIn('absPath: res && typeof res.path === "string" ? res.path : null', viewer_source)
 
@@ -2586,6 +2599,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('throw new Error("invalid file render surface")', source)
         self.assertIn("async function applyFileLoadResult(rel, result, request, { viewMode = \"file\" } = {})", source)
         self.assertIn("function finalizeFileOpenSuccess(rel, absPath = null)", source)
+        self.assertIn("function finalizeFileOpenSuccess(rel, absPath = null)", viewer_source)
+        self.assertIn("return fileViewerController.finalizeFileOpenSuccess(rel, absPath);", source)
         self.assertIn("const openResult = await fileViewerController.fetchFileOpenResult(request, rel, viewMode);", source)
         self.assertIn("const loaded = await applyFileLoadResult(rel, openResult.result, request, { viewMode });", source)
         self.assertIn("return fileViewerController.renderFileOpenError(request, e);", open_file_block)
