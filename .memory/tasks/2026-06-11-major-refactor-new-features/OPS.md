@@ -5874,3 +5874,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: draft error rendering moved. Draft inspect/open guard behavior remains app-owned; generic file-open result rendering/application, save request lifecycle, unavailable transition policy, paste/editor actions, and toolbar/editability policy remain partly `app.js`-owned.
+
+## 2026-06-30T08:58:54Z Save body and error rendering controller ownership
+- Functional commit `4e76669 Move save body and error rendering into viewer controller` moved active-file save request body construction and save-error rendering from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `buildActiveFileSaveBody(save)` now belongs to the controller and preserves the draft-create body, non-draft write body, frozen save-context `git_path`, and `path_token` inclusion only for non-draft git saves with an API token. `renderActiveFileSaveError(save, error)` now also belongs to the controller and delegates 409 conflicts to the controller-owned save-conflict UI while rendering generic `save error: <message>` status text through `fileStatus`.
+- `app.js` keeps wrapper names for existing call sites; save token/currentness/pending state, API POST orchestration, success response application, and final cleanup remain app-owned.
+- Tests updated:
+  - `tests/test_frontend_file_viewer_module_source.py` executes the real controller save body builder and save-error renderer, verifying draft/git-token/git-no-token/plain-token bodies plus conflict/generic/unknown error UI.
+  - `tests/test_file_viewer_source.py` wrapper VMs use controller fakes, and source sentinels moved body/error implementation details into `app_file_viewer.js`.
+- Validation before commit:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `90 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1286 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: save body construction and save-error rendering moved. Save token/currentness/pending state, save POST orchestration, save success application, generic file-open result rendering/application, draft inspect/open guard behavior, unavailable transition policy, paste/editor actions, and toolbar/editability policy remain partly `app.js`-owned.
