@@ -6579,3 +6579,10 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: manual paste-dialog eligibility belongs to the file-viewer controller. App still owns raw paste dialog DOM show/hide/focus mechanics, raw load-result rendering, raw restore text implementation, unsaved modal DOM internals, touch-toolbar DOM/binding mechanics, active video fallback loading/rendering, persisted mode storage, and raw Monaco selection helpers.
+
+## 2026-06-30T17:42:22Z Clean-room review runner failure after file-viewer control-state checkpoints
+- Observation: async clean-room review run `6f19d037-afa9-46bb-a0e5-9984ff0966f0` failed before writing a result.
+- Raw failure reported by user/runner: `Async runner process 186402 exited or disappeared before writing a result. Marked run failed by stale-run reconciliation.`
+- Intended review output file: `/tmp/codoxear-file-viewer-control-state-review.md`; no review finding was produced or applied.
+- Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against commits `725db4f`, `2870099`, or `8179a9a`. The evidence basis for those controller-ownership moves remains syntax checks, focused tests, broader focused tests, full local pytest, Docker sandbox, and diff checks recorded above.
+- Decision: continue workbench progress; retry clean-room review only at the next necessary yield or if a review result becomes required for a decision.
