@@ -8428,6 +8428,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return await fileViewerController.requestHideFileViewer();
         }
 
+        async function handleFileDiffModeButtonPress() {
+          return await fileViewerController.handleFileDiffModeButtonPress(fileNonDiffMode);
+        }
+
+        async function handleFilePreviewModeButtonPress() {
+          return await fileViewerController.handleFilePreviewModeButtonPress();
+        }
+
         async function handleFileEditButtonPress() {
           return await fileViewerController.handleFileEditButtonPress();
         }
@@ -9591,13 +9599,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         fileModeDiffBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          void setFileViewModeWithGuard(fileViewMode === "diff" ? fileNonDiffMode : "diff");
+          void handleFileDiffModeButtonPress();
         };
         fileModePreviewBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          if (!isMarkdownPreviewable(activeFilePathValue())) return;
-          void setFileViewModeWithGuard(fileViewMode === "preview" ? "file" : "preview");
+          void handleFilePreviewModeButtonPress();
         };
         fileEditBtn.onclick = async (e) => {
           e.preventDefault();

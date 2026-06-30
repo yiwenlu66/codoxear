@@ -836,6 +836,19 @@
       return true;
     }
 
+    async function handleFileDiffModeButtonPress(nonDiffMode = "file") {
+      const fallbackMode = nonDiffMode === "preview" ? "preview" : "file";
+      const nextMode = currentFileViewMode() === "diff" ? fallbackMode : "diff";
+      return await setFileViewModeWithGuard(nextMode);
+    }
+
+    async function handleFilePreviewModeButtonPress() {
+      const identity = currentActiveFileIdentity();
+      if (!isMarkdownPreviewable(identity.path)) return false;
+      const nextMode = currentFileViewMode() === "preview" ? "file" : "preview";
+      return await setFileViewModeWithGuard(nextMode);
+    }
+
     async function handleFileEditButtonPress() {
       if (isFileSavePending()) return false;
       if (currentFileEditMode()) {
@@ -1061,6 +1074,8 @@
       insertIntoActiveFileEditor,
       pasteFromClipboardIntoActiveFile,
       handleFilePasteInsert,
+      handleFileDiffModeButtonPress,
+      handleFilePreviewModeButtonPress,
       handleFileEditButtonPress,
       finalizeFileOpenSuccess,
       applyDraftFileLoad,
