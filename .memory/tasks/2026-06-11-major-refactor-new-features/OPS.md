@@ -6563,3 +6563,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures on the exact pre-commit working tree.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: file-mode control-state policy belongs to the file-viewer controller. App still owns persisted mode storage, raw mode/download/video-preview DOM mutation, active video fallback state/loading, raw load-result rendering, raw restore text implementation, unsaved modal DOM internals, paste dialog DOM/show-hide primitives, touch-toolbar DOM/binding mechanics, and raw Monaco selection helpers.
+
+## 2026-06-30T17:39:14Z Manual paste-dialog eligibility controller ownership
+- Functional commit `8179a9a Move manual paste dialog eligibility into viewer controller` moved the remaining editor-writability eligibility check for opening the manual file-paste dialog from raw `app.js` dialog display into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `requestManualFilePasteDialog()` now checks controller-owned `activeFileEditorIdleTextWritable()` immediately before invoking the injected raw `showFilePasteDialog()` primitive. `pasteFromClipboardIntoActiveFile()` uses this request helper both for missing Clipboard API and clipboard-denied fallback paths. The raw app primitive now only prepares/opens/focuses the dialog DOM and no longer recomputes file-editor writability.
+- Tests updated: paste-dialog fallback VM coverage now includes a `deniedAfterReadonly` case where the editor is writable at paste start, becomes non-editable after clipboard read denial, and must not open the manual dialog; the controller reports `paste error: denied` and focuses the editor instead. Source assertions require controller-owned request policy and reject the old app-side `activeFileEditorIdleTextWritable()` check inside `showFilePasteDialog()`.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused file-viewer validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader focused frontend/file-viewer/static/auth validation returned `131 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: manual paste-dialog eligibility belongs to the file-viewer controller. App still owns raw paste dialog DOM show/hide/focus mechanics, raw load-result rendering, raw restore text implementation, unsaved modal DOM internals, touch-toolbar DOM/binding mechanics, active video fallback loading/rendering, persisted mode storage, and raw Monaco selection helpers.
