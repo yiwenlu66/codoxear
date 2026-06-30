@@ -67,7 +67,6 @@
     const fileEditorDeleteCommandForKey = requireFunction(deps && deps.fileEditorDeleteCommandForKey, "fileEditorDeleteCommandForKey");
     const isActiveFileEditorInput = requireFunction(deps && deps.isActiveFileEditorInput, "isActiveFileEditorInput");
     const focusActiveFileCodeEditor = requireFunction(deps && deps.focusActiveFileCodeEditor, "focusActiveFileCodeEditor");
-    const setFileTouchDeleteNativeSuppressUntil = requireFunction(deps && deps.setFileTouchDeleteNativeSuppressUntil, "setFileTouchDeleteNativeSuppressUntil");
     const nowMs = requireFunction(deps && deps.nowMs, "nowMs");
     const setToast = requireFunction(deps && deps.setToast, "setToast");
     const setFileViewMode = requireFunction(deps && deps.setFileViewMode, "setFileViewMode");
@@ -97,6 +96,7 @@
     let activeFileGitPath = false;
     let activeFileLine = null;
     let unavailableSessionId = "";
+    let fileTouchDeleteNativeSuppressUntil = 0;
 
     function normalizeSessionId(value) {
       return String(value || "").trim();
@@ -635,7 +635,7 @@
       if (!isActiveFileEditorInput(target)) return false;
       const editor = focusEditor();
       if (!editor || typeof editor.trigger !== "function") return false;
-      setFileTouchDeleteNativeSuppressUntil(nowMs() + 250);
+      fileTouchDeleteNativeSuppressUntil = nowMs() + 250;
       e.preventDefault();
       e.stopPropagation();
       try {
@@ -647,6 +647,20 @@
         setToast(`delete error: ${error && error.message ? error.message : "unknown error"}`);
         return true;
       }
+    }
+
+    function isFileEditorNativeDeleteEvent(event) {
+      const inputType = String((event && event.inputType) || "");
+      if (inputType !== "deleteContentBackward" && inputType !== "deleteContentForward") return false;
+      return isActiveFileEditorInput(eventTargetElement(event && event.target));
+    }
+
+    function suppressFileEditorNativeDelete(event) {
+      if (nowMs() > fileTouchDeleteNativeSuppressUntil || !isFileEditorNativeDeleteEvent(event)) return false;
+      if (event.cancelable) event.preventDefault();
+      event.stopPropagation();
+      fileTouchDeleteNativeSuppressUntil = 0;
+      return true;
     }
 
     async function openFilePath(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined, mode = null } = {}) {
@@ -847,6 +861,7 @@
       updateFileEditButton,
       handleFileTouchSelectionKeydown,
       handleFileEditorDeleteKeydown,
+      suppressFileEditorNativeDelete,
       finalizeFileOpenSuccess,
       applyDraftFileLoad,
       renderFileOpenError,

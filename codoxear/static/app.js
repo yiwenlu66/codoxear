@@ -7067,7 +7067,6 @@
         let fileTouchSelectAnchor = null;
         let fileTouchSelectHead = null;
         let fileTouchSelectGoalColumn = null;
-        let fileTouchDeleteNativeSuppressUntil = 0;
         let fileSessionSelections = new Map();
 
         function currentFileSessionId() {
@@ -7626,17 +7625,8 @@
           return fileViewerController.handleFileEditorDeleteKeydown(e);
         }
 
-        function isFileEditorNativeDeleteEvent(e) {
-          const inputType = String((e && e.inputType) || "");
-          if (inputType !== "deleteContentBackward" && inputType !== "deleteContentForward") return false;
-          const target = e.target instanceof HTMLElement ? e.target : null;
-          return isActiveFileEditorInput(target);
-        }
-
         function suppressFileEditorNativeDelete(e) {
-          if (e.cancelable) e.preventDefault();
-          e.stopPropagation();
-          fileTouchDeleteNativeSuppressUntil = 0;
+          return fileViewerController.suppressFileEditorNativeDelete(e);
         }
 
         function bindFileTouchPress(button, handler) {
@@ -8452,7 +8442,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileEditorDeleteCommandForKey: (key) => fileEditorDeleteCommandForKey(key),
           isActiveFileEditorInput: (target) => isActiveFileEditorInput(target),
           focusActiveFileCodeEditor: () => focusActiveFileCodeEditor(),
-          setFileTouchDeleteNativeSuppressUntil: (value) => { fileTouchDeleteNativeSuppressUntil = value; },
           nowMs: () => Date.now(),
           setToast: (message) => setToast(message),
           setFileViewMode: (mode) => setFileViewMode(mode),
@@ -9919,7 +9908,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           document,
           "beforeinput",
           (e) => {
-            if (Date.now() <= fileTouchDeleteNativeSuppressUntil && isFileEditorNativeDeleteEvent(e)) suppressFileEditorNativeDelete(e);
+            suppressFileEditorNativeDelete(e);
           },
           true
         );
@@ -9927,7 +9916,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           document,
           "input",
           (e) => {
-            if (Date.now() <= fileTouchDeleteNativeSuppressUntil && isFileEditorNativeDeleteEvent(e)) suppressFileEditorNativeDelete(e);
+            suppressFileEditorNativeDelete(e);
           },
           true
         );
