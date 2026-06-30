@@ -5496,3 +5496,29 @@
 - Clean-room review `0cfffb1e-6422-4e13-a1a1-af5ea8ab5add` returned PASS with no blockers; report saved at `/tmp/codoxear-file-open-mode-final-review.md`. Review verified explicit mode authority, absent-mode compatibility for conflict reload and mode-toggle callers, invalid-mode fail-loud behavior before state mutation, endpoint/stale/finalization/error preservation, and faithful VM/source tests. Non-blocking notes: invalid-mode throws as an async rejection if a future malformed caller exists; absent-mode direct callers are covered by source sentinels plus the shared VM fallback path rather than separate runtime tests.
 - Next transition seam: session-open tail request context/abort ownership. Add request context and AbortSignal for `openSession()` initial tail load first; defer cache fallback-on-supersede, 404 de-duplication, and file-viewer sync-token changes to separate checkpoints because those alter broader user-visible policy.
 - Scope note: this is file-open view-mode ownership only. It does not claim session-selection race hardening, file-picker menu renderer extraction, cache fallback policy, 404 cleanup de-duplication, video/PDF fallback token stability, or browser-manual rendering evidence.
+
+
+
+## 2026-06-30T02:48:00Z OpenSession tail request abort ownership
+- Functional commit `3136e95 Abort superseded session tail opens` named and abort-scoped the initial transcript tail request in `openSession()`.
+- Mechanism:
+  - `openSessionTailAbortController` tracks the active initial tail request controller.
+  - `abortOpenSessionTailRequest()` clears and aborts the active controller; `stopMessagePolling()` and the start of a new `openSession()` call now use it to invalidate active tail transport.
+  - `beginOpenSessionTailRequest(sessionId, gen)` aborts any prior tail controller, creates an `AbortController` when available, and returns a frozen `{ sessionId, gen, controller, signal }` request context.
+  - `isCurrentOpenSessionTailRequest(request)` replaces the inline selected/pollGen currentness predicate for the initial tail open. `finishOpenSessionTailRequest(request)` clears the active controller only when the request still owns it, so an older `finally` cannot clear a newer controller.
+  - `openSession()` passes `signal: tailRequest.signal` to `/messages/tail`, treats matching `AbortError` as stale/null before `markMessagePollFailure()`, preserves 401 handling before stale suppression, preserves 404/cache/error UI branches, and gates successful commit through request currentness.
+- Boundary preserved: `openSession()` still owns selection setup, poll timer reset, optimistic busy/context, cache display and fallback-on-failure, orphan recovery, 401 auth loss, 404 cleanup, transcript slot commit, post-tail file-viewer sync/candidate refresh, and polling kick policy. `pollMessages()` tail/live requests were not changed. Cache fallback-on-supersede, 404 cleanup de-duplication, and file-viewer sync-token policy are deferred.
+- Tests added/updated:
+  - `eval_open_session_tail_request_abort()` executes the real helper plus `openSession()` block in a Node VM. It starts a `sid-a` open, starts a `sid-b` open, verifies the `sid-a` signal aborts and returns null, verifies `sid-a` does not mark poll failure or render transcript error, and verifies `sid-b` commits, marks success, and renders tail.
+  - Source sentinels pin tail-request creation, signal pass-through, abort branch before poll-failure/error rendering, request currentness, final cleanup, and `stopMessagePolling()` abort.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused openSession/session-polling tests passed.
+  - Focused local chat/session/file/static group returned `99 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1275 passed, 136 subtests passed`.
+  - Focused Docker chat/session/file/static group passed.
+  - First full Docker run failed once in `TestStaticAssets.test_wheel_includes_nested_logo_assets`; targeted Docker rerun of that exact test passed, and a subsequent full Docker rerun passed. The failure is preserved as a non-reproduced packaging-test anomaly with no observed causal relation to the session-tail diff.
+  - `git diff --check` passed before staging/commit.
+- Clean-room review `08f2c5e6-8d2c-40ca-a4af-eec7a3e9ec64` returned PASS with no blockers; report saved at `/tmp/codoxear-open-session-tail-request-review.md`. Review verified abort/currentness/finally semantics, older-finally/newer-controller safety, 401/404/cache/error policy preservation, AbortError suppression before poll failure/error UI, VM/source test fidelity, and full validation. Non-blocking notes: AbortController-absent runtimes degrade to old non-aborting transport with currentness guards; `stopMessagePolling()` abort is resource cleanup rather than the only correctness guard; frozen request objects are defensive.
+- Next transition seam: selected-session missing/404 cleanup ownership. The existing openSession and pollMessages 404 branches are similar but not identical; consolidate only after preserving file-viewer dirty-edit unavailable behavior and each caller's refresh/error semantics deliberately.
+- Scope note: this is initial `openSession()` tail request transport/currentness ownership only. It does not claim live polling request aborts, cache fallback-on-supersede, 404 cleanup de-duplication, file-viewer sync-token policy, or browser-manual switching evidence.
