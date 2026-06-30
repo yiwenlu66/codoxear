@@ -59,6 +59,7 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
           fileCandidateList: [],
           fileEntryMap: new Map(),
           activeFileDraft: Boolean(state.activeFileDraft),
+          currentActiveFileDraft: () => Boolean(state.activeFileDraft),
           activeFilePathValue: () => state.activeFilePath || "",
           filePickerSearchActive: Boolean(state.filePickerSearchActive),
           filePickerInput: {{ value: state.filePickerInputValue || "" }},

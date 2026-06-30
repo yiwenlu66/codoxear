@@ -294,6 +294,9 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           events.length = 0;
           const unknownResult = renderController.renderFileOpenError(currentRequest, {{}});
           const unknownError = {{ result: unknownResult, status: fileStatus.textContent, resetCount: state.resetCount, touchCount: state.touchCount, events: events.slice() }};
+          state.editMode = true;
+          state.dirty = false;
+          renderController.setFileDirty(false);
           events.length = 0;
           const finalizeResult = renderController.finalizeFileOpenSuccess("src/app.py", "/abs/src/app.py");
           const finalize = {{ result: finalizeResult, events: events.slice() }};
@@ -360,6 +363,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           renderController.clearFileViewerUnavailableSession();
           state.editMode = true;
           state.dirty = false;
+          renderController.applyActiveFileTextState({{ kind: "markdown", text: "body", editable: true, version: "v7", draft: false }});
           renderController.setFileDirty(false);
           async function runCopySelectionCase({{ text = "", error = "" }} = {{}}) {{
             state.selectionText = text;
@@ -447,13 +451,15 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             state.viewMode = startMode;
             state.draft = draft;
             state.dirty = dirty;
-            renderController.setFileDirty(dirty);
             state.unsavedChoice = choice;
             renderController.clearFileViewerUnavailableSession();
             if (unavailable) renderController.disableFileViewerForUnavailableSession("sid-1");
             events.length = 0;
             fileStatus.textContent = "";
             renderController.setActiveFileIdentity("state.md", {{ line: 11, gitPath: true, apiPath: "state-token" }});
+            renderController.applyActiveFileTextState({{ kind: "markdown", text: "body", editable: true, version: "v7", draft }});
+            renderController.setFileDirty(dirty);
+            events.length = 0;
             const result = await renderController.setFileViewModeWithGuard(target);
             const output = {{ result, viewMode: state.viewMode, status: fileStatus.textContent, events: events.slice() }};
             renderController.clearFileViewerUnavailableSession();
@@ -612,11 +618,23 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "downloadUnavailablePath": "",
             "downloadUnavailableStatus": "Session is no longer available; copy unsaved edits before closing.",
         })
+        reset_events = [
+            ["setFileEditMode", False],
+            ["editorOptions", {"readOnly": True}],
+            ["touchToolbar"],
+            ["buttonClass", "active", False],
+            ["buttonClass", "primary", False],
+            ["buttonClass", "dirty", False],
+            ["buttonAttr", "aria-label", "Edit file"],
+            ["touchToolbar"],
+            ["touchToolbar"],
+            ["touchToolbar"],
+        ]
         self.assertEqual(result["render"]["openErrors"], {
-            "currentError": {"result": False, "status": "error: boom", "resetCount": 1, "touchCount": 1, "events": [["resetBuffer"], ["touchToolbar"]]},
-            "abortErrorResult": {"result": False, "status": "error: boom", "resetCount": 1, "touchCount": 1, "events": [], "abortCheck": True},
-            "staleError": {"result": False, "status": "error: boom", "resetCount": 1, "touchCount": 1, "events": []},
-            "unknownError": {"result": False, "status": "error: unknown error", "resetCount": 2, "touchCount": 2, "events": [["resetBuffer"], ["touchToolbar"]]},
+            "currentError": {"result": False, "status": "error: boom", "resetCount": 0, "touchCount": 4, "events": reset_events},
+            "abortErrorResult": {"result": False, "status": "error: boom", "resetCount": 0, "touchCount": 4, "events": [], "abortCheck": True},
+            "staleError": {"result": False, "status": "error: boom", "resetCount": 0, "touchCount": 4, "events": []},
+            "unknownError": {"result": False, "status": "error: unknown error", "resetCount": 0, "touchCount": 8, "events": reset_events},
         })
         self.assertEqual(result["render"]["finalize"], {
             "result": True,
@@ -638,7 +656,6 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "viewMode": "file",
             "events": [
                 ["setFileViewMode", "file"],
-                ["applyActiveFileTextState", {"text": "", "editable": True, "version": "", "draft": True}],
                 ["applyFileMode"],
                 ["renderMonacoFile", "draft/new.txt", "", 5, ""],
                 ["setFileEditMode", True],
@@ -646,10 +663,21 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
                 ["renderFilePickerMenu"],
             ],
         })
+        draft_reset_events = [
+            ["setFileEditMode", False],
+            ["editorOptions", {"readOnly": True}],
+            ["touchToolbar"],
+            ["buttonClass", "active", False],
+            ["buttonClass", "primary", False],
+            ["buttonClass", "dirty", False],
+            ["buttonAttr", "aria-label", "Edit file"],
+            ["touchToolbar"],
+            ["touchToolbar"],
+        ]
         self.assertEqual(result["render"]["draftErrors"], {
-            "currentDraftError": {"result": False, "status": "error: draft boom", "resetCount": 1, "touchCount": 0, "events": [["resetBuffer"]]},
-            "abortDraftError": {"result": False, "status": "error: draft boom", "resetCount": 1, "touchCount": 0, "events": []},
-            "staleDraftError": {"result": False, "status": "error: draft boom", "resetCount": 1, "touchCount": 0, "events": []},
+            "currentDraftError": {"result": False, "status": "error: draft boom", "resetCount": 0, "touchCount": 3, "events": draft_reset_events},
+            "abortDraftError": {"result": False, "status": "error: draft boom", "resetCount": 0, "touchCount": 3, "events": []},
+            "staleDraftError": {"result": False, "status": "error: draft boom", "resetCount": 0, "touchCount": 3, "events": []},
         })
         self.assertEqual(result["render"]["saveBodies"], {
             "draft": {"path": "new.py", "text": "NEW", "create": True},
@@ -736,7 +764,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         })
         self.assertEqual(result["render"]["unsavedDecision"], {
             "cleanUnsaved": {"result": True, "events": []},
-            "discardUnsaved": {"result": True, "events": [["promptUnsaved", "discard"], ["restoreFileEditorText", ""], ["setFileEditMode", False]]},
+            "discardUnsaved": {"result": True, "events": [["promptUnsaved", "discard"], ["restoreFileEditorText", "body"], ["setFileEditMode", False]]},
             "cancelUnsaved": {"result": False, "events": [["promptUnsaved", "cancel"]]},
         })
         self.assertEqual(result["render"]["viewModeGuard"], {
@@ -746,7 +774,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
                 "result": True,
                 "viewMode": "file",
                 "status": "Loading...",
-                "events": [["promptUnsaved", "discard"], ["restoreFileEditorText", ""], ["setFileEditMode", False], ["setFileViewMode", "preview"], ["renderFilePickerMenu"], ["disposeOpenRender"], ["resetFileViewerPanel"], ["setFileViewMode", "file"], ["api", "/api/sessions/sid-1/file/read?path=state.md&path_token=state-token&git_path=1", False], ["applyFileLoadResult", "state.md", "text", "file"], ["applyFileMode"], ["rememberOpenedFile", "state.md", "/abs/read"], ["rememberActiveFileSelection"], ["buttonClass", "active", False], ["buttonClass", "primary", False], ["buttonClass", "dirty", True], ["buttonAttr", "aria-label", "Edit file"], ["touchToolbar"], ["renderFilePickerMenu"]],
+                "events": [["promptUnsaved", "discard"], ["restoreFileEditorText", "body"], ["setFileEditMode", False], ["setFileViewMode", "preview"], ["renderFilePickerMenu"], ["disposeOpenRender"], ["resetFileViewerPanel"], ["setFileViewMode", "file"], ["api", "/api/sessions/sid-1/file/read?path=state.md&path_token=state-token&git_path=1", False], ["applyFileLoadResult", "state.md", "text", "file"], ["applyFileMode"], ["rememberOpenedFile", "state.md", "/abs/read"], ["rememberActiveFileSelection"], ["buttonClass", "active", False], ["buttonClass", "primary", False], ["buttonClass", "dirty", True], ["buttonAttr", "aria-label", "Edit file"], ["touchToolbar"], ["renderFilePickerMenu"]],
             },
             "viewModeCancel": {"result": False, "viewMode": "file", "status": "", "events": [["promptUnsaved", "cancel"]]},
             "viewModeUnavailable": {"result": False, "viewMode": "file", "status": "Session is no longer available; copy unsaved edits before closing.", "events": []},
@@ -754,7 +782,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["render"]["hideRequest"], {
             "hideClean": {"result": True, "events": [["hideFileViewer"]]},
             "hideCancel": {"result": False, "events": [["promptUnsaved", "cancel"]]},
-            "hideDiscard": {"result": True, "events": [["promptUnsaved", "discard"], ["restoreFileEditorText", ""], ["setFileEditMode", False], ["hideFileViewer"]]},
+            "hideDiscard": {"result": True, "events": [["promptUnsaved", "discard"], ["restoreFileEditorText", "body"], ["setFileEditMode", False], ["hideFileViewer"]]},
         })
         self.assertEqual(result["render"]["unavailableHandler"], {
             "unavailableHandleClean": {"result": True, "unavailable": False, "status": "", "events": [["hideFileViewer"]]},
@@ -772,7 +800,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "draftDirectory": {"result": False, "status": "draft/new.txt - path is a directory", "viewMode": "diff", "events": [["inspect", "draft/new.txt"]]},
             "draftExisting": {"result": True, "status": "Loading...", "viewMode": "file", "events": [["inspect", "draft/new.txt"], ["setFilePath", "draft/new.txt", {"line": None, "gitPath": False, "apiPath": ""}], ["setFileViewMode", "file"], ["renderFilePickerMenu"], ["disposeOpenRender"], ["resetFileViewerPanel"], ["api", "/api/sessions/sid-1/file/read?path=draft%2Fnew.txt", False], ["applyFileLoadResult", "draft/new.txt", "text", "file"], ["applyFileMode"], ["rememberOpenedFile", "draft/new.txt", "/abs/read"], ["rememberActiveFileSelection"], ["buttonClass", "active", True], ["buttonClass", "primary", True], ["buttonClass", "dirty", False], ["buttonAttr", "aria-label", "Save file"], ["touchToolbar"], ["renderFilePickerMenu"]]},
             "draftInspectError": {"result": False, "status": "error: inspect boom", "viewMode": "diff", "events": [["inspect", "draft/new.txt"]]},
-            "draftNew": {"result": True, "status": "draft/new.txt - new file", "viewMode": "file", "events": [["inspect", "draft/new.txt"], ["setFileViewMode", "file"], ["setFilePath", "draft/new.txt", {"line": None, "gitPath": False}], ["renderFilePickerMenu"], ["disposeOpenRender"], ["resetFileViewerPanel"], ["applyActiveFileTextState", {"text": "", "editable": True, "version": "", "draft": True}], ["applyFileMode"], ["renderMonacoFile", "draft/new.txt", "", None, ""], ["setFileEditMode", True], ["rememberActiveFileSelection"], ["renderFilePickerMenu"]]},
+            "draftNew": {"result": True, "status": "draft/new.txt - new file", "viewMode": "file", "events": [["inspect", "draft/new.txt"], ["setFileViewMode", "file"], ["setFilePath", "draft/new.txt", {"line": None, "gitPath": False}], ["renderFilePickerMenu"], ["disposeOpenRender"], ["resetFileViewerPanel"], ["applyFileMode"], ["renderMonacoFile", "draft/new.txt", "", None, ""], ["setFileEditMode", True], ["rememberActiveFileSelection"], ["renderFilePickerMenu"]]},
         })
         self.assertEqual(result["render"]["capabilities"], {
             "derivedCapabilities": {

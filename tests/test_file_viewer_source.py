@@ -731,6 +731,7 @@ def eval_file_paste_dialog_fallback() -> dict:
             renderFilePickerMenu: () => {{}},
           }});
           controller.setActiveFileIdentity("note.txt", {{}});
+          controller.applyActiveFileTextState({{ kind: "text", text: model.value, editable: true, version: "v1", draft: false }});
           await controller.pasteFromClipboardIntoActiveFile();
           if (opts.hideAfter) ctx.__test_hidePaste({{ restoreFocus: true }});
           return {{
@@ -864,6 +865,7 @@ def eval_file_paste_insert_button_guard() -> dict:
             renderFilePickerMenu: () => {{}},
           }});
           controller.setActiveFileIdentity("note.txt", {{}});
+          controller.applyActiveFileTextState({{ kind: "text", text: model.value, editable: true, version: "v1", draft: false }});
           if (state.unavailable) controller.disableFileViewerForUnavailableSession("sid-1");
           const result = controller.handleFilePasteInsert(state.inputValue);
           return {{ result, inputValue: state.inputValue, inserted: state.inserted, hidden: state.hidden, toasts: state.toasts, status: fileStatus.textContent, dirty: controller.currentFileDirty() }};
@@ -1300,6 +1302,7 @@ def eval_file_editor_delete_shortcut() -> dict:
             renderFilePickerMenu: () => {{}},
           }});
           controller.setActiveFileIdentity(overrides.path === false ? "" : "note.txt", {{ gitPath: Boolean(overrides.gitPath), apiPath: overrides.apiPath || "" }});
+          controller.applyActiveFileTextState({{ kind: state.kind, text: "", editable: state.editable, version: state.version, draft: state.draft }});
           if (state.selectMode) controller.toggleFileTouchSelectionMode();
           calls.focusCount = 0;
           if (state.unavailable) controller.disableFileViewerForUnavailableSession("sid-1");
@@ -1897,36 +1900,31 @@ def eval_open_file_path_mode_ownership() -> dict:
     return json.loads(proc.stdout)
 
 def eval_active_file_load_state_writers() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function applyActiveFileTextState(")
-    end = source.index("function getFileEditorText()", start)
+    source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    start = source.index("let activeFileKind = \"\"")
+    end = source.index("function clearActiveFileIdentity", start)
     snippet = source[start:end]
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
         const ctx = {{
-          activeFileKind: "",
-          activeFileText: "",
-          activeFileEditable: false,
-          activeFileVersion: "",
-          activeFileDraft: false,
+          clearActiveFileSaveState() {{}},
+          resetFileTouchSelectionState() {{}},
+          setFileEditMode() {{}},
+          setFileDirty() {{}},
         }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_load_state = { applyActiveFileTextState, applyActiveFileDiffState, applyActiveFileNonTextState };\n")}, ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_load_state = { applyActiveFileTextState, applyActiveFileDiffState, applyActiveFileNonTextState, resetActiveFileBufferState, currentActiveFileKind, currentActiveFileText, currentActiveFileEditable, currentActiveFileVersion, currentActiveFileDraft };\n")}, ctx);
         function stale() {{
-          ctx.activeFileKind = "stale";
-          ctx.activeFileText = "stale text";
-          ctx.activeFileEditable = true;
-          ctx.activeFileVersion = "stale-version";
-          ctx.activeFileDraft = true;
+          ctx.__test_load_state.applyActiveFileTextState({{ kind: "markdown", text: "stale text", editable: true, version: "stale-version", draft: true }});
         }}
         function state() {{
           return {{
-            kind: ctx.activeFileKind,
-            text: ctx.activeFileText,
-            editable: ctx.activeFileEditable,
-            version: ctx.activeFileVersion,
-            draft: ctx.activeFileDraft,
+            kind: ctx.__test_load_state.currentActiveFileKind(),
+            text: ctx.__test_load_state.currentActiveFileText(),
+            editable: ctx.__test_load_state.currentActiveFileEditable(),
+            version: ctx.__test_load_state.currentActiveFileVersion(),
+            draft: ctx.__test_load_state.currentActiveFileDraft(),
           }};
         }}
         const result = {{}};
@@ -1942,6 +1940,8 @@ def eval_active_file_load_state_writers() -> dict:
         stale();
         ctx.__test_load_state.applyActiveFileNonTextState("image");
         result.image = state();
+        ctx.__test_load_state.resetActiveFileBufferState();
+        result.reset = state();
         result.invalidTextThrows = false;
         try {{ ctx.__test_load_state.applyActiveFileTextState({{ kind: "image" }}); }} catch (err) {{ result.invalidTextThrows = err && err.message === "invalid active file text kind"; }}
         result.invalidNonTextThrows = false;
@@ -2064,6 +2064,7 @@ def eval_active_file_save_request_helpers() -> dict:
           renderFilePickerMenu: () => {{}},
         }});
         controller.setActiveFileIdentity("src/app.py", {{ line: 42, gitPath: true, apiPath: "token-1" }});
+        controller.applyActiveFileTextState({{ kind: "text", text: "old text", editable: true, version: state.version, draft: state.draft }});
         controller.setFileDirty(true);
         calls.length = 0;
         const save = controller.beginActiveFileSaveRequest();
@@ -2300,14 +2301,15 @@ def eval_active_file_save_success() -> dict:
           renderFilePickerMenu: () => calls.push(["renderFilePickerMenu"]),
         }});
         controller.setActiveFileIdentity("new.py", {{ line: 42, gitPath: true, apiPath: "old-token" }});
+        controller.applyActiveFileTextState({{ kind: state.kind, text: state.text, editable: state.editable, version: state.version, draft: state.draft }});
         function snapshot() {{
           const identity = controller.currentActiveFileIdentity();
           return {{
-            kind: state.kind,
-            text: state.text,
-            version: state.version,
-            editable: state.editable,
-            draft: state.draft,
+            kind: controller.currentActiveFileKind(),
+            text: controller.currentActiveFileText(),
+            version: controller.currentActiveFileVersion(),
+            editable: controller.currentActiveFileEditable(),
+            draft: controller.currentActiveFileDraft(),
             path: identity.path,
             gitPath: identity.gitPath,
             apiPath: identity.apiPath,
@@ -2328,6 +2330,7 @@ def eval_active_file_save_success() -> dict:
         state.draft = false;
         state.dirty = true;
         state.editMode = true;
+        controller.applyActiveFileTextState({{ kind: state.kind, text: state.text, editable: state.editable, version: state.version, draft: state.draft }});
         fileStatus.textContent = "";
         calls.length = 0;
         controller.setFileDirty(true);
@@ -2483,6 +2486,7 @@ def eval_active_file_save_transport() -> dict:
           state.editMode = true;
           state.unavailable = false;
           state.behavior = behavior;
+          controller.applyActiveFileTextState({{ kind: state.kind, text: state.text, editable: state.editable, version: state.version, draft: state.draft }});
           calls.length = 0;
           fileStatus.textContent = "";
           controller.setFileDirty(state.dirty);
@@ -2495,9 +2499,9 @@ def eval_active_file_save_transport() -> dict:
             ok,
             pending: controller.isFileSavePending(),
             sessionId: state.sessionId,
-            text: state.text,
-            version: state.version,
-            editable: state.editable,
+            text: controller.currentActiveFileText(),
+            version: controller.currentActiveFileVersion(),
+            editable: controller.currentActiveFileEditable(),
             dirty: controller.currentFileDirty(),
             editMode: state.editMode,
             path: identity.path,
@@ -2518,6 +2522,8 @@ def eval_active_file_save_transport() -> dict:
           state.dirty = overrides.dirty !== false;
           state.editMode = true;
           state.behavior = "success";
+          if (state.kind === "text" || state.kind === "markdown") controller.applyActiveFileTextState({{ kind: state.kind, text: state.text, editable: state.editable, version: state.version, draft: state.draft }});
+          else controller.applyActiveFileNonTextState(state.kind);
           controller.setFileDirty(state.dirty);
           calls.length = 0;
           fileStatus.textContent = "";
@@ -2530,7 +2536,7 @@ def eval_active_file_save_transport() -> dict:
             fileStatus.textContent = "Session is no longer available; copy unsaved edits before closing.";
           }}
           const ok = await controller.saveActiveFileEdits({{ exitEditMode: overrides.exitEditMode !== false }});
-          return {{ ok, status: fileStatus.textContent, calls: calls.slice(), dirty: controller.currentFileDirty(), editMode: state.editMode, text: state.text }};
+          return {{ ok, status: fileStatus.textContent, calls: calls.slice(), dirty: controller.currentFileDirty(), editMode: state.editMode, text: controller.currentActiveFileText() }};
         }}
         runCase("success")
           .then(async (success) => {{
@@ -2811,13 +2817,36 @@ def eval_file_open_success_finalizer() -> dict:
 
 def eval_file_load_result_dispatcher() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
-    state_start = source.index("function applyActiveFileTextState(")
-    state_end = source.index("function getFileEditorText()", state_start)
     surface_start = source.index("function setFileRenderSurface(surface)")
     surface_end = source.index("function resetFileViewerPanel()", surface_start)
     load_start = source.index("async function applyFileLoadResult(")
     load_end = source.index("fileBtn.onclick", load_start)
-    snippet = source[state_start:state_end] + "\n" + source[surface_start:surface_end] + "\n" + source[load_start:load_end]
+    state_helpers = """
+function currentActiveFileKind() { return activeFileKind; }
+function currentActiveFileEditable() { return activeFileEditable; }
+function applyActiveFileTextState({ kind = \"text\", text = \"\", editable = false, version = \"\", draft = false } = {}) {
+  const nextKind = String(kind || \"text\");
+  if (nextKind !== \"text\" && nextKind !== \"markdown\") throw new Error(\"invalid active file text kind\");
+  activeFileKind = nextKind;
+  activeFileText = String(text ?? \"\");
+  activeFileEditable = Boolean(editable);
+  activeFileVersion = typeof version === \"string\" ? version : \"\";
+  activeFileDraft = Boolean(draft);
+}
+function applyActiveFileDiffState({ currentText = \"\", currentExists = false } = {}) {
+  applyActiveFileTextState({ kind: \"text\", text: currentText, editable: Boolean(currentExists), version: \"\", draft: false });
+}
+function applyActiveFileNonTextState(kind) {
+  const nextKind = String(kind || \"\");
+  if (nextKind !== \"image\" && nextKind !== \"pdf\" && nextKind !== \"video\" && nextKind !== \"download_only\") throw new Error(\"invalid active file non-text kind\");
+  activeFileKind = nextKind;
+  activeFileText = \"\";
+  activeFileEditable = false;
+  activeFileVersion = \"\";
+  activeFileDraft = false;
+}
+"""
+    snippet = state_helpers + "\n" + source[surface_start:surface_end] + "\n" + source[load_start:load_end]
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -3241,7 +3270,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("if (openMode) setFileViewMode(openMode);", guard_block)
         self.assertIn("await openFilePath(path, { line, gitPath, apiPath, mode: openMode });", guard_block)
         self.assertIn("return Boolean(currentGuard());", guard_block)
-        self.assertIn("const diffable = canToggleMode && activeFileGitPathValue() && fileCandidateGitStateFresh && Boolean(entry && entry.changed) && isDiffableFileKind(activeFileKind);", source)
+        self.assertIn("const diffable = canToggleMode && activeFileGitPathValue() && fileCandidateGitStateFresh && Boolean(entry && entry.changed) && isDiffableFileKind(currentActiveFileKind());", source)
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertNotIn("function normalizeExplicitFileOpenMode(requestedMode)", source)
         self.assertNotIn("function resolveFileOpenViewMode(request, rel, requestedMode = null)", source)
@@ -3412,7 +3441,6 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertTrue(result["success"]["ok"])
         self.assertEqual(result["success"]["calls"], [
             ["setFileViewMode", "file"],
-            ["applyActiveFileTextState", {"text": "", "editable": True, "version": "", "draft": True}],
             ["applyFileMode"],
             ["renderMonacoFile", "new/file.txt", "", 7, ""],
             ["setFileEditMode", True],
@@ -3422,14 +3450,12 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(result["success"]["status"], "new/file.txt - new file")
         self.assertFalse(result["failedRender"]["ok"])
         self.assertEqual(result["failedRender"]["calls"], [
-            ["applyActiveFileTextState", {"text": "", "editable": True, "version": "", "draft": True}],
             ["applyFileMode"],
             ["renderMonacoFile", "new/file.txt", "", 7, ""],
         ])
         self.assertEqual(result["failedRender"]["status"], "")
         self.assertFalse(result["staleResult"]["ok"])
         self.assertEqual(result["staleResult"]["calls"], [
-            ["applyActiveFileTextState", {"text": "", "editable": True, "version": "", "draft": True}],
             ["applyFileMode"],
             ["renderMonacoFile", "new/file.txt", "", 7, ""],
         ])
@@ -3438,7 +3464,6 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(result["primitiveSuccess"]["calls"], [
             ["disposeOpenRender"],
             ["resetFileViewerPanel"],
-            ["applyActiveFileTextState", {"text": "", "editable": True, "version": "", "draft": True}],
             ["applyFileMode"],
             ["renderMonacoFile", "new/file.txt", "", 7, ""],
             ["setFileEditMode", True],
@@ -3471,15 +3496,22 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(result["draft"], {"kind": "text", "text": "", "editable": True, "version": "", "draft": True})
         self.assertEqual(result["diff"], {"kind": "text", "text": "current", "editable": True, "version": "", "draft": False})
         self.assertEqual(result["image"], {"kind": "image", "text": "", "editable": False, "version": "", "draft": False})
+        self.assertEqual(result["reset"], {"kind": "", "text": "", "editable": False, "version": "", "draft": False})
         self.assertTrue(result["invalidTextThrows"])
         self.assertTrue(result["invalidNonTextThrows"])
         source = APP_JS.read_text(encoding="utf-8")
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
-        self.assertIn("function applyActiveFileTextState({ kind = \"text\", text = \"\", editable = false, version = \"\", draft = false } = {})", source)
-        self.assertIn("function applyActiveFileDiffState({ currentText = \"\", currentExists = false } = {})", source)
-        self.assertIn("function applyActiveFileNonTextState(kind)", source)
-        self.assertIn('throw new Error("invalid active file text kind")', source)
-        self.assertIn('throw new Error("invalid active file non-text kind")', source)
+        self.assertIn("let activeFileKind = \"\";", viewer_source)
+        self.assertNotIn("let activeFileKind = \"\";", source)
+        self.assertIn("function applyActiveFileTextState({ kind = \"text\", text = \"\", editable = false, version = \"\", draft = false } = {})", viewer_source)
+        self.assertIn("function applyActiveFileDiffState({ currentText = \"\", currentExists = false } = {})", viewer_source)
+        self.assertIn("function applyActiveFileNonTextState(kind)", viewer_source)
+        self.assertIn('throw new Error("invalid active file text kind")', viewer_source)
+        self.assertIn('throw new Error("invalid active file non-text kind")', viewer_source)
+        self.assertIn("function currentActiveFileKind()", source)
+        self.assertIn("return fileViewerController.currentActiveFileKind();", source)
+        self.assertIn("function resetActiveFileBufferState()", viewer_source)
+        self.assertIn("fileViewerController.resetActiveFileBufferState();", source)
         self.assertIn('applyActiveFileTextState({ text: "", editable: true, version: "", draft: true });', viewer_source)
         self.assertIn("applyActiveFileDiffState({ currentText, currentExists: result.currentExists });", source)
         self.assertIn('applyActiveFileNonTextState("image");', source)
@@ -3961,7 +3993,6 @@ class TestFileViewerSource(unittest.TestCase):
             "editMode": False,
             "status": "new.py - 3B",
             "calls": [
-                ["applyActiveFileTextState", {"kind": "text", "text": "NEW", "editable": True, "version": "v2", "draft": False}],
                 ["applyFileMode"],
                 ["updateFileTouchToolbar"],
                 ["updateFileTouchToolbar"],
@@ -3985,7 +4016,6 @@ class TestFileViewerSource(unittest.TestCase):
             "editMode": True,
             "status": "existing.md - 4B",
             "calls": [
-                ["applyActiveFileTextState", {"kind": "markdown", "text": "BODY", "editable": True, "version": "v0", "draft": False}],
                 ["applyFileMode"],
                 ["updateFileTouchToolbar"],
                 ["updateFileTouchToolbar"],
@@ -4013,7 +4043,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertFalse(result["success"]["editMode"])
         self.assertEqual(result["success"]["status"], "src.py - 4B")
         self.assertIn(["api", "/api/sessions/sid-1/file/write", "POST", {"path": "src.py", "text": "NEW", "version": "v1", "git_path": True, "path_token": "tok"}], result["success"]["calls"])
-        self.assertIn(["applyActiveFileTextState", {"kind": "text", "text": "NEW", "editable": False, "version": "v2", "draft": False}], result["success"]["calls"])
+        self.assertNotIn(["applyActiveFileTextState", {"kind": "text", "text": "NEW", "editable": False, "version": "v2", "draft": False}], result["success"]["calls"])
         self.assertEqual(result["success"]["calls"][-2:], [["renderFilePickerMenu"], ["updateFileTouchToolbar"]])
 
         self.assertTrue(result["staleSuccess"]["ok"])
@@ -4044,8 +4074,9 @@ class TestFileViewerSource(unittest.TestCase):
             "editMode": False,
             "text": "old",
         })
-        for name in ["noSession", "noPath", "nonText", "notEditable"]:
+        for name in ["noSession", "noPath", "notEditable"]:
             self.assertEqual(preconditions[name], {"ok": False, "status": "", "calls": [], "dirty": True, "editMode": True, "text": "old"})
+        self.assertEqual(preconditions["nonText"], {"ok": False, "status": "", "calls": [], "dirty": True, "editMode": True, "text": ""})
         self.assertEqual(preconditions["cleanExit"], {"ok": True, "status": "", "calls": [["setFileEditMode", False]], "dirty": False, "editMode": False, "text": "old"})
         self.assertTrue(preconditions["dirtySubmit"]["ok"])
         self.assertEqual(preconditions["dirtySubmit"]["status"], "src.py - 4B")

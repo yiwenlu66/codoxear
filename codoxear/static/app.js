@@ -7023,11 +7023,6 @@
         const FILE_CANDIDATE_CACHE_TTL_MS = 15000;
         let fileViewerReturnFocusEl = null;
         let fileViewerSessionId = "";
-        let activeFileKind = "";
-        let activeFileText = "";
-        let activeFileEditable = false;
-        let activeFileVersion = "";
-        let activeFileDraft = false;
         let activeVideoFallback = null;
         let fileMenuOpen = false;
         let fileMenuFocus = -1;
@@ -7495,7 +7490,7 @@
           return Boolean(
             useTouchFileEditorControls() &&
             isFileViewerOpen() &&
-            isTextFileKind(activeFileKind) &&
+            isTextFileKind(currentActiveFileKind()) &&
             fileViewMode !== "preview" &&
             getActiveFileCodeEditor()
           );
@@ -7681,39 +7676,39 @@
         }
 
         function resetActiveFileBufferState() {
-          activeFileKind = "";
-          activeFileText = "";
-          activeFileEditable = false;
-          activeFileVersion = "";
-          activeFileDraft = false;
-          fileEditMode = false;
-          clearActiveFileSaveState();
-          resetFileTouchSelectionState();
-          setFileDirty(false);
+          fileViewerController.resetActiveFileBufferState();
         }
 
-        function applyActiveFileTextState({ kind = "text", text = "", editable = false, version = "", draft = false } = {}) {
-          const nextKind = String(kind || "text");
-          if (nextKind !== "text" && nextKind !== "markdown") throw new Error("invalid active file text kind");
-          activeFileKind = nextKind;
-          activeFileText = String(text ?? "");
-          activeFileEditable = Boolean(editable);
-          activeFileVersion = typeof version === "string" ? version : "";
-          activeFileDraft = Boolean(draft);
+        function currentActiveFileKind() {
+          return fileViewerController.currentActiveFileKind();
         }
 
-        function applyActiveFileDiffState({ currentText = "", currentExists = false } = {}) {
-          applyActiveFileTextState({ kind: "text", text: currentText, editable: Boolean(currentExists), version: "", draft: false });
+        function currentActiveFileText() {
+          return fileViewerController.currentActiveFileText();
+        }
+
+        function currentActiveFileEditable() {
+          return fileViewerController.currentActiveFileEditable();
+        }
+
+        function currentActiveFileVersion() {
+          return fileViewerController.currentActiveFileVersion();
+        }
+
+        function currentActiveFileDraft() {
+          return fileViewerController.currentActiveFileDraft();
+        }
+
+        function applyActiveFileTextState(state) {
+          return fileViewerController.applyActiveFileTextState(state);
+        }
+
+        function applyActiveFileDiffState(state) {
+          return fileViewerController.applyActiveFileDiffState(state);
         }
 
         function applyActiveFileNonTextState(kind) {
-          const nextKind = String(kind || "");
-          if (nextKind !== "image" && nextKind !== "pdf" && nextKind !== "video" && nextKind !== "download_only") throw new Error("invalid active file non-text kind");
-          activeFileKind = nextKind;
-          activeFileText = "";
-          activeFileEditable = false;
-          activeFileVersion = "";
-          activeFileDraft = false;
+          return fileViewerController.applyActiveFileNonTextState(kind);
         }
 
         function getFileEditorText() {
@@ -7721,11 +7716,11 @@
             const model = fileEditor.getModel();
             if (model && typeof model.getValue === "function") return String(model.getValue());
           }
-          return String(activeFileText || "");
+          return String(currentActiveFileText() || "");
         }
 
         function restoreFileEditorText(text) {
-          activeFileText = String(text || "");
+          const restoredText = String(text || "");
           if (fileEditorKind !== "file" || !fileEditor || typeof fileEditor.getModel !== "function") {
             setFileDirty(false);
             return;
@@ -7736,7 +7731,7 @@
             return;
           }
           fileEditorProgrammaticChange = true;
-          model.setValue(activeFileText);
+          model.setValue(restoredText);
           fileEditorProgrammaticChange = false;
           setFileDirty(false);
         }
@@ -7937,7 +7932,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             fileEditor = monaco.editor.create(host, {
               language: lang || "plaintext",
               value: String(text || ""),
-              readOnly: !(fileEditMode && activeFileEditable && !isFileViewerSessionUnavailable()),
+              readOnly: !(fileEditMode && currentActiveFileEditable() && !isFileViewerSessionUnavailable()),
               theme: "codoxear-github-light",
               lineNumbers: "on",
               minimap: { enabled: false },
@@ -7964,7 +7959,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             fileEditorChangeDisposable = fileEditor.onDidChangeModelContent(() => {
               if (fileEditorProgrammaticChange) return;
               if (currentFileTouchSelectMode()) resetFileTouchSelectionState();
-              setFileDirty(getFileEditorText() !== String(activeFileText || ""));
+              setFileDirty(getFileEditorText() !== String(currentActiveFileText() || ""));
             });
           } else {
             const model = fileEditor.getModel();
@@ -8342,14 +8337,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           nowMs: () => Date.now(),
           setToast: (message) => setToast(message),
           setFileViewMode: (mode) => setFileViewMode(mode),
-          applyActiveFileTextState: (state) => applyActiveFileTextState(state),
           renderMonacoFile: (rel, text, lineNumber, langOverride, request) => renderMonacoFile(rel, text, lineNumber, langOverride, request),
           setFileEditMode: (enabled) => setFileEditMode(enabled),
-          currentActiveFileKind: () => activeFileKind,
-          currentActiveFileDraft: () => activeFileDraft,
-          currentActiveFileVersion: () => activeFileVersion,
-          currentActiveFileEditable: () => activeFileEditable,
-          currentActiveFileText: () => activeFileText,
           getFileEditorText: () => getFileEditorText(),
           fmtBytes: (value) => fmtBytes(value),
           applyFileMode: () => applyFileMode(),
@@ -8469,16 +8458,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         function applyFileMode() {
           const hasPath = Boolean(activeFilePathValue());
           const entry = hasPath ? activeFileEntry() : null;
-          const canToggleMode = hasPath && !activeFileDraft;
+          const canToggleMode = hasPath && !currentActiveFileDraft();
           const isDiff = fileViewMode === "diff";
           const isPreview = fileViewMode === "preview";
-          const diffable = canToggleMode && activeFileGitPathValue() && fileCandidateGitStateFresh && Boolean(entry && entry.changed) && isDiffableFileKind(activeFileKind);
-          const previewable = !activeFileDraft && activeFileKind === "markdown";
+          const diffable = canToggleMode && activeFileGitPathValue() && fileCandidateGitStateFresh && Boolean(entry && entry.changed) && isDiffableFileKind(currentActiveFileKind());
+          const previewable = !currentActiveFileDraft() && currentActiveFileKind() === "markdown";
           fileModeDiffBtn.classList.toggle("active", hasPath && isDiff);
           fileModePreviewBtn.classList.toggle("active", hasPath && isPreview);
           fileModeDiffBtn.disabled = !diffable;
           fileModePreviewBtn.disabled = !canToggleMode;
-          fileDownloadBtn.disabled = !hasPath || activeFileDraft;
+          fileDownloadBtn.disabled = !hasPath || currentActiveFileDraft();
           const videoPreviewAvailable = Boolean(activeVideoFallback && activeVideoFallback.previewUrl && !activeVideoFallback.used);
           fileVideoPreviewBtn.style.display = videoPreviewAvailable ? "" : "none";
           fileVideoPreviewBtn.disabled = !videoPreviewAvailable || Boolean(activeVideoFallback && activeVideoFallback.preparing);
@@ -8835,7 +8824,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             pickerEntryForPath,
             keyForPath: fileCandidateKey,
             draftEntry: draftFileEntry,
-            activeFileDraft,
+            activeFileDraft: currentActiveFileDraft(),
             activeFilePath: activeFilePathValue(),
             searchActive: filePickerSearchActive,
             query,
@@ -9491,7 +9480,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
           if (typeof result.text !== "string") throw new Error("invalid response");
           applyActiveFileTextState({ kind: result.kind === "markdown" ? "markdown" : "text", text: result.text, editable: Boolean(result.editable), version: typeof result.version === "string" ? result.version : "" });
-          if (viewMode === "preview" && activeFileKind === "markdown") {
+          if (viewMode === "preview" && currentActiveFileKind() === "markdown") {
             renderMarkdownPreview(rel, result.text);
           } else {
             const rendered = await renderMonacoFile(rel, result.text, request.line, "", request);
@@ -9499,8 +9488,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
           const size = typeof result.size === "number" ? result.size : result.text.length;
           const statusParts = [rel];
-          if (viewMode === "preview" && activeFileKind === "markdown") statusParts.push("preview");
-          if (!activeFileEditable) statusParts.push("read-only");
+          if (viewMode === "preview" && currentActiveFileKind() === "markdown") statusParts.push("preview");
+          if (!currentActiveFileEditable()) statusParts.push("read-only");
           statusParts.push(fmtBytes(size));
           fileStatus.textContent = statusParts.join(" - ");
           return true;

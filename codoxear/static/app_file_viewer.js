@@ -56,7 +56,6 @@
     const activeFileEntry = requireFunction(deps && deps.activeFileEntry, "activeFileEntry");
     const fileCandidateGitStateFresh = requireFunction(deps && deps.fileCandidateGitStateFresh, "fileCandidateGitStateFresh");
     const isMarkdownPreviewable = requireFunction(deps && deps.isMarkdownPreviewable, "isMarkdownPreviewable");
-    const resetActiveFileBufferState = requireFunction(deps && deps.resetActiveFileBufferState, "resetActiveFileBufferState");
     const updateFileTouchToolbar = requireFunction(deps && deps.updateFileTouchToolbar, "updateFileTouchToolbar");
     const isFileTouchToolbarActive = requireFunction(deps && deps.isFileTouchToolbarActive, "isFileTouchToolbarActive");
     const fileEditorShortcutBlocked = requireFunction(deps && deps.fileEditorShortcutBlocked, "fileEditorShortcutBlocked");
@@ -79,14 +78,8 @@
     const nowMs = requireFunction(deps && deps.nowMs, "nowMs");
     const setToast = requireFunction(deps && deps.setToast, "setToast");
     const setFileViewMode = requireFunction(deps && deps.setFileViewMode, "setFileViewMode");
-    const applyActiveFileTextState = requireFunction(deps && deps.applyActiveFileTextState, "applyActiveFileTextState");
     const renderMonacoFile = requireFunction(deps && deps.renderMonacoFile, "renderMonacoFile");
     const setFileEditMode = requireFunction(deps && deps.setFileEditMode, "setFileEditMode");
-    const currentActiveFileKind = requireFunction(deps && deps.currentActiveFileKind, "currentActiveFileKind");
-    const currentActiveFileDraft = requireFunction(deps && deps.currentActiveFileDraft, "currentActiveFileDraft");
-    const currentActiveFileVersion = requireFunction(deps && deps.currentActiveFileVersion, "currentActiveFileVersion");
-    const currentActiveFileEditable = requireFunction(deps && deps.currentActiveFileEditable, "currentActiveFileEditable");
-    const currentActiveFileText = requireFunction(deps && deps.currentActiveFileText, "currentActiveFileText");
     const getFileEditorText = requireFunction(deps && deps.getFileEditorText, "getFileEditorText");
     const fmtBytes = requireFunction(deps && deps.fmtBytes, "fmtBytes");
     const applyFileMode = requireFunction(deps && deps.applyFileMode, "applyFileMode");
@@ -104,6 +97,11 @@
     let activeFileApiPath = "";
     let activeFileGitPath = false;
     let activeFileLine = null;
+    let activeFileKind = "";
+    let activeFileText = "";
+    let activeFileEditable = false;
+    let activeFileVersion = "";
+    let activeFileDraft = false;
     let unavailableSessionId = "";
     let fileTouchSelectMode = false;
     let fileTouchSelectAnchor = null;
@@ -179,6 +177,62 @@
 
     function currentActiveFileLine() {
       return activeFileLine;
+    }
+
+    function currentActiveFileKind() {
+      return activeFileKind;
+    }
+
+    function currentActiveFileText() {
+      return activeFileText;
+    }
+
+    function currentActiveFileEditable() {
+      return activeFileEditable;
+    }
+
+    function currentActiveFileVersion() {
+      return activeFileVersion;
+    }
+
+    function currentActiveFileDraft() {
+      return activeFileDraft;
+    }
+
+    function resetActiveFileBufferState() {
+      activeFileKind = "";
+      activeFileText = "";
+      activeFileEditable = false;
+      activeFileVersion = "";
+      activeFileDraft = false;
+      setFileEditMode(false);
+      clearActiveFileSaveState();
+      resetFileTouchSelectionState();
+      setFileDirty(false);
+    }
+
+    function applyActiveFileTextState({ kind = "text", text = "", editable = false, version = "", draft = false } = {}) {
+      const nextKind = String(kind || "text");
+      if (nextKind !== "text" && nextKind !== "markdown") throw new Error("invalid active file text kind");
+      activeFileKind = nextKind;
+      activeFileText = String(text ?? "");
+      activeFileEditable = Boolean(editable);
+      activeFileVersion = typeof version === "string" ? version : "";
+      activeFileDraft = Boolean(draft);
+    }
+
+    function applyActiveFileDiffState({ currentText = "", currentExists = false } = {}) {
+      applyActiveFileTextState({ kind: "text", text: currentText, editable: Boolean(currentExists), version: "", draft: false });
+    }
+
+    function applyActiveFileNonTextState(kind) {
+      const nextKind = String(kind || "");
+      if (nextKind !== "image" && nextKind !== "pdf" && nextKind !== "video" && nextKind !== "download_only") throw new Error("invalid active file non-text kind");
+      activeFileKind = nextKind;
+      activeFileText = "";
+      activeFileEditable = false;
+      activeFileVersion = "";
+      activeFileDraft = false;
     }
 
     function clearActiveFileIdentity({ line = null } = {}) {
@@ -1098,6 +1152,15 @@
       nextActiveFileIdentity,
       currentActiveFileIdentity,
       currentActiveFileLine,
+      currentActiveFileKind,
+      currentActiveFileText,
+      currentActiveFileEditable,
+      currentActiveFileVersion,
+      currentActiveFileDraft,
+      resetActiveFileBufferState,
+      applyActiveFileTextState,
+      applyActiveFileDiffState,
+      applyActiveFileNonTextState,
       clearActiveFileIdentity,
       setActiveFileIdentity,
       beginActiveFileIdentity,
