@@ -6218,3 +6218,10 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: delete-key decision policy now belongs to the file-viewer controller. App still owns native delete suppression event listeners/storage, touch toolbar DOM state, selection reset/move mechanics, paste dialog/insert actions, raw load-result rendering, raw view-mode DOM application, unsaved modal DOM, and discard implementation.
+
+## 2026-06-30T13:11:36Z Reviewer infrastructure failure after keyboard policy checkpoint
+- Observation: async clean-room review run `5a1ff33d-fed1-4831-b49a-b6c0ac7e8cf7` failed before writing a result.
+- Raw failure reported by runner: `Async runner process 3039886 exited or disappeared before writing a result. Marked run failed by stale-run reconciliation.`
+- Intended review output file: `/tmp/codoxear-controller-keyboard-open-review.md`; no review finding was produced or applied.
+- Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against the code changes. The code-evidence basis remains the committed validation through `84b78d1`: focused tests, full local pytest, Docker sandbox, syntax checks, and diff checks.
+- Decision: continue refactor work; retry clean-room review before a final/checkpoint response if the async runner is available.
