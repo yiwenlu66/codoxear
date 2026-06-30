@@ -6160,3 +6160,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: draft/new-file open primitive now belongs to the file-viewer controller. App still owns raw view-mode DOM application, generic existing-file load/render application, unsaved modal DOM, discard implementation, touch selection state/actions, and paste dialog/insert actions.
+
+## 2026-06-30T12:41:31Z Existing file open primitive controller ownership
+- Functional commit `a60123f Move existing file open primitive into viewer controller` moved the existing-file open primitive from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the controller now owns `openFilePath(nextPath, options)`: unavailable/session/empty-path preconditions, file-open request creation/finalization, loading status, view-mode resolution/application, fetch dispatch, currentness checks, raw load-result dispatch, success finalization, error rendering, and finally cleanup.
+- Dependency direction changed: app no longer injects `openFilePath` and no longer keeps `openFilePath`, `finalizeFileOpenSuccess`, `normalizeExplicitFileOpenMode`, `resolveFileOpenViewMode`, `beginFileOpenRequest`, `finalizeFileOpenRequest`, or `startFileOpenRequest` wrappers. The controller receives only raw app render/reset dependencies: `applyFileLoadResult` and `resetFileViewerPanel`; app still keeps `isCurrentFileOpenRequest` for raw render currentness checks and `cancelPendingFileOpen` for modal/session transitions.
+- Tests updated:
+  - `tests/test_frontend_file_viewer_module_source.py` now observes view-mode, draft-existing, and reload-conflict paths executing the real controller open primitive through fetch/apply/finalize or explicit failure.
+  - `tests/test_file_viewer_source.py` moved open-mode/open-primitive probes to real controller instances and source sentinels now assert open request/fetch/finalize/error policy lives in `app_file_viewer.js` while raw `applyFileLoadResult` remains in `app.js`.
+- Validation before commit:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `91 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: existing-file open primitive now belongs to the file-viewer controller. App still owns raw load-result rendering, raw view-mode DOM application, unsaved modal DOM, discard implementation, touch selection state/actions, and paste dialog/insert actions.
