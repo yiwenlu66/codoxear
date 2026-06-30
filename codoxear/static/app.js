@@ -7623,28 +7623,7 @@
         }
 
         function handleFileEditorDeleteKeydown(e) {
-          if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return false;
-          const key = String(e.key || "").toLowerCase();
-          const command = fileEditorDeleteCommandForKey(key);
-          if (!command) return false;
-          if (!activeFileEditorWritable()) return false;
-          const target = e.target instanceof HTMLElement ? e.target : null;
-          if (fileEditorShortcutBlocked(target)) return false;
-          if (!isActiveFileEditorInput(target)) return false;
-          const editor = getActiveFileCodeEditor();
-          if (!editor || typeof editor.trigger !== "function") return false;
-          fileTouchDeleteNativeSuppressUntil = Date.now() + 250;
-          e.preventDefault();
-          e.stopPropagation();
-          try {
-            focusActiveFileCodeEditor();
-            editor.trigger("file-editor-delete-key", command, null);
-            if (fileTouchSelectMode) resetFileTouchSelectionState();
-            return true;
-          } catch (e) {
-            setToast(`delete error: ${e && e.message ? e.message : "unknown error"}`);
-            return true;
-          }
+          return fileViewerController.handleFileEditorDeleteKeydown(e);
         }
 
         function isFileEditorNativeDeleteEvent(e) {
@@ -8470,6 +8449,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           eventTargetElement: (value) => value instanceof HTMLElement ? value : null,
           resetFileTouchSelectionState: (options) => resetFileTouchSelectionState(options),
           moveFileTouchSelection: (direction) => moveFileTouchSelection(direction),
+          fileEditorDeleteCommandForKey: (key) => fileEditorDeleteCommandForKey(key),
+          isActiveFileEditorInput: (target) => isActiveFileEditorInput(target),
+          focusActiveFileCodeEditor: () => focusActiveFileCodeEditor(),
+          setFileTouchDeleteNativeSuppressUntil: (value) => { fileTouchDeleteNativeSuppressUntil = value; },
+          nowMs: () => Date.now(),
+          setToast: (message) => setToast(message),
           setFileViewMode: (mode) => setFileViewMode(mode),
           applyActiveFileTextState: (state) => applyActiveFileTextState(state),
           renderMonacoFile: (rel, text, lineNumber, langOverride, request) => renderMonacoFile(rel, text, lineNumber, langOverride, request),

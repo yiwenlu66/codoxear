@@ -64,6 +64,12 @@
     const eventTargetElement = requireFunction(deps && deps.eventTargetElement, "eventTargetElement");
     const resetFileTouchSelectionState = requireFunction(deps && deps.resetFileTouchSelectionState, "resetFileTouchSelectionState");
     const moveFileTouchSelection = requireFunction(deps && deps.moveFileTouchSelection, "moveFileTouchSelection");
+    const fileEditorDeleteCommandForKey = requireFunction(deps && deps.fileEditorDeleteCommandForKey, "fileEditorDeleteCommandForKey");
+    const isActiveFileEditorInput = requireFunction(deps && deps.isActiveFileEditorInput, "isActiveFileEditorInput");
+    const focusActiveFileCodeEditor = requireFunction(deps && deps.focusActiveFileCodeEditor, "focusActiveFileCodeEditor");
+    const setFileTouchDeleteNativeSuppressUntil = requireFunction(deps && deps.setFileTouchDeleteNativeSuppressUntil, "setFileTouchDeleteNativeSuppressUntil");
+    const nowMs = requireFunction(deps && deps.nowMs, "nowMs");
+    const setToast = requireFunction(deps && deps.setToast, "setToast");
     const setFileViewMode = requireFunction(deps && deps.setFileViewMode, "setFileViewMode");
     const applyActiveFileTextState = requireFunction(deps && deps.applyActiveFileTextState, "applyActiveFileTextState");
     const renderMonacoFile = requireFunction(deps && deps.renderMonacoFile, "renderMonacoFile");
@@ -617,6 +623,32 @@
       moveFileTouchSelection(direction);
     }
 
+    function handleFileEditorDeleteKeydown(event) {
+      const e = event || {};
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return false;
+      const key = String(e.key || "").toLowerCase();
+      const command = fileEditorDeleteCommandForKey(key);
+      if (!command) return false;
+      if (!activeFileEditorWritable()) return false;
+      const target = eventTargetElement(e.target);
+      if (fileEditorShortcutBlocked(target)) return false;
+      if (!isActiveFileEditorInput(target)) return false;
+      const editor = focusEditor();
+      if (!editor || typeof editor.trigger !== "function") return false;
+      setFileTouchDeleteNativeSuppressUntil(nowMs() + 250);
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        focusActiveFileCodeEditor();
+        editor.trigger("file-editor-delete-key", command, null);
+        if (currentFileTouchSelectMode()) resetFileTouchSelectionState();
+        return true;
+      } catch (error) {
+        setToast(`delete error: ${error && error.message ? error.message : "unknown error"}`);
+        return true;
+      }
+    }
+
     async function openFilePath(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined, mode = null } = {}) {
       if (blockUnavailableFileAction()) return false;
       if (!normalizeSessionId(currentSessionId())) return false;
@@ -814,6 +846,7 @@
       syncFileEditorReadOnly,
       updateFileEditButton,
       handleFileTouchSelectionKeydown,
+      handleFileEditorDeleteKeydown,
       finalizeFileOpenSuccess,
       applyDraftFileLoad,
       renderFileOpenError,

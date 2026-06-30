@@ -314,6 +314,12 @@ def eval_empty_file_viewer_target() -> dict:
           eventTargetElement: (value) => value || null,
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
+          fileEditorDeleteCommandForKey: () => "",
+          isActiveFileEditorInput: () => false,
+          focusActiveFileCodeEditor: () => null,
+          setFileTouchDeleteNativeSuppressUntil: () => {{}},
+          nowMs: () => 0,
+          setToast: (message) => calls.push(["toast", message]),
         }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_empty = renderEmptyFileViewerTarget;\n")}, ctx);
@@ -962,6 +968,12 @@ def eval_file_touch_selection_keydown() -> dict:
             eventTargetElement: (value) => value instanceof FakeElement ? value : null,
             resetFileTouchSelectionState: (opts) => events.resetArgs.push(opts || {{}}),
             moveFileTouchSelection: (direction) => events.moves.push(direction),
+            fileEditorDeleteCommandForKey: () => "",
+            isActiveFileEditorInput: () => false,
+            focusActiveFileCodeEditor: () => null,
+            setFileTouchDeleteNativeSuppressUntil: () => {{}},
+            nowMs: () => 0,
+            setToast: () => {{}},
             setFileViewMode: () => {{}},
             applyActiveFileTextState: () => {{}},
             renderMonacoFile: async () => true,
@@ -1020,72 +1032,110 @@ def eval_file_touch_selection_keydown() -> dict:
     return json.loads(proc.stdout)
 
 def eval_file_editor_delete_shortcut() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    predicate_start = source.index("function currentFileEditorState() {")
-    predicate_end = source.index("function syncFileEditorReadOnly()", predicate_start)
-    handler_start = source.index("function isActiveFileEditorInput(target) {")
-    handler_end = source.index("function isFileEditorNativeDeleteEvent(e)", handler_start)
-    snippet = source[predicate_start:predicate_end] + "\n" + source[handler_start:handler_end]
+    source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(source)}, ctx);
         class FakeElement {{
           constructor(opts = {{}}) {{
             this.textEntry = Boolean(opts.textEntry);
             this.editorInput = Boolean(opts.editorInput);
-            this._inputarea = Boolean(opts.inputarea);
-            this.classList = {{ contains: (name) => name === "inputarea" && this._inputarea }};
           }}
         }}
-        const snippet = {json.dumps(snippet + "\nglobalThis.__test_deleteShortcut = handleFileEditorDeleteKeydown;\n")};
         function runCase(overrides = {{}}) {{
-          const editorNode = {{ contains: (node) => Boolean(node && node.editorInput) }};
-          const fileViewer = {{ style: {{ display: overrides.viewerOpen === false ? "none" : "flex" }} }};
-          const filePasteDialog = {{ style: {{ display: overrides.nestedDialog ? "flex" : "none" }} }};
-          const fileUnsavedDialog = {{ style: {{ display: "none" }} }};
-          const ctx = {{
-            HTMLElement: FakeElement,
-            Date: {{ now: () => 123456 }},
-            fileViewer,
-            filePasteDialog,
-            fileUnsavedDialog,
-            modalIsolationTargets: [fileViewer, filePasteDialog, fileUnsavedDialog],
-            fileEditMode: overrides.editMode !== false,
-            activeFileEditable: overrides.editable !== false,
-            fileViewMode: overrides.fileViewMode || "file",
-            activeFileKind: overrides.kind || "text",
-{controller_identity_ctx_js("", "", False, None)}
-            activeFileVersion: overrides.version || "v1",
-            activeFileDraft: Boolean(overrides.draft),
-            fileEditorKind: overrides.editorKind || "file",
-            fileDirty: Boolean(overrides.dirty),
-            fileSavePending: Boolean(overrides.pending),
-            fileSavePendingValue: () => ctx.fileSavePending,
-            fileViewerSessionId: overrides.sessionId === false ? "" : "sid-1",
+          const state = {{
+            sessionId: overrides.sessionId === false ? "" : "sid-1",
+            editMode: overrides.editMode !== false,
+            editable: overrides.editable !== false,
+            kind: overrides.kind || "text",
+            version: overrides.version || "v1",
+            draft: Boolean(overrides.draft),
+            editorKind: overrides.editorKind || "file",
+            dirty: Boolean(overrides.dirty),
+            pending: Boolean(overrides.pending),
+            viewMode: overrides.fileViewMode || "file",
             unavailable: Boolean(overrides.unavailable),
-            fileTouchSelectMode: overrides.selectMode !== false,
-            fileTouchDeleteNativeSuppressUntil: 0,
-            triggers: [],
-            focusCount: 0,
-            resetCount: 0,
-            toasts: [],
-            isFileViewerOpen: () => fileViewer.style.display === "flex",
-            isModalTargetOpen: (node) => node && node.style && node.style.display === "flex",
-            isTextEntryElement: (target) => Boolean(target && target.textEntry),
-            getActiveFileCodeEditor: () => ({{
-              getDomNode: () => editorNode,
-              trigger: (source, command, payload) => ctx.triggers.push({{ source, command, payload }}),
-            }}),
-            isTextFileKind: (kind) => kind === "text" || kind === "markdown",
-            isFileViewerSessionUnavailable: () => ctx.unavailable,
-            fileEditorDeleteCommandForKey: (key) => key === "backspace" ? "deleteLeft" : key === "delete" ? "deleteRight" : "",
-            focusActiveFileCodeEditor: () => {{ ctx.focusCount += 1; }},
-            resetFileTouchSelectionState: () => {{ ctx.resetCount += 1; }},
-            setToast: (message) => ctx.toasts.push(message),
+            selectMode: overrides.selectMode !== false,
+            suppressUntil: 0,
           }};
-          ctx.fileViewerController.setActiveFileIdentity(overrides.path === false ? "" : "note.txt", {{ gitPath: Boolean(overrides.gitPath), apiPath: overrides.apiPath || "" }});
-          vm.createContext(ctx);
-          vm.runInContext(snippet, ctx);
+          const calls = {{ triggers: [], toasts: [], focusCount: 0, resetCount: 0 }};
+          const editorNode = {{ contains: (node) => Boolean(node && node.editorInput) }};
+          const editor = {{
+            getDomNode: () => editorNode,
+            trigger: (source, command, payload) => calls.triggers.push({{ source, command, payload }}),
+          }};
+          const fileStatus = {{ textContent: "", replaceChildren() {{}} }};
+          const fileEditButton = {{ classList: {{ toggle() {{}} }}, setAttribute() {{}} }};
+          const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
+            el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children: Array.isArray(children) ? children : [] }}),
+            fileStatus,
+            fileEditButton,
+            iconSvg: (name) => `icon:${{name}}`,
+            currentSessionId: () => state.sessionId,
+            currentFileSessionId: () => state.sessionId,
+            normalizeLineNumber: (value) => value == null || value === "" ? null : Number(value),
+            normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+            fileApiPathForPath: (_path, existing) => existing || "",
+            isFileViewerOpen: () => overrides.viewerOpen !== false,
+            invalidateFileViewerSessionSync: () => {{}},
+            hideFileUnsavedDialog: () => {{}},
+            resetFileSearchState: () => {{}},
+            closeFilePickerMenu: () => {{}},
+            isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+            confirmReload: () => true,
+            promptUnsavedFileChoice: async () => "cancel",
+            discardActiveFileEdits: () => {{}},
+            hideFileViewer: () => {{}},
+            applyFileLoadResult: async () => true,
+            setFilePath: () => {{}},
+            resetFileViewerPanel: () => {{}},
+            normalizeDraftFilePath: (value) => String(value || "").trim(),
+            inspectSessionFilePath: async () => ({{ exists: false }}),
+            api: async () => ({{}}),
+            focusEditor: () => editor,
+            disposeOpenRender: () => {{}},
+            currentFileViewMode: () => state.viewMode,
+            currentFileEditorKind: () => state.editorKind,
+            currentFileEditMode: () => state.editMode,
+            activeFileEntry: () => null,
+            fileCandidateGitStateFresh: () => false,
+            isMarkdownPreviewable: () => false,
+            resetActiveFileBufferState: () => {{}},
+            updateFileTouchToolbar: () => {{}},
+            currentFileTouchSelectMode: () => state.selectMode,
+            isFileTouchToolbarActive: () => true,
+            fileEditorShortcutBlocked: (target) => Boolean(overrides.nestedDialog || overrides.viewerOpen === false || (target && target.textEntry && !target.editorInput)),
+            eventTargetElement: (value) => value instanceof FakeElement ? value : null,
+            resetFileTouchSelectionState: () => {{ calls.resetCount += 1; }},
+            moveFileTouchSelection: () => {{}},
+            fileEditorDeleteCommandForKey: (key) => key === "backspace" ? "deleteLeft" : key === "delete" ? "deleteRight" : "",
+            isActiveFileEditorInput: (target) => Boolean(target && target.editorInput),
+            focusActiveFileCodeEditor: () => {{ calls.focusCount += 1; return editor; }},
+            setFileTouchDeleteNativeSuppressUntil: (value) => {{ state.suppressUntil = value; }},
+            nowMs: () => 123456,
+            setToast: (message) => calls.toasts.push(message),
+            setFileViewMode: () => {{}},
+            applyActiveFileTextState: () => {{}},
+            renderMonacoFile: async () => true,
+            setFileEditMode: () => {{}},
+            currentActiveFileKind: () => state.kind,
+            currentActiveFileDraft: () => state.draft,
+            currentActiveFileVersion: () => state.version,
+            currentActiveFileEditable: () => state.editable,
+            currentFileDirty: () => state.dirty,
+            getFileEditorText: () => "",
+            setFileDirty: () => {{}},
+            fmtBytes: (value) => `${{value}}B`,
+            applyFileMode: () => {{}},
+            rememberOpenedFile: () => {{}},
+            rememberActiveFileSelection: () => {{}},
+            renderFilePickerMenu: () => {{}},
+          }});
+          controller.setActiveFileIdentity(overrides.path === false ? "" : "note.txt", {{ gitPath: Boolean(overrides.gitPath), apiPath: overrides.apiPath || "" }});
+          if (state.unavailable) {{ controller.disableFileViewerForUnavailableSession("sid-1"); state.suppressUntil = 0; }}
           const event = {{
             key: overrides.key || "Backspace",
             ctrlKey: Boolean(overrides.ctrl),
@@ -1093,18 +1143,18 @@ def eval_file_editor_delete_shortcut() -> dict:
             altKey: Boolean(overrides.alt),
             isComposing: Boolean(overrides.composing),
             defaultPrevented: Boolean(overrides.defaultPrevented),
-            target: overrides.target || new FakeElement({{ textEntry: true, inputarea: true, editorInput: true }}),
+            target: overrides.target || new FakeElement({{ textEntry: true, editorInput: true }}),
             prevented: 0,
             stopped: 0,
             preventDefault() {{ this.prevented += 1; }},
             stopPropagation() {{ this.stopped += 1; }},
           }};
-          const handled = ctx.__test_deleteShortcut(event);
-          return {{ handled, prevented: event.prevented, stopped: event.stopped, triggers: ctx.triggers, focusCount: ctx.focusCount, resetCount: ctx.resetCount, suppressUntil: ctx.fileTouchDeleteNativeSuppressUntil, toasts: ctx.toasts }};
+          const handled = controller.handleFileEditorDeleteKeydown(event);
+          return {{ handled, prevented: event.prevented, stopped: event.stopped, triggers: calls.triggers, focusCount: calls.focusCount, resetCount: calls.resetCount, suppressUntil: state.suppressUntil, toasts: calls.toasts }};
         }}
         (() => {{
-          const editorInput = new FakeElement({{ textEntry: true, inputarea: true, editorInput: true }});
-          const otherInput = new FakeElement({{ textEntry: true, inputarea: false, editorInput: false }});
+          const editorInput = new FakeElement({{ textEntry: true, editorInput: true }});
+          const otherInput = new FakeElement({{ textEntry: true, editorInput: false }});
           const validBackspace = runCase({{ target: editorInput }});
           const validDelete = runCase({{ target: editorInput, key: "Delete" }});
           const nestedDialog = runCase({{ target: editorInput, nestedDialog: true }});
@@ -1124,7 +1174,6 @@ def eval_file_editor_delete_shortcut() -> dict:
         text=True,
     )
     return json.loads(proc.stdout)
-
 
 def eval_file_open_request_sequence() -> dict:
     viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
@@ -1191,6 +1240,12 @@ def eval_file_open_request_sequence() -> dict:
           eventTargetElement: (value) => value || null,
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
+          fileEditorDeleteCommandForKey: () => "",
+          isActiveFileEditorInput: () => false,
+          focusActiveFileCodeEditor: () => null,
+          setFileTouchDeleteNativeSuppressUntil: () => {{}},
+          nowMs: () => 0,
+          setToast: (message) => calls.push(["toast", message]),
           setFileViewMode: () => {{}},
           applyActiveFileTextState: () => {{}},
           renderMonacoFile: async () => true,
@@ -1309,6 +1364,12 @@ def eval_file_viewer_session_sync_race() -> dict:
           eventTargetElement: (value) => value || null,
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
+          fileEditorDeleteCommandForKey: () => "",
+          isActiveFileEditorInput: () => false,
+          focusActiveFileCodeEditor: () => null,
+          setFileTouchDeleteNativeSuppressUntil: () => {{}},
+          nowMs: () => 0,
+          setToast: (message) => calls.push(["toast", message]),
           normalizeLineNumber: (value) => value == null ? null : Number(value),
           AbortController: class {{
             constructor() {{ this.signal = {{ aborted: false }}; }}
@@ -1445,6 +1506,12 @@ def eval_open_file_guard_mode_validation() -> dict:
           eventTargetElement: (value) => value || null,
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
+          fileEditorDeleteCommandForKey: () => "",
+          isActiveFileEditorInput: () => false,
+          focusActiveFileCodeEditor: () => null,
+          setFileTouchDeleteNativeSuppressUntil: () => {{}},
+          nowMs: () => 0,
+          setToast: (message) => calls.push(["toast", message]),
           setFileViewMode: (...args) => calls.push(["setFileViewMode", ...args]),
           applyActiveFileTextState: (next) => calls.push(["applyActiveFileTextState", next]),
           renderMonacoFile: async () => true,
@@ -1552,6 +1619,12 @@ def eval_open_file_path_mode_ownership() -> dict:
           eventTargetElement: (value) => value || null,
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
+          fileEditorDeleteCommandForKey: () => "",
+          isActiveFileEditorInput: () => false,
+          focusActiveFileCodeEditor: () => null,
+          setFileTouchDeleteNativeSuppressUntil: () => {{}},
+          nowMs: () => 0,
+          setToast: (message) => calls.push(["toast", message]),
           setFileViewMode: (mode) => {{ state.viewMode = mode; calls.push(["setFileViewMode", mode]); }},
           applyActiveFileTextState: (next) => calls.push(["applyActiveFileTextState", next]),
           renderMonacoFile: async () => true,
@@ -1721,6 +1794,12 @@ def eval_active_file_save_request_helpers() -> dict:
           eventTargetElement: (value) => value || null,
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
+          fileEditorDeleteCommandForKey: () => "",
+          isActiveFileEditorInput: () => false,
+          focusActiveFileCodeEditor: () => null,
+          setFileTouchDeleteNativeSuppressUntil: () => {{}},
+          nowMs: () => 0,
+          setToast: (message) => calls.push(["toast", message]),
           setFileViewMode: () => {{}},
           applyActiveFileTextState: () => {{}},
           renderMonacoFile: async () => true,
@@ -1928,6 +2007,12 @@ def eval_active_file_save_success() -> dict:
           eventTargetElement: (value) => value || null,
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
+          fileEditorDeleteCommandForKey: () => "",
+          isActiveFileEditorInput: () => false,
+          focusActiveFileCodeEditor: () => null,
+          setFileTouchDeleteNativeSuppressUntil: () => {{}},
+          nowMs: () => 0,
+          setToast: (message) => calls.push(["toast", message]),
           setFileViewMode: () => {{}},
           applyActiveFileTextState: (nextState) => {{
             state.kind = nextState.kind;
@@ -2080,6 +2165,12 @@ def eval_active_file_save_transport() -> dict:
           eventTargetElement: (value) => value || null,
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
+          fileEditorDeleteCommandForKey: () => "",
+          isActiveFileEditorInput: () => false,
+          focusActiveFileCodeEditor: () => null,
+          setFileTouchDeleteNativeSuppressUntil: () => {{}},
+          nowMs: () => 0,
+          setToast: (message) => calls.push(["toast", message]),
           setFileViewMode: () => {{}},
           applyActiveFileTextState: (nextState) => {{
             state.kind = nextState.kind;
@@ -2247,6 +2338,12 @@ def eval_draft_file_load_choreography() -> dict:
           eventTargetElement: (value) => value || null,
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
+          fileEditorDeleteCommandForKey: () => "",
+          isActiveFileEditorInput: () => false,
+          focusActiveFileCodeEditor: () => null,
+          setFileTouchDeleteNativeSuppressUntil: () => {{}},
+          nowMs: () => 0,
+          setToast: (message) => calls.push(["toast", message]),
           setFileViewMode: (mode) => {{ calls.push(["setFileViewMode", mode]); state.viewMode = mode; }},
           applyActiveFileTextState: (nextState) => calls.push(["applyActiveFileTextState", nextState]),
           renderMonacoFile: async (...args) => {{ calls.push(["renderMonacoFile", ...args.slice(0, 4)]); if (state.staleAfterRender) state.sessionId = "sid-2"; return state.renderOk; }},
@@ -2381,6 +2478,12 @@ def eval_file_open_success_finalizer() -> dict:
           eventTargetElement: (value) => value || null,
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
+          fileEditorDeleteCommandForKey: () => "",
+          isActiveFileEditorInput: () => false,
+          focusActiveFileCodeEditor: () => null,
+          setFileTouchDeleteNativeSuppressUntil: () => {{}},
+          nowMs: () => 0,
+          setToast: (message) => calls.push(["toast", message]),
           setFileViewMode: (...args) => calls.push(["setFileViewMode", ...args]),
           applyActiveFileTextState: (next) => calls.push(["applyActiveFileTextState", next]),
           renderMonacoFile: async () => true,
@@ -3298,27 +3401,31 @@ class TestFileViewerSource(unittest.TestCase):
 
     def test_delete_backspace_is_single_owned_in_touch_select_edit_mode(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         helper_source = (APP_JS.parent / "app_file_helpers.js").read_text(encoding="utf-8")
         self.assertIn("function handleFileEditorDeleteKeydown(e)", source)
+        self.assertIn("return fileViewerController.handleFileEditorDeleteKeydown(e);", source)
+        self.assertIn("function handleFileEditorDeleteKeydown(event)", viewer_source)
         self.assertIn("function isActiveFileEditorInput(target)", source)
         self.assertIn("function fileEditorDeleteCommandForKey(key)", source)
         self.assertIn("return codoxearFileHelpers.fileEditorDeleteCommandForKey(key);", source)
         self.assertIn("let fileTouchDeleteNativeSuppressUntil = 0;", source)
-        self.assertIn('const key = String(e.key || "").toLowerCase();', source)
+        self.assertIn('const key = String(e.key || "").toLowerCase();', viewer_source)
         self.assertIn('if (key === "backspace") return "deleteLeft";', helper_source)
         self.assertIn('if (key === "delete") return "deleteRight";', helper_source)
         self.assertNotIn('if (key === "backspace") return "deleteLeft";', source)
-        self.assertIn("fileTouchDeleteNativeSuppressUntil = Date.now() + 250;", source)
-        self.assertIn('editor.trigger("file-editor-delete-key", command, null);', source)
-        self.assertIn("if (fileEditorShortcutBlocked(target)) return false;", source)
+        self.assertIn("setFileTouchDeleteNativeSuppressUntil(nowMs() + 250);", viewer_source)
+        self.assertIn("setFileTouchDeleteNativeSuppressUntil: (value) => { fileTouchDeleteNativeSuppressUntil = value; }", source)
+        self.assertIn('editor.trigger("file-editor-delete-key", command, null);', viewer_source)
+        self.assertIn("if (fileEditorShortcutBlocked(target)) return false;", viewer_source)
         self.assertIn("function isFileEditorNativeDeleteEvent(e)", source)
         self.assertIn('inputType !== "deleteContentBackward" && inputType !== "deleteContentForward"', source)
         self.assertIn('addAppEvent(document, "keydown", handleFileEditorDeleteKeydown, true);', source)
         self.assertIn('addAppEvent(\n          document,\n          "beforeinput",', source)
         self.assertIn('addAppEvent(\n          document,\n          "input",', source)
-        self.assertIn("e.preventDefault();\n          e.stopPropagation();", source)
+        self.assertIn("e.preventDefault();\n      e.stopPropagation();", viewer_source)
         self.assertNotIn("const allowEditorDelete =", source)
-        self.assertIn("if (fileTouchSelectMode) resetFileTouchSelectionState();", source)
+        self.assertIn("if (currentFileTouchSelectMode()) resetFileTouchSelectionState();", viewer_source)
         result = eval_file_editor_delete_shortcut()
         expected = {
             "validBackspace": "deleteLeft",
