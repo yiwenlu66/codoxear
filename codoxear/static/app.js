@@ -10113,6 +10113,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         $("#fileUnsavedCancelBtn").onclick = () => hideFileUnsavedDialog("cancel");
         fileUnsavedBackdrop.onclick = () => hideFileUnsavedDialog("cancel");
         $("#filePasteInsertBtn").onclick = () => {
+          if (blockUnavailableFileAction()) return;
           if (insertIntoActiveFileEditor(filePasteInput.value)) {
             hideFilePasteDialog();
             setToast("text inserted");

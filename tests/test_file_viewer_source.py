@@ -457,6 +457,64 @@ def eval_file_paste_dialog_fallback() -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_file_paste_insert_button_guard() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index('$("#filePasteInsertBtn").onclick = () => {')
+    end = source.index('$("#filePasteCancelBtn").onclick', start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const button = {{ onclick: null }};
+        const ctx = {{
+          button,
+          unavailable: true,
+          filePasteInput: {{ value: "typed text" }},
+          inserted: [],
+          hidden: 0,
+          toasts: [],
+          status: [],
+          $: (selector) => {{
+            if (selector !== '#filePasteInsertBtn') throw new Error(`unexpected selector ${{selector}}`);
+            return button;
+          }},
+          blockUnavailableFileAction: () => {{
+            if (!ctx.unavailable) return false;
+            ctx.status.push("Session is no longer available; copy unsaved edits before closing.");
+            return true;
+          }},
+          insertIntoActiveFileEditor: (text) => {{ ctx.inserted.push(String(text)); return true; }},
+          hideFilePasteDialog: () => {{ ctx.hidden += 1; ctx.filePasteInput.value = ""; }},
+          setToast: (message) => ctx.toasts.push(String(message)),
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet)}, ctx);
+        ctx.button.onclick();
+        const unavailable = {{
+          inputValue: ctx.filePasteInput.value,
+          inserted: ctx.inserted.slice(),
+          hidden: ctx.hidden,
+          toasts: ctx.toasts.slice(),
+          status: ctx.status.slice(),
+        }};
+        ctx.unavailable = false;
+        ctx.filePasteInput.value = "allowed text";
+        ctx.button.onclick();
+        const available = {{
+          inputValue: ctx.filePasteInput.value,
+          inserted: ctx.inserted.slice(),
+          hidden: ctx.hidden,
+          toasts: ctx.toasts.slice(),
+          status: ctx.status.slice(),
+        }};
+        process.stdout.write(JSON.stringify({{ unavailable, available }}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
+
 def eval_file_editor_capability_predicates() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function currentFileEditorState() {")
@@ -1702,6 +1760,23 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn(["updateFileEditButton", False], result["calls"])
         self.assertIn(["updateFileTouchToolbar", "dead-sid"], result["calls"])
 
+    def test_file_paste_insert_button_blocks_unavailable_session(self) -> None:
+        result = eval_file_paste_insert_button_guard()
+        self.assertEqual(result["unavailable"], {
+            "inputValue": "typed text",
+            "inserted": [],
+            "hidden": 0,
+            "toasts": [],
+            "status": ["Session is no longer available; copy unsaved edits before closing."],
+        })
+        self.assertEqual(result["available"], {
+            "inputValue": "",
+            "inserted": ["allowed text"],
+            "hidden": 1,
+            "toasts": ["text inserted"],
+            "status": ["Session is no longer available; copy unsaved edits before closing."],
+        })
+
     def test_file_editor_disables_monaco_suggestions(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn('accessibilitySupport: "off"', source)
@@ -2645,6 +2720,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('function showFilePasteDialog()', source)
         self.assertIn('function hideFilePasteDialog({ restoreFocus = false } = {})', source)
         self.assertIn('hideFilePasteDialog({ restoreFocus: true });', source)
+        self.assertIn('$("#filePasteInsertBtn").onclick = () => {\n          if (blockUnavailableFileAction()) return;\n          if (insertIntoActiveFileEditor(filePasteInput.value)) {', source)
         self.assertIn('filePasteDialog.style.display = "flex";', source)
         self.assertIn('filePasteInput.focus({ preventScroll: true });', source)
         self.assertIn('setToast("paste manually")', source)
