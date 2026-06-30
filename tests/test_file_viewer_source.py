@@ -308,6 +308,12 @@ def eval_empty_file_viewer_target() -> dict:
           resetFilePickerInput: () => calls.push(["resetFilePickerInput"]),
           renderFilePickerMenu: () => calls.push(["renderFilePickerMenu"]),
           updateFileTouchToolbar: () => calls.push(["updateFileTouchToolbar"]),
+          currentFileTouchSelectMode: () => false,
+          isFileTouchToolbarActive: () => false,
+          fileEditorShortcutBlocked: () => false,
+          eventTargetElement: (value) => value || null,
+          resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
+          moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
         }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_empty = renderEmptyFileViewerTarget;\n")}, ctx);
@@ -892,53 +898,87 @@ def eval_file_editor_save_shortcut() -> dict:
 
 
 def eval_file_touch_selection_keydown() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    helper_start = source.index("function isActiveFileEditorInput(target) {")
-    helper_end = source.index("function handleFileEditorSaveShortcut(e)", helper_start)
-    handler_start = source.index("function handleFileTouchSelectionKeydown(e) {")
-    handler_end = source.index('addAppEvent(document, "keydown", handleFileTouchSelectionKeydown, true);', handler_start)
-    snippet = source[helper_start:helper_end] + "\n" + source[handler_start:handler_end]
+    source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(source)}, ctx);
         class FakeElement {{
           constructor(opts = {{}}) {{
             this.textEntry = Boolean(opts.textEntry);
             this.editorInput = Boolean(opts.editorInput);
             this.inViewer = opts.inViewer !== false;
-            this._inputarea = Boolean(opts.inputarea);
-            this.classList = {{ contains: (name) => name === "inputarea" && this._inputarea }};
+            this.shortcutBlocked = Boolean(opts.shortcutBlocked);
           }}
           closest(selector) {{
             return selector === "#fileViewer" && this.inViewer ? this : null;
           }}
         }}
-        const snippet = {json.dumps(snippet + "\nglobalThis.__test_touchSelectionKeydown = handleFileTouchSelectionKeydown;\n")};
         function runCase(overrides = {{}}) {{
-          const editorNode = {{ contains: (node) => Boolean(node && node.editorInput) }};
-          const fileViewer = {{ style: {{ display: overrides.viewerOpen === false ? "none" : "flex" }} }};
-          const filePasteDialog = {{ style: {{ display: overrides.nestedDialog ? "flex" : "none" }} }};
-          const fileUnsavedDialog = {{ style: {{ display: "none" }} }};
-          const ctx = {{
-            HTMLElement: FakeElement,
-            fileViewer,
-            filePasteDialog,
-            fileUnsavedDialog,
-            modalIsolationTargets: [fileViewer, filePasteDialog, fileUnsavedDialog],
-            fileTouchSelectMode: overrides.selectMode !== false,
-            toolbarActive: overrides.toolbarActive !== false,
-            moves: [],
-            resetArgs: [],
-            isFileViewerOpen: () => fileViewer.style.display === "flex",
-            isModalTargetOpen: (node) => node && node.style && node.style.display === "flex",
-            isTextEntryElement: (target) => Boolean(target && target.textEntry),
-            getActiveFileCodeEditor: () => ({{ getDomNode: () => editorNode }}),
-            isFileTouchToolbarActive: () => ctx.toolbarActive,
-            resetFileTouchSelectionState: (opts) => ctx.resetArgs.push(opts || {{}}),
-            moveFileTouchSelection: (direction) => ctx.moves.push(direction),
-          }};
-          vm.createContext(ctx);
-          vm.runInContext(snippet, ctx);
+          const events = {{ moves: [], resetArgs: [] }};
+          const fileStatus = {{ textContent: "", replaceChildren() {{}} }};
+          const fileEditButton = {{ classList: {{ toggle() {{}} }}, setAttribute() {{}} }};
+          const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
+            el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children: Array.isArray(children) ? children : [] }}),
+            fileStatus,
+            fileEditButton,
+            iconSvg: (name) => `icon:${{name}}`,
+            currentSessionId: () => "sid-1",
+            currentFileSessionId: () => "sid-1",
+            normalizeLineNumber: (value) => value == null || value === "" ? null : Number(value),
+            normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+            fileApiPathForPath: (_path, existing) => existing || "",
+            isFileViewerOpen: () => overrides.viewerOpen !== false,
+            invalidateFileViewerSessionSync: () => {{}},
+            hideFileUnsavedDialog: () => {{}},
+            resetFileSearchState: () => {{}},
+            closeFilePickerMenu: () => {{}},
+            isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+            confirmReload: () => true,
+            promptUnsavedFileChoice: async () => "cancel",
+            discardActiveFileEdits: () => {{}},
+            hideFileViewer: () => {{}},
+            applyFileLoadResult: async () => true,
+            setFilePath: () => {{}},
+            resetFileViewerPanel: () => {{}},
+            normalizeDraftFilePath: (value) => String(value || "").trim(),
+            inspectSessionFilePath: async () => ({{ exists: false }}),
+            api: async () => ({{}}),
+            focusEditor: () => null,
+            disposeOpenRender: () => {{}},
+            currentFileViewMode: () => "file",
+            currentFileEditorKind: () => "file",
+            currentFileEditMode: () => false,
+            activeFileEntry: () => null,
+            fileCandidateGitStateFresh: () => false,
+            isMarkdownPreviewable: () => false,
+            resetActiveFileBufferState: () => {{}},
+            updateFileTouchToolbar: () => {{}},
+            currentFileTouchSelectMode: () => overrides.selectMode !== false,
+            isFileTouchToolbarActive: () => overrides.toolbarActive !== false && overrides.viewerOpen !== false,
+            fileEditorShortcutBlocked: (target) => Boolean(overrides.nestedDialog || (target && target.shortcutBlocked) || (target && target.textEntry && !target.editorInput)),
+            eventTargetElement: (value) => value instanceof FakeElement ? value : null,
+            resetFileTouchSelectionState: (opts) => events.resetArgs.push(opts || {{}}),
+            moveFileTouchSelection: (direction) => events.moves.push(direction),
+            setFileViewMode: () => {{}},
+            applyActiveFileTextState: () => {{}},
+            renderMonacoFile: async () => true,
+            setFileEditMode: () => {{}},
+            currentActiveFileKind: () => "text",
+            currentActiveFileDraft: () => false,
+            currentActiveFileVersion: () => "",
+            currentActiveFileEditable: () => true,
+            currentFileDirty: () => false,
+            getFileEditorText: () => "",
+            setFileDirty: () => {{}},
+            fmtBytes: (value) => `${{value}}B`,
+            applyFileMode: () => {{}},
+            rememberOpenedFile: () => {{}},
+            rememberActiveFileSelection: () => {{}},
+            renderFilePickerMenu: () => {{}},
+          }});
           const target = Object.prototype.hasOwnProperty.call(overrides, "target") ? overrides.target : new FakeElement({{ inViewer: true }});
           const event = {{
             key: overrides.key || "h",
@@ -952,12 +992,12 @@ def eval_file_touch_selection_keydown() -> dict:
             preventDefault() {{ this.prevented += 1; }},
             stopPropagation() {{ this.stopped += 1; }},
           }};
-          ctx.__test_touchSelectionKeydown(event);
-          return {{ prevented: event.prevented, stopped: event.stopped, moves: ctx.moves, resetArgs: ctx.resetArgs }};
+          controller.handleFileTouchSelectionKeydown(event);
+          return {{ prevented: event.prevented, stopped: event.stopped, moves: events.moves, resetArgs: events.resetArgs }};
         }}
         (() => {{
-          const editorInput = new FakeElement({{ textEntry: true, inputarea: true, editorInput: true, inViewer: true }});
-          const otherInput = new FakeElement({{ textEntry: true, inputarea: false, editorInput: false, inViewer: false }});
+          const editorInput = new FakeElement({{ textEntry: true, editorInput: true, inViewer: true }});
+          const otherInput = new FakeElement({{ textEntry: true, editorInput: false, inViewer: false }});
           const validMove = runCase({{ target: editorInput, key: "l" }});
           const validEscape = runCase({{ target: editorInput, key: "Escape" }});
           const printableBlocked = runCase({{ target: editorInput, key: "x" }});
@@ -978,7 +1018,6 @@ def eval_file_touch_selection_keydown() -> dict:
         text=True,
     )
     return json.loads(proc.stdout)
-
 
 def eval_file_editor_delete_shortcut() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
@@ -1146,6 +1185,12 @@ def eval_file_open_request_sequence() -> dict:
           isMarkdownPreviewable: () => true,
           resetActiveFileBufferState: () => {{}},
           updateFileTouchToolbar: () => {{}},
+          currentFileTouchSelectMode: () => false,
+          isFileTouchToolbarActive: () => false,
+          fileEditorShortcutBlocked: () => false,
+          eventTargetElement: (value) => value || null,
+          resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
+          moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           setFileViewMode: () => {{}},
           applyActiveFileTextState: () => {{}},
           renderMonacoFile: async () => true,
@@ -1258,6 +1303,12 @@ def eval_file_viewer_session_sync_race() -> dict:
           resetFilePickerInput: () => calls.push("resetFilePickerInput"),
           renderFilePickerMenu: () => calls.push("renderFilePickerMenu"),
           updateFileTouchToolbar: () => calls.push("updateFileTouchToolbar"),
+          currentFileTouchSelectMode: () => false,
+          isFileTouchToolbarActive: () => false,
+          fileEditorShortcutBlocked: () => false,
+          eventTargetElement: (value) => value || null,
+          resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
+          moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           normalizeLineNumber: (value) => value == null ? null : Number(value),
           AbortController: class {{
             constructor() {{ this.signal = {{ aborted: false }}; }}
@@ -1388,6 +1439,12 @@ def eval_open_file_guard_mode_validation() -> dict:
           isMarkdownPreviewable: () => false,
           resetActiveFileBufferState: () => calls.push(["resetActiveFileBufferState"]),
           updateFileTouchToolbar: () => calls.push(["touchToolbar"]),
+          currentFileTouchSelectMode: () => false,
+          isFileTouchToolbarActive: () => false,
+          fileEditorShortcutBlocked: () => false,
+          eventTargetElement: (value) => value || null,
+          resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
+          moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           setFileViewMode: (...args) => calls.push(["setFileViewMode", ...args]),
           applyActiveFileTextState: (next) => calls.push(["applyActiveFileTextState", next]),
           renderMonacoFile: async () => true,
@@ -1489,6 +1546,12 @@ def eval_open_file_path_mode_ownership() -> dict:
           isMarkdownPreviewable: (rel) => {{ calls.push(["isMarkdownPreviewable", rel]); return state.markdownPreviewable; }},
           resetActiveFileBufferState: () => calls.push(["resetActiveFileBufferState"]),
           updateFileTouchToolbar: () => calls.push(["touchToolbar"]),
+          currentFileTouchSelectMode: () => false,
+          isFileTouchToolbarActive: () => false,
+          fileEditorShortcutBlocked: () => false,
+          eventTargetElement: (value) => value || null,
+          resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
+          moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           setFileViewMode: (mode) => {{ state.viewMode = mode; calls.push(["setFileViewMode", mode]); }},
           applyActiveFileTextState: (next) => calls.push(["applyActiveFileTextState", next]),
           renderMonacoFile: async () => true,
@@ -1652,6 +1715,12 @@ def eval_active_file_save_request_helpers() -> dict:
           isMarkdownPreviewable: () => true,
           resetActiveFileBufferState: () => calls.push(["resetActiveFileBufferState"]),
           updateFileTouchToolbar: () => calls.push(["updateFileTouchToolbar"]),
+          currentFileTouchSelectMode: () => false,
+          isFileTouchToolbarActive: () => false,
+          fileEditorShortcutBlocked: () => false,
+          eventTargetElement: (value) => value || null,
+          resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
+          moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           setFileViewMode: () => {{}},
           applyActiveFileTextState: () => {{}},
           renderMonacoFile: async () => true,
@@ -1853,6 +1922,12 @@ def eval_active_file_save_success() -> dict:
           isMarkdownPreviewable: () => true,
           resetActiveFileBufferState: () => calls.push(["resetActiveFileBufferState"]),
           updateFileTouchToolbar: () => calls.push(["updateFileTouchToolbar"]),
+          currentFileTouchSelectMode: () => false,
+          isFileTouchToolbarActive: () => false,
+          fileEditorShortcutBlocked: () => false,
+          eventTargetElement: (value) => value || null,
+          resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
+          moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           setFileViewMode: () => {{}},
           applyActiveFileTextState: (nextState) => {{
             state.kind = nextState.kind;
@@ -1999,6 +2074,12 @@ def eval_active_file_save_transport() -> dict:
           isMarkdownPreviewable: () => true,
           resetActiveFileBufferState: () => calls.push(["resetActiveFileBufferState"]),
           updateFileTouchToolbar: () => calls.push(["updateFileTouchToolbar"]),
+          currentFileTouchSelectMode: () => false,
+          isFileTouchToolbarActive: () => false,
+          fileEditorShortcutBlocked: () => false,
+          eventTargetElement: (value) => value || null,
+          resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
+          moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           setFileViewMode: () => {{}},
           applyActiveFileTextState: (nextState) => {{
             state.kind = nextState.kind;
@@ -2160,6 +2241,12 @@ def eval_draft_file_load_choreography() -> dict:
           isMarkdownPreviewable: () => true,
           resetActiveFileBufferState: () => calls.push(["resetActiveFileBufferState"]),
           updateFileTouchToolbar: () => calls.push(["updateFileTouchToolbar"]),
+          currentFileTouchSelectMode: () => false,
+          isFileTouchToolbarActive: () => false,
+          fileEditorShortcutBlocked: () => false,
+          eventTargetElement: (value) => value || null,
+          resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
+          moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           setFileViewMode: (mode) => {{ calls.push(["setFileViewMode", mode]); state.viewMode = mode; }},
           applyActiveFileTextState: (nextState) => calls.push(["applyActiveFileTextState", nextState]),
           renderMonacoFile: async (...args) => {{ calls.push(["renderMonacoFile", ...args.slice(0, 4)]); if (state.staleAfterRender) state.sessionId = "sid-2"; return state.renderOk; }},
@@ -2288,6 +2375,12 @@ def eval_file_open_success_finalizer() -> dict:
           isMarkdownPreviewable: () => false,
           resetActiveFileBufferState: () => calls.push(["resetActiveFileBufferState"]),
           updateFileTouchToolbar: () => calls.push(["touchToolbar"]),
+          currentFileTouchSelectMode: () => false,
+          isFileTouchToolbarActive: () => false,
+          fileEditorShortcutBlocked: () => false,
+          eventTargetElement: (value) => value || null,
+          resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
+          moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           setFileViewMode: (...args) => calls.push(["setFileViewMode", ...args]),
           applyActiveFileTextState: (next) => calls.push(["applyActiveFileTextState", next]),
           renderMonacoFile: async () => true,
@@ -3046,6 +3139,7 @@ class TestFileViewerSource(unittest.TestCase):
 
     def test_touch_toolbar_supports_select_copy_paste_and_arrow_selection(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertIn('id: "fileTouchSelectBtn"', source)
         self.assertIn('id: "fileTouchCopyBtn"', source)
         self.assertIn('id: "fileTouchPasteBtn"', source)
@@ -3060,7 +3154,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('html: iconSvg("left")', source)
         self.assertIn('html: iconSvg("down")', source)
         self.assertIn('html: iconSvg("right")', source)
-        self.assertIn("moveFileTouchSelection(direction);", source)
+        self.assertIn("moveFileTouchSelection(direction);", viewer_source)
+        self.assertIn("return fileViewerController.handleFileTouchSelectionKeydown(e);", source)
         self.assertIn('moveFileTouchSelection("up")', source)
         self.assertIn('moveFileTouchSelection("left")', source)
         self.assertIn('moveFileTouchSelection("down")', source)
@@ -3073,6 +3168,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("fileTouchSelectHead", source)
         self.assertIn('addAppEvent(document, "keydown", handleFileTouchSelectionKeydown, true);', source)
         self.assertIn('fileTouchSelectMode', source)
+        self.assertIn('currentFileTouchSelectMode: () => fileTouchSelectMode', source)
+        self.assertIn('function handleFileTouchSelectionKeydown(event)', viewer_source)
         self.assertIn('useTouchFileEditorControls()', source)
         self.assertNotIn('if (current.column > 1) {', source)
 
@@ -3173,6 +3270,7 @@ class TestFileViewerSource(unittest.TestCase):
 
     def test_touch_select_mode_refocuses_editor_and_blocks_printable_edits(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertIn("focusActiveFileCodeEditor()", source)
         self.assertIn("syncFileDiffSelectionMode()", source)
         self.assertIn("? { enabled: false }", source)
@@ -3184,11 +3282,11 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("if (e && e.pointerType === \"touch\") sawPointerTouchAt = Date.now();", source)
         self.assertIn("if (Date.now() - sawPointerTouchAt < 700)", source)
         self.assertIn('touch-action: none;', APP_CSS.read_text(encoding="utf-8"))
-        self.assertIn('const blocksEdit =', source)
-        self.assertIn('key === "backspace"', source)
-        self.assertIn('key.length === 1', source)
-        self.assertIn('resetFileTouchSelectionState({ collapse: true });', source)
-        self.assertIn('if (fileEditorShortcutBlocked(target)) return;', source)
+        self.assertIn('const blocksEdit =', viewer_source)
+        self.assertIn('key === "backspace"', viewer_source)
+        self.assertIn('key.length === 1', viewer_source)
+        self.assertIn('resetFileTouchSelectionState({ collapse: true });', viewer_source)
+        self.assertIn('if (fileEditorShortcutBlocked(target)) return;', viewer_source)
         self.assertNotIn('isTextEntryElement(target) && !target.classList.contains("inputarea")', source)
         result = eval_file_touch_selection_keydown()
         self.assertEqual(result["validMove"], {"prevented": 1, "stopped": 1, "moves": ["right"], "resetArgs": []})

@@ -8464,6 +8464,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           isMarkdownPreviewable,
           resetActiveFileBufferState: () => resetActiveFileBufferState(),
           updateFileTouchToolbar: () => updateFileTouchToolbar(),
+          currentFileTouchSelectMode: () => fileTouchSelectMode,
+          isFileTouchToolbarActive: () => isFileTouchToolbarActive(),
+          fileEditorShortcutBlocked: (target) => fileEditorShortcutBlocked(target),
+          eventTargetElement: (value) => value instanceof HTMLElement ? value : null,
+          resetFileTouchSelectionState: (options) => resetFileTouchSelectionState(options),
+          moveFileTouchSelection: (direction) => moveFileTouchSelection(direction),
           setFileViewMode: (mode) => setFileViewMode(mode),
           applyActiveFileTextState: (state) => applyActiveFileTextState(state),
           renderMonacoFile: (rel, text, lineNumber, langOverride, request) => renderMonacoFile(rel, text, lineNumber, langOverride, request),
@@ -9919,35 +9925,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
         });
         function handleFileTouchSelectionKeydown(e) {
-          if (!fileTouchSelectMode || !isFileTouchToolbarActive()) return;
-          if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
-          const target = e.target instanceof HTMLElement ? e.target : null;
-          if (fileEditorShortcutBlocked(target)) return;
-          if (target && !target.closest("#fileViewer")) return;
-          const key = String(e.key || "").toLowerCase();
-          if (key === "escape") {
-            e.preventDefault();
-            e.stopPropagation();
-            resetFileTouchSelectionState({ collapse: true });
-            return;
-          }
-          const direction = key === "h" ? "left" : key === "j" ? "down" : key === "k" ? "up" : key === "l" ? "right" : "";
-          if (!direction) {
-            const blocksEdit =
-              key === "enter" ||
-              key === "tab" ||
-              key === " " ||
-              key === "backspace" ||
-              key === "delete" ||
-              (key.length === 1 && !e.altKey && !e.ctrlKey && !e.metaKey);
-            if (!blocksEdit) return;
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-          }
-          e.preventDefault();
-          e.stopPropagation();
-          moveFileTouchSelection(direction);
+          return fileViewerController.handleFileTouchSelectionKeydown(e);
         }
         addAppEvent(document, "keydown", handleFileTouchSelectionKeydown, true);
         addAppEvent(document, "keydown", handleFileEditorSaveShortcut, true);

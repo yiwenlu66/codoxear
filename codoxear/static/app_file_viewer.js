@@ -58,6 +58,12 @@
     const isMarkdownPreviewable = requireFunction(deps && deps.isMarkdownPreviewable, "isMarkdownPreviewable");
     const resetActiveFileBufferState = requireFunction(deps && deps.resetActiveFileBufferState, "resetActiveFileBufferState");
     const updateFileTouchToolbar = requireFunction(deps && deps.updateFileTouchToolbar, "updateFileTouchToolbar");
+    const currentFileTouchSelectMode = requireFunction(deps && deps.currentFileTouchSelectMode, "currentFileTouchSelectMode");
+    const isFileTouchToolbarActive = requireFunction(deps && deps.isFileTouchToolbarActive, "isFileTouchToolbarActive");
+    const fileEditorShortcutBlocked = requireFunction(deps && deps.fileEditorShortcutBlocked, "fileEditorShortcutBlocked");
+    const eventTargetElement = requireFunction(deps && deps.eventTargetElement, "eventTargetElement");
+    const resetFileTouchSelectionState = requireFunction(deps && deps.resetFileTouchSelectionState, "resetFileTouchSelectionState");
+    const moveFileTouchSelection = requireFunction(deps && deps.moveFileTouchSelection, "moveFileTouchSelection");
     const setFileViewMode = requireFunction(deps && deps.setFileViewMode, "setFileViewMode");
     const applyActiveFileTextState = requireFunction(deps && deps.applyActiveFileTextState, "applyActiveFileTextState");
     const renderMonacoFile = requireFunction(deps && deps.renderMonacoFile, "renderMonacoFile");
@@ -578,6 +584,39 @@
       return true;
     }
 
+    function handleFileTouchSelectionKeydown(event) {
+      const e = event || {};
+      if (!currentFileTouchSelectMode() || !isFileTouchToolbarActive()) return;
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = eventTargetElement(e.target);
+      if (fileEditorShortcutBlocked(target)) return;
+      if (target && !target.closest("#fileViewer")) return;
+      const key = String(e.key || "").toLowerCase();
+      if (key === "escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        resetFileTouchSelectionState({ collapse: true });
+        return;
+      }
+      const direction = key === "h" ? "left" : key === "j" ? "down" : key === "k" ? "up" : key === "l" ? "right" : "";
+      if (!direction) {
+        const blocksEdit =
+          key === "enter" ||
+          key === "tab" ||
+          key === " " ||
+          key === "backspace" ||
+          key === "delete" ||
+          (key.length === 1 && !e.altKey && !e.ctrlKey && !e.metaKey);
+        if (!blocksEdit) return;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      moveFileTouchSelection(direction);
+    }
+
     async function openFilePath(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined, mode = null } = {}) {
       if (blockUnavailableFileAction()) return false;
       if (!normalizeSessionId(currentSessionId())) return false;
@@ -774,6 +813,7 @@
       activeFileEditModeAllowedInCurrentView,
       syncFileEditorReadOnly,
       updateFileEditButton,
+      handleFileTouchSelectionKeydown,
       finalizeFileOpenSuccess,
       applyDraftFileLoad,
       renderFileOpenError,
