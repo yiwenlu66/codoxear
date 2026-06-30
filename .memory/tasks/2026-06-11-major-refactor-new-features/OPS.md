@@ -5943,3 +5943,17 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: active-file save request lifecycle, body, transport, success application, error rendering, conflict UI, and final cleanup now belong to the file-viewer controller. App-owned save preconditions remain: unavailable/session/path/text/editable/dirty/draft/edit-mode policy. Generic file-open result rendering/application, draft inspect/open currentness behavior, unavailable transition policy, paste/editor actions, and toolbar/editability policy remain partly `app.js`-owned.
+
+## 2026-06-30T09:51:19Z Unavailable action status controller ownership
+- Functional commit `87516a8 Move unavailable action status into viewer controller` moved the unavailable-session action blocker status write from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `createFileViewerController()` now owns `blockUnavailableFileAction()`, using its injected `isUnavailable()` dependency and `fileStatus` node. Available sessions return `false` without changing status; unavailable sessions set `Session is no longer available; copy unsaved edits before closing.` and return `true`.
+- `app.js` keeps the stable `blockUnavailableFileAction()` wrapper for existing call sites but no longer owns the status text policy for blocked file-viewer actions.
+- Tests updated: `tests/test_frontend_file_viewer_module_source.py` now exercises the real controller for available/unavailable blocker outcomes and status preservation/replacement.
+- Validation before commit:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `91 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: the generic unavailable action status policy moved. Dirty unavailable-session transition choreography and non-dirty hide behavior remain app-owned; paste/editor actions and toolbar/editability policy also remain partly `app.js`-owned.
