@@ -5826,3 +5826,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: normal file-open error rendering moved. File-open result rendering/application, success finalization, draft load choreography, save request lifecycle, unavailable transition policy, paste/editor actions, and toolbar/editability policy remain partly `app.js`-owned.
+
+## 2026-06-30T08:32:50Z File-open success finalizer controller ownership
+- Functional commit `51cdbbf Move file open success finalizer into viewer controller` moved the normal file-open success finalization side-effect sequence from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `createFileViewerController()` now receives explicit dependencies for `applyFileMode`, `rememberOpenedFile`, `rememberActiveFileSelection`, `updateFileEditButton`, and `renderFilePickerMenu`; `finalizeFileOpenSuccess(rel, absPath)` owns that ordered sequence and returns `true`. `app.js` keeps the wrapper name for call-site stability and delegates to the controller.
+- Behavior preserved: after `applyFileLoadResult()` succeeds, normal opens still reconcile mode, remember the opened file/active selection, refresh the edit button, rerender the file picker, and return `true`. Fetch, stale-currentness check, result rendering, error rendering, and `finally` request cleanup remain in their existing positions.
+- Tests updated:
+  - `tests/test_frontend_file_viewer_module_source.py` executes the real controller finalizer and verifies exact side-effect order.
+  - `tests/test_file_viewer_source.py` checks the app wrapper delegation while asserting the finalizer sequence now appears in `app_file_viewer.js`.
+- Validation before commit:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `90 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1286 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: normal file-open success finalization moved. File-open result rendering/application, draft load choreography, save request lifecycle, unavailable transition policy, paste/editor actions, and toolbar/editability policy remain partly `app.js`-owned.
