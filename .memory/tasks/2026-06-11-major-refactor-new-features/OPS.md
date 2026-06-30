@@ -6341,3 +6341,20 @@
 - Mechanism learned: `fileEditMode` is not just an isolated flag. It is coupled to active-file kind/editability/path state, raw Monaco render setup, fallback rendering, edit-button affordance policy, and scenario initialization in controller tests. Moving it alone creates a mixed ownership state where the controller owns edit mode but app/test fixtures still own the active-file facts that make edit mode valid.
 - Intervention: reverted the uncommitted edit-mode changes in `codoxear/static/app.js`, `codoxear/static/app_file_viewer.js`, `tests/test_file_viewer_source.py`, and `tests/test_frontend_file_viewer_module_source.py`. No functional commit was made for this attempted move.
 - Updated commitment: do not attempt a flag-only edit-mode migration. Move edit mode only as part of a larger active-file content/edit-state migration, or after active file kind/editability/draft/text metadata is controller-owned.
+
+## 2026-06-30T14:39:12Z Edit button policy controller ownership
+- Functional commit `24565b2 Move edit button policy into viewer controller` moved the file edit/save button click decision policy from inline `app.js` into `codoxear/static/app_file_viewer.js` as `handleFileEditButtonPress()`.
+- Mechanism: the controller now owns the decision sequence for the edit button: ignore while save is pending; if already editing, save and exit edit mode; if not in file view, switch to file view first; require editable text state; then enter edit mode. This keeps `fileEditMode` state app-owned for now, but removes another editor-state-dependent action policy from app event wiring.
+- App-side changes: `fileEditBtn.onclick` now only prevents/stops the browser event and delegates to `handleFileEditButtonPress()` wrapper.
+- Tests updated: source assertions require controller-owned `handleFileEditButtonPress`, app wrapper delegation, pending-save blocking, edit-mode save path, file-view switch path, and enter-edit call.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - File-viewer focused `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader focused frontend/file-viewer/static/auth group returned `119 passed, 28 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: edit button action policy belongs to the file-viewer controller; `fileEditMode` state itself remains app-owned due the rejected flag-only migration and should move only with broader active-file state ownership.
