@@ -66,6 +66,48 @@ def eval_video_preview_failure_path() -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_file_viewer_open_target() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("function preferredFileSelectionForSession(")
+    end = source.index("function fileVideoPreviewErrorText", start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{
+          selected: "sid-1",
+          fileViewerSessionId: "viewer-sid",
+          fileSessionSelections: new Map(),
+          fileCandidateList: [],
+          fileEntryMap: new Map(),
+          normalizeLineNumber: (value) => value == null || value === "" ? null : Number(value),
+          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+          historyFileSelectionForSession: () => ({{ path: "", line: null, gitPath: false, apiPath: "" }}),
+          sessionIndex: new Map(),
+          listFromFilesField: () => [],
+          sessionRelativePath: () => "",
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_target = resolveFileViewerOpenTarget;\n")}, ctx);
+        ctx.fileSessionSelections.set("sid-1", {{ path: "remembered.txt", line: "9", gitPath: true, apiPath: "api-remembered" }});
+        ctx.fileCandidateList = ["first-key"];
+        ctx.fileEntryMap.set("first-key", {{ path: "first.txt", changed: true, gitPath: true, apiPath: "api-first" }});
+        const explicit = ctx.__test_target({{ sessionId: "sid-1", explicitPath: "explicit.md", explicitLine: "42" }});
+        const preferred = ctx.__test_target({{ sessionId: "sid-1" }});
+        ctx.fileSessionSelections.clear();
+        const first = ctx.__test_target({{ sessionId: "sid-1" }});
+        ctx.fileCandidateList = [];
+        ctx.fileEntryMap.clear();
+        const none = ctx.__test_target({{ sessionId: "sid-1" }});
+        const noSession = ctx.__test_target({{ sessionId: "" }});
+        process.stdout.write(JSON.stringify({{ explicit, preferred, first, none, noSession }}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
+
 def eval_use_touch_file_editor_controls(query_matches: dict[str, bool]) -> bool:
     viewport_source = APP_VIEWPORT_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
@@ -1499,6 +1541,38 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn(["finalizeFileOpenSuccess", "stale.txt", "/abs/read"], fallback["calls"])
         self.assertEqual(result["invalidMessage"], "invalid file open mode")
 
+    def test_resolve_file_viewer_open_target_prioritizes_sources(self) -> None:
+        result = eval_file_viewer_open_target()
+        self.assertEqual(result["explicit"], {
+            "kind": "path",
+            "source": "explicit",
+            "path": "explicit.md",
+            "line": 42,
+            "changed": None,
+            "gitPath": False,
+            "apiPath": "",
+        })
+        self.assertEqual(result["preferred"], {
+            "kind": "path",
+            "source": "preferred",
+            "path": "remembered.txt",
+            "line": 9,
+            "changed": None,
+            "gitPath": True,
+            "apiPath": "api-remembered",
+        })
+        self.assertEqual(result["first"], {
+            "kind": "path",
+            "source": "first",
+            "path": "first.txt",
+            "line": None,
+            "changed": True,
+            "gitPath": True,
+            "apiPath": "api-first",
+        })
+        self.assertEqual(result["none"], {"kind": "none"})
+        self.assertEqual(result["noSession"], {"kind": "none"})
+
     def test_file_viewer_session_sync_has_commit_guards(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("let fileViewerSessionSyncToken = 0;", source)
@@ -1512,10 +1586,10 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("if (!isFileViewerSelectionCurrent(sid, syncToken)) return false;", ensure_block)
         self.assertIn("await refreshFileCandidates({ sessionId: sid, syncToken });", ensure_block)
         self.assertIn("if (!isFileViewerSessionCurrent(sid, syncToken)) return false;", ensure_block)
-        self.assertIn("setFilePath(preferred.path, { line: preferred.line, gitPath: preferred.gitPath, apiPath: preferred.apiPath });", ensure_block)
-        self.assertIn("openFilePathWithResolvedMode(preferred.path, { line: preferred.line, gitPath: preferred.gitPath, apiPath: preferred.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) })", ensure_block)
-        self.assertIn("const first = firstKey ? fileEntryMap.get(firstKey) : null;", ensure_block)
-        self.assertIn("openFilePathWithResolvedMode(first.path, { line: null, changed: Boolean(first.changed), gitPath: Boolean(first.gitPath), apiPath: first.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) })", ensure_block)
+        self.assertIn("const target = resolveFileViewerOpenTarget({ sessionId: sid });", ensure_block)
+        self.assertIn("setFilePath(target.path, { line: target.line, gitPath: target.gitPath, apiPath: target.apiPath });", ensure_block)
+        self.assertIn("await openFilePathWithResolvedMode(target.path, { line: target.line, changed: target.changed, gitPath: target.gitPath, apiPath: target.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) });", ensure_block)
+        self.assertNotIn("const first = firstKey ? fileEntryMap.get(firstKey) : null;", ensure_block)
         refresh_start = source.index("async function refreshFileCandidates(")
         refresh_end = source.index("async function showFileViewer", refresh_start)
         refresh_block = source[refresh_start:refresh_end]
@@ -1528,10 +1602,10 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const syncToken = ++fileViewerSessionSyncToken;", show_block)
         self.assertIn("await refreshFileCandidates({ sessionId: sid, syncToken });", show_block)
         self.assertIn("if (!isFileViewerSessionCurrent(sid, syncToken)) return;", show_block)
-        self.assertIn("const preferredGitPath = explicitPath ? false : Boolean(preferredSelection.gitPath);", show_block)
-        self.assertIn("openFilePathWithResolvedMode(preferred, { line: preferredLine, gitPath: preferredGitPath, apiPath: preferredApiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) })", show_block)
-        self.assertIn("const first = firstKey ? fileEntryMap.get(firstKey) : null;", show_block)
-        self.assertIn("openFilePathWithResolvedMode(first.path, { line: null, changed: Boolean(first.changed), gitPath: Boolean(first.gitPath), apiPath: first.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) })", show_block)
+        self.assertIn("const target = resolveFileViewerOpenTarget({ sessionId: sid, explicitPath, explicitLine: line });", show_block)
+        self.assertIn("void openFilePathWithResolvedMode(target.path, { line: target.line, changed: target.changed, gitPath: target.gitPath, apiPath: target.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) })", show_block)
+        self.assertNotIn("const preferredGitPath = explicitPath ? false : Boolean(preferredSelection.gitPath);", show_block)
+        self.assertNotIn("const first = firstKey ? fileEntryMap.get(firstKey) : null;", show_block)
         self.assertIn("fileViewerSessionSyncToken += 1;\n          cancelPendingFileOpen();", source)
         open_start = source.index("async function openSession(sessionId")
         open_end = source.index("async function pollMessages", open_start)

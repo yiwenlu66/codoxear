@@ -7233,6 +7233,25 @@
           return historyFileSelectionForSession(sid);
         }
 
+        function resolveFileViewerOpenTarget({ sessionId = "", explicitPath = "", explicitLine = null } = {}) {
+          const sid = String(sessionId || "").trim();
+          if (!sid) return Object.freeze({ kind: "none" });
+          const requestedPath = String(explicitPath ?? "");
+          if (requestedPath) {
+            return Object.freeze({ kind: "path", source: "explicit", path: requestedPath, line: normalizeLineNumber(explicitLine), changed: null, gitPath: false, apiPath: "" });
+          }
+          const preferred = preferredFileSelectionForSession(sid);
+          if (preferred.path) {
+            return Object.freeze({ kind: "path", source: "preferred", path: preferred.path, line: preferred.line, changed: null, gitPath: Boolean(preferred.gitPath), apiPath: normalizeFileApiPath(preferred.apiPath) });
+          }
+          const firstKey = fileCandidateList.length ? fileCandidateList[0] : "";
+          const first = firstKey ? fileEntryMap.get(firstKey) : null;
+          if (first) {
+            return Object.freeze({ kind: "path", source: "first", path: first.path, line: null, changed: Boolean(first.changed), gitPath: Boolean(first.gitPath), apiPath: normalizeFileApiPath(first.apiPath) });
+          }
+          return Object.freeze({ kind: "none" });
+        }
+
         function fileVideoPreviewErrorText(err) {
           return codoxearFileHelpers.fileVideoPreviewErrorText(err);
         }
@@ -7331,23 +7350,11 @@
           }
           await refreshFileCandidates({ sessionId: sid, syncToken });
           if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
-          const preferred = preferredFileSelectionForSession(sid);
-          if (preferred.path) {
-            setFilePath(preferred.path, { line: preferred.line, gitPath: preferred.gitPath, apiPath: preferred.apiPath });
+          const target = resolveFileViewerOpenTarget({ sessionId: sid });
+          if (target.kind === "path") {
+            setFilePath(target.path, { line: target.line, gitPath: target.gitPath, apiPath: target.apiPath });
             try {
-              await openFilePathWithResolvedMode(preferred.path, { line: preferred.line, gitPath: preferred.gitPath, apiPath: preferred.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) });
-            } catch (e) {
-              if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
-              fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
-            }
-            return isFileViewerSessionCurrent(sid, syncToken);
-          }
-          const firstKey = fileCandidateList.length ? fileCandidateList[0] : "";
-          const first = firstKey ? fileEntryMap.get(firstKey) : null;
-          if (first) {
-            setFilePath(first.path, { line: null, gitPath: first.gitPath, apiPath: first.apiPath });
-            try {
-              await openFilePathWithResolvedMode(first.path, { line: null, changed: Boolean(first.changed), gitPath: Boolean(first.gitPath), apiPath: first.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) });
+              await openFilePathWithResolvedMode(target.path, { line: target.line, changed: target.changed, gitPath: target.gitPath, apiPath: target.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) });
             } catch (e) {
               if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
               fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
@@ -9675,24 +9682,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             }
             return;
           }
-          const preferredSelection = preferredFileSelectionForSession(fileViewerSessionId);
-          const preferred = explicitPath || preferredSelection.path;
-          const preferredLine = explicitPath ? normalizeLineNumber(line) : preferredSelection.line;
-          const preferredGitPath = explicitPath ? false : Boolean(preferredSelection.gitPath);
-          const preferredApiPath = explicitPath ? "" : normalizeFileApiPath(preferredSelection.apiPath);
-          if (preferred) {
-            setFilePath(preferred, { line: preferredLine, gitPath: preferredGitPath, apiPath: preferredApiPath });
-            void openFilePathWithResolvedMode(preferred, { line: preferredLine, gitPath: preferredGitPath, apiPath: preferredApiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) }).catch((e) => {
-              if (!isFileViewerSessionCurrent(sid, syncToken)) return;
-              fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
-            });
-            return;
-          }
-          const firstKey = fileCandidateList.length ? fileCandidateList[0] : "";
-          const first = firstKey ? fileEntryMap.get(firstKey) : null;
-          if (first) {
-            setFilePath(first.path, { line: null, gitPath: first.gitPath, apiPath: first.apiPath });
-            void openFilePathWithResolvedMode(first.path, { line: null, changed: Boolean(first.changed), gitPath: Boolean(first.gitPath), apiPath: first.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) }).catch((e) => {
+          const target = resolveFileViewerOpenTarget({ sessionId: sid, explicitPath, explicitLine: line });
+          if (target.kind === "path") {
+            setFilePath(target.path, { line: target.line, gitPath: target.gitPath, apiPath: target.apiPath });
+            void openFilePathWithResolvedMode(target.path, { line: target.line, changed: target.changed, gitPath: target.gitPath, apiPath: target.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) }).catch((e) => {
               if (!isFileViewerSessionCurrent(sid, syncToken)) return;
               fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
             });
