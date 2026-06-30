@@ -158,6 +158,83 @@ def eval_hide_file_viewer_identity_cleanup() -> dict:
 
 
 
+def eval_disable_file_viewer_for_unavailable_session() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    remember_start = source.index("function rememberActiveFileSelection(")
+    remember_end = source.index("function historyFileSelectionForSession", remember_start)
+    disable_start = source.index("function disableFileViewerForUnavailableSession(")
+    disable_end = source.index("function handleFileViewerSessionUnavailable", disable_start)
+    snippet = source[remember_start:remember_end] + "\n" + source[disable_start:disable_end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const calls = [];
+        const ctx = {{
+          activeFilePath: "src/app.py",
+          activeFileApiPath: "token-1",
+          activeFileGitPath: true,
+          activeFileLine: 42,
+          fileViewerSessionId: "dead-sid",
+          selected: "dead-sid",
+          fileViewerUnavailableSessionId: "",
+          fileViewerSessionSyncToken: 5,
+          activeFileSaveToken: 99,
+          fileSavePending: true,
+          fileEditMode: true,
+          fileStatus: {{ textContent: "old" }},
+          savedSelections: [],
+          currentFileSessionId: () => String(ctx.fileViewerSessionId || ctx.selected || "").trim(),
+          hideFileUnsavedDialog: (choice) => calls.push(["hideFileUnsavedDialog", choice, ctx.fileViewerSessionSyncToken]),
+          cancelPendingFileOpen: () => calls.push(["cancelPendingFileOpen", ctx.fileViewerSessionSyncToken]),
+          resetFileSearchState: () => calls.push(["resetFileSearchState", ctx.fileViewerSessionSyncToken]),
+          closeFilePickerMenu: (opts) => calls.push(["closeFilePickerMenu", opts, ctx.fileViewerSessionSyncToken]),
+          syncFileEditorReadOnly: () => calls.push(["syncFileEditorReadOnly", ctx.fileEditMode]),
+          updateFileEditButton: () => calls.push(["updateFileEditButton", ctx.fileEditMode]),
+          updateFileTouchToolbar: () => calls.push(["updateFileTouchToolbar", ctx.fileViewerUnavailableSessionId]),
+        }};
+        ctx.fileSessionSelections = {{
+          set(key, value) {{
+            const saved = {{
+              key,
+              path: value.path,
+              apiPath: value.apiPath,
+              gitPath: value.gitPath,
+              line: value.line,
+              syncToken: ctx.fileViewerSessionSyncToken,
+              editMode: ctx.fileEditMode,
+              savePending: ctx.fileSavePending,
+              saveToken: ctx.activeFileSaveToken,
+            }};
+            ctx.savedSelections.push(saved);
+            calls.push(["rememberActiveFileSelection", saved]);
+          }},
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_disable_unavailable = disableFileViewerForUnavailableSession;\n")}, ctx);
+        ctx.__test_disable_unavailable("dead-sid");
+        process.stdout.write(JSON.stringify({{
+          calls,
+          savedSelections: ctx.savedSelections,
+          state: {{
+            unavailable: ctx.fileViewerUnavailableSessionId,
+            syncToken: ctx.fileViewerSessionSyncToken,
+            saveToken: ctx.activeFileSaveToken,
+            savePending: ctx.fileSavePending,
+            editMode: ctx.fileEditMode,
+            status: ctx.fileStatus.textContent,
+            path: ctx.activeFilePath,
+            apiPath: ctx.activeFileApiPath,
+            gitPath: ctx.activeFileGitPath,
+            line: ctx.activeFileLine,
+          }},
+        }}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
+
 def eval_file_viewer_open_target() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function preferredFileSelectionForSession(")
@@ -1591,6 +1668,40 @@ class TestFileViewerSource(unittest.TestCase):
             result["calls"].index(["updateFileTouchToolbar", "", None]),
         )
 
+    def test_disable_file_viewer_for_unavailable_session_saves_then_disables(self) -> None:
+        result = eval_disable_file_viewer_for_unavailable_session()
+        self.assertEqual(result["savedSelections"], [{
+            "key": "dead-sid",
+            "path": "src/app.py",
+            "apiPath": "token-1",
+            "gitPath": True,
+            "line": 42,
+            "syncToken": 5,
+            "editMode": True,
+            "savePending": True,
+            "saveToken": 99,
+        }])
+        self.assertEqual(result["state"], {
+            "unavailable": "dead-sid",
+            "syncToken": 6,
+            "saveToken": 0,
+            "savePending": False,
+            "editMode": False,
+            "status": "Session is no longer available; copy unsaved edits before closing.",
+            "path": "src/app.py",
+            "apiPath": "token-1",
+            "gitPath": True,
+            "line": 42,
+        })
+        self.assertEqual(result["calls"][0][0], "rememberActiveFileSelection")
+        self.assertIn(["hideFileUnsavedDialog", "cancel", 6], result["calls"])
+        self.assertIn(["cancelPendingFileOpen", 6], result["calls"])
+        self.assertIn(["resetFileSearchState", 6], result["calls"])
+        self.assertIn(["closeFilePickerMenu", {"restoreInput": True}, 6], result["calls"])
+        self.assertIn(["syncFileEditorReadOnly", False], result["calls"])
+        self.assertIn(["updateFileEditButton", False], result["calls"])
+        self.assertIn(["updateFileTouchToolbar", "dead-sid"], result["calls"])
+
     def test_file_editor_disables_monaco_suggestions(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn('accessibilitySupport: "off"', source)
@@ -1787,23 +1898,31 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("let fileViewerUnavailableSessionId = \"\";", source)
         self.assertIn("function isFileViewerSessionUnavailable()", source)
         self.assertIn("function blockUnavailableFileAction()", source)
+        self.assertIn("function disableFileViewerForUnavailableSession(sid)", source)
         self.assertIn("function handleFileViewerSessionUnavailable(sessionId)", source)
-        helper_start = source.index("function handleFileViewerSessionUnavailable(sessionId)")
+        self.assertEqual(source.count("disableFileViewerForUnavailableSession("), 2)
+        transition_start = source.index("function disableFileViewerForUnavailableSession(sid)")
+        helper_start = source.index("function handleFileViewerSessionUnavailable(sessionId)", transition_start)
         helper_end = source.index("async function openFilePath", helper_start)
+        transition_block = source[transition_start:helper_start]
         helper_block = source[helper_start:helper_end]
         self.assertIn("if (fileViewerSessionId && fileViewerSessionId !== sid) return;", helper_block)
         self.assertIn("if (!fileDirty) {\n            hideFileViewer();\n            return;\n          }", helper_block)
-        self.assertIn("fileViewerSessionSyncToken += 1;", helper_block)
-        self.assertIn("fileViewerUnavailableSessionId = sid;", helper_block)
-        self.assertIn("activeFileSaveToken = 0;", helper_block)
-        self.assertIn("fileSavePending = false;", helper_block)
-        self.assertIn("fileEditMode = false;", helper_block)
-        self.assertIn('hideFileUnsavedDialog("cancel");', helper_block)
-        self.assertIn("cancelPendingFileOpen();", helper_block)
-        self.assertIn("resetFileSearchState();", helper_block)
-        self.assertIn("Session is no longer available; copy unsaved edits before closing.", helper_block)
-        self.assertIn("syncFileEditorReadOnly();", helper_block)
-        self.assertIn("updateFileEditButton();", helper_block)
+        self.assertIn("disableFileViewerForUnavailableSession(sid);", helper_block)
+        self.assertNotIn("fileViewerSessionSyncToken += 1;", helper_block)
+        self.assertIn("rememberActiveFileSelection(sid);", transition_block)
+        self.assertIn("fileViewerSessionSyncToken += 1;", transition_block)
+        self.assertIn("fileViewerUnavailableSessionId = sid;", transition_block)
+        self.assertIn("activeFileSaveToken = 0;", transition_block)
+        self.assertIn("fileSavePending = false;", transition_block)
+        self.assertIn("fileEditMode = false;", transition_block)
+        self.assertIn('hideFileUnsavedDialog("cancel");', transition_block)
+        self.assertIn("cancelPendingFileOpen();", transition_block)
+        self.assertIn("resetFileSearchState();", transition_block)
+        self.assertIn("Session is no longer available; copy unsaved edits before closing.", transition_block)
+        self.assertIn("syncFileEditorReadOnly();", transition_block)
+        self.assertIn("updateFileEditButton();", transition_block)
+        self.assertLess(transition_block.index("rememberActiveFileSelection(sid);"), transition_block.index("fileViewerSessionSyncToken += 1;"))
         self.assertIn("fileViewerUnavailableSessionId = \"\";", source)
         self.assertIn("unavailable: isFileViewerSessionUnavailable(),", source)
         self.assertIn("const unavailable = Boolean(state.unavailable);", source)

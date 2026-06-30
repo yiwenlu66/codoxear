@@ -9719,14 +9719,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           afterModalVisibilityChanged();
           if (wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(fileViewer));
         }
-        function handleFileViewerSessionUnavailable(sessionId) {
-          const sid = String(sessionId || "").trim();
-          if (!sid || !isFileViewerOpen()) return;
-          if (fileViewerSessionId && fileViewerSessionId !== sid) return;
-          if (!fileDirty) {
-            hideFileViewer();
-            return;
-          }
+        function disableFileViewerForUnavailableSession(sid) {
+          rememberActiveFileSelection(sid);
           fileViewerSessionSyncToken += 1;
           fileViewerUnavailableSessionId = sid;
           activeFileSaveToken = 0;
@@ -9740,6 +9734,17 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileStatus.textContent = "Session is no longer available; copy unsaved edits before closing.";
           updateFileEditButton();
           updateFileTouchToolbar();
+        }
+
+        function handleFileViewerSessionUnavailable(sessionId) {
+          const sid = String(sessionId || "").trim();
+          if (!sid || !isFileViewerOpen()) return;
+          if (fileViewerSessionId && fileViewerSessionId !== sid) return;
+          if (!fileDirty) {
+            hideFileViewer();
+            return;
+          }
+          disableFileViewerForUnavailableSession(sid);
         }
         async function applyFileLoadResult(rel, result, request, { viewMode = "file" } = {}) {
           if (!isCurrentFileOpenRequest(request)) return false;
