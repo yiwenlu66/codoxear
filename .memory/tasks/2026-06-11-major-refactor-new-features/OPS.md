@@ -6639,3 +6639,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: compatible-video load-result policy belongs to the file-viewer controller. App still owns raw video rendering/loading side effects, compatible-preview fetch/load mechanics, raw load-result rendering for non-video kinds, raw restore text implementation, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, raw mode/download/video-preview DOM mutation, and raw Monaco selection helpers.
+
+## 2026-06-30T19:02:58Z File load-result planning controller ownership
+- Functional commit `b5026ae Move file load planning into viewer controller` moved normalized file load-result planning from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `prepareFileLoadResult(rel, result, request, { viewMode })` now owns current-request rejection, response kind validation, branch-specific active-file state mutation, invalid image/PDF/video/text response errors, size/reason/content/status normalization, markdown-preview decision, diff no-diff detection, and frozen render-plan construction for diff/image/pdf/video/download-only/text results. The existing video plan is reused for `kind: "video"` so all compatible-video policy remains beside controller-owned fallback state.
+- App-side boundary: `applyFileLoadResult()` now consumes `loadPlan.kind` and keeps raw rendering and DOM effects only: Monaco diff/file rendering, markdown-preview rendering, PDF rendering, image/video `src` assignment, render-surface mutation, blocked-file notice rendering, and async stale checks after renderer calls. The now-dead app wrappers for `applyActiveFileTextState()`, `applyActiveFileDiffState()`, and `applyActiveFileNonTextState()` were removed.
+- Test updates: real-controller probes now cover frozen load plans for diff, no-diff, image, PDF, download-only, markdown preview, unknown text kind fallback, video, stale request returning `null`, and invalid image response errors. App VM tests now stub controller `prepareFileLoadResult()` and verify rendered branch behavior still matches the old user-facing outcomes. Source sentinels now reject app-owned active-file state mutation and require app to dispatch through `loadPlan`.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused file-viewer validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader focused frontend/file-viewer/static/auth validation returned `131 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: file load-result state planning belongs to the file-viewer controller. App still owns raw renderer/DOM side effects for applying plans, raw restore text implementation, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, raw mode/download/video-preview DOM mutation, compatible-preview fetch/load mechanics, and raw Monaco selection helpers.
