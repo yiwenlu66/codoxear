@@ -2820,3 +2820,6 @@ Scoped claim: the current branch has a validated backend/server architecture che
 
 
 - Active-file save request body construction now has a named owner: `buildActiveFileSaveBody(save)` owns draft/non-draft file-write payload shape and path-token inclusion while preserving the pre-existing live `activeFileGitPath` read. Evidence includes commit `aee2c0d`, VM coverage for draft/git-token/git-no-token/non-git cases, full local pytest (`1271 passed, 136 subtests passed`), focused/full Docker validation, and clean-room review `64c3544a-88d7-4ded-a1db-ed5cb654a33a`. Next seam is save error rendering. See OPS Active file save body builder extraction.
+
+
+- Active-file save error rendering now has a named owner: `renderActiveFileSaveError(save, error)` owns current-save conflict-vs-generic status rendering after the caller's stale guard, while `saveActiveFileEdits()` still owns catch/currentness/return/final cleanup. Evidence includes commit `ae4a033`, VM coverage for conflict/generic/unknown-message branches, full local pytest (`1272 passed, 136 subtests passed`), focused/full Docker validation, and clean-room review `a2d4ab73-51de-4c99-8a4b-6be4e9e05bbe`. Next seam is save git-path currentness hardening. See OPS Active file save error renderer extraction.

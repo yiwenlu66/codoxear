@@ -5424,3 +5424,24 @@
 - Clean-room review `64c3544a-88d7-4ded-a1db-ed5cb654a33a` returned PASS with no blockers. Review verified draft/non-draft body shape preservation, exact live `activeFileGitPath` semantics, fresh mutable return object, path-token condition fidelity, minimal call-site replacement, no save context mutation, VM/source test fidelity, and unchanged API/stale/error/finally boundaries. Non-blocking notes: `activeFileGitPath` remains a pre-existing live-read coupling not captured in the save context; the private helper relies on closure state and is VM-tested accordingly.
 - Next transition seam: save error rendering helper after the catch-path currentness guard, preserving conflict-vs-generic error behavior while leaving catch/stale return ownership in `saveActiveFileEdits()`.
 - Scope note: this is save request body construction ownership only. It does not claim save error rendering ownership, live git-path currentness hardening, video fallback mode cleanup, PDF lifecycle repair, or browser-manual rendering evidence.
+
+
+
+## 2026-06-30T01:39:05Z Active file save error renderer extraction
+- Functional commit `ae4a033 Extract active file save error renderer` moved current-save error rendering out of the `saveActiveFileEdits()` catch branch into `renderActiveFileSaveError(save, error)`.
+- Mechanism: after the existing catch-path `if (!saveStillCurrent()) return false;` guard, the caller invokes the helper and still returns false. The helper preserves the old branch: HTTP/status 409 renders `renderFileSaveConflict(save.sessionId, save.path, message-or-conflict)`, while all other errors set `fileStatus.textContent` to `save error: <message-or-unknown error>`.
+- Boundary preserved: `saveActiveFileEdits()` still owns catch/stale guard and false return semantics. `renderFileSaveConflict()` DOM construction/click handlers, save request helpers, save body builder, save success applier, API call, final cleanup, open-file helpers, video/PDF lifecycle, unavailable-session handling, and save shortcut behavior were not changed.
+- Tests added/updated:
+  - `eval_active_file_save_error_renderer()` executes the real helper in a Node VM and covers 409 conflict with message, non-409 generic error with message, and missing-message fallback.
+  - Assertions verify conflict-renderer arguments, generic status text, unknown-message status text, helper signature, and catch call site.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused save-error/save-body/save-success/response/conflict tests passed.
+  - Focused file-viewer/file-picker/static group returned `88 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1272 passed, 136 subtests passed`.
+  - Focused Docker file-viewer/file-picker/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed.
+- Clean-room review `a2d4ab73-51de-4c99-8a4b-6be4e9e05bbe` returned PASS with no blockers. Review verified conflict-vs-generic branching, message fallback chains, frozen save session/path use, unchanged stale-guard boundary, unchanged false return semantics, untouched conflict UI construction and final cleanup, VM source-extraction fidelity, and no unintended extra call sites. Non-blocking note: null/undefined error cases are not directly tested but are guarded by the same old `error &&` logic.
+- Next transition seam from architect `775e3167-b6eb-4179-9cc7-dab6a89bd6e7`: harden save identity by freezing `gitPath` into the save snapshot, adding it to currentness, and using `save.gitPath` in `buildActiveFileSaveBody()` instead of live `activeFileGitPath`.
+- Scope note: this is save error rendering ownership only. It does not claim save git-path currentness hardening, video fallback mode cleanup, PDF lifecycle repair, or browser-manual rendering evidence.
