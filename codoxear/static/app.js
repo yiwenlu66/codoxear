@@ -8663,10 +8663,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (!(await maybeHandleUnsavedFileChanges())) return false;
           if (blockUnavailableFileAction()) return false;
           if (!currentGuard()) return false;
+          const openMode = normalizeExplicitFileOpenMode(mode);
           setFilePath(path, { line, gitPath, apiPath });
-          if (mode) setFileViewMode(mode);
+          if (openMode) setFileViewMode(openMode);
           renderFilePickerMenu();
-          await openFilePath(path, { line, gitPath, apiPath });
+          await openFilePath(path, { line, gitPath, apiPath, mode: openMode });
           return Boolean(currentGuard());
         }
 
@@ -9853,7 +9854,21 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return true;
         }
 
-        async function openFilePath(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {}) {
+        function normalizeExplicitFileOpenMode(requestedMode) {
+          if (requestedMode === null || requestedMode === undefined || requestedMode === "") return null;
+          if (requestedMode === "preview" || requestedMode === "file" || requestedMode === "diff") return requestedMode;
+          throw new Error("invalid file open mode");
+        }
+
+        function resolveFileOpenViewMode(request, rel, requestedMode = null) {
+          const openMode = normalizeExplicitFileOpenMode(requestedMode);
+          if (openMode) return openMode;
+          const activeEntry = activeFileEntry();
+          const canUseDiffView = request.gitPath && fileCandidateGitStateFresh && Boolean(activeEntry && activeEntry.changed);
+          return fileViewMode === "preview" && !isMarkdownPreviewable(rel) ? "file" : fileViewMode === "diff" && !canUseDiffView ? "file" : fileViewMode;
+        }
+
+        async function openFilePath(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined, mode = null } = {}) {
           if (blockUnavailableFileAction()) return false;
           if (!fileViewerSessionId) return false;
           const openRequest = startFileOpenRequest(nextPath, { line, gitPath, apiPath });
@@ -9867,9 +9882,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileStatus.textContent = "Loading...";
           resetFileViewerPanel();
           try {
-            const activeEntry = activeFileEntry();
-            const canUseDiffView = request.gitPath && fileCandidateGitStateFresh && Boolean(activeEntry && activeEntry.changed);
-            const viewMode = fileViewMode === "preview" && !isMarkdownPreviewable(rel) ? "file" : fileViewMode === "diff" && !canUseDiffView ? "file" : fileViewMode;
+            const viewMode = resolveFileOpenViewMode(request, rel, mode);
             if (viewMode !== fileViewMode) setFileViewMode(viewMode);
             if (viewMode === "diff") {
               const pathTokenQuery = request.apiPath ? `&path_token=${encodeURIComponent(request.apiPath)}` : "";

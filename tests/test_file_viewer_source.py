@@ -807,6 +807,111 @@ def eval_resolved_open_current_guard() -> dict:
     return json.loads(proc.stdout)
 
 
+
+
+def eval_open_file_guard_mode_validation() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    helper_start = source.index("function normalizeExplicitFileOpenMode(")
+    helper_end = source.index("function resolveFileOpenViewMode", helper_start)
+    guard_start = source.index("async function openFilePathWithGuard")
+    guard_end = source.index("async function openDraftFilePathWithGuard", guard_start)
+    snippet = source[helper_start:helper_end] + "\n" + source[guard_start:guard_end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const calls = [];
+        const ctx = {{
+          blockUnavailableFileAction: () => false,
+          currentFileSessionId: () => "sid-1",
+          isFileViewerSessionUnavailable: () => false,
+          maybeHandleUnsavedFileChanges: async () => true,
+          setFilePath: (...args) => calls.push(["setFilePath", ...args]),
+          setFileViewMode: (...args) => calls.push(["setFileViewMode", ...args]),
+          renderFilePickerMenu: () => calls.push(["renderFilePickerMenu"]),
+          openFilePath: async (...args) => calls.push(["openFilePath", ...args]),
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_guard = openFilePathWithGuard;\n")}, ctx);
+        (async () => {{
+          let invalidMessage = "";
+          try {{ await ctx.__test_guard("x.txt", {{ mode: "bogus" }}); }} catch (err) {{ invalidMessage = err && err.message || ""; }}
+          const invalidCalls = calls.slice();
+          calls.length = 0;
+          const validResult = await ctx.__test_guard("x.txt", {{ line: 4, mode: "diff", gitPath: true, apiPath: "tok" }});
+          const validCalls = calls.slice();
+          process.stdout.write(JSON.stringify({{ invalidMessage, invalidCalls, validResult, validCalls }}));
+        }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
+def eval_open_file_path_mode_ownership() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("function normalizeExplicitFileOpenMode(")
+    end = source.index("fileBtn.onclick", start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const calls = [];
+        const ctx = {{
+          fileViewerSessionId: "sid-1",
+          fileStatus: {{ textContent: "" }},
+          fileViewMode: "file",
+          fileCandidateGitStateFresh: false,
+          activeEntryValue: null,
+          activeEntryCalls: 0,
+          blockUnavailableFileAction: () => false,
+          startFileOpenRequest: (path, opts = {{}}) => {{
+            const request = {{
+              sessionId: "sid-1",
+              signal: {{ aborted: false }},
+              gitPath: Boolean(opts.gitPath),
+              apiPath: typeof opts.apiPath === "string" ? opts.apiPath : "",
+              line: opts.line ?? null,
+            }};
+            return {{ request, path: String(path || ""), done: () => calls.push(["done"]) }};
+          }},
+          resetFileViewerPanel: () => calls.push(["resetFileViewerPanel"]),
+          activeFileEntry: () => {{ ctx.activeEntryCalls += 1; return ctx.activeEntryValue; }},
+          isMarkdownPreviewable: (rel) => {{ calls.push(["isMarkdownPreviewable", rel]); return false; }},
+          setFileViewMode: (mode) => {{ ctx.fileViewMode = mode; calls.push(["setFileViewMode", mode]); }},
+          api: async (url, options = {{}}) => {{
+            calls.push(["api", url, Boolean(options.signal)]);
+            if (url.includes("/git/file_versions")) return {{ base_text: "old", current_text: "new", base_exists: true, current_exists: true, abs_path: "/abs/diff" }};
+            return {{ kind: "text", text: "body", path: "/abs/read" }};
+          }},
+          isCurrentFileOpenRequest: () => true,
+          applyFileLoadResult: async (...args) => {{ calls.push(["applyFileLoadResult", args[0], args[1].kind, args[3].viewMode]); return true; }},
+          finalizeFileOpenSuccess: (...args) => {{ calls.push(["finalizeFileOpenSuccess", ...args]); return true; }},
+          resetActiveFileBufferState: () => calls.push(["resetActiveFileBufferState"]),
+          updateFileTouchToolbar: () => calls.push(["updateFileTouchToolbar"]),
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_open_mode = { openFilePath, resolveFileOpenViewMode };\n")}, ctx);
+        (async () => {{
+          const explicitResult = await ctx.__test_open_mode.openFilePath("stale.txt", {{ line: 5, gitPath: true, apiPath: "tok", mode: "diff" }});
+          const explicit = {{ result: explicitResult, calls: calls.slice(), activeEntryCalls: ctx.activeEntryCalls, fileViewMode: ctx.fileViewMode }};
+          calls.length = 0;
+          ctx.fileStatus.textContent = "";
+          ctx.fileViewMode = "diff";
+          ctx.fileCandidateGitStateFresh = true;
+          ctx.activeEntryValue = {{ changed: false }};
+          ctx.activeEntryCalls = 0;
+          const fallbackResult = await ctx.__test_open_mode.openFilePath("stale.txt", {{ line: 5, gitPath: true, apiPath: "tok" }});
+          const fallback = {{ result: fallbackResult, calls: calls.slice(), activeEntryCalls: ctx.activeEntryCalls, fileViewMode: ctx.fileViewMode }};
+          let invalidMessage = "";
+          try {{ ctx.__test_open_mode.resolveFileOpenViewMode({{ gitPath: false }}, "x.txt", "bogus"); }} catch (err) {{ invalidMessage = err && err.message || ""; }}
+          process.stdout.write(JSON.stringify({{ explicit, fallback, invalidMessage }}));
+        }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def eval_active_file_load_state_writers() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function applyActiveFileTextState(")
@@ -1359,6 +1464,41 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertFalse(result["result"])
         self.assertEqual(result["calls"], [])
 
+    def test_open_file_path_guard_validates_mode_before_mutating_state(self) -> None:
+        result = eval_open_file_guard_mode_validation()
+        self.assertEqual(result["invalidMessage"], "invalid file open mode")
+        self.assertEqual(result["invalidCalls"], [])
+        self.assertTrue(result["validResult"])
+        self.assertEqual(result["validCalls"], [
+            ["setFilePath", "x.txt", {"line": 4, "gitPath": True, "apiPath": "tok"}],
+            ["setFileViewMode", "diff"],
+            ["renderFilePickerMenu"],
+            ["openFilePath", "x.txt", {"line": 4, "gitPath": True, "apiPath": "tok", "mode": "diff"}],
+        ])
+
+    def test_open_file_path_mode_ownership_respects_resolved_mode(self) -> None:
+        result = eval_open_file_path_mode_ownership()
+        explicit = result["explicit"]
+        self.assertTrue(explicit["result"])
+        self.assertEqual(explicit["activeEntryCalls"], 0)
+        self.assertEqual(explicit["fileViewMode"], "diff")
+        self.assertIn(["setFileViewMode", "diff"], explicit["calls"])
+        self.assertTrue(any(call[0] == "api" and "/git/file_versions?path=stale.txt&path_token=tok" in call[1] for call in explicit["calls"]))
+        self.assertFalse(any(call[0] == "api" and "/file/read" in call[1] for call in explicit["calls"]))
+        self.assertIn(["applyFileLoadResult", "stale.txt", "diff", "diff"], explicit["calls"])
+        self.assertIn(["finalizeFileOpenSuccess", "stale.txt", "/abs/diff"], explicit["calls"])
+
+        fallback = result["fallback"]
+        self.assertTrue(fallback["result"])
+        self.assertEqual(fallback["activeEntryCalls"], 1)
+        self.assertEqual(fallback["fileViewMode"], "file")
+        self.assertIn(["setFileViewMode", "file"], fallback["calls"])
+        self.assertTrue(any(call[0] == "api" and "/file/read?path=stale.txt&path_token=tok&git_path=1" in call[1] for call in fallback["calls"]))
+        self.assertFalse(any(call[0] == "api" and "/git/file_versions" in call[1] for call in fallback["calls"]))
+        self.assertIn(["applyFileLoadResult", "stale.txt", "text", "file"], fallback["calls"])
+        self.assertIn(["finalizeFileOpenSuccess", "stale.txt", "/abs/read"], fallback["calls"])
+        self.assertEqual(result["invalidMessage"], "invalid file open mode")
+
     def test_file_viewer_session_sync_has_commit_guards(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("let fileViewerSessionSyncToken = 0;", source)
@@ -1422,11 +1562,17 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const sessionAtStart = currentFileSessionId();", guard_block)
         self.assertIn("const currentGuard = typeof isCurrent === \"function\" ? isCurrent : () => currentFileSessionId() === sessionAtStart && !isFileViewerSessionUnavailable();", guard_block)
         self.assertIn("if (!currentGuard()) return false;", guard_block)
-        self.assertIn("await openFilePath(path, { line, gitPath, apiPath });", guard_block)
+        self.assertIn("const openMode = normalizeExplicitFileOpenMode(mode);", guard_block)
+        self.assertIn("if (openMode) setFileViewMode(openMode);", guard_block)
+        self.assertIn("await openFilePath(path, { line, gitPath, apiPath, mode: openMode });", guard_block)
         self.assertIn("return Boolean(currentGuard());", guard_block)
         self.assertIn("const diffable = canToggleMode && activeFileGitPath && fileCandidateGitStateFresh && Boolean(entry && entry.changed) && isDiffableFileKind(activeFileKind);", source)
+        self.assertIn("function normalizeExplicitFileOpenMode(requestedMode)", source)
+        self.assertIn("function resolveFileOpenViewMode(request, rel, requestedMode = null)", source)
         self.assertIn("const canUseDiffView = request.gitPath && fileCandidateGitStateFresh && Boolean(activeEntry && activeEntry.changed);", source)
         self.assertIn('fileViewMode === "diff" && !canUseDiffView ? "file"', source)
+        self.assertIn("async function openFilePath(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined, mode = null } = {})", source)
+        self.assertIn("const viewMode = resolveFileOpenViewMode(request, rel, mode);", source)
         self.assertIn("if (gitPath) {\n              body.git_path = true;", source)
         self.assertIn('const gitPathQuery = request.gitPath ? "&git_path=1" : "";', source)
         self.assertIn("git_path: save.gitPath", source)
@@ -1466,6 +1612,8 @@ class TestFileViewerSource(unittest.TestCase):
         open_primitive_block = source[open_primitive_start:open_primitive_end]
         self.assertIn("if (blockUnavailableFileAction()) return false;", open_primitive_block)
         self.assertIn("fileStatus.textContent = \"Loading...\";\n          resetFileViewerPanel();\n          try {", open_primitive_block)
+        self.assertIn("const viewMode = resolveFileOpenViewMode(request, rel, mode);", open_primitive_block)
+        self.assertNotIn("const activeEntry = activeFileEntry();", open_primitive_block)
         self.assertNotIn("disposeFileEditor();\n          resetActiveFileBufferState();\n          fileImage.removeAttribute", open_primitive_block)
         file_picker_source = APP_FILE_PICKER_JS.read_text(encoding="utf-8")
         self.assertIn("if (blocked()) return [];", file_picker_source)
