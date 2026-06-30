@@ -5957,3 +5957,21 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: the generic unavailable action status policy moved. Dirty unavailable-session transition choreography and non-dirty hide behavior remain app-owned; paste/editor actions and toolbar/editability policy also remain partly `app.js`-owned.
+
+## 2026-06-30T10:01:52Z Save precondition controller ownership
+- Functional commit `3abedbd Move save preconditions into viewer controller` moved active-file save precondition policy from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `createFileViewerController()` now owns `saveActiveFileEdits({ exitEditMode })`. It uses controller-owned unavailable status handling, active identity, current session, text-kind predicate, editability, dirty state, draft state, save-snapshot creation, and submit transport. It returns `false` for unavailable, missing session/path, non-text kind, or non-editable state; exits edit mode and returns `true` for clean non-draft saves when requested; otherwise begins the frozen save request and delegates to `submitActiveFileSave()`.
+- `app.js` now keeps only the stable `saveActiveFileEdits()` wrapper name and injects `isTextFileKind` plus `currentFileDirty` into the controller.
+- Behavior preserved: save shortcut/manual save call sites still call `saveActiveFileEdits({ exitEditMode })`; unavailable save attempts still set the copy-only message; clean non-draft saves can exit edit mode without POST; dirty/draft saves still use the controller-owned request/body/transport/success/error/final cleanup lifecycle.
+- Tests updated:
+  - `tests/test_file_viewer_source.py` extended real-controller coverage for unavailable, no-session, no-path, non-text, non-editable, clean-exit, and dirty-submit save-precondition outcomes.
+  - Source sentinels now require the app wrapper delegation and controller-owned save-precondition branch.
+  - `tests/test_frontend_file_viewer_module_source.py` fixture supplies the new fail-loud dependencies.
+- Validation before commit:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `91 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: active-file save lifecycle and precondition policy now belong to the file-viewer controller. Remaining file-viewer/editor controller work includes generic file-open result rendering/application, draft inspect/open currentness behavior, dirty unavailable transition choreography, paste/editor actions, and toolbar/editability state.
