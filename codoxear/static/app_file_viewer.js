@@ -269,6 +269,26 @@
       return true;
     }
 
+    async function submitActiveFileSave(save, { exitEditMode = true } = {}) {
+      const saveStillCurrent = () => isCurrentActiveFileSaveRequest(save);
+      markActiveFileSavePending(save);
+      try {
+        const saveBody = buildActiveFileSaveBody(save);
+        const res = await api(`/api/sessions/${save.sessionId}/file/write`, {
+          method: "POST",
+          body: saveBody,
+        });
+        if (!saveStillCurrent()) return true;
+        return applyActiveFileSaveSuccess(save, res, { exitEditMode });
+      } catch (error) {
+        if (!saveStillCurrent()) return false;
+        renderActiveFileSaveError(save, error);
+        return false;
+      } finally {
+        finishActiveFileSaveRequest(save);
+      }
+    }
+
     function finalizeFileOpenSuccess(rel, absPath = null) {
       applyFileMode();
       rememberOpenedFile(rel, absPath);
@@ -406,6 +426,7 @@
       buildActiveFileSaveBody,
       renderActiveFileSaveError,
       applyActiveFileSaveSuccess,
+      submitActiveFileSave,
       nextActiveFileIdentity,
       currentActiveFileIdentity,
       currentActiveFileLine,

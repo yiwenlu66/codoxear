@@ -8560,6 +8560,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return fileViewerController.applyActiveFileSaveSuccess(save, res, { exitEditMode });
         }
 
+        async function submitActiveFileSave(save, { exitEditMode = true } = {}) {
+          return fileViewerController.submitActiveFileSave(save, { exitEditMode });
+        }
+
         async function saveActiveFileEdits({ exitEditMode = true } = {}) {
           if (blockUnavailableFileAction()) return false;
           if (!fileViewerSessionId || !activeFilePathValue() || !isTextFileKind(activeFileKind) || !activeFileEditable) return false;
@@ -8568,23 +8572,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             return true;
           }
           const save = beginActiveFileSaveRequest();
-          const saveStillCurrent = () => isCurrentActiveFileSaveRequest(save);
-          markActiveFileSavePending(save);
-          try {
-            const saveBody = buildActiveFileSaveBody(save);
-            const res = await api(`/api/sessions/${save.sessionId}/file/write`, {
-              method: "POST",
-              body: saveBody,
-            });
-            if (!saveStillCurrent()) return true;
-            return applyActiveFileSaveSuccess(save, res, { exitEditMode });
-          } catch (e) {
-            if (!saveStillCurrent()) return false;
-            renderActiveFileSaveError(save, e);
-            return false;
-          } finally {
-            finishActiveFileSaveRequest(save);
-          }
+          return await submitActiveFileSave(save, { exitEditMode });
         }
 
         async function maybeHandleUnsavedFileChanges() {

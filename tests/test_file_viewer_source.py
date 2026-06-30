@@ -1739,6 +1739,137 @@ def eval_active_file_save_success() -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_active_file_save_transport() -> dict:
+    source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(source)}, ctx);
+        const state = {{
+          sessionId: "sid-1",
+          kind: "text",
+          text: "old",
+          editorText: "NEW",
+          version: "v1",
+          editable: true,
+          draft: false,
+          dirty: true,
+          editMode: true,
+          behavior: "success",
+        }};
+        const calls = [];
+        const fileStatus = {{ textContent: "", replaceChildren() {{}} }};
+        const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
+          el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children }}),
+          fileStatus,
+          currentSessionId: () => state.sessionId,
+          normalizeLineNumber: (value) => value == null ? null : Number(value),
+          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+          fileApiPathForPath: (_path, existing = "") => existing || "derived-token",
+          isUnavailable: () => false,
+          confirmReload: () => true,
+          openFilePath: async () => true,
+          api: async (url, options = {{}}) => {{
+            calls.push(["api", url, options.method, options.body]);
+            if (state.behavior === "success-stale") {{
+              state.sessionId = "sid-2";
+              return {{ version: "late", editable: false, size: 4, path: "/abs/late.py" }};
+            }}
+            if (state.behavior === "error-stale") {{
+              state.sessionId = "sid-2";
+              throw {{ status: 500, message: "late failure" }};
+            }}
+            if (state.behavior === "error-current") throw {{ status: 500, message: "disk full" }};
+            return {{ version: "v2", editable: false, size: 4, path: "/abs/src.py" }};
+          }},
+          focusEditor: () => null,
+          disposeOpenRender: () => calls.push(["disposeOpenRender"]),
+          currentFileViewMode: () => "file",
+          activeFileEntry: () => null,
+          fileCandidateGitStateFresh: () => false,
+          isMarkdownPreviewable: () => true,
+          resetActiveFileBufferState: () => calls.push(["resetActiveFileBufferState"]),
+          updateFileTouchToolbar: () => calls.push(["updateFileTouchToolbar"]),
+          setFileViewMode: () => {{}},
+          applyActiveFileTextState: (nextState) => {{
+            state.kind = nextState.kind;
+            state.text = nextState.text;
+            state.editable = nextState.editable;
+            state.version = nextState.version;
+            state.draft = nextState.draft;
+            calls.push(["applyActiveFileTextState", nextState]);
+          }},
+          renderMonacoFile: async () => true,
+          setFileEditMode: (value) => {{ state.editMode = Boolean(value); calls.push(["setFileEditMode", Boolean(value)]); }},
+          currentActiveFileKind: () => state.kind,
+          currentActiveFileDraft: () => state.draft,
+          currentActiveFileVersion: () => state.version,
+          currentActiveFileEditable: () => state.editable,
+          getFileEditorText: () => state.editorText,
+          setFileDirty: (value) => {{ state.dirty = Boolean(value); calls.push(["setFileDirty", Boolean(value)]); }},
+          syncFileEditorReadOnly: () => calls.push(["syncFileEditorReadOnly"]),
+          fmtBytes: (value) => `${{value}}B`,
+          applyFileMode: () => calls.push(["applyFileMode"]),
+          rememberOpenedFile: (...args) => calls.push(["rememberOpenedFile", ...args]),
+          rememberActiveFileSelection: () => calls.push(["rememberActiveFileSelection"]),
+          updateFileEditButton: () => calls.push(["updateFileEditButton"]),
+          renderFilePickerMenu: () => calls.push(["renderFilePickerMenu"]),
+        }});
+        async function runCase(behavior) {{
+          state.sessionId = "sid-1";
+          state.kind = "text";
+          state.text = "old";
+          state.editorText = "NEW";
+          state.version = "v1";
+          state.editable = true;
+          state.draft = false;
+          state.dirty = true;
+          state.editMode = true;
+          state.behavior = behavior;
+          calls.length = 0;
+          fileStatus.textContent = "";
+          controller.setActiveFileIdentity("src.py", {{ line: 9, gitPath: true, apiPath: "tok" }});
+          const save = controller.beginActiveFileSaveRequest();
+          const ok = await controller.submitActiveFileSave(save, {{ exitEditMode: true }});
+          const identity = controller.currentActiveFileIdentity();
+          return {{
+            ok,
+            pending: controller.isFileSavePending(),
+            sessionId: state.sessionId,
+            text: state.text,
+            version: state.version,
+            editable: state.editable,
+            dirty: state.dirty,
+            editMode: state.editMode,
+            path: identity.path,
+            gitPath: identity.gitPath,
+            apiPath: identity.apiPath,
+            status: fileStatus.textContent,
+            calls: calls.slice(),
+          }};
+        }}
+        runCase("success")
+          .then(async (success) => {{
+            const staleSuccess = await runCase("success-stale");
+            const currentError = await runCase("error-current");
+            const staleError = await runCase("error-stale");
+            process.stdout.write(JSON.stringify({{ success, staleSuccess, currentError, staleError }}));
+          }})
+          .catch((err) => {{ console.error(err && err.stack ? err.stack : err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(
+        ["node", "-e", js],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return json.loads(proc.stdout)
+
+
 def eval_draft_file_load_choreography() -> dict:
     source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
@@ -2850,7 +2981,8 @@ class TestFileViewerSource(unittest.TestCase):
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertIn("function buildActiveFileSaveBody(save)", source)
         self.assertIn("return fileViewerController.buildActiveFileSaveBody(save);", source)
-        self.assertIn("const saveBody = buildActiveFileSaveBody(save);", source)
+        self.assertNotIn("const saveBody = buildActiveFileSaveBody(save);", source)
+        self.assertIn("const saveBody = buildActiveFileSaveBody(save);", viewer_source)
         self.assertIn("function buildActiveFileSaveBody(save)", viewer_source)
         self.assertIn("if (!save.draft && save.gitPath && save.apiPath) body.path_token = save.apiPath;", viewer_source)
 
@@ -2866,7 +2998,7 @@ class TestFileViewerSource(unittest.TestCase):
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertIn("function renderActiveFileSaveError(save, error)", source)
         self.assertIn("return fileViewerController.renderActiveFileSaveError(save, error);", source)
-        self.assertIn("renderActiveFileSaveError(save, e);\n            return false;", source)
+        self.assertIn("renderActiveFileSaveError(save, error);\n        return false;", viewer_source)
         self.assertIn("function renderActiveFileSaveError(save, error)", viewer_source)
         self.assertIn("renderSaveConflict(save.sessionId, save.path", viewer_source)
         self.assertIn("fileStatus.textContent = `save error: ${error && error.message ? error.message : \"unknown error\"}`;", viewer_source)
@@ -2927,6 +3059,39 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const nextVersion = res && typeof res.version === \"string\" ? res.version : currentActiveFileVersion();", viewer_source)
         self.assertIn("const nextEditable = res && typeof res.editable === \"boolean\" ? res.editable : currentActiveFileEditable();", viewer_source)
 
+    def test_active_file_save_transport_preserves_currentness_returns(self) -> None:
+        result = eval_active_file_save_transport()
+        self.assertTrue(result["success"]["ok"])
+        self.assertFalse(result["success"]["pending"])
+        self.assertEqual(result["success"]["text"], "NEW")
+        self.assertEqual(result["success"]["version"], "v2")
+        self.assertFalse(result["success"]["editable"])
+        self.assertFalse(result["success"]["dirty"])
+        self.assertFalse(result["success"]["editMode"])
+        self.assertEqual(result["success"]["status"], "src.py - 4B")
+        self.assertIn(["api", "/api/sessions/sid-1/file/write", "POST", {"path": "src.py", "text": "NEW", "version": "v1", "git_path": True, "path_token": "tok"}], result["success"]["calls"])
+        self.assertIn(["applyActiveFileTextState", {"kind": "text", "text": "NEW", "editable": False, "version": "v2", "draft": False}], result["success"]["calls"])
+        self.assertEqual(result["success"]["calls"][-2:], [["syncFileEditorReadOnly"], ["updateFileEditButton"]])
+
+        self.assertTrue(result["staleSuccess"]["ok"])
+        self.assertFalse(result["staleSuccess"]["pending"])
+        self.assertEqual(result["staleSuccess"]["sessionId"], "sid-2")
+        self.assertEqual(result["staleSuccess"]["text"], "old")
+        self.assertEqual(result["staleSuccess"]["status"], "Saving src.py...")
+        self.assertFalse(any(call and call[0] == "applyActiveFileTextState" for call in result["staleSuccess"]["calls"]))
+
+        self.assertFalse(result["currentError"]["ok"])
+        self.assertFalse(result["currentError"]["pending"])
+        self.assertEqual(result["currentError"]["status"], "save error: disk full")
+        self.assertFalse(any(call and call[0] == "applyActiveFileTextState" for call in result["currentError"]["calls"]))
+
+        self.assertFalse(result["staleError"]["ok"])
+        self.assertFalse(result["staleError"]["pending"])
+        self.assertEqual(result["staleError"]["sessionId"], "sid-2")
+        self.assertEqual(result["staleError"]["text"], "old")
+        self.assertEqual(result["staleError"]["status"], "Saving src.py...")
+        self.assertFalse(any(call and call[0] == "applyActiveFileTextState" for call in result["staleError"]["calls"]))
+
     def test_file_save_response_is_bound_to_original_session_and_path(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index("async function saveActiveFileEdits")
@@ -2943,16 +3108,19 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const text = getFileEditorText();", viewer_source)
         self.assertIn("const token = ++fileSaveSeq;", viewer_source)
         self.assertIn("activeFileSaveToken = token;", viewer_source)
-        self.assertIn("const saveStillCurrent = () => isCurrentActiveFileSaveRequest(save);", block)
+        self.assertIn("return await submitActiveFileSave(save, { exitEditMode });", block)
         self.assertIn("? { path: save.path, text: save.text, create: true }", viewer_source)
         self.assertIn(": { path: save.path, text: save.text, version: save.version, git_path: save.gitPath };", viewer_source)
         self.assertIn("if (!save.draft && save.gitPath && save.apiPath) body.path_token = save.apiPath;", viewer_source)
-        self.assertIn("const saveBody = buildActiveFileSaveBody(save);", block)
-        self.assertIn("await api(`/api/sessions/${save.sessionId}/file/write`", block)
-        self.assertIn("if (!saveStillCurrent()) return true;", block)
-        self.assertIn("return applyActiveFileSaveSuccess(save, res, { exitEditMode });", block)
-        self.assertIn("if (!saveStillCurrent()) return false;", block)
-        self.assertIn("return fileViewerController.applyActiveFileSaveSuccess(save, res, { exitEditMode });", source)
+        self.assertIn("async function submitActiveFileSave(save, { exitEditMode = true } = {})", viewer_source)
+        self.assertIn("const saveStillCurrent = () => isCurrentActiveFileSaveRequest(save);", viewer_source)
+        self.assertIn("const saveBody = buildActiveFileSaveBody(save);", viewer_source)
+        self.assertIn("await api(`/api/sessions/${save.sessionId}/file/write`", viewer_source)
+        self.assertIn("if (!saveStillCurrent()) return true;", viewer_source)
+        self.assertIn("return applyActiveFileSaveSuccess(save, res, { exitEditMode });", viewer_source)
+        self.assertIn("if (!saveStillCurrent()) return false;", viewer_source)
+        self.assertIn("finishActiveFileSaveRequest(save);", viewer_source)
+        self.assertIn("return fileViewerController.submitActiveFileSave(save, { exitEditMode });", source)
         self.assertIn("fileStatus.textContent = `${save.path} - ${fmtBytes(size)}`;", viewer_source)
         self.assertIn("rememberOpenedFile(save.path,", viewer_source)
         self.assertNotIn("activeFileText = save.text;", source)
@@ -2977,7 +3145,8 @@ class TestFileViewerSource(unittest.TestCase):
         save_start = source.index("async function saveActiveFileEdits")
         save_end = source.index("async function maybeHandleUnsavedFileChanges", save_start)
         save_block = source[save_start:save_end]
-        self.assertIn("renderActiveFileSaveError(save, e);", save_block)
+        self.assertIn("return await submitActiveFileSave(save, { exitEditMode });", save_block)
+        self.assertIn("renderActiveFileSaveError(save, error);", viewer_source)
         self.assertIn("renderSaveConflict(save.sessionId, save.path, error && error.message ? error.message : \"conflict\");", viewer_source)
         self.assertNotIn("function renderFileSaveConflict", source)
         self.assertNotIn("let fileSaveSeq = 0;", source)
@@ -2985,7 +3154,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("let fileSaveSeq = 0;", viewer_source)
         self.assertIn("let activeFileSaveToken = 0;", viewer_source)
         self.assertIn("if (!save || activeFileSaveToken !== save.token) return;", viewer_source)
-        self.assertIn("finishActiveFileSaveRequest(save);", save_block)
+        self.assertIn("finishActiveFileSaveRequest(save);", viewer_source)
         self.assertIn(".fileConflictActions", css_source)
 
 
