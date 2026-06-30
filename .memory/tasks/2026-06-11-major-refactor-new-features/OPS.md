@@ -5975,3 +5975,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: active-file save lifecycle and precondition policy now belong to the file-viewer controller. Remaining file-viewer/editor controller work includes generic file-open result rendering/application, draft inspect/open currentness behavior, dirty unavailable transition choreography, paste/editor actions, and toolbar/editability state.
+
+## 2026-06-30T10:10:20Z File editor capability controller ownership
+- Functional commit `dbdf193 Move file editor capabilities into viewer controller` moved pure file-editor capability calculation from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `createFileViewerController()` now owns `fileEditorCapabilities(state)`, using the injected `isTextFileKind` dependency to compute `canEnterEditMode`, `writable`, `idleWritable`, `idleTextWritable`, and `editModeAllowedInCurrentView` from an explicit state snapshot. The returned capability object remains frozen.
+- `app.js` keeps `currentFileEditorState()`, `fileEditorCapabilities(state)` wrapper, and the existing predicate wrappers/call sites for read-only sync, touch toolbar, and edit-mode entry.
+- Behavior preserved: save-pending still blocks edit-mode entry and idle writability but not raw writability; binary kinds remain writable only under existing edit/view/editable conditions but not text-writable; missing path blocks entering edit mode; current-view edit-mode eligibility remains independent of missing path.
+- Tests updated:
+  - `tests/test_frontend_file_viewer_module_source.py` now exercises the real controller capability calculator and verifies frozen output plus editable/pending/binary/missing-path distinctions.
+  - `tests/test_file_viewer_source.py` source sentinels now require `app.js` wrapper delegation and controller-owned frozen capability implementation; the app wrapper VM fake preserves parity for existing predicate tests.
+- Validation before commit:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `91 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: pure editor capability policy moved. Editor action handlers, touch-toolbar DOM updates, current state snapshot construction, generic file-open result rendering/application, draft inspect/open currentness behavior, and dirty unavailable transition choreography remain partly `app.js`-owned.
