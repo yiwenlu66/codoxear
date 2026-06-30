@@ -6530,3 +6530,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: edit-mode state now shares the file-viewer controller source of truth with active-file metadata, dirty state, save/open policy, edit-button policy, paste/delete/copy/touch-selection policy, and unavailable-session policy. App still owns raw Monaco/editor DOM operations, raw load-result rendering, raw view-mode DOM application, raw restore text implementation, unsaved modal DOM internals, paste dialog DOM/show-hide primitives, touch toolbar DOM, and raw Monaco selection helpers.
+
+## 2026-06-30T17:10:35Z Touch-toolbar display policy controller ownership
+- Functional commit `725db4f Move touch toolbar policy into viewer controller` moved file touch-toolbar affordance decisions from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `currentFileTouchToolbarState()` now computes the toolbar's visible/select-active/dpad/copy/paste state from controller-owned touch-selection mode and editor capability policy plus explicit selection-text/editor-writability dependencies. `app.js` now applies the returned state to DOM styles/classes and no longer recomputes paste/copy/dpad visibility itself.
+- Tests updated: file-viewer source assertions now require controller-owned toolbar state policy (`currentFileTouchToolbarState`, selection-driven `copyVisible`, idle-text-writable `pasteVisible`) and app-owned DOM application from `toolbarState`.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused file-viewer validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader focused frontend/file-viewer/static/auth validation returned `131 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: touch-toolbar display/affordance policy belongs to the file-viewer controller. App still owns the raw toolbar DOM nodes, style/class mutation, touch press/click binding mechanics, raw Monaco/editor DOM operations, raw load-result rendering, raw view-mode DOM application, raw restore text implementation, unsaved modal DOM internals, paste dialog DOM/show-hide primitives, and raw Monaco selection helpers.
