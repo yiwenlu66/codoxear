@@ -8296,6 +8296,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           resetFileSearchState: () => resetFileSearchState(),
           closeFilePickerMenu: (options) => closeFilePickerMenu(options),
           isTextFileKind: (kind) => isTextFileKind(kind),
+          isDiffableFileKind: (kind) => isDiffableFileKind(kind),
           confirmReload: (message) => window.confirm(message),
           promptUnsavedFileChoice: () => promptFileUnsavedChoice(),
           restoreFileEditorText: (text) => restoreFileEditorText(text),
@@ -8454,26 +8455,22 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function applyFileMode() {
-          const hasPath = Boolean(activeFilePathValue());
-          const entry = hasPath ? activeFileEntry() : null;
-          const canToggleMode = hasPath && !currentActiveFileDraft();
-          const isDiff = fileViewMode === "diff";
-          const isPreview = fileViewMode === "preview";
-          const diffable = canToggleMode && activeFileGitPathValue() && fileCandidateGitStateFresh && Boolean(entry && entry.changed) && isDiffableFileKind(currentActiveFileKind());
-          const previewable = !currentActiveFileDraft() && currentActiveFileKind() === "markdown";
-          fileModeDiffBtn.classList.toggle("active", hasPath && isDiff);
-          fileModePreviewBtn.classList.toggle("active", hasPath && isPreview);
-          fileModeDiffBtn.disabled = !diffable;
-          fileModePreviewBtn.disabled = !canToggleMode;
-          fileDownloadBtn.disabled = !hasPath || currentActiveFileDraft();
-          const videoPreviewAvailable = Boolean(activeVideoFallback && activeVideoFallback.previewUrl && !activeVideoFallback.used);
-          fileVideoPreviewBtn.style.display = videoPreviewAvailable ? "" : "none";
-          fileVideoPreviewBtn.disabled = !videoPreviewAvailable || Boolean(activeVideoFallback && activeVideoFallback.preparing);
-          fileVideoPreviewBtn.title = activeVideoFallback && activeVideoFallback.preparing ? "Building compatible MP4 preview" : "Use compatible MP4 preview";
-          fileVideoPreviewBtn.setAttribute("aria-label", fileVideoPreviewBtn.title);
-          fileModePreviewBtn.style.display = previewable ? "" : "none";
-          if (fileViewMode !== "file") hideFilePasteDialog();
-          if (fileViewMode !== "file" && currentFileEditMode()) setFileEditMode(false);
+          const modeState = fileViewerController.currentFileModeControlState({
+            videoPreviewAvailable: Boolean(activeVideoFallback && activeVideoFallback.previewUrl && !activeVideoFallback.used),
+            videoPreviewPreparing: Boolean(activeVideoFallback && activeVideoFallback.preparing),
+          });
+          fileModeDiffBtn.classList.toggle("active", modeState.diffActive);
+          fileModePreviewBtn.classList.toggle("active", modeState.previewActive);
+          fileModeDiffBtn.disabled = modeState.diffDisabled;
+          fileModePreviewBtn.disabled = modeState.previewDisabled;
+          fileDownloadBtn.disabled = modeState.downloadDisabled;
+          fileVideoPreviewBtn.style.display = modeState.videoPreviewVisible ? "" : "none";
+          fileVideoPreviewBtn.disabled = modeState.videoPreviewDisabled;
+          fileVideoPreviewBtn.title = modeState.videoPreviewTitle;
+          fileVideoPreviewBtn.setAttribute("aria-label", modeState.videoPreviewTitle);
+          fileModePreviewBtn.style.display = modeState.markdownPreviewVisible ? "" : "none";
+          if (modeState.shouldHidePasteDialog) hideFilePasteDialog();
+          if (modeState.shouldExitEditMode) setFileEditMode(false);
           syncFileEditorReadOnly();
           updateFileEditButton();
         }

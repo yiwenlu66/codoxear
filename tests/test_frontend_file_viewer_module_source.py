@@ -105,6 +105,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             resetFileSearchState: () => events.push(["resetFileSearchState"]),
             closeFilePickerMenu: (options) => events.push(["closeFilePickerMenu", options]),
             isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+            isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
             confirmReload: (message) => {{ events.push(["confirm", message]); return state.confirmResult !== false; }},
             promptUnsavedFileChoice: async () => {{ events.push(["promptUnsaved", state.unsavedChoice || "cancel"]); return state.unsavedChoice || "cancel"; }},
             restoreFileEditorText: (text) => events.push(["restoreFileEditorText", text]),
@@ -541,6 +542,21 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const pendingCapabilities = renderController.fileEditorCapabilities({{ path: "src/app.py", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: true }});
           const binaryCapabilities = renderController.fileEditorCapabilities({{ path: "img.png", kind: "image", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
           const missingPathCapabilities = renderController.fileEditorCapabilities({{ path: "", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
+          function runModeControlState({{ path = "state.md", viewMode = "file", kind = "markdown", draft = false, gitPath = true, gitFresh = false, changed = false, editMode = false, videoPreviewAvailable = false, videoPreviewPreparing = false }} = {{}}) {{
+            state.viewMode = editMode ? "file" : viewMode;
+            state.gitFresh = gitFresh;
+            state.activeEntry = changed ? {{ changed: true }} : null;
+            renderController.setActiveFileIdentity(path, {{ gitPath, apiPath: "tok" }});
+            renderController.applyActiveFileTextState({{ kind, text: "body", editable: true, version: "v1", draft }});
+            renderController.setFileEditMode(editMode);
+            state.viewMode = viewMode;
+            const value = renderController.currentFileModeControlState({{ videoPreviewAvailable, videoPreviewPreparing }});
+            return {{ value, frozen: Object.isFrozen(value) }};
+          }}
+          const modeControlDiffable = runModeControlState({{ viewMode: "diff", gitFresh: true, changed: true }});
+          const modeControlNoPath = runModeControlState({{ path: "", viewMode: "file", kind: "text", gitFresh: true, changed: true }});
+          const modeControlPreviewExitEdit = runModeControlState({{ viewMode: "preview", editMode: true, videoPreviewAvailable: true, videoPreviewPreparing: true }});
+          const modeControlDraft = runModeControlState({{ path: "new.txt", viewMode: "file", kind: "text", draft: true, gitPath: false }});
           const render = {{
             exportFrozen: Object.isFrozen(fileViewer),
             exports: Object.keys(fileViewer).sort(),
@@ -568,6 +584,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             unavailableHandler: {{ unavailableHandleClean, unavailableHandleDirty, unavailableHandleMismatch, unavailableHandleClosed }},
             draftGuard: {{ draftInvalidPath, draftDirectory, draftExisting, draftInspectError, draftNew }},
             capabilities: {{ derivedCapabilities, editableCapabilities, pendingCapabilities, binaryCapabilities, missingPathCapabilities, editableFrozen: Object.isFrozen(editableCapabilities) }},
+            modeControl: {{ modeControlDiffable, modeControlNoPath, modeControlPreviewExitEdit, modeControlDraft }},
           }};
           const availableReloadFailure = await runReloadCase("");
           const canceledReload = await runReloadCase("", false);
@@ -830,6 +847,12 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "binaryCapabilities": {"canEnterEditMode": False, "writable": True, "idleWritable": True, "idleTextWritable": False, "editModeAllowedInCurrentView": False},
             "missingPathCapabilities": {"canEnterEditMode": False, "writable": True, "idleWritable": True, "idleTextWritable": True, "editModeAllowedInCurrentView": True},
             "editableFrozen": True,
+        })
+        self.assertEqual(result["render"]["modeControl"], {
+            "modeControlDiffable": {"value": {"diffActive": True, "previewActive": False, "diffDisabled": False, "previewDisabled": False, "downloadDisabled": False, "videoPreviewVisible": False, "videoPreviewDisabled": True, "videoPreviewTitle": "Use compatible MP4 preview", "markdownPreviewVisible": True, "shouldHidePasteDialog": True, "shouldExitEditMode": False}, "frozen": True},
+            "modeControlNoPath": {"value": {"diffActive": False, "previewActive": False, "diffDisabled": True, "previewDisabled": True, "downloadDisabled": True, "videoPreviewVisible": False, "videoPreviewDisabled": True, "videoPreviewTitle": "Use compatible MP4 preview", "markdownPreviewVisible": False, "shouldHidePasteDialog": False, "shouldExitEditMode": False}, "frozen": True},
+            "modeControlPreviewExitEdit": {"value": {"diffActive": False, "previewActive": True, "diffDisabled": True, "previewDisabled": False, "downloadDisabled": False, "videoPreviewVisible": True, "videoPreviewDisabled": True, "videoPreviewTitle": "Building compatible MP4 preview", "markdownPreviewVisible": True, "shouldHidePasteDialog": True, "shouldExitEditMode": True}, "frozen": True},
+            "modeControlDraft": {"value": {"diffActive": False, "previewActive": False, "diffDisabled": True, "previewDisabled": True, "downloadDisabled": True, "videoPreviewVisible": False, "videoPreviewDisabled": True, "videoPreviewTitle": "Use compatible MP4 preview", "markdownPreviewVisible": False, "shouldHidePasteDialog": False, "shouldExitEditMode": False}, "frozen": True},
         })
         self.assertIn("file viewer dependency missing: el", result["missingDependencyError"])
 

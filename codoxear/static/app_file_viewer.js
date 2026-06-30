@@ -38,6 +38,7 @@
     const resetFileSearchState = requireFunction(deps && deps.resetFileSearchState, "resetFileSearchState");
     const closeFilePickerMenu = requireFunction(deps && deps.closeFilePickerMenu, "closeFilePickerMenu");
     const isTextFileKind = requireFunction(deps && deps.isTextFileKind, "isTextFileKind");
+    const isDiffableFileKind = requireFunction(deps && deps.isDiffableFileKind, "isDiffableFileKind");
     const confirmReload = requireFunction(deps && deps.confirmReload, "confirmReload");
     const promptUnsavedFileChoice = requireFunction(deps && deps.promptUnsavedFileChoice, "promptUnsavedFileChoice");
     const restoreFileEditorText = requireFunction(deps && deps.restoreFileEditorText, "restoreFileEditorText");
@@ -412,6 +413,35 @@
 
     function activeFileEditModeAllowedInCurrentView() {
       return activeFileEditorCapabilities().editModeAllowedInCurrentView;
+    }
+
+    function currentFileModeControlState({ videoPreviewAvailable = false, videoPreviewPreparing = false } = {}) {
+      const identity = currentActiveFileIdentity();
+      const hasPath = Boolean(identity.path);
+      const draft = Boolean(currentActiveFileDraft());
+      const viewMode = currentFileViewMode();
+      const entry = hasPath ? activeFileEntry() : null;
+      const canToggleMode = Boolean(hasPath && !draft);
+      const isDiff = viewMode === "diff";
+      const isPreview = viewMode === "preview";
+      const diffable = Boolean(canToggleMode && identity.gitPath && fileCandidateGitStateFresh() && entry && entry.changed && isDiffableFileKind(currentActiveFileKind()));
+      const previewable = Boolean(!draft && currentActiveFileKind() === "markdown");
+      const videoVisible = Boolean(videoPreviewAvailable);
+      const videoPreparing = Boolean(videoPreviewPreparing);
+      const videoTitle = videoPreparing ? "Building compatible MP4 preview" : "Use compatible MP4 preview";
+      return Object.freeze({
+        diffActive: Boolean(hasPath && isDiff),
+        previewActive: Boolean(hasPath && isPreview),
+        diffDisabled: !diffable,
+        previewDisabled: !canToggleMode,
+        downloadDisabled: Boolean(!hasPath || draft),
+        videoPreviewVisible: videoVisible,
+        videoPreviewDisabled: Boolean(!videoVisible || videoPreparing),
+        videoPreviewTitle: videoTitle,
+        markdownPreviewVisible: previewable,
+        shouldHidePasteDialog: viewMode !== "file",
+        shouldExitEditMode: Boolean(viewMode !== "file" && currentFileEditMode()),
+      });
     }
 
     function syncFileEditorReadOnly() {
@@ -1208,6 +1238,7 @@
       activeFileEditorIdleWritable,
       activeFileEditorIdleTextWritable,
       activeFileEditModeAllowedInCurrentView,
+      currentFileModeControlState,
       syncFileEditorReadOnly,
       updateFileEditButton,
       clearFileTouchSelectionState,

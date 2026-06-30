@@ -672,6 +672,7 @@ def eval_file_paste_dialog_fallback() -> dict:
             resetFileSearchState: () => {{}},
             closeFilePickerMenu: () => {{}},
             isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+            isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
             confirmReload: () => true,
             promptUnsavedFileChoice: async () => "cancel",
             restoreFileEditorText: () => {{}},
@@ -807,6 +808,7 @@ def eval_file_paste_insert_button_guard() -> dict:
             resetFileSearchState: () => {{}},
             closeFilePickerMenu: () => {{}},
             isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+            isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
             confirmReload: () => true,
             promptUnsavedFileChoice: async () => "cancel",
             restoreFileEditorText: () => {{}},
@@ -906,6 +908,7 @@ def eval_file_editor_capability_predicates() -> dict:
             fileViewerSessionId: overrides.sessionId === false ? "" : "sid-1",
             unavailable: Boolean(overrides.unavailable),
             isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+            isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
             isFileViewerSessionUnavailable: () => ctx.unavailable,
           }};
           ctx.fileViewerController.setActiveFileIdentity(overrides.path === false ? "" : "note.md", {{ gitPath: Boolean(overrides.gitPath), apiPath: overrides.apiPath || "" }});
@@ -985,6 +988,7 @@ def eval_file_editor_save_shortcut() -> dict:
             isTextEntryElement: (target) => Boolean(target && target.textEntry),
             getActiveFileCodeEditor: () => ({{ getDomNode: () => editorNode }}),
             isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+            isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
             isFileViewerSessionUnavailable: () => ctx.unavailable,
             saveActiveFileEdits: async (opts) => {{ ctx.saves.push(opts); return true; }},
           }};
@@ -1090,6 +1094,7 @@ def eval_file_touch_selection_keydown() -> dict:
             resetFileSearchState: () => {{}},
             closeFilePickerMenu: () => {{}},
             isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+            isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
             confirmReload: () => true,
             promptUnsavedFileChoice: async () => "cancel",
             restoreFileEditorText: () => {{}},
@@ -1245,6 +1250,7 @@ def eval_file_editor_delete_shortcut() -> dict:
             resetFileSearchState: () => {{}},
             closeFilePickerMenu: () => {{}},
             isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+            isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
             confirmReload: () => true,
             promptUnsavedFileChoice: async () => "cancel",
             restoreFileEditorText: () => {{}},
@@ -1407,6 +1413,7 @@ def eval_file_open_request_sequence() -> dict:
           closeFilePickerMenu: (options) => calls.push(["closeFilePickerMenu", options]),
           isUnavailable: () => false,
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+          isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "cancel",
           restoreFileEditorText: (text) => calls.push(["restoreFileEditorText", text]),
@@ -1696,6 +1703,7 @@ def eval_open_file_guard_mode_validation() -> dict:
           resetFileSearchState: () => calls.push(["resetFileSearchState"]),
           closeFilePickerMenu: (options) => calls.push(["closeFilePickerMenu", options]),
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+          isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "discard",
           restoreFileEditorText: (text) => {{ state.dirty = false; calls.push(["restoreFileEditorText", text]); }},
@@ -1817,6 +1825,7 @@ def eval_open_file_path_mode_ownership() -> dict:
           resetFileSearchState: () => calls.push(["resetFileSearchState"]),
           closeFilePickerMenu: (options) => calls.push(["closeFilePickerMenu", options]),
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+          isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "discard",
           restoreFileEditorText: (text) => {{ state.dirty = false; calls.push(["restoreFileEditorText", text]); }},
@@ -2006,6 +2015,7 @@ def eval_active_file_save_request_helpers() -> dict:
           closeFilePickerMenu: (options) => calls.push(["closeFilePickerMenu", options]),
           isUnavailable: () => state.unavailable,
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+          isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "cancel",
           restoreFileEditorText: (text) => calls.push(["restoreFileEditorText", text]),
@@ -2236,6 +2246,7 @@ def eval_active_file_save_success() -> dict:
           closeFilePickerMenu: (options) => calls.push(["closeFilePickerMenu", options]),
           isUnavailable: () => false,
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+          isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "cancel",
           restoreFileEditorText: (text) => calls.push(["restoreFileEditorText", text]),
@@ -2401,6 +2412,7 @@ def eval_active_file_save_transport() -> dict:
           closeFilePickerMenu: (options) => calls.push(["closeFilePickerMenu", options]),
           isUnavailable: () => Boolean(state.unavailable),
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+          isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "cancel",
           restoreFileEditorText: (text) => calls.push(["restoreFileEditorText", text]),
@@ -2606,6 +2618,7 @@ def eval_draft_file_load_choreography() -> dict:
           closeFilePickerMenu: (options) => calls.push(["closeFilePickerMenu", options]),
           isUnavailable: () => false,
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+          isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "cancel",
           restoreFileEditorText: (text) => calls.push(["restoreFileEditorText", text]),
@@ -2758,6 +2771,7 @@ def eval_file_open_success_finalizer() -> dict:
           resetFileSearchState: () => calls.push(["resetFileSearchState"]),
           closeFilePickerMenu: (options) => calls.push(["closeFilePickerMenu", options]),
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+          isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "cancel",
           restoreFileEditorText: (text) => calls.push(["restoreFileEditorText", text]),
@@ -3281,7 +3295,9 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("if (openMode) setFileViewMode(openMode);", guard_block)
         self.assertIn("await openFilePath(path, { line, gitPath, apiPath, mode: openMode });", guard_block)
         self.assertIn("return Boolean(currentGuard());", guard_block)
-        self.assertIn("const diffable = canToggleMode && activeFileGitPathValue() && fileCandidateGitStateFresh && Boolean(entry && entry.changed) && isDiffableFileKind(currentActiveFileKind());", source)
+        self.assertNotIn("const diffable = canToggleMode && activeFileGitPathValue() && fileCandidateGitStateFresh", source)
+        self.assertIn("function currentFileModeControlState", viewer_source)
+        self.assertIn("const diffable = Boolean(canToggleMode && identity.gitPath && fileCandidateGitStateFresh() && entry && entry.changed && isDiffableFileKind(currentActiveFileKind()));", viewer_source)
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertNotIn("function normalizeExplicitFileOpenMode(requestedMode)", source)
         self.assertNotIn("function resolveFileOpenViewMode(request, rel, requestedMode = null)", source)
@@ -4227,6 +4243,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("resetFileSearchState: () => resetFileSearchState()", controller_block)
         self.assertIn("closeFilePickerMenu: (options) => closeFilePickerMenu(options)", controller_block)
         self.assertIn("isTextFileKind: (kind) => isTextFileKind(kind)", controller_block)
+        self.assertIn("isDiffableFileKind: (kind) => isDiffableFileKind(kind)", controller_block)
         self.assertNotIn("currentFileDirty: () => fileDirty", controller_block)
         self.assertNotIn("setFileDirty: (dirty) => setFileDirty(dirty)", controller_block)
         self.assertNotIn("let fileDirty = false;", source)
