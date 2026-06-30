@@ -6126,3 +6126,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: draft inspect/open guard policy now belongs to the file-viewer controller. App still owns existing-file guarded open policy, actual draft file load primitive, raw view-mode DOM application, unsaved modal DOM, discard implementation, touch selection state/actions, paste dialog/insert actions, and generic file-open result rendering/application.
+
+## 2026-06-30T12:06:48Z Existing file open guard controller ownership
+- Functional commit `8db76fd Move existing file open guard into viewer controller` moved `openFilePathWithGuard(path, options)` from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the controller now owns existing-file open guard policy: unavailable action blocking, default session/currentness snapshot via injected `currentFileSessionId`, unsaved-change gating, explicit-mode normalization before identity mutation, path/view-mode/picker side effects, open transport invocation, and final currentness return.
+- Dependency direction changed: `app.js` keeps the compatibility wrapper name but delegates to `fileViewerController.openFilePathWithGuard(...)`; the controller no longer requires an injected `openFilePathWithGuard`. Draft-existing fallback now calls the controller-owned open guard directly.
+- Tests updated:
+  - `tests/test_frontend_file_viewer_module_source.py` expects draft-existing fallback to run the real controller guard sequence instead of an injected `openWithGuard` test stub.
+  - `tests/test_file_viewer_source.py` moved open-guard mode/currentness behavior probing to a real `CodoxearFileViewer` controller instance, asserts invalid mode produces no mutation, valid mode mutates/open exactly once, and stale `isCurrent` prevents mutation. Source sentinels now require app wrapper delegation and controller-side policy ownership.
+- Validation before commit:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `91 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: existing-file guarded open policy now belongs to the file-viewer controller. App still owns actual draft file load primitive, raw view-mode DOM application, unsaved modal DOM, discard implementation, touch selection state/actions, paste dialog/insert actions, and generic file-open result rendering/application.
