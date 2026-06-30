@@ -5549,3 +5549,28 @@
 - Clean-room review `55921aed-dd3d-4a7f-8cc3-321634dfa1ed` returned PASS with no blockers; report saved at `/tmp/codoxear-selected-session-missing-review.md`. Review verified all three disappearance paths delegate correctly, refresh styles are preserved, file-viewer dirty-edit unavailable behavior is preserved, `pollMessages()` 404 hardening is justified, and tests are faithful. Non-blocking notes: inherited indentation irregularity, delete/dismiss callers intentionally not clearing poll state, inherited synchronous file-viewer handler throw risk, and the helper return value currently being test-facing only.
 - Read-only architect scout `364ca80c-ec3c-481d-8152-ad881cbb683a` recommended the next atomic checkpoint as live/pending poll request abort ownership for `pollMessages()` `/messages/live` and pending-bind `/messages/tail`, while skipping file-viewer sync and cache fallback changes as lower-priority/non-gaps. Report saved at `/tmp/codoxear-after-missing-cleanup-next-architect.md`.
 - Scope note: this is selected-session disappearance cleanup ownership only. It does not claim live/pending poll request aborts, cache fallback-on-supersede policy changes, file-viewer sync-token UX changes, sidebar deletion cache ownership, or browser-manual rapid-switching evidence.
+
+
+## 2026-06-30T03:25:00Z Message poll request abort ownership
+- Functional commit `2dfe556 Abort superseded message poll requests` added named abort/currentness ownership for `pollMessages()` transport requests.
+- Mechanism:
+  - `messagePollAbortController` tracks the active message-poll transport request.
+  - `abortMessagePollRequest()` clears and aborts the active controller. `beginMessagePollRequest(sessionId, gen)` aborts any previous message poll transport, creates an `AbortController` when available, stores it, and returns a frozen `{ sessionId, gen, controller, signal }` context.
+  - `isMessagePollAbortError(request, error)` suppresses only matching aborted request errors. `finishMessagePollRequest(request)` clears the global controller only when the finishing request still owns it, so an older aborted poll cannot clear a newer active controller.
+  - `pollMessages()` now creates a poll request for the pending-bind `/messages/tail` branch and for the live `/messages/live` branch, and passes `{ signal: pollRequest.signal }` to both `api(...)` calls.
+  - `stopMessagePolling()`, `openSession()` startup, and selected-session disappearance cleanup now abort active message-poll transport.
+- Boundary preserved: generation/session guards remain the correctness backstop; 401 auth loss still precedes abort and stale suppression; 409 still reopens through `openSession(sid, { useCache: false })`; 404 still routes through selected-session disappearance cleanup and refresh; success rendering, live cursor updates, transcript-slot updates, tail-cache appends, queue/status/context/typing updates, and poll scheduling were otherwise unchanged.
+- Tests added/updated:
+  - `eval_message_poll_request_abort()` executes the real helpers and `pollMessages()` in a Node VM. It starts live poll A, starts live poll B, verifies A's signal aborts and A's `finally` leaves B's controller active, then verifies `stopMessagePolling()` aborts B and a pending-bind tail poll; all three API calls carry signals, aborts produce no poll failure/success/toast, and controllers clear only when owned.
+  - Source sentinels pin the new controller, helper, signal pass-through, abort suppression, owner cleanup, `openSession()` abort call, `stopMessagePolling()` abort call, and 401-before-abort-before-stale ordering.
+  - The selected-session cleanup VM now models and asserts `abortMessagePollRequest()` as part of removal cleanup.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused poll/chat tests passed.
+  - Adjacent local chat/session/file/static group returned `121 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1277 passed, 136 subtests passed`.
+  - Focused Docker adjacent group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed before staging/commit.
+- Clean-room review `fc1fddb3-9c77-44f1-8ced-6f74def2f7c1` returned PASS with no blockers; report saved at `/tmp/codoxear-message-poll-abort-review.md`. Review verified actual diff, transport abort/currentness and owner-finally semantics, 401/409/404 ordering, unconditional abort on selected-session removal, test fidelity, and no user-visible behavior changes beyond canceling obsolete transport. Residual risks: no explicit VM test for 409→openSession abort chain, no concurrent refresh-triggered cleanup VM test, and cosmetic whitespace normalization in `pollMessages()`.
+- Scope note: this is message poll transport abort ownership only. It does not claim cache/slot deletion ownership, cache fallback-on-failure policy changes, file-viewer sync UX changes, browser-manual slow-network switching evidence, or completion of the broad refactor/recovery request.
