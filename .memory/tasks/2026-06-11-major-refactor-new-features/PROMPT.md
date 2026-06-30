@@ -131,6 +131,16 @@ When a durable architecture fact belongs in code, README, tests, or a project do
 
 Why: memory should prevent repeated drift and repeated rediscovery, not become another pile of summaries.
 
+## Operating mode
+- Continue according to this workbench by default; do not yield merely because a bounded tranche completed.
+- Keep the internal state organized as Deliverables, Completed, Next actions, and Parked user decisions. Surface those sections only when yielding is necessary.
+- Before each action, reason through the mechanism, failure modes, and verification path; prefer reading, tracing, inspection, and causal reasoning over trial-and-error.
+- Resolve crashes, bugs, and design mistakes without asking the user unless the next step is irreversible/high-risk or requires information only the user can provide.
+- Use the strongest available verification, including Docker sandbox validation for acceptance-quality claims.
+- Do not repeat the same command, edit, or analysis unless a concrete new reason changes what it can prove.
+- Yield only when all deliverables are complete, the only remaining gap is a parked user decision, or the next step is irreversible/high-risk.
+- Before any necessary yield, run a clean-room adversarial review with a dedicated subagent using the user intent, deliverables, completed evidence, remaining next actions, parked decisions, constraints, and changed artifacts; apply findings before yielding or surface the exact unresolved decision/risk.
+
 ## Constraints
 - Do not edit, restart, merge, or promote `/home/yiwen/codex-web`.
 - Do not kill live sessions, the live server, brokers, or backend CLI processes.

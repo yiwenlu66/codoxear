@@ -6245,3 +6245,8 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: delete-key policy and native delete suppression now both belong to the file-viewer controller. App still owns touch toolbar DOM state, selection reset/move mechanics, paste dialog/insert actions, raw load-result rendering, raw view-mode DOM application, unsaved modal DOM, and discard implementation.
+
+## 2026-06-30T13:28:09Z Prompt updated for unattended continuation mode
+- User supplied explicit unattended-mode operating instructions: keep internal Deliverables/Completed/Next actions/Parked decisions, default to continuing, avoid repetition/trial-and-error, use strongest verification, and yield only for completion/user-only decisions/high-risk irreversible steps.
+- Updated active task `PROMPT.md` with an Operating mode section so future continuations inherit these instructions from task memory.
+- No runtime/source code changed in this memory update.
