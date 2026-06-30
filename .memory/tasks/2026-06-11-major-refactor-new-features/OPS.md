@@ -6057,3 +6057,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: dirty unsaved decision policy now belongs to the file-viewer controller. The unsaved modal DOM, discard implementation, touch selection state/actions, paste dialog/insert actions, generic file-open result rendering/application, draft inspect/open currentness behavior, and dirty unavailable transition choreography remain partly `app.js`-owned.
+
+## 2026-06-30T11:05:48Z File view-mode guard controller ownership
+- Functional commit `9dd106c Move file view mode guard into viewer controller` moved `setFileViewModeWithGuard(mode)` from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the controller now owns the guarded view-mode transition policy: unavailable sessions fail with the controller-owned unavailable status, same-mode requests return true without prompting, draft files block non-file modes, dirty files go through the controller-owned unsaved decision, and accepted transitions set the mode, rerender the picker, and reopen the controller-owned active identity/line through the injected open function.
+- Behavior preserved: diff/preview/edit button call sites still use the stable `setFileViewModeWithGuard()` wrapper; app-owned `setFileViewMode()`, picker rendering, and file opening remain explicit dependencies.
+- Tests updated:
+  - `tests/test_frontend_file_viewer_module_source.py` now verifies same-mode, draft-blocked, discard-and-open, cancel, and unavailable view-mode guard outcomes through the real controller.
+  - `tests/test_file_viewer_source.py` source sentinels require app wrapper delegation and controller-owned draft/unsaved/reopen branches.
+- Validation before commit:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `91 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: guarded view-mode transition policy now belongs to the file-viewer controller. App still owns raw view-mode DOM application, unsaved modal DOM, discard implementation, touch selection state/actions, paste dialog/insert actions, generic file-open result rendering/application, draft inspect/open currentness behavior, and dirty unavailable transition choreography.
