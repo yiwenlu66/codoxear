@@ -9714,7 +9714,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileViewer.style.display = "none";
           fileViewerSessionId = "";
           fileViewerUnavailableSessionId = "";
-          activeFileLine = null;
+          clearActiveFileIdentity();
           updateFileTouchToolbar();
           afterModalVisibilityChanged();
           if (wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(fileViewer));
