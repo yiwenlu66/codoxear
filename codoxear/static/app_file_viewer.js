@@ -31,7 +31,11 @@
     const normalizeLineNumber = requireFunction(deps && deps.normalizeLineNumber, "normalizeLineNumber");
     const normalizeFileApiPath = requireFunction(deps && deps.normalizeFileApiPath, "normalizeFileApiPath");
     const fileApiPathForPath = requireFunction(deps && deps.fileApiPathForPath, "fileApiPathForPath");
-    const isUnavailable = requireFunction(deps && deps.isUnavailable, "isUnavailable");
+    const isFileViewerOpen = requireFunction(deps && deps.isFileViewerOpen, "isFileViewerOpen");
+    const invalidateFileViewerSessionSync = requireFunction(deps && deps.invalidateFileViewerSessionSync, "invalidateFileViewerSessionSync");
+    const hideFileUnsavedDialog = requireFunction(deps && deps.hideFileUnsavedDialog, "hideFileUnsavedDialog");
+    const resetFileSearchState = requireFunction(deps && deps.resetFileSearchState, "resetFileSearchState");
+    const closeFilePickerMenu = requireFunction(deps && deps.closeFilePickerMenu, "closeFilePickerMenu");
     const isTextFileKind = requireFunction(deps && deps.isTextFileKind, "isTextFileKind");
     const confirmReload = requireFunction(deps && deps.confirmReload, "confirmReload");
     const promptUnsavedFileChoice = requireFunction(deps && deps.promptUnsavedFileChoice, "promptUnsavedFileChoice");
@@ -75,6 +79,55 @@
     let activeFileApiPath = "";
     let activeFileGitPath = false;
     let activeFileLine = null;
+    let unavailableSessionId = "";
+
+    function normalizeSessionId(value) {
+      return String(value || "").trim();
+    }
+
+    function isFileViewerSessionUnavailable() {
+      const sid = normalizeSessionId(currentSessionId());
+      return Boolean(unavailableSessionId && sid && unavailableSessionId === sid);
+    }
+
+    function isUnavailable() {
+      return isFileViewerSessionUnavailable();
+    }
+
+    function clearFileViewerUnavailableSession() {
+      unavailableSessionId = "";
+    }
+
+    function disableFileViewerForUnavailableSession(sessionId) {
+      const sid = normalizeSessionId(sessionId);
+      if (!sid) return false;
+      rememberActiveFileSelection(sid);
+      invalidateFileViewerSessionSync();
+      unavailableSessionId = sid;
+      clearActiveFileSaveState();
+      setFileEditMode(false);
+      hideFileUnsavedDialog("cancel");
+      cancelPendingFileOpen();
+      resetFileSearchState();
+      closeFilePickerMenu({ restoreInput: true });
+      syncFileEditorReadOnly();
+      fileStatus.textContent = "Session is no longer available; copy unsaved edits before closing.";
+      updateFileEditButton();
+      updateFileTouchToolbar();
+      return true;
+    }
+
+    function handleFileViewerSessionUnavailable(sessionId) {
+      const sid = normalizeSessionId(sessionId);
+      if (!sid || !isFileViewerOpen()) return false;
+      const viewerSessionId = normalizeSessionId(currentSessionId());
+      if (viewerSessionId && viewerSessionId !== sid) return false;
+      if (!currentFileDirty()) {
+        hideFileViewer();
+        return true;
+      }
+      return disableFileViewerForUnavailableSession(sid);
+    }
 
     function nextActiveFileIdentity(current, nextPath, { gitPath = undefined, apiPath = undefined } = {}) {
       if (!current || typeof current !== "object") throw new Error("current file identity required");
@@ -568,6 +621,10 @@
       keepEditingSaveConflict,
       isSaveConflictCurrent,
       currentSaveConflict,
+      isFileViewerSessionUnavailable,
+      clearFileViewerUnavailableSession,
+      disableFileViewerForUnavailableSession,
+      handleFileViewerSessionUnavailable,
       isFileSavePending,
       clearActiveFileSaveState,
       beginActiveFileSaveRequest,

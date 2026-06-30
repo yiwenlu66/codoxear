@@ -85,7 +85,8 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           return node;
         }}
         function makeController() {{
-          return fileViewer.createFileViewerController({{
+          let controller = null;
+          controller = fileViewer.createFileViewerController({{
             el,
             fileStatus,
             fileEditButton,
@@ -94,7 +95,11 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             normalizeLineNumber: (value) => value == null || value === "" ? null : Number(value),
             normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
             fileApiPathForPath: (_path, existing) => existing || "derived-token",
-            isUnavailable: () => state.unavailable,
+            isFileViewerOpen: () => state.viewerOpen !== false,
+            invalidateFileViewerSessionSync: () => events.push(["invalidateFileViewerSessionSync"]),
+            hideFileUnsavedDialog: (choice) => events.push(["hideFileUnsavedDialog", choice]),
+            resetFileSearchState: () => events.push(["resetFileSearchState"]),
+            closeFilePickerMenu: (options) => events.push(["closeFilePickerMenu", options]),
             isTextFileKind: (kind) => kind === "text" || kind === "markdown",
             confirmReload: (message) => {{ events.push(["confirm", message]); return state.confirmResult !== false; }},
             promptUnsavedFileChoice: async () => {{ events.push(["promptUnsaved", state.unsavedChoice || "cancel"]); return state.unsavedChoice || "cancel"; }},
@@ -103,8 +108,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             openFilePath: async (path, opts) => {{
               events.push(["open", path, opts]);
               if (state.openEffect === "unavailable") {{
-                state.unavailable = true;
-                fileStatus.textContent = "Session is no longer available; copy unsaved edits before closing.";
+                if (controller) controller.disableFileViewerForUnavailableSession(state.sessionId);
               }} else if (state.openEffect === "switch-session") {{
                 state.sessionId = "sid-2";
                 state.path = "src/app.py";
@@ -143,6 +147,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             rememberActiveFileSelection: () => events.push(["rememberActiveFileSelection"]),
             renderFilePickerMenu: () => events.push(["renderFilePickerMenu"]),
           }});
+          return controller;
         }}
         function event() {{
           return {{
@@ -185,6 +190,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           fileStatus.children = [];
           const controller = makeController();
           controller.setActiveFileIdentity("src/app.py", {{ line: state.line, gitPath: state.gitPath, apiPath: state.apiPath }});
+          if (unavailable) controller.disableFileViewerForUnavailableSession("sid-1");
           controller.renderSaveConflict("sid-1", "src/app.py", "version mismatch");
           if (stale) state.sessionId = "sid-2";
           const actions = fileStatus.children[1];
@@ -270,14 +276,17 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const genericSaveError = fileStatus.textContent;
           renderController.renderActiveFileSaveError({{ sessionId: "sid-1", path: "src/app.py" }}, {{}});
           const unknownSaveError = fileStatus.textContent;
-          state.unavailable = false;
+          renderController.clearFileViewerUnavailableSession();
           fileStatus.textContent = "old status";
           const availableBlocked = renderController.blockUnavailableFileAction();
           const availableBlockStatus = fileStatus.textContent;
-          state.unavailable = true;
+          events.length = 0;
+          renderController.disableFileViewerForUnavailableSession("sid-1");
+          const unavailableTransitionEvents = events.slice();
+          fileStatus.textContent = "old unavailable status";
           const unavailableBlocked = renderController.blockUnavailableFileAction();
           const unavailableBlockStatus = fileStatus.textContent;
-          state.unavailable = false;
+          renderController.clearFileViewerUnavailableSession();
           state.kind = "markdown";
           state.version = "v7";
           state.editable = true;
@@ -313,12 +322,13 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const editButtonViewMode = {{ button: fileEditButtonSnapshot(), events: events.slice() }};
           state.editMode = true;
           state.dirty = true;
-          state.unavailable = true;
+          renderController.disableFileViewerForUnavailableSession("sid-1");
           events.length = 0;
           resetFileEditButton();
           renderController.updateFileEditButton();
           const editButtonUnavailable = {{ button: fileEditButtonSnapshot(), events: events.slice() }};
-          state.unavailable = false;
+          renderController.clearFileViewerUnavailableSession();
+          state.editMode = true;
           events.length = 0;
           resetFileEditButton();
           renderController.markActiveFileSavePending({{ path: "state.md" }});
@@ -340,13 +350,14 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             state.draft = draft;
             state.dirty = dirty;
             state.unsavedChoice = choice;
-            state.unavailable = unavailable;
+            renderController.clearFileViewerUnavailableSession();
+            if (unavailable) renderController.disableFileViewerForUnavailableSession("sid-1");
             events.length = 0;
             fileStatus.textContent = "";
             renderController.setActiveFileIdentity("state.md", {{ line: 11, gitPath: true, apiPath: "state-token" }});
             const result = await renderController.setFileViewModeWithGuard(target);
             const output = {{ result, viewMode: state.viewMode, status: fileStatus.textContent, events: events.slice() }};
-            state.unavailable = false;
+            renderController.clearFileViewerUnavailableSession();
             state.unsavedChoice = "";
             state.draft = false;
             return output;
@@ -368,6 +379,25 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           events.length = 0;
           const hideDiscard = {{ result: await renderController.requestHideFileViewer(), events: events.slice() }};
           state.unsavedChoice = "";
+          function runUnavailableHandlerCase({{ sid = "sid-1", viewerOpen = true, dirty = false, currentSession = "sid-1" }} = {{}}) {{
+            renderController.clearFileViewerUnavailableSession();
+            state.sessionId = currentSession;
+            state.viewerOpen = viewerOpen;
+            state.dirty = dirty;
+            state.editMode = true;
+            events.length = 0;
+            fileStatus.textContent = "";
+            const result = renderController.handleFileViewerSessionUnavailable(sid);
+            const output = {{ result, unavailable: renderController.isFileViewerSessionUnavailable(), status: fileStatus.textContent, events: events.slice() }};
+            state.viewerOpen = true;
+            state.sessionId = "sid-1";
+            renderController.clearFileViewerUnavailableSession();
+            return output;
+          }}
+          const unavailableHandleClean = runUnavailableHandlerCase({{ dirty: false }});
+          const unavailableHandleDirty = runUnavailableHandlerCase({{ dirty: true }});
+          const unavailableHandleMismatch = runUnavailableHandlerCase({{ sid: "sid-2", currentSession: "sid-1", dirty: true }});
+          const unavailableHandleClosed = runUnavailableHandlerCase({{ viewerOpen: false, dirty: true }});
           state.dirty = true;
           const editableCapabilities = renderController.fileEditorCapabilities({{ path: "src/app.py", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
           const pendingCapabilities = renderController.fileEditorCapabilities({{ path: "src/app.py", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: true }});
@@ -388,12 +418,13 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             draftErrors: {{ currentDraftError, abortDraftError, staleDraftError }},
             saveBodies,
             saveErrors: {{ saveConflict, genericSaveError, unknownSaveError }},
-            unavailableAction: {{ availableBlocked, availableBlockStatus, unavailableBlocked, unavailableBlockStatus }},
+            unavailableAction: {{ availableBlocked, availableBlockStatus, unavailableBlocked, unavailableBlockStatus, unavailableTransitionEvents }},
             editorState: {{ editorState, editorStateFrozen }},
             editabilityUi: {{ editButtonEditMode, readOnlyWritable, editButtonViewMode, editButtonUnavailable, editButtonSavePending }},
             unsavedDecision: {{ cleanUnsaved, discardUnsaved, cancelUnsaved }},
             viewModeGuard: {{ viewModeSame, viewModeDraftBlocked, viewModeDiscardOpen, viewModeCancel, viewModeUnavailable }},
             hideRequest: {{ hideClean, hideCancel, hideDiscard }},
+            unavailableHandler: {{ unavailableHandleClean, unavailableHandleDirty, unavailableHandleMismatch, unavailableHandleClosed }},
             capabilities: {{ derivedCapabilities, editableCapabilities, pendingCapabilities, binaryCapabilities, missingPathCapabilities, editableFrozen: Object.isFrozen(editableCapabilities) }},
           }};
           const availableReloadFailure = await runReloadCase("");
@@ -501,6 +532,22 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "availableBlockStatus": "old status",
             "unavailableBlocked": True,
             "unavailableBlockStatus": "Session is no longer available; copy unsaved edits before closing.",
+            "unavailableTransitionEvents": [
+                ["rememberActiveFileSelection"],
+                ["invalidateFileViewerSessionSync"],
+                ["setFileEditMode", False],
+                ["hideFileUnsavedDialog", "cancel"],
+                ["disposeOpenRender"],
+                ["resetFileSearchState"],
+                ["closeFilePickerMenu", {"restoreInput": True}],
+                ["editorOptions", {"readOnly": True}],
+                ["buttonClass", "active", False],
+                ["buttonClass", "primary", False],
+                ["buttonClass", "dirty", False],
+                ["buttonAttr", "aria-label", "Session unavailable; copy edits before closing"],
+                ["touchToolbar"],
+                ["touchToolbar"],
+            ],
         })
         self.assertEqual(result["render"]["editorState"], {
             "editorState": {
@@ -532,8 +579,8 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
                 "events": [["buttonClass", "active", False], ["buttonClass", "primary", False], ["buttonClass", "dirty", False], ["buttonAttr", "aria-label", "Edit file"], ["touchToolbar"], ["editorOptions", {"readOnly": True}]],
             },
             "editButtonUnavailable": {
-                "button": {"disabled": True, "innerHTML": "icon:save", "title": "Session unavailable; copy edits before closing", "ariaLabel": "Session unavailable; copy edits before closing", "classes": ["active", "dirty", "primary"]},
-                "events": [["buttonClass", "active", True], ["buttonClass", "primary", True], ["buttonClass", "dirty", True], ["buttonAttr", "aria-label", "Session unavailable; copy edits before closing"], ["touchToolbar"]],
+                "button": {"disabled": True, "innerHTML": "icon:edit", "title": "Session unavailable; copy edits before closing", "ariaLabel": "Session unavailable; copy edits before closing", "classes": ["dirty"]},
+                "events": [["buttonClass", "active", False], ["buttonClass", "primary", False], ["buttonClass", "dirty", True], ["buttonAttr", "aria-label", "Session unavailable; copy edits before closing"], ["touchToolbar"]],
             },
             "editButtonSavePending": {
                 "button": {"disabled": True, "innerHTML": "icon:save", "title": "Saving file", "ariaLabel": "Saving file", "classes": ["active", "dirty", "primary"]},
@@ -562,6 +609,17 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "hideClean": {"result": True, "events": [["hideFileViewer"]]},
             "hideCancel": {"result": False, "events": [["promptUnsaved", "cancel"]]},
             "hideDiscard": {"result": True, "events": [["promptUnsaved", "discard"], ["discardActiveFileEdits"], ["hideFileViewer"]]},
+        })
+        self.assertEqual(result["render"]["unavailableHandler"], {
+            "unavailableHandleClean": {"result": True, "unavailable": False, "status": "", "events": [["hideFileViewer"]]},
+            "unavailableHandleDirty": {
+                "result": True,
+                "unavailable": True,
+                "status": "Session is no longer available; copy unsaved edits before closing.",
+                "events": [["rememberActiveFileSelection"], ["invalidateFileViewerSessionSync"], ["setFileEditMode", False], ["hideFileUnsavedDialog", "cancel"], ["disposeOpenRender"], ["resetFileSearchState"], ["closeFilePickerMenu", {"restoreInput": True}], ["editorOptions", {"readOnly": True}], ["buttonClass", "active", False], ["buttonClass", "primary", False], ["buttonClass", "dirty", True], ["buttonAttr", "aria-label", "Session unavailable; copy edits before closing"], ["touchToolbar"], ["touchToolbar"]],
+            },
+            "unavailableHandleMismatch": {"result": False, "unavailable": False, "status": "", "events": []},
+            "unavailableHandleClosed": {"result": False, "unavailable": False, "status": "", "events": []},
         })
         self.assertEqual(result["render"]["capabilities"], {
             "derivedCapabilities": {
@@ -609,6 +667,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         keep_unavailable = result["keepUnavailable"]
         self.assertEqual(keep_unavailable["status"], "")
         self.assertNotIn(["focus"], keep_unavailable["events"])
+        self.assertIn(["invalidateFileViewerSessionSync"], keep_unavailable["events"])
 
     def test_active_file_identity_state_lives_in_file_viewer_module(self) -> None:
         app_source = APP_JS.read_text(encoding="utf-8")

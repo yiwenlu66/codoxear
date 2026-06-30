@@ -47,6 +47,31 @@ def controller_identity_ctx_js(
               return Object.freeze({{ path: String(ctx.identity.path ?? ""), gitPath: Boolean(ctx.identity.gitPath), apiPath: String(ctx.identity.apiPath || "") }});
             }},
             currentActiveFileLine() {{ return ctx.identity.line; }},
+            isFileViewerSessionUnavailable() {{ return Boolean(ctx.fileViewerUnavailableSessionId && ctx.fileViewerSessionId && ctx.fileViewerUnavailableSessionId === ctx.fileViewerSessionId); }},
+            clearFileViewerUnavailableSession() {{ ctx.fileViewerUnavailableSessionId = ""; }},
+            disableFileViewerForUnavailableSession(sid) {{
+              ctx.rememberActiveFileSelection(sid);
+              ctx.fileViewerSessionSyncToken += 1;
+              ctx.fileViewerUnavailableSessionId = String(sid || "").trim();
+              if (typeof ctx.clearActiveFileSaveState === "function") ctx.clearActiveFileSaveState();
+              ctx.fileEditMode = false;
+              ctx.hideFileUnsavedDialog("cancel");
+              ctx.cancelPendingFileOpen();
+              ctx.resetFileSearchState();
+              ctx.closeFilePickerMenu({{ restoreInput: true }});
+              ctx.syncFileEditorReadOnly();
+              ctx.fileStatus.textContent = "Session is no longer available; copy unsaved edits before closing.";
+              ctx.updateFileEditButton();
+              ctx.updateFileTouchToolbar();
+              return true;
+            }},
+            handleFileViewerSessionUnavailable(sessionId) {{
+              const sid = String(sessionId || "").trim();
+              if (!sid || !ctx.isFileViewerOpen()) return false;
+              if (ctx.fileViewerSessionId && ctx.fileViewerSessionId !== sid) return false;
+              if (!ctx.fileDirty) {{ ctx.hideFileViewer(); return true; }}
+              return this.disableFileViewerForUnavailableSession(sid);
+            }},
             clearActiveFileIdentity({{ line = null }} = {{}}) {{
               ctx.identity.path = "";
               ctx.identity.apiPath = "";
@@ -1092,6 +1117,11 @@ def eval_file_open_request_sequence() -> dict:
             fileApiPathCalls.push([String(path), String(apiPath || "")]);
             return apiPath ? `kept:${{apiPath}}` : `derived:${{path}}`;
           }},
+          isFileViewerOpen: () => state.viewerOpen !== false,
+          invalidateFileViewerSessionSync: () => calls.push(["invalidateFileViewerSessionSync"]),
+          hideFileUnsavedDialog: (choice) => calls.push(["hideFileUnsavedDialog", choice]),
+          resetFileSearchState: () => calls.push(["resetFileSearchState"]),
+          closeFilePickerMenu: (options) => calls.push(["closeFilePickerMenu", options]),
           isUnavailable: () => false,
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
@@ -1538,6 +1568,11 @@ def eval_active_file_save_request_helpers() -> dict:
           normalizeLineNumber: (value) => value == null ? null : Number(value),
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           fileApiPathForPath: (_path, existing = "") => existing || "derived-token",
+          isFileViewerOpen: () => state.viewerOpen !== false,
+          invalidateFileViewerSessionSync: () => calls.push(["invalidateFileViewerSessionSync"]),
+          hideFileUnsavedDialog: (choice) => calls.push(["hideFileUnsavedDialog", choice]),
+          resetFileSearchState: () => calls.push(["resetFileSearchState"]),
+          closeFilePickerMenu: (options) => calls.push(["closeFilePickerMenu", options]),
           isUnavailable: () => state.unavailable,
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
@@ -1591,9 +1626,10 @@ def eval_active_file_save_request_helpers() -> dict:
         controller.setActiveFileIdentity("src/app.py", {{ line: 42, gitPath: false, apiPath: "token-1" }});
         result.currentWrongGitPath = controller.isCurrentActiveFileSaveRequest(save);
         controller.setActiveFileIdentity("src/app.py", {{ line: 42, gitPath: true, apiPath: "token-1" }});
-        state.unavailable = true;
+        controller.disableFileViewerForUnavailableSession("sid-1");
         result.currentUnavailable = controller.isCurrentActiveFileSaveRequest(save);
-        state.unavailable = false;
+        controller.clearFileViewerUnavailableSession();
+        state.editMode = true;
         const save2 = controller.beginActiveFileSaveRequest();
         controller.markActiveFileSavePending(save2);
         controller.finishActiveFileSaveRequest(save);
@@ -1728,6 +1764,11 @@ def eval_active_file_save_success() -> dict:
           normalizeLineNumber: (value) => value == null ? null : Number(value),
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           fileApiPathForPath: (_path, existing = "") => existing || "derived-token",
+          isFileViewerOpen: () => state.viewerOpen !== false,
+          invalidateFileViewerSessionSync: () => calls.push(["invalidateFileViewerSessionSync"]),
+          hideFileUnsavedDialog: (choice) => calls.push(["hideFileUnsavedDialog", choice]),
+          resetFileSearchState: () => calls.push(["resetFileSearchState"]),
+          closeFilePickerMenu: (options) => calls.push(["closeFilePickerMenu", options]),
           isUnavailable: () => false,
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
@@ -1852,6 +1893,11 @@ def eval_active_file_save_transport() -> dict:
           normalizeLineNumber: (value) => value == null ? null : Number(value),
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           fileApiPathForPath: (_path, existing = "") => existing || "derived-token",
+          isFileViewerOpen: () => state.viewerOpen !== false,
+          invalidateFileViewerSessionSync: () => calls.push(["invalidateFileViewerSessionSync"]),
+          hideFileUnsavedDialog: (choice) => calls.push(["hideFileUnsavedDialog", choice]),
+          resetFileSearchState: () => calls.push(["resetFileSearchState"]),
+          closeFilePickerMenu: (options) => calls.push(["closeFilePickerMenu", options]),
           isUnavailable: () => Boolean(state.unavailable),
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
@@ -1952,12 +1998,17 @@ def eval_active_file_save_transport() -> dict:
           state.draft = Boolean(overrides.draft);
           state.dirty = overrides.dirty !== false;
           state.editMode = true;
-          state.unavailable = Boolean(overrides.unavailable);
           state.behavior = "success";
           calls.length = 0;
           fileStatus.textContent = "";
+          controller.clearFileViewerUnavailableSession();
           if (overrides.path === false) controller.clearActiveFileIdentity();
           else controller.setActiveFileIdentity("src.py", {{ line: 9, gitPath: true, apiPath: "tok" }});
+          if (overrides.unavailable) {{
+            controller.disableFileViewerForUnavailableSession("sid-1");
+            calls.length = 0;
+            fileStatus.textContent = "Session is no longer available; copy unsaved edits before closing.";
+          }}
           const ok = await controller.saveActiveFileEdits({{ exitEditMode: overrides.exitEditMode !== false }});
           return {{ ok, status: fileStatus.textContent, calls: calls.slice(), dirty: state.dirty, editMode: state.editMode, text: state.text }};
         }}
@@ -2010,6 +2061,11 @@ def eval_draft_file_load_choreography() -> dict:
           normalizeLineNumber: (value) => value == null ? null : Number(value),
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           fileApiPathForPath: (_path, existing = "") => existing || "derived-token",
+          isFileViewerOpen: () => state.viewerOpen !== false,
+          invalidateFileViewerSessionSync: () => calls.push(["invalidateFileViewerSessionSync"]),
+          hideFileUnsavedDialog: (choice) => calls.push(["hideFileUnsavedDialog", choice]),
+          resetFileSearchState: () => calls.push(["resetFileSearchState"]),
+          closeFilePickerMenu: (options) => calls.push(["closeFilePickerMenu", options]),
           isUnavailable: () => false,
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
@@ -2555,34 +2611,40 @@ class TestFileViewerSource(unittest.TestCase):
     def test_file_viewer_handles_selected_session_removal(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
-        self.assertIn("let fileViewerUnavailableSessionId = \"\";", source)
+        self.assertNotIn("let fileViewerUnavailableSessionId = \"\";", source)
         self.assertIn("function isFileViewerSessionUnavailable()", source)
+        self.assertIn("return fileViewerController.isFileViewerSessionUnavailable();", source)
         self.assertIn("function blockUnavailableFileAction()", source)
         self.assertIn("function disableFileViewerForUnavailableSession(sid)", source)
+        self.assertIn("return fileViewerController.disableFileViewerForUnavailableSession(sid);", source)
         self.assertIn("function handleFileViewerSessionUnavailable(sessionId)", source)
-        self.assertEqual(source.count("disableFileViewerForUnavailableSession("), 2)
-        transition_start = source.index("function disableFileViewerForUnavailableSession(sid)")
-        helper_start = source.index("function handleFileViewerSessionUnavailable(sessionId)", transition_start)
-        helper_end = source.index("async function openFilePath", helper_start)
-        transition_block = source[transition_start:helper_start]
-        helper_block = source[helper_start:helper_end]
-        self.assertIn("if (fileViewerSessionId && fileViewerSessionId !== sid) return;", helper_block)
-        self.assertIn("if (!fileDirty) {\n            hideFileViewer();\n            return;\n          }", helper_block)
-        self.assertIn("disableFileViewerForUnavailableSession(sid);", helper_block)
-        self.assertNotIn("fileViewerSessionSyncToken += 1;", helper_block)
+        self.assertIn("return fileViewerController.handleFileViewerSessionUnavailable(sessionId);", source)
+        self.assertIn("let unavailableSessionId = \"\";", viewer_source)
+        self.assertIn("function isFileViewerSessionUnavailable()", viewer_source)
+        transition_start = viewer_source.index("function disableFileViewerForUnavailableSession(sessionId)")
+        helper_start = viewer_source.index("function handleFileViewerSessionUnavailable(sessionId)", transition_start)
+        helper_end = viewer_source.index("function nextActiveFileIdentity", helper_start)
+        transition_block = viewer_source[transition_start:helper_start]
+        helper_block = viewer_source[helper_start:helper_end]
+        self.assertIn("const viewerSessionId = normalizeSessionId(currentSessionId());", helper_block)
+        self.assertIn("if (viewerSessionId && viewerSessionId !== sid) return false;", helper_block)
+        self.assertIn("if (!currentFileDirty()) {", helper_block)
+        self.assertIn("hideFileViewer();", helper_block)
+        self.assertIn("return disableFileViewerForUnavailableSession(sid);", helper_block)
+        self.assertNotIn("invalidateFileViewerSessionSync();", helper_block)
         self.assertIn("rememberActiveFileSelection(sid);", transition_block)
-        self.assertIn("fileViewerSessionSyncToken += 1;", transition_block)
-        self.assertIn("fileViewerUnavailableSessionId = sid;", transition_block)
+        self.assertIn("invalidateFileViewerSessionSync();", transition_block)
+        self.assertIn("unavailableSessionId = sid;", transition_block)
         self.assertIn("clearActiveFileSaveState();", transition_block)
-        self.assertIn("fileEditMode = false;", transition_block)
+        self.assertIn("setFileEditMode(false);", transition_block)
         self.assertIn('hideFileUnsavedDialog("cancel");', transition_block)
         self.assertIn("cancelPendingFileOpen();", transition_block)
         self.assertIn("resetFileSearchState();", transition_block)
         self.assertIn("Session is no longer available; copy unsaved edits before closing.", transition_block)
         self.assertIn("syncFileEditorReadOnly();", transition_block)
         self.assertIn("updateFileEditButton();", transition_block)
-        self.assertLess(transition_block.index("rememberActiveFileSelection(sid);"), transition_block.index("fileViewerSessionSyncToken += 1;"))
-        self.assertIn("fileViewerUnavailableSessionId = \"\";", source)
+        self.assertLess(transition_block.index("rememberActiveFileSelection(sid);"), transition_block.index("invalidateFileViewerSessionSync();"))
+        self.assertIn("fileViewerController.clearFileViewerUnavailableSession();", source)
         self.assertIn("unavailable: isUnavailable(),", viewer_source)
         self.assertIn("const unavailable = Boolean(state.unavailable);", viewer_source)
         self.assertIn("if (blockUnavailableFileAction()) return false;", source)
@@ -3254,7 +3316,7 @@ class TestFileViewerSource(unittest.TestCase):
             "status": "Session is no longer available; copy unsaved edits before closing.",
             "calls": [],
             "dirty": True,
-            "editMode": True,
+            "editMode": False,
             "text": "old",
         })
         for name in ["noSession", "noPath", "nonText", "notEditable"]:
@@ -3346,7 +3408,12 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("normalizeLineNumber", controller_block)
         self.assertIn("normalizeFileApiPath", controller_block)
         self.assertIn("fileApiPathForPath", controller_block)
-        self.assertIn("isUnavailable: () => isFileViewerSessionUnavailable()", controller_block)
+        self.assertNotIn("isUnavailable: () => isFileViewerSessionUnavailable()", controller_block)
+        self.assertIn("isFileViewerOpen: () => isFileViewerOpen()", controller_block)
+        self.assertIn("invalidateFileViewerSessionSync: () => { fileViewerSessionSyncToken += 1; }", controller_block)
+        self.assertIn("hideFileUnsavedDialog: (choice) => hideFileUnsavedDialog(choice)", controller_block)
+        self.assertIn("resetFileSearchState: () => resetFileSearchState()", controller_block)
+        self.assertIn("closeFilePickerMenu: (options) => closeFilePickerMenu(options)", controller_block)
         self.assertIn("isTextFileKind: (kind) => isTextFileKind(kind)", controller_block)
         self.assertIn("currentFileDirty: () => fileDirty", controller_block)
         self.assertIn("confirmReload: (message) => window.confirm(message)", controller_block)

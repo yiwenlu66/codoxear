@@ -7023,7 +7023,6 @@
         const FILE_CANDIDATE_CACHE_TTL_MS = 15000;
         let fileViewerReturnFocusEl = null;
         let fileViewerSessionId = "";
-        let fileViewerUnavailableSessionId = "";
         let activeFileKind = "";
         let activeFileText = "";
         let activeFileEditable = false;
@@ -7076,7 +7075,7 @@
         }
 
         function isFileViewerSessionUnavailable() {
-          return Boolean(fileViewerUnavailableSessionId && fileViewerSessionId && fileViewerUnavailableSessionId === fileViewerSessionId);
+          return fileViewerController.isFileViewerSessionUnavailable();
         }
 
         function blockUnavailableFileAction() {
@@ -7312,7 +7311,7 @@
           cancelPendingFileOpen();
           rememberActiveFileSelection(fileViewerSessionId);
           fileViewerSessionId = sid;
-          fileViewerUnavailableSessionId = "";
+          fileViewerController.clearFileViewerUnavailableSession();
           if (filePickerSearchSnapshot().sessionId !== fileViewerSessionId) {
             resetFileSearchState();
             filePickerSearchState.setSessionId(fileViewerSessionId);
@@ -8450,7 +8449,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           normalizeLineNumber,
           normalizeFileApiPath,
           fileApiPathForPath,
-          isUnavailable: () => isFileViewerSessionUnavailable(),
+          isFileViewerOpen: () => isFileViewerOpen(),
+          invalidateFileViewerSessionSync: () => { fileViewerSessionSyncToken += 1; },
+          hideFileUnsavedDialog: (choice) => hideFileUnsavedDialog(choice),
+          resetFileSearchState: () => resetFileSearchState(),
+          closeFilePickerMenu: (options) => closeFilePickerMenu(options),
           isTextFileKind: (kind) => isTextFileKind(kind),
           confirmReload: (message) => window.confirm(message),
           promptUnsavedFileChoice: () => promptFileUnsavedChoice(),
@@ -9501,7 +9504,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const sid = String(selected || "").trim();
           const syncToken = ++fileViewerSessionSyncToken;
           fileViewerSessionId = sid;
-          fileViewerUnavailableSessionId = "";
+          fileViewerController.clearFileViewerUnavailableSession();
           if (filePickerSearchSnapshot().sessionId !== fileViewerSessionId) {
             resetFileSearchState();
             filePickerSearchState.setSessionId(fileViewerSessionId);
@@ -9552,37 +9555,18 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileBackdrop.style.display = "none";
           fileViewer.style.display = "none";
           fileViewerSessionId = "";
-          fileViewerUnavailableSessionId = "";
+          fileViewerController.clearFileViewerUnavailableSession();
           clearActiveFileIdentity();
           updateFileTouchToolbar();
           afterModalVisibilityChanged();
           if (wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(fileViewer));
         }
         function disableFileViewerForUnavailableSession(sid) {
-          rememberActiveFileSelection(sid);
-          fileViewerSessionSyncToken += 1;
-          fileViewerUnavailableSessionId = sid;
-          clearActiveFileSaveState();
-          fileEditMode = false;
-          hideFileUnsavedDialog("cancel");
-          cancelPendingFileOpen();
-          resetFileSearchState();
-          closeFilePickerMenu({ restoreInput: true });
-          syncFileEditorReadOnly();
-          fileStatus.textContent = "Session is no longer available; copy unsaved edits before closing.";
-          updateFileEditButton();
-          updateFileTouchToolbar();
+          return fileViewerController.disableFileViewerForUnavailableSession(sid);
         }
 
         function handleFileViewerSessionUnavailable(sessionId) {
-          const sid = String(sessionId || "").trim();
-          if (!sid || !isFileViewerOpen()) return;
-          if (fileViewerSessionId && fileViewerSessionId !== sid) return;
-          if (!fileDirty) {
-            hideFileViewer();
-            return;
-          }
-          disableFileViewerForUnavailableSession(sid);
+          return fileViewerController.handleFileViewerSessionUnavailable(sessionId);
         }
         async function applyFileLoadResult(rel, result, request, { viewMode = "file" } = {}) {
           if (!isCurrentFileOpenRequest(request)) return false;
