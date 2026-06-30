@@ -5522,3 +5522,30 @@
 - Clean-room review `08f2c5e6-8d2c-40ca-a4af-eec7a3e9ec64` returned PASS with no blockers; report saved at `/tmp/codoxear-open-session-tail-request-review.md`. Review verified abort/currentness/finally semantics, older-finally/newer-controller safety, 401/404/cache/error policy preservation, AbortError suppression before poll failure/error UI, VM/source test fidelity, and full validation. Non-blocking notes: AbortController-absent runtimes degrade to old non-aborting transport with currentness guards; `stopMessagePolling()` abort is resource cleanup rather than the only correctness guard; frozen request objects are defensive.
 - Next transition seam: selected-session missing/404 cleanup ownership. The existing openSession and pollMessages 404 branches are similar but not identical; consolidate only after preserving file-viewer dirty-edit unavailable behavior and each caller's refresh/error semantics deliberately.
 - Scope note: this is initial `openSession()` tail request transport/currentness ownership only. It does not claim live polling request aborts, cache fallback-on-supersede, 404 cleanup de-duplication, file-viewer sync-token policy, or browser-manual switching evidence.
+
+
+## 2026-06-30T03:03:01Z Selected-session missing cleanup ownership
+- Functional commit `d59fc92 Centralize missing selected session cleanup` centralized the selected-session disappearance cleanup previously duplicated across the sidebar refresh selected-missing path, `openSession()` 404, and `pollMessages()` 404.
+- Mechanism:
+  - `clearSelectedSessionAfterRemoval(sessionId, { incrementPollGen = false, clearPollState = false } = {})` now returns `false` when the removed session is not the selected session and returns `true` after applying cleanup to the selected session.
+  - The helper calls `handleFileViewerSessionUnavailable(sessionId)` before `selected = null`, then clears transcript identity, log/thread/cursor, rendered transcript range, turn state, selected-session storage/hash/title/status/context/typing/attach count, chat render state, queue badge, unattended state, and send/queue/attach control state.
+  - Optional `incrementPollGen` preserves the live-poll 404 invalidation behavior; optional `clearPollState` preserves open-session/live-poll 404 timer/kick cleanup without changing routine sidebar refresh behavior.
+  - `refreshSessionsOnce()` now delegates selected-missing cleanup to the helper with no poll options.
+  - `openSession()` 404 now delegates to the helper with `{ clearPollState: true }` and keeps fire-and-forget auth-aware `refreshSessions().catch(...)`.
+  - `pollMessages()` 404 now delegates to the helper with `{ incrementPollGen: true, clearPollState: true }` and keeps awaited `refreshSessions()` plus toast-on-refresh-error behavior.
+- Boundary preserved: 401 auth loss still precedes stale/404 cleanup; stale generation/session guards still precede 404 cleanup in `pollMessages()`; caller-specific refresh style is unchanged; session tail cache deletion remains with explicit delete/dismiss callers, not the generic missing-selected helper; file-viewer unavailable handling remains a dedicated dirty-edit preservation mechanism.
+- Intentional hardening: the old `pollMessages()` 404 branch did not reset `activeTranscriptState`, context token, attach count, unattended button state, or send/queue/attach enabled state. The shared helper now aligns it with the other selected-missing paths, preventing stale selected-session UI after the selected session disappears.
+- Tests added/updated:
+  - `eval_clear_selected_session_after_removal()` executes the real helper in a Node VM and verifies non-selected no-op, selected cleanup, poll generation/timer/kick reset when requested, transcript/log/cursor/title/status/context/typing/attach/chat/UI control cleanup, and that `handleFileViewerSessionUnavailable()` observes `selected` still equal to the removed session.
+  - Source sentinels now pin `refreshSessionsOnce()` delegation, `openSession()` 404 delegation, `pollMessages()` 404 delegation, widened helper signature, helper ownership of `syncAttachButtonState()`, and preserved file-viewer unavailable source behavior.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused cleanup/session/file/recovery tests passed after replacing one stale nonexistent selector with the actual recovery-panel source tests.
+  - Focused local chat/session/file/static group returned `120 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1276 passed, 136 subtests passed`.
+  - Focused Docker chat/session/file/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed before staging/commit.
+- Clean-room review `55921aed-dd3d-4a7f-8cc3-321634dfa1ed` returned PASS with no blockers; report saved at `/tmp/codoxear-selected-session-missing-review.md`. Review verified all three disappearance paths delegate correctly, refresh styles are preserved, file-viewer dirty-edit unavailable behavior is preserved, `pollMessages()` 404 hardening is justified, and tests are faithful. Non-blocking notes: inherited indentation irregularity, delete/dismiss callers intentionally not clearing poll state, inherited synchronous file-viewer handler throw risk, and the helper return value currently being test-facing only.
+- Read-only architect scout `364ca80c-ec3c-481d-8152-ad881cbb683a` recommended the next atomic checkpoint as live/pending poll request abort ownership for `pollMessages()` `/messages/live` and pending-bind `/messages/tail`, while skipping file-viewer sync and cache fallback changes as lower-priority/non-gaps. Report saved at `/tmp/codoxear-after-missing-cleanup-next-architect.md`.
+- Scope note: this is selected-session disappearance cleanup ownership only. It does not claim live/pending poll request aborts, cache fallback-on-supersede policy changes, file-viewer sync-token UX changes, sidebar deletion cache ownership, or browser-manual rapid-switching evidence.
