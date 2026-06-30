@@ -19,10 +19,14 @@ def eval_file_picker_session_helpers() -> dict[str, object]:
         const ctx = {{
           selected: "session-a",
           fileViewerSessionId: "session-a",
-          activeFilePath: "file-a.py",
-          activeFileApiPath: "token-a",
-          activeFileGitPath: true,
-          activeFileLine: 7,
+          identity: {{ path: "file-a.py", apiPath: "token-a", gitPath: true, line: 7 }},
+          fileViewerController: {{
+            currentActiveFileIdentity: () => ({{ path: ctx.identity.path, apiPath: ctx.identity.apiPath, gitPath: ctx.identity.gitPath }}),
+            currentActiveFileLine: () => ctx.identity.line,
+            nextActiveFileIdentity: (current, nextPath, opts = {{}}) => ({{ path: String(nextPath ?? ""), gitPath: Boolean(opts.gitPath ?? current.gitPath), apiPath: String(opts.apiPath ?? current.apiPath ?? "") }}),
+            clearActiveFileIdentity: () => {{ ctx.identity = {{ path: "", apiPath: "", gitPath: false, line: null }}; }},
+            beginActiveFileIdentity: (nextPath = null) => ({{ path: String(nextPath ?? ctx.identity.path), apiPath: ctx.identity.apiPath, gitPath: ctx.identity.gitPath, line: ctx.identity.line }}),
+          }},
           fileSessionSelections: new Map(),
           sessionIndex: new Map([
             ["session-a", {{ cwd: "/project-A", files: ["/project-A/file-a.py"] }}],

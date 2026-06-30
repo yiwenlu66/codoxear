@@ -51,10 +51,9 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             el,
             fileStatus,
             currentSessionId: () => state.sessionId,
-            activeFilePath: () => state.path,
-            activeFileLine: () => state.line,
-            activeFileGitPath: () => state.gitPath,
-            activeFileApiPath: () => state.apiPath,
+            normalizeLineNumber: (value) => value == null || value === "" ? null : Number(value),
+            normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+            fileApiPathForPath: (_path, existing) => existing || "derived-token",
             isUnavailable: () => state.unavailable,
             confirmReload: (message) => {{ events.push(["confirm", message]); return state.confirmResult !== false; }},
             openFilePath: async (path, opts) => {{
@@ -91,6 +90,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           fileStatus.textContent = "";
           fileStatus.children = [];
           const controller = makeController();
+          controller.setActiveFileIdentity("src/app.py", {{ line: state.line, gitPath: state.gitPath, apiPath: state.apiPath }});
           controller.renderSaveConflict("sid-1", "src/app.py", "version mismatch");
           const actions = fileStatus.children[1];
           const reloadBtn = actions.children[0];
@@ -110,6 +110,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           fileStatus.textContent = "";
           fileStatus.children = [];
           const controller = makeController();
+          controller.setActiveFileIdentity("src/app.py", {{ line: state.line, gitPath: state.gitPath, apiPath: state.apiPath }});
           controller.renderSaveConflict("sid-1", "src/app.py", "version mismatch");
           if (stale) state.sessionId = "sid-2";
           const actions = fileStatus.children[1];
@@ -119,6 +120,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
         }}
         (async () => {{
           const renderController = makeController();
+          renderController.setActiveFileIdentity("src/app.py", {{ line: 7, gitPath: true, apiPath: "api-token" }});
           const conflict = renderController.renderSaveConflict("sid-1", "src/app.py", "version mismatch");
           const render = {{
             exportFrozen: Object.isFrozen(fileViewer),
@@ -193,6 +195,30 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         keep_unavailable = result["keepUnavailable"]
         self.assertEqual(keep_unavailable["status"], "")
         self.assertNotIn(["focus"], keep_unavailable["events"])
+
+    def test_active_file_identity_state_lives_in_file_viewer_module(self) -> None:
+        app_source = APP_JS.read_text(encoding="utf-8")
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+        for declaration in [
+            "let activeFilePath =",
+            "let activeFileApiPath =",
+            "let activeFileGitPath =",
+            "let activeFileLine =",
+        ]:
+            self.assertNotIn(declaration, app_source)
+            self.assertIn(declaration, viewer_source)
+        for api_name in [
+            "nextActiveFileIdentity",
+            "currentActiveFileIdentity",
+            "currentActiveFileLine",
+            "clearActiveFileIdentity",
+            "setActiveFileIdentity",
+            "beginActiveFileIdentity",
+        ]:
+            self.assertIn(api_name, viewer_source)
+        self.assertIn("normalizeLineNumber", app_source)
+        self.assertIn("fileViewerController.currentActiveFileIdentity()", app_source)
+        self.assertNotIn("activeFilePath: () => activeFilePath", app_source)
 
     def test_file_viewer_module_registered_before_app_js(self) -> None:
         index_source = INDEX_HTML.read_text(encoding="utf-8")

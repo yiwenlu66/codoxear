@@ -15,6 +15,72 @@ APP_CSS = ROOT / "codoxear" / "static" / "app.css"
 SERVER_PY = ROOT / "codoxear" / "server.py"
 
 
+def controller_identity_ctx_js(
+    path: str = "src/app.py",
+    api_path: str = "token-1",
+    git_path: bool = True,
+    line: int | None = 42,
+) -> str:
+    identity = {
+        "path": path,
+        "apiPath": api_path,
+        "gitPath": git_path,
+        "line": line,
+    }
+    return f"""
+          identity: {json.dumps(identity)},
+          fileViewerController: {{
+            nextActiveFileIdentity(current, nextPath, opts = {{}}) {{
+              if (!current || typeof current !== "object") throw new Error("current file identity required");
+              const rel = String(nextPath ?? "");
+              const useGitPath = Object.prototype.hasOwnProperty.call(opts, "gitPath") && opts.gitPath !== undefined ? Boolean(opts.gitPath) : Boolean(current.gitPath);
+              const previousPath = String(current.path ?? "");
+              const previousApiPath = String(current.apiPath || "");
+              const reusableApiPath = rel === previousPath ? previousApiPath : "";
+              const apiPath = Object.prototype.hasOwnProperty.call(opts, "apiPath") && opts.apiPath !== undefined
+                ? (typeof opts.apiPath === "string" && opts.apiPath !== "" ? opts.apiPath : "")
+                : (useGitPath ? ctx.fileApiPathForPath(rel, reusableApiPath) : "");
+              return Object.freeze({{ path: rel, gitPath: useGitPath, apiPath }});
+            }},
+            currentActiveFileIdentity() {{
+              return Object.freeze({{ path: String(ctx.identity.path ?? ""), gitPath: Boolean(ctx.identity.gitPath), apiPath: String(ctx.identity.apiPath || "") }});
+            }},
+            currentActiveFileLine() {{ return ctx.identity.line; }},
+            clearActiveFileIdentity({{ line = null }} = {{}}) {{
+              ctx.identity.path = "";
+              ctx.identity.apiPath = "";
+              ctx.identity.gitPath = false;
+              ctx.identity.line = ctx.normalizeLineNumber(line);
+            }},
+            setActiveFileIdentity(nextPath, {{ line = null, gitPath = undefined, apiPath = undefined }} = {{}}) {{
+              const identity = this.nextActiveFileIdentity(this.currentActiveFileIdentity(), nextPath, {{ gitPath, apiPath }});
+              ctx.identity.path = identity.path;
+              ctx.identity.gitPath = identity.gitPath;
+              ctx.identity.apiPath = identity.apiPath;
+              ctx.identity.line = ctx.normalizeLineNumber(line);
+              return Object.freeze({{ ...identity, line: ctx.identity.line }});
+            }},
+            beginActiveFileIdentity(nextPath = null, {{ line = undefined, gitPath = undefined, apiPath = undefined }} = {{}}) {{
+              const current = this.currentActiveFileIdentity();
+              const identity = this.nextActiveFileIdentity(current, nextPath == null ? current.path : nextPath, {{ gitPath, apiPath }});
+              ctx.identity.path = identity.path;
+              ctx.identity.gitPath = identity.gitPath;
+              ctx.identity.apiPath = identity.apiPath;
+              ctx.identity.line = line === undefined ? ctx.identity.line : ctx.normalizeLineNumber(line);
+              return Object.freeze({{ ...identity, line: ctx.identity.line }});
+            }},
+          }},
+          currentActiveFileIdentity: () => ctx.fileViewerController.currentActiveFileIdentity(),
+          activeFilePathValue: () => ctx.fileViewerController.currentActiveFileIdentity().path,
+          activeFileApiPathValue: () => ctx.fileViewerController.currentActiveFileIdentity().apiPath,
+          activeFileGitPathValue: () => ctx.fileViewerController.currentActiveFileIdentity().gitPath,
+          activeFileLineValue: () => ctx.fileViewerController.currentActiveFileLine(),
+          fileApiPathForPath: (path, apiPath = "") => apiPath ? `kept:${{apiPath}}` : `derived:${{path}}`,
+          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+          normalizeLineNumber: (value) => value == null || value === "" ? null : Number(value),
+    """
+
+
 def eval_video_preview_failure_path() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     file_helpers_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
@@ -116,10 +182,7 @@ def eval_hide_file_viewer_identity_cleanup() -> dict:
         const vm = require("vm");
         const calls = [];
         const ctx = {{
-          activeFilePath: "src/app.py",
-          activeFileApiPath: "token-1",
-          activeFileGitPath: true,
-          activeFileLine: 42,
+{controller_identity_ctx_js("src/app.py", "token-1", True, 42)}
           fileViewerSessionId: "sid-1",
           fileViewerUnavailableSessionId: "",
           fileViewerSessionSyncToken: 10,
@@ -130,14 +193,14 @@ def eval_hide_file_viewer_identity_cleanup() -> dict:
           modalOpen: true,
           normalizeLineNumber: (value) => value == null ? null : Number(value),
           isModalTargetOpen: () => ctx.modalOpen,
-          cancelPendingFileOpen: () => calls.push(["cancelPendingFileOpen", ctx.activeFilePath]),
-          hideFileUnsavedDialog: () => calls.push(["hideFileUnsavedDialog", ctx.activeFilePath]),
-          hideFilePasteDialog: () => calls.push(["hideFilePasteDialog", ctx.activeFilePath]),
-          rememberActiveFileSelection: () => calls.push(["rememberActiveFileSelection", ctx.activeFilePath, ctx.activeFileApiPath, ctx.activeFileGitPath, ctx.activeFileLine]),
-          resetFileViewerPanel: () => calls.push(["resetFileViewerPanel", ctx.activeFilePath]),
-          closeFilePickerMenu: (opts) => calls.push(["closeFilePickerMenu", opts, ctx.activeFilePath]),
-          resetFileSearchState: () => calls.push(["resetFileSearchState", ctx.activeFilePath]),
-          updateFileTouchToolbar: () => calls.push(["updateFileTouchToolbar", ctx.activeFilePath, ctx.activeFileLine]),
+          cancelPendingFileOpen: () => calls.push(["cancelPendingFileOpen", ctx.activeFilePathValue()]),
+          hideFileUnsavedDialog: () => calls.push(["hideFileUnsavedDialog", ctx.activeFilePathValue()]),
+          hideFilePasteDialog: () => calls.push(["hideFilePasteDialog", ctx.activeFilePathValue()]),
+          rememberActiveFileSelection: () => calls.push(["rememberActiveFileSelection", ctx.activeFilePathValue(), ctx.activeFileApiPathValue(), ctx.activeFileGitPathValue(), ctx.activeFileLineValue()]),
+          resetFileViewerPanel: () => calls.push(["resetFileViewerPanel", ctx.activeFilePathValue()]),
+          closeFilePickerMenu: (opts) => calls.push(["closeFilePickerMenu", opts, ctx.activeFilePathValue()]),
+          resetFileSearchState: () => calls.push(["resetFileSearchState", ctx.activeFilePathValue()]),
+          updateFileTouchToolbar: () => calls.push(["updateFileTouchToolbar", ctx.activeFilePathValue(), ctx.activeFileLineValue()]),
           afterModalVisibilityChanged: () => calls.push(["afterModalVisibilityChanged", ctx.fileViewer.style.display]),
           restoreModalFocus: (target, predicate) => calls.push(["restoreModalFocus", target && target.id, predicate()]),
         }};
@@ -146,7 +209,7 @@ def eval_hide_file_viewer_identity_cleanup() -> dict:
         ctx.__test_hide();
         process.stdout.write(JSON.stringify({{
           calls,
-          identity: {{ path: ctx.activeFilePath, apiPath: ctx.activeFileApiPath, gitPath: ctx.activeFileGitPath, line: ctx.activeFileLine }},
+          identity: {{ path: ctx.activeFilePathValue(), apiPath: ctx.activeFileApiPathValue(), gitPath: ctx.activeFileGitPathValue(), line: ctx.activeFileLineValue() }},
           session: {{ id: ctx.fileViewerSessionId, unavailable: ctx.fileViewerUnavailableSessionId, syncToken: ctx.fileViewerSessionSyncToken }},
           displays: {{ backdrop: ctx.fileBackdrop.style.display, viewer: ctx.fileViewer.style.display }},
           returnFocus: ctx.fileViewerReturnFocusEl,
@@ -170,10 +233,7 @@ def eval_disable_file_viewer_for_unavailable_session() -> dict:
         const vm = require("vm");
         const calls = [];
         const ctx = {{
-          activeFilePath: "src/app.py",
-          activeFileApiPath: "token-1",
-          activeFileGitPath: true,
-          activeFileLine: 42,
+{controller_identity_ctx_js("src/app.py", "token-1", True, 42)}
           fileViewerSessionId: "dead-sid",
           selected: "dead-sid",
           fileViewerUnavailableSessionId: "",
@@ -222,10 +282,10 @@ def eval_disable_file_viewer_for_unavailable_session() -> dict:
             savePending: ctx.fileSavePending,
             editMode: ctx.fileEditMode,
             status: ctx.fileStatus.textContent,
-            path: ctx.activeFilePath,
-            apiPath: ctx.activeFileApiPath,
-            gitPath: ctx.activeFileGitPath,
-            line: ctx.activeFileLine,
+            path: ctx.activeFilePathValue(),
+            apiPath: ctx.activeFileApiPathValue(),
+            gitPath: ctx.activeFileGitPathValue(),
+            line: ctx.activeFileLineValue(),
           }},
         }}));
         """
@@ -385,9 +445,7 @@ def eval_file_paste_dialog_fallback() -> dict:
             activeFileEditable: true,
             fileViewMode: "file",
             activeFileKind: "text",
-            activeFilePath: "note.txt",
-            activeFileApiPath: "",
-            activeFileGitPath: false,
+{controller_identity_ctx_js("note.txt", "", False, None)}
             activeFileVersion: "v1",
             activeFileDraft: false,
             fileEditorKind: "file",
@@ -526,9 +584,7 @@ def eval_file_editor_capability_predicates() -> dict:
         const snippet = {json.dumps(snippet + "\nglobalThis.__test_eval = () => { const state = currentFileEditorState(); return { state, capabilities: fileEditorCapabilities(state), wrappers: { canEnter: activeFileCanEnterEditMode(), writable: activeFileEditorWritable(), idleWritable: activeFileEditorIdleWritable(), idleTextWritable: activeFileEditorIdleTextWritable(), editModeAllowed: activeFileEditModeAllowedInCurrentView() } }; };\n")};
         function runCase(overrides = {{}}) {{
           const ctx = {{
-            activeFilePath: overrides.path === false ? "" : "note.md",
-            activeFileApiPath: overrides.apiPath || "",
-            activeFileGitPath: Boolean(overrides.gitPath),
+{controller_identity_ctx_js("", "", False, None)}
             activeFileKind: overrides.kind || "markdown",
             activeFileEditable: overrides.editable !== false,
             activeFileVersion: overrides.version || "v1",
@@ -543,6 +599,7 @@ def eval_file_editor_capability_predicates() -> dict:
             isTextFileKind: (kind) => kind === "text" || kind === "markdown",
             isFileViewerSessionUnavailable: () => ctx.unavailable,
           }};
+          ctx.fileViewerController.setActiveFileIdentity(overrides.path === false ? "" : "note.md", {{ gitPath: Boolean(overrides.gitPath), apiPath: overrides.apiPath || "" }});
           vm.createContext(ctx);
           vm.runInContext(snippet, ctx);
           return ctx.__test_eval();
@@ -604,15 +661,13 @@ def eval_file_editor_save_shortcut() -> dict:
             activeFileEditable: overrides.editable !== false,
             fileViewMode: overrides.fileViewMode || "file",
             activeFileKind: overrides.kind || "text",
-            activeFileApiPath: overrides.apiPath || "",
-            activeFileGitPath: Boolean(overrides.gitPath),
+{controller_identity_ctx_js("", "", False, None)}
             activeFileVersion: overrides.version || "v1",
             activeFileDraft: Boolean(overrides.draft),
             fileEditorKind: overrides.editorKind || "file",
             fileDirty: Boolean(overrides.dirty),
             fileSavePending: Boolean(overrides.pending),
             fileViewerSessionId: overrides.sessionId === false ? "" : "sid-1",
-            activeFilePath: overrides.path === false ? "" : "note.txt",
             unavailable: Boolean(overrides.unavailable),
             saves: [],
             isFileViewerOpen: () => fileViewer.style.display === "flex",
@@ -623,6 +678,7 @@ def eval_file_editor_save_shortcut() -> dict:
             isFileViewerSessionUnavailable: () => ctx.unavailable,
             saveActiveFileEdits: async (opts) => {{ ctx.saves.push(opts); return true; }},
           }};
+          ctx.fileViewerController.setActiveFileIdentity(overrides.path === false ? "" : "note.txt", {{ gitPath: Boolean(overrides.gitPath), apiPath: overrides.apiPath || "" }});
           vm.createContext(ctx);
           vm.runInContext(snippet, ctx);
           const event = {{
@@ -795,9 +851,7 @@ def eval_file_editor_delete_shortcut() -> dict:
             activeFileEditable: overrides.editable !== false,
             fileViewMode: overrides.fileViewMode || "file",
             activeFileKind: overrides.kind || "text",
-            activeFilePath: overrides.path === false ? "" : "note.txt",
-            activeFileApiPath: overrides.apiPath || "",
-            activeFileGitPath: Boolean(overrides.gitPath),
+{controller_identity_ctx_js("", "", False, None)}
             activeFileVersion: overrides.version || "v1",
             activeFileDraft: Boolean(overrides.draft),
             fileEditorKind: overrides.editorKind || "file",
@@ -825,6 +879,7 @@ def eval_file_editor_delete_shortcut() -> dict:
             resetFileTouchSelectionState: () => {{ ctx.resetCount += 1; }},
             setToast: (message) => ctx.toasts.push(message),
           }};
+          ctx.fileViewerController.setActiveFileIdentity(overrides.path === false ? "" : "note.txt", {{ gitPath: Boolean(overrides.gitPath), apiPath: overrides.apiPath || "" }});
           vm.createContext(ctx);
           vm.runInContext(snippet, ctx);
           const event = {{
@@ -885,10 +940,7 @@ def eval_file_open_request_sequence() -> dict:
         }}
         const fileApiPathCalls = [];
         const ctx = {{
-          activeFilePath: "old.txt",
-          activeFileApiPath: "",
-          activeFileGitPath: false,
-          activeFileLine: 1,
+{controller_identity_ctx_js("old.txt", "", False, 1)}
           fileViewerSessionId: "sid-1",
           selected: "",
           AbortController,
@@ -913,12 +965,10 @@ def eval_file_open_request_sequence() -> dict:
           secondCurrent: ctx.__test_file_open.isCurrentFileOpenRequest(second),
           secondGitPath: second.gitPath,
           secondApiPath: second.apiPath,
-          activeFilePath: ctx.activeFilePath,
-          activeFileLine: ctx.activeFileLine,
+          activeIdentity: ctx.__test_file_open.currentActiveFileIdentity(),
+          activeLine: ctx.activeFileLineValue(),
         }};
-        ctx.activeFilePath = "same.py";
-        ctx.activeFileGitPath = true;
-        ctx.activeFileApiPath = "tok-same";
+        ctx.fileViewerController.setActiveFileIdentity("same.py", {{ line: 8, gitPath: true, apiPath: "tok-same" }});
         const same = ctx.__test_file_open.beginFileOpenRequest(null, {{}});
         const explicit = ctx.__test_file_open.beginFileOpenRequest("explicit.py", {{ gitPath: true, apiPath: "explicit-token" }});
         const nongit = ctx.__test_file_open.beginFileOpenRequest("plain.py", {{ gitPath: false }});
@@ -934,18 +984,12 @@ def eval_file_open_request_sequence() -> dict:
           result.helperRejectsMissingCurrent = true;
         }}
         result.fileApiPathCalls = fileApiPathCalls;
-        ctx.activeFilePath = "clear.py";
-        ctx.activeFileGitPath = true;
-        ctx.activeFileApiPath = "tok-clear";
-        ctx.activeFileLine = 99;
+        ctx.fileViewerController.setActiveFileIdentity("clear.py", {{ line: 99, gitPath: true, apiPath: "tok-clear" }});
         ctx.__test_file_open.clearActiveFileIdentity({{ line: "12" }});
-        result.clearWithLine = {{ path: ctx.activeFilePath, gitPath: ctx.activeFileGitPath, apiPath: ctx.activeFileApiPath, line: ctx.activeFileLine }};
-        ctx.activeFilePath = "clear-again.py";
-        ctx.activeFileGitPath = true;
-        ctx.activeFileApiPath = "tok-again";
-        ctx.activeFileLine = 12;
+        result.clearWithLine = {{ path: ctx.activeFilePathValue(), gitPath: ctx.activeFileGitPathValue(), apiPath: ctx.activeFileApiPathValue(), line: ctx.activeFileLineValue() }};
+        ctx.fileViewerController.setActiveFileIdentity("clear-again.py", {{ line: 12, gitPath: true, apiPath: "tok-again" }});
         ctx.__test_file_open.clearActiveFileIdentity();
-        result.clearDefault = {{ path: ctx.activeFilePath, gitPath: ctx.activeFileGitPath, apiPath: ctx.activeFileApiPath, line: ctx.activeFileLine }};
+        result.clearDefault = {{ path: ctx.activeFilePathValue(), gitPath: ctx.activeFileGitPathValue(), apiPath: ctx.activeFileApiPathValue(), line: ctx.activeFileLineValue() }};
         const handle = ctx.__test_file_open.startFileOpenRequest("handled.txt", {{ line: 4, gitPath: false }});
         result.handlePath = handle.path;
         result.handleCurrentBeforeDone = ctx.__test_file_open.isCurrentFileOpenRequest(handle.request);
@@ -983,10 +1027,7 @@ def eval_file_viewer_session_sync_race() -> dict:
         const ctx = {{
           selected: "sid-b",
           fileViewerSessionId: "sid-a",
-          activeFilePath: "old.txt",
-          activeFileApiPath: "",
-          activeFileGitPath: false,
-          activeFileLine: 1,
+{controller_identity_ctx_js("old.txt", "", False, 1)}
           fileSearchSessionId: "sid-a",
           fileCandidateList: ["candidate.txt"],
           fileStatus: {{ textContent: "" }},
@@ -1254,9 +1295,7 @@ def eval_active_file_save_request_helpers() -> dict:
         const vm = require("vm");
         const ctx = {{
           fileViewerSessionId: "sid-1",
-          activeFilePath: "src/app.py",
-          activeFileApiPath: "token-1",
-          activeFileGitPath: true,
+{controller_identity_ctx_js("src/app.py", "token-1", True, 42)}
           activeFileDraft: true,
           activeFileVersion: "v1",
           activeFileSaveToken: 0,
@@ -1285,12 +1324,12 @@ def eval_active_file_save_request_helpers() -> dict:
         result.pendingAfterMark = ctx.fileSavePending;
         result.statusAfterMark = ctx.fileStatus.textContent;
         result.callsAfterMark = ctx.calls.slice();
-        ctx.activeFileApiPath = "other-token";
+        ctx.identity.apiPath = "other-token";
         result.currentWrongApiPath = ctx.__test_save_request.isCurrentActiveFileSaveRequest(save);
-        ctx.activeFileApiPath = "token-1";
-        ctx.activeFileGitPath = false;
+        ctx.identity.apiPath = "token-1";
+        ctx.identity.gitPath = false;
         result.currentWrongGitPath = ctx.__test_save_request.isCurrentActiveFileSaveRequest(save);
-        ctx.activeFileGitPath = true;
+        ctx.identity.gitPath = true;
         ctx.unavailable = true;
         result.currentUnavailable = ctx.__test_save_request.isCurrentActiveFileSaveRequest(save);
         ctx.unavailable = false;
@@ -1396,8 +1435,7 @@ def eval_active_file_save_success() -> dict:
           activeFileVersion: "v0",
           activeFileEditable: false,
           activeFileDraft: true,
-          activeFileGitPath: true,
-          activeFileApiPath: "old-token",
+{controller_identity_ctx_js("new.py", "old-token", True, 42)}
           fileDirty: true,
           fileEditMode: true,
           fileStatus: {{ textContent: "" }},
@@ -1417,8 +1455,8 @@ def eval_active_file_save_success() -> dict:
             version: ctx.activeFileVersion,
             editable: ctx.activeFileEditable,
             draft: ctx.activeFileDraft,
-            gitPath: ctx.activeFileGitPath,
-            apiPath: ctx.activeFileApiPath,
+            gitPath: ctx.activeFileGitPathValue(),
+            apiPath: ctx.activeFileApiPathValue(),
             dirty: ctx.fileDirty,
             editMode: ctx.fileEditMode,
             status: ctx.fileStatus.textContent,
@@ -1432,8 +1470,7 @@ def eval_active_file_save_success() -> dict:
         ctx.activeFileVersion = "v0";
         ctx.activeFileEditable = true;
         ctx.activeFileDraft = false;
-        ctx.activeFileGitPath = true;
-        ctx.activeFileApiPath = "keep-token";
+        ctx.fileViewerController.setActiveFileIdentity("existing.py", {{ line: 42, gitPath: true, apiPath: "keep-token" }});
         ctx.fileDirty = true;
         ctx.fileEditMode = true;
         ctx.fileStatus.textContent = "";
@@ -1955,7 +1992,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("if (openMode) setFileViewMode(openMode);", guard_block)
         self.assertIn("await openFilePath(path, { line, gitPath, apiPath, mode: openMode });", guard_block)
         self.assertIn("return Boolean(currentGuard());", guard_block)
-        self.assertIn("const diffable = canToggleMode && activeFileGitPath && fileCandidateGitStateFresh && Boolean(entry && entry.changed) && isDiffableFileKind(activeFileKind);", source)
+        self.assertIn("const diffable = canToggleMode && activeFileGitPathValue() && fileCandidateGitStateFresh && Boolean(entry && entry.changed) && isDiffableFileKind(activeFileKind);", source)
         self.assertIn("function normalizeExplicitFileOpenMode(requestedMode)", source)
         self.assertIn("function resolveFileOpenViewMode(request, rel, requestedMode = null)", source)
         self.assertIn("const canUseDiffView = request.gitPath && fileCandidateGitStateFresh && Boolean(activeEntry && activeEntry.changed);", source)
@@ -1967,7 +2004,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("git_path: save.gitPath", source)
         self.assertIn("startFileOpenRequest(path, { line, gitPath: false })", source)
         self.assertIn("setFilePath(rel, { line: null, gitPath: false })", source)
-        self.assertIn("if (save.draft) {\n            activeFileGitPath = false;", source)
+        self.assertIn("if (save.draft) {\n            fileViewerController.setActiveFileIdentity(save.path", source)
 
     def test_file_viewer_handles_selected_session_removal(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -2075,10 +2112,10 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertTrue(result["firstSignalAborted"])
         self.assertFalse(result["firstAfterSecond"])
         self.assertTrue(result["secondCurrent"])
-        self.assertEqual(result["activeFilePath"], " trail.md ")
+        self.assertEqual(result["activeIdentity"]["path"], " trail.md ")
         self.assertTrue(result["secondGitPath"])
         self.assertEqual(result["secondApiPath"], "derived: trail.md ")
-        self.assertEqual(result["activeFileLine"], 8)
+        self.assertEqual(result["activeLine"], 8)
         self.assertEqual(result["sameApiPath"], "kept:tok-same")
         self.assertTrue(result["sameGitPath"])
         self.assertEqual(result["explicitApiPath"], "explicit-token")
@@ -2417,7 +2454,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(source.count("fileDiff.style.display ="), 1)
         self.assertEqual(source.count("fileImage.style.display ="), 1)
         self.assertEqual(source.count("fileVideo.style.display ="), 2)
-        self.assertIn("const identity = nextActiveFileIdentity(currentActiveFileIdentity()", source)
+        self.assertIn("fileViewerController.beginActiveFileIdentity(nextPath", source)
         self.assertIn("const request = beginFileOpenRequest(nextPath, { line, gitPath, apiPath });", source)
         self.assertIn("const openRequest = startFileOpenRequest(nextPath, { line, gitPath, apiPath });", source)
         self.assertIn("const request = openRequest.request;", source)
@@ -2468,9 +2505,9 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("return Object.freeze({ sessionId, path, apiPath, draft, gitPath, version, text, token });", source)
         self.assertIn("function isCurrentActiveFileSaveRequest(save)", source)
         self.assertIn("fileViewerSessionId === save.sessionId", source)
-        self.assertIn("activeFilePath === save.path", source)
-        self.assertIn("activeFileApiPath === save.apiPath", source)
-        self.assertIn("activeFileGitPath === save.gitPath", source)
+        self.assertIn("currentActiveFileIdentity().path === save.path", source)
+        self.assertIn("currentActiveFileIdentity().apiPath === save.apiPath", source)
+        self.assertIn("currentActiveFileIdentity().gitPath === save.gitPath", source)
         self.assertIn("activeFileSaveToken === save.token", source)
         self.assertIn("!isFileViewerSessionUnavailable()", source)
         self.assertIn("function markActiveFileSavePending(save)", source)
@@ -2548,8 +2585,9 @@ class TestFileViewerSource(unittest.TestCase):
         end = source.index("async function maybeHandleUnsavedFileChanges", start)
         block = source[start:end]
         self.assertIn("const sessionId = fileViewerSessionId;", source)
-        self.assertIn("const path = activeFilePath;", source)
-        self.assertIn("const apiPath = activeFileApiPath || \"\";", source)
+        self.assertIn("const identity = currentActiveFileIdentity();", source)
+        self.assertIn("const path = identity.path;", source)
+        self.assertIn("const apiPath = identity.apiPath || \"\";", source)
         self.assertIn("const draft = Boolean(activeFileDraft);", source)
         self.assertIn("const version = activeFileVersion;", source)
         self.assertIn("const text = getFileEditorText();", source)
@@ -2576,10 +2614,9 @@ class TestFileViewerSource(unittest.TestCase):
         controller_end = source.index("function beginActiveFileSaveRequest", controller_start)
         controller_block = source[controller_start:controller_end]
         self.assertIn("currentSessionId: () => fileViewerSessionId", controller_block)
-        self.assertIn("activeFilePath: () => activeFilePath", controller_block)
-        self.assertIn("activeFileLine: () => activeFileLine", controller_block)
-        self.assertIn("activeFileGitPath: () => activeFileGitPath", controller_block)
-        self.assertIn("activeFileApiPath: () => activeFileApiPath", controller_block)
+        self.assertIn("normalizeLineNumber", controller_block)
+        self.assertIn("normalizeFileApiPath", controller_block)
+        self.assertIn("fileApiPathForPath", controller_block)
         self.assertIn("isUnavailable: () => isFileViewerSessionUnavailable()", controller_block)
         self.assertIn("confirmReload: (message) => window.confirm(message)", controller_block)
         self.assertIn("openFilePath: (path, options) => openFilePath(path, options)", controller_block)

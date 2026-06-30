@@ -58,8 +58,7 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
           fileCandidateList: [],
           fileEntryMap: new Map(),
           activeFileDraft: Boolean(state.activeFileDraft),
-          activeFilePath: state.activeFilePath || "",
-          activeFileApiPath: state.activeFileApiPath || "",
+          activeFilePathValue: () => state.activeFilePath || "",
           filePickerSearchActive: Boolean(state.filePickerSearchActive),
           filePickerInput: {{ value: state.filePickerInputValue || "" }},
           filePickerSuppressDraftQuery: state.filePickerSuppressDraftQuery || "",
@@ -1043,7 +1042,7 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertIn("prependPendingSessionPathEntry(localFilePickerSearchEntries(context, query), query)", picker_source)
         self.assertIn("function filePickerCandidateScore(path, query)", source)
         self.assertIn("applyFileMode();\n            renderFilePickerMenu();", source)
-        self.assertIn("const diffable = canToggleMode && activeFileGitPath && fileCandidateGitStateFresh", source)
+        self.assertIn("const diffable = canToggleMode && activeFileGitPathValue() && fileCandidateGitStateFresh", source)
         self.assertIn("const canUseDiffView = request.gitPath && fileCandidateGitStateFresh", source)
         self.assertIn("fileCandidateKeyForEntry(entry)", source)
         self.assertIn("fileEntryMap.has(entry.key)", source)

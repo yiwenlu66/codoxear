@@ -743,7 +743,6 @@
         let activeTranscriptState = "pending_bind";
         let activeLogPath = null;
         let activeThreadId = null;
-        let activeFileLine = null;
         let chatSearchOpen = false;
         let chatSearchQuery = "";
         let chatSearchMatches = [];
@@ -7026,9 +7025,6 @@
         let fileViewerReturnFocusEl = null;
         let fileViewerSessionId = "";
         let fileViewerUnavailableSessionId = "";
-        let activeFilePath = "";
-        let activeFileApiPath = "";
-        let activeFileGitPath = false;
         let activeFileKind = "";
         let activeFileText = "";
         let activeFileEditable = false;
@@ -7106,57 +7102,57 @@
         }
 
         function nextActiveFileIdentity(current, nextPath, { gitPath = undefined, apiPath = undefined } = {}) {
-          if (!current || typeof current !== "object") throw new Error("current file identity required");
-          const previousPath = String(current.path ?? "");
-          const previousApiPath = String(current.apiPath || "");
-          const rel = String(nextPath ?? "");
-          const useGitPath = gitPath === undefined ? Boolean(current.gitPath) : Boolean(gitPath);
-          const reusableApiPath = rel === previousPath ? previousApiPath : "";
-          return Object.freeze({
-            path: rel,
-            gitPath: useGitPath,
-            apiPath: apiPath === undefined ? (useGitPath ? fileApiPathForPath(rel, reusableApiPath) : "") : normalizeFileApiPath(apiPath),
-          });
+          return fileViewerController.nextActiveFileIdentity(current, nextPath, { gitPath, apiPath });
         }
 
         function currentActiveFileIdentity() {
-          return Object.freeze({ path: String(activeFilePath ?? ""), gitPath: Boolean(activeFileGitPath), apiPath: String(activeFileApiPath || "") });
+          return fileViewerController.currentActiveFileIdentity();
+        }
+
+        function activeFilePathValue() {
+          return currentActiveFileIdentity().path;
+        }
+
+        function activeFileApiPathValue() {
+          return currentActiveFileIdentity().apiPath;
+        }
+
+        function activeFileGitPathValue() {
+          return currentActiveFileIdentity().gitPath;
+        }
+
+        function activeFileLineValue() {
+          return fileViewerController.currentActiveFileLine();
         }
 
         function clearActiveFileIdentity({ line = null } = {}) {
-          activeFilePath = "";
-          activeFileApiPath = "";
-          activeFileGitPath = false;
-          activeFileLine = normalizeLineNumber(line);
+          fileViewerController.clearActiveFileIdentity({ line });
         }
 
         function beginFileOpenRequest(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {}) {
           cancelPendingFileOpen();
-          const identity = nextActiveFileIdentity(currentActiveFileIdentity(), nextPath == null ? activeFilePath : nextPath, { gitPath, apiPath });
-          activeFilePath = identity.path;
-          activeFileGitPath = identity.gitPath;
-          activeFileApiPath = identity.apiPath;
-          activeFileLine = line === undefined ? activeFileLine : normalizeLineNumber(line);
+          const identity = fileViewerController.beginActiveFileIdentity(nextPath, { line, gitPath, apiPath });
           const controller = typeof AbortController === "function" ? new AbortController() : null;
           if (controller) fileOpenAbortController = controller;
           return {
             requestId: fileOpenRequestId,
             sessionId: currentFileSessionId(),
             path: identity.path,
-            apiPath: activeFileApiPath,
-            gitPath: activeFileGitPath,
-            line: activeFileLine,
+            apiPath: identity.apiPath,
+            gitPath: identity.gitPath,
+            line: identity.line,
             signal: controller ? controller.signal : null,
           };
         }
 
         function isCurrentFileOpenRequest(request) {
           if (!request) return false;
+          const identity = currentActiveFileIdentity();
           return (
             request.requestId === fileOpenRequestId &&
             request.sessionId === currentFileSessionId() &&
-            request.path === String(activeFilePath ?? "") &&
-            String(request.apiPath || "") === String(activeFileApiPath || "")
+            request.path === String(identity.path ?? "") &&
+            String(request.apiPath || "") === String(identity.apiPath || "")
           );
         }
 
@@ -7196,13 +7192,15 @@
 
         function rememberActiveFileSelection(sessionId = currentFileSessionId()) {
           const sid = String(sessionId || "").trim();
-          const path = String(activeFilePath ?? "");
+          const identity = currentActiveFileIdentity();
+          const path = String(identity.path ?? "");
           if (!sid || path === "") return;
+          const line = activeFileLineValue();
           fileSessionSelections.set(sid, {
             path,
-            apiPath: activeFileApiPath || "",
-            line: activeFileLine == null ? null : activeFileLine,
-            gitPath: Boolean(activeFileGitPath),
+            apiPath: identity.apiPath || "",
+            line: line == null ? null : line,
+            gitPath: Boolean(identity.gitPath),
           });
         }
 
@@ -7285,7 +7283,7 @@
           if (!state || (expectedToken && state.token !== expectedToken) || state.used || state.preparing) return false;
           state.preparing = true;
           applyFileMode();
-          const rel = state.rel || activeFilePath || "video";
+          const rel = state.rel || activeFilePathValue() || "video";
           fileStatus.textContent = explicit ? `${rel} - building compatible video preview...` : `${rel} - trying compatible video preview...`;
           try {
             await prepareCompatibleVideoPreview(state.previewUrl);
@@ -7453,9 +7451,9 @@
 
         function currentFileEditorState() {
           return Object.freeze({
-            path: String(activeFilePath || ""),
-            apiPath: String(activeFileApiPath || ""),
-            gitPath: Boolean(activeFileGitPath),
+            path: String(activeFilePathValue() || ""),
+            apiPath: String(activeFileApiPathValue() || ""),
+            gitPath: Boolean(activeFileGitPathValue()),
             kind: String(activeFileKind || ""),
             editable: Boolean(activeFileEditable),
             version: String(activeFileVersion || ""),
@@ -7701,7 +7699,7 @@
           const target = e.target instanceof HTMLElement ? e.target : null;
           if (fileEditorShortcutBlocked(target)) return false;
           if (!activeFileEditorIdleTextWritable()) return false;
-          if (!fileViewerSessionId || !activeFilePath) return false;
+          if (!fileViewerSessionId || !activeFilePathValue()) return false;
           e.preventDefault();
           e.stopPropagation();
           void saveActiveFileEdits({ exitEditMode: false });
@@ -8531,10 +8529,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           el,
           fileStatus,
           currentSessionId: () => fileViewerSessionId,
-          activeFilePath: () => activeFilePath,
-          activeFileLine: () => activeFileLine,
-          activeFileGitPath: () => activeFileGitPath,
-          activeFileApiPath: () => activeFileApiPath,
+          normalizeLineNumber,
+          normalizeFileApiPath,
+          fileApiPathForPath,
           isUnavailable: () => isFileViewerSessionUnavailable(),
           confirmReload: (message) => window.confirm(message),
           openFilePath: (path, options) => openFilePath(path, options),
@@ -8543,10 +8540,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function beginActiveFileSaveRequest() {
           const sessionId = fileViewerSessionId;
-          const path = activeFilePath;
-          const apiPath = activeFileApiPath || "";
+          const identity = currentActiveFileIdentity();
+          const path = identity.path;
+          const apiPath = identity.apiPath || "";
           const draft = Boolean(activeFileDraft);
-          const gitPath = Boolean(activeFileGitPath);
+          const gitPath = Boolean(identity.gitPath);
           const version = activeFileVersion;
           const text = getFileEditorText();
           const token = ++fileSaveSeq;
@@ -8558,9 +8556,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return Boolean(
             save &&
               fileViewerSessionId === save.sessionId &&
-              activeFilePath === save.path &&
-              activeFileApiPath === save.apiPath &&
-              activeFileGitPath === save.gitPath &&
+              currentActiveFileIdentity().path === save.path &&
+              currentActiveFileIdentity().apiPath === save.apiPath &&
+              currentActiveFileIdentity().gitPath === save.gitPath &&
               activeFileSaveToken === save.token &&
               !isFileViewerSessionUnavailable()
           );
@@ -8603,8 +8601,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (res && typeof res.editable === "boolean") activeFileEditable = res.editable;
           activeFileDraft = false;
           if (save.draft) {
-            activeFileGitPath = false;
-            activeFileApiPath = "";
+            fileViewerController.setActiveFileIdentity(save.path, { line: activeFileLineValue(), gitPath: false, apiPath: "" });
           }
           applyFileMode();
           setFileDirty(false);
@@ -8618,7 +8615,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         async function saveActiveFileEdits({ exitEditMode = true } = {}) {
           if (blockUnavailableFileAction()) return false;
-          if (!fileViewerSessionId || !activeFilePath || !isTextFileKind(activeFileKind) || !activeFileEditable) return false;
+          if (!fileViewerSessionId || !activeFilePathValue() || !isTextFileKind(activeFileKind) || !activeFileEditable) return false;
           if (!fileDirty && !activeFileDraft) {
             if (exitEditMode) setFileEditMode(false);
             return true;
@@ -8710,7 +8707,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (blockUnavailableFileAction()) return false;
           setFileViewMode(next);
           renderFilePickerMenu();
-          await openFilePath(activeFilePath, { line: activeFileLine, gitPath: activeFileGitPath, apiPath: activeFileApiPath });
+          await openFilePath(activeFilePathValue(), { line: activeFileLineValue(), gitPath: activeFileGitPathValue(), apiPath: activeFileApiPathValue() });
           return true;
         }
 
@@ -8731,12 +8728,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function applyFileMode() {
-          const hasPath = Boolean(activeFilePath);
+          const hasPath = Boolean(activeFilePathValue());
           const entry = hasPath ? activeFileEntry() : null;
           const canToggleMode = hasPath && !activeFileDraft;
           const isDiff = fileViewMode === "diff";
           const isPreview = fileViewMode === "preview";
-          const diffable = canToggleMode && activeFileGitPath && fileCandidateGitStateFresh && Boolean(entry && entry.changed) && isDiffableFileKind(activeFileKind);
+          const diffable = canToggleMode && activeFileGitPathValue() && fileCandidateGitStateFresh && Boolean(entry && entry.changed) && isDiffableFileKind(activeFileKind);
           const previewable = !activeFileDraft && activeFileKind === "markdown";
           fileModeDiffBtn.classList.toggle("active", hasPath && isDiff);
           fileModePreviewBtn.classList.toggle("active", hasPath && isPreview);
@@ -8769,7 +8766,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           filePickerPreserveSearchOnFocus = false;
           filePickerSuppressDraftQuery = "";
           fileMenuFocus = -1;
-          filePickerInput.value = activeFilePath || "";
+          filePickerInput.value = activeFilePathValue() || "";
           filePickerInput.removeAttribute("aria-activedescendant");
         }
 
@@ -8809,11 +8806,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function setFilePath(rel, { line = null, gitPath = undefined, apiPath = undefined } = {}) {
-          const identity = nextActiveFileIdentity(currentActiveFileIdentity(), rel, { gitPath, apiPath });
-          activeFilePath = identity.path;
-          activeFileGitPath = identity.gitPath;
-          activeFileApiPath = identity.apiPath;
-          activeFileLine = normalizeLineNumber(line);
+          fileViewerController.setActiveFileIdentity(rel, { line, gitPath, apiPath });
           resetFilePickerInput();
           fileMenuOpen = false;
           applyFileMenuState();
@@ -8850,8 +8843,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function activeFileEntry() {
-          if (!activeFilePath) return null;
-          return fileEntryForPath(activeFilePath, activeFileGitPath, activeFileApiPath);
+          const identity = currentActiveFileIdentity();
+          if (!identity.path) return null;
+          return fileEntryForPath(identity.path, identity.gitPath, identity.apiPath);
         }
 
         function isGitFileCandidatePath(path, changed = null, gitPath = null, apiPath = "") {
@@ -9023,11 +9017,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const sid = fileViewerSessionId || selected || "";
           const rel = sessionRelativePath(raw, sid) || raw;
           if (!rel) return;
-          const gitPath = Boolean(activeFileGitPath);
-          const current = fileEntryForPath(rel, gitPath, activeFileApiPath);
+          const identity = currentActiveFileIdentity();
+          const gitPath = Boolean(identity.gitPath);
+          const current = fileEntryForPath(rel, gitPath, identity.apiPath);
           upsertFileEntry({
             path: rel,
-            apiPath: gitPath ? activeFileApiPath : "",
+            apiPath: gitPath ? identity.apiPath : "",
             gitPath,
             additions: current && current.changed ? current.additions : null,
             deletions: current && current.changed ? current.deletions : null,
@@ -9141,7 +9136,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             keyForPath: fileCandidateKey,
             draftEntry: draftFileEntry,
             activeFileDraft,
-            activeFilePath,
+            activeFilePath: activeFilePathValue(),
             searchActive: filePickerSearchActive,
             query,
             searchState: filePickerSearchSnapshot(),
@@ -9296,7 +9291,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const path = entry.path;
             const identityHint = filePickerIdentityHint(entry, duplicatePaths, { showSourceSections });
             const entryApiPath = normalizeFileApiPath(entry.apiPath);
-            const active = fileMenuFocus === idx || (fileMenuFocus < 0 && activeFilePath === path && activeFileGitPath === Boolean(entry.gitPath) && activeFileApiPath === entryApiPath && !query);
+            const activeIdentity = currentActiveFileIdentity();
+            const active = fileMenuFocus === idx || (fileMenuFocus < 0 && activeIdentity.path === path && activeIdentity.gitPath === Boolean(entry.gitPath) && activeIdentity.apiPath === entryApiPath && !query);
             const btn = el("button", {
               id: `filePickerOption-${idx}`,
               class: "fileMenuItem" + (entry.createNew ? " fileMenuCreate" : "") + (active ? " active" : ""),
@@ -10015,7 +10011,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         fileModePreviewBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          if (!isMarkdownPreviewable(activeFilePath)) return;
+          if (!isMarkdownPreviewable(activeFilePathValue())) return;
           void setFileViewModeWithGuard(fileViewMode === "preview" ? "file" : "preview");
         };
         fileEditBtn.onclick = async (e) => {
@@ -10044,9 +10040,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           e.preventDefault();
           e.stopPropagation();
           if (blockUnavailableFileAction()) return;
-          if (!fileViewerSessionId || !activeFilePath) return;
-          const tokenQuery = activeFileGitPath && activeFileApiPath ? `&path_token=${encodeURIComponent(activeFileApiPath)}` : "";
-          const url = resolveAppUrl(`/api/sessions/${fileViewerSessionId}/file/download?path=${encodeURIComponent(activeFilePath)}${tokenQuery}${activeFileGitPath ? "&git_path=1" : ""}`);
+          const identity = currentActiveFileIdentity();
+          if (!fileViewerSessionId || !identity.path) return;
+          const tokenQuery = identity.gitPath && identity.apiPath ? `&path_token=${encodeURIComponent(identity.apiPath)}` : "";
+          const url = resolveAppUrl(`/api/sessions/${fileViewerSessionId}/file/download?path=${encodeURIComponent(identity.path)}${tokenQuery}${identity.gitPath ? "&git_path=1" : ""}`);
           const link = document.createElement("a");
           link.href = url;
           link.rel = "noopener";
