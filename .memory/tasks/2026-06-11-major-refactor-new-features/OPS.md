@@ -5810,3 +5810,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: file-open HTTP endpoint construction and result adaptation moved. File-open rendering/result application, catch/error UI, success finalization, draft load choreography, save request lifecycle, unavailable transition policy, paste/editor actions, and toolbar/editability policy remain partly `app.js`-owned.
+
+## 2026-06-30T08:26:28Z File-open error rendering controller ownership
+- Functional commit `35001e0 Move file open error rendering into viewer controller` moved normal file-open catch/error rendering from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `createFileViewerController()` now receives explicit `resetActiveFileBufferState` and `updateFileTouchToolbar` dependencies and owns `isFileOpenAbortError(error)` plus `renderFileOpenError(request, error)`. The controller suppresses abort errors, suppresses stale request errors through its existing open-request currentness check, and for current non-abort errors resets active file buffer state, writes `error: <message>`/`error: unknown error`, refreshes the touch toolbar, and returns `false`.
+- `app.js` open-file catch now delegates to `fileViewerController.renderFileOpenError(request, e)` while retaining fetch, render/apply, success-finalize, and `finally` request cleanup sequencing.
+- Tests updated:
+  - `tests/test_frontend_file_viewer_module_source.py` executes the real controller error method for current error, abort error, stale-session error, and unknown-message error, checking status text and reset/touch side effects.
+  - `tests/test_file_viewer_source.py` VM fixtures expose the controller error seam and source sentinels now assert the normal `openFilePath()` block delegates error rendering while the controller owns the error status string.
+- Validation before commit:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `90 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1286 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: normal file-open error rendering moved. File-open result rendering/application, success finalization, draft load choreography, save request lifecycle, unavailable transition policy, paste/editor actions, and toolbar/editability policy remain partly `app.js`-owned.
