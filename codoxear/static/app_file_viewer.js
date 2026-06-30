@@ -174,6 +174,22 @@
       return Boolean(error && error.name === "AbortError");
     }
 
+    function buildActiveFileSaveBody(save) {
+      const body = save.draft
+        ? { path: save.path, text: save.text, create: true }
+        : { path: save.path, text: save.text, version: save.version, git_path: save.gitPath };
+      if (!save.draft && save.gitPath && save.apiPath) body.path_token = save.apiPath;
+      return body;
+    }
+
+    function renderActiveFileSaveError(save, error) {
+      if (error && error.status === 409) {
+        renderSaveConflict(save.sessionId, save.path, error && error.message ? error.message : "conflict");
+      } else {
+        fileStatus.textContent = `save error: ${error && error.message ? error.message : "unknown error"}`;
+      }
+    }
+
     function finalizeFileOpenSuccess(rel, absPath = null) {
       applyFileMode();
       rememberOpenedFile(rel, absPath);
@@ -302,6 +318,8 @@
       keepEditingSaveConflict,
       isSaveConflictCurrent,
       currentSaveConflict,
+      buildActiveFileSaveBody,
+      renderActiveFileSaveError,
       nextActiveFileIdentity,
       currentActiveFileIdentity,
       currentActiveFileLine,

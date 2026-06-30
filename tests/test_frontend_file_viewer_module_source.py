@@ -211,6 +211,18 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const draftStaleResult = renderController.renderDraftFileOpenError(draftRequest, new Error("stale"));
           const staleDraftError = {{ result: draftStaleResult, status: fileStatus.textContent, resetCount: state.resetCount, touchCount: state.touchCount, events: events.slice() }};
           state.sessionId = "sid-1";
+          const saveBodies = {{
+            draft: renderController.buildActiveFileSaveBody({{ path: "new.py", text: "NEW", draft: true, gitPath: true, version: "v1", apiPath: "tok" }}),
+            gitToken: renderController.buildActiveFileSaveBody({{ path: "existing.py", text: "BODY", draft: false, gitPath: true, version: "v2", apiPath: "tok" }}),
+            gitNoToken: renderController.buildActiveFileSaveBody({{ path: "existing.py", text: "BODY", draft: false, gitPath: true, version: "v2", apiPath: "" }}),
+            plainToken: renderController.buildActiveFileSaveBody({{ path: "plain.py", text: "TEXT", draft: false, gitPath: false, version: "v3", apiPath: "tok" }}),
+          }};
+          renderController.renderActiveFileSaveError({{ sessionId: "sid-1", path: "src/app.py" }}, {{ status: 409, message: "version mismatch" }});
+          const saveConflict = {{ label: fileStatus.children[0].text, actions: fileStatus.children[1].children.map((node) => node.text) }};
+          renderController.renderActiveFileSaveError({{ sessionId: "sid-1", path: "src/app.py" }}, {{ status: 500, message: "disk full" }});
+          const genericSaveError = fileStatus.textContent;
+          renderController.renderActiveFileSaveError({{ sessionId: "sid-1", path: "src/app.py" }}, {{}});
+          const unknownSaveError = fileStatus.textContent;
           const render = {{
             exportFrozen: Object.isFrozen(fileViewer),
             exports: Object.keys(fileViewer).sort(),
@@ -224,6 +236,8 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             finalize,
             draft,
             draftErrors: {{ currentDraftError, abortDraftError, staleDraftError }},
+            saveBodies,
+            saveErrors: {{ saveConflict, genericSaveError, unknownSaveError }},
           }};
           const availableReloadFailure = await runReloadCase("");
           const canceledReload = await runReloadCase("", false);
@@ -310,6 +324,17 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "abortDraftError": {"result": False, "status": "error: draft boom", "resetCount": 1, "touchCount": 0, "events": []},
             "staleDraftError": {"result": False, "status": "error: draft boom", "resetCount": 1, "touchCount": 0, "events": []},
         })
+        self.assertEqual(result["render"]["saveBodies"], {
+            "draft": {"path": "new.py", "text": "NEW", "create": True},
+            "gitToken": {"path": "existing.py", "text": "BODY", "version": "v2", "git_path": True, "path_token": "tok"},
+            "gitNoToken": {"path": "existing.py", "text": "BODY", "version": "v2", "git_path": True},
+            "plainToken": {"path": "plain.py", "text": "TEXT", "version": "v3", "git_path": False},
+        })
+        self.assertEqual(result["render"]["saveErrors"], {
+            "saveConflict": {"label": "src/app.py - save conflict: version mismatch", "actions": ["Reload from disk", "Keep editing"]},
+            "genericSaveError": "save error: disk full",
+            "unknownSaveError": "save error: unknown error",
+        })
         self.assertIn("file viewer dependency missing: el", result["missingDependencyError"])
 
         available = result["availableReloadFailure"]
@@ -376,13 +401,14 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         index_source = INDEX_HTML.read_text(encoding="utf-8")
         routes_source = STATIC_ROUTES.read_text(encoding="utf-8")
         app_source = APP_JS.read_text(encoding="utf-8")
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertLess(index_source.index("app_file_picker.js"), index_source.index("app_file_viewer.js"))
         self.assertLess(index_source.index("app_file_viewer.js"), index_source.index("app_session_helpers.js"))
         self.assertLess(index_source.index("app_file_viewer.js"), index_source.index("app.js"))
         self.assertIn('"app_file_viewer.js"', routes_source)
         self.assertIn("const codoxearFileViewer = window.CodoxearFileViewer;", app_source)
         self.assertIn('throw new Error("Codoxear file viewer controller failed to load")', app_source)
-        self.assertIn("fileViewerController.renderSaveConflict", app_source)
+        self.assertIn("renderSaveConflict", viewer_source)
         self.assertNotIn("function renderFileSaveConflict", app_source)
 
 

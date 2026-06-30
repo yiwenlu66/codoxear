@@ -8561,19 +8561,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function buildActiveFileSaveBody(save) {
-          const body = save.draft
-            ? { path: save.path, text: save.text, create: true }
-            : { path: save.path, text: save.text, version: save.version, git_path: save.gitPath };
-          if (!save.draft && save.gitPath && save.apiPath) body.path_token = save.apiPath;
-          return body;
+          return fileViewerController.buildActiveFileSaveBody(save);
         }
 
         function renderActiveFileSaveError(save, error) {
-          if (error && error.status === 409) {
-            fileViewerController.renderSaveConflict(save.sessionId, save.path, error && error.message ? error.message : "conflict");
-          } else {
-            fileStatus.textContent = `save error: ${error && error.message ? error.message : "unknown error"}`;
-          }
+          return fileViewerController.renderActiveFileSaveError(save, error);
         }
 
         function applyActiveFileSaveSuccess(save, res, { exitEditMode = true } = {}) {
