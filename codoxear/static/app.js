@@ -763,6 +763,7 @@
         let olderLoadController = null;
         let olderLoadCancelOnScroll = true;
         let olderAutoTriggerAt = 0;
+        let openSessionTailAbortController = null;
         const OLDER_AUTO_COOLDOWN_MS = 450;
         let pollTimer = null;
         let pollGen = 0;
@@ -906,6 +907,7 @@
         function stopMessagePolling() {
           selected = null;
           pollGen += 1;
+          abortOpenSessionTailRequest();
           if (pollTimer) clearTimeout(pollTimer);
           pollTimer = null;
           pollKickPending = false;
@@ -919,6 +921,26 @@
           try {
             controller.abort();
           } catch (_error) {}
+        }
+        function abortOpenSessionTailRequest() {
+          const controller = openSessionTailAbortController;
+          openSessionTailAbortController = null;
+          abortController(controller);
+        }
+        function beginOpenSessionTailRequest(sessionId, gen) {
+          abortOpenSessionTailRequest();
+          const controller = typeof AbortController === "function" ? new AbortController() : null;
+          openSessionTailAbortController = controller;
+          return Object.freeze({ sessionId, gen, controller, signal: controller ? controller.signal : undefined });
+        }
+        function isCurrentOpenSessionTailRequest(request) {
+          return Boolean(request && selected === request.sessionId && pollGen === request.gen);
+        }
+        function isOpenSessionTailAbortError(request, error) {
+          return Boolean(error && error.name === "AbortError" && request && request.signal && request.signal.aborted);
+        }
+        function finishOpenSessionTailRequest(request) {
+          if (request && openSessionTailAbortController === request.controller) openSessionTailAbortController = null;
         }
         function cleanupApp() {
           if (appDisposed) return;
@@ -4285,6 +4307,7 @@
         async function openSession(sessionId, { useCache = true, fallbackToCacheOnFailure = false } = {}) {
           pollGen += 1;
           const myGen = pollGen;
+          abortOpenSessionTailRequest();
           if (pollTimer) {
             clearTimeout(pollTimer);
             pollTimer = null;
@@ -4347,14 +4370,18 @@
           if (!displayedCachedTail) renderTranscriptLoading(sessionId);
 
           let data;
+          const tailRequest = beginOpenSessionTailRequest(sessionId, myGen);
           try {
-            data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);
+            data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`, {
+              signal: tailRequest.signal,
+            });
           } catch (e) {
             if (e && e.status === 401) {
               handleAppAuthLoss();
               return null;
             }
-            if (pollGen !== myGen || selected !== sessionId) return null;
+            if (isOpenSessionTailAbortError(tailRequest, e)) return null;
+            if (!isCurrentOpenSessionTailRequest(tailRequest)) return null;
             markMessagePollFailure();
             if (e && e.status === 404) {
               handleFileViewerSessionUnavailable(sessionId);
@@ -4396,8 +4423,10 @@
             renderTranscriptLoadError(sessionId, e, { preserveTranscript: displayedCachedTail });
             if (!appDisposed && selected === sessionId && pollGen === myGen) kickPoll(messagePollDelayMs());
             return null;
+          } finally {
+            finishOpenSessionTailRequest(tailRequest);
           }
-          if (pollGen !== myGen || selected !== sessionId) return null;
+          if (!isCurrentOpenSessionTailRequest(tailRequest)) return null;
           markMessagePollSuccess();
           const slotChange = updateSessionTranscriptSlot(sessionId, data);
           if (slotChange.ignoredStaleBound) {

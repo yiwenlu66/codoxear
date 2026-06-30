@@ -189,6 +189,9 @@ class TestSessionPollingSource(unittest.TestCase):
         open_end = source.index("async function pollMessages", open_start)
         open_block = source[open_start:open_end]
         self.assertIn("markMessagePollFailure();", open_block)
+        self.assertIn("const tailRequest = beginOpenSessionTailRequest(sessionId, myGen);", open_block)
+        self.assertIn("signal: tailRequest.signal,", open_block)
+        self.assertIn("if (isOpenSessionTailAbortError(tailRequest, e)) return null;", open_block)
         self.assertIn("renderTranscriptLoadError(sessionId, e, { preserveTranscript: displayedCachedTail });", open_block)
         self.assertIn("if (!appDisposed && selected === sessionId && pollGen === myGen) kickPoll(messagePollDelayMs());", open_block)
         self.assertIn("markMessagePollSuccess();", open_block)
@@ -237,6 +240,10 @@ class TestSessionPollingSource(unittest.TestCase):
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("function handleAppAuthLoss()", source)
         self.assertIn("function cleanupApp()", source)
+        stop_message_start = source.index("function stopMessagePolling()")
+        stop_message_end = source.index("function abortController(controller)", stop_message_start)
+        stop_message_block = source[stop_message_start:stop_message_end]
+        self.assertIn("abortOpenSessionTailRequest();", stop_message_block)
         self.assertIn("sessionsPollingEnabled = false;", source)
         self.assertIn("secondaryPollingEnabled = false;", source)
         self.assertIn("stopAllPolling();", source)

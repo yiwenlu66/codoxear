@@ -77,6 +77,148 @@ def eval_launch_recovery_helpers() -> dict:
     return json.loads(proc.stdout)
 
 
+
+def eval_open_session_tail_request_abort() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    helper_start = source.index("function abortController(controller)")
+    helper_end = source.index("function cleanupApp", helper_start)
+    open_start = source.index("async function openSession(")
+    open_end = source.index("async function pollMessages(", open_start)
+    snippet = "let openSessionTailAbortController = null;\n" + source[helper_start:helper_end] + "\n" + source[open_start:open_end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const calls = [];
+        const pending = [];
+        class AbortController {{
+          constructor() {{
+            const listeners = [];
+            this.signal = {{
+              aborted: false,
+              addEventListener(type, cb) {{ if (type === "abort") listeners.push(cb); }},
+              _listeners: listeners,
+            }};
+          }}
+          abort() {{
+            if (this.signal.aborted) return;
+            this.signal.aborted = true;
+            for (const cb of this.signal._listeners.slice()) cb();
+          }}
+        }}
+        const ctx = {{
+          AbortController,
+          console,
+          performance: {{ now: () => 123 }},
+          clearTimeout: () => calls.push(["clearTimeout"]),
+          pollGen: 0,
+          pollTimer: null,
+          pollKickPending: false,
+          pollKickDelayMs: null,
+          selected: null,
+          unattendedMenuOpen: false,
+          unattendedMenuSessionId: "",
+          activeTranscriptState: "pending_bind",
+          activeLogPath: null,
+          activeThreadId: null,
+          liveCursor: null,
+          turnOpen: false,
+          clickLoadT0: 0,
+          clickMetricPending: false,
+          fileDirty: false,
+          appDisposed: false,
+          sessionIndex: new Map([
+            ["sid-a", {{ session_id: "sid-a", busy: false, queue_len: 0, token: null }}],
+            ["sid-b", {{ session_id: "sid-b", busy: false, queue_len: 0, token: null }}],
+          ]),
+          sessionTailCache: new Map(),
+          titleLabel: {{ textContent: "" }},
+          hideUnattendedMenu: () => calls.push(["hideUnattendedMenu"]),
+          storageSetItem: (...args) => calls.push(["storageSetItem", ...args]),
+          storageRemoveItem: (...args) => calls.push(["storageRemoveItem", ...args]),
+          setSessionHash: (...args) => calls.push(["setSessionHash", ...args]),
+          clearRenderedTranscriptRange: () => calls.push(["clearRenderedTranscriptRange"]),
+          setAttachCount: (...args) => calls.push(["setAttachCount", ...args]),
+          updateQueueBadge: () => calls.push(["updateQueueBadge"]),
+          setStatus: (...args) => calls.push(["setStatus", ...args]),
+          setContext: (...args) => calls.push(["setContext", ...args]),
+          setTyping: (...args) => calls.push(["setTyping", ...args]),
+          resetChatRenderState: () => calls.push(["resetChatRenderState"]),
+          sessionTitleWithId: (s) => `title:${{s.session_id}}`,
+          isFileViewerOpen: () => false,
+          ensureCurrentFileViewerSession: async () => calls.push(["ensureCurrentFileViewerSession"]),
+          renderPendingTranscriptSlot: (...args) => calls.push(["renderPendingTranscriptSlot", ...args]),
+          syncAttachButtonState: () => calls.push(["syncAttachButtonState"]),
+          syncQueueSubmitState: () => calls.push(["syncQueueSubmitState"]),
+          syncSendButtonState: () => calls.push(["syncSendButtonState"]),
+          updateUnattendedBtnState: () => calls.push(["updateUnattendedBtnState"]),
+          isMobile: () => false,
+          setSidebarOpen: (...args) => calls.push(["setSidebarOpen", ...args]),
+          tailCacheMatchesSession: () => false,
+          applyCachedTail: (...args) => calls.push(["applyCachedTail", ...args]),
+          renderTranscriptLoading: (...args) => calls.push(["renderTranscriptLoading", ...args]),
+          initPageLimit: () => 60,
+          api: (url, options = {{}}) => {{
+            calls.push(["api", url, Boolean(options.signal)]);
+            return new Promise((resolve, reject) => {{
+              const req = {{ url, signal: options.signal || null, resolve, reject }};
+              pending.push(req);
+              if (options.signal && typeof options.signal.addEventListener === "function") {{
+                options.signal.addEventListener("abort", () => {{
+                  calls.push(["abort", url]);
+                  const err = new Error("aborted");
+                  err.name = "AbortError";
+                  reject(err);
+                }});
+              }}
+            }});
+          }},
+          handleAppAuthLoss: () => calls.push(["handleAppAuthLoss"]),
+          markMessagePollFailure: () => calls.push(["markMessagePollFailure"]),
+          handleFileViewerSessionUnavailable: (...args) => calls.push(["handleFileViewerSessionUnavailable", ...args]),
+          refreshSessions: async () => calls.push(["refreshSessions"]),
+          renderTranscriptLoadError: (...args) => calls.push(["renderTranscriptLoadError", ...args]),
+          kickPoll: (...args) => calls.push(["kickPoll", ...args]),
+          messagePollDelayMs: () => 900,
+          markMessagePollSuccess: () => calls.push(["markMessagePollSuccess"]),
+          updateSessionTranscriptSlot: (sid, data) => {{ calls.push(["updateSessionTranscriptSlot", sid]); return {{ ignoredStaleBound: false, current: {{ state: "bound" }} }}; }},
+          applySessionRuntimeFromTail: (...args) => calls.push(["applySessionRuntimeFromTail", ...args]),
+          renderSessionTail: (...args) => calls.push(["renderSessionTail", ...args]),
+          refreshFileCandidates: async (...args) => calls.push(["refreshFileCandidates", ...args]),
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = { openSession, abortOpenSessionTailRequest };\n")}, ctx);
+        (async () => {{
+          const firstPromise = ctx.__test.openSession("sid-a", {{ useCache: false }});
+          await Promise.resolve();
+          const firstSignal = pending[0] && pending[0].signal;
+          const secondPromise = ctx.__test.openSession("sid-b", {{ useCache: false }});
+          await Promise.resolve();
+          const secondReq = pending[1];
+          secondReq.resolve({{ transcript_state: "bound", events: [{{ role: "assistant", text: "ok" }}], busy: false, queue_len: 0, token: null }});
+          const secondResult = await secondPromise;
+          const firstResult = await firstPromise;
+          process.stdout.write(JSON.stringify({{
+            firstResult,
+            secondResult,
+            firstSignalAborted: Boolean(firstSignal && firstSignal.aborted),
+            secondSignalAborted: Boolean(secondReq.signal && secondReq.signal.aborted),
+            pollGen: ctx.pollGen,
+            selected: ctx.selected,
+            title: ctx.titleLabel.textContent,
+            apiCalls: calls.filter((call) => call[0] === "api"),
+            abortCalls: calls.filter((call) => call[0] === "abort"),
+            failureCalls: calls.filter((call) => call[0] === "markMessagePollFailure"),
+            loadErrorCalls: calls.filter((call) => call[0] === "renderTranscriptLoadError"),
+            successCalls: calls.filter((call) => call[0] === "markMessagePollSuccess"),
+            renderTailCalls: calls.filter((call) => call[0] === "renderSessionTail"),
+          }}));
+        }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 class TestChatScrollbackSource(unittest.TestCase):
     def test_jump_button_reloads_selected_tail(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -86,6 +228,23 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("invalidateOlderLoad();", block)
         self.assertIn("await openSession(sid, { useCache: false, fallbackToCacheOnFailure: true });", block)
         self.assertIn("kickPoll(0);", block)
+
+    def test_open_session_tail_request_aborts_superseded_open(self) -> None:
+        result = eval_open_session_tail_request_abort()
+        self.assertIsNone(result["firstResult"])
+        self.assertEqual(result["secondResult"]["events"], [{"role": "assistant", "text": "ok"}])
+        self.assertTrue(result["firstSignalAborted"])
+        self.assertFalse(result["secondSignalAborted"])
+        self.assertEqual(result["pollGen"], 2)
+        self.assertEqual(result["selected"], "sid-b")
+        self.assertEqual(result["title"], "title:sid-b")
+        self.assertEqual(len(result["apiCalls"]), 2)
+        self.assertTrue(all(call[2] for call in result["apiCalls"]))
+        self.assertEqual(len(result["abortCalls"]), 1)
+        self.assertEqual(result["failureCalls"], [])
+        self.assertEqual(result["loadErrorCalls"], [])
+        self.assertEqual(result["successCalls"], [["markMessagePollSuccess"]])
+        self.assertEqual(len(result["renderTailCalls"]), 1)
 
     def test_open_session_is_single_render_path(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -102,7 +261,9 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("applyCachedTail(sessionId, cachedTail, s);", block)
         self.assertIn("displayedCachedTail = true;", block)
         self.assertIn("if (!displayedCachedTail) renderTranscriptLoading(sessionId);", block)
-        self.assertIn("data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);", block)
+        self.assertIn("const tailRequest = beginOpenSessionTailRequest(sessionId, myGen);", block)
+        self.assertIn("data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`, {", block)
+        self.assertIn("signal: tailRequest.signal,", block)
         self.assertIn("async function openSession(sessionId, { useCache = true, fallbackToCacheOnFailure = false } = {})", block)
         self.assertIn("if (fallbackToCacheOnFailure && !displayedCachedTail && !useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {", block)
         self.assertIn("applyCachedTail(sessionId, cachedTail, s);", block)
@@ -110,7 +271,9 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("renderTranscriptLoadError(sessionId, e, { preserveTranscript: displayedCachedTail });", block)
         self.assertIn("if (e && e.status === 401) {", block)
         self.assertIn("handleAppAuthLoss();", block)
-        self.assertIn("if (pollGen !== myGen || selected !== sessionId) return null;", block)
+        self.assertIn("if (isOpenSessionTailAbortError(tailRequest, e)) return null;", block)
+        self.assertIn("if (!isCurrentOpenSessionTailRequest(tailRequest)) return null;", block)
+        self.assertIn("finally {\n            finishOpenSessionTailRequest(tailRequest);\n          }", block)
         self.assertIn("const slotChange = updateSessionTranscriptSlot(sessionId, data);", block)
         self.assertIn('if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);', block)
         self.assertIn("else renderPendingTranscriptSlot(sessionId);", block)
@@ -182,7 +345,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         open_end = source.index("async function pollMessages(", open_start)
         open_block = source[open_start:open_end]
         open_catch = open_block[open_block.index("} catch (e) {") : open_block.index("renderTranscriptLoadError(sessionId, e", open_block.index("} catch (e) {"))]
-        self.assertLess(open_catch.index("if (e && e.status === 401)"), open_catch.index("if (pollGen !== myGen || selected !== sessionId) return null;"))
+        self.assertLess(open_catch.index("if (e && e.status === 401)"), open_catch.index("if (!isCurrentOpenSessionTailRequest(tailRequest)) return null;"))
         poll_start = source.index("async function pollMessages(")
         poll_end = source.index("async function pollLoop()", poll_start)
         poll_block = source[poll_start:poll_end]
