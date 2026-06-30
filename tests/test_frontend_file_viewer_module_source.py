@@ -281,6 +281,17 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           editorKindTransitions.plain = kindController.setFileEditorKind("plain-fallback");
           editorKindTransitions.clear = kindController.setFileEditorKind("");
           try {{ kindController.setFileEditorKind("bogus"); }} catch (err) {{ editorKindTransitions.invalidMessage = err && err.message ? err.message : String(err); }}
+          const restoreController = makeController();
+          restoreController.setFileDirty(true);
+          const skipRestorePlan = restoreController.prepareFileEditorTextRestore("skip-text");
+          const skipRestoreDirty = restoreController.currentFileDirty();
+          restoreController.setFileDirty(true);
+          restoreController.setFileEditorKind("file");
+          const restorePlan = restoreController.prepareFileEditorTextRestore("body text");
+          const restoreDirtyBeforeFinish = restoreController.currentFileDirty();
+          restoreController.finishFileEditorTextRestore();
+          const restoreDirtyAfterFinish = restoreController.currentFileDirty();
+          const restorePlanning = {{ skip: skipRestorePlan, skipFrozen: Object.isFrozen(skipRestorePlan), skipDirty: skipRestoreDirty, restore: restorePlan, restoreFrozen: Object.isFrozen(restorePlan), dirtyBeforeFinish: restoreDirtyBeforeFinish, dirtyAfterFinish: restoreDirtyAfterFinish }};
           state.editMode = true;
           state.dirty = false;
           renderController.setFileDirty(false);
@@ -641,6 +652,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             fetchResults: {{ diffFetch, diffFetchEvents, readFetch, readFetchEvents }},
             downloadPaths,
             editorKindTransitions,
+            restorePlanning,
             openErrors: {{ currentError, abortErrorResult, staleError, unknownError }},
             finalize,
             draft,
@@ -721,6 +733,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "downloadUnavailableStatus": "Session is no longer available; copy unsaved edits before closing.",
         })
         self.assertEqual(result["render"]["editorKindTransitions"], {"initial": "", "file": "file", "currentFile": "file", "diff": "diff", "plain": "plain-fallback", "clear": "", "invalidMessage": "invalid file editor kind"})
+        self.assertEqual(result["render"]["restorePlanning"], {"skip": {"kind": "skip"}, "skipFrozen": True, "skipDirty": False, "restore": {"kind": "restore", "text": "body text"}, "restoreFrozen": True, "dirtyBeforeFinish": True, "dirtyAfterFinish": False})
         reset_events = [
             ["editorOptions", {"readOnly": True}],
             ["touchToolbar"],

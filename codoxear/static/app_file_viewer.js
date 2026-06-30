@@ -807,6 +807,19 @@
       return await submitActiveFileSave(save, { exitEditMode });
     }
 
+    function prepareFileEditorTextRestore(text) {
+      const restoredText = String(text || "");
+      if (currentFileEditorKind() !== "file") {
+        setFileDirty(false);
+        return Object.freeze({ kind: "skip" });
+      }
+      return Object.freeze({ kind: "restore", text: restoredText });
+    }
+
+    function finishFileEditorTextRestore() {
+      setFileDirty(false);
+    }
+
     function discardActiveFileEdits() {
       restoreFileEditorText(currentActiveFileText());
       setFileEditMode(false);
@@ -1447,6 +1460,8 @@
       currentFileEditMode,
       currentFileEditorKind,
       setFileEditorKind,
+      prepareFileEditorTextRestore,
+      finishFileEditorTextRestore,
       setFileEditMode,
       currentActiveFileKind,
       currentActiveFileText,

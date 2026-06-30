@@ -7692,20 +7692,21 @@
         }
 
         function restoreFileEditorText(text) {
-          const restoredText = String(text || "");
+          const restorePlan = fileViewerController.prepareFileEditorTextRestore(text);
+          if (!restorePlan || restorePlan.kind !== "restore") return;
           if (currentFileEditorKind() !== "file" || !fileEditor || typeof fileEditor.getModel !== "function") {
-            setFileDirty(false);
+            fileViewerController.finishFileEditorTextRestore();
             return;
           }
           const model = fileEditor.getModel();
           if (!model || typeof model.setValue !== "function") {
-            setFileDirty(false);
+            fileViewerController.finishFileEditorTextRestore();
             return;
           }
           fileEditorProgrammaticChange = true;
-          model.setValue(restoredText);
+          model.setValue(restorePlan.text);
           fileEditorProgrammaticChange = false;
-          setFileDirty(false);
+          fileViewerController.finishFileEditorTextRestore();
         }
 
         function timeoutPromise(promise, timeoutMs, message) {
