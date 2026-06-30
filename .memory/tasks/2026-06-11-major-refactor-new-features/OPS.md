@@ -6621,3 +6621,21 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: compatible-video fallback state belongs to the file-viewer controller. App still owns raw video rendering/loading side effects, raw load-result rendering, raw restore text implementation, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, raw mode/download/video-preview DOM mutation, and raw Monaco selection helpers.
+
+## 2026-06-30T18:43:45Z Compatible-video load-result policy controller ownership
+- Functional commit `d09f074 Move video load policy into viewer controller` moved compatible-video load-result policy and fallback event transitions from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: after `activeVideoFallback` became controller-owned, the remaining policy was causally local to that state. The controller now owns browser-safe video content-type normalization, compatible-preview-first decision, video token creation through injected `nowMs()`, video result validation/plan construction via `prepareActiveVideoLoadResult()`, video error retry/converted-preview failure handling via `handleActiveVideoLoadError()`, and converted-preview metadata status via `handleActiveVideoLoadedMetadata()`.
+- App-side boundary: `app.js` now consumes a frozen `videoPlan`, installs raw `fileVideo.onerror`/`onloadedmetadata` handlers that delegate policy back to the controller, and keeps only raw `<video>` source assignment, URL prefix resolution, handler clearing, compatible-preview fetch/loading, render-surface mutation, and status application from the returned plan.
+- Test updates: real-controller probes cover video load plan freezing, fallback snapshot creation, preview-first decision for `video/quicktime`, retry-on-native-error, converted-preview metadata status, used-conversion failure cleanup, unsupported no-preview native error, and invalid video responses. Source sentinels now require controller-owned video policy and reject the old app-owned preview URL/content-type/should-preview calculation.
+- Negative evidence preserved: the first focused validation after the move exposed stale source sentinels expecting `applyActiveFileNonTextState("video")`, preview URL parsing, safe-type set creation, and video status strings to remain in `app.js`; those assertions were corrected to the new controller boundary. The VM fixture also initially failed because its controller stub called `applyActiveFileNonTextState` from the wrong lexical scope; changing it to the explicit `ctx.applyActiveFileNonTextState` fixture matched the browser wiring.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused file-viewer validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader focused frontend/file-viewer/static/auth validation returned `131 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: compatible-video load-result policy belongs to the file-viewer controller. App still owns raw video rendering/loading side effects, compatible-preview fetch/load mechanics, raw load-result rendering for non-video kinds, raw restore text implementation, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, raw mode/download/video-preview DOM mutation, and raw Monaco selection helpers.
