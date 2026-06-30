@@ -40,7 +40,7 @@
     const isTextFileKind = requireFunction(deps && deps.isTextFileKind, "isTextFileKind");
     const confirmReload = requireFunction(deps && deps.confirmReload, "confirmReload");
     const promptUnsavedFileChoice = requireFunction(deps && deps.promptUnsavedFileChoice, "promptUnsavedFileChoice");
-    const discardActiveFileEdits = requireFunction(deps && deps.discardActiveFileEdits, "discardActiveFileEdits");
+    const restoreFileEditorText = requireFunction(deps && deps.restoreFileEditorText, "restoreFileEditorText");
     const hideFileViewer = requireFunction(deps && deps.hideFileViewer, "hideFileViewer");
     const setFilePath = requireFunction(deps && deps.setFilePath, "setFilePath");
     const resetFileViewerPanel = requireFunction(deps && deps.resetFileViewerPanel, "resetFileViewerPanel");
@@ -489,6 +489,11 @@
       }
       const save = beginActiveFileSaveRequest();
       return await submitActiveFileSave(save, { exitEditMode });
+    }
+
+    function discardActiveFileEdits() {
+      restoreFileEditorText(currentActiveFileText());
+      setFileEditMode(false);
     }
 
     async function maybeHandleUnsavedFileChanges() {
@@ -984,6 +989,7 @@
       applyActiveFileSaveSuccess,
       submitActiveFileSave,
       saveActiveFileEdits,
+      discardActiveFileEdits,
       maybeHandleUnsavedFileChanges,
       setFileViewModeWithGuard,
       requestHideFileViewer,

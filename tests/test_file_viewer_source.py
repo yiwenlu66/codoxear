@@ -672,7 +672,7 @@ def eval_file_paste_dialog_fallback() -> dict:
             isTextFileKind: (kind) => kind === "text" || kind === "markdown",
             confirmReload: () => true,
             promptUnsavedFileChoice: async () => "cancel",
-            discardActiveFileEdits: () => {{}},
+            restoreFileEditorText: () => {{}},
             hideFileViewer: () => {{}},
             applyFileLoadResult: async () => true,
             setFilePath: () => {{}},
@@ -803,7 +803,7 @@ def eval_file_paste_insert_button_guard() -> dict:
             isTextFileKind: (kind) => kind === "text" || kind === "markdown",
             confirmReload: () => true,
             promptUnsavedFileChoice: async () => "cancel",
-            discardActiveFileEdits: () => {{}},
+            restoreFileEditorText: () => {{}},
             hideFileViewer: () => {{}},
             applyFileLoadResult: async () => true,
             setFilePath: () => {{}},
@@ -1082,7 +1082,7 @@ def eval_file_touch_selection_keydown() -> dict:
             isTextFileKind: (kind) => kind === "text" || kind === "markdown",
             confirmReload: () => true,
             promptUnsavedFileChoice: async () => "cancel",
-            discardActiveFileEdits: () => {{}},
+            restoreFileEditorText: () => {{}},
             hideFileViewer: () => {{}},
             applyFileLoadResult: async () => true,
             setFilePath: () => {{}},
@@ -1235,7 +1235,7 @@ def eval_file_editor_delete_shortcut() -> dict:
             isTextFileKind: (kind) => kind === "text" || kind === "markdown",
             confirmReload: () => true,
             promptUnsavedFileChoice: async () => "cancel",
-            discardActiveFileEdits: () => {{}},
+            restoreFileEditorText: () => {{}},
             hideFileViewer: () => {{}},
             applyFileLoadResult: async () => true,
             setFilePath: () => {{}},
@@ -1393,7 +1393,7 @@ def eval_file_open_request_sequence() -> dict:
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "cancel",
-          discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
+          restoreFileEditorText: (text) => calls.push(["restoreFileEditorText", text]),
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           applyFileLoadResult: async () => true,
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
@@ -1678,7 +1678,7 @@ def eval_open_file_guard_mode_validation() -> dict:
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "discard",
-          discardActiveFileEdits: () => {{ state.dirty = false; calls.push(["discardActiveFileEdits"]); }},
+          restoreFileEditorText: (text) => {{ state.dirty = false; calls.push(["restoreFileEditorText", text]); }},
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           applyFileLoadResult: async (...args) => {{ calls.push(["applyFileLoadResult", args[0], args[1] && args[1].kind, args[3] && args[3].viewMode]); return true; }},
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
@@ -1797,7 +1797,7 @@ def eval_open_file_path_mode_ownership() -> dict:
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "discard",
-          discardActiveFileEdits: () => {{ state.dirty = false; calls.push(["discardActiveFileEdits"]); }},
+          restoreFileEditorText: (text) => {{ state.dirty = false; calls.push(["restoreFileEditorText", text]); }},
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           applyFileLoadResult: async (...args) => {{ calls.push(["applyFileLoadResult", args[0], args[1] && args[1].kind, args[3] && args[3].viewMode]); return true; }},
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
@@ -1986,7 +1986,7 @@ def eval_active_file_save_request_helpers() -> dict:
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "cancel",
-          discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
+          restoreFileEditorText: (text) => calls.push(["restoreFileEditorText", text]),
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           applyFileLoadResult: async () => true,
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
@@ -2209,7 +2209,7 @@ def eval_active_file_save_success() -> dict:
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "cancel",
-          discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
+          restoreFileEditorText: (text) => calls.push(["restoreFileEditorText", text]),
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           applyFileLoadResult: async () => true,
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
@@ -2365,7 +2365,7 @@ def eval_active_file_save_transport() -> dict:
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "cancel",
-          discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
+          restoreFileEditorText: (text) => calls.push(["restoreFileEditorText", text]),
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           applyFileLoadResult: async () => true,
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
@@ -2560,7 +2560,7 @@ def eval_draft_file_load_choreography() -> dict:
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "cancel",
-          discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
+          restoreFileEditorText: (text) => calls.push(["restoreFileEditorText", text]),
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           applyFileLoadResult: async () => true,
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
@@ -2710,7 +2710,7 @@ def eval_file_open_success_finalizer() -> dict:
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           promptUnsavedFileChoice: async () => "cancel",
-          discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
+          restoreFileEditorText: (text) => calls.push(["restoreFileEditorText", text]),
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           applyFileLoadResult: async () => true,
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
@@ -4040,6 +4040,9 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("async function maybeHandleUnsavedFileChanges()", viewer_source)
         self.assertIn("if (!currentFileDirty()) return true;", viewer_source)
         self.assertIn("const choice = await promptUnsavedFileChoice();", viewer_source)
+        self.assertIn("function discardActiveFileEdits()", viewer_source)
+        self.assertIn("restoreFileEditorText(currentActiveFileText());", viewer_source)
+        self.assertIn("setFileEditMode(false);", viewer_source)
         self.assertIn("discardActiveFileEdits();", viewer_source)
         self.assertIn("if (choice === \"save\") return await saveActiveFileEdits({ exitEditMode: true });", viewer_source)
         self.assertIn("async function setFileViewModeWithGuard(mode)", viewer_source)
@@ -4094,7 +4097,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("currentFileDirty: () => fileDirty", controller_block)
         self.assertIn("confirmReload: (message) => window.confirm(message)", controller_block)
         self.assertIn("promptUnsavedFileChoice: () => promptFileUnsavedChoice()", controller_block)
-        self.assertIn("discardActiveFileEdits: () => discardActiveFileEdits()", controller_block)
+        self.assertIn("restoreFileEditorText: (text) => restoreFileEditorText(text)", controller_block)
+        self.assertNotIn("discardActiveFileEdits: () => discardActiveFileEdits()", controller_block)
         self.assertIn("hideFileViewer: () => hideFileViewer()", controller_block)
         self.assertIn("applyFileLoadResult: (rel, result, request, options) => applyFileLoadResult(rel, result, request, options)", controller_block)
         self.assertNotIn("openFilePath: (path, options) => openFilePath(path, options)", controller_block)

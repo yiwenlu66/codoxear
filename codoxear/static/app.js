@@ -8229,8 +8229,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function discardActiveFileEdits() {
-          restoreFileEditorText(activeFileText);
-          setFileEditMode(false);
+          return fileViewerController.discardActiveFileEdits();
         }
 
         function hideFileUnsavedDialog(choice = "cancel") {
@@ -8311,7 +8310,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           isTextFileKind: (kind) => isTextFileKind(kind),
           confirmReload: (message) => window.confirm(message),
           promptUnsavedFileChoice: () => promptFileUnsavedChoice(),
-          discardActiveFileEdits: () => discardActiveFileEdits(),
+          restoreFileEditorText: (text) => restoreFileEditorText(text),
           hideFileViewer: () => hideFileViewer(),
           setFilePath: (path, options) => setFilePath(path, options),
           resetFileViewerPanel: () => resetFileViewerPanel(),

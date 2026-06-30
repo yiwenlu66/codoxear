@@ -104,7 +104,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             isTextFileKind: (kind) => kind === "text" || kind === "markdown",
             confirmReload: (message) => {{ events.push(["confirm", message]); return state.confirmResult !== false; }},
             promptUnsavedFileChoice: async () => {{ events.push(["promptUnsaved", state.unsavedChoice || "cancel"]); return state.unsavedChoice || "cancel"; }},
-            discardActiveFileEdits: () => events.push(["discardActiveFileEdits"]),
+            restoreFileEditorText: (text) => events.push(["restoreFileEditorText", text]),
             hideFileViewer: () => events.push(["hideFileViewer"]),
             applyFileLoadResult: async (rel, result, request, opts) => {{
               events.push(["applyFileLoadResult", rel, result && result.kind, opts && opts.viewMode]);
@@ -640,7 +640,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         })
         self.assertEqual(result["render"]["unsavedDecision"], {
             "cleanUnsaved": {"result": True, "events": []},
-            "discardUnsaved": {"result": True, "events": [["promptUnsaved", "discard"], ["discardActiveFileEdits"]]},
+            "discardUnsaved": {"result": True, "events": [["promptUnsaved", "discard"], ["restoreFileEditorText", ""], ["setFileEditMode", False]]},
             "cancelUnsaved": {"result": False, "events": [["promptUnsaved", "cancel"]]},
         })
         self.assertEqual(result["render"]["viewModeGuard"], {
@@ -650,7 +650,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
                 "result": True,
                 "viewMode": "file",
                 "status": "Loading...",
-                "events": [["promptUnsaved", "discard"], ["discardActiveFileEdits"], ["setFileViewMode", "preview"], ["renderFilePickerMenu"], ["disposeOpenRender"], ["resetFileViewerPanel"], ["setFileViewMode", "file"], ["api", "/api/sessions/sid-1/file/read?path=state.md&path_token=state-token&git_path=1", False], ["applyFileLoadResult", "state.md", "text", "file"], ["applyFileMode"], ["rememberOpenedFile", "state.md", "/abs/read"], ["rememberActiveFileSelection"], ["buttonClass", "active", True], ["buttonClass", "primary", True], ["buttonClass", "dirty", True], ["buttonAttr", "aria-label", "Save file"], ["touchToolbar"], ["renderFilePickerMenu"]],
+                "events": [["promptUnsaved", "discard"], ["restoreFileEditorText", ""], ["setFileEditMode", False], ["setFileViewMode", "preview"], ["renderFilePickerMenu"], ["disposeOpenRender"], ["resetFileViewerPanel"], ["setFileViewMode", "file"], ["api", "/api/sessions/sid-1/file/read?path=state.md&path_token=state-token&git_path=1", False], ["applyFileLoadResult", "state.md", "text", "file"], ["applyFileMode"], ["rememberOpenedFile", "state.md", "/abs/read"], ["rememberActiveFileSelection"], ["buttonClass", "active", False], ["buttonClass", "primary", False], ["buttonClass", "dirty", True], ["buttonAttr", "aria-label", "Edit file"], ["touchToolbar"], ["renderFilePickerMenu"]],
             },
             "viewModeCancel": {"result": False, "viewMode": "file", "status": "", "events": [["promptUnsaved", "cancel"]]},
             "viewModeUnavailable": {"result": False, "viewMode": "file", "status": "Session is no longer available; copy unsaved edits before closing.", "events": []},
@@ -658,7 +658,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["render"]["hideRequest"], {
             "hideClean": {"result": True, "events": [["hideFileViewer"]]},
             "hideCancel": {"result": False, "events": [["promptUnsaved", "cancel"]]},
-            "hideDiscard": {"result": True, "events": [["promptUnsaved", "discard"], ["discardActiveFileEdits"], ["hideFileViewer"]]},
+            "hideDiscard": {"result": True, "events": [["promptUnsaved", "discard"], ["restoreFileEditorText", ""], ["setFileEditMode", False], ["hideFileViewer"]]},
         })
         self.assertEqual(result["render"]["unavailableHandler"], {
             "unavailableHandleClean": {"result": True, "unavailable": False, "status": "", "events": [["hideFileViewer"]]},
