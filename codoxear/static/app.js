@@ -8589,6 +8589,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return body;
         }
 
+        function renderActiveFileSaveError(save, error) {
+          if (error && error.status === 409) {
+            renderFileSaveConflict(save.sessionId, save.path, error && error.message ? error.message : "conflict");
+          } else {
+            fileStatus.textContent = `save error: ${error && error.message ? error.message : "unknown error"}`;
+          }
+        }
+
         function applyActiveFileSaveSuccess(save, res, { exitEditMode = true } = {}) {
           activeFileText = save.text;
           if (res && typeof res.version === "string") activeFileVersion = res.version;
@@ -8628,11 +8636,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             return applyActiveFileSaveSuccess(save, res, { exitEditMode });
           } catch (e) {
             if (!saveStillCurrent()) return false;
-            if (e && e.status === 409) {
-              renderFileSaveConflict(save.sessionId, save.path, e && e.message ? e.message : "conflict");
-            } else {
-              fileStatus.textContent = `save error: ${e && e.message ? e.message : "unknown error"}`;
-            }
+            renderActiveFileSaveError(save, e);
             return false;
           } finally {
             finishActiveFileSaveRequest(save);

@@ -965,6 +965,45 @@ def eval_active_file_save_body_builder() -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_active_file_save_error_renderer() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("function renderActiveFileSaveError(")
+    end = source.index("function applyActiveFileSaveSuccess", start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{
+          fileStatus: {{ textContent: "" }},
+          calls: [],
+          renderFileSaveConflict: (...args) => ctx.calls.push(["renderFileSaveConflict", ...args]),
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_save_error = renderActiveFileSaveError;\n")}, ctx);
+        const save = {{ sessionId: "sid-1", path: "src/app.py" }};
+        ctx.__test_save_error(save, {{ status: 409, message: "version mismatch" }});
+        const conflict = {{ calls: ctx.calls.slice(), status: ctx.fileStatus.textContent }};
+        ctx.calls = [];
+        ctx.fileStatus.textContent = "";
+        ctx.__test_save_error(save, {{ status: 500, message: "disk full" }});
+        const generic = {{ calls: ctx.calls.slice(), status: ctx.fileStatus.textContent }};
+        ctx.calls = [];
+        ctx.fileStatus.textContent = "";
+        ctx.__test_save_error(save, {{}});
+        const unknown = {{ calls: ctx.calls.slice(), status: ctx.fileStatus.textContent }};
+        process.stdout.write(JSON.stringify({{ conflict, generic, unknown }}));
+        """
+    )
+    proc = subprocess.run(
+        ["node", "-e", js],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return json.loads(proc.stdout)
+
+
 def eval_active_file_save_success() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function applyActiveFileSaveSuccess(")
@@ -1891,6 +1930,18 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const saveBody = buildActiveFileSaveBody(save);", source)
         self.assertIn("if (!save.draft && activeFileGitPath && save.apiPath) body.path_token = save.apiPath;", source)
 
+    def test_active_file_save_error_renderer_preserves_conflict_and_generic_status(self) -> None:
+        result = eval_active_file_save_error_renderer()
+        self.assertEqual(result["conflict"], {
+            "calls": [["renderFileSaveConflict", "sid-1", "src/app.py", "version mismatch"]],
+            "status": "",
+        })
+        self.assertEqual(result["generic"], {"calls": [], "status": "save error: disk full"})
+        self.assertEqual(result["unknown"], {"calls": [], "status": "save error: unknown error"})
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("function renderActiveFileSaveError(save, error)", source)
+        self.assertIn("renderActiveFileSaveError(save, e);\n            return false;", source)
+
     def test_active_file_save_success_applies_response_state(self) -> None:
         result = eval_active_file_save_success()
         self.assertTrue(result["draft"]["ok"])
@@ -1975,7 +2026,8 @@ class TestFileViewerSource(unittest.TestCase):
         save_start = source.index("async function saveActiveFileEdits")
         save_end = source.index("async function maybeHandleUnsavedFileChanges", save_start)
         save_block = source[save_start:save_end]
-        self.assertIn("renderFileSaveConflict(save.sessionId, save.path, e && e.message ? e.message : \"conflict\");", save_block)
+        self.assertIn("renderActiveFileSaveError(save, e);", save_block)
+        self.assertIn("renderFileSaveConflict(save.sessionId, save.path, error && error.message ? error.message : \"conflict\");", source)
         self.assertIn("let fileSaveSeq = 0;", source)
         self.assertIn("let activeFileSaveToken = 0;", source)
         self.assertIn("if (!save || activeFileSaveToken !== save.token) return;", source)
