@@ -5718,3 +5718,24 @@
   - `git diff --check` passed before staging/commit.
 - Clean-room critic review `3e1a5872-b41a-4a88-85c9-1ea556f8bb7e` found no blockers; report saved at `/tmp/codoxear-save-conflict-reload-unavailable-review.md`. Review verified the stale unavailable-status overwrite is suppressed, available reload failure remains, confirm/open/keep/render behavior is unchanged, and the VM test executes the real closure.
 - Scope note: this records one repaired file-viewer race inside the ongoing refactor/recovery stream. It does not claim app.js structure, file-viewer async choreography, conflict-handler organization, browser-manual evidence, or the broader refactor/recovery objective is complete.
+
+
+## 2026-06-30T06:15:00Z File-viewer save-conflict controller extraction
+- Functional commit `c507873 Move save conflict UI into file viewer controller` created `codoxear/static/app_file_viewer.js` and moved save-conflict rendering plus Reload/Keep-editing action behavior out of inline `app.js` DOM construction.
+- Mechanism: `window.CodoxearFileViewer.createFileViewerController(deps)` now owns active save-conflict target state, currentness checks across session/path/unavailable state, conflict DOM construction, reload confirmation/reload-failed status behavior, keep-editing status/focus behavior, and event default/propagation suppression. `app.js` now fails loudly if `CodoxearFileViewer.createFileViewerController` is absent, instantiates the controller with explicit dependencies (`el`, `fileStatus`, active identity readers, unavailable predicate, confirm/open/focus callbacks), and delegates 409 save errors through `fileViewerController.renderSaveConflict(...)`.
+- Behavior preserved: conflict label text, `Reload from disk` and `Keep editing` buttons/classes/titles, exact reload confirmation message, live active line/git/api values forwarded to `openFilePath`, available reload failure status, and current keep-editing status/focus.
+- Behavior strengthened: stale same-path/different-session reload completions no longer write reload-failed status to the new session because controller currentness includes session id after await. Unavailable conflicts are no longer current, so unavailable reload preserves the copy-only unavailable message and unavailable/stale keep-editing performs no status/focus mutation.
+- Static/load ownership: `app_file_viewer.js` is loaded after `app_file_picker.js` and before `app_session_helpers.js`/`app.js`, appears in `FRONTEND_ASSET_FILES`, top-level static routes, asset-version fixtures, rendered-index expectations, and wheel packaging assertions.
+- Tests added/updated:
+  - New `tests/test_frontend_file_viewer_module_source.py` executes the real module in Node VM, renders real buttons, and runs their handlers for render content, available reload failure, confirm-cancel, unavailable reload preservation, same-path/session-switch stale no-write, keep-editing current/stale/unavailable behavior, event suppression, dependency fail-closed behavior, and static/app wiring.
+  - `tests/test_file_viewer_source.py` now checks app wiring/delegation to `fileViewerController` and no longer extracts the old inline conflict renderer.
+  - `tests/test_static_assets.py` now includes `app_file_viewer.js` in version/load/package checks.
+- Validation on the committed tree before commit:
+  - `node --check codoxear/static/app_file_viewer.js` and `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file/static group returned `88 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1285 passed, 136 subtests passed`.
+  - Focused Docker frontend/file/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully.
+  - `git diff --check` passed before staging/commit.
+- Clean-room review attempts were unavailable: async runs `e93969fc-0cc6-46db-9392-d6d43b5d2779`, `9a7f14f6-3143-4d2e-b543-73134d23627e`, `6e590935-e44e-41f9-9042-800b33f986ae`, and `1ff60755-d367-4fd2-bf8a-19b5f5aef3d4` all exited/disappeared before writing findings. These failures are operational tool failures, not review evidence. The commit proceeded after direct diff review and full local/Docker validation rather than blocking the refactor on unavailable runner infrastructure.
+- Architectural implication: this is the first `app_file_viewer.js` controller owner for stateful file-viewer behavior. It does not yet move active identity, open/save request lifecycle, draft loading, unavailable transition, paste dialog, or toolbar/editability state out of `app.js`; those remain the next file-viewer/editor responsibilities to migrate under the active PROMPT.md roadmap.
