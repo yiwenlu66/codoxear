@@ -8875,6 +8875,19 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return await openFilePathWithGuard(path, { line, mode, isCurrent: currentGuard, gitPath: useGitPath, apiPath: requestApiPath });
         }
 
+        async function applyDraftFileLoad(rel, request) {
+          if (fileViewMode !== "file") setFileViewMode("file");
+          applyActiveFileTextState({ text: "", editable: true, version: "", draft: true });
+          applyFileMode();
+          const rendered = await renderMonacoFile(rel, "", request.line, "", request);
+          if (!rendered || !isCurrentFileOpenRequest(request)) return false;
+          setFileEditMode(true);
+          fileStatus.textContent = `${rel} - new file`;
+          rememberActiveFileSelection();
+          renderFilePickerMenu();
+          return true;
+        }
+
         async function openDraftFilePath(path, { line = null } = {}) {
           if (blockUnavailableFileAction()) return;
           if (!fileViewerSessionId) return;
@@ -8888,15 +8901,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileStatus.textContent = "Preparing new file...";
           resetFileViewerPanel();
           try {
-            if (fileViewMode !== "file") setFileViewMode("file");
-            applyActiveFileTextState({ text: "", editable: true, version: "", draft: true });
-            applyFileMode();
-            const rendered = await renderMonacoFile(rel, "", request.line, "", request);
-            if (!rendered || !isCurrentFileOpenRequest(request)) return;
-            setFileEditMode(true);
-            fileStatus.textContent = `${rel} - new file`;
-            rememberActiveFileSelection();
-            renderFilePickerMenu();
+            const loaded = await applyDraftFileLoad(rel, request);
+            if (!loaded) return;
           } catch (e) {
             if (e && e.name === "AbortError") return;
             if (!isCurrentFileOpenRequest(request)) return;

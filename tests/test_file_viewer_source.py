@@ -861,6 +861,66 @@ def eval_active_file_load_state_writers() -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_draft_file_load_choreography() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("async function applyDraftFileLoad(")
+    end = source.index("async function openDraftFilePath", start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{
+          fileViewMode: "preview",
+          current: true,
+          renderOk: true,
+          calls: [],
+          fileStatus: {{ textContent: "" }},
+          setFileViewMode: (mode) => {{ ctx.calls.push(["setFileViewMode", mode]); ctx.fileViewMode = mode; }},
+          applyActiveFileTextState: (state) => ctx.calls.push(["applyActiveFileTextState", state]),
+          applyFileMode: () => ctx.calls.push(["applyFileMode"]),
+          renderMonacoFile: async (...args) => {{ ctx.calls.push(["renderMonacoFile", ...args.slice(0, 4)]); if (ctx.staleAfterRender) ctx.current = false; return ctx.renderOk; }},
+          isCurrentFileOpenRequest: () => ctx.current,
+          setFileEditMode: (mode) => ctx.calls.push(["setFileEditMode", mode]),
+          rememberActiveFileSelection: () => ctx.calls.push(["rememberActiveFileSelection"]),
+          renderFilePickerMenu: () => ctx.calls.push(["renderFilePickerMenu"]),
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_draft_load = applyDraftFileLoad;\n")}, ctx);
+        async function run() {{
+          const request = {{ line: 7 }};
+          const ok = await ctx.__test_draft_load("new/file.txt", request);
+          const success = {{ ok, calls: ctx.calls, status: ctx.fileStatus.textContent }};
+          ctx.calls = [];
+          ctx.fileStatus.textContent = "";
+          ctx.fileViewMode = "file";
+          ctx.current = true;
+          ctx.renderOk = false;
+          ctx.staleAfterRender = false;
+          const renderFalse = await ctx.__test_draft_load("new/file.txt", request);
+          const failedRender = {{ ok: renderFalse, calls: ctx.calls, status: ctx.fileStatus.textContent }};
+          ctx.calls = [];
+          ctx.fileStatus.textContent = "";
+          ctx.fileViewMode = "file";
+          ctx.current = true;
+          ctx.renderOk = true;
+          ctx.staleAfterRender = true;
+          const stale = await ctx.__test_draft_load("new/file.txt", request);
+          const staleResult = {{ ok: stale, calls: ctx.calls, status: ctx.fileStatus.textContent }};
+          process.stdout.write(JSON.stringify({{ success, failedRender, staleResult }}));
+        }}
+        run().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(
+        ["node", "-e", js],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return json.loads(proc.stdout)
+
+
 def eval_file_open_success_finalizer() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function finalizeFileOpenSuccess(")
@@ -1261,6 +1321,38 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(result["clearWithLine"], {"path": "", "gitPath": False, "apiPath": "", "line": 12})
         self.assertEqual(result["clearDefault"], {"path": "", "gitPath": False, "apiPath": "", "line": None})
         self.assertFalse(result["secondAfterCancel"])
+
+    def test_draft_file_load_choreography_is_single_owned(self) -> None:
+        result = eval_draft_file_load_choreography()
+        self.assertTrue(result["success"]["ok"])
+        self.assertEqual(result["success"]["calls"], [
+            ["setFileViewMode", "file"],
+            ["applyActiveFileTextState", {"text": "", "editable": True, "version": "", "draft": True}],
+            ["applyFileMode"],
+            ["renderMonacoFile", "new/file.txt", "", 7, ""],
+            ["setFileEditMode", True],
+            ["rememberActiveFileSelection"],
+            ["renderFilePickerMenu"],
+        ])
+        self.assertEqual(result["success"]["status"], "new/file.txt - new file")
+        self.assertFalse(result["failedRender"]["ok"])
+        self.assertEqual(result["failedRender"]["calls"], [
+            ["applyActiveFileTextState", {"text": "", "editable": True, "version": "", "draft": True}],
+            ["applyFileMode"],
+            ["renderMonacoFile", "new/file.txt", "", 7, ""],
+        ])
+        self.assertEqual(result["failedRender"]["status"], "")
+        self.assertFalse(result["staleResult"]["ok"])
+        self.assertEqual(result["staleResult"]["calls"], [
+            ["applyActiveFileTextState", {"text": "", "editable": True, "version": "", "draft": True}],
+            ["applyFileMode"],
+            ["renderMonacoFile", "new/file.txt", "", 7, ""],
+        ])
+        self.assertEqual(result["staleResult"]["status"], "")
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("async function applyDraftFileLoad(rel, request)", source)
+        self.assertIn("const loaded = await applyDraftFileLoad(rel, request);\n            if (!loaded) return;", source)
+        self.assertNotIn("rememberOpenedFile(rel", source[source.index("async function applyDraftFileLoad("):source.index("async function openDraftFilePath", source.index("async function applyDraftFileLoad("))])
 
     def test_active_file_load_state_writers_are_single_owned(self) -> None:
         result = eval_active_file_load_state_writers()
