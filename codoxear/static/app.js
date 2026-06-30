@@ -3329,26 +3329,7 @@
                });
               sessionIndex = new Map();
 		          for (const s of sessions) sessionIndex.set(s.session_id, s);
-              if (selected && !sessionIndex.has(selected)) {
-                const removedSelected = selected;
-                selected = null;
-                handleFileViewerSessionUnavailable(removedSelected);
-                if (unattendedMenuOpen) hideUnattendedMenu();
-                activeTranscriptState = "pending_bind";
-                activeLogPath = null;
-                activeThreadId = null;
-                liveCursor = null;
-                clearRenderedTranscriptRange();
-                turnOpen = false;
-                storageRemoveItem("codexweb.selected");
-                setSessionHash("");
-                titleLabel.textContent = "No session selected";
-                setStatus({ running: false, queueLen: 0 });
-                setContext(null);
-                setTyping(false);
-                setAttachCount(0);
-                resetChatRenderState();
-              }
+              if (selected && !sessionIndex.has(selected)) clearSelectedSessionAfterRemoval(selected);
               if (selected) {
                 applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));
                 syncRecoveryUiForSession(selected);
@@ -4027,10 +4008,17 @@
           return lines.join("\n");
         }
 
-        function clearSelectedSessionAfterRemoval(sessionId) {
-          if (selected !== sessionId) return;
-          selected = null;
+        function clearSelectedSessionAfterRemoval(sessionId, { incrementPollGen = false, clearPollState = false } = {}) {
+          if (selected !== sessionId) return false;
           handleFileViewerSessionUnavailable(sessionId);
+          selected = null;
+          if (incrementPollGen) pollGen += 1;
+          if (clearPollState) {
+            if (pollTimer) clearTimeout(pollTimer);
+            pollTimer = null;
+            pollKickPending = false;
+            pollKickDelayMs = null;
+          }
           activeTranscriptState = "pending_bind";
           activeLogPath = null;
           activeThreadId = null;
@@ -4048,6 +4036,10 @@
           updateQueueBadge();
           if (unattendedMenuOpen) hideUnattendedMenu();
           updateUnattendedBtnState();
+          syncSendButtonState();
+          syncQueueSubmitState();
+          syncAttachButtonState();
+          return true;
         }
 
         async function dismissFailedLaunchRecord(sessionId) {
@@ -4384,32 +4376,7 @@
             if (!isCurrentOpenSessionTailRequest(tailRequest)) return null;
             markMessagePollFailure();
             if (e && e.status === 404) {
-              handleFileViewerSessionUnavailable(sessionId);
-              selected = null;
-              if (unattendedMenuOpen) hideUnattendedMenu();
-              activeTranscriptState = "pending_bind";
-              activeLogPath = null;
-              activeThreadId = null;
-              liveCursor = null;
-              clearRenderedTranscriptRange();
-              if (pollTimer) clearTimeout(pollTimer);
-              pollTimer = null;
-              pollKickPending = false;
-              pollKickDelayMs = null;
-              turnOpen = false;
-              storageRemoveItem("codexweb.selected");
-              setSessionHash("");
-              titleLabel.textContent = "No session selected";
-              setStatus({ running: false, queueLen: 0 });
-              setContext(null);
-              setTyping(false);
-              setAttachCount(0);
-              resetChatRenderState();
-              updateQueueBadge();
-              updateUnattendedBtnState();
-              syncSendButtonState();
-              syncQueueSubmitState();
-              syncAttachButtonState();
+              clearSelectedSessionAfterRemoval(sessionId, { clearPollState: true });
               void refreshSessions().catch((e2) => {
                 if (e2 && e2.status === 401) handleAppAuthLoss();
                 else console.error("refreshSessions failed after session disappeared", e2);
@@ -4529,26 +4496,7 @@
               return;
             }
             if (e && e.status === 404) {
-              selected = null;
-              handleFileViewerSessionUnavailable(sid);
-              if (unattendedMenuOpen) hideUnattendedMenu();
-              activeLogPath = null;
-              activeThreadId = null;
-              liveCursor = null;
-              clearRenderedTranscriptRange();
-              pollGen += 1;
-              if (pollTimer) clearTimeout(pollTimer);
-              pollTimer = null;
-              pollKickPending = false;
-              pollKickDelayMs = null;
-              turnOpen = false;
-              storageRemoveItem("codexweb.selected");
-              setSessionHash("");
-              titleLabel.textContent = "No session selected";
-              setStatus({ running: false, queueLen: 0 });
-              setTyping(false);
-              resetChatRenderState();
-              updateQueueBadge();
+              clearSelectedSessionAfterRemoval(sid, { incrementPollGen: true, clearPollState: true });
               try {
                 await refreshSessions();
               } catch (e2) {

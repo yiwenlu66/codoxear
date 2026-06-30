@@ -1649,21 +1649,16 @@ class TestFileViewerSource(unittest.TestCase):
         sessions_start = source.index("async function refreshSessionsOnce()")
         sessions_end = source.index("function appendEvent", sessions_start)
         sessions_block = source[sessions_start:sessions_end]
-        self.assertIn("const removedSelected = selected;", sessions_block)
-        self.assertIn("handleFileViewerSessionUnavailable(removedSelected);", sessions_block)
+        self.assertIn("if (selected && !sessionIndex.has(selected)) clearSelectedSessionAfterRemoval(selected);", sessions_block)
         self.assertIn("clearSelectedSessionAfterRemoval(s.session_id);", source)
-        self.assertIn("function clearSelectedSessionAfterRemoval(sessionId)", source)
-        self.assertIn("handleFileViewerSessionUnavailable(sid);", source)
+        self.assertIn("function clearSelectedSessionAfterRemoval(sessionId, { incrementPollGen = false, clearPollState = false } = {})", source)
+        self.assertIn("handleFileViewerSessionUnavailable(sessionId);", source)
+        self.assertIn("syncAttachButtonState();", source)
         open_start = source.index("async function openSession(sessionId")
         open_end = source.index("async function pollMessages", open_start)
         open_block = source[open_start:open_end]
         self.assertIn("if (e && e.status === 404) {", open_block)
-        self.assertIn("handleFileViewerSessionUnavailable(sessionId);", open_block)
-        self.assertIn("selected = null;", open_block)
-        self.assertIn('storageRemoveItem("codexweb.selected");', open_block)
-        self.assertIn('setSessionHash("");', open_block)
-        self.assertIn('titleLabel.textContent = "No session selected";', open_block)
-        self.assertIn("syncAttachButtonState();", open_block)
+        self.assertIn("clearSelectedSessionAfterRemoval(sessionId, { clearPollState: true });", open_block)
         self.assertIn('console.error("refreshSessions failed after session disappeared", e2);', open_block)
 
     def test_file_open_requests_are_single_owner(self) -> None:

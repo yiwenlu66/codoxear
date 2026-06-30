@@ -219,7 +219,110 @@ def eval_open_session_tail_request_abort() -> dict:
     return json.loads(proc.stdout)
 
 
+
+def eval_clear_selected_session_after_removal() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("function clearSelectedSessionAfterRemoval(")
+    end = source.index("async function dismissFailedLaunchRecord", start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const calls = [];
+        const ctx = {{
+          selected: "sid-1",
+          pollGen: 7,
+          pollTimer: 123,
+          pollKickPending: true,
+          pollKickDelayMs: 50,
+          unattendedMenuOpen: true,
+          activeTranscriptState: "bound",
+          activeLogPath: "/old.jsonl",
+          activeThreadId: "old-thread",
+          liveCursor: "cursor",
+          turnOpen: true,
+          titleLabel: {{ textContent: "old title" }},
+          handleFileViewerSessionUnavailable: (sid) => calls.push(["handleFileViewerSessionUnavailable", sid, ctx.selected]),
+          clearTimeout: (...args) => calls.push(["clearTimeout", ...args]),
+          clearRenderedTranscriptRange: () => calls.push(["clearRenderedTranscriptRange"]),
+          storageRemoveItem: (...args) => calls.push(["storageRemoveItem", ...args]),
+          setSessionHash: (...args) => calls.push(["setSessionHash", ...args]),
+          setStatus: (...args) => calls.push(["setStatus", ...args]),
+          setContext: (...args) => calls.push(["setContext", ...args]),
+          setTyping: (...args) => calls.push(["setTyping", ...args]),
+          setAttachCount: (...args) => calls.push(["setAttachCount", ...args]),
+          resetChatRenderState: () => calls.push(["resetChatRenderState"]),
+          updateQueueBadge: () => calls.push(["updateQueueBadge"]),
+          hideUnattendedMenu: () => calls.push(["hideUnattendedMenu"]),
+          updateUnattendedBtnState: () => calls.push(["updateUnattendedBtnState"]),
+          syncSendButtonState: () => calls.push(["syncSendButtonState"]),
+          syncQueueSubmitState: () => calls.push(["syncQueueSubmitState"]),
+          syncAttachButtonState: () => calls.push(["syncAttachButtonState"]),
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_clear = clearSelectedSessionAfterRemoval;\n")}, ctx);
+        const noop = ctx.__test_clear("other", {{ incrementPollGen: true, clearPollState: true }});
+        const noopState = {{ selected: ctx.selected, pollGen: ctx.pollGen, calls: calls.slice() }};
+        calls.length = 0;
+        const applied = ctx.__test_clear("sid-1", {{ incrementPollGen: true, clearPollState: true }});
+        const appliedState = {{
+          selected: ctx.selected,
+          pollGen: ctx.pollGen,
+          pollTimer: ctx.pollTimer,
+          pollKickPending: ctx.pollKickPending,
+          pollKickDelayMs: ctx.pollKickDelayMs,
+          activeTranscriptState: ctx.activeTranscriptState,
+          activeLogPath: ctx.activeLogPath,
+          activeThreadId: ctx.activeThreadId,
+          liveCursor: ctx.liveCursor,
+          turnOpen: ctx.turnOpen,
+          title: ctx.titleLabel.textContent,
+          calls: calls.slice(),
+        }};
+        process.stdout.write(JSON.stringify({{ noop, noopState, applied, appliedState }}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 class TestChatScrollbackSource(unittest.TestCase):
+    def test_clear_selected_session_after_removal_resets_missing_session_state(self) -> None:
+        result = eval_clear_selected_session_after_removal()
+        self.assertFalse(result["noop"])
+        self.assertEqual(result["noopState"], {"selected": "sid-1", "pollGen": 7, "calls": []})
+        self.assertTrue(result["applied"])
+        state = result["appliedState"]
+        self.assertIsNone(state["selected"])
+        self.assertEqual(state["pollGen"], 8)
+        self.assertIsNone(state["pollTimer"])
+        self.assertFalse(state["pollKickPending"])
+        self.assertIsNone(state["pollKickDelayMs"])
+        self.assertEqual(state["activeTranscriptState"], "pending_bind")
+        self.assertIsNone(state["activeLogPath"])
+        self.assertIsNone(state["activeThreadId"])
+        self.assertIsNone(state["liveCursor"])
+        self.assertFalse(state["turnOpen"])
+        self.assertEqual(state["title"], "No session selected")
+        self.assertEqual(state["calls"][0], ["handleFileViewerSessionUnavailable", "sid-1", "sid-1"])
+        for expected in [
+            ["clearTimeout", 123],
+            ["storageRemoveItem", "codexweb.selected"],
+            ["setSessionHash", ""],
+            ["setStatus", {"running": False, "queueLen": 0}],
+            ["setContext", None],
+            ["setTyping", False],
+            ["setAttachCount", 0],
+            ["resetChatRenderState"],
+            ["updateQueueBadge"],
+            ["hideUnattendedMenu"],
+            ["updateUnattendedBtnState"],
+            ["syncSendButtonState"],
+            ["syncQueueSubmitState"],
+            ["syncAttachButtonState"],
+        ]:
+            self.assertIn(expected, state["calls"])
+
     def test_jump_button_reloads_selected_tail(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index("async function jumpToLatest() {")
@@ -351,6 +454,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         poll_block = source[poll_start:poll_end]
         poll_catch = poll_block[poll_block.rindex("} catch (e) {") :]
         self.assertLess(poll_catch.index("if (e && e.status === 401)"), poll_catch.index("if (gen !== pollGen || sid !== selected) return;"))
+        self.assertIn("clearSelectedSessionAfterRemoval(sid, { incrementPollGen: true, clearPollState: true });", poll_catch)
 
     def test_refresh_sessions_does_not_fetch_messages(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -361,9 +465,10 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertNotIn("/messages/live", block)
         self.assertNotIn("/messages/history", block)
         self.assertNotIn("await openSession(", block)
-        self.assertIn("if (selected && !sessionIndex.has(selected)) {", block)
-        self.assertIn("storageRemoveItem(\"codexweb.selected\");", block)
-        self.assertIn("titleLabel.textContent = \"No session selected\";", block)
+        self.assertIn("if (selected && !sessionIndex.has(selected)) clearSelectedSessionAfterRemoval(selected);", block)
+        self.assertIn("function clearSelectedSessionAfterRemoval", source)
+        self.assertIn("storageRemoveItem(\"codexweb.selected\");", source)
+        self.assertIn("titleLabel.textContent = \"No session selected\";", source)
         self.assertIn("applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));", block)
 
     def test_session_list_pending_bind_clears_active_transcript_slot(self) -> None:
@@ -576,7 +681,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn('function launchPresetFromSessionInfo(s)', source)
         self.assertIn('function dismissFailedLaunchRecord(sessionId)', source)
         self.assertIn('await api(`/api/sessions/${sessionId}/delete`, { method: "POST", body: {} });', source)
-        self.assertIn('function clearSelectedSessionAfterRemoval(sessionId)', source)
+        self.assertIn('function clearSelectedSessionAfterRemoval(sessionId, { incrementPollGen = false, clearPollState = false } = {})', source)
         self.assertIn('clearSelectedSessionAfterRemoval(s.session_id);', source)
         self.assertIn('clearSelectedSessionAfterRemoval(sessionId);', source)
         self.assertIn('if (!s || (!sessionLaunchFailed(s) && !s.orphan_recovery && !s.queue_recovery && !s.commit_unknown_send)) return null;', source)
