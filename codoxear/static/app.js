@@ -8546,7 +8546,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             if (!ok) return;
             fileStatus.textContent = `Reloading ${savePath}...`;
             const reloaded = await openFilePath(savePath, { line: activeFileLine, gitPath: activeFileGitPath, apiPath: activeFileApiPath });
-            if (!reloaded && activeFilePath === savePath) fileStatus.textContent = `${savePath} - reload failed`;
+            if (!reloaded && activeFilePath === savePath && !isFileViewerSessionUnavailable()) fileStatus.textContent = `${savePath} - reload failed`;
           };
           keepBtn.onclick = (e) => {
             e.preventDefault();
