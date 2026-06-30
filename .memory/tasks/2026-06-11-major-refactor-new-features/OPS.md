@@ -5381,3 +5381,25 @@
 - Clean-room review `f57ba9c4-0f68-4c3d-80c5-6bb78d0cf7c9` returned PASS with no blockers. Review verified snapshot order, token assignment, currentness predicate equivalence, pending/read-only/button/status timing, stale success/catch returns, draft/non-draft save body and path-token behavior, response application order, conflict arguments, token-matched final cleanup, VM/source test fidelity, and unchanged surrounding code. Non-blocking notes: `Object.freeze` is shallow but all context fields are primitives; `fileSaveSeq` overflow is pre-existing theoretical risk; Boolean wrapper in currentness predicate is stylistic; VM text mock does not exercise `getFileEditorText()` fallback but that is outside helper semantics.
 - Next transition seam from architect `61e6b4ed-5564-4238-bcfa-85649c08746c`: successful save response application helper after currentness success, preserving response side-effect order and keeping API call/stale guard/error handling outside the helper.
 - Scope note: this is save request context ownership only. It does not claim save response application ownership, conflict rendering ownership, video fallback mode cleanup, PDF lifecycle repair, or browser-manual rendering evidence.
+
+
+
+## 2026-06-30T01:21:39Z Active file save success applier extraction
+- Functional commit `9833d04 Extract active file save success applier` moved the successful save response side effects out of `saveActiveFileEdits()` into `applyActiveFileSaveSuccess(save, res, { exitEditMode = true } = {})`.
+- Mechanism: after the existing `if (!saveStillCurrent()) return true;` guard, `saveActiveFileEdits()` now calls the applier. The helper applies `save.text` to `activeFileText`, conditionally updates `activeFileVersion`/`activeFileEditable` from response fields, clears `activeFileDraft`, clears git/api identity for draft saves, calls `applyFileMode()`, clears dirty state, optionally exits edit mode, computes size from response or `save.text.length`, writes the status string, remembers the file with response path fallback to null, rerenders the picker menu, and returns true.
+- Boundary preserved: save preconditions, save request context, pending mark, save body construction, `path_token` condition, API call, stale success/error returns, conflict/generic error handling, and final request cleanup stay in `saveActiveFileEdits()` or the existing save-request helpers. The helper deliberately does not perform its own currentness check.
+- Tests added/updated:
+  - `eval_active_file_save_success()` executes the real helper in a Node VM and covers a draft save with version/editable/size/path response plus `exitEditMode: true`, and a non-draft save with absent response fields plus `exitEditMode: false`.
+  - Assertions verify active file text/version/editable/draft/git/api state, dirty/edit mode, status fallback, `rememberOpenedFile()` arguments, and call order (`applyFileMode`, `setFileDirty`, optional `setFileEditMode`, `rememberOpenedFile`, `renderFilePickerMenu`).
+  - Source sentinels pin the helper signature, call site, and migrated status/remembered-file lines.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused save-success/save-request/response/conflict tests passed.
+  - Focused file-viewer/file-picker/static group returned `86 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1270 passed, 136 subtests passed`.
+  - Focused Docker file-viewer/file-picker/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed.
+- Clean-room review `bc7539ff-c33d-4e86-9d57-f25c88c2390d` returned PASS with no blockers. Review verified exact response-application order, unchanged stale-guard boundary, caller-owned save body/API/error/finally behavior, sound draft identity timing, correct `applyFileMode`/dirty/edit-mode ordering, correct remembered-file path handling, VM fidelity, and accurate sentinel updates. Non-blocking notes: redundant DOM updates are pre-existing; error paths remain caller-owned; the helper currently has one guarded call site.
+- Next transition seam: save body construction helper, preserving draft/non-draft request body semantics and the existing live `activeFileGitPath` read for `git_path`/`path_token` behavior.
+- Scope note: this is successful save response application ownership only. It does not claim save body construction ownership, conflict rendering ownership, video fallback mode cleanup, PDF lifecycle repair, or browser-manual rendering evidence.
