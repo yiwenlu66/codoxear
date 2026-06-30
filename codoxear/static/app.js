@@ -764,6 +764,7 @@
         let olderLoadCancelOnScroll = true;
         let olderAutoTriggerAt = 0;
         let openSessionTailAbortController = null;
+        let messagePollAbortController = null;
         const OLDER_AUTO_COOLDOWN_MS = 450;
         let pollTimer = null;
         let pollGen = 0;
@@ -908,6 +909,7 @@
           selected = null;
           pollGen += 1;
           abortOpenSessionTailRequest();
+          abortMessagePollRequest();
           if (pollTimer) clearTimeout(pollTimer);
           pollTimer = null;
           pollKickPending = false;
@@ -941,6 +943,23 @@
         }
         function finishOpenSessionTailRequest(request) {
           if (request && openSessionTailAbortController === request.controller) openSessionTailAbortController = null;
+        }
+        function abortMessagePollRequest() {
+          const controller = messagePollAbortController;
+          messagePollAbortController = null;
+          abortController(controller);
+        }
+        function beginMessagePollRequest(sessionId, gen) {
+          abortMessagePollRequest();
+          const controller = typeof AbortController === "function" ? new AbortController() : null;
+          messagePollAbortController = controller;
+          return Object.freeze({ sessionId, gen, controller, signal: controller ? controller.signal : undefined });
+        }
+        function isMessagePollAbortError(request, error) {
+          return Boolean(error && error.name === "AbortError" && request && request.signal && request.signal.aborted);
+        }
+        function finishMessagePollRequest(request) {
+          if (request && messagePollAbortController === request.controller) messagePollAbortController = null;
         }
         function cleanupApp() {
           if (appDisposed) return;
@@ -4012,6 +4031,7 @@
           if (selected !== sessionId) return false;
           handleFileViewerSessionUnavailable(sessionId);
           selected = null;
+          abortMessagePollRequest();
           if (incrementPollGen) pollGen += 1;
           if (clearPollState) {
             if (pollTimer) clearTimeout(pollTimer);
@@ -4300,6 +4320,7 @@
           pollGen += 1;
           const myGen = pollGen;
           abortOpenSessionTailRequest();
+          abortMessagePollRequest();
           if (pollTimer) {
             clearTimeout(pollTimer);
             pollTimer = null;
@@ -4418,49 +4439,52 @@
         }
 
 			        async function pollMessages(sid = selected, gen = pollGen) {
-			          if (appDisposed || !sid) return;
-			          try {
-	            if (!liveCursor) {
-	              if (activeTranscriptState === "pending_bind") {
-		                const data = await api(`/api/sessions/${sid}/messages/tail?limit=${initPageLimit()}`);
-		                if (gen !== pollGen || sid !== selected) return;
-                    markMessagePollSuccess();
-		                const slotChange = updateSessionTranscriptSlot(sid, data);
-		                if (slotChange.ignoredStaleBound) {
-		                  renderPendingTranscriptSlot(sid);
-		                  applySessionRuntimeFromTail(sid, { transcript_state: "pending_bind", busy: data.busy, queue_len: data.queue_len, token: data.token });
-		                  return;
-		                }
-		                if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);
-		                applySessionRuntimeFromTail(sid, data);
-	                return;
-	              }
-	              if (activeTranscriptState === "failed") return;
-	              await openSession(sid, { useCache: false });
-	              return;
-	            }
-	            const reqCursor = liveCursor;
-		            const data = await api(`/api/sessions/${sid}/messages/live?cursor=${encodeURIComponent(reqCursor)}`);
-	            if (gen !== pollGen || sid !== selected) return;
+          if (appDisposed || !sid) return;
+          let pollRequest = null;
+          try {
+            if (!liveCursor) {
+              if (activeTranscriptState === "pending_bind") {
+                pollRequest = beginMessagePollRequest(sid, gen);
+                const data = await api(`/api/sessions/${sid}/messages/tail?limit=${initPageLimit()}`, { signal: pollRequest.signal });
+                if (gen !== pollGen || sid !== selected) return;
                 markMessagePollSuccess();
-	            const slotInfo = transcriptSnapshotFromData(data);
-	            const nowBusy = Boolean(data.busy);
-	            if (activeTranscriptState === "bound" && slotInfo.state === "pending_bind") {
-	              updateSessionTranscriptSlot(sid, data);
-	              resetChatRenderState();
-	              renderPendingTranscriptSlot(sid);
-	              setAttachCount(0);
-	              applySessionRuntimeFromTail(sid, data);
-	              return;
-	            }
-	            if (activeTranscriptState === "bound" && slotInfo.state === "bound" && slotInfo.logPath !== activeLogPath) {
-	              await openSession(sid, { useCache: false });
-	              return;
-	            }
+                const slotChange = updateSessionTranscriptSlot(sid, data);
+                if (slotChange.ignoredStaleBound) {
+                  renderPendingTranscriptSlot(sid);
+                  applySessionRuntimeFromTail(sid, { transcript_state: "pending_bind", busy: data.busy, queue_len: data.queue_len, token: data.token });
+                  return;
+                }
+                if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);
+                applySessionRuntimeFromTail(sid, data);
+                return;
+              }
+              if (activeTranscriptState === "failed") return;
+              await openSession(sid, { useCache: false });
+              return;
+            }
+            const reqCursor = liveCursor;
+            pollRequest = beginMessagePollRequest(sid, gen);
+            const data = await api(`/api/sessions/${sid}/messages/live?cursor=${encodeURIComponent(reqCursor)}`, { signal: pollRequest.signal });
+            if (gen !== pollGen || sid !== selected) return;
+            markMessagePollSuccess();
+            const slotInfo = transcriptSnapshotFromData(data);
+            const nowBusy = Boolean(data.busy);
+            if (activeTranscriptState === "bound" && slotInfo.state === "pending_bind") {
+              updateSessionTranscriptSlot(sid, data);
+              resetChatRenderState();
+              renderPendingTranscriptSlot(sid);
+              setAttachCount(0);
+              applySessionRuntimeFromTail(sid, data);
+              return;
+            }
+            if (activeTranscriptState === "bound" && slotInfo.state === "bound" && slotInfo.logPath !== activeLogPath) {
+              await openSession(sid, { useCache: false });
+              return;
+            }
 
-	            liveCursor = typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null;
-	            const evs = Array.isArray(data.events) ? data.events : [];
-	            for (const ev of evs) appendEvent(ev);
+            liveCursor = typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null;
+            const evs = Array.isArray(data.events) ? data.events : [];
+            for (const ev of evs) appendEvent(ev);
 
             const turnStart = Boolean(data.turn_start);
             const turnEnd = Boolean(data.turn_end);
@@ -4468,12 +4492,12 @@
             if (turnStart) turnOpen = true;
             if (!turnOpen && nowBusy) turnOpen = true;
             if ((turnEnd || turnAborted) && turnOpen) turnOpen = false;
-		            if (turnOpen && !nowBusy) turnOpen = false;
+            if (turnOpen && !nowBusy) turnOpen = false;
 
-				            setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
-				            setContext(data.token);
-				            setTyping(Boolean(turnOpen || nowBusy));
-	            const s2 = sessionIndex.get(sid);
+            setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
+            setContext(data.token);
+            setTyping(Boolean(turnOpen || nowBusy));
+            const s2 = sessionIndex.get(sid);
             if (evs.length) {
               appendTailSnapshotEvents(sid, evs, {
                 session: s2,
@@ -4485,11 +4509,12 @@
               });
             }
             if (s2) titleLabel.textContent = sessionTitleWithId(s2);
-		          } catch (e) {
+          } catch (e) {
             if (e && e.status === 401) {
               handleAppAuthLoss();
               return;
             }
+            if (isMessagePollAbortError(pollRequest, e)) return;
             if (gen !== pollGen || sid !== selected) return;
             if (e && e.status === 409) {
               await openSession(sid, { useCache: false });
@@ -4500,13 +4525,15 @@
               try {
                 await refreshSessions();
               } catch (e2) {
-                  console.error("refreshSessions failed after session disappeared", e2);
-                  toast.textContent = `refresh error: ${e2 && e2.message ? e2.message : "unknown error"}`;
-                }
-                return;
+                console.error("refreshSessions failed after session disappeared", e2);
+                toast.textContent = `refresh error: ${e2 && e2.message ? e2.message : "unknown error"}`;
+              }
+              return;
             }
             markMessagePollFailure();
             toast.textContent = `error: ${e.message}`;
+          } finally {
+            finishMessagePollRequest(pollRequest);
           }
         }
 

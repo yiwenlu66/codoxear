@@ -11,6 +11,145 @@ APP_API_JS = ROOT / "codoxear" / "static" / "app_api.js"
 APP_POLLING_JS = ROOT / "codoxear" / "static" / "app_polling.js"
 
 
+def eval_message_poll_request_abort() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    helper_start = source.index("function stopMessagePolling()")
+    helper_end = source.index("function cleanupApp", helper_start)
+    poll_start = source.index("async function pollMessages(")
+    poll_end = source.index("async function pollLoop()", poll_start)
+    snippet = (
+        "let openSessionTailAbortController = null;\n"
+        "let messagePollAbortController = null;\n"
+        + source[helper_start:helper_end]
+        + "\n"
+        + source[poll_start:poll_end]
+    )
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const calls = [];
+        const pending = [];
+        class AbortController {{
+          constructor() {{
+            const listeners = [];
+            this.signal = {{
+              aborted: false,
+              addEventListener(type, cb) {{ if (type === "abort") listeners.push(cb); }},
+              _listeners: listeners,
+            }};
+          }}
+          abort() {{
+            if (this.signal.aborted) return;
+            this.signal.aborted = true;
+            for (const cb of this.signal._listeners.slice()) cb();
+          }}
+        }}
+        const ctx = {{
+          AbortController,
+          console,
+          encodeURIComponent,
+          appDisposed: false,
+          selected: "sid-a",
+          pollGen: 7,
+          pollTimer: null,
+          pollKickPending: false,
+          pollKickDelayMs: null,
+          messagePollErrorStreak: 0,
+          pollFastUntilMs: 0,
+          turnOpen: false,
+          liveCursor: "cursor-a",
+          activeTranscriptState: "bound",
+          activeLogPath: "/log-a.jsonl",
+          activeThreadId: "thread-a",
+          sessionIndex: new Map(),
+          titleLabel: {{ textContent: "" }},
+          toast: {{ textContent: "" }},
+          clearTimeout: (...args) => calls.push(["clearTimeout", ...args]),
+          initPageLimit: () => 60,
+          api: (url, options = {{}}) => {{
+            calls.push(["api", url, Boolean(options.signal)]);
+            return new Promise((resolve, reject) => {{
+              const req = {{ url, signal: options.signal || null, resolve, reject }};
+              pending.push(req);
+              if (options.signal && typeof options.signal.addEventListener === "function") {{
+                options.signal.addEventListener("abort", () => {{
+                  calls.push(["abort", url]);
+                  const err = new Error("aborted");
+                  err.name = "AbortError";
+                  reject(err);
+                }});
+              }}
+            }});
+          }},
+          handleAppAuthLoss: () => calls.push(["handleAppAuthLoss"]),
+          openSession: async (...args) => calls.push(["openSession", ...args]),
+          clearSelectedSessionAfterRemoval: (...args) => calls.push(["clearSelectedSessionAfterRemoval", ...args]),
+          refreshSessions: async () => calls.push(["refreshSessions"]),
+          markMessagePollFailure: () => calls.push(["markMessagePollFailure"]),
+          markMessagePollSuccess: () => calls.push(["markMessagePollSuccess"]),
+          updateSessionTranscriptSlot: () => {{ calls.push(["updateSessionTranscriptSlot"]); return {{ ignoredStaleBound: false, current: {{ state: "bound" }} }}; }},
+          renderPendingTranscriptSlot: () => calls.push(["renderPendingTranscriptSlot"]),
+          applySessionRuntimeFromTail: () => calls.push(["applySessionRuntimeFromTail"]),
+          renderSessionTail: () => calls.push(["renderSessionTail"]),
+          transcriptSnapshotFromData: () => {{ calls.push(["transcriptSnapshotFromData"]); return {{ state: "bound", logPath: "/log-a.jsonl" }}; }},
+          resetChatRenderState: () => calls.push(["resetChatRenderState"]),
+          setAttachCount: (...args) => calls.push(["setAttachCount", ...args]),
+          appendEvent: (...args) => calls.push(["appendEvent", ...args]),
+          setStatus: (...args) => calls.push(["setStatus", ...args]),
+          setContext: (...args) => calls.push(["setContext", ...args]),
+          setTyping: (...args) => calls.push(["setTyping", ...args]),
+          appendTailSnapshotEvents: (...args) => calls.push(["appendTailSnapshotEvents", ...args]),
+          sessionTitleWithId: (s) => `title:${{s.session_id}}`,
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = { pollMessages, stopMessagePolling, controllerActive: () => Boolean(messagePollAbortController) };\n")}, ctx);
+        (async () => {{
+          const first = ctx.__test.pollMessages("sid-a", 7);
+          await Promise.resolve();
+          const firstReq = pending[0];
+          ctx.selected = "sid-b";
+          ctx.pollGen = 8;
+          ctx.liveCursor = "cursor-b";
+          const second = ctx.__test.pollMessages("sid-b", 8);
+          await Promise.resolve();
+          const secondReq = pending[1];
+          await first;
+          const activeAfterFirstFinally = ctx.__test.controllerActive();
+          ctx.__test.stopMessagePolling();
+          await second;
+          const activeAfterSecondAbort = ctx.__test.controllerActive();
+
+          ctx.selected = "sid-p";
+          ctx.pollGen = 20;
+          ctx.liveCursor = null;
+          ctx.activeTranscriptState = "pending_bind";
+          const third = ctx.__test.pollMessages("sid-p", 20);
+          await Promise.resolve();
+          const thirdReq = pending[2];
+          ctx.__test.stopMessagePolling();
+          await third;
+
+          process.stdout.write(JSON.stringify({{
+            apiCalls: calls.filter((call) => call[0] === "api"),
+            abortCalls: calls.filter((call) => call[0] === "abort"),
+            failureCalls: calls.filter((call) => call[0] === "markMessagePollFailure"),
+            successCalls: calls.filter((call) => call[0] === "markMessagePollSuccess"),
+            firstSignalAborted: Boolean(firstReq && firstReq.signal && firstReq.signal.aborted),
+            secondSignalAborted: Boolean(secondReq && secondReq.signal && secondReq.signal.aborted),
+            thirdSignalAborted: Boolean(thirdReq && thirdReq.signal && thirdReq.signal.aborted),
+            activeAfterFirstFinally,
+            activeAfterSecondAbort,
+            activeAfterThirdAbort: ctx.__test.controllerActive(),
+            toastText: ctx.toast.textContent,
+          }}));
+        }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
+
 def eval_message_poll_delay_policy() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     polling_source = APP_POLLING_JS.read_text(encoding="utf-8")
@@ -162,6 +301,34 @@ class TestSessionPollingSource(unittest.TestCase):
         self.assertEqual(result["offlineHighErrorKick0"], 30000)
         self.assertEqual(result["recovered"], 900)
 
+    def test_message_poll_requests_abort_on_supersede_and_stop(self) -> None:
+        result = eval_message_poll_request_abort()
+        self.assertEqual(
+            result["apiCalls"],
+            [
+                ["api", "/api/sessions/sid-a/messages/live?cursor=cursor-a", True],
+                ["api", "/api/sessions/sid-b/messages/live?cursor=cursor-b", True],
+                ["api", "/api/sessions/sid-p/messages/tail?limit=60", True],
+            ],
+        )
+        self.assertEqual(
+            result["abortCalls"],
+            [
+                ["abort", "/api/sessions/sid-a/messages/live?cursor=cursor-a"],
+                ["abort", "/api/sessions/sid-b/messages/live?cursor=cursor-b"],
+                ["abort", "/api/sessions/sid-p/messages/tail?limit=60"],
+            ],
+        )
+        self.assertTrue(result["firstSignalAborted"])
+        self.assertTrue(result["secondSignalAborted"])
+        self.assertTrue(result["thirdSignalAborted"])
+        self.assertTrue(result["activeAfterFirstFinally"])
+        self.assertFalse(result["activeAfterSecondAbort"])
+        self.assertFalse(result["activeAfterThirdAbort"])
+        self.assertEqual(result["failureCalls"], [])
+        self.assertEqual(result["successCalls"], [])
+        self.assertEqual(result["toastText"], "")
+
     def test_active_message_polling_is_visibility_offline_error_aware(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         polling_source = APP_POLLING_JS.read_text(encoding="utf-8")
@@ -172,6 +339,7 @@ class TestSessionPollingSource(unittest.TestCase):
         self.assertIn("MESSAGE_POLL_OFFLINE_MS: 15000", polling_source)
         self.assertIn("MESSAGE_POLL_ERROR_MIN_MS: 2000", polling_source)
         self.assertIn("let pollKickDelayMs = null;", source)
+        self.assertIn("let messagePollAbortController = null;", source)
         self.assertIn("let messagePollErrorStreak = 0;", source)
         self.assertIn("function messagePollDelayMs(now = Date.now())", source)
         self.assertIn("function normalizeMessagePollKickDelay(ms = 0)", source)
@@ -190,11 +358,20 @@ class TestSessionPollingSource(unittest.TestCase):
         open_block = source[open_start:open_end]
         self.assertIn("markMessagePollFailure();", open_block)
         self.assertIn("const tailRequest = beginOpenSessionTailRequest(sessionId, myGen);", open_block)
+        self.assertIn("abortMessagePollRequest();", open_block)
         self.assertIn("signal: tailRequest.signal,", open_block)
         self.assertIn("if (isOpenSessionTailAbortError(tailRequest, e)) return null;", open_block)
         self.assertIn("renderTranscriptLoadError(sessionId, e, { preserveTranscript: displayedCachedTail });", open_block)
         self.assertIn("if (!appDisposed && selected === sessionId && pollGen === myGen) kickPoll(messagePollDelayMs());", open_block)
         self.assertIn("markMessagePollSuccess();", open_block)
+        poll_start = source.index("async function pollMessages(")
+        poll_end = source.index("async function pollLoop()", poll_start)
+        poll_block = source[poll_start:poll_end]
+        self.assertIn("function beginMessagePollRequest(sessionId, gen)", source)
+        self.assertIn("pollRequest = beginMessagePollRequest(sid, gen);", poll_block)
+        self.assertIn("{ signal: pollRequest.signal }", poll_block)
+        self.assertIn("if (isMessagePollAbortError(pollRequest, e)) return;", poll_block)
+        self.assertIn("finishMessagePollRequest(pollRequest);", poll_block)
         self.assertIn("pollTimer = setTimeout(pollLoop, messagePollDelayMs());", source)
         self.assertIn("const delay = pollKickDelayMs == null ? 0 : pollKickDelayMs;", source)
         self.assertIn("pollKickDelayMs = null;", source)
@@ -244,6 +421,7 @@ class TestSessionPollingSource(unittest.TestCase):
         stop_message_end = source.index("function abortController(controller)", stop_message_start)
         stop_message_block = source[stop_message_start:stop_message_end]
         self.assertIn("abortOpenSessionTailRequest();", stop_message_block)
+        self.assertIn("abortMessagePollRequest();", stop_message_block)
         self.assertIn("sessionsPollingEnabled = false;", source)
         self.assertIn("secondaryPollingEnabled = false;", source)
         self.assertIn("stopAllPolling();", source)

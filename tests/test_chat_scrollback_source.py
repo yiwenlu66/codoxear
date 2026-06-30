@@ -84,7 +84,7 @@ def eval_open_session_tail_request_abort() -> dict:
     helper_end = source.index("function cleanupApp", helper_start)
     open_start = source.index("async function openSession(")
     open_end = source.index("async function pollMessages(", open_start)
-    snippet = "let openSessionTailAbortController = null;\n" + source[helper_start:helper_end] + "\n" + source[open_start:open_end]
+    snippet = "let openSessionTailAbortController = null;\nlet messagePollAbortController = null;\n" + source[helper_start:helper_end] + "\n" + source[open_start:open_end]
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -243,6 +243,7 @@ def eval_clear_selected_session_after_removal() -> dict:
           turnOpen: true,
           titleLabel: {{ textContent: "old title" }},
           handleFileViewerSessionUnavailable: (sid) => calls.push(["handleFileViewerSessionUnavailable", sid, ctx.selected]),
+          abortMessagePollRequest: () => calls.push(["abortMessagePollRequest"]),
           clearTimeout: (...args) => calls.push(["clearTimeout", ...args]),
           clearRenderedTranscriptRange: () => calls.push(["clearRenderedTranscriptRange"]),
           storageRemoveItem: (...args) => calls.push(["storageRemoveItem", ...args]),
@@ -305,6 +306,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertFalse(state["turnOpen"])
         self.assertEqual(state["title"], "No session selected")
         self.assertEqual(state["calls"][0], ["handleFileViewerSessionUnavailable", "sid-1", "sid-1"])
+        self.assertIn(["abortMessagePollRequest"], state["calls"])
         for expected in [
             ["clearTimeout", 123],
             ["storageRemoveItem", "codexweb.selected"],
@@ -453,7 +455,8 @@ class TestChatScrollbackSource(unittest.TestCase):
         poll_end = source.index("async function pollLoop()", poll_start)
         poll_block = source[poll_start:poll_end]
         poll_catch = poll_block[poll_block.rindex("} catch (e) {") :]
-        self.assertLess(poll_catch.index("if (e && e.status === 401)"), poll_catch.index("if (gen !== pollGen || sid !== selected) return;"))
+        self.assertLess(poll_catch.index("if (e && e.status === 401)"), poll_catch.index("if (isMessagePollAbortError(pollRequest, e)) return;"))
+        self.assertLess(poll_catch.index("if (isMessagePollAbortError(pollRequest, e)) return;"), poll_catch.index("if (gen !== pollGen || sid !== selected) return;"))
         self.assertIn("clearSelectedSessionAfterRemoval(sid, { incrementPollGen: true, clearPollState: true });", poll_catch)
 
     def test_refresh_sessions_does_not_fetch_messages(self) -> None:
@@ -579,7 +582,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn('if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);', block)
         self.assertIn('if (activeTranscriptState === "failed") return;', block)
         self.assertIn("await openSession(sid, { useCache: false });", block)
-        self.assertIn("await api(`/api/sessions/${sid}/messages/live?cursor=${encodeURIComponent(reqCursor)}`);", block)
+        self.assertIn("await api(`/api/sessions/${sid}/messages/live?cursor=${encodeURIComponent(reqCursor)}`, { signal: pollRequest.signal });", block)
         self.assertIn("const slotInfo = transcriptSnapshotFromData(data);", block)
         self.assertIn("liveCursor = typeof data.live_cursor === \"string\" && data.live_cursor ? data.live_cursor : null;", block)
         self.assertNotIn("after_byte", block)
