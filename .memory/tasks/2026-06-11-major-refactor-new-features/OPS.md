@@ -5596,3 +5596,28 @@
   - `git diff --check` passed before staging/commit.
 - Clean-room review `53a949a5-6f2d-4438-bcf3-8b6678e70232` returned PASS with no blockers; report saved at `/tmp/codoxear-delete-client-state-review.md`. Review verified the actual three-file diff, exact old cleanup order/effect preservation, missing-session/404/cache policy unchanged, selected file-viewer unavailable path preserved through `clearSelectedSessionAfterRemoval()`, and meaningful VM/source tests. Residual risks are inherited closure-over-`s` behavior in sidebar rows, ignored return value, lack of a full `doDelete()` integration VM, and existing separate coverage for selected-session cleanup internals.
 - Scope note: this is explicit delete/dismiss client-state cleanup ownership only. It does not claim cache fallback policy changes, missing-session cleanup changes, browser-manual delete testing, file-viewer sync refactoring, or completion of the broad refactor/recovery request.
+
+
+## 2026-06-30T03:56:00Z File-viewer open-target selection ownership
+- Functional commit `7377478 Extract file viewer open target selection` introduced `resolveFileViewerOpenTarget({ sessionId, explicitPath, explicitLine })` to own the file-viewer target priority ladder after candidates are refreshed.
+- Mechanism:
+  - The helper returns frozen target records for explicit path, preferred remembered/history selection, first refreshed candidate, or `{ kind: "none" }`.
+  - Target priority is explicit path, then preferred selection for the session, then first `fileCandidateList` entry, then none.
+  - Explicit targets return `line: normalizeLineNumber(explicitLine)`, `changed: null`, `gitPath: false`, and `apiPath: ""`, preserving the old explicit-path override semantics.
+  - Preferred targets return the preferred path/line/git/api identity with `changed: null`, which is equivalent to the old omitted `changed` argument because `openFilePathWithResolvedMode()` defaults `changed = null`.
+  - First-candidate targets return `changed: Boolean(first.changed)`, `gitPath: Boolean(first.gitPath)`, and normalized `apiPath`, preserving the old first-candidate mode-resolution hint that differs from explicit/preferred targets.
+  - `ensureCurrentFileViewerSession()` and `showFileViewer()` now call the helper after candidate refresh and session-current guards, then keep their own `setFilePath()`, `openFilePathWithResolvedMode()`, error/status handling, and empty fallback UI.
+- Boundary preserved: `ensureCurrentFileViewerSession()` still owns is-open/selected checks, sync token, unsaved-change prompt, stale-selection/session guards, pending-open cancellation, remembered selection, session assignment, search-state reset, awaited file open timing, boolean return behavior, and touch-toolbar update. `showFileViewer()` still owns modal prep, query-open early return, sync token, session assignment/search-state reset, fire-and-forget file open timing, catch/status behavior, and empty fallback UI.
+- Tests added/updated:
+  - `eval_file_viewer_open_target()` executes the real `preferredFileSelectionForSession()` plus `resolveFileViewerOpenTarget()` in a Node VM and verifies explicit, preferred, first-candidate, none, and no-session target shapes, including line/git/api/changed/source fields.
+  - Source sentinels now pin helper use in both `ensureCurrentFileViewerSession()` and `showFileViewer()`, the awaited vs fire-and-forget open calls, `changed: target.changed` pass-through, and absence of the old inline first-candidate/preferred-git blocks in the callers.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused helper/source tests passed.
+  - Focused local file-viewer/file-picker/static group returned `80 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1279 passed, 136 subtests passed`.
+  - Focused Docker file-viewer/file-picker/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed before staging/commit.
+- Clean-room review `4cf8170c-d34c-4712-a1cc-739a6ee0a2ec` returned PASS with no blockers despite the runner label saying failed; report saved at `/tmp/codoxear-file-viewer-target-review.md`. Review verified explicit/preferred/first/none fidelity, `changed:null` equivalence for explicit/preferred paths, first-candidate `changed` preservation, caller timing/guards/query-open/unsaved/error/fallback behavior preservation, and meaningful VM/source tests. Non-blocking notes: `Object.freeze` is cosmetic, `normalizeFileApiPath` is idempotently redundant, and shared helper bugs would affect both callers.
+- Scope note: this is file-viewer open-target selection ownership only. It does not claim file-viewer async open choreography extraction, sync-token policy changes, cache policy changes, browser-manual file-viewer evidence, or completion of the broad refactor/recovery request.
