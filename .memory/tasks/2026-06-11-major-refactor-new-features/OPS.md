@@ -6009,3 +6009,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: editor state snapshot and capability policy now belong to the file-viewer controller. Editor action handlers, touch-toolbar DOM updates, generic file-open result rendering/application, draft inspect/open currentness behavior, and dirty unavailable transition choreography remain partly `app.js`-owned.
+
+## 2026-06-30T10:28:58Z File editor predicate controller ownership
+- Functional commit `7f59ad3 Move file editor predicates into viewer controller` moved `activeFileEditorCapabilities()` and the derived editor predicate methods from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the controller-owned `currentFileEditorState()` snapshot and `fileEditorCapabilities(state)` policy now feed controller methods for edit-mode entry, writability, idle writability, idle text writability, and current-view edit-mode eligibility. `app.js` retains only stable wrapper names for existing DOM/event call sites.
+- Behavior preserved: read-only sync, paste eligibility, and edit-mode entry still consult the same derived booleans; tests now exercise those derived booleans through the real controller.
+- Tests updated:
+  - `tests/test_frontend_file_viewer_module_source.py` verifies the real-controller derived predicate results match the capability object.
+  - `tests/test_file_viewer_source.py` fake-controller shim and source sentinels now require controller-owned predicate derivation.
+- Validation before commit:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `91 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: editor state snapshot, capability policy, and derived predicate decisions now belong to the file-viewer controller. Editor action handlers, touch-toolbar DOM updates, generic file-open result rendering/application, draft inspect/open currentness behavior, and dirty unavailable transition choreography remain partly `app.js`-owned.
