@@ -38,6 +38,13 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           activeEntry: null,
           gitFresh: false,
           markdownPreviewable: true,
+          kind: "text",
+          draft: false,
+          version: "",
+          editable: true,
+          dirty: false,
+          editorKind: "file",
+          editMode: true,
           resetCount: 0,
           touchCount: 0,
         }};
@@ -82,6 +89,8 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             focusEditor: () => ({{ focus: () => events.push(["focus"]) }}),
             disposeOpenRender: () => events.push(["disposeOpenRender"]),
             currentFileViewMode: () => state.viewMode,
+            currentFileEditorKind: () => state.editorKind || "file",
+            currentFileEditMode: () => state.editMode !== false,
             activeFileEntry: () => state.activeEntry,
             fileCandidateGitStateFresh: () => state.gitFresh,
             isMarkdownPreviewable: () => state.markdownPreviewable,
@@ -90,12 +99,12 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             setFileViewMode: (mode) => {{ state.viewMode = mode; events.push(["setFileViewMode", mode]); }},
             applyActiveFileTextState: (nextState) => events.push(["applyActiveFileTextState", nextState]),
             renderMonacoFile: async (rel, text, line, lang) => {{ events.push(["renderMonacoFile", rel, text, line, lang]); return state.renderOk !== false; }},
-            setFileEditMode: (enabled) => events.push(["setFileEditMode", enabled]),
-            currentActiveFileKind: () => "text",
-            currentActiveFileDraft: () => false,
-            currentActiveFileVersion: () => "",
-            currentActiveFileEditable: () => true,
-            currentFileDirty: () => false,
+            setFileEditMode: (enabled) => {{ state.editMode = Boolean(enabled); events.push(["setFileEditMode", enabled]); }},
+            currentActiveFileKind: () => state.kind,
+            currentActiveFileDraft: () => state.draft,
+            currentActiveFileVersion: () => state.version,
+            currentActiveFileEditable: () => state.editable,
+            currentFileDirty: () => state.dirty,
             getFileEditorText: () => "",
             setFileDirty: () => events.push(["setFileDirty"]),
             syncFileEditorReadOnly: () => events.push(["syncFileEditorReadOnly"]),
@@ -241,6 +250,17 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const unavailableBlocked = renderController.blockUnavailableFileAction();
           const unavailableBlockStatus = fileStatus.textContent;
           state.unavailable = false;
+          state.kind = "markdown";
+          state.version = "v7";
+          state.editable = true;
+          state.draft = false;
+          state.viewMode = "file";
+          state.editorKind = "file";
+          state.editMode = true;
+          state.dirty = true;
+          renderController.setActiveFileIdentity("state.md", {{ line: 11, gitPath: true, apiPath: "state-token" }});
+          const editorState = renderController.currentFileEditorState();
+          const editorStateFrozen = Object.isFrozen(editorState);
           const editableCapabilities = renderController.fileEditorCapabilities({{ path: "src/app.py", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
           const pendingCapabilities = renderController.fileEditorCapabilities({{ path: "src/app.py", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: true }});
           const binaryCapabilities = renderController.fileEditorCapabilities({{ path: "img.png", kind: "image", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
@@ -261,6 +281,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             saveBodies,
             saveErrors: {{ saveConflict, genericSaveError, unknownSaveError }},
             unavailableAction: {{ availableBlocked, availableBlockStatus, unavailableBlocked, unavailableBlockStatus }},
+            editorState: {{ editorState, editorStateFrozen }},
             capabilities: {{ editableCapabilities, pendingCapabilities, binaryCapabilities, missingPathCapabilities, editableFrozen: Object.isFrozen(editableCapabilities) }},
           }};
           const availableReloadFailure = await runReloadCase("");
@@ -364,6 +385,25 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "availableBlockStatus": "old status",
             "unavailableBlocked": True,
             "unavailableBlockStatus": "Session is no longer available; copy unsaved edits before closing.",
+        })
+        self.assertEqual(result["render"]["editorState"], {
+            "editorState": {
+                "path": "state.md",
+                "apiPath": "state-token",
+                "gitPath": True,
+                "kind": "markdown",
+                "editable": True,
+                "version": "v7",
+                "draft": False,
+                "viewMode": "file",
+                "editorKind": "file",
+                "editMode": True,
+                "dirty": True,
+                "savePending": False,
+                "sessionId": "sid-1",
+                "unavailable": False,
+            },
+            "editorStateFrozen": True,
         })
         self.assertEqual(result["render"]["capabilities"], {
             "editableCapabilities": {"canEnterEditMode": True, "writable": True, "idleWritable": True, "idleTextWritable": True, "editModeAllowedInCurrentView": True},

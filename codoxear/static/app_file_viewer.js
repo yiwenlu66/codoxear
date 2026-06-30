@@ -30,6 +30,8 @@
     const focusEditor = requireFunction(deps && deps.focusEditor, "focusEditor");
     const disposeOpenRender = requireFunction(deps && deps.disposeOpenRender, "disposeOpenRender");
     const currentFileViewMode = requireFunction(deps && deps.currentFileViewMode, "currentFileViewMode");
+    const currentFileEditorKind = requireFunction(deps && deps.currentFileEditorKind, "currentFileEditorKind");
+    const currentFileEditMode = requireFunction(deps && deps.currentFileEditMode, "currentFileEditMode");
     const activeFileEntry = requireFunction(deps && deps.activeFileEntry, "activeFileEntry");
     const fileCandidateGitStateFresh = requireFunction(deps && deps.fileCandidateGitStateFresh, "fileCandidateGitStateFresh");
     const isMarkdownPreviewable = requireFunction(deps && deps.isMarkdownPreviewable, "isMarkdownPreviewable");
@@ -191,6 +193,26 @@
       if (!isUnavailable()) return false;
       fileStatus.textContent = "Session is no longer available; copy unsaved edits before closing.";
       return true;
+    }
+
+    function currentFileEditorState() {
+      const identity = currentActiveFileIdentity();
+      return Object.freeze({
+        path: String(identity.path || ""),
+        apiPath: String(identity.apiPath || ""),
+        gitPath: Boolean(identity.gitPath),
+        kind: String(currentActiveFileKind() || ""),
+        editable: Boolean(currentActiveFileEditable()),
+        version: String(currentActiveFileVersion() || ""),
+        draft: Boolean(currentActiveFileDraft()),
+        viewMode: String(currentFileViewMode() || ""),
+        editorKind: String(currentFileEditorKind() || ""),
+        editMode: Boolean(currentFileEditMode()),
+        dirty: Boolean(currentFileDirty()),
+        savePending: isFileSavePending(),
+        sessionId: String(currentSessionId() || ""),
+        unavailable: isUnavailable(),
+      });
     }
 
     function fileEditorCapabilities(state) {
@@ -483,6 +505,7 @@
       fetchFileOpenResult,
       isFileOpenAbortError,
       blockUnavailableFileAction,
+      currentFileEditorState,
       fileEditorCapabilities,
       finalizeFileOpenSuccess,
       applyDraftFileLoad,

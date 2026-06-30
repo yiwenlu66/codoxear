@@ -127,6 +127,25 @@ def controller_identity_ctx_js(
               return {{ result: res, absPath: res && typeof res.path === "string" ? res.path : null }};
             }},
             isFileOpenAbortError(error) {{ return Boolean(error && error.name === "AbortError"); }},
+            currentFileEditorState() {{
+              const identity = this.currentActiveFileIdentity();
+              return Object.freeze({{
+                path: String(identity.path || ""),
+                apiPath: String(identity.apiPath || ""),
+                gitPath: Boolean(identity.gitPath),
+                kind: String(ctx.activeFileKind || ""),
+                editable: Boolean(ctx.activeFileEditable),
+                version: String(ctx.activeFileVersion || ""),
+                draft: Boolean(ctx.activeFileDraft),
+                viewMode: String(ctx.fileViewMode || ""),
+                editorKind: String(ctx.fileEditorKind || ""),
+                editMode: Boolean(ctx.fileEditMode),
+                dirty: Boolean(ctx.fileDirty),
+                savePending: Boolean(ctx.fileSavePendingValue()),
+                sessionId: String(ctx.fileViewerSessionId || ""),
+                unavailable: ctx.isFileViewerSessionUnavailable(),
+              }});
+            }},
             fileEditorCapabilities(state) {{
               if (!state || typeof state !== "object") throw new Error("file editor state required");
               const kind = String(state.kind || "");
@@ -1068,6 +1087,8 @@ def eval_file_open_request_sequence() -> dict:
           focusEditor: () => null,
           disposeOpenRender: () => {{ disposeCalls += 1; }},
           currentFileViewMode: () => "file",
+          currentFileEditorKind: () => "file",
+          currentFileEditMode: () => true,
           activeFileEntry: () => null,
           fileCandidateGitStateFresh: () => false,
           isMarkdownPreviewable: () => true,
@@ -1498,6 +1519,8 @@ def eval_active_file_save_request_helpers() -> dict:
           focusEditor: () => null,
           disposeOpenRender: () => calls.push(["disposeOpenRender"]),
           currentFileViewMode: () => "file",
+          currentFileEditorKind: () => "file",
+          currentFileEditMode: () => true,
           activeFileEntry: () => null,
           fileCandidateGitStateFresh: () => false,
           isMarkdownPreviewable: () => true,
@@ -1683,6 +1706,8 @@ def eval_active_file_save_success() -> dict:
           focusEditor: () => null,
           disposeOpenRender: () => calls.push(["disposeOpenRender"]),
           currentFileViewMode: () => "file",
+          currentFileEditorKind: () => "file",
+          currentFileEditMode: () => true,
           activeFileEntry: () => null,
           fileCandidateGitStateFresh: () => false,
           isMarkdownPreviewable: () => true,
@@ -1812,6 +1837,8 @@ def eval_active_file_save_transport() -> dict:
           focusEditor: () => null,
           disposeOpenRender: () => calls.push(["disposeOpenRender"]),
           currentFileViewMode: () => "file",
+          currentFileEditorKind: () => "file",
+          currentFileEditMode: () => true,
           activeFileEntry: () => null,
           fileCandidateGitStateFresh: () => false,
           isMarkdownPreviewable: () => true,
@@ -1951,6 +1978,8 @@ def eval_draft_file_load_choreography() -> dict:
           focusEditor: () => null,
           disposeOpenRender: () => calls.push(["disposeOpenRender"]),
           currentFileViewMode: () => state.viewMode,
+          currentFileEditorKind: () => state.editorKind || "file",
+          currentFileEditMode: () => state.editMode !== false,
           activeFileEntry: () => null,
           fileCandidateGitStateFresh: () => false,
           isMarkdownPreviewable: () => true,
@@ -2511,7 +2540,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("updateFileEditButton();", transition_block)
         self.assertLess(transition_block.index("rememberActiveFileSelection(sid);"), transition_block.index("fileViewerSessionSyncToken += 1;"))
         self.assertIn("fileViewerUnavailableSessionId = \"\";", source)
-        self.assertIn("unavailable: isFileViewerSessionUnavailable(),", source)
+        self.assertIn("unavailable: isUnavailable(),", viewer_source)
         self.assertIn("const unavailable = Boolean(state.unavailable);", viewer_source)
         self.assertIn("if (blockUnavailableFileAction()) return false;", source)
         self.assertIn("function renderEmptyFileViewerTarget({ updateTouchToolbar = false } = {})", source)
@@ -2773,6 +2802,8 @@ class TestFileViewerSource(unittest.TestCase):
         source = APP_JS.read_text(encoding="utf-8")
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertIn("function currentFileEditorState()", source)
+        self.assertIn("return fileViewerController.currentFileEditorState();", source)
+        self.assertIn("function currentFileEditorState()", viewer_source)
         self.assertIn("function fileEditorCapabilities(state)", source)
         self.assertIn("return fileViewerController.fileEditorCapabilities(state);", source)
         self.assertIn("function fileEditorCapabilities(state)", viewer_source)

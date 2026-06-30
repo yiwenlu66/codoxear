@@ -7409,22 +7409,7 @@
         }
 
         function currentFileEditorState() {
-          return Object.freeze({
-            path: String(activeFilePathValue() || ""),
-            apiPath: String(activeFileApiPathValue() || ""),
-            gitPath: Boolean(activeFileGitPathValue()),
-            kind: String(activeFileKind || ""),
-            editable: Boolean(activeFileEditable),
-            version: String(activeFileVersion || ""),
-            draft: Boolean(activeFileDraft),
-            viewMode: String(fileViewMode || ""),
-            editorKind: String(fileEditorKind || ""),
-            editMode: Boolean(fileEditMode),
-            dirty: Boolean(fileDirty),
-            savePending: fileSavePendingValue(),
-            sessionId: String(fileViewerSessionId || ""),
-            unavailable: isFileViewerSessionUnavailable(),
-          });
+          return fileViewerController.currentFileEditorState();
         }
 
         function fileEditorCapabilities(state) {
@@ -8485,6 +8470,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           focusEditor: () => getActiveFileCodeEditor(),
           disposeOpenRender: () => disposePdfRender(),
           currentFileViewMode: () => fileViewMode,
+          currentFileEditorKind: () => fileEditorKind,
+          currentFileEditMode: () => fileEditMode,
           activeFileEntry: () => activeFileEntry(),
           fileCandidateGitStateFresh: () => fileCandidateGitStateFresh,
           isMarkdownPreviewable,
