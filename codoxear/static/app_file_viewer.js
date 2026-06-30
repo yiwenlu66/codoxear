@@ -38,10 +38,14 @@
     const applyActiveFileTextState = requireFunction(deps && deps.applyActiveFileTextState, "applyActiveFileTextState");
     const renderMonacoFile = requireFunction(deps && deps.renderMonacoFile, "renderMonacoFile");
     const setFileEditMode = requireFunction(deps && deps.setFileEditMode, "setFileEditMode");
+    const currentActiveFileKind = requireFunction(deps && deps.currentActiveFileKind, "currentActiveFileKind");
     const currentActiveFileDraft = requireFunction(deps && deps.currentActiveFileDraft, "currentActiveFileDraft");
     const currentActiveFileVersion = requireFunction(deps && deps.currentActiveFileVersion, "currentActiveFileVersion");
+    const currentActiveFileEditable = requireFunction(deps && deps.currentActiveFileEditable, "currentActiveFileEditable");
     const getFileEditorText = requireFunction(deps && deps.getFileEditorText, "getFileEditorText");
+    const setFileDirty = requireFunction(deps && deps.setFileDirty, "setFileDirty");
     const syncFileEditorReadOnly = requireFunction(deps && deps.syncFileEditorReadOnly, "syncFileEditorReadOnly");
+    const fmtBytes = requireFunction(deps && deps.fmtBytes, "fmtBytes");
     const applyFileMode = requireFunction(deps && deps.applyFileMode, "applyFileMode");
     const rememberOpenedFile = requireFunction(deps && deps.rememberOpenedFile, "rememberOpenedFile");
     const rememberActiveFileSelection = requireFunction(deps && deps.rememberActiveFileSelection, "rememberActiveFileSelection");
@@ -247,6 +251,24 @@
       }
     }
 
+    function applyActiveFileSaveSuccess(save, res, { exitEditMode = true } = {}) {
+      const nextKind = String(currentActiveFileKind() || "text");
+      const nextVersion = res && typeof res.version === "string" ? res.version : currentActiveFileVersion();
+      const nextEditable = res && typeof res.editable === "boolean" ? res.editable : currentActiveFileEditable();
+      applyActiveFileTextState({ kind: nextKind, text: save.text, editable: nextEditable, version: nextVersion, draft: false });
+      if (save.draft) {
+        setActiveFileIdentity(save.path, { line: currentActiveFileLine(), gitPath: false, apiPath: "" });
+      }
+      applyFileMode();
+      setFileDirty(false);
+      if (exitEditMode) setFileEditMode(false);
+      const size = res && typeof res.size === "number" ? res.size : save.text.length;
+      fileStatus.textContent = `${save.path} - ${fmtBytes(size)}`;
+      rememberOpenedFile(save.path, res && typeof res.path === "string" ? res.path : null);
+      renderFilePickerMenu();
+      return true;
+    }
+
     function finalizeFileOpenSuccess(rel, absPath = null) {
       applyFileMode();
       rememberOpenedFile(rel, absPath);
@@ -383,6 +405,7 @@
       finishActiveFileSaveRequest,
       buildActiveFileSaveBody,
       renderActiveFileSaveError,
+      applyActiveFileSaveSuccess,
       nextActiveFileIdentity,
       currentActiveFileIdentity,
       currentActiveFileLine,

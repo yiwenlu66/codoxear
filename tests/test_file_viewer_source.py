@@ -1059,10 +1059,14 @@ def eval_file_open_request_sequence() -> dict:
           applyActiveFileTextState: () => {{}},
           renderMonacoFile: async () => true,
           setFileEditMode: () => {{}},
+          currentActiveFileKind: () => "text",
           currentActiveFileDraft: () => false,
           currentActiveFileVersion: () => "",
+          currentActiveFileEditable: () => true,
           getFileEditorText: () => "",
+          setFileDirty: () => {{}},
           syncFileEditorReadOnly: () => {{}},
+          fmtBytes: (value) => `${{value}}B`,
           applyFileMode: () => {{}},
           rememberOpenedFile: () => {{}},
           rememberActiveFileSelection: () => {{}},
@@ -1483,10 +1487,14 @@ def eval_active_file_save_request_helpers() -> dict:
           applyActiveFileTextState: () => {{}},
           renderMonacoFile: async () => true,
           setFileEditMode: () => {{}},
+          currentActiveFileKind: () => "text",
           currentActiveFileDraft: () => state.draft,
           currentActiveFileVersion: () => state.version,
+          currentActiveFileEditable: () => true,
           getFileEditorText: () => {{ calls.push(["getFileEditorText"]); return state.text; }},
+          setFileDirty: () => calls.push(["setFileDirty"]),
           syncFileEditorReadOnly: () => calls.push(["syncFileEditorReadOnly"]),
+          fmtBytes: (value) => `${{value}}B`,
           applyFileMode: () => {{}},
           rememberOpenedFile: () => {{}},
           rememberActiveFileSelection: () => {{}},
@@ -1620,61 +1628,104 @@ def eval_active_file_save_error_renderer() -> dict:
 
 
 def eval_active_file_save_success() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function applyActiveFileSaveSuccess(")
-    end = source.index("async function saveActiveFileEdits", start)
-    snippet = source[start:end]
+    source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const ctx = {{
-          activeFileText: "old text",
-          activeFileVersion: "v0",
-          activeFileEditable: false,
-          activeFileDraft: true,
-{controller_identity_ctx_js("new.py", "old-token", True, 42)}
-          fileDirty: true,
-          fileEditMode: true,
-          fileStatus: {{ textContent: "" }},
-          calls: [],
-          applyFileMode: () => ctx.calls.push(["applyFileMode"]),
-          setFileDirty: (value) => {{ ctx.fileDirty = Boolean(value); ctx.calls.push(["setFileDirty", Boolean(value)]); }},
-          setFileEditMode: (value) => {{ ctx.fileEditMode = Boolean(value); ctx.calls.push(["setFileEditMode", Boolean(value)]); }},
-          fmtBytes: (value) => `${{value}}B`,
-          rememberOpenedFile: (...args) => ctx.calls.push(["rememberOpenedFile", ...args]),
-          renderFilePickerMenu: () => ctx.calls.push(["renderFilePickerMenu"]),
-        }};
+        const ctx = {{ window: {{}} }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_save_success = applyActiveFileSaveSuccess;\n")}, ctx);
-        function state() {{
+        vm.runInContext({json.dumps(source)}, ctx);
+        const state = {{
+          sessionId: "sid-1",
+          kind: "text",
+          text: "old text",
+          version: "v0",
+          editable: false,
+          draft: true,
+          dirty: true,
+          editMode: true,
+        }};
+        const calls = [];
+        const fileStatus = {{ textContent: "", replaceChildren() {{}} }};
+        const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
+          el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children }}),
+          fileStatus,
+          currentSessionId: () => state.sessionId,
+          normalizeLineNumber: (value) => value == null ? null : Number(value),
+          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+          fileApiPathForPath: (_path, existing = "") => existing || "derived-token",
+          isUnavailable: () => false,
+          confirmReload: () => true,
+          openFilePath: async () => true,
+          api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
+          focusEditor: () => null,
+          disposeOpenRender: () => calls.push(["disposeOpenRender"]),
+          currentFileViewMode: () => "file",
+          activeFileEntry: () => null,
+          fileCandidateGitStateFresh: () => false,
+          isMarkdownPreviewable: () => true,
+          resetActiveFileBufferState: () => calls.push(["resetActiveFileBufferState"]),
+          updateFileTouchToolbar: () => calls.push(["updateFileTouchToolbar"]),
+          setFileViewMode: () => {{}},
+          applyActiveFileTextState: (nextState) => {{
+            state.kind = nextState.kind;
+            state.text = nextState.text;
+            state.editable = nextState.editable;
+            state.version = nextState.version;
+            state.draft = nextState.draft;
+            calls.push(["applyActiveFileTextState", nextState]);
+          }},
+          renderMonacoFile: async () => true,
+          setFileEditMode: (value) => {{ state.editMode = Boolean(value); calls.push(["setFileEditMode", Boolean(value)]); }},
+          currentActiveFileKind: () => state.kind,
+          currentActiveFileDraft: () => state.draft,
+          currentActiveFileVersion: () => state.version,
+          currentActiveFileEditable: () => state.editable,
+          getFileEditorText: () => state.text,
+          setFileDirty: (value) => {{ state.dirty = Boolean(value); calls.push(["setFileDirty", Boolean(value)]); }},
+          syncFileEditorReadOnly: () => calls.push(["syncFileEditorReadOnly"]),
+          fmtBytes: (value) => `${{value}}B`,
+          applyFileMode: () => calls.push(["applyFileMode"]),
+          rememberOpenedFile: (...args) => calls.push(["rememberOpenedFile", ...args]),
+          rememberActiveFileSelection: () => calls.push(["rememberActiveFileSelection"]),
+          updateFileEditButton: () => calls.push(["updateFileEditButton"]),
+          renderFilePickerMenu: () => calls.push(["renderFilePickerMenu"]),
+        }});
+        controller.setActiveFileIdentity("new.py", {{ line: 42, gitPath: true, apiPath: "old-token" }});
+        function snapshot() {{
+          const identity = controller.currentActiveFileIdentity();
           return {{
-            text: ctx.activeFileText,
-            version: ctx.activeFileVersion,
-            editable: ctx.activeFileEditable,
-            draft: ctx.activeFileDraft,
-            gitPath: ctx.activeFileGitPathValue(),
-            apiPath: ctx.activeFileApiPathValue(),
-            dirty: ctx.fileDirty,
-            editMode: ctx.fileEditMode,
-            status: ctx.fileStatus.textContent,
-            calls: ctx.calls.slice(),
+            kind: state.kind,
+            text: state.text,
+            version: state.version,
+            editable: state.editable,
+            draft: state.draft,
+            path: identity.path,
+            gitPath: identity.gitPath,
+            apiPath: identity.apiPath,
+            line: controller.currentActiveFileLine(),
+            dirty: state.dirty,
+            editMode: state.editMode,
+            status: fileStatus.textContent,
+            calls: calls.slice(),
           }};
         }}
         const draftSave = {{ path: "new.py", text: "NEW", draft: true }};
-        const draftOk = ctx.__test_save_success(draftSave, {{ version: "v2", editable: true, size: 3, path: "/abs/new.py" }}, {{ exitEditMode: true }});
-        const draft = {{ ok: draftOk, state: state() }};
-        ctx.activeFileText = "old again";
-        ctx.activeFileVersion = "v0";
-        ctx.activeFileEditable = true;
-        ctx.activeFileDraft = false;
-        ctx.fileViewerController.setActiveFileIdentity("existing.py", {{ line: 42, gitPath: true, apiPath: "keep-token" }});
-        ctx.fileDirty = true;
-        ctx.fileEditMode = true;
-        ctx.fileStatus.textContent = "";
-        ctx.calls = [];
-        const nondraftSave = {{ path: "existing.py", text: "BODY", draft: false }};
-        const nondraftOk = ctx.__test_save_success(nondraftSave, {{}}, {{ exitEditMode: false }});
-        const nondraft = {{ ok: nondraftOk, state: state() }};
+        const draftOk = controller.applyActiveFileSaveSuccess(draftSave, {{ version: "v2", editable: true, size: 3, path: "/abs/new.py" }}, {{ exitEditMode: true }});
+        const draft = {{ ok: draftOk, state: snapshot() }};
+        state.kind = "markdown";
+        state.text = "old again";
+        state.version = "v0";
+        state.editable = true;
+        state.draft = false;
+        state.dirty = true;
+        state.editMode = true;
+        fileStatus.textContent = "";
+        calls.length = 0;
+        controller.setActiveFileIdentity("existing.md", {{ line: 42, gitPath: true, apiPath: "keep-token" }});
+        const nondraftSave = {{ path: "existing.md", text: "BODY", draft: false }};
+        const nondraftOk = controller.applyActiveFileSaveSuccess(nondraftSave, {{}}, {{ exitEditMode: false }});
+        const nondraft = {{ ok: nondraftOk, state: snapshot() }};
         process.stdout.write(JSON.stringify({{ draft, nondraft }}));
         """
     )
@@ -1722,10 +1773,14 @@ def eval_draft_file_load_choreography() -> dict:
           applyActiveFileTextState: (nextState) => calls.push(["applyActiveFileTextState", nextState]),
           renderMonacoFile: async (...args) => {{ calls.push(["renderMonacoFile", ...args.slice(0, 4)]); if (state.staleAfterRender) state.sessionId = "sid-2"; return state.renderOk; }},
           setFileEditMode: (mode) => calls.push(["setFileEditMode", mode]),
+          currentActiveFileKind: () => "text",
           currentActiveFileDraft: () => false,
           currentActiveFileVersion: () => "",
+          currentActiveFileEditable: () => true,
           getFileEditorText: () => "",
+          setFileDirty: () => calls.push(["setFileDirty"]),
           syncFileEditorReadOnly: () => calls.push(["syncFileEditorReadOnly"]),
+          fmtBytes: (value) => `${{value}}B`,
           applyFileMode: () => calls.push(["applyFileMode"]),
           rememberOpenedFile: (...args) => calls.push(["rememberOpenedFile", ...args]),
           rememberActiveFileSelection: () => calls.push(["rememberActiveFileSelection"]),
@@ -2235,7 +2290,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("if (gitPath) {\n              body.git_path = true;", source)
         self.assertIn("startFileOpenRequest(path, { line, gitPath: false })", source)
         self.assertIn("setFilePath(rel, { line: null, gitPath: false })", source)
-        self.assertIn("if (save.draft) {\n            fileViewerController.setActiveFileIdentity(save.path", source)
+        self.assertIn("if (save.draft) {\n        setActiveFileIdentity(save.path", viewer_source)
 
     def test_file_viewer_handles_selected_session_removal(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -2820,16 +2875,20 @@ class TestFileViewerSource(unittest.TestCase):
         result = eval_active_file_save_success()
         self.assertTrue(result["draft"]["ok"])
         self.assertEqual(result["draft"]["state"], {
+            "kind": "text",
             "text": "NEW",
             "version": "v2",
             "editable": True,
             "draft": False,
+            "path": "new.py",
             "gitPath": False,
             "apiPath": "",
+            "line": 42,
             "dirty": False,
             "editMode": False,
             "status": "new.py - 3B",
             "calls": [
+                ["applyActiveFileTextState", {"kind": "text", "text": "NEW", "editable": True, "version": "v2", "draft": False}],
                 ["applyFileMode"],
                 ["setFileDirty", False],
                 ["setFileEditMode", False],
@@ -2839,25 +2898,34 @@ class TestFileViewerSource(unittest.TestCase):
         })
         self.assertTrue(result["nondraft"]["ok"])
         self.assertEqual(result["nondraft"]["state"], {
+            "kind": "markdown",
             "text": "BODY",
             "version": "v0",
             "editable": True,
             "draft": False,
+            "path": "existing.md",
             "gitPath": True,
             "apiPath": "keep-token",
+            "line": 42,
             "dirty": False,
             "editMode": True,
-            "status": "existing.py - 4B",
+            "status": "existing.md - 4B",
             "calls": [
+                ["applyActiveFileTextState", {"kind": "markdown", "text": "BODY", "editable": True, "version": "v0", "draft": False}],
                 ["applyFileMode"],
                 ["setFileDirty", False],
-                ["rememberOpenedFile", "existing.py", None],
+                ["rememberOpenedFile", "existing.md", None],
                 ["renderFilePickerMenu"],
             ],
         })
         source = APP_JS.read_text(encoding="utf-8")
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertIn("function applyActiveFileSaveSuccess(save, res, { exitEditMode = true } = {})", source)
-        self.assertIn("return applyActiveFileSaveSuccess(save, res, { exitEditMode });", source)
+        self.assertIn("return fileViewerController.applyActiveFileSaveSuccess(save, res, { exitEditMode });", source)
+        self.assertIn("function applyActiveFileSaveSuccess(save, res, { exitEditMode = true } = {})", viewer_source)
+        self.assertIn("const nextKind = String(currentActiveFileKind() || \"text\");", viewer_source)
+        self.assertIn("const nextVersion = res && typeof res.version === \"string\" ? res.version : currentActiveFileVersion();", viewer_source)
+        self.assertIn("const nextEditable = res && typeof res.editable === \"boolean\" ? res.editable : currentActiveFileEditable();", viewer_source)
 
     def test_file_save_response_is_bound_to_original_session_and_path(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -2884,8 +2952,10 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("if (!saveStillCurrent()) return true;", block)
         self.assertIn("return applyActiveFileSaveSuccess(save, res, { exitEditMode });", block)
         self.assertIn("if (!saveStillCurrent()) return false;", block)
-        self.assertIn("fileStatus.textContent = `${save.path} - ${fmtBytes(size)}`;", source)
-        self.assertIn("rememberOpenedFile(save.path,", source)
+        self.assertIn("return fileViewerController.applyActiveFileSaveSuccess(save, res, { exitEditMode });", source)
+        self.assertIn("fileStatus.textContent = `${save.path} - ${fmtBytes(size)}`;", viewer_source)
+        self.assertIn("rememberOpenedFile(save.path,", viewer_source)
+        self.assertNotIn("activeFileText = save.text;", source)
 
     def test_file_save_conflict_delegates_to_file_viewer_controller(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

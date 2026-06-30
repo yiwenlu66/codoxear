@@ -8509,10 +8509,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           applyActiveFileTextState: (state) => applyActiveFileTextState(state),
           renderMonacoFile: (rel, text, lineNumber, langOverride, request) => renderMonacoFile(rel, text, lineNumber, langOverride, request),
           setFileEditMode: (enabled) => setFileEditMode(enabled),
+          currentActiveFileKind: () => activeFileKind,
           currentActiveFileDraft: () => activeFileDraft,
           currentActiveFileVersion: () => activeFileVersion,
+          currentActiveFileEditable: () => activeFileEditable,
           getFileEditorText: () => getFileEditorText(),
+          setFileDirty: (dirty) => setFileDirty(dirty),
           syncFileEditorReadOnly: () => syncFileEditorReadOnly(),
+          fmtBytes: (value) => fmtBytes(value),
           applyFileMode: () => applyFileMode(),
           rememberOpenedFile: (rel, absPath) => rememberOpenedFile(rel, absPath),
           rememberActiveFileSelection: () => rememberActiveFileSelection(),
@@ -8553,21 +8557,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function applyActiveFileSaveSuccess(save, res, { exitEditMode = true } = {}) {
-          activeFileText = save.text;
-          if (res && typeof res.version === "string") activeFileVersion = res.version;
-          if (res && typeof res.editable === "boolean") activeFileEditable = res.editable;
-          activeFileDraft = false;
-          if (save.draft) {
-            fileViewerController.setActiveFileIdentity(save.path, { line: activeFileLineValue(), gitPath: false, apiPath: "" });
-          }
-          applyFileMode();
-          setFileDirty(false);
-          if (exitEditMode) setFileEditMode(false);
-          const size = res && typeof res.size === "number" ? res.size : save.text.length;
-          fileStatus.textContent = `${save.path} - ${fmtBytes(size)}`;
-          rememberOpenedFile(save.path, res && typeof res.path === "string" ? res.path : null);
-          renderFilePickerMenu();
-          return true;
+          return fileViewerController.applyActiveFileSaveSuccess(save, res, { exitEditMode });
         }
 
         async function saveActiveFileEdits({ exitEditMode = true } = {}) {
