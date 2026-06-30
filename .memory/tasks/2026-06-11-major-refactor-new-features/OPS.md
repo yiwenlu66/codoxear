@@ -5310,3 +5310,24 @@
 - Clean-room review `3b8317ba-329d-406a-8654-70c40704b550` returned PASS with no blockers. Review verified success-tail order, branch-specific path fields, unchanged `finally` timing, unchanged early return/abort and catch behavior, draft exclusion, untouched dispatcher behavior, and VM/source test fidelity. Non-blocking notes: video double `applyFileMode()` and `updateFileEditButton()` are pre-existing/idempotent; the VM snippet extraction boundary is a test-maintenance hazard only.
 - Next transition seam: decide between a carefully separate draft-load helper and deeper explicit file-open state-machine work. A blind draft-through-dispatcher change is unsafe because draft currently calls `applyFileMode()` before `renderMonacoFile()` and `setFileEditMode(true)` after render, unlike normal file loads.
 - Scope note: this is success-finalization ownership only. It does not claim draft loading unification, video `applyFileMode()` cleanup, PDF lifecycle repair, save-token ownership, or browser-manual rendering evidence.
+
+
+
+## 2026-06-30T00:39:19Z Draft file load choreography extraction
+- Functional commit `662d04a Extract draft file load choreography` moved draft-file load sequencing out of `openDraftFilePath()` into `applyDraftFileLoad(rel, request)`.
+- Mechanism: `applyDraftFileLoad()` preserves the draft-specific order: force file view mode if needed, apply draft text state with `draft: true`, call `applyFileMode()` before Monaco render, render an empty file with the request/line, short-circuit false on render failure or stale request, then set edit mode, write `${rel} - new file`, remember active selection, rerender the picker menu, and return true.
+- Boundary preserved: `openDraftFilePath()` still owns unavailable/session guard, `beginFileOpenRequest()`, draft path normalization, invalid-path status and explicit finalization, preparing status, `resetFileViewerPanel()`, catch reset/error handling, and `finally { finalizeFileOpenRequest(request); }`. The generic `applyFileLoadResult()` and `finalizeFileOpenSuccess()` paths remain untouched because draft timing and post-render semantics differ.
+- Tests added/updated:
+  - `eval_draft_file_load_choreography()` executes the real helper in a Node VM with mocked dependencies.
+  - VM cases verify success call order/status, render-false short circuit before edit/status/menu effects, stale-after-render short circuit, helper signature/call-site source invariants, and absence of `rememberOpenedFile()` inside the draft helper.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused draft/load/finalizer/race tests passed.
+  - Focused file-viewer/file-picker/static group returned `84 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1268 passed, 136 subtests passed`.
+  - Focused Docker file-viewer/file-picker/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed.
+- Clean-room review `e2634341-affc-4cf6-9023-2b0e22ae6745` returned PASS with no blockers. Review verified semantic-neutral extraction, lifecycle integrity, no accidental generic dispatcher/finalizer coupling, correct request threading, stale/render failure behavior, error propagation, preserved double `applyFileMode()` pattern for draft, and VM/source test fidelity. Non-blocking note: the helper's `setFileViewMode` guard is usually a no-op after `openDraftFilePathWithGuard`, but remains a defensive direct-call safeguard.
+- Next transition seam from architect `d2c1037f-1c5f-4270-a1f5-b5227b659e9e`: open-file request lifecycle helper around begin/current/finalize/caller cleanup, with strict preservation of open-file Boolean vs draft void return semantics and no second `cancelPendingFileOpen()`.
+- Scope note: this is draft load choreography ownership only. It does not claim open-request lifecycle helper ownership, video `applyFileMode()` cleanup, PDF lifecycle repair, save-token ownership, or browser-manual rendering evidence.
