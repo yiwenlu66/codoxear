@@ -7496,19 +7496,18 @@
         }
 
         function updateFileTouchToolbar() {
-          if (!isFileTouchToolbarActive()) {
+          const toolbarState = fileViewerController.currentFileTouchToolbarState();
+          if (!toolbarState.visible) {
             fileTouchToolbar.style.display = "none";
             fileTouchDpad.style.display = "none";
             fileTouchCopyBtn.style.display = "none";
             fileTouchPasteBtn.style.display = "none";
             return;
           }
-          const canPaste = activeFileEditorIdleTextWritable();
-          const hasSelection = Boolean(getActiveFileSelectionText());
-          fileTouchSelectBtn.classList.toggle("active", currentFileTouchSelectMode());
-          fileTouchDpad.style.display = currentFileTouchSelectMode() ? "grid" : "none";
-          fileTouchCopyBtn.style.display = hasSelection ? "" : "none";
-          fileTouchPasteBtn.style.display = canPaste ? "" : "none";
+          fileTouchSelectBtn.classList.toggle("active", toolbarState.selectActive);
+          fileTouchDpad.style.display = toolbarState.dpadVisible ? "grid" : "none";
+          fileTouchCopyBtn.style.display = toolbarState.copyVisible ? "" : "none";
+          fileTouchPasteBtn.style.display = toolbarState.pasteVisible ? "" : "none";
           fileTouchActions.style.display = "flex";
           fileTouchToolbar.style.display = "flex";
         }

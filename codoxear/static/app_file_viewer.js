@@ -709,6 +709,19 @@
       return fileTouchSelectMode;
     }
 
+    function currentFileTouchToolbarState() {
+      const visible = Boolean(isFileTouchToolbarActive());
+      const selectActive = Boolean(currentFileTouchSelectMode());
+      if (!visible) return Object.freeze({ visible: false, selectActive, dpadVisible: false, copyVisible: false, pasteVisible: false });
+      return Object.freeze({
+        visible: true,
+        selectActive,
+        dpadVisible: selectActive,
+        copyVisible: Boolean(getActiveFileSelectionText()),
+        pasteVisible: activeFileEditorIdleTextWritable(),
+      });
+    }
+
     function resetFileTouchSelectionState({ collapse = false } = {}) {
       const editor = collapse ? focusEditor() : null;
       const cursor = editor ? normalizeFileEditorPosition(editor, editor.getPosition && editor.getPosition()) : null;
@@ -1199,6 +1212,7 @@
       updateFileEditButton,
       clearFileTouchSelectionState,
       currentFileTouchSelectMode,
+      currentFileTouchToolbarState,
       resetFileTouchSelectionState,
       toggleFileTouchSelectionMode,
       handleFileTouchMoveButtonPress,
