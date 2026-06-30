@@ -220,6 +220,36 @@ def eval_open_session_tail_request_abort() -> dict:
 
 
 
+def eval_clear_deleted_session_client_state() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("function clearDeletedSessionClientState(")
+    end = source.index("async function dismissFailedLaunchRecord", start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const calls = [];
+        const ctx = {{
+          clearSelectedSessionAfterRemoval: (sid) => {{ calls.push(["clearSelectedSessionAfterRemoval", sid]); return sid === "selected"; }},
+          sessionTranscriptSlots: {{ delete: (sid) => calls.push(["sessionTranscriptSlots.delete", sid]) }},
+          sessionTailCache: {{ delete: (sid) => calls.push(["sessionTailCache.delete", sid]) }},
+          dropPendingUserRows: (sid, predicate) => calls.push(["dropPendingUserRows", sid, predicate({{}})]),
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_clear_deleted = clearDeletedSessionClientState;\n")}, ctx);
+        const selectedResult = ctx.__test_clear_deleted("selected");
+        const selectedCalls = calls.slice();
+        calls.length = 0;
+        const otherResult = ctx.__test_clear_deleted("other");
+        const otherCalls = calls.slice();
+        process.stdout.write(JSON.stringify({{ selectedResult, selectedCalls, otherResult, otherCalls }}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
+
 def eval_clear_selected_session_after_removal() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function clearSelectedSessionAfterRemoval(")
@@ -288,6 +318,29 @@ def eval_clear_selected_session_after_removal() -> dict:
 
 
 class TestChatScrollbackSource(unittest.TestCase):
+    def test_clear_deleted_session_client_state_clears_explicit_delete_state(self) -> None:
+        result = eval_clear_deleted_session_client_state()
+        self.assertTrue(result["selectedResult"])
+        self.assertEqual(
+            result["selectedCalls"],
+            [
+                ["clearSelectedSessionAfterRemoval", "selected"],
+                ["sessionTranscriptSlots.delete", "selected"],
+                ["sessionTailCache.delete", "selected"],
+                ["dropPendingUserRows", "selected", True],
+            ],
+        )
+        self.assertFalse(result["otherResult"])
+        self.assertEqual(
+            result["otherCalls"],
+            [
+                ["clearSelectedSessionAfterRemoval", "other"],
+                ["sessionTranscriptSlots.delete", "other"],
+                ["sessionTailCache.delete", "other"],
+                ["dropPendingUserRows", "other", True],
+            ],
+        )
+
     def test_clear_selected_session_after_removal_resets_missing_session_state(self) -> None:
         result = eval_clear_selected_session_after_removal()
         self.assertFalse(result["noop"])
@@ -685,8 +738,9 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn('function dismissFailedLaunchRecord(sessionId)', source)
         self.assertIn('await api(`/api/sessions/${sessionId}/delete`, { method: "POST", body: {} });', source)
         self.assertIn('function clearSelectedSessionAfterRemoval(sessionId, { incrementPollGen = false, clearPollState = false } = {})', source)
-        self.assertIn('clearSelectedSessionAfterRemoval(s.session_id);', source)
-        self.assertIn('clearSelectedSessionAfterRemoval(sessionId);', source)
+        self.assertIn('function clearDeletedSessionClientState(sessionId)', source)
+        self.assertIn('clearDeletedSessionClientState(s.session_id);', source)
+        self.assertIn('clearDeletedSessionClientState(sessionId);', source)
         self.assertIn('if (!s || (!sessionLaunchFailed(s) && !s.orphan_recovery && !s.queue_recovery && !s.commit_unknown_send)) return null;', source)
         self.assertIn('if (launchFailed) {', source)
         self.assertIn('text: "This web-owned session failed before a usable session log was bound."', source)

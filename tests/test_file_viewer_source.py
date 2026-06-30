@@ -1650,8 +1650,9 @@ class TestFileViewerSource(unittest.TestCase):
         sessions_end = source.index("function appendEvent", sessions_start)
         sessions_block = source[sessions_start:sessions_end]
         self.assertIn("if (selected && !sessionIndex.has(selected)) clearSelectedSessionAfterRemoval(selected);", sessions_block)
-        self.assertIn("clearSelectedSessionAfterRemoval(s.session_id);", source)
+        self.assertIn("clearDeletedSessionClientState(s.session_id);", source)
         self.assertIn("function clearSelectedSessionAfterRemoval(sessionId, { incrementPollGen = false, clearPollState = false } = {})", source)
+        self.assertIn("function clearDeletedSessionClientState(sessionId)", source)
         self.assertIn("handleFileViewerSessionUnavailable(sessionId);", source)
         self.assertIn("syncAttachButtonState();", source)
         open_start = source.index("async function openSession(sessionId")

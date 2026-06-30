@@ -3429,10 +3429,7 @@
               if (!confirm(launchRow ? "Dismiss this launch record?" : "Delete this session?")) return;
               try {
                 await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
-                clearSelectedSessionAfterRemoval(s.session_id);
-                sessionTranscriptSlots.delete(s.session_id);
-                sessionTailCache.delete(s.session_id);
-                dropPendingUserRows(s.session_id, () => true);
+                clearDeletedSessionClientState(s.session_id);
                 if (launchRow && card && card.parentNode) card.remove();
                 await refreshSessions();
               } catch (err) {
@@ -4062,6 +4059,14 @@
           return true;
         }
 
+        function clearDeletedSessionClientState(sessionId) {
+          const selectedCleared = clearSelectedSessionAfterRemoval(sessionId);
+          sessionTranscriptSlots.delete(sessionId);
+          sessionTailCache.delete(sessionId);
+          dropPendingUserRows(sessionId, () => true);
+          return selectedCleared;
+        }
+
         async function dismissFailedLaunchRecord(sessionId) {
           const s = sessionIndex.get(sessionId);
           if (!sessionLaunchFailed(s)) {
@@ -4071,10 +4076,7 @@
           if (!confirm("Dismiss this launch record?")) return;
           try {
             await api(`/api/sessions/${sessionId}/delete`, { method: "POST", body: {} });
-            clearSelectedSessionAfterRemoval(sessionId);
-            sessionTranscriptSlots.delete(sessionId);
-            sessionTailCache.delete(sessionId);
-            dropPendingUserRows(sessionId, () => true);
+            clearDeletedSessionClientState(sessionId);
             await refreshSessions();
             setToast("Dismissed launch record");
           } catch (err) {
