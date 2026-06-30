@@ -2955,9 +2955,43 @@ function applyActiveFileNonTextState(kind) {
           isCurrentFileOpenRequest: () => ctx.current,
           applyFileMode: () => ctx.calls.push(["applyFileMode"]),
           fileViewerController: {{
-            setActiveVideoFallback(nextState) {{ ctx.activeVideoFallback = nextState ? {{ token: String(nextState.token || ""), previewUrl: String(nextState.previewUrl || ""), used: false, preparing: false, rel: String(nextState.rel || ""), size: Number(nextState.size || 0) }} : null; return ctx.activeVideoFallback; }},
+            setActiveVideoFallback(nextState) {{ ctx.activeVideoFallback = nextState ? {{ token: String(nextState.token || ""), previewUrl: String(nextState.previewUrl || ""), used: Boolean(nextState.used), preparing: Boolean(nextState.preparing), rel: String(nextState.rel || ""), size: Number(nextState.size || 0) }} : null; return ctx.activeVideoFallback; }},
             currentActiveVideoFallback() {{ return ctx.activeVideoFallback ? {{ ...ctx.activeVideoFallback }} : null; }},
             clearUsedCompatibleVideoPreview(token) {{ if (!ctx.activeVideoFallback || ctx.activeVideoFallback.token !== String(token || "") || !ctx.activeVideoFallback.used) return false; ctx.activeVideoFallback = null; ctx.calls.push(["applyFileMode"]); return true; }},
+            prepareActiveVideoLoadResult(rel, result, request) {{
+              ctx.applyActiveFileNonTextState("video");
+              if (!result || typeof result.video_url !== "string" || !result.video_url) throw new Error("invalid video response");
+              const previewUrl = typeof result.video_preview_url === "string" ? result.video_preview_url : "";
+              const size = typeof result.size === "number" ? result.size : 0;
+              const contentType = typeof result.content_type === "string" ? result.content_type.split(";", 1)[0].trim().toLowerCase() : "";
+              const token = `${{request.requestId}}:${{rel}}:${{ctx.Date.now()}}`;
+              const safe = new Set(["video/mp4", "video/webm", "video/ogg"]);
+              ctx.fileViewerController.setActiveVideoFallback(previewUrl ? {{ token, previewUrl, rel, size }} : null);
+              ctx.applyFileMode();
+              return {{ token, rel, videoUrl: result.video_url, previewUrl, size, contentType, shouldPreviewFirst: Boolean(previewUrl && contentType && !safe.has(contentType)), initialStatus: `${{rel}} - video - ${{ctx.fmtBytes(size)}}` }};
+            }},
+            handleActiveVideoLoadError(token, options = {{}}) {{
+              const expected = String(token || "");
+              const state = ctx.activeVideoFallback;
+              const rel = String((state && state.rel) || options.rel || "video");
+              if (!state || state.token !== expected) {{
+                if (!options.previewUrl) ctx.fileStatus.textContent = `${{rel}} - video unsupported`;
+                return false;
+              }}
+              if (ctx.fileViewerController.clearUsedCompatibleVideoPreview(expected)) {{
+                options.clearVideoHandlers();
+                ctx.fileStatus.textContent = `${{rel}} - video preview unavailable after conversion`;
+                return true;
+              }}
+              options.loadPreview(expected, {{ explicit: false }});
+              return true;
+            }},
+            handleActiveVideoLoadedMetadata(token) {{
+              const state = ctx.activeVideoFallback;
+              if (!state || state.token !== String(token || "") || !state.used) return false;
+              ctx.fileStatus.textContent = `${{state.rel || "video"}} - compatible video preview - ${{ctx.fmtBytes(state.size)}}`;
+              return true;
+            }},
           }},
           disposeFileEditor: () => ctx.calls.push(["disposeFileEditor"]),
           clearFileVideo: () => {{ ctx.calls.push(["clearFileVideo"]); ctx.fileVideo.style.display = "none"; ctx.fileVideo.src = ""; }},
@@ -3615,7 +3649,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("applyActiveFileDiffState({ currentText, currentExists: result.currentExists });", source)
         self.assertIn('applyActiveFileNonTextState("image");', source)
         self.assertIn('applyActiveFileNonTextState("pdf");', source)
-        self.assertIn('applyActiveFileNonTextState("video");', source)
+        self.assertIn('applyActiveFileNonTextState("video");', viewer_source)
+        self.assertNotIn('applyActiveFileNonTextState("video");', source)
         self.assertIn('applyActiveFileNonTextState("download_only");', source)
         self.assertIn('applyActiveFileTextState({ kind: result.kind === "markdown" ? "markdown" : "text", text: result.text, editable: Boolean(result.editable), version: typeof result.version === "string" ? result.version : "" });', source)
 
@@ -4361,6 +4396,7 @@ class TestFileViewerSource(unittest.TestCase):
 
     def test_file_viewer_handles_pdf_video_and_download_only_kinds(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         css_source = APP_CSS.read_text(encoding="utf-8")
         self.assertNotIn('el("iframe"', source)
         self.assertIn('import(resolveAppUrl("pdf.mjs"))', source)
@@ -4387,10 +4423,13 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('result.kind === "video"', source)
         self.assertIn("function clearFileVideo()", source)
         self.assertIn("fileVideo.pause();", source)
-        self.assertIn('fileVideo.src = resolveAppUrl(result.video_url);', source)
-        self.assertIn("const previewUrl = typeof result.video_preview_url === \"string\" ? result.video_preview_url : \"\";", source)
-        self.assertIn('const browserSafeVideoTypes = new Set(["video/mp4", "video/webm", "video/ogg"]);', source)
-        self.assertIn('const shouldPreviewFirst = Boolean(previewUrl && contentType && !browserSafeVideoTypes.has(contentType));', source)
+        self.assertIn('fileVideo.src = resolveAppUrl(videoPlan.videoUrl);', source)
+        self.assertIn('const BROWSER_SAFE_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/ogg"]);', viewer_source)
+        self.assertIn('function prepareActiveVideoLoadResult(rel, result, request)', viewer_source)
+        self.assertIn('const shouldPreviewFirst = Boolean(previewUrl && contentType && !BROWSER_SAFE_VIDEO_TYPES.has(contentType));', viewer_source)
+        self.assertNotIn("const previewUrl = typeof result.video_preview_url === \"string\" ? result.video_preview_url : \"\";", source)
+        self.assertNotIn('const browserSafeVideoTypes = new Set(["video/mp4", "video/webm", "video/ogg"]);', source)
+        self.assertNotIn('const shouldPreviewFirst = Boolean(previewUrl && contentType && !browserSafeVideoTypes.has(contentType));', source)
         self.assertIn('async function prepareCompatibleVideoPreview(previewUrl) {', source)
         self.assertIn('headers: { Range: "bytes=0-0" }', source)
         self.assertIn('if (res.status === 401) {', source)
@@ -4406,15 +4445,20 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('fileVideoPreviewBtn.onclick = (e) => {', source)
         self.assertIn('void handleFileVideoPreviewButtonPress();', source)
         self.assertNotIn('void loadCompatibleVideoPreview(token, { explicit: true });', source)
-        self.assertIn('if (shouldPreviewFirst) {', source)
-        self.assertIn('void loadCompatibleVideoPreview(videoToken, { explicit: false });', source)
+        self.assertIn('if (videoPlan.shouldPreviewFirst) {', source)
+        self.assertIn('void loadCompatibleVideoPreview(videoPlan.token, { explicit: false });', source)
         self.assertIn("fileVideo.onerror = () => {", source)
+        self.assertIn("fileViewerController.handleActiveVideoLoadError(videoPlan.token", source)
+        self.assertIn("fileViewerController.handleActiveVideoLoadedMetadata(videoPlan.token);", source)
         self.assertIn("fileStatus.textContent = explicit ? `${rel} - building compatible video preview...` : `${rel} - trying compatible video preview...`;", source)
         self.assertIn("fileVideo.src = resolveAppUrl(state.previewUrl);", source)
-        self.assertIn("fileStatus.textContent = `${rel} - compatible video preview - ${fmtBytes(size)}`;", source)
-        self.assertIn("fileStatus.textContent = `${rel} - video preview unavailable after conversion`;", source)
+        self.assertIn("fileStatus.textContent = `${fallback.rel || \"video\"} - compatible video preview - ${fmtBytes(fallback.size)}`;", viewer_source)
+        self.assertIn("fileStatus.textContent = `${rel} - video preview unavailable after conversion`;", viewer_source)
+        self.assertNotIn("fileStatus.textContent = `${rel} - compatible video preview - ${fmtBytes(size)}`;", source)
+        self.assertNotIn("fileStatus.textContent = `${rel} - video preview unavailable after conversion`;", source)
         self.assertIn('setFileRenderSurface("video");', source)
-        self.assertIn('fileStatus.textContent = `${rel} - video - ${fmtBytes(size)}`;', source)
+        self.assertIn('fileStatus.textContent = videoPlan.initialStatus;', source)
+        self.assertIn('initialStatus: `${path} - video - ${fmtBytes(size)}`', viewer_source)
         self.assertIn('result.kind === "download_only"', source)
         self.assertIn("renderBlockedFileNotice(rel, String(result.reason || \"\"), Number(result.viewer_max_bytes || 0), size);", source)
         self.assertIn('fileStatus.textContent = `${rel} - PDF - ${fmtBytes(size)}`;', source)

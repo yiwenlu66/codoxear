@@ -18,6 +18,8 @@
     return value;
   }
 
+  const BROWSER_SAFE_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/ogg"]);
+
   function fileSaveConflictTarget(sessionId, path) {
     return Object.freeze({ sessionId, path });
   }
@@ -473,6 +475,61 @@
     function currentActiveVideoPreviewToken() {
       const state = activeVideoFallback;
       return state && state.token ? state.token : "";
+    }
+
+    function normalizedVideoContentType(value) {
+      return typeof value === "string" ? value.split(";", 1)[0].trim().toLowerCase() : "";
+    }
+
+    function prepareActiveVideoLoadResult(rel, result, request) {
+      applyActiveFileNonTextState("video");
+      if (!result || typeof result.video_url !== "string" || !result.video_url) throw new Error("invalid video response");
+      const path = String(rel || "video");
+      const previewUrl = typeof result.video_preview_url === "string" ? result.video_preview_url : "";
+      const size = typeof result.size === "number" ? result.size : 0;
+      const contentType = normalizedVideoContentType(result.content_type);
+      const token = `${request.requestId}:${path}:${nowMs()}`;
+      const shouldPreviewFirst = Boolean(previewUrl && contentType && !BROWSER_SAFE_VIDEO_TYPES.has(contentType));
+      setActiveVideoFallback(previewUrl ? { token, previewUrl, rel: path, size } : null);
+      applyFileMode();
+      return Object.freeze({
+        token,
+        rel: path,
+        videoUrl: result.video_url,
+        previewUrl,
+        size,
+        contentType,
+        shouldPreviewFirst,
+        initialStatus: `${path} - video - ${fmtBytes(size)}`,
+      });
+    }
+
+    function handleActiveVideoLoadError(token, options = {}) {
+      const clearVideoHandlers = requireFunction(options.clearVideoHandlers, "clearVideoHandlers");
+      const loadPreview = requireFunction(options.loadPreview, "loadCompatibleVideoPreview");
+      const expectedToken = String(token || "");
+      const previewUrl = typeof options.previewUrl === "string" ? options.previewUrl : "";
+      const fallback = activeVideoFallback;
+      const rel = String((fallback && fallback.rel) || options.rel || "video");
+      if (!fallback || fallback.token !== expectedToken) {
+        if (!previewUrl) fileStatus.textContent = `${rel} - video unsupported`;
+        return false;
+      }
+      if (clearUsedCompatibleVideoPreview(expectedToken)) {
+        clearVideoHandlers();
+        fileStatus.textContent = `${rel} - video preview unavailable after conversion`;
+        return true;
+      }
+      void loadPreview(expectedToken, { explicit: false });
+      return true;
+    }
+
+    function handleActiveVideoLoadedMetadata(token) {
+      const expectedToken = String(token || "");
+      const fallback = activeVideoFallback;
+      if (!fallback || fallback.token !== expectedToken || !fallback.used) return false;
+      fileStatus.textContent = `${fallback.rel || "video"} - compatible video preview - ${fmtBytes(fallback.size)}`;
+      return true;
     }
 
     function beginCompatibleVideoPreview(expectedToken = "") {
@@ -1346,6 +1403,9 @@
       clearActiveVideoFallback,
       currentActiveVideoFallback,
       currentActiveVideoPreviewToken,
+      prepareActiveVideoLoadResult,
+      handleActiveVideoLoadError,
+      handleActiveVideoLoadedMetadata,
       beginCompatibleVideoPreview,
       completeCompatibleVideoPreview,
       failCompatibleVideoPreview,

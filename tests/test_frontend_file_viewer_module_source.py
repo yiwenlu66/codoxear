@@ -562,6 +562,27 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const modeControlNoPath = runModeControlState({{ path: "", viewMode: "file", kind: "text", gitFresh: true, changed: true }});
           const modeControlPreviewExitEdit = runModeControlState({{ viewMode: "preview", editMode: true, videoPreviewAvailable: true, videoPreviewPreparing: true }});
           const modeControlDraft = runModeControlState({{ path: "new.txt", viewMode: "file", kind: "text", draft: true, gitPath: false }});
+          events.length = 0;
+          fileStatus.textContent = "";
+          const videoPlan = renderController.prepareActiveVideoLoadResult("clip.mkv", {{ kind: "video", video_url: "/video.mov", video_preview_url: "/preview.mp4", content_type: "video/quicktime; charset=utf-8", size: 123 }}, {{ requestId: 9 }});
+          const videoPlanState = {{ plan: videoPlan, frozen: Object.isFrozen(videoPlan), fallback: renderController.currentActiveVideoFallback(), events: events.slice(), status: fileStatus.textContent }};
+          events.length = 0;
+          const videoRetryResult = renderController.handleActiveVideoLoadError(videoPlan.token, {{ rel: videoPlan.rel, previewUrl: videoPlan.previewUrl, clearVideoHandlers: () => events.push(["clearVideoHandlers"]), loadPreview: (token, options) => events.push(["loadPreview", token, options]) }});
+          const videoRetry = {{ result: videoRetryResult, status: fileStatus.textContent, events: events.slice(), fallback: renderController.currentActiveVideoFallback() }};
+          renderController.completeCompatibleVideoPreview(videoPlan);
+          events.length = 0;
+          const videoMetadataResult = renderController.handleActiveVideoLoadedMetadata(videoPlan.token);
+          const videoMetadata = {{ result: videoMetadataResult, status: fileStatus.textContent, events: events.slice() }};
+          events.length = 0;
+          const videoUsedErrorResult = renderController.handleActiveVideoLoadError(videoPlan.token, {{ rel: videoPlan.rel, previewUrl: videoPlan.previewUrl, clearVideoHandlers: () => events.push(["clearVideoHandlers"]), loadPreview: (token, options) => events.push(["loadPreview", token, options]) }});
+          const videoUsedError = {{ result: videoUsedErrorResult, status: fileStatus.textContent, events: events.slice(), fallback: renderController.currentActiveVideoFallback() }};
+          events.length = 0;
+          const unsupportedPlan = renderController.prepareActiveVideoLoadResult("raw.avi", {{ kind: "video", video_url: "/raw.avi", content_type: "video/x-msvideo", size: 5 }}, {{ requestId: 10 }});
+          const unsupportedErrorResult = renderController.handleActiveVideoLoadError(unsupportedPlan.token, {{ rel: unsupportedPlan.rel, previewUrl: unsupportedPlan.previewUrl, clearVideoHandlers: () => events.push(["clearVideoHandlers"]), loadPreview: (token, options) => events.push(["loadPreview", token, options]) }});
+          const unsupportedVideo = {{ plan: unsupportedPlan, result: unsupportedErrorResult, status: fileStatus.textContent, events: events.slice(), fallback: renderController.currentActiveVideoFallback() }};
+          let invalidVideoMessage = "";
+          try {{ renderController.prepareActiveVideoLoadResult("bad.mkv", {{ kind: "video", video_preview_url: "/preview.mp4" }}, {{ requestId: 11 }}); }} catch (err) {{ invalidVideoMessage = err && err.message ? err.message : String(err); }}
+          const videoPolicy = {{ videoPlanState, videoRetry, videoMetadata, videoUsedError, unsupportedVideo, invalidVideoMessage }};
           const render = {{
             exportFrozen: Object.isFrozen(fileViewer),
             exports: Object.keys(fileViewer).sort(),
@@ -590,6 +611,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             draftGuard: {{ draftInvalidPath, draftDirectory, draftExisting, draftInspectError, draftNew }},
             capabilities: {{ derivedCapabilities, editableCapabilities, pendingCapabilities, binaryCapabilities, missingPathCapabilities, editableFrozen: Object.isFrozen(editableCapabilities) }},
             modeControl: {{ modeControlDiffable, modeControlNoPath, modeControlPreviewExitEdit, modeControlDraft }},
+            videoPolicy,
           }};
           const availableReloadFailure = await runReloadCase("");
           const canceledReload = await runReloadCase("", false);
@@ -860,6 +882,31 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "modeControlNoPath": {"value": {"diffActive": False, "previewActive": False, "diffDisabled": True, "previewDisabled": True, "downloadDisabled": True, "videoPreviewVisible": False, "videoPreviewDisabled": True, "videoPreviewTitle": "Use compatible MP4 preview", "markdownPreviewVisible": False, "shouldHidePasteDialog": False, "shouldExitEditMode": False}, "frozen": True},
             "modeControlPreviewExitEdit": {"value": {"diffActive": False, "previewActive": True, "diffDisabled": True, "previewDisabled": False, "downloadDisabled": False, "videoPreviewVisible": True, "videoPreviewDisabled": True, "videoPreviewTitle": "Building compatible MP4 preview", "markdownPreviewVisible": True, "shouldHidePasteDialog": True, "shouldExitEditMode": True}, "frozen": True},
             "modeControlDraft": {"value": {"diffActive": False, "previewActive": False, "diffDisabled": True, "previewDisabled": True, "downloadDisabled": True, "videoPreviewVisible": False, "videoPreviewDisabled": True, "videoPreviewTitle": "Use compatible MP4 preview", "markdownPreviewVisible": False, "shouldHidePasteDialog": False, "shouldExitEditMode": False}, "frozen": True},
+        })
+        self.assertEqual(result["render"]["videoPolicy"], {
+            "videoPlanState": {
+                "plan": {"token": "9:clip.mkv:0", "rel": "clip.mkv", "videoUrl": "/video.mov", "previewUrl": "/preview.mp4", "size": 123, "contentType": "video/quicktime", "shouldPreviewFirst": True, "initialStatus": "clip.mkv - video - 123B"},
+                "frozen": True,
+                "fallback": {"token": "9:clip.mkv:0", "previewUrl": "/preview.mp4", "used": False, "preparing": False, "rel": "clip.mkv", "size": 123},
+                "events": [["applyFileMode"]],
+                "status": "",
+            },
+            "videoRetry": {
+                "result": True,
+                "status": "",
+                "events": [["loadPreview", "9:clip.mkv:0", {"explicit": False}]],
+                "fallback": {"token": "9:clip.mkv:0", "previewUrl": "/preview.mp4", "used": False, "preparing": False, "rel": "clip.mkv", "size": 123},
+            },
+            "videoMetadata": {"result": True, "status": "clip.mkv - compatible video preview - 123B", "events": []},
+            "videoUsedError": {"result": True, "status": "clip.mkv - video preview unavailable after conversion", "events": [["applyFileMode"], ["clearVideoHandlers"]], "fallback": None},
+            "unsupportedVideo": {
+                "plan": {"token": "10:raw.avi:0", "rel": "raw.avi", "videoUrl": "/raw.avi", "previewUrl": "", "size": 5, "contentType": "video/x-msvideo", "shouldPreviewFirst": False, "initialStatus": "raw.avi - video - 5B"},
+                "result": False,
+                "status": "raw.avi - video unsupported",
+                "events": [["applyFileMode"]],
+                "fallback": None,
+            },
+            "invalidVideoMessage": "invalid video response",
         })
         self.assertIn("file viewer dependency missing: el", result["missingDependencyError"])
 

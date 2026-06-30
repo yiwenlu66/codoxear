@@ -9415,42 +9415,27 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             return true;
           }
           if (result.kind === "video") {
-            applyActiveFileNonTextState("video");
-            if (typeof result.video_url !== "string" || !result.video_url) throw new Error("invalid video response");
-            const previewUrl = typeof result.video_preview_url === "string" ? result.video_preview_url : "";
-            const size = typeof result.size === "number" ? result.size : 0;
-            const contentType = typeof result.content_type === "string" ? result.content_type.split(";", 1)[0].trim().toLowerCase() : "";
-            const videoToken = `${request.requestId}:${rel}:${Date.now()}`;
-            const browserSafeVideoTypes = new Set(["video/mp4", "video/webm", "video/ogg"]);
-            const shouldPreviewFirst = Boolean(previewUrl && contentType && !browserSafeVideoTypes.has(contentType));
-            fileViewerController.setActiveVideoFallback(previewUrl ? { token: videoToken, previewUrl, rel, size } : null);
-            applyFileMode();
+            const videoPlan = fileViewerController.prepareActiveVideoLoadResult(rel, result, request);
             fileVideo.onerror = () => {
-              const state = fileViewerController.currentActiveVideoFallback();
-              if (!state || state.token !== videoToken) {
-                if (!previewUrl) fileStatus.textContent = `${rel} - video unsupported`;
-                return;
-              }
-              if (fileViewerController.clearUsedCompatibleVideoPreview(videoToken)) {
-                fileVideo.onerror = null;
-                fileVideo.onloadedmetadata = null;
-                fileStatus.textContent = `${rel} - video preview unavailable after conversion`;
-                return;
-              }
-              void loadCompatibleVideoPreview(videoToken, { explicit: false });
+              fileViewerController.handleActiveVideoLoadError(videoPlan.token, {
+                rel: videoPlan.rel,
+                previewUrl: videoPlan.previewUrl,
+                clearVideoHandlers: () => {
+                  fileVideo.onerror = null;
+                  fileVideo.onloadedmetadata = null;
+                },
+                loadPreview: (nextToken, options) => loadCompatibleVideoPreview(nextToken, options),
+              });
             };
             fileVideo.onloadedmetadata = () => {
-              const state = fileViewerController.currentActiveVideoFallback();
-              if (state && state.token === videoToken && state.used) {
-                fileStatus.textContent = `${rel} - compatible video preview - ${fmtBytes(size)}`;
-              }
+              fileViewerController.handleActiveVideoLoadedMetadata(videoPlan.token);
             };
             setFileRenderSurface("video");
-            if (shouldPreviewFirst) {
-              void loadCompatibleVideoPreview(videoToken, { explicit: false });
+            if (videoPlan.shouldPreviewFirst) {
+              void loadCompatibleVideoPreview(videoPlan.token, { explicit: false });
             } else {
-              fileVideo.src = resolveAppUrl(result.video_url);
-              fileStatus.textContent = `${rel} - video - ${fmtBytes(size)}`;
+              fileVideo.src = resolveAppUrl(videoPlan.videoUrl);
+              fileStatus.textContent = videoPlan.initialStatus;
             }
             return true;
           }
