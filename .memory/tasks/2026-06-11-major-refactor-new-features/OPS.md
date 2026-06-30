@@ -6382,3 +6382,23 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: file mode button action policy belongs to the file-viewer controller. App still owns persisted file mode storage, raw mode DOM application, raw load-result rendering, active file content metadata/text baseline, `fileEditMode` state, paste/unsaved dialog DOM, touch toolbar DOM, and raw Monaco selection helpers.
+
+
+## 2026-06-30T15:04:49Z File download URL policy controller ownership
+- Functional commit `ba6d340 Move file download URL policy into viewer controller` moved active-file download preconditions and API route construction from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `activeFileDownloadApiPath()` now owns unavailable-session blocking, strict file-viewer session id presence, active path presence, git path-token query construction, path encoding, and git-path flag construction. App-side download wiring only prevents/stops the button event, resolves the controller-returned relative URL with `resolveAppUrl`, and performs the raw browser anchor click.
+- Tests updated:
+  - Controller behavior probe executes git-token, plain path, missing-session, and unavailable-session download cases.
+  - Source assertions require controller-owned download route construction and reject direct `/file/download?path=${encodeURIComponent(identity.path)}` construction in app event wiring.
+- Negative evidence during validation: the first focused test update reused the main controller for the unavailable-download case; that intentionally cancelled open state and exited edit mode, causing later open-error/finalize probes to observe stale request/edit-state side effects. Isolating the unavailable-download case in a separate controller and resetting fake fixture state restored the original probe mechanism; this was fixture coupling, not product behavior drift.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - File-viewer focused `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader focused frontend/file-viewer/static/auth group returned `119 passed, 28 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: active-file download URL policy belongs to the file-viewer controller. App still owns browser URL prefix resolution and the raw DOM anchor-click side effect, plus persisted file mode storage, raw mode DOM application, raw load-result rendering, active file content metadata/text baseline, `fileEditMode` state, paste/unsaved dialog DOM, touch toolbar DOM, and raw Monaco selection helpers.
