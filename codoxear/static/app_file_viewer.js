@@ -51,7 +51,8 @@
     const api = requireFunction(deps && deps.api, "api");
     const focusEditor = requireFunction(deps && deps.focusEditor, "focusEditor");
     const disposeOpenRender = requireFunction(deps && deps.disposeOpenRender, "disposeOpenRender");
-    const currentFileViewMode = requireFunction(deps && deps.currentFileViewMode, "currentFileViewMode");
+    const persistFileViewMode = requireFunction(deps && deps.persistFileViewMode, "persistFileViewMode");
+    const persistFileNonDiffMode = requireFunction(deps && deps.persistFileNonDiffMode, "persistFileNonDiffMode");
     const currentFileEditorKind = requireFunction(deps && deps.currentFileEditorKind, "currentFileEditorKind");
     const activeFileEntry = requireFunction(deps && deps.activeFileEntry, "activeFileEntry");
     const fileCandidateGitStateFresh = requireFunction(deps && deps.fileCandidateGitStateFresh, "fileCandidateGitStateFresh");
@@ -77,7 +78,6 @@
     const focusActiveFileCodeEditor = requireFunction(deps && deps.focusActiveFileCodeEditor, "focusActiveFileCodeEditor");
     const nowMs = requireFunction(deps && deps.nowMs, "nowMs");
     const setToast = requireFunction(deps && deps.setToast, "setToast");
-    const setFileViewMode = requireFunction(deps && deps.setFileViewMode, "setFileViewMode");
     const renderMonacoFile = requireFunction(deps && deps.renderMonacoFile, "renderMonacoFile");
     const getFileEditorText = requireFunction(deps && deps.getFileEditorText, "getFileEditorText");
     const fmtBytes = requireFunction(deps && deps.fmtBytes, "fmtBytes");
@@ -93,6 +93,8 @@
     let fileSavePending = false;
     let fileDirty = false;
     let fileEditMode = false;
+    let fileViewMode = normalizeFileViewMode(deps && deps.initialFileViewMode);
+    let fileNonDiffMode = deps && deps.initialFileNonDiffMode === "preview" ? "preview" : "file";
     let activeFilePath = "";
     let activeFileApiPath = "";
     let activeFileGitPath = false;
@@ -108,6 +110,29 @@
     let fileTouchSelectHead = null;
     let fileTouchSelectGoalColumn = null;
     let fileTouchDeleteNativeSuppressUntil = 0;
+
+    function normalizeFileViewMode(mode) {
+      return mode === "preview" ? "preview" : mode === "file" ? "file" : "diff";
+    }
+
+    function currentFileViewMode() {
+      return fileViewMode;
+    }
+
+    function currentFileNonDiffMode() {
+      return fileNonDiffMode;
+    }
+
+    function setFileViewMode(mode) {
+      const next = normalizeFileViewMode(mode);
+      fileViewMode = next;
+      persistFileViewMode(fileViewMode);
+      if (next !== "diff") {
+        fileNonDiffMode = next;
+        persistFileNonDiffMode(fileNonDiffMode);
+      }
+      applyFileMode();
+    }
 
     function normalizeSessionId(value) {
       return String(value || "").trim();
@@ -990,9 +1015,8 @@
       }
     }
 
-    async function handleFileDiffModeButtonPress(nonDiffMode = "file") {
-      const fallbackMode = nonDiffMode === "preview" ? "preview" : "file";
-      const nextMode = currentFileViewMode() === "diff" ? fallbackMode : "diff";
+    async function handleFileDiffModeButtonPress() {
+      const nextMode = currentFileViewMode() === "diff" ? currentFileNonDiffMode() : "diff";
       return await setFileViewModeWithGuard(nextMode);
     }
 
@@ -1243,6 +1267,9 @@
       activeFileEditorIdleWritable,
       activeFileEditorIdleTextWritable,
       activeFileEditModeAllowedInCurrentView,
+      currentFileViewMode,
+      currentFileNonDiffMode,
+      setFileViewMode,
       currentFileModeControlState,
       syncFileEditorReadOnly,
       updateFileEditButton,

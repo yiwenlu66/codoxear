@@ -7014,8 +7014,6 @@
             newSessionStartBtn.disabled = false;
           }
         };
-        let fileViewMode = storageGetItem("codexweb.fileViewMode") || "diff"; // "diff" | "file" | "preview"
-        let fileNonDiffMode = storageGetItem("codexweb.fileNonDiffMode") === "preview" ? "preview" : "file";
         let fileCandidateList = [];
         let fileEntryMap = new Map();
         let fileCandidateGitStateFresh = false;
@@ -7490,7 +7488,7 @@
             useTouchFileEditorControls() &&
             isFileViewerOpen() &&
             isTextFileKind(currentActiveFileKind()) &&
-            fileViewMode !== "preview" &&
+            currentFileViewMode() !== "preview" &&
             getActiveFileCodeEditor()
           );
         }
@@ -8308,7 +8306,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           api: (url, options) => api(url, options),
           focusEditor: () => getActiveFileCodeEditor(),
           disposeOpenRender: () => disposePdfRender(),
-          currentFileViewMode: () => fileViewMode,
+          initialFileViewMode: storageGetItem("codexweb.fileViewMode") || "diff",
+          initialFileNonDiffMode: storageGetItem("codexweb.fileNonDiffMode") === "preview" ? "preview" : "file",
+          persistFileViewMode: (mode) => storageSetItem("codexweb.fileViewMode", mode),
+          persistFileNonDiffMode: (mode) => storageSetItem("codexweb.fileNonDiffMode", mode),
           currentFileEditorKind: () => fileEditorKind,
           activeFileEntry: () => activeFileEntry(),
           fileCandidateGitStateFresh: () => fileCandidateGitStateFresh,
@@ -8422,7 +8423,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function handleFileDiffModeButtonPress() {
-          return await fileViewerController.handleFileDiffModeButtonPress(fileNonDiffMode);
+          return await fileViewerController.handleFileDiffModeButtonPress();
         }
 
         async function handleFilePreviewModeButtonPress() {
@@ -8442,15 +8443,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return fileViewerController.activeFileDownloadApiPath();
         }
 
+        function currentFileViewMode() {
+          return fileViewerController.currentFileViewMode();
+        }
+
+        function currentFileNonDiffMode() {
+          return fileViewerController.currentFileNonDiffMode();
+        }
+
         function setFileViewMode(mode) {
-          const next = mode === "preview" ? "preview" : mode === "file" ? "file" : "diff";
-          fileViewMode = next;
-          storageSetItem("codexweb.fileViewMode", fileViewMode);
-          if (next !== "diff") {
-            fileNonDiffMode = next;
-            storageSetItem("codexweb.fileNonDiffMode", fileNonDiffMode);
-          }
-          applyFileMode();
+          return fileViewerController.setFileViewMode(mode);
         }
 
         function applyFileMode() {
@@ -8614,7 +8616,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const kind = String(inspect.kind || "").trim();
           const isChanged = fileCandidateGitStateFresh && candidateChanged;
           if (isChanged && isDiffableFileKind(kind)) return "diff";
-          if (kind === "markdown" && fileNonDiffMode === "preview") return "preview";
+          if (kind === "markdown" && currentFileNonDiffMode() === "preview") return "preview";
           return "file";
         }
 

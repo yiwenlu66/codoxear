@@ -686,7 +686,10 @@ def eval_file_paste_dialog_fallback() -> dict:
             api: async () => ({{}}),
             focusEditor: () => editor,
             disposeOpenRender: () => {{}},
-            currentFileViewMode: () => "file",
+            initialFileViewMode: "file",
+            initialFileNonDiffMode: "file",
+            persistFileViewMode: (mode) => {{ if (ctx && ctx.calls) ctx.calls.push(["persistFileViewMode", mode]); }},
+            persistFileNonDiffMode: (mode) => {{ if (ctx && ctx.calls) ctx.calls.push(["persistFileNonDiffMode", mode]); }},
             currentFileEditorKind: () => "file",
             currentFileEditMode: () => true,
             activeFileEntry: () => null,
@@ -823,7 +826,10 @@ def eval_file_paste_insert_button_guard() -> dict:
             api: async () => ({{}}),
             focusEditor: () => editor,
             disposeOpenRender: () => {{}},
-            currentFileViewMode: () => "file",
+            initialFileViewMode: "file",
+            initialFileNonDiffMode: "file",
+            persistFileViewMode: (mode) => {{ if (ctx && ctx.calls) ctx.calls.push(["persistFileViewMode", mode]); }},
+            persistFileNonDiffMode: (mode) => {{ if (ctx && ctx.calls) ctx.calls.push(["persistFileNonDiffMode", mode]); }},
             currentFileEditorKind: () => "file",
             currentFileEditMode: () => true,
             activeFileEntry: () => null,
@@ -1109,7 +1115,10 @@ def eval_file_touch_selection_keydown() -> dict:
             api: async () => ({{}}),
             focusEditor: () => editor,
             disposeOpenRender: () => {{}},
-            currentFileViewMode: () => "file",
+            initialFileViewMode: "file",
+            initialFileNonDiffMode: "file",
+            persistFileViewMode: (mode) => {{ if (ctx && ctx.calls) ctx.calls.push(["persistFileViewMode", mode]); }},
+            persistFileNonDiffMode: (mode) => {{ if (ctx && ctx.calls) ctx.calls.push(["persistFileNonDiffMode", mode]); }},
             currentFileEditorKind: () => "file",
             currentFileEditMode: () => false,
             activeFileEntry: () => null,
@@ -1265,7 +1274,10 @@ def eval_file_editor_delete_shortcut() -> dict:
             api: async () => ({{}}),
             focusEditor: () => editor,
             disposeOpenRender: () => {{}},
-            currentFileViewMode: () => state.viewMode,
+            initialFileViewMode: state.viewMode,
+            initialFileNonDiffMode: state.viewMode === "preview" ? "preview" : "file",
+            persistFileViewMode: (mode) => {{ state.viewMode = mode; state.calls && state.calls.push(["persistFileViewMode", mode]); }},
+            persistFileNonDiffMode: (mode) => {{ state.calls && state.calls.push(["persistFileNonDiffMode", mode]); }},
             currentFileEditorKind: () => state.editorKind,
             currentFileEditMode: () => state.editMode,
             activeFileEntry: () => null,
@@ -1428,7 +1440,10 @@ def eval_file_open_request_sequence() -> dict:
           api: async () => ({{}}),
           focusEditor: () => null,
           disposeOpenRender: () => {{ disposeCalls += 1; }},
-          currentFileViewMode: () => "file",
+          initialFileViewMode: "file",
+          initialFileNonDiffMode: "file",
+          persistFileViewMode: (mode) => calls.push(["persistFileViewMode", mode]),
+          persistFileNonDiffMode: (mode) => calls.push(["persistFileNonDiffMode", mode]),
           currentFileEditorKind: () => "file",
           currentFileEditMode: () => true,
           activeFileEntry: () => null,
@@ -1718,7 +1733,10 @@ def eval_open_file_guard_mode_validation() -> dict:
           api: async () => ({{}}),
           focusEditor: () => ({{ focus() {{}}, updateOptions(opts) {{ calls.push(["editorOptions", opts]); }} }}),
           disposeOpenRender: () => calls.push(["disposeOpenRender"]),
-          currentFileViewMode: () => "file",
+          initialFileViewMode: "file",
+          initialFileNonDiffMode: "file",
+          persistFileViewMode: (mode) => calls.push(["persistFileViewMode", mode]),
+          persistFileNonDiffMode: (mode) => calls.push(["persistFileNonDiffMode", mode]),
           currentFileEditorKind: () => "file",
           currentFileEditMode: () => false,
           activeFileEntry: () => null,
@@ -1844,7 +1862,10 @@ def eval_open_file_path_mode_ownership() -> dict:
           }},
           focusEditor: () => ({{ focus() {{}}, updateOptions(opts) {{ calls.push(["editorOptions", opts]); }} }}),
           disposeOpenRender: () => calls.push(["disposeOpenRender"]),
-          currentFileViewMode: () => state.viewMode,
+          initialFileViewMode: state.viewMode,
+          initialFileNonDiffMode: state.viewMode === "preview" ? "preview" : "file",
+          persistFileViewMode: (mode) => {{ state.viewMode = mode; calls.push(["persistFileViewMode", mode]); }},
+          persistFileNonDiffMode: (mode) => calls.push(["persistFileNonDiffMode", mode]),
           currentFileEditorKind: () => "file",
           currentFileEditMode: () => false,
           activeFileEntry: () => {{ state.activeEntryCalls += 1; return state.activeEntryValue; }},
@@ -2030,7 +2051,10 @@ def eval_active_file_save_request_helpers() -> dict:
           api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
           focusEditor: () => ({{ updateOptions: (opts) => calls.push(["updateOptions", opts]) }}),
           disposeOpenRender: () => calls.push(["disposeOpenRender"]),
-          currentFileViewMode: () => "file",
+          initialFileViewMode: "file",
+          initialFileNonDiffMode: "file",
+          persistFileViewMode: (mode) => calls.push(["persistFileViewMode", mode]),
+          persistFileNonDiffMode: (mode) => calls.push(["persistFileNonDiffMode", mode]),
           currentFileEditorKind: () => "file",
           currentFileEditMode: () => true,
           activeFileEntry: () => null,
@@ -2261,7 +2285,10 @@ def eval_active_file_save_success() -> dict:
           api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
           focusEditor: () => null,
           disposeOpenRender: () => calls.push(["disposeOpenRender"]),
-          currentFileViewMode: () => "file",
+          initialFileViewMode: "file",
+          initialFileNonDiffMode: "file",
+          persistFileViewMode: (mode) => calls.push(["persistFileViewMode", mode]),
+          persistFileNonDiffMode: (mode) => calls.push(["persistFileNonDiffMode", mode]),
           currentFileEditorKind: () => "file",
           currentFileEditMode: () => true,
           activeFileEntry: () => null,
@@ -2439,7 +2466,10 @@ def eval_active_file_save_transport() -> dict:
           }},
           focusEditor: () => null,
           disposeOpenRender: () => calls.push(["disposeOpenRender"]),
-          currentFileViewMode: () => "file",
+          initialFileViewMode: "file",
+          initialFileNonDiffMode: "file",
+          persistFileViewMode: (mode) => calls.push(["persistFileViewMode", mode]),
+          persistFileNonDiffMode: (mode) => calls.push(["persistFileNonDiffMode", mode]),
           currentFileEditorKind: () => "file",
           currentFileEditMode: () => true,
           activeFileEntry: () => null,
@@ -2633,7 +2663,10 @@ def eval_draft_file_load_choreography() -> dict:
           api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
           focusEditor: () => null,
           disposeOpenRender: () => calls.push(["disposeOpenRender"]),
-          currentFileViewMode: () => state.viewMode,
+          initialFileViewMode: state.viewMode,
+          initialFileNonDiffMode: state.viewMode === "preview" ? "preview" : "file",
+          persistFileViewMode: (mode) => {{ state.viewMode = mode; calls.push(["persistFileViewMode", mode]); }},
+          persistFileNonDiffMode: (mode) => calls.push(["persistFileNonDiffMode", mode]),
           currentFileEditorKind: () => state.editorKind || "file",
           currentFileEditMode: () => state.editMode !== false,
           activeFileEntry: () => null,
@@ -2786,7 +2819,10 @@ def eval_file_open_success_finalizer() -> dict:
           api: async () => ({{}}),
           focusEditor: () => ({{ focus() {{}}, updateOptions(opts) {{ calls.push(["editorOptions", opts]); }} }}),
           disposeOpenRender: () => calls.push(["disposeOpenRender"]),
-          currentFileViewMode: () => "file",
+          initialFileViewMode: "file",
+          initialFileNonDiffMode: "file",
+          persistFileViewMode: (mode) => calls.push(["persistFileViewMode", mode]),
+          persistFileNonDiffMode: (mode) => calls.push(["persistFileNonDiffMode", mode]),
           currentFileEditorKind: () => "file",
           currentFileEditMode: () => false,
           activeFileEntry: () => null,
@@ -3149,11 +3185,11 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertTrue(result["validResult"])
         self.assertEqual(result["validCalls"], [
             ["setFilePath", "x.txt", {"line": 4, "gitPath": True, "apiPath": "tok"}],
-            ["setFileViewMode", "diff"],
+            ["persistFileViewMode", "diff"],
+            ["applyFileMode"],
             ["renderFilePickerMenu"],
             ["disposeOpenRender"],
             ["resetFileViewerPanel"],
-            ["setFileViewMode", "diff"],
             ["applyFileLoadResult", "x.txt", "diff", "diff"],
             ["applyFileMode"],
             ["rememberOpenedFile", "x.txt", None],
@@ -3174,7 +3210,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertTrue(explicit["result"])
         self.assertEqual(explicit["activeEntryCalls"], 0)
         self.assertEqual(explicit["fileViewMode"], "diff")
-        self.assertIn(["setFileViewMode", "diff"], explicit["calls"])
+        self.assertIn(["persistFileViewMode", "diff"], explicit["calls"])
         self.assertTrue(any(call[0] == "api" and "/git/file_versions?path=stale.txt&path_token=tok" in call[1] for call in explicit["calls"]))
         self.assertFalse(any(call[0] == "api" and "/file/read" in call[1] for call in explicit["calls"]))
         self.assertIn(["applyFileLoadResult", "stale.txt", "diff", "diff"], explicit["calls"])
@@ -3184,7 +3220,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertTrue(fallback["result"])
         self.assertEqual(fallback["activeEntryCalls"], 1)
         self.assertEqual(fallback["fileViewMode"], "file")
-        self.assertIn(["setFileViewMode", "file"], fallback["calls"])
+        self.assertIn(["persistFileViewMode", "file"], fallback["calls"])
+        self.assertIn(["persistFileNonDiffMode", "file"], fallback["calls"])
         self.assertTrue(any(call[0] == "api" and "/file/read?path=stale.txt&path_token=tok&git_path=1" in call[1] for call in fallback["calls"]))
         self.assertFalse(any(call[0] == "api" and "/git/file_versions" in call[1] for call in fallback["calls"]))
         self.assertIn(["applyFileLoadResult", "stale.txt", "text", "file"], fallback["calls"])
@@ -3470,7 +3507,9 @@ class TestFileViewerSource(unittest.TestCase):
         result = eval_draft_file_load_choreography()
         self.assertTrue(result["success"]["ok"])
         self.assertEqual(result["success"]["calls"], [
-            ["setFileViewMode", "file"],
+            ["persistFileViewMode", "file"],
+            ["persistFileNonDiffMode", "file"],
+            ["applyFileMode"],
             ["applyFileMode"],
             ["renderMonacoFile", "new/file.txt", "", 7, ""],
             ["updateFileTouchToolbar"],
@@ -4173,10 +4212,12 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("discardActiveFileEdits();", viewer_source)
         self.assertIn("if (choice === \"save\") return await saveActiveFileEdits({ exitEditMode: true });", viewer_source)
         self.assertIn("async function setFileViewModeWithGuard(mode)", viewer_source)
-        self.assertIn("async function handleFileDiffModeButtonPress(nonDiffMode = \"file\")", viewer_source)
-        self.assertIn("return await fileViewerController.handleFileDiffModeButtonPress(fileNonDiffMode);", source)
+        self.assertIn("async function handleFileDiffModeButtonPress()", viewer_source)
+        self.assertIn("return await fileViewerController.handleFileDiffModeButtonPress();", source)
         self.assertIn("void handleFileDiffModeButtonPress();", source)
-        self.assertIn("const nextMode = currentFileViewMode() === \"diff\" ? fallbackMode : \"diff\";", viewer_source)
+        self.assertIn("const nextMode = currentFileViewMode() === \"diff\" ? currentFileNonDiffMode() : \"diff\";", viewer_source)
+        self.assertNotIn("let fileNonDiffMode", source)
+        self.assertNotIn("handleFileDiffModeButtonPress(fileNonDiffMode)", source)
         self.assertIn("async function handleFilePreviewModeButtonPress()", viewer_source)
         self.assertIn("return await fileViewerController.handleFilePreviewModeButtonPress();", source)
         self.assertIn("void handleFilePreviewModeButtonPress();", source)

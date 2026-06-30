@@ -131,7 +131,10 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             }},
             focusEditor: () => ({{ focus: () => events.push(["focus"]), updateOptions: (opts) => events.push(["editorOptions", opts]) }}),
             disposeOpenRender: () => events.push(["disposeOpenRender"]),
-            currentFileViewMode: () => state.viewMode,
+            initialFileViewMode: state.viewMode,
+            initialFileNonDiffMode: state.viewMode === "preview" ? "preview" : "file",
+            persistFileViewMode: (mode) => {{ state.viewMode = mode; events.push(["persistFileViewMode", mode]); }},
+            persistFileNonDiffMode: (mode) => events.push(["persistFileNonDiffMode", mode]),
             currentFileEditorKind: () => state.editorKind || "file",
             currentFileEditMode: () => state.editMode !== false,
             activeFileEntry: () => state.activeEntry,
@@ -236,13 +239,13 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const renderController = makeController();
           renderController.setActiveFileIdentity("src/app.py", {{ line: 7, gitPath: true, apiPath: "api-token" }});
           const conflict = renderController.renderSaveConflict("sid-1", "src/app.py", "version mismatch");
-          state.viewMode = "diff";
+          renderController.setFileViewMode("diff");
           state.gitFresh = true;
           state.activeEntry = {{ changed: false }};
           const diffFallback = renderController.resolveFileOpenViewMode({{ gitPath: true }}, "src/app.py");
           state.activeEntry = {{ changed: true }};
           const diffAllowed = renderController.resolveFileOpenViewMode({{ gitPath: true }}, "src/app.py");
-          state.viewMode = "preview";
+          renderController.setFileViewMode("preview");
           state.markdownPreviewable = false;
           const previewFallback = renderController.resolveFileOpenViewMode({{ gitPath: false }}, "src/app.py");
           const explicitDiff = renderController.resolveFileOpenViewMode({{ gitPath: false }}, "src/app.py", "diff");
@@ -301,7 +304,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           events.length = 0;
           const finalizeResult = renderController.finalizeFileOpenSuccess("src/app.py", "/abs/src/app.py");
           const finalize = {{ result: finalizeResult, events: events.slice() }};
-          state.viewMode = "preview";
+          renderController.setFileViewMode("preview");
           renderController.setActiveFileIdentity("draft/new.txt", {{ line: 5, gitPath: false, apiPath: "" }});
           events.length = 0;
           const draftRequest = {{ requestId: 0, sessionId: "sid-1", path: "draft/new.txt", apiPath: "", line: 5 }};
@@ -390,7 +393,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           state.version = "v7";
           state.editable = true;
           state.draft = false;
-          state.viewMode = "file";
+          renderController.setFileViewMode("file");
           state.editorKind = "file";
           state.editMode = true;
           state.dirty = true;
@@ -453,7 +456,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const cancelUnsaved = {{ result: await renderController.maybeHandleUnsavedFileChanges(), events: events.slice() }};
           state.unsavedChoice = "";
           async function runViewModeCase({{ startMode = "file", target = "preview", draft = false, dirty = false, choice = "", unavailable = false }} = {{}}) {{
-            state.viewMode = startMode;
+            renderController.setFileViewMode(startMode);
             state.draft = draft;
             state.dirty = dirty;
             state.unsavedChoice = choice;
@@ -479,7 +482,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const viewModeDiscardOpen = await runViewModeCase({{ startMode: "file", target: "preview", dirty: true, choice: "discard" }});
           const viewModeCancel = await runViewModeCase({{ startMode: "file", target: "preview", dirty: true, choice: "cancel" }});
           const viewModeUnavailable = await runViewModeCase({{ startMode: "file", target: "preview", unavailable: true }});
-          state.viewMode = "file";
+          renderController.setFileViewMode("file");
           state.dirty = false;
           renderController.setFileEditMode(false);
           renderController.setFileDirty(false);
@@ -522,7 +525,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             state.dirty = dirty;
             renderController.setFileDirty(dirty);
             state.unsavedChoice = choice;
-            state.viewMode = "diff";
+            renderController.setFileViewMode("diff");
             events.length = 0;
             fileStatus.textContent = "";
             const result = await renderController.openDraftFilePathWithGuard(path);
@@ -543,13 +546,13 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const binaryCapabilities = renderController.fileEditorCapabilities({{ path: "img.png", kind: "image", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
           const missingPathCapabilities = renderController.fileEditorCapabilities({{ path: "", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
           function runModeControlState({{ path = "state.md", viewMode = "file", kind = "markdown", draft = false, gitPath = true, gitFresh = false, changed = false, editMode = false, videoPreviewAvailable = false, videoPreviewPreparing = false }} = {{}}) {{
-            state.viewMode = editMode ? "file" : viewMode;
+            renderController.setFileViewMode(editMode ? "file" : viewMode);
             state.gitFresh = gitFresh;
             state.activeEntry = changed ? {{ changed: true }} : null;
             renderController.setActiveFileIdentity(path, {{ gitPath, apiPath: "tok" }});
             renderController.applyActiveFileTextState({{ kind, text: "body", editable: true, version: "v1", draft }});
             renderController.setFileEditMode(editMode);
-            state.viewMode = viewMode;
+            renderController.setFileViewMode(viewMode);
             const value = renderController.currentFileModeControlState({{ videoPreviewAvailable, videoPreviewPreparing }});
             return {{ value, frozen: Object.isFrozen(value) }};
           }}
@@ -678,7 +681,9 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "status": "draft/new.txt - new file",
             "viewMode": "file",
             "events": [
-                ["setFileViewMode", "file"],
+                ["persistFileViewMode", "file"],
+                ["persistFileNonDiffMode", "file"],
+                ["applyFileMode"],
                 ["applyFileMode"],
                 ["renderMonacoFile", "draft/new.txt", "", 5, ""],
                 ["editorOptions", {"readOnly": False}],
@@ -805,7 +810,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
                 "result": True,
                 "viewMode": "file",
                 "status": "Loading...",
-                "events": [["promptUnsaved", "discard"], ["restoreFileEditorText", "body"], ["editorOptions", {"readOnly": True}], ["buttonClass", "active", False], ["buttonClass", "primary", False], ["buttonClass", "dirty", True], ["buttonAttr", "aria-label", "Edit file"], ["touchToolbar"], ["setFileViewMode", "preview"], ["renderFilePickerMenu"], ["disposeOpenRender"], ["resetFileViewerPanel"], ["setFileViewMode", "file"], ["api", "/api/sessions/sid-1/file/read?path=state.md&path_token=state-token&git_path=1", False], ["applyFileLoadResult", "state.md", "text", "file"], ["applyFileMode"], ["rememberOpenedFile", "state.md", "/abs/read"], ["rememberActiveFileSelection"], ["buttonClass", "active", False], ["buttonClass", "primary", False], ["buttonClass", "dirty", True], ["buttonAttr", "aria-label", "Edit file"], ["touchToolbar"], ["renderFilePickerMenu"]],
+                "events": [["promptUnsaved", "discard"], ["restoreFileEditorText", "body"], ["editorOptions", {"readOnly": True}], ["buttonClass", "active", False], ["buttonClass", "primary", False], ["buttonClass", "dirty", True], ["buttonAttr", "aria-label", "Edit file"], ["touchToolbar"], ["persistFileViewMode", "preview"], ["persistFileNonDiffMode", "preview"], ["applyFileMode"], ["renderFilePickerMenu"], ["disposeOpenRender"], ["resetFileViewerPanel"], ["persistFileViewMode", "file"], ["persistFileNonDiffMode", "file"], ["applyFileMode"], ["api", "/api/sessions/sid-1/file/read?path=state.md&path_token=state-token&git_path=1", False], ["applyFileLoadResult", "state.md", "text", "file"], ["applyFileMode"], ["rememberOpenedFile", "state.md", "/abs/read"], ["rememberActiveFileSelection"], ["buttonClass", "active", False], ["buttonClass", "primary", False], ["buttonClass", "dirty", True], ["buttonAttr", "aria-label", "Edit file"], ["touchToolbar"], ["renderFilePickerMenu"]],
             },
             "viewModeCancel": {"result": False, "viewMode": "file", "status": "", "events": [["promptUnsaved", "cancel"]]},
             "viewModeUnavailable": {"result": False, "viewMode": "file", "status": "Session is no longer available; copy unsaved edits before closing.", "events": []},
@@ -829,9 +834,9 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["render"]["draftGuard"], {
             "draftInvalidPath": {"result": False, "status": "Choose a valid relative file path.", "viewMode": "diff", "events": []},
             "draftDirectory": {"result": False, "status": "draft/new.txt - path is a directory", "viewMode": "diff", "events": [["inspect", "draft/new.txt"]]},
-            "draftExisting": {"result": True, "status": "Loading...", "viewMode": "file", "events": [["inspect", "draft/new.txt"], ["setFilePath", "draft/new.txt", {"line": None, "gitPath": False, "apiPath": ""}], ["setFileViewMode", "file"], ["renderFilePickerMenu"], ["disposeOpenRender"], ["resetFileViewerPanel"], ["api", "/api/sessions/sid-1/file/read?path=draft%2Fnew.txt", False], ["applyFileLoadResult", "draft/new.txt", "text", "file"], ["applyFileMode"], ["rememberOpenedFile", "draft/new.txt", "/abs/read"], ["rememberActiveFileSelection"], ["buttonClass", "active", False], ["buttonClass", "primary", False], ["buttonClass", "dirty", False], ["buttonAttr", "aria-label", "Edit file"], ["touchToolbar"], ["renderFilePickerMenu"]]},
+            "draftExisting": {"result": True, "status": "Loading...", "viewMode": "file", "events": [["inspect", "draft/new.txt"], ["setFilePath", "draft/new.txt", {"line": None, "gitPath": False, "apiPath": ""}], ["persistFileViewMode", "file"], ["persistFileNonDiffMode", "file"], ["applyFileMode"], ["renderFilePickerMenu"], ["disposeOpenRender"], ["resetFileViewerPanel"], ["api", "/api/sessions/sid-1/file/read?path=draft%2Fnew.txt", False], ["applyFileLoadResult", "draft/new.txt", "text", "file"], ["applyFileMode"], ["rememberOpenedFile", "draft/new.txt", "/abs/read"], ["rememberActiveFileSelection"], ["buttonClass", "active", False], ["buttonClass", "primary", False], ["buttonClass", "dirty", False], ["buttonAttr", "aria-label", "Edit file"], ["touchToolbar"], ["renderFilePickerMenu"]]},
             "draftInspectError": {"result": False, "status": "error: inspect boom", "viewMode": "diff", "events": [["inspect", "draft/new.txt"]]},
-            "draftNew": {"result": True, "status": "draft/new.txt - new file", "viewMode": "file", "events": [["inspect", "draft/new.txt"], ["setFileViewMode", "file"], ["setFilePath", "draft/new.txt", {"line": None, "gitPath": False}], ["renderFilePickerMenu"], ["disposeOpenRender"], ["resetFileViewerPanel"], ["applyFileMode"], ["renderMonacoFile", "draft/new.txt", "", None, ""], ["editorOptions", {"readOnly": False}], ["buttonClass", "active", True], ["buttonClass", "primary", True], ["buttonClass", "dirty", False], ["buttonAttr", "aria-label", "Save file"], ["touchToolbar"], ["rememberActiveFileSelection"], ["renderFilePickerMenu"]]},
+            "draftNew": {"result": True, "status": "draft/new.txt - new file", "viewMode": "file", "events": [["inspect", "draft/new.txt"], ["persistFileViewMode", "file"], ["persistFileNonDiffMode", "file"], ["applyFileMode"], ["setFilePath", "draft/new.txt", {"line": None, "gitPath": False}], ["renderFilePickerMenu"], ["disposeOpenRender"], ["resetFileViewerPanel"], ["applyFileMode"], ["renderMonacoFile", "draft/new.txt", "", None, ""], ["editorOptions", {"readOnly": False}], ["buttonClass", "active", True], ["buttonClass", "primary", True], ["buttonClass", "dirty", False], ["buttonAttr", "aria-label", "Save file"], ["touchToolbar"], ["rememberActiveFileSelection"], ["renderFilePickerMenu"]]},
         })
         self.assertEqual(result["render"]["capabilities"], {
             "derivedCapabilities": {

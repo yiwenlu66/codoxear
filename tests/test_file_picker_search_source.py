@@ -319,6 +319,7 @@ def eval_resolve_file_open_mode_cases() -> dict:
           inspectedKind: "text",
           inspectCalls: [],
           inspectSessionFilePath: async (path, options = {{}}) => {{ ctx.inspectCalls.push([path, options]); return ctx.inspectedKind === "missing" ? {{ exists: false }} : {{ exists: true, kind: ctx.inspectedKind }}; }},
+          currentFileNonDiffMode: () => ctx.fileNonDiffMode,
           isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
         }};
         vm.createContext(ctx);
