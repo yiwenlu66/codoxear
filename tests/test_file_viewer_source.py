@@ -4122,6 +4122,13 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertNotIn("applyEditorLineFocus(targetLine);", source)
         self.assertIn("renderPlainTextFallback(rel, text, lineNumber", source)
         self.assertIn("renderPlainTextFallback(rel, modifiedText, lineNumber", source)
+        fallback_block = source[source.index("function renderPlainTextFallback("):source.index("function renderDownloadFallback", source.index("function renderPlainTextFallback("))]
+        self.assertIn('fileEditorKind = "plain-fallback";', fallback_block)
+        self.assertIn("fileViewerController.applyPlainTextFallbackState();", fallback_block)
+        self.assertNotIn("setFileEditMode(false);", fallback_block)
+        self.assertNotIn("setFileDirty(false);", fallback_block)
+        self.assertIn("function applyPlainTextFallbackState()", viewer_source)
+        self.assertIn("setFileEditMode(false);\n      setFileDirty(false);\n      updateFileEditButton();\n      updateFileTouchToolbar();", viewer_source)
         self.assertIn("cancelPendingFileOpen();\n          if (!wasOpen) fileViewerReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;\n          prepareModalOpen();\n          const explicitPath = String(path ?? \"\");\n          const query = String(pickerQuery ?? \"\");\n          const queryOpen = !explicitPath && query !== \"\";\n          fileBackdrop.style.display = \"block\";", source)
         self.assertIn("cancelPendingFileOpen();\n          hideFileUnsavedDialog();", source)
 

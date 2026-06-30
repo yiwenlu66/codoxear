@@ -7723,7 +7723,7 @@
           fileDiff.innerHTML = "";
           setFileRenderSurface("diff");
           fileEditorKind = "plain-fallback";
-          setFileEditMode(false);
+          fileViewerController.applyPlainTextFallbackState();
           const targetLine = normalizeLineNumber(lineNumber) || 1;
           const notice = el("div", { class: "fileFallbackNotice" }, [
             el("div", { class: "title", text: "Plain text fallback" }),
@@ -7736,9 +7736,6 @@
               fileDiff.scrollTop = Math.max(0, (targetLine - 1) * 18);
             });
           }
-          setFileDirty(false);
-          updateFileEditButton();
-          updateFileTouchToolbar();
         }
 
         function renderDownloadFallback(rel, url, reason = "Preview unavailable") {

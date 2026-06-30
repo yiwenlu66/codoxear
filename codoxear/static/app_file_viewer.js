@@ -797,6 +797,13 @@
       setFileEditMode(false);
     }
 
+    function applyPlainTextFallbackState() {
+      setFileEditMode(false);
+      setFileDirty(false);
+      updateFileEditButton();
+      updateFileTouchToolbar();
+    }
+
     async function maybeHandleUnsavedFileChanges() {
       if (!currentFileDirty()) return true;
       const choice = await promptUnsavedFileChoice();
@@ -1408,6 +1415,7 @@
       submitActiveFileSave,
       saveActiveFileEdits,
       discardActiveFileEdits,
+      applyPlainTextFallbackState,
       maybeHandleUnsavedFileChanges,
       handleFileUnsavedSaveChoice,
       handleFileUnsavedDiscardChoice,

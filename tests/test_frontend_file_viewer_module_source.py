@@ -562,6 +562,16 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const modeControlNoPath = runModeControlState({{ path: "", viewMode: "file", kind: "text", gitFresh: true, changed: true }});
           const modeControlPreviewExitEdit = runModeControlState({{ viewMode: "preview", editMode: true, videoPreviewAvailable: true, videoPreviewPreparing: true }});
           const modeControlDraft = runModeControlState({{ path: "new.txt", viewMode: "file", kind: "text", draft: true, gitPath: false }});
+          state.editorKind = "file";
+          renderController.setActiveFileIdentity("fallback.txt", {{ gitPath: false, apiPath: "" }});
+          renderController.applyActiveFileTextState({{ kind: "text", text: "fallback body", editable: true, version: "v1", draft: false }});
+          renderController.setFileEditMode(true);
+          renderController.setFileDirty(true);
+          events.length = 0;
+          state.editorKind = "plain-fallback";
+          renderController.applyPlainTextFallbackState();
+          const plainFallbackState = {{ editMode: renderController.currentFileEditMode(), dirty: renderController.currentFileDirty(), events: events.slice() }};
+          state.editorKind = "file";
           events.length = 0;
           fileStatus.textContent = "";
           const videoPlan = renderController.prepareActiveVideoLoadResult("clip.mkv", {{ kind: "video", video_url: "/video.mov", video_preview_url: "/preview.mp4", content_type: "video/quicktime; charset=utf-8", size: 123 }}, {{ requestId: 9 }});
@@ -639,6 +649,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             draftGuard: {{ draftInvalidPath, draftDirectory, draftExisting, draftInspectError, draftNew }},
             capabilities: {{ derivedCapabilities, editableCapabilities, pendingCapabilities, binaryCapabilities, missingPathCapabilities, editableFrozen: Object.isFrozen(editableCapabilities) }},
             modeControl: {{ modeControlDiffable, modeControlNoPath, modeControlPreviewExitEdit, modeControlDraft }},
+            plainFallbackState,
             videoPolicy,
             loadPlans,
           }};
@@ -912,6 +923,11 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "modeControlPreviewExitEdit": {"value": {"diffActive": False, "previewActive": True, "diffDisabled": True, "previewDisabled": False, "downloadDisabled": False, "videoPreviewVisible": True, "videoPreviewDisabled": True, "videoPreviewTitle": "Building compatible MP4 preview", "markdownPreviewVisible": True, "shouldHidePasteDialog": True, "shouldExitEditMode": True}, "frozen": True},
             "modeControlDraft": {"value": {"diffActive": False, "previewActive": False, "diffDisabled": True, "previewDisabled": True, "downloadDisabled": True, "videoPreviewVisible": False, "videoPreviewDisabled": True, "videoPreviewTitle": "Use compatible MP4 preview", "markdownPreviewVisible": False, "shouldHidePasteDialog": False, "shouldExitEditMode": False}, "frozen": True},
         })
+        self.assertFalse(result["render"]["plainFallbackState"]["editMode"])
+        self.assertFalse(result["render"]["plainFallbackState"]["dirty"])
+        self.assertIn(["touchToolbar"], result["render"]["plainFallbackState"]["events"])
+        self.assertIn(["buttonClass", "dirty", False], result["render"]["plainFallbackState"]["events"])
+        self.assertIn(["buttonAttr", "aria-label", "Edit file"], result["render"]["plainFallbackState"]["events"])
         self.assertEqual(result["render"]["videoPolicy"], {
             "videoPlanState": {
                 "plan": {"token": "9:clip.mkv:0", "rel": "clip.mkv", "videoUrl": "/video.mov", "previewUrl": "/preview.mp4", "size": 123, "contentType": "video/quicktime", "shouldPreviewFirst": True, "initialStatus": "clip.mkv - video - 123B"},
