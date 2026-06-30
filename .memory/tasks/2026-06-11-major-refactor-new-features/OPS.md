@@ -5890,3 +5890,21 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: save body construction and save-error rendering moved. Save token/currentness/pending state, save POST orchestration, save success application, generic file-open result rendering/application, draft inspect/open guard behavior, unavailable transition policy, paste/editor actions, and toolbar/editability policy remain partly `app.js`-owned.
+
+## 2026-06-30T09:16:25Z Save request state controller ownership
+- Functional commit `946d7c5 Move save request state into viewer controller` moved active-file save token sequencing, active save token, and save-pending state from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `createFileViewerController()` now owns `fileSaveSeq`, `activeFileSaveToken`, `fileSavePending`, `isFileSavePending()`, `clearActiveFileSaveState()`, `beginActiveFileSaveRequest()`, `isCurrentActiveFileSaveRequest(save)`, `markActiveFileSavePending(save)`, and `finishActiveFileSaveRequest(save)`. The controller receives live draft/version/text and read-only sync dependencies, and uses its own active-file identity/current-session/unavailable state for save snapshots and currentness.
+- `app.js` now uses controller-backed wrappers. File editor state snapshots and edit-button rendering read pending state through `fileSavePendingValue()`, reset/unavailable transitions clear save state through `clearActiveFileSaveState()`, and the edit button ignores clicks while `fileSavePendingValue()` is true.
+- Behavior preserved: save snapshots remain frozen with session/path/api/draft/git/version/text/token; same-path api/git identity changes invalidate currentness; unavailable sessions invalidate saves; mismatched old saves cannot clear a newer pending save; matching finish clears pending state and triggers read-only/edit-button sync.
+- Tests updated:
+  - `tests/test_file_viewer_source.py` now executes the real `app_file_viewer.js` controller for save request lifecycle/currentness/mismatched finish behavior and verifies `app.js` no longer declares save state variables.
+  - Older app.js VM snippets received `fileSavePendingValue()` wrappers where they still execute app-owned capability/button code.
+  - `tests/test_frontend_file_viewer_module_source.py` fixture supplies the new fail-loud controller dependencies.
+- Validation before commit:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `90 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1286 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: save request token/currentness/pending ownership moved. Save POST orchestration, save success application, generic file-open result rendering/application, draft inspect/open guard behavior, unavailable transition policy, paste/editor actions, and toolbar/editability policy remain partly `app.js`-owned.
