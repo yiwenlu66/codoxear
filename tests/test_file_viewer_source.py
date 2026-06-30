@@ -1132,7 +1132,7 @@ def eval_file_open_request_sequence() -> dict:
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async () => true,
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
-          openDraftFilePath: async (...args) => calls.push(["openDraftFilePath", ...args]),
+          resetFileViewerPanel: () => calls.push(["resetFileViewerPanel"]),
           normalizeDraftFilePath: (value) => String(value || "").trim(),
           inspectSessionFilePath: async () => ({{ exists: false }}),
           api: async () => ({{}}),
@@ -1296,7 +1296,7 @@ def eval_resolved_open_current_guard() -> dict:
     guard_start = source.index("async function openFilePathWithGuard")
     guard_end = source.index("async function openDraftFilePathWithGuard", guard_start)
     resolved_start = source.index("async function openFilePathWithResolvedMode")
-    resolved_end = source.index("async function openDraftFilePath", resolved_start)
+    resolved_end = source.index("function cloneFileCandidateEntry", resolved_start)
     snippet = source[guard_start:guard_end] + "\n" + source[resolved_start:resolved_end]
     js = textwrap.dedent(
         f"""
@@ -1374,7 +1374,7 @@ def eval_open_file_guard_mode_validation() -> dict:
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async (...args) => calls.push(["openFilePath", ...args]),
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
-          openDraftFilePath: async (...args) => calls.push(["openDraftFilePath", ...args]),
+          resetFileViewerPanel: () => calls.push(["resetFileViewerPanel"]),
           normalizeDraftFilePath: (value) => String(value || "").trim().replace(/^[/]+/, ""),
           inspectSessionFilePath: async () => ({{ exists: false }}),
           api: async () => ({{}}),
@@ -1632,7 +1632,7 @@ def eval_active_file_save_request_helpers() -> dict:
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async () => true,
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
-          openDraftFilePath: async (...args) => calls.push(["openDraftFilePath", ...args]),
+          resetFileViewerPanel: () => calls.push(["resetFileViewerPanel"]),
           normalizeDraftFilePath: (value) => String(value || "").trim(),
           inspectSessionFilePath: async () => ({{ exists: false }}),
           api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
@@ -1833,7 +1833,7 @@ def eval_active_file_save_success() -> dict:
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async () => true,
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
-          openDraftFilePath: async (...args) => calls.push(["openDraftFilePath", ...args]),
+          resetFileViewerPanel: () => calls.push(["resetFileViewerPanel"]),
           normalizeDraftFilePath: (value) => String(value || "").trim(),
           inspectSessionFilePath: async () => ({{ exists: false }}),
           api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
@@ -1967,7 +1967,7 @@ def eval_active_file_save_transport() -> dict:
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async () => true,
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
-          openDraftFilePath: async (...args) => calls.push(["openDraftFilePath", ...args]),
+          resetFileViewerPanel: () => calls.push(["resetFileViewerPanel"]),
           normalizeDraftFilePath: (value) => String(value || "").trim(),
           inspectSessionFilePath: async () => ({{ exists: false }}),
           api: async (url, options = {{}}) => {{
@@ -2140,7 +2140,7 @@ def eval_draft_file_load_choreography() -> dict:
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async () => true,
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
-          openDraftFilePath: async (...args) => calls.push(["openDraftFilePath", ...args]),
+          resetFileViewerPanel: () => calls.push(["resetFileViewerPanel"]),
           normalizeDraftFilePath: (value) => String(value || "").trim(),
           inspectSessionFilePath: async () => ({{ exists: false }}),
           api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
@@ -2196,7 +2196,24 @@ def eval_draft_file_load_choreography() -> dict:
           controller.setActiveFileIdentity("new/file.txt", {{ line: 7, gitPath: false, apiPath: "" }});
           const stale = await controller.applyDraftFileLoad("new/file.txt", request());
           const staleResult = {{ ok: stale, calls: calls.slice(), status: fileStatus.textContent }};
-          process.stdout.write(JSON.stringify({{ success, failedRender, staleResult }}));
+          calls.length = 0;
+          fileStatus.textContent = "";
+          state.sessionId = "sid-1";
+          state.viewMode = "file";
+          state.renderOk = true;
+          state.staleAfterRender = false;
+          const primitiveReturn = await controller.openDraftFilePath("new/file.txt", {{ line: 7 }});
+          const primitiveSuccess = {{ returnedUndefined: primitiveReturn === undefined, calls: calls.slice(), status: fileStatus.textContent }};
+          calls.length = 0;
+          fileStatus.textContent = "";
+          const primitiveInvalidReturn = await controller.openDraftFilePath("   ", {{ line: 3 }});
+          const primitiveInvalid = {{ returnedUndefined: primitiveInvalidReturn === undefined, calls: calls.slice(), status: fileStatus.textContent }};
+          calls.length = 0;
+          fileStatus.textContent = "";
+          state.sessionId = "";
+          const primitiveNoSessionReturn = await controller.openDraftFilePath("new/file.txt", {{ line: 7 }});
+          const primitiveNoSession = {{ returnedUndefined: primitiveNoSessionReturn === undefined, calls: calls.slice(), status: fileStatus.textContent }};
+          process.stdout.write(JSON.stringify({{ success, failedRender, staleResult, primitiveSuccess, primitiveInvalid, primitiveNoSession }}));
         }}
         run().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """
@@ -2636,7 +2653,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("void ensureCurrentFileViewerSession();", open_block)
         self.assertIn("void refreshFileCandidates({ sessionId }).catch((e) => console.error(\"file candidates refresh failed after transcript load\", e));", open_block)
         resolved_start = source.index("async function openFilePathWithResolvedMode")
-        resolved_end = source.index("async function openDraftFilePath", resolved_start)
+        resolved_end = source.index("function cloneFileCandidateEntry", resolved_start)
         resolved_block = source[resolved_start:resolved_end]
         self.assertIn("isCurrent = null", resolved_block)
         self.assertIn("const sessionAtStart = currentFileSessionId();", resolved_block)
@@ -2681,7 +2698,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const openResult = await fileViewerController.fetchFileOpenResult(request, rel, viewMode);", source)
         self.assertNotIn('const gitPathQuery = request.gitPath ? "&git_path=1" : "";', source)
         self.assertIn("if (gitPath) {\n              body.git_path = true;", source)
-        self.assertIn("startFileOpenRequest(path, { line, gitPath: false })", source)
+        self.assertNotIn("startFileOpenRequest(path, { line, gitPath: false })", source)
+        self.assertIn("startFileOpenRequest(path, { line, gitPath: false })", viewer_source)
         self.assertIn("setFilePath(rel, { line: null, gitPath: false })", viewer_source)
         self.assertIn("if (save.draft) {\n        setActiveFileIdentity(save.path", viewer_source)
 
@@ -2726,7 +2744,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const unavailable = Boolean(state.unavailable);", viewer_source)
         self.assertIn("if (blockUnavailableFileAction()) return false;", source)
         self.assertIn("function renderEmptyFileViewerTarget({ updateTouchToolbar = false } = {})", source)
-        self.assertEqual(source.count("resetFileViewerPanel();"), 5)
+        self.assertEqual(source.count("resetFileViewerPanel();"), 4)
+        self.assertEqual(viewer_source.count("resetFileViewerPanel();"), 1)
         hide_start = source.index("function hideFileViewer()")
         hide_end = source.index("function handleFileViewerSessionUnavailable", hide_start)
         hide_block = source[hide_start:hide_end]
@@ -2756,11 +2775,11 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("fileStatus.textContent = `${rel} - path is a directory`;", viewer_source)
         self.assertIn("return await openFilePathWithGuard(rel, { line: null, mode: \"file\" });", viewer_source)
         self.assertIn("await openDraftFilePath(rel, { line: null });", viewer_source)
-        draft_start = source.index("async function openDraftFilePath(path")
-        draft_end = source.index("function cloneFileCandidateEntry", draft_start)
-        draft_block = source[draft_start:draft_end]
+        draft_start = viewer_source.index("async function openDraftFilePath(path")
+        draft_end = viewer_source.index("function finalizeFileOpenSuccess", draft_start)
+        draft_block = viewer_source[draft_start:draft_end]
         self.assertIn("if (blockUnavailableFileAction()) return;", draft_block)
-        self.assertIn("fileStatus.textContent = \"Preparing new file...\";\n          resetFileViewerPanel();\n          try {", draft_block)
+        self.assertIn("fileStatus.textContent = \"Preparing new file...\";\n      resetFileViewerPanel();\n      try {", draft_block)
         self.assertNotIn("disposeFileEditor();\n          resetActiveFileBufferState();\n          fileImage.removeAttribute", draft_block)
         self.assertIn("if (blockUnavailableFileAction()) return;", source)
         self.assertIn("if (blockUnavailableFileAction()) return;\n            if (!text)", source)
@@ -2851,14 +2870,31 @@ class TestFileViewerSource(unittest.TestCase):
             ["renderMonacoFile", "new/file.txt", "", 7, ""],
         ])
         self.assertEqual(result["staleResult"]["status"], "")
+        self.assertTrue(result["primitiveSuccess"]["returnedUndefined"])
+        self.assertEqual(result["primitiveSuccess"]["calls"], [
+            ["disposeOpenRender"],
+            ["resetFileViewerPanel"],
+            ["applyActiveFileTextState", {"text": "", "editable": True, "version": "", "draft": True}],
+            ["applyFileMode"],
+            ["renderMonacoFile", "new/file.txt", "", 7, ""],
+            ["setFileEditMode", True],
+            ["rememberActiveFileSelection"],
+            ["renderFilePickerMenu"],
+        ])
+        self.assertEqual(result["primitiveSuccess"]["status"], "new/file.txt - new file")
+        self.assertTrue(result["primitiveInvalid"]["returnedUndefined"])
+        self.assertEqual(result["primitiveInvalid"], {"returnedUndefined": True, "calls": [["disposeOpenRender"]], "status": "Choose a valid relative file path."})
+        self.assertTrue(result["primitiveNoSession"]["returnedUndefined"])
+        self.assertEqual(result["primitiveNoSession"], {"returnedUndefined": True, "calls": [], "status": ""})
         source = APP_JS.read_text(encoding="utf-8")
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
-        self.assertIn("async function applyDraftFileLoad(rel, request)", source)
-        self.assertIn("return fileViewerController.applyDraftFileLoad(rel, request);", source)
-        self.assertIn("const loaded = await applyDraftFileLoad(rel, request);\n            if (!loaded) return;", source)
+        self.assertNotIn("async function applyDraftFileLoad(rel, request)", source)
+        self.assertNotIn("async function openDraftFilePath(path", source)
+        self.assertIn("async function openDraftFilePath(path, { line = null } = {})", viewer_source)
+        self.assertIn("const loaded = await applyDraftFileLoad(rel, request);\n        if (!loaded) return;", viewer_source)
         self.assertIn("async function applyDraftFileLoad(rel, request)", viewer_source)
         self.assertIn("function renderDraftFileOpenError(request, error)", viewer_source)
-        self.assertIn("fileViewerController.renderDraftFileOpenError(request, e);\n            return;", source)
+        self.assertIn("renderDraftFileOpenError(request, error);\n        return;", viewer_source)
         self.assertIn("applyActiveFileTextState({ text: \"\", editable: true, version: \"\", draft: true });", viewer_source)
         draft_block = viewer_source[viewer_source.index("async function applyDraftFileLoad("):viewer_source.index("function renderFileOpenError", viewer_source.index("async function applyDraftFileLoad("))]
         self.assertNotIn("rememberOpenedFile(rel", draft_block)
@@ -3508,7 +3544,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("openFilePath: (path, options) => openFilePath(path, options)", controller_block)
         self.assertNotIn("openFilePathWithGuard: (path, options) => openFilePathWithGuard(path, options)", controller_block)
         self.assertIn("setFilePath: (path, options) => setFilePath(path, options)", controller_block)
-        self.assertIn("openDraftFilePath: (path, options) => openDraftFilePath(path, options)", controller_block)
+        self.assertIn("resetFileViewerPanel: () => resetFileViewerPanel()", controller_block)
+        self.assertNotIn("openDraftFilePath: (path, options) => openDraftFilePath(path, options)", controller_block)
         self.assertIn("normalizeDraftFilePath: (path) => normalizeDraftFilePath(path)", controller_block)
         self.assertIn("inspectSessionFilePath: (path, options) => inspectSessionFilePath(path, options)", controller_block)
         self.assertIn("focusEditor: () => getActiveFileCodeEditor()", controller_block)

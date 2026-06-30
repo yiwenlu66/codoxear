@@ -8462,7 +8462,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           hideFileViewer: () => hideFileViewer(),
           openFilePath: (path, options) => openFilePath(path, options),
           setFilePath: (path, options) => setFilePath(path, options),
-          openDraftFilePath: (path, options) => openDraftFilePath(path, options),
+          resetFileViewerPanel: () => resetFileViewerPanel(),
           normalizeDraftFilePath: (path) => normalizeDraftFilePath(path),
           inspectSessionFilePath: (path, options) => inspectSessionFilePath(path, options),
           api: (url, options) => api(url, options),
@@ -8755,34 +8755,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
           if (!currentGuard()) return false;
           return await openFilePathWithGuard(path, { line, mode, isCurrent: currentGuard, gitPath: useGitPath, apiPath: requestApiPath });
-        }
-
-        async function applyDraftFileLoad(rel, request) {
-          return fileViewerController.applyDraftFileLoad(rel, request);
-        }
-
-        async function openDraftFilePath(path, { line = null } = {}) {
-          if (blockUnavailableFileAction()) return;
-          if (!fileViewerSessionId) return;
-          const openRequest = startFileOpenRequest(path, { line, gitPath: false });
-          const request = openRequest.request;
-          const rel = normalizeDraftFilePath(path);
-          if (!rel) {
-            fileStatus.textContent = "Choose a valid relative file path.";
-            openRequest.done();
-            return;
-          }
-          fileStatus.textContent = "Preparing new file...";
-          resetFileViewerPanel();
-          try {
-            const loaded = await applyDraftFileLoad(rel, request);
-            if (!loaded) return;
-          } catch (e) {
-            fileViewerController.renderDraftFileOpenError(request, e);
-            return;
-          } finally {
-            openRequest.done();
-          }
         }
 
         function cloneFileCandidateEntry(entry) {

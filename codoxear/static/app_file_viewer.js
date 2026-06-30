@@ -44,7 +44,7 @@
     const hideFileViewer = requireFunction(deps && deps.hideFileViewer, "hideFileViewer");
     const openFilePath = requireFunction(deps && deps.openFilePath, "openFilePath");
     const setFilePath = requireFunction(deps && deps.setFilePath, "setFilePath");
-    const openDraftFilePath = requireFunction(deps && deps.openDraftFilePath, "openDraftFilePath");
+    const resetFileViewerPanel = requireFunction(deps && deps.resetFileViewerPanel, "resetFileViewerPanel");
     const normalizeDraftFilePath = requireFunction(deps && deps.normalizeDraftFilePath, "normalizeDraftFilePath");
     const inspectSessionFilePath = requireFunction(deps && deps.inspectSessionFilePath, "inspectSessionFilePath");
     const api = requireFunction(deps && deps.api, "api");
@@ -545,6 +545,30 @@
       return true;
     }
 
+    async function openDraftFilePath(path, { line = null } = {}) {
+      if (blockUnavailableFileAction()) return;
+      if (!normalizeSessionId(currentSessionId())) return;
+      const openRequest = startFileOpenRequest(path, { line, gitPath: false });
+      const request = openRequest.request;
+      const rel = normalizeDraftFilePath(path);
+      if (!rel) {
+        fileStatus.textContent = "Choose a valid relative file path.";
+        openRequest.done();
+        return;
+      }
+      fileStatus.textContent = "Preparing new file...";
+      resetFileViewerPanel();
+      try {
+        const loaded = await applyDraftFileLoad(rel, request);
+        if (!loaded) return;
+      } catch (error) {
+        renderDraftFileOpenError(request, error);
+        return;
+      } finally {
+        openRequest.done();
+      }
+    }
+
     function finalizeFileOpenSuccess(rel, absPath = null) {
       applyFileMode();
       rememberOpenedFile(rel, absPath);
@@ -693,6 +717,7 @@
       requestHideFileViewer,
       openFilePathWithGuard,
       openDraftFilePathWithGuard,
+      openDraftFilePath,
       nextActiveFileIdentity,
       currentActiveFileIdentity,
       currentActiveFileLine,
