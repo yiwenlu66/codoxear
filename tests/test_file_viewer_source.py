@@ -326,6 +326,8 @@ def eval_empty_file_viewer_target() -> dict:
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
           isActiveFileEditorInput: () => false,
+          getActiveFileSelectionText: () => "",
+          copyToClipboard: async () => {{}},
           focusActiveFileCodeEditor: () => null,
           nowMs: () => 0,
           setToast: (message) => calls.push(["toast", message]),
@@ -705,6 +707,8 @@ def eval_file_paste_dialog_fallback() -> dict:
             readClipboardText: async () => {{ if (opts.clipboard === "denied") throw new Error("denied"); return opts.clipboardText || ""; }},
             fileEditorDeleteCommandForKey: () => "",
             isActiveFileEditorInput: () => false,
+            getActiveFileSelectionText: () => "",
+            copyToClipboard: async () => {{}},
             focusActiveFileCodeEditor: () => ctx.focusActiveFileCodeEditor(),
             nowMs: () => 0,
             setToast: (message) => ctx.toastMessages.push(String(message)),
@@ -836,6 +840,8 @@ def eval_file_paste_insert_button_guard() -> dict:
             readClipboardText: async () => "",
             fileEditorDeleteCommandForKey: () => "",
             isActiveFileEditorInput: () => false,
+            getActiveFileSelectionText: () => "",
+            copyToClipboard: async () => {{}},
             focusActiveFileCodeEditor: () => editor,
             nowMs: () => 0,
             setToast: (message) => state.toasts.push(String(message)),
@@ -1115,6 +1121,8 @@ def eval_file_touch_selection_keydown() -> dict:
             readClipboardText: async () => "",
             fileEditorDeleteCommandForKey: () => "",
             isActiveFileEditorInput: () => false,
+            getActiveFileSelectionText: () => "",
+            copyToClipboard: async () => {{}},
             focusActiveFileCodeEditor: () => {{ events.focus += 1; return editor; }},
             nowMs: () => 0,
             setToast: (message) => events.toasts.push(message),
@@ -1268,6 +1276,8 @@ def eval_file_editor_delete_shortcut() -> dict:
             readClipboardText: async () => "",
             fileEditorDeleteCommandForKey: (key) => key === "backspace" ? "deleteLeft" : key === "delete" ? "deleteRight" : "",
             isActiveFileEditorInput: (target) => Boolean(target && target.editorInput),
+            getActiveFileSelectionText: () => "",
+            copyToClipboard: async () => {{}},
             focusActiveFileCodeEditor: () => {{ calls.focusCount += 1; return editor; }},
             nowMs: () => 123456,
             setToast: (message) => calls.toasts.push(message),
@@ -1429,6 +1439,8 @@ def eval_file_open_request_sequence() -> dict:
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
           isActiveFileEditorInput: () => false,
+          getActiveFileSelectionText: () => "",
+          copyToClipboard: async () => {{}},
           focusActiveFileCodeEditor: () => null,
           nowMs: () => 0,
           setToast: (message) => calls.push(["toast", message]),
@@ -1563,6 +1575,8 @@ def eval_file_viewer_session_sync_race() -> dict:
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
           isActiveFileEditorInput: () => false,
+          getActiveFileSelectionText: () => "",
+          copyToClipboard: async () => {{}},
           focusActiveFileCodeEditor: () => null,
           nowMs: () => 0,
           setToast: (message) => calls.push(["toast", message]),
@@ -1714,6 +1728,8 @@ def eval_open_file_guard_mode_validation() -> dict:
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
           isActiveFileEditorInput: () => false,
+          getActiveFileSelectionText: () => "",
+          copyToClipboard: async () => {{}},
           focusActiveFileCodeEditor: () => null,
           nowMs: () => 0,
           setToast: (message) => calls.push(["toast", message]),
@@ -1837,6 +1853,8 @@ def eval_open_file_path_mode_ownership() -> dict:
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
           isActiveFileEditorInput: () => false,
+          getActiveFileSelectionText: () => "",
+          copyToClipboard: async () => {{}},
           focusActiveFileCodeEditor: () => null,
           nowMs: () => 0,
           setToast: (message) => calls.push(["toast", message]),
@@ -2022,6 +2040,8 @@ def eval_active_file_save_request_helpers() -> dict:
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
           isActiveFileEditorInput: () => false,
+          getActiveFileSelectionText: () => "",
+          copyToClipboard: async () => {{}},
           focusActiveFileCodeEditor: () => null,
           nowMs: () => 0,
           setToast: (message) => calls.push(["toast", message]),
@@ -2247,6 +2267,8 @@ def eval_active_file_save_success() -> dict:
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
           isActiveFileEditorInput: () => false,
+          getActiveFileSelectionText: () => "",
+          copyToClipboard: async () => {{}},
           focusActiveFileCodeEditor: () => null,
           nowMs: () => 0,
           setToast: (message) => calls.push(["toast", message]),
@@ -2417,6 +2439,8 @@ def eval_active_file_save_transport() -> dict:
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
           isActiveFileEditorInput: () => false,
+          getActiveFileSelectionText: () => "",
+          copyToClipboard: async () => {{}},
           focusActiveFileCodeEditor: () => null,
           nowMs: () => 0,
           setToast: (message) => calls.push(["toast", message]),
@@ -2603,6 +2627,8 @@ def eval_draft_file_load_choreography() -> dict:
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
           isActiveFileEditorInput: () => false,
+          getActiveFileSelectionText: () => "",
+          copyToClipboard: async () => {{}},
           focusActiveFileCodeEditor: () => null,
           nowMs: () => 0,
           setToast: (message) => calls.push(["toast", message]),
@@ -2753,6 +2779,8 @@ def eval_file_open_success_finalizer() -> dict:
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
           isActiveFileEditorInput: () => false,
+          getActiveFileSelectionText: () => "",
+          copyToClipboard: async () => {{}},
           focusActiveFileCodeEditor: () => null,
           nowMs: () => 0,
           setToast: (message) => calls.push(["toast", message]),
@@ -4071,6 +4099,15 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("void handleFilePreviewModeButtonPress();", source)
         self.assertIn("if (!isMarkdownPreviewable(identity.path)) return false;", viewer_source)
         self.assertNotIn("isMarkdownPreviewable(activeFilePathValue())", source)
+        self.assertIn("async function copyActiveFileSelection()", viewer_source)
+        self.assertIn("const text = getActiveFileSelectionText();", viewer_source)
+        self.assertIn("await copyToClipboard(text);", viewer_source)
+        self.assertIn("resetFileTouchSelectionState({ collapse: true });", viewer_source)
+        copy_wrapper_start = source.index("async function copyActiveFileSelection()")
+        copy_wrapper_end = source.index("function hideFilePasteDialog", copy_wrapper_start)
+        copy_wrapper_block = source[copy_wrapper_start:copy_wrapper_end]
+        self.assertIn("return await fileViewerController.copyActiveFileSelection();", copy_wrapper_block)
+        self.assertNotIn("await copyToClipboard(text);", copy_wrapper_block)
         self.assertIn("function activeFileDownloadApiPath()", viewer_source)
         self.assertIn("return fileViewerController.activeFileDownloadApiPath();", source)
         self.assertIn("const apiPath = activeFileDownloadApiPath();", source)

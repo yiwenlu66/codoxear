@@ -7624,19 +7624,7 @@
         }
 
         async function copyActiveFileSelection() {
-          const text = getActiveFileSelectionText();
-          if (!text) {
-            setToast("nothing selected");
-            return;
-          }
-          try {
-            await copyToClipboard(text);
-            resetFileTouchSelectionState({ collapse: true });
-            setToast("selection copied");
-          } catch (e) {
-            setToast(`copy error: ${e && e.message ? e.message : "unknown error"}`);
-          }
-          focusActiveFileCodeEditor();
+          return await fileViewerController.copyActiveFileSelection();
         }
 
         function hideFilePasteDialog({ restoreFocus = false } = {}) {
@@ -8344,6 +8332,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           readClipboardText: () => navigator.clipboard.readText(),
           fileEditorDeleteCommandForKey: (key) => fileEditorDeleteCommandForKey(key),
           isActiveFileEditorInput: (target) => isActiveFileEditorInput(target),
+          getActiveFileSelectionText: () => getActiveFileSelectionText(),
+          copyToClipboard: (text) => copyToClipboard(text),
           focusActiveFileCodeEditor: () => focusActiveFileCodeEditor(),
           nowMs: () => Date.now(),
           setToast: (message) => setToast(message),

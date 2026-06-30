@@ -73,6 +73,8 @@
     const readClipboardText = requireFunction(deps && deps.readClipboardText, "readClipboardText");
     const fileEditorDeleteCommandForKey = requireFunction(deps && deps.fileEditorDeleteCommandForKey, "fileEditorDeleteCommandForKey");
     const isActiveFileEditorInput = requireFunction(deps && deps.isActiveFileEditorInput, "isActiveFileEditorInput");
+    const getActiveFileSelectionText = requireFunction(deps && deps.getActiveFileSelectionText, "getActiveFileSelectionText");
+    const copyToClipboard = requireFunction(deps && deps.copyToClipboard, "copyToClipboard");
     const focusActiveFileCodeEditor = requireFunction(deps && deps.focusActiveFileCodeEditor, "focusActiveFileCodeEditor");
     const nowMs = requireFunction(deps && deps.nowMs, "nowMs");
     const setToast = requireFunction(deps && deps.setToast, "setToast");
@@ -836,6 +838,25 @@
       return true;
     }
 
+    async function copyActiveFileSelection() {
+      const text = getActiveFileSelectionText();
+      if (!text) {
+        setToast("nothing selected");
+        return false;
+      }
+      try {
+        await copyToClipboard(text);
+        resetFileTouchSelectionState({ collapse: true });
+        setToast("selection copied");
+        focusActiveFileCodeEditor();
+        return true;
+      } catch (error) {
+        setToast(`copy error: ${error && error.message ? error.message : "unknown error"}`);
+        focusActiveFileCodeEditor();
+        return false;
+      }
+    }
+
     async function handleFileDiffModeButtonPress(nonDiffMode = "file") {
       const fallbackMode = nonDiffMode === "preview" ? "preview" : "file";
       const nextMode = currentFileViewMode() === "diff" ? fallbackMode : "diff";
@@ -1083,6 +1104,7 @@
       insertIntoActiveFileEditor,
       pasteFromClipboardIntoActiveFile,
       handleFilePasteInsert,
+      copyActiveFileSelection,
       handleFileDiffModeButtonPress,
       handleFilePreviewModeButtonPress,
       handleFileEditButtonPress,

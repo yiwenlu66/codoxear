@@ -47,6 +47,9 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           editMode: true,
           resetCount: 0,
           touchCount: 0,
+          selectionText: "",
+          copyError: "",
+          recordFocus: false,
         }};
         const events = [];
         const fileStatus = {{
@@ -153,7 +156,9 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             moveFileTouchSelection: (direction) => events.push(["moveFileTouchSelection", direction]),
             fileEditorDeleteCommandForKey: () => "",
             isActiveFileEditorInput: () => false,
-            focusActiveFileCodeEditor: () => null,
+            getActiveFileSelectionText: () => state.selectionText,
+            copyToClipboard: async (text) => {{ events.push(["copyToClipboard", text]); if (state.copyError) throw new Error(state.copyError); }},
+            focusActiveFileCodeEditor: () => {{ if (state.recordFocus) events.push(["focusActiveFileCodeEditor"]); return null; }},
             setFileTouchDeleteNativeSuppressUntil: () => {{}},
             nowMs: () => 0,
             setToast: (message) => events.push(["toast", message]),
@@ -337,6 +342,28 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const unavailableBlocked = renderController.blockUnavailableFileAction();
           const unavailableBlockStatus = fileStatus.textContent;
           renderController.clearFileViewerUnavailableSession();
+          state.editMode = true;
+          state.dirty = false;
+          renderController.setFileDirty(false);
+          async function runCopySelectionCase({{ text = "", error = "" }} = {{}}) {{
+            state.selectionText = text;
+            state.copyError = error;
+            state.recordFocus = true;
+            events.length = 0;
+            const result = await renderController.copyActiveFileSelection();
+            const output = {{ result, events: events.slice() }};
+            state.selectionText = "";
+            state.copyError = "";
+            state.recordFocus = false;
+            return output;
+          }}
+          const copyNoSelection = await runCopySelectionCase();
+          const copySelectionSuccess = await runCopySelectionCase({{ text: "selected text" }});
+          const copySelectionError = await runCopySelectionCase({{ text: "selected text", error: "denied" }});
+          state.resetCount = 0;
+          state.touchCount = 0;
+          events.length = 0;
+          renderController.clearFileViewerUnavailableSession();
           state.kind = "markdown";
           state.version = "v7";
           state.editable = true;
@@ -501,6 +528,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             saveBodies,
             saveErrors: {{ saveConflict, genericSaveError, unknownSaveError }},
             unavailableAction: {{ availableBlocked, availableBlockStatus, unavailableBlocked, unavailableBlockStatus, unavailableTransitionEvents }},
+            copySelection: {{ copyNoSelection, copySelectionSuccess, copySelectionError }},
             editorState: {{ editorState, editorStateFrozen }},
             editabilityUi: {{ editButtonEditMode, readOnlyWritable, editButtonViewMode, editButtonUnavailable, editButtonSavePending }},
             unsavedDecision: {{ cleanUnsaved, discardUnsaved, cancelUnsaved }},
@@ -638,6 +666,11 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
                 ["touchToolbar"],
                 ["touchToolbar"],
             ],
+        })
+        self.assertEqual(result["render"]["copySelection"], {
+            "copyNoSelection": {"result": False, "events": [["toast", "nothing selected"]]},
+            "copySelectionSuccess": {"result": True, "events": [["copyToClipboard", "selected text"], ["editorOptions", {"readOnly": False}], ["touchToolbar"], ["toast", "selection copied"], ["focusActiveFileCodeEditor"]]},
+            "copySelectionError": {"result": False, "events": [["copyToClipboard", "selected text"], ["toast", "copy error: denied"], ["focusActiveFileCodeEditor"]]},
         })
         self.assertEqual(result["render"]["editorState"], {
             "editorState": {
