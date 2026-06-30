@@ -127,6 +127,23 @@ def controller_identity_ctx_js(
               return {{ result: res, absPath: res && typeof res.path === "string" ? res.path : null }};
             }},
             isFileOpenAbortError(error) {{ return Boolean(error && error.name === "AbortError"); }},
+            fileEditorCapabilities(state) {{
+              if (!state || typeof state !== "object") throw new Error("file editor state required");
+              const kind = String(state.kind || "");
+              const textKind = ctx.isTextFileKind(kind);
+              const editable = Boolean(state.editable);
+              const unavailable = Boolean(state.unavailable);
+              const viewMode = String(state.viewMode || "");
+              const editorKind = String(state.editorKind || "");
+              const editMode = Boolean(state.editMode);
+              const savePending = Boolean(state.savePending);
+              const canEnterEditMode = Boolean(!unavailable && String(state.path || "") && !savePending && (!kind || textKind) && editorKind !== "plain-fallback" && editable);
+              const writable = Boolean(editMode && editable && viewMode === "file" && !unavailable);
+              const idleWritable = Boolean(writable && !savePending);
+              const idleTextWritable = Boolean(idleWritable && textKind);
+              const editModeAllowedInCurrentView = Boolean(viewMode === "file" && textKind && editable && !unavailable);
+              return Object.freeze({{ canEnterEditMode, writable, idleWritable, idleTextWritable, editModeAllowedInCurrentView }});
+            }},
             renderFileOpenError(request, error) {{
               if (this.isFileOpenAbortError(error)) return false;
               if (!this.isCurrentFileOpenRequest(request)) return false;
@@ -2495,7 +2512,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertLess(transition_block.index("rememberActiveFileSelection(sid);"), transition_block.index("fileViewerSessionSyncToken += 1;"))
         self.assertIn("fileViewerUnavailableSessionId = \"\";", source)
         self.assertIn("unavailable: isFileViewerSessionUnavailable(),", source)
-        self.assertIn("const unavailable = Boolean(state.unavailable);", source)
+        self.assertIn("const unavailable = Boolean(state.unavailable);", viewer_source)
         self.assertIn("if (blockUnavailableFileAction()) return false;", source)
         self.assertIn("function renderEmptyFileViewerTarget({ updateTouchToolbar = false } = {})", source)
         self.assertEqual(source.count("resetFileViewerPanel();"), 5)
@@ -2754,11 +2771,14 @@ class TestFileViewerSource(unittest.TestCase):
 
     def test_file_editor_capability_predicates_preserve_distinctions(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertIn("function currentFileEditorState()", source)
         self.assertIn("function fileEditorCapabilities(state)", source)
+        self.assertIn("return fileViewerController.fileEditorCapabilities(state);", source)
+        self.assertIn("function fileEditorCapabilities(state)", viewer_source)
+        self.assertIn("return Object.freeze({ canEnterEditMode, writable, idleWritable, idleTextWritable, editModeAllowedInCurrentView });", viewer_source)
         self.assertIn("function activeFileEditorCapabilities()", source)
         self.assertIn("return fileEditorCapabilities(currentFileEditorState());", source)
-        self.assertIn("Object.freeze({", source)
         self.assertIn("fileEditor.updateOptions({ readOnly: !activeFileEditorWritable() });", source)
         self.assertIn("const canPaste = activeFileEditorIdleTextWritable();", source)
         self.assertIn("fileEditMode = Boolean(nextMode) && activeFileEditModeAllowedInCurrentView();", source)

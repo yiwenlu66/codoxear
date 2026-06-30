@@ -193,6 +193,24 @@
       return true;
     }
 
+    function fileEditorCapabilities(state) {
+      if (!state || typeof state !== "object") throw new Error("file editor state required");
+      const kind = String(state.kind || "");
+      const textKind = isTextFileKind(kind);
+      const editable = Boolean(state.editable);
+      const unavailable = Boolean(state.unavailable);
+      const viewMode = String(state.viewMode || "");
+      const editorKind = String(state.editorKind || "");
+      const editMode = Boolean(state.editMode);
+      const savePending = Boolean(state.savePending);
+      const canEnterEditMode = Boolean(!unavailable && String(state.path || "") && !savePending && (!kind || textKind) && editorKind !== "plain-fallback" && editable);
+      const writable = Boolean(editMode && editable && viewMode === "file" && !unavailable);
+      const idleWritable = Boolean(writable && !savePending);
+      const idleTextWritable = Boolean(idleWritable && textKind);
+      const editModeAllowedInCurrentView = Boolean(viewMode === "file" && textKind && editable && !unavailable);
+      return Object.freeze({ canEnterEditMode, writable, idleWritable, idleTextWritable, editModeAllowedInCurrentView });
+    }
+
     function isFileSavePending() {
       return Boolean(fileSavePending);
     }
@@ -465,6 +483,7 @@
       fetchFileOpenResult,
       isFileOpenAbortError,
       blockUnavailableFileAction,
+      fileEditorCapabilities,
       finalizeFileOpenSuccess,
       applyDraftFileLoad,
       renderFileOpenError,

@@ -241,6 +241,10 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const unavailableBlocked = renderController.blockUnavailableFileAction();
           const unavailableBlockStatus = fileStatus.textContent;
           state.unavailable = false;
+          const editableCapabilities = renderController.fileEditorCapabilities({{ path: "src/app.py", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
+          const pendingCapabilities = renderController.fileEditorCapabilities({{ path: "src/app.py", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: true }});
+          const binaryCapabilities = renderController.fileEditorCapabilities({{ path: "img.png", kind: "image", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
+          const missingPathCapabilities = renderController.fileEditorCapabilities({{ path: "", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
           const render = {{
             exportFrozen: Object.isFrozen(fileViewer),
             exports: Object.keys(fileViewer).sort(),
@@ -257,6 +261,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             saveBodies,
             saveErrors: {{ saveConflict, genericSaveError, unknownSaveError }},
             unavailableAction: {{ availableBlocked, availableBlockStatus, unavailableBlocked, unavailableBlockStatus }},
+            capabilities: {{ editableCapabilities, pendingCapabilities, binaryCapabilities, missingPathCapabilities, editableFrozen: Object.isFrozen(editableCapabilities) }},
           }};
           const availableReloadFailure = await runReloadCase("");
           const canceledReload = await runReloadCase("", false);
@@ -359,6 +364,13 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "availableBlockStatus": "old status",
             "unavailableBlocked": True,
             "unavailableBlockStatus": "Session is no longer available; copy unsaved edits before closing.",
+        })
+        self.assertEqual(result["render"]["capabilities"], {
+            "editableCapabilities": {"canEnterEditMode": True, "writable": True, "idleWritable": True, "idleTextWritable": True, "editModeAllowedInCurrentView": True},
+            "pendingCapabilities": {"canEnterEditMode": False, "writable": True, "idleWritable": False, "idleTextWritable": False, "editModeAllowedInCurrentView": True},
+            "binaryCapabilities": {"canEnterEditMode": False, "writable": True, "idleWritable": True, "idleTextWritable": False, "editModeAllowedInCurrentView": False},
+            "missingPathCapabilities": {"canEnterEditMode": False, "writable": True, "idleWritable": True, "idleTextWritable": True, "editModeAllowedInCurrentView": True},
+            "editableFrozen": True,
         })
         self.assertIn("file viewer dependency missing: el", result["missingDependencyError"])
 
