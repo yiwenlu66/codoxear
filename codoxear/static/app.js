@@ -8492,6 +8492,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           normalizeFileApiPath,
           fileApiPathForPath,
           isUnavailable: () => isFileViewerSessionUnavailable(),
+          isTextFileKind: (kind) => isTextFileKind(kind),
           confirmReload: (message) => window.confirm(message),
           openFilePath: (path, options) => openFilePath(path, options),
           api: (url, options) => api(url, options),
@@ -8511,6 +8512,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           currentActiveFileDraft: () => activeFileDraft,
           currentActiveFileVersion: () => activeFileVersion,
           currentActiveFileEditable: () => activeFileEditable,
+          currentFileDirty: () => fileDirty,
           getFileEditorText: () => getFileEditorText(),
           setFileDirty: (dirty) => setFileDirty(dirty),
           syncFileEditorReadOnly: () => syncFileEditorReadOnly(),
@@ -8563,14 +8565,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function saveActiveFileEdits({ exitEditMode = true } = {}) {
-          if (blockUnavailableFileAction()) return false;
-          if (!fileViewerSessionId || !activeFilePathValue() || !isTextFileKind(activeFileKind) || !activeFileEditable) return false;
-          if (!fileDirty && !activeFileDraft) {
-            if (exitEditMode) setFileEditMode(false);
-            return true;
-          }
-          const save = beginActiveFileSaveRequest();
-          return await submitActiveFileSave(save, { exitEditMode });
+          return await fileViewerController.saveActiveFileEdits({ exitEditMode });
         }
 
         async function maybeHandleUnsavedFileChanges() {

@@ -61,6 +61,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
             fileApiPathForPath: (_path, existing) => existing || "derived-token",
             isUnavailable: () => state.unavailable,
+            isTextFileKind: (kind) => kind === "text" || kind === "markdown",
             confirmReload: (message) => {{ events.push(["confirm", message]); return state.confirmResult !== false; }},
             openFilePath: async (path, opts) => {{
               events.push(["open", path, opts]);
@@ -94,6 +95,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             currentActiveFileDraft: () => false,
             currentActiveFileVersion: () => "",
             currentActiveFileEditable: () => true,
+            currentFileDirty: () => false,
             getFileEditorText: () => "",
             setFileDirty: () => events.push(["setFileDirty"]),
             syncFileEditorReadOnly: () => events.push(["syncFileEditorReadOnly"]),

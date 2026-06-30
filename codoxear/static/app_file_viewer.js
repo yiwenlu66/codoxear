@@ -23,6 +23,7 @@
     const normalizeFileApiPath = requireFunction(deps && deps.normalizeFileApiPath, "normalizeFileApiPath");
     const fileApiPathForPath = requireFunction(deps && deps.fileApiPathForPath, "fileApiPathForPath");
     const isUnavailable = requireFunction(deps && deps.isUnavailable, "isUnavailable");
+    const isTextFileKind = requireFunction(deps && deps.isTextFileKind, "isTextFileKind");
     const confirmReload = requireFunction(deps && deps.confirmReload, "confirmReload");
     const openFilePath = requireFunction(deps && deps.openFilePath, "openFilePath");
     const api = requireFunction(deps && deps.api, "api");
@@ -42,6 +43,7 @@
     const currentActiveFileDraft = requireFunction(deps && deps.currentActiveFileDraft, "currentActiveFileDraft");
     const currentActiveFileVersion = requireFunction(deps && deps.currentActiveFileVersion, "currentActiveFileVersion");
     const currentActiveFileEditable = requireFunction(deps && deps.currentActiveFileEditable, "currentActiveFileEditable");
+    const currentFileDirty = requireFunction(deps && deps.currentFileDirty, "currentFileDirty");
     const getFileEditorText = requireFunction(deps && deps.getFileEditorText, "getFileEditorText");
     const setFileDirty = requireFunction(deps && deps.setFileDirty, "setFileDirty");
     const syncFileEditorReadOnly = requireFunction(deps && deps.syncFileEditorReadOnly, "syncFileEditorReadOnly");
@@ -295,6 +297,18 @@
       }
     }
 
+    async function saveActiveFileEdits({ exitEditMode = true } = {}) {
+      if (blockUnavailableFileAction()) return false;
+      const identity = currentActiveFileIdentity();
+      if (!currentSessionId() || !identity.path || !isTextFileKind(currentActiveFileKind()) || !currentActiveFileEditable()) return false;
+      if (!currentFileDirty() && !currentActiveFileDraft()) {
+        if (exitEditMode) setFileEditMode(false);
+        return true;
+      }
+      const save = beginActiveFileSaveRequest();
+      return await submitActiveFileSave(save, { exitEditMode });
+    }
+
     function finalizeFileOpenSuccess(rel, absPath = null) {
       applyFileMode();
       rememberOpenedFile(rel, absPath);
@@ -433,6 +447,7 @@
       renderActiveFileSaveError,
       applyActiveFileSaveSuccess,
       submitActiveFileSave,
+      saveActiveFileEdits,
       nextActiveFileIdentity,
       currentActiveFileIdentity,
       currentActiveFileLine,

@@ -1044,6 +1044,7 @@ def eval_file_open_request_sequence() -> dict:
             return apiPath ? `kept:${{apiPath}}` : `derived:${{path}}`;
           }},
           isUnavailable: () => false,
+          isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           openFilePath: async () => true,
           api: async () => ({{}}),
@@ -1063,6 +1064,7 @@ def eval_file_open_request_sequence() -> dict:
           currentActiveFileDraft: () => false,
           currentActiveFileVersion: () => "",
           currentActiveFileEditable: () => true,
+          currentFileDirty: () => true,
           getFileEditorText: () => "",
           setFileDirty: () => {{}},
           syncFileEditorReadOnly: () => {{}},
@@ -1472,6 +1474,7 @@ def eval_active_file_save_request_helpers() -> dict:
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           fileApiPathForPath: (_path, existing = "") => existing || "derived-token",
           isUnavailable: () => state.unavailable,
+          isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           openFilePath: async () => true,
           api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
@@ -1491,6 +1494,7 @@ def eval_active_file_save_request_helpers() -> dict:
           currentActiveFileDraft: () => state.draft,
           currentActiveFileVersion: () => state.version,
           currentActiveFileEditable: () => true,
+          currentFileDirty: () => true,
           getFileEditorText: () => {{ calls.push(["getFileEditorText"]); return state.text; }},
           setFileDirty: () => calls.push(["setFileDirty"]),
           syncFileEditorReadOnly: () => calls.push(["syncFileEditorReadOnly"]),
@@ -1655,6 +1659,7 @@ def eval_active_file_save_success() -> dict:
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           fileApiPathForPath: (_path, existing = "") => existing || "derived-token",
           isUnavailable: () => false,
+          isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           openFilePath: async () => true,
           api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
@@ -1681,6 +1686,7 @@ def eval_active_file_save_success() -> dict:
           currentActiveFileDraft: () => state.draft,
           currentActiveFileVersion: () => state.version,
           currentActiveFileEditable: () => state.editable,
+          currentFileDirty: () => state.dirty,
           getFileEditorText: () => state.text,
           setFileDirty: (value) => {{ state.dirty = Boolean(value); calls.push(["setFileDirty", Boolean(value)]); }},
           syncFileEditorReadOnly: () => calls.push(["syncFileEditorReadOnly"]),
@@ -1757,6 +1763,7 @@ def eval_active_file_save_transport() -> dict:
           draft: false,
           dirty: true,
           editMode: true,
+          unavailable: false,
           behavior: "success",
         }};
         const calls = [];
@@ -1768,7 +1775,8 @@ def eval_active_file_save_transport() -> dict:
           normalizeLineNumber: (value) => value == null ? null : Number(value),
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           fileApiPathForPath: (_path, existing = "") => existing || "derived-token",
-          isUnavailable: () => false,
+          isUnavailable: () => Boolean(state.unavailable),
+          isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           openFilePath: async () => true,
           api: async (url, options = {{}}) => {{
@@ -1807,6 +1815,7 @@ def eval_active_file_save_transport() -> dict:
           currentActiveFileDraft: () => state.draft,
           currentActiveFileVersion: () => state.version,
           currentActiveFileEditable: () => state.editable,
+          currentFileDirty: () => state.dirty,
           getFileEditorText: () => state.editorText,
           setFileDirty: (value) => {{ state.dirty = Boolean(value); calls.push(["setFileDirty", Boolean(value)]); }},
           syncFileEditorReadOnly: () => calls.push(["syncFileEditorReadOnly"]),
@@ -1827,6 +1836,7 @@ def eval_active_file_save_transport() -> dict:
           state.draft = false;
           state.dirty = true;
           state.editMode = true;
+          state.unavailable = false;
           state.behavior = behavior;
           calls.length = 0;
           fileStatus.textContent = "";
@@ -1850,12 +1860,40 @@ def eval_active_file_save_transport() -> dict:
             calls: calls.slice(),
           }};
         }}
+        async function runPrecondition(overrides = {{}}) {{
+          state.sessionId = overrides.sessionId === false ? "" : "sid-1";
+          state.kind = overrides.kind || "text";
+          state.text = "old";
+          state.editorText = "NEW";
+          state.version = "v1";
+          state.editable = overrides.editable !== false;
+          state.draft = Boolean(overrides.draft);
+          state.dirty = overrides.dirty !== false;
+          state.editMode = true;
+          state.unavailable = Boolean(overrides.unavailable);
+          state.behavior = "success";
+          calls.length = 0;
+          fileStatus.textContent = "";
+          if (overrides.path === false) controller.clearActiveFileIdentity();
+          else controller.setActiveFileIdentity("src.py", {{ line: 9, gitPath: true, apiPath: "tok" }});
+          const ok = await controller.saveActiveFileEdits({{ exitEditMode: overrides.exitEditMode !== false }});
+          return {{ ok, status: fileStatus.textContent, calls: calls.slice(), dirty: state.dirty, editMode: state.editMode, text: state.text }};
+        }}
         runCase("success")
           .then(async (success) => {{
             const staleSuccess = await runCase("success-stale");
             const currentError = await runCase("error-current");
             const staleError = await runCase("error-stale");
-            process.stdout.write(JSON.stringify({{ success, staleSuccess, currentError, staleError }}));
+            const preconditions = {{
+              unavailable: await runPrecondition({{ unavailable: true }}),
+              noSession: await runPrecondition({{ sessionId: false }}),
+              noPath: await runPrecondition({{ path: false }}),
+              nonText: await runPrecondition({{ kind: "image" }}),
+              notEditable: await runPrecondition({{ editable: false }}),
+              cleanExit: await runPrecondition({{ dirty: false, draft: false }}),
+              dirtySubmit: await runPrecondition({{ dirty: true }}),
+            }};
+            process.stdout.write(JSON.stringify({{ success, staleSuccess, currentError, staleError, preconditions }}));
           }})
           .catch((err) => {{ console.error(err && err.stack ? err.stack : err); process.exit(1); }});
         """
@@ -1889,6 +1927,7 @@ def eval_draft_file_load_choreography() -> dict:
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           fileApiPathForPath: (_path, existing = "") => existing || "derived-token",
           isUnavailable: () => false,
+          isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
           openFilePath: async () => true,
           api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
@@ -1908,6 +1947,7 @@ def eval_draft_file_load_choreography() -> dict:
           currentActiveFileDraft: () => false,
           currentActiveFileVersion: () => "",
           currentActiveFileEditable: () => true,
+          currentFileDirty: () => true,
           getFileEditorText: () => "",
           setFileDirty: () => calls.push(["setFileDirty"]),
           syncFileEditorReadOnly: () => calls.push(["syncFileEditorReadOnly"]),
@@ -3092,6 +3132,25 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(result["staleError"]["status"], "Saving src.py...")
         self.assertFalse(any(call and call[0] == "applyActiveFileTextState" for call in result["staleError"]["calls"]))
 
+        preconditions = result["preconditions"]
+        self.assertEqual(preconditions["unavailable"], {
+            "ok": False,
+            "status": "Session is no longer available; copy unsaved edits before closing.",
+            "calls": [],
+            "dirty": True,
+            "editMode": True,
+            "text": "old",
+        })
+        for name in ["noSession", "noPath", "nonText", "notEditable"]:
+            self.assertEqual(preconditions[name], {"ok": False, "status": "", "calls": [], "dirty": True, "editMode": True, "text": "old"})
+        self.assertEqual(preconditions["cleanExit"], {"ok": True, "status": "", "calls": [["setFileEditMode", False]], "dirty": False, "editMode": False, "text": "old"})
+        self.assertTrue(preconditions["dirtySubmit"]["ok"])
+        self.assertEqual(preconditions["dirtySubmit"]["status"], "src.py - 4B")
+        self.assertFalse(preconditions["dirtySubmit"]["dirty"])
+        self.assertFalse(preconditions["dirtySubmit"]["editMode"])
+        self.assertEqual(preconditions["dirtySubmit"]["text"], "NEW")
+        self.assertIn(["api", "/api/sessions/sid-1/file/write", "POST", {"path": "src.py", "text": "NEW", "version": "v1", "git_path": True, "path_token": "tok"}], preconditions["dirtySubmit"]["calls"])
+
     def test_file_save_response_is_bound_to_original_session_and_path(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index("async function saveActiveFileEdits")
@@ -3108,7 +3167,15 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const text = getFileEditorText();", viewer_source)
         self.assertIn("const token = ++fileSaveSeq;", viewer_source)
         self.assertIn("activeFileSaveToken = token;", viewer_source)
-        self.assertIn("return await submitActiveFileSave(save, { exitEditMode });", block)
+        self.assertIn("return await fileViewerController.saveActiveFileEdits({ exitEditMode });", block)
+        self.assertIn("async function saveActiveFileEdits({ exitEditMode = true } = {})", viewer_source)
+        self.assertIn("if (blockUnavailableFileAction()) return false;", viewer_source)
+        self.assertIn("const identity = currentActiveFileIdentity();", viewer_source)
+        self.assertIn("if (!currentSessionId() || !identity.path || !isTextFileKind(currentActiveFileKind()) || !currentActiveFileEditable()) return false;", viewer_source)
+        self.assertIn("if (!currentFileDirty() && !currentActiveFileDraft()) {", viewer_source)
+        self.assertIn("if (exitEditMode) setFileEditMode(false);", viewer_source)
+        self.assertIn("const save = beginActiveFileSaveRequest();", viewer_source)
+        self.assertIn("return await submitActiveFileSave(save, { exitEditMode });", viewer_source)
         self.assertIn("? { path: save.path, text: save.text, create: true }", viewer_source)
         self.assertIn(": { path: save.path, text: save.text, version: save.version, git_path: save.gitPath };", viewer_source)
         self.assertIn("if (!save.draft && save.gitPath && save.apiPath) body.path_token = save.apiPath;", viewer_source)
@@ -3139,13 +3206,16 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("normalizeFileApiPath", controller_block)
         self.assertIn("fileApiPathForPath", controller_block)
         self.assertIn("isUnavailable: () => isFileViewerSessionUnavailable()", controller_block)
+        self.assertIn("isTextFileKind: (kind) => isTextFileKind(kind)", controller_block)
+        self.assertIn("currentFileDirty: () => fileDirty", controller_block)
         self.assertIn("confirmReload: (message) => window.confirm(message)", controller_block)
         self.assertIn("openFilePath: (path, options) => openFilePath(path, options)", controller_block)
         self.assertIn("focusEditor: () => getActiveFileCodeEditor()", controller_block)
         save_start = source.index("async function saveActiveFileEdits")
         save_end = source.index("async function maybeHandleUnsavedFileChanges", save_start)
         save_block = source[save_start:save_end]
-        self.assertIn("return await submitActiveFileSave(save, { exitEditMode });", save_block)
+        self.assertIn("return await fileViewerController.saveActiveFileEdits({ exitEditMode });", save_block)
+        self.assertIn("return await submitActiveFileSave(save, { exitEditMode });", viewer_source)
         self.assertIn("renderActiveFileSaveError(save, error);", viewer_source)
         self.assertIn("renderSaveConflict(save.sessionId, save.path, error && error.message ? error.message : \"conflict\");", viewer_source)
         self.assertNotIn("function renderFileSaveConflict", source)
