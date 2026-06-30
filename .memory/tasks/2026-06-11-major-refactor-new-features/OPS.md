@@ -6741,3 +6741,20 @@
 - Scope of requested review: functional commits `06b62b0` and `bb3c438` plus matching tests.
 - Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against the code. The evidence basis for the reviewed commits remains syntax checks, focused tests, available broader frontend/file/auth/static route tests, full local pytest, Docker sandbox, and diff checks recorded above.
 - Decision: continue workbench progress and avoid treating absent reviewer output as a product blocker. A future clean-room review should be launched only when useful for a yield gate or a decision point.
+
+## 2026-06-30T20:27:04Z Remembered file-selection controller ownership
+- Functional commit `aff1ff5 Move remembered file selection into viewer controller` moved `fileSessionSelections` and preferred remembered-selection policy from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: remembered active file selection is controller state because it is written from controller-owned active-file identity/line state and read when choosing a session's preferred open target. The controller now owns `fileSessionSelections`, `rememberActiveFileSelection(sessionId)`, and `preferredFileSelectionForSession(sessionId)`. `app.js` delegates wrapper calls to the controller and injects `historyFileSelectionForSession(sessionId)` because history fallback depends on app-owned `sessionIndex`, `listFromFilesField()`, and `sessionRelativePath()`. App still owns first-candidate fallback from `fileCandidateList`/`fileEntryMap` and session sync/currentness request tokens.
+- Tests updated: source sentinels reject app-owned `let fileSessionSelections` and require controller-owned remember/preferred functions plus app wrappers and injected history fallback. Real-controller probe covers no-session, injected history fallback, and remembered selection retrieval. Existing file-picker session-state VM was updated so remembered selection is controller-owned while app history fallback still supplies another session's recent file.
+- Negative evidence preserved: first focused validation after adding the new fail-loud dependency failed across fixtures that had not supplied `historyFileSelectionForSession`. The repair added the dependency explicitly rather than making it optional. Full local validation then exposed a separate stale file-picker VM that still expected app-owned `fileSessionSelections`; it was updated to route remembered selection through a fake controller and retain app history fallback evidence.
+- Validation:
+  - `python3 -m py_compile tests/test_file_picker_session_state.py tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_picker_session_state.py tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `49 passed, 25 subtests passed`.
+  - Available broader frontend/file/auth/static route validation returned `254 passed, 80 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: remembered file-selection state belongs to the file-viewer controller. App still owns session history fallback derivation, first-candidate fallback from candidate lists, session sync/currentness tokens, file-candidate request sequencing, raw Monaco editor/diff-editor objects, model disposal and setValue side effects, fallback DOM construction/scrolling, raw renderer/DOM plan application, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, raw mode/download/video-preview DOM mutation, compatible-preview fetch/load mechanics, and raw Monaco selection helpers.
