@@ -553,7 +553,9 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             renderController.applyActiveFileTextState({{ kind, text: "body", editable: true, version: "v1", draft }});
             renderController.setFileEditMode(editMode);
             renderController.setFileViewMode(viewMode);
-            const value = renderController.currentFileModeControlState({{ videoPreviewAvailable, videoPreviewPreparing }});
+            if (videoPreviewAvailable) renderController.setActiveVideoFallback({{ token: "video-token", previewUrl: "/preview.mp4", rel: "clip.mkv", size: 12, preparing: videoPreviewPreparing }});
+            else renderController.clearActiveVideoFallback();
+            const value = renderController.currentFileModeControlState();
             return {{ value, frozen: Object.isFrozen(value) }};
           }}
           const modeControlDiffable = runModeControlState({{ viewMode: "diff", gitFresh: true, changed: true }});

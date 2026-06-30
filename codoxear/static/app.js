@@ -7021,7 +7021,6 @@
         const FILE_CANDIDATE_CACHE_TTL_MS = 15000;
         let fileViewerReturnFocusEl = null;
         let fileViewerSessionId = "";
-        let activeVideoFallback = null;
         let fileMenuOpen = false;
         let fileMenuFocus = -1;
         let filePickerSearchActive = false;
@@ -7211,26 +7210,19 @@
         }
 
         async function loadCompatibleVideoPreview(expectedToken = "", { explicit = false } = {}) {
-          const state = activeVideoFallback;
-          if (!state || (expectedToken && state.token !== expectedToken) || state.used || state.preparing) return false;
-          state.preparing = true;
-          applyFileMode();
+          const state = fileViewerController.beginCompatibleVideoPreview(expectedToken);
+          if (!state) return false;
           const rel = state.rel || activeFilePathValue() || "video";
           fileStatus.textContent = explicit ? `${rel} - building compatible video preview...` : `${rel} - trying compatible video preview...`;
           try {
             await prepareCompatibleVideoPreview(state.previewUrl);
-            if (activeVideoFallback !== state || (expectedToken && state.token !== expectedToken)) return false;
-            state.used = true;
-            state.preparing = false;
-            applyFileMode();
+            if (!fileViewerController.completeCompatibleVideoPreview(state)) return false;
             fileStatus.textContent = `${rel} - loading compatible video preview...`;
             fileVideo.src = resolveAppUrl(state.previewUrl);
             fileVideo.load();
             return true;
           } catch (err) {
-            if (activeVideoFallback === state) {
-              state.preparing = false;
-              applyFileMode();
+            if (fileViewerController.failCompatibleVideoPreview(state)) {
               fileStatus.textContent = `${rel} - ${fileVideoPreviewErrorText(err)}`;
             }
             return false;
@@ -7238,7 +7230,7 @@
         }
 
         function clearFileVideo() {
-          activeVideoFallback = null;
+          fileViewerController.clearActiveVideoFallback();
           fileVideoPreviewBtn.style.display = "none";
           fileVideoPreviewBtn.disabled = true;
           fileVideo.onerror = null;
@@ -8435,7 +8427,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function handleFileVideoPreviewButtonPress() {
-          const token = activeVideoFallback && activeVideoFallback.token ? activeVideoFallback.token : "";
+          const token = fileViewerController.currentActiveVideoPreviewToken();
           return await fileViewerController.handleFileVideoPreviewButtonPress(token, (nextToken, options) => loadCompatibleVideoPreview(nextToken, options));
         }
 
@@ -8456,10 +8448,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function applyFileMode() {
-          const modeState = fileViewerController.currentFileModeControlState({
-            videoPreviewAvailable: Boolean(activeVideoFallback && activeVideoFallback.previewUrl && !activeVideoFallback.used),
-            videoPreviewPreparing: Boolean(activeVideoFallback && activeVideoFallback.preparing),
-          });
+          const modeState = fileViewerController.currentFileModeControlState();
           fileModeDiffBtn.classList.toggle("active", modeState.diffActive);
           fileModePreviewBtn.classList.toggle("active", modeState.previewActive);
           fileModeDiffBtn.disabled = modeState.diffDisabled;
@@ -9434,17 +9423,15 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const videoToken = `${request.requestId}:${rel}:${Date.now()}`;
             const browserSafeVideoTypes = new Set(["video/mp4", "video/webm", "video/ogg"]);
             const shouldPreviewFirst = Boolean(previewUrl && contentType && !browserSafeVideoTypes.has(contentType));
-            activeVideoFallback = previewUrl ? { token: videoToken, previewUrl, used: false, preparing: false, rel, size } : null;
+            fileViewerController.setActiveVideoFallback(previewUrl ? { token: videoToken, previewUrl, rel, size } : null);
             applyFileMode();
             fileVideo.onerror = () => {
-              const state = activeVideoFallback;
+              const state = fileViewerController.currentActiveVideoFallback();
               if (!state || state.token !== videoToken) {
                 if (!previewUrl) fileStatus.textContent = `${rel} - video unsupported`;
                 return;
               }
-              if (state.used) {
-                activeVideoFallback = null;
-                applyFileMode();
+              if (fileViewerController.clearUsedCompatibleVideoPreview(videoToken)) {
                 fileVideo.onerror = null;
                 fileVideo.onloadedmetadata = null;
                 fileStatus.textContent = `${rel} - video preview unavailable after conversion`;
@@ -9453,7 +9440,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               void loadCompatibleVideoPreview(videoToken, { explicit: false });
             };
             fileVideo.onloadedmetadata = () => {
-              const state = activeVideoFallback;
+              const state = fileViewerController.currentActiveVideoFallback();
               if (state && state.token === videoToken && state.used) {
                 fileStatus.textContent = `${rel} - compatible video preview - ${fmtBytes(size)}`;
               }

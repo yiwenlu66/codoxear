@@ -104,6 +104,7 @@
     let activeFileEditable = false;
     let activeFileVersion = "";
     let activeFileDraft = false;
+    let activeVideoFallback = null;
     let unavailableSessionId = "";
     let fileTouchSelectMode = false;
     let fileTouchSelectAnchor = null;
@@ -440,7 +441,77 @@
       return activeFileEditorCapabilities().editModeAllowedInCurrentView;
     }
 
-    function currentFileModeControlState({ videoPreviewAvailable = false, videoPreviewPreparing = false } = {}) {
+    function activeVideoFallbackSnapshot() {
+      const state = activeVideoFallback;
+      return state ? Object.freeze({ token: state.token, previewUrl: state.previewUrl, used: Boolean(state.used), preparing: Boolean(state.preparing), rel: state.rel, size: state.size }) : null;
+    }
+
+    function setActiveVideoFallback(nextState) {
+      if (!nextState || !nextState.previewUrl) {
+        activeVideoFallback = null;
+        return null;
+      }
+      activeVideoFallback = {
+        token: String(nextState.token || ""),
+        previewUrl: String(nextState.previewUrl || ""),
+        used: Boolean(nextState.used),
+        preparing: Boolean(nextState.preparing),
+        rel: String(nextState.rel || ""),
+        size: typeof nextState.size === "number" ? nextState.size : 0,
+      };
+      return activeVideoFallbackSnapshot();
+    }
+
+    function clearActiveVideoFallback() {
+      activeVideoFallback = null;
+    }
+
+    function currentActiveVideoFallback() {
+      return activeVideoFallbackSnapshot();
+    }
+
+    function currentActiveVideoPreviewToken() {
+      const state = activeVideoFallback;
+      return state && state.token ? state.token : "";
+    }
+
+    function beginCompatibleVideoPreview(expectedToken = "") {
+      const state = activeVideoFallback;
+      const token = String(expectedToken || "");
+      if (!state || (token && state.token !== token) || state.used || state.preparing) return null;
+      state.preparing = true;
+      applyFileMode();
+      return activeVideoFallbackSnapshot();
+    }
+
+    function completeCompatibleVideoPreview(preview) {
+      const token = preview && preview.token ? String(preview.token) : "";
+      const state = activeVideoFallback;
+      if (!state || (token && state.token !== token)) return false;
+      state.used = true;
+      state.preparing = false;
+      applyFileMode();
+      return true;
+    }
+
+    function failCompatibleVideoPreview(preview) {
+      const token = preview && preview.token ? String(preview.token) : "";
+      const state = activeVideoFallback;
+      if (!state || (token && state.token !== token)) return false;
+      state.preparing = false;
+      applyFileMode();
+      return true;
+    }
+
+    function clearUsedCompatibleVideoPreview(token) {
+      const state = activeVideoFallback;
+      if (!state || state.token !== String(token || "") || !state.used) return false;
+      activeVideoFallback = null;
+      applyFileMode();
+      return true;
+    }
+
+    function currentFileModeControlState() {
       const identity = currentActiveFileIdentity();
       const hasPath = Boolean(identity.path);
       const draft = Boolean(currentActiveFileDraft());
@@ -451,8 +522,9 @@
       const isPreview = viewMode === "preview";
       const diffable = Boolean(canToggleMode && identity.gitPath && fileCandidateGitStateFresh() && entry && entry.changed && isDiffableFileKind(currentActiveFileKind()));
       const previewable = Boolean(!draft && currentActiveFileKind() === "markdown");
-      const videoVisible = Boolean(videoPreviewAvailable);
-      const videoPreparing = Boolean(videoPreviewPreparing);
+      const fallback = activeVideoFallback;
+      const videoVisible = Boolean(fallback && fallback.previewUrl && !fallback.used);
+      const videoPreparing = Boolean(fallback && fallback.preparing);
       const videoTitle = videoPreparing ? "Building compatible MP4 preview" : "Use compatible MP4 preview";
       return Object.freeze({
         diffActive: Boolean(hasPath && isDiff),
@@ -1270,6 +1342,14 @@
       currentFileViewMode,
       currentFileNonDiffMode,
       setFileViewMode,
+      setActiveVideoFallback,
+      clearActiveVideoFallback,
+      currentActiveVideoFallback,
+      currentActiveVideoPreviewToken,
+      beginCompatibleVideoPreview,
+      completeCompatibleVideoPreview,
+      failCompatibleVideoPreview,
+      clearUsedCompatibleVideoPreview,
       currentFileModeControlState,
       syncFileEditorReadOnly,
       updateFileEditButton,

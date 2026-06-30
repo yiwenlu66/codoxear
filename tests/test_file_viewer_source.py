@@ -257,6 +257,7 @@ def eval_video_preview_failure_path() -> dict:
           codoxearFileHelpers: moduleCtx.window.CodoxearFileHelpers,
           activeVideoFallback: {{ token: "video-1", previewUrl: "/preview.mp4", used: false, preparing: false, rel: "clip.mkv" }},
           activeFilePath: "clip.mkv",
+          activeFilePathValue: () => ctx.activeFilePath,
           applyCount: 0,
           authLost: false,
           fileStatus: {{ textContent: "" }},
@@ -271,6 +272,30 @@ def eval_video_preview_failure_path() -> dict:
           }}),
         }};
         ctx.applyFileMode = () => {{ ctx.applyCount += 1; }};
+        ctx.fileViewerController = {{
+          beginCompatibleVideoPreview(expectedToken = "") {{
+            const state = ctx.activeVideoFallback;
+            if (!state || (expectedToken && state.token !== expectedToken) || state.used || state.preparing) return null;
+            state.preparing = true;
+            ctx.applyFileMode();
+            return {{ ...state }};
+          }},
+          completeCompatibleVideoPreview(preview) {{
+            const state = ctx.activeVideoFallback;
+            if (!state || !preview || state.token !== preview.token) return false;
+            state.used = true;
+            state.preparing = false;
+            ctx.applyFileMode();
+            return true;
+          }},
+          failCompatibleVideoPreview(preview) {{
+            const state = ctx.activeVideoFallback;
+            if (!state || !preview || state.token !== preview.token) return false;
+            state.preparing = false;
+            ctx.applyFileMode();
+            return true;
+          }},
+        }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_loadCompatibleVideoPreview = loadCompatibleVideoPreview;\n")}, ctx);
         (async () => {{
@@ -2929,6 +2954,11 @@ function applyActiveFileNonTextState(kind) {
           Date: {{ now: () => 4242 }},
           isCurrentFileOpenRequest: () => ctx.current,
           applyFileMode: () => ctx.calls.push(["applyFileMode"]),
+          fileViewerController: {{
+            setActiveVideoFallback(nextState) {{ ctx.activeVideoFallback = nextState ? {{ token: String(nextState.token || ""), previewUrl: String(nextState.previewUrl || ""), used: false, preparing: false, rel: String(nextState.rel || ""), size: Number(nextState.size || 0) }} : null; return ctx.activeVideoFallback; }},
+            currentActiveVideoFallback() {{ return ctx.activeVideoFallback ? {{ ...ctx.activeVideoFallback }} : null; }},
+            clearUsedCompatibleVideoPreview(token) {{ if (!ctx.activeVideoFallback || ctx.activeVideoFallback.token !== String(token || "") || !ctx.activeVideoFallback.used) return false; ctx.activeVideoFallback = null; ctx.calls.push(["applyFileMode"]); return true; }},
+          }},
           disposeFileEditor: () => ctx.calls.push(["disposeFileEditor"]),
           clearFileVideo: () => {{ ctx.calls.push(["clearFileVideo"]); ctx.fileVideo.style.display = "none"; ctx.fileVideo.src = ""; }},
           renderMonacoDiff: async (...args) => {{ ctx.calls.push(["renderMonacoDiff", ...args.slice(0, 4)]); return ctx.renderOk !== false; }},
