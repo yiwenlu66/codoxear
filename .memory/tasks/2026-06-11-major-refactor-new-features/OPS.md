@@ -6504,3 +6504,11 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: active-file content metadata/text baseline belongs to the file-viewer controller. `fileEditMode` remains app-owned per the earlier rejected flag-only migration; app also still owns raw Monaco restore/editor DOM, raw load-result rendering, raw view-mode DOM application, unsaved modal DOM internals, paste dialog DOM/show-hide primitives, touch toolbar DOM, and raw Monaco selection helpers.
+
+
+## 2026-06-30T16:22:00Z Clean-room review runner failure after active-file metadata checkpoint
+- Observation: async clean-room review run `194726b7-ffd1-46ac-8206-2afd9b19a37d` failed before writing a result.
+- Raw failure reported by runner/user: `Async runner process 4015333 exited or disappeared before writing a result. Marked run failed by stale-run reconciliation.`
+- Intended review output file: `/tmp/codoxear-active-file-metadata-review.md`; no review finding was produced or applied.
+- Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against commit `89dad8f`. The evidence basis for the active-file metadata ownership move remains the syntax checks, focused tests, full local pytest, Docker sandbox, and diff checks recorded in OPS Active-file metadata controller ownership.
+- Decision: continue workbench progress; run a fresh clean-room review only at the next necessary yield or if a review result becomes required for a decision.
