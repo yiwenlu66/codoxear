@@ -8581,6 +8581,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           updateFileEditButton();
         }
 
+        function buildActiveFileSaveBody(save) {
+          const body = save.draft
+            ? { path: save.path, text: save.text, create: true }
+            : { path: save.path, text: save.text, version: save.version, git_path: Boolean(activeFileGitPath) };
+          if (!save.draft && activeFileGitPath && save.apiPath) body.path_token = save.apiPath;
+          return body;
+        }
+
         function applyActiveFileSaveSuccess(save, res, { exitEditMode = true } = {}) {
           activeFileText = save.text;
           if (res && typeof res.version === "string") activeFileVersion = res.version;
@@ -8611,10 +8619,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const saveStillCurrent = () => isCurrentActiveFileSaveRequest(save);
           markActiveFileSavePending(save);
           try {
-            const saveBody = save.draft
-              ? { path: save.path, text: save.text, create: true }
-              : { path: save.path, text: save.text, version: save.version, git_path: Boolean(activeFileGitPath) };
-            if (!save.draft && activeFileGitPath && save.apiPath) saveBody.path_token = save.apiPath;
+            const saveBody = buildActiveFileSaveBody(save);
             const res = await api(`/api/sessions/${save.sessionId}/file/write`, {
               method: "POST",
               body: saveBody,

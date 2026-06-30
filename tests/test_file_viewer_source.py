@@ -936,6 +936,35 @@ def eval_active_file_save_request_helpers() -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_active_file_save_body_builder() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("function buildActiveFileSaveBody(")
+    end = source.index("function applyActiveFileSaveSuccess", start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ activeFileGitPath: true }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_save_body = buildActiveFileSaveBody;\n")}, ctx);
+        const draft = ctx.__test_save_body({{ path: "new.py", text: "NEW", draft: true, version: "v1", apiPath: "tok" }});
+        const gitToken = ctx.__test_save_body({{ path: "existing.py", text: "BODY", draft: false, version: "v2", apiPath: "tok" }});
+        const gitNoToken = ctx.__test_save_body({{ path: "existing.py", text: "BODY", draft: false, version: "v2", apiPath: "" }});
+        ctx.activeFileGitPath = false;
+        const plainToken = ctx.__test_save_body({{ path: "plain.py", text: "TEXT", draft: false, version: "v3", apiPath: "tok" }});
+        process.stdout.write(JSON.stringify({{ draft, gitToken, gitNoToken, plainToken }}));
+        """
+    )
+    proc = subprocess.run(
+        ["node", "-e", js],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return json.loads(proc.stdout)
+
+
 def eval_active_file_save_success() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function applyActiveFileSaveSuccess(")
@@ -1851,6 +1880,17 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function markActiveFileSavePending(save)", source)
         self.assertIn("function finishActiveFileSaveRequest(save)", source)
 
+    def test_active_file_save_body_builder_preserves_api_contract(self) -> None:
+        result = eval_active_file_save_body_builder()
+        self.assertEqual(result["draft"], {"path": "new.py", "text": "NEW", "create": True})
+        self.assertEqual(result["gitToken"], {"path": "existing.py", "text": "BODY", "version": "v2", "git_path": True, "path_token": "tok"})
+        self.assertEqual(result["gitNoToken"], {"path": "existing.py", "text": "BODY", "version": "v2", "git_path": True})
+        self.assertEqual(result["plainToken"], {"path": "plain.py", "text": "TEXT", "version": "v3", "git_path": False})
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("function buildActiveFileSaveBody(save)", source)
+        self.assertIn("const saveBody = buildActiveFileSaveBody(save);", source)
+        self.assertIn("if (!save.draft && activeFileGitPath && save.apiPath) body.path_token = save.apiPath;", source)
+
     def test_active_file_save_success_applies_response_state(self) -> None:
         result = eval_active_file_save_success()
         self.assertTrue(result["draft"]["ok"])
@@ -1908,9 +1948,10 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const token = ++fileSaveSeq;", source)
         self.assertIn("activeFileSaveToken = token;", source)
         self.assertIn("const saveStillCurrent = () => isCurrentActiveFileSaveRequest(save);", block)
-        self.assertIn("? { path: save.path, text: save.text, create: true }", block)
-        self.assertIn(": { path: save.path, text: save.text, version: save.version, git_path: Boolean(activeFileGitPath) };", block)
-        self.assertIn("if (!save.draft && activeFileGitPath && save.apiPath) saveBody.path_token = save.apiPath;", block)
+        self.assertIn("? { path: save.path, text: save.text, create: true }", source)
+        self.assertIn(": { path: save.path, text: save.text, version: save.version, git_path: Boolean(activeFileGitPath) };", source)
+        self.assertIn("if (!save.draft && activeFileGitPath && save.apiPath) body.path_token = save.apiPath;", source)
+        self.assertIn("const saveBody = buildActiveFileSaveBody(save);", block)
         self.assertIn("await api(`/api/sessions/${save.sessionId}/file/write`", block)
         self.assertIn("if (!saveStillCurrent()) return true;", block)
         self.assertIn("return applyActiveFileSaveSuccess(save, res, { exitEditMode });", block)
