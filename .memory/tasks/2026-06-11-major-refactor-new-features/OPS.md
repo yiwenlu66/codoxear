@@ -6423,3 +6423,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: file selection copy action policy belongs to the file-viewer controller. App still owns raw selection extraction, raw clipboard implementation, touch button DOM binding, browser URL prefix/download anchor side effects, persisted file mode storage, raw mode DOM application, raw load-result rendering, active file content metadata/text baseline, `fileEditMode` state, paste/unsaved dialog DOM, touch toolbar DOM, and raw Monaco selection helpers.
+
+
+## 2026-06-30T15:22:07Z Touch movement button policy controller ownership
+- Functional commit `af19ac6 Move touch movement button policy into viewer controller` moved touch-arrow button action policy from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `handleFileTouchMoveButtonPress(direction)` now owns the pre-move editor refocus plus delegation to controller-owned `moveFileTouchSelection(direction)`. App touch-arrow bindings only prevent/normalize touch/click events through existing `bindFileTouchPress` and pass the direction to the controller wrapper.
+- Tests updated: source assertions now require controller-owned `handleFileTouchMoveButtonPress(direction)`, wrapper delegation, and directional app bindings through the controller rather than direct app-side `focusActiveFileCodeEditor(); moveFileTouchSelection(...)` sequences.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - File-viewer focused `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader focused frontend/file-viewer/static/auth group returned `119 passed, 28 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: touch movement button action policy belongs to the file-viewer controller. App still owns touch press normalization/binding mechanics, raw selection extraction, raw clipboard implementation, browser URL prefix/download anchor side effects, persisted file mode storage, raw mode DOM application, raw load-result rendering, active file content metadata/text baseline, `fileEditMode` state, paste/unsaved dialog DOM, touch toolbar DOM, and raw Monaco selection helpers.
