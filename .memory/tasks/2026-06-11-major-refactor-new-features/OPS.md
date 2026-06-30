@@ -5331,3 +5331,28 @@
 - Clean-room review `e2634341-affc-4cf6-9023-2b0e22ae6745` returned PASS with no blockers. Review verified semantic-neutral extraction, lifecycle integrity, no accidental generic dispatcher/finalizer coupling, correct request threading, stale/render failure behavior, error propagation, preserved double `applyFileMode()` pattern for draft, and VM/source test fidelity. Non-blocking note: the helper's `setFileViewMode` guard is usually a no-op after `openDraftFilePathWithGuard`, but remains a defensive direct-call safeguard.
 - Next transition seam from architect `d2c1037f-1c5f-4270-a1f5-b5227b659e9e`: open-file request lifecycle helper around begin/current/finalize/caller cleanup, with strict preservation of open-file Boolean vs draft void return semantics and no second `cancelPendingFileOpen()`.
 - Scope note: this is draft load choreography ownership only. It does not claim open-request lifecycle helper ownership, video `applyFileMode()` cleanup, PDF lifecycle repair, save-token ownership, or browser-manual rendering evidence.
+
+
+
+## 2026-06-30T00:53:46Z File open request handle extraction
+- Functional commit `eeee742 Extract file open request handle` introduced `startFileOpenRequest(nextPath, { line, gitPath, apiPath })` as a thin handle factory around the existing open-request lifecycle.
+- Mechanism: `startFileOpenRequest()` calls `beginFileOpenRequest()` exactly once, freezes and returns `{ request, path: request.path, done: () => finalizeFileOpenRequest(request) }`, and does not call `cancelPendingFileOpen()` directly or own status/reset/catch/return behavior.
+- Replacement sites:
+  - `openFilePath()` now uses the handle for `request`, `rel`, invalid empty-path finalization, and the `finally` finalizer. It still owns Boolean return semantics, loading status, panel reset, fetches, stale guards, dispatch, success finalization, catch reset/error, and touch-toolbar error refresh.
+  - `openDraftFilePath()` now uses the handle for `request`, invalid draft-path finalization, and the `finally` finalizer. It still owns void return semantics, draft path normalization, preparing status, panel reset, `applyDraftFileLoad()`, and catch reset/error.
+- Boundary preserved: `beginFileOpenRequest()`, `isCurrentFileOpenRequest()`, `finalizeFileOpenRequest()`, `cancelPendingFileOpen()`, `applyFileLoadResult()`, `finalizeFileOpenSuccess()`, `applyDraftFileLoad()`, save/session state, video/PDF lifecycle, and dispatcher behavior were not otherwise changed.
+- Tests added/updated:
+  - `eval_file_open_request_sequence()` now exports and exercises the real `startFileOpenRequest()` in the same VM as the real begin/current/finalize/cancel helpers.
+  - VM checks verify returned path, currentness before `done()`, that `done()` does not abort the request signal, that a subsequent handle does not abort a finalized handle, and that a later explicit cancel still invalidates old requests.
+  - Source sentinels pin the helper signature and both open/draft call-site rewrites while retaining the inner `beginFileOpenRequest()` sentinel.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused request/draft/load/race tests passed.
+  - Focused file-viewer/file-picker/static group returned `84 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1268 passed, 136 subtests passed`.
+  - Focused Docker file-viewer/file-picker/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed.
+- Clean-room review `b12fd653-8124-471b-b7a1-d339f197be5c` returned PASS with no blockers. Review verified preserved request identity, unchanged finalization semantics, no async gap in invalid-path branches, unchanged try/catch/finally coverage, preserved Boolean vs void return semantics, no accidental cancel/double request-id increment, safe frozen-handle shape, VM fidelity, and correct source sentinel updates. Non-blocking notes: direct `finalizeFileOpenRequest()` is now reachable through handle `done()` closures; direct `cancelPendingFileOpen()` sites outside open-request lifecycle remain legitimate viewer/session teardown paths; the VM AbortController mock preserves the signal identity property that the production code depends on.
+- Next transition seam: active-file save request context/token ownership, starting with naming the save token/currentness/pending/final cleanup mechanics while leaving response application, conflict rendering, and write-body semantics inline.
+- Scope note: this is open-request handle ownership only. It does not claim save-token ownership, video fallback mode cleanup, PDF lifecycle repair, or browser-manual rendering evidence.
