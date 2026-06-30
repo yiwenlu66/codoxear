@@ -6025,3 +6025,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: editor state snapshot, capability policy, and derived predicate decisions now belong to the file-viewer controller. Editor action handlers, touch-toolbar DOM updates, generic file-open result rendering/application, draft inspect/open currentness behavior, and dirty unavailable transition choreography remain partly `app.js`-owned.
+
+## 2026-06-30T10:48:49Z File editor affordance policy controller ownership
+- Functional commit `3664ac4 Move file editor affordance policy into viewer controller` moved `syncFileEditorReadOnly()` and `updateFileEditButton()` policy from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: controller-owned current editor state/capabilities now directly drive editor read-only updates and the edit/save button disabled/classes/icon/title/aria state through explicit `fileEditButton`, `iconSvg`, `focusEditor`, and touch-toolbar dependencies. This removes the previous inversion where controller save/open state transitions called back into app-owned affordance policy.
+- Behavior preserved: file editors still set Monaco read-only from active writability; save-pending still disables the edit button and shows the save affordance; edit-mode and unavailable labels/titles/aria preserve the previous branches, including the corrected edit-mode `aria-label: Save file` branch caught by the real-controller probe during implementation.
+- Tests updated:
+  - `tests/test_frontend_file_viewer_module_source.py` now verifies real-controller button snapshots for edit-mode, view-mode, unavailable, and save-pending states plus editor `updateOptions({ readOnly })` effects.
+  - `tests/test_file_viewer_source.py` source sentinels now require app wrapper delegation and controller-owned button/read-only internals; save helper expectations observe button/editor effects rather than removed callbacks.
+- Validation before commit:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `91 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: editor state snapshot, capability policy, derived predicates, edit-button policy, and editor read-only synchronization now belong to the file-viewer controller. Touch selection state/actions, paste dialog/insert actions, generic file-open result rendering/application, draft inspect/open currentness behavior, and dirty unavailable transition choreography remain partly `app.js`-owned.
