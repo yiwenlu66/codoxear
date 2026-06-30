@@ -5908,3 +5908,21 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: save request token/currentness/pending ownership moved. Save POST orchestration, save success application, generic file-open result rendering/application, draft inspect/open guard behavior, unavailable transition policy, paste/editor actions, and toolbar/editability policy remain partly `app.js`-owned.
+
+## 2026-06-30T09:33:33Z Save success application controller ownership
+- Functional commit `39df4af Move save success application into viewer controller` moved active-file save success response application from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `createFileViewerController()` now owns `applyActiveFileSaveSuccess(save, res, { exitEditMode })`. The controller resolves response-applied state using injected current kind/version/editability dependencies so omitted server fields preserve prior values, writes the post-save text state through `applyActiveFileTextState()`, clears draft state, clears draft-save git/api identity while preserving the active line, applies file mode, clears dirty state, optionally exits edit mode, writes the size/status label, remembers the opened file, and rerenders the picker.
+- `app.js` keeps the stable wrapper name and save POST orchestration; it injects `currentActiveFileKind`, `currentActiveFileEditable`, `setFileDirty`, and `fmtBytes` into the controller and delegates success application to `fileViewerController.applyActiveFileSaveSuccess(...)`.
+- Behavior preserved/strengthened: draft saves still become non-draft clean files, clear git/api identity, keep the active line, and use response version/editable/size/path when supplied; non-draft saves keep edit mode when requested, preserve markdown kind plus existing version/editability when the server omits those fields, use text length for missing size, and preserve git/api identity.
+- Tests updated:
+  - `tests/test_file_viewer_source.py` now executes the real `app_file_viewer.js` controller for save-success application, including draft identity cleanup and non-draft markdown/default-field preservation.
+  - Source sentinels now require `app.js` wrapper delegation and `app_file_viewer.js` ownership of status/remembered-file success behavior.
+  - `tests/test_frontend_file_viewer_module_source.py` fixture supplies the new fail-loud controller dependencies.
+- Validation before commit:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `90 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1286 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: save success response application moved. Save POST transport orchestration remains app-owned; generic file-open result rendering/application, draft inspect/open currentness behavior, unavailable transition policy, paste/editor actions, and toolbar/editability policy remain partly `app.js`-owned.
