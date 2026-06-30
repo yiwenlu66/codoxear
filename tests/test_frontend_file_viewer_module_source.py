@@ -192,8 +192,25 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           state.viewMode = "preview";
           renderController.setActiveFileIdentity("draft/new.txt", {{ line: 5, gitPath: false, apiPath: "" }});
           events.length = 0;
-          const draftResult = await renderController.applyDraftFileLoad("draft/new.txt", {{ requestId: 0, sessionId: "sid-1", path: "draft/new.txt", apiPath: "", line: 5 }});
+          const draftRequest = {{ requestId: 0, sessionId: "sid-1", path: "draft/new.txt", apiPath: "", line: 5 }};
+          const draftResult = await renderController.applyDraftFileLoad("draft/new.txt", draftRequest);
           const draft = {{ result: draftResult, status: fileStatus.textContent, viewMode: state.viewMode, events: events.slice() }};
+          state.resetCount = 0;
+          state.touchCount = 0;
+          fileStatus.textContent = "";
+          events.length = 0;
+          const draftErrorResult = renderController.renderDraftFileOpenError(draftRequest, new Error("draft boom"));
+          const currentDraftError = {{ result: draftErrorResult, status: fileStatus.textContent, resetCount: state.resetCount, touchCount: state.touchCount, events: events.slice() }};
+          events.length = 0;
+          const draftAbortError = new Error("aborted");
+          draftAbortError.name = "AbortError";
+          const draftAbortResult = renderController.renderDraftFileOpenError(draftRequest, draftAbortError);
+          const abortDraftError = {{ result: draftAbortResult, status: fileStatus.textContent, resetCount: state.resetCount, touchCount: state.touchCount, events: events.slice() }};
+          events.length = 0;
+          state.sessionId = "sid-2";
+          const draftStaleResult = renderController.renderDraftFileOpenError(draftRequest, new Error("stale"));
+          const staleDraftError = {{ result: draftStaleResult, status: fileStatus.textContent, resetCount: state.resetCount, touchCount: state.touchCount, events: events.slice() }};
+          state.sessionId = "sid-1";
           const render = {{
             exportFrozen: Object.isFrozen(fileViewer),
             exports: Object.keys(fileViewer).sort(),
@@ -206,6 +223,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             openErrors: {{ currentError, abortErrorResult, staleError, unknownError }},
             finalize,
             draft,
+            draftErrors: {{ currentDraftError, abortDraftError, staleDraftError }},
           }};
           const availableReloadFailure = await runReloadCase("");
           const canceledReload = await runReloadCase("", false);
@@ -286,6 +304,11 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
                 ["rememberActiveFileSelection"],
                 ["renderFilePickerMenu"],
             ],
+        })
+        self.assertEqual(result["render"]["draftErrors"], {
+            "currentDraftError": {"result": False, "status": "error: draft boom", "resetCount": 1, "touchCount": 0, "events": [["resetBuffer"]]},
+            "abortDraftError": {"result": False, "status": "error: draft boom", "resetCount": 1, "touchCount": 0, "events": []},
+            "staleDraftError": {"result": False, "status": "error: draft boom", "resetCount": 1, "touchCount": 0, "events": []},
         })
         self.assertIn("file viewer dependency missing: el", result["missingDependencyError"])
 

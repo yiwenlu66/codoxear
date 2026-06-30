@@ -135,6 +135,13 @@ def controller_identity_ctx_js(
               ctx.updateFileTouchToolbar();
               return false;
             }},
+            renderDraftFileOpenError(request, error) {{
+              if (this.isFileOpenAbortError(error)) return false;
+              if (!this.isCurrentFileOpenRequest(request)) return false;
+              ctx.resetActiveFileBufferState();
+              ctx.fileStatus.textContent = `error: ${{error && error.message ? error.message : "unknown error"}}`;
+              return false;
+            }},
             applyDraftFileLoad: async (rel, request) => {{
               if (ctx.fileViewMode !== "file") ctx.setFileViewMode("file");
               ctx.applyActiveFileTextState({{ text: "", editable: true, version: "", draft: true }});
@@ -2337,9 +2344,13 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("return fileViewerController.applyDraftFileLoad(rel, request);", source)
         self.assertIn("const loaded = await applyDraftFileLoad(rel, request);\n            if (!loaded) return;", source)
         self.assertIn("async function applyDraftFileLoad(rel, request)", viewer_source)
+        self.assertIn("function renderDraftFileOpenError(request, error)", viewer_source)
+        self.assertIn("fileViewerController.renderDraftFileOpenError(request, e);\n            return;", source)
         self.assertIn("applyActiveFileTextState({ text: \"\", editable: true, version: \"\", draft: true });", viewer_source)
         draft_block = viewer_source[viewer_source.index("async function applyDraftFileLoad("):viewer_source.index("function renderFileOpenError", viewer_source.index("async function applyDraftFileLoad("))]
         self.assertNotIn("rememberOpenedFile(rel", draft_block)
+        draft_error_block = viewer_source[viewer_source.index("function renderDraftFileOpenError("):viewer_source.index("async function fetchFileOpenResult", viewer_source.index("function renderDraftFileOpenError("))]
+        self.assertNotIn("updateFileTouchToolbar();", draft_error_block)
 
     def test_active_file_load_state_writers_are_single_owned(self) -> None:
         result = eval_active_file_load_state_writers()

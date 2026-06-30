@@ -8917,10 +8917,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const loaded = await applyDraftFileLoad(rel, request);
             if (!loaded) return;
           } catch (e) {
-            if (e && e.name === "AbortError") return;
-            if (!isCurrentFileOpenRequest(request)) return;
-            resetActiveFileBufferState();
-            fileStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
+            fileViewerController.renderDraftFileOpenError(request, e);
+            return;
           } finally {
             openRequest.done();
           }

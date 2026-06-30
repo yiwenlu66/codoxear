@@ -205,6 +205,14 @@
       return false;
     }
 
+    function renderDraftFileOpenError(request, error) {
+      if (isFileOpenAbortError(error)) return false;
+      if (!isCurrentFileOpenRequest(request)) return false;
+      resetActiveFileBufferState();
+      fileStatus.textContent = `error: ${error && error.message ? error.message : "unknown error"}`;
+      return false;
+    }
+
     async function fetchFileOpenResult(request, rel, viewMode) {
       if (viewMode === "diff") {
         const pathTokenQuery = request.apiPath ? `&path_token=${encodeURIComponent(request.apiPath)}` : "";
@@ -313,6 +321,7 @@
       finalizeFileOpenSuccess,
       applyDraftFileLoad,
       renderFileOpenError,
+      renderDraftFileOpenError,
     });
   }
 
