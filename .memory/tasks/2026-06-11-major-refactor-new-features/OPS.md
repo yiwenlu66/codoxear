@@ -5777,3 +5777,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test` returned `1285 passed, 1 skipped, 136 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: file-open request transport/currentness ownership moved. Mode resolution, load-result dispatch, draft load choreography, save request lifecycle, unavailable transition policy, paste/editor actions, and toolbar/editability policy still remain partly app.js-owned.
+
+## 2026-06-30T08:04:16Z File-open mode resolution controller ownership
+- Functional commit `f41e360 Move file open mode resolution into viewer controller` moved explicit file-open mode validation and automatic mode resolution from inline `app.js` helpers into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `createFileViewerController()` now requires explicit dependencies for current mode, active file entry, git-state freshness, and markdown previewability; it owns `normalizeExplicitFileOpenMode(requestedMode)` and `resolveFileOpenViewMode(request, rel, requestedMode)`. `app.js` keeps wrapper names for call-site stability, but they now delegate to the controller.
+- Behavior preserved: invalid explicit modes still throw `invalid file open mode` before `openFilePathWithGuard()` mutates view state or opens a file; explicit `preview`/`file`/`diff` still override automatic mode selection; absent mode still downgrades stale/non-changed diff views and non-previewable markdown preview requests to file view; open fetch/result/catch/finalization remain in `app.js`.
+- Tests updated:
+  - `tests/test_frontend_file_viewer_module_source.py` executes the real controller module and now verifies diff fallback, diff allowed, preview fallback, explicit diff override, and invalid-mode error behavior.
+  - `tests/test_file_viewer_source.py` source/VM fixtures now delegate app.js wrapper behavior through controller-mode APIs while source sentinels check the mode-resolution internals in `app_file_viewer.js`.
+  - `tests/test_file_picker_search_source.py` now checks the diff-resolution ownership line in `app_file_viewer.js` rather than preserving the old `app.js` implementation detail.
+- Validation before commit:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `90 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1286 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: this moves file-open mode selection into the controller. File-open HTTP fetch/result dispatch/catch/finalization, draft load choreography, save request lifecycle, unavailable transition policy, paste/editor actions, and toolbar/editability policy remain partly `app.js`-owned.
