@@ -54,6 +54,31 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           children: [],
           replaceChildren(...nodes) {{ this.children = nodes; this.textContent = ""; events.push(["replaceChildren", nodes.map((node) => node.tag)]); }},
         }};
+        const fileEditButton = {{
+          disabled: false,
+          innerHTML: "",
+          title: "",
+          attrs: {{}},
+          classes: {{}},
+          classList: {{ toggle(name, enabled) {{ if (enabled) fileEditButton.classes[name] = true; else delete fileEditButton.classes[name]; events.push(["buttonClass", name, Boolean(enabled)]); }} }},
+          setAttribute(name, value) {{ this.attrs[name] = String(value); events.push(["buttonAttr", name, String(value)]); }},
+        }};
+        function resetFileEditButton() {{
+          fileEditButton.disabled = false;
+          fileEditButton.innerHTML = "";
+          fileEditButton.title = "";
+          fileEditButton.attrs = {{}};
+          fileEditButton.classes = {{}};
+        }}
+        function fileEditButtonSnapshot() {{
+          return {{
+            disabled: Boolean(fileEditButton.disabled),
+            innerHTML: fileEditButton.innerHTML,
+            title: fileEditButton.title,
+            ariaLabel: fileEditButton.attrs["aria-label"] || "",
+            classes: Object.keys(fileEditButton.classes).sort(),
+          }};
+        }}
         function el(tag, attrs = {{}}, children = []) {{
           const node = {{ tag, attrs, children: Array.isArray(children) ? children : [], onclick: null }};
           if (attrs && Object.prototype.hasOwnProperty.call(attrs, "text")) node.text = attrs.text;
@@ -63,6 +88,8 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           return fileViewer.createFileViewerController({{
             el,
             fileStatus,
+            fileEditButton,
+            iconSvg: (name) => `icon:${{name}}`,
             currentSessionId: () => state.sessionId,
             normalizeLineNumber: (value) => value == null || value === "" ? null : Number(value),
             normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
@@ -86,7 +113,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
               if (url.includes("/git/file_versions")) return {{ base_text: "old", current_text: "new", base_exists: true, current_exists: false, abs_path: "/abs/diff" }};
               return {{ kind: "text", text: "body", path: "/abs/read" }};
             }},
-            focusEditor: () => ({{ focus: () => events.push(["focus"]) }}),
+            focusEditor: () => ({{ focus: () => events.push(["focus"]), updateOptions: (opts) => events.push(["editorOptions", opts]) }}),
             disposeOpenRender: () => events.push(["disposeOpenRender"]),
             currentFileViewMode: () => state.viewMode,
             currentFileEditorKind: () => state.editorKind || "file",
@@ -107,12 +134,10 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             currentFileDirty: () => state.dirty,
             getFileEditorText: () => "",
             setFileDirty: () => events.push(["setFileDirty"]),
-            syncFileEditorReadOnly: () => events.push(["syncFileEditorReadOnly"]),
             fmtBytes: (value) => `${{value}}B`,
             applyFileMode: () => events.push(["applyFileMode"]),
             rememberOpenedFile: (rel, absPath) => events.push(["rememberOpenedFile", rel, absPath]),
             rememberActiveFileSelection: () => events.push(["rememberActiveFileSelection"]),
-            updateFileEditButton: () => events.push(["updateFileEditButton"]),
             renderFilePickerMenu: () => events.push(["renderFilePickerMenu"]),
           }});
         }}
@@ -269,6 +294,33 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             idleTextWritable: renderController.activeFileEditorIdleTextWritable(),
             editModeAllowed: renderController.activeFileEditModeAllowedInCurrentView(),
           }};
+          events.length = 0;
+          resetFileEditButton();
+          renderController.updateFileEditButton();
+          const editButtonEditMode = {{ button: fileEditButtonSnapshot(), events: events.slice() }};
+          events.length = 0;
+          renderController.syncFileEditorReadOnly();
+          const readOnlyWritable = events.slice();
+          state.editMode = false;
+          state.dirty = false;
+          events.length = 0;
+          resetFileEditButton();
+          renderController.updateFileEditButton();
+          renderController.syncFileEditorReadOnly();
+          const editButtonViewMode = {{ button: fileEditButtonSnapshot(), events: events.slice() }};
+          state.editMode = true;
+          state.dirty = true;
+          state.unavailable = true;
+          events.length = 0;
+          resetFileEditButton();
+          renderController.updateFileEditButton();
+          const editButtonUnavailable = {{ button: fileEditButtonSnapshot(), events: events.slice() }};
+          state.unavailable = false;
+          events.length = 0;
+          resetFileEditButton();
+          renderController.markActiveFileSavePending({{ path: "state.md" }});
+          const editButtonSavePending = {{ button: fileEditButtonSnapshot(), events: events.slice(), status: fileStatus.textContent }};
+          renderController.clearActiveFileSaveState();
           const editableCapabilities = renderController.fileEditorCapabilities({{ path: "src/app.py", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
           const pendingCapabilities = renderController.fileEditorCapabilities({{ path: "src/app.py", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: true }});
           const binaryCapabilities = renderController.fileEditorCapabilities({{ path: "img.png", kind: "image", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
@@ -290,6 +342,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             saveErrors: {{ saveConflict, genericSaveError, unknownSaveError }},
             unavailableAction: {{ availableBlocked, availableBlockStatus, unavailableBlocked, unavailableBlockStatus }},
             editorState: {{ editorState, editorStateFrozen }},
+            editabilityUi: {{ editButtonEditMode, readOnlyWritable, editButtonViewMode, editButtonUnavailable, editButtonSavePending }},
             capabilities: {{ derivedCapabilities, editableCapabilities, pendingCapabilities, binaryCapabilities, missingPathCapabilities, editableFrozen: Object.isFrozen(editableCapabilities) }},
           }};
           const availableReloadFailure = await runReloadCase("");
@@ -354,7 +407,11 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
                 ["applyFileMode"],
                 ["rememberOpenedFile", "src/app.py", "/abs/src/app.py"],
                 ["rememberActiveFileSelection"],
-                ["updateFileEditButton"],
+                ["buttonClass", "active", True],
+                ["buttonClass", "primary", True],
+                ["buttonClass", "dirty", False],
+                ["buttonAttr", "aria-label", "Save file"],
+                ["touchToolbar"],
                 ["renderFilePickerMenu"],
             ],
         })
@@ -412,6 +469,26 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
                 "unavailable": False,
             },
             "editorStateFrozen": True,
+        })
+        self.assertEqual(result["render"]["editabilityUi"], {
+            "editButtonEditMode": {
+                "button": {"disabled": False, "innerHTML": "icon:save", "title": "Save file", "ariaLabel": "Save file", "classes": ["active", "dirty", "primary"]},
+                "events": [["buttonClass", "active", True], ["buttonClass", "primary", True], ["buttonClass", "dirty", True], ["buttonAttr", "aria-label", "Save file"], ["touchToolbar"]],
+            },
+            "readOnlyWritable": [["editorOptions", {"readOnly": False}]],
+            "editButtonViewMode": {
+                "button": {"disabled": False, "innerHTML": "icon:edit", "title": "Edit file", "ariaLabel": "Edit file", "classes": []},
+                "events": [["buttonClass", "active", False], ["buttonClass", "primary", False], ["buttonClass", "dirty", False], ["buttonAttr", "aria-label", "Edit file"], ["touchToolbar"], ["editorOptions", {"readOnly": True}]],
+            },
+            "editButtonUnavailable": {
+                "button": {"disabled": True, "innerHTML": "icon:save", "title": "Session unavailable; copy edits before closing", "ariaLabel": "Session unavailable; copy edits before closing", "classes": ["active", "dirty", "primary"]},
+                "events": [["buttonClass", "active", True], ["buttonClass", "primary", True], ["buttonClass", "dirty", True], ["buttonAttr", "aria-label", "Session unavailable; copy edits before closing"], ["touchToolbar"]],
+            },
+            "editButtonSavePending": {
+                "button": {"disabled": True, "innerHTML": "icon:save", "title": "Saving file", "ariaLabel": "Saving file", "classes": ["active", "dirty", "primary"]},
+                "events": [["buttonClass", "active", True], ["buttonClass", "primary", True], ["buttonClass", "dirty", True], ["buttonAttr", "aria-label", "Saving file"], ["touchToolbar"], ["editorOptions", {"readOnly": False}]],
+                "status": "Saving state.md...",
+            },
         })
         self.assertEqual(result["render"]["capabilities"], {
             "derivedCapabilities": {

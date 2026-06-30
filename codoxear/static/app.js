@@ -7441,8 +7441,7 @@
         }
 
         function syncFileEditorReadOnly() {
-          if (fileEditorKind !== "file" || !fileEditor || typeof fileEditor.updateOptions !== "function") return;
-          fileEditor.updateOptions({ readOnly: !activeFileEditorWritable() });
+          return fileViewerController.syncFileEditorReadOnly();
         }
 
         function getActiveFileCodeEditor() {
@@ -7827,20 +7826,7 @@
         }
 
         function updateFileEditButton() {
-          const unavailable = isFileViewerSessionUnavailable();
-          const canEdit = activeFileCanEnterEditMode();
-          fileEditBtn.disabled = unavailable || !canEdit;
-          const savePending = fileSavePendingValue();
-          const saveStyle = fileEditMode || savePending;
-          fileEditBtn.classList.toggle("active", saveStyle);
-          fileEditBtn.classList.toggle("primary", saveStyle);
-          fileEditBtn.classList.toggle("dirty", fileDirty);
-          if (savePending) fileEditBtn.innerHTML = iconSvg("save");
-          else if (fileEditMode) fileEditBtn.innerHTML = iconSvg("save");
-          else fileEditBtn.innerHTML = iconSvg("edit");
-          fileEditBtn.title = unavailable ? "Session unavailable; copy edits before closing" : savePending ? "Saving file" : fileEditMode ? "Save file" : canEdit ? "Edit file" : "File is read-only";
-          fileEditBtn.setAttribute("aria-label", unavailable ? "Session unavailable; copy edits before closing" : savePending ? "Saving file" : fileEditMode ? "Save file" : "Edit file");
-          updateFileTouchToolbar();
+          return fileViewerController.updateFileEditButton();
         }
 
         function setFileDirty(nextDirty) {
@@ -8458,6 +8444,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         const fileViewerController = codoxearFileViewer.createFileViewerController({
           el,
           fileStatus,
+          fileEditButton: fileEditBtn,
+          iconSvg,
           currentSessionId: () => fileViewerSessionId,
           normalizeLineNumber,
           normalizeFileApiPath,
@@ -8488,12 +8476,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           currentFileDirty: () => fileDirty,
           getFileEditorText: () => getFileEditorText(),
           setFileDirty: (dirty) => setFileDirty(dirty),
-          syncFileEditorReadOnly: () => syncFileEditorReadOnly(),
           fmtBytes: (value) => fmtBytes(value),
           applyFileMode: () => applyFileMode(),
           rememberOpenedFile: (rel, absPath) => rememberOpenedFile(rel, absPath),
           rememberActiveFileSelection: () => rememberActiveFileSelection(),
-          updateFileEditButton: () => updateFileEditButton(),
           renderFilePickerMenu: () => renderFilePickerMenu(),
         });
 

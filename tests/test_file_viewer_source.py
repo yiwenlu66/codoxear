@@ -169,6 +169,8 @@ def controller_identity_ctx_js(
             activeFileEditorIdleWritable() {{ return this.activeFileEditorCapabilities().idleWritable; }},
             activeFileEditorIdleTextWritable() {{ return this.activeFileEditorCapabilities().idleTextWritable; }},
             activeFileEditModeAllowedInCurrentView() {{ return this.activeFileEditorCapabilities().editModeAllowedInCurrentView; }},
+            syncFileEditorReadOnly() {{ if (typeof ctx.syncFileEditorReadOnly === "function") return ctx.syncFileEditorReadOnly(); }},
+            updateFileEditButton() {{ if (typeof ctx.updateFileEditButton === "function") return ctx.updateFileEditButton(); }},
             renderFileOpenError(request, error) {{
               if (this.isFileOpenAbortError(error)) return false;
               if (!this.isCurrentFileOpenRequest(request)) return false;
@@ -1078,6 +1080,8 @@ def eval_file_open_request_sequence() -> dict:
         const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
           el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children }}),
           fileStatus: {{ replaceChildren() {{}} }},
+          fileEditButton: {{ classList: {{ toggle() {{}} }}, setAttribute() {{}} }},
+          iconSvg: (name) => name,
           currentSessionId: () => state.sessionId,
           normalizeLineNumber: (value) => value == null ? null : Number(value),
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
@@ -1510,9 +1514,20 @@ def eval_active_file_save_request_helpers() -> dict:
         }};
         const calls = [];
         const fileStatus = {{ textContent: "", replaceChildren() {{}} }};
+        const fileEditButton = {{
+          disabled: false,
+          innerHTML: "",
+          title: "",
+          attrs: {{}},
+          classes: {{}},
+          classList: {{ toggle(name, enabled) {{ fileEditButton.classes[name] = Boolean(enabled); calls.push(["buttonToggle", name, Boolean(enabled)]); }} }},
+          setAttribute(name, value) {{ this.attrs[name] = String(value); calls.push(["buttonAttr", name, String(value)]); }},
+        }};
         const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
           el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children }}),
           fileStatus,
+          fileEditButton,
+          iconSvg: (name) => `icon:${{name}}`,
           currentSessionId: () => state.sessionId,
           normalizeLineNumber: (value) => value == null ? null : Number(value),
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
@@ -1522,7 +1537,7 @@ def eval_active_file_save_request_helpers() -> dict:
           confirmReload: () => true,
           openFilePath: async () => true,
           api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
-          focusEditor: () => null,
+          focusEditor: () => ({{ updateOptions: (opts) => calls.push(["updateOptions", opts]) }}),
           disposeOpenRender: () => calls.push(["disposeOpenRender"]),
           currentFileViewMode: () => "file",
           currentFileEditorKind: () => "file",
@@ -1543,12 +1558,10 @@ def eval_active_file_save_request_helpers() -> dict:
           currentFileDirty: () => true,
           getFileEditorText: () => {{ calls.push(["getFileEditorText"]); return state.text; }},
           setFileDirty: () => calls.push(["setFileDirty"]),
-          syncFileEditorReadOnly: () => calls.push(["syncFileEditorReadOnly"]),
           fmtBytes: (value) => `${{value}}B`,
           applyFileMode: () => {{}},
           rememberOpenedFile: () => {{}},
           rememberActiveFileSelection: () => {{}},
-          updateFileEditButton: () => calls.push(["updateFileEditButton"]),
           renderFilePickerMenu: () => {{}},
         }});
         controller.setActiveFileIdentity("src/app.py", {{ line: 42, gitPath: true, apiPath: "token-1" }});
@@ -1700,6 +1713,8 @@ def eval_active_file_save_success() -> dict:
         const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
           el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children }}),
           fileStatus,
+          fileEditButton: {{ classList: {{ toggle() {{}} }}, setAttribute() {{}} }},
+          iconSvg: (name) => name,
           currentSessionId: () => state.sessionId,
           normalizeLineNumber: (value) => value == null ? null : Number(value),
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
@@ -1819,6 +1834,8 @@ def eval_active_file_save_transport() -> dict:
         const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
           el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children }}),
           fileStatus,
+          fileEditButton: {{ classList: {{ toggle() {{}} }}, setAttribute() {{}} }},
+          iconSvg: (name) => name,
           currentSessionId: () => state.sessionId,
           normalizeLineNumber: (value) => value == null ? null : Number(value),
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
@@ -1972,6 +1989,8 @@ def eval_draft_file_load_choreography() -> dict:
         const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
           el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children }}),
           fileStatus,
+          fileEditButton: {{ classList: {{ toggle() {{}} }}, setAttribute() {{}} }},
+          iconSvg: (name) => name,
           currentSessionId: () => state.sessionId,
           normalizeLineNumber: (value) => value == null ? null : Number(value),
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
@@ -2818,7 +2837,12 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("return fileViewerController.activeFileEditorCapabilities();", source)
         self.assertIn("return fileEditorCapabilities(currentFileEditorState());", viewer_source)
         self.assertIn("function activeFileEditorIdleTextWritable()", viewer_source)
-        self.assertIn("fileEditor.updateOptions({ readOnly: !activeFileEditorWritable() });", source)
+        self.assertIn("return fileViewerController.syncFileEditorReadOnly();", source)
+        self.assertIn("function syncFileEditorReadOnly()", viewer_source)
+        self.assertIn("editor.updateOptions({ readOnly: !activeFileEditorWritable() });", viewer_source)
+        self.assertIn("return fileViewerController.updateFileEditButton();", source)
+        self.assertIn("function updateFileEditButton()", viewer_source)
+        self.assertIn("fileEditButton.disabled = unavailable || !canEdit;", viewer_source)
         self.assertIn("const canPaste = activeFileEditorIdleTextWritable();", source)
         self.assertIn("fileEditMode = Boolean(nextMode) && activeFileEditModeAllowedInCurrentView();", source)
         result = eval_file_editor_capability_predicates()
@@ -3042,13 +3066,28 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertTrue(result["currentInitial"])
         self.assertTrue(result["pendingAfterMark"])
         self.assertEqual(result["statusAfterMark"], "Saving src/app.py...")
-        self.assertEqual(result["callsAfterMark"], [["getFileEditorText"], ["updateFileEditButton"], ["syncFileEditorReadOnly"]])
+        self.assertEqual(result["callsAfterMark"], [
+            ["getFileEditorText"],
+            ["buttonToggle", "active", True],
+            ["buttonToggle", "primary", True],
+            ["buttonToggle", "dirty", True],
+            ["buttonAttr", "aria-label", "Saving file"],
+            ["updateFileTouchToolbar"],
+            ["updateOptions", {"readOnly": False}],
+        ])
         self.assertFalse(result["currentWrongApiPath"])
         self.assertFalse(result["currentWrongGitPath"])
         self.assertFalse(result["currentUnavailable"])
         self.assertTrue(result["afterMismatchedFinish"]["pending"])
         self.assertFalse(result["afterMatchedFinish"]["pending"])
-        self.assertEqual(result["afterMatchedFinish"]["calls"][-2:], [["syncFileEditorReadOnly"], ["updateFileEditButton"]])
+        self.assertEqual(result["afterMatchedFinish"]["calls"][-6:], [
+            ["updateOptions", {"readOnly": False}],
+            ["buttonToggle", "active", True],
+            ["buttonToggle", "primary", True],
+            ["buttonToggle", "dirty", True],
+            ["buttonAttr", "aria-label", "Save file"],
+            ["updateFileTouchToolbar"],
+        ])
         source = APP_JS.read_text(encoding="utf-8")
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertIn("function fileSavePendingValue()", source)
@@ -3170,7 +3209,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(result["success"]["status"], "src.py - 4B")
         self.assertIn(["api", "/api/sessions/sid-1/file/write", "POST", {"path": "src.py", "text": "NEW", "version": "v1", "git_path": True, "path_token": "tok"}], result["success"]["calls"])
         self.assertIn(["applyActiveFileTextState", {"kind": "text", "text": "NEW", "editable": False, "version": "v2", "draft": False}], result["success"]["calls"])
-        self.assertEqual(result["success"]["calls"][-2:], [["syncFileEditorReadOnly"], ["updateFileEditButton"]])
+        self.assertEqual(result["success"]["calls"][-2:], [["renderFilePickerMenu"], ["updateFileTouchToolbar"]])
 
         self.assertTrue(result["staleSuccess"]["ok"])
         self.assertFalse(result["staleSuccess"]["pending"])

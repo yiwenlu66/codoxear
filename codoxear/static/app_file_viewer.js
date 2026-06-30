@@ -11,6 +11,13 @@
     return value;
   }
 
+  function requireEditButtonNode(value) {
+    if (!value || !value.classList || typeof value.classList.toggle !== "function" || typeof value.setAttribute !== "function") {
+      throw new TypeError("file viewer dependency missing: fileEditButton");
+    }
+    return value;
+  }
+
   function fileSaveConflictTarget(sessionId, path) {
     return Object.freeze({ sessionId, path });
   }
@@ -18,6 +25,8 @@
   function createFileViewerController(deps) {
     const el = requireFunction(deps && deps.el, "el");
     const fileStatus = requireStatusNode(deps && deps.fileStatus);
+    const fileEditButton = requireEditButtonNode(deps && deps.fileEditButton);
+    const iconSvg = requireFunction(deps && deps.iconSvg, "iconSvg");
     const currentSessionId = requireFunction(deps && deps.currentSessionId, "currentSessionId");
     const normalizeLineNumber = requireFunction(deps && deps.normalizeLineNumber, "normalizeLineNumber");
     const normalizeFileApiPath = requireFunction(deps && deps.normalizeFileApiPath, "normalizeFileApiPath");
@@ -48,12 +57,10 @@
     const currentFileDirty = requireFunction(deps && deps.currentFileDirty, "currentFileDirty");
     const getFileEditorText = requireFunction(deps && deps.getFileEditorText, "getFileEditorText");
     const setFileDirty = requireFunction(deps && deps.setFileDirty, "setFileDirty");
-    const syncFileEditorReadOnly = requireFunction(deps && deps.syncFileEditorReadOnly, "syncFileEditorReadOnly");
     const fmtBytes = requireFunction(deps && deps.fmtBytes, "fmtBytes");
     const applyFileMode = requireFunction(deps && deps.applyFileMode, "applyFileMode");
     const rememberOpenedFile = requireFunction(deps && deps.rememberOpenedFile, "rememberOpenedFile");
     const rememberActiveFileSelection = requireFunction(deps && deps.rememberActiveFileSelection, "rememberActiveFileSelection");
-    const updateFileEditButton = requireFunction(deps && deps.updateFileEditButton, "updateFileEditButton");
     const renderFilePickerMenu = requireFunction(deps && deps.renderFilePickerMenu, "renderFilePickerMenu");
     let activeSaveConflict = null;
     let fileOpenRequestId = 0;
@@ -255,6 +262,32 @@
 
     function activeFileEditModeAllowedInCurrentView() {
       return activeFileEditorCapabilities().editModeAllowedInCurrentView;
+    }
+
+    function syncFileEditorReadOnly() {
+      if (currentFileEditorKind() !== "file") return;
+      const editor = focusEditor();
+      if (!editor || typeof editor.updateOptions !== "function") return;
+      editor.updateOptions({ readOnly: !activeFileEditorWritable() });
+    }
+
+    function updateFileEditButton() {
+      const unavailable = isUnavailable();
+      const canEdit = activeFileCanEnterEditMode();
+      fileEditButton.disabled = unavailable || !canEdit;
+      const savePending = isFileSavePending();
+      const editMode = Boolean(currentFileEditMode());
+      const dirty = Boolean(currentFileDirty());
+      const saveStyle = editMode || savePending;
+      fileEditButton.classList.toggle("active", saveStyle);
+      fileEditButton.classList.toggle("primary", saveStyle);
+      fileEditButton.classList.toggle("dirty", dirty);
+      if (savePending) fileEditButton.innerHTML = iconSvg("save");
+      else if (editMode) fileEditButton.innerHTML = iconSvg("save");
+      else fileEditButton.innerHTML = iconSvg("edit");
+      fileEditButton.title = unavailable ? "Session unavailable; copy edits before closing" : savePending ? "Saving file" : editMode ? "Save file" : canEdit ? "Edit file" : "File is read-only";
+      fileEditButton.setAttribute("aria-label", unavailable ? "Session unavailable; copy edits before closing" : savePending ? "Saving file" : editMode ? "Save file" : "Edit file");
+      updateFileTouchToolbar();
     }
 
     function isFileSavePending() {
@@ -537,6 +570,8 @@
       activeFileEditorIdleWritable,
       activeFileEditorIdleTextWritable,
       activeFileEditModeAllowedInCurrentView,
+      syncFileEditorReadOnly,
+      updateFileEditButton,
       finalizeFileOpenSuccess,
       applyDraftFileLoad,
       renderFileOpenError,
