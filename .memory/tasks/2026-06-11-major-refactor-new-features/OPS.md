@@ -6094,3 +6094,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: hide-request dirty gating now belongs to the file-viewer controller. App still owns the actual hide DOM teardown, raw view-mode DOM application, unsaved modal DOM, discard implementation, touch selection state/actions, paste dialog/insert actions, generic file-open result rendering/application, draft inspect/open currentness behavior, and dirty unavailable transition choreography.
+
+## 2026-06-30T11:36:59Z Unavailable file-viewer state controller ownership
+- Functional commit `871c5db Move unavailable file viewer state into controller` moved unavailable-session identity and transition policy from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the controller now owns `unavailableSessionId`, `isFileViewerSessionUnavailable()`, `clearFileViewerUnavailableSession()`, `disableFileViewerForUnavailableSession(sessionId)`, and `handleFileViewerSessionUnavailable(sessionId)`. App-owned operations remain explicit dependencies: modal visibility checks, sync-token invalidation, unsaved-dialog hide, search reset, picker close, and hide teardown.
+- Behavior preserved: session switches/show/hide clear unavailable state through the controller; dirty unavailable sessions enter copy-only mode, invalidate file-viewer currentness, clear pending save state, exit edit mode, cancel pending open, reset search/picker, set the unavailable status, and refresh edit/touch affordances; clean unavailable sessions hide the viewer.
+- Tests updated:
+  - `tests/test_frontend_file_viewer_module_source.py` now creates unavailable state through controller methods and verifies block action, reload-conflict currentness, keep-editing suppression, button/read-only effects, and handler clean/dirty/mismatch/closed outcomes.
+  - `tests/test_file_viewer_source.py` source sentinels now require app wrapper delegation, controller-owned unavailable state, controller reset calls, and explicit transition dependencies.
+- Validation before commit:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `91 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: unavailable-session identity and dirty/unavailable copy-only transition policy now belong to the file-viewer controller. App still owns actual hide DOM teardown, raw view-mode DOM application, unsaved modal DOM, discard implementation, touch selection state/actions, paste dialog/insert actions, generic file-open result rendering/application, and draft inspect/open currentness behavior.
