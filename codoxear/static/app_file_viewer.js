@@ -532,6 +532,48 @@
       return true;
     }
 
+    function prepareFileLoadResult(rel, result, request, { viewMode = "file" } = {}) {
+      if (!isCurrentFileOpenRequest(request)) return null;
+      if (!result || typeof result.kind !== "string") throw new Error("invalid response");
+      const path = String(rel || "");
+      if (result.kind === "diff") {
+        const baseText = typeof result.baseText === "string" ? result.baseText : "";
+        const currentText = typeof result.currentText === "string" ? result.currentText : "";
+        applyActiveFileDiffState({ currentText, currentExists: result.currentExists });
+        if (!result.baseExists && !result.currentExists) return Object.freeze({ kind: "diff", noDiff: true, status: `${path} - no diff` });
+        return Object.freeze({ kind: "diff", noDiff: false, baseText, currentText, status: `${path} - diff` });
+      }
+      if (result.kind === "image") {
+        applyActiveFileNonTextState("image");
+        if (typeof result.image_url !== "string" || !result.image_url) throw new Error("invalid image response");
+        const size = typeof result.size === "number" ? result.size : 0;
+        return Object.freeze({ kind: "image", imageUrl: result.image_url, alt: path, status: `${path} - ${fmtBytes(size)}` });
+      }
+      if (result.kind === "pdf") {
+        applyActiveFileNonTextState("pdf");
+        if (typeof result.pdf_url !== "string" || !result.pdf_url) throw new Error("invalid pdf response");
+        const size = typeof result.size === "number" ? result.size : 0;
+        return Object.freeze({ kind: "pdf", pdfUrl: result.pdf_url, status: `${path} - PDF - ${fmtBytes(size)}` });
+      }
+      if (result.kind === "video") {
+        return Object.freeze({ kind: "video", ...prepareActiveVideoLoadResult(path, result, request) });
+      }
+      if (result.kind === "download_only") {
+        applyActiveFileNonTextState("download_only");
+        const size = typeof result.size === "number" ? result.size : 0;
+        return Object.freeze({ kind: "download_only", reason: String(result.reason || ""), viewerMaxBytes: Number(result.viewer_max_bytes || 0), size, status: `${path} - download only - ${fmtBytes(size)}` });
+      }
+      if (typeof result.text !== "string") throw new Error("invalid response");
+      applyActiveFileTextState({ kind: result.kind === "markdown" ? "markdown" : "text", text: result.text, editable: Boolean(result.editable), version: typeof result.version === "string" ? result.version : "" });
+      const renderPreview = viewMode === "preview" && currentActiveFileKind() === "markdown";
+      const size = typeof result.size === "number" ? result.size : result.text.length;
+      const statusParts = [path];
+      if (renderPreview) statusParts.push("preview");
+      if (!currentActiveFileEditable()) statusParts.push("read-only");
+      statusParts.push(fmtBytes(size));
+      return Object.freeze({ kind: "text", text: result.text, renderPreview, status: statusParts.join(" - ") });
+    }
+
     function beginCompatibleVideoPreview(expectedToken = "") {
       const state = activeVideoFallback;
       const token = String(expectedToken || "");
@@ -1406,6 +1448,7 @@
       prepareActiveVideoLoadResult,
       handleActiveVideoLoadError,
       handleActiveVideoLoadedMetadata,
+      prepareFileLoadResult,
       beginCompatibleVideoPreview,
       completeCompatibleVideoPreview,
       failCompatibleVideoPreview,

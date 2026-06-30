@@ -583,6 +583,34 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           let invalidVideoMessage = "";
           try {{ renderController.prepareActiveVideoLoadResult("bad.mkv", {{ kind: "video", video_preview_url: "/preview.mp4" }}, {{ requestId: 11 }}); }} catch (err) {{ invalidVideoMessage = err && err.message ? err.message : String(err); }}
           const videoPolicy = {{ videoPlanState, videoRetry, videoMetadata, videoUsedError, unsupportedVideo, invalidVideoMessage }};
+          events.length = 0;
+          const loadOpen = renderController.startFileOpenRequest("plan.md", {{ line: 4, gitPath: false, apiPath: "" }});
+          const loadRequest = loadOpen.request;
+          const loadPlanDiff = renderController.prepareFileLoadResult("plan.md", {{ kind: "diff", baseText: "old", currentText: "new", baseExists: true, currentExists: false }}, loadRequest, {{ viewMode: "diff" }});
+          const loadPlanNoDiff = renderController.prepareFileLoadResult("plan.md", {{ kind: "diff", baseText: "", currentText: "", baseExists: false, currentExists: false }}, loadRequest, {{ viewMode: "diff" }});
+          const loadPlanImage = renderController.prepareFileLoadResult("plan.md", {{ kind: "image", image_url: "/img.png", size: 4 }}, loadRequest, {{ viewMode: "file" }});
+          const loadPlanPdf = renderController.prepareFileLoadResult("plan.md", {{ kind: "pdf", pdf_url: "/doc.pdf", size: 8 }}, loadRequest, {{ viewMode: "file" }});
+          const loadPlanDownload = renderController.prepareFileLoadResult("plan.md", {{ kind: "download_only", reason: "too large", viewer_max_bytes: 1024, size: 2048 }}, loadRequest, {{ viewMode: "file" }});
+          const loadPlanMarkdown = renderController.prepareFileLoadResult("plan.md", {{ kind: "markdown", text: "# plan", editable: false, version: "v9", size: 6 }}, loadRequest, {{ viewMode: "preview" }});
+          const loadPlanUnknownText = renderController.prepareFileLoadResult("plan.md", {{ kind: "custom", text: "x", editable: true }}, loadRequest, {{ viewMode: "file" }});
+          const loadPlanVideo = renderController.prepareFileLoadResult("plan.md", {{ kind: "video", video_url: "/plan.mov", video_preview_url: "/plan-preview.mp4", content_type: "video/quicktime", size: 77 }}, loadRequest, {{ viewMode: "file" }});
+          const loadPlanStale = renderController.prepareFileLoadResult("plan.md", {{ kind: "image", image_url: "/img.png" }}, {{ ...loadRequest, path: "other.md" }}, {{ viewMode: "file" }});
+          let invalidLoadMessage = "";
+          try {{ renderController.prepareFileLoadResult("plan.md", {{ kind: "image" }}, loadRequest, {{ viewMode: "file" }}); }} catch (err) {{ invalidLoadMessage = err && err.message ? err.message : String(err); }}
+          const loadPlans = {{
+            diff: {{ plan: loadPlanDiff, frozen: Object.isFrozen(loadPlanDiff) }},
+            noDiff: {{ plan: loadPlanNoDiff, frozen: Object.isFrozen(loadPlanNoDiff) }},
+            image: {{ plan: loadPlanImage, frozen: Object.isFrozen(loadPlanImage) }},
+            pdf: {{ plan: loadPlanPdf, frozen: Object.isFrozen(loadPlanPdf) }},
+            download: {{ plan: loadPlanDownload, frozen: Object.isFrozen(loadPlanDownload) }},
+            markdown: {{ plan: loadPlanMarkdown, frozen: Object.isFrozen(loadPlanMarkdown) }},
+            unknownText: {{ plan: loadPlanUnknownText, frozen: Object.isFrozen(loadPlanUnknownText) }},
+            video: {{ plan: loadPlanVideo, frozen: Object.isFrozen(loadPlanVideo) }},
+            stale: loadPlanStale,
+            invalidLoadMessage,
+            events: events.slice(),
+          }};
+          loadOpen.done();
           const render = {{
             exportFrozen: Object.isFrozen(fileViewer),
             exports: Object.keys(fileViewer).sort(),
@@ -612,6 +640,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             capabilities: {{ derivedCapabilities, editableCapabilities, pendingCapabilities, binaryCapabilities, missingPathCapabilities, editableFrozen: Object.isFrozen(editableCapabilities) }},
             modeControl: {{ modeControlDiffable, modeControlNoPath, modeControlPreviewExitEdit, modeControlDraft }},
             videoPolicy,
+            loadPlans,
           }};
           const availableReloadFailure = await runReloadCase("");
           const canceledReload = await runReloadCase("", false);
@@ -908,6 +937,22 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             },
             "invalidVideoMessage": "invalid video response",
         })
+        load_plans = result["render"]["loadPlans"]
+        self.assertEqual(load_plans["diff"], {"plan": {"kind": "diff", "noDiff": False, "baseText": "old", "currentText": "new", "status": "plan.md - diff"}, "frozen": True})
+        self.assertEqual(load_plans["noDiff"], {"plan": {"kind": "diff", "noDiff": True, "status": "plan.md - no diff"}, "frozen": True})
+        self.assertEqual(load_plans["image"], {"plan": {"kind": "image", "imageUrl": "/img.png", "alt": "plan.md", "status": "plan.md - 4B"}, "frozen": True})
+        self.assertEqual(load_plans["pdf"], {"plan": {"kind": "pdf", "pdfUrl": "/doc.pdf", "status": "plan.md - PDF - 8B"}, "frozen": True})
+        self.assertEqual(load_plans["download"], {"plan": {"kind": "download_only", "reason": "too large", "viewerMaxBytes": 1024, "size": 2048, "status": "plan.md - download only - 2048B"}, "frozen": True})
+        self.assertEqual(load_plans["markdown"], {"plan": {"kind": "text", "text": "# plan", "renderPreview": True, "status": "plan.md - preview - read-only - 6B"}, "frozen": True})
+        self.assertEqual(load_plans["unknownText"], {"plan": {"kind": "text", "text": "x", "renderPreview": False, "status": "plan.md - 1B"}, "frozen": True})
+        video_load_plan = load_plans["video"]["plan"]
+        self.assertRegex(video_load_plan["token"], r"^\d+:plan\.md:0$")
+        self.assertEqual({key: value for key, value in video_load_plan.items() if key != "token"}, {"kind": "video", "rel": "plan.md", "videoUrl": "/plan.mov", "previewUrl": "/plan-preview.mp4", "size": 77, "contentType": "video/quicktime", "shouldPreviewFirst": True, "initialStatus": "plan.md - video - 77B"})
+        self.assertTrue(load_plans["video"]["frozen"])
+        self.assertIsNone(load_plans["stale"])
+        self.assertEqual(load_plans["invalidLoadMessage"], "invalid image response")
+        self.assertEqual(load_plans["events"][0], ["disposeOpenRender"])
+        self.assertIn(["applyFileMode"], load_plans["events"])
         self.assertIn("file viewer dependency missing: el", result["missingDependencyError"])
 
         available = result["availableReloadFailure"]

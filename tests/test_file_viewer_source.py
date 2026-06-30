@@ -2958,6 +2958,44 @@ function applyActiveFileNonTextState(kind) {
             setActiveVideoFallback(nextState) {{ ctx.activeVideoFallback = nextState ? {{ token: String(nextState.token || ""), previewUrl: String(nextState.previewUrl || ""), used: Boolean(nextState.used), preparing: Boolean(nextState.preparing), rel: String(nextState.rel || ""), size: Number(nextState.size || 0) }} : null; return ctx.activeVideoFallback; }},
             currentActiveVideoFallback() {{ return ctx.activeVideoFallback ? {{ ...ctx.activeVideoFallback }} : null; }},
             clearUsedCompatibleVideoPreview(token) {{ if (!ctx.activeVideoFallback || ctx.activeVideoFallback.token !== String(token || "") || !ctx.activeVideoFallback.used) return false; ctx.activeVideoFallback = null; ctx.calls.push(["applyFileMode"]); return true; }},
+            prepareFileLoadResult(rel, result, request, {{ viewMode = "file" }} = {{}}) {{
+              if (!ctx.isCurrentFileOpenRequest(request)) return null;
+              if (!result || typeof result.kind !== "string") throw new Error("invalid response");
+              if (result.kind === "diff") {{
+                const baseText = typeof result.baseText === "string" ? result.baseText : "";
+                const currentText = typeof result.currentText === "string" ? result.currentText : "";
+                ctx.applyActiveFileDiffState({{ currentText, currentExists: result.currentExists }});
+                if (!result.baseExists && !result.currentExists) return {{ kind: "diff", noDiff: true, status: `${{rel}} - no diff` }};
+                return {{ kind: "diff", noDiff: false, baseText, currentText, status: `${{rel}} - diff` }};
+              }}
+              if (result.kind === "image") {{
+                ctx.applyActiveFileNonTextState("image");
+                if (typeof result.image_url !== "string" || !result.image_url) throw new Error("invalid image response");
+                const size = typeof result.size === "number" ? result.size : 0;
+                return {{ kind: "image", imageUrl: result.image_url, alt: rel, status: `${{rel}} - ${{ctx.fmtBytes(size)}}` }};
+              }}
+              if (result.kind === "pdf") {{
+                ctx.applyActiveFileNonTextState("pdf");
+                if (typeof result.pdf_url !== "string" || !result.pdf_url) throw new Error("invalid pdf response");
+                const size = typeof result.size === "number" ? result.size : 0;
+                return {{ kind: "pdf", pdfUrl: result.pdf_url, status: `${{rel}} - PDF - ${{ctx.fmtBytes(size)}}` }};
+              }}
+              if (result.kind === "video") return {{ kind: "video", ...ctx.fileViewerController.prepareActiveVideoLoadResult(rel, result, request) }};
+              if (result.kind === "download_only") {{
+                ctx.applyActiveFileNonTextState("download_only");
+                const size = typeof result.size === "number" ? result.size : 0;
+                return {{ kind: "download_only", reason: String(result.reason || ""), viewerMaxBytes: Number(result.viewer_max_bytes || 0), size, status: `${{rel}} - download only - ${{ctx.fmtBytes(size)}}` }};
+              }}
+              if (typeof result.text !== "string") throw new Error("invalid response");
+              ctx.applyActiveFileTextState({{ kind: result.kind === "markdown" ? "markdown" : "text", text: result.text, editable: Boolean(result.editable), version: typeof result.version === "string" ? result.version : "" }});
+              const renderPreview = viewMode === "preview" && ctx.currentActiveFileKind() === "markdown";
+              const size = typeof result.size === "number" ? result.size : result.text.length;
+              const statusParts = [rel];
+              if (renderPreview) statusParts.push("preview");
+              if (!ctx.currentActiveFileEditable()) statusParts.push("read-only");
+              statusParts.push(ctx.fmtBytes(size));
+              return {{ kind: "text", text: result.text, renderPreview, status: statusParts.join(" - ") }};
+            }},
             prepareActiveVideoLoadResult(rel, result, request) {{
               ctx.applyActiveFileNonTextState("video");
               if (!result || typeof result.video_url !== "string" || !result.video_url) throw new Error("invalid video response");
@@ -3646,13 +3684,19 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function resetActiveFileBufferState()", viewer_source)
         self.assertIn("fileViewerController.resetActiveFileBufferState();", source)
         self.assertIn('applyActiveFileTextState({ text: "", editable: true, version: "", draft: true });', viewer_source)
-        self.assertIn("applyActiveFileDiffState({ currentText, currentExists: result.currentExists });", source)
-        self.assertIn('applyActiveFileNonTextState("image");', source)
-        self.assertIn('applyActiveFileNonTextState("pdf");', source)
+        self.assertIn("function prepareFileLoadResult(rel, result, request, { viewMode = \"file\" } = {})", viewer_source)
+        self.assertIn("applyActiveFileDiffState({ currentText, currentExists: result.currentExists });", viewer_source)
+        self.assertIn('applyActiveFileNonTextState("image");', viewer_source)
+        self.assertIn('applyActiveFileNonTextState("pdf");', viewer_source)
         self.assertIn('applyActiveFileNonTextState("video");', viewer_source)
+        self.assertIn('applyActiveFileNonTextState("download_only");', viewer_source)
+        self.assertIn('applyActiveFileTextState({ kind: result.kind === "markdown" ? "markdown" : "text", text: result.text, editable: Boolean(result.editable), version: typeof result.version === "string" ? result.version : "" });', viewer_source)
+        self.assertNotIn("applyActiveFileDiffState({ currentText, currentExists: result.currentExists });", source)
+        self.assertNotIn('applyActiveFileNonTextState("image");', source)
+        self.assertNotIn('applyActiveFileNonTextState("pdf");', source)
         self.assertNotIn('applyActiveFileNonTextState("video");', source)
-        self.assertIn('applyActiveFileNonTextState("download_only");', source)
-        self.assertIn('applyActiveFileTextState({ kind: result.kind === "markdown" ? "markdown" : "text", text: result.text, editable: Boolean(result.editable), version: typeof result.version === "string" ? result.version : "" });', source)
+        self.assertNotIn('applyActiveFileNonTextState("download_only");', source)
+        self.assertNotIn('applyActiveFileTextState({ kind: result.kind === "markdown" ? "markdown" : "text", text: result.text, editable: Boolean(result.editable), version: typeof result.version === "string" ? result.version : "" });', source)
 
     def test_file_open_success_finalizer_is_single_owned(self) -> None:
         result = eval_file_open_success_finalizer()
@@ -4401,7 +4445,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertNotIn('el("iframe"', source)
         self.assertIn('import(resolveAppUrl("pdf.mjs"))', source)
         self.assertIn('resolveAppUrl("pdf.worker.mjs")', source)
-        self.assertIn('result.kind === "pdf"', source)
+        self.assertIn('result.kind === "pdf"', viewer_source)
+        self.assertIn('loadPlan.kind === "pdf"', source)
         self.assertIn("const MONACO_LOADER_TIMEOUT_MS = 4000;", source)
         self.assertIn("const PDFJS_LOADER_TIMEOUT_MS = 6000;", source)
         self.assertIn("function renderPlainTextFallback(rel, text, lineNumber = null", source)
@@ -4420,10 +4465,11 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('id: "fileVideoPreviewBtn"', source)
         self.assertIn('title: "Use compatible MP4 preview"', source)
         self.assertIn('const fileVideo = el("video", { id: "fileVideo", class: "fileVideo", controls: true, preload: "metadata" });', source)
-        self.assertIn('result.kind === "video"', source)
+        self.assertIn('result.kind === "video"', viewer_source)
+        self.assertIn('loadPlan.kind === "video"', source)
         self.assertIn("function clearFileVideo()", source)
         self.assertIn("fileVideo.pause();", source)
-        self.assertIn('fileVideo.src = resolveAppUrl(videoPlan.videoUrl);', source)
+        self.assertIn('fileVideo.src = resolveAppUrl(loadPlan.videoUrl);', source)
         self.assertIn('const BROWSER_SAFE_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/ogg"]);', viewer_source)
         self.assertIn('function prepareActiveVideoLoadResult(rel, result, request)', viewer_source)
         self.assertIn('const shouldPreviewFirst = Boolean(previewUrl && contentType && !BROWSER_SAFE_VIDEO_TYPES.has(contentType));', viewer_source)
@@ -4445,11 +4491,11 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('fileVideoPreviewBtn.onclick = (e) => {', source)
         self.assertIn('void handleFileVideoPreviewButtonPress();', source)
         self.assertNotIn('void loadCompatibleVideoPreview(token, { explicit: true });', source)
-        self.assertIn('if (videoPlan.shouldPreviewFirst) {', source)
-        self.assertIn('void loadCompatibleVideoPreview(videoPlan.token, { explicit: false });', source)
+        self.assertIn('if (loadPlan.shouldPreviewFirst) {', source)
+        self.assertIn('void loadCompatibleVideoPreview(loadPlan.token, { explicit: false });', source)
         self.assertIn("fileVideo.onerror = () => {", source)
-        self.assertIn("fileViewerController.handleActiveVideoLoadError(videoPlan.token", source)
-        self.assertIn("fileViewerController.handleActiveVideoLoadedMetadata(videoPlan.token);", source)
+        self.assertIn("fileViewerController.handleActiveVideoLoadError(loadPlan.token", source)
+        self.assertIn("fileViewerController.handleActiveVideoLoadedMetadata(loadPlan.token);", source)
         self.assertIn("fileStatus.textContent = explicit ? `${rel} - building compatible video preview...` : `${rel} - trying compatible video preview...`;", source)
         self.assertIn("fileVideo.src = resolveAppUrl(state.previewUrl);", source)
         self.assertIn("fileStatus.textContent = `${fallback.rel || \"video\"} - compatible video preview - ${fmtBytes(fallback.size)}`;", viewer_source)
@@ -4457,11 +4503,14 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertNotIn("fileStatus.textContent = `${rel} - compatible video preview - ${fmtBytes(size)}`;", source)
         self.assertNotIn("fileStatus.textContent = `${rel} - video preview unavailable after conversion`;", source)
         self.assertIn('setFileRenderSurface("video");', source)
-        self.assertIn('fileStatus.textContent = videoPlan.initialStatus;', source)
+        self.assertIn('fileStatus.textContent = loadPlan.initialStatus;', source)
         self.assertIn('initialStatus: `${path} - video - ${fmtBytes(size)}`', viewer_source)
-        self.assertIn('result.kind === "download_only"', source)
-        self.assertIn("renderBlockedFileNotice(rel, String(result.reason || \"\"), Number(result.viewer_max_bytes || 0), size);", source)
-        self.assertIn('fileStatus.textContent = `${rel} - PDF - ${fmtBytes(size)}`;', source)
+        self.assertIn('result.kind === "download_only"', viewer_source)
+        self.assertIn('loadPlan.kind === "download_only"', source)
+        self.assertIn("renderBlockedFileNotice(rel, loadPlan.reason, loadPlan.viewerMaxBytes, loadPlan.size);", source)
+        self.assertIn("reason: String(result.reason || \"\")", viewer_source)
+        self.assertIn('fileStatus.textContent = loadPlan.status;', source)
+        self.assertIn('status: `${path} - PDF - ${fmtBytes(size)}`', viewer_source)
         self.assertIn(".filePdfPages {", css_source)
         self.assertIn(".filePlainFallback {", css_source)
         self.assertIn(".filePlainFallbackText {", css_source)
