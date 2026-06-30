@@ -5403,3 +5403,24 @@
 - Clean-room review `bc7539ff-c33d-4e86-9d57-f25c88c2390d` returned PASS with no blockers. Review verified exact response-application order, unchanged stale-guard boundary, caller-owned save body/API/error/finally behavior, sound draft identity timing, correct `applyFileMode`/dirty/edit-mode ordering, correct remembered-file path handling, VM fidelity, and accurate sentinel updates. Non-blocking notes: redundant DOM updates are pre-existing; error paths remain caller-owned; the helper currently has one guarded call site.
 - Next transition seam: save body construction helper, preserving draft/non-draft request body semantics and the existing live `activeFileGitPath` read for `git_path`/`path_token` behavior.
 - Scope note: this is successful save response application ownership only. It does not claim save body construction ownership, conflict rendering ownership, video fallback mode cleanup, PDF lifecycle repair, or browser-manual rendering evidence.
+
+
+
+## 2026-06-30T01:30:10Z Active file save body builder extraction
+- Functional commit `aee2c0d Extract active file save body builder` moved save API request body construction out of `saveActiveFileEdits()` into `buildActiveFileSaveBody(save)`.
+- Mechanism: `buildActiveFileSaveBody()` returns a fresh mutable body object. Draft saves produce only `{ path, text, create: true }`. Non-draft saves produce `{ path, text, version, git_path: Boolean(activeFileGitPath) }`. `path_token` is added only when the save is non-draft, live `activeFileGitPath` is truthy, and frozen `save.apiPath` is non-empty.
+- Boundary preserved: `saveActiveFileEdits()` still owns save request context, pending state, API call, stale guards, success applier, conflict/generic error handling, and final cleanup. The helper intentionally preserves the pre-existing live `activeFileGitPath` read rather than freezing git path into the save context.
+- Tests added/updated:
+  - `eval_active_file_save_body_builder()` executes the real helper in a Node VM and covers draft body, non-draft git body with token, non-draft git body without token, and non-draft non-git body with an api token present.
+  - Source sentinels pin the helper signature, call site, ternary body shapes, and path-token condition.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused save-body/save-success/response/conflict tests passed.
+  - Focused file-viewer/file-picker/static group returned `87 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1271 passed, 136 subtests passed`.
+  - Focused Docker file-viewer/file-picker/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed.
+- Clean-room review `64c3544a-88d7-4ded-a1db-ed5cb654a33a` returned PASS with no blockers. Review verified draft/non-draft body shape preservation, exact live `activeFileGitPath` semantics, fresh mutable return object, path-token condition fidelity, minimal call-site replacement, no save context mutation, VM/source test fidelity, and unchanged API/stale/error/finally boundaries. Non-blocking notes: `activeFileGitPath` remains a pre-existing live-read coupling not captured in the save context; the private helper relies on closure state and is VM-tested accordingly.
+- Next transition seam: save error rendering helper after the catch-path currentness guard, preserving conflict-vs-generic error behavior while leaving catch/stale return ownership in `saveActiveFileEdits()`.
+- Scope note: this is save request body construction ownership only. It does not claim save error rendering ownership, live git-path currentness hardening, video fallback mode cleanup, PDF lifecycle repair, or browser-manual rendering evidence.

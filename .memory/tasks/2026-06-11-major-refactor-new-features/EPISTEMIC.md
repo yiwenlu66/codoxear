@@ -2817,3 +2817,6 @@ Scoped claim: the current branch has a validated backend/server architecture che
 
 
 - Successful active-file save response application now has a named applier: `applyActiveFileSaveSuccess(save, res, { exitEditMode })` owns current-response state/UI updates after the caller's stale guard, while `saveActiveFileEdits()` still owns save body/API/error/final cleanup. Evidence includes commit `9833d04`, VM coverage for draft and non-draft success paths, full local pytest (`1270 passed, 136 subtests passed`), focused/full Docker validation, and clean-room review `bc7539ff-c33d-4e86-9d57-f25c88c2390d`. Next seam is save body construction. See OPS Active file save success applier extraction.
+
+
+- Active-file save request body construction now has a named owner: `buildActiveFileSaveBody(save)` owns draft/non-draft file-write payload shape and path-token inclusion while preserving the pre-existing live `activeFileGitPath` read. Evidence includes commit `aee2c0d`, VM coverage for draft/git-token/git-no-token/non-git cases, full local pytest (`1271 passed, 136 subtests passed`), focused/full Docker validation, and clean-room review `64c3544a-88d7-4ded-a1db-ed5cb654a33a`. Next seam is save error rendering. See OPS Active file save body builder extraction.
