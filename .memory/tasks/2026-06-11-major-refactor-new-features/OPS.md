@@ -6333,3 +6333,11 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: dirty state and dirty-change UI side effects now belong to the file-viewer controller. App still owns file edit-mode boolean, active file content metadata/text baseline, raw restore text implementation, unsaved modal DOM, paste dialog DOM show/hide primitives, touch toolbar DOM, raw Monaco selection helpers, raw load-result rendering, and raw view-mode DOM application.
+
+## 2026-06-30T14:32:56Z Rejected flag-only edit-mode migration
+- Observation: attempted an uncommitted move of `fileEditMode`, `currentFileEditMode()`, and `setFileEditMode()` into `app_file_viewer.js` after the dirty-state move.
+- Prediction before test: edit mode would behave like dirty state if app render-reset paths used a controller clear method and policy paths used controller `setFileEditMode`.
+- Result: focused validation failed broadly before commit. Failures included save-success traces, save-transport currentness, delete/paste writability, draft-load choreography, capability predicate source expectations, selected-session removal assertions, and frontend save-conflict probe affordance traces.
+- Mechanism learned: `fileEditMode` is not just an isolated flag. It is coupled to active-file kind/editability/path state, raw Monaco render setup, fallback rendering, edit-button affordance policy, and scenario initialization in controller tests. Moving it alone creates a mixed ownership state where the controller owns edit mode but app/test fixtures still own the active-file facts that make edit mode valid.
+- Intervention: reverted the uncommitted edit-mode changes in `codoxear/static/app.js`, `codoxear/static/app_file_viewer.js`, `tests/test_file_viewer_source.py`, and `tests/test_frontend_file_viewer_module_source.py`. No functional commit was made for this attempted move.
+- Updated commitment: do not attempt a flag-only edit-mode migration. Move edit mode only as part of a larger active-file content/edit-state migration, or after active file kind/editability/draft/text metadata is controller-owned.
