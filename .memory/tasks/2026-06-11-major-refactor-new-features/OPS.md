@@ -6201,3 +6201,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: touch-selection keydown policy now belongs to the file-viewer controller. App still owns touch toolbar DOM state, selection reset/move mechanics, delete-key suppression, paste dialog/insert actions, raw load-result rendering, raw view-mode DOM application, unsaved modal DOM, and discard implementation.
+
+## 2026-06-30T13:09:19Z Delete key policy controller ownership
+- Functional commit `84b78d1 Move delete key policy into viewer controller` moved `handleFileEditorDeleteKeydown(event)` from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the controller now owns delete-key decision policy: default/meta/control/alt/composition gating, delete-command mapping, controller-owned editor-writability gating, shortcut/input-target checks, editor-trigger availability, native-delete suppression timing, prevent/stop propagation, focused editor trigger, touch-selection reset when selection mode is active, and toast-on-trigger-error.
+- App-owned primitives remain explicit dependencies: `fileEditorDeleteCommandForKey`, `isActiveFileEditorInput`, `focusActiveFileCodeEditor`, `setFileTouchDeleteNativeSuppressUntil`, `nowMs`, and `setToast`. App still owns native beforeinput/input suppression storage and raw DOM/editor target predicates.
+- Tests updated:
+  - `tests/test_file_viewer_source.py` now executes the real controller method for Backspace/Delete success plus nested-dialog, closed-viewer, other-text-entry, not-editing, and unavailable blocking cases.
+  - Source assertions now check app wrapper delegation, controller-owned delete policy, and app-owned native suppression storage.
+- Validation before commit:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `91 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: delete-key decision policy now belongs to the file-viewer controller. App still owns native delete suppression event listeners/storage, touch toolbar DOM state, selection reset/move mechanics, paste dialog/insert actions, raw load-result rendering, raw view-mode DOM application, unsaved modal DOM, and discard implementation.
