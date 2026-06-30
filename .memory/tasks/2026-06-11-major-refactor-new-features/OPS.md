@@ -5356,3 +5356,28 @@
 - Clean-room review `b12fd653-8124-471b-b7a1-d339f197be5c` returned PASS with no blockers. Review verified preserved request identity, unchanged finalization semantics, no async gap in invalid-path branches, unchanged try/catch/finally coverage, preserved Boolean vs void return semantics, no accidental cancel/double request-id increment, safe frozen-handle shape, VM fidelity, and correct source sentinel updates. Non-blocking notes: direct `finalizeFileOpenRequest()` is now reachable through handle `done()` closures; direct `cancelPendingFileOpen()` sites outside open-request lifecycle remain legitimate viewer/session teardown paths; the VM AbortController mock preserves the signal identity property that the production code depends on.
 - Next transition seam: active-file save request context/token ownership, starting with naming the save token/currentness/pending/final cleanup mechanics while leaving response application, conflict rendering, and write-body semantics inline.
 - Scope note: this is open-request handle ownership only. It does not claim save-token ownership, video fallback mode cleanup, PDF lifecycle repair, or browser-manual rendering evidence.
+
+
+
+## 2026-06-30T01:09:15Z Active file save request helper extraction
+- Functional commit `fa6c474 Extract active file save request helpers` named the save-token/currentness/pending/final-cleanup mechanics inside `saveActiveFileEdits()`.
+- Mechanism:
+  - `beginActiveFileSaveRequest()` snapshots `fileViewerSessionId`, `activeFilePath`, `activeFileApiPath || ""`, `Boolean(activeFileDraft)`, `activeFileVersion`, and `getFileEditorText()` in the same order as the prior inline code, then increments `fileSaveSeq`, assigns `activeFileSaveToken`, and returns a frozen save context with session id, path, api path, draft flag, version, text, and token.
+  - `isCurrentActiveFileSaveRequest(save)` owns the stale-save predicate: saved context exists, session/path/apiPath/token still match, and the file viewer session is not unavailable.
+  - `markActiveFileSavePending(save)` owns the pending side effects: set `fileSavePending`, refresh edit button, sync read-only, and show `Saving ${save.path}...`.
+  - `finishActiveFileSaveRequest(save)` owns token-matched final cleanup: clear pending/token, sync read-only, and refresh the edit button only when the active save token still matches.
+- Boundary preserved: `saveActiveFileEdits()` still owns early preconditions/no-dirty return, save body construction, `path_token` condition, API call, stale success/catch returns, response application, draft identity clearing after current response, conflict rendering, generic save error status, and exit-edit behavior. Open-file request/load helpers, video/PDF lifecycle, conflict UI construction, unavailable-session handling, and save shortcut behavior were not changed.
+- Tests added/updated:
+  - `eval_active_file_save_request_helpers()` executes the real helper block in a Node VM and verifies frozen snapshot fields, token/sequence assignment, `getFileEditorText()` timing, currentness true/false cases including wrong apiPath and unavailable session, pending status/read-only/button effects, mismatched-token finalization no-op, and matched-token cleanup.
+  - Source sentinels pin helper names, frozen context return, all currentness predicate terms, save body/path-token/API strings, stale returns, response status/remembered-file use of `save.path`, conflict call, and finally helper invocation.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused save helper/response/conflict tests passed.
+  - Focused file-viewer/file-picker/static group returned `85 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1269 passed, 136 subtests passed`.
+  - Focused Docker file-viewer/file-picker/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed.
+- Clean-room review `f57ba9c4-0f68-4c3d-80c5-6bb78d0cf7c9` returned PASS with no blockers. Review verified snapshot order, token assignment, currentness predicate equivalence, pending/read-only/button/status timing, stale success/catch returns, draft/non-draft save body and path-token behavior, response application order, conflict arguments, token-matched final cleanup, VM/source test fidelity, and unchanged surrounding code. Non-blocking notes: `Object.freeze` is shallow but all context fields are primitives; `fileSaveSeq` overflow is pre-existing theoretical risk; Boolean wrapper in currentness predicate is stylistic; VM text mock does not exercise `getFileEditorText()` fallback but that is outside helper semantics.
+- Next transition seam from architect `61e6b4ed-5564-4238-bcfa-85649c08746c`: successful save response application helper after currentness success, preserving response side-effect order and keeping API call/stale guard/error handling outside the helper.
+- Scope note: this is save request context ownership only. It does not claim save response application ownership, conflict rendering ownership, video fallback mode cleanup, PDF lifecycle repair, or browser-manual rendering evidence.
