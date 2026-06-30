@@ -6733,3 +6733,11 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: file restore planning/dirty completion belongs to the file-viewer controller. App still owns raw Monaco editor/diff-editor objects, model disposal and `setValue`, fallback DOM construction/scrolling, raw renderer/DOM plan application, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, raw mode/download/video-preview DOM mutation, compatible-preview fetch/load mechanics, and raw Monaco selection helpers.
+
+## 2026-06-30T20:03:13Z Clean-room review runner failure after editor-kind/restore checkpoints
+- Observation: async clean-room review run `cf9f9645-ebf5-44f9-b928-3cc13d0ff2e0` failed before writing a result.
+- Raw failure reported by runner/user: `Async runner process 873930 exited or disappeared before writing a result. Marked run failed by stale-run reconciliation.`
+- Intended review output file: `/tmp/codoxear-file-editor-kind-restore-review.md`; direct check returned `missing-or-empty`.
+- Scope of requested review: functional commits `06b62b0` and `bb3c438` plus matching tests.
+- Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against the code. The evidence basis for the reviewed commits remains syntax checks, focused tests, available broader frontend/file/auth/static route tests, full local pytest, Docker sandbox, and diff checks recorded above.
+- Decision: continue workbench progress and avoid treating absent reviewer output as a product blocker. A future clean-room review should be launched only when useful for a yield gate or a decision point.
