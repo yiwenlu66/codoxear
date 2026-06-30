@@ -5445,3 +5445,28 @@
 - Clean-room review `a2d4ab73-51de-4c99-8a4b-6be4e9e05bbe` returned PASS with no blockers. Review verified conflict-vs-generic branching, message fallback chains, frozen save session/path use, unchanged stale-guard boundary, unchanged false return semantics, untouched conflict UI construction and final cleanup, VM source-extraction fidelity, and no unintended extra call sites. Non-blocking note: null/undefined error cases are not directly tested but are guarded by the same old `error &&` logic.
 - Next transition seam from architect `775e3167-b6eb-4179-9cc7-dab6a89bd6e7`: harden save identity by freezing `gitPath` into the save snapshot, adding it to currentness, and using `save.gitPath` in `buildActiveFileSaveBody()` instead of live `activeFileGitPath`.
 - Scope note: this is save error rendering ownership only. It does not claim save git-path currentness hardening, video fallback mode cleanup, PDF lifecycle repair, or browser-manual rendering evidence.
+
+
+
+## 2026-06-30T02:02:00Z Active file save gitPath snapshot hardening
+- Functional commit `f026e71 Harden active file save git path snapshot` froze `activeFileGitPath` into the active-file save context and removed save-body construction's remaining live git-path read.
+- Mechanism:
+  - `beginActiveFileSaveRequest()` now snapshots `const gitPath = Boolean(activeFileGitPath)` alongside session id, path, apiPath, draft flag, version, editor text, and token, and returns it in the frozen save object.
+  - `isCurrentActiveFileSaveRequest(save)` now requires `activeFileGitPath === save.gitPath`, so a save response/error is stale if file-open/navigation changes the active git-path identity during the API await window.
+  - `buildActiveFileSaveBody(save)` now uses `save.gitPath` for the `git_path` payload field and the `path_token` guard; draft saves still emit only `{ path, text, create: true }`.
+- Boundary preserved: save preconditions, pending/final cleanup, API call, success applier, error renderer, conflict reload behavior, draft success clearing of git/api identity, open-file request helpers, and video/PDF lifecycle were not changed. `renderFileSaveConflict()` deliberately continues to use live `activeFileGitPath` for user-triggered reload because reload should follow current viewer identity.
+- Tests added/updated:
+  - Save-request VM coverage now asserts the frozen context includes `gitPath` and that changing ambient `activeFileGitPath` makes the save no longer current.
+  - Save-body VM coverage now flips ambient `activeFileGitPath` opposite the supplied save context and verifies payload/token behavior follows `save.gitPath` only.
+  - Source sentinels now pin `save.gitPath` in the frozen context, currentness predicate, payload body, and `path_token` guard.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused save-body/save-success/save-response/save-conflict tests passed.
+  - Focused file-viewer/file-picker/static group returned `88 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1272 passed, 136 subtests passed`.
+  - Focused Docker file-viewer/file-picker/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed before staging/commit.
+- Clean-room review `69fba57c-65d6-4b09-92a2-ae54107ac012` returned PASS with no blockers; report saved at `/tmp/codoxear-file-save-gitpath-review.md`. Review verified safe snapshot timing, strictly stronger currentness predicate, self-contained body construction, no draft-save shape drift, preserved conflict reload semantics, source/VM test fidelity, and no downstream caller breakage. Non-blocking notes: `save.gitPath && save.apiPath` is defensive because normal identity construction empties apiPath when gitPath is false; final cleanup remains token-only; unavailable-session handling already invalidates via token as well.
+- Next transition seam from architect `a5d7cbc3-94ab-483b-a268-5020cfd9efab`: make resolved file-open mode authoritative through `openFilePathWithResolvedMode` → `openFilePathWithGuard` → `openFilePath`, while preserving auto-resolution for direct mode-switch/reload callers.
+- Scope note: this is save git-path identity hardening only. It does not claim file-open mode ownership, file-picker renderer extraction, session-selection abort/race hardening, video token stability, or browser-manual rendering evidence.
