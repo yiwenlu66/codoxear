@@ -6546,3 +6546,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: touch-toolbar display/affordance policy belongs to the file-viewer controller. App still owns the raw toolbar DOM nodes, style/class mutation, touch press/click binding mechanics, raw Monaco/editor DOM operations, raw load-result rendering, raw view-mode DOM application, raw restore text implementation, unsaved modal DOM internals, paste dialog DOM/show-hide primitives, and raw Monaco selection helpers.
+
+## 2026-06-30T17:27:45Z File-mode control-state controller ownership
+- Functional commit `2870099 Move file mode control state into viewer controller` moved file mode button/download/video-preview/paste/edit-exit affordance decisions from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `currentFileModeControlState({ videoPreviewAvailable, videoPreviewPreparing })` now computes diff active/disabled state, preview active/disabled/display state, download disabled state, compatible-video preview button state/title, paste-dialog hiding, and edit-mode exit need from controller-owned active-file identity, metadata, draft/edit state, current view mode, candidate freshness, active entry, and explicit diffability dependency. `app.js` now retains persisted `fileViewMode`/`fileNonDiffMode`, active video fallback storage/loading, and raw DOM style/class/disabled/title writes.
+- Tests updated: real-controller frontend probe now verifies frozen mode-control states for diffable, missing-path, preview-exits-edit, and draft cases. Source sentinels now reject app-owned diffability recomputation, require controller-owned `currentFileModeControlState()`, and require explicit `isDiffableFileKind` injection so the controller fails loudly if the semantic predicate is missing.
+- Negative evidence preserved: the first mode-control behavior probe tried to enter edit mode while already in preview mode; `setFileEditMode(true)` correctly clamped that to false, so the test could not observe `shouldExitEditMode`. The fixture was corrected to model the real transition: enter edit mode in file view, then switch the ambient view mode before applying mode controls.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_file_picker_search_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused file-viewer validation returned `47 passed, 25 subtests passed` before the behavior-probe hardening, then combined file-viewer/file-picker validation returned `70 passed, 25 subtests passed` on the exact pre-commit working tree.
+  - Broader focused frontend/file-viewer/static/auth validation returned `131 passed, 25 subtests passed` after updating stale file-picker sentinels.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed` on the exact pre-commit working tree.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures on the exact pre-commit working tree.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: file-mode control-state policy belongs to the file-viewer controller. App still owns persisted mode storage, raw mode/download/video-preview DOM mutation, active video fallback state/loading, raw load-result rendering, raw restore text implementation, unsaved modal DOM internals, paste dialog DOM/show-hide primitives, touch-toolbar DOM/binding mechanics, and raw Monaco selection helpers.
