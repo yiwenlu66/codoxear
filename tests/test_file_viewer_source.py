@@ -973,12 +973,7 @@ def eval_file_editor_capability_predicates() -> dict:
 
 
 def eval_file_editor_save_shortcut() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    predicate_start = source.index("function currentFileEditorState() {")
-    predicate_end = source.index("function syncFileEditorReadOnly()", predicate_start)
-    handler_start = source.index("function isActiveFileEditorInput(target) {")
-    handler_end = source.index("function suppressFileEditorNativeDelete(e)", handler_start)
-    snippet = source[predicate_start:predicate_end] + "\n" + source[handler_start:handler_end]
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -990,44 +985,104 @@ def eval_file_editor_save_shortcut() -> dict:
             this.classList = {{ contains: (name) => name === "inputarea" && this._inputarea }};
           }}
         }}
-        const snippet = {json.dumps(snippet + "\nglobalThis.__test_saveShortcut = handleFileEditorSaveShortcut;\n")};
+        const ctx = {{ window: {{}}, HTMLElement: FakeElement, AbortController }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const fileViewer = ctx.window.CodoxearFileViewer;
+        function el(tag, attrs = {{}}, children = []) {{ return {{ tag, attrs, children: Array.isArray(children) ? children : [], text: attrs && attrs.text }}; }}
         async function runCase(overrides = {{}}) {{
+          const events = [];
+          const state = {{
+            sessionId: overrides.sessionId === false ? "" : "sid-1",
+            editorKind: overrides.editorKind || "file",
+            viewerOpen: overrides.viewerOpen !== false,
+            nestedDialog: Boolean(overrides.nestedDialog),
+            dirty: overrides.dirty !== false,
+          }};
           const editorNode = {{ contains: (node) => Boolean(node && node.editorInput) }};
-          const fileViewer = {{ style: {{ display: overrides.viewerOpen === false ? "none" : "flex" }} }};
-          const filePasteDialog = {{ style: {{ display: overrides.nestedDialog ? "flex" : "none" }} }};
-          const fileUnsavedDialog = {{ style: {{ display: "none" }} }};
-          const ctx = {{
-            HTMLElement: FakeElement,
-            fileViewer,
-            filePasteDialog,
-            fileUnsavedDialog,
-            modalIsolationTargets: [fileViewer, filePasteDialog, fileUnsavedDialog],
-            fileEditMode: overrides.editMode !== false,
-            activeFileEditable: overrides.editable !== false,
-            fileViewMode: overrides.fileViewMode || "file",
-            activeFileKind: overrides.kind || "text",
-{controller_identity_ctx_js("", "", False, None)}
-            activeFileVersion: overrides.version || "v1",
-            activeFileDraft: Boolean(overrides.draft),
-            fileEditorKind: overrides.editorKind || "file",
-            fileDirty: Boolean(overrides.dirty),
-            fileSavePending: Boolean(overrides.pending),
-            fileSavePendingValue: () => ctx.fileSavePending,
-            fileViewerSessionId: overrides.sessionId === false ? "" : "sid-1",
-            unavailable: Boolean(overrides.unavailable),
-            saves: [],
-            isFileViewerOpen: () => fileViewer.style.display === "flex",
-            isModalTargetOpen: (node) => node && node.style && node.style.display === "flex",
-            isTextEntryElement: (target) => Boolean(target && target.textEntry),
-            getActiveFileCodeEditor: () => ({{ getDomNode: () => editorNode }}),
+          const fileStatus = {{ textContent: "", replaceChildren() {{}} }};
+          const fileEditButton = {{
+            disabled: false,
+            innerHTML: "",
+            title: "",
+            classList: {{ toggle() {{}} }},
+            setAttribute() {{}},
+          }};
+          let controller = null;
+          controller = fileViewer.createFileViewerController({{
+            el,
+            fileStatus,
+            fileEditButton,
+            iconSvg: (name) => `icon:${{name}}`,
+            currentSessionId: () => state.sessionId,
+            currentFileSessionId: () => state.sessionId,
+            normalizeLineNumber: (value) => value == null || value === "" ? null : Number(value),
+            normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+            fileApiPathForPath: (_path, existing) => existing || "tok",
+            isFileViewerOpen: () => state.viewerOpen,
+            invalidateFileViewerSessionSync: () => events.push(["invalidate"]),
+            hideFileUnsavedDialog: (choice) => events.push(["hideUnsaved", choice]),
+            resetFileSearchState: () => events.push(["resetSearch"]),
+            closeFilePickerMenu: (options) => events.push(["closePicker", options]),
             isTextFileKind: (kind) => kind === "text" || kind === "markdown",
             isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
-            isFileViewerSessionUnavailable: () => ctx.unavailable,
-            saveActiveFileEdits: async (opts) => {{ ctx.saves.push(opts); return true; }},
-          }};
-          ctx.fileViewerController.setActiveFileIdentity(overrides.path === false ? "" : "note.txt", {{ gitPath: Boolean(overrides.gitPath), apiPath: overrides.apiPath || "" }});
-          vm.createContext(ctx);
-          vm.runInContext(snippet, ctx);
+            confirmReload: () => true,
+            promptUnsavedFileChoice: async () => "cancel",
+            restoreFileEditorText: () => {{}},
+            hideFileViewer: () => events.push(["hideViewer"]),
+            setFilePath: () => {{}},
+            resetFileViewerPanel: () => events.push(["resetPanel"]),
+            applyFileLoadResult: async () => true,
+            normalizeDraftFilePath: (value) => String(value || "").trim().replace(/^[/]+/, ""),
+            inspectSessionFilePath: async () => ({{ exists: false }}),
+            api: async (url, options = {{}}) => {{ events.push(["api", url, options.method || "GET", options.body || null]); return {{ version: "v2", editable: true, size: 4, path: "/abs/note.txt" }}; }},
+            focusEditor: () => ({{ updateOptions: (opts) => events.push(["editorOptions", opts]) }}),
+            disposeOpenRender: () => events.push(["disposeOpenRender"]),
+            initialFileViewMode: "file",
+            initialFileNonDiffMode: "file",
+            persistFileViewMode: () => {{}},
+            persistFileNonDiffMode: () => {{}},
+            currentFileEditorKind: () => state.editorKind,
+            activeFileEntry: () => null,
+            fileCandidateGitStateFresh: () => false,
+            isMarkdownPreviewable: () => true,
+            updateFileTouchToolbar: () => events.push(["touchToolbar"]),
+            isFileTouchToolbarActive: () => true,
+            fileEditorShortcutBlocked: (target) => Boolean(!state.viewerOpen || state.nestedDialog || (target && target.textEntry && !target.editorInput)),
+            eventTargetElement: (value) => value || null,
+            normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
+            applyFileEditorSelection: () => {{}},
+            isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
+            positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
+            fileEditorEditSupportAvailable: () => true,
+            syncFileDiffSelectionMode: () => {{}},
+            showFilePasteDialog: () => false,
+            hideFilePasteDialog: () => {{}},
+            clipboardReadAvailable: () => false,
+            readClipboardText: async () => "",
+            fileEditorDeleteCommandForKey: () => "",
+            isActiveFileEditorInput: (target) => Boolean(target && target.inputarea && editorNode.contains(target)),
+            getActiveFileSelectionText: () => "",
+            copyToClipboard: async () => {{}},
+            focusActiveFileCodeEditor: () => null,
+            nowMs: () => 0,
+            setToast: (message) => events.push(["toast", message]),
+            renderMonacoFile: async () => true,
+            getFileEditorText: () => "body",
+            fmtBytes: (value) => `${{value}}B`,
+            applyFileMode: () => events.push(["applyFileMode"]),
+            rememberOpenedFile: (rel, absPath) => events.push(["rememberOpenedFile", rel, absPath]),
+            rememberActiveFileSelection: () => events.push(["rememberSelection"]),
+            renderFilePickerMenu: () => events.push(["renderPicker"]),
+          }});
+          controller.setActiveFileIdentity(overrides.path === false ? "" : "note.txt", {{ gitPath: Boolean(overrides.gitPath), apiPath: overrides.apiPath || "" }});
+          if (overrides.kind === "image") controller.applyActiveFileNonTextState("image");
+          else controller.applyActiveFileTextState({{ kind: overrides.kind || "text", text: "body", editable: overrides.editable !== false, version: overrides.version || "v1", draft: Boolean(overrides.draft) }});
+          controller.setFileEditMode(overrides.editMode !== false);
+          controller.setFileDirty(state.dirty);
+          if (overrides.pending) controller.markActiveFileSavePending({{ path: "note.txt" }});
+          if (overrides.unavailable) controller.disableFileViewerForUnavailableSession("sid-1");
+          events.length = 0;
           const event = {{
             key: overrides.key || "s",
             ctrlKey: overrides.ctrl !== false,
@@ -1042,9 +1097,10 @@ def eval_file_editor_save_shortcut() -> dict:
             preventDefault() {{ this.prevented += 1; }},
             stopPropagation() {{ this.stopped += 1; }},
           }};
-          const handled = ctx.__test_saveShortcut(event);
+          const handled = controller.handleFileEditorSaveShortcut(event);
           await Promise.resolve();
-          return {{ handled, prevented: event.prevented, stopped: event.stopped, saves: ctx.saves }};
+          await Promise.resolve();
+          return {{ handled, prevented: event.prevented, stopped: event.stopped, events: events.slice(), apiEvents: events.filter((entry) => entry[0] === "api") }};
         }}
         (async () => {{
           const editorInput = new FakeElement({{ textEntry: true, inputarea: true, editorInput: true }});
@@ -1072,7 +1128,6 @@ def eval_file_editor_save_shortcut() -> dict:
         text=True,
     )
     return json.loads(proc.stdout)
-
 
 def eval_file_touch_selection_keydown() -> dict:
     source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
@@ -3887,10 +3942,13 @@ class TestFileViewerSource(unittest.TestCase):
 
     def test_file_editor_save_shortcut_is_scoped_to_active_edit_mode(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertIn("function handleFileEditorSaveShortcut(e)", source)
-        self.assertIn('key !== "s" || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey', source)
-        self.assertIn("fileEditorShortcutBlocked(target)", source)
-        self.assertIn("void saveActiveFileEdits({ exitEditMode: false });", source)
+        self.assertIn("return fileViewerController.handleFileEditorSaveShortcut(e);", source)
+        self.assertIn('key !== "s" || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey', viewer_source)
+        self.assertIn("fileEditorShortcutBlocked(target)", viewer_source)
+        self.assertIn("void saveActiveFileEdits({ exitEditMode: false });", viewer_source)
+        self.assertNotIn('key !== "s" || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey', source)
         self.assertIn('addAppEvent(document, "keydown", handleFileEditorSaveShortcut, true);', source)
         result = eval_file_editor_save_shortcut()
         for key in ("validCtrl", "validMeta"):
@@ -3899,14 +3957,14 @@ class TestFileViewerSource(unittest.TestCase):
                 self.assertTrue(case["handled"])
                 self.assertEqual(case["prevented"], 1)
                 self.assertEqual(case["stopped"], 1)
-                self.assertEqual(case["saves"], [{"exitEditMode": False}])
+                self.assertEqual(case["apiEvents"], [["api", "/api/sessions/sid-1/file/write", "POST", {"path": "note.txt", "text": "body", "version": "v1", "git_path": False}]])
         for key in ("noModifier", "wrongKey", "notEdit", "pending", "unavailable", "nestedDialog", "otherTextEntry", "noPath", "viewerClosed"):
             with self.subTest(key=key):
                 case = result[key]
                 self.assertFalse(case["handled"])
                 self.assertEqual(case["prevented"], 0)
                 self.assertEqual(case["stopped"], 0)
-                self.assertEqual(case["saves"], [])
+                self.assertEqual(case["apiEvents"], [])
 
     def test_touch_select_mode_refocuses_editor_and_blocks_printable_edits(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

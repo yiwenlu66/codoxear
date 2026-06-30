@@ -1213,6 +1213,22 @@
       return true;
     }
 
+    function handleFileEditorSaveShortcut(event) {
+      if (!event || event.defaultPrevented || event.isComposing) return false;
+      const key = String(event.key || "").toLowerCase();
+      if (key !== "s" || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return false;
+      const target = eventTargetElement(event.target);
+      if (fileEditorShortcutBlocked(target)) return false;
+      if (!activeFileEditorIdleTextWritable()) return false;
+      const sessionId = normalizeSessionId(currentSessionId());
+      const identity = currentActiveFileIdentity();
+      if (!sessionId || !identity.path) return false;
+      event.preventDefault();
+      event.stopPropagation();
+      void saveActiveFileEdits({ exitEditMode: false });
+      return true;
+    }
+
     async function handleFileVideoPreviewButtonPress(token, loadPreview) {
       const loadCompatiblePreview = requireFunction(loadPreview, "loadCompatibleVideoPreview");
       return await loadCompatiblePreview(token || "", { explicit: true });
@@ -1473,6 +1489,7 @@
       handleFileDiffModeButtonPress,
       handleFilePreviewModeButtonPress,
       handleFileEditButtonPress,
+      handleFileEditorSaveShortcut,
       handleFileVideoPreviewButtonPress,
       activeFileDownloadApiPath,
       finalizeFileOpenSuccess,

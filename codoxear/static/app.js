@@ -7542,17 +7542,7 @@
         }
 
         function handleFileEditorSaveShortcut(e) {
-          if (e.defaultPrevented || e.isComposing) return false;
-          const key = String(e.key || "").toLowerCase();
-          if (key !== "s" || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return false;
-          const target = e.target instanceof HTMLElement ? e.target : null;
-          if (fileEditorShortcutBlocked(target)) return false;
-          if (!activeFileEditorIdleTextWritable()) return false;
-          if (!fileViewerSessionId || !activeFilePathValue()) return false;
-          e.preventDefault();
-          e.stopPropagation();
-          void saveActiveFileEdits({ exitEditMode: false });
-          return true;
+          return fileViewerController.handleFileEditorSaveShortcut(e);
         }
 
         function handleFileEditorDeleteKeydown(e) {
