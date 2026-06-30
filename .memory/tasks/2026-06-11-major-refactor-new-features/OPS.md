@@ -6291,3 +6291,24 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: paste action policy and editor insertion now belong to the file-viewer controller. App still owns paste dialog DOM rendering/show/hide primitives, touch toolbar DOM, raw Monaco selection helpers, raw load-result rendering, raw view-mode DOM application, unsaved modal DOM, and discard implementation.
+
+## 2026-06-30T14:11:12Z Discard edit policy controller ownership
+- Functional commit `b346b48 Move discard edit policy into viewer controller` moved `discardActiveFileEdits()` policy from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the controller now owns discard semantics: restore the editor to the current active file text baseline and exit edit mode. App owns the raw `restoreFileEditorText(text)` primitive and supplies it explicitly; `setFileEditMode(false)` remains a controller dependency already used by other controller policy.
+- App-side changes: `discardActiveFileEdits()` is now a wrapper delegating to the controller, and controller construction passes `restoreFileEditorText` instead of a whole discard callback.
+- Tests updated:
+  - Controller fixtures use `restoreFileEditorText` instead of `discardActiveFileEdits`.
+  - Unsaved discard traces now expect `restoreFileEditorText` plus `setFileEditMode(false)`.
+  - Source assertions reject app-owned discard callback wiring and require controller-owned restore/edit-mode behavior.
+- Validation:
+  - Initial focused file-viewer run exposed expected-trace mismatch after discard correctly exited edit mode before reload; updated expected button affordance from save-active to edit-mode after discard.
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - File-viewer focused `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed` after expected-trace update.
+  - Broader focused frontend/file-viewer/static/auth group returned `119 passed, 28 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: discard edit policy now belongs to the file-viewer controller. App still owns raw restore text implementation, unsaved modal DOM, paste dialog DOM rendering/show/hide primitives, touch toolbar DOM, raw Monaco selection helpers, raw load-result rendering, and raw view-mode DOM application.
