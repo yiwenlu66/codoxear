@@ -55,7 +55,6 @@
     const disposeOpenRender = requireFunction(deps && deps.disposeOpenRender, "disposeOpenRender");
     const persistFileViewMode = requireFunction(deps && deps.persistFileViewMode, "persistFileViewMode");
     const persistFileNonDiffMode = requireFunction(deps && deps.persistFileNonDiffMode, "persistFileNonDiffMode");
-    const currentFileEditorKind = requireFunction(deps && deps.currentFileEditorKind, "currentFileEditorKind");
     const activeFileEntry = requireFunction(deps && deps.activeFileEntry, "activeFileEntry");
     const fileCandidateGitStateFresh = requireFunction(deps && deps.fileCandidateGitStateFresh, "fileCandidateGitStateFresh");
     const isMarkdownPreviewable = requireFunction(deps && deps.isMarkdownPreviewable, "isMarkdownPreviewable");
@@ -95,6 +94,7 @@
     let fileSavePending = false;
     let fileDirty = false;
     let fileEditMode = false;
+    let fileEditorKind = "";
     let fileViewMode = normalizeFileViewMode(deps && deps.initialFileViewMode);
     let fileNonDiffMode = deps && deps.initialFileNonDiffMode === "preview" ? "preview" : "file";
     let activeFilePath = "";
@@ -209,6 +209,21 @@
 
     function currentFileEditMode() {
       return fileEditMode;
+    }
+
+    function normalizeFileEditorKind(kind) {
+      const nextKind = String(kind || "");
+      if (nextKind !== "" && nextKind !== "file" && nextKind !== "diff" && nextKind !== "plain-fallback") throw new Error("invalid file editor kind");
+      return nextKind;
+    }
+
+    function currentFileEditorKind() {
+      return fileEditorKind;
+    }
+
+    function setFileEditorKind(kind) {
+      fileEditorKind = normalizeFileEditorKind(kind);
+      return fileEditorKind;
     }
 
     function setFileEditMode(nextMode) {
@@ -1430,6 +1445,8 @@
       currentActiveFileIdentity,
       currentActiveFileLine,
       currentFileEditMode,
+      currentFileEditorKind,
+      setFileEditorKind,
       setFileEditMode,
       currentActiveFileKind,
       currentActiveFileText,

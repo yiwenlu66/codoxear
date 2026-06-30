@@ -273,6 +273,14 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const downloadUnavailableStatus = fileStatus.textContent;
           downloadController.clearFileViewerUnavailableSession();
           const downloadPaths = {{ downloadGitToken, downloadPlain, downloadMissingSession, downloadUnavailablePath, downloadUnavailableStatus }};
+          const kindController = makeController();
+          const editorKindTransitions = {{ initial: kindController.currentFileEditorKind() }};
+          editorKindTransitions.file = kindController.setFileEditorKind("file");
+          editorKindTransitions.currentFile = kindController.currentFileEditorKind();
+          editorKindTransitions.diff = kindController.setFileEditorKind("diff");
+          editorKindTransitions.plain = kindController.setFileEditorKind("plain-fallback");
+          editorKindTransitions.clear = kindController.setFileEditorKind("");
+          try {{ kindController.setFileEditorKind("bogus"); }} catch (err) {{ editorKindTransitions.invalidMessage = err && err.message ? err.message : String(err); }}
           state.editMode = true;
           state.dirty = false;
           renderController.setFileDirty(false);
@@ -281,6 +289,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           fileStatus.textContent = "";
           events.length = 0;
           renderController.setActiveFileIdentity("src/app.py", {{ line: 7, gitPath: true, apiPath: "tok" }});
+          renderController.setFileEditorKind("file");
           const currentRequest = {{ requestId: 0, sessionId: "sid-1", path: "src/app.py", apiPath: "tok" }};
           events.length = 0;
           const currentErrorResult = renderController.renderFileOpenError(currentRequest, new Error("boom"));
@@ -631,6 +640,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             modeResolution: {{ diffFallback, diffAllowed, previewFallback, explicitDiff, invalidModeMessage }},
             fetchResults: {{ diffFetch, diffFetchEvents, readFetch, readFetchEvents }},
             downloadPaths,
+            editorKindTransitions,
             openErrors: {{ currentError, abortErrorResult, staleError, unknownError }},
             finalize,
             draft,
@@ -710,6 +720,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "downloadUnavailablePath": "",
             "downloadUnavailableStatus": "Session is no longer available; copy unsaved edits before closing.",
         })
+        self.assertEqual(result["render"]["editorKindTransitions"], {"initial": "", "file": "file", "currentFile": "file", "diff": "diff", "plain": "plain-fallback", "clear": "", "invalidMessage": "invalid file editor kind"})
         reset_events = [
             ["editorOptions", {"readOnly": True}],
             ["touchToolbar"],

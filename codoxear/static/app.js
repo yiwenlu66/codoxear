@@ -7045,7 +7045,6 @@
         const PDFJS_LOADER_TIMEOUT_MS = 6000;
         let activePdfRender = null;
         let fileEditor = null;
-        let fileEditorKind = "";
         let fileEditorModels = [];
         let fileEditorChangeDisposable = null;
         let fileEditorProgrammaticChange = false;
@@ -7093,6 +7092,14 @@
 
         function activeFileLineValue() {
           return fileViewerController.currentActiveFileLine();
+        }
+
+        function currentFileEditorKind() {
+          return fileViewerController.currentFileEditorKind();
+        }
+
+        function setFileEditorKind(kind) {
+          return fileViewerController.setFileEditorKind(kind);
         }
 
         function clearActiveFileIdentity({ line = null } = {}) {
@@ -7341,7 +7348,7 @@
             } catch (_) {}
             fileEditor = null;
           }
-          fileEditorKind = "";
+          setFileEditorKind("");
           clearFileTouchSelectionState();
         }
 
@@ -7407,15 +7414,15 @@
         }
 
         function getActiveFileCodeEditor() {
-          if (fileEditorKind === "diff" && fileEditor && typeof fileEditor.getModifiedEditor === "function") {
+          if (currentFileEditorKind() === "diff" && fileEditor && typeof fileEditor.getModifiedEditor === "function") {
             return fileEditor.getModifiedEditor();
           }
-          if (fileEditorKind === "file" && fileEditor) return fileEditor;
+          if (currentFileEditorKind() === "file" && fileEditor) return fileEditor;
           return null;
         }
 
         function syncFileDiffSelectionMode() {
-          if (fileEditorKind !== "diff" || !fileEditor || typeof fileEditor.updateOptions !== "function") return;
+          if (currentFileEditorKind() !== "diff" || !fileEditor || typeof fileEditor.updateOptions !== "function") return;
           const hideOpts = currentFileTouchSelectMode()
             ? { enabled: false }
             : {
@@ -7677,7 +7684,7 @@
         }
 
         function getFileEditorText() {
-          if (fileEditorKind === "file" && fileEditor && typeof fileEditor.getModel === "function") {
+          if (currentFileEditorKind() === "file" && fileEditor && typeof fileEditor.getModel === "function") {
             const model = fileEditor.getModel();
             if (model && typeof model.getValue === "function") return String(model.getValue());
           }
@@ -7686,7 +7693,7 @@
 
         function restoreFileEditorText(text) {
           const restoredText = String(text || "");
-          if (fileEditorKind !== "file" || !fileEditor || typeof fileEditor.getModel !== "function") {
+          if (currentFileEditorKind() !== "file" || !fileEditor || typeof fileEditor.getModel !== "function") {
             setFileDirty(false);
             return;
           }
@@ -7722,7 +7729,7 @@
           clearFileVideo();
           fileDiff.innerHTML = "";
           setFileRenderSurface("diff");
-          fileEditorKind = "plain-fallback";
+          setFileEditorKind("plain-fallback");
           fileViewerController.applyPlainTextFallbackState();
           const targetLine = normalizeLineNumber(lineNumber) || 1;
           const notice = el("div", { class: "fileFallbackNotice" }, [
@@ -7863,7 +7870,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         function applyEditorLineFocus(lineNumber) {
           const line = normalizeLineNumber(lineNumber);
           if (!fileEditor || !line) return;
-          if (fileEditorKind === "diff" && fileEditor.getModifiedEditor) {
+          if (currentFileEditorKind() === "diff" && fileEditor.getModifiedEditor) {
             const editor = fileEditor.getModifiedEditor();
             editor.setPosition({ lineNumber: line, column: 1 });
             editor.revealLineInCenter(line);
@@ -7889,7 +7896,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (request && !isCurrentFileOpenRequest(request)) return false;
           const host = fileDiff;
           const lang = langOverride || extToEditorLang(rel);
-          if (fileEditorKind !== "file") {
+          if (currentFileEditorKind() !== "file") {
             disposeFileEditor();
             fileEditor = monaco.editor.create(host, {
               language: lang || "plaintext",
@@ -7916,7 +7923,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               tabCompletion: "off",
               wordBasedSuggestions: "off",
             });
-            fileEditorKind = "file";
+            setFileEditorKind("file");
             fileEditorModels = [fileEditor.getModel()].filter(Boolean);
             fileEditorChangeDisposable = fileEditor.onDidChangeModelContent(() => {
               if (fileEditorProgrammaticChange) return;
@@ -7994,7 +8001,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             },
           });
           fileEditor.setModel({ original: originalModel, modified: modifiedModel });
-          fileEditorKind = "diff";
+          setFileEditorKind("diff");
           fileEditorModels = [originalModel, modifiedModel];
           const originalEditor = fileEditor.getOriginalEditor();
           const modifiedEditor = fileEditor.getModifiedEditor();
@@ -8277,7 +8284,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           initialFileNonDiffMode: storageGetItem("codexweb.fileNonDiffMode") === "preview" ? "preview" : "file",
           persistFileViewMode: (mode) => storageSetItem("codexweb.fileViewMode", mode),
           persistFileNonDiffMode: (mode) => storageSetItem("codexweb.fileNonDiffMode", mode),
-          currentFileEditorKind: () => fileEditorKind,
           activeFileEntry: () => activeFileEntry(),
           fileCandidateGitStateFresh: () => fileCandidateGitStateFresh,
           isMarkdownPreviewable,

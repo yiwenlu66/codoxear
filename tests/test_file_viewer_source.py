@@ -2184,6 +2184,7 @@ def eval_active_file_save_request_helpers() -> dict:
           renderFilePickerMenu: () => {{}},
         }});
         controller.setActiveFileIdentity("src/app.py", {{ line: 42, gitPath: true, apiPath: "token-1" }});
+        controller.setFileEditorKind("file");
         controller.applyActiveFileTextState({{ kind: "text", text: "old text", editable: true, version: state.version, draft: state.draft }});
         controller.setFileEditMode(true);
         controller.setFileDirty(true);
@@ -3877,6 +3878,16 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function currentFileEditorState()", viewer_source)
         self.assertIn("function fileEditorCapabilities(state)", source)
         self.assertIn("return fileViewerController.fileEditorCapabilities(state);", source)
+        self.assertIn("let fileEditorKind = \"\";", viewer_source)
+        self.assertNotIn("let fileEditorKind = \"\";", source)
+        self.assertIn("function currentFileEditorKind()", viewer_source)
+        self.assertIn("function setFileEditorKind(kind)", viewer_source)
+        self.assertIn('throw new Error("invalid file editor kind")', viewer_source)
+        self.assertIn("function currentFileEditorKind()", source)
+        self.assertIn("return fileViewerController.currentFileEditorKind();", source)
+        self.assertIn("function setFileEditorKind(kind)", source)
+        self.assertIn("return fileViewerController.setFileEditorKind(kind);", source)
+        self.assertNotIn("currentFileEditorKind: () => fileEditorKind", source)
         self.assertIn("function fileEditorCapabilities(state)", viewer_source)
         self.assertIn("return Object.freeze({ canEnterEditMode, writable, idleWritable, idleTextWritable, editModeAllowedInCurrentView });", viewer_source)
         self.assertIn("function activeFileEditorCapabilities()", source)
@@ -4123,7 +4134,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("renderPlainTextFallback(rel, text, lineNumber", source)
         self.assertIn("renderPlainTextFallback(rel, modifiedText, lineNumber", source)
         fallback_block = source[source.index("function renderPlainTextFallback("):source.index("function renderDownloadFallback", source.index("function renderPlainTextFallback("))]
-        self.assertIn('fileEditorKind = "plain-fallback";', fallback_block)
+        self.assertIn('setFileEditorKind("plain-fallback");', fallback_block)
         self.assertIn("fileViewerController.applyPlainTextFallbackState();", fallback_block)
         self.assertNotIn("setFileEditMode(false);", fallback_block)
         self.assertNotIn("setFileDirty(false);", fallback_block)
