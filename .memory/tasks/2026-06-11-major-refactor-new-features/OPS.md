@@ -5700,3 +5700,21 @@
   - `git diff --check` passed before staging/commit.
 - Clean-room critic review `04b692d1-9e59-4229-9aee-9b8276b622a7` returned PASS with no blockers; report saved at `/tmp/codoxear-paste-insert-unavailable-review.md`. Review verified exact two-file diff scope, unavailable Insert early return before mutation/hide/toast, typed text preservation, unchanged available Insert, unchanged clipboard/fallback/cancel paths, real extracted-handler VM coverage, and matching source sentinel. Residual risk was limited to normal production unknowns.
 - Scope note: this is manual paste Insert unavailable-session guarding only. It does not claim paste-dialog closure on unavailable transition, broader file-dialog action registry work, browser-manual paste evidence, async file-viewer choreography changes, or completion of the broad refactor/recovery request.
+
+
+## 2026-06-30T05:28:00Z Save-conflict reload unavailable-status preservation
+- Functional commit `5de0979 Guard conflict reload unavailable status` prevents the save-conflict reload callback from overwriting the dirty unavailable-session status after an async reload is canceled by unavailable-session cleanup.
+- Mechanism: `renderFileSaveConflict()` still asks for confirmation and still calls `openFilePath(savePath, { line: activeFileLine, gitPath: activeFileGitPath, apiPath: activeFileApiPath })`; after the await, the `reload failed` status write now also requires `!isFileViewerSessionUnavailable()`. Available-session reload failures still show `${savePath} - reload failed`; unavailable-session cleanup leaves `Session is no longer available; copy unsaved edits before closing.` visible.
+- Tests added/updated:
+  - `eval_file_save_conflict_reload_unavailable_race()` executes the real conflict renderer and reload button closure in a Node VM, verifying unavailable-during-reload preserves the unavailable status and available reload failure still reports reload failure with the same open arguments.
+  - Source sentinel pins the post-await unavailable predicate in the conflict renderer.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused conflict tests passed.
+  - Focused local file-viewer/file-picker/static group returned `85 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1284 passed, 136 subtests passed`.
+  - Focused Docker file-viewer/file-picker/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed before staging/commit.
+- Clean-room critic review `3e1a5872-b41a-4a88-85c9-1ea556f8bb7e` found no blockers; report saved at `/tmp/codoxear-save-conflict-reload-unavailable-review.md`. Review verified the stale unavailable-status overwrite is suppressed, available reload failure remains, confirm/open/keep/render behavior is unchanged, and the VM test executes the real closure.
+- Scope note: this records one repaired file-viewer race inside the ongoing refactor/recovery stream. It does not claim app.js structure, file-viewer async choreography, conflict-handler organization, browser-manual evidence, or the broader refactor/recovery objective is complete.
