@@ -6716,3 +6716,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: file editor-kind state belongs to the file-viewer controller. App still owns raw Monaco editor/diff-editor objects and model disposal, fallback DOM construction/scrolling, raw renderer/DOM plan application, raw restore text implementation, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, raw mode/download/video-preview DOM mutation, compatible-preview fetch/load mechanics, and raw Monaco selection helpers.
+
+## 2026-06-30T20:00:14Z File restore planning controller ownership
+- Functional commit `bb3c438 Move file restore planning into viewer controller` moved the dirty-state policy and restore/no-restore decision for `restoreFileEditorText()` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the controller now owns `prepareFileEditorTextRestore(text)` and `finishFileEditorTextRestore()`. `prepareFileEditorTextRestore()` normalizes restore text, clears dirty state immediately for non-`file` editor kinds, and returns a frozen restore plan only when a raw file editor should be mutated. `finishFileEditorTextRestore()` clears dirty state after the app completes or skips raw Monaco model mutation. `app.js` still owns the raw editor/model checks, `fileEditorProgrammaticChange`, and `model.setValue(...)` side effect.
+- Tests updated: source sentinels require controller restore-plan helpers, app use of `prepareFileEditorTextRestore()`/`finishFileEditorTextRestore()`, and no app-side `setFileDirty(false)` in the raw restore executor. Real-controller probe covers frozen skip/restore plans and dirty state before/after finish.
+- Negative evidence preserved: the first focused run failed because the source-test slice used `hideFilePasteDialog` as the function after `restoreFileEditorText()`, but `timeoutPromise` is now the next function in this app layout. The failure identified a stale test slicing marker, not a product behavior issue.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused file-viewer validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Available broader frontend/file/auth/static route validation returned `252 passed, 80 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: file restore planning/dirty completion belongs to the file-viewer controller. App still owns raw Monaco editor/diff-editor objects, model disposal and `setValue`, fallback DOM construction/scrolling, raw renderer/DOM plan application, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, raw mode/download/video-preview DOM mutation, compatible-preview fetch/load mechanics, and raw Monaco selection helpers.
