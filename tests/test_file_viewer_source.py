@@ -126,6 +126,15 @@ def controller_identity_ctx_js(
               const res = await ctx.api(`/api/sessions/${{request.sessionId}}/file/read?path=${{encodeURIComponent(rel)}}${{pathTokenQuery}}${{gitPathQuery}}`, {{ signal: request.signal }});
               return {{ result: res, absPath: res && typeof res.path === "string" ? res.path : null }};
             }},
+            isFileOpenAbortError(error) {{ return Boolean(error && error.name === "AbortError"); }},
+            renderFileOpenError(request, error) {{
+              if (this.isFileOpenAbortError(error)) return false;
+              if (!this.isCurrentFileOpenRequest(request)) return false;
+              ctx.resetActiveFileBufferState();
+              ctx.fileStatus.textContent = `error: ${{error && error.message ? error.message : "unknown error"}}`;
+              ctx.updateFileTouchToolbar();
+              return false;
+            }},
           }},
           fileOpenRequestId: 0,
           fileOpenAbortController: null,
@@ -1020,6 +1029,8 @@ def eval_file_open_request_sequence() -> dict:
           activeFileEntry: () => null,
           fileCandidateGitStateFresh: () => false,
           isMarkdownPreviewable: () => true,
+          resetActiveFileBufferState: () => {{}},
+          updateFileTouchToolbar: () => {{}},
         }});
         controller.setActiveFileIdentity("old.txt", {{ line: 1, gitPath: false, apiPath: "" }});
         const first = controller.beginFileOpenRequest("first.txt", {{ line: 3 }});
@@ -1274,6 +1285,14 @@ def eval_open_file_path_mode_ownership() -> dict:
               const pathTokenQuery = request.gitPath && request.apiPath ? `&path_token=${{encodeURIComponent(request.apiPath)}}` : "";
               const res = await ctx.api(`/api/sessions/${{request.sessionId}}/file/read?path=${{encodeURIComponent(rel)}}${{pathTokenQuery}}${{gitPathQuery}}`, {{ signal: request.signal }});
               return {{ result: res, absPath: res && typeof res.path === "string" ? res.path : null }};
+            }},
+            renderFileOpenError: (request, error) => {{
+              if (error && error.name === "AbortError") return false;
+              if (!ctx.isCurrentFileOpenRequest(request)) return false;
+              ctx.resetActiveFileBufferState();
+              ctx.fileStatus.textContent = `error: ${{error && error.message ? error.message : "unknown error"}}`;
+              ctx.updateFileTouchToolbar();
+              return false;
             }},
           }},
           startFileOpenRequest: (path, opts = {{}}) => {{
@@ -2546,6 +2565,9 @@ class TestFileViewerSource(unittest.TestCase):
     def test_file_open_race_guard_is_wired_through_fetch_and_render(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+        open_file_start = source.index("async function openFilePath(nextPath")
+        open_file_end = source.index("fileBtn.onclick", open_file_start)
+        open_file_block = source[open_file_start:open_file_end]
         self.assertNotIn("let fileOpenRequestId = 0;", source)
         self.assertNotIn("let fileOpenAbortController = null;", source)
         self.assertIn("let fileOpenRequestId = 0;", viewer_source)
@@ -2566,6 +2588,10 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function finalizeFileOpenSuccess(rel, absPath = null)", source)
         self.assertIn("const openResult = await fileViewerController.fetchFileOpenResult(request, rel, viewMode);", source)
         self.assertIn("const loaded = await applyFileLoadResult(rel, openResult.result, request, { viewMode });", source)
+        self.assertIn("return fileViewerController.renderFileOpenError(request, e);", open_file_block)
+        self.assertIn("function renderFileOpenError(request, error)", viewer_source)
+        self.assertIn("fileStatus.textContent = `error: ${error && error.message ? error.message : \"unknown error\"}`;", viewer_source)
+        self.assertNotIn("fileStatus.textContent = `error: ${e && e.message ? e.message : \"unknown error\"}`;", open_file_block)
         self.assertIn('result: Object.freeze({', viewer_source)
         self.assertIn('kind: "diff"', viewer_source)
         self.assertIn('baseText: res && typeof res.base_text === "string" ? res.base_text : ""', viewer_source)

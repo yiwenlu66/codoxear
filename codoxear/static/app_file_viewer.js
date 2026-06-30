@@ -32,6 +32,8 @@
     const activeFileEntry = requireFunction(deps && deps.activeFileEntry, "activeFileEntry");
     const fileCandidateGitStateFresh = requireFunction(deps && deps.fileCandidateGitStateFresh, "fileCandidateGitStateFresh");
     const isMarkdownPreviewable = requireFunction(deps && deps.isMarkdownPreviewable, "isMarkdownPreviewable");
+    const resetActiveFileBufferState = requireFunction(deps && deps.resetActiveFileBufferState, "resetActiveFileBufferState");
+    const updateFileTouchToolbar = requireFunction(deps && deps.updateFileTouchToolbar, "updateFileTouchToolbar");
     let activeSaveConflict = null;
     let fileOpenRequestId = 0;
     let fileOpenAbortController = null;
@@ -159,6 +161,19 @@
       return viewMode === "preview" && !isMarkdownPreviewable(rel) ? "file" : viewMode === "diff" && !canUseDiffView ? "file" : viewMode;
     }
 
+    function isFileOpenAbortError(error) {
+      return Boolean(error && error.name === "AbortError");
+    }
+
+    function renderFileOpenError(request, error) {
+      if (isFileOpenAbortError(error)) return false;
+      if (!isCurrentFileOpenRequest(request)) return false;
+      resetActiveFileBufferState();
+      fileStatus.textContent = `error: ${error && error.message ? error.message : "unknown error"}`;
+      updateFileTouchToolbar();
+      return false;
+    }
+
     async function fetchFileOpenResult(request, rel, viewMode) {
       if (viewMode === "diff") {
         const pathTokenQuery = request.apiPath ? `&path_token=${encodeURIComponent(request.apiPath)}` : "";
@@ -263,6 +278,8 @@
       normalizeExplicitFileOpenMode,
       resolveFileOpenViewMode,
       fetchFileOpenResult,
+      isFileOpenAbortError,
+      renderFileOpenError,
     });
   }
 

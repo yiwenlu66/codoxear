@@ -38,6 +38,8 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           activeEntry: null,
           gitFresh: false,
           markdownPreviewable: true,
+          resetCount: 0,
+          touchCount: 0,
         }};
         const events = [];
         const fileStatus = {{
@@ -82,6 +84,8 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             activeFileEntry: () => state.activeEntry,
             fileCandidateGitStateFresh: () => state.gitFresh,
             isMarkdownPreviewable: () => state.markdownPreviewable,
+            resetActiveFileBufferState: () => {{ state.resetCount += 1; events.push(["resetBuffer"]); }},
+            updateFileTouchToolbar: () => {{ state.touchCount += 1; events.push(["touchToolbar"]); }},
           }});
         }}
         function event() {{
@@ -154,6 +158,25 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           events.length = 0;
           const readFetch = await renderController.fetchFileOpenResult({{ sessionId: "sid-1", apiPath: "tok", gitPath: true, signal: {{}} }}, "src/app.py", "file");
           const readFetchEvents = events.slice();
+          state.sessionId = "sid-1";
+          renderController.setActiveFileIdentity("src/app.py", {{ line: 7, gitPath: true, apiPath: "tok" }});
+          const currentRequest = {{ requestId: 0, sessionId: "sid-1", path: "src/app.py", apiPath: "tok" }};
+          events.length = 0;
+          const currentErrorResult = renderController.renderFileOpenError(currentRequest, new Error("boom"));
+          const currentError = {{ result: currentErrorResult, status: fileStatus.textContent, resetCount: state.resetCount, touchCount: state.touchCount, events: events.slice() }};
+          events.length = 0;
+          const abortError = new Error("aborted");
+          abortError.name = "AbortError";
+          const abortResult = renderController.renderFileOpenError(currentRequest, abortError);
+          const abortErrorResult = {{ result: abortResult, status: fileStatus.textContent, resetCount: state.resetCount, touchCount: state.touchCount, events: events.slice(), abortCheck: renderController.isFileOpenAbortError(abortError) }};
+          events.length = 0;
+          state.sessionId = "sid-2";
+          const staleResult = renderController.renderFileOpenError(currentRequest, new Error("stale"));
+          const staleError = {{ result: staleResult, status: fileStatus.textContent, resetCount: state.resetCount, touchCount: state.touchCount, events: events.slice() }};
+          state.sessionId = "sid-1";
+          events.length = 0;
+          const unknownResult = renderController.renderFileOpenError(currentRequest, {{}});
+          const unknownError = {{ result: unknownResult, status: fileStatus.textContent, resetCount: state.resetCount, touchCount: state.touchCount, events: events.slice() }};
           const render = {{
             exportFrozen: Object.isFrozen(fileViewer),
             exports: Object.keys(fileViewer).sort(),
@@ -163,6 +186,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             actionTexts: fileStatus.children[1].children.map((node) => node.text),
             modeResolution: {{ diffFallback, diffAllowed, previewFallback, explicitDiff, invalidModeMessage }},
             fetchResults: {{ diffFetch, diffFetchEvents, readFetch, readFetchEvents }},
+            openErrors: {{ currentError, abortErrorResult, staleError, unknownError }},
           }};
           const availableReloadFailure = await runReloadCase("");
           const canceledReload = await runReloadCase("", false);
@@ -213,6 +237,12 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "diffFetchEvents": [["api", "/api/sessions/sid-1/git/file_versions?path=src%2Fapp.py&path_token=tok", True]],
             "readFetch": {"result": {"kind": "text", "text": "body", "path": "/abs/read"}, "absPath": "/abs/read"},
             "readFetchEvents": [["api", "/api/sessions/sid-1/file/read?path=src%2Fapp.py&path_token=tok&git_path=1", True]],
+        })
+        self.assertEqual(result["render"]["openErrors"], {
+            "currentError": {"result": False, "status": "error: boom", "resetCount": 1, "touchCount": 1, "events": [["resetBuffer"], ["touchToolbar"]]},
+            "abortErrorResult": {"result": False, "status": "error: boom", "resetCount": 1, "touchCount": 1, "events": [], "abortCheck": True},
+            "staleError": {"result": False, "status": "error: boom", "resetCount": 1, "touchCount": 1, "events": []},
+            "unknownError": {"result": False, "status": "error: unknown error", "resetCount": 2, "touchCount": 2, "events": [["resetBuffer"], ["touchToolbar"]]},
         })
         self.assertIn("file viewer dependency missing: el", result["missingDependencyError"])
 

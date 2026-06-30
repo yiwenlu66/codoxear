@@ -8506,6 +8506,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           activeFileEntry: () => activeFileEntry(),
           fileCandidateGitStateFresh: () => fileCandidateGitStateFresh,
           isMarkdownPreviewable,
+          resetActiveFileBufferState: () => resetActiveFileBufferState(),
+          updateFileTouchToolbar: () => updateFileTouchToolbar(),
         });
 
         function beginActiveFileSaveRequest() {
@@ -9835,12 +9837,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             if (!loaded) return false;
             return finalizeFileOpenSuccess(rel, openResult.absPath);
           } catch (e) {
-            if (e && e.name === "AbortError") return false;
-            if (!isCurrentFileOpenRequest(request)) return false;
-            resetActiveFileBufferState();
-            fileStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
-            updateFileTouchToolbar();
-            return false;
+            return fileViewerController.renderFileOpenError(request, e);
           } finally {
             openRequest.done();
           }
