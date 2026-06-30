@@ -185,6 +185,12 @@
       return Boolean(error && error.name === "AbortError");
     }
 
+    function blockUnavailableFileAction() {
+      if (!isUnavailable()) return false;
+      fileStatus.textContent = "Session is no longer available; copy unsaved edits before closing.";
+      return true;
+    }
+
     function isFileSavePending() {
       return Boolean(fileSavePending);
     }
@@ -443,6 +449,7 @@
       resolveFileOpenViewMode,
       fetchFileOpenResult,
       isFileOpenAbortError,
+      blockUnavailableFileAction,
       finalizeFileOpenSuccess,
       applyDraftFileLoad,
       renderFileOpenError,

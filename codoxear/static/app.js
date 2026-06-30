@@ -7080,9 +7080,7 @@
         }
 
         function blockUnavailableFileAction() {
-          if (!isFileViewerSessionUnavailable()) return false;
-          fileStatus.textContent = "Session is no longer available; copy unsaved edits before closing.";
-          return true;
+          return fileViewerController.blockUnavailableFileAction();
         }
 
         function cancelPendingFileOpen() {

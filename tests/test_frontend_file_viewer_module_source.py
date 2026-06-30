@@ -231,6 +231,14 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const genericSaveError = fileStatus.textContent;
           renderController.renderActiveFileSaveError({{ sessionId: "sid-1", path: "src/app.py" }}, {{}});
           const unknownSaveError = fileStatus.textContent;
+          state.unavailable = false;
+          fileStatus.textContent = "old status";
+          const availableBlocked = renderController.blockUnavailableFileAction();
+          const availableBlockStatus = fileStatus.textContent;
+          state.unavailable = true;
+          const unavailableBlocked = renderController.blockUnavailableFileAction();
+          const unavailableBlockStatus = fileStatus.textContent;
+          state.unavailable = false;
           const render = {{
             exportFrozen: Object.isFrozen(fileViewer),
             exports: Object.keys(fileViewer).sort(),
@@ -246,6 +254,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             draftErrors: {{ currentDraftError, abortDraftError, staleDraftError }},
             saveBodies,
             saveErrors: {{ saveConflict, genericSaveError, unknownSaveError }},
+            unavailableAction: {{ availableBlocked, availableBlockStatus, unavailableBlocked, unavailableBlockStatus }},
           }};
           const availableReloadFailure = await runReloadCase("");
           const canceledReload = await runReloadCase("", false);
@@ -342,6 +351,12 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "saveConflict": {"label": "src/app.py - save conflict: version mismatch", "actions": ["Reload from disk", "Keep editing"]},
             "genericSaveError": "save error: disk full",
             "unknownSaveError": "save error: unknown error",
+        })
+        self.assertEqual(result["render"]["unavailableAction"], {
+            "availableBlocked": False,
+            "availableBlockStatus": "old status",
+            "unavailableBlocked": True,
+            "unavailableBlockStatus": "Session is no longer available; copy unsaved edits before closing.",
         })
         self.assertIn("file viewer dependency missing: el", result["missingDependencyError"])
 
