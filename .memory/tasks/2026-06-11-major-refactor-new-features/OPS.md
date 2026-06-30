@@ -6177,3 +6177,10 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: existing-file open primitive now belongs to the file-viewer controller. App still owns raw load-result rendering, raw view-mode DOM application, unsaved modal DOM, discard implementation, touch selection state/actions, and paste dialog/insert actions.
+
+## 2026-06-30T12:47:09Z Clean-room review infrastructure failure after existing open primitive checkpoint
+- Observation: async clean-room review run `6c7bc5fd-7b0a-4b20-a942-6bf89042b8d2` for the current file-viewer controller checkpoint failed before writing a result.
+- Raw failure reported by runner: `Async runner process 2916374 exited or disappeared before writing a result. Marked run failed by stale-run reconciliation. Resume: unavailable; no child session file was persisted.`
+- Intended review output file: `/tmp/codoxear-existing-open-primitive-review.md`; no review finding was produced or applied.
+- Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against the code changes. The code-evidence basis remains the committed validation for `a60123f`: focused tests, full local pytest, Docker sandbox, syntax checks, and diff checks.
+- Decision: continue refactor work; rerun a clean-room review before yielding a final checkpoint if the async runner is available.
