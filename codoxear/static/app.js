@@ -7051,7 +7051,6 @@
         let fileEditorKind = "";
         let fileEditorModels = [];
         let fileEditorChangeDisposable = null;
-        let fileEditMode = false;
         let fileEditorProgrammaticChange = false;
         let fileUnsavedReturnFocusEl = null;
         let fileUnsavedResolver = null;
@@ -7758,7 +7757,7 @@
           fileDiff.innerHTML = "";
           setFileRenderSurface("diff");
           fileEditorKind = "plain-fallback";
-          fileEditMode = false;
+          setFileEditMode(false);
           const targetLine = normalizeLineNumber(lineNumber) || 1;
           const notice = el("div", { class: "fileFallbackNotice" }, [
             el("div", { class: "title", text: "Plain text fallback" }),
@@ -7932,7 +7931,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             fileEditor = monaco.editor.create(host, {
               language: lang || "plaintext",
               value: String(text || ""),
-              readOnly: !(fileEditMode && currentActiveFileEditable() && !isFileViewerSessionUnavailable()),
+              readOnly: !(currentFileEditMode() && currentActiveFileEditable() && !isFileViewerSessionUnavailable()),
               theme: "codoxear-github-light",
               lineNumbers: "on",
               minimap: { enabled: false },
@@ -8210,10 +8209,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return true;
         }
 
+        function currentFileEditMode() {
+          return fileViewerController.currentFileEditMode();
+        }
+
         function setFileEditMode(nextMode) {
-          fileEditMode = Boolean(nextMode) && activeFileEditModeAllowedInCurrentView();
-          syncFileEditorReadOnly();
-          updateFileEditButton();
+          return fileViewerController.setFileEditMode(nextMode);
         }
 
         function discardActiveFileEdits() {
@@ -8310,7 +8311,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           disposeOpenRender: () => disposePdfRender(),
           currentFileViewMode: () => fileViewMode,
           currentFileEditorKind: () => fileEditorKind,
-          currentFileEditMode: () => fileEditMode,
           activeFileEntry: () => activeFileEntry(),
           fileCandidateGitStateFresh: () => fileCandidateGitStateFresh,
           isMarkdownPreviewable,
@@ -8338,7 +8338,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           setToast: (message) => setToast(message),
           setFileViewMode: (mode) => setFileViewMode(mode),
           renderMonacoFile: (rel, text, lineNumber, langOverride, request) => renderMonacoFile(rel, text, lineNumber, langOverride, request),
-          setFileEditMode: (enabled) => setFileEditMode(enabled),
           getFileEditorText: () => getFileEditorText(),
           fmtBytes: (value) => fmtBytes(value),
           applyFileMode: () => applyFileMode(),
@@ -8475,7 +8474,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileVideoPreviewBtn.setAttribute("aria-label", fileVideoPreviewBtn.title);
           fileModePreviewBtn.style.display = previewable ? "" : "none";
           if (fileViewMode !== "file") hideFilePasteDialog();
-          if (fileViewMode !== "file" && fileEditMode) setFileEditMode(false);
+          if (fileViewMode !== "file" && currentFileEditMode()) setFileEditMode(false);
           syncFileEditorReadOnly();
           updateFileEditButton();
         }

@@ -732,6 +732,7 @@ def eval_file_paste_dialog_fallback() -> dict:
           }});
           controller.setActiveFileIdentity("note.txt", {{}});
           controller.applyActiveFileTextState({{ kind: "text", text: model.value, editable: true, version: "v1", draft: false }});
+          controller.setFileEditMode(true);
           await controller.pasteFromClipboardIntoActiveFile();
           if (opts.hideAfter) ctx.__test_hidePaste({{ restoreFocus: true }});
           return {{
@@ -866,6 +867,7 @@ def eval_file_paste_insert_button_guard() -> dict:
           }});
           controller.setActiveFileIdentity("note.txt", {{}});
           controller.applyActiveFileTextState({{ kind: "text", text: model.value, editable: true, version: "v1", draft: false }});
+          controller.setFileEditMode(true);
           if (state.unavailable) controller.disableFileViewerForUnavailableSession("sid-1");
           const result = controller.handleFilePasteInsert(state.inputValue);
           return {{ result, inputValue: state.inputValue, inserted: state.inserted, hidden: state.hidden, toasts: state.toasts, status: fileStatus.textContent, dirty: controller.currentFileDirty() }};
@@ -1303,6 +1305,7 @@ def eval_file_editor_delete_shortcut() -> dict:
           }});
           controller.setActiveFileIdentity(overrides.path === false ? "" : "note.txt", {{ gitPath: Boolean(overrides.gitPath), apiPath: overrides.apiPath || "" }});
           controller.applyActiveFileTextState({{ kind: state.kind, text: "", editable: state.editable, version: state.version, draft: state.draft }});
+          if (state.editMode) controller.setFileEditMode(true);
           if (state.selectMode) controller.toggleFileTouchSelectionMode();
           calls.focusCount = 0;
           if (state.unavailable) controller.disableFileViewerForUnavailableSession("sid-1");
@@ -1910,7 +1913,8 @@ def eval_active_file_load_state_writers() -> dict:
         const ctx = {{
           clearActiveFileSaveState() {{}},
           resetFileTouchSelectionState() {{}},
-          setFileEditMode() {{}},
+          syncFileEditorReadOnly() {{}},
+          updateFileEditButton() {{}},
           setFileDirty() {{}},
         }};
         vm.createContext(ctx);
@@ -2065,6 +2069,7 @@ def eval_active_file_save_request_helpers() -> dict:
         }});
         controller.setActiveFileIdentity("src/app.py", {{ line: 42, gitPath: true, apiPath: "token-1" }});
         controller.applyActiveFileTextState({{ kind: "text", text: "old text", editable: true, version: state.version, draft: state.draft }});
+        controller.setFileEditMode(true);
         controller.setFileDirty(true);
         calls.length = 0;
         const save = controller.beginActiveFileSaveRequest();
@@ -2088,6 +2093,7 @@ def eval_active_file_save_request_helpers() -> dict:
         result.currentUnavailable = controller.isCurrentActiveFileSaveRequest(save);
         controller.clearFileViewerUnavailableSession();
         state.editMode = true;
+        controller.setFileEditMode(true);
         const save2 = controller.beginActiveFileSaveRequest();
         controller.markActiveFileSavePending(save2);
         controller.finishActiveFileSaveRequest(save);
@@ -2302,6 +2308,8 @@ def eval_active_file_save_success() -> dict:
         }});
         controller.setActiveFileIdentity("new.py", {{ line: 42, gitPath: true, apiPath: "old-token" }});
         controller.applyActiveFileTextState({{ kind: state.kind, text: state.text, editable: state.editable, version: state.version, draft: state.draft }});
+        controller.setFileEditMode(true);
+        calls.length = 0;
         function snapshot() {{
           const identity = controller.currentActiveFileIdentity();
           return {{
@@ -2315,7 +2323,7 @@ def eval_active_file_save_success() -> dict:
             apiPath: identity.apiPath,
             line: controller.currentActiveFileLine(),
             dirty: controller.currentFileDirty(),
-            editMode: state.editMode,
+            editMode: controller.currentFileEditMode(),
             status: fileStatus.textContent,
             calls: calls.slice(),
           }};
@@ -2331,6 +2339,7 @@ def eval_active_file_save_success() -> dict:
         state.dirty = true;
         state.editMode = true;
         controller.applyActiveFileTextState({{ kind: state.kind, text: state.text, editable: state.editable, version: state.version, draft: state.draft }});
+        controller.setFileEditMode(true);
         fileStatus.textContent = "";
         calls.length = 0;
         controller.setFileDirty(true);
@@ -2487,6 +2496,7 @@ def eval_active_file_save_transport() -> dict:
           state.unavailable = false;
           state.behavior = behavior;
           controller.applyActiveFileTextState({{ kind: state.kind, text: state.text, editable: state.editable, version: state.version, draft: state.draft }});
+          controller.setFileEditMode(true);
           calls.length = 0;
           fileStatus.textContent = "";
           controller.setFileDirty(state.dirty);
@@ -2503,7 +2513,7 @@ def eval_active_file_save_transport() -> dict:
             version: controller.currentActiveFileVersion(),
             editable: controller.currentActiveFileEditable(),
             dirty: controller.currentFileDirty(),
-            editMode: state.editMode,
+            editMode: controller.currentFileEditMode(),
             path: identity.path,
             gitPath: identity.gitPath,
             apiPath: identity.apiPath,
@@ -2524,6 +2534,7 @@ def eval_active_file_save_transport() -> dict:
           state.behavior = "success";
           if (state.kind === "text" || state.kind === "markdown") controller.applyActiveFileTextState({{ kind: state.kind, text: state.text, editable: state.editable, version: state.version, draft: state.draft }});
           else controller.applyActiveFileNonTextState(state.kind);
+          if (state.editMode) controller.setFileEditMode(true);
           controller.setFileDirty(state.dirty);
           calls.length = 0;
           fileStatus.textContent = "";
@@ -2536,7 +2547,7 @@ def eval_active_file_save_transport() -> dict:
             fileStatus.textContent = "Session is no longer available; copy unsaved edits before closing.";
           }}
           const ok = await controller.saveActiveFileEdits({{ exitEditMode: overrides.exitEditMode !== false }});
-          return {{ ok, status: fileStatus.textContent, calls: calls.slice(), dirty: controller.currentFileDirty(), editMode: state.editMode, text: controller.currentActiveFileText() }};
+          return {{ ok, status: fileStatus.textContent, calls: calls.slice(), dirty: controller.currentFileDirty(), editMode: controller.currentFileEditMode(), text: controller.currentActiveFileText() }};
         }}
         runCase("success")
           .then(async (success) => {{
@@ -3382,7 +3393,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("if (!activeFileEditorIdleWritable()) return false;", viewer_source)
         self.assertIn("!isFileViewerSessionUnavailable()", source)
         self.assertIn("activeFileSaveToken === save.token", viewer_source)
-        self.assertIn("fileEditMode = Boolean(nextMode) && activeFileEditModeAllowedInCurrentView();", source)
+        self.assertIn("fileEditMode = Boolean(nextMode) && activeFileEditModeAllowedInCurrentView();", viewer_source)
+        self.assertNotIn("let fileEditMode = false;", source)
         self.assertIn("function syncFileUnsavedDialogMode()", source)
         self.assertIn('title.textContent = unavailable ? "Session unavailable" : "Unsaved changes"', source)
         self.assertIn('message.textContent = unavailable ? "This session is no longer available. Copy your edits before closing; they cannot be saved here." : "Save this file before leaving the editor?"', source)
@@ -3443,7 +3455,7 @@ class TestFileViewerSource(unittest.TestCase):
             ["setFileViewMode", "file"],
             ["applyFileMode"],
             ["renderMonacoFile", "new/file.txt", "", 7, ""],
-            ["setFileEditMode", True],
+            ["updateFileTouchToolbar"],
             ["rememberActiveFileSelection"],
             ["renderFilePickerMenu"],
         ])
@@ -3466,7 +3478,7 @@ class TestFileViewerSource(unittest.TestCase):
             ["resetFileViewerPanel"],
             ["applyFileMode"],
             ["renderMonacoFile", "new/file.txt", "", 7, ""],
-            ["setFileEditMode", True],
+            ["updateFileTouchToolbar"],
             ["rememberActiveFileSelection"],
             ["renderFilePickerMenu"],
         ])
@@ -3660,7 +3672,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const changed = await setFileViewModeWithGuard(\"file\");", viewer_source)
         self.assertIn("setFileEditMode(true);", viewer_source)
         self.assertIn("const canPaste = activeFileEditorIdleTextWritable();", source)
-        self.assertIn("fileEditMode = Boolean(nextMode) && activeFileEditModeAllowedInCurrentView();", source)
+        self.assertIn("fileEditMode = Boolean(nextMode) && activeFileEditModeAllowedInCurrentView();", viewer_source)
+        self.assertNotIn("let fileEditMode = false;", source)
         result = eval_file_editor_capability_predicates()
 
         def assert_capability_case(name: str, expected: dict[str, bool]) -> None:
@@ -3996,7 +4009,7 @@ class TestFileViewerSource(unittest.TestCase):
                 ["applyFileMode"],
                 ["updateFileTouchToolbar"],
                 ["updateFileTouchToolbar"],
-                ["setFileEditMode", False],
+                ["updateFileTouchToolbar"],
                 ["rememberOpenedFile", "new.py", "/abs/new.py"],
                 ["renderFilePickerMenu"],
             ],
@@ -4074,10 +4087,11 @@ class TestFileViewerSource(unittest.TestCase):
             "editMode": False,
             "text": "old",
         })
-        for name in ["noSession", "noPath", "notEditable"]:
+        for name in ["noSession", "noPath"]:
             self.assertEqual(preconditions[name], {"ok": False, "status": "", "calls": [], "dirty": True, "editMode": True, "text": "old"})
-        self.assertEqual(preconditions["nonText"], {"ok": False, "status": "", "calls": [], "dirty": True, "editMode": True, "text": ""})
-        self.assertEqual(preconditions["cleanExit"], {"ok": True, "status": "", "calls": [["setFileEditMode", False]], "dirty": False, "editMode": False, "text": "old"})
+        self.assertEqual(preconditions["notEditable"], {"ok": False, "status": "", "calls": [], "dirty": True, "editMode": False, "text": "old"})
+        self.assertEqual(preconditions["nonText"], {"ok": False, "status": "", "calls": [], "dirty": True, "editMode": False, "text": ""})
+        self.assertEqual(preconditions["cleanExit"], {"ok": True, "status": "", "calls": [["updateFileTouchToolbar"]], "dirty": False, "editMode": False, "text": "old"})
         self.assertTrue(preconditions["dirtySubmit"]["ok"])
         self.assertEqual(preconditions["dirtySubmit"]["status"], "src.py - 4B")
         self.assertFalse(preconditions["dirtySubmit"]["dirty"])

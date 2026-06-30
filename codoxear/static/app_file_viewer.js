@@ -52,7 +52,6 @@
     const disposeOpenRender = requireFunction(deps && deps.disposeOpenRender, "disposeOpenRender");
     const currentFileViewMode = requireFunction(deps && deps.currentFileViewMode, "currentFileViewMode");
     const currentFileEditorKind = requireFunction(deps && deps.currentFileEditorKind, "currentFileEditorKind");
-    const currentFileEditMode = requireFunction(deps && deps.currentFileEditMode, "currentFileEditMode");
     const activeFileEntry = requireFunction(deps && deps.activeFileEntry, "activeFileEntry");
     const fileCandidateGitStateFresh = requireFunction(deps && deps.fileCandidateGitStateFresh, "fileCandidateGitStateFresh");
     const isMarkdownPreviewable = requireFunction(deps && deps.isMarkdownPreviewable, "isMarkdownPreviewable");
@@ -79,7 +78,6 @@
     const setToast = requireFunction(deps && deps.setToast, "setToast");
     const setFileViewMode = requireFunction(deps && deps.setFileViewMode, "setFileViewMode");
     const renderMonacoFile = requireFunction(deps && deps.renderMonacoFile, "renderMonacoFile");
-    const setFileEditMode = requireFunction(deps && deps.setFileEditMode, "setFileEditMode");
     const getFileEditorText = requireFunction(deps && deps.getFileEditorText, "getFileEditorText");
     const fmtBytes = requireFunction(deps && deps.fmtBytes, "fmtBytes");
     const applyFileMode = requireFunction(deps && deps.applyFileMode, "applyFileMode");
@@ -93,6 +91,7 @@
     let activeFileSaveToken = 0;
     let fileSavePending = false;
     let fileDirty = false;
+    let fileEditMode = false;
     let activeFilePath = "";
     let activeFileApiPath = "";
     let activeFileGitPath = false;
@@ -179,6 +178,16 @@
       return activeFileLine;
     }
 
+    function currentFileEditMode() {
+      return fileEditMode;
+    }
+
+    function setFileEditMode(nextMode) {
+      fileEditMode = Boolean(nextMode) && activeFileEditModeAllowedInCurrentView();
+      syncFileEditorReadOnly();
+      updateFileEditButton();
+    }
+
     function currentActiveFileKind() {
       return activeFileKind;
     }
@@ -205,10 +214,11 @@
       activeFileEditable = false;
       activeFileVersion = "";
       activeFileDraft = false;
-      setFileEditMode(false);
+      fileEditMode = false;
       clearActiveFileSaveState();
       resetFileTouchSelectionState();
-      setFileDirty(false);
+      fileDirty = false;
+      updateFileEditButton();
     }
 
     function applyActiveFileTextState({ kind = "text", text = "", editable = false, version = "", draft = false } = {}) {
@@ -1152,6 +1162,8 @@
       nextActiveFileIdentity,
       currentActiveFileIdentity,
       currentActiveFileLine,
+      currentFileEditMode,
+      setFileEditMode,
       currentActiveFileKind,
       currentActiveFileText,
       currentActiveFileEditable,
