@@ -6512,3 +6512,21 @@
 - Intended review output file: `/tmp/codoxear-active-file-metadata-review.md`; no review finding was produced or applied.
 - Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against commit `89dad8f`. The evidence basis for the active-file metadata ownership move remains the syntax checks, focused tests, full local pytest, Docker sandbox, and diff checks recorded in OPS Active-file metadata controller ownership.
 - Decision: continue workbench progress; run a fresh clean-room review only at the next necessary yield or if a review result becomes required for a decision.
+
+
+## 2026-06-30T16:55:00Z File edit-mode controller ownership
+- Functional commit `265d16f Move file edit mode into viewer controller` moved `fileEditMode` from inline `app.js` state into `codoxear/static/app_file_viewer.js`.
+- Mechanism: after active-file metadata moved into the controller, edit-mode eligibility no longer required app-owned content metadata. The controller now owns `fileEditMode`, `currentFileEditMode()`, `setFileEditMode(nextMode)`, reset-time edit-mode clearing, and the clamp through `activeFileEditModeAllowedInCurrentView()`. `resetActiveFileBufferState()` clears metadata, edit mode, save state, touch selection, and dirty state atomically before updating edit affordances.
+- App-side changes: `app.js` no longer declares `let fileEditMode` and no longer injects edit-mode getter/setter dependencies into the controller. App wrapper functions delegate to controller accessors; raw Monaco creation and mode-DOM application ask `currentFileEditMode()` when computing read-only and file-mode transitions. Plain-text fallback exits edit mode through the controller wrapper.
+- Test updates: real-controller fixtures now seed edit mode through `controller.setFileEditMode(true)` after identity and metadata setup; assertions read `controller.currentFileEditMode()` rather than fake app state. Frontend VM expectations now observe edit-mode changes as read-only/button/touch-toolbar side effects rather than a fake `setFileEditMode` callback.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused file-viewer validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader focused frontend/file-viewer/static/auth validation returned `131 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: edit-mode state now shares the file-viewer controller source of truth with active-file metadata, dirty state, save/open policy, edit-button policy, paste/delete/copy/touch-selection policy, and unavailable-session policy. App still owns raw Monaco/editor DOM operations, raw load-result rendering, raw view-mode DOM application, raw restore text implementation, unsaved modal DOM internals, paste dialog DOM/show-hide primitives, touch toolbar DOM, and raw Monaco selection helpers.
