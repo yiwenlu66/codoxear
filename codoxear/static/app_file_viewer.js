@@ -26,7 +26,10 @@
     const confirmReload = requireFunction(deps && deps.confirmReload, "confirmReload");
     const openFilePath = requireFunction(deps && deps.openFilePath, "openFilePath");
     const focusEditor = requireFunction(deps && deps.focusEditor, "focusEditor");
+    const disposeOpenRender = requireFunction(deps && deps.disposeOpenRender, "disposeOpenRender");
     let activeSaveConflict = null;
+    let fileOpenRequestId = 0;
+    let fileOpenAbortController = null;
     let activeFilePath = "";
     let activeFileApiPath = "";
     let activeFileGitPath = false;
@@ -77,6 +80,63 @@
       activeFileApiPath = identity.apiPath;
       activeFileLine = line === undefined ? activeFileLine : normalizeLineNumber(line);
       return Object.freeze({ ...identity, line: activeFileLine });
+    }
+
+    function abortPendingFileOpenTransport() {
+      if (!fileOpenAbortController) return;
+      try {
+        fileOpenAbortController.abort();
+      } catch (_) {}
+      fileOpenAbortController = null;
+    }
+
+    function cancelPendingFileOpen() {
+      fileOpenRequestId += 1;
+      disposeOpenRender();
+      abortPendingFileOpenTransport();
+    }
+
+    function beginFileOpenRequest(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {}) {
+      cancelPendingFileOpen();
+      const identity = beginActiveFileIdentity(nextPath, { line, gitPath, apiPath });
+      const controller = typeof AbortController === "function" ? new AbortController() : null;
+      if (controller) fileOpenAbortController = controller;
+      return Object.freeze({
+        requestId: fileOpenRequestId,
+        sessionId: currentSessionId(),
+        path: identity.path,
+        apiPath: identity.apiPath,
+        gitPath: identity.gitPath,
+        line: identity.line,
+        signal: controller ? controller.signal : null,
+      });
+    }
+
+    function isCurrentFileOpenRequest(request) {
+      if (!request) return false;
+      const identity = currentActiveFileIdentity();
+      return Boolean(
+        request.requestId === fileOpenRequestId &&
+          request.sessionId === currentSessionId() &&
+          request.path === String(identity.path ?? "") &&
+          String(request.apiPath || "") === String(identity.apiPath || "")
+      );
+    }
+
+    function finalizeFileOpenRequest(request) {
+      if (!request || !fileOpenAbortController) return;
+      if (fileOpenAbortController.signal !== request.signal) return;
+      if (!isCurrentFileOpenRequest(request)) return;
+      fileOpenAbortController = null;
+    }
+
+    function startFileOpenRequest(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {}) {
+      const request = beginFileOpenRequest(nextPath, { line, gitPath, apiPath });
+      return Object.freeze({
+        request,
+        path: request.path,
+        done: () => finalizeFileOpenRequest(request),
+      });
     }
 
     function isSaveConflictCurrent(conflict) {
@@ -146,6 +206,12 @@
       clearActiveFileIdentity,
       setActiveFileIdentity,
       beginActiveFileIdentity,
+      abortPendingFileOpenTransport,
+      cancelPendingFileOpen,
+      beginFileOpenRequest,
+      isCurrentFileOpenRequest,
+      finalizeFileOpenRequest,
+      startFileOpenRequest,
     });
   }
 

@@ -68,6 +68,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
               return state.openResult === true;
             }},
             focusEditor: () => ({{ focus: () => events.push(["focus"]) }}),
+            disposeOpenRender: () => events.push(["disposeOpenRender"]),
           }});
         }}
         function event() {{
@@ -214,6 +215,12 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "clearActiveFileIdentity",
             "setActiveFileIdentity",
             "beginActiveFileIdentity",
+            "abortPendingFileOpenTransport",
+            "cancelPendingFileOpen",
+            "beginFileOpenRequest",
+            "isCurrentFileOpenRequest",
+            "finalizeFileOpenRequest",
+            "startFileOpenRequest",
         ]:
             self.assertIn(api_name, viewer_source)
         self.assertIn("normalizeLineNumber", app_source)

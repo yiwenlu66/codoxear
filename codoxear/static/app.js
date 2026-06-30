@@ -995,8 +995,7 @@
           chatSearchAllAbort = null;
           abortController(olderLoadController);
           olderLoadController = null;
-          abortController(fileOpenAbortController);
-          fileOpenAbortController = null;
+          fileViewerController.abortPendingFileOpenTransport();
           stopAnnouncementHeartbeat();
           stopLiveAudioWatchdog();
           resetLiveAudioState();
@@ -7066,8 +7065,6 @@
         let fileEditorProgrammaticChange = false;
         let fileUnsavedReturnFocusEl = null;
         let fileUnsavedResolver = null;
-        let fileOpenRequestId = 0;
-        let fileOpenAbortController = null;
         let fileViewerSessionSyncToken = 0;
         let fileCandidateRequestSeq = 0;
         let fileTouchSelectMode = false;
@@ -7092,13 +7089,7 @@
         }
 
         function cancelPendingFileOpen() {
-          fileOpenRequestId += 1;
-          disposePdfRender();
-          if (!fileOpenAbortController) return;
-          try {
-            fileOpenAbortController.abort();
-          } catch (_) {}
-          fileOpenAbortController = null;
+          fileViewerController.cancelPendingFileOpen();
         }
 
         function nextActiveFileIdentity(current, nextPath, { gitPath = undefined, apiPath = undefined } = {}) {
@@ -7130,30 +7121,11 @@
         }
 
         function beginFileOpenRequest(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {}) {
-          cancelPendingFileOpen();
-          const identity = fileViewerController.beginActiveFileIdentity(nextPath, { line, gitPath, apiPath });
-          const controller = typeof AbortController === "function" ? new AbortController() : null;
-          if (controller) fileOpenAbortController = controller;
-          return {
-            requestId: fileOpenRequestId,
-            sessionId: currentFileSessionId(),
-            path: identity.path,
-            apiPath: identity.apiPath,
-            gitPath: identity.gitPath,
-            line: identity.line,
-            signal: controller ? controller.signal : null,
-          };
+          return fileViewerController.beginFileOpenRequest(nextPath, { line, gitPath, apiPath });
         }
 
         function isCurrentFileOpenRequest(request) {
-          if (!request) return false;
-          const identity = currentActiveFileIdentity();
-          return (
-            request.requestId === fileOpenRequestId &&
-            request.sessionId === currentFileSessionId() &&
-            request.path === String(identity.path ?? "") &&
-            String(request.apiPath || "") === String(identity.apiPath || "")
-          );
+          return fileViewerController.isCurrentFileOpenRequest(request);
         }
 
         function isFileViewerSelectionCurrent(sessionId, token = null) {
@@ -7175,19 +7147,11 @@
         }
 
         function finalizeFileOpenRequest(request) {
-          if (!request || !fileOpenAbortController) return;
-          if (fileOpenAbortController.signal !== request.signal) return;
-          if (!isCurrentFileOpenRequest(request)) return;
-          fileOpenAbortController = null;
+          fileViewerController.finalizeFileOpenRequest(request);
         }
 
         function startFileOpenRequest(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {}) {
-          const request = beginFileOpenRequest(nextPath, { line, gitPath, apiPath });
-          return Object.freeze({
-            request,
-            path: request.path,
-            done: () => finalizeFileOpenRequest(request),
-          });
+          return fileViewerController.startFileOpenRequest(nextPath, { line, gitPath, apiPath });
         }
 
         function rememberActiveFileSelection(sessionId = currentFileSessionId()) {
@@ -8536,6 +8500,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           confirmReload: (message) => window.confirm(message),
           openFilePath: (path, options) => openFilePath(path, options),
           focusEditor: () => getActiveFileCodeEditor(),
+          disposeOpenRender: () => disposePdfRender(),
         });
 
         function beginActiveFileSaveRequest() {

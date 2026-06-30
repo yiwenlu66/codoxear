@@ -10,6 +10,7 @@ APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
 APP_FILE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_file_helpers.js"
 APP_FILE_PICKER_JS = ROOT / "codoxear" / "static" / "app_file_picker.js"
+APP_FILE_VIEWER_JS = ROOT / "codoxear" / "static" / "app_file_viewer.js"
 APP_VIEWPORT_JS = ROOT / "codoxear" / "static" / "app_viewport.js"
 APP_CSS = ROOT / "codoxear" / "static" / "app.css"
 SERVER_PY = ROOT / "codoxear" / "server.py"
@@ -69,7 +70,41 @@ def controller_identity_ctx_js(
               ctx.identity.line = line === undefined ? ctx.identity.line : ctx.normalizeLineNumber(line);
               return Object.freeze({{ ...identity, line: ctx.identity.line }});
             }},
+            abortPendingFileOpenTransport() {{
+              if (!ctx.fileOpenAbortController) return;
+              try {{ ctx.fileOpenAbortController.abort(); }} catch (_) {{}}
+              ctx.fileOpenAbortController = null;
+            }},
+            cancelPendingFileOpen() {{
+              ctx.fileOpenRequestId = (ctx.fileOpenRequestId || 0) + 1;
+              if (typeof ctx.disposePdfRender === "function") ctx.disposePdfRender();
+              this.abortPendingFileOpenTransport();
+            }},
+            beginFileOpenRequest(nextPath = null, {{ line = undefined, gitPath = undefined, apiPath = undefined }} = {{}}) {{
+              this.cancelPendingFileOpen();
+              const identity = this.beginActiveFileIdentity(nextPath, {{ line, gitPath, apiPath }});
+              const controller = typeof AbortController === "function" ? new AbortController() : null;
+              if (controller) ctx.fileOpenAbortController = controller;
+              return Object.freeze({{ requestId: ctx.fileOpenRequestId || 0, sessionId: ctx.currentFileSessionId ? ctx.currentFileSessionId() : String(ctx.fileViewerSessionId || ctx.selected || "").trim(), path: identity.path, apiPath: identity.apiPath, gitPath: identity.gitPath, line: identity.line, signal: controller ? controller.signal : null }});
+            }},
+            isCurrentFileOpenRequest(request) {{
+              if (!request) return false;
+              const identity = this.currentActiveFileIdentity();
+              return Boolean(request.requestId === (ctx.fileOpenRequestId || 0) && request.sessionId === (ctx.currentFileSessionId ? ctx.currentFileSessionId() : String(ctx.fileViewerSessionId || ctx.selected || "").trim()) && request.path === String(identity.path ?? "") && String(request.apiPath || "") === String(identity.apiPath || ""));
+            }},
+            finalizeFileOpenRequest(request) {{
+              if (!request || !ctx.fileOpenAbortController) return;
+              if (ctx.fileOpenAbortController.signal !== request.signal) return;
+              if (!this.isCurrentFileOpenRequest(request)) return;
+              ctx.fileOpenAbortController = null;
+            }},
+            startFileOpenRequest(nextPath = null, opts = {{}}) {{
+              const request = this.beginFileOpenRequest(nextPath, opts);
+              return Object.freeze({{ request, path: request.path, done: () => this.finalizeFileOpenRequest(request) }});
+            }},
           }},
+          fileOpenRequestId: 0,
+          fileOpenAbortController: null,
           currentActiveFileIdentity: () => ctx.fileViewerController.currentActiveFileIdentity(),
           activeFilePathValue: () => ctx.fileViewerController.currentActiveFileIdentity().path,
           activeFileApiPathValue: () => ctx.fileViewerController.currentActiveFileIdentity().apiPath,
@@ -923,10 +958,7 @@ def eval_file_editor_delete_shortcut() -> dict:
 
 
 def eval_file_open_request_sequence() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("let fileOpenRequestId = 0;")
-    end = source.index("function rememberActiveFileSelection(", start)
-    snippet = source[start:end]
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -939,39 +971,46 @@ def eval_file_open_request_sequence() -> dict:
           }}
         }}
         const fileApiPathCalls = [];
-        const ctx = {{
-{controller_identity_ctx_js("old.txt", "", False, 1)}
-          fileViewerSessionId: "sid-1",
-          selected: "",
-          AbortController,
-          disposePdfRender: () => {{}},
+        let disposeCalls = 0;
+        const state = {{ sessionId: "sid-1" }};
+        const ctx = {{ window: {{}}, AbortController }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
+          el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children }}),
+          fileStatus: {{ replaceChildren() {{}} }},
+          currentSessionId: () => state.sessionId,
+          normalizeLineNumber: (value) => value == null ? null : Number(value),
+          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           fileApiPathForPath: (path, apiPath = "") => {{
             fileApiPathCalls.push([String(path), String(apiPath || "")]);
             return apiPath ? `kept:${{apiPath}}` : `derived:${{path}}`;
           }},
-          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
-          normalizeLineNumber: (value) => value == null ? null : Number(value),
-        }};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_file_open = { beginFileOpenRequest, startFileOpenRequest, isCurrentFileOpenRequest, cancelPendingFileOpen, currentFileSessionId, currentActiveFileIdentity, nextActiveFileIdentity, clearActiveFileIdentity };\n")}, ctx);
-        const first = ctx.__test_file_open.beginFileOpenRequest("first.txt", {{ line: 3 }});
-        const firstCurrent = ctx.__test_file_open.isCurrentFileOpenRequest(first);
-        const second = ctx.__test_file_open.beginFileOpenRequest(" trail.md ", {{ line: 8, gitPath: true }});
+          isUnavailable: () => false,
+          confirmReload: () => true,
+          openFilePath: async () => true,
+          focusEditor: () => null,
+          disposeOpenRender: () => {{ disposeCalls += 1; }},
+        }});
+        controller.setActiveFileIdentity("old.txt", {{ line: 1, gitPath: false, apiPath: "" }});
+        const first = controller.beginFileOpenRequest("first.txt", {{ line: 3 }});
+        const firstCurrent = controller.isCurrentFileOpenRequest(first);
+        const second = controller.beginFileOpenRequest(" trail.md ", {{ line: 8, gitPath: true }});
         const result = {{
-          currentSessionId: ctx.__test_file_open.currentFileSessionId(),
+          currentSessionId: state.sessionId,
           firstCurrent,
           firstSignalAborted: Boolean(first.signal && first.signal.aborted),
-          firstAfterSecond: ctx.__test_file_open.isCurrentFileOpenRequest(first),
-          secondCurrent: ctx.__test_file_open.isCurrentFileOpenRequest(second),
+          firstAfterSecond: controller.isCurrentFileOpenRequest(first),
+          secondCurrent: controller.isCurrentFileOpenRequest(second),
           secondGitPath: second.gitPath,
           secondApiPath: second.apiPath,
-          activeIdentity: ctx.__test_file_open.currentActiveFileIdentity(),
-          activeLine: ctx.activeFileLineValue(),
+          activeIdentity: controller.currentActiveFileIdentity(),
+          activeLine: controller.currentActiveFileLine(),
         }};
-        ctx.fileViewerController.setActiveFileIdentity("same.py", {{ line: 8, gitPath: true, apiPath: "tok-same" }});
-        const same = ctx.__test_file_open.beginFileOpenRequest(null, {{}});
-        const explicit = ctx.__test_file_open.beginFileOpenRequest("explicit.py", {{ gitPath: true, apiPath: "explicit-token" }});
-        const nongit = ctx.__test_file_open.beginFileOpenRequest("plain.py", {{ gitPath: false }});
+        controller.setActiveFileIdentity("same.py", {{ line: 8, gitPath: true, apiPath: "tok-same" }});
+        const same = controller.beginFileOpenRequest(null, {{}});
+        const explicit = controller.beginFileOpenRequest("explicit.py", {{ gitPath: true, apiPath: "explicit-token" }});
+        const nongit = controller.beginFileOpenRequest("plain.py", {{ gitPath: false }});
         result.sameApiPath = same.apiPath;
         result.sameGitPath = same.gitPath;
         result.explicitApiPath = explicit.apiPath;
@@ -979,28 +1018,29 @@ def eval_file_open_request_sequence() -> dict:
         result.nongitGitPath = nongit.gitPath;
         result.helperRejectsMissingCurrent = false;
         try {{
-          ctx.__test_file_open.nextActiveFileIdentity(null, "x.py");
+          controller.nextActiveFileIdentity(null, "x.py");
         }} catch (_) {{
           result.helperRejectsMissingCurrent = true;
         }}
         result.fileApiPathCalls = fileApiPathCalls;
-        ctx.fileViewerController.setActiveFileIdentity("clear.py", {{ line: 99, gitPath: true, apiPath: "tok-clear" }});
-        ctx.__test_file_open.clearActiveFileIdentity({{ line: "12" }});
-        result.clearWithLine = {{ path: ctx.activeFilePathValue(), gitPath: ctx.activeFileGitPathValue(), apiPath: ctx.activeFileApiPathValue(), line: ctx.activeFileLineValue() }};
-        ctx.fileViewerController.setActiveFileIdentity("clear-again.py", {{ line: 12, gitPath: true, apiPath: "tok-again" }});
-        ctx.__test_file_open.clearActiveFileIdentity();
-        result.clearDefault = {{ path: ctx.activeFilePathValue(), gitPath: ctx.activeFileGitPathValue(), apiPath: ctx.activeFileApiPathValue(), line: ctx.activeFileLineValue() }};
-        const handle = ctx.__test_file_open.startFileOpenRequest("handled.txt", {{ line: 4, gitPath: false }});
+        controller.setActiveFileIdentity("clear.py", {{ line: 99, gitPath: true, apiPath: "tok-clear" }});
+        controller.clearActiveFileIdentity({{ line: "12" }});
+        result.clearWithLine = {{ ...controller.currentActiveFileIdentity(), line: controller.currentActiveFileLine() }};
+        controller.setActiveFileIdentity("clear-again.py", {{ line: 12, gitPath: true, apiPath: "tok-again" }});
+        controller.clearActiveFileIdentity();
+        result.clearDefault = {{ ...controller.currentActiveFileIdentity(), line: controller.currentActiveFileLine() }};
+        const handle = controller.startFileOpenRequest("handled.txt", {{ line: 4, gitPath: false }});
         result.handlePath = handle.path;
-        result.handleCurrentBeforeDone = ctx.__test_file_open.isCurrentFileOpenRequest(handle.request);
+        result.handleCurrentBeforeDone = controller.isCurrentFileOpenRequest(handle.request);
         handle.done();
         result.handleSignalAbortedAfterDone = Boolean(handle.request.signal && handle.request.signal.aborted);
-        const afterHandle = ctx.__test_file_open.startFileOpenRequest("after-handle.txt", {{ gitPath: false }});
+        const afterHandle = controller.startFileOpenRequest("after-handle.txt", {{ gitPath: false }});
         result.handleSignalAbortedAfterNext = Boolean(handle.request.signal && handle.request.signal.aborted);
-        result.afterHandleCurrent = ctx.__test_file_open.isCurrentFileOpenRequest(afterHandle.request);
+        result.afterHandleCurrent = controller.isCurrentFileOpenRequest(afterHandle.request);
         afterHandle.done();
-        ctx.__test_file_open.cancelPendingFileOpen();
-        result.secondAfterCancel = ctx.__test_file_open.isCurrentFileOpenRequest(second);
+        controller.cancelPendingFileOpen();
+        result.secondAfterCancel = controller.isCurrentFileOpenRequest(second);
+        result.disposeCalls = disposeCalls;
         process.stdout.write(JSON.stringify(result));
         """
     )
@@ -1016,7 +1056,7 @@ def eval_file_open_request_sequence() -> dict:
 
 def eval_file_viewer_session_sync_race() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("let fileOpenRequestId = 0;")
+    start = source.index("function currentFileSessionId() {")
     end = source.index("function extToEditorLang", start)
     snippet = source[start:end]
     js = textwrap.dedent(
@@ -1030,6 +1070,7 @@ def eval_file_viewer_session_sync_race() -> dict:
 {controller_identity_ctx_js("old.txt", "", False, 1)}
           fileSearchSessionId: "sid-a",
           fileCandidateList: ["candidate.txt"],
+          fileViewerSessionSyncToken: 0,
           fileStatus: {{ textContent: "" }},
           fileOpenAbortController: null,
           isFileViewerOpen: () => true,
@@ -2434,14 +2475,21 @@ class TestFileViewerSource(unittest.TestCase):
 
     def test_file_open_race_guard_is_wired_through_fetch_and_render(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("let fileOpenRequestId = 0;", source)
-        self.assertIn("let fileOpenAbortController = null;", source)
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+        self.assertNotIn("let fileOpenRequestId = 0;", source)
+        self.assertNotIn("let fileOpenAbortController = null;", source)
+        self.assertIn("let fileOpenRequestId = 0;", viewer_source)
+        self.assertIn("let fileOpenAbortController = null;", viewer_source)
         self.assertIn("function cancelPendingFileOpen()", source)
-        self.assertIn("function nextActiveFileIdentity(current, nextPath", source)
-        self.assertIn("function currentActiveFileIdentity()", source)
-        self.assertIn("function clearActiveFileIdentity({ line = null } = {})", source)
+        self.assertIn("fileViewerController.cancelPendingFileOpen();", source)
+        self.assertIn("function cancelPendingFileOpen()", viewer_source)
+        self.assertIn("disposeOpenRender();", viewer_source)
+        self.assertIn("function nextActiveFileIdentity(current, nextPath", viewer_source)
+        self.assertIn("function currentActiveFileIdentity()", viewer_source)
+        self.assertIn("function clearActiveFileIdentity({ line = null } = {})", viewer_source)
         self.assertIn("clearActiveFileIdentity({ line });", source)
         self.assertIn("function startFileOpenRequest(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {})", source)
+        self.assertIn("function startFileOpenRequest(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {})", viewer_source)
         self.assertIn("function setFileRenderSurface(surface)", source)
         self.assertIn('throw new Error("invalid file render surface")', source)
         self.assertIn("async function applyFileLoadResult(rel, result, request, { viewMode = \"file\" } = {})", source)
@@ -2454,8 +2502,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(source.count("fileDiff.style.display ="), 1)
         self.assertEqual(source.count("fileImage.style.display ="), 1)
         self.assertEqual(source.count("fileVideo.style.display ="), 2)
-        self.assertIn("fileViewerController.beginActiveFileIdentity(nextPath", source)
-        self.assertIn("const request = beginFileOpenRequest(nextPath, { line, gitPath, apiPath });", source)
+        self.assertIn("return fileViewerController.beginFileOpenRequest(nextPath, { line, gitPath, apiPath });", source)
+        self.assertIn("const request = beginFileOpenRequest(nextPath, { line, gitPath, apiPath });", viewer_source)
         self.assertIn("const openRequest = startFileOpenRequest(nextPath, { line, gitPath, apiPath });", source)
         self.assertIn("const request = openRequest.request;", source)
         self.assertIn("signal: request.signal", source)
