@@ -5842,3 +5842,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: normal file-open success finalization moved. File-open result rendering/application, draft load choreography, save request lifecycle, unavailable transition policy, paste/editor actions, and toolbar/editability policy remain partly `app.js`-owned.
+
+## 2026-06-30T08:43:04Z Draft file load controller ownership
+- Functional commit `6f65510 Move draft file load into viewer controller` moved the draft/new-file load success choreography from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `createFileViewerController()` now receives explicit draft-render dependencies (`setFileViewMode`, `applyActiveFileTextState`, `renderMonacoFile`, and `setFileEditMode`) and owns `applyDraftFileLoad(rel, request)`. The controller forces file mode when needed, marks the active file as an editable draft text buffer, applies mode UI, renders an empty Monaco file at the request line, rejects render-false/stale requests through controller currentness, enters edit mode, writes the `new file` status, remembers the active selection, and rerenders the file picker.
+- Behavior preserved: draft loads still do not call `rememberOpenedFile()`, still enter edit mode only after the empty editor render succeeds and the request remains current, still leave failed/stale render status blank, and still use the normal open request/finally lifecycle in `openDraftFilePath()`.
+- Tests updated:
+  - `tests/test_file_viewer_source.py` now executes the real `app_file_viewer.js` controller for draft success, render-false, and stale-after-render cases; source sentinels moved the draft-specific text-state call to the controller module.
+  - `tests/test_frontend_file_viewer_module_source.py` also exercises the real controller draft success path and verifies side-effect order.
+- Validation before commit:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `90 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1286 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: draft load success choreography moved. Draft inspect/open guard behavior and draft catch/error rendering remain app-owned; generic file-open result rendering/application, save request lifecycle, unavailable transition policy, paste/editor actions, and toolbar/editability policy also remain partly `app.js`-owned.
