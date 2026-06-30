@@ -7535,6 +7535,10 @@
           return fileViewerController.toggleFileTouchSelectionMode();
         }
 
+        function handleFileTouchMoveButtonPress(direction) {
+          return fileViewerController.handleFileTouchMoveButtonPress(direction);
+        }
+
         function moveFileTouchSelection(direction) {
           return fileViewerController.moveFileTouchSelection(direction);
         }
@@ -9636,20 +9640,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           void pasteFromClipboardIntoActiveFile();
         });
         bindFileTouchPress(fileTouchUpBtn, () => {
-          focusActiveFileCodeEditor();
-          moveFileTouchSelection("up");
+          handleFileTouchMoveButtonPress("up");
         });
         bindFileTouchPress(fileTouchLeftBtn, () => {
-          focusActiveFileCodeEditor();
-          moveFileTouchSelection("left");
+          handleFileTouchMoveButtonPress("left");
         });
         bindFileTouchPress(fileTouchDownBtn, () => {
-          focusActiveFileCodeEditor();
-          moveFileTouchSelection("down");
+          handleFileTouchMoveButtonPress("down");
         });
         bindFileTouchPress(fileTouchRightBtn, () => {
-          focusActiveFileCodeEditor();
-          moveFileTouchSelection("right");
+          handleFileTouchMoveButtonPress("right");
         });
         fileCloseBtn.onclick = (e) => {
           e.preventDefault();

@@ -659,6 +659,11 @@
       focusActiveFileCodeEditor();
     }
 
+    function handleFileTouchMoveButtonPress(direction) {
+      focusActiveFileCodeEditor();
+      moveFileTouchSelection(direction);
+    }
+
     function moveFileTouchSelection(direction) {
       if (!fileTouchSelectMode) return;
       const editor = focusEditor();
@@ -1097,6 +1102,7 @@
       currentFileTouchSelectMode,
       resetFileTouchSelectionState,
       toggleFileTouchSelectionMode,
+      handleFileTouchMoveButtonPress,
       moveFileTouchSelection,
       handleFileTouchSelectionKeydown,
       handleFileEditorDeleteKeydown,
