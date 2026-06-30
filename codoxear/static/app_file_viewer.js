@@ -864,6 +864,15 @@
       return true;
     }
 
+    function activeFileDownloadApiPath() {
+      if (blockUnavailableFileAction()) return "";
+      const sessionId = normalizeSessionId(currentSessionId());
+      const identity = currentActiveFileIdentity();
+      if (!sessionId || !identity.path) return "";
+      const tokenQuery = identity.gitPath && identity.apiPath ? `&path_token=${encodeURIComponent(identity.apiPath)}` : "";
+      return `/api/sessions/${sessionId}/file/download?path=${encodeURIComponent(identity.path)}${tokenQuery}${identity.gitPath ? "&git_path=1" : ""}`;
+    }
+
     async function openFilePath(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined, mode = null } = {}) {
       if (blockUnavailableFileAction()) return false;
       if (!normalizeSessionId(currentSessionId())) return false;
@@ -1077,6 +1086,7 @@
       handleFileDiffModeButtonPress,
       handleFilePreviewModeButtonPress,
       handleFileEditButtonPress,
+      activeFileDownloadApiPath,
       finalizeFileOpenSuccess,
       applyDraftFileLoad,
       renderFileOpenError,

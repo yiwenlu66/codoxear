@@ -8440,6 +8440,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return await fileViewerController.handleFileEditButtonPress();
         }
 
+        function activeFileDownloadApiPath() {
+          return fileViewerController.activeFileDownloadApiPath();
+        }
+
         function setFileViewMode(mode) {
           const next = mode === "preview" ? "preview" : mode === "file" ? "file" : "diff";
           fileViewMode = next;
@@ -9621,11 +9625,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         fileDownloadBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          if (blockUnavailableFileAction()) return;
-          const identity = currentActiveFileIdentity();
-          if (!fileViewerSessionId || !identity.path) return;
-          const tokenQuery = identity.gitPath && identity.apiPath ? `&path_token=${encodeURIComponent(identity.apiPath)}` : "";
-          const url = resolveAppUrl(`/api/sessions/${fileViewerSessionId}/file/download?path=${encodeURIComponent(identity.path)}${tokenQuery}${identity.gitPath ? "&git_path=1" : ""}`);
+          const apiPath = activeFileDownloadApiPath();
+          if (!apiPath) return;
+          const url = resolveAppUrl(apiPath);
           const link = document.createElement("a");
           link.href = url;
           link.rel = "noopener";

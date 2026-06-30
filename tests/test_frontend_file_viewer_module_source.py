@@ -249,6 +249,28 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const readFetch = await renderController.fetchFileOpenResult({{ sessionId: "sid-1", apiPath: "tok", gitPath: true, signal: {{}} }}, "src/app.py", "file");
           const readFetchEvents = events.slice();
           state.sessionId = "sid-1";
+          const downloadController = makeController();
+          downloadController.clearFileViewerUnavailableSession();
+          downloadController.setActiveFileIdentity("src/app.py", {{ line: 7, gitPath: true, apiPath: "tok space" }});
+          const downloadGitToken = downloadController.activeFileDownloadApiPath();
+          downloadController.setActiveFileIdentity("plain.txt", {{ line: 1, gitPath: false, apiPath: "plain-token" }});
+          const downloadPlain = downloadController.activeFileDownloadApiPath();
+          state.sessionId = "";
+          const downloadMissingSession = downloadController.activeFileDownloadApiPath();
+          state.sessionId = "sid-1";
+          downloadController.disableFileViewerForUnavailableSession("sid-1");
+          fileStatus.textContent = "old download status";
+          const downloadUnavailablePath = downloadController.activeFileDownloadApiPath();
+          const downloadUnavailableStatus = fileStatus.textContent;
+          downloadController.clearFileViewerUnavailableSession();
+          const downloadPaths = {{ downloadGitToken, downloadPlain, downloadMissingSession, downloadUnavailablePath, downloadUnavailableStatus }};
+          state.editMode = true;
+          state.dirty = false;
+          renderController.setFileDirty(false);
+          state.resetCount = 0;
+          state.touchCount = 0;
+          fileStatus.textContent = "";
+          events.length = 0;
           renderController.setActiveFileIdentity("src/app.py", {{ line: 7, gitPath: true, apiPath: "tok" }});
           const currentRequest = {{ requestId: 0, sessionId: "sid-1", path: "src/app.py", apiPath: "tok" }};
           events.length = 0;
@@ -471,6 +493,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             actionTexts: fileStatus.children[1].children.map((node) => node.text),
             modeResolution: {{ diffFallback, diffAllowed, previewFallback, explicitDiff, invalidModeMessage }},
             fetchResults: {{ diffFetch, diffFetchEvents, readFetch, readFetchEvents }},
+            downloadPaths,
             openErrors: {{ currentError, abortErrorResult, staleError, unknownError }},
             finalize,
             draft,
@@ -536,6 +559,13 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "diffFetchEvents": [["api", "/api/sessions/sid-1/git/file_versions?path=src%2Fapp.py&path_token=tok", True]],
             "readFetch": {"result": {"kind": "text", "text": "body", "path": "/abs/read"}, "absPath": "/abs/read"},
             "readFetchEvents": [["api", "/api/sessions/sid-1/file/read?path=src%2Fapp.py&path_token=tok&git_path=1", True]],
+        })
+        self.assertEqual(result["render"]["downloadPaths"], {
+            "downloadGitToken": "/api/sessions/sid-1/file/download?path=src%2Fapp.py&path_token=tok%20space&git_path=1",
+            "downloadPlain": "/api/sessions/sid-1/file/download?path=plain.txt",
+            "downloadMissingSession": "",
+            "downloadUnavailablePath": "",
+            "downloadUnavailableStatus": "Session is no longer available; copy unsaved edits before closing.",
         })
         self.assertEqual(result["render"]["openErrors"], {
             "currentError": {"result": False, "status": "error: boom", "resetCount": 1, "touchCount": 1, "events": [["resetBuffer"], ["touchToolbar"]]},
