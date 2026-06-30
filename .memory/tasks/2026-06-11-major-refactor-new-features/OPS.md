@@ -6758,3 +6758,11 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: remembered file-selection state belongs to the file-viewer controller. App still owns session history fallback derivation, first-candidate fallback from candidate lists, session sync/currentness tokens, file-candidate request sequencing, raw Monaco editor/diff-editor objects, model disposal and setValue side effects, fallback DOM construction/scrolling, raw renderer/DOM plan application, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, raw mode/download/video-preview DOM mutation, compatible-preview fetch/load mechanics, and raw Monaco selection helpers.
+
+## 2026-06-30T20:31:02Z Clean-room review runner failure after remembered-selection checkpoint
+- Observation: async clean-room review run `2e6215c5-7a43-4280-b806-58e11c4e3672` failed before writing a result.
+- Raw failure reported by runner/user: `Async runner process 1016404 exited or disappeared before writing a result. Marked run failed by stale-run reconciliation.`
+- Intended review output file: `/tmp/codoxear-remembered-selection-review.md`; direct check returned `missing-or-empty`.
+- Scope of requested review: functional commit `aff1ff5` plus matching tests, with memory commit `02aeec5` for accuracy.
+- Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against the remembered-selection code. The evidence basis remains syntax checks, focused tests, available broader frontend/file/auth/static route tests, full local pytest, Docker sandbox, and diff checks recorded in the remembered-selection OPS entry.
+- Decision: continue workbench progress and do not treat absent reviewer output as a product blocker. A future review should be retried only at a real yield/decision gate or if the runner produces concrete findings.
