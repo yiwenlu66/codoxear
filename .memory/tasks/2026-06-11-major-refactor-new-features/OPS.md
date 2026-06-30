@@ -5926,3 +5926,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: save success response application moved. Save POST transport orchestration remains app-owned; generic file-open result rendering/application, draft inspect/open currentness behavior, unavailable transition policy, paste/editor actions, and toolbar/editability policy remain partly `app.js`-owned.
+
+## 2026-06-30T09:45:01Z Save transport controller ownership
+- Functional commit `42004bc Move save transport into viewer controller` moved active-file save POST/currentness/finally orchestration from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `createFileViewerController()` now owns `submitActiveFileSave(save, { exitEditMode })`, which marks the save pending, builds the already-controller-owned file-write body, POSTs to `/api/sessions/{sessionId}/file/write`, applies the controller currentness check after success and error outcomes, delegates current success to `applyActiveFileSaveSuccess()`, delegates current errors to `renderActiveFileSaveError()`, preserves stale-success `true` and stale-error `false` returns, and always runs `finishActiveFileSaveRequest(save)` in `finally`.
+- `app.js` now keeps only app-specific save preconditions: unavailable/session/path/text/editable checks, clean-file edit-mode exit, beginning the save snapshot, and wrapper delegation to `submitActiveFileSave(save, { exitEditMode })`.
+- Behavior preserved: current saves still POST the same method/body, apply success state, and clear pending state; stale successful responses return `true` without applying state; stale errors return `false` without rendering the error; current errors render conflict/generic error UI; final cleanup still clears pending state for the owning token.
+- Tests updated:
+  - `tests/test_file_viewer_source.py` added real-controller VM coverage for current success, stale success, current error, and stale error transport outcomes, including POST body, stale return values, status text, no stale state application, and final pending cleanup.
+  - Source sentinels now require `app.js` wrapper delegation and `app_file_viewer.js` ownership of `saveStillCurrent`, POST, success/error dispatch, and final cleanup.
+- Validation before commit:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `91 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: active-file save request lifecycle, body, transport, success application, error rendering, conflict UI, and final cleanup now belong to the file-viewer controller. App-owned save preconditions remain: unavailable/session/path/text/editable/dirty/draft/edit-mode policy. Generic file-open result rendering/application, draft inspect/open currentness behavior, unavailable transition policy, paste/editor actions, and toolbar/editability policy remain partly `app.js`-owned.
