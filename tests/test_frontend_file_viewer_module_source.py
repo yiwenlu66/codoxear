@@ -34,6 +34,10 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           gitPath: true,
           apiPath: "api-token",
           unavailable: false,
+          viewMode: "file",
+          activeEntry: null,
+          gitFresh: false,
+          markdownPreviewable: true,
         }};
         const events = [];
         const fileStatus = {{
@@ -69,6 +73,10 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             }},
             focusEditor: () => ({{ focus: () => events.push(["focus"]) }}),
             disposeOpenRender: () => events.push(["disposeOpenRender"]),
+            currentFileViewMode: () => state.viewMode,
+            activeFileEntry: () => state.activeEntry,
+            fileCandidateGitStateFresh: () => state.gitFresh,
+            isMarkdownPreviewable: () => state.markdownPreviewable,
           }});
         }}
         function event() {{
@@ -123,6 +131,18 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const renderController = makeController();
           renderController.setActiveFileIdentity("src/app.py", {{ line: 7, gitPath: true, apiPath: "api-token" }});
           const conflict = renderController.renderSaveConflict("sid-1", "src/app.py", "version mismatch");
+          state.viewMode = "diff";
+          state.gitFresh = true;
+          state.activeEntry = {{ changed: false }};
+          const diffFallback = renderController.resolveFileOpenViewMode({{ gitPath: true }}, "src/app.py");
+          state.activeEntry = {{ changed: true }};
+          const diffAllowed = renderController.resolveFileOpenViewMode({{ gitPath: true }}, "src/app.py");
+          state.viewMode = "preview";
+          state.markdownPreviewable = false;
+          const previewFallback = renderController.resolveFileOpenViewMode({{ gitPath: false }}, "src/app.py");
+          const explicitDiff = renderController.resolveFileOpenViewMode({{ gitPath: false }}, "src/app.py", "diff");
+          let invalidModeMessage = "";
+          try {{ renderController.normalizeExplicitFileOpenMode("bogus"); }} catch (err) {{ invalidModeMessage = err && err.message ? err.message : String(err); }}
           const render = {{
             exportFrozen: Object.isFrozen(fileViewer),
             exports: Object.keys(fileViewer).sort(),
@@ -130,6 +150,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             currentConflict: renderController.currentSaveConflict(),
             labelText: fileStatus.children[0].text,
             actionTexts: fileStatus.children[1].children.map((node) => node.text),
+            modeResolution: {{ diffFallback, diffAllowed, previewFallback, explicitDiff, invalidModeMessage }},
           }};
           const availableReloadFailure = await runReloadCase("");
           const canceledReload = await runReloadCase("", false);
@@ -165,6 +186,13 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["render"]["currentConflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["labelText"], "src/app.py - save conflict: version mismatch")
         self.assertEqual(result["render"]["actionTexts"], ["Reload from disk", "Keep editing"])
+        self.assertEqual(result["render"]["modeResolution"], {
+            "diffFallback": "file",
+            "diffAllowed": "diff",
+            "previewFallback": "file",
+            "explicitDiff": "diff",
+            "invalidModeMessage": "invalid file open mode",
+        })
         self.assertIn("file viewer dependency missing: el", result["missingDependencyError"])
 
         available = result["availableReloadFailure"]

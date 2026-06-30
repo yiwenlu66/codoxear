@@ -8501,6 +8501,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           openFilePath: (path, options) => openFilePath(path, options),
           focusEditor: () => getActiveFileCodeEditor(),
           disposeOpenRender: () => disposePdfRender(),
+          currentFileViewMode: () => fileViewMode,
+          activeFileEntry: () => activeFileEntry(),
+          fileCandidateGitStateFresh: () => fileCandidateGitStateFresh,
+          isMarkdownPreviewable,
         });
 
         function beginActiveFileSaveRequest() {
@@ -9801,17 +9805,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function normalizeExplicitFileOpenMode(requestedMode) {
-          if (requestedMode === null || requestedMode === undefined || requestedMode === "") return null;
-          if (requestedMode === "preview" || requestedMode === "file" || requestedMode === "diff") return requestedMode;
-          throw new Error("invalid file open mode");
+          return fileViewerController.normalizeExplicitFileOpenMode(requestedMode);
         }
 
         function resolveFileOpenViewMode(request, rel, requestedMode = null) {
-          const openMode = normalizeExplicitFileOpenMode(requestedMode);
-          if (openMode) return openMode;
-          const activeEntry = activeFileEntry();
-          const canUseDiffView = request.gitPath && fileCandidateGitStateFresh && Boolean(activeEntry && activeEntry.changed);
-          return fileViewMode === "preview" && !isMarkdownPreviewable(rel) ? "file" : fileViewMode === "diff" && !canUseDiffView ? "file" : fileViewMode;
+          return fileViewerController.resolveFileOpenViewMode(request, rel, requestedMode);
         }
 
         async function openFilePath(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined, mode = null } = {}) {

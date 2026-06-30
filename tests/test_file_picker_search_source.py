@@ -10,6 +10,7 @@ APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
 APP_FILE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_file_helpers.js"
 APP_FILE_PICKER_JS = ROOT / "codoxear" / "static" / "app_file_picker.js"
+APP_FILE_VIEWER_JS = ROOT / "codoxear" / "static" / "app_file_viewer.js"
 
 
 def js_function(source: str, name: str) -> str:
@@ -1022,6 +1023,7 @@ class TestFilePickerSearchSource(unittest.TestCase):
         source = APP_JS.read_text(encoding="utf-8")
         helper_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
         picker_source = APP_FILE_PICKER_JS.read_text(encoding="utf-8")
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         css = (APP_JS.parent / "app.css").read_text(encoding="utf-8")
         self.assertIn("function filePickerSectionLabel(source)", source)
         self.assertIn("return codoxearFileHelpers.filePickerSectionLabel(source);", source)
@@ -1043,7 +1045,7 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertIn("function filePickerCandidateScore(path, query)", source)
         self.assertIn("applyFileMode();\n            renderFilePickerMenu();", source)
         self.assertIn("const diffable = canToggleMode && activeFileGitPathValue() && fileCandidateGitStateFresh", source)
-        self.assertIn("const canUseDiffView = request.gitPath && fileCandidateGitStateFresh", source)
+        self.assertIn("const canUseDiffView = request && request.gitPath && fileCandidateGitStateFresh()", viewer_source)
         self.assertIn("fileCandidateKeyForEntry(entry)", source)
         self.assertIn("fileEntryMap.has(entry.key)", source)
         self.assertIn(".fileMenuSection", css)

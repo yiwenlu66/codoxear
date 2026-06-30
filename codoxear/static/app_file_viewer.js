@@ -27,6 +27,10 @@
     const openFilePath = requireFunction(deps && deps.openFilePath, "openFilePath");
     const focusEditor = requireFunction(deps && deps.focusEditor, "focusEditor");
     const disposeOpenRender = requireFunction(deps && deps.disposeOpenRender, "disposeOpenRender");
+    const currentFileViewMode = requireFunction(deps && deps.currentFileViewMode, "currentFileViewMode");
+    const activeFileEntry = requireFunction(deps && deps.activeFileEntry, "activeFileEntry");
+    const fileCandidateGitStateFresh = requireFunction(deps && deps.fileCandidateGitStateFresh, "fileCandidateGitStateFresh");
+    const isMarkdownPreviewable = requireFunction(deps && deps.isMarkdownPreviewable, "isMarkdownPreviewable");
     let activeSaveConflict = null;
     let fileOpenRequestId = 0;
     let fileOpenAbortController = null;
@@ -139,6 +143,21 @@
       });
     }
 
+    function normalizeExplicitFileOpenMode(requestedMode) {
+      if (requestedMode === null || requestedMode === undefined || requestedMode === "") return null;
+      if (requestedMode === "preview" || requestedMode === "file" || requestedMode === "diff") return requestedMode;
+      throw new Error("invalid file open mode");
+    }
+
+    function resolveFileOpenViewMode(request, rel, requestedMode = null) {
+      const openMode = normalizeExplicitFileOpenMode(requestedMode);
+      if (openMode) return openMode;
+      const entry = activeFileEntry();
+      const canUseDiffView = request && request.gitPath && fileCandidateGitStateFresh() && Boolean(entry && entry.changed);
+      const viewMode = currentFileViewMode();
+      return viewMode === "preview" && !isMarkdownPreviewable(rel) ? "file" : viewMode === "diff" && !canUseDiffView ? "file" : viewMode;
+    }
+
     function isSaveConflictCurrent(conflict) {
       return Boolean(conflict && currentSessionId() === conflict.sessionId && activeFilePath === conflict.path && !isUnavailable());
     }
@@ -212,6 +231,8 @@
       isCurrentFileOpenRequest,
       finalizeFileOpenRequest,
       startFileOpenRequest,
+      normalizeExplicitFileOpenMode,
+      resolveFileOpenViewMode,
     });
   }
 

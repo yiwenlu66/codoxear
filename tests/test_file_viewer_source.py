@@ -102,6 +102,19 @@ def controller_identity_ctx_js(
               const request = this.beginFileOpenRequest(nextPath, opts);
               return Object.freeze({{ request, path: request.path, done: () => this.finalizeFileOpenRequest(request) }});
             }},
+            normalizeExplicitFileOpenMode(requestedMode) {{
+              if (requestedMode === null || requestedMode === undefined || requestedMode === "") return null;
+              if (requestedMode === "preview" || requestedMode === "file" || requestedMode === "diff") return requestedMode;
+              throw new Error("invalid file open mode");
+            }},
+            resolveFileOpenViewMode(request, rel, requestedMode = null) {{
+              const openMode = this.normalizeExplicitFileOpenMode(requestedMode);
+              if (openMode) return openMode;
+              const entry = typeof ctx.activeFileEntry === "function" ? ctx.activeFileEntry() : null;
+              const canUseDiffView = request && request.gitPath && Boolean(ctx.fileCandidateGitStateFresh) && Boolean(entry && entry.changed);
+              const viewMode = String(ctx.fileViewMode || "");
+              return viewMode === "preview" && !(typeof ctx.isMarkdownPreviewable === "function" && ctx.isMarkdownPreviewable(rel)) ? "file" : viewMode === "diff" && !canUseDiffView ? "file" : viewMode;
+            }},
           }},
           fileOpenRequestId: 0,
           fileOpenAbortController: null,
@@ -991,6 +1004,10 @@ def eval_file_open_request_sequence() -> dict:
           openFilePath: async () => true,
           focusEditor: () => null,
           disposeOpenRender: () => {{ disposeCalls += 1; }},
+          currentFileViewMode: () => "file",
+          activeFileEntry: () => null,
+          fileCandidateGitStateFresh: () => false,
+          isMarkdownPreviewable: () => true,
         }});
         controller.setActiveFileIdentity("old.txt", {{ line: 1, gitPath: false, apiPath: "" }});
         const first = controller.beginFileOpenRequest("first.txt", {{ line: 3 }});
@@ -1173,6 +1190,13 @@ def eval_open_file_guard_mode_validation() -> dict:
         const calls = [];
         const ctx = {{
           blockUnavailableFileAction: () => false,
+          fileViewerController: {{
+            normalizeExplicitFileOpenMode: (requestedMode) => {{
+              if (requestedMode === null || requestedMode === undefined || requestedMode === "") return null;
+              if (requestedMode === "preview" || requestedMode === "file" || requestedMode === "diff") return requestedMode;
+              throw new Error("invalid file open mode");
+            }},
+          }},
           currentFileSessionId: () => "sid-1",
           isFileViewerSessionUnavailable: () => false,
           maybeHandleUnsavedFileChanges: async () => true,
@@ -1215,6 +1239,20 @@ def eval_open_file_path_mode_ownership() -> dict:
           activeEntryValue: null,
           activeEntryCalls: 0,
           blockUnavailableFileAction: () => false,
+          fileViewerController: {{
+            normalizeExplicitFileOpenMode: (requestedMode) => {{
+              if (requestedMode === null || requestedMode === undefined || requestedMode === "") return null;
+              if (requestedMode === "preview" || requestedMode === "file" || requestedMode === "diff") return requestedMode;
+              throw new Error("invalid file open mode");
+            }},
+            resolveFileOpenViewMode: (request, rel, requestedMode = null) => {{
+              const openMode = ctx.fileViewerController.normalizeExplicitFileOpenMode(requestedMode);
+              if (openMode) return openMode;
+              const activeEntry = ctx.activeFileEntry();
+              const canUseDiffView = request.gitPath && ctx.fileCandidateGitStateFresh && Boolean(activeEntry && activeEntry.changed);
+              return ctx.fileViewMode === "preview" && !ctx.isMarkdownPreviewable(rel) ? "file" : ctx.fileViewMode === "diff" && !canUseDiffView ? "file" : ctx.fileViewMode;
+            }},
+          }},
           startFileOpenRequest: (path, opts = {{}}) => {{
             const request = {{
               sessionId: "sid-1",
@@ -2034,10 +2072,13 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("await openFilePath(path, { line, gitPath, apiPath, mode: openMode });", guard_block)
         self.assertIn("return Boolean(currentGuard());", guard_block)
         self.assertIn("const diffable = canToggleMode && activeFileGitPathValue() && fileCandidateGitStateFresh && Boolean(entry && entry.changed) && isDiffableFileKind(activeFileKind);", source)
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertIn("function normalizeExplicitFileOpenMode(requestedMode)", source)
         self.assertIn("function resolveFileOpenViewMode(request, rel, requestedMode = null)", source)
-        self.assertIn("const canUseDiffView = request.gitPath && fileCandidateGitStateFresh && Boolean(activeEntry && activeEntry.changed);", source)
-        self.assertIn('fileViewMode === "diff" && !canUseDiffView ? "file"', source)
+        self.assertIn("function normalizeExplicitFileOpenMode(requestedMode)", viewer_source)
+        self.assertIn("function resolveFileOpenViewMode(request, rel, requestedMode = null)", viewer_source)
+        self.assertIn("const canUseDiffView = request && request.gitPath && fileCandidateGitStateFresh() && Boolean(entry && entry.changed);", viewer_source)
+        self.assertIn('viewMode === "diff" && !canUseDiffView ? "file"', viewer_source)
         self.assertIn("async function openFilePath(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined, mode = null } = {})", source)
         self.assertIn("const viewMode = resolveFileOpenViewMode(request, rel, mode);", source)
         self.assertIn("if (gitPath) {\n              body.git_path = true;", source)
