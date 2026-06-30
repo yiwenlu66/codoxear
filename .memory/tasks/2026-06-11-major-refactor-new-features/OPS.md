@@ -6312,3 +6312,24 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: discard edit policy now belongs to the file-viewer controller. App still owns raw restore text implementation, unsaved modal DOM, paste dialog DOM rendering/show/hide primitives, touch toolbar DOM, raw Monaco selection helpers, raw load-result rendering, and raw view-mode DOM application.
+
+## 2026-06-30T14:26:22Z Dirty state controller ownership
+- Functional commit `4f7f82f Move file dirty state into viewer controller` moved `fileDirty`, `currentFileDirty()`, and `setFileDirty(nextDirty)` out of inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: dirty is a file-viewer state flag, not a raw DOM/editor primitive. The controller now owns the flag and its side effects: updating the edit/save button and touch toolbar when dirty changes. App-owned polling/session-sync and unsaved modal prompting read the flag through `currentFileDirty()` wrapper, preserving the old behavior that clean viewers auto-refresh while dirty viewers do not.
+- App-side changes: removed app-global `fileDirty`; `setFileDirty` and `currentFileDirty` are wrappers; controller construction no longer injects `currentFileDirty` or `setFileDirty`.
+- Tests updated:
+  - Controller fixtures initialize dirty scenarios with `controller.setFileDirty(...)` and read back `controller.currentFileDirty()` instead of mutating fixture-only `state.dirty`.
+  - Source assertions now reject app-owned dirty dependency wiring and require controller-owned dirty state plus app wrappers.
+  - Expected traces now reflect real controller dirty side effects (button/touch toolbar updates) instead of stubbed `setFileDirty` callback events.
+- Negative evidence during validation: first focused run failed where fixtures still mutated local dirty state or expected stubbed `setFileDirty` events. Updating fixtures to initialize/read controller dirty resolved the mismatch, supporting the ownership mechanism rather than indicating runtime behavior drift.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - File-viewer focused `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader focused frontend/file-viewer/static/auth group returned `119 passed, 28 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: dirty state and dirty-change UI side effects now belong to the file-viewer controller. App still owns file edit-mode boolean, active file content metadata/text baseline, raw restore text implementation, unsaved modal DOM, paste dialog DOM show/hide primitives, touch toolbar DOM, raw Monaco selection helpers, raw load-result rendering, and raw view-mode DOM application.
