@@ -6459,3 +6459,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: unsaved-modal choice policy belongs to the file-viewer controller. App still owns unsaved modal DOM rendering/show/hide internals, touch press normalization/binding mechanics, raw selection extraction, raw clipboard implementation, browser URL prefix/download anchor side effects, persisted file mode storage, raw mode DOM application, raw load-result rendering, active file content metadata/text baseline, `fileEditMode` state, paste dialog DOM, touch toolbar DOM, and raw Monaco selection helpers.
+
+
+## 2026-06-30T15:37:52Z Video preview button policy controller ownership
+- Functional commit `0ce9567 Move video preview button policy into viewer controller` moved explicit compatible-video preview button policy from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `handleFileVideoPreviewButtonPress(token, loadPreview)` now owns the explicit-preview action semantics: it fail-loud validates the provided loader and invokes it with the current fallback token and `{ explicit: true }`. App still owns `activeVideoFallback` state, compatible-preview preparation/loading implementation, automatic preview attempts after video load/error, and raw video DOM rendering.
+- Tests updated: source assertions require controller-owned explicit video-preview handler and app wrapper delegation while preserving app-owned automatic `loadCompatibleVideoPreview(videoToken, { explicit: false })` paths.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - File-viewer focused `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader focused frontend/file-viewer/static/auth group returned `119 passed, 28 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: explicit video preview button policy belongs to the file-viewer controller. App still owns active video fallback state, automatic preview loading, video DOM/rendering, unsaved modal DOM internals, touch press normalization/binding mechanics, raw selection extraction, raw clipboard implementation, browser URL prefix/download anchor side effects, persisted file mode storage, raw mode DOM application, raw load-result rendering, active file content metadata/text baseline, `fileEditMode` state, paste dialog DOM, touch toolbar DOM, and raw Monaco selection helpers.
