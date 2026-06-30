@@ -6484,3 +6484,23 @@
 - Intended review output file: `/tmp/codoxear-file-viewer-controller-tranche-review.md`; no review finding was produced or applied.
 - Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against the current code. The code-evidence basis through `0ce9567` remains syntax checks, focused tests, full local pytest, Docker sandbox, and diff checks recorded above.
 - Decision: continue workbench progress; retry clean-room review only at the next necessary yield or if review infrastructure becomes required for a user-facing checkpoint.
+
+
+## 2026-06-30T16:10:00Z Active-file metadata controller ownership
+- Functional commit `89dad8f Move active file metadata into viewer controller` moved active-file content metadata from inline `app.js` globals into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `app_file_viewer.js` now owns `activeFileKind`, `activeFileText`, `activeFileEditable`, `activeFileVersion`, `activeFileDraft`, current-state accessors, `resetActiveFileBufferState()`, `applyActiveFileTextState()`, `applyActiveFileDiffState()`, and `applyActiveFileNonTextState()`. Invalid text/non-text kind checks remain fail-loud inside the controller. `resetActiveFileBufferState()` now clears metadata and invokes `setFileEditMode(false)`, `clearActiveFileSaveState()`, `resetFileTouchSelectionState()`, and `setFileDirty(false)` through explicit controller dependencies.
+- App-side changes: `app.js` no longer declares active-file metadata globals. It keeps wrapper names for load/render call sites, routes `getFileEditorText()`, dirty comparisons, mode buttons, file-picker candidate state, load-result status text, and Monaco read-only checks through controller accessors, and keeps raw Monaco restore/editor DOM operations plus `fileEditMode` state.
+- Test updates: controller/source VM tests seed/read metadata through controller methods; stale app-stub `applyActiveFileTextState` event expectations were removed where metadata is no longer an app callback; file-picker search helper fixture now provides `currentActiveFileDraft()` because the app slice reads the controller wrapper when computing picker entries.
+- Negative evidence preserved: focused controller validation initially exposed stale expectations where non-text metadata now clears the controller text baseline, draft/open errors reset metadata/edit state in the controller, discard restores the controller-owned baseline text, and draft-new no longer emits app-stub metadata events. A broader focused run initially failed 13 file-picker source tests because an older VM fixture only supplied `activeFileDraft`; adding the explicit `currentActiveFileDraft()` wrapper matched the browser wiring and made `tests/test_file_picker_search_source.py` pass (`23 passed`).
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused file-viewer validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - File-picker focused repair validation `python3 -m py_compile tests/test_file_picker_search_source.py && python3 -m pytest -q tests/test_file_picker_search_source.py` returned `23 passed`.
+  - Broader focused frontend/file-viewer/static/auth validation returned `131 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: active-file content metadata/text baseline belongs to the file-viewer controller. `fileEditMode` remains app-owned per the earlier rejected flag-only migration; app also still owns raw Monaco restore/editor DOM, raw load-result rendering, raw view-mode DOM application, unsaved modal DOM internals, paste dialog DOM/show-hide primitives, touch toolbar DOM, and raw Monaco selection helpers.
