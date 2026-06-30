@@ -6586,3 +6586,20 @@
 - Intended review output file: `/tmp/codoxear-file-viewer-control-state-review.md`; no review finding was produced or applied.
 - Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against commits `725db4f`, `2870099`, or `8179a9a`. The evidence basis for those controller-ownership moves remains syntax checks, focused tests, broader focused tests, full local pytest, Docker sandbox, and diff checks recorded above.
 - Decision: continue workbench progress; retry clean-room review only at the next necessary yield or if a review result becomes required for a decision.
+
+## 2026-06-30T18:05:20Z File view-mode state controller ownership
+- Functional commit `d68906e Move file view mode state into viewer controller` moved `fileViewMode`, `fileNonDiffMode`, view-mode normalization, non-diff fallback tracking, and storage persistence semantics from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the controller now initializes file mode state from injected `initialFileViewMode`/`initialFileNonDiffMode`, owns `currentFileViewMode()`, `currentFileNonDiffMode()`, and `setFileViewMode(mode)`, persists every normalized main-mode write via `persistFileViewMode(mode)`, persists non-diff mode only for `file`/`preview`, and invokes injected `applyFileMode()` for raw DOM refresh. `handleFileDiffModeButtonPress()` now uses controller-owned `currentFileNonDiffMode()` instead of an app argument. `app.js` now injects storage callbacks and retains wrapper functions for compatibility plus raw DOM application.
+- Tests updated: controller fixtures seed mode through initial values and observe persistence callbacks; source assertions reject app-owned `let fileViewMode`/`let fileNonDiffMode` and direct `handleFileDiffModeButtonPress(fileNonDiffMode)` calls; VM slices that execute `resolveFileOpenMode()` now provide `currentFileNonDiffMode()`. Expected event traces were updated from fake external setter calls to persistence/apply effects.
+- Negative evidence preserved: the first focused run after moving state showed multiple failures caused by test fixtures still controlling mode through the removed external `currentFileViewMode` dependency. The mechanism was corrected by seeding controller-owned initial mode and persistence callbacks, not by reintroducing an external mode getter.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_file_picker_search_source.py tests/test_new_session_model_options_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused file-viewer validation returned `47 passed, 25 subtests passed`.
+  - Broader focused frontend/file-viewer/static/auth validation returned `131 passed, 25 subtests passed` after updating `resolveFileOpenMode` VM context.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed` after updating a source-test boundary that used the removed `let fileViewMode` line.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: file view-mode state and persistence semantics belong to the file-viewer controller. App still owns raw mode/download/video-preview DOM mutation, active video fallback state/loading, raw load-result rendering, raw restore text implementation, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, and raw Monaco selection helpers.
