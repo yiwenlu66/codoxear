@@ -5641,3 +5641,22 @@
 - Clean-room review `9236cab1-29e4-4f80-b42b-a1f83fb9ee33` returned PASS with no blockers or residual risks; report saved at `/tmp/codoxear-file-viewer-empty-target-review.md`. Review verified exact operation order, per-call-site toolbar behavior, no changes to target selection/file-open/sync/query-open/unsaved/error/async paths, and meaningful VM/source tests.
 - Read-only follow-up architect `004f34c1-4524-49d5-bb74-a9e85a0a3215` recommended the next low-risk atomic cut as replacing `hideFileViewer()`'s partial `activeFileLine = null` cleanup with `clearActiveFileIdentity()` after `rememberActiveFileSelection()` and existing close-menu behavior; report saved at `/tmp/codoxear-file-viewer-followup-plan.md`.
 - Scope note: this is empty-target UI reset ownership only. It does not claim hidden-viewer identity cleanup, file-viewer async open choreography extraction, sync-token policy changes, cache policy changes, browser-manual file-viewer evidence, or completion of the broad refactor/recovery request.
+
+
+## 2026-06-30T04:28:00Z Hidden file-viewer identity cleanup
+- Functional commit `cc769c6 Clear hidden file viewer identity` replaced `hideFileViewer()`'s partial `activeFileLine = null` cleanup with `clearActiveFileIdentity()`.
+- Mechanism: `hideFileViewer()` still saves current selection with `rememberActiveFileSelection()` before clearing identity, and still calls `closeFilePickerMenu({ restoreInput: true })` before clearing identity so picker input restoration reads the old active path exactly as before. After the viewer/session are hidden, `clearActiveFileIdentity()` zeros `activeFilePath`, `activeFileApiPath`, `activeFileGitPath`, and `activeFileLine`.
+- Boundary preserved: `requestHideFileViewer()` still owns unsaved-change prompting before hide. `handleFileViewerSessionUnavailable()` still preserves dirty removed-session file identity because the dirty branch does not call `hideFileViewer()`; only the non-dirty branch hides and clears identity. Focus restoration, modal visibility updates, file-search reset, unavailable-session reset, paste/unsaved dialog cleanup, open-request cancellation, and panel reset ordering were unchanged.
+- Tests added/updated:
+  - `eval_hide_file_viewer_identity_cleanup()` executes the real `clearActiveFileIdentity()` plus real `hideFileViewer()` in a Node VM with instrumented dependencies, verifying final identity/session/display state, selection save with old path/api/git/line, picker close with old path, and touch-toolbar update after cleared identity.
+  - Source sentinels require `rememberActiveFileSelection()` and `closeFilePickerMenu({ restoreInput: true })` before `clearActiveFileIdentity()` in `hideFileViewer()`, and reject the old `activeFileLine = null` partial clear.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused new/source tests passed.
+  - Focused local file-viewer/file-picker/static group returned `82 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1281 passed, 136 subtests passed`.
+  - Focused Docker file-viewer/file-picker/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed before staging/commit.
+- Clean-room review `cddeba0b-5544-48b3-b730-68296ebb930c` returned PASS with no blockers despite the runner label saying failed; report saved at `/tmp/codoxear-hide-file-viewer-identity-review.md`. Review verified the actual two-file diff, save-before-clear ordering, picker close-before-clear behavior, hidden identity invariant, dirty unavailable-file preservation, and real-function VM/source test fidelity. Residual risks were low: inherited dependency on `normalizeLineNumber(null)` semantics, re-entrant hide with already-empty path not saving anything, and no browser E2E for internal identity fields.
+- Scope note: this is hidden file-viewer active-file identity cleanup only. It does not claim file-viewer session rebind extraction, async open choreography changes, cache policy changes, browser-manual file-viewer evidence, or completion of the broad refactor/recovery request.
