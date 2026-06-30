@@ -6673,3 +6673,11 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: file-editor save-shortcut policy belongs to the file-viewer controller. App still owns raw shortcut-block predicate mechanics, document event binding, raw renderer/DOM plan application, raw restore text implementation, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, raw mode/download/video-preview DOM mutation, compatible-preview fetch/load mechanics, and raw Monaco selection helpers.
+
+## 2026-06-30T19:21:53Z Clean-room review runner failure after file load/save-shortcut checkpoints
+- Observation: async clean-room review run `81f44648-a4c3-4a2f-9c92-86968aa5be04` failed before writing a result.
+- Raw failure reported by runner/user: `Async runner process 668811 exited or disappeared before writing a result. Marked run failed by stale-run reconciliation.`
+- Intended review output file: `/tmp/codoxear-file-viewer-load-shortcut-review.md`; no output content was present when checked with `test -s`.
+- Scope of requested review: commits `ca712ed`, `d09f074`, `b5026ae`, and `321a2e0` plus matching tests.
+- Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against the current code. The evidence basis for the reviewed commits remains syntax checks, focused tests, broader focused tests, full local pytest, Docker sandbox, and diff checks recorded above.
+- Decision: continue workbench progress; run a fresh clean-room review only at the next necessary yield or if review evidence is needed for a decision.
