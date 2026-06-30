@@ -5574,3 +5574,25 @@
   - `git diff --check` passed before staging/commit.
 - Clean-room review `fc1fddb3-9c77-44f1-8ced-6f74def2f7c1` returned PASS with no blockers; report saved at `/tmp/codoxear-message-poll-abort-review.md`. Review verified actual diff, transport abort/currentness and owner-finally semantics, 401/409/404 ordering, unconditional abort on selected-session removal, test fidelity, and no user-visible behavior changes beyond canceling obsolete transport. Residual risks: no explicit VM test for 409→openSession abort chain, no concurrent refresh-triggered cleanup VM test, and cosmetic whitespace normalization in `pollMessages()`.
 - Scope note: this is message poll transport abort ownership only. It does not claim cache/slot deletion ownership, cache fallback-on-failure policy changes, file-viewer sync UX changes, browser-manual slow-network switching evidence, or completion of the broad refactor/recovery request.
+
+
+## 2026-06-30T03:38:00Z Explicit delete/dismiss client-state cleanup ownership
+- Functional commit `9789897 Centralize deleted session client cleanup` introduced `clearDeletedSessionClientState(sessionId)` for explicit user delete/dismiss flows.
+- Mechanism:
+  - The helper preserves the prior four-step cleanup order: `clearSelectedSessionAfterRemoval(sessionId)`, `sessionTranscriptSlots.delete(sessionId)`, `sessionTailCache.delete(sessionId)`, and `dropPendingUserRows(sessionId, () => true)`.
+  - It returns the boolean from `clearSelectedSessionAfterRemoval(sessionId)`, preserving the helper result for future callers while current delete/dismiss callers continue ignoring the value as before.
+  - Sidebar `doDelete()` and `dismissFailedLaunchRecord()` now delegate to `clearDeletedSessionClientState()` after successful delete API calls. Their `card.remove()` launch-row special case, refresh behavior, confirm prompts, and toast/error behavior are unchanged.
+- Boundary preserved: sidebar refresh selected-missing cleanup, `openSession()` 404 cleanup, `pollMessages()` 404 cleanup, transcript identity cache invalidation, send/renew cache invalidation, cache fallback-on-failure policy, and file-viewer unavailable dirty-edit handling were not changed. The new helper is scoped to explicit delete/dismiss after delete API success.
+- Tests added/updated:
+  - `eval_clear_deleted_session_client_state()` executes the real helper in a Node VM and verifies selected and non-selected session IDs both run the exact four cleanup calls in order, with `dropPendingUserRows` using an always-true predicate and with the helper return value following `clearSelectedSessionAfterRemoval()`.
+  - Source sentinels now pin `clearDeletedSessionClientState()` call sites for sidebar delete and failed-launch dismiss while preserving direct `clearSelectedSessionAfterRemoval()` sentinels for selected-missing/404 paths.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused helper/source tests passed.
+  - Adjacent local chat/file/sidebar/poll/static group returned `113 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1278 passed, 136 subtests passed`.
+  - Focused Docker chat/file/sidebar/poll/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed before staging/commit.
+- Clean-room review `53a949a5-6f2d-4438-bcf3-8b6678e70232` returned PASS with no blockers; report saved at `/tmp/codoxear-delete-client-state-review.md`. Review verified the actual three-file diff, exact old cleanup order/effect preservation, missing-session/404/cache policy unchanged, selected file-viewer unavailable path preserved through `clearSelectedSessionAfterRemoval()`, and meaningful VM/source tests. Residual risks are inherited closure-over-`s` behavior in sidebar rows, ignored return value, lack of a full `doDelete()` integration VM, and existing separate coverage for selected-session cleanup internals.
+- Scope note: this is explicit delete/dismiss client-state cleanup ownership only. It does not claim cache fallback policy changes, missing-session cleanup changes, browser-manual delete testing, file-viewer sync refactoring, or completion of the broad refactor/recovery request.
