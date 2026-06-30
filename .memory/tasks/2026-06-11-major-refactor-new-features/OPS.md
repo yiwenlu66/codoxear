@@ -6681,3 +6681,20 @@
 - Scope of requested review: commits `ca712ed`, `d09f074`, `b5026ae`, and `321a2e0` plus matching tests.
 - Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against the current code. The evidence basis for the reviewed commits remains syntax checks, focused tests, broader focused tests, full local pytest, Docker sandbox, and diff checks recorded above.
 - Decision: continue workbench progress; run a fresh clean-room review only at the next necessary yield or if review evidence is needed for a decision.
+
+## 2026-06-30T19:34:57Z Plain-text fallback state controller ownership
+- Functional commit `dc53aed Move plain fallback state into viewer controller` moved the state/affordance reset for plain-text fallback rendering from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `applyPlainTextFallbackState()` now owns exiting edit mode, clearing dirty state, and refreshing edit/touch affordances after the app has set raw `fileEditorKind = "plain-fallback"`. This keeps the controller as the owner of editor state transitions while preserving the app as owner of fallback DOM construction, raw render surface selection, fileEditorKind storage, scroll scheduling, and fallback notice markup.
+- Test updates: real-controller probe covers that the fallback state helper clears edit mode and dirty state and emits edit/touch affordance updates when the raw editor kind is switched to `plain-fallback`. Source sentinels now require `renderPlainTextFallback()` to delegate fallback state to `fileViewerController.applyPlainTextFallbackState()` and reject direct app-side `setFileEditMode(false)` / `setFileDirty(false)` in that fallback block.
+- Negative evidence preserved: the first focused validation over-expected a raw editor `updateOptions` event from the fallback probe. The observed controller evidence was edit/dirty state and affordance updates; the assertion was narrowed to that supported mechanism rather than claiming raw editor mutation.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused file-viewer validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader focused frontend/file-viewer/static/auth validation returned `131 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: plain fallback state reset belongs to the file-viewer controller. App still owns raw fileEditorKind storage, fallback DOM construction/scrolling, raw renderer/DOM plan application, raw restore text implementation, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, raw mode/download/video-preview DOM mutation, compatible-preview fetch/load mechanics, and raw Monaco selection helpers.
