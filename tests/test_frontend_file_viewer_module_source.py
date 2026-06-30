@@ -302,6 +302,11 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const selectionRemembered = selectionController.preferredFileSelectionForSession("sid-remembered");
           state.historySelection = null;
           const selectionMemory = {{ noSession: selectionNoSession, history: selectionHistory, remembered: selectionRemembered }};
+          const candidateSeqController = makeController();
+          const firstCandidateSeq = candidateSeqController.beginFileCandidateRefresh();
+          const firstCandidateCurrent = candidateSeqController.isCurrentFileCandidateRefresh(firstCandidateSeq);
+          const secondCandidateSeq = candidateSeqController.beginFileCandidateRefresh();
+          const candidateRefreshSeq = {{ first: firstCandidateSeq, second: secondCandidateSeq, firstCurrent: firstCandidateCurrent, firstAfterSecond: candidateSeqController.isCurrentFileCandidateRefresh(firstCandidateSeq), secondCurrent: candidateSeqController.isCurrentFileCandidateRefresh(secondCandidateSeq) }};
           state.editMode = true;
           state.dirty = false;
           renderController.setFileDirty(false);
@@ -664,6 +669,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             editorKindTransitions,
             restorePlanning,
             selectionMemory,
+            candidateRefreshSeq,
             openErrors: {{ currentError, abortErrorResult, staleError, unknownError }},
             finalize,
             draft,
@@ -746,6 +752,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["render"]["editorKindTransitions"], {"initial": "", "file": "file", "currentFile": "file", "diff": "diff", "plain": "plain-fallback", "clear": "", "invalidMessage": "invalid file editor kind"})
         self.assertEqual(result["render"]["restorePlanning"], {"skip": {"kind": "skip"}, "skipFrozen": True, "skipDirty": False, "restore": {"kind": "restore", "text": "body text"}, "restoreFrozen": True, "dirtyBeforeFinish": True, "dirtyAfterFinish": False})
         self.assertEqual(result["render"]["selectionMemory"], {"noSession": {"path": "", "line": None, "gitPath": False}, "history": {"path": "history.txt", "line": 3, "gitPath": False, "apiPath": ""}, "remembered": {"path": "src/app.py", "apiPath": "tok-1", "line": 12, "gitPath": True}})
+        self.assertEqual(result["render"]["candidateRefreshSeq"], {"first": 1, "second": 2, "firstCurrent": True, "firstAfterSecond": False, "secondCurrent": True})
         reset_events = [
             ["editorOptions", {"readOnly": True}],
             ["touchToolbar"],

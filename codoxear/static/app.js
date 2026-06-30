@@ -7051,7 +7051,6 @@
         let fileUnsavedReturnFocusEl = null;
         let fileUnsavedResolver = null;
         let fileViewerSessionSyncToken = 0;
-        let fileCandidateRequestSeq = 0;
 
         function currentFileSessionId() {
           return String(fileViewerSessionId || selected || "").trim();
@@ -9157,8 +9156,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         async function refreshFileCandidates({ force = false, sessionId = null, syncToken = null } = {}) {
           if (!sessionId && blockUnavailableFileAction()) return;
           const sid = String(sessionId || fileViewerSessionId || selected || "").trim();
-          const requestSeq = ++fileCandidateRequestSeq;
-          const current = () => requestSeq === fileCandidateRequestSeq && (!sessionId || isFileViewerSessionCurrent(sid, syncToken));
+          const requestSeq = fileViewerController.beginFileCandidateRefresh();
+          const current = () => fileViewerController.isCurrentFileCandidateRefresh(requestSeq) && (!sessionId || isFileViewerSessionCurrent(sid, syncToken));
           if (!sid) {
             if (!current()) return;
             fileCandidateGitStateFresh = false;

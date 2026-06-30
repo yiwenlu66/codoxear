@@ -89,6 +89,7 @@
     let activeSaveConflict = null;
     let fileOpenRequestId = 0;
     let fileOpenAbortController = null;
+    let fileCandidateRequestSeq = 0;
     let fileSaveSeq = 0;
     let activeFileSaveToken = 0;
     let fileSavePending = false;
@@ -236,6 +237,15 @@
 
     function currentActiveFileLine() {
       return activeFileLine;
+    }
+
+    function beginFileCandidateRefresh() {
+      fileCandidateRequestSeq += 1;
+      return fileCandidateRequestSeq;
+    }
+
+    function isCurrentFileCandidateRefresh(requestSeq) {
+      return requestSeq === fileCandidateRequestSeq;
     }
 
     function currentFileEditMode() {
@@ -1490,6 +1500,8 @@
       currentActiveFileLine,
       rememberActiveFileSelection,
       preferredFileSelectionForSession,
+      beginFileCandidateRefresh,
+      isCurrentFileCandidateRefresh,
       currentFileEditMode,
       currentFileEditorKind,
       setFileEditorKind,

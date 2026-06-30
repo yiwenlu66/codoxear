@@ -399,6 +399,10 @@ def eval_file_candidates_while_changed_files_pending() -> dict:
           fileCandidateGitStateFresh: false,
           fileCandidateCache: new Map(),
           fileCandidateRequestSeq: 0,
+          fileViewerController: {{
+            beginFileCandidateRefresh() {{ ctx.fileCandidateRequestSeq += 1; return ctx.fileCandidateRequestSeq; }},
+            isCurrentFileCandidateRefresh(requestSeq) {{ return requestSeq === ctx.fileCandidateRequestSeq; }},
+          }},
           FILE_CANDIDATE_CACHE_TTL_MS: 15000,
           fileViewerSessionId: "s1",
           selected: "s1",
@@ -486,6 +490,10 @@ def eval_file_candidates_after_changed_files_failure() -> dict:
           fileCandidateGitStateFresh: false,
           fileCandidateCache: new Map(),
           fileCandidateRequestSeq: 0,
+          fileViewerController: {{
+            beginFileCandidateRefresh() {{ ctx.fileCandidateRequestSeq += 1; return ctx.fileCandidateRequestSeq; }},
+            isCurrentFileCandidateRefresh(requestSeq) {{ return requestSeq === ctx.fileCandidateRequestSeq; }},
+          }},
           FILE_CANDIDATE_CACHE_TTL_MS: 15000,
           fileViewerSessionId: "s1",
           selected: "s1",
@@ -574,6 +582,10 @@ def eval_file_candidate_cache_helpers() -> dict:
           fileCandidateGitStateFresh: false,
           fileCandidateCache: new Map(),
           fileCandidateRequestSeq: 0,
+          fileViewerController: {{
+            beginFileCandidateRefresh() {{ ctx.fileCandidateRequestSeq += 1; return ctx.fileCandidateRequestSeq; }},
+            isCurrentFileCandidateRefresh(requestSeq) {{ return requestSeq === ctx.fileCandidateRequestSeq; }},
+          }},
           FILE_CANDIDATE_CACHE_TTL_MS: 15000,
           fileViewerSessionId: "s1",
           selected: "",
