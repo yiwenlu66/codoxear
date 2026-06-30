@@ -8499,6 +8499,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           isUnavailable: () => isFileViewerSessionUnavailable(),
           confirmReload: (message) => window.confirm(message),
           openFilePath: (path, options) => openFilePath(path, options),
+          api: (url, options) => api(url, options),
           focusEditor: () => getActiveFileCodeEditor(),
           disposeOpenRender: () => disposePdfRender(),
           currentFileViewMode: () => fileViewMode,
@@ -9828,28 +9829,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           try {
             const viewMode = resolveFileOpenViewMode(request, rel, mode);
             if (viewMode !== fileViewMode) setFileViewMode(viewMode);
-            if (viewMode === "diff") {
-              const pathTokenQuery = request.apiPath ? `&path_token=${encodeURIComponent(request.apiPath)}` : "";
-              const res = await api(`/api/sessions/${request.sessionId}/git/file_versions?path=${encodeURIComponent(rel)}${pathTokenQuery}`, {
-                signal: request.signal,
-              });
-              if (!isCurrentFileOpenRequest(request)) return false;
-              const baseText = res && typeof res.base_text === "string" ? res.base_text : "";
-              const currentText = res && typeof res.current_text === "string" ? res.current_text : "";
-              const loaded = await applyFileLoadResult(rel, { kind: "diff", baseText, currentText, baseExists: res && res.base_exists, currentExists: res && res.current_exists }, request, { viewMode });
-              if (!loaded) return false;
-              return finalizeFileOpenSuccess(rel, res && typeof res.abs_path === "string" ? res.abs_path : null);
-            } else {
-              const gitPathQuery = request.gitPath ? "&git_path=1" : "";
-              const pathTokenQuery = request.gitPath && request.apiPath ? `&path_token=${encodeURIComponent(request.apiPath)}` : "";
-              const res = await api(`/api/sessions/${request.sessionId}/file/read?path=${encodeURIComponent(rel)}${pathTokenQuery}${gitPathQuery}`, {
-                signal: request.signal,
-              });
-              if (!isCurrentFileOpenRequest(request)) return false;
-              const loaded = await applyFileLoadResult(rel, res, request, { viewMode });
-              if (!loaded) return false;
-              return finalizeFileOpenSuccess(rel, typeof res.path === "string" ? res.path : null);
-            }
+            const openResult = await fileViewerController.fetchFileOpenResult(request, rel, viewMode);
+            if (!isCurrentFileOpenRequest(request)) return false;
+            const loaded = await applyFileLoadResult(rel, openResult.result, request, { viewMode });
+            if (!loaded) return false;
+            return finalizeFileOpenSuccess(rel, openResult.absPath);
           } catch (e) {
             if (e && e.name === "AbortError") return false;
             if (!isCurrentFileOpenRequest(request)) return false;

@@ -71,6 +71,11 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
               }}
               return state.openResult === true;
             }},
+            api: async (url, options = {{}}) => {{
+              events.push(["api", url, Boolean(options.signal)]);
+              if (url.includes("/git/file_versions")) return {{ base_text: "old", current_text: "new", base_exists: true, current_exists: false, abs_path: "/abs/diff" }};
+              return {{ kind: "text", text: "body", path: "/abs/read" }};
+            }},
             focusEditor: () => ({{ focus: () => events.push(["focus"]) }}),
             disposeOpenRender: () => events.push(["disposeOpenRender"]),
             currentFileViewMode: () => state.viewMode,
@@ -143,6 +148,12 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const explicitDiff = renderController.resolveFileOpenViewMode({{ gitPath: false }}, "src/app.py", "diff");
           let invalidModeMessage = "";
           try {{ renderController.normalizeExplicitFileOpenMode("bogus"); }} catch (err) {{ invalidModeMessage = err && err.message ? err.message : String(err); }}
+          events.length = 0;
+          const diffFetch = await renderController.fetchFileOpenResult({{ sessionId: "sid-1", apiPath: "tok", gitPath: true, signal: {{}} }}, "src/app.py", "diff");
+          const diffFetchEvents = events.slice();
+          events.length = 0;
+          const readFetch = await renderController.fetchFileOpenResult({{ sessionId: "sid-1", apiPath: "tok", gitPath: true, signal: {{}} }}, "src/app.py", "file");
+          const readFetchEvents = events.slice();
           const render = {{
             exportFrozen: Object.isFrozen(fileViewer),
             exports: Object.keys(fileViewer).sort(),
@@ -151,6 +162,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             labelText: fileStatus.children[0].text,
             actionTexts: fileStatus.children[1].children.map((node) => node.text),
             modeResolution: {{ diffFallback, diffAllowed, previewFallback, explicitDiff, invalidModeMessage }},
+            fetchResults: {{ diffFetch, diffFetchEvents, readFetch, readFetchEvents }},
           }};
           const availableReloadFailure = await runReloadCase("");
           const canceledReload = await runReloadCase("", false);
@@ -192,6 +204,15 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "previewFallback": "file",
             "explicitDiff": "diff",
             "invalidModeMessage": "invalid file open mode",
+        })
+        self.assertEqual(result["render"]["fetchResults"], {
+            "diffFetch": {
+                "result": {"kind": "diff", "baseText": "old", "currentText": "new", "baseExists": True, "currentExists": False},
+                "absPath": "/abs/diff",
+            },
+            "diffFetchEvents": [["api", "/api/sessions/sid-1/git/file_versions?path=src%2Fapp.py&path_token=tok", True]],
+            "readFetch": {"result": {"kind": "text", "text": "body", "path": "/abs/read"}, "absPath": "/abs/read"},
+            "readFetchEvents": [["api", "/api/sessions/sid-1/file/read?path=src%2Fapp.py&path_token=tok&git_path=1", True]],
         })
         self.assertIn("file viewer dependency missing: el", result["missingDependencyError"])
 

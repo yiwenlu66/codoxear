@@ -25,6 +25,7 @@
     const isUnavailable = requireFunction(deps && deps.isUnavailable, "isUnavailable");
     const confirmReload = requireFunction(deps && deps.confirmReload, "confirmReload");
     const openFilePath = requireFunction(deps && deps.openFilePath, "openFilePath");
+    const api = requireFunction(deps && deps.api, "api");
     const focusEditor = requireFunction(deps && deps.focusEditor, "focusEditor");
     const disposeOpenRender = requireFunction(deps && deps.disposeOpenRender, "disposeOpenRender");
     const currentFileViewMode = requireFunction(deps && deps.currentFileViewMode, "currentFileViewMode");
@@ -158,6 +159,34 @@
       return viewMode === "preview" && !isMarkdownPreviewable(rel) ? "file" : viewMode === "diff" && !canUseDiffView ? "file" : viewMode;
     }
 
+    async function fetchFileOpenResult(request, rel, viewMode) {
+      if (viewMode === "diff") {
+        const pathTokenQuery = request.apiPath ? `&path_token=${encodeURIComponent(request.apiPath)}` : "";
+        const res = await api(`/api/sessions/${request.sessionId}/git/file_versions?path=${encodeURIComponent(rel)}${pathTokenQuery}`, {
+          signal: request.signal,
+        });
+        return Object.freeze({
+          result: Object.freeze({
+            kind: "diff",
+            baseText: res && typeof res.base_text === "string" ? res.base_text : "",
+            currentText: res && typeof res.current_text === "string" ? res.current_text : "",
+            baseExists: res && res.base_exists,
+            currentExists: res && res.current_exists,
+          }),
+          absPath: res && typeof res.abs_path === "string" ? res.abs_path : null,
+        });
+      }
+      const gitPathQuery = request.gitPath ? "&git_path=1" : "";
+      const pathTokenQuery = request.gitPath && request.apiPath ? `&path_token=${encodeURIComponent(request.apiPath)}` : "";
+      const res = await api(`/api/sessions/${request.sessionId}/file/read?path=${encodeURIComponent(rel)}${pathTokenQuery}${gitPathQuery}`, {
+        signal: request.signal,
+      });
+      return Object.freeze({
+        result: res,
+        absPath: res && typeof res.path === "string" ? res.path : null,
+      });
+    }
+
     function isSaveConflictCurrent(conflict) {
       return Boolean(conflict && currentSessionId() === conflict.sessionId && activeFilePath === conflict.path && !isUnavailable());
     }
@@ -233,6 +262,7 @@
       startFileOpenRequest,
       normalizeExplicitFileOpenMode,
       resolveFileOpenViewMode,
+      fetchFileOpenResult,
     });
   }
 

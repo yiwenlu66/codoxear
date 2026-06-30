@@ -115,6 +115,17 @@ def controller_identity_ctx_js(
               const viewMode = String(ctx.fileViewMode || "");
               return viewMode === "preview" && !(typeof ctx.isMarkdownPreviewable === "function" && ctx.isMarkdownPreviewable(rel)) ? "file" : viewMode === "diff" && !canUseDiffView ? "file" : viewMode;
             }},
+            async fetchFileOpenResult(request, rel, viewMode) {{
+              if (viewMode === "diff") {{
+                const pathTokenQuery = request.apiPath ? `&path_token=${{encodeURIComponent(request.apiPath)}}` : "";
+                const res = await ctx.api(`/api/sessions/${{request.sessionId}}/git/file_versions?path=${{encodeURIComponent(rel)}}${{pathTokenQuery}}`, {{ signal: request.signal }});
+                return {{ result: {{ kind: "diff", baseText: res && typeof res.base_text === "string" ? res.base_text : "", currentText: res && typeof res.current_text === "string" ? res.current_text : "", baseExists: res && res.base_exists, currentExists: res && res.current_exists }}, absPath: res && typeof res.abs_path === "string" ? res.abs_path : null }};
+              }}
+              const gitPathQuery = request.gitPath ? "&git_path=1" : "";
+              const pathTokenQuery = request.gitPath && request.apiPath ? `&path_token=${{encodeURIComponent(request.apiPath)}}` : "";
+              const res = await ctx.api(`/api/sessions/${{request.sessionId}}/file/read?path=${{encodeURIComponent(rel)}}${{pathTokenQuery}}${{gitPathQuery}}`, {{ signal: request.signal }});
+              return {{ result: res, absPath: res && typeof res.path === "string" ? res.path : null }};
+            }},
           }},
           fileOpenRequestId: 0,
           fileOpenAbortController: null,
@@ -1002,6 +1013,7 @@ def eval_file_open_request_sequence() -> dict:
           isUnavailable: () => false,
           confirmReload: () => true,
           openFilePath: async () => true,
+          api: async () => ({{}}),
           focusEditor: () => null,
           disposeOpenRender: () => {{ disposeCalls += 1; }},
           currentFileViewMode: () => "file",
@@ -1251,6 +1263,17 @@ def eval_open_file_path_mode_ownership() -> dict:
               const activeEntry = ctx.activeFileEntry();
               const canUseDiffView = request.gitPath && ctx.fileCandidateGitStateFresh && Boolean(activeEntry && activeEntry.changed);
               return ctx.fileViewMode === "preview" && !ctx.isMarkdownPreviewable(rel) ? "file" : ctx.fileViewMode === "diff" && !canUseDiffView ? "file" : ctx.fileViewMode;
+            }},
+            fetchFileOpenResult: async (request, rel, viewMode) => {{
+              if (viewMode === "diff") {{
+                const pathTokenQuery = request.apiPath ? `&path_token=${{encodeURIComponent(request.apiPath)}}` : "";
+                const res = await ctx.api(`/api/sessions/${{request.sessionId}}/git/file_versions?path=${{encodeURIComponent(rel)}}${{pathTokenQuery}}`, {{ signal: request.signal }});
+                return {{ result: {{ kind: "diff", baseText: res && typeof res.base_text === "string" ? res.base_text : "", currentText: res && typeof res.current_text === "string" ? res.current_text : "", baseExists: res && res.base_exists, currentExists: res && res.current_exists }}, absPath: res && typeof res.abs_path === "string" ? res.abs_path : null }};
+              }}
+              const gitPathQuery = request.gitPath ? "&git_path=1" : "";
+              const pathTokenQuery = request.gitPath && request.apiPath ? `&path_token=${{encodeURIComponent(request.apiPath)}}` : "";
+              const res = await ctx.api(`/api/sessions/${{request.sessionId}}/file/read?path=${{encodeURIComponent(rel)}}${{pathTokenQuery}}${{gitPathQuery}}`, {{ signal: request.signal }});
+              return {{ result: res, absPath: res && typeof res.path === "string" ? res.path : null }};
             }},
           }},
           startFileOpenRequest: (path, opts = {{}}) => {{
@@ -2077,12 +2100,16 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function resolveFileOpenViewMode(request, rel, requestedMode = null)", source)
         self.assertIn("function normalizeExplicitFileOpenMode(requestedMode)", viewer_source)
         self.assertIn("function resolveFileOpenViewMode(request, rel, requestedMode = null)", viewer_source)
+        self.assertIn("async function fetchFileOpenResult(request, rel, viewMode)", viewer_source)
         self.assertIn("const canUseDiffView = request && request.gitPath && fileCandidateGitStateFresh() && Boolean(entry && entry.changed);", viewer_source)
         self.assertIn('viewMode === "diff" && !canUseDiffView ? "file"', viewer_source)
+        self.assertIn("/git/file_versions?path=${encodeURIComponent(rel)}${pathTokenQuery}", viewer_source)
+        self.assertIn("/file/read?path=${encodeURIComponent(rel)}${pathTokenQuery}${gitPathQuery}", viewer_source)
         self.assertIn("async function openFilePath(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined, mode = null } = {})", source)
         self.assertIn("const viewMode = resolveFileOpenViewMode(request, rel, mode);", source)
+        self.assertIn("const openResult = await fileViewerController.fetchFileOpenResult(request, rel, viewMode);", source)
+        self.assertNotIn('const gitPathQuery = request.gitPath ? "&git_path=1" : "";', source)
         self.assertIn("if (gitPath) {\n              body.git_path = true;", source)
-        self.assertIn('const gitPathQuery = request.gitPath ? "&git_path=1" : "";', source)
         self.assertIn("git_path: save.gitPath", source)
         self.assertIn("startFileOpenRequest(path, { line, gitPath: false })", source)
         self.assertIn("setFilePath(rel, { line: null, gitPath: false })", source)
@@ -2280,8 +2307,10 @@ class TestFileViewerSource(unittest.TestCase):
         ])
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("function finalizeFileOpenSuccess(rel, absPath = null)", source)
-        self.assertIn("return finalizeFileOpenSuccess(rel, res && typeof res.abs_path === \"string\" ? res.abs_path : null);", source)
-        self.assertIn("return finalizeFileOpenSuccess(rel, typeof res.path === \"string\" ? res.path : null);", source)
+        self.assertIn("return finalizeFileOpenSuccess(rel, openResult.absPath);", source)
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+        self.assertIn('absPath: res && typeof res.abs_path === "string" ? res.abs_path : null', viewer_source)
+        self.assertIn('absPath: res && typeof res.path === "string" ? res.path : null', viewer_source)
 
     def test_file_load_result_dispatcher_preserves_branch_state_and_rendering(self) -> None:
         result = eval_file_load_result_dispatcher()
@@ -2535,8 +2564,12 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('throw new Error("invalid file render surface")', source)
         self.assertIn("async function applyFileLoadResult(rel, result, request, { viewMode = \"file\" } = {})", source)
         self.assertIn("function finalizeFileOpenSuccess(rel, absPath = null)", source)
-        self.assertIn('const loaded = await applyFileLoadResult(rel, { kind: "diff", baseText, currentText, baseExists: res && res.base_exists, currentExists: res && res.current_exists }, request, { viewMode });', source)
-        self.assertIn("const loaded = await applyFileLoadResult(rel, res, request, { viewMode });", source)
+        self.assertIn("const openResult = await fileViewerController.fetchFileOpenResult(request, rel, viewMode);", source)
+        self.assertIn("const loaded = await applyFileLoadResult(rel, openResult.result, request, { viewMode });", source)
+        self.assertIn('result: Object.freeze({', viewer_source)
+        self.assertIn('kind: "diff"', viewer_source)
+        self.assertIn('baseText: res && typeof res.base_text === "string" ? res.base_text : ""', viewer_source)
+        self.assertIn('currentText: res && typeof res.current_text === "string" ? res.current_text : ""', viewer_source)
         self.assertEqual(source.count('setFileRenderSurface("diff");'), 6)
         self.assertIn('setFileRenderSurface("image");', source)
         self.assertIn('setFileRenderSurface("video");', source)
@@ -2547,7 +2580,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const request = beginFileOpenRequest(nextPath, { line, gitPath, apiPath });", viewer_source)
         self.assertIn("const openRequest = startFileOpenRequest(nextPath, { line, gitPath, apiPath });", source)
         self.assertIn("const request = openRequest.request;", source)
-        self.assertIn("signal: request.signal", source)
+        self.assertIn("signal: request.signal", viewer_source)
         self.assertIn("if (!isCurrentFileOpenRequest(request)) return false;", source)
         self.assertIn("async function openFilePathWithResolvedMode(path, { line = null, changed = null, isCurrent = null, gitPath = null, apiPath = \"\" } = {})", source)
         self.assertIn("async function renderMonacoFile(rel, text, lineNumber = null, langOverride = \"\", request = null)", source)
