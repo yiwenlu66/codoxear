@@ -34,6 +34,8 @@
     const isUnavailable = requireFunction(deps && deps.isUnavailable, "isUnavailable");
     const isTextFileKind = requireFunction(deps && deps.isTextFileKind, "isTextFileKind");
     const confirmReload = requireFunction(deps && deps.confirmReload, "confirmReload");
+    const promptUnsavedFileChoice = requireFunction(deps && deps.promptUnsavedFileChoice, "promptUnsavedFileChoice");
+    const discardActiveFileEdits = requireFunction(deps && deps.discardActiveFileEdits, "discardActiveFileEdits");
     const openFilePath = requireFunction(deps && deps.openFilePath, "openFilePath");
     const api = requireFunction(deps && deps.api, "api");
     const focusEditor = requireFunction(deps && deps.focusEditor, "focusEditor");
@@ -406,6 +408,17 @@
       return await submitActiveFileSave(save, { exitEditMode });
     }
 
+    async function maybeHandleUnsavedFileChanges() {
+      if (!currentFileDirty()) return true;
+      const choice = await promptUnsavedFileChoice();
+      if (choice === "discard") {
+        discardActiveFileEdits();
+        return true;
+      }
+      if (choice === "save") return await saveActiveFileEdits({ exitEditMode: true });
+      return false;
+    }
+
     function finalizeFileOpenSuccess(rel, absPath = null) {
       applyFileMode();
       rememberOpenedFile(rel, absPath);
@@ -545,6 +558,7 @@
       applyActiveFileSaveSuccess,
       submitActiveFileSave,
       saveActiveFileEdits,
+      maybeHandleUnsavedFileChanges,
       nextActiveFileIdentity,
       currentActiveFileIdentity,
       currentActiveFileLine,

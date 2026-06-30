@@ -97,6 +97,8 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             isUnavailable: () => state.unavailable,
             isTextFileKind: (kind) => kind === "text" || kind === "markdown",
             confirmReload: (message) => {{ events.push(["confirm", message]); return state.confirmResult !== false; }},
+            promptUnsavedFileChoice: async () => {{ events.push(["promptUnsaved", state.unsavedChoice || "cancel"]); return state.unsavedChoice || "cancel"; }},
+            discardActiveFileEdits: () => events.push(["discardActiveFileEdits"]),
             openFilePath: async (path, opts) => {{
               events.push(["open", path, opts]);
               if (state.openEffect === "unavailable") {{
@@ -321,6 +323,17 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           renderController.markActiveFileSavePending({{ path: "state.md" }});
           const editButtonSavePending = {{ button: fileEditButtonSnapshot(), events: events.slice(), status: fileStatus.textContent }};
           renderController.clearActiveFileSaveState();
+          state.dirty = false;
+          events.length = 0;
+          const cleanUnsaved = {{ result: await renderController.maybeHandleUnsavedFileChanges(), events: events.slice() }};
+          state.dirty = true;
+          state.unsavedChoice = "discard";
+          events.length = 0;
+          const discardUnsaved = {{ result: await renderController.maybeHandleUnsavedFileChanges(), events: events.slice() }};
+          state.unsavedChoice = "cancel";
+          events.length = 0;
+          const cancelUnsaved = {{ result: await renderController.maybeHandleUnsavedFileChanges(), events: events.slice() }};
+          state.unsavedChoice = "";
           const editableCapabilities = renderController.fileEditorCapabilities({{ path: "src/app.py", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
           const pendingCapabilities = renderController.fileEditorCapabilities({{ path: "src/app.py", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: true }});
           const binaryCapabilities = renderController.fileEditorCapabilities({{ path: "img.png", kind: "image", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
@@ -343,6 +356,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             unavailableAction: {{ availableBlocked, availableBlockStatus, unavailableBlocked, unavailableBlockStatus }},
             editorState: {{ editorState, editorStateFrozen }},
             editabilityUi: {{ editButtonEditMode, readOnlyWritable, editButtonViewMode, editButtonUnavailable, editButtonSavePending }},
+            unsavedDecision: {{ cleanUnsaved, discardUnsaved, cancelUnsaved }},
             capabilities: {{ derivedCapabilities, editableCapabilities, pendingCapabilities, binaryCapabilities, missingPathCapabilities, editableFrozen: Object.isFrozen(editableCapabilities) }},
           }};
           const availableReloadFailure = await runReloadCase("");
@@ -489,6 +503,11 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
                 "events": [["buttonClass", "active", True], ["buttonClass", "primary", True], ["buttonClass", "dirty", True], ["buttonAttr", "aria-label", "Saving file"], ["touchToolbar"], ["editorOptions", {"readOnly": False}]],
                 "status": "Saving state.md...",
             },
+        })
+        self.assertEqual(result["render"]["unsavedDecision"], {
+            "cleanUnsaved": {"result": True, "events": []},
+            "discardUnsaved": {"result": True, "events": [["promptUnsaved", "discard"], ["discardActiveFileEdits"]]},
+            "cancelUnsaved": {"result": False, "events": [["promptUnsaved", "cancel"]]},
         })
         self.assertEqual(result["render"]["capabilities"], {
             "derivedCapabilities": {

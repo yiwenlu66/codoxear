@@ -171,6 +171,7 @@ def controller_identity_ctx_js(
             activeFileEditModeAllowedInCurrentView() {{ return this.activeFileEditorCapabilities().editModeAllowedInCurrentView; }},
             syncFileEditorReadOnly() {{ if (typeof ctx.syncFileEditorReadOnly === "function") return ctx.syncFileEditorReadOnly(); }},
             updateFileEditButton() {{ if (typeof ctx.updateFileEditButton === "function") return ctx.updateFileEditButton(); }},
+            maybeHandleUnsavedFileChanges() {{ return typeof ctx.maybeHandleUnsavedFileChanges === "function" ? ctx.maybeHandleUnsavedFileChanges() : !ctx.fileDirty; }},
             renderFileOpenError(request, error) {{
               if (this.isFileOpenAbortError(error)) return false;
               if (!this.isCurrentFileOpenRequest(request)) return false;
@@ -1092,6 +1093,8 @@ def eval_file_open_request_sequence() -> dict:
           isUnavailable: () => false,
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
+          promptUnsavedFileChoice: async () => "cancel",
+          discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
           openFilePath: async () => true,
           api: async () => ({{}}),
           focusEditor: () => null,
@@ -1535,6 +1538,8 @@ def eval_active_file_save_request_helpers() -> dict:
           isUnavailable: () => state.unavailable,
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
+          promptUnsavedFileChoice: async () => "cancel",
+          discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
           openFilePath: async () => true,
           api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
           focusEditor: () => ({{ updateOptions: (opts) => calls.push(["updateOptions", opts]) }}),
@@ -1722,6 +1727,8 @@ def eval_active_file_save_success() -> dict:
           isUnavailable: () => false,
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
+          promptUnsavedFileChoice: async () => "cancel",
+          discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
           openFilePath: async () => true,
           api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
           focusEditor: () => null,
@@ -1843,6 +1850,8 @@ def eval_active_file_save_transport() -> dict:
           isUnavailable: () => Boolean(state.unavailable),
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
+          promptUnsavedFileChoice: async () => "cancel",
+          discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
           openFilePath: async () => true,
           api: async (url, options = {{}}) => {{
             calls.push(["api", url, options.method, options.body]);
@@ -1998,6 +2007,8 @@ def eval_draft_file_load_choreography() -> dict:
           isUnavailable: () => false,
           isTextFileKind: (kind) => kind === "text" || kind === "markdown",
           confirmReload: () => true,
+          promptUnsavedFileChoice: async () => "cancel",
+          discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
           openFilePath: async () => true,
           api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
           focusEditor: () => null,
@@ -3266,6 +3277,10 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const token = ++fileSaveSeq;", viewer_source)
         self.assertIn("activeFileSaveToken = token;", viewer_source)
         self.assertIn("return await fileViewerController.saveActiveFileEdits({ exitEditMode });", block)
+        maybe_start = source.index("async function maybeHandleUnsavedFileChanges")
+        maybe_end = source.index("async function openFilePathWithGuard", maybe_start)
+        maybe_block = source[maybe_start:maybe_end]
+        self.assertIn("return await fileViewerController.maybeHandleUnsavedFileChanges();", maybe_block)
         self.assertIn("async function saveActiveFileEdits({ exitEditMode = true } = {})", viewer_source)
         self.assertIn("if (blockUnavailableFileAction()) return false;", viewer_source)
         self.assertIn("const identity = currentActiveFileIdentity();", viewer_source)
@@ -3274,6 +3289,11 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("if (exitEditMode) setFileEditMode(false);", viewer_source)
         self.assertIn("const save = beginActiveFileSaveRequest();", viewer_source)
         self.assertIn("return await submitActiveFileSave(save, { exitEditMode });", viewer_source)
+        self.assertIn("async function maybeHandleUnsavedFileChanges()", viewer_source)
+        self.assertIn("if (!currentFileDirty()) return true;", viewer_source)
+        self.assertIn("const choice = await promptUnsavedFileChoice();", viewer_source)
+        self.assertIn("discardActiveFileEdits();", viewer_source)
+        self.assertIn("if (choice === \"save\") return await saveActiveFileEdits({ exitEditMode: true });", viewer_source)
         self.assertIn("? { path: save.path, text: save.text, create: true }", viewer_source)
         self.assertIn(": { path: save.path, text: save.text, version: save.version, git_path: save.gitPath };", viewer_source)
         self.assertIn("if (!save.draft && save.gitPath && save.apiPath) body.path_token = save.apiPath;", viewer_source)
@@ -3307,6 +3327,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("isTextFileKind: (kind) => isTextFileKind(kind)", controller_block)
         self.assertIn("currentFileDirty: () => fileDirty", controller_block)
         self.assertIn("confirmReload: (message) => window.confirm(message)", controller_block)
+        self.assertIn("promptUnsavedFileChoice: () => promptFileUnsavedChoice()", controller_block)
+        self.assertIn("discardActiveFileEdits: () => discardActiveFileEdits()", controller_block)
         self.assertIn("openFilePath: (path, options) => openFilePath(path, options)", controller_block)
         self.assertIn("focusEditor: () => getActiveFileCodeEditor()", controller_block)
         save_start = source.index("async function saveActiveFileEdits")

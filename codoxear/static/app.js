@@ -8453,6 +8453,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           isUnavailable: () => isFileViewerSessionUnavailable(),
           isTextFileKind: (kind) => isTextFileKind(kind),
           confirmReload: (message) => window.confirm(message),
+          promptUnsavedFileChoice: () => promptFileUnsavedChoice(),
+          discardActiveFileEdits: () => discardActiveFileEdits(),
           openFilePath: (path, options) => openFilePath(path, options),
           api: (url, options) => api(url, options),
           focusEditor: () => getActiveFileCodeEditor(),
@@ -8528,14 +8530,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function maybeHandleUnsavedFileChanges() {
-          if (!fileDirty) return true;
-          const choice = await promptFileUnsavedChoice();
-          if (choice === "discard") {
-            discardActiveFileEdits();
-            return true;
-          }
-          if (choice === "save") return await saveActiveFileEdits({ exitEditMode: true });
-          return false;
+          return await fileViewerController.maybeHandleUnsavedFileChanges();
         }
 
         async function openFilePathWithGuard(path, { line = null, mode = null, isCurrent = null, gitPath = false, apiPath = "" } = {}) {
