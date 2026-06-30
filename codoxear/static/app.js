@@ -8543,6 +8543,44 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileStatus.replaceChildren(label, actions);
         }
 
+        function beginActiveFileSaveRequest() {
+          const sessionId = fileViewerSessionId;
+          const path = activeFilePath;
+          const apiPath = activeFileApiPath || "";
+          const draft = Boolean(activeFileDraft);
+          const version = activeFileVersion;
+          const text = getFileEditorText();
+          const token = ++fileSaveSeq;
+          activeFileSaveToken = token;
+          return Object.freeze({ sessionId, path, apiPath, draft, version, text, token });
+        }
+
+        function isCurrentActiveFileSaveRequest(save) {
+          return Boolean(
+            save &&
+              fileViewerSessionId === save.sessionId &&
+              activeFilePath === save.path &&
+              activeFileApiPath === save.apiPath &&
+              activeFileSaveToken === save.token &&
+              !isFileViewerSessionUnavailable()
+          );
+        }
+
+        function markActiveFileSavePending(save) {
+          fileSavePending = true;
+          updateFileEditButton();
+          syncFileEditorReadOnly();
+          fileStatus.textContent = `Saving ${save.path}...`;
+        }
+
+        function finishActiveFileSaveRequest(save) {
+          if (!save || activeFileSaveToken !== save.token) return;
+          fileSavePending = false;
+          activeFileSaveToken = 0;
+          syncFileEditorReadOnly();
+          updateFileEditButton();
+        }
+
         async function saveActiveFileEdits({ exitEditMode = true } = {}) {
           if (blockUnavailableFileAction()) return false;
           if (!fileViewerSessionId || !activeFilePath || !isTextFileKind(activeFileKind) || !activeFileEditable) return false;
@@ -8550,60 +8588,45 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             if (exitEditMode) setFileEditMode(false);
             return true;
           }
-          const saveSessionId = fileViewerSessionId;
-          const savePath = activeFilePath;
-          const saveApiPath = activeFileApiPath || "";
-          const saveDraft = Boolean(activeFileDraft);
-          const saveVersion = activeFileVersion;
-          const text = getFileEditorText();
-          const saveToken = ++fileSaveSeq;
-          activeFileSaveToken = saveToken;
-          const saveStillCurrent = () => fileViewerSessionId === saveSessionId && activeFilePath === savePath && activeFileApiPath === saveApiPath && activeFileSaveToken === saveToken && !isFileViewerSessionUnavailable();
-          fileSavePending = true;
-          updateFileEditButton();
-          syncFileEditorReadOnly();
-          fileStatus.textContent = `Saving ${savePath}...`;
+          const save = beginActiveFileSaveRequest();
+          const saveStillCurrent = () => isCurrentActiveFileSaveRequest(save);
+          markActiveFileSavePending(save);
           try {
-            const saveBody = saveDraft
-              ? { path: savePath, text, create: true }
-              : { path: savePath, text, version: saveVersion, git_path: Boolean(activeFileGitPath) };
-            if (!saveDraft && activeFileGitPath && saveApiPath) saveBody.path_token = saveApiPath;
-            const res = await api(`/api/sessions/${saveSessionId}/file/write`, {
+            const saveBody = save.draft
+              ? { path: save.path, text: save.text, create: true }
+              : { path: save.path, text: save.text, version: save.version, git_path: Boolean(activeFileGitPath) };
+            if (!save.draft && activeFileGitPath && save.apiPath) saveBody.path_token = save.apiPath;
+            const res = await api(`/api/sessions/${save.sessionId}/file/write`, {
               method: "POST",
               body: saveBody,
             });
             if (!saveStillCurrent()) return true;
-            activeFileText = text;
+            activeFileText = save.text;
             if (res && typeof res.version === "string") activeFileVersion = res.version;
             if (res && typeof res.editable === "boolean") activeFileEditable = res.editable;
             activeFileDraft = false;
-            if (saveDraft) {
+            if (save.draft) {
               activeFileGitPath = false;
               activeFileApiPath = "";
             }
             applyFileMode();
             setFileDirty(false);
             if (exitEditMode) setFileEditMode(false);
-            const size = res && typeof res.size === "number" ? res.size : text.length;
-            fileStatus.textContent = `${savePath} - ${fmtBytes(size)}`;
-            rememberOpenedFile(savePath, res && typeof res.path === "string" ? res.path : null);
+            const size = res && typeof res.size === "number" ? res.size : save.text.length;
+            fileStatus.textContent = `${save.path} - ${fmtBytes(size)}`;
+            rememberOpenedFile(save.path, res && typeof res.path === "string" ? res.path : null);
             renderFilePickerMenu();
             return true;
           } catch (e) {
             if (!saveStillCurrent()) return false;
             if (e && e.status === 409) {
-              renderFileSaveConflict(saveSessionId, savePath, e && e.message ? e.message : "conflict");
+              renderFileSaveConflict(save.sessionId, save.path, e && e.message ? e.message : "conflict");
             } else {
               fileStatus.textContent = `save error: ${e && e.message ? e.message : "unknown error"}`;
             }
             return false;
           } finally {
-            if (activeFileSaveToken === saveToken) {
-              fileSavePending = false;
-              activeFileSaveToken = 0;
-              syncFileEditorReadOnly();
-              updateFileEditButton();
-            }
+            finishActiveFileSaveRequest(save);
           }
         }
 
