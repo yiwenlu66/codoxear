@@ -5288,3 +5288,25 @@
 - Clean-room review `630cb585-8dde-4844-b149-dd2bb96b3ec0` returned PASS with no blockers. Review verified semantic equivalence for every moved branch, caller ownership of request/finalization behavior, correct diff field-name mapping, preserved error messages and stale guards, correct render-surface behavior, and adequate VM/source coverage. Non-blocking notes: the helper's top-level current-request guard is redundant but useful defense-in-depth; dispatcher VM coverage does not directly exercise download-only or non-markdown text but those remain low-risk/source-covered.
 - Next transition seam: extract `finalizeFileOpenSuccess(rel, absPath)` from the post-dispatch success path in `openFilePath()`, preserving the diff `res.abs_path` vs read `res.path` distinction and leaving draft loading untouched.
 - Scope note: this is result-kind dispatch ownership for `openFilePath()` only. It does not claim draft loading unification, success-finalization ownership, PDF lifecycle repair, save-token ownership, or browser-manual rendering evidence.
+
+
+
+## 2026-06-30T00:27:42Z File open success finalizer extraction
+- Functional commit `42a63a9 Extract file open success finalizer` moved the post-dispatch success tail in `openFilePath()` into `finalizeFileOpenSuccess(rel, absPath = null)`.
+- Mechanism: after `applyFileLoadResult(...)` returns true, both the diff and read branches call a single helper that performs `applyFileMode()`, `rememberOpenedFile(rel, absPath)`, `rememberActiveFileSelection()`, `updateFileEditButton()`, `renderFilePickerMenu()`, and returns true.
+- Branch-specific path identity preserved: the diff branch passes `res && typeof res.abs_path === "string" ? res.abs_path : null`; the read branch passes `typeof res.path === "string" ? res.path : null`.
+- Boundary preserved: request guards, HTTP fetches, view-mode resolution, `applyFileLoadResult()`, video branch's pre-existing internal `applyFileMode()`, `openDraftFilePath()`, catch handling, and `finally { finalizeFileOpenRequest(request); }` were not moved. The helper runs synchronously before the `finally` block, matching JavaScript try/finally return semantics and the prior inline tail.
+- Tests added/updated:
+  - `eval_file_open_success_finalizer()` executes the real helper in a Node VM with mocked dependencies and verifies return value plus exact call order/arguments.
+  - Source sentinels pin the helper signature and the two branch-specific call sites using `abs_path` versus `path`.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused finalizer/dispatcher/race tests passed.
+  - Focused file-viewer/file-picker/static group returned `83 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1267 passed, 136 subtests passed`.
+  - Focused Docker file-viewer/file-picker/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed.
+- Clean-room review `3b8317ba-329d-406a-8654-70c40704b550` returned PASS with no blockers. Review verified success-tail order, branch-specific path fields, unchanged `finally` timing, unchanged early return/abort and catch behavior, draft exclusion, untouched dispatcher behavior, and VM/source test fidelity. Non-blocking notes: video double `applyFileMode()` and `updateFileEditButton()` are pre-existing/idempotent; the VM snippet extraction boundary is a test-maintenance hazard only.
+- Next transition seam: decide between a carefully separate draft-load helper and deeper explicit file-open state-machine work. A blind draft-through-dispatcher change is unsafe because draft currently calls `applyFileMode()` before `renderMonacoFile()` and `setFileEditMode(true)` after render, unlike normal file loads.
+- Scope note: this is success-finalization ownership only. It does not claim draft loading unification, video `applyFileMode()` cleanup, PDF lifecycle repair, save-token ownership, or browser-manual rendering evidence.
