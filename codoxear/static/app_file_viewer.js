@@ -63,7 +63,14 @@
     const eventTargetElement = requireFunction(deps && deps.eventTargetElement, "eventTargetElement");
     const normalizeFileEditorPosition = requireFunction(deps && deps.normalizeFileEditorPosition, "normalizeFileEditorPosition");
     const applyFileEditorSelection = requireFunction(deps && deps.applyFileEditorSelection, "applyFileEditorSelection");
+    const isCollapsedFileSelection = requireFunction(deps && deps.isCollapsedFileSelection, "isCollapsedFileSelection");
+    const positionAfterInsertedText = requireFunction(deps && deps.positionAfterInsertedText, "positionAfterInsertedText");
+    const fileEditorEditSupportAvailable = requireFunction(deps && deps.fileEditorEditSupportAvailable, "fileEditorEditSupportAvailable");
     const syncFileDiffSelectionMode = requireFunction(deps && deps.syncFileDiffSelectionMode, "syncFileDiffSelectionMode");
+    const showFilePasteDialog = requireFunction(deps && deps.showFilePasteDialog, "showFilePasteDialog");
+    const hideFilePasteDialog = requireFunction(deps && deps.hideFilePasteDialog, "hideFilePasteDialog");
+    const clipboardReadAvailable = requireFunction(deps && deps.clipboardReadAvailable, "clipboardReadAvailable");
+    const readClipboardText = requireFunction(deps && deps.readClipboardText, "readClipboardText");
     const fileEditorDeleteCommandForKey = requireFunction(deps && deps.fileEditorDeleteCommandForKey, "fileEditorDeleteCommandForKey");
     const isActiveFileEditorInput = requireFunction(deps && deps.isActiveFileEditorInput, "isActiveFileEditorInput");
     const focusActiveFileCodeEditor = requireFunction(deps && deps.focusActiveFileCodeEditor, "focusActiveFileCodeEditor");
@@ -78,6 +85,7 @@
     const currentActiveFileVersion = requireFunction(deps && deps.currentActiveFileVersion, "currentActiveFileVersion");
     const currentActiveFileEditable = requireFunction(deps && deps.currentActiveFileEditable, "currentActiveFileEditable");
     const currentFileDirty = requireFunction(deps && deps.currentFileDirty, "currentFileDirty");
+    const currentActiveFileText = requireFunction(deps && deps.currentActiveFileText, "currentActiveFileText");
     const getFileEditorText = requireFunction(deps && deps.getFileEditorText, "getFileEditorText");
     const setFileDirty = requireFunction(deps && deps.setFileDirty, "setFileDirty");
     const fmtBytes = requireFunction(deps && deps.fmtBytes, "fmtBytes");
@@ -740,6 +748,80 @@
       return true;
     }
 
+    function insertIntoActiveFileEditor(text) {
+      if (!activeFileEditorIdleWritable()) return false;
+      const editor = focusEditor();
+      if (!editor || !fileEditorEditSupportAvailable() || typeof editor.executeEdits !== "function") return false;
+      const current = normalizeFileEditorPosition(editor, editor.getPosition && editor.getPosition()) || { lineNumber: 1, column: 1 };
+      const selection = editor.getSelection && editor.getSelection();
+      const range = selection && !isCollapsedFileSelection(selection)
+        ? {
+            startLineNumber: selection.startLineNumber,
+            startColumn: selection.startColumn,
+            endLineNumber: selection.endLineNumber,
+            endColumn: selection.endColumn,
+          }
+        : {
+            startLineNumber: current.lineNumber,
+            startColumn: current.column,
+            endLineNumber: current.lineNumber,
+            endColumn: current.column,
+          };
+      if (typeof editor.pushUndoStop === "function") editor.pushUndoStop();
+      editor.executeEdits("file-touch-paste", [{ range, text: String(text || ""), forceMoveMarkers: true }]);
+      const nextCursor = positionAfterInsertedText({ lineNumber: range.startLineNumber, column: range.startColumn }, text);
+      resetFileTouchSelectionState();
+      applyFileEditorSelection(editor, nextCursor, null);
+      if (typeof editor.pushUndoStop === "function") editor.pushUndoStop();
+      setFileDirty(getFileEditorText() !== String(currentActiveFileText() || ""));
+      focusActiveFileCodeEditor();
+      return true;
+    }
+
+    async function pasteFromClipboardIntoActiveFile() {
+      if (!activeFileEditorIdleTextWritable()) return false;
+      if (!clipboardReadAvailable()) {
+        if (showFilePasteDialog()) setToast("paste manually");
+        else {
+          setToast("paste unavailable");
+          focusActiveFileCodeEditor();
+        }
+        return false;
+      }
+      try {
+        const text = await readClipboardText();
+        if (blockUnavailableFileAction()) return false;
+        if (!text) {
+          setToast("clipboard empty");
+          focusActiveFileCodeEditor();
+          return false;
+        }
+        if (!insertIntoActiveFileEditor(text)) {
+          setToast("paste unavailable");
+          focusActiveFileCodeEditor();
+          return false;
+        }
+        setToast("pasted");
+        focusActiveFileCodeEditor();
+        return true;
+      } catch (error) {
+        if (showFilePasteDialog()) setToast("paste manually");
+        else {
+          setToast(`paste error: ${error && error.message ? error.message : "clipboard denied"}`);
+          focusActiveFileCodeEditor();
+        }
+        return false;
+      }
+    }
+
+    function handleFilePasteInsert(text) {
+      if (blockUnavailableFileAction()) return false;
+      if (!insertIntoActiveFileEditor(text)) return false;
+      hideFilePasteDialog();
+      setToast("text inserted");
+      return true;
+    }
+
     async function openFilePath(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined, mode = null } = {}) {
       if (blockUnavailableFileAction()) return false;
       if (!normalizeSessionId(currentSessionId())) return false;
@@ -944,6 +1026,9 @@
       handleFileTouchSelectionKeydown,
       handleFileEditorDeleteKeydown,
       suppressFileEditorNativeDelete,
+      insertIntoActiveFileEditor,
+      pasteFromClipboardIntoActiveFile,
+      handleFilePasteInsert,
       finalizeFileOpenSuccess,
       applyDraftFileLoad,
       renderFileOpenError,

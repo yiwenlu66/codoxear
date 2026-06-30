@@ -314,7 +314,14 @@ def eval_empty_file_viewer_target() -> dict:
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
           applyFileEditorSelection: () => {{}},
+          isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
+          positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
+          fileEditorEditSupportAvailable: () => true,
           syncFileDiffSelectionMode: () => {{}},
+          showFilePasteDialog: () => false,
+          hideFilePasteDialog: () => {{}},
+          clipboardReadAvailable: () => false,
+          readClipboardText: async () => "",
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
@@ -595,67 +602,132 @@ def eval_open_file_reference_nonliteral() -> dict:
 
 
 def eval_file_paste_dialog_fallback() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    predicate_start = source.index("function currentFileEditorState() {")
-    predicate_end = source.index("function syncFileEditorReadOnly()", predicate_start)
-    start = source.index("function hideFilePasteDialog({ restoreFocus = false } = {}) {")
-    end = source.index("function insertIntoActiveFileEditor(text)", start)
-    snippet = source[predicate_start:predicate_end] + "\n" + source[start:end]
+    app_source = APP_JS.read_text(encoding="utf-8")
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    start = app_source.index("function hideFilePasteDialog({ restoreFocus = false } = {}) {")
+    end = app_source.index("async function pasteFromClipboardIntoActiveFile", start)
+    dialog_snippet = app_source[start:end]
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const snippet = {json.dumps(snippet + "\nglobalThis.__test_paste = pasteFromClipboardIntoActiveFile;\nglobalThis.__test_showPaste = showFilePasteDialog;\nglobalThis.__test_hidePaste = hideFilePasteDialog;\n")};
+        const dialogSnippet = {json.dumps(dialog_snippet + "\nglobalThis.__test_showPaste = showFilePasteDialog;\nglobalThis.__test_hidePaste = hideFilePasteDialog;\n")};
+        const viewerSource = {json.dumps(viewer_source)};
         async function runCase(opts) {{
-          const ctx = {{
-            window: {{ isSecureContext: Boolean(opts.secure) }},
-            navigator: opts.clipboard === "missing" ? {{}} : {{
-              clipboard: {{
-                readText: async () => {{
-                  if (opts.clipboard === "denied") throw new Error("denied");
-                  return opts.clipboardText || "";
-                }},
-              }},
-            }},
-            fileEditMode: true,
-            activeFileEditable: true,
-            fileViewMode: "file",
-            activeFileKind: "text",
-{controller_identity_ctx_js("note.txt", "", False, None)}
-            activeFileVersion: "v1",
-            activeFileDraft: false,
-            fileEditorKind: "file",
-            fileDirty: false,
-            fileSavePending: false,
-            fileSavePendingValue: () => ctx.fileSavePending,
-            fileViewerSessionId: "sid-1",
-            filePasteBackdrop: {{ style: {{ display: "none" }} }},
-            filePasteDialog: {{ style: {{ display: "none" }} }},
-            filePasteInput: {{
-              value: "stale",
-              focusCount: 0,
-              selectCount: 0,
-              focus() {{ this.focusCount += 1; }},
-              select() {{ this.selectCount += 1; }},
-            }},
-            toastMessages: [],
-            inserted: [],
-            focusEditorCount: 0,
-            prepareCount: 0,
-            modalSyncCount: 0,
-            rafCount: 0,
-            isTextFileKind: (kind) => kind === "text",
-            isFileViewerSessionUnavailable: () => false,
-            blockUnavailableFileAction: () => false,
-            prepareModalOpen: () => {{ ctx.prepareCount += 1; }},
-            afterModalVisibilityChanged: () => {{ ctx.modalSyncCount += 1; }},
-            requestAnimationFrame: (cb) => {{ ctx.rafCount += 1; cb(); }},
-            setToast: (message) => ctx.toastMessages.push(String(message)),
-            focusActiveFileCodeEditor: () => {{ ctx.focusEditorCount += 1; }},
-            insertIntoActiveFileEditor: (text) => {{ ctx.inserted.push(String(text)); return opts.insertOk !== false; }},
+          const ctx = {{ window: {{}} }};
+          ctx.filePasteBackdrop = {{ style: {{ display: "none" }} }};
+          ctx.filePasteDialog = {{ style: {{ display: "none" }} }};
+          ctx.filePasteInput = {{
+            value: "stale",
+            focusCount: 0,
+            selectCount: 0,
+            focus() {{ this.focusCount += 1; }},
+            select() {{ this.selectCount += 1; }},
           }};
+          ctx.toastMessages = [];
+          ctx.inserted = [];
+          ctx.focusEditorCount = 0;
+          ctx.prepareCount = 0;
+          ctx.modalSyncCount = 0;
+          ctx.rafCount = 0;
+          ctx.dirtyValues = [];
+          ctx.activeFileEditorIdleTextWritable = () => true;
+          ctx.prepareModalOpen = () => {{ ctx.prepareCount += 1; }};
+          ctx.afterModalVisibilityChanged = () => {{ ctx.modalSyncCount += 1; }};
+          ctx.requestAnimationFrame = (cb) => {{ ctx.rafCount += 1; cb(); }};
+          ctx.focusActiveFileCodeEditor = () => {{ ctx.focusEditorCount += 1; return editor; }};
           vm.createContext(ctx);
-          vm.runInContext(snippet, ctx);
-          await ctx.__test_paste();
+          vm.runInContext(dialogSnippet, ctx);
+          vm.runInContext(viewerSource, ctx);
+          const pos = {{ lineNumber: 1, column: 1 }};
+          const model = {{ value: "", getValue() {{ return this.value; }} }};
+          const editor = {{
+            getPosition: () => ({{ ...pos }}),
+            getSelection: () => null,
+            getModel: () => model,
+            updateOptions() {{}},
+            pushUndoStop() {{}},
+            executeEdits(_source, edits) {{
+              const text = String(edits && edits[0] && edits[0].text || "");
+              ctx.inserted.push(text);
+              model.value += text;
+            }},
+          }};
+          const fileStatus = {{ textContent: "", replaceChildren() {{}} }};
+          const fileEditButton = {{ classList: {{ toggle() {{}} }}, setAttribute() {{}} }};
+          const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
+            el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children: Array.isArray(children) ? children : [] }}),
+            fileStatus,
+            fileEditButton,
+            iconSvg: (name) => `icon:${{name}}`,
+            currentSessionId: () => "sid-1",
+            currentFileSessionId: () => "sid-1",
+            normalizeLineNumber: (value) => value == null || value === "" ? null : Number(value),
+            normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+            fileApiPathForPath: (_path, existing) => existing || "",
+            isFileViewerOpen: () => true,
+            invalidateFileViewerSessionSync: () => {{}},
+            hideFileUnsavedDialog: () => {{}},
+            resetFileSearchState: () => {{}},
+            closeFilePickerMenu: () => {{}},
+            isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+            confirmReload: () => true,
+            promptUnsavedFileChoice: async () => "cancel",
+            discardActiveFileEdits: () => {{}},
+            hideFileViewer: () => {{}},
+            applyFileLoadResult: async () => true,
+            setFilePath: () => {{}},
+            resetFileViewerPanel: () => {{}},
+            normalizeDraftFilePath: (value) => String(value || "").trim(),
+            inspectSessionFilePath: async () => ({{ exists: false }}),
+            api: async () => ({{}}),
+            focusEditor: () => editor,
+            disposeOpenRender: () => {{}},
+            currentFileViewMode: () => "file",
+            currentFileEditorKind: () => "file",
+            currentFileEditMode: () => true,
+            activeFileEntry: () => null,
+            fileCandidateGitStateFresh: () => false,
+            isMarkdownPreviewable: () => false,
+            resetActiveFileBufferState: () => {{}},
+            updateFileTouchToolbar: () => {{}},
+            isFileTouchToolbarActive: () => false,
+            fileEditorShortcutBlocked: () => false,
+            eventTargetElement: (value) => value || null,
+            normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
+            applyFileEditorSelection: (_editor, cursor) => {{ pos.lineNumber = cursor.lineNumber; pos.column = cursor.column; }},
+            isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
+            positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
+            fileEditorEditSupportAvailable: () => opts.insertOk !== false,
+            syncFileDiffSelectionMode: () => {{}},
+            showFilePasteDialog: () => ctx.__test_showPaste(),
+            hideFilePasteDialog: (options) => ctx.__test_hidePaste(options),
+            clipboardReadAvailable: () => Boolean(opts.secure && opts.clipboard !== "missing"),
+            readClipboardText: async () => {{ if (opts.clipboard === "denied") throw new Error("denied"); return opts.clipboardText || ""; }},
+            fileEditorDeleteCommandForKey: () => "",
+            isActiveFileEditorInput: () => false,
+            focusActiveFileCodeEditor: () => ctx.focusActiveFileCodeEditor(),
+            nowMs: () => 0,
+            setToast: (message) => ctx.toastMessages.push(String(message)),
+            setFileViewMode: () => {{}},
+            applyActiveFileTextState: () => {{}},
+            renderMonacoFile: async () => true,
+            setFileEditMode: () => {{}},
+            currentActiveFileKind: () => "text",
+            currentActiveFileDraft: () => false,
+            currentActiveFileVersion: () => "v1",
+            currentActiveFileEditable: () => true,
+            currentFileDirty: () => false,
+            currentActiveFileText: () => "",
+            getFileEditorText: () => model.getValue(),
+            setFileDirty: (dirty) => ctx.dirtyValues.push(Boolean(dirty)),
+            fmtBytes: (value) => `${{value}}B`,
+            applyFileMode: () => {{}},
+            rememberOpenedFile: () => {{}},
+            rememberActiveFileSelection: () => {{}},
+            renderFilePickerMenu: () => {{}},
+          }});
+          controller.setActiveFileIdentity("note.txt", {{}});
+          await controller.pasteFromClipboardIntoActiveFile();
           if (opts.hideAfter) ctx.__test_hidePaste({{ restoreFocus: true }});
           return {{
             backdrop: ctx.filePasteBackdrop.style.display,
@@ -669,6 +741,7 @@ def eval_file_paste_dialog_fallback() -> dict:
             prepareCount: ctx.prepareCount,
             modalSyncCount: ctx.modalSyncCount,
             rafCount: ctx.rafCount,
+            dirtyValues: ctx.dirtyValues,
           }};
         }}
         (async () => {{
@@ -690,63 +763,112 @@ def eval_file_paste_dialog_fallback() -> dict:
     )
     return json.loads(proc.stdout)
 
-
 def eval_file_paste_insert_button_guard() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index('$("#filePasteInsertBtn").onclick = () => {')
-    end = source.index('$("#filePasteCancelBtn").onclick', start)
-    snippet = source[start:end]
+    source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const button = {{ onclick: null }};
-        const ctx = {{
-          button,
-          unavailable: true,
-          filePasteInput: {{ value: "typed text" }},
-          inserted: [],
-          hidden: 0,
-          toasts: [],
-          status: [],
-          $: (selector) => {{
-            if (selector !== '#filePasteInsertBtn') throw new Error(`unexpected selector ${{selector}}`);
-            return button;
-          }},
-          blockUnavailableFileAction: () => {{
-            if (!ctx.unavailable) return false;
-            ctx.status.push("Session is no longer available; copy unsaved edits before closing.");
-            return true;
-          }},
-          insertIntoActiveFileEditor: (text) => {{ ctx.inserted.push(String(text)); return true; }},
-          hideFilePasteDialog: () => {{ ctx.hidden += 1; ctx.filePasteInput.value = ""; }},
-          setToast: (message) => ctx.toasts.push(String(message)),
-        }};
+        const ctx = {{ window: {{}} }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet)}, ctx);
-        ctx.button.onclick();
-        const unavailable = {{
-          inputValue: ctx.filePasteInput.value,
-          inserted: ctx.inserted.slice(),
-          hidden: ctx.hidden,
-          toasts: ctx.toasts.slice(),
-          status: ctx.status.slice(),
-        }};
-        ctx.unavailable = false;
-        ctx.filePasteInput.value = "allowed text";
-        ctx.button.onclick();
-        const available = {{
-          inputValue: ctx.filePasteInput.value,
-          inserted: ctx.inserted.slice(),
-          hidden: ctx.hidden,
-          toasts: ctx.toasts.slice(),
-          status: ctx.status.slice(),
-        }};
+        vm.runInContext({json.dumps(source)}, ctx);
+        function runCase(unavailable, text) {{
+          const state = {{ unavailable: Boolean(unavailable), hidden: 0, toasts: [], status: [], inserted: [], dirtyValues: [], inputValue: String(text || "") }};
+          const pos = {{ lineNumber: 1, column: 1 }};
+          const model = {{ value: "", getValue() {{ return this.value; }} }};
+          const editor = {{
+            getPosition: () => ({{ ...pos }}),
+            getSelection: () => null,
+            getModel: () => model,
+            updateOptions() {{}},
+            pushUndoStop() {{}},
+            executeEdits(_source, edits) {{ const value = String(edits && edits[0] && edits[0].text || ""); state.inserted.push(value); model.value += value; }},
+          }};
+          const fileStatus = {{ textContent: "", replaceChildren() {{}} }};
+          const fileEditButton = {{ classList: {{ toggle() {{}} }}, setAttribute() {{}} }};
+          const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
+            el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children: Array.isArray(children) ? children : [] }}),
+            fileStatus,
+            fileEditButton,
+            iconSvg: (name) => `icon:${{name}}`,
+            currentSessionId: () => "sid-1",
+            currentFileSessionId: () => "sid-1",
+            normalizeLineNumber: (value) => value == null || value === "" ? null : Number(value),
+            normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+            fileApiPathForPath: (_path, existing) => existing || "",
+            isFileViewerOpen: () => true,
+            invalidateFileViewerSessionSync: () => {{}},
+            hideFileUnsavedDialog: () => {{}},
+            resetFileSearchState: () => {{}},
+            closeFilePickerMenu: () => {{}},
+            isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+            confirmReload: () => true,
+            promptUnsavedFileChoice: async () => "cancel",
+            discardActiveFileEdits: () => {{}},
+            hideFileViewer: () => {{}},
+            applyFileLoadResult: async () => true,
+            setFilePath: () => {{}},
+            resetFileViewerPanel: () => {{}},
+            normalizeDraftFilePath: (value) => String(value || "").trim(),
+            inspectSessionFilePath: async () => ({{ exists: false }}),
+            api: async () => ({{}}),
+            focusEditor: () => editor,
+            disposeOpenRender: () => {{}},
+            currentFileViewMode: () => "file",
+            currentFileEditorKind: () => "file",
+            currentFileEditMode: () => true,
+            activeFileEntry: () => null,
+            fileCandidateGitStateFresh: () => false,
+            isMarkdownPreviewable: () => false,
+            resetActiveFileBufferState: () => {{}},
+            updateFileTouchToolbar: () => {{}},
+            isFileTouchToolbarActive: () => false,
+            fileEditorShortcutBlocked: () => false,
+            eventTargetElement: (value) => value || null,
+            normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
+            applyFileEditorSelection: (_editor, cursor) => {{ pos.lineNumber = cursor.lineNumber; pos.column = cursor.column; }},
+            isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
+            positionAfterInsertedText: (start, value) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(value || "").length }}),
+            fileEditorEditSupportAvailable: () => true,
+            syncFileDiffSelectionMode: () => {{}},
+            showFilePasteDialog: () => false,
+            hideFilePasteDialog: () => {{ state.hidden += 1; state.inputValue = ""; }},
+            clipboardReadAvailable: () => false,
+            readClipboardText: async () => "",
+            fileEditorDeleteCommandForKey: () => "",
+            isActiveFileEditorInput: () => false,
+            focusActiveFileCodeEditor: () => editor,
+            nowMs: () => 0,
+            setToast: (message) => state.toasts.push(String(message)),
+            setFileViewMode: () => {{}},
+            applyActiveFileTextState: () => {{}},
+            renderMonacoFile: async () => true,
+            setFileEditMode: () => {{}},
+            currentActiveFileKind: () => "text",
+            currentActiveFileDraft: () => false,
+            currentActiveFileVersion: () => "v1",
+            currentActiveFileEditable: () => true,
+            currentFileDirty: () => false,
+            currentActiveFileText: () => "",
+            getFileEditorText: () => model.getValue(),
+            setFileDirty: (dirty) => state.dirtyValues.push(Boolean(dirty)),
+            fmtBytes: (value) => `${{value}}B`,
+            applyFileMode: () => {{}},
+            rememberOpenedFile: () => {{}},
+            rememberActiveFileSelection: () => {{}},
+            renderFilePickerMenu: () => {{}},
+          }});
+          controller.setActiveFileIdentity("note.txt", {{}});
+          if (state.unavailable) controller.disableFileViewerForUnavailableSession("sid-1");
+          const result = controller.handleFilePasteInsert(state.inputValue);
+          return {{ result, inputValue: state.inputValue, inserted: state.inserted, hidden: state.hidden, toasts: state.toasts, status: fileStatus.textContent, dirtyValues: state.dirtyValues }};
+        }}
+        const unavailable = runCase(true, "typed text");
+        const available = runCase(false, "allowed text");
         process.stdout.write(JSON.stringify({{ unavailable, available }}));
         """
     )
     proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
-
 
 
 def eval_file_editor_capability_predicates() -> dict:
@@ -983,7 +1105,14 @@ def eval_file_touch_selection_keydown() -> dict:
             eventTargetElement: (value) => value instanceof FakeElement ? value : null,
             normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
             applyFileEditorSelection: (_editor, cursor, anchor) => {{ events.selections.push({{ cursor, anchor: anchor || null }}); }},
+            isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
+            positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
+            fileEditorEditSupportAvailable: () => true,
             syncFileDiffSelectionMode: () => {{ events.syncDiff += 1; }},
+            showFilePasteDialog: () => false,
+            hideFilePasteDialog: () => {{}},
+            clipboardReadAvailable: () => false,
+            readClipboardText: async () => "",
             fileEditorDeleteCommandForKey: () => "",
             isActiveFileEditorInput: () => false,
             focusActiveFileCodeEditor: () => {{ events.focus += 1; return editor; }},
@@ -998,6 +1127,7 @@ def eval_file_touch_selection_keydown() -> dict:
             currentActiveFileVersion: () => "",
             currentActiveFileEditable: () => true,
             currentFileDirty: () => false,
+            currentActiveFileText: () => "",
             getFileEditorText: () => "",
             setFileDirty: () => {{}},
             fmtBytes: (value) => `${{value}}B`,
@@ -1128,7 +1258,14 @@ def eval_file_editor_delete_shortcut() -> dict:
             eventTargetElement: (value) => value instanceof FakeElement ? value : null,
             normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
             applyFileEditorSelection: () => {{}},
+            isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
+            positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
+            fileEditorEditSupportAvailable: () => true,
             syncFileDiffSelectionMode: () => {{}},
+            showFilePasteDialog: () => false,
+            hideFilePasteDialog: () => {{}},
+            clipboardReadAvailable: () => false,
+            readClipboardText: async () => "",
             fileEditorDeleteCommandForKey: (key) => key === "backspace" ? "deleteLeft" : key === "delete" ? "deleteRight" : "",
             isActiveFileEditorInput: (target) => Boolean(target && target.editorInput),
             focusActiveFileCodeEditor: () => {{ calls.focusCount += 1; return editor; }},
@@ -1143,6 +1280,7 @@ def eval_file_editor_delete_shortcut() -> dict:
             currentActiveFileVersion: () => state.version,
             currentActiveFileEditable: () => state.editable,
             currentFileDirty: () => state.dirty,
+            currentActiveFileText: () => "",
             getFileEditorText: () => "",
             setFileDirty: () => {{}},
             fmtBytes: (value) => `${{value}}B`,
@@ -1279,7 +1417,14 @@ def eval_file_open_request_sequence() -> dict:
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
           applyFileEditorSelection: () => {{}},
+          isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
+          positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
+          fileEditorEditSupportAvailable: () => true,
           syncFileDiffSelectionMode: () => {{}},
+          showFilePasteDialog: () => false,
+          hideFilePasteDialog: () => {{}},
+          clipboardReadAvailable: () => false,
+          readClipboardText: async () => "",
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
@@ -1296,6 +1441,7 @@ def eval_file_open_request_sequence() -> dict:
           currentActiveFileVersion: () => "",
           currentActiveFileEditable: () => true,
           currentFileDirty: () => true,
+          currentActiveFileText: () => "",
           getFileEditorText: () => "",
           setFileDirty: () => {{}},
           syncFileEditorReadOnly: () => {{}},
@@ -1405,7 +1551,14 @@ def eval_file_viewer_session_sync_race() -> dict:
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
           applyFileEditorSelection: () => {{}},
+          isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
+          positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
+          fileEditorEditSupportAvailable: () => true,
           syncFileDiffSelectionMode: () => {{}},
+          showFilePasteDialog: () => false,
+          hideFilePasteDialog: () => {{}},
+          clipboardReadAvailable: () => false,
+          readClipboardText: async () => "",
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
@@ -1549,7 +1702,14 @@ def eval_open_file_guard_mode_validation() -> dict:
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
           applyFileEditorSelection: () => {{}},
+          isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
+          positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
+          fileEditorEditSupportAvailable: () => true,
           syncFileDiffSelectionMode: () => {{}},
+          showFilePasteDialog: () => false,
+          hideFilePasteDialog: () => {{}},
+          clipboardReadAvailable: () => false,
+          readClipboardText: async () => "",
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
@@ -1566,6 +1726,7 @@ def eval_open_file_guard_mode_validation() -> dict:
           currentActiveFileVersion: () => "",
           currentActiveFileEditable: () => true,
           currentFileDirty: () => state.dirty,
+          currentActiveFileText: () => "",
           getFileEditorText: () => "",
           setFileDirty: (...args) => calls.push(["setFileDirty", ...args]),
           fmtBytes: (value) => `${{value}}B`,
@@ -1664,7 +1825,14 @@ def eval_open_file_path_mode_ownership() -> dict:
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
           applyFileEditorSelection: () => {{}},
+          isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
+          positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
+          fileEditorEditSupportAvailable: () => true,
           syncFileDiffSelectionMode: () => {{}},
+          showFilePasteDialog: () => false,
+          hideFilePasteDialog: () => {{}},
+          clipboardReadAvailable: () => false,
+          readClipboardText: async () => "",
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
@@ -1681,6 +1849,7 @@ def eval_open_file_path_mode_ownership() -> dict:
           currentActiveFileVersion: () => "",
           currentActiveFileEditable: () => true,
           currentFileDirty: () => state.dirty,
+          currentActiveFileText: () => "",
           getFileEditorText: () => "",
           setFileDirty: (...args) => calls.push(["setFileDirty", ...args]),
           fmtBytes: (value) => `${{value}}B`,
@@ -1841,7 +2010,14 @@ def eval_active_file_save_request_helpers() -> dict:
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
           applyFileEditorSelection: () => {{}},
+          isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
+          positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
+          fileEditorEditSupportAvailable: () => true,
           syncFileDiffSelectionMode: () => {{}},
+          showFilePasteDialog: () => false,
+          hideFilePasteDialog: () => {{}},
+          clipboardReadAvailable: () => false,
+          readClipboardText: async () => "",
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
@@ -1858,6 +2034,7 @@ def eval_active_file_save_request_helpers() -> dict:
           currentActiveFileVersion: () => state.version,
           currentActiveFileEditable: () => true,
           currentFileDirty: () => true,
+          currentActiveFileText: () => "",
           getFileEditorText: () => {{ calls.push(["getFileEditorText"]); return state.text; }},
           setFileDirty: () => calls.push(["setFileDirty"]),
           fmtBytes: (value) => `${{value}}B`,
@@ -2056,7 +2233,14 @@ def eval_active_file_save_success() -> dict:
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
           applyFileEditorSelection: () => {{}},
+          isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
+          positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
+          fileEditorEditSupportAvailable: () => true,
           syncFileDiffSelectionMode: () => {{}},
+          showFilePasteDialog: () => false,
+          hideFilePasteDialog: () => {{}},
+          clipboardReadAvailable: () => false,
+          readClipboardText: async () => "",
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
@@ -2080,6 +2264,7 @@ def eval_active_file_save_success() -> dict:
           currentActiveFileVersion: () => state.version,
           currentActiveFileEditable: () => state.editable,
           currentFileDirty: () => state.dirty,
+          currentActiveFileText: () => "",
           getFileEditorText: () => state.text,
           setFileDirty: (value) => {{ state.dirty = Boolean(value); calls.push(["setFileDirty", Boolean(value)]); }},
           syncFileEditorReadOnly: () => calls.push(["syncFileEditorReadOnly"]),
@@ -2216,7 +2401,14 @@ def eval_active_file_save_transport() -> dict:
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
           applyFileEditorSelection: () => {{}},
+          isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
+          positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
+          fileEditorEditSupportAvailable: () => true,
           syncFileDiffSelectionMode: () => {{}},
+          showFilePasteDialog: () => false,
+          hideFilePasteDialog: () => {{}},
+          clipboardReadAvailable: () => false,
+          readClipboardText: async () => "",
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
@@ -2240,6 +2432,7 @@ def eval_active_file_save_transport() -> dict:
           currentActiveFileVersion: () => state.version,
           currentActiveFileEditable: () => state.editable,
           currentFileDirty: () => state.dirty,
+          currentActiveFileText: () => "",
           getFileEditorText: () => state.editorText,
           setFileDirty: (value) => {{ state.dirty = Boolean(value); calls.push(["setFileDirty", Boolean(value)]); }},
           syncFileEditorReadOnly: () => calls.push(["syncFileEditorReadOnly"]),
@@ -2391,7 +2584,14 @@ def eval_draft_file_load_choreography() -> dict:
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
           applyFileEditorSelection: () => {{}},
+          isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
+          positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
+          fileEditorEditSupportAvailable: () => true,
           syncFileDiffSelectionMode: () => {{}},
+          showFilePasteDialog: () => false,
+          hideFilePasteDialog: () => {{}},
+          clipboardReadAvailable: () => false,
+          readClipboardText: async () => "",
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
@@ -2408,6 +2608,7 @@ def eval_draft_file_load_choreography() -> dict:
           currentActiveFileVersion: () => "",
           currentActiveFileEditable: () => true,
           currentFileDirty: () => true,
+          currentActiveFileText: () => "",
           getFileEditorText: () => "",
           setFileDirty: () => calls.push(["setFileDirty"]),
           syncFileEditorReadOnly: () => calls.push(["syncFileEditorReadOnly"]),
@@ -2533,7 +2734,14 @@ def eval_file_open_success_finalizer() -> dict:
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
           applyFileEditorSelection: () => {{}},
+          isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
+          positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
+          fileEditorEditSupportAvailable: () => true,
           syncFileDiffSelectionMode: () => {{}},
+          showFilePasteDialog: () => false,
+          hideFilePasteDialog: () => {{}},
+          clipboardReadAvailable: () => false,
+          readClipboardText: async () => "",
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
@@ -2550,6 +2758,7 @@ def eval_file_open_success_finalizer() -> dict:
           currentActiveFileVersion: () => "",
           currentActiveFileEditable: () => true,
           currentFileDirty: () => false,
+          currentActiveFileText: () => "",
           getFileEditorText: () => "",
           setFileDirty: (...args) => calls.push(["setFileDirty", ...args]),
           fmtBytes: (value) => `${{value}}B`,
@@ -2783,18 +2992,22 @@ class TestFileViewerSource(unittest.TestCase):
     def test_file_paste_insert_button_blocks_unavailable_session(self) -> None:
         result = eval_file_paste_insert_button_guard()
         self.assertEqual(result["unavailable"], {
+            "result": False,
             "inputValue": "typed text",
             "inserted": [],
             "hidden": 0,
             "toasts": [],
-            "status": ["Session is no longer available; copy unsaved edits before closing."],
+            "status": "Session is no longer available; copy unsaved edits before closing.",
+            "dirtyValues": [],
         })
         self.assertEqual(result["available"], {
+            "result": True,
             "inputValue": "",
             "inserted": ["allowed text"],
             "hidden": 1,
             "toasts": ["text inserted"],
-            "status": ["Session is no longer available; copy unsaved edits before closing."],
+            "status": "",
+            "dirtyValues": [True],
         })
 
     def test_file_editor_disables_monaco_suggestions(self) -> None:
@@ -3094,14 +3307,15 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("if (blockUnavailableFileAction()) return;", draft_block)
         self.assertIn("fileStatus.textContent = \"Preparing new file...\";\n      resetFileViewerPanel();\n      try {", draft_block)
         self.assertNotIn("disposeFileEditor();\n          resetActiveFileBufferState();\n          fileImage.removeAttribute", draft_block)
-        self.assertIn("if (blockUnavailableFileAction()) return;", source)
-        self.assertIn("if (blockUnavailableFileAction()) return;\n            if (!text)", source)
-        self.assertIn("function insertIntoActiveFileEditor(text)", source)
+        self.assertIn("if (blockUnavailableFileAction()) return false;", viewer_source)
+        self.assertIn("if (blockUnavailableFileAction()) return false;\n        if (!text)", viewer_source)
+        self.assertIn("function insertIntoActiveFileEditor(text)", viewer_source)
+        self.assertIn("return fileViewerController.insertIntoActiveFileEditor(text);", source)
         self.assertIn("function positionAfterInsertedText(start, text)", source)
         self.assertIn("return codoxearFileHelpers.positionAfterInsertedText(start, text);", source)
-        self.assertIn("const nextCursor = positionAfterInsertedText({ lineNumber: range.startLineNumber, column: range.startColumn }, text);", source)
-        self.assertIn("function activeFileEditorIdleWritable()", source)
-        self.assertIn("if (!activeFileEditorIdleWritable()) return false;", source)
+        self.assertIn("const nextCursor = positionAfterInsertedText({ lineNumber: range.startLineNumber, column: range.startColumn }, text);", viewer_source)
+        self.assertIn("function activeFileEditorIdleWritable()", viewer_source)
+        self.assertIn("if (!activeFileEditorIdleWritable()) return false;", viewer_source)
         self.assertIn("!isFileViewerSessionUnavailable()", source)
         self.assertIn("activeFileSaveToken === save.token", viewer_source)
         self.assertIn("fileEditMode = Boolean(nextMode) && activeFileEditModeAllowedInCurrentView();", source)
@@ -4034,19 +4248,24 @@ class TestFileViewerSource(unittest.TestCase):
 
     def test_touch_paste_tries_clipboard_then_manual_dialog_fallback(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertIn("navigator.clipboard", source)
         self.assertIn("readText", source)
-        self.assertIn('setToast("pasted")', source)
+        self.assertIn('setToast("pasted")', viewer_source)
         self.assertIn('function showFilePasteDialog()', source)
         self.assertIn('function hideFilePasteDialog({ restoreFocus = false } = {})', source)
         self.assertIn('hideFilePasteDialog({ restoreFocus: true });', source)
-        self.assertIn('$("#filePasteInsertBtn").onclick = () => {\n          if (blockUnavailableFileAction()) return;\n          if (insertIntoActiveFileEditor(filePasteInput.value)) {', source)
+        self.assertIn('$("#filePasteInsertBtn").onclick = () => {\n          handleFilePasteInsert(filePasteInput.value);\n        };', source)
+        self.assertIn('function handleFilePasteInsert(text)', viewer_source)
         self.assertIn('filePasteDialog.style.display = "flex";', source)
         self.assertIn('filePasteInput.focus({ preventScroll: true });', source)
-        self.assertIn('setToast("paste manually")', source)
-        self.assertIn('function pasteFromClipboardIntoActiveFile()', source)
-        self.assertIn('setToast("paste unavailable")', source)
-        self.assertIn('setToast("clipboard empty")', source)
+        self.assertIn('setToast("paste manually")', viewer_source)
+        self.assertIn('function pasteFromClipboardIntoActiveFile()', viewer_source)
+        self.assertIn('return await fileViewerController.pasteFromClipboardIntoActiveFile();', source)
+        self.assertIn('function insertIntoActiveFileEditor(text)', viewer_source)
+        self.assertIn('return fileViewerController.insertIntoActiveFileEditor(text);', source)
+        self.assertIn('setToast("paste unavailable")', viewer_source)
+        self.assertIn('setToast("clipboard empty")', viewer_source)
         self.assertIn('bindFileTouchClick(fileTouchPasteBtn, () => {', source)
         self.assertNotIn('bindFileTouchPress(fileTouchPasteBtn, () => {', source)
 
@@ -4069,7 +4288,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(result["direct"]["dialog"], "none")
         self.assertEqual(result["direct"]["inserted"], ["hello"])
         self.assertEqual(result["direct"]["toasts"], ["pasted"])
-        self.assertEqual(result["direct"]["focusEditorCount"], 1)
+        self.assertEqual(result["direct"]["focusEditorCount"], 2)
+        self.assertEqual(result["direct"]["dirtyValues"], [True])
         self.assertEqual(result["empty"]["dialog"], "none")
         self.assertEqual(result["empty"]["toasts"], ["clipboard empty"])
         self.assertEqual(result["empty"]["focusEditorCount"], 1)

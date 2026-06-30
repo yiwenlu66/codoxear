@@ -7666,67 +7666,15 @@
         }
 
         async function pasteFromClipboardIntoActiveFile() {
-          if (!activeFileEditorIdleTextWritable()) return;
-          if (!(window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.readText === "function")) {
-            if (showFilePasteDialog()) setToast("paste manually");
-            else {
-              setToast("paste unavailable");
-              focusActiveFileCodeEditor();
-            }
-            return;
-          }
-          try {
-            const text = await navigator.clipboard.readText();
-            if (blockUnavailableFileAction()) return;
-            if (!text) {
-              setToast("clipboard empty");
-              focusActiveFileCodeEditor();
-              return;
-            }
-            if (!insertIntoActiveFileEditor(text)) {
-              setToast("paste unavailable");
-              focusActiveFileCodeEditor();
-              return;
-            }
-            setToast("pasted");
-            focusActiveFileCodeEditor();
-          } catch (e) {
-            if (showFilePasteDialog()) setToast("paste manually");
-            else {
-              setToast(`paste error: ${e && e.message ? e.message : "clipboard denied"}`);
-              focusActiveFileCodeEditor();
-            }
-          }
+          return await fileViewerController.pasteFromClipboardIntoActiveFile();
         }
 
         function insertIntoActiveFileEditor(text) {
-          if (!activeFileEditorIdleWritable()) return false;
-          const editor = getActiveFileCodeEditor();
-          if (!editor || !monacoNs || typeof editor.executeEdits !== "function") return false;
-          const current = normalizeFileEditorPosition(editor, editor.getPosition && editor.getPosition()) || { lineNumber: 1, column: 1 };
-          const selection = editor.getSelection && editor.getSelection();
-          const range = selection && !isCollapsedFileSelection(selection)
-            ? {
-                startLineNumber: selection.startLineNumber,
-                startColumn: selection.startColumn,
-                endLineNumber: selection.endLineNumber,
-                endColumn: selection.endColumn,
-              }
-            : {
-                startLineNumber: current.lineNumber,
-                startColumn: current.column,
-                endLineNumber: current.lineNumber,
-                endColumn: current.column,
-              };
-          if (typeof editor.pushUndoStop === "function") editor.pushUndoStop();
-          editor.executeEdits("file-touch-paste", [{ range, text: String(text || ""), forceMoveMarkers: true }]);
-          const nextCursor = positionAfterInsertedText({ lineNumber: range.startLineNumber, column: range.startColumn }, text);
-          resetFileTouchSelectionState();
-          applyFileEditorSelection(editor, nextCursor, null);
-          if (typeof editor.pushUndoStop === "function") editor.pushUndoStop();
-          setFileDirty(getFileEditorText() !== String(activeFileText || ""));
-          focusActiveFileCodeEditor();
-          return true;
+          return fileViewerController.insertIntoActiveFileEditor(text);
+        }
+
+        function handleFilePasteInsert(text) {
+          return fileViewerController.handleFilePasteInsert(text);
         }
 
         function updateFileEditButton() {
@@ -8386,7 +8334,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           eventTargetElement: (value) => value instanceof HTMLElement ? value : null,
           normalizeFileEditorPosition: (editor, position) => normalizeFileEditorPosition(editor, position),
           applyFileEditorSelection: (editor, cursor, anchor) => applyFileEditorSelection(editor, cursor, anchor),
+          isCollapsedFileSelection: (selection) => isCollapsedFileSelection(selection),
+          positionAfterInsertedText: (start, text) => positionAfterInsertedText(start, text),
+          fileEditorEditSupportAvailable: () => Boolean(monacoNs),
           syncFileDiffSelectionMode: () => syncFileDiffSelectionMode(),
+          showFilePasteDialog: () => showFilePasteDialog(),
+          hideFilePasteDialog: (options) => hideFilePasteDialog(options),
+          clipboardReadAvailable: () => Boolean(window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.readText === "function"),
+          readClipboardText: () => navigator.clipboard.readText(),
           fileEditorDeleteCommandForKey: (key) => fileEditorDeleteCommandForKey(key),
           isActiveFileEditorInput: (target) => isActiveFileEditorInput(target),
           focusActiveFileCodeEditor: () => focusActiveFileCodeEditor(),
@@ -8401,6 +8356,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           currentActiveFileVersion: () => activeFileVersion,
           currentActiveFileEditable: () => activeFileEditable,
           currentFileDirty: () => fileDirty,
+          currentActiveFileText: () => activeFileText,
           getFileEditorText: () => getFileEditorText(),
           setFileDirty: (dirty) => setFileDirty(dirty),
           fmtBytes: (value) => fmtBytes(value),
@@ -9718,11 +9674,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         $("#fileUnsavedCancelBtn").onclick = () => hideFileUnsavedDialog("cancel");
         fileUnsavedBackdrop.onclick = () => hideFileUnsavedDialog("cancel");
         $("#filePasteInsertBtn").onclick = () => {
-          if (blockUnavailableFileAction()) return;
-          if (insertIntoActiveFileEditor(filePasteInput.value)) {
-            hideFilePasteDialog();
-            setToast("text inserted");
-          }
+          handleFilePasteInsert(filePasteInput.value);
         };
         $("#filePasteCancelBtn").onclick = () => hideFilePasteDialog({ restoreFocus: true });
         filePasteBackdrop.onclick = () => hideFilePasteDialog({ restoreFocus: true });
