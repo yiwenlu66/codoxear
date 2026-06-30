@@ -936,6 +936,77 @@ def eval_active_file_save_request_helpers() -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_active_file_save_success() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("function applyActiveFileSaveSuccess(")
+    end = source.index("async function saveActiveFileEdits", start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{
+          activeFileText: "old text",
+          activeFileVersion: "v0",
+          activeFileEditable: false,
+          activeFileDraft: true,
+          activeFileGitPath: true,
+          activeFileApiPath: "old-token",
+          fileDirty: true,
+          fileEditMode: true,
+          fileStatus: {{ textContent: "" }},
+          calls: [],
+          applyFileMode: () => ctx.calls.push(["applyFileMode"]),
+          setFileDirty: (value) => {{ ctx.fileDirty = Boolean(value); ctx.calls.push(["setFileDirty", Boolean(value)]); }},
+          setFileEditMode: (value) => {{ ctx.fileEditMode = Boolean(value); ctx.calls.push(["setFileEditMode", Boolean(value)]); }},
+          fmtBytes: (value) => `${{value}}B`,
+          rememberOpenedFile: (...args) => ctx.calls.push(["rememberOpenedFile", ...args]),
+          renderFilePickerMenu: () => ctx.calls.push(["renderFilePickerMenu"]),
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_save_success = applyActiveFileSaveSuccess;\n")}, ctx);
+        function state() {{
+          return {{
+            text: ctx.activeFileText,
+            version: ctx.activeFileVersion,
+            editable: ctx.activeFileEditable,
+            draft: ctx.activeFileDraft,
+            gitPath: ctx.activeFileGitPath,
+            apiPath: ctx.activeFileApiPath,
+            dirty: ctx.fileDirty,
+            editMode: ctx.fileEditMode,
+            status: ctx.fileStatus.textContent,
+            calls: ctx.calls.slice(),
+          }};
+        }}
+        const draftSave = {{ path: "new.py", text: "NEW", draft: true }};
+        const draftOk = ctx.__test_save_success(draftSave, {{ version: "v2", editable: true, size: 3, path: "/abs/new.py" }}, {{ exitEditMode: true }});
+        const draft = {{ ok: draftOk, state: state() }};
+        ctx.activeFileText = "old again";
+        ctx.activeFileVersion = "v0";
+        ctx.activeFileEditable = true;
+        ctx.activeFileDraft = false;
+        ctx.activeFileGitPath = true;
+        ctx.activeFileApiPath = "keep-token";
+        ctx.fileDirty = true;
+        ctx.fileEditMode = true;
+        ctx.fileStatus.textContent = "";
+        ctx.calls = [];
+        const nondraftSave = {{ path: "existing.py", text: "BODY", draft: false }};
+        const nondraftOk = ctx.__test_save_success(nondraftSave, {{}}, {{ exitEditMode: false }});
+        const nondraft = {{ ok: nondraftOk, state: state() }};
+        process.stdout.write(JSON.stringify({{ draft, nondraft }}));
+        """
+    )
+    proc = subprocess.run(
+        ["node", "-e", js],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return json.loads(proc.stdout)
+
+
 def eval_draft_file_load_choreography() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("async function applyDraftFileLoad(")
@@ -1289,7 +1360,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("git_path: Boolean(activeFileGitPath)", source)
         self.assertIn("startFileOpenRequest(path, { line, gitPath: false })", source)
         self.assertIn("setFilePath(rel, { line: null, gitPath: false })", source)
-        self.assertIn("if (save.draft) {\n              activeFileGitPath = false;", source)
+        self.assertIn("if (save.draft) {\n            activeFileGitPath = false;", source)
 
     def test_file_viewer_handles_selected_session_removal(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -1780,6 +1851,49 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function markActiveFileSavePending(save)", source)
         self.assertIn("function finishActiveFileSaveRequest(save)", source)
 
+    def test_active_file_save_success_applies_response_state(self) -> None:
+        result = eval_active_file_save_success()
+        self.assertTrue(result["draft"]["ok"])
+        self.assertEqual(result["draft"]["state"], {
+            "text": "NEW",
+            "version": "v2",
+            "editable": True,
+            "draft": False,
+            "gitPath": False,
+            "apiPath": "",
+            "dirty": False,
+            "editMode": False,
+            "status": "new.py - 3B",
+            "calls": [
+                ["applyFileMode"],
+                ["setFileDirty", False],
+                ["setFileEditMode", False],
+                ["rememberOpenedFile", "new.py", "/abs/new.py"],
+                ["renderFilePickerMenu"],
+            ],
+        })
+        self.assertTrue(result["nondraft"]["ok"])
+        self.assertEqual(result["nondraft"]["state"], {
+            "text": "BODY",
+            "version": "v0",
+            "editable": True,
+            "draft": False,
+            "gitPath": True,
+            "apiPath": "keep-token",
+            "dirty": False,
+            "editMode": True,
+            "status": "existing.py - 4B",
+            "calls": [
+                ["applyFileMode"],
+                ["setFileDirty", False],
+                ["rememberOpenedFile", "existing.py", None],
+                ["renderFilePickerMenu"],
+            ],
+        })
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("function applyActiveFileSaveSuccess(save, res, { exitEditMode = true } = {})", source)
+        self.assertIn("return applyActiveFileSaveSuccess(save, res, { exitEditMode });", source)
+
     def test_file_save_response_is_bound_to_original_session_and_path(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index("async function saveActiveFileEdits")
@@ -1799,9 +1913,10 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("if (!save.draft && activeFileGitPath && save.apiPath) saveBody.path_token = save.apiPath;", block)
         self.assertIn("await api(`/api/sessions/${save.sessionId}/file/write`", block)
         self.assertIn("if (!saveStillCurrent()) return true;", block)
+        self.assertIn("return applyActiveFileSaveSuccess(save, res, { exitEditMode });", block)
         self.assertIn("if (!saveStillCurrent()) return false;", block)
-        self.assertIn("fileStatus.textContent = `${save.path} - ${fmtBytes(size)}`;", block)
-        self.assertIn("rememberOpenedFile(save.path,", block)
+        self.assertIn("fileStatus.textContent = `${save.path} - ${fmtBytes(size)}`;", source)
+        self.assertIn("rememberOpenedFile(save.path,", source)
 
     def test_file_save_conflict_offers_reload_or_keep_editing(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

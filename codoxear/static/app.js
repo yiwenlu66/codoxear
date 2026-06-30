@@ -8581,6 +8581,25 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           updateFileEditButton();
         }
 
+        function applyActiveFileSaveSuccess(save, res, { exitEditMode = true } = {}) {
+          activeFileText = save.text;
+          if (res && typeof res.version === "string") activeFileVersion = res.version;
+          if (res && typeof res.editable === "boolean") activeFileEditable = res.editable;
+          activeFileDraft = false;
+          if (save.draft) {
+            activeFileGitPath = false;
+            activeFileApiPath = "";
+          }
+          applyFileMode();
+          setFileDirty(false);
+          if (exitEditMode) setFileEditMode(false);
+          const size = res && typeof res.size === "number" ? res.size : save.text.length;
+          fileStatus.textContent = `${save.path} - ${fmtBytes(size)}`;
+          rememberOpenedFile(save.path, res && typeof res.path === "string" ? res.path : null);
+          renderFilePickerMenu();
+          return true;
+        }
+
         async function saveActiveFileEdits({ exitEditMode = true } = {}) {
           if (blockUnavailableFileAction()) return false;
           if (!fileViewerSessionId || !activeFilePath || !isTextFileKind(activeFileKind) || !activeFileEditable) return false;
@@ -8601,22 +8620,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               body: saveBody,
             });
             if (!saveStillCurrent()) return true;
-            activeFileText = save.text;
-            if (res && typeof res.version === "string") activeFileVersion = res.version;
-            if (res && typeof res.editable === "boolean") activeFileEditable = res.editable;
-            activeFileDraft = false;
-            if (save.draft) {
-              activeFileGitPath = false;
-              activeFileApiPath = "";
-            }
-            applyFileMode();
-            setFileDirty(false);
-            if (exitEditMode) setFileEditMode(false);
-            const size = res && typeof res.size === "number" ? res.size : save.text.length;
-            fileStatus.textContent = `${save.path} - ${fmtBytes(size)}`;
-            rememberOpenedFile(save.path, res && typeof res.path === "string" ? res.path : null);
-            renderFilePickerMenu();
-            return true;
+            return applyActiveFileSaveSuccess(save, res, { exitEditMode });
           } catch (e) {
             if (!saveStillCurrent()) return false;
             if (e && e.status === 409) {
