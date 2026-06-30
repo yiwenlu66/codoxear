@@ -6656,3 +6656,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: file load-result state planning belongs to the file-viewer controller. App still owns raw renderer/DOM side effects for applying plans, raw restore text implementation, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, raw mode/download/video-preview DOM mutation, compatible-preview fetch/load mechanics, and raw Monaco selection helpers.
+
+## 2026-06-30T19:18:29Z File editor save-shortcut controller ownership
+- Functional commit `321a2e0 Move file save shortcut into viewer controller` moved the Ctrl/Cmd+S file-editor shortcut decision from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `handleFileEditorSaveShortcut(event)` now belongs to the controller and owns default-prevented/composition gating, `s` key and Ctrl/Cmd modifier matching, shortcut-block dependency check, controller-owned idle text writability check, current session/path requirement, prevent/stop propagation, and `saveActiveFileEdits({ exitEditMode: false })` invocation. App keeps only the document keydown binding and a wrapper that delegates to the controller.
+- App-side boundary: raw DOM target classification remains an injected `eventTargetElement()`/`fileEditorShortcutBlocked()` dependency because it still depends on global modal/viewer/text-entry DOM state. Save lifecycle and editor capability state are controller-owned.
+- Test updates: the save-shortcut VM test now executes the real `app_file_viewer.js` controller instead of slicing app.js. It covers Ctrl and Meta success paths through the real save lifecycle/API dependency, plus no-modifier, wrong-key, not-editing, save-pending, unavailable, nested-dialog, other-text-entry, missing-path, and closed-viewer blocking paths. Source sentinels require app wrapper delegation and controller-owned key/modifier/save-invocation logic.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused file-viewer validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader focused frontend/file-viewer/static/auth validation returned `131 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: file-editor save-shortcut policy belongs to the file-viewer controller. App still owns raw shortcut-block predicate mechanics, document event binding, raw renderer/DOM plan application, raw restore text implementation, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, raw mode/download/video-preview DOM mutation, compatible-preview fetch/load mechanics, and raw Monaco selection helpers.
