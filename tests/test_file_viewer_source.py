@@ -632,7 +632,7 @@ def eval_file_open_request_sequence() -> dict:
           normalizeLineNumber: (value) => value == null ? null : Number(value),
         }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_file_open = { beginFileOpenRequest, isCurrentFileOpenRequest, cancelPendingFileOpen, currentFileSessionId, currentActiveFileIdentity, nextActiveFileIdentity, clearActiveFileIdentity };\n")}, ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_file_open = { beginFileOpenRequest, startFileOpenRequest, isCurrentFileOpenRequest, cancelPendingFileOpen, currentFileSessionId, currentActiveFileIdentity, nextActiveFileIdentity, clearActiveFileIdentity };\n")}, ctx);
         const first = ctx.__test_file_open.beginFileOpenRequest("first.txt", {{ line: 3 }});
         const firstCurrent = ctx.__test_file_open.isCurrentFileOpenRequest(first);
         const second = ctx.__test_file_open.beginFileOpenRequest(" trail.md ", {{ line: 8, gitPath: true }});
@@ -677,6 +677,15 @@ def eval_file_open_request_sequence() -> dict:
         ctx.activeFileLine = 12;
         ctx.__test_file_open.clearActiveFileIdentity();
         result.clearDefault = {{ path: ctx.activeFilePath, gitPath: ctx.activeFileGitPath, apiPath: ctx.activeFileApiPath, line: ctx.activeFileLine }};
+        const handle = ctx.__test_file_open.startFileOpenRequest("handled.txt", {{ line: 4, gitPath: false }});
+        result.handlePath = handle.path;
+        result.handleCurrentBeforeDone = ctx.__test_file_open.isCurrentFileOpenRequest(handle.request);
+        handle.done();
+        result.handleSignalAbortedAfterDone = Boolean(handle.request.signal && handle.request.signal.aborted);
+        const afterHandle = ctx.__test_file_open.startFileOpenRequest("after-handle.txt", {{ gitPath: false }});
+        result.handleSignalAbortedAfterNext = Boolean(handle.request.signal && handle.request.signal.aborted);
+        result.afterHandleCurrent = ctx.__test_file_open.isCurrentFileOpenRequest(afterHandle.request);
+        afterHandle.done();
         ctx.__test_file_open.cancelPendingFileOpen();
         result.secondAfterCancel = ctx.__test_file_open.isCurrentFileOpenRequest(second);
         process.stdout.write(JSON.stringify(result));
@@ -1212,7 +1221,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("if (gitPath) {\n              body.git_path = true;", source)
         self.assertIn('const gitPathQuery = request.gitPath ? "&git_path=1" : "";', source)
         self.assertIn("git_path: Boolean(activeFileGitPath)", source)
-        self.assertIn("beginFileOpenRequest(path, { line, gitPath: false })", source)
+        self.assertIn("startFileOpenRequest(path, { line, gitPath: false })", source)
         self.assertIn("setFilePath(rel, { line: null, gitPath: false })", source)
         self.assertIn("if (saveDraft) {\n              activeFileGitPath = false;", source)
 
@@ -1320,6 +1329,11 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(result["fileApiPathCalls"], [[" trail.md ", ""], ["same.py", "tok-same"]])
         self.assertEqual(result["clearWithLine"], {"path": "", "gitPath": False, "apiPath": "", "line": 12})
         self.assertEqual(result["clearDefault"], {"path": "", "gitPath": False, "apiPath": "", "line": None})
+        self.assertEqual(result["handlePath"], "handled.txt")
+        self.assertTrue(result["handleCurrentBeforeDone"])
+        self.assertFalse(result["handleSignalAbortedAfterDone"])
+        self.assertFalse(result["handleSignalAbortedAfterNext"])
+        self.assertTrue(result["afterHandleCurrent"])
         self.assertFalse(result["secondAfterCancel"])
 
     def test_draft_file_load_choreography_is_single_owned(self) -> None:
@@ -1631,6 +1645,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function currentActiveFileIdentity()", source)
         self.assertIn("function clearActiveFileIdentity({ line = null } = {})", source)
         self.assertIn("clearActiveFileIdentity({ line });", source)
+        self.assertIn("function startFileOpenRequest(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {})", source)
         self.assertIn("function setFileRenderSurface(surface)", source)
         self.assertIn('throw new Error("invalid file render surface")', source)
         self.assertIn("async function applyFileLoadResult(rel, result, request, { viewMode = \"file\" } = {})", source)
@@ -1645,6 +1660,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(source.count("fileVideo.style.display ="), 2)
         self.assertIn("const identity = nextActiveFileIdentity(currentActiveFileIdentity()", source)
         self.assertIn("const request = beginFileOpenRequest(nextPath, { line, gitPath, apiPath });", source)
+        self.assertIn("const openRequest = startFileOpenRequest(nextPath, { line, gitPath, apiPath });", source)
+        self.assertIn("const request = openRequest.request;", source)
         self.assertIn("signal: request.signal", source)
         self.assertIn("if (!isCurrentFileOpenRequest(request)) return false;", source)
         self.assertIn("async function openFilePathWithResolvedMode(path, { line = null, changed = null, isCurrent = null, gitPath = null, apiPath = \"\" } = {})", source)

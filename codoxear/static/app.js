@@ -7176,6 +7176,15 @@
           fileOpenAbortController = null;
         }
 
+        function startFileOpenRequest(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {}) {
+          const request = beginFileOpenRequest(nextPath, { line, gitPath, apiPath });
+          return Object.freeze({
+            request,
+            path: request.path,
+            done: () => finalizeFileOpenRequest(request),
+          });
+        }
+
         function rememberActiveFileSelection(sessionId = currentFileSessionId()) {
           const sid = String(sessionId || "").trim();
           const path = String(activeFilePath ?? "");
@@ -8891,11 +8900,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         async function openDraftFilePath(path, { line = null } = {}) {
           if (blockUnavailableFileAction()) return;
           if (!fileViewerSessionId) return;
-          const request = beginFileOpenRequest(path, { line, gitPath: false });
+          const openRequest = startFileOpenRequest(path, { line, gitPath: false });
+          const request = openRequest.request;
           const rel = normalizeDraftFilePath(path);
           if (!rel) {
             fileStatus.textContent = "Choose a valid relative file path.";
-            finalizeFileOpenRequest(request);
+            openRequest.done();
             return;
           }
           fileStatus.textContent = "Preparing new file...";
@@ -8909,7 +8919,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             resetActiveFileBufferState();
             fileStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
           } finally {
-            finalizeFileOpenRequest(request);
+            openRequest.done();
           }
         }
 
@@ -9808,11 +9818,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         async function openFilePath(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {}) {
           if (blockUnavailableFileAction()) return false;
           if (!fileViewerSessionId) return false;
-          const request = beginFileOpenRequest(nextPath, { line, gitPath, apiPath });
-          const rel = request.path;
+          const openRequest = startFileOpenRequest(nextPath, { line, gitPath, apiPath });
+          const request = openRequest.request;
+          const rel = openRequest.path;
           if (!rel) {
             fileStatus.textContent = "Choose a file first.";
-            finalizeFileOpenRequest(request);
+            openRequest.done();
             return false;
           }
           fileStatus.textContent = "Loading...";
@@ -9852,7 +9863,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             updateFileTouchToolbar();
             return false;
           } finally {
-            finalizeFileOpenRequest(request);
+            openRequest.done();
           }
         }
         fileBtn.onclick = (e) => {
