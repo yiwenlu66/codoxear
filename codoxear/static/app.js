@@ -7633,7 +7633,6 @@
         }
 
         function showFilePasteDialog() {
-          if (!activeFileEditorIdleTextWritable()) return false;
           prepareModalOpen();
           filePasteInput.value = "";
           filePasteBackdrop.style.display = "block";

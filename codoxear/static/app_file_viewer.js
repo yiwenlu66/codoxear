@@ -922,10 +922,15 @@
       return true;
     }
 
+    function requestManualFilePasteDialog() {
+      if (!activeFileEditorIdleTextWritable()) return false;
+      return showFilePasteDialog();
+    }
+
     async function pasteFromClipboardIntoActiveFile() {
       if (!activeFileEditorIdleTextWritable()) return false;
       if (!clipboardReadAvailable()) {
-        if (showFilePasteDialog()) setToast("paste manually");
+        if (requestManualFilePasteDialog()) setToast("paste manually");
         else {
           setToast("paste unavailable");
           focusActiveFileCodeEditor();
@@ -949,7 +954,7 @@
         focusActiveFileCodeEditor();
         return true;
       } catch (error) {
-        if (showFilePasteDialog()) setToast("paste manually");
+        if (requestManualFilePasteDialog()) setToast("paste manually");
         else {
           setToast(`paste error: ${error && error.message ? error.message : "clipboard denied"}`);
           focusActiveFileCodeEditor();

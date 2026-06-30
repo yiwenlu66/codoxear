@@ -656,7 +656,8 @@ def eval_file_paste_dialog_fallback() -> dict:
           }};
           const fileStatus = {{ textContent: "", replaceChildren() {{}} }};
           const fileEditButton = {{ classList: {{ toggle() {{}} }}, setAttribute() {{}} }};
-          const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
+          let controller = null;
+          controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
             el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children: Array.isArray(children) ? children : [] }}),
             fileStatus,
             fileEditButton,
@@ -705,7 +706,7 @@ def eval_file_paste_dialog_fallback() -> dict:
             showFilePasteDialog: () => ctx.__test_showPaste(),
             hideFilePasteDialog: (options) => ctx.__test_hidePaste(options),
             clipboardReadAvailable: () => Boolean(opts.secure && opts.clipboard !== "missing"),
-            readClipboardText: async () => {{ if (opts.clipboard === "denied") throw new Error("denied"); return opts.clipboardText || ""; }},
+            readClipboardText: async () => {{ if (opts.clipboard === "deniedAfterReadonly") {{ controller.setFileEditMode(false); throw new Error("denied"); }} if (opts.clipboard === "denied") throw new Error("denied"); return opts.clipboardText || ""; }},
             fileEditorDeleteCommandForKey: () => "",
             isActiveFileEditorInput: () => false,
             getActiveFileSelectionText: () => "",
@@ -754,10 +755,11 @@ def eval_file_paste_dialog_fallback() -> dict:
         (async () => {{
           const missing = await runCase({{ secure: false, clipboard: "missing" }});
           const denied = await runCase({{ secure: true, clipboard: "denied" }});
+          const deniedAfterReadonly = await runCase({{ secure: true, clipboard: "deniedAfterReadonly" }});
           const direct = await runCase({{ secure: true, clipboard: "ok", clipboardText: "hello" }});
           const empty = await runCase({{ secure: true, clipboard: "ok", clipboardText: "" }});
           const dismissed = await runCase({{ secure: false, clipboard: "missing", hideAfter: true }});
-          process.stdout.write(JSON.stringify({{ missing, denied, direct, empty, dismissed }}));
+          process.stdout.write(JSON.stringify({{ missing, denied, deniedAfterReadonly, direct, empty, dismissed }}));
         }})().catch((err) => {{ console.error(err && err.stack ? err.stack : err); process.exit(1); }});
         """
     )
@@ -4421,6 +4423,10 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('function showFilePasteDialog()', source)
         self.assertIn('function hideFilePasteDialog({ restoreFocus = false } = {})', source)
         self.assertIn('hideFilePasteDialog({ restoreFocus: true });', source)
+        self.assertIn('function requestManualFilePasteDialog()', viewer_source)
+        show_start = source.index('function showFilePasteDialog()')
+        show_end = source.index('async function pasteFromClipboardIntoActiveFile', show_start)
+        self.assertNotIn('if (!activeFileEditorIdleTextWritable()) return false;', source[show_start:show_end])
         self.assertIn('$("#filePasteInsertBtn").onclick = () => {\n          handleFilePasteInsert(filePasteInput.value);\n        };', source)
         self.assertIn('function handleFilePasteInsert(text)', viewer_source)
         self.assertIn('filePasteDialog.style.display = "flex";', source)
@@ -4451,6 +4457,11 @@ class TestFileViewerSource(unittest.TestCase):
                 self.assertEqual(case["prepareCount"], 1)
                 self.assertEqual(case["modalSyncCount"], 1)
                 self.assertEqual(case["rafCount"], 1)
+        self.assertEqual(result["deniedAfterReadonly"]["dialog"], "none")
+        self.assertEqual(result["deniedAfterReadonly"]["toasts"], ["paste error: denied"])
+        self.assertEqual(result["deniedAfterReadonly"]["focusEditorCount"], 1)
+        self.assertEqual(result["deniedAfterReadonly"]["prepareCount"], 0)
+        self.assertEqual(result["deniedAfterReadonly"]["modalSyncCount"], 0)
         self.assertEqual(result["direct"]["dialog"], "none")
         self.assertEqual(result["direct"]["inserted"], ["hello"])
         self.assertEqual(result["direct"]["toasts"], ["pasted"])
