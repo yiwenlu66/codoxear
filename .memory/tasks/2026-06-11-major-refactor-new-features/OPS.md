@@ -6271,3 +6271,23 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: touch-selection state, reset/toggle/move transitions, keydown policy, delete-key policy, and native delete suppression now belong to the file-viewer controller. App still owns touch toolbar DOM, raw Monaco selection helpers, paste dialog/insert actions, raw load-result rendering, raw view-mode DOM application, unsaved modal DOM, and discard implementation.
+
+## 2026-06-30T14:01:24Z Paste action policy controller ownership
+- Functional commit `82fc45e Move paste action policy into viewer controller` moved editor insertion policy, clipboard paste decision policy, and manual paste-insert handling from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the controller now owns `insertIntoActiveFileEditor(text)`, `pasteFromClipboardIntoActiveFile()`, and `handleFilePasteInsert(text)`. It decides editor writability, unavailable-session blocking, direct clipboard read/fallback dialog behavior, empty clipboard behavior, editor edit range construction, undo-stop boundaries, post-insert cursor placement, dirty-state update, focus/toast outcomes, and manual dialog close/toast on successful insertion.
+- App-owned surfaces remain explicit dependencies/wrappers: browser clipboard availability/read, paste dialog DOM show/hide, active editor lookup, Monaco edit support, selection collapse predicate, position-after-insert helper, selection application, current active-file text baseline, and raw button wiring.
+- Tests updated:
+  - Paste fallback behavior now instantiates the real controller and injects app-owned show/hide dialog functions, so missing/denied clipboard, direct insert, empty clipboard, and dismissed dialog cases execute controller policy.
+  - Manual paste insert behavior now executes `handleFilePasteInsert` for unavailable and available sessions.
+  - Source assertions now require controller-owned paste/insertion policy and app wrappers/dependency wiring instead of app-owned policy bodies.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - File-viewer focused `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader focused frontend/file-viewer/static/auth group returned `119 passed, 28 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: paste action policy and editor insertion now belong to the file-viewer controller. App still owns paste dialog DOM rendering/show/hide primitives, touch toolbar DOM, raw Monaco selection helpers, raw load-result rendering, raw view-mode DOM application, unsaved modal DOM, and discard implementation.
