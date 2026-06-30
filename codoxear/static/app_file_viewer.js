@@ -836,6 +836,21 @@
       return true;
     }
 
+    async function handleFileEditButtonPress() {
+      if (isFileSavePending()) return false;
+      if (currentFileEditMode()) {
+        await saveActiveFileEdits({ exitEditMode: true });
+        return true;
+      }
+      if (currentFileViewMode() !== "file") {
+        const changed = await setFileViewModeWithGuard("file");
+        if (!changed) return false;
+      }
+      if (!currentActiveFileEditable() || !isTextFileKind(currentActiveFileKind())) return false;
+      setFileEditMode(true);
+      return true;
+    }
+
     async function openFilePath(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined, mode = null } = {}) {
       if (blockUnavailableFileAction()) return false;
       if (!normalizeSessionId(currentSessionId())) return false;
@@ -1046,6 +1061,7 @@
       insertIntoActiveFileEditor,
       pasteFromClipboardIntoActiveFile,
       handleFilePasteInsert,
+      handleFileEditButtonPress,
       finalizeFileOpenSuccess,
       applyDraftFileLoad,
       renderFileOpenError,

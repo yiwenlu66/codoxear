@@ -8428,6 +8428,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return await fileViewerController.requestHideFileViewer();
         }
 
+        async function handleFileEditButtonPress() {
+          return await fileViewerController.handleFileEditButtonPress();
+        }
+
         function setFileViewMode(mode) {
           const next = mode === "preview" ? "preview" : mode === "file" ? "file" : "diff";
           fileViewMode = next;
@@ -9598,17 +9602,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         fileEditBtn.onclick = async (e) => {
           e.preventDefault();
           e.stopPropagation();
-          if (fileSavePendingValue()) return;
-          if (fileEditMode) {
-            await saveActiveFileEdits({ exitEditMode: true });
-            return;
-          }
-          if (fileViewMode !== "file") {
-            const changed = await setFileViewModeWithGuard("file");
-            if (!changed) return;
-          }
-          if (!activeFileEditable || !isTextFileKind(activeFileKind)) return;
-          setFileEditMode(true);
+          await handleFileEditButtonPress();
         };
         fileVideoPreviewBtn.onclick = (e) => {
           e.preventDefault();
