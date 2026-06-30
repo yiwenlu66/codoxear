@@ -233,6 +233,30 @@
       return Object.freeze({ canEnterEditMode, writable, idleWritable, idleTextWritable, editModeAllowedInCurrentView });
     }
 
+    function activeFileEditorCapabilities() {
+      return fileEditorCapabilities(currentFileEditorState());
+    }
+
+    function activeFileCanEnterEditMode() {
+      return activeFileEditorCapabilities().canEnterEditMode;
+    }
+
+    function activeFileEditorWritable() {
+      return activeFileEditorCapabilities().writable;
+    }
+
+    function activeFileEditorIdleWritable() {
+      return activeFileEditorCapabilities().idleWritable;
+    }
+
+    function activeFileEditorIdleTextWritable() {
+      return activeFileEditorCapabilities().idleTextWritable;
+    }
+
+    function activeFileEditModeAllowedInCurrentView() {
+      return activeFileEditorCapabilities().editModeAllowedInCurrentView;
+    }
+
     function isFileSavePending() {
       return Boolean(fileSavePending);
     }
@@ -507,6 +531,12 @@
       blockUnavailableFileAction,
       currentFileEditorState,
       fileEditorCapabilities,
+      activeFileEditorCapabilities,
+      activeFileCanEnterEditMode,
+      activeFileEditorWritable,
+      activeFileEditorIdleWritable,
+      activeFileEditorIdleTextWritable,
+      activeFileEditModeAllowedInCurrentView,
       finalizeFileOpenSuccess,
       applyDraftFileLoad,
       renderFileOpenError,

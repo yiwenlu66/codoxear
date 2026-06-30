@@ -261,6 +261,14 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           renderController.setActiveFileIdentity("state.md", {{ line: 11, gitPath: true, apiPath: "state-token" }});
           const editorState = renderController.currentFileEditorState();
           const editorStateFrozen = Object.isFrozen(editorState);
+          const derivedCapabilities = {{
+            capabilities: renderController.activeFileEditorCapabilities(),
+            canEnter: renderController.activeFileCanEnterEditMode(),
+            writable: renderController.activeFileEditorWritable(),
+            idleWritable: renderController.activeFileEditorIdleWritable(),
+            idleTextWritable: renderController.activeFileEditorIdleTextWritable(),
+            editModeAllowed: renderController.activeFileEditModeAllowedInCurrentView(),
+          }};
           const editableCapabilities = renderController.fileEditorCapabilities({{ path: "src/app.py", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
           const pendingCapabilities = renderController.fileEditorCapabilities({{ path: "src/app.py", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: true }});
           const binaryCapabilities = renderController.fileEditorCapabilities({{ path: "img.png", kind: "image", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
@@ -282,7 +290,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             saveErrors: {{ saveConflict, genericSaveError, unknownSaveError }},
             unavailableAction: {{ availableBlocked, availableBlockStatus, unavailableBlocked, unavailableBlockStatus }},
             editorState: {{ editorState, editorStateFrozen }},
-            capabilities: {{ editableCapabilities, pendingCapabilities, binaryCapabilities, missingPathCapabilities, editableFrozen: Object.isFrozen(editableCapabilities) }},
+            capabilities: {{ derivedCapabilities, editableCapabilities, pendingCapabilities, binaryCapabilities, missingPathCapabilities, editableFrozen: Object.isFrozen(editableCapabilities) }},
           }};
           const availableReloadFailure = await runReloadCase("");
           const canceledReload = await runReloadCase("", false);
@@ -406,6 +414,14 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "editorStateFrozen": True,
         })
         self.assertEqual(result["render"]["capabilities"], {
+            "derivedCapabilities": {
+                "capabilities": {"canEnterEditMode": True, "writable": True, "idleWritable": True, "idleTextWritable": True, "editModeAllowedInCurrentView": True},
+                "canEnter": True,
+                "writable": True,
+                "idleWritable": True,
+                "idleTextWritable": True,
+                "editModeAllowed": True,
+            },
             "editableCapabilities": {"canEnterEditMode": True, "writable": True, "idleWritable": True, "idleTextWritable": True, "editModeAllowedInCurrentView": True},
             "pendingCapabilities": {"canEnterEditMode": False, "writable": True, "idleWritable": False, "idleTextWritable": False, "editModeAllowedInCurrentView": True},
             "binaryCapabilities": {"canEnterEditMode": False, "writable": True, "idleWritable": True, "idleTextWritable": False, "editModeAllowedInCurrentView": False},

@@ -7417,27 +7417,27 @@
         }
 
         function activeFileEditorCapabilities() {
-          return fileEditorCapabilities(currentFileEditorState());
+          return fileViewerController.activeFileEditorCapabilities();
         }
 
         function activeFileCanEnterEditMode() {
-          return activeFileEditorCapabilities().canEnterEditMode;
+          return fileViewerController.activeFileCanEnterEditMode();
         }
 
         function activeFileEditorWritable() {
-          return activeFileEditorCapabilities().writable;
+          return fileViewerController.activeFileEditorWritable();
         }
 
         function activeFileEditorIdleWritable() {
-          return activeFileEditorCapabilities().idleWritable;
+          return fileViewerController.activeFileEditorIdleWritable();
         }
 
         function activeFileEditorIdleTextWritable() {
-          return activeFileEditorCapabilities().idleTextWritable;
+          return fileViewerController.activeFileEditorIdleTextWritable();
         }
 
         function activeFileEditModeAllowedInCurrentView() {
-          return activeFileEditorCapabilities().editModeAllowedInCurrentView;
+          return fileViewerController.activeFileEditModeAllowedInCurrentView();
         }
 
         function syncFileEditorReadOnly() {

@@ -163,6 +163,12 @@ def controller_identity_ctx_js(
               const editModeAllowedInCurrentView = Boolean(viewMode === "file" && textKind && editable && !unavailable);
               return Object.freeze({{ canEnterEditMode, writable, idleWritable, idleTextWritable, editModeAllowedInCurrentView }});
             }},
+            activeFileEditorCapabilities() {{ return this.fileEditorCapabilities(this.currentFileEditorState()); }},
+            activeFileCanEnterEditMode() {{ return this.activeFileEditorCapabilities().canEnterEditMode; }},
+            activeFileEditorWritable() {{ return this.activeFileEditorCapabilities().writable; }},
+            activeFileEditorIdleWritable() {{ return this.activeFileEditorCapabilities().idleWritable; }},
+            activeFileEditorIdleTextWritable() {{ return this.activeFileEditorCapabilities().idleTextWritable; }},
+            activeFileEditModeAllowedInCurrentView() {{ return this.activeFileEditorCapabilities().editModeAllowedInCurrentView; }},
             renderFileOpenError(request, error) {{
               if (this.isFileOpenAbortError(error)) return false;
               if (!this.isCurrentFileOpenRequest(request)) return false;
@@ -2809,7 +2815,9 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function fileEditorCapabilities(state)", viewer_source)
         self.assertIn("return Object.freeze({ canEnterEditMode, writable, idleWritable, idleTextWritable, editModeAllowedInCurrentView });", viewer_source)
         self.assertIn("function activeFileEditorCapabilities()", source)
-        self.assertIn("return fileEditorCapabilities(currentFileEditorState());", source)
+        self.assertIn("return fileViewerController.activeFileEditorCapabilities();", source)
+        self.assertIn("return fileEditorCapabilities(currentFileEditorState());", viewer_source)
+        self.assertIn("function activeFileEditorIdleTextWritable()", viewer_source)
         self.assertIn("fileEditor.updateOptions({ readOnly: !activeFileEditorWritable() });", source)
         self.assertIn("const canPaste = activeFileEditorIdleTextWritable();", source)
         self.assertIn("fileEditMode = Boolean(nextMode) && activeFileEditModeAllowedInCurrentView();", source)
