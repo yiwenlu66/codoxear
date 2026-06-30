@@ -741,7 +741,7 @@ def eval_file_paste_dialog_fallback() -> dict:
             prepareCount: ctx.prepareCount,
             modalSyncCount: ctx.modalSyncCount,
             rafCount: ctx.rafCount,
-            dirtyValues: ctx.dirtyValues,
+            dirty: controller.currentFileDirty(),
           }};
         }}
         (async () => {{
@@ -860,7 +860,7 @@ def eval_file_paste_insert_button_guard() -> dict:
           controller.setActiveFileIdentity("note.txt", {{}});
           if (state.unavailable) controller.disableFileViewerForUnavailableSession("sid-1");
           const result = controller.handleFilePasteInsert(state.inputValue);
-          return {{ result, inputValue: state.inputValue, inserted: state.inserted, hidden: state.hidden, toasts: state.toasts, status: fileStatus.textContent, dirtyValues: state.dirtyValues }};
+          return {{ result, inputValue: state.inputValue, inserted: state.inserted, hidden: state.hidden, toasts: state.toasts, status: fileStatus.textContent, dirty: controller.currentFileDirty() }};
         }}
         const unavailable = runCase(true, "typed text");
         const available = runCase(false, "allowed text");
@@ -2044,6 +2044,8 @@ def eval_active_file_save_request_helpers() -> dict:
           renderFilePickerMenu: () => {{}},
         }});
         controller.setActiveFileIdentity("src/app.py", {{ line: 42, gitPath: true, apiPath: "token-1" }});
+        controller.setFileDirty(true);
+        calls.length = 0;
         const save = controller.beginActiveFileSaveRequest();
         const result = {{
           save,
@@ -2288,7 +2290,7 @@ def eval_active_file_save_success() -> dict:
             gitPath: identity.gitPath,
             apiPath: identity.apiPath,
             line: controller.currentActiveFileLine(),
-            dirty: state.dirty,
+            dirty: controller.currentFileDirty(),
             editMode: state.editMode,
             status: fileStatus.textContent,
             calls: calls.slice(),
@@ -2305,6 +2307,8 @@ def eval_active_file_save_success() -> dict:
         state.dirty = true;
         state.editMode = true;
         fileStatus.textContent = "";
+        calls.length = 0;
+        controller.setFileDirty(true);
         calls.length = 0;
         controller.setActiveFileIdentity("existing.md", {{ line: 42, gitPath: true, apiPath: "keep-token" }});
         const nondraftSave = {{ path: "existing.md", text: "BODY", draft: false }};
@@ -2457,6 +2461,8 @@ def eval_active_file_save_transport() -> dict:
           state.behavior = behavior;
           calls.length = 0;
           fileStatus.textContent = "";
+          controller.setFileDirty(state.dirty);
+          calls.length = 0;
           controller.setActiveFileIdentity("src.py", {{ line: 9, gitPath: true, apiPath: "tok" }});
           const save = controller.beginActiveFileSaveRequest();
           const ok = await controller.submitActiveFileSave(save, {{ exitEditMode: true }});
@@ -2468,7 +2474,7 @@ def eval_active_file_save_transport() -> dict:
             text: state.text,
             version: state.version,
             editable: state.editable,
-            dirty: state.dirty,
+            dirty: controller.currentFileDirty(),
             editMode: state.editMode,
             path: identity.path,
             gitPath: identity.gitPath,
@@ -2488,6 +2494,7 @@ def eval_active_file_save_transport() -> dict:
           state.dirty = overrides.dirty !== false;
           state.editMode = true;
           state.behavior = "success";
+          controller.setFileDirty(state.dirty);
           calls.length = 0;
           fileStatus.textContent = "";
           controller.clearFileViewerUnavailableSession();
@@ -2499,7 +2506,7 @@ def eval_active_file_save_transport() -> dict:
             fileStatus.textContent = "Session is no longer available; copy unsaved edits before closing.";
           }}
           const ok = await controller.saveActiveFileEdits({{ exitEditMode: overrides.exitEditMode !== false }});
-          return {{ ok, status: fileStatus.textContent, calls: calls.slice(), dirty: state.dirty, editMode: state.editMode, text: state.text }};
+          return {{ ok, status: fileStatus.textContent, calls: calls.slice(), dirty: controller.currentFileDirty(), editMode: state.editMode, text: state.text }};
         }}
         runCase("success")
           .then(async (success) => {{
@@ -2998,7 +3005,7 @@ class TestFileViewerSource(unittest.TestCase):
             "hidden": 0,
             "toasts": [],
             "status": "Session is no longer available; copy unsaved edits before closing.",
-            "dirtyValues": [],
+            "dirty": False,
         })
         self.assertEqual(result["available"], {
             "result": True,
@@ -3007,7 +3014,7 @@ class TestFileViewerSource(unittest.TestCase):
             "hidden": 1,
             "toasts": ["text inserted"],
             "status": "",
-            "dirtyValues": [True],
+            "dirty": True,
         })
 
     def test_file_editor_disables_monaco_suggestions(self) -> None:
@@ -3171,10 +3178,10 @@ class TestFileViewerSource(unittest.TestCase):
         open_start = source.index("async function openSession(sessionId")
         open_end = source.index("async function pollMessages", open_start)
         open_block = source[open_start:open_end]
-        self.assertIn("const fileViewerSyncStarted = Boolean(isFileViewerOpen() && !fileDirty);", open_block)
+        self.assertIn("const fileViewerSyncStarted = Boolean(isFileViewerOpen() && !currentFileDirty());", open_block)
         self.assertIn("void ensureCurrentFileViewerSession().catch((e) => console.error(\"file viewer session sync failed after selection\", e));", open_block)
         self.assertLess(open_block.index("const fileViewerSyncStarted"), open_block.index("messages/tail"))
-        self.assertIn("if (isFileViewerOpen() && !fileDirty && !fileViewerSyncStarted) {", open_block)
+        self.assertIn("if (isFileViewerOpen() && !currentFileDirty() && !fileViewerSyncStarted) {", open_block)
         self.assertIn("void ensureCurrentFileViewerSession();", open_block)
         self.assertIn("void refreshFileCandidates({ sessionId }).catch((e) => console.error(\"file candidates refresh failed after transcript load\", e));", open_block)
         resolved_start = source.index("async function openFilePathWithResolvedMode")
@@ -3915,7 +3922,8 @@ class TestFileViewerSource(unittest.TestCase):
             "calls": [
                 ["applyActiveFileTextState", {"kind": "text", "text": "NEW", "editable": True, "version": "v2", "draft": False}],
                 ["applyFileMode"],
-                ["setFileDirty", False],
+                ["updateFileTouchToolbar"],
+                ["updateFileTouchToolbar"],
                 ["setFileEditMode", False],
                 ["rememberOpenedFile", "new.py", "/abs/new.py"],
                 ["renderFilePickerMenu"],
@@ -3938,7 +3946,8 @@ class TestFileViewerSource(unittest.TestCase):
             "calls": [
                 ["applyActiveFileTextState", {"kind": "markdown", "text": "BODY", "editable": True, "version": "v0", "draft": False}],
                 ["applyFileMode"],
-                ["setFileDirty", False],
+                ["updateFileTouchToolbar"],
+                ["updateFileTouchToolbar"],
                 ["rememberOpenedFile", "existing.md", None],
                 ["renderFilePickerMenu"],
             ],
@@ -4094,7 +4103,14 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("resetFileSearchState: () => resetFileSearchState()", controller_block)
         self.assertIn("closeFilePickerMenu: (options) => closeFilePickerMenu(options)", controller_block)
         self.assertIn("isTextFileKind: (kind) => isTextFileKind(kind)", controller_block)
-        self.assertIn("currentFileDirty: () => fileDirty", controller_block)
+        self.assertNotIn("currentFileDirty: () => fileDirty", controller_block)
+        self.assertNotIn("setFileDirty: (dirty) => setFileDirty(dirty)", controller_block)
+        self.assertNotIn("let fileDirty = false;", source)
+        self.assertIn("let fileDirty = false;", viewer_source)
+        self.assertIn("function currentFileDirty()", viewer_source)
+        self.assertIn("function setFileDirty(nextDirty)", viewer_source)
+        self.assertIn("return fileViewerController.currentFileDirty();", source)
+        self.assertIn("return fileViewerController.setFileDirty(nextDirty);", source)
         self.assertIn("confirmReload: (message) => window.confirm(message)", controller_block)
         self.assertIn("promptUnsavedFileChoice: () => promptFileUnsavedChoice()", controller_block)
         self.assertIn("restoreFileEditorText: (text) => restoreFileEditorText(text)", controller_block)
@@ -4293,7 +4309,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(result["direct"]["inserted"], ["hello"])
         self.assertEqual(result["direct"]["toasts"], ["pasted"])
         self.assertEqual(result["direct"]["focusEditorCount"], 2)
-        self.assertEqual(result["direct"]["dirtyValues"], [True])
+        self.assertTrue(result["direct"]["dirty"])
         self.assertEqual(result["empty"]["dialog"], "none")
         self.assertEqual(result["empty"]["toasts"], ["clipboard empty"])
         self.assertEqual(result["empty"]["focusEditorCount"], 1)

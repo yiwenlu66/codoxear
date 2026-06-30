@@ -84,10 +84,8 @@
     const currentActiveFileDraft = requireFunction(deps && deps.currentActiveFileDraft, "currentActiveFileDraft");
     const currentActiveFileVersion = requireFunction(deps && deps.currentActiveFileVersion, "currentActiveFileVersion");
     const currentActiveFileEditable = requireFunction(deps && deps.currentActiveFileEditable, "currentActiveFileEditable");
-    const currentFileDirty = requireFunction(deps && deps.currentFileDirty, "currentFileDirty");
     const currentActiveFileText = requireFunction(deps && deps.currentActiveFileText, "currentActiveFileText");
     const getFileEditorText = requireFunction(deps && deps.getFileEditorText, "getFileEditorText");
-    const setFileDirty = requireFunction(deps && deps.setFileDirty, "setFileDirty");
     const fmtBytes = requireFunction(deps && deps.fmtBytes, "fmtBytes");
     const applyFileMode = requireFunction(deps && deps.applyFileMode, "applyFileMode");
     const rememberOpenedFile = requireFunction(deps && deps.rememberOpenedFile, "rememberOpenedFile");
@@ -99,6 +97,7 @@
     let fileSaveSeq = 0;
     let activeFileSaveToken = 0;
     let fileSavePending = false;
+    let fileDirty = false;
     let activeFilePath = "";
     let activeFileApiPath = "";
     let activeFileGitPath = false;
@@ -377,6 +376,16 @@
 
     function isFileSavePending() {
       return Boolean(fileSavePending);
+    }
+
+    function currentFileDirty() {
+      return fileDirty;
+    }
+
+    function setFileDirty(nextDirty) {
+      fileDirty = Boolean(nextDirty);
+      updateFileEditButton();
+      updateFileTouchToolbar();
     }
 
     function clearActiveFileSaveState() {
@@ -979,6 +988,8 @@
       disableFileViewerForUnavailableSession,
       handleFileViewerSessionUnavailable,
       isFileSavePending,
+      currentFileDirty,
+      setFileDirty,
       clearActiveFileSaveState,
       beginActiveFileSaveRequest,
       isCurrentActiveFileSaveRequest,

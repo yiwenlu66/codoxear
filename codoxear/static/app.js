@@ -4358,7 +4358,7 @@
           setStatus({ running: optimisticBusy, queueLen: optimisticQueueLen });
           setContext(s ? s.token || null : null);
           setTyping(optimisticBusy);
-          const fileViewerSyncStarted = Boolean(isFileViewerOpen() && !fileDirty);
+          const fileViewerSyncStarted = Boolean(isFileViewerOpen() && !currentFileDirty());
           if (fileViewerSyncStarted) {
             void ensureCurrentFileViewerSession().catch((e) => console.error("file viewer session sync failed after selection", e));
           }
@@ -4433,9 +4433,9 @@
           if (slotChange.current.state !== "failed") kickPoll(900);
           if (isMobile()) setSidebarOpen(false);
           updateUnattendedBtnState();
-          if (isFileViewerOpen() && !fileDirty && !fileViewerSyncStarted) {
+          if (isFileViewerOpen() && !currentFileDirty() && !fileViewerSyncStarted) {
             void ensureCurrentFileViewerSession();
-          } else if (isFileViewerOpen() && !fileDirty && fileViewerSessionId === sessionId) {
+          } else if (isFileViewerOpen() && !currentFileDirty() && fileViewerSessionId === sessionId) {
             void refreshFileCandidates({ sessionId }).catch((e) => console.error("file candidates refresh failed after transcript load", e));
           }
           return data;
@@ -7057,7 +7057,6 @@
         let fileEditorModels = [];
         let fileEditorChangeDisposable = null;
         let fileEditMode = false;
-        let fileDirty = false;
         let fileEditorProgrammaticChange = false;
         let fileUnsavedReturnFocusEl = null;
         let fileUnsavedResolver = null;
@@ -7681,10 +7680,12 @@
           return fileViewerController.updateFileEditButton();
         }
 
+        function currentFileDirty() {
+          return fileViewerController.currentFileDirty();
+        }
+
         function setFileDirty(nextDirty) {
-          fileDirty = Boolean(nextDirty);
-          updateFileEditButton();
-          updateFileTouchToolbar();
+          return fileViewerController.setFileDirty(nextDirty);
         }
 
         function resetActiveFileBufferState() {
@@ -8276,7 +8277,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function promptFileUnsavedChoice() {
-          if (!fileDirty) return Promise.resolve("discard");
+          if (!currentFileDirty()) return Promise.resolve("discard");
           if (fileUnsavedResolver) return Promise.resolve("cancel");
           prepareModalOpen();
           fileUnsavedReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -8354,10 +8355,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           currentActiveFileDraft: () => activeFileDraft,
           currentActiveFileVersion: () => activeFileVersion,
           currentActiveFileEditable: () => activeFileEditable,
-          currentFileDirty: () => fileDirty,
           currentActiveFileText: () => activeFileText,
           getFileEditorText: () => getFileEditorText(),
-          setFileDirty: (dirty) => setFileDirty(dirty),
           fmtBytes: (value) => fmtBytes(value),
           applyFileMode: () => applyFileMode(),
           rememberOpenedFile: (rel, absPath) => rememberOpenedFile(rel, absPath),

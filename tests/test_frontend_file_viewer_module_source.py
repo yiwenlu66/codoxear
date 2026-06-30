@@ -323,6 +323,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           state.editorKind = "file";
           state.editMode = true;
           state.dirty = true;
+          renderController.setFileDirty(true);
           renderController.setActiveFileIdentity("state.md", {{ line: 11, gitPath: true, apiPath: "state-token" }});
           const editorState = renderController.currentFileEditorState();
           const editorStateFrozen = Object.isFrozen(editorState);
@@ -343,6 +344,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const readOnlyWritable = events.slice();
           state.editMode = false;
           state.dirty = false;
+          renderController.setFileDirty(false);
           events.length = 0;
           resetFileEditButton();
           renderController.updateFileEditButton();
@@ -350,6 +352,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const editButtonViewMode = {{ button: fileEditButtonSnapshot(), events: events.slice() }};
           state.editMode = true;
           state.dirty = true;
+          renderController.setFileDirty(true);
           renderController.disableFileViewerForUnavailableSession("sid-1");
           events.length = 0;
           resetFileEditButton();
@@ -363,9 +366,11 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const editButtonSavePending = {{ button: fileEditButtonSnapshot(), events: events.slice(), status: fileStatus.textContent }};
           renderController.clearActiveFileSaveState();
           state.dirty = false;
+          renderController.setFileDirty(false);
           events.length = 0;
           const cleanUnsaved = {{ result: await renderController.maybeHandleUnsavedFileChanges(), events: events.slice() }};
           state.dirty = true;
+          renderController.setFileDirty(true);
           state.unsavedChoice = "discard";
           events.length = 0;
           const discardUnsaved = {{ result: await renderController.maybeHandleUnsavedFileChanges(), events: events.slice() }};
@@ -377,6 +382,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             state.viewMode = startMode;
             state.draft = draft;
             state.dirty = dirty;
+            renderController.setFileDirty(dirty);
             state.unsavedChoice = choice;
             renderController.clearFileViewerUnavailableSession();
             if (unavailable) renderController.disableFileViewerForUnavailableSession("sid-1");
@@ -397,9 +403,11 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const viewModeUnavailable = await runViewModeCase({{ startMode: "file", target: "preview", unavailable: true }});
           state.viewMode = "file";
           state.dirty = false;
+          renderController.setFileDirty(false);
           events.length = 0;
           const hideClean = {{ result: await renderController.requestHideFileViewer(), events: events.slice() }};
           state.dirty = true;
+          renderController.setFileDirty(true);
           state.unsavedChoice = "cancel";
           events.length = 0;
           const hideCancel = {{ result: await renderController.requestHideFileViewer(), events: events.slice() }};
@@ -412,6 +420,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             state.sessionId = currentSession;
             state.viewerOpen = viewerOpen;
             state.dirty = dirty;
+            renderController.setFileDirty(dirty);
             state.editMode = true;
             events.length = 0;
             fileStatus.textContent = "";
@@ -431,6 +440,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             state.inspectResult = inspectResult;
             state.inspectError = inspectError;
             state.dirty = dirty;
+            renderController.setFileDirty(dirty);
             state.unsavedChoice = choice;
             state.viewMode = "diff";
             events.length = 0;
