@@ -6143,3 +6143,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: existing-file guarded open policy now belongs to the file-viewer controller. App still owns actual draft file load primitive, raw view-mode DOM application, unsaved modal DOM, discard implementation, touch selection state/actions, paste dialog/insert actions, and generic file-open result rendering/application.
+
+## 2026-06-30T12:19:56Z Draft open primitive controller ownership
+- Functional commit `5b70838 Move draft open primitive into viewer controller` moved the draft/new-file open primitive from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the controller now owns `openDraftFilePath(path, { line })`: unavailable/session preconditions, draft request creation/finalization, draft path validation, preparing/new-file status transitions, success dispatch through `applyDraftFileLoad`, error dispatch through `renderDraftFileOpenError`, and finally cleanup. The app no longer keeps `applyDraftFileLoad` or `openDraftFilePath` wrappers.
+- Raw rendering reset remains app-owned through the explicit `resetFileViewerPanel` dependency, because that operation owns editor disposal and image/video/surface DOM reset.
+- Tests updated:
+  - `tests/test_frontend_file_viewer_module_source.py` now observes new-draft guard fallback executing the real controller primitive: dispose/reset, draft text-state application, render, edit-mode entry, active-selection persistence, and picker rerender.
+  - `tests/test_file_viewer_source.py` now probes `controller.openDraftFilePath` directly for success, invalid path, and no-session outcomes while preserving the old undefined-return shape, and source sentinels assert draft request creation/reset/error dispatch lives in `app_file_viewer.js`, not `app.js`.
+- Validation before commit:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `91 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: draft/new-file open primitive now belongs to the file-viewer controller. App still owns raw view-mode DOM application, generic existing-file load/render application, unsaved modal DOM, discard implementation, touch selection state/actions, and paste dialog/insert actions.
