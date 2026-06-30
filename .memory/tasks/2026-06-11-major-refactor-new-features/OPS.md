@@ -6476,3 +6476,11 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: explicit video preview button policy belongs to the file-viewer controller. App still owns active video fallback state, automatic preview loading, video DOM/rendering, unsaved modal DOM internals, touch press normalization/binding mechanics, raw selection extraction, raw clipboard implementation, browser URL prefix/download anchor side effects, persisted file mode storage, raw mode DOM application, raw load-result rendering, active file content metadata/text baseline, `fileEditMode` state, paste dialog DOM, touch toolbar DOM, and raw Monaco selection helpers.
+
+
+## 2026-06-30T15:40:40Z Clean-room review runner failure after video-preview policy checkpoint
+- Observation: async clean-room review run `a269b4de-5d14-487a-8290-9a56597d0bdd` failed before writing a result.
+- Raw failure reported by runner: `Async runner process 3783746 exited or disappeared before writing a result. Marked run failed by stale-run reconciliation.`
+- Intended review output file: `/tmp/codoxear-file-viewer-controller-tranche-review.md`; no review finding was produced or applied.
+- Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against the current code. The code-evidence basis through `0ce9567` remains syntax checks, focused tests, full local pytest, Docker sandbox, and diff checks recorded above.
+- Decision: continue workbench progress; retry clean-room review only at the next necessary yield or if review infrastructure becomes required for a user-facing checkpoint.
