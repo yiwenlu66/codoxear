@@ -5621,3 +5621,23 @@
   - `git diff --check` passed before staging/commit.
 - Clean-room review `4cf8170c-d34c-4712-a1cc-739a6ee0a2ec` returned PASS with no blockers despite the runner label saying failed; report saved at `/tmp/codoxear-file-viewer-target-review.md`. Review verified explicit/preferred/first/none fidelity, `changed:null` equivalence for explicit/preferred paths, first-candidate `changed` preservation, caller timing/guards/query-open/unsaved/error/fallback behavior preservation, and meaningful VM/source tests. Non-blocking notes: `Object.freeze` is cosmetic, `normalizeFileApiPath` is idempotently redundant, and shared helper bugs would affect both callers.
 - Scope note: this is file-viewer open-target selection ownership only. It does not claim file-viewer async open choreography extraction, sync-token policy changes, cache policy changes, browser-manual file-viewer evidence, or completion of the broad refactor/recovery request.
+
+
+## 2026-06-30T04:12:00Z File-viewer empty-target reset ownership
+- Functional commit `7302c32 Extract empty file viewer target reset` introduced `renderEmptyFileViewerTarget({ updateTouchToolbar = false } = {})` for the no-target file-viewer UI reset shared by `ensureCurrentFileViewerSession()` and `showFileViewer()`.
+- Mechanism: the helper performs the old empty-target operations in order: `resetFileViewerPanel()`, `clearActiveFileIdentity()`, `resetFilePickerInput()`, `renderFilePickerMenu()`, `fileStatus.textContent = "Type to search files."`, and optional `updateFileTouchToolbar()`.
+- Boundary preserved: `ensureCurrentFileViewerSession()` still owns is-open/selected checks, sync-token guards, unsaved-change prompt, candidate refresh, awaited open timing, stale return behavior, catch/status behavior, and now calls the helper with `{ updateTouchToolbar: true }` to preserve its old toolbar refresh. `showFileViewer()` still owns modal prep, query-open branch, fire-and-forget open timing, catch/status behavior, and calls the helper without toolbar update, preserving the old no-target branch. Target selection, file-open calls, sync-token policy, query-open behavior, and async timing were unchanged.
+- Tests added/updated:
+  - `eval_empty_file_viewer_target()` executes the real helper in a Node VM and verifies default call order, default status text, optional toolbar call order, and toolbar-branch status text.
+  - Source sentinels now pin helper use in `ensureCurrentFileViewerSession()` with `updateTouchToolbar: true`, helper use in `showFileViewer()` without toolbar update, helper signature, and the adjusted remaining direct `resetFileViewerPanel()` count.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused helper/source tests passed.
+  - Focused local file-viewer/file-picker/static group returned `81 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1280 passed, 136 subtests passed`.
+  - Focused Docker file-viewer/file-picker/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed before staging/commit.
+- Clean-room review `9236cab1-29e4-4f80-b42b-a1f83fb9ee33` returned PASS with no blockers or residual risks; report saved at `/tmp/codoxear-file-viewer-empty-target-review.md`. Review verified exact operation order, per-call-site toolbar behavior, no changes to target selection/file-open/sync/query-open/unsaved/error/async paths, and meaningful VM/source tests.
+- Read-only follow-up architect `004f34c1-4524-49d5-bb74-a9e85a0a3215` recommended the next low-risk atomic cut as replacing `hideFileViewer()`'s partial `activeFileLine = null` cleanup with `clearActiveFileIdentity()` after `rememberActiveFileSelection()` and existing close-menu behavior; report saved at `/tmp/codoxear-file-viewer-followup-plan.md`.
+- Scope note: this is empty-target UI reset ownership only. It does not claim hidden-viewer identity cleanup, file-viewer async open choreography extraction, sync-token policy changes, cache policy changes, browser-manual file-viewer evidence, or completion of the broad refactor/recovery request.
