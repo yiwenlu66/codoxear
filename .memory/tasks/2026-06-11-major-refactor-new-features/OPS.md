@@ -6041,3 +6041,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: editor state snapshot, capability policy, derived predicates, edit-button policy, and editor read-only synchronization now belong to the file-viewer controller. Touch selection state/actions, paste dialog/insert actions, generic file-open result rendering/application, draft inspect/open currentness behavior, and dirty unavailable transition choreography remain partly `app.js`-owned.
+
+## 2026-06-30T10:58:42Z Unsaved file decision controller ownership
+- Functional commit `e6f6337 Move unsaved file decision into viewer controller` moved `maybeHandleUnsavedFileChanges()` from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the file-viewer controller now owns the dirty-state decision policy: clean files continue immediately, discard choices call the injected discard action, save choices delegate to the controller-owned active-file save lifecycle, and cancel/unknown choices return false. The app keeps the modal prompt and discard implementation as explicit `promptUnsavedFileChoice` and `discardActiveFileEdits` dependencies.
+- Behavior preserved: open/hide/view-mode flows still call the stable `maybeHandleUnsavedFileChanges()` wrapper; the user-facing unsaved modal remains app-owned DOM, while the decision result is controller-owned and tested through the real controller.
+- Tests updated:
+  - `tests/test_frontend_file_viewer_module_source.py` now verifies real-controller clean, discard, and cancel unsaved-decision outcomes and events.
+  - `tests/test_file_viewer_source.py` source sentinels require app wrapper delegation, controller-owned dirty/prompt/discard/save branches, and explicit prompt/discard controller dependencies.
+- Validation before commit:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `91 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: dirty unsaved decision policy now belongs to the file-viewer controller. The unsaved modal DOM, discard implementation, touch selection state/actions, paste dialog/insert actions, generic file-open result rendering/application, draft inspect/open currentness behavior, and dirty unavailable transition choreography remain partly `app.js`-owned.
