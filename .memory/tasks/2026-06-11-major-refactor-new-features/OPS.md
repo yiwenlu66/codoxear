@@ -5992,3 +5992,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: pure editor capability policy moved. Editor action handlers, touch-toolbar DOM updates, current state snapshot construction, generic file-open result rendering/application, draft inspect/open currentness behavior, and dirty unavailable transition choreography remain partly `app.js`-owned.
+
+## 2026-06-30T10:19:09Z File editor state snapshot controller ownership
+- Functional commit `21a1f59 Move file editor state snapshot into viewer controller` moved `currentFileEditorState()` snapshot construction from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `createFileViewerController()` now owns `currentFileEditorState()`, building the frozen state snapshot from controller-owned active identity/save-pending/unavailable/session state and injected file kind, editability, version, draft, view mode, editor kind, edit mode, and dirty-state dependencies.
+- `app.js` keeps only the stable `currentFileEditorState()` wrapper and injects `currentFileEditorKind` plus `currentFileEditMode`; predicate wrappers still call `fileEditorCapabilities(currentFileEditorState())`.
+- Behavior preserved: the snapshot keeps the existing field shape (path/apiPath/gitPath/kind/editable/version/draft/viewMode/editorKind/editMode/dirty/savePending/sessionId/unavailable) and remains frozen. The earlier line field from active identity is not exposed because it was not part of the app-owned snapshot contract.
+- Tests updated:
+  - `tests/test_frontend_file_viewer_module_source.py` now exercises the real controller snapshot and verifies frozen output plus exact field values.
+  - `tests/test_file_viewer_source.py` source sentinels now require `app.js` wrapper delegation and controller-owned snapshot internals; the app wrapper VM fake preserves snapshot parity.
+- Validation before commit:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `91 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: editor state snapshot and capability policy now belong to the file-viewer controller. Editor action handlers, touch-toolbar DOM updates, generic file-open result rendering/application, draft inspect/open currentness behavior, and dirty unavailable transition choreography remain partly `app.js`-owned.
