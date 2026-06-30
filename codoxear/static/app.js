@@ -8508,6 +8508,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           isMarkdownPreviewable,
           resetActiveFileBufferState: () => resetActiveFileBufferState(),
           updateFileTouchToolbar: () => updateFileTouchToolbar(),
+          setFileViewMode: (mode) => setFileViewMode(mode),
+          applyActiveFileTextState: (state) => applyActiveFileTextState(state),
+          renderMonacoFile: (rel, text, lineNumber, langOverride, request) => renderMonacoFile(rel, text, lineNumber, langOverride, request),
+          setFileEditMode: (enabled) => setFileEditMode(enabled),
           applyFileMode: () => applyFileMode(),
           rememberOpenedFile: (rel, absPath) => rememberOpenedFile(rel, absPath),
           rememberActiveFileSelection: () => rememberActiveFileSelection(),
@@ -8893,16 +8897,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function applyDraftFileLoad(rel, request) {
-          if (fileViewMode !== "file") setFileViewMode("file");
-          applyActiveFileTextState({ text: "", editable: true, version: "", draft: true });
-          applyFileMode();
-          const rendered = await renderMonacoFile(rel, "", request.line, "", request);
-          if (!rendered || !isCurrentFileOpenRequest(request)) return false;
-          setFileEditMode(true);
-          fileStatus.textContent = `${rel} - new file`;
-          rememberActiveFileSelection();
-          renderFilePickerMenu();
-          return true;
+          return fileViewerController.applyDraftFileLoad(rel, request);
         }
 
         async function openDraftFilePath(path, { line = null } = {}) {

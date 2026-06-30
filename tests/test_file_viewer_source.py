@@ -135,6 +135,18 @@ def controller_identity_ctx_js(
               ctx.updateFileTouchToolbar();
               return false;
             }},
+            applyDraftFileLoad: async (rel, request) => {{
+              if (ctx.fileViewMode !== "file") ctx.setFileViewMode("file");
+              ctx.applyActiveFileTextState({{ text: "", editable: true, version: "", draft: true }});
+              ctx.applyFileMode();
+              const rendered = await ctx.renderMonacoFile(rel, "", request.line, "", request);
+              if (!rendered || !ctx.fileViewerController.isCurrentFileOpenRequest(request)) return false;
+              ctx.setFileEditMode(true);
+              ctx.fileStatus.textContent = `${{rel}} - new file`;
+              ctx.rememberActiveFileSelection();
+              ctx.renderFilePickerMenu();
+              return true;
+            }},
           }},
           fileOpenRequestId: 0,
           fileOpenAbortController: null,
@@ -1031,6 +1043,10 @@ def eval_file_open_request_sequence() -> dict:
           isMarkdownPreviewable: () => true,
           resetActiveFileBufferState: () => {{}},
           updateFileTouchToolbar: () => {{}},
+          setFileViewMode: () => {{}},
+          applyActiveFileTextState: () => {{}},
+          renderMonacoFile: async () => true,
+          setFileEditMode: () => {{}},
           applyFileMode: () => {{}},
           rememberOpenedFile: () => {{}},
           rememberActiveFileSelection: () => {{}},
@@ -1618,50 +1634,68 @@ def eval_active_file_save_success() -> dict:
 
 
 def eval_draft_file_load_choreography() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("async function applyDraftFileLoad(")
-    end = source.index("async function openDraftFilePath", start)
-    snippet = source[start:end]
+    source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const ctx = {{
-          fileViewMode: "preview",
-          current: true,
-          renderOk: true,
-          calls: [],
-          fileStatus: {{ textContent: "" }},
-          setFileViewMode: (mode) => {{ ctx.calls.push(["setFileViewMode", mode]); ctx.fileViewMode = mode; }},
-          applyActiveFileTextState: (state) => ctx.calls.push(["applyActiveFileTextState", state]),
-          applyFileMode: () => ctx.calls.push(["applyFileMode"]),
-          renderMonacoFile: async (...args) => {{ ctx.calls.push(["renderMonacoFile", ...args.slice(0, 4)]); if (ctx.staleAfterRender) ctx.current = false; return ctx.renderOk; }},
-          isCurrentFileOpenRequest: () => ctx.current,
-          setFileEditMode: (mode) => ctx.calls.push(["setFileEditMode", mode]),
-          rememberActiveFileSelection: () => ctx.calls.push(["rememberActiveFileSelection"]),
-          renderFilePickerMenu: () => ctx.calls.push(["renderFilePickerMenu"]),
-        }};
+        const ctx = {{ window: {{}} }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_draft_load = applyDraftFileLoad;\n")}, ctx);
+        vm.runInContext({json.dumps(source)}, ctx);
+        const state = {{ sessionId: "sid-1", viewMode: "preview", renderOk: true, staleAfterRender: false }};
+        const calls = [];
+        const fileStatus = {{ textContent: "", replaceChildren() {{}} }};
+        const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
+          el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children }}),
+          fileStatus,
+          currentSessionId: () => state.sessionId,
+          normalizeLineNumber: (value) => value == null ? null : Number(value),
+          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+          fileApiPathForPath: (_path, existing = "") => existing || "derived-token",
+          isUnavailable: () => false,
+          confirmReload: () => true,
+          openFilePath: async () => true,
+          api: async () => ({{ kind: "text", text: "body", path: "/abs/read" }}),
+          focusEditor: () => null,
+          disposeOpenRender: () => calls.push(["disposeOpenRender"]),
+          currentFileViewMode: () => state.viewMode,
+          activeFileEntry: () => null,
+          fileCandidateGitStateFresh: () => false,
+          isMarkdownPreviewable: () => true,
+          resetActiveFileBufferState: () => calls.push(["resetActiveFileBufferState"]),
+          updateFileTouchToolbar: () => calls.push(["updateFileTouchToolbar"]),
+          setFileViewMode: (mode) => {{ calls.push(["setFileViewMode", mode]); state.viewMode = mode; }},
+          applyActiveFileTextState: (nextState) => calls.push(["applyActiveFileTextState", nextState]),
+          renderMonacoFile: async (...args) => {{ calls.push(["renderMonacoFile", ...args.slice(0, 4)]); if (state.staleAfterRender) state.sessionId = "sid-2"; return state.renderOk; }},
+          setFileEditMode: (mode) => calls.push(["setFileEditMode", mode]),
+          applyFileMode: () => calls.push(["applyFileMode"]),
+          rememberOpenedFile: (...args) => calls.push(["rememberOpenedFile", ...args]),
+          rememberActiveFileSelection: () => calls.push(["rememberActiveFileSelection"]),
+          updateFileEditButton: () => calls.push(["updateFileEditButton"]),
+          renderFilePickerMenu: () => calls.push(["renderFilePickerMenu"]),
+        }});
+        function request() {{ return {{ requestId: 0, sessionId: "sid-1", path: "new/file.txt", apiPath: "", line: 7 }}; }}
         async function run() {{
-          const request = {{ line: 7 }};
-          const ok = await ctx.__test_draft_load("new/file.txt", request);
-          const success = {{ ok, calls: ctx.calls, status: ctx.fileStatus.textContent }};
-          ctx.calls = [];
-          ctx.fileStatus.textContent = "";
-          ctx.fileViewMode = "file";
-          ctx.current = true;
-          ctx.renderOk = false;
-          ctx.staleAfterRender = false;
-          const renderFalse = await ctx.__test_draft_load("new/file.txt", request);
-          const failedRender = {{ ok: renderFalse, calls: ctx.calls, status: ctx.fileStatus.textContent }};
-          ctx.calls = [];
-          ctx.fileStatus.textContent = "";
-          ctx.fileViewMode = "file";
-          ctx.current = true;
-          ctx.renderOk = true;
-          ctx.staleAfterRender = true;
-          const stale = await ctx.__test_draft_load("new/file.txt", request);
-          const staleResult = {{ ok: stale, calls: ctx.calls, status: ctx.fileStatus.textContent }};
+          controller.setActiveFileIdentity("new/file.txt", {{ line: 7, gitPath: false, apiPath: "" }});
+          const ok = await controller.applyDraftFileLoad("new/file.txt", request());
+          const success = {{ ok, calls: calls.slice(), status: fileStatus.textContent }};
+          calls.length = 0;
+          fileStatus.textContent = "";
+          state.sessionId = "sid-1";
+          state.viewMode = "file";
+          state.renderOk = false;
+          state.staleAfterRender = false;
+          controller.setActiveFileIdentity("new/file.txt", {{ line: 7, gitPath: false, apiPath: "" }});
+          const renderFalse = await controller.applyDraftFileLoad("new/file.txt", request());
+          const failedRender = {{ ok: renderFalse, calls: calls.slice(), status: fileStatus.textContent }};
+          calls.length = 0;
+          fileStatus.textContent = "";
+          state.sessionId = "sid-1";
+          state.viewMode = "file";
+          state.renderOk = true;
+          state.staleAfterRender = true;
+          controller.setActiveFileIdentity("new/file.txt", {{ line: 7, gitPath: false, apiPath: "" }});
+          const stale = await controller.applyDraftFileLoad("new/file.txt", request());
+          const staleResult = {{ ok: stale, calls: calls.slice(), status: fileStatus.textContent }};
           process.stdout.write(JSON.stringify({{ success, failedRender, staleResult }}));
         }}
         run().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
@@ -2298,9 +2332,14 @@ class TestFileViewerSource(unittest.TestCase):
         ])
         self.assertEqual(result["staleResult"]["status"], "")
         source = APP_JS.read_text(encoding="utf-8")
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertIn("async function applyDraftFileLoad(rel, request)", source)
+        self.assertIn("return fileViewerController.applyDraftFileLoad(rel, request);", source)
         self.assertIn("const loaded = await applyDraftFileLoad(rel, request);\n            if (!loaded) return;", source)
-        self.assertNotIn("rememberOpenedFile(rel", source[source.index("async function applyDraftFileLoad("):source.index("async function openDraftFilePath", source.index("async function applyDraftFileLoad("))])
+        self.assertIn("async function applyDraftFileLoad(rel, request)", viewer_source)
+        self.assertIn("applyActiveFileTextState({ text: \"\", editable: true, version: \"\", draft: true });", viewer_source)
+        draft_block = viewer_source[viewer_source.index("async function applyDraftFileLoad("):viewer_source.index("function renderFileOpenError", viewer_source.index("async function applyDraftFileLoad("))]
+        self.assertNotIn("rememberOpenedFile(rel", draft_block)
 
     def test_active_file_load_state_writers_are_single_owned(self) -> None:
         result = eval_active_file_load_state_writers()
@@ -2311,12 +2350,13 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertTrue(result["invalidTextThrows"])
         self.assertTrue(result["invalidNonTextThrows"])
         source = APP_JS.read_text(encoding="utf-8")
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertIn("function applyActiveFileTextState({ kind = \"text\", text = \"\", editable = false, version = \"\", draft = false } = {})", source)
         self.assertIn("function applyActiveFileDiffState({ currentText = \"\", currentExists = false } = {})", source)
         self.assertIn("function applyActiveFileNonTextState(kind)", source)
         self.assertIn('throw new Error("invalid active file text kind")', source)
         self.assertIn('throw new Error("invalid active file non-text kind")', source)
-        self.assertIn('applyActiveFileTextState({ text: "", editable: true, version: "", draft: true });', source)
+        self.assertIn('applyActiveFileTextState({ text: "", editable: true, version: "", draft: true });', viewer_source)
         self.assertIn("applyActiveFileDiffState({ currentText, currentExists: result.currentExists });", source)
         self.assertIn('applyActiveFileNonTextState("image");', source)
         self.assertIn('applyActiveFileNonTextState("pdf");', source)

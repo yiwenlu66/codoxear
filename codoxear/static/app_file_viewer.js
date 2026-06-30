@@ -34,6 +34,10 @@
     const isMarkdownPreviewable = requireFunction(deps && deps.isMarkdownPreviewable, "isMarkdownPreviewable");
     const resetActiveFileBufferState = requireFunction(deps && deps.resetActiveFileBufferState, "resetActiveFileBufferState");
     const updateFileTouchToolbar = requireFunction(deps && deps.updateFileTouchToolbar, "updateFileTouchToolbar");
+    const setFileViewMode = requireFunction(deps && deps.setFileViewMode, "setFileViewMode");
+    const applyActiveFileTextState = requireFunction(deps && deps.applyActiveFileTextState, "applyActiveFileTextState");
+    const renderMonacoFile = requireFunction(deps && deps.renderMonacoFile, "renderMonacoFile");
+    const setFileEditMode = requireFunction(deps && deps.setFileEditMode, "setFileEditMode");
     const applyFileMode = requireFunction(deps && deps.applyFileMode, "applyFileMode");
     const rememberOpenedFile = requireFunction(deps && deps.rememberOpenedFile, "rememberOpenedFile");
     const rememberActiveFileSelection = requireFunction(deps && deps.rememberActiveFileSelection, "rememberActiveFileSelection");
@@ -179,6 +183,19 @@
       return true;
     }
 
+    async function applyDraftFileLoad(rel, request) {
+      if (currentFileViewMode() !== "file") setFileViewMode("file");
+      applyActiveFileTextState({ text: "", editable: true, version: "", draft: true });
+      applyFileMode();
+      const rendered = await renderMonacoFile(rel, "", request.line, "", request);
+      if (!rendered || !isCurrentFileOpenRequest(request)) return false;
+      setFileEditMode(true);
+      fileStatus.textContent = `${rel} - new file`;
+      rememberActiveFileSelection();
+      renderFilePickerMenu();
+      return true;
+    }
+
     function renderFileOpenError(request, error) {
       if (isFileOpenAbortError(error)) return false;
       if (!isCurrentFileOpenRequest(request)) return false;
@@ -294,6 +311,7 @@
       fetchFileOpenResult,
       isFileOpenAbortError,
       finalizeFileOpenSuccess,
+      applyDraftFileLoad,
       renderFileOpenError,
     });
   }

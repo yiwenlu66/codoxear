@@ -86,6 +86,10 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             isMarkdownPreviewable: () => state.markdownPreviewable,
             resetActiveFileBufferState: () => {{ state.resetCount += 1; events.push(["resetBuffer"]); }},
             updateFileTouchToolbar: () => {{ state.touchCount += 1; events.push(["touchToolbar"]); }},
+            setFileViewMode: (mode) => {{ state.viewMode = mode; events.push(["setFileViewMode", mode]); }},
+            applyActiveFileTextState: (nextState) => events.push(["applyActiveFileTextState", nextState]),
+            renderMonacoFile: async (rel, text, line, lang) => {{ events.push(["renderMonacoFile", rel, text, line, lang]); return state.renderOk !== false; }},
+            setFileEditMode: (enabled) => events.push(["setFileEditMode", enabled]),
             applyFileMode: () => events.push(["applyFileMode"]),
             rememberOpenedFile: (rel, absPath) => events.push(["rememberOpenedFile", rel, absPath]),
             rememberActiveFileSelection: () => events.push(["rememberActiveFileSelection"]),
@@ -185,6 +189,11 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           events.length = 0;
           const finalizeResult = renderController.finalizeFileOpenSuccess("src/app.py", "/abs/src/app.py");
           const finalize = {{ result: finalizeResult, events: events.slice() }};
+          state.viewMode = "preview";
+          renderController.setActiveFileIdentity("draft/new.txt", {{ line: 5, gitPath: false, apiPath: "" }});
+          events.length = 0;
+          const draftResult = await renderController.applyDraftFileLoad("draft/new.txt", {{ requestId: 0, sessionId: "sid-1", path: "draft/new.txt", apiPath: "", line: 5 }});
+          const draft = {{ result: draftResult, status: fileStatus.textContent, viewMode: state.viewMode, events: events.slice() }};
           const render = {{
             exportFrozen: Object.isFrozen(fileViewer),
             exports: Object.keys(fileViewer).sort(),
@@ -196,6 +205,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             fetchResults: {{ diffFetch, diffFetchEvents, readFetch, readFetchEvents }},
             openErrors: {{ currentError, abortErrorResult, staleError, unknownError }},
             finalize,
+            draft,
           }};
           const availableReloadFailure = await runReloadCase("");
           const canceledReload = await runReloadCase("", false);
@@ -260,6 +270,20 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
                 ["rememberOpenedFile", "src/app.py", "/abs/src/app.py"],
                 ["rememberActiveFileSelection"],
                 ["updateFileEditButton"],
+                ["renderFilePickerMenu"],
+            ],
+        })
+        self.assertEqual(result["render"]["draft"], {
+            "result": True,
+            "status": "draft/new.txt - new file",
+            "viewMode": "file",
+            "events": [
+                ["setFileViewMode", "file"],
+                ["applyActiveFileTextState", {"text": "", "editable": True, "version": "", "draft": True}],
+                ["applyFileMode"],
+                ["renderMonacoFile", "draft/new.txt", "", 5, ""],
+                ["setFileEditMode", True],
+                ["rememberActiveFileSelection"],
                 ["renderFilePickerMenu"],
             ],
         })
