@@ -6766,3 +6766,20 @@
 - Scope of requested review: functional commit `aff1ff5` plus matching tests, with memory commit `02aeec5` for accuracy.
 - Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against the remembered-selection code. The evidence basis remains syntax checks, focused tests, available broader frontend/file/auth/static route tests, full local pytest, Docker sandbox, and diff checks recorded in the remembered-selection OPS entry.
 - Decision: continue workbench progress and do not treat absent reviewer output as a product blocker. A future review should be retried only at a real yield/decision gate or if the runner produces concrete findings.
+
+## 2026-06-30T20:40:45Z File-candidate refresh sequence controller ownership
+- Functional commit `35a56a2 Move file candidate refresh sequence into viewer controller` moved `fileCandidateRequestSeq` and stale-refresh currentness checking from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: candidate refresh currentness is controller state because it decides whether an async candidate refresh is still allowed to commit results. The controller now owns `fileCandidateRequestSeq`, `beginFileCandidateRefresh()`, and `isCurrentFileCandidateRefresh(requestSeq)`. `app.js` still owns the candidate refresh workflow itself: unavailable-session blocking, selected/session id resolution, session-currentness token checks, cache key calculation, chat/manual/git candidate collection, API calls, fallback rendering, cache writes, and DOM/menu updates.
+- Tests updated: source sentinels reject app-owned `let fileCandidateRequestSeq`, require controller-owned begin/current methods, and require `refreshFileCandidates()` to consult the controller. Real-controller probe covers first/second request sequence currentness. File-picker search VMs that execute the app-owned refresh function now provide explicit fake controller sequence methods while still testing fallback, git-failure, and cache behavior.
+- Negative evidence preserved: first full local validation exposed stale file-picker search VMs with `ReferenceError: fileViewerController is not defined`. The repair added explicit controller sequence stubs to the VMs; it did not restore app-owned sequence state.
+- Validation:
+  - `python3 -m py_compile tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `72 passed, 25 subtests passed`.
+  - Available broader frontend/file/auth/static route validation returned `277 passed, 80 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: file-candidate refresh sequence currentness belongs to the file-viewer controller. App still owns candidate refresh API/cache/render mechanics, session sync/currentness tokens, file-candidate data structures, session history fallback derivation, first-candidate fallback, raw Monaco editor/diff-editor objects, model disposal and setValue side effects, fallback DOM construction/scrolling, raw renderer/DOM plan application, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, raw mode/download/video-preview DOM mutation, compatible-preview fetch/load mechanics, and raw Monaco selection helpers.
