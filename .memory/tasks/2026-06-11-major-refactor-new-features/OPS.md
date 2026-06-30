@@ -6250,3 +6250,24 @@
 - User supplied explicit unattended-mode operating instructions: keep internal Deliverables/Completed/Next actions/Parked decisions, default to continuing, avoid repetition/trial-and-error, use strongest verification, and yield only for completion/user-only decisions/high-risk irreversible steps.
 - Updated active task `PROMPT.md` with an Operating mode section so future continuations inherit these instructions from task memory.
 - No runtime/source code changed in this memory update.
+
+## 2026-06-30T13:45:09Z Touch selection state controller ownership
+- Functional commit `425f261 Move touch selection state into viewer controller` moved `fileTouchSelectMode`, `fileTouchSelectAnchor`, `fileTouchSelectHead`, `fileTouchSelectGoalColumn`, `currentFileTouchSelectMode()`, `resetFileTouchSelectionState()`, `toggleFileTouchSelectionMode()`, and `moveFileTouchSelection()` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the controller now owns touch-selection state transitions and movement policy. App-owned code keeps raw Monaco/editor and DOM surfaces: active editor lookup, editor-position normalization, Monaco selection application, diff-editor hide-unchanged rendering, touch-toolbar DOM rendering, and button/event wiring are explicit dependencies or wrappers.
+- App-side changes: inline touch-selection globals were removed from `app.js`; app wrappers now delegate touch state/reset/toggle/move calls to the controller; `syncFileDiffSelectionMode()`, toolbar active rendering, editor-change cleanup, and touch D-pad handlers query/delegate to controller state.
+- Tests updated:
+  - `tests/test_file_viewer_source.py` touch-keydown probe now enables selection via the real controller `toggleFileTouchSelectionMode()` path and observes real movement/collapse effects instead of stubbing `currentFileTouchSelectMode`, `resetFileTouchSelectionState`, and `moveFileTouchSelection` dependencies.
+  - Delete-key probe now enters real controller selection mode and verifies valid delete clears that mode.
+  - Source assertions now require controller-owned touch selection state/move logic and reject app-owned `fileTouchSelectHead` / `currentFileTouchSelectMode: () => fileTouchSelectMode` wiring.
+- Negative evidence during validation: first focused file-viewer run exposed fixture object-literal escaping errors (Python f-string `NameError: lineNumber`) from the test update, not product behavior; escaping the inserted JavaScript object literals fixed the fixture mechanism.
+- Validation after fix:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - File-viewer focused `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader focused frontend/file-viewer/static/auth group returned `119 passed, 28 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: touch-selection state, reset/toggle/move transitions, keydown policy, delete-key policy, and native delete suppression now belong to the file-viewer controller. App still owns touch toolbar DOM, raw Monaco selection helpers, paste dialog/insert actions, raw load-result rendering, raw view-mode DOM application, unsaved modal DOM, and discard implementation.
