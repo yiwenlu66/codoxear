@@ -5758,3 +5758,22 @@
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Clean-room review attempts for this change were unavailable: async reviewer run `d70f9992-8e72-470a-a389-0c6d6ea46a4d`, critic run `f7d10931-d77a-49d2-8494-2311619e54ec`, and delegate run `87bb5918-d862-479a-9bf8-bc78fbd82183` all exited/disappeared before writing findings. These are runner failures and produced no code evidence. The commit proceeded after parent-session diff inspection plus local and Docker validation rather than blocking on unavailable review infrastructure.
 - Scope note: active file identity ownership moved; file-open request transport, file-save token lifecycle, draft load choreography, unavailable transition ownership, paste/editor actions, and toolbar/editability policy are still partly app.js-owned and remain workbench items.
+
+## 2026-06-30T07:43:00Z File-open request controller ownership
+- Functional commit `93a3e50 Move file open requests into viewer controller` moved file-open request transport state and request currentness mechanics out of inline `app.js` and into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `createFileViewerController()` now owns `fileOpenRequestId`, `fileOpenAbortController`, `abortPendingFileOpenTransport()`, `cancelPendingFileOpen()`, `beginFileOpenRequest()`, `isCurrentFileOpenRequest()`, `finalizeFileOpenRequest()`, and `startFileOpenRequest()`. `cancelPendingFileOpen()` still increments the request id, disposes the current render through an explicit `disposeOpenRender` dependency, aborts the active transport if any, and clears the stored controller.
+- `app.js` now keeps compatibility wrappers only: `cancelPendingFileOpen()`, `beginFileOpenRequest()`, `isCurrentFileOpenRequest()`, `finalizeFileOpenRequest()`, and `startFileOpenRequest()` delegate to `fileViewerController`. App cleanup no longer reaches into `fileOpenAbortController`; it calls `fileViewerController.abortPendingFileOpenTransport()` for the prior auth/logout cleanup semantics. Controller construction injects `disposeOpenRender: () => disposePdfRender()` so render disposal remains explicit rather than a hidden fallback.
+- Behavior preserved by mechanism: superseded file-open requests still abort the previous `AbortController` signal, stale request currentness still depends on request id/session/path/api identity, `done()` still only clears the owning open transport without aborting its signal, later opens still do not retroactively abort a finalized signal, and file-viewer session rebind still cancels pending opens before changing the visible session.
+- Tests updated:
+  - `tests/test_file_viewer_source.py` now executes the real `app_file_viewer.js` module for open-request supersession/finalization/cancel behavior and verifies app.js no longer declares request transport state.
+  - The shared VM fixture now exposes controller-backed request methods for app.js snippets that still exercise session-sync callers.
+  - `tests/test_auth_cleanup_source.py` now checks cleanup delegation to `fileViewerController.abortPendingFileOpenTransport()` instead of app-owned controller variables.
+  - `tests/test_frontend_file_viewer_module_source.py` supplies the required `disposeOpenRender` dependency and includes the new request-lifecycle API names in the controller ownership check.
+- Validation on the final diff:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/auth/static/picker tests returned `90 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1286 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test` returned `1285 passed, 1 skipped, 136 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: file-open request transport/currentness ownership moved. Mode resolution, load-result dispatch, draft load choreography, save request lifecycle, unavailable transition policy, paste/editor actions, and toolbar/editability policy still remain partly app.js-owned.
