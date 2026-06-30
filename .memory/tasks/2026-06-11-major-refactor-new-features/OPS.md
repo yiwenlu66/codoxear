@@ -6358,3 +6358,10 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: edit button action policy belongs to the file-viewer controller; `fileEditMode` state itself remains app-owned due the rejected flag-only migration and should move only with broader active-file state ownership.
+
+## 2026-06-30T14:42:37Z Clean-room review runner failure after edit-button policy checkpoint
+- Observation: async clean-room review run `4523beb7-d5b4-4b06-9225-3ac4a2d17fc6` failed before writing a result.
+- Raw failure reported by runner: `Async runner process 3486308 exited or disappeared before writing a result. Marked run failed by stale-run reconciliation.`
+- Intended review output file: `/tmp/codoxear-current-file-viewer-controller-review.md`; no review finding was produced or applied.
+- Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against the current code. The code-evidence basis through `24565b2` remains syntax checks, focused tests, full local pytest, Docker sandbox, and diff checks recorded above.
+- Decision: continue workbench progress; retry clean-room review only at the next necessary yield or if review infrastructure becomes required for a user-facing checkpoint.
