@@ -7052,7 +7052,6 @@
         let fileUnsavedResolver = null;
         let fileViewerSessionSyncToken = 0;
         let fileCandidateRequestSeq = 0;
-        let fileSessionSelections = new Map();
 
         function currentFileSessionId() {
           return String(fileViewerSessionId || selected || "").trim();
@@ -7129,17 +7128,7 @@
         }
 
         function rememberActiveFileSelection(sessionId = currentFileSessionId()) {
-          const sid = String(sessionId || "").trim();
-          const identity = currentActiveFileIdentity();
-          const path = String(identity.path ?? "");
-          if (!sid || path === "") return;
-          const line = activeFileLineValue();
-          fileSessionSelections.set(sid, {
-            path,
-            apiPath: identity.apiPath || "",
-            line: line == null ? null : line,
-            gitPath: Boolean(identity.gitPath),
-          });
+          return fileViewerController.rememberActiveFileSelection(sessionId);
         }
 
         function historyFileSelectionForSession(sessionId) {
@@ -7157,19 +7146,7 @@
         }
 
         function preferredFileSelectionForSession(sessionId) {
-          const sid = String(sessionId || "").trim();
-          if (!sid) return { path: "", line: null, gitPath: false };
-          const remembered = fileSessionSelections.get(sid);
-          const rememberedPath = remembered && typeof remembered.path === "string" ? remembered.path : "";
-          if (rememberedPath !== "") {
-            return {
-              path: rememberedPath,
-              apiPath: normalizeFileApiPath(remembered.apiPath),
-              line: normalizeLineNumber(remembered.line),
-              gitPath: Boolean(remembered.gitPath),
-            };
-          }
-          return historyFileSelectionForSession(sid);
+          return fileViewerController.preferredFileSelectionForSession(sessionId);
         }
 
         function resolveFileViewerOpenTarget({ sessionId = "", explicitPath = "", explicitLine = null } = {}) {
@@ -8316,7 +8293,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fmtBytes: (value) => fmtBytes(value),
           applyFileMode: () => applyFileMode(),
           rememberOpenedFile: (rel, absPath) => rememberOpenedFile(rel, absPath),
-          rememberActiveFileSelection: () => rememberActiveFileSelection(),
+          historyFileSelectionForSession: (sessionId) => historyFileSelectionForSession(sessionId),
           renderFilePickerMenu: () => renderFilePickerMenu(),
         });
 

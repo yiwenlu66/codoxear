@@ -49,6 +49,22 @@ def controller_identity_ctx_js(
             currentActiveFileLine() {{ return ctx.identity.line; }},
             isFileViewerSessionUnavailable() {{ return Boolean(ctx.fileViewerUnavailableSessionId && ctx.fileViewerSessionId && ctx.fileViewerUnavailableSessionId === ctx.fileViewerSessionId); }},
             clearFileViewerUnavailableSession() {{ ctx.fileViewerUnavailableSessionId = ""; }},
+            rememberActiveFileSelection(sid = ctx.currentFileSessionId ? ctx.currentFileSessionId() : "") {{
+              const saved = {{
+                key: sid,
+                path: ctx.activeFilePathValue(),
+                apiPath: ctx.activeFileApiPathValue(),
+                gitPath: ctx.activeFileGitPathValue(),
+                line: ctx.activeFileLineValue(),
+                syncToken: ctx.fileViewerSessionSyncToken,
+                editMode: ctx.fileEditMode,
+                savePending: ctx.fileSavePending,
+                saveToken: ctx.activeFileSaveToken,
+              }};
+              if (Array.isArray(ctx.savedSelections)) ctx.savedSelections.push(saved);
+              if (typeof calls !== "undefined" && Array.isArray(calls)) calls.push(["rememberActiveFileSelection", saved]);
+              return saved;
+            }},
             disableFileViewerForUnavailableSession(sid) {{
               ctx.rememberActiveFileSelection(sid);
               ctx.fileViewerSessionSyncToken += 1;
@@ -461,23 +477,6 @@ def eval_disable_file_viewer_for_unavailable_session() -> dict:
           updateFileEditButton: () => calls.push(["updateFileEditButton", ctx.fileEditMode]),
           updateFileTouchToolbar: () => calls.push(["updateFileTouchToolbar", ctx.fileViewerUnavailableSessionId]),
         }};
-        ctx.fileSessionSelections = {{
-          set(key, value) {{
-            const saved = {{
-              key,
-              path: value.path,
-              apiPath: value.apiPath,
-              gitPath: value.gitPath,
-              line: value.line,
-              syncToken: ctx.fileViewerSessionSyncToken,
-              editMode: ctx.fileEditMode,
-              savePending: ctx.fileSavePending,
-              saveToken: ctx.activeFileSaveToken,
-            }};
-            ctx.savedSelections.push(saved);
-            calls.push(["rememberActiveFileSelection", saved]);
-          }},
-        }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_disable_unavailable = disableFileViewerForUnavailableSession;\n")}, ctx);
         ctx.__test_disable_unavailable("dead-sid");
@@ -515,24 +514,31 @@ def eval_file_viewer_open_target() -> dict:
         const ctx = {{
           selected: "sid-1",
           fileViewerSessionId: "viewer-sid",
-          fileSessionSelections: new Map(),
+          rememberedSelections: new Map(),
           fileCandidateList: [],
           fileEntryMap: new Map(),
           normalizeLineNumber: (value) => value == null || value === "" ? null : Number(value),
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           historyFileSelectionForSession: () => ({{ path: "", line: null, gitPath: false, apiPath: "" }}),
+          fileViewerController: {{
+            preferredFileSelectionForSession: (sid) => {{
+              const remembered = ctx.rememberedSelections.get(String(sid || "").trim());
+              if (!remembered) return ctx.historyFileSelectionForSession(sid);
+              return {{ path: remembered.path, apiPath: ctx.normalizeFileApiPath(remembered.apiPath), line: ctx.normalizeLineNumber(remembered.line), gitPath: Boolean(remembered.gitPath) }};
+            }},
+          }},
           sessionIndex: new Map(),
           listFromFilesField: () => [],
           sessionRelativePath: () => "",
         }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_target = resolveFileViewerOpenTarget;\n")}, ctx);
-        ctx.fileSessionSelections.set("sid-1", {{ path: "remembered.txt", line: "9", gitPath: true, apiPath: "api-remembered" }});
+        ctx.rememberedSelections.set("sid-1", {{ path: "remembered.txt", line: "9", gitPath: true, apiPath: "api-remembered" }});
         ctx.fileCandidateList = ["first-key"];
         ctx.fileEntryMap.set("first-key", {{ path: "first.txt", changed: true, gitPath: true, apiPath: "api-first" }});
         const explicit = ctx.__test_target({{ sessionId: "sid-1", explicitPath: "explicit.md", explicitLine: "42" }});
         const preferred = ctx.__test_target({{ sessionId: "sid-1" }});
-        ctx.fileSessionSelections.clear();
+        ctx.rememberedSelections.clear();
         const first = ctx.__test_target({{ sessionId: "sid-1" }});
         ctx.fileCandidateList = [];
         ctx.fileEntryMap.clear();
@@ -757,6 +763,7 @@ def eval_file_paste_dialog_fallback() -> dict:
             fmtBytes: (value) => `${{value}}B`,
             applyFileMode: () => {{}},
             rememberOpenedFile: () => {{}},
+            historyFileSelectionForSession: () => ({{ path: "", line: null, gitPath: false, apiPath: "" }}),
             rememberActiveFileSelection: () => {{}},
             renderFilePickerMenu: () => {{}},
           }});
@@ -897,6 +904,7 @@ def eval_file_paste_insert_button_guard() -> dict:
             fmtBytes: (value) => `${{value}}B`,
             applyFileMode: () => {{}},
             rememberOpenedFile: () => {{}},
+            historyFileSelectionForSession: () => ({{ path: "", line: null, gitPath: false, apiPath: "" }}),
             rememberActiveFileSelection: () => {{}},
             renderFilePickerMenu: () => {{}},
           }});
@@ -1072,6 +1080,7 @@ def eval_file_editor_save_shortcut() -> dict:
             fmtBytes: (value) => `${{value}}B`,
             applyFileMode: () => events.push(["applyFileMode"]),
             rememberOpenedFile: (rel, absPath) => events.push(["rememberOpenedFile", rel, absPath]),
+            historyFileSelectionForSession: () => ({{ path: "", line: null, gitPath: false, apiPath: "" }}),
             rememberActiveFileSelection: () => events.push(["rememberSelection"]),
             renderFilePickerMenu: () => events.push(["renderPicker"]),
           }});
@@ -1241,6 +1250,7 @@ def eval_file_touch_selection_keydown() -> dict:
             fmtBytes: (value) => `${{value}}B`,
             applyFileMode: () => {{}},
             rememberOpenedFile: () => {{}},
+            historyFileSelectionForSession: () => ({{ path: "", line: null, gitPath: false, apiPath: "" }}),
             rememberActiveFileSelection: () => {{}},
             renderFilePickerMenu: () => {{}},
           }});
@@ -1400,6 +1410,7 @@ def eval_file_editor_delete_shortcut() -> dict:
             fmtBytes: (value) => `${{value}}B`,
             applyFileMode: () => {{}},
             rememberOpenedFile: () => {{}},
+            historyFileSelectionForSession: () => ({{ path: "", line: null, gitPath: false, apiPath: "" }}),
             rememberActiveFileSelection: () => {{}},
             renderFilePickerMenu: () => {{}},
           }});
@@ -1570,6 +1581,7 @@ def eval_file_open_request_sequence() -> dict:
           fmtBytes: (value) => `${{value}}B`,
           applyFileMode: () => {{}},
           rememberOpenedFile: () => {{}},
+          historyFileSelectionForSession: () => ({{ path: "", line: null, gitPath: false, apiPath: "" }}),
           rememberActiveFileSelection: () => {{}},
           updateFileEditButton: () => {{}},
           renderFilePickerMenu: () => {{}},
@@ -1862,6 +1874,7 @@ def eval_open_file_guard_mode_validation() -> dict:
           fmtBytes: (value) => `${{value}}B`,
           applyFileMode: () => calls.push(["applyFileMode"]),
           rememberOpenedFile: (...args) => calls.push(["rememberOpenedFile", ...args]),
+          historyFileSelectionForSession: () => ({{ path: "", line: null, gitPath: false, apiPath: "" }}),
           rememberActiveFileSelection: () => calls.push(["rememberActiveFileSelection"]),
           renderFilePickerMenu: () => calls.push(["renderFilePickerMenu"]),
         }});
@@ -1991,6 +2004,7 @@ def eval_open_file_path_mode_ownership() -> dict:
           fmtBytes: (value) => `${{value}}B`,
           applyFileMode: () => calls.push(["applyFileMode"]),
           rememberOpenedFile: (...args) => calls.push(["rememberOpenedFile", ...args]),
+          historyFileSelectionForSession: () => ({{ path: "", line: null, gitPath: false, apiPath: "" }}),
           rememberActiveFileSelection: () => calls.push(["rememberActiveFileSelection"]),
           renderFilePickerMenu: () => calls.push(["renderFilePickerMenu"]),
         }});
@@ -2180,6 +2194,7 @@ def eval_active_file_save_request_helpers() -> dict:
           fmtBytes: (value) => `${{value}}B`,
           applyFileMode: () => {{}},
           rememberOpenedFile: () => {{}},
+          historyFileSelectionForSession: () => ({{ path: "", line: null, gitPath: false, apiPath: "" }}),
           rememberActiveFileSelection: () => {{}},
           renderFilePickerMenu: () => {{}},
         }});
@@ -2423,6 +2438,7 @@ def eval_active_file_save_success() -> dict:
           fmtBytes: (value) => `${{value}}B`,
           applyFileMode: () => calls.push(["applyFileMode"]),
           rememberOpenedFile: (...args) => calls.push(["rememberOpenedFile", ...args]),
+          historyFileSelectionForSession: () => ({{ path: "", line: null, gitPath: false, apiPath: "" }}),
           rememberActiveFileSelection: () => calls.push(["rememberActiveFileSelection"]),
           updateFileEditButton: () => calls.push(["updateFileEditButton"]),
           renderFilePickerMenu: () => calls.push(["renderFilePickerMenu"]),
@@ -2604,6 +2620,7 @@ def eval_active_file_save_transport() -> dict:
           fmtBytes: (value) => `${{value}}B`,
           applyFileMode: () => calls.push(["applyFileMode"]),
           rememberOpenedFile: (...args) => calls.push(["rememberOpenedFile", ...args]),
+          historyFileSelectionForSession: () => ({{ path: "", line: null, gitPath: false, apiPath: "" }}),
           rememberActiveFileSelection: () => calls.push(["rememberActiveFileSelection"]),
           updateFileEditButton: () => calls.push(["updateFileEditButton"]),
           renderFilePickerMenu: () => calls.push(["renderFilePickerMenu"]),
@@ -2794,6 +2811,7 @@ def eval_draft_file_load_choreography() -> dict:
           fmtBytes: (value) => `${{value}}B`,
           applyFileMode: () => calls.push(["applyFileMode"]),
           rememberOpenedFile: (...args) => calls.push(["rememberOpenedFile", ...args]),
+          historyFileSelectionForSession: () => ({{ path: "", line: null, gitPath: false, apiPath: "" }}),
           rememberActiveFileSelection: () => calls.push(["rememberActiveFileSelection"]),
           updateFileEditButton: () => calls.push(["updateFileEditButton"]),
           renderFilePickerMenu: () => calls.push(["renderFilePickerMenu"]),
@@ -2949,6 +2967,7 @@ def eval_file_open_success_finalizer() -> dict:
           fmtBytes: (value) => `${{value}}B`,
           applyFileMode: () => calls.push(["applyFileMode"]),
           rememberOpenedFile: (...args) => calls.push(["rememberOpenedFile", ...args]),
+          historyFileSelectionForSession: () => ({{ path: "", line: null, gitPath: false, apiPath: "" }}),
           rememberActiveFileSelection: () => calls.push(["rememberActiveFileSelection"]),
           renderFilePickerMenu: () => calls.push(["renderFilePickerMenu"]),
         }});
@@ -3351,7 +3370,6 @@ class TestFileViewerSource(unittest.TestCase):
             ["applyFileLoadResult", "x.txt", "diff", "diff"],
             ["applyFileMode"],
             ["rememberOpenedFile", "x.txt", None],
-            ["rememberActiveFileSelection"],
             ["buttonToggle", "active", False],
             ["buttonToggle", "primary", False],
             ["buttonToggle", "dirty", False],
@@ -3420,8 +3438,18 @@ class TestFileViewerSource(unittest.TestCase):
 
     def test_file_viewer_session_sync_has_commit_guards(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertIn("let fileViewerSessionSyncToken = 0;", source)
         self.assertIn("let fileCandidateRequestSeq = 0;", source)
+        self.assertIn("let fileSessionSelections = new Map();", viewer_source)
+        self.assertNotIn("let fileSessionSelections = new Map();", source)
+        self.assertIn("function rememberActiveFileSelection(sessionId = currentFileSessionId())", viewer_source)
+        self.assertIn("function preferredFileSelectionForSession(sessionId)", viewer_source)
+        self.assertIn("function rememberActiveFileSelection(sessionId = currentFileSessionId())", source)
+        self.assertIn("return fileViewerController.rememberActiveFileSelection(sessionId);", source)
+        self.assertIn("function preferredFileSelectionForSession(sessionId)", source)
+        self.assertIn("return fileViewerController.preferredFileSelectionForSession(sessionId);", source)
+        self.assertIn("historyFileSelectionForSession: (sessionId) => historyFileSelectionForSession(sessionId)", source)
         self.assertIn("function isFileViewerSelectionCurrent(sessionId, token = null)", source)
         self.assertIn("function isFileViewerSessionCurrent(sessionId, token = null)", source)
         ensure_start = source.index("async function ensureCurrentFileViewerSession()")
@@ -3671,7 +3699,6 @@ class TestFileViewerSource(unittest.TestCase):
             ["applyFileMode"],
             ["renderMonacoFile", "new/file.txt", "", 7, ""],
             ["updateFileTouchToolbar"],
-            ["rememberActiveFileSelection"],
             ["renderFilePickerMenu"],
         ])
         self.assertEqual(result["success"]["status"], "new/file.txt - new file")
@@ -3694,7 +3721,6 @@ class TestFileViewerSource(unittest.TestCase):
             ["applyFileMode"],
             ["renderMonacoFile", "new/file.txt", "", 7, ""],
             ["updateFileTouchToolbar"],
-            ["rememberActiveFileSelection"],
             ["renderFilePickerMenu"],
         ])
         self.assertEqual(result["primitiveSuccess"]["status"], "new/file.txt - new file")
@@ -3760,7 +3786,6 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(result["calls"], [
             ["applyFileMode"],
             ["rememberOpenedFile", "src/app.py", "/abs/src/app.py"],
-            ["rememberActiveFileSelection"],
             ["buttonToggle", "active", False],
             ["buttonToggle", "primary", False],
             ["buttonToggle", "dirty", False],

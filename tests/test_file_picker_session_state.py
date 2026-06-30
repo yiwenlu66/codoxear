@@ -26,8 +26,17 @@ def eval_file_picker_session_helpers() -> dict[str, object]:
             nextActiveFileIdentity: (current, nextPath, opts = {{}}) => ({{ path: String(nextPath ?? ""), gitPath: Boolean(opts.gitPath ?? current.gitPath), apiPath: String(opts.apiPath ?? current.apiPath ?? "") }}),
             clearActiveFileIdentity: () => {{ ctx.identity = {{ path: "", apiPath: "", gitPath: false, line: null }}; }},
             beginActiveFileIdentity: (nextPath = null) => ({{ path: String(nextPath ?? ctx.identity.path), apiPath: ctx.identity.apiPath, gitPath: ctx.identity.gitPath, line: ctx.identity.line }}),
+            rememberActiveFileSelection: (sid = String(ctx.fileViewerSessionId || ctx.selected || "").trim()) => {{
+              ctx.rememberedSelections.set(String(sid || "").trim(), {{ path: ctx.identity.path, apiPath: ctx.identity.apiPath, line: ctx.identity.line, gitPath: ctx.identity.gitPath }});
+            }},
+            preferredFileSelectionForSession: (sid) => {{
+              const key = String(sid || "").trim();
+              const remembered = ctx.rememberedSelections.get(key);
+              if (remembered) return {{ path: remembered.path, apiPath: ctx.normalizeFileApiPath(remembered.apiPath), line: ctx.normalizeLineNumber(remembered.line), gitPath: Boolean(remembered.gitPath) }};
+              return ctx.historyFileSelectionForSession(key);
+            }},
           }},
-          fileSessionSelections: new Map(),
+          rememberedSelections: new Map(),
           sessionIndex: new Map([
             ["session-a", {{ cwd: "/project-A", files: ["/project-A/file-a.py"] }}],
             ["session-b", {{ cwd: "/project-B", files: ["/project-B/file-b.py"] }}],

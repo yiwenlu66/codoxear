@@ -84,7 +84,7 @@
     const fmtBytes = requireFunction(deps && deps.fmtBytes, "fmtBytes");
     const applyFileMode = requireFunction(deps && deps.applyFileMode, "applyFileMode");
     const rememberOpenedFile = requireFunction(deps && deps.rememberOpenedFile, "rememberOpenedFile");
-    const rememberActiveFileSelection = requireFunction(deps && deps.rememberActiveFileSelection, "rememberActiveFileSelection");
+    const historyFileSelectionForSession = requireFunction(deps && deps.historyFileSelectionForSession, "historyFileSelectionForSession");
     const renderFilePickerMenu = requireFunction(deps && deps.renderFilePickerMenu, "renderFilePickerMenu");
     let activeSaveConflict = null;
     let fileOpenRequestId = 0;
@@ -108,6 +108,7 @@
     let activeFileDraft = false;
     let activeVideoFallback = null;
     let unavailableSessionId = "";
+    let fileSessionSelections = new Map();
     let fileTouchSelectMode = false;
     let fileTouchSelectAnchor = null;
     let fileTouchSelectHead = null;
@@ -201,6 +202,36 @@
 
     function currentActiveFileIdentity() {
       return Object.freeze({ path: String(activeFilePath ?? ""), gitPath: Boolean(activeFileGitPath), apiPath: String(activeFileApiPath || "") });
+    }
+
+    function rememberActiveFileSelection(sessionId = currentFileSessionId()) {
+      const sid = String(sessionId || "").trim();
+      const identity = currentActiveFileIdentity();
+      const path = String(identity.path ?? "");
+      if (!sid || path === "") return;
+      const line = currentActiveFileLine();
+      fileSessionSelections.set(sid, {
+        path,
+        apiPath: identity.apiPath || "",
+        line: line == null ? null : line,
+        gitPath: Boolean(identity.gitPath),
+      });
+    }
+
+    function preferredFileSelectionForSession(sessionId) {
+      const sid = String(sessionId || "").trim();
+      if (!sid) return { path: "", line: null, gitPath: false };
+      const remembered = fileSessionSelections.get(sid);
+      const rememberedPath = remembered && typeof remembered.path === "string" ? remembered.path : "";
+      if (rememberedPath !== "") {
+        return {
+          path: rememberedPath,
+          apiPath: normalizeFileApiPath(remembered.apiPath),
+          line: normalizeLineNumber(remembered.line),
+          gitPath: Boolean(remembered.gitPath),
+        };
+      }
+      return historyFileSelectionForSession(sid);
     }
 
     function currentActiveFileLine() {
@@ -1457,6 +1488,8 @@
       nextActiveFileIdentity,
       currentActiveFileIdentity,
       currentActiveFileLine,
+      rememberActiveFileSelection,
+      preferredFileSelectionForSession,
       currentFileEditMode,
       currentFileEditorKind,
       setFileEditorKind,
