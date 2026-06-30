@@ -6078,3 +6078,19 @@
 - Attempted end-of-tranche clean-room adversarial review with async critic run `56ff7b07-b704-4537-8619-58df235fd4e5`, output target `/tmp/codoxear-file-viewer-controller-turn-review.md`.
 - Observation: async runner process exited or disappeared before writing a result and stale-run reconciliation marked the run failed. No review artifact or concrete code finding was produced.
 - Interpretation: this is infrastructure negative evidence only; it does not validate or invalidate the file-viewer controller commits. Continued work proceeds from local/Docker validation and direct inspection, with a future clean-room review still required before yielding.
+
+## 2026-06-30T11:15:28Z File viewer hide request controller ownership
+- Functional commit `bf13e0e Move file viewer hide request into controller` moved `requestHideFileViewer()` from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the controller now owns the hide-request decision gate by reusing controller-owned unsaved-change handling and calling an explicit `hideFileViewer` dependency only after the decision permits closing.
+- Behavior preserved: UI call sites still invoke the stable `requestHideFileViewer()` wrapper; clean requests hide immediately, cancel choices do not hide, and discard choices discard then hide.
+- Tests updated:
+  - `tests/test_frontend_file_viewer_module_source.py` verifies clean, cancel, and discard hide-request outcomes through the real controller.
+  - `tests/test_file_viewer_source.py` source sentinels require wrapper delegation, controller-owned hide gate, and explicit hide dependency injection.
+- Validation before commit:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `91 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: hide-request dirty gating now belongs to the file-viewer controller. App still owns the actual hide DOM teardown, raw view-mode DOM application, unsaved modal DOM, discard implementation, touch selection state/actions, paste dialog/insert actions, generic file-open result rendering/application, draft inspect/open currentness behavior, and dirty unavailable transition choreography.
