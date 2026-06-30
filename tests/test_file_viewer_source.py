@@ -1112,6 +1112,7 @@ def eval_file_open_request_sequence() -> dict:
           fileEditButton: {{ classList: {{ toggle() {{}} }}, setAttribute() {{}} }},
           iconSvg: (name) => name,
           currentSessionId: () => state.sessionId,
+          currentFileSessionId: () => state.sessionId,
           normalizeLineNumber: (value) => value == null ? null : Number(value),
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           fileApiPathForPath: (path, apiPath = "") => {{
@@ -1130,7 +1131,6 @@ def eval_file_open_request_sequence() -> dict:
           discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async () => true,
-          openFilePathWithGuard: async (...args) => {{ calls.push(["openFilePathWithGuard", ...args]); return true; }},
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
           openDraftFilePath: async (...args) => calls.push(["openDraftFilePath", ...args]),
           normalizeDraftFilePath: (value) => String(value || "").trim(),
@@ -1334,49 +1334,93 @@ def eval_resolved_open_current_guard() -> dict:
 
 
 def eval_open_file_guard_mode_validation() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    helper_start = source.index("function normalizeExplicitFileOpenMode(")
-    helper_end = source.index("function resolveFileOpenViewMode", helper_start)
-    guard_start = source.index("async function openFilePathWithGuard")
-    guard_end = source.index("async function openDraftFilePathWithGuard", guard_start)
-    snippet = source[helper_start:helper_end] + "\n" + source[guard_start:guard_end]
+    source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const calls = [];
-        const ctx = {{
-          blockUnavailableFileAction: () => false,
-          fileViewerController: {{
-            normalizeExplicitFileOpenMode: (requestedMode) => {{
-              if (requestedMode === null || requestedMode === undefined || requestedMode === "") return null;
-              if (requestedMode === "preview" || requestedMode === "file" || requestedMode === "diff") return requestedMode;
-              throw new Error("invalid file open mode");
-            }},
-          }},
-          currentFileSessionId: () => "sid-1",
-          isFileViewerSessionUnavailable: () => false,
-          maybeHandleUnsavedFileChanges: async () => true,
-          setFilePath: (...args) => calls.push(["setFilePath", ...args]),
-          setFileViewMode: (...args) => calls.push(["setFileViewMode", ...args]),
-          renderFilePickerMenu: () => calls.push(["renderFilePickerMenu"]),
-          openFilePath: async (...args) => calls.push(["openFilePath", ...args]),
-        }};
+        const ctx = {{ window: {{}} }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_guard = openFilePathWithGuard;\n")}, ctx);
+        vm.runInContext({json.dumps(source)}, ctx);
+        const calls = [];
+        const state = {{ sessionId: "sid-1", dirty: false, unavailable: false }};
+        const fileStatus = {{ textContent: "", replaceChildren() {{}} }};
+        const fileEditButton = {{
+          disabled: false,
+          innerHTML: "",
+          title: "",
+          attrs: {{}},
+          classList: {{ toggle(name, enabled) {{ calls.push(["buttonToggle", name, Boolean(enabled)]); }} }},
+          setAttribute(name, value) {{ this.attrs[name] = String(value); calls.push(["buttonAttr", name, String(value)]); }},
+        }};
+        const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
+          el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children: Array.isArray(children) ? children : [] }}),
+          fileStatus,
+          fileEditButton,
+          iconSvg: (name) => `icon:${{name}}`,
+          currentSessionId: () => state.sessionId,
+          currentFileSessionId: () => state.sessionId,
+          normalizeLineNumber: (value) => value == null || value === "" ? null : Number(value),
+          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+          fileApiPathForPath: (_path, existing) => existing || "",
+          isFileViewerOpen: () => true,
+          invalidateFileViewerSessionSync: () => calls.push(["invalidateFileViewerSessionSync"]),
+          hideFileUnsavedDialog: (choice) => calls.push(["hideFileUnsavedDialog", choice]),
+          resetFileSearchState: () => calls.push(["resetFileSearchState"]),
+          closeFilePickerMenu: (options) => calls.push(["closeFilePickerMenu", options]),
+          isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+          confirmReload: () => true,
+          promptUnsavedFileChoice: async () => "discard",
+          discardActiveFileEdits: () => {{ state.dirty = false; calls.push(["discardActiveFileEdits"]); }},
+          hideFileViewer: () => calls.push(["hideFileViewer"]),
+          openFilePath: async (...args) => calls.push(["openFilePath", ...args]),
+          setFilePath: (...args) => calls.push(["setFilePath", ...args]),
+          openDraftFilePath: async (...args) => calls.push(["openDraftFilePath", ...args]),
+          normalizeDraftFilePath: (value) => String(value || "").trim().replace(/^[/]+/, ""),
+          inspectSessionFilePath: async () => ({{ exists: false }}),
+          api: async () => ({{}}),
+          focusEditor: () => ({{ focus() {{}}, updateOptions(opts) {{ calls.push(["editorOptions", opts]); }} }}),
+          disposeOpenRender: () => calls.push(["disposeOpenRender"]),
+          currentFileViewMode: () => "file",
+          currentFileEditorKind: () => "file",
+          currentFileEditMode: () => false,
+          activeFileEntry: () => null,
+          fileCandidateGitStateFresh: () => false,
+          isMarkdownPreviewable: () => false,
+          resetActiveFileBufferState: () => calls.push(["resetActiveFileBufferState"]),
+          updateFileTouchToolbar: () => calls.push(["touchToolbar"]),
+          setFileViewMode: (...args) => calls.push(["setFileViewMode", ...args]),
+          applyActiveFileTextState: (next) => calls.push(["applyActiveFileTextState", next]),
+          renderMonacoFile: async () => true,
+          setFileEditMode: (...args) => calls.push(["setFileEditMode", ...args]),
+          currentActiveFileKind: () => "text",
+          currentActiveFileDraft: () => false,
+          currentActiveFileVersion: () => "",
+          currentActiveFileEditable: () => true,
+          currentFileDirty: () => state.dirty,
+          getFileEditorText: () => "",
+          setFileDirty: (...args) => calls.push(["setFileDirty", ...args]),
+          fmtBytes: (value) => `${{value}}B`,
+          applyFileMode: () => calls.push(["applyFileMode"]),
+          rememberOpenedFile: (...args) => calls.push(["rememberOpenedFile", ...args]),
+          rememberActiveFileSelection: () => calls.push(["rememberActiveFileSelection"]),
+          renderFilePickerMenu: () => calls.push(["renderFilePickerMenu"]),
+        }});
         (async () => {{
           let invalidMessage = "";
-          try {{ await ctx.__test_guard("x.txt", {{ mode: "bogus" }}); }} catch (err) {{ invalidMessage = err && err.message || ""; }}
+          try {{ await controller.openFilePathWithGuard("x.txt", {{ mode: "bogus" }}); }} catch (err) {{ invalidMessage = err && err.message || ""; }}
           const invalidCalls = calls.slice();
           calls.length = 0;
-          const validResult = await ctx.__test_guard("x.txt", {{ line: 4, mode: "diff", gitPath: true, apiPath: "tok" }});
+          const validResult = await controller.openFilePathWithGuard("x.txt", {{ line: 4, mode: "diff", gitPath: true, apiPath: "tok" }});
           const validCalls = calls.slice();
-          process.stdout.write(JSON.stringify({{ invalidMessage, invalidCalls, validResult, validCalls }}));
+          calls.length = 0;
+          const staleResult = await controller.openFilePathWithGuard("x.txt", {{ mode: "file", isCurrent: () => false }});
+          const staleCalls = calls.slice();
+          process.stdout.write(JSON.stringify({{ invalidMessage, invalidCalls, validResult, validCalls, staleResult, staleCalls }}));
         }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """
     )
     proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
-
 
 def eval_open_file_path_mode_ownership() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
@@ -1571,6 +1615,7 @@ def eval_active_file_save_request_helpers() -> dict:
           fileEditButton,
           iconSvg: (name) => `icon:${{name}}`,
           currentSessionId: () => state.sessionId,
+          currentFileSessionId: () => state.sessionId,
           normalizeLineNumber: (value) => value == null ? null : Number(value),
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           fileApiPathForPath: (_path, existing = "") => existing || "derived-token",
@@ -1586,7 +1631,6 @@ def eval_active_file_save_request_helpers() -> dict:
           discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async () => true,
-          openFilePathWithGuard: async (...args) => {{ calls.push(["openFilePathWithGuard", ...args]); return true; }},
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
           openDraftFilePath: async (...args) => calls.push(["openDraftFilePath", ...args]),
           normalizeDraftFilePath: (value) => String(value || "").trim(),
@@ -1772,6 +1816,7 @@ def eval_active_file_save_success() -> dict:
           fileEditButton: {{ classList: {{ toggle() {{}} }}, setAttribute() {{}} }},
           iconSvg: (name) => name,
           currentSessionId: () => state.sessionId,
+          currentFileSessionId: () => state.sessionId,
           normalizeLineNumber: (value) => value == null ? null : Number(value),
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           fileApiPathForPath: (_path, existing = "") => existing || "derived-token",
@@ -1787,7 +1832,6 @@ def eval_active_file_save_success() -> dict:
           discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async () => true,
-          openFilePathWithGuard: async (...args) => {{ calls.push(["openFilePathWithGuard", ...args]); return true; }},
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
           openDraftFilePath: async (...args) => calls.push(["openDraftFilePath", ...args]),
           normalizeDraftFilePath: (value) => String(value || "").trim(),
@@ -1906,6 +1950,7 @@ def eval_active_file_save_transport() -> dict:
           fileEditButton: {{ classList: {{ toggle() {{}} }}, setAttribute() {{}} }},
           iconSvg: (name) => name,
           currentSessionId: () => state.sessionId,
+          currentFileSessionId: () => state.sessionId,
           normalizeLineNumber: (value) => value == null ? null : Number(value),
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           fileApiPathForPath: (_path, existing = "") => existing || "derived-token",
@@ -1921,7 +1966,6 @@ def eval_active_file_save_transport() -> dict:
           discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async () => true,
-          openFilePathWithGuard: async (...args) => {{ calls.push(["openFilePathWithGuard", ...args]); return true; }},
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
           openDraftFilePath: async (...args) => calls.push(["openDraftFilePath", ...args]),
           normalizeDraftFilePath: (value) => String(value || "").trim(),
@@ -2079,6 +2123,7 @@ def eval_draft_file_load_choreography() -> dict:
           fileEditButton: {{ classList: {{ toggle() {{}} }}, setAttribute() {{}} }},
           iconSvg: (name) => name,
           currentSessionId: () => state.sessionId,
+          currentFileSessionId: () => state.sessionId,
           normalizeLineNumber: (value) => value == null ? null : Number(value),
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           fileApiPathForPath: (_path, existing = "") => existing || "derived-token",
@@ -2094,7 +2139,6 @@ def eval_draft_file_load_choreography() -> dict:
           discardActiveFileEdits: () => calls.push(["discardActiveFileEdits"]),
           hideFileViewer: () => calls.push(["hideFileViewer"]),
           openFilePath: async () => true,
-          openFilePathWithGuard: async (...args) => {{ calls.push(["openFilePathWithGuard", ...args]); return true; }},
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
           openDraftFilePath: async (...args) => calls.push(["openDraftFilePath", ...args]),
           normalizeDraftFilePath: (value) => String(value || "").trim(),
@@ -2488,6 +2532,8 @@ class TestFileViewerSource(unittest.TestCase):
             ["renderFilePickerMenu"],
             ["openFilePath", "x.txt", {"line": 4, "gitPath": True, "apiPath": "tok", "mode": "diff"}],
         ])
+        self.assertFalse(result["staleResult"])
+        self.assertEqual(result["staleCalls"], [])
 
     def test_open_file_path_mode_ownership_respects_resolved_mode(self) -> None:
         result = eval_open_file_path_mode_ownership()
@@ -2604,6 +2650,11 @@ class TestFileViewerSource(unittest.TestCase):
         guard_start = source.index("async function openFilePathWithGuard")
         guard_end = source.index("async function openFilePathWithResolvedMode", guard_start)
         guard_block = source[guard_start:guard_end]
+        self.assertIn("return await fileViewerController.openFilePathWithGuard(path, { line, mode, isCurrent, gitPath, apiPath });", guard_block)
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+        guard_start = viewer_source.index("async function openFilePathWithGuard")
+        guard_end = viewer_source.index("async function openDraftFilePathWithGuard", guard_start)
+        guard_block = viewer_source[guard_start:guard_end]
         self.assertIn("gitPath = false", guard_block)
         self.assertIn("isCurrent = null", guard_block)
         self.assertIn("const sessionAtStart = currentFileSessionId();", guard_block)
@@ -3438,6 +3489,7 @@ class TestFileViewerSource(unittest.TestCase):
         controller_end = source.index("function beginActiveFileSaveRequest", controller_start)
         controller_block = source[controller_start:controller_end]
         self.assertIn("currentSessionId: () => fileViewerSessionId", controller_block)
+        self.assertIn("currentFileSessionId: () => currentFileSessionId()", controller_block)
         self.assertIn("normalizeLineNumber", controller_block)
         self.assertIn("normalizeFileApiPath", controller_block)
         self.assertIn("fileApiPathForPath", controller_block)
@@ -3454,7 +3506,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("discardActiveFileEdits: () => discardActiveFileEdits()", controller_block)
         self.assertIn("hideFileViewer: () => hideFileViewer()", controller_block)
         self.assertIn("openFilePath: (path, options) => openFilePath(path, options)", controller_block)
-        self.assertIn("openFilePathWithGuard: (path, options) => openFilePathWithGuard(path, options)", controller_block)
+        self.assertNotIn("openFilePathWithGuard: (path, options) => openFilePathWithGuard(path, options)", controller_block)
         self.assertIn("setFilePath: (path, options) => setFilePath(path, options)", controller_block)
         self.assertIn("openDraftFilePath: (path, options) => openDraftFilePath(path, options)", controller_block)
         self.assertIn("normalizeDraftFilePath: (path) => normalizeDraftFilePath(path)", controller_block)
@@ -3464,6 +3516,9 @@ class TestFileViewerSource(unittest.TestCase):
         save_end = source.index("async function maybeHandleUnsavedFileChanges", save_start)
         save_block = source[save_start:save_end]
         self.assertIn("return await fileViewerController.saveActiveFileEdits({ exitEditMode });", save_block)
+        self.assertIn("async function openFilePathWithGuard(path, { line = null, mode = null, isCurrent = null, gitPath = false, apiPath = \"\" } = {})", viewer_source)
+        self.assertIn("const sessionAtStart = currentFileSessionId();", viewer_source)
+        self.assertIn("return Boolean(currentGuard());", viewer_source)
         self.assertIn("return await submitActiveFileSave(save, { exitEditMode });", viewer_source)
         self.assertIn("renderActiveFileSaveError(save, error);", viewer_source)
         self.assertIn("renderSaveConflict(save.sessionId, save.path, error && error.message ? error.message : \"conflict\");", viewer_source)

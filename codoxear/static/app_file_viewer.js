@@ -28,6 +28,7 @@
     const fileEditButton = requireEditButtonNode(deps && deps.fileEditButton);
     const iconSvg = requireFunction(deps && deps.iconSvg, "iconSvg");
     const currentSessionId = requireFunction(deps && deps.currentSessionId, "currentSessionId");
+    const currentFileSessionId = requireFunction(deps && deps.currentFileSessionId, "currentFileSessionId");
     const normalizeLineNumber = requireFunction(deps && deps.normalizeLineNumber, "normalizeLineNumber");
     const normalizeFileApiPath = requireFunction(deps && deps.normalizeFileApiPath, "normalizeFileApiPath");
     const fileApiPathForPath = requireFunction(deps && deps.fileApiPathForPath, "fileApiPathForPath");
@@ -42,7 +43,6 @@
     const discardActiveFileEdits = requireFunction(deps && deps.discardActiveFileEdits, "discardActiveFileEdits");
     const hideFileViewer = requireFunction(deps && deps.hideFileViewer, "hideFileViewer");
     const openFilePath = requireFunction(deps && deps.openFilePath, "openFilePath");
-    const openFilePathWithGuard = requireFunction(deps && deps.openFilePathWithGuard, "openFilePathWithGuard");
     const setFilePath = requireFunction(deps && deps.setFilePath, "setFilePath");
     const openDraftFilePath = requireFunction(deps && deps.openDraftFilePath, "openDraftFilePath");
     const normalizeDraftFilePath = requireFunction(deps && deps.normalizeDraftFilePath, "normalizeDraftFilePath");
@@ -498,6 +498,21 @@
       return true;
     }
 
+    async function openFilePathWithGuard(path, { line = null, mode = null, isCurrent = null, gitPath = false, apiPath = "" } = {}) {
+      if (blockUnavailableFileAction()) return false;
+      const sessionAtStart = currentFileSessionId();
+      const currentGuard = typeof isCurrent === "function" ? isCurrent : () => currentFileSessionId() === sessionAtStart && !isFileViewerSessionUnavailable();
+      if (!(await maybeHandleUnsavedFileChanges())) return false;
+      if (blockUnavailableFileAction()) return false;
+      if (!currentGuard()) return false;
+      const openMode = normalizeExplicitFileOpenMode(mode);
+      setFilePath(path, { line, gitPath, apiPath });
+      if (openMode) setFileViewMode(openMode);
+      renderFilePickerMenu();
+      await openFilePath(path, { line, gitPath, apiPath, mode: openMode });
+      return Boolean(currentGuard());
+    }
+
     async function openDraftFilePathWithGuard(path) {
       if (blockUnavailableFileAction()) return false;
       const rel = normalizeDraftFilePath(path);
@@ -676,6 +691,7 @@
       maybeHandleUnsavedFileChanges,
       setFileViewModeWithGuard,
       requestHideFileViewer,
+      openFilePathWithGuard,
       openDraftFilePathWithGuard,
       nextActiveFileIdentity,
       currentActiveFileIdentity,

@@ -8446,6 +8446,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileEditButton: fileEditBtn,
           iconSvg,
           currentSessionId: () => fileViewerSessionId,
+          currentFileSessionId: () => currentFileSessionId(),
           normalizeLineNumber,
           normalizeFileApiPath,
           fileApiPathForPath,
@@ -8460,7 +8461,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           discardActiveFileEdits: () => discardActiveFileEdits(),
           hideFileViewer: () => hideFileViewer(),
           openFilePath: (path, options) => openFilePath(path, options),
-          openFilePathWithGuard: (path, options) => openFilePathWithGuard(path, options),
           setFilePath: (path, options) => setFilePath(path, options),
           openDraftFilePath: (path, options) => openDraftFilePath(path, options),
           normalizeDraftFilePath: (path) => normalizeDraftFilePath(path),
@@ -8543,18 +8543,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function openFilePathWithGuard(path, { line = null, mode = null, isCurrent = null, gitPath = false, apiPath = "" } = {}) {
-          if (blockUnavailableFileAction()) return false;
-          const sessionAtStart = currentFileSessionId();
-          const currentGuard = typeof isCurrent === "function" ? isCurrent : () => currentFileSessionId() === sessionAtStart && !isFileViewerSessionUnavailable();
-          if (!(await maybeHandleUnsavedFileChanges())) return false;
-          if (blockUnavailableFileAction()) return false;
-          if (!currentGuard()) return false;
-          const openMode = normalizeExplicitFileOpenMode(mode);
-          setFilePath(path, { line, gitPath, apiPath });
-          if (openMode) setFileViewMode(openMode);
-          renderFilePickerMenu();
-          await openFilePath(path, { line, gitPath, apiPath, mode: openMode });
-          return Boolean(currentGuard());
+          return await fileViewerController.openFilePathWithGuard(path, { line, mode, isCurrent, gitPath, apiPath });
         }
 
         async function openDraftFilePathWithGuard(path) {

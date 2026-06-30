@@ -92,6 +92,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             fileEditButton,
             iconSvg: (name) => `icon:${{name}}`,
             currentSessionId: () => state.sessionId,
+            currentFileSessionId: () => state.sessionId,
             normalizeLineNumber: (value) => value == null || value === "" ? null : Number(value),
             normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
             fileApiPathForPath: (_path, existing) => existing || "derived-token",
@@ -115,7 +116,6 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
               }}
               return state.openResult === true;
             }},
-            openFilePathWithGuard: async (path, opts) => {{ events.push(["openWithGuard", path, opts]); return state.openGuardResult !== false; }},
             setFilePath: (path, opts) => events.push(["setFilePath", path, opts]),
             openDraftFilePath: async (path, opts) => {{ events.push(["openDraft", path, opts]); return state.openDraftResult !== false; }},
             normalizeDraftFilePath: (value) => String(value || "").trim().replace(/^[/]+/, ""),
@@ -651,7 +651,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["render"]["draftGuard"], {
             "draftInvalidPath": {"result": False, "status": "Choose a valid relative file path.", "viewMode": "diff", "events": []},
             "draftDirectory": {"result": False, "status": "draft/new.txt - path is a directory", "viewMode": "diff", "events": [["inspect", "draft/new.txt"]]},
-            "draftExisting": {"result": True, "status": "", "viewMode": "diff", "events": [["inspect", "draft/new.txt"], ["openWithGuard", "draft/new.txt", {"line": None, "mode": "file"}]]},
+            "draftExisting": {"result": True, "status": "", "viewMode": "file", "events": [["inspect", "draft/new.txt"], ["setFilePath", "draft/new.txt", {"line": None, "gitPath": False, "apiPath": ""}], ["setFileViewMode", "file"], ["renderFilePickerMenu"], ["open", "draft/new.txt", {"line": None, "gitPath": False, "apiPath": "", "mode": "file"}]]},
             "draftInspectError": {"result": False, "status": "error: inspect boom", "viewMode": "diff", "events": [["inspect", "draft/new.txt"]]},
             "draftNew": {"result": True, "status": "", "viewMode": "file", "events": [["inspect", "draft/new.txt"], ["setFileViewMode", "file"], ["setFilePath", "draft/new.txt", {"line": None, "gitPath": False}], ["renderFilePickerMenu"], ["openDraft", "draft/new.txt", {"line": None}]]},
         })
