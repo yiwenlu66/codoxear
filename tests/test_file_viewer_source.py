@@ -312,6 +312,9 @@ def eval_empty_file_viewer_target() -> dict:
           isFileTouchToolbarActive: () => false,
           fileEditorShortcutBlocked: () => false,
           eventTargetElement: (value) => value || null,
+          normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
+          applyFileEditorSelection: () => {{}},
+          syncFileDiffSelectionMode: () => {{}},
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
@@ -922,7 +925,21 @@ def eval_file_touch_selection_keydown() -> dict:
           }}
         }}
         function runCase(overrides = {{}}) {{
-          const events = {{ moves: [], resetArgs: [] }};
+          const events = {{ moves: [], selections: [], syncReadOnly: 0, syncDiff: 0, toolbar: 0, focus: 0, toasts: [] }};
+          const pos = {{ lineNumber: 1, column: 1 }};
+          const editor = {{
+            getPosition: () => ({{ ...pos }}),
+            getModel: () => ({{ getLineCount: () => 20, getLineMaxColumn: () => 80 }}),
+            trigger(source, command, args) {{
+              if (command === "cursorMove") {{
+                events.moves.push(args.to);
+                if (args.to === "right") pos.column += 1;
+                if (args.to === "left") pos.column = Math.max(1, pos.column - 1);
+                if (args.to === "down") pos.lineNumber += 1;
+                if (args.to === "up") pos.lineNumber = Math.max(1, pos.lineNumber - 1);
+              }}
+            }},
+          }};
           const fileStatus = {{ textContent: "", replaceChildren() {{}} }};
           const fileEditButton = {{ classList: {{ toggle() {{}} }}, setAttribute() {{}} }};
           const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
@@ -951,7 +968,7 @@ def eval_file_touch_selection_keydown() -> dict:
             normalizeDraftFilePath: (value) => String(value || "").trim(),
             inspectSessionFilePath: async () => ({{ exists: false }}),
             api: async () => ({{}}),
-            focusEditor: () => null,
+            focusEditor: () => editor,
             disposeOpenRender: () => {{}},
             currentFileViewMode: () => "file",
             currentFileEditorKind: () => "file",
@@ -960,18 +977,18 @@ def eval_file_touch_selection_keydown() -> dict:
             fileCandidateGitStateFresh: () => false,
             isMarkdownPreviewable: () => false,
             resetActiveFileBufferState: () => {{}},
-            updateFileTouchToolbar: () => {{}},
-            currentFileTouchSelectMode: () => overrides.selectMode !== false,
+            updateFileTouchToolbar: () => {{ events.toolbar += 1; }},
             isFileTouchToolbarActive: () => overrides.toolbarActive !== false && overrides.viewerOpen !== false,
             fileEditorShortcutBlocked: (target) => Boolean(overrides.nestedDialog || (target && target.shortcutBlocked) || (target && target.textEntry && !target.editorInput)),
             eventTargetElement: (value) => value instanceof FakeElement ? value : null,
-            resetFileTouchSelectionState: (opts) => events.resetArgs.push(opts || {{}}),
-            moveFileTouchSelection: (direction) => events.moves.push(direction),
+            normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
+            applyFileEditorSelection: (_editor, cursor, anchor) => {{ events.selections.push({{ cursor, anchor: anchor || null }}); }},
+            syncFileDiffSelectionMode: () => {{ events.syncDiff += 1; }},
             fileEditorDeleteCommandForKey: () => "",
             isActiveFileEditorInput: () => false,
-            focusActiveFileCodeEditor: () => null,
+            focusActiveFileCodeEditor: () => {{ events.focus += 1; return editor; }},
             nowMs: () => 0,
-            setToast: () => {{}},
+            setToast: (message) => events.toasts.push(message),
             setFileViewMode: () => {{}},
             applyActiveFileTextState: () => {{}},
             renderMonacoFile: async () => true,
@@ -989,6 +1006,8 @@ def eval_file_touch_selection_keydown() -> dict:
             rememberActiveFileSelection: () => {{}},
             renderFilePickerMenu: () => {{}},
           }});
+          controller.setActiveFileIdentity("note.txt", {{}});
+          if (overrides.selectMode !== false) controller.toggleFileTouchSelectionMode();
           const target = Object.prototype.hasOwnProperty.call(overrides, "target") ? overrides.target : new FakeElement({{ inViewer: true }});
           const event = {{
             key: overrides.key || "h",
@@ -1003,7 +1022,7 @@ def eval_file_touch_selection_keydown() -> dict:
             stopPropagation() {{ this.stopped += 1; }},
           }};
           controller.handleFileTouchSelectionKeydown(event);
-          return {{ prevented: event.prevented, stopped: event.stopped, moves: events.moves, resetArgs: events.resetArgs }};
+          return {{ prevented: event.prevented, stopped: event.stopped, moves: events.moves, mode: controller.currentFileTouchSelectMode(), selections: events.selections }};
         }}
         (() => {{
           const editorInput = new FakeElement({{ textEntry: true, editorInput: true, inViewer: true }});
@@ -1058,10 +1077,12 @@ def eval_file_editor_delete_shortcut() -> dict:
             unavailable: Boolean(overrides.unavailable),
             selectMode: overrides.selectMode !== false,
           }};
-          const calls = {{ triggers: [], toasts: [], focusCount: 0, resetCount: 0 }};
+          const calls = {{ triggers: [], toasts: [], focusCount: 0 }};
           const editorNode = {{ contains: (node) => Boolean(node && node.editorInput) }};
           const editor = {{
             getDomNode: () => editorNode,
+            getPosition: () => ({{ lineNumber: 1, column: 1 }}),
+            getModel: () => ({{ getLineCount: () => 20, getLineMaxColumn: () => 80 }}),
             trigger: (source, command, payload) => calls.triggers.push({{ source, command, payload }}),
           }};
           const fileStatus = {{ textContent: "", replaceChildren() {{}} }};
@@ -1102,12 +1123,12 @@ def eval_file_editor_delete_shortcut() -> dict:
             isMarkdownPreviewable: () => false,
             resetActiveFileBufferState: () => {{}},
             updateFileTouchToolbar: () => {{}},
-            currentFileTouchSelectMode: () => state.selectMode,
             isFileTouchToolbarActive: () => true,
             fileEditorShortcutBlocked: (target) => Boolean(overrides.nestedDialog || overrides.viewerOpen === false || (target && target.textEntry && !target.editorInput)),
             eventTargetElement: (value) => value instanceof FakeElement ? value : null,
-            resetFileTouchSelectionState: () => {{ calls.resetCount += 1; }},
-            moveFileTouchSelection: () => {{}},
+            normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
+            applyFileEditorSelection: () => {{}},
+            syncFileDiffSelectionMode: () => {{}},
             fileEditorDeleteCommandForKey: (key) => key === "backspace" ? "deleteLeft" : key === "delete" ? "deleteRight" : "",
             isActiveFileEditorInput: (target) => Boolean(target && target.editorInput),
             focusActiveFileCodeEditor: () => {{ calls.focusCount += 1; return editor; }},
@@ -1131,6 +1152,8 @@ def eval_file_editor_delete_shortcut() -> dict:
             renderFilePickerMenu: () => {{}},
           }});
           controller.setActiveFileIdentity(overrides.path === false ? "" : "note.txt", {{ gitPath: Boolean(overrides.gitPath), apiPath: overrides.apiPath || "" }});
+          if (state.selectMode) controller.toggleFileTouchSelectionMode();
+          calls.focusCount = 0;
           if (state.unavailable) controller.disableFileViewerForUnavailableSession("sid-1");
           const event = {{
             key: overrides.key || "Backspace",
@@ -1166,7 +1189,7 @@ def eval_file_editor_delete_shortcut() -> dict:
             stopPropagation() {{ this.stopped += 1; }},
           }};
           const nativeSecondResult = controller.suppressFileEditorNativeDelete(nativeSecond);
-          return {{ handled, prevented: event.prevented, stopped: event.stopped, triggers: calls.triggers, focusCount: calls.focusCount, resetCount: calls.resetCount, native: {{ result: nativeResult, prevented: nativeEvent.prevented, stopped: nativeEvent.stopped, secondResult: nativeSecondResult, secondPrevented: nativeSecond.prevented, secondStopped: nativeSecond.stopped }}, toasts: calls.toasts }};
+          return {{ handled, prevented: event.prevented, stopped: event.stopped, triggers: calls.triggers, focusCount: calls.focusCount, mode: controller.currentFileTouchSelectMode(), native: {{ result: nativeResult, prevented: nativeEvent.prevented, stopped: nativeEvent.stopped, secondResult: nativeSecondResult, secondPrevented: nativeSecond.prevented, secondStopped: nativeSecond.stopped }}, toasts: calls.toasts }};
         }}
         (() => {{
           const editorInput = new FakeElement({{ textEntry: true, editorInput: true }});
@@ -1254,6 +1277,9 @@ def eval_file_open_request_sequence() -> dict:
           isFileTouchToolbarActive: () => false,
           fileEditorShortcutBlocked: () => false,
           eventTargetElement: (value) => value || null,
+          normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
+          applyFileEditorSelection: () => {{}},
+          syncFileDiffSelectionMode: () => {{}},
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
@@ -1377,6 +1403,9 @@ def eval_file_viewer_session_sync_race() -> dict:
           isFileTouchToolbarActive: () => false,
           fileEditorShortcutBlocked: () => false,
           eventTargetElement: (value) => value || null,
+          normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
+          applyFileEditorSelection: () => {{}},
+          syncFileDiffSelectionMode: () => {{}},
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
@@ -1518,6 +1547,9 @@ def eval_open_file_guard_mode_validation() -> dict:
           isFileTouchToolbarActive: () => false,
           fileEditorShortcutBlocked: () => false,
           eventTargetElement: (value) => value || null,
+          normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
+          applyFileEditorSelection: () => {{}},
+          syncFileDiffSelectionMode: () => {{}},
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
@@ -1630,6 +1662,9 @@ def eval_open_file_path_mode_ownership() -> dict:
           isFileTouchToolbarActive: () => false,
           fileEditorShortcutBlocked: () => false,
           eventTargetElement: (value) => value || null,
+          normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
+          applyFileEditorSelection: () => {{}},
+          syncFileDiffSelectionMode: () => {{}},
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
@@ -1804,6 +1839,9 @@ def eval_active_file_save_request_helpers() -> dict:
           isFileTouchToolbarActive: () => false,
           fileEditorShortcutBlocked: () => false,
           eventTargetElement: (value) => value || null,
+          normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
+          applyFileEditorSelection: () => {{}},
+          syncFileDiffSelectionMode: () => {{}},
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
@@ -2016,6 +2054,9 @@ def eval_active_file_save_success() -> dict:
           isFileTouchToolbarActive: () => false,
           fileEditorShortcutBlocked: () => false,
           eventTargetElement: (value) => value || null,
+          normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
+          applyFileEditorSelection: () => {{}},
+          syncFileDiffSelectionMode: () => {{}},
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
@@ -2173,6 +2214,9 @@ def eval_active_file_save_transport() -> dict:
           isFileTouchToolbarActive: () => false,
           fileEditorShortcutBlocked: () => false,
           eventTargetElement: (value) => value || null,
+          normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
+          applyFileEditorSelection: () => {{}},
+          syncFileDiffSelectionMode: () => {{}},
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
@@ -2345,6 +2389,9 @@ def eval_draft_file_load_choreography() -> dict:
           isFileTouchToolbarActive: () => false,
           fileEditorShortcutBlocked: () => false,
           eventTargetElement: (value) => value || null,
+          normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
+          applyFileEditorSelection: () => {{}},
+          syncFileDiffSelectionMode: () => {{}},
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
@@ -2484,6 +2531,9 @@ def eval_file_open_success_finalizer() -> dict:
           isFileTouchToolbarActive: () => false,
           fileEditorShortcutBlocked: () => false,
           eventTargetElement: (value) => value || null,
+          normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
+          applyFileEditorSelection: () => {{}},
+          syncFileDiffSelectionMode: () => {{}},
           resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
           moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
           fileEditorDeleteCommandForKey: () => "",
@@ -3270,15 +3320,17 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('moveFileTouchSelection("left")', source)
         self.assertIn('moveFileTouchSelection("down")', source)
         self.assertIn('moveFileTouchSelection("right")', source)
-        self.assertIn('editor.trigger("file-touch-select", "cursorMove", args);', source)
-        self.assertIn('{ to: "left", by: "character", value: 1, select: true }', source)
-        self.assertIn('{ to: "right", by: "character", value: 1, select: true }', source)
-        self.assertIn('{ to: "up", by: "wrappedLine", value: 1, select: true }', source)
-        self.assertIn('{ to: "down", by: "wrappedLine", value: 1, select: true }', source)
-        self.assertIn("fileTouchSelectHead", source)
+        self.assertIn('editor.trigger("file-touch-select", "cursorMove", args);', viewer_source)
+        self.assertIn('{ to: "left", by: "character", value: 1, select: true }', viewer_source)
+        self.assertIn('{ to: "right", by: "character", value: 1, select: true }', viewer_source)
+        self.assertIn('{ to: "up", by: "wrappedLine", value: 1, select: true }', viewer_source)
+        self.assertIn('{ to: "down", by: "wrappedLine", value: 1, select: true }', viewer_source)
+        self.assertIn("fileTouchSelectHead", viewer_source)
+        self.assertNotIn("fileTouchSelectHead", source)
         self.assertIn('addAppEvent(document, "keydown", handleFileTouchSelectionKeydown, true);', source)
-        self.assertIn('fileTouchSelectMode', source)
-        self.assertIn('currentFileTouchSelectMode: () => fileTouchSelectMode', source)
+        self.assertIn('fileTouchSelectMode', viewer_source)
+        self.assertNotIn('currentFileTouchSelectMode: () => fileTouchSelectMode', source)
+        self.assertIn('function currentFileTouchSelectMode()', viewer_source)
         self.assertIn('function handleFileTouchSelectionKeydown(event)', viewer_source)
         self.assertIn('useTouchFileEditorControls()', source)
         self.assertNotIn('if (current.column > 1) {', source)
@@ -3286,7 +3338,7 @@ class TestFileViewerSource(unittest.TestCase):
     def test_touch_toolbar_hides_unusable_controls(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         css_source = APP_CSS.read_text(encoding="utf-8")
-        self.assertIn('fileTouchDpad.style.display = fileTouchSelectMode ? "grid" : "none";', source)
+        self.assertIn('fileTouchDpad.style.display = currentFileTouchSelectMode() ? "grid" : "none";', source)
         self.assertIn('fileTouchCopyBtn.style.display = hasSelection ? "" : "none";', source)
         self.assertIn('fileTouchPasteBtn.style.display = canPaste ? "" : "none";', source)
         self.assertIn("justify-content: space-between;", css_source)
@@ -3399,12 +3451,24 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('if (fileEditorShortcutBlocked(target)) return;', viewer_source)
         self.assertNotIn('isTextEntryElement(target) && !target.classList.contains("inputarea")', source)
         result = eval_file_touch_selection_keydown()
-        self.assertEqual(result["validMove"], {"prevented": 1, "stopped": 1, "moves": ["right"], "resetArgs": []})
-        self.assertEqual(result["validEscape"], {"prevented": 1, "stopped": 1, "moves": [], "resetArgs": [{"collapse": True}]})
-        self.assertEqual(result["printableBlocked"], {"prevented": 1, "stopped": 1, "moves": [], "resetArgs": []})
+        self.assertEqual(result["validMove"]["prevented"], 1)
+        self.assertEqual(result["validMove"]["stopped"], 1)
+        self.assertEqual(result["validMove"]["moves"], ["right"])
+        self.assertTrue(result["validMove"]["mode"])
+        self.assertEqual(result["validEscape"]["prevented"], 1)
+        self.assertEqual(result["validEscape"]["stopped"], 1)
+        self.assertEqual(result["validEscape"]["moves"], [])
+        self.assertFalse(result["validEscape"]["mode"])
+        self.assertEqual(result["validEscape"]["selections"][-1], {"cursor": {"lineNumber": 1, "column": 1}, "anchor": None})
+        self.assertEqual(result["printableBlocked"]["prevented"], 1)
+        self.assertEqual(result["printableBlocked"]["stopped"], 1)
+        self.assertEqual(result["printableBlocked"]["moves"], [])
+        self.assertTrue(result["printableBlocked"]["mode"])
         for key in ("nestedDialog", "viewerClosed", "otherTextEntry", "outsideViewerButton", "toolbarInactive"):
             with self.subTest(key=key):
-                self.assertEqual(result[key], {"prevented": 0, "stopped": 0, "moves": [], "resetArgs": []})
+                self.assertEqual(result[key]["prevented"], 0)
+                self.assertEqual(result[key]["stopped"], 0)
+                self.assertEqual(result[key]["moves"], [])
 
     def test_delete_backspace_is_single_owned_in_touch_select_edit_mode(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -3448,7 +3512,7 @@ class TestFileViewerSource(unittest.TestCase):
                 self.assertEqual(case["stopped"], 1)
                 self.assertEqual(case["triggers"], [{"source": "file-editor-delete-key", "command": command, "payload": None}])
                 self.assertEqual(case["focusCount"], 1)
-                self.assertEqual(case["resetCount"], 1)
+                self.assertFalse(case["mode"])
                 self.assertEqual(case["native"], {"result": True, "prevented": 1, "stopped": 1, "secondResult": False, "secondPrevented": 0, "secondStopped": 0})
         for key in ("nestedDialog", "viewerClosed", "otherTextEntry", "notEdit", "unavailable"):
             with self.subTest(key=key):
@@ -3458,7 +3522,7 @@ class TestFileViewerSource(unittest.TestCase):
                 self.assertEqual(case["stopped"], 0)
                 self.assertEqual(case["triggers"], [])
                 self.assertEqual(case["focusCount"], 0)
-                self.assertEqual(case["resetCount"], 0)
+                self.assertTrue(case["mode"])
 
     def test_range_selection_does_not_collapse_back_to_cursor(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

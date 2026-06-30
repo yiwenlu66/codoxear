@@ -7063,10 +7063,6 @@
         let fileUnsavedResolver = null;
         let fileViewerSessionSyncToken = 0;
         let fileCandidateRequestSeq = 0;
-        let fileTouchSelectMode = false;
-        let fileTouchSelectAnchor = null;
-        let fileTouchSelectHead = null;
-        let fileTouchSelectGoalColumn = null;
         let fileSessionSelections = new Map();
 
         function currentFileSessionId() {
@@ -7363,10 +7359,7 @@
             fileEditor = null;
           }
           fileEditorKind = "";
-          fileTouchSelectMode = false;
-          fileTouchSelectAnchor = null;
-          fileTouchSelectHead = null;
-          fileTouchSelectGoalColumn = null;
+          clearFileTouchSelectionState();
         }
 
         function disposePdfRender() {
@@ -7440,7 +7433,7 @@
 
         function syncFileDiffSelectionMode() {
           if (fileEditorKind !== "diff" || !fileEditor || typeof fileEditor.updateOptions !== "function") return;
-          const hideOpts = fileTouchSelectMode
+          const hideOpts = currentFileTouchSelectMode()
             ? { enabled: false }
             : {
                 enabled: true,
@@ -7519,77 +7512,32 @@
           }
           const canPaste = activeFileEditorIdleTextWritable();
           const hasSelection = Boolean(getActiveFileSelectionText());
-          fileTouchSelectBtn.classList.toggle("active", fileTouchSelectMode);
-          fileTouchDpad.style.display = fileTouchSelectMode ? "grid" : "none";
+          fileTouchSelectBtn.classList.toggle("active", currentFileTouchSelectMode());
+          fileTouchDpad.style.display = currentFileTouchSelectMode() ? "grid" : "none";
           fileTouchCopyBtn.style.display = hasSelection ? "" : "none";
           fileTouchPasteBtn.style.display = canPaste ? "" : "none";
           fileTouchActions.style.display = "flex";
           fileTouchToolbar.style.display = "flex";
         }
 
-        function resetFileTouchSelectionState({ collapse = false } = {}) {
-          const editor = collapse ? getActiveFileCodeEditor() : null;
-          const cursor = editor ? normalizeFileEditorPosition(editor, editor.getPosition && editor.getPosition()) : null;
-          fileTouchSelectMode = false;
-          fileTouchSelectAnchor = null;
-          fileTouchSelectHead = null;
-          fileTouchSelectGoalColumn = null;
-          if (editor && cursor) applyFileEditorSelection(editor, cursor, null);
-          syncFileEditorReadOnly();
-          syncFileDiffSelectionMode();
-          updateFileTouchToolbar();
+        function clearFileTouchSelectionState() {
+          return fileViewerController.clearFileTouchSelectionState();
+        }
+
+        function currentFileTouchSelectMode() {
+          return fileViewerController.currentFileTouchSelectMode();
+        }
+
+        function resetFileTouchSelectionState(options) {
+          return fileViewerController.resetFileTouchSelectionState(options);
         }
 
         function toggleFileTouchSelectionMode() {
-          if (fileTouchSelectMode) {
-            resetFileTouchSelectionState({ collapse: true });
-            focusActiveFileCodeEditor();
-            return;
-          }
-          const editor = getActiveFileCodeEditor();
-          if (!editor) return;
-          const cursor = normalizeFileEditorPosition(editor, editor.getPosition && editor.getPosition()) || { lineNumber: 1, column: 1 };
-          fileTouchSelectMode = true;
-          fileTouchSelectAnchor = { ...cursor };
-          fileTouchSelectHead = { ...cursor };
-          fileTouchSelectGoalColumn = cursor.column;
-          applyFileEditorSelection(editor, cursor, cursor);
-          syncFileEditorReadOnly();
-          syncFileDiffSelectionMode();
-          updateFileTouchToolbar();
-          focusActiveFileCodeEditor();
+          return fileViewerController.toggleFileTouchSelectionMode();
         }
 
         function moveFileTouchSelection(direction) {
-          if (!fileTouchSelectMode) return;
-          const editor = getActiveFileCodeEditor();
-          if (!editor || typeof editor.trigger !== "function") {
-            setToast("selection move unavailable");
-            return;
-          }
-          const args =
-            direction === "left"
-              ? { to: "left", by: "character", value: 1, select: true }
-              : direction === "right"
-                ? { to: "right", by: "character", value: 1, select: true }
-                : direction === "up"
-                  ? { to: "up", by: "wrappedLine", value: 1, select: true }
-                  : direction === "down"
-                    ? { to: "down", by: "wrappedLine", value: 1, select: true }
-                    : null;
-          if (!args) return;
-          try {
-            editor.trigger("file-touch-select", "cursorMove", args);
-            const pos = normalizeFileEditorPosition(editor, editor.getPosition && editor.getPosition());
-            if (pos) {
-              fileTouchSelectHead = { ...pos };
-              fileTouchSelectGoalColumn = pos.column;
-            }
-            focusActiveFileCodeEditor();
-            updateFileTouchToolbar();
-          } catch (e) {
-            setToast(`selection move error: ${e && e.message ? e.message : "unknown error"}`);
-          }
+          return fileViewerController.moveFileTouchSelection(direction);
         }
 
         function isActiveFileEditorInput(target) {
@@ -8074,7 +8022,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             fileEditorModels = [fileEditor.getModel()].filter(Boolean);
             fileEditorChangeDisposable = fileEditor.onDidChangeModelContent(() => {
               if (fileEditorProgrammaticChange) return;
-              if (fileTouchSelectMode) resetFileTouchSelectionState();
+              if (currentFileTouchSelectMode()) resetFileTouchSelectionState();
               setFileDirty(getFileEditorText() !== String(activeFileText || ""));
             });
           } else {
@@ -8433,12 +8381,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           isMarkdownPreviewable,
           resetActiveFileBufferState: () => resetActiveFileBufferState(),
           updateFileTouchToolbar: () => updateFileTouchToolbar(),
-          currentFileTouchSelectMode: () => fileTouchSelectMode,
           isFileTouchToolbarActive: () => isFileTouchToolbarActive(),
           fileEditorShortcutBlocked: (target) => fileEditorShortcutBlocked(target),
           eventTargetElement: (value) => value instanceof HTMLElement ? value : null,
-          resetFileTouchSelectionState: (options) => resetFileTouchSelectionState(options),
-          moveFileTouchSelection: (direction) => moveFileTouchSelection(direction),
+          normalizeFileEditorPosition: (editor, position) => normalizeFileEditorPosition(editor, position),
+          applyFileEditorSelection: (editor, cursor, anchor) => applyFileEditorSelection(editor, cursor, anchor),
+          syncFileDiffSelectionMode: () => syncFileDiffSelectionMode(),
           fileEditorDeleteCommandForKey: (key) => fileEditorDeleteCommandForKey(key),
           isActiveFileEditorInput: (target) => isActiveFileEditorInput(target),
           focusActiveFileCodeEditor: () => focusActiveFileCodeEditor(),
