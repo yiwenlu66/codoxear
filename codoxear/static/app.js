@@ -7114,10 +7114,6 @@
           fileViewerController.clearActiveFileIdentity({ line });
         }
 
-        function beginFileOpenRequest(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {}) {
-          return fileViewerController.beginFileOpenRequest(nextPath, { line, gitPath, apiPath });
-        }
-
         function isCurrentFileOpenRequest(request) {
           return fileViewerController.isCurrentFileOpenRequest(request);
         }
@@ -7138,14 +7134,6 @@
             isFileViewerSelectionCurrent(sid, token) &&
               String(fileViewerSessionId || "").trim() === sid
           );
-        }
-
-        function finalizeFileOpenRequest(request) {
-          fileViewerController.finalizeFileOpenRequest(request);
-        }
-
-        function startFileOpenRequest(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {}) {
-          return fileViewerController.startFileOpenRequest(nextPath, { line, gitPath, apiPath });
         }
 
         function rememberActiveFileSelection(sessionId = currentFileSessionId()) {
@@ -8460,9 +8448,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           promptUnsavedFileChoice: () => promptFileUnsavedChoice(),
           discardActiveFileEdits: () => discardActiveFileEdits(),
           hideFileViewer: () => hideFileViewer(),
-          openFilePath: (path, options) => openFilePath(path, options),
           setFilePath: (path, options) => setFilePath(path, options),
           resetFileViewerPanel: () => resetFileViewerPanel(),
+          applyFileLoadResult: (rel, result, request, options) => applyFileLoadResult(rel, result, request, options),
           normalizeDraftFilePath: (path) => normalizeDraftFilePath(path),
           inspectSessionFilePath: (path, options) => inspectSessionFilePath(path, options),
           api: (url, options) => api(url, options),
@@ -9609,45 +9597,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return true;
         }
 
-        function finalizeFileOpenSuccess(rel, absPath = null) {
-          return fileViewerController.finalizeFileOpenSuccess(rel, absPath);
-        }
-
-        function normalizeExplicitFileOpenMode(requestedMode) {
-          return fileViewerController.normalizeExplicitFileOpenMode(requestedMode);
-        }
-
-        function resolveFileOpenViewMode(request, rel, requestedMode = null) {
-          return fileViewerController.resolveFileOpenViewMode(request, rel, requestedMode);
-        }
-
-        async function openFilePath(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined, mode = null } = {}) {
-          if (blockUnavailableFileAction()) return false;
-          if (!fileViewerSessionId) return false;
-          const openRequest = startFileOpenRequest(nextPath, { line, gitPath, apiPath });
-          const request = openRequest.request;
-          const rel = openRequest.path;
-          if (!rel) {
-            fileStatus.textContent = "Choose a file first.";
-            openRequest.done();
-            return false;
-          }
-          fileStatus.textContent = "Loading...";
-          resetFileViewerPanel();
-          try {
-            const viewMode = resolveFileOpenViewMode(request, rel, mode);
-            if (viewMode !== fileViewMode) setFileViewMode(viewMode);
-            const openResult = await fileViewerController.fetchFileOpenResult(request, rel, viewMode);
-            if (!isCurrentFileOpenRequest(request)) return false;
-            const loaded = await applyFileLoadResult(rel, openResult.result, request, { viewMode });
-            if (!loaded) return false;
-            return finalizeFileOpenSuccess(rel, openResult.absPath);
-          } catch (e) {
-            return fileViewerController.renderFileOpenError(request, e);
-          } finally {
-            openRequest.done();
-          }
-        }
         fileBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();

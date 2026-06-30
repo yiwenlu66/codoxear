@@ -106,15 +106,15 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             promptUnsavedFileChoice: async () => {{ events.push(["promptUnsaved", state.unsavedChoice || "cancel"]); return state.unsavedChoice || "cancel"; }},
             discardActiveFileEdits: () => events.push(["discardActiveFileEdits"]),
             hideFileViewer: () => events.push(["hideFileViewer"]),
-            openFilePath: async (path, opts) => {{
-              events.push(["open", path, opts]);
+            applyFileLoadResult: async (rel, result, request, opts) => {{
+              events.push(["applyFileLoadResult", rel, result && result.kind, opts && opts.viewMode]);
               if (state.openEffect === "unavailable") {{
                 if (controller) controller.disableFileViewerForUnavailableSession(state.sessionId);
               }} else if (state.openEffect === "switch-session") {{
                 state.sessionId = "sid-2";
                 state.path = "src/app.py";
               }}
-              return state.openResult === true;
+              return state.openResult !== false;
             }},
             setFilePath: (path, opts) => events.push(["setFilePath", path, opts]),
             resetFileViewerPanel: () => events.push(["resetFileViewerPanel"]),
@@ -625,9 +625,9 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "viewModeDraftBlocked": {"result": False, "viewMode": "file", "status": "", "events": []},
             "viewModeDiscardOpen": {
                 "result": True,
-                "viewMode": "preview",
-                "status": "",
-                "events": [["promptUnsaved", "discard"], ["discardActiveFileEdits"], ["setFileViewMode", "preview"], ["renderFilePickerMenu"], ["open", "state.md", {"line": 11, "gitPath": True, "apiPath": "state-token"}]],
+                "viewMode": "file",
+                "status": "Loading...",
+                "events": [["promptUnsaved", "discard"], ["discardActiveFileEdits"], ["setFileViewMode", "preview"], ["renderFilePickerMenu"], ["disposeOpenRender"], ["resetFileViewerPanel"], ["setFileViewMode", "file"], ["api", "/api/sessions/sid-1/file/read?path=state.md&path_token=state-token&git_path=1", False], ["applyFileLoadResult", "state.md", "text", "file"], ["applyFileMode"], ["rememberOpenedFile", "state.md", "/abs/read"], ["rememberActiveFileSelection"], ["buttonClass", "active", True], ["buttonClass", "primary", True], ["buttonClass", "dirty", True], ["buttonAttr", "aria-label", "Save file"], ["touchToolbar"], ["renderFilePickerMenu"]],
             },
             "viewModeCancel": {"result": False, "viewMode": "file", "status": "", "events": [["promptUnsaved", "cancel"]]},
             "viewModeUnavailable": {"result": False, "viewMode": "file", "status": "Session is no longer available; copy unsaved edits before closing.", "events": []},
@@ -651,7 +651,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["render"]["draftGuard"], {
             "draftInvalidPath": {"result": False, "status": "Choose a valid relative file path.", "viewMode": "diff", "events": []},
             "draftDirectory": {"result": False, "status": "draft/new.txt - path is a directory", "viewMode": "diff", "events": [["inspect", "draft/new.txt"]]},
-            "draftExisting": {"result": True, "status": "", "viewMode": "file", "events": [["inspect", "draft/new.txt"], ["setFilePath", "draft/new.txt", {"line": None, "gitPath": False, "apiPath": ""}], ["setFileViewMode", "file"], ["renderFilePickerMenu"], ["open", "draft/new.txt", {"line": None, "gitPath": False, "apiPath": "", "mode": "file"}]]},
+            "draftExisting": {"result": True, "status": "Loading...", "viewMode": "file", "events": [["inspect", "draft/new.txt"], ["setFilePath", "draft/new.txt", {"line": None, "gitPath": False, "apiPath": ""}], ["setFileViewMode", "file"], ["renderFilePickerMenu"], ["disposeOpenRender"], ["resetFileViewerPanel"], ["api", "/api/sessions/sid-1/file/read?path=draft%2Fnew.txt", False], ["applyFileLoadResult", "draft/new.txt", "text", "file"], ["applyFileMode"], ["rememberOpenedFile", "draft/new.txt", "/abs/read"], ["rememberActiveFileSelection"], ["buttonClass", "active", True], ["buttonClass", "primary", True], ["buttonClass", "dirty", False], ["buttonAttr", "aria-label", "Save file"], ["touchToolbar"], ["renderFilePickerMenu"]]},
             "draftInspectError": {"result": False, "status": "error: inspect boom", "viewMode": "diff", "events": [["inspect", "draft/new.txt"]]},
             "draftNew": {"result": True, "status": "draft/new.txt - new file", "viewMode": "file", "events": [["inspect", "draft/new.txt"], ["setFileViewMode", "file"], ["setFilePath", "draft/new.txt", {"line": None, "gitPath": False}], ["renderFilePickerMenu"], ["disposeOpenRender"], ["resetFileViewerPanel"], ["applyActiveFileTextState", {"text": "", "editable": True, "version": "", "draft": True}], ["applyFileMode"], ["renderMonacoFile", "draft/new.txt", "", None, ""], ["setFileEditMode", True], ["rememberActiveFileSelection"], ["renderFilePickerMenu"]]},
         })
@@ -675,21 +675,22 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         available = result["availableReloadFailure"]
         self.assertEqual(available["status"], "src/app.py - reload failed")
         self.assertIn(["confirm", "Reload src/app.py from disk and discard your unsaved editor draft?"], available["events"])
-        self.assertIn(["open", "src/app.py", {"line": 7, "gitPath": True, "apiPath": "api-token"}], available["events"])
+        self.assertIn(["api", "/api/sessions/sid-1/file/read?path=src%2Fapp.py&path_token=api-token&git_path=1", False], available["events"])
+        self.assertIn(["applyFileLoadResult", "src/app.py", "text", "file"], available["events"])
         self.assertIn(["preventDefault"], available["events"])
         self.assertIn(["stopPropagation"], available["events"])
         self.assertTrue(available["current"])
 
         canceled = result["canceledReload"]
         self.assertEqual(canceled["status"], "")
-        self.assertFalse(any(event[0] == "open" for event in canceled["events"]))
+        self.assertFalse(any(event[0] == "api" for event in canceled["events"]))
 
         unavailable = result["unavailableReloadFailure"]
         self.assertEqual(unavailable["status"], "Session is no longer available; copy unsaved edits before closing.")
         self.assertFalse(unavailable["current"])
 
         switched = result["switchedSessionReloadFailure"]
-        self.assertEqual(switched["status"], "Reloading src/app.py...")
+        self.assertEqual(switched["status"], "Loading...")
         self.assertFalse(switched["current"])
 
         keep_current = result["keepCurrent"]

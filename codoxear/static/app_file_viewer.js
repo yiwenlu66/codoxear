@@ -42,9 +42,9 @@
     const promptUnsavedFileChoice = requireFunction(deps && deps.promptUnsavedFileChoice, "promptUnsavedFileChoice");
     const discardActiveFileEdits = requireFunction(deps && deps.discardActiveFileEdits, "discardActiveFileEdits");
     const hideFileViewer = requireFunction(deps && deps.hideFileViewer, "hideFileViewer");
-    const openFilePath = requireFunction(deps && deps.openFilePath, "openFilePath");
     const setFilePath = requireFunction(deps && deps.setFilePath, "setFilePath");
     const resetFileViewerPanel = requireFunction(deps && deps.resetFileViewerPanel, "resetFileViewerPanel");
+    const applyFileLoadResult = requireFunction(deps && deps.applyFileLoadResult, "applyFileLoadResult");
     const normalizeDraftFilePath = requireFunction(deps && deps.normalizeDraftFilePath, "normalizeDraftFilePath");
     const inspectSessionFilePath = requireFunction(deps && deps.inspectSessionFilePath, "inspectSessionFilePath");
     const api = requireFunction(deps && deps.api, "api");
@@ -578,6 +578,34 @@
       return true;
     }
 
+    async function openFilePath(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined, mode = null } = {}) {
+      if (blockUnavailableFileAction()) return false;
+      if (!normalizeSessionId(currentSessionId())) return false;
+      const openRequest = startFileOpenRequest(nextPath, { line, gitPath, apiPath });
+      const request = openRequest.request;
+      const rel = openRequest.path;
+      if (!rel) {
+        fileStatus.textContent = "Choose a file first.";
+        openRequest.done();
+        return false;
+      }
+      fileStatus.textContent = "Loading...";
+      resetFileViewerPanel();
+      try {
+        const viewMode = resolveFileOpenViewMode(request, rel, mode);
+        if (viewMode !== currentFileViewMode()) setFileViewMode(viewMode);
+        const openResult = await fetchFileOpenResult(request, rel, viewMode);
+        if (!isCurrentFileOpenRequest(request)) return false;
+        const loaded = await applyFileLoadResult(rel, openResult.result, request, { viewMode });
+        if (!loaded) return false;
+        return finalizeFileOpenSuccess(rel, openResult.absPath);
+      } catch (error) {
+        return renderFileOpenError(request, error);
+      } finally {
+        openRequest.done();
+      }
+    }
+
     async function applyDraftFileLoad(rel, request) {
       if (currentFileViewMode() !== "file") setFileViewMode("file");
       applyActiveFileTextState({ text: "", editable: true, version: "", draft: true });
@@ -716,6 +744,7 @@
       setFileViewModeWithGuard,
       requestHideFileViewer,
       openFilePathWithGuard,
+      openFilePath,
       openDraftFilePathWithGuard,
       openDraftFilePath,
       nextActiveFileIdentity,
