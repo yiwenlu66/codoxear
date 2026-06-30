@@ -7332,6 +7332,15 @@
           setFileRenderSurface("diff");
         }
 
+        function renderEmptyFileViewerTarget({ updateTouchToolbar = false } = {}) {
+          resetFileViewerPanel();
+          clearActiveFileIdentity();
+          resetFilePickerInput();
+          renderFilePickerMenu();
+          fileStatus.textContent = "Type to search files.";
+          if (updateTouchToolbar) updateFileTouchToolbar();
+        }
+
         async function ensureCurrentFileViewerSession() {
           if (!isFileViewerOpen()) return true;
           const sid = String(selected || "").trim();
@@ -7362,12 +7371,7 @@
             return isFileViewerSessionCurrent(sid, syncToken);
           }
           if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
-          resetFileViewerPanel();
-          clearActiveFileIdentity();
-          resetFilePickerInput();
-          renderFilePickerMenu();
-          fileStatus.textContent = "Type to search files.";
-          updateFileTouchToolbar();
+          renderEmptyFileViewerTarget({ updateTouchToolbar: true });
           return true;
         }
 
@@ -9691,11 +9695,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             });
             return;
           }
-          resetFileViewerPanel();
-          clearActiveFileIdentity();
-          resetFilePickerInput();
-          renderFilePickerMenu();
-          fileStatus.textContent = "Type to search files.";
+          renderEmptyFileViewerTarget();
         }
         function hideFileViewer() {
           const wasOpen = isModalTargetOpen(fileViewer);

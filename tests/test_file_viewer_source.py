@@ -66,6 +66,44 @@ def eval_video_preview_failure_path() -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_empty_file_viewer_target() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("function renderEmptyFileViewerTarget(")
+    end = source.index("async function ensureCurrentFileViewerSession", start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const calls = [];
+        const ctx = {{
+          fileStatus: {{ textContent: "old" }},
+          resetFileViewerPanel: () => calls.push(["resetFileViewerPanel"]),
+          clearActiveFileIdentity: () => calls.push(["clearActiveFileIdentity"]),
+          resetFilePickerInput: () => calls.push(["resetFilePickerInput"]),
+          renderFilePickerMenu: () => calls.push(["renderFilePickerMenu"]),
+          updateFileTouchToolbar: () => calls.push(["updateFileTouchToolbar"]),
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_empty = renderEmptyFileViewerTarget;\n")}, ctx);
+        ctx.__test_empty();
+        const defaultCalls = calls.slice();
+        const defaultStatus = ctx.fileStatus.textContent;
+        calls.length = 0;
+        ctx.fileStatus.textContent = "old again";
+        ctx.__test_empty({{ updateTouchToolbar: true }});
+        process.stdout.write(JSON.stringify({{
+          defaultCalls,
+          defaultStatus,
+          touchCalls: calls.slice(),
+          touchStatus: ctx.fileStatus.textContent,
+        }}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
+
 def eval_file_viewer_open_target() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function preferredFileSelectionForSession(")
@@ -1465,6 +1503,19 @@ def eval_file_render_surface_visibility() -> dict:
 
 
 class TestFileViewerSource(unittest.TestCase):
+    def test_render_empty_file_viewer_target_resets_empty_state(self) -> None:
+        result = eval_empty_file_viewer_target()
+        base_calls = [
+            ["resetFileViewerPanel"],
+            ["clearActiveFileIdentity"],
+            ["resetFilePickerInput"],
+            ["renderFilePickerMenu"],
+        ]
+        self.assertEqual(result["defaultCalls"], base_calls)
+        self.assertEqual(result["defaultStatus"], "Type to search files.")
+        self.assertEqual(result["touchCalls"], base_calls + [["updateFileTouchToolbar"]])
+        self.assertEqual(result["touchStatus"], "Type to search files.")
+
     def test_file_editor_disables_monaco_suggestions(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn('accessibilitySupport: "off"', source)
@@ -1589,6 +1640,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const target = resolveFileViewerOpenTarget({ sessionId: sid });", ensure_block)
         self.assertIn("setFilePath(target.path, { line: target.line, gitPath: target.gitPath, apiPath: target.apiPath });", ensure_block)
         self.assertIn("await openFilePathWithResolvedMode(target.path, { line: target.line, changed: target.changed, gitPath: target.gitPath, apiPath: target.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) });", ensure_block)
+        self.assertIn("renderEmptyFileViewerTarget({ updateTouchToolbar: true });", ensure_block)
         self.assertNotIn("const first = firstKey ? fileEntryMap.get(firstKey) : null;", ensure_block)
         refresh_start = source.index("async function refreshFileCandidates(")
         refresh_end = source.index("async function showFileViewer", refresh_start)
@@ -1604,6 +1656,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("if (!isFileViewerSessionCurrent(sid, syncToken)) return;", show_block)
         self.assertIn("const target = resolveFileViewerOpenTarget({ sessionId: sid, explicitPath, explicitLine: line });", show_block)
         self.assertIn("void openFilePathWithResolvedMode(target.path, { line: target.line, changed: target.changed, gitPath: target.gitPath, apiPath: target.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) })", show_block)
+        self.assertIn("renderEmptyFileViewerTarget();", show_block)
         self.assertNotIn("const preferredGitPath = explicitPath ? false : Boolean(preferredSelection.gitPath);", show_block)
         self.assertNotIn("const first = firstKey ? fileEntryMap.get(firstKey) : null;", show_block)
         self.assertIn("fileViewerSessionSyncToken += 1;\n          cancelPendingFileOpen();", source)
@@ -1680,7 +1733,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("unavailable: isFileViewerSessionUnavailable(),", source)
         self.assertIn("const unavailable = Boolean(state.unavailable);", source)
         self.assertIn("if (blockUnavailableFileAction()) return false;", source)
-        self.assertEqual(source.count("resetFileViewerPanel();"), 6)
+        self.assertIn("function renderEmptyFileViewerTarget({ updateTouchToolbar = false } = {})", source)
+        self.assertEqual(source.count("resetFileViewerPanel();"), 5)
         open_primitive_start = source.index("async function openFilePath(nextPath")
         open_primitive_end = source.index("fileBtn.onclick", open_primitive_start)
         open_primitive_block = source[open_primitive_start:open_primitive_end]
