@@ -574,6 +574,9 @@
       )
         throw new Error("Codoxear file picker helpers failed to load");
 
+      const codoxearFileViewer = window.CodoxearFileViewer;
+      if (!codoxearFileViewer || typeof codoxearFileViewer.createFileViewerController !== "function") throw new Error("Codoxear file viewer controller failed to load");
+
       const codoxearMarkdown = window.CodoxearMarkdown;
       if (
         !codoxearMarkdown ||
@@ -8524,41 +8527,19 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           });
         }
 
-        function renderFileSaveConflict(saveSessionId, savePath, message = "conflict") {
-          const label = el("span", { class: "fileConflictText", text: `${savePath} - save conflict: ${message}` });
-          const reloadBtn = el("button", {
-            class: "icon-btn text-btn fileConflictReload",
-            type: "button",
-            text: "Reload from disk",
-            title: "Discard unsaved edits and load the current disk version",
-          });
-          const keepBtn = el("button", {
-            class: "icon-btn text-btn fileConflictKeep",
-            type: "button",
-            text: "Keep editing",
-            title: "Keep the unsaved draft in the editor",
-          });
-          reloadBtn.onclick = async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (fileViewerSessionId !== saveSessionId || activeFilePath !== savePath) return;
-            const ok = window.confirm(`Reload ${savePath} from disk and discard your unsaved editor draft?`);
-            if (!ok) return;
-            fileStatus.textContent = `Reloading ${savePath}...`;
-            const reloaded = await openFilePath(savePath, { line: activeFileLine, gitPath: activeFileGitPath, apiPath: activeFileApiPath });
-            if (!reloaded && activeFilePath === savePath && !isFileViewerSessionUnavailable()) fileStatus.textContent = `${savePath} - reload failed`;
-          };
-          keepBtn.onclick = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (fileViewerSessionId !== saveSessionId || activeFilePath !== savePath) return;
-            fileStatus.textContent = `${savePath} - editing unsaved conflict`;
-            const editor = getActiveFileCodeEditor();
-            if (editor && typeof editor.focus === "function") editor.focus();
-          };
-          const actions = el("span", { class: "fileConflictActions" }, [reloadBtn, keepBtn]);
-          fileStatus.replaceChildren(label, actions);
-        }
+        const fileViewerController = codoxearFileViewer.createFileViewerController({
+          el,
+          fileStatus,
+          currentSessionId: () => fileViewerSessionId,
+          activeFilePath: () => activeFilePath,
+          activeFileLine: () => activeFileLine,
+          activeFileGitPath: () => activeFileGitPath,
+          activeFileApiPath: () => activeFileApiPath,
+          isUnavailable: () => isFileViewerSessionUnavailable(),
+          confirmReload: (message) => window.confirm(message),
+          openFilePath: (path, options) => openFilePath(path, options),
+          focusEditor: () => getActiveFileCodeEditor(),
+        });
 
         function beginActiveFileSaveRequest() {
           const sessionId = fileViewerSessionId;
@@ -8610,7 +8591,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function renderActiveFileSaveError(save, error) {
           if (error && error.status === 409) {
-            renderFileSaveConflict(save.sessionId, save.path, error && error.message ? error.message : "conflict");
+            fileViewerController.renderSaveConflict(save.sessionId, save.path, error && error.message ? error.message : "conflict");
           } else {
             fileStatus.textContent = `save error: ${error && error.message ? error.message : "unknown error"}`;
           }

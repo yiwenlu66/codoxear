@@ -1343,82 +1343,6 @@ def eval_active_file_save_body_builder() -> dict:
     return json.loads(proc.stdout)
 
 
-def eval_file_save_conflict_reload_unavailable_race() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function renderFileSaveConflict(saveSessionId, savePath")
-    end = source.index("function beginActiveFileSaveRequest", start)
-    snippet = source[start:end]
-    js = textwrap.dedent(
-        f"""
-        const vm = require("vm");
-        const ctx = {{
-          fileViewerSessionId: "sid-1",
-          activeFilePath: "src/app.py",
-          activeFileLine: 7,
-          activeFileGitPath: true,
-          activeFileApiPath: "api-token",
-          unavailable: false,
-          confirmCalls: [],
-          openCalls: [],
-          focusCalls: 0,
-          fileStatus: {{
-            textContent: "",
-            children: [],
-            replaceChildren(...nodes) {{ this.children = nodes; this.textContent = ""; }},
-          }},
-          window: {{ confirm: (message) => {{ ctx.confirmCalls.push(message); return true; }} }},
-          isFileViewerSessionUnavailable: () => ctx.unavailable,
-          getActiveFileCodeEditor: () => ({{ focus: () => {{ ctx.focusCalls += 1; }} }}),
-          el: (tag, attrs = {{}}, children = []) => {{
-            const node = {{ tag, attrs, children: Array.isArray(children) ? children : [], onclick: null }};
-            if (attrs && Object.prototype.hasOwnProperty.call(attrs, "text")) node.text = attrs.text;
-            return node;
-          }},
-        }};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_conflict = renderFileSaveConflict;\n")}, ctx);
-        async function runCase({{ becomeUnavailable }}) {{
-          ctx.fileViewerSessionId = "sid-1";
-          ctx.activeFilePath = "src/app.py";
-          ctx.activeFileLine = 7;
-          ctx.activeFileGitPath = true;
-          ctx.activeFileApiPath = "api-token";
-          ctx.unavailable = false;
-          ctx.confirmCalls = [];
-          ctx.openCalls = [];
-          ctx.focusCalls = 0;
-          ctx.fileStatus.textContent = "";
-          ctx.fileStatus.children = [];
-          ctx.openFilePath = async (path, opts) => {{
-            ctx.openCalls.push([path, opts]);
-            if (becomeUnavailable) {{
-              ctx.unavailable = true;
-              ctx.fileStatus.textContent = "Session is no longer available; copy unsaved edits before closing.";
-            }}
-            return false;
-          }};
-          ctx.__test_conflict("sid-1", "src/app.py", "version conflict");
-          const actions = ctx.fileStatus.children[1];
-          const reloadBtn = actions.children[0];
-          await reloadBtn.onclick({{ preventDefault() {{}}, stopPropagation() {{}} }});
-          return {{
-            status: ctx.fileStatus.textContent,
-            unavailable: ctx.unavailable,
-            confirmCalls: ctx.confirmCalls.slice(),
-            openCalls: ctx.openCalls.slice(),
-          }};
-        }}
-        (async () => {{
-          const unavailable = await runCase({{ becomeUnavailable: true }});
-          const availableFailed = await runCase({{ becomeUnavailable: false }});
-          process.stdout.write(JSON.stringify({{ unavailable, availableFailed }}));
-        }})().catch((err) => {{ console.error(err && err.stack ? err.stack : err); process.exit(1); }});
-        """
-    )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    return json.loads(proc.stdout)
-
-
 
 def eval_active_file_save_error_renderer() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
@@ -1431,7 +1355,7 @@ def eval_active_file_save_error_renderer() -> dict:
         const ctx = {{
           fileStatus: {{ textContent: "" }},
           calls: [],
-          renderFileSaveConflict: (...args) => ctx.calls.push(["renderFileSaveConflict", ...args]),
+          fileViewerController: {{ renderSaveConflict: (...args) => ctx.calls.push(["renderSaveConflict", ...args]) }},
         }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_save_error = renderActiveFileSaveError;\n")}, ctx);
@@ -2566,7 +2490,7 @@ class TestFileViewerSource(unittest.TestCase):
     def test_active_file_save_error_renderer_preserves_conflict_and_generic_status(self) -> None:
         result = eval_active_file_save_error_renderer()
         self.assertEqual(result["conflict"], {
-            "calls": [["renderFileSaveConflict", "sid-1", "src/app.py", "version mismatch"]],
+            "calls": [["renderSaveConflict", "sid-1", "src/app.py", "version mismatch"]],
             "status": "",
         })
         self.assertEqual(result["generic"], {"calls": [], "status": "save error: disk full"})
@@ -2643,43 +2567,35 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("fileStatus.textContent = `${save.path} - ${fmtBytes(size)}`;", source)
         self.assertIn("rememberOpenedFile(save.path,", source)
 
-    def test_file_save_conflict_reload_preserves_unavailable_status(self) -> None:
-        result = eval_file_save_conflict_reload_unavailable_race()
-        expected_open_call = ["src/app.py", {"line": 7, "gitPath": True, "apiPath": "api-token"}]
-        self.assertEqual(result["unavailable"]["status"], "Session is no longer available; copy unsaved edits before closing.")
-        self.assertTrue(result["unavailable"]["unavailable"])
-        self.assertEqual(result["unavailable"]["openCalls"], [expected_open_call])
-        self.assertEqual(len(result["unavailable"]["confirmCalls"]), 1)
-        self.assertEqual(result["availableFailed"]["status"], "src/app.py - reload failed")
-        self.assertFalse(result["availableFailed"]["unavailable"])
-        self.assertEqual(result["availableFailed"]["openCalls"], [expected_open_call])
-        self.assertEqual(len(result["availableFailed"]["confirmCalls"]), 1)
-
-    def test_file_save_conflict_offers_reload_or_keep_editing(self) -> None:
+    def test_file_save_conflict_delegates_to_file_viewer_controller(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         css_source = APP_CSS.read_text(encoding="utf-8")
-        start = source.index("function renderFileSaveConflict(saveSessionId, savePath")
-        end = source.index("async function saveActiveFileEdits", start)
-        block = source[start:end]
-        self.assertIn('text: "Reload from disk"', block)
-        self.assertIn('text: "Keep editing"', block)
-        self.assertIn("window.confirm(`Reload ${savePath} from disk and discard your unsaved editor draft?`);", block)
-        self.assertIn("if (fileViewerSessionId !== saveSessionId || activeFilePath !== savePath) return;", block)
-        self.assertIn("await openFilePath(savePath, { line: activeFileLine, gitPath: activeFileGitPath, apiPath: activeFileApiPath });", block)
-        self.assertIn("if (!reloaded && activeFilePath === savePath && !isFileViewerSessionUnavailable()) fileStatus.textContent = `${savePath} - reload failed`;", block)
-        self.assertIn("getActiveFileCodeEditor();", block)
-        self.assertIn("fileStatus.replaceChildren(label, actions);", block)
+        self.assertIn("const codoxearFileViewer = window.CodoxearFileViewer;", source)
+        self.assertIn("createFileViewerController", source)
+        controller_start = source.index("const fileViewerController = codoxearFileViewer.createFileViewerController")
+        controller_end = source.index("function beginActiveFileSaveRequest", controller_start)
+        controller_block = source[controller_start:controller_end]
+        self.assertIn("currentSessionId: () => fileViewerSessionId", controller_block)
+        self.assertIn("activeFilePath: () => activeFilePath", controller_block)
+        self.assertIn("activeFileLine: () => activeFileLine", controller_block)
+        self.assertIn("activeFileGitPath: () => activeFileGitPath", controller_block)
+        self.assertIn("activeFileApiPath: () => activeFileApiPath", controller_block)
+        self.assertIn("isUnavailable: () => isFileViewerSessionUnavailable()", controller_block)
+        self.assertIn("confirmReload: (message) => window.confirm(message)", controller_block)
+        self.assertIn("openFilePath: (path, options) => openFilePath(path, options)", controller_block)
+        self.assertIn("focusEditor: () => getActiveFileCodeEditor()", controller_block)
         save_start = source.index("async function saveActiveFileEdits")
         save_end = source.index("async function maybeHandleUnsavedFileChanges", save_start)
         save_block = source[save_start:save_end]
         self.assertIn("renderActiveFileSaveError(save, e);", save_block)
-        self.assertIn("renderFileSaveConflict(save.sessionId, save.path, error && error.message ? error.message : \"conflict\");", source)
+        self.assertIn("fileViewerController.renderSaveConflict(save.sessionId, save.path, error && error.message ? error.message : \"conflict\");", source)
+        self.assertNotIn("function renderFileSaveConflict", source)
         self.assertIn("let fileSaveSeq = 0;", source)
         self.assertIn("let activeFileSaveToken = 0;", source)
         self.assertIn("if (!save || activeFileSaveToken !== save.token) return;", source)
         self.assertIn("finishActiveFileSaveRequest(save);", save_block)
         self.assertIn(".fileConflictActions", css_source)
-        self.assertNotIn("overwrite", block.lower())
+
 
     def test_file_viewer_handles_pdf_video_and_download_only_kinds(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

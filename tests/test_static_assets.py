@@ -32,6 +32,7 @@ APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
 APP_DOM_JS = ROOT / "codoxear" / "static" / "app_dom.js"
 APP_FILE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_file_helpers.js"
 APP_FILE_PICKER_JS = ROOT / "codoxear" / "static" / "app_file_picker.js"
+APP_FILE_VIEWER_JS = ROOT / "codoxear" / "static" / "app_file_viewer.js"
 APP_SESSION_HELPERS_JS = ROOT / "codoxear" / "static" / "app_session_helpers.js"
 APP_VIEWPORT_JS = ROOT / "codoxear" / "static" / "app_viewport.js"
 APP_POLLING_JS = ROOT / "codoxear" / "static" / "app_polling.js"
@@ -59,6 +60,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn(f"app_dom.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_file_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_file_picker.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
+        self.assertIn(f"app_file_viewer.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_session_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_viewport.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_polling.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
@@ -79,7 +81,8 @@ class TestStaticAssets(unittest.TestCase):
         self.assertLess(source.index(f"app_display.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_dom.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_dom.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_file_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_file_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_file_picker.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
-        self.assertLess(source.index(f"app_file_picker.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_session_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_file_picker.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_file_viewer.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_file_viewer.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_session_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_session_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_viewport.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_viewport.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_polling.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_polling.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_transcript.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
@@ -103,6 +106,8 @@ class TestStaticAssets(unittest.TestCase):
         app_display = APP_DISPLAY_JS.read_text(encoding="utf-8")
         app_dom = APP_DOM_JS.read_text(encoding="utf-8")
         app_file_helpers = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
+        app_file_picker = APP_FILE_PICKER_JS.read_text(encoding="utf-8")
+        app_file_viewer = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         app_session_helpers = APP_SESSION_HELPERS_JS.read_text(encoding="utf-8")
         app_viewport = APP_VIEWPORT_JS.read_text(encoding="utf-8")
         app_polling = APP_POLLING_JS.read_text(encoding="utf-8")
@@ -130,6 +135,8 @@ class TestStaticAssets(unittest.TestCase):
             self.assertNotIn(forbidden, app_display)
             self.assertNotIn(forbidden, app_dom)
             self.assertNotIn(forbidden, app_file_helpers)
+            self.assertNotIn(forbidden, app_file_picker)
+            self.assertNotIn(forbidden, app_file_viewer)
             self.assertNotIn(forbidden, app_session_helpers)
             self.assertNotIn(forbidden, app_viewport)
             self.assertNotIn(forbidden, app_polling)
@@ -179,6 +186,7 @@ class TestStaticAssets(unittest.TestCase):
             "app_dom.js": "window.CodoxearDom = {};\n",
             "app_file_helpers.js": "window.CodoxearFileHelpers = {};\n",
             "app_file_picker.js": "window.CodoxearFilePicker = {};\n",
+            "app_file_viewer.js": "window.CodoxearFileViewer = {};\n",
             "app_session_helpers.js": "window.CodoxearSessionHelpers = {};\n",
             "app_viewport.js": "window.CodoxearViewport = {};\n",
             "app_polling.js": "window.CodoxearPolling = {};\n",
@@ -234,6 +242,7 @@ class TestStaticAssets(unittest.TestCase):
                     '<script src="app_dom.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_file_helpers.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_file_picker.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
+                    '<script src="app_file_viewer.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_session_helpers.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_viewport.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_polling.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
@@ -265,6 +274,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertIn(f"app_dom.js?v={version}", rendered)
             self.assertIn(f"app_file_helpers.js?v={version}", rendered)
             self.assertIn(f"app_file_picker.js?v={version}", rendered)
+            self.assertIn(f"app_file_viewer.js?v={version}", rendered)
             self.assertIn(f"app_session_helpers.js?v={version}", rendered)
             self.assertIn(f"app_viewport.js?v={version}", rendered)
             self.assertIn(f"app_polling.js?v={version}", rendered)
@@ -346,6 +356,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn("codoxear/static/app_dom.js", names)
         self.assertIn("codoxear/static/app_file_helpers.js", names)
         self.assertIn("codoxear/static/app_file_picker.js", names)
+        self.assertIn("codoxear/static/app_file_viewer.js", names)
         self.assertIn("codoxear/static/app_session_helpers.js", names)
         self.assertIn("codoxear/static/app_viewport.js", names)
         self.assertIn("codoxear/static/app_polling.js", names)
