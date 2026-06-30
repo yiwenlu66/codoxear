@@ -5470,3 +5470,29 @@
 - Clean-room review `69fba57c-65d6-4b09-92a2-ae54107ac012` returned PASS with no blockers; report saved at `/tmp/codoxear-file-save-gitpath-review.md`. Review verified safe snapshot timing, strictly stronger currentness predicate, self-contained body construction, no draft-save shape drift, preserved conflict reload semantics, source/VM test fidelity, and no downstream caller breakage. Non-blocking notes: `save.gitPath && save.apiPath` is defensive because normal identity construction empties apiPath when gitPath is false; final cleanup remains token-only; unavailable-session handling already invalidates via token as well.
 - Next transition seam from architect `a5d7cbc3-94ab-483b-a268-5020cfd9efab`: make resolved file-open mode authoritative through `openFilePathWithResolvedMode` → `openFilePathWithGuard` → `openFilePath`, while preserving auto-resolution for direct mode-switch/reload callers.
 - Scope note: this is save git-path identity hardening only. It does not claim file-open mode ownership, file-picker renderer extraction, session-selection abort/race hardening, video token stability, or browser-manual rendering evidence.
+
+
+
+## 2026-06-30T02:28:00Z File open view-mode ownership
+- Functional commit `552bbe3 Centralize file open view mode resolution` made pre-resolved file-open modes authoritative through the guarded file-open chain and added fail-loud validation before state mutation.
+- Mechanism:
+  - `normalizeExplicitFileOpenMode(requestedMode)` returns null for absent mode, returns only `preview`, `file`, or `diff`, and throws `invalid file open mode` for malformed explicit modes.
+  - `openFilePathWithGuard()` validates `mode` before `setFilePath()` or `setFileViewMode()`, sets view mode only from the validated `openMode`, and passes `mode: openMode` to `openFilePath()`.
+  - `resolveFileOpenViewMode(request, rel, requestedMode)` returns a validated explicit mode immediately; only absent mode falls back to the legacy auto-resolution branch using `activeFileEntry()`, `fileCandidateGitStateFresh`, `isMarkdownPreviewable()`, and `fileViewMode`.
+  - `openFilePath()` now accepts `{ mode = null }` and uses the helper before choosing the diff `/git/file_versions` endpoint or non-diff `/file/read` endpoint.
+- Boundary preserved: `resolveFileOpenMode()` still owns async inspect/candidate-based mode choice; `openFilePathWithResolvedMode()` still owns candidate identity/apiPath resolution and currentness guard; direct callers `renderFileSaveConflict()` and `setFileViewModeWithGuard()` omit mode and retain legacy auto-resolution. File-open request tokens, stale guards, `applyFileLoadResult()`, `finalizeFileOpenSuccess()`, catch/finally behavior, save state, video/PDF lifecycle, and file picker rendering were not changed.
+- Tests added/updated:
+  - `eval_open_file_path_mode_ownership()` executes the real helpers/open function in a Node VM and verifies explicit `mode: "diff"` does not call `activeFileEntry()` and uses `/git/file_versions`, absent mode still calls `activeFileEntry()` and downgrades to `/file/read`, and invalid explicit mode throws.
+  - `eval_open_file_guard_mode_validation()` verifies invalid mode causes no `setFilePath`, `setFileViewMode`, `renderFilePickerMenu`, or `openFilePath` calls, while valid diff mode preserves the expected guarded call sequence.
+  - Source sentinels pin helper signatures, guard validation before mutation, mode pass-through, `openFilePath()` signature, helper use, and removal of direct `activeFileEntry()` lookup from `openFilePath()`.
+- Validation before commit:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused guard/mode/session-guard tests passed.
+  - Focused local file-viewer/file-picker/static group returned `79 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1274 passed, 136 subtests passed`.
+  - Focused Docker file-viewer/file-picker/static group passed.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with no failures.
+  - `git diff --check` passed before staging/commit.
+- Clean-room review `0cfffb1e-6422-4e13-a1a1-af5ea8ab5add` returned PASS with no blockers; report saved at `/tmp/codoxear-file-open-mode-final-review.md`. Review verified explicit mode authority, absent-mode compatibility for conflict reload and mode-toggle callers, invalid-mode fail-loud behavior before state mutation, endpoint/stale/finalization/error preservation, and faithful VM/source tests. Non-blocking notes: invalid-mode throws as an async rejection if a future malformed caller exists; absent-mode direct callers are covered by source sentinels plus the shared VM fallback path rather than separate runtime tests.
+- Next transition seam: session-open tail request context/abort ownership. Add request context and AbortSignal for `openSession()` initial tail load first; defer cache fallback-on-supersede, 404 de-duplication, and file-viewer sync-token changes to separate checkpoints because those alter broader user-visible policy.
+- Scope note: this is file-open view-mode ownership only. It does not claim session-selection race hardening, file-picker menu renderer extraction, cache fallback policy, 404 cleanup de-duplication, video/PDF fallback token stability, or browser-manual rendering evidence.
