@@ -6110,3 +6110,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
   - `git diff --check` and staged `git diff --cached --check` passed.
 - Scope note: unavailable-session identity and dirty/unavailable copy-only transition policy now belong to the file-viewer controller. App still owns actual hide DOM teardown, raw view-mode DOM application, unsaved modal DOM, discard implementation, touch selection state/actions, paste dialog/insert actions, generic file-open result rendering/application, and draft inspect/open currentness behavior.
+
+## 2026-06-30T11:50:07Z Draft file open guard controller ownership
+- Functional commit `1b0341c Move draft file open guard into viewer controller` moved `openDraftFilePathWithGuard(path)` from inline `app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the controller now owns draft-path guard policy: unavailable blocking, draft path normalization/invalid status, unsaved-change gating, inspect error/directory handling, existing-file fallback through injected guarded open, and new-draft transition through injected view-mode/path/open-draft operations.
+- App-owned renderer/open primitives remain explicit dependencies: `openFilePathWithGuard`, `setFilePath`, `openDraftFilePath`, `normalizeDraftFilePath`, and `inspectSessionFilePath`.
+- Tests updated:
+  - `tests/test_frontend_file_viewer_module_source.py` verifies real-controller draft guard outcomes for invalid path, directory, existing file, inspect error, and new draft open.
+  - `tests/test_file_viewer_source.py` source sentinels require app wrapper delegation, controller-owned draft guard branches, and explicit draft guard dependencies.
+- Validation before commit:
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - Focused local frontend/file-viewer/picker/auth/static group returned `91 passed, 25 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` completed successfully with pytest progress reaching `100%` and no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed.
+- Scope note: draft inspect/open guard policy now belongs to the file-viewer controller. App still owns existing-file guarded open policy, actual draft file load primitive, raw view-mode DOM application, unsaved modal DOM, discard implementation, touch selection state/actions, paste dialog/insert actions, and generic file-open result rendering/application.
