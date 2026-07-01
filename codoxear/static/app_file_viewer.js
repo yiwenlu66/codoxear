@@ -35,7 +35,6 @@
     const normalizeFileApiPath = requireFunction(deps && deps.normalizeFileApiPath, "normalizeFileApiPath");
     const fileApiPathForPath = requireFunction(deps && deps.fileApiPathForPath, "fileApiPathForPath");
     const isFileViewerOpen = requireFunction(deps && deps.isFileViewerOpen, "isFileViewerOpen");
-    const invalidateFileViewerSessionSync = requireFunction(deps && deps.invalidateFileViewerSessionSync, "invalidateFileViewerSessionSync");
     const hideFileUnsavedDialog = requireFunction(deps && deps.hideFileUnsavedDialog, "hideFileUnsavedDialog");
     const resetFileSearchState = requireFunction(deps && deps.resetFileSearchState, "resetFileSearchState");
     const closeFilePickerMenu = requireFunction(deps && deps.closeFilePickerMenu, "closeFilePickerMenu");
@@ -89,6 +88,7 @@
     let activeSaveConflict = null;
     let fileOpenRequestId = 0;
     let fileOpenAbortController = null;
+    let fileViewerSessionSyncToken = 0;
     let fileCandidateRequestSeq = 0;
     let fileSaveSeq = 0;
     let activeFileSaveToken = 0;
@@ -237,6 +237,20 @@
 
     function currentActiveFileLine() {
       return activeFileLine;
+    }
+
+    function beginFileViewerSessionSync() {
+      fileViewerSessionSyncToken += 1;
+      return fileViewerSessionSyncToken;
+    }
+
+    function invalidateFileViewerSessionSync() {
+      fileViewerSessionSyncToken += 1;
+      return fileViewerSessionSyncToken;
+    }
+
+    function isCurrentFileViewerSessionSync(token) {
+      return token === fileViewerSessionSyncToken;
     }
 
     function beginFileCandidateRefresh() {
@@ -1500,6 +1514,9 @@
       currentActiveFileLine,
       rememberActiveFileSelection,
       preferredFileSelectionForSession,
+      beginFileViewerSessionSync,
+      invalidateFileViewerSessionSync,
+      isCurrentFileViewerSessionSync,
       beginFileCandidateRefresh,
       isCurrentFileCandidateRefresh,
       currentFileEditMode,

@@ -100,7 +100,6 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
             fileApiPathForPath: (_path, existing) => existing || "derived-token",
             isFileViewerOpen: () => state.viewerOpen !== false,
-            invalidateFileViewerSessionSync: () => events.push(["invalidateFileViewerSessionSync"]),
             hideFileUnsavedDialog: (choice) => events.push(["hideFileUnsavedDialog", choice]),
             resetFileSearchState: () => events.push(["resetFileSearchState"]),
             closeFilePickerMenu: (options) => events.push(["closeFilePickerMenu", options]),
@@ -307,6 +306,11 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const firstCandidateCurrent = candidateSeqController.isCurrentFileCandidateRefresh(firstCandidateSeq);
           const secondCandidateSeq = candidateSeqController.beginFileCandidateRefresh();
           const candidateRefreshSeq = {{ first: firstCandidateSeq, second: secondCandidateSeq, firstCurrent: firstCandidateCurrent, firstAfterSecond: candidateSeqController.isCurrentFileCandidateRefresh(firstCandidateSeq), secondCurrent: candidateSeqController.isCurrentFileCandidateRefresh(secondCandidateSeq) }};
+          const sessionSyncController = makeController();
+          const firstSessionSync = sessionSyncController.beginFileViewerSessionSync();
+          const firstSessionCurrent = sessionSyncController.isCurrentFileViewerSessionSync(firstSessionSync);
+          const invalidatedSessionSync = sessionSyncController.invalidateFileViewerSessionSync();
+          const sessionSyncSeq = {{ first: firstSessionSync, invalidated: invalidatedSessionSync, firstCurrent: firstSessionCurrent, firstAfterInvalidate: sessionSyncController.isCurrentFileViewerSessionSync(firstSessionSync), invalidatedCurrent: sessionSyncController.isCurrentFileViewerSessionSync(invalidatedSessionSync) }};
           state.editMode = true;
           state.dirty = false;
           renderController.setFileDirty(false);
@@ -670,6 +674,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             restorePlanning,
             selectionMemory,
             candidateRefreshSeq,
+            sessionSyncSeq,
             openErrors: {{ currentError, abortErrorResult, staleError, unknownError }},
             finalize,
             draft,
@@ -753,6 +758,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["render"]["restorePlanning"], {"skip": {"kind": "skip"}, "skipFrozen": True, "skipDirty": False, "restore": {"kind": "restore", "text": "body text"}, "restoreFrozen": True, "dirtyBeforeFinish": True, "dirtyAfterFinish": False})
         self.assertEqual(result["render"]["selectionMemory"], {"noSession": {"path": "", "line": None, "gitPath": False}, "history": {"path": "history.txt", "line": 3, "gitPath": False, "apiPath": ""}, "remembered": {"path": "src/app.py", "apiPath": "tok-1", "line": 12, "gitPath": True}})
         self.assertEqual(result["render"]["candidateRefreshSeq"], {"first": 1, "second": 2, "firstCurrent": True, "firstAfterSecond": False, "secondCurrent": True})
+        self.assertEqual(result["render"]["sessionSyncSeq"], {"first": 1, "invalidated": 2, "firstCurrent": True, "firstAfterInvalidate": False, "invalidatedCurrent": True})
         reset_events = [
             ["editorOptions", {"readOnly": True}],
             ["touchToolbar"],
@@ -832,7 +838,6 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "unavailableBlocked": True,
             "unavailableBlockStatus": "Session is no longer available; copy unsaved edits before closing.",
             "unavailableTransitionEvents": [
-                ["invalidateFileViewerSessionSync"],
                 ["editorOptions", {"readOnly": True}],
                 ["buttonClass", "active", False],
                 ["buttonClass", "primary", False],
@@ -930,7 +935,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
                 "result": True,
                 "unavailable": True,
                 "status": "Session is no longer available; copy unsaved edits before closing.",
-                "events": [["invalidateFileViewerSessionSync"], ["editorOptions", {"readOnly": True}], ["buttonClass", "active", False], ["buttonClass", "primary", False], ["buttonClass", "dirty", True], ["buttonAttr", "aria-label", "Session unavailable; copy edits before closing"], ["touchToolbar"], ["hideFileUnsavedDialog", "cancel"], ["disposeOpenRender"], ["resetFileSearchState"], ["closeFilePickerMenu", {"restoreInput": True}], ["editorOptions", {"readOnly": True}], ["buttonClass", "active", False], ["buttonClass", "primary", False], ["buttonClass", "dirty", True], ["buttonAttr", "aria-label", "Session unavailable; copy edits before closing"], ["touchToolbar"], ["touchToolbar"]],
+                "events": [["editorOptions", {"readOnly": True}], ["buttonClass", "active", False], ["buttonClass", "primary", False], ["buttonClass", "dirty", True], ["buttonAttr", "aria-label", "Session unavailable; copy edits before closing"], ["touchToolbar"], ["hideFileUnsavedDialog", "cancel"], ["disposeOpenRender"], ["resetFileSearchState"], ["closeFilePickerMenu", {"restoreInput": True}], ["editorOptions", {"readOnly": True}], ["buttonClass", "active", False], ["buttonClass", "primary", False], ["buttonClass", "dirty", True], ["buttonAttr", "aria-label", "Session unavailable; copy edits before closing"], ["touchToolbar"], ["touchToolbar"]],
             },
             "unavailableHandleMismatch": {"result": False, "unavailable": False, "status": "", "events": []},
             "unavailableHandleClosed": {"result": False, "unavailable": False, "status": "", "events": []},
@@ -1041,7 +1046,6 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         keep_unavailable = result["keepUnavailable"]
         self.assertEqual(keep_unavailable["status"], "")
         self.assertNotIn(["focus"], keep_unavailable["events"])
-        self.assertIn(["invalidateFileViewerSessionSync"], keep_unavailable["events"])
 
     def test_active_file_identity_state_lives_in_file_viewer_module(self) -> None:
         app_source = APP_JS.read_text(encoding="utf-8")

@@ -49,6 +49,9 @@ def controller_identity_ctx_js(
             currentActiveFileLine() {{ return ctx.identity.line; }},
             isFileViewerSessionUnavailable() {{ return Boolean(ctx.fileViewerUnavailableSessionId && ctx.fileViewerSessionId && ctx.fileViewerUnavailableSessionId === ctx.fileViewerSessionId); }},
             clearFileViewerUnavailableSession() {{ ctx.fileViewerUnavailableSessionId = ""; }},
+            beginFileViewerSessionSync() {{ ctx.fileViewerSessionSyncToken += 1; return ctx.fileViewerSessionSyncToken; }},
+            invalidateFileViewerSessionSync() {{ ctx.fileViewerSessionSyncToken += 1; return ctx.fileViewerSessionSyncToken; }},
+            isCurrentFileViewerSessionSync(token) {{ return token === ctx.fileViewerSessionSyncToken; }},
             rememberActiveFileSelection(sid = ctx.currentFileSessionId ? ctx.currentFileSessionId() : "") {{
               const saved = {{
                 key: sid,
@@ -67,7 +70,7 @@ def controller_identity_ctx_js(
             }},
             disableFileViewerForUnavailableSession(sid) {{
               ctx.rememberActiveFileSelection(sid);
-              ctx.fileViewerSessionSyncToken += 1;
+              this.invalidateFileViewerSessionSync();
               ctx.fileViewerUnavailableSessionId = String(sid || "").trim();
               if (typeof ctx.clearActiveFileSaveState === "function") ctx.clearActiveFileSaveState();
               ctx.fileEditMode = false;
@@ -3439,7 +3442,11 @@ class TestFileViewerSource(unittest.TestCase):
     def test_file_viewer_session_sync_has_commit_guards(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
-        self.assertIn("let fileViewerSessionSyncToken = 0;", source)
+        self.assertIn("let fileViewerSessionSyncToken = 0;", viewer_source)
+        self.assertNotIn("let fileViewerSessionSyncToken = 0;", source)
+        self.assertIn("function beginFileViewerSessionSync()", viewer_source)
+        self.assertIn("function invalidateFileViewerSessionSync()", viewer_source)
+        self.assertIn("function isCurrentFileViewerSessionSync(token)", viewer_source)
         self.assertIn("let fileCandidateRequestSeq = 0;", viewer_source)
         self.assertNotIn("let fileCandidateRequestSeq = 0;", source)
         self.assertIn("function beginFileCandidateRefresh()", viewer_source)
@@ -3458,7 +3465,7 @@ class TestFileViewerSource(unittest.TestCase):
         ensure_start = source.index("async function ensureCurrentFileViewerSession()")
         ensure_end = source.index("function extToEditorLang", ensure_start)
         ensure_block = source[ensure_start:ensure_end]
-        self.assertIn("const syncToken = ++fileViewerSessionSyncToken;", ensure_block)
+        self.assertIn("const syncToken = fileViewerController.beginFileViewerSessionSync();", ensure_block)
         self.assertIn("if (!isFileViewerSelectionCurrent(sid, syncToken)) return false;", ensure_block)
         self.assertIn("await refreshFileCandidates({ sessionId: sid, syncToken });", ensure_block)
         self.assertIn("if (!isFileViewerSessionCurrent(sid, syncToken)) return false;", ensure_block)
@@ -3476,7 +3483,7 @@ class TestFileViewerSource(unittest.TestCase):
         show_start = source.index("async function showFileViewer")
         show_end = source.index("function hideFileViewer", show_start)
         show_block = source[show_start:show_end]
-        self.assertIn("const syncToken = ++fileViewerSessionSyncToken;", show_block)
+        self.assertIn("const syncToken = fileViewerController.beginFileViewerSessionSync();", show_block)
         self.assertIn("await refreshFileCandidates({ sessionId: sid, syncToken });", show_block)
         self.assertIn("if (!isFileViewerSessionCurrent(sid, syncToken)) return;", show_block)
         self.assertIn("const target = resolveFileViewerOpenTarget({ sessionId: sid, explicitPath, explicitLine: line });", show_block)
@@ -3484,7 +3491,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("renderEmptyFileViewerTarget();", show_block)
         self.assertNotIn("const preferredGitPath = explicitPath ? false : Boolean(preferredSelection.gitPath);", show_block)
         self.assertNotIn("const first = firstKey ? fileEntryMap.get(firstKey) : null;", show_block)
-        self.assertIn("fileViewerSessionSyncToken += 1;\n          cancelPendingFileOpen();", source)
+        self.assertIn("fileViewerController.invalidateFileViewerSessionSync();\n          cancelPendingFileOpen();", source)
         open_start = source.index("async function openSession(sessionId")
         open_end = source.index("async function pollMessages", open_start)
         open_block = source[open_start:open_end]
@@ -4503,7 +4510,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("fileApiPathForPath", controller_block)
         self.assertNotIn("isUnavailable: () => isFileViewerSessionUnavailable()", controller_block)
         self.assertIn("isFileViewerOpen: () => isFileViewerOpen()", controller_block)
-        self.assertIn("invalidateFileViewerSessionSync: () => { fileViewerSessionSyncToken += 1; }", controller_block)
+        self.assertNotIn("invalidateFileViewerSessionSync: () =>", controller_block)
         self.assertIn("hideFileUnsavedDialog: (choice) => hideFileUnsavedDialog(choice)", controller_block)
         self.assertIn("resetFileSearchState: () => resetFileSearchState()", controller_block)
         self.assertIn("closeFilePickerMenu: (options) => closeFilePickerMenu(options)", controller_block)

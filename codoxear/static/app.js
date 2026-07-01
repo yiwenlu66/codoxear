@@ -7050,7 +7050,6 @@
         let fileEditorProgrammaticChange = false;
         let fileUnsavedReturnFocusEl = null;
         let fileUnsavedResolver = null;
-        let fileViewerSessionSyncToken = 0;
 
         function currentFileSessionId() {
           return String(fileViewerSessionId || selected || "").trim();
@@ -7114,7 +7113,7 @@
             sid &&
               isFileViewerOpen() &&
               String(selected || "").trim() === sid &&
-              (token === null || token === fileViewerSessionSyncToken)
+              (token === null || fileViewerController.isCurrentFileViewerSessionSync(token))
           );
         }
 
@@ -7254,7 +7253,7 @@
           const sid = String(selected || "").trim();
           if (!sid) return false;
           if (fileViewerSessionId === sid) return true;
-          const syncToken = ++fileViewerSessionSyncToken;
+          const syncToken = fileViewerController.beginFileViewerSessionSync();
           if (!(await maybeHandleUnsavedFileChanges())) return false;
           if (!isFileViewerSelectionCurrent(sid, syncToken)) return false;
           cancelPendingFileOpen();
@@ -8239,7 +8238,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           normalizeFileApiPath,
           fileApiPathForPath,
           isFileViewerOpen: () => isFileViewerOpen(),
-          invalidateFileViewerSessionSync: () => { fileViewerSessionSyncToken += 1; },
           hideFileUnsavedDialog: (choice) => hideFileUnsavedDialog(choice),
           resetFileSearchState: () => resetFileSearchState(),
           closeFilePickerMenu: (options) => closeFilePickerMenu(options),
@@ -9269,7 +9267,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           updateFileTouchToolbar();
           rememberActiveFileSelection(fileViewerSessionId);
           const sid = String(selected || "").trim();
-          const syncToken = ++fileViewerSessionSyncToken;
+          const syncToken = fileViewerController.beginFileViewerSessionSync();
           fileViewerSessionId = sid;
           fileViewerController.clearFileViewerUnavailableSession();
           if (filePickerSearchSnapshot().sessionId !== fileViewerSessionId) {
@@ -9310,7 +9308,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const wasOpen = isModalTargetOpen(fileViewer);
           const focusTarget = fileViewerReturnFocusEl;
           fileViewerReturnFocusEl = null;
-          fileViewerSessionSyncToken += 1;
+          fileViewerController.invalidateFileViewerSessionSync();
           cancelPendingFileOpen();
           hideFileUnsavedDialog();
           hideFilePasteDialog();
