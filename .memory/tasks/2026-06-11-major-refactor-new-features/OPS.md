@@ -6791,3 +6791,28 @@
 - Scope of requested review: functional commit `35a56a2` plus matching tests, with memory commit `34a09a9` for accuracy.
 - Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against the file-candidate sequence code. The evidence basis remains syntax checks, focused tests, available broader frontend/file/auth/static route tests, full local pytest, Docker sandbox, and diff checks recorded in the candidate-sequence OPS entry.
 - Decision: continue workbench progress and do not treat absent reviewer output as a product blocker. A future review should be retried only at a real yield/decision gate or if the runner produces concrete findings.
+
+## 2026-07-01T03:59:23Z File-viewer session-sync token controller ownership
+- Functional commit `49930e0 Move file viewer session sync token into controller` moved `fileViewerSessionSyncToken` and token currentness helpers from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the token is a monotonic freshness marker, not the session identity authority. The controller now owns `beginFileViewerSessionSync()`, `invalidateFileViewerSessionSync()`, and `isCurrentFileViewerSessionSync(token)`. `app.js` still owns selected-session and `fileViewerSessionId` identity checks through `isFileViewerSelectionCurrent()` / `isFileViewerSessionCurrent()`, still starts sync around `ensureCurrentFileViewerSession()` / `showFileViewer()`, still invalidates on `hideFileViewer()`, and still passes app-owned currentness predicates into candidate refresh and file-open work.
+- Tests updated: source sentinels reject app-owned `let fileViewerSessionSyncToken`, require controller-owned begin/invalidate/current helpers, require app sync starts to call `fileViewerController.beginFileViewerSessionSync()`, and require hide invalidation to call the controller. Real-controller probe covers session sync sequence/currentness before and after invalidation. Stale VM fixtures were updated to model controller-owned token mutation instead of injecting an app-owned invalidator dependency.
+- Negative evidence preserved: first focused validation after the move failed in source/fixture tests that still assumed token storage or invalidation dependency injection lived in `app.js`; the observed failures were stale test-boundary assumptions, not product behavior evidence. Updating tests to assert controller-owned token currentness restored focused validation without restoring app-owned token state.
+- Validation:
+  - `python3 -m py_compile tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `72 passed, 25 subtests passed`.
+  - Available broader frontend/file/auth/static route validation returned `276 passed, 80 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: file-viewer session-sync token freshness belongs to the file-viewer controller. App still owns selected-session/current viewer identity predicates, candidate refresh API/cache/render mechanics, file-candidate data structures, session history fallback derivation, first-candidate fallback, raw Monaco editor/diff-editor objects, model disposal and setValue side effects, fallback DOM construction/scrolling, raw renderer/DOM plan application, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, raw mode/download/video-preview DOM mutation, compatible-preview fetch/load mechanics, and raw Monaco selection helpers.
+
+## 2026-07-01T03:59:23Z Clean-room review runner failure after session-sync checkpoint
+- Observation: async clean-room review run `b21f7960-dc2b-4467-87ce-ef801b11d84c` failed before writing a result.
+- Raw failure reported by runner/user: `Async runner process 3072106 exited or disappeared before writing a result. Marked run failed by stale-run reconciliation.`
+- Intended review output file: `/tmp/codoxear-session-sync-review.md`; direct check returned `missing-or-empty`.
+- Scope of requested review: functional commit `49930e0` plus matching tests.
+- Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against the file-viewer session-sync token code. The evidence basis remains syntax checks, focused tests, available broader frontend/file/auth/static route tests, full local pytest, Docker sandbox, and diff checks recorded in the session-sync OPS entry.
+- Decision: continue workbench progress and do not treat absent reviewer output as a product blocker. A future review should be retried only at a real yield/decision gate or if the runner produces concrete findings.
