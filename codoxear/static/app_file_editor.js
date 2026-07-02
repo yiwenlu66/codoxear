@@ -139,6 +139,95 @@
     });
   }
 
+  function editorLanguageForPath(path) {
+    const ext = String(path || "").split(".").pop().toLowerCase();
+    if (ext === "js") return "javascript";
+    if (ext === "ts") return "typescript";
+    if (ext === "json") return "json";
+    if (ext === "py") return "python";
+    if (ext === "sh" || ext === "bash" || ext === "zsh") return "bash";
+    if (ext === "md") return "markdown";
+    if (ext === "html" || ext === "htm") return "markup";
+    if (ext === "css") return "css";
+    if (ext === "yml" || ext === "yaml") return "yaml";
+    if (ext === "toml") return "toml";
+    if (ext === "rs") return "rust";
+    if (ext === "go") return "go";
+    if (ext === "java") return "java";
+    if (ext === "c" || ext === "h") return "c";
+    if (ext === "cpp" || ext === "cc" || ext === "hpp") return "cpp";
+    return "";
+  }
+
+  function fileEditorCreateOptions({ language = "", value = "", readOnly = false } = {}) {
+    return {
+      language: language || "plaintext",
+      value: String(value || ""),
+      readOnly: Boolean(readOnly),
+      theme: MONACO_THEME_NAME,
+      lineNumbers: "on",
+      minimap: { enabled: false },
+      scrollBeyondLastLine: false,
+      wordWrap: "on",
+      folding: false,
+      renderLineHighlight: "none",
+      glyphMargin: false,
+      overviewRulerBorder: false,
+      stickyScroll: { enabled: false },
+      automaticLayout: true,
+      accessibilitySupport: "off",
+      quickSuggestions: false,
+      suggestOnTriggerCharacters: false,
+      acceptSuggestionOnEnter: "off",
+      inlineSuggest: { enabled: false },
+      parameterHints: { enabled: false },
+      snippetSuggestions: "none",
+      tabCompletion: "off",
+      wordBasedSuggestions: "off",
+    };
+  }
+
+  function diffEditorCreateOptions() {
+    return {
+      readOnly: true,
+      theme: MONACO_THEME_NAME,
+      renderSideBySide: false,
+      useInlineViewWhenSpaceIsLimited: true,
+      lineNumbers: "on",
+      minimap: { enabled: false },
+      scrollBeyondLastLine: false,
+      wordWrap: "on",
+      diffWordWrap: "on",
+      folding: false,
+      renderLineHighlight: "none",
+      glyphMargin: false,
+      overviewRulerBorder: false,
+      stickyScroll: { enabled: false },
+      automaticLayout: true,
+      hideUnchangedRegions: {
+        enabled: true,
+        contextLineCount: 4,
+        minimumLineCount: 1,
+        revealLineCount: 2,
+      },
+    };
+  }
+
+  function diffSideEditorOptions(modified = false) {
+    return {
+      wordWrap: "on",
+      lineNumbers: modified ? "on" : "off",
+      glyphMargin: false,
+      lineDecorationsWidth: 0,
+      lineNumbersMinChars: modified ? 3 : 0,
+    };
+  }
+
+  function requireMonacoEditor(monaco, method) {
+    if (!monaco || !monaco.editor || typeof monaco.editor[method] !== "function") throw new Error("monaco editor unavailable");
+    return monaco.editor;
+  }
+
   function createFileEditorRuntime() {
     let editor = null;
     let models = [];
@@ -187,6 +276,81 @@
       if (String(kind || "") !== "diff" || !editor || typeof editor.updateOptions !== "function") return false;
       editor.updateOptions(options || {});
       return true;
+    }
+
+    function createFileEditor(monaco, host, options = {}) {
+      const editorApi = requireMonacoEditor(monaco, "create");
+      const language = options.languageOverride || editorLanguageForPath(options.path);
+      const nextEditor = editorApi.create(host, fileEditorCreateOptions({
+        language,
+        value: options.text,
+        readOnly: Boolean(options.readOnly),
+      }));
+      setEditor(nextEditor);
+      setModels([typeof nextEditor.getModel === "function" ? nextEditor.getModel() : null].filter(Boolean));
+      const onDidChangeModelContent = requireFunction(options.onDidChangeModelContent, "onDidChangeModelContent");
+      if (typeof nextEditor.onDidChangeModelContent !== "function") throw new Error("monaco file editor change listener unavailable");
+      setChangeDisposable(nextEditor.onDidChangeModelContent(onDidChangeModelContent));
+      return nextEditor;
+    }
+
+    function updateFileEditorText(monaco, options = {}) {
+      const editorApi = requireMonacoEditor(monaco, "setModelLanguage");
+      const targetEditor = currentEditor();
+      if (!targetEditor || typeof targetEditor.getModel !== "function") throw new Error("file editor unavailable");
+      const model = targetEditor.getModel();
+      if (!model || typeof model.setValue !== "function") throw new Error("file editor model unavailable");
+      const runProgrammaticChange = requireFunction(options.runProgrammaticChange, "runProgrammaticChange");
+      const language = options.languageOverride || editorLanguageForPath(options.path) || "plaintext";
+      runProgrammaticChange(() => {
+        editorApi.setModelLanguage(model, language);
+        model.setValue(String(options.text || ""));
+      });
+      return true;
+    }
+
+    function createDiffEditor(monaco, host, options = {}) {
+      const editorApi = requireMonacoEditor(monaco, "createDiffEditor");
+      if (typeof editorApi.createModel !== "function") throw new Error("monaco editor model creation unavailable");
+      const language = editorLanguageForPath(options.path) || "plaintext";
+      const originalModel = editorApi.createModel(String(options.originalText || ""), language);
+      const modifiedModel = editorApi.createModel(String(options.modifiedText || ""), language);
+      const diffEditor = editorApi.createDiffEditor(host, diffEditorCreateOptions());
+      if (!diffEditor || typeof diffEditor.setModel !== "function") throw new Error("monaco diff editor unavailable");
+      diffEditor.setModel({ original: originalModel, modified: modifiedModel });
+      setEditor(diffEditor);
+      setModels([originalModel, modifiedModel]);
+      const originalEditor = typeof diffEditor.getOriginalEditor === "function" ? diffEditor.getOriginalEditor() : null;
+      const modifiedEditor = typeof diffEditor.getModifiedEditor === "function" ? diffEditor.getModifiedEditor() : null;
+      if (originalEditor && typeof originalEditor.updateOptions === "function") originalEditor.updateOptions(diffSideEditorOptions(false));
+      if (modifiedEditor && typeof modifiedEditor.updateOptions === "function") modifiedEditor.updateOptions(diffSideEditorOptions(true));
+      return { diffEditor, originalEditor, modifiedEditor };
+    }
+
+    function positionCurrentEditorAtLine(kind, lineNumber, normalizeLineNumber) {
+      const normalize = requireFunction(normalizeLineNumber, "normalizeLineNumber");
+      const requestedLine = normalize(lineNumber);
+      const targetLine = requestedLine || 1;
+      const editorKind = String(kind || "");
+      if (editorKind === "diff") {
+        if (!editor || typeof editor.getOriginalEditor !== "function" || typeof editor.getModifiedEditor !== "function") return null;
+        const originalEditor = editor.getOriginalEditor();
+        const modifiedEditor = editor.getModifiedEditor();
+        if (!originalEditor || !modifiedEditor) return null;
+        if (typeof originalEditor.setScrollPosition === "function") originalEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
+        if (typeof modifiedEditor.setScrollPosition === "function") modifiedEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
+        if (typeof originalEditor.setPosition === "function") originalEditor.setPosition({ lineNumber: targetLine, column: 1 });
+        if (typeof modifiedEditor.setPosition === "function") modifiedEditor.setPosition({ lineNumber: targetLine, column: 1 });
+        if (typeof modifiedEditor.revealPositionInCenter === "function") modifiedEditor.revealPositionInCenter({ lineNumber: targetLine, column: 1 });
+        if (typeof editor.layout === "function") editor.layout();
+        return Object.freeze({ requestedLine, targetLine });
+      }
+      if (!editor) return null;
+      if (typeof editor.setScrollPosition === "function") editor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
+      if (typeof editor.setPosition === "function") editor.setPosition({ lineNumber: targetLine, column: 1 });
+      if (typeof editor.revealPositionInCenter === "function") editor.revealPositionInCenter({ lineNumber: targetLine, column: 1 });
+      if (typeof editor.layout === "function") editor.layout();
+      return Object.freeze({ requestedLine, targetLine });
     }
 
     function focusActiveCodeEditor(kind) {
@@ -282,6 +446,8 @@
       activeCodeEditor,
       activeSelectionText,
       applySelection,
+      createDiffEditor,
+      createFileEditor,
       currentEditor,
       currentModels,
       dispose,
@@ -291,11 +457,13 @@
       isCollapsedSelection,
       layoutCurrent,
       normalizePosition,
+      positionCurrentEditorAtLine,
       selectionText,
       setChangeDisposable,
       setEditor,
       setModels,
       updateEditorOptions,
+      updateFileEditorText,
       withCurrentEditor,
     });
   }

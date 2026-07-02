@@ -11,7 +11,7 @@ APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
 def eval_file_picker_session_helpers() -> dict[str, object]:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function currentFileViewerSessionId() {")
-    end = source.index("function extToEditorLang(p) {", start)
+    end = source.index("function disposeFileEditor() {", start)
     snippet = source[start:end]
     js = textwrap.dedent(
         f"""

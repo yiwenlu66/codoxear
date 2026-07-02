@@ -102,6 +102,79 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
         const modelCountAfterDispose = runtime.currentModels().length;
         let missingCallbackError = "";
         try {{ runtime.withCurrentEditor(null); }} catch (err) {{ missingCallbackError = err && err.message ? err.message : String(err); }}
+
+        const creationEvents = [];
+        const fileRuntime = mod.createFileEditorRuntime();
+        const createdFileModel = {{
+          setValue: (value) => creationEvents.push(["setValue", value]),
+        }};
+        const createdFileEditor = {{
+          tag: "createdFile",
+          getModel: () => createdFileModel,
+          onDidChangeModelContent: (callback) => {{ creationEvents.push(["bindChange"]); return {{ dispose: () => creationEvents.push(["disposeChange"]) }}; }},
+          setScrollPosition: (position) => creationEvents.push(["fileScroll", position]),
+          setPosition: (position) => creationEvents.push(["filePosition", position]),
+          revealPositionInCenter: (position) => creationEvents.push(["fileReveal", position]),
+          layout: () => creationEvents.push(["fileLayout"]),
+        }};
+        const monacoCreate = {{
+          editor: {{
+            create: (host, options) => {{ creationEvents.push(["createFile", host.name, options]); return createdFileEditor; }},
+            setModelLanguage: (model, language) => creationEvents.push(["setLanguage", model === createdFileModel, language]),
+          }},
+        }};
+        const createFileEditorResult = fileRuntime.createFileEditor(monacoCreate, {{ name: "fileHost" }}, {{
+          path: "src/main.py",
+          text: "print(1)",
+          readOnly: true,
+          onDidChangeModelContent: () => creationEvents.push(["changed"]),
+        }}).tag;
+        const filePositionState = fileRuntime.positionCurrentEditorAtLine("file", "3", (value) => Number(value) || null);
+        const updateFileTextResult = fileRuntime.updateFileEditorText(monacoCreate, {{
+          path: "README.md",
+          text: "# title",
+          runProgrammaticChange: (callback) => {{ creationEvents.push(["programmaticStart"]); callback(); creationEvents.push(["programmaticEnd"]); }},
+        }});
+
+        const diffRuntime = mod.createFileEditorRuntime();
+        const originalEditor = {{
+          tag: "original",
+          updateOptions: (options) => creationEvents.push(["originalOptions", options]),
+          setScrollPosition: (position) => creationEvents.push(["originalScroll", position]),
+          setPosition: (position) => creationEvents.push(["originalPosition", position]),
+        }};
+        const modifiedEditorForCreate = {{
+          tag: "modifiedCreated",
+          updateOptions: (options) => creationEvents.push(["modifiedOptions", options]),
+          setScrollPosition: (position) => creationEvents.push(["modifiedScroll", position]),
+          setPosition: (position) => creationEvents.push(["modifiedPosition", position]),
+          revealPositionInCenter: (position) => creationEvents.push(["modifiedReveal", position]),
+        }};
+        const createdDiffEditor = {{
+          tag: "createdDiff",
+          setModel: (model) => creationEvents.push(["setDiffModel", model.original.text, model.modified.text]),
+          getOriginalEditor: () => originalEditor,
+          getModifiedEditor: () => modifiedEditorForCreate,
+          layout: () => creationEvents.push(["diffLayout"]),
+        }};
+        const monacoDiff = {{
+          editor: {{
+            createModel: (text, language) => ({{ text, language }}),
+            createDiffEditor: (host, options) => {{ creationEvents.push(["createDiff", host.name, options]); return createdDiffEditor; }},
+          }},
+        }};
+        const diffCreateResult = diffRuntime.createDiffEditor(monacoDiff, {{ name: "diffHost" }}, {{ path: "src/app.ts", originalText: "old", modifiedText: "new" }}).diffEditor.tag;
+        const diffPositionState = diffRuntime.positionCurrentEditorAtLine("diff", null, (value) => Number(value) || null);
+        const creation = {{
+          createFileEditorResult,
+          filePositionState,
+          updateFileTextResult,
+          diffCreateResult,
+          diffPositionState,
+          fileModelCount: fileRuntime.currentModels().length,
+          diffModelCount: diffRuntime.currentModels().length,
+          creationEvents,
+        }};
         process.stdout.write(JSON.stringify({{
           frozen: Object.isFrozen(mod),
           runtimeFrozen: Object.isFrozen(runtime),
@@ -129,6 +202,7 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
           disposeResult,
           currentAfterDispose,
           modelCountAfterDispose,
+          creation,
           events,
           missingCallbackError,
         }}));
@@ -234,6 +308,31 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertTrue(result["disposeResult"])
         self.assertIsNone(result["currentAfterDispose"])
         self.assertEqual(result["modelCountAfterDispose"], 0)
+        creation = result["creation"]
+        self.assertEqual(creation["createFileEditorResult"], "createdFile")
+        self.assertTrue(creation["updateFileTextResult"])
+        self.assertEqual(creation["diffCreateResult"], "createdDiff")
+        self.assertEqual(creation["fileModelCount"], 1)
+        self.assertEqual(creation["diffModelCount"], 2)
+        self.assertEqual(creation["filePositionState"], {"requestedLine": 3, "targetLine": 3})
+        self.assertEqual(creation["diffPositionState"], {"requestedLine": None, "targetLine": 1})
+        creation_events = creation["creationEvents"]
+        self.assertEqual(creation_events[0][0:2], ["createFile", "fileHost"])
+        self.assertEqual(creation_events[0][2]["language"], "python")
+        self.assertEqual(creation_events[0][2]["value"], "print(1)")
+        self.assertTrue(creation_events[0][2]["readOnly"])
+        self.assertEqual(creation_events[0][2]["theme"], "codoxear-github-light")
+        self.assertIn(["bindChange"], creation_events)
+        self.assertIn(["filePosition", {"lineNumber": 3, "column": 1}], creation_events)
+        self.assertIn(["setLanguage", True, "markdown"], creation_events)
+        self.assertIn(["setValue", "# title"], creation_events)
+        diff_create = next(event for event in creation_events if event[0] == "createDiff")
+        self.assertEqual(diff_create[1], "diffHost")
+        self.assertTrue(diff_create[2]["readOnly"])
+        self.assertEqual(diff_create[2]["hideUnchangedRegions"], {"enabled": True, "contextLineCount": 4, "minimumLineCount": 1, "revealLineCount": 2})
+        self.assertIn(["originalOptions", {"wordWrap": "on", "lineNumbers": "off", "glyphMargin": False, "lineDecorationsWidth": 0, "lineNumbersMinChars": 0}], creation_events)
+        self.assertIn(["modifiedOptions", {"wordWrap": "on", "lineNumbers": "on", "glyphMargin": False, "lineDecorationsWidth": 0, "lineNumbersMinChars": 3}], creation_events)
+        self.assertIn(["modifiedReveal", {"lineNumber": 1, "column": 1}], creation_events)
         self.assertEqual(
             result["events"],
             [
@@ -302,9 +401,23 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertIn("fileEditorRuntime.isCollapsedSelection(selection)", app_source)
         self.assertIn("fileEditorRuntime.activeSelectionText(currentFileEditorKind())", app_source)
         self.assertIn("fileEditorRuntime.layoutCurrent()", app_source)
-        self.assertIn("fileEditorRuntime.setEditor(editor);", app_source)
-        self.assertIn("fileEditorRuntime.setModels([editor.getModel()].filter(Boolean));", app_source)
-        self.assertIn("fileEditorRuntime.setChangeDisposable(editor.onDidChangeModelContent", app_source)
+        self.assertNotIn("function extToEditorLang", app_source)
+        self.assertIn("function editorLanguageForPath(path)", editor_source)
+        self.assertIn("function fileEditorCreateOptions", editor_source)
+        self.assertIn("function diffEditorCreateOptions()", editor_source)
+        self.assertIn("function createFileEditor(monaco, host, options = {})", editor_source)
+        self.assertIn("function createDiffEditor(monaco, host, options = {})", editor_source)
+        self.assertIn("function positionCurrentEditorAtLine(kind, lineNumber, normalizeLineNumber)", editor_source)
+        self.assertIn("fileEditorRuntime.createFileEditor(monaco, fileDiff", app_source)
+        self.assertIn("fileEditorRuntime.updateFileEditorText(monaco", app_source)
+        self.assertIn("fileEditorRuntime.createDiffEditor(monaco, fileDiff", app_source)
+        self.assertIn("fileEditorRuntime.positionCurrentEditorAtLine(\"file\", lineNumber, normalizeLineNumber)", app_source)
+        self.assertIn("fileEditorRuntime.positionCurrentEditorAtLine(\"diff\", lineNumber, normalizeLineNumber)", app_source)
+        self.assertNotIn("fileEditorRuntime.setEditor(editor);", app_source)
+        self.assertNotIn("fileEditorRuntime.setModels([editor.getModel()].filter(Boolean));", app_source)
+        self.assertNotIn("fileEditorRuntime.setChangeDisposable(editor.onDidChangeModelContent", app_source)
+        self.assertNotIn("monaco.editor.create(fileDiff", app_source)
+        self.assertNotIn("monaco.editor.createDiffEditor(fileDiff", app_source)
         self.assertNotIn("let monacoReadyPromise = null;", app_source)
         self.assertNotIn("let monacoNs = null;", app_source)
         self.assertNotIn("let monacoThemeReady = false;", app_source)

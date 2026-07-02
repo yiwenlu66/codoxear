@@ -7259,26 +7259,6 @@
           return true;
         }
 
-        function extToEditorLang(p) {
-          const ext = String(p || "").split(".").pop().toLowerCase();
-          if (ext === "js") return "javascript";
-          if (ext === "ts") return "typescript";
-          if (ext === "json") return "json";
-          if (ext === "py") return "python";
-          if (ext === "sh" || ext === "bash" || ext === "zsh") return "bash";
-          if (ext === "md") return "markdown";
-          if (ext === "html" || ext === "htm") return "markup";
-          if (ext === "css") return "css";
-          if (ext === "yml" || ext === "yaml") return "yaml";
-          if (ext === "toml") return "toml";
-          if (ext === "rs") return "rust";
-          if (ext === "go") return "go";
-          if (ext === "java") return "java";
-          if (ext === "c" || ext === "h") return "c";
-          if (ext === "cpp" || ext === "cc" || ext === "hpp") return "cpp";
-          return "";
-        }
-
         function disposeFileEditor() {
           fileViewerController.finishFileEditorProgrammaticChange();
           fileEditorRuntime.dispose({
@@ -7568,59 +7548,31 @@
             return true;
           }
           if (request && !isCurrentFileOpenRequest(request)) return false;
-          const host = fileDiff;
-          const lang = langOverride || extToEditorLang(rel);
           if (currentFileEditorKind() !== "file") {
             disposeFileEditor();
-            const editor = monaco.editor.create(host, {
-              language: lang || "plaintext",
-              value: String(text || ""),
+            fileEditorRuntime.createFileEditor(monaco, fileDiff, {
+              path: rel,
+              text,
+              languageOverride: langOverride,
               readOnly: !(currentFileEditMode() && currentActiveFileEditable() && !isFileViewerSessionUnavailable()),
-              theme: "codoxear-github-light",
-              lineNumbers: "on",
-              minimap: { enabled: false },
-              scrollBeyondLastLine: false,
-              wordWrap: "on",
-              folding: false,
-              renderLineHighlight: "none",
-              glyphMargin: false,
-              overviewRulerBorder: false,
-              stickyScroll: { enabled: false },
-              automaticLayout: true,
-              accessibilitySupport: "off",
-              quickSuggestions: false,
-              suggestOnTriggerCharacters: false,
-              acceptSuggestionOnEnter: "off",
-              inlineSuggest: { enabled: false },
-              parameterHints: { enabled: false },
-              snippetSuggestions: "none",
-              tabCompletion: "off",
-              wordBasedSuggestions: "off",
+              onDidChangeModelContent: () => {
+                if (fileViewerController.isFileEditorProgrammaticChange()) return;
+                if (currentFileTouchSelectMode()) resetFileTouchSelectionState();
+                setFileDirty(getFileEditorText() !== String(currentActiveFileText() || ""));
+              },
             });
-            fileEditorRuntime.setEditor(editor);
             setFileEditorKind("file");
-            fileEditorRuntime.setModels([editor.getModel()].filter(Boolean));
-            fileEditorRuntime.setChangeDisposable(editor.onDidChangeModelContent(() => {
-              if (fileViewerController.isFileEditorProgrammaticChange()) return;
-              if (currentFileTouchSelectMode()) resetFileTouchSelectionState();
-              setFileDirty(getFileEditorText() !== String(currentActiveFileText() || ""));
-            }));
           } else {
-            const editor = fileEditorRuntime.currentEditor();
-            const model = editor.getModel();
-            fileViewerController.runFileEditorProgrammaticChange(() => {
-              monaco.editor.setModelLanguage(model, lang || "plaintext");
-              model.setValue(String(text || ""));
+            fileEditorRuntime.updateFileEditorText(monaco, {
+              path: rel,
+              text,
+              languageOverride: langOverride,
+              runProgrammaticChange: (callback) => fileViewerController.runFileEditorProgrammaticChange(callback),
             });
           }
           syncFileEditorReadOnly();
-          const editor = fileEditorRuntime.currentEditor();
-          const requestedLine = normalizeLineNumber(lineNumber);
-          const targetLine = requestedLine || 1;
-          editor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
-          editor.setPosition({ lineNumber: targetLine, column: 1 });
-          editor.revealPositionInCenter({ lineNumber: targetLine, column: 1 });
-          editor.layout();
+          const positionState = fileEditorRuntime.positionCurrentEditorAtLine("file", lineNumber, normalizeLineNumber);
+          const requestedLine = positionState && positionState.requestedLine;
           if (requestedLine) {
             requestAnimationFrame(() => {
               if (request && !isCurrentFileOpenRequest(request)) return;
@@ -7647,62 +7599,11 @@
             return true;
           }
           if (request && !isCurrentFileOpenRequest(request)) return false;
-          const host = fileDiff;
-          const lang = extToEditorLang(rel);
           disposeFileEditor();
-          const originalModel = monaco.editor.createModel(String(originalText || ""), lang || "plaintext");
-          const modifiedModel = monaco.editor.createModel(String(modifiedText || ""), lang || "plaintext");
-          const diffEditor = monaco.editor.createDiffEditor(host, {
-            readOnly: true,
-            theme: "codoxear-github-light",
-            renderSideBySide: false,
-            useInlineViewWhenSpaceIsLimited: true,
-            lineNumbers: "on",
-            minimap: { enabled: false },
-            scrollBeyondLastLine: false,
-            wordWrap: "on",
-            diffWordWrap: "on",
-            folding: false,
-            renderLineHighlight: "none",
-            glyphMargin: false,
-            overviewRulerBorder: false,
-            stickyScroll: { enabled: false },
-            automaticLayout: true,
-            hideUnchangedRegions: {
-              enabled: true,
-              contextLineCount: 4,
-              minimumLineCount: 1,
-              revealLineCount: 2,
-            },
-          });
-          diffEditor.setModel({ original: originalModel, modified: modifiedModel });
-          fileEditorRuntime.setEditor(diffEditor);
+          fileEditorRuntime.createDiffEditor(monaco, fileDiff, { path: rel, originalText, modifiedText });
           setFileEditorKind("diff");
-          fileEditorRuntime.setModels([originalModel, modifiedModel]);
-          const originalEditor = diffEditor.getOriginalEditor();
-          const modifiedEditor = diffEditor.getModifiedEditor();
-          originalEditor.updateOptions({
-            wordWrap: "on",
-            lineNumbers: "off",
-            glyphMargin: false,
-            lineDecorationsWidth: 0,
-            lineNumbersMinChars: 0,
-          });
-          modifiedEditor.updateOptions({
-            wordWrap: "on",
-            lineNumbers: "on",
-            glyphMargin: false,
-            lineDecorationsWidth: 0,
-            lineNumbersMinChars: 3,
-          });
-          const requestedLine = normalizeLineNumber(lineNumber);
-          const targetLine = requestedLine || 1;
-          originalEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
-          modifiedEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
-          originalEditor.setPosition({ lineNumber: targetLine, column: 1 });
-          modifiedEditor.setPosition({ lineNumber: targetLine, column: 1 });
-          modifiedEditor.revealPositionInCenter({ lineNumber: targetLine, column: 1 });
-          diffEditor.layout();
+          const positionState = fileEditorRuntime.positionCurrentEditorAtLine("diff", lineNumber, normalizeLineNumber);
+          const requestedLine = positionState && positionState.requestedLine;
           if (requestedLine) {
             requestAnimationFrame(() => {
               if (request && !isCurrentFileOpenRequest(request)) return;

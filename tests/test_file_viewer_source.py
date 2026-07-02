@@ -1726,7 +1726,7 @@ def eval_file_open_request_sequence() -> dict:
 def eval_file_viewer_session_sync_race() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function currentFileViewerSessionId() {")
-    end = source.index("function extToEditorLang", start)
+    end = source.index("function disposeFileEditor()", start)
     snippet = source[start:end]
     js = textwrap.dedent(
         f"""
@@ -3453,12 +3453,14 @@ class TestFileViewerSource(unittest.TestCase):
 
     def test_file_editor_disables_monaco_suggestions(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('accessibilitySupport: "off"', source)
-        self.assertIn("quickSuggestions: false", source)
-        self.assertIn("suggestOnTriggerCharacters: false", source)
-        self.assertIn('acceptSuggestionOnEnter: "off"', source)
-        self.assertIn('tabCompletion: "off"', source)
-        self.assertIn('wordBasedSuggestions: "off"', source)
+        editor_source = APP_FILE_EDITOR_JS.read_text(encoding="utf-8")
+        self.assertIn('accessibilitySupport: "off"', editor_source)
+        self.assertIn("quickSuggestions: false", editor_source)
+        self.assertIn("suggestOnTriggerCharacters: false", editor_source)
+        self.assertIn('acceptSuggestionOnEnter: "off"', editor_source)
+        self.assertIn('tabCompletion: "off"', editor_source)
+        self.assertIn('wordBasedSuggestions: "off"', editor_source)
+        self.assertNotIn('accessibilitySupport: "off"', source)
 
     def test_file_viewer_helpers_remain_app_owned(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -3598,7 +3600,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function isFileViewerSelectionCurrent(sessionId, token = null)", source)
         self.assertIn("function isFileViewerSessionCurrent(sessionId, token = null)", source)
         ensure_start = source.index("async function ensureCurrentFileViewerSession()")
-        ensure_end = source.index("function extToEditorLang", ensure_start)
+        ensure_end = source.index("function disposeFileEditor()", ensure_start)
         ensure_block = source[ensure_start:ensure_end]
         self.assertIn("const syncToken = fileViewerController.beginFileViewerSessionSync();", ensure_block)
         self.assertIn("if (!isFileViewerSelectionCurrent(sid, syncToken)) return false;", ensure_block)
@@ -4345,7 +4347,9 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("async function renderMonacoFile(rel, text, lineNumber = null, langOverride = \"\", request = null)", source)
         self.assertIn("async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null)", source)
         self.assertIn("if (request && !isCurrentFileOpenRequest(request)) return false;", source)
-        self.assertIn("const requestedLine = normalizeLineNumber(lineNumber);", source)
+        self.assertIn('const positionState = fileEditorRuntime.positionCurrentEditorAtLine("file", lineNumber, normalizeLineNumber);', source)
+        self.assertIn('const positionState = fileEditorRuntime.positionCurrentEditorAtLine("diff", lineNumber, normalizeLineNumber);', source)
+        self.assertIn("const requestedLine = positionState && positionState.requestedLine;", source)
         self.assertIn("if (requestedLine) {", source)
         self.assertIn("applyEditorLineFocus(requestedLine);", source)
         self.assertNotIn("applyEditorLineFocus(targetLine);", source)
