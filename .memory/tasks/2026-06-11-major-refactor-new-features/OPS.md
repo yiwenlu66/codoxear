@@ -7746,3 +7746,17 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
   - `git diff --check` and staged `git diff --cached --check` passed before commit, and staged diff inspection showed only app/viewer/test files in the functional commit.
 - Scope note: file-viewer hide lifecycle is viewer-module owned. App.js still owns show/open session lifecycle, session-switch synchronization (`ensureCurrentFileViewerSession()`), file-picker input event binding, file-reference click routing, and selected-session authority.
+
+## 2026-07-02T15:31:00Z File viewer session-sync lifecycle viewer-module ownership
+- Functional commit `f901803 Move file viewer session sync into viewer module` moved `ensureCurrentFileViewerSession()` sequencing from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js` as `createFileViewerLifecycleRuntime(...).ensureCurrentSession()`.
+- Mechanism: app.js still owned the selected-session synchronization path for an already-open viewer: viewer-open/selected-session checks, unsaved-change prompt boundary, stale-selection guard, pending-open cancellation, active-selection persistence, viewer session id/unavailable clearing, file-search session reset, candidate refresh, target resolution, active path projection, guarded open, error status projection, and empty-target fallback. The lifecycle runtime now owns that transition while app.js injects selected-session evidence, currentness predicates, unsaved prompt callback, candidate refresh, file-path projection/opening, empty-target rendering, and status projection.
+- Tests updated: `eval_file_viewer_session_sync_race()` now loads `app_file_viewer.js` and executes `createFileViewerLifecycleRuntime(...).ensureCurrentSession()` directly. The race test still verifies that changing `selected` during the unsaved prompt aborts before candidate refresh/open. Source sentinels now require app.js to delegate `ensureCurrentFileViewerSession()` to `fileViewerLifecycleRuntime.ensureCurrentSession()` and require the old synchronization/open-target sequence inside the lifecycle runtime.
+- Validation:
+  - `node --check codoxear/static/app_file_viewer.js` and `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_file_picker_session_state.py tests/test_overlay_accessibility_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_file_picker_session_state.py tests/test_overlay_accessibility_source.py` returned `68 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `260 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1309 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit, and staged diff inspection showed only app/viewer/test files in the functional commit.
+- Scope note: open-viewer session synchronization is viewer-module owned. App.js still owns initial `showFileViewer(...)` orchestration, file-picker input event binding, file-reference click routing, and selected-session authority.
