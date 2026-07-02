@@ -7332,3 +7332,20 @@
 - Intended output artifact: `/tmp/codoxear-file-viewer-editor-next-seams-20260702.md`.
 - Scope of intended review: identify highest-value remaining Workbench item 2 file-viewer/editor ownership seams after commits through `dcd3f3f`.
 - Interpretation: no review artifact or concrete code finding was produced, so this is infrastructure-only evidence about the review runner. It does not support or refute any code claim. Direct inspection continues as the evidence source for the next extraction.
+
+## 2026-07-02T13:31:00Z Editor line-focus scheduling runtime ownership
+- Functional commit `a88c8a6 Move editor line focus scheduling into runtime` moved the duplicated post-render editor line-focus scheduler from inline `codoxear/static/app.js` into `codoxear/static/app_file_editor.js` as `scheduleLineFocus(kind, requestedLine, options)`.
+- Mechanism: `app_file_editor.js` already owns current editor identity, active diff/file editor projection, layout, and line focus. The two-pass `requestAnimationFrame` plus delayed `setTimeout` focus stabilization is editor runtime policy. `app.js` now supplies only request-currentness and timer primitives for file/diff renderers.
+- Tests updated: editor-runtime VM coverage now executes scheduled focus for diff editors with explicit `requestAnimationFrame`, delayed timer, delay override, and stale-currentness no-op. Source sentinels now require `fileEditorRuntime.scheduleLineFocus(...)` and reject app-owned `applyEditorLineFocus(requestedLine)` and direct `fileEditorRuntime.layoutCurrent()` scheduling.
+- Negative evidence preserved: first focused validation failed because the new JS object literals in the Python f-string test harness used unescaped braces; after fixing the harness, a stale source assertion still expected app-owned `layoutCurrent()`. Both failures were test-ownership issues, not product behavior changes.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_editor_module_source.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_editor.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_editor_module_source.py tests/test_file_viewer_source.py` returned `48 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `238 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1296 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: editor post-render line-focus scheduling belongs to `app_file_editor.js`. App still owns render currentness and raw file/diff renderer orchestration.
