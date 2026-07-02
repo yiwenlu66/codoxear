@@ -1114,25 +1114,31 @@ def run_file_viewer_modal_runtime_probe() -> dict[str, object]:
           setReturnFocusElement: (element, ElementCtor) => events.push(["setReturnFocus", element && element.name, ElementCtor === FakeElement]),
           takeReturnFocusElement: () => ({{ name: "stored-focus" }}),
         }});
+        const initiallyOpen = runtime.isOpen();
         const showQuery = runtime.show({{ wasOpen: false, queryOpen: true, activeElement: {{ name: "active-query" }}, ElementCtor: FakeElement }});
+        const openAfterShow = runtime.isOpen();
         const showQueryState = {{ backdrop: backdrop.style.display, viewer: viewer.style.display }};
         const showAlreadyOpen = runtime.show({{ wasOpen: true, queryOpen: true, activeElement: {{ name: "ignored" }}, ElementCtor: FakeElement }});
         const showAlreadyOpenState = {{ backdrop: backdrop.style.display, viewer: viewer.style.display }};
         const hideState = runtime.beginHide();
         const hideDisplay = runtime.hideDisplay();
+        const openAfterHideDisplay = runtime.isOpen();
         const afterHideDisplayState = {{ backdrop: backdrop.style.display, viewer: viewer.style.display }};
         const finishHide = runtime.finishHide(hideState);
         let missingError = "";
         try {{ fileViewer.createFileViewerModalRuntime({{ backdrop, viewer }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
         process.stdout.write(JSON.stringify({{
           frozen: Object.isFrozen(runtime),
+          initiallyOpen,
           showQuery,
+          openAfterShow,
           showQueryState,
           showAlreadyOpen,
           showAlreadyOpenState,
           hideState,
           hideStateFrozen: Object.isFrozen(hideState),
           hideDisplay,
+          openAfterHideDisplay,
           afterHideDisplayState,
           finishHide,
           events,
@@ -1790,13 +1796,16 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
     def test_file_viewer_modal_runtime_behavior(self) -> None:
         result = run_file_viewer_modal_runtime_probe()
         self.assertTrue(result["frozen"])
+        self.assertFalse(result["initiallyOpen"])
         self.assertTrue(result["showQuery"])
+        self.assertTrue(result["openAfterShow"])
         self.assertEqual(result["showQueryState"], {"backdrop": "block", "viewer": "flex"})
         self.assertTrue(result["showAlreadyOpen"])
         self.assertEqual(result["showAlreadyOpenState"], {"backdrop": "block", "viewer": "flex"})
         self.assertEqual(result["hideState"], {"wasOpen": True, "focusTarget": {"name": "stored-focus"}})
         self.assertTrue(result["hideStateFrozen"])
         self.assertTrue(result["hideDisplay"])
+        self.assertFalse(result["openAfterHideDisplay"])
         self.assertEqual(result["afterHideDisplayState"], {"backdrop": "none", "viewer": "none"})
         self.assertTrue(result["finishHide"])
         self.assertEqual(result["events"], [

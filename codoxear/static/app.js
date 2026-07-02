@@ -7333,7 +7333,7 @@
         }
 
         function isFileViewerOpen() {
-          return fileViewer.style.display === "flex";
+          return fileViewerModalRuntime.isOpen();
         }
 
         function currentFileEditorState() {

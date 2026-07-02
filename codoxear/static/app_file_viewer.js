@@ -150,6 +150,10 @@
       return true;
     }
 
+    function isOpen() {
+      return viewer.style.display === "flex";
+    }
+
     function show({ wasOpen = false, queryOpen = false, activeElement = null, ElementCtor = null } = {}) {
       if (!wasOpen) setReturnFocusElement(activeElement, ElementCtor);
       prepareModalOpen();
@@ -179,7 +183,7 @@
       return true;
     }
 
-    return Object.freeze({ beginHide, finishHide, hideDisplay, show });
+    return Object.freeze({ beginHide, finishHide, hideDisplay, isOpen, show });
   }
 
   function createFileUnsavedDialogRuntime(options = {}) {
