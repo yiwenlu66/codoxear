@@ -573,6 +573,7 @@
         typeof codoxearFileViewer.bindFileTouchClick !== "function" ||
         typeof codoxearFileViewer.bindFileTouchPress !== "function" ||
         typeof codoxearFileViewer.createFileFallbackRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileModeControlsRuntime !== "function" ||
         typeof codoxearFileViewer.createFilePasteDialogRuntime !== "function" ||
         typeof codoxearFileViewer.createFileRenderSurfaceRuntime !== "function" ||
         typeof codoxearFileViewer.createFileTouchToolbarRuntime !== "function" ||
@@ -7074,6 +7075,16 @@
           videoPreviewButton: fileVideoPreviewBtn,
           clearActiveVideoFallback: () => fileViewerController.clearActiveVideoFallback(),
         });
+        const fileModeControlsRuntime = codoxearFileViewer.createFileModeControlsRuntime({
+          diffButton: fileModeDiffBtn,
+          previewButton: fileModePreviewBtn,
+          downloadButton: fileDownloadBtn,
+          videoPreviewButton: fileVideoPreviewBtn,
+          hideFilePasteDialog: () => hideFilePasteDialog(),
+          setFileEditMode: (mode) => setFileEditMode(mode),
+          syncFileEditorReadOnly: () => syncFileEditorReadOnly(),
+          updateFileEditButton: () => updateFileEditButton(),
+        });
         const fileTouchToolbarRuntime = codoxearFileViewer.createFileTouchToolbarRuntime({
           toolbar: fileTouchToolbar,
           actions: fileTouchActions,
@@ -7910,21 +7921,7 @@
         }
 
         function applyFileMode() {
-          const modeState = fileViewerController.currentFileModeControlState();
-          fileModeDiffBtn.classList.toggle("active", modeState.diffActive);
-          fileModePreviewBtn.classList.toggle("active", modeState.previewActive);
-          fileModeDiffBtn.disabled = modeState.diffDisabled;
-          fileModePreviewBtn.disabled = modeState.previewDisabled;
-          fileDownloadBtn.disabled = modeState.downloadDisabled;
-          fileVideoPreviewBtn.style.display = modeState.videoPreviewVisible ? "" : "none";
-          fileVideoPreviewBtn.disabled = modeState.videoPreviewDisabled;
-          fileVideoPreviewBtn.title = modeState.videoPreviewTitle;
-          fileVideoPreviewBtn.setAttribute("aria-label", modeState.videoPreviewTitle);
-          fileModePreviewBtn.style.display = modeState.markdownPreviewVisible ? "" : "none";
-          if (modeState.shouldHidePasteDialog) hideFilePasteDialog();
-          if (modeState.shouldExitEditMode) setFileEditMode(false);
-          syncFileEditorReadOnly();
-          updateFileEditButton();
+          return fileModeControlsRuntime.apply(fileViewerController.currentFileModeControlState());
         }
 
         function applyFileMenuState() {

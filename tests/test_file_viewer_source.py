@@ -381,7 +381,7 @@ def eval_video_preview_failure_path() -> dict:
         }})().catch((err) => {{ console.error(err && err.stack ? err.stack : err); process.exit(1); }});
         """
     )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
 
 
@@ -443,7 +443,7 @@ def eval_empty_file_viewer_target() -> dict:
         }}));
         """
     )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
 
 
@@ -497,7 +497,7 @@ def eval_hide_file_viewer_identity_cleanup() -> dict:
         }}));
         """
     )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
 
 
@@ -555,7 +555,7 @@ def eval_disable_file_viewer_for_unavailable_session() -> dict:
         }}));
         """
     )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
 
 
@@ -616,7 +616,7 @@ def eval_file_viewer_open_target() -> dict:
         process.stdout.write(JSON.stringify({{ explicit, preferred, first, none, noSession }}));
         """
     )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
 
 
@@ -1000,7 +1000,7 @@ def eval_file_paste_insert_button_guard() -> dict:
         process.stdout.write(JSON.stringify({{ unavailable, available }}));
         """
     )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
 
 
@@ -1902,7 +1902,7 @@ def eval_resolved_open_current_guard() -> dict:
         }}).catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """
     )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
 
 
@@ -2025,7 +2025,7 @@ def eval_open_file_guard_mode_validation() -> dict:
         }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """
     )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
 
 def eval_open_file_path_mode_ownership() -> dict:
@@ -2160,7 +2160,7 @@ def eval_open_file_path_mode_ownership() -> dict:
         }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """
     )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
 
 def eval_active_file_load_state_writers() -> dict:
@@ -3120,7 +3120,7 @@ def eval_file_open_success_finalizer() -> dict:
         process.stdout.write(JSON.stringify({{ ok, calls }}));
         """
     )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
 
 def eval_file_load_result_dispatcher() -> dict:
@@ -3716,6 +3716,10 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("return Boolean(currentGuard());", guard_block)
         self.assertNotIn("const diffable = canToggleMode && activeFileGitPathValue() && fileCandidateGitStateFresh", source)
         self.assertIn("function currentFileModeControlState", viewer_source)
+        self.assertIn("function createFileModeControlsRuntime(options = {})", viewer_source)
+        self.assertIn("return fileModeControlsRuntime.apply(fileViewerController.currentFileModeControlState());", source)
+        self.assertNotIn('fileModeDiffBtn.classList.toggle("active", modeState.diffActive);', source)
+        self.assertNotIn('fileVideoPreviewBtn.style.display = modeState.videoPreviewVisible ? "" : "none";', source)
         self.assertIn("const diffable = Boolean(canToggleMode && identity.gitPath && currentFileCandidateGitStateFresh() && entry && entry.changed && isDiffableFileKind(currentActiveFileKind()));", viewer_source)
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertNotIn("function normalizeExplicitFileOpenMode(requestedMode)", source)

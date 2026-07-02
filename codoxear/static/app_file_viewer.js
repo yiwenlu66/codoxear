@@ -108,6 +108,20 @@
     return value;
   }
 
+  function requireModeControlButton(value, name) {
+    if (
+      !value ||
+      !value.classList ||
+      typeof value.classList.toggle !== "function" ||
+      !value.style ||
+      typeof value.setAttribute !== "function" ||
+      !("disabled" in value)
+    ) {
+      throw new TypeError(`file viewer dependency missing: ${name}`);
+    }
+    return value;
+  }
+
   function requireModalHostNode(value, name) {
     if (!value || typeof value.setAttribute !== "function" || typeof value.removeAttribute !== "function") {
       throw new TypeError(`file viewer dependency missing: ${name}`);
@@ -259,6 +273,38 @@
     }
 
     return Object.freeze({ focusInitialControl, hide, promptChoice, syncMode });
+  }
+
+  function createFileModeControlsRuntime(options = {}) {
+    const diffButton = requireModeControlButton(options.diffButton, "fileModeDiffButton");
+    const previewButton = requireModeControlButton(options.previewButton, "fileModePreviewButton");
+    const downloadButton = requireModeControlButton(options.downloadButton, "fileDownloadButton");
+    const videoPreviewButton = requireModeControlButton(options.videoPreviewButton, "fileVideoPreviewButton");
+    const hideFilePasteDialog = requireFunction(options.hideFilePasteDialog, "hideFilePasteDialog");
+    const setFileEditMode = requireFunction(options.setFileEditMode, "setFileEditMode");
+    const syncFileEditorReadOnly = requireFunction(options.syncFileEditorReadOnly, "syncFileEditorReadOnly");
+    const updateFileEditButton = requireFunction(options.updateFileEditButton, "updateFileEditButton");
+
+    function apply(modeState) {
+      if (!modeState || typeof modeState !== "object") throw new TypeError("file viewer dependency missing: fileModeState");
+      diffButton.classList.toggle("active", modeState.diffActive);
+      previewButton.classList.toggle("active", modeState.previewActive);
+      diffButton.disabled = modeState.diffDisabled;
+      previewButton.disabled = modeState.previewDisabled;
+      downloadButton.disabled = modeState.downloadDisabled;
+      videoPreviewButton.style.display = modeState.videoPreviewVisible ? "" : "none";
+      videoPreviewButton.disabled = modeState.videoPreviewDisabled;
+      videoPreviewButton.title = modeState.videoPreviewTitle;
+      videoPreviewButton.setAttribute("aria-label", modeState.videoPreviewTitle);
+      previewButton.style.display = modeState.markdownPreviewVisible ? "" : "none";
+      if (modeState.shouldHidePasteDialog) hideFilePasteDialog();
+      if (modeState.shouldExitEditMode) setFileEditMode(false);
+      syncFileEditorReadOnly();
+      updateFileEditButton();
+      return true;
+    }
+
+    return Object.freeze({ apply });
   }
 
   function createFileTouchToolbarRuntime(options = {}) {
@@ -2576,6 +2622,7 @@
     bindFileTouchClick,
     bindFileTouchPress,
     createFileFallbackRuntime,
+    createFileModeControlsRuntime,
     createFilePasteDialogRuntime,
     createFileViewerModalRuntime,
     createFileRenderSurfaceRuntime,

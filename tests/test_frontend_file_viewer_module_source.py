@@ -1032,6 +1032,113 @@ def run_file_render_surface_runtime_probe() -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
+def run_file_mode_controls_runtime_probe() -> dict[str, object]:
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const fileViewer = ctx.window.CodoxearFileViewer;
+        const events = [];
+        function modeButton(name) {{
+          return {{
+            name,
+            disabled: false,
+            title: "",
+            attrs: {{}},
+            style: {{ display: "initial" }},
+            classes: {{}},
+            classList: {{ toggle(className, enabled) {{ events.push(["toggle", name, className, Boolean(enabled)]); if (enabled) this.owner.classes[className] = true; else delete this.owner.classes[className]; }} }},
+            setAttribute(attr, value) {{ this.attrs[attr] = String(value); events.push(["attr", name, attr, String(value)]); }},
+          }};
+        }}
+        const diffButton = modeButton("diff");
+        const previewButton = modeButton("preview");
+        const downloadButton = modeButton("download");
+        const videoPreviewButton = modeButton("video");
+        for (const button of [diffButton, previewButton, downloadButton, videoPreviewButton]) button.classList.owner = button;
+        const runtime = fileViewer.createFileModeControlsRuntime({{
+          diffButton,
+          previewButton,
+          downloadButton,
+          videoPreviewButton,
+          hideFilePasteDialog: () => events.push(["hidePaste"]),
+          setFileEditMode: (mode) => events.push(["setEditMode", mode]),
+          syncFileEditorReadOnly: () => events.push(["syncReadOnly"]),
+          updateFileEditButton: () => events.push(["updateEdit"]),
+        }});
+        const visibleResult = runtime.apply({{
+          diffActive: true,
+          previewActive: false,
+          diffDisabled: false,
+          previewDisabled: true,
+          downloadDisabled: false,
+          videoPreviewVisible: true,
+          videoPreviewDisabled: false,
+          videoPreviewTitle: "Convert preview",
+          markdownPreviewVisible: true,
+          shouldHidePasteDialog: true,
+          shouldExitEditMode: true,
+        }});
+        const visibleState = {{
+          diffActive: Boolean(diffButton.classes.active),
+          previewActive: Boolean(previewButton.classes.active),
+          diffDisabled: diffButton.disabled,
+          previewDisabled: previewButton.disabled,
+          downloadDisabled: downloadButton.disabled,
+          videoDisplay: videoPreviewButton.style.display,
+          videoDisabled: videoPreviewButton.disabled,
+          videoTitle: videoPreviewButton.title,
+          videoAria: videoPreviewButton.attrs["aria-label"],
+          previewDisplay: previewButton.style.display,
+        }};
+        const hiddenResult = runtime.apply({{
+          diffActive: false,
+          previewActive: true,
+          diffDisabled: true,
+          previewDisabled: false,
+          downloadDisabled: true,
+          videoPreviewVisible: false,
+          videoPreviewDisabled: true,
+          videoPreviewTitle: "No preview",
+          markdownPreviewVisible: false,
+          shouldHidePasteDialog: false,
+          shouldExitEditMode: false,
+        }});
+        const hiddenState = {{
+          diffActive: Boolean(diffButton.classes.active),
+          previewActive: Boolean(previewButton.classes.active),
+          diffDisabled: diffButton.disabled,
+          previewDisabled: previewButton.disabled,
+          downloadDisabled: downloadButton.disabled,
+          videoDisplay: videoPreviewButton.style.display,
+          videoDisabled: videoPreviewButton.disabled,
+          videoTitle: videoPreviewButton.title,
+          videoAria: videoPreviewButton.attrs["aria-label"],
+          previewDisplay: previewButton.style.display,
+        }};
+        let missingButtonError = "";
+        try {{ fileViewer.createFileModeControlsRuntime({{ diffButton, previewButton, downloadButton }}); }} catch (err) {{ missingButtonError = err && err.message ? err.message : String(err); }}
+        let missingStateError = "";
+        try {{ runtime.apply(null); }} catch (err) {{ missingStateError = err && err.message ? err.message : String(err); }}
+        process.stdout.write(JSON.stringify({{
+          frozen: Object.isFrozen(runtime),
+          visibleResult,
+          visibleState,
+          hiddenResult,
+          hiddenState,
+          events,
+          missingButtonError,
+          missingStateError,
+        }}));
+        """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def run_file_touch_toolbar_runtime_probe() -> dict[str, object]:
     viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
@@ -1339,7 +1446,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
     def test_file_viewer_controller_owns_save_conflict_behavior(self) -> None:
         result = run_file_viewer_controller_probe()
         self.assertTrue(result["render"]["exportFrozen"])
-        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFileFallbackRuntime", "createFilePasteDialogRuntime", "createFileRenderSurfaceRuntime", "createFileTouchToolbarRuntime", "createFileUnsavedDialogRuntime", "createFileViewerController", "createFileViewerModalRuntime", "createPdfLoader"])
+        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFileFallbackRuntime", "createFileModeControlsRuntime", "createFilePasteDialogRuntime", "createFileRenderSurfaceRuntime", "createFileTouchToolbarRuntime", "createFileUnsavedDialogRuntime", "createFileViewerController", "createFileViewerModalRuntime", "createPdfLoader"])
         self.assertEqual(result["render"]["conflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["currentConflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["labelText"], "src/app.py - save conflict: version mismatch")
@@ -1780,6 +1887,52 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["events"], [["append", "div", "filePlainFallback"], ["raf"], ["append", "div", "fileBlockedNotice fileDownloadFallback"], ["append", "div", "fileBlockedNotice"], ["markdownHtml", "# hi", {"filePath": "README.md", "sessionId": "sid-1"}], ["append", "div", "md fileMarkdownPreview"], ["upgrade", "md fileMarkdownPreview", "<p># hi</p>"]])
         self.assertIn("file viewer dependency missing: requestAnimationFrame", result["missingError"])
 
+    def test_file_mode_controls_runtime_behavior(self) -> None:
+        result = run_file_mode_controls_runtime_probe()
+        self.assertTrue(result["frozen"])
+        self.assertTrue(result["visibleResult"])
+        self.assertEqual(result["visibleState"], {
+            "diffActive": True,
+            "previewActive": False,
+            "diffDisabled": False,
+            "previewDisabled": True,
+            "downloadDisabled": False,
+            "videoDisplay": "",
+            "videoDisabled": False,
+            "videoTitle": "Convert preview",
+            "videoAria": "Convert preview",
+            "previewDisplay": "",
+        })
+        self.assertTrue(result["hiddenResult"])
+        self.assertEqual(result["hiddenState"], {
+            "diffActive": False,
+            "previewActive": True,
+            "diffDisabled": True,
+            "previewDisabled": False,
+            "downloadDisabled": True,
+            "videoDisplay": "none",
+            "videoDisabled": True,
+            "videoTitle": "No preview",
+            "videoAria": "No preview",
+            "previewDisplay": "none",
+        })
+        self.assertEqual(result["events"], [
+            ["toggle", "diff", "active", True],
+            ["toggle", "preview", "active", False],
+            ["attr", "video", "aria-label", "Convert preview"],
+            ["hidePaste"],
+            ["setEditMode", False],
+            ["syncReadOnly"],
+            ["updateEdit"],
+            ["toggle", "diff", "active", False],
+            ["toggle", "preview", "active", True],
+            ["attr", "video", "aria-label", "No preview"],
+            ["syncReadOnly"],
+            ["updateEdit"],
+        ])
+        self.assertIn("file viewer dependency missing: fileVideoPreviewButton", result["missingButtonError"])
+        self.assertIn("file viewer dependency missing: fileModeState", result["missingStateError"])
+
     def test_file_touch_toolbar_runtime_behavior(self) -> None:
         result = run_file_touch_toolbar_runtime_probe()
         self.assertTrue(result["frozen"])
@@ -1900,6 +2053,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn('"app_file_editor.js"', routes_source)
         self.assertIn("const codoxearFileViewer = window.CodoxearFileViewer;", app_source)
         self.assertIn('typeof codoxearFileViewer.createFileFallbackRuntime !== "function"', app_source)
+        self.assertIn('typeof codoxearFileViewer.createFileModeControlsRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFilePasteDialogRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileRenderSurfaceRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileTouchToolbarRuntime !== "function"', app_source)
@@ -1914,6 +2068,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn("bindFileTouchPress", viewer_source)
         self.assertIn("bindFileTouchClick", viewer_source)
         self.assertIn("createFileFallbackRuntime", viewer_source)
+        self.assertIn("createFileModeControlsRuntime", viewer_source)
         self.assertIn("createFilePasteDialogRuntime", viewer_source)
         self.assertIn("createFileRenderSurfaceRuntime", viewer_source)
         self.assertIn("createFileTouchToolbarRuntime", viewer_source)
