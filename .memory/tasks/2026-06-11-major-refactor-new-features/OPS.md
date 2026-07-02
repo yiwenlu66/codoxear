@@ -7651,3 +7651,19 @@
 - Scope of intended review: identify remaining Workbench item 2 file-viewer/editor/picker ownership seams after file-picker entry/status row moves through `dd183b0`/`86784d8`.
 - Interpretation: no review artifact or concrete finding was produced, so this is infrastructure-only evidence about the async runner. It does not support or refute any code or architecture claim. Direct inspection remains the evidence source for the next extraction.
 - Decision: continue direct Workbench item 2 refactoring and validation; do not wait for or depend on this failed review.
+
+## 2026-07-02T12:34:00Z Monaco render orchestration editor-module ownership
+- Functional commit `c05fc25 Move Monaco render orchestration into editor module` moved the Monaco-backed file/diff render sequence from inline `codoxear/static/app.js` into `codoxear/static/app_file_editor.js` as `createFileEditorRenderer(...)`.
+- Mechanism: `app_file_editor.js` already owned Monaco loading and editor/model lifecycle. The moved renderer now owns the causal sequence that depends on those internals: `ensureMonaco()` success/failure, stale-request checks before fallback/application, file create-vs-update choice, file dirty comparison on user edits, active read-only projection from editability callbacks, line positioning and delayed focus scheduling, and final touch-toolbar refresh. `app.js` now injects selected-session/currentness, fallback DOM rendering, dirty/editability/controller callbacks, timers, host node, and wrapper names.
+- Tests updated: `tests/test_frontend_file_editor_module_source.py` adds an executable renderer probe covering file create, file update, stale request no-fallback, Monaco failure fallback, diff fallback, diff render, dirty-change callback behavior, programmatic-change suppression, read-only calculation, focus scheduling callback injection, and fail-loud missing-host construction. `tests/test_file_viewer_source.py` now asserts the public-local `renderMonacoFile(...)` / `renderMonacoDiff(...)` wrappers delegate while stale/fallback/scheduling logic lives in `app_file_editor.js`.
+- Negative evidence preserved: first focused validation failed in source sentinels, not behavior. Stale assertions still expected app.js to contain fallback/read-only/scheduling internals and a `function ensureMonaco` boundary. The repair redirected those sentinels to the new editor-renderer owner and kept app wrapper compatibility assertions.
+- Validation:
+  - `node --check codoxear/static/app_file_editor.js` and `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_frontend_file_editor_module_source.py tests/test_file_viewer_source.py` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_editor_module_source.py tests/test_file_viewer_source.py` first exposed stale sentinels, then passed with `49 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `259 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1308 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit, and staged diff inspection showed only app/editor/test files in the functional commit.
+- Scope note: Monaco render orchestration belongs to `app_file_editor.js`; `app.js` still owns selected-session authority, render-surface/fallback DOM wrapper functions, file-open/load-result orchestration, save lifecycle, candidate refresh/menu orchestration, and several file-viewer/editor controller seams.
