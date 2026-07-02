@@ -7398,3 +7398,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: render-panel image/video/surface reset belongs to `app_file_viewer.js`. App still owns raw image/video URL assignment and load-result render orchestration.
+
+## 2026-07-02T15:20:00Z File fallback DOM viewer-module ownership
+- Functional commit `1cca38c Move file fallback DOM into viewer module` moved plain-text fallback DOM construction/scroll scheduling, download fallback DOM construction, and blocked-notice DOM construction from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js` as `createFileFallbackRuntime(...)`.
+- Mechanism: app-owned render functions still decide when a fallback is needed, dispose editor/PDF/video state, choose the surface, and compute blocked-file messages. The repeated fallback DOM construction and plain fallback line-scroll behavior are viewer DOM runtime mechanics; those now belong to the viewer module with explicit `host`, `el`, `normalizeLineNumber`, and animation-frame dependencies.
+- Tests updated: fallback runtime VM coverage now executes plain text fallback with scroll, download fallback link/actions, blocked fallback message rendering, frozen plain result, missing dependency, export list, and load guard. File-viewer source sentinels reject restored app-owned fallback `fileDiff.innerHTML`/`appendChild` construction in the fallback blocks and require runtime delegation.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` returned `54 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `241 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1299 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: fallback DOM construction belongs to `app_file_viewer.js`. App still owns render orchestration, markdown preview rendering, raw PDF page rendering, raw image/video URL assignment, and candidate-link upgrade behavior.
