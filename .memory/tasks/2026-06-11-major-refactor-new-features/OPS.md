@@ -7667,3 +7667,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit, and staged diff inspection showed only app/editor/test files in the functional commit.
 - Scope note: Monaco render orchestration belongs to `app_file_editor.js`; `app.js` still owns selected-session authority, render-surface/fallback DOM wrapper functions, file-open/load-result orchestration, save lifecycle, candidate refresh/menu orchestration, and several file-viewer/editor controller seams.
+
+## 2026-07-02T12:55:00Z File load-result application viewer-module ownership
+- Functional commit `cd85812 Move file load result application into viewer module` moved the file-open load-plan application switch from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js` as `createFileLoadResultRuntime(...)`.
+- Mechanism: `app_file_viewer.js` already owned open-request sequencing and `prepareFileLoadResult(...)`; app.js was still applying the prepared plan for diff/image/pdf/video/download/text results. The new runtime now owns that plan application: no-diff disposal/status, Monaco diff/text render dispatch and post-render currentness checks, image surface dispatch, PDF render dispatch, video surface/error/metadata callback wiring, blocked/download rendering, markdown preview dispatch, status setting, and invalid-plan failure. App.js now constructs the runtime with explicit render/surface/status/currentness dependencies and the local `applyFileLoadResult(...)` callback delegates to `fileLoadResultRuntime.apply(...)`.
+- Tests updated: `eval_file_load_result_dispatcher()` now loads `app_file_viewer.js` and executes `createFileLoadResultRuntime(...)` directly instead of extracting the old app.js body. Source sentinels now assert app.js delegates through `fileLoadResultRuntime.apply(...)` and reject restored app-owned `loadPlan.kind` branches, image/video direct application, blocked-result application, and status writes.
+- Negative evidence preserved: after adding the runtime, focused viewer validation initially exposed an infrastructure artifact: several Node probes still used `node -e` with the full viewer source and hit `OSError: [Errno 7] Argument list too long`. Those probes were converted to stdin, matching the earlier source-test repair pattern. A second focused failure came from stale PDF/video/download source sentinels expecting app-owned load-plan branches; sentinels were redirected to the viewer runtime owner.
+- Validation:
+  - `node --check codoxear/static/app_file_viewer.js` and `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed with `58 passed, 25 subtests passed` after stdin/sentinel repairs.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `259 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1308 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit, and staged diff inspection showed only app/viewer/test files in the functional commit.
+- Scope note: file load-result application is viewer-module owned. App.js still owns selected-session authority, file-picker menu orchestration, candidate refresh/search orchestration, render wrapper dependency wiring, save wrappers/delegation, and inline event binding.
