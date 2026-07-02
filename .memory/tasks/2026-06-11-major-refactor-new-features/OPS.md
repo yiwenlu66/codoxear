@@ -7527,3 +7527,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: mode-toolbar DOM application belongs to `app_file_viewer.js`. App still owns raw file-picker menu DOM, PDF page rendering, file-open render dispatch, selected-session orchestration, and global event binding.
+
+## 2026-07-02T19:02:00Z PDF rendering viewer-module ownership
+- Functional commit `2ea481d Move PDF rendering into viewer module` moved PDF page DOM construction, PDF.js document loading application, lazy `IntersectionObserver` scheduling, canvas creation/render task tracking, per-page rendered/rendering sets, page failure display, and active PDF render state creation from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js` as `createFilePdfRenderRuntime(...)`.
+- Mechanism: PDF.js loader cache and active render cleanup were already viewer-module responsibilities. The remaining page-slot/canvas/render-task lifecycle used the same state shape consumed by `disposeActivePdfRender()`, so it belongs with the viewer render runtime. `app.js` now instantiates the runtime with explicit callbacks for PDF loader, canvas creation, currentness checks, fallback rendering, active-state registration, and cleanup helpers; `renderPdfFile(...)` is a thin delegating wrapper.
+- Tests updated: executable VM coverage now renders a two-page fake PDF through a fake `IntersectionObserver`, verifies host reset, container aria, page slot sizing, first-page canvas replacement, failed second-page display, active-state `pdf` assignment, rendered/rendering/render-task sets, no-IntersectionObserver fallback, loader-failure fallback, export list, and missing dependency failure. Source sentinels now require `filePdfRenderRuntime.render(...)`, `createFilePdfRenderRuntime(...)`, and viewer-owned PDF internals, while rejecting restored app-owned page container construction, `new IntersectionObserver(...)`, direct render-task tracking, and direct currentness checks.
+- Negative evidence preserved: focused validation initially surfaced stale source sentinels that still expected the PDF branch's app-owned `setFileRenderSurface("diff")` count and exact app-owned `if (!isCurrentFileOpenRequest(request)) return false;` checks. These were corrected to assert the new ownership boundary rather than preserving inline PDF rendering.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` returned `57 passed, 25 subtests passed` after source sentinel repair.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `244 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1302 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: PDF page rendering belongs to `app_file_viewer.js`. App still owns file-load plan dispatch/status text, selected-session/current request orchestration, fallback callbacks, file-picker menu DOM, and global event binding.
