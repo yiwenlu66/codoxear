@@ -6964,3 +6964,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: unsaved-choice pending/resolution state belongs to the controller. App still owns unsaved dialog DOM and return-focus state, paste dialog DOM mechanics, raw Monaco editor/diff-editor objects, model arrays/disposables, model disposal and setValue side effects, raw load-result render plan application, fallback DOM construction/scrolling, touch-toolbar DOM/binding mechanics, persisted mode UI wiring, file-video element handlers/loading, file-picker input/menu DOM mutation/rendering, inspect transport, candidate evidence collection/API refresh/cache-key/rendering, and selected-session identity predicates.
+
+## 2026-07-02T06:19:00Z Active PDF render controller ownership
+- Functional commit `d4449f3 Move active PDF render state into controller` moved active PDF render currentness storage from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `activePdfRender` is a render-generation/currentness token that decides whether async PDF load/page/render callbacks may still mutate the viewer. The controller now owns `activePdfRender` plus `setActivePdfRenderState(state)`, `takeActivePdfRenderState()`, `clearActivePdfRenderState()`, and `isActivePdfRenderState(state)`. `app.js` still owns pdfjs loading, IntersectionObserver creation, canvas/page DOM construction, render task sets, task cancellation, loadingTask destruction, and raw fallback rendering.
+- Tests updated: source sentinels reject app-owned `let activePdfRender = null` and require controller-owned PDF state/currentness methods plus app delegation. Real controller probe covers identity-based set/currentness, non-active state rejection, take-and-clear, explicit clear, and post-clear currentness.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `230 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1288 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: active PDF render currentness state belongs to the controller. App still owns raw pdfjs/canvas/IntersectionObserver/render-task side effects, raw Monaco editor/diff-editor objects, model arrays/disposables, model disposal and setValue side effects, raw load-result render plan application, fallback DOM construction/scrolling, touch-toolbar DOM/binding mechanics, persisted mode UI wiring, file-video element handlers/loading, file-picker input/menu DOM mutation/rendering, inspect transport, candidate evidence collection/API refresh/cache-key/rendering, unsaved dialog DOM and return-focus state, paste dialog DOM mechanics, and selected-session identity predicates.
