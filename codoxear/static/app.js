@@ -7173,23 +7173,15 @@
         }
 
         async function loadCompatibleVideoPreview(expectedToken = "", { explicit = false } = {}) {
-          const state = fileViewerController.beginCompatibleVideoPreview(expectedToken);
-          if (!state) return false;
-          const rel = state.rel || activeFilePathValue() || "video";
-          fileStatus.textContent = explicit ? `${rel} - building compatible video preview...` : `${rel} - trying compatible video preview...`;
-          try {
-            await prepareCompatibleVideoPreview(state.previewUrl);
-            if (!fileViewerController.completeCompatibleVideoPreview(state)) return false;
-            fileStatus.textContent = `${rel} - loading compatible video preview...`;
-            fileVideo.src = resolveAppUrl(state.previewUrl);
-            fileVideo.load();
-            return true;
-          } catch (err) {
-            if (fileViewerController.failCompatibleVideoPreview(state)) {
-              fileStatus.textContent = `${rel} - ${fileVideoPreviewErrorText(err)}`;
-            }
-            return false;
-          }
+          return await fileViewerController.loadCompatibleVideoPreview(expectedToken, {
+            explicit,
+            preparePreview: (previewUrl) => prepareCompatibleVideoPreview(previewUrl),
+            loadPreviewDom: (previewUrl) => {
+              fileVideo.src = resolveAppUrl(previewUrl);
+              fileVideo.load();
+            },
+            errorText: (err) => fileVideoPreviewErrorText(err),
+          });
         }
 
         function clearFileVideo() {

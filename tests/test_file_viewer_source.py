@@ -262,6 +262,7 @@ def controller_identity_ctx_js(
 
 def eval_video_preview_failure_path() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     file_helpers_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
     start = source.index("function fileVideoPreviewErrorText(err) {")
     end = source.index("function clearFileVideo() {", start)
@@ -272,14 +273,14 @@ def eval_video_preview_failure_path() -> dict:
         const moduleCtx = {{ window: {{ CodoxearDisplay: {{ fmtBytes(value) {{ return String(value); }}, baseName(path) {{ return String(path || "").split("/").filter(Boolean).pop() || String(path || ""); }} }} }} }};
         vm.createContext(moduleCtx);
         vm.runInContext({json.dumps(file_helpers_source)}, moduleCtx);
+        const events = [];
         const ctx = {{
+          window: {{}},
           codoxearFileHelpers: moduleCtx.window.CodoxearFileHelpers,
-          activeVideoFallback: {{ token: "video-1", previewUrl: "/preview.mp4", used: false, preparing: false, rel: "clip.mkv" }},
-          activeFilePath: "clip.mkv",
-          activeFilePathValue: () => ctx.activeFilePath,
           applyCount: 0,
           authLost: false,
-          fileStatus: {{ textContent: "" }},
+          fileStatus: {{ textContent: "", replaceChildren(...nodes) {{ this.children = nodes; this.textContent = ""; }} }},
+          fileEditButton: {{ classList: {{ toggle() {{}} }}, setAttribute() {{}}, disabled: false }},
           fileVideo: {{ src: "", loadCount: 0, load() {{ this.loadCount += 1; }} }},
           resolveAppUrl: (url) => `resolved:${{url}}`,
           handleAppAuthLoss: () => {{ ctx.authLost = true; }},
@@ -290,40 +291,78 @@ def eval_video_preview_failure_path() -> dict:
             text: async () => "fallback text",
           }}),
         }};
-        ctx.applyFileMode = () => {{ ctx.applyCount += 1; }};
-        ctx.fileViewerController = {{
-          beginCompatibleVideoPreview(expectedToken = "") {{
-            const state = ctx.activeVideoFallback;
-            if (!state || (expectedToken && state.token !== expectedToken) || state.used || state.preparing) return null;
-            state.preparing = true;
-            ctx.applyFileMode();
-            return {{ ...state }};
-          }},
-          completeCompatibleVideoPreview(preview) {{
-            const state = ctx.activeVideoFallback;
-            if (!state || !preview || state.token !== preview.token) return false;
-            state.used = true;
-            state.preparing = false;
-            ctx.applyFileMode();
-            return true;
-          }},
-          failCompatibleVideoPreview(preview) {{
-            const state = ctx.activeVideoFallback;
-            if (!state || !preview || state.token !== preview.token) return false;
-            state.preparing = false;
-            ctx.applyFileMode();
-            return true;
-          }},
-        }};
         vm.createContext(ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        ctx.fileViewerController = ctx.window.CodoxearFileViewer.createFileViewerController({{
+          el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children }}),
+          fileStatus: ctx.fileStatus,
+          fileEditButton: ctx.fileEditButton,
+          iconSvg: (name) => `icon:${{name}}`,
+          currentSessionId: () => "sid-1",
+          currentFileSessionId: () => "sid-1",
+          normalizeLineNumber: (value) => value == null || value === "" ? null : Number(value),
+          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+          isFileViewerOpen: () => true,
+          hideFileUnsavedDialog: () => {{}},
+          resetFileSearchState: () => {{}},
+          closeFilePickerMenu: () => {{}},
+          isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+          isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
+          confirmReload: () => true,
+          promptUnsavedFileChoice: async () => "cancel",
+          restoreFileEditorText: () => {{}},
+          hideFileViewer: () => {{}},
+          setFilePath: () => {{}},
+          resetFileViewerPanel: () => {{}},
+          applyFileLoadResult: async () => true,
+          normalizeDraftFilePath: (value) => String(value || "").trim(),
+          inspectSessionFilePath: async () => ({{ exists: false }}),
+          api: async () => ({{}}),
+          focusEditor: () => null,
+          disposeOpenRender: () => {{}},
+          persistFileViewMode: () => {{}},
+          persistFileNonDiffMode: () => {{}},
+          isMarkdownPreviewable: () => false,
+          updateFileTouchToolbar: () => {{}},
+          isFileTouchToolbarActive: () => false,
+          fileEditorShortcutBlocked: () => false,
+          eventTargetElement: (value) => value || null,
+          normalizeFileEditorPosition: (_editor, position) => position || null,
+          applyFileEditorSelection: () => {{}},
+          isCollapsedFileSelection: () => true,
+          positionAfterInsertedText: (start, text) => ({{ lineNumber: start.lineNumber, column: start.column + String(text || "").length }}),
+          fileEditorEditSupportAvailable: () => false,
+          syncFileDiffSelectionMode: () => {{}},
+          showFilePasteDialog: () => false,
+          hideFilePasteDialog: () => {{}},
+          clipboardReadAvailable: () => false,
+          readClipboardText: async () => "",
+          fileEditorDeleteCommandForKey: () => "",
+          isActiveFileEditorInput: () => false,
+          getActiveFileSelectionText: () => "",
+          copyToClipboard: async () => {{}},
+          focusActiveFileCodeEditor: () => null,
+          nowMs: () => 0,
+          setToast: (message) => events.push(["toast", message]),
+          renderMonacoFile: async () => true,
+          getFileEditorText: () => "",
+          fmtBytes: (value) => String(value),
+          applyFileMode: () => {{ ctx.applyCount += 1; }},
+          rememberOpenedFile: () => {{}},
+          historyFileSelectionForSession: () => ({{ path: "", line: null, gitPath: false, apiPath: "" }}),
+          renderFilePickerMenu: () => {{}},
+        }});
+        ctx.fileViewerController.setActiveFileIdentity("clip.mkv", {{ gitPath: false, apiPath: "" }});
+        ctx.fileViewerController.setActiveVideoFallback({{ token: "video-1", previewUrl: "/preview.mp4", used: false, preparing: false, rel: "clip.mkv" }});
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_loadCompatibleVideoPreview = loadCompatibleVideoPreview;\n")}, ctx);
         (async () => {{
           const ok = await ctx.__test_loadCompatibleVideoPreview("video-1", {{ explicit: true }});
+          const fallback = ctx.fileViewerController.currentActiveVideoFallback();
           process.stdout.write(JSON.stringify({{
             ok,
             status: ctx.fileStatus.textContent,
-            used: ctx.activeVideoFallback.used,
-            preparing: ctx.activeVideoFallback.preparing,
+            used: fallback.used,
+            preparing: fallback.preparing,
             applyCount: ctx.applyCount,
             videoSrc: ctx.fileVideo.src,
             loadCount: ctx.fileVideo.loadCount,
@@ -4609,7 +4648,9 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('if (obj && typeof obj.error === "string") detail = obj.error;', source)
         self.assertIn('throw new Error(detail || `video preview failed (${res.status})`);', source)
         self.assertIn('async function loadCompatibleVideoPreview(expectedToken = "", { explicit = false } = {})', source)
+        self.assertIn('return await fileViewerController.loadCompatibleVideoPreview(expectedToken, {', source)
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+        self.assertIn('async function loadCompatibleVideoPreview(expectedToken = "", options = {})', viewer_source)
         self.assertIn('async function handleFileVideoPreviewButtonPress(token, loadPreview)', viewer_source)
         self.assertIn('return await loadCompatiblePreview(token || "", { explicit: true });', viewer_source)
         self.assertIn('return await fileViewerController.handleFileVideoPreviewButtonPress(token, (nextToken, options) => loadCompatibleVideoPreview(nextToken, options));', source)
@@ -4621,8 +4662,9 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("fileVideo.onerror = () => {", source)
         self.assertIn("fileViewerController.handleActiveVideoLoadError(loadPlan.token", source)
         self.assertIn("fileViewerController.handleActiveVideoLoadedMetadata(loadPlan.token);", source)
-        self.assertIn("fileStatus.textContent = explicit ? `${rel} - building compatible video preview...` : `${rel} - trying compatible video preview...`;", source)
-        self.assertIn("fileVideo.src = resolveAppUrl(state.previewUrl);", source)
+        self.assertIn("fileStatus.textContent = explicit ? `${rel} - building compatible video preview...` : `${rel} - trying compatible video preview...`;", viewer_source)
+        self.assertNotIn("fileStatus.textContent = explicit ? `${rel} - building compatible video preview...` : `${rel} - trying compatible video preview...`;", source)
+        self.assertIn("fileVideo.src = resolveAppUrl(previewUrl);", source)
         self.assertIn("fileStatus.textContent = `${fallback.rel || \"video\"} - compatible video preview - ${fmtBytes(fallback.size)}`;", viewer_source)
         self.assertIn("fileStatus.textContent = `${rel} - video preview unavailable after conversion`;", viewer_source)
         self.assertNotIn("fileStatus.textContent = `${rel} - compatible video preview - ${fmtBytes(size)}`;", source)

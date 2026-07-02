@@ -842,6 +842,29 @@
       return true;
     }
 
+    async function loadCompatibleVideoPreview(expectedToken = "", options = {}) {
+      const preparePreview = requireFunction(options.preparePreview, "prepareCompatibleVideoPreview");
+      const loadPreviewDom = requireFunction(options.loadPreviewDom, "loadCompatibleVideoPreviewDom");
+      const errorText = requireFunction(options.errorText, "fileVideoPreviewErrorText");
+      const explicit = Boolean(options.explicit);
+      const state = beginCompatibleVideoPreview(expectedToken);
+      if (!state) return false;
+      const rel = state.rel || currentActiveFileIdentity().path || "video";
+      fileStatus.textContent = explicit ? `${rel} - building compatible video preview...` : `${rel} - trying compatible video preview...`;
+      try {
+        await preparePreview(state.previewUrl);
+        if (!completeCompatibleVideoPreview(state)) return false;
+        fileStatus.textContent = `${rel} - loading compatible video preview...`;
+        loadPreviewDom(state.previewUrl);
+        return true;
+      } catch (err) {
+        if (failCompatibleVideoPreview(state)) {
+          fileStatus.textContent = `${rel} - ${errorText(err)}`;
+        }
+        return false;
+      }
+    }
+
     function clearUsedCompatibleVideoPreview(token) {
       const state = activeVideoFallback;
       if (!state || state.token !== String(token || "") || !state.used) return false;
@@ -1761,6 +1784,7 @@
       beginCompatibleVideoPreview,
       completeCompatibleVideoPreview,
       failCompatibleVideoPreview,
+      loadCompatibleVideoPreview,
       clearUsedCompatibleVideoPreview,
       currentFileModeControlState,
       syncFileEditorReadOnly,
