@@ -7083,3 +7083,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: app still owns touch toolbar DOM nodes, visibility mutations from controller state, button placement, and concrete action handlers. The module owns binding mechanics and controller-owned state machines own touch selection/delete/paste/copy semantics.
+
+## 2026-07-02T07:28:00Z Editor selection/focus helper runtime ownership
+- Functional commit `bf560af Move editor selection helpers into editor runtime` moved editor focus, position normalization, selection construction/application, collapsed-selection detection, and selected-text extraction from inline `codoxear/static/app.js` into `codoxear/static/app_file_editor.js`.
+- Mechanism: these operations all depend on the current Monaco editor/diff modified-editor identity and editor model API, which `app_file_editor.js` already owns. `app.js` now supplies the current file-editor kind and Monaco `Selection` constructor; it still owns DOM target classification (`isActiveFileEditorInput`/text-entry blocking), modal/paste dialog DOM, and render orchestration.
+- Tests updated: `test_frontend_file_editor_module_source.py` runtime probe now executes `focusActiveCodeEditor`, `normalizePosition`, `applySelection`, `selectionText`, `activeSelectionText`, and `isCollapsedSelection`, including model line/column clamping and anchored range preservation. File-viewer source tests now require runtime-backed controller dependency wiring and moved the range-collapse source assertion to `app_file_editor.js`.
+- Negative evidence preserved: first focused validation failed because stale tests still expected app-owned `fileEditorMonacoLoader.selectionCtor();`, app-owned range-collapse source, and an isolated paste-dialog probe did not provide the new `fileEditorRuntime.focusActiveCodeEditor` delegate. The failing tests identified stale measurement assumptions/snippet context, not a product-code regression; repairs asserted the new owner and added the required probe stub.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_editor_module_source.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_editor.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_editor_module_source.py tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `53 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `236 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1294 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: editor runtime now owns current editor/model/disposable lifecycle, Monaco loader/theme/edit-support readiness, current-editor layout/line focus, and selection/focus/text helpers. App still owns editor DOM hosts, active editor input detection, shortcut block predicates, Monaco editor creation parameters, render scheduling/currentness, modal/paste/unsaved dialog DOM, and user-facing mode/status wiring.
