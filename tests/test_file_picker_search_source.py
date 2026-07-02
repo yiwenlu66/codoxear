@@ -391,53 +391,98 @@ def eval_file_picker_identity_helpers() -> dict:
 
 
 def eval_resolve_file_open_mode_cases() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    snippet = "\n".join(js_function(source, name) for name in ["normalizeFileApiPath", "normalizeFileCandidateSource", "fileCandidateKey", "fileEntryForPath", "isGitFileCandidatePath", "resolveFileOpenMode"])
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const ctx = {{
-          fileEntryMap: new Map(),
-          fileCandidateList: [],
-          fileCandidateGitStateFresh: false,
-          fileCandidateCache: new Map(),
-          fileCandidateRequestSeq: 0,
-          codoxearFileHelpers: {{ normalizeFileCandidateSource: (source) => {{ const value = String(source || "").trim(); return value === "changed" || value === "mentioned" || value === "recent" ? value : ""; }} }},
-          fileNonDiffMode: "file",
-          inspectedKind: "text",
-          inspectCalls: [],
-          inspectSessionFilePath: async (path, options = {{}}) => {{ ctx.inspectCalls.push([path, options]); return ctx.inspectedKind === "missing" ? {{ exists: false }} : {{ exists: true, kind: ctx.inspectedKind }}; }},
-          currentFileNonDiffMode: () => ctx.fileNonDiffMode,
-          isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
-        }};
+        const ctx = {{ window: {{}} }};
+        const state = {{ inspectedKind: "text", inspectCalls: [] }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet)}, ctx);
-        vm.runInContext({json.dumps(js_candidate_controller_fixture())}, ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const fileStatus = {{ textContent: "", replaceChildren() {{ this.textContent = ""; }} }};
+        const fileEditButton = {{ classList: {{ toggle() {{}} }}, setAttribute() {{}}, disabled: false }};
+        const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
+          el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children }}),
+          fileStatus,
+          fileEditButton,
+          iconSvg: (name) => `icon:${{name}}`,
+          currentSessionId: () => "sid-1",
+          currentFileSessionId: () => "sid-1",
+          normalizeLineNumber: (value) => value == null || value === "" ? null : Number(value),
+          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+          isFileViewerOpen: () => true,
+          hideFileUnsavedDialog: () => {{}},
+          resetFileSearchState: () => {{}},
+          closeFilePickerMenu: () => {{}},
+          isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+          isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
+          confirmReload: () => true,
+          promptUnsavedFileChoice: async () => "cancel",
+          restoreFileEditorText: () => {{}},
+          hideFileViewer: () => {{}},
+          setFilePath: () => {{}},
+          resetFileViewerPanel: () => {{}},
+          applyFileLoadResult: async () => true,
+          normalizeDraftFilePath: (value) => String(value || "").trim(),
+          inspectSessionFilePath: async (path, options = {{}}) => {{ state.inspectCalls.push([path, options]); return state.inspectedKind === "missing" ? {{ exists: false }} : {{ exists: true, kind: state.inspectedKind }}; }},
+          api: async () => ({{}}),
+          focusEditor: () => null,
+          disposeOpenRender: () => {{}},
+          persistFileViewMode: () => {{}},
+          persistFileNonDiffMode: () => {{}},
+          isMarkdownPreviewable: () => false,
+          updateFileTouchToolbar: () => {{}},
+          isFileTouchToolbarActive: () => false,
+          fileEditorShortcutBlocked: () => false,
+          eventTargetElement: (value) => value || null,
+          normalizeFileEditorPosition: (_editor, position) => position || null,
+          applyFileEditorSelection: () => {{}},
+          isCollapsedFileSelection: () => true,
+          positionAfterInsertedText: (start, text) => ({{ lineNumber: start.lineNumber, column: start.column + String(text || "").length }}),
+          fileEditorEditSupportAvailable: () => false,
+          syncFileDiffSelectionMode: () => {{}},
+          showFilePasteDialog: () => false,
+          hideFilePasteDialog: () => {{}},
+          clipboardReadAvailable: () => false,
+          readClipboardText: async () => "",
+          fileEditorDeleteCommandForKey: () => "",
+          isActiveFileEditorInput: () => false,
+          getActiveFileSelectionText: () => "",
+          copyToClipboard: async () => {{}},
+          focusActiveFileCodeEditor: () => null,
+          nowMs: () => 0,
+          setToast: () => {{}},
+          renderMonacoFile: async () => true,
+          getFileEditorText: () => "",
+          fmtBytes: (value) => String(value),
+          applyFileMode: () => {{}},
+          rememberOpenedFile: () => {{}},
+          historyFileSelectionForSession: () => ({{ path: "", line: null, gitPath: false, apiPath: "" }}),
+          renderFilePickerMenu: () => {{}},
+        }});
         (async () => {{
-          const changedKey = ctx.fileCandidateKey("changed.py", true);
-          ctx.fileCandidateList.push(changedKey);
-          ctx.fileEntryMap.set(changedKey, {{ path: "changed.py", gitPath: true, changed: true }});
-          ctx.fileCandidateGitStateFresh = true;
-          ctx.inspectedKind = "text";
-          const freshChanged = await ctx.resolveFileOpenMode("changed.py");
-          ctx.fileCandidateGitStateFresh = false;
-          const cachedChanged = await ctx.resolveFileOpenMode("changed.py");
-          const explicitCachedChanged = await ctx.resolveFileOpenMode("changed.py", {{ changed: true }});
-          ctx.fileCandidateGitStateFresh = true;
-          const freshExplicitUnchanged = await ctx.resolveFileOpenMode("changed.py", {{ changed: false }});
-          const freshExplicitGitFalse = await ctx.resolveFileOpenMode("changed.py", {{ gitPath: false }});
-          ctx.fileCandidateGitStateFresh = false;
-          ctx.fileNonDiffMode = "preview";
-          ctx.inspectedKind = "markdown";
-          const staleMarkdownPreview = await ctx.resolveFileOpenMode("README.md", {{ changed: true }});
-          ctx.fileCandidateGitStateFresh = true;
-          ctx.inspectedKind = "image";
-          const freshChangedNondiffable = await ctx.resolveFileOpenMode("image.png", {{ changed: true }});
-          ctx.fileCandidateGitStateFresh = true;
-          ctx.inspectedKind = "text";
-          const staleRememberedGitPath = await ctx.resolveFileOpenMode("stale.py", {{ gitPath: true }});
-          ctx.inspectedKind = "missing";
-          const deletedChanged = await ctx.resolveFileOpenMode("gone.md", {{ changed: true }});
+          controller.applyFileCandidateEntries([{{ path: "changed.py", gitPath: true, changed: true }}]);
+          controller.setFileCandidateGitStateFresh(true);
+          state.inspectedKind = "text";
+          const freshChanged = await controller.resolveFileOpenMode("changed.py");
+          controller.setFileCandidateGitStateFresh(false);
+          const cachedChanged = await controller.resolveFileOpenMode("changed.py");
+          const explicitCachedChanged = await controller.resolveFileOpenMode("changed.py", {{ changed: true }});
+          controller.setFileCandidateGitStateFresh(true);
+          const freshExplicitUnchanged = await controller.resolveFileOpenMode("changed.py", {{ changed: false }});
+          const freshExplicitGitFalse = await controller.resolveFileOpenMode("changed.py", {{ gitPath: false }});
+          controller.setFileCandidateGitStateFresh(false);
+          controller.setFileViewMode("preview");
+          state.inspectedKind = "markdown";
+          const staleMarkdownPreview = await controller.resolveFileOpenMode("README.md", {{ changed: true }});
+          controller.setFileCandidateGitStateFresh(true);
+          state.inspectedKind = "image";
+          const freshChangedNondiffable = await controller.resolveFileOpenMode("image.png", {{ changed: true }});
+          controller.setFileCandidateGitStateFresh(true);
+          state.inspectedKind = "text";
+          const staleRememberedGitPath = await controller.resolveFileOpenMode("stale.py", {{ gitPath: true }});
+          state.inspectedKind = "missing";
+          const deletedChanged = await controller.resolveFileOpenMode("gone.md", {{ changed: true }});
           process.stdout.write(JSON.stringify({{
             freshChanged,
             cachedChanged,
@@ -448,7 +493,7 @@ def eval_resolve_file_open_mode_cases() -> dict:
             freshChangedNondiffable,
             staleRememberedGitPath,
             deletedChanged,
-            gitFalseInspect: ctx.inspectCalls.find((call) => call[0] === "changed.py" && call[1] && call[1].gitPath === false) || null,
+            gitFalseInspect: state.inspectCalls.find((call) => call[0] === "changed.py" && call[1] && call[1].gitPath === false) || null,
           }}));
         }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """

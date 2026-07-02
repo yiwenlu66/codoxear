@@ -611,6 +611,24 @@
       return viewMode === "preview" && !isMarkdownPreviewable(rel) ? "file" : viewMode === "diff" && !canUseDiffView ? "file" : viewMode;
     }
 
+    async function resolveFileOpenMode(path, { changed = null, gitPath = null, apiPath = "" } = {}) {
+      const token = normalizeFileApiPath(apiPath);
+      const useGitPath = gitPath === null || gitPath === undefined ? isGitFileCandidatePath(path, changed, null, token) : Boolean(gitPath);
+      const identityEntry = fileEntryForPath(path, useGitPath, token);
+      const requestApiPath = token || normalizeFileApiPath(identityEntry && identityEntry.apiPath);
+      const candidateChanged = useGitPath && (changed === null || changed === undefined ? Boolean(identityEntry && identityEntry.changed) : Boolean(changed));
+      const inspect = await inspectSessionFilePath(path, { gitPath: useGitPath, apiPath: requestApiPath });
+      if (!inspect || !inspect.exists) {
+        if (currentFileCandidateGitStateFresh() && candidateChanged) return "diff";
+        throw new Error("file not found");
+      }
+      const kind = String(inspect.kind || "").trim();
+      const isChanged = currentFileCandidateGitStateFresh() && candidateChanged;
+      if (isChanged && isDiffableFileKind(kind)) return "diff";
+      if (kind === "markdown" && currentFileNonDiffMode() === "preview") return "preview";
+      return "file";
+    }
+
     function isFileOpenAbortError(error) {
       return Boolean(error && error.name === "AbortError");
     }
@@ -1140,6 +1158,25 @@
       renderFilePickerMenu();
       await openFilePath(path, { line, gitPath, apiPath, mode: openMode });
       return Boolean(currentGuard());
+    }
+
+    async function openFilePathWithResolvedMode(path, { line = null, changed = null, isCurrent = null, gitPath = null, apiPath = "" } = {}) {
+      if (blockUnavailableFileAction()) return false;
+      const sessionAtStart = currentFileSessionId();
+      const currentGuard = typeof isCurrent === "function" ? isCurrent : () => currentFileSessionId() === sessionAtStart && !isFileViewerSessionUnavailable();
+      const token = normalizeFileApiPath(apiPath);
+      const useGitPath = gitPath === null || gitPath === undefined ? isGitFileCandidatePath(path, changed, null, token) : Boolean(gitPath);
+      const entry = fileEntryForPath(path, useGitPath, token);
+      const requestApiPath = token || normalizeFileApiPath(entry && entry.apiPath);
+      let mode;
+      try {
+        mode = await resolveFileOpenMode(path, { changed, gitPath: useGitPath, apiPath: requestApiPath });
+      } catch (error) {
+        if (blockUnavailableFileAction()) return false;
+        throw error;
+      }
+      if (!currentGuard()) return false;
+      return await openFilePathWithGuard(path, { line, mode, isCurrent: currentGuard, gitPath: useGitPath, apiPath: requestApiPath });
     }
 
     async function openDraftFilePathWithGuard(path) {
@@ -1759,6 +1796,8 @@
       startFileOpenRequest,
       normalizeExplicitFileOpenMode,
       resolveFileOpenViewMode,
+      resolveFileOpenMode,
+      openFilePathWithResolvedMode,
       fetchFileOpenResult,
       isFileOpenAbortError,
       blockUnavailableFileAction,

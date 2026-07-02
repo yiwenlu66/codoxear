@@ -1784,36 +1784,80 @@ def eval_file_viewer_session_sync_race() -> dict:
 
 
 def eval_resolved_open_current_guard() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    guard_start = source.index("async function openFilePathWithGuard")
-    guard_end = source.index("async function openDraftFilePathWithGuard", guard_start)
-    resolved_start = source.index("async function openFilePathWithResolvedMode")
-    resolved_end = source.index("function cloneFileCandidateEntry", resolved_start)
-    snippet = source[guard_start:guard_end] + "\n" + source[resolved_start:resolved_end]
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        let resolveMode;
+        let resolveInspect;
         let current = true;
         const calls = [];
-        const ctx = {{
-          maybeHandleUnsavedFileChanges: async () => true,
-          setFilePath: (...args) => calls.push(["setFilePath", ...args]),
-          setFileViewMode: (...args) => calls.push(["setFileViewMode", ...args]),
-          renderFilePickerMenu: () => calls.push("renderFilePickerMenu"),
-          openFilePath: async (...args) => calls.push(["openFilePath", ...args]),
-          currentFileSessionId: () => "sid-b",
-          blockUnavailableFileAction: () => false,
-          isGitFileCandidatePath: () => true,
-          fileEntryForPath: () => null,
-          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
-          resolveFileOpenMode: () => new Promise((resolve) => {{ resolveMode = resolve; }}),
-        }};
+        const ctx = {{ window: {{}} }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = { openFilePathWithResolvedMode };\n")}, ctx);
-        const promise = ctx.__test.openFilePathWithResolvedMode("b-file.txt", {{ isCurrent: () => current }});
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const fileStatus = {{ textContent: "", replaceChildren() {{ this.textContent = ""; }} }};
+        const fileEditButton = {{ classList: {{ toggle() {{}} }}, setAttribute() {{}}, disabled: false }};
+        const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
+          el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children }}),
+          fileStatus,
+          fileEditButton,
+          iconSvg: (name) => `icon:${{name}}`,
+          currentSessionId: () => "sid-b",
+          currentFileSessionId: () => "sid-b",
+          normalizeLineNumber: (value) => value == null || value === "" ? null : Number(value),
+          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+          isFileViewerOpen: () => true,
+          hideFileUnsavedDialog: () => {{}},
+          resetFileSearchState: () => {{}},
+          closeFilePickerMenu: () => {{}},
+          isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+          isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
+          confirmReload: () => true,
+          promptUnsavedFileChoice: async () => "cancel",
+          restoreFileEditorText: () => {{}},
+          hideFileViewer: () => {{}},
+          setFilePath: (...args) => calls.push(["setFilePath", ...args]),
+          resetFileViewerPanel: () => calls.push(["resetFileViewerPanel"]),
+          applyFileLoadResult: async (...args) => {{ calls.push(["applyFileLoadResult", ...args]); return true; }},
+          normalizeDraftFilePath: (value) => String(value || "").trim(),
+          inspectSessionFilePath: async (...args) => {{ calls.push(["inspect", ...args]); return await new Promise((resolve) => {{ resolveInspect = resolve; }}); }},
+          api: async (...args) => {{ calls.push(["api", ...args]); return {{ kind: "text", text: "body", path: "/abs" }}; }},
+          focusEditor: () => null,
+          disposeOpenRender: () => calls.push(["disposeOpenRender"]),
+          persistFileViewMode: (mode) => calls.push(["persistFileViewMode", mode]),
+          persistFileNonDiffMode: (mode) => calls.push(["persistFileNonDiffMode", mode]),
+          isMarkdownPreviewable: () => false,
+          updateFileTouchToolbar: () => calls.push(["touchToolbar"]),
+          isFileTouchToolbarActive: () => false,
+          fileEditorShortcutBlocked: () => false,
+          eventTargetElement: (value) => value || null,
+          normalizeFileEditorPosition: (_editor, position) => position || null,
+          applyFileEditorSelection: () => {{}},
+          isCollapsedFileSelection: () => true,
+          positionAfterInsertedText: (start, text) => ({{ lineNumber: start.lineNumber, column: start.column + String(text || "").length }}),
+          fileEditorEditSupportAvailable: () => false,
+          syncFileDiffSelectionMode: () => {{}},
+          showFilePasteDialog: () => false,
+          hideFilePasteDialog: () => {{}},
+          clipboardReadAvailable: () => false,
+          readClipboardText: async () => "",
+          fileEditorDeleteCommandForKey: () => "",
+          isActiveFileEditorInput: () => false,
+          getActiveFileSelectionText: () => "",
+          copyToClipboard: async () => {{}},
+          focusActiveFileCodeEditor: () => null,
+          nowMs: () => 0,
+          setToast: (message) => calls.push(["toast", message]),
+          renderMonacoFile: async () => true,
+          getFileEditorText: () => "",
+          fmtBytes: (value) => String(value),
+          applyFileMode: () => calls.push(["applyFileMode"]),
+          rememberOpenedFile: (...args) => calls.push(["rememberOpenedFile", ...args]),
+          historyFileSelectionForSession: () => ({{ path: "", line: null, gitPath: false, apiPath: "" }}),
+          renderFilePickerMenu: () => calls.push(["renderFilePickerMenu"]),
+        }});
+        const promise = controller.openFilePathWithResolvedMode("b-file.txt", {{ isCurrent: () => current }});
         current = false;
-        resolveMode("file");
+        resolveInspect({{ exists: true, kind: "text" }});
         promise.then((result) => {{
           process.stdout.write(JSON.stringify({{ result, calls }}));
         }}).catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
@@ -3401,7 +3445,8 @@ class TestFileViewerSource(unittest.TestCase):
     def test_resolved_file_open_aborts_when_session_guard_turns_stale(self) -> None:
         result = eval_resolved_open_current_guard()
         self.assertFalse(result["result"])
-        self.assertEqual(result["calls"], [])
+        self.assertEqual(result["calls"], [["inspect", "b-file.txt", {"gitPath": False, "apiPath": ""}]])
+        self.assertFalse(any(call[0] in {"setFilePath", "disposeOpenRender", "resetFileViewerPanel", "api", "applyFileLoadResult", "rememberOpenedFile"} for call in result["calls"]))
 
     def test_open_file_path_guard_validates_mode_before_mutating_state(self) -> None:
         result = eval_open_file_guard_mode_validation()
@@ -3550,6 +3595,18 @@ class TestFileViewerSource(unittest.TestCase):
         resolved_end = source.index("function cloneFileCandidateEntry", resolved_start)
         resolved_block = source[resolved_start:resolved_end]
         self.assertIn("isCurrent = null", resolved_block)
+        self.assertIn("return await fileViewerController.openFilePathWithResolvedMode(path, { line, changed, isCurrent, gitPath, apiPath });", resolved_block)
+        self.assertNotIn("const sessionAtStart = currentFileSessionId();", resolved_block)
+        self.assertNotIn("mode = await resolveFileOpenMode(path", resolved_block)
+        guard_start = source.index("async function openFilePathWithGuard")
+        guard_end = source.index("async function openDraftFilePathWithGuard", guard_start)
+        guard_block = source[guard_start:guard_end]
+        self.assertIn("return await fileViewerController.openFilePathWithGuard(path, { line, mode, isCurrent, gitPath, apiPath });", guard_block)
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+        resolved_start = viewer_source.index("async function openFilePathWithResolvedMode")
+        resolved_end = viewer_source.index("async function openDraftFilePathWithGuard", resolved_start)
+        resolved_block = viewer_source[resolved_start:resolved_end]
+        self.assertIn("isCurrent = null", resolved_block)
         self.assertIn("const sessionAtStart = currentFileSessionId();", resolved_block)
         self.assertIn("const currentGuard = typeof isCurrent === \"function\" ? isCurrent : () => currentFileSessionId() === sessionAtStart && !isFileViewerSessionUnavailable();", resolved_block)
         self.assertIn("if (!currentGuard()) return false;", resolved_block)
@@ -3558,13 +3615,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("mode = await resolveFileOpenMode(path, { changed, gitPath: useGitPath, apiPath: requestApiPath });", resolved_block)
         self.assertIn("if (blockUnavailableFileAction()) return false;", resolved_block)
         self.assertIn("return await openFilePathWithGuard(path, { line, mode, isCurrent: currentGuard, gitPath: useGitPath, apiPath: requestApiPath });", resolved_block)
-        guard_start = source.index("async function openFilePathWithGuard")
-        guard_end = source.index("async function openFilePathWithResolvedMode", guard_start)
-        guard_block = source[guard_start:guard_end]
-        self.assertIn("return await fileViewerController.openFilePathWithGuard(path, { line, mode, isCurrent, gitPath, apiPath });", guard_block)
-        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         guard_start = viewer_source.index("async function openFilePathWithGuard")
-        guard_end = viewer_source.index("async function openDraftFilePathWithGuard", guard_start)
+        guard_end = viewer_source.index("async function openFilePathWithResolvedMode", guard_start)
         guard_block = viewer_source[guard_start:guard_end]
         self.assertIn("gitPath = false", guard_block)
         self.assertIn("isCurrent = null", guard_block)
@@ -3639,7 +3691,10 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("fileViewerController.clearFileViewerUnavailableSession();", source)
         self.assertIn("unavailable: isUnavailable(),", viewer_source)
         self.assertIn("const unavailable = Boolean(state.unavailable);", viewer_source)
-        self.assertIn("if (blockUnavailableFileAction()) return false;", source)
+        self.assertIn("return await fileViewerController.openFilePathWithResolvedMode(path, { line, changed, isCurrent, gitPath, apiPath });", source)
+        resolved_start = viewer_source.index("async function openFilePathWithResolvedMode")
+        resolved_end = viewer_source.index("async function openDraftFilePathWithGuard", resolved_start)
+        self.assertIn("if (blockUnavailableFileAction()) return false;", viewer_source[resolved_start:resolved_end])
         self.assertIn("function renderEmptyFileViewerTarget({ updateTouchToolbar = false } = {})", source)
         self.assertEqual(source.count("resetFileViewerPanel();"), 3)
         self.assertEqual(viewer_source.count("resetFileViewerPanel();"), 2)
