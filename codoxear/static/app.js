@@ -580,6 +580,7 @@
         typeof codoxearFileViewer.bindFileTouchPress !== "function" ||
         typeof codoxearFileViewer.createFileDownloadRuntime !== "function" ||
         typeof codoxearFileViewer.createFileFallbackRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileLoadResultRuntime !== "function" ||
         typeof codoxearFileViewer.createFileModeControlsRuntime !== "function" ||
         typeof codoxearFileViewer.createFilePasteDialogRuntime !== "function" ||
         typeof codoxearFileViewer.createFilePdfRenderRuntime !== "function" ||
@@ -7699,6 +7700,22 @@
           historyFileSelectionForSession: (sessionId) => historyFileSelectionForSession(sessionId),
           renderFilePickerMenu: () => renderFilePickerMenu(),
         });
+        const fileLoadResultRuntime = codoxearFileViewer.createFileLoadResultRuntime({
+          controller: fileViewerController,
+          resolveAppUrl,
+          setStatus: (status) => {
+            fileStatus.textContent = status;
+          },
+          disposeFileEditor: () => disposeFileEditor(),
+          renderMonacoDiff: (rel, originalText, modifiedText, lineNumber, request) => renderMonacoDiff(rel, originalText, modifiedText, lineNumber, request),
+          renderMonacoFile: (rel, text, lineNumber, langOverride, request) => renderMonacoFile(rel, text, lineNumber, langOverride, request),
+          renderMarkdownPreview: (rel, text) => renderMarkdownPreview(rel, text),
+          renderBlockedFileNotice: (rel, reason, viewerMaxBytes, size) => renderBlockedFileNotice(rel, reason, viewerMaxBytes, size),
+          renderPdfFile: (rel, url, request) => renderPdfFile(rel, url, request),
+          showImage: (src, alt) => fileRenderSurfaceRuntime.showImage(src, alt),
+          showVideo: (loadPlan, options) => fileRenderSurfaceRuntime.showVideo(loadPlan, options),
+          loadCompatibleVideoPreview: (token, options) => loadCompatibleVideoPreview(token, options),
+        });
 
         function fileSavePendingValue() {
           return fileViewerController.isFileSavePending();
@@ -8545,63 +8562,7 @@
           return fileViewerController.handleFileViewerSessionUnavailable(sessionId);
         }
         async function applyFileLoadResult(rel, result, request, { viewMode = "file" } = {}) {
-          const loadPlan = fileViewerController.prepareFileLoadResult(rel, result, request, { viewMode });
-          if (!loadPlan) return false;
-          if (loadPlan.kind === "diff") {
-            if (loadPlan.noDiff) {
-              disposeFileEditor();
-              fileStatus.textContent = loadPlan.status;
-              return true;
-            }
-            const rendered = await renderMonacoDiff(rel, loadPlan.baseText, loadPlan.currentText, request.line, request);
-            if (!rendered || !isCurrentFileOpenRequest(request)) return false;
-            fileStatus.textContent = loadPlan.status;
-            return true;
-          }
-          if (loadPlan.kind === "image") {
-            fileRenderSurfaceRuntime.showImage(resolveAppUrl(loadPlan.imageUrl), loadPlan.alt);
-            fileStatus.textContent = loadPlan.status;
-            return true;
-          }
-          if (loadPlan.kind === "pdf") {
-            const rendered = await renderPdfFile(rel, resolveAppUrl(loadPlan.pdfUrl), request);
-            if (!rendered || !isCurrentFileOpenRequest(request)) return false;
-            fileStatus.textContent = loadPlan.status;
-            return true;
-          }
-          if (loadPlan.kind === "video") {
-            fileRenderSurfaceRuntime.showVideo(loadPlan, {
-              resolveAppUrl,
-              setStatus: (status) => {
-                fileStatus.textContent = status;
-              },
-              loadPreview: (nextToken, options) => loadCompatibleVideoPreview(nextToken, options),
-              handleError: (plan, helpers) => fileViewerController.handleActiveVideoLoadError(plan.token, {
-                rel: plan.rel,
-                previewUrl: plan.previewUrl,
-                clearVideoHandlers: helpers.clearVideoHandlers,
-                loadPreview: helpers.loadPreview,
-              }),
-              handleLoadedMetadata: (plan) => fileViewerController.handleActiveVideoLoadedMetadata(plan.token),
-            });
-            return true;
-          }
-          if (loadPlan.kind === "download_only") {
-            renderBlockedFileNotice(rel, loadPlan.reason, loadPlan.viewerMaxBytes, loadPlan.size);
-            fileStatus.textContent = loadPlan.status;
-            return true;
-          }
-          if (loadPlan.kind === "text") {
-            if (loadPlan.renderPreview) {
-              renderMarkdownPreview(rel, loadPlan.text);
-            } else {
-              const rendered = await renderMonacoFile(rel, loadPlan.text, request.line, "", request);
-              if (!rendered || !isCurrentFileOpenRequest(request)) return false;
-            }
-            fileStatus.textContent = loadPlan.status;
-            return true;
-          }
-          throw new Error("invalid file load plan");
+          return await fileLoadResultRuntime.apply(rel, result, request, { viewMode });
         }
 
         fileBtn.onclick = (e) => {

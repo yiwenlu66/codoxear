@@ -638,7 +638,8 @@ def eval_use_touch_file_editor_controls(query_matches: dict[str, bool]) -> bool:
         """
     )
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -694,7 +695,8 @@ def eval_open_file_reference_nonliteral() -> dict:
         """
     )
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -877,7 +879,8 @@ def eval_file_paste_dialog_fallback() -> dict:
         """
     )
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -1051,7 +1054,8 @@ def eval_file_editor_capability_predicates() -> dict:
         """
     )
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -1212,7 +1216,8 @@ def eval_file_editor_save_shortcut() -> dict:
         """
     )
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -1373,7 +1378,8 @@ def eval_file_touch_selection_keydown() -> dict:
         """
     )
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -1558,7 +1564,8 @@ def eval_file_editor_delete_shortcut() -> dict:
         """
     )
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -1722,7 +1729,8 @@ def eval_file_open_request_sequence() -> dict:
         """
     )
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -1811,7 +1819,8 @@ def eval_file_viewer_session_sync_race() -> dict:
         """
     )
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -2215,7 +2224,8 @@ def eval_active_file_load_state_writers() -> dict:
         """
     )
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -2373,7 +2383,8 @@ def eval_active_file_save_request_helpers() -> dict:
         """
     )
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -2411,7 +2422,8 @@ def eval_active_file_save_body_builder() -> dict:
         """
     )
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -2459,7 +2471,8 @@ def eval_active_file_save_error_renderer() -> dict:
         """
     )
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -2628,7 +2641,8 @@ def eval_active_file_save_success() -> dict:
         """
     )
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -2852,7 +2866,8 @@ def eval_active_file_save_transport() -> dict:
         """
     )
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -3005,7 +3020,8 @@ def eval_draft_file_load_choreography() -> dict:
         """
     )
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -3124,211 +3140,145 @@ def eval_file_open_success_finalizer() -> dict:
     return json.loads(proc.stdout)
 
 def eval_file_load_result_dispatcher() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    surface_start = source.index("function setFileRenderSurface(surface)")
-    surface_end = source.index("function resetFileViewerPanel()", surface_start)
-    load_start = source.index("async function applyFileLoadResult(")
-    load_end = source.index("fileBtn.onclick", load_start)
-    state_helpers = """
-function currentActiveFileKind() { return activeFileKind; }
-function currentActiveFileEditable() { return activeFileEditable; }
-function applyActiveFileTextState({ kind = \"text\", text = \"\", editable = false, version = \"\", draft = false } = {}) {
-  const nextKind = String(kind || \"text\");
-  if (nextKind !== \"text\" && nextKind !== \"markdown\") throw new Error(\"invalid active file text kind\");
-  activeFileKind = nextKind;
-  activeFileText = String(text ?? \"\");
-  activeFileEditable = Boolean(editable);
-  activeFileVersion = typeof version === \"string\" ? version : \"\";
-  activeFileDraft = Boolean(draft);
-}
-function applyActiveFileDiffState({ currentText = \"\", currentExists = false } = {}) {
-  applyActiveFileTextState({ kind: \"text\", text: currentText, editable: Boolean(currentExists), version: \"\", draft: false });
-}
-function applyActiveFileNonTextState(kind) {
-  const nextKind = String(kind || \"\");
-  if (nextKind !== \"image\" && nextKind !== \"pdf\" && nextKind !== \"video\" && nextKind !== \"download_only\") throw new Error(\"invalid active file non-text kind\");
-  activeFileKind = nextKind;
-  activeFileText = \"\";
-  activeFileEditable = false;
-  activeFileVersion = \"\";
-  activeFileDraft = false;
-}
-"""
-    snippet = state_helpers + "\n" + source[surface_start:surface_end] + "\n" + source[load_start:load_end]
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const ctx = {{
-          activeFileKind: "",
-          activeFileText: "",
-          activeFileEditable: false,
-          activeFileVersion: "",
-          activeFileDraft: false,
-          activeVideoFallback: null,
-          current: true,
-          calls: [],
-          fileDiff: {{ style: {{ display: "" }}, innerHTML: "" }},
-          fileImage: {{ style: {{ display: "" }}, src: "", alt: "" }},
-          fileVideo: {{ style: {{ display: "" }}, src: "", onerror: null, onloadedmetadata: null }},
-          fileRenderSurfaceRuntime: {{
-            setSurface(surface) {{
-              const next = String(surface || "");
-              if (next !== "diff" && next !== "image" && next !== "video") throw new Error("invalid file render surface");
-              ctx.fileDiff.style.display = next === "diff" ? "block" : "none";
-              ctx.fileImage.style.display = next === "image" ? "block" : "none";
-              ctx.fileVideo.style.display = next === "video" ? "block" : "none";
-              return next;
-            }},
-            showImage(src, alt) {{
-              ctx.calls.push(["showImage", src, alt]);
-              ctx.fileVideo.style.display = "none";
-              ctx.fileVideo.src = "";
-              ctx.fileImage.src = String(src || "");
-              ctx.fileImage.alt = String(alt || "");
-              this.setSurface("image");
-              return true;
-            }},
-            showVideo(loadPlan, callbacks) {{
-              ctx.calls.push(["showVideo", loadPlan.token, loadPlan.shouldPreviewFirst]);
-              ctx.fileVideo.onerror = () => callbacks.handleError(loadPlan, {{ clearVideoHandlers: () => {{ ctx.fileVideo.onerror = null; ctx.fileVideo.onloadedmetadata = null; }}, loadPreview: callbacks.loadPreview }});
-              ctx.fileVideo.onloadedmetadata = () => callbacks.handleLoadedMetadata(loadPlan);
-              this.setSurface("video");
-              if (loadPlan.shouldPreviewFirst) callbacks.loadPreview(loadPlan.token, {{ explicit: false }});
-              else {{ ctx.fileVideo.src = callbacks.resolveAppUrl(loadPlan.videoUrl); callbacks.setStatus(loadPlan.initialStatus); }}
-              return true;
-            }},
-          }},
-          fileStatus: {{ textContent: "" }},
-          Date: {{ now: () => 4242 }},
-          isCurrentFileOpenRequest: () => ctx.current,
-          applyFileMode: () => ctx.calls.push(["applyFileMode"]),
-          fileViewerController: {{
-            setActiveVideoFallback(nextState) {{ ctx.activeVideoFallback = nextState ? {{ token: String(nextState.token || ""), previewUrl: String(nextState.previewUrl || ""), used: Boolean(nextState.used), preparing: Boolean(nextState.preparing), rel: String(nextState.rel || ""), size: Number(nextState.size || 0) }} : null; return ctx.activeVideoFallback; }},
-            currentActiveVideoFallback() {{ return ctx.activeVideoFallback ? {{ ...ctx.activeVideoFallback }} : null; }},
-            clearUsedCompatibleVideoPreview(token) {{ if (!ctx.activeVideoFallback || ctx.activeVideoFallback.token !== String(token || "") || !ctx.activeVideoFallback.used) return false; ctx.activeVideoFallback = null; ctx.calls.push(["applyFileMode"]); return true; }},
-            prepareFileLoadResult(rel, result, request, {{ viewMode = "file" }} = {{}}) {{
-              if (!ctx.isCurrentFileOpenRequest(request)) return null;
-              if (!result || typeof result.kind !== "string") throw new Error("invalid response");
-              if (result.kind === "diff") {{
-                const baseText = typeof result.baseText === "string" ? result.baseText : "";
-                const currentText = typeof result.currentText === "string" ? result.currentText : "";
-                ctx.applyActiveFileDiffState({{ currentText, currentExists: result.currentExists }});
-                if (!result.baseExists && !result.currentExists) return {{ kind: "diff", noDiff: true, status: `${{rel}} - no diff` }};
-                return {{ kind: "diff", noDiff: false, baseText, currentText, status: `${{rel}} - diff` }};
-              }}
-              if (result.kind === "image") {{
-                ctx.applyActiveFileNonTextState("image");
-                if (typeof result.image_url !== "string" || !result.image_url) throw new Error("invalid image response");
-                const size = typeof result.size === "number" ? result.size : 0;
-                return {{ kind: "image", imageUrl: result.image_url, alt: rel, status: `${{rel}} - ${{ctx.fmtBytes(size)}}` }};
-              }}
-              if (result.kind === "pdf") {{
-                ctx.applyActiveFileNonTextState("pdf");
-                if (typeof result.pdf_url !== "string" || !result.pdf_url) throw new Error("invalid pdf response");
-                const size = typeof result.size === "number" ? result.size : 0;
-                return {{ kind: "pdf", pdfUrl: result.pdf_url, status: `${{rel}} - PDF - ${{ctx.fmtBytes(size)}}` }};
-              }}
-              if (result.kind === "video") return {{ kind: "video", ...ctx.fileViewerController.prepareActiveVideoLoadResult(rel, result, request) }};
-              if (result.kind === "download_only") {{
-                ctx.applyActiveFileNonTextState("download_only");
-                const size = typeof result.size === "number" ? result.size : 0;
-                return {{ kind: "download_only", reason: String(result.reason || ""), viewerMaxBytes: Number(result.viewer_max_bytes || 0), size, status: `${{rel}} - download only - ${{ctx.fmtBytes(size)}}` }};
-              }}
-              if (typeof result.text !== "string") throw new Error("invalid response");
-              ctx.applyActiveFileTextState({{ kind: result.kind === "markdown" ? "markdown" : "text", text: result.text, editable: Boolean(result.editable), version: typeof result.version === "string" ? result.version : "" }});
-              const renderPreview = viewMode === "preview" && ctx.currentActiveFileKind() === "markdown";
-              const size = typeof result.size === "number" ? result.size : result.text.length;
-              const statusParts = [rel];
-              if (renderPreview) statusParts.push("preview");
-              if (!ctx.currentActiveFileEditable()) statusParts.push("read-only");
-              statusParts.push(ctx.fmtBytes(size));
-              return {{ kind: "text", text: result.text, renderPreview, status: statusParts.join(" - ") }};
-            }},
-            prepareActiveVideoLoadResult(rel, result, request) {{
-              ctx.applyActiveFileNonTextState("video");
-              if (!result || typeof result.video_url !== "string" || !result.video_url) throw new Error("invalid video response");
-              const previewUrl = typeof result.video_preview_url === "string" ? result.video_preview_url : "";
-              const size = typeof result.size === "number" ? result.size : 0;
-              const contentType = typeof result.content_type === "string" ? result.content_type.split(";", 1)[0].trim().toLowerCase() : "";
-              const token = `${{request.requestId}}:${{rel}}:${{ctx.Date.now()}}`;
-              const safe = new Set(["video/mp4", "video/webm", "video/ogg"]);
-              ctx.fileViewerController.setActiveVideoFallback(previewUrl ? {{ token, previewUrl, rel, size }} : null);
-              ctx.applyFileMode();
-              return {{ token, rel, videoUrl: result.video_url, previewUrl, size, contentType, shouldPreviewFirst: Boolean(previewUrl && contentType && !safe.has(contentType)), initialStatus: `${{rel}} - video - ${{ctx.fmtBytes(size)}}` }};
-            }},
-            handleActiveVideoLoadError(token, options = {{}}) {{
-              const expected = String(token || "");
-              const state = ctx.activeVideoFallback;
-              const rel = String((state && state.rel) || options.rel || "video");
-              if (!state || state.token !== expected) {{
-                if (!options.previewUrl) ctx.fileStatus.textContent = `${{rel}} - video unsupported`;
-                return false;
-              }}
-              if (ctx.fileViewerController.clearUsedCompatibleVideoPreview(expected)) {{
-                options.clearVideoHandlers();
-                ctx.fileStatus.textContent = `${{rel}} - video preview unavailable after conversion`;
-                return true;
-              }}
-              options.loadPreview(expected, {{ explicit: false }});
-              return true;
-            }},
-            handleActiveVideoLoadedMetadata(token) {{
-              const state = ctx.activeVideoFallback;
-              if (!state || state.token !== String(token || "") || !state.used) return false;
-              ctx.fileStatus.textContent = `${{state.rel || "video"}} - compatible video preview - ${{ctx.fmtBytes(state.size)}}`;
-              return true;
-            }},
-          }},
-          disposeFileEditor: () => ctx.calls.push(["disposeFileEditor"]),
-          clearFileVideo: () => {{ ctx.calls.push(["clearFileVideo"]); ctx.fileVideo.style.display = "none"; ctx.fileVideo.src = ""; }},
-          renderMonacoDiff: async (...args) => {{ ctx.calls.push(["renderMonacoDiff", ...args.slice(0, 4)]); return ctx.renderOk !== false; }},
-          renderPdfFile: async (...args) => {{ ctx.calls.push(["renderPdfFile", ...args]); if (ctx.staleAfterRender) ctx.current = false; return ctx.renderOk !== false; }},
-          renderMonacoFile: async (...args) => {{ ctx.calls.push(["renderMonacoFile", ...args.slice(0, 4)]); return ctx.renderOk !== false; }},
-          renderMarkdownPreview: (...args) => ctx.calls.push(["renderMarkdownPreview", ...args]),
-          renderBlockedFileNotice: (...args) => ctx.calls.push(["renderBlockedFileNotice", ...args]),
-          loadCompatibleVideoPreview: (token, opts) => {{ ctx.calls.push(["loadCompatibleVideoPreview", token, opts]); return Promise.resolve(true); }},
-          resolveAppUrl: (path) => `app:${{path}}`,
-          fmtBytes: (n) => `${{n}}B`,
-        }};
+        const ctx = {{ window: {{}} }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_load_result = applyFileLoadResult;\n")}, ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const events = [];
+        const state = {{
+          kind: "",
+          text: "",
+          editable: false,
+          version: "",
+          draft: false,
+          fallback: null,
+          current: true,
+          staleAfterRender: false,
+          renderOk: true,
+          status: "",
+          image: {{ src: "", alt: "" }},
+          surface: {{ diff: "", image: "", video: "" }},
+          video: {{ src: "" }},
+        }};
+        function fmtBytes(value) {{ return `${{value}}B`; }}
+        function applyText({{ kind = "text", text = "", editable = false, version = "", draft = false }} = {{}}) {{
+          state.kind = kind;
+          state.text = String(text || "");
+          state.editable = Boolean(editable);
+          state.version = String(version || "");
+          state.draft = Boolean(draft);
+        }}
+        function applyNonText(kind) {{
+          state.kind = kind;
+          state.text = "";
+          state.editable = false;
+          state.version = "";
+          state.draft = false;
+        }}
+        const controller = {{
+          prepareFileLoadResult(rel, result, request, {{ viewMode = "file" }} = {{}}) {{
+            if (!state.current) return null;
+            if (result.kind === "diff") {{
+              applyText({{ kind: "text", text: result.currentText || "", editable: Boolean(result.currentExists) }});
+              if (!result.baseExists && !result.currentExists) return {{ kind: "diff", noDiff: true, status: `${{rel}} - no diff` }};
+              return {{ kind: "diff", noDiff: false, baseText: result.baseText || "", currentText: result.currentText || "", status: `${{rel}} - diff` }};
+            }}
+            if (result.kind === "image") {{
+              applyNonText("image");
+              return {{ kind: "image", imageUrl: result.image_url, alt: rel, status: `${{rel}} - ${{fmtBytes(result.size || 0)}}` }};
+            }}
+            if (result.kind === "pdf") {{
+              applyNonText("pdf");
+              return {{ kind: "pdf", pdfUrl: result.pdf_url, status: `${{rel}} - PDF - ${{fmtBytes(result.size || 0)}}` }};
+            }}
+            if (result.kind === "video") {{
+              applyNonText("video");
+              const token = `${{request.requestId}}:${{rel}}:4242`;
+              state.fallback = result.video_preview_url ? {{ token, previewUrl: result.video_preview_url, used: false, preparing: false, rel, size: result.size || 0 }} : null;
+              events.push(["applyFileMode"]);
+              return {{
+                kind: "video",
+                token,
+                rel,
+                videoUrl: result.video_url,
+                previewUrl: result.video_preview_url || "",
+                size: result.size || 0,
+                contentType: result.content_type || "",
+                shouldPreviewFirst: Boolean(result.video_preview_url && result.content_type === "video/quicktime"),
+                initialStatus: `${{rel}} - video - ${{fmtBytes(result.size || 0)}}`,
+              }};
+            }}
+            if (result.kind === "download_only") {{
+              applyNonText("download_only");
+              return {{ kind: "download_only", reason: String(result.reason || ""), viewerMaxBytes: Number(result.viewer_max_bytes || 0), size: result.size || 0, status: `${{rel}} - download only - ${{fmtBytes(result.size || 0)}}` }};
+            }}
+            applyText({{ kind: result.kind === "markdown" ? "markdown" : "text", text: result.text || "", editable: Boolean(result.editable), version: result.version || "" }});
+            const renderPreview = viewMode === "preview" && state.kind === "markdown";
+            const statusParts = [rel];
+            if (renderPreview) statusParts.push("preview");
+            if (!state.editable) statusParts.push("read-only");
+            statusParts.push(fmtBytes(result.size || String(result.text || "").length));
+            return {{ kind: "text", text: result.text || "", renderPreview, status: statusParts.join(" - ") }};
+          }},
+          isCurrentFileOpenRequest() {{ return state.current; }},
+          handleActiveVideoLoadError(token, options = {{}}) {{ events.push(["videoError", token, options.rel]); return true; }},
+          handleActiveVideoLoadedMetadata(token) {{ events.push(["videoLoaded", token]); return true; }},
+        }};
+        const runtime = ctx.window.CodoxearFileViewer.createFileLoadResultRuntime({{
+          controller,
+          resolveAppUrl: (path) => `app:${{path}}`,
+          setStatus: (status) => {{ state.status = status; }},
+          disposeFileEditor: () => events.push(["disposeFileEditor"]),
+          renderMonacoDiff: async (...args) => {{ events.push(["renderMonacoDiff", ...args.slice(0, 4)]); return state.renderOk !== false; }},
+          renderMonacoFile: async (...args) => {{ events.push(["renderMonacoFile", ...args.slice(0, 4)]); return state.renderOk !== false; }},
+          renderMarkdownPreview: (...args) => events.push(["renderMarkdownPreview", ...args]),
+          renderBlockedFileNotice: (...args) => events.push(["renderBlockedFileNotice", ...args]),
+          renderPdfFile: async (...args) => {{ events.push(["renderPdfFile", ...args]); if (state.staleAfterRender) state.current = false; return state.renderOk !== false; }},
+          showImage: (src, alt) => {{ events.push(["showImage", src, alt]); state.image = {{ src, alt }}; state.surface = {{ diff: "none", image: "block", video: "none" }}; return true; }},
+          showVideo: (loadPlan, callbacks) => {{
+            events.push(["showVideo", loadPlan.token, loadPlan.shouldPreviewFirst]);
+            state.surface = {{ diff: "none", image: "none", video: "block" }};
+            if (loadPlan.shouldPreviewFirst) callbacks.loadPreview(loadPlan.token, {{ explicit: false }});
+            else {{ state.video.src = callbacks.resolveAppUrl(loadPlan.videoUrl); callbacks.setStatus(loadPlan.initialStatus); }}
+            return true;
+          }},
+          loadCompatibleVideoPreview: (token, opts) => {{ events.push(["loadCompatibleVideoPreview", token, opts]); return Promise.resolve(true); }},
+        }});
         const request = {{ requestId: 7, line: 5 }};
         function reset() {{
-          ctx.activeFileKind = "stale";
-          ctx.activeFileText = "stale text";
-          ctx.activeFileEditable = true;
-          ctx.activeFileVersion = "stale-version";
-          ctx.activeFileDraft = true;
-          ctx.activeVideoFallback = null;
-          ctx.current = true;
-          ctx.renderOk = true;
-          ctx.staleAfterRender = false;
-          ctx.calls = [];
-          ctx.fileDiff.style.display = "";
-          ctx.fileImage.style.display = "";
-          ctx.fileImage.src = "";
-          ctx.fileImage.alt = "";
-          ctx.fileVideo.style.display = "";
-          ctx.fileVideo.src = "";
-          ctx.fileVideo.onerror = null;
-          ctx.fileVideo.onloadedmetadata = null;
-          ctx.fileStatus.textContent = "";
+          events.length = 0;
+          state.kind = "stale";
+          state.text = "stale text";
+          state.editable = true;
+          state.version = "stale-version";
+          state.draft = true;
+          state.fallback = null;
+          state.current = true;
+          state.staleAfterRender = false;
+          state.renderOk = true;
+          state.status = "";
+          state.image = {{ src: "", alt: "" }};
+          state.surface = {{ diff: "", image: "", video: "" }};
+          state.video = {{ src: "" }};
         }}
         function snapshot(ok) {{
           return {{
             ok,
-            state: {{ kind: ctx.activeFileKind, text: ctx.activeFileText, editable: ctx.activeFileEditable, version: ctx.activeFileVersion, draft: ctx.activeFileDraft }},
-            surface: {{ diff: ctx.fileDiff.style.display, image: ctx.fileImage.style.display, video: ctx.fileVideo.style.display }},
-            calls: ctx.calls,
-            status: ctx.fileStatus.textContent,
-            image: {{ src: ctx.fileImage.src, alt: ctx.fileImage.alt }},
-            video: {{ src: ctx.fileVideo.src, fallback: ctx.activeVideoFallback }},
+            state: {{ kind: state.kind, text: state.text, editable: state.editable, version: state.version, draft: state.draft }},
+            surface: state.surface,
+            calls: events.slice(),
+            status: state.status,
+            image: state.image,
+            video: {{ src: state.video.src, fallback: state.fallback }},
           }};
         }}
         async function run(result, opts = {{}}) {{
           reset();
-          Object.assign(ctx, opts);
-          const ok = await ctx.__test_load_result("doc.md", result, request, opts.helperOptions || {{}});
+          Object.assign(state, opts);
+          const ok = await runtime.apply("doc.md", result, request, opts.helperOptions || {{}});
           return snapshot(ok);
         }}
         (async () => {{
@@ -3343,15 +3293,8 @@ function applyActiveFileNonTextState(kind) {
         }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """
     )
-    proc = subprocess.run(
-        ["node", "-e", js],
-        check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
-
 
 def eval_file_render_surface_visibility() -> dict:
     viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
@@ -3392,7 +3335,8 @@ def eval_file_render_surface_visibility() -> dict:
         """
     )
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -4379,6 +4323,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function reset()", viewer_source)
         self.assertIn('throw new Error("invalid file render surface")', viewer_source)
         self.assertIn("async function applyFileLoadResult(rel, result, request, { viewMode = \"file\" } = {})", source)
+        self.assertIn("return await fileLoadResultRuntime.apply(rel, result, request, { viewMode });", source)
+        self.assertIn("function createFileLoadResultRuntime(options = {})", viewer_source)
         self.assertNotIn("function finalizeFileOpenSuccess(rel, absPath = null)", source)
         self.assertIn("function finalizeFileOpenSuccess(rel, absPath = null)", viewer_source)
         self.assertIn("const openResult = await fetchFileOpenResult(request, rel, viewMode);", viewer_source)
@@ -4394,12 +4340,16 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(source.count('setFileRenderSurface("diff");'), 4)
         self.assertIn('setFileRenderSurface("diff");', viewer_source)
         self.assertNotIn('fileImage.removeAttribute("src");', source)
-        self.assertIn("fileRenderSurfaceRuntime.showImage(resolveAppUrl(loadPlan.imageUrl), loadPlan.alt);", source)
+        self.assertNotIn("fileRenderSurfaceRuntime.showImage(resolveAppUrl(loadPlan.imageUrl), loadPlan.alt);", source)
+        self.assertIn("showImage: (src, alt) => fileRenderSurfaceRuntime.showImage(src, alt)", source)
+        self.assertIn("showImage(resolveAppUrl(loadPlan.imageUrl), loadPlan.alt);", viewer_source)
         self.assertIn("function showImage(src, alt = \"\")", viewer_source)
         self.assertNotIn('fileImage.src = resolveAppUrl(loadPlan.imageUrl);', source)
         self.assertNotIn('fileImage.alt = loadPlan.alt;', source)
         self.assertNotIn('setFileRenderSurface("image");', source)
-        self.assertIn("fileRenderSurfaceRuntime.showVideo(loadPlan, {", source)
+        self.assertNotIn("fileRenderSurfaceRuntime.showVideo(loadPlan, {", source)
+        self.assertIn("showVideo: (loadPlan, options) => fileRenderSurfaceRuntime.showVideo(loadPlan, options)", source)
+        self.assertIn("showVideo(loadPlan, {", viewer_source)
         self.assertIn("function showVideo(loadPlan = {}, callbacks = {})", viewer_source)
         self.assertNotIn('setFileRenderSurface("video");', source)
         self.assertNotIn("fileDiff.style.display =", source)
@@ -4871,7 +4821,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('resolveAppUrl("pdf.worker.mjs")', viewer_source)
         self.assertNotIn('import(resolveAppUrl("pdf.mjs"))', source)
         self.assertIn('result.kind === "pdf"', viewer_source)
-        self.assertIn('loadPlan.kind === "pdf"', source)
+        self.assertNotIn('loadPlan.kind === "pdf"', source)
+        self.assertIn('loadPlan.kind === "pdf"', viewer_source)
         self.assertIn("const MONACO_LOADER_TIMEOUT_MS = 4000;", source)
         self.assertIn("const PDFJS_LOADER_TIMEOUT_MS = 6000;", source)
         self.assertIn("function renderPlainTextFallback(rel, text, lineNumber = null", source)
@@ -4925,13 +4876,16 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('title: "Use compatible MP4 preview"', source)
         self.assertIn('const fileVideo = el("video", { id: "fileVideo", class: "fileVideo", controls: true, preload: "metadata" });', source)
         self.assertIn('result.kind === "video"', viewer_source)
-        self.assertIn('loadPlan.kind === "video"', source)
+        self.assertNotIn('loadPlan.kind === "video"', source)
+        self.assertIn('loadPlan.kind === "video"', viewer_source)
         self.assertIn("function clearFileVideo()", source)
         self.assertIn("return fileRenderSurfaceRuntime.clearVideo();", source)
         self.assertIn("function createFileRenderSurfaceRuntime(options = {})", viewer_source)
         self.assertIn("video.pause();", viewer_source)
         self.assertNotIn("fileVideo.pause();", source)
-        self.assertIn("fileRenderSurfaceRuntime.showVideo(loadPlan, {", source)
+        self.assertNotIn("fileRenderSurfaceRuntime.showVideo(loadPlan, {", source)
+        self.assertIn("showVideo: (loadPlan, options) => fileRenderSurfaceRuntime.showVideo(loadPlan, options)", source)
+        self.assertIn("showVideo(loadPlan, {", viewer_source)
         self.assertIn("function showVideo(loadPlan = {}, callbacks = {})", viewer_source)
         self.assertIn("video.src = resolveAppUrl(loadPlan.videoUrl);", viewer_source)
         self.assertNotIn('fileVideo.src = resolveAppUrl(loadPlan.videoUrl);', source)
@@ -4965,8 +4919,10 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("handleLoadedMetadata(loadPlan);", viewer_source)
         self.assertNotIn("fileVideo.onerror = () => {", source)
         self.assertNotIn("fileViewerController.handleActiveVideoLoadError(loadPlan.token", source)
-        self.assertIn("handleError: (plan, helpers) => fileViewerController.handleActiveVideoLoadError(plan.token", source)
-        self.assertIn("handleLoadedMetadata: (plan) => fileViewerController.handleActiveVideoLoadedMetadata(plan.token)", source)
+        self.assertNotIn("handleError: (plan, helpers) => fileViewerController.handleActiveVideoLoadError(plan.token", source)
+        self.assertIn("handleError: (plan, helpers) => handleActiveVideoLoadError(plan.token", viewer_source)
+        self.assertNotIn("handleLoadedMetadata: (plan) => fileViewerController.handleActiveVideoLoadedMetadata(plan.token)", source)
+        self.assertIn("handleLoadedMetadata: (plan) => handleActiveVideoLoadedMetadata(plan.token)", viewer_source)
         self.assertIn("fileStatus.textContent = explicit ? `${rel} - building compatible video preview...` : `${rel} - trying compatible video preview...`;", viewer_source)
         self.assertNotIn("fileStatus.textContent = explicit ? `${rel} - building compatible video preview...` : `${rel} - trying compatible video preview...`;", source)
         self.assertIn("fileVideo.src = resolveAppUrl(previewUrl);", source)
@@ -4979,12 +4935,15 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("setStatus: (status) => {", source)
         self.assertIn('initialStatus: `${path} - video - ${fmtBytes(size)}`', viewer_source)
         self.assertIn('result.kind === "download_only"', viewer_source)
-        self.assertIn('loadPlan.kind === "download_only"', source)
-        self.assertIn("renderBlockedFileNotice(rel, loadPlan.reason, loadPlan.viewerMaxBytes, loadPlan.size);", source)
+        self.assertNotIn('loadPlan.kind === "download_only"', source)
+        self.assertIn('loadPlan.kind === "download_only"', viewer_source)
+        self.assertNotIn("renderBlockedFileNotice(rel, loadPlan.reason, loadPlan.viewerMaxBytes, loadPlan.size);", source)
+        self.assertIn("renderBlockedFileNotice(rel, loadPlan.reason, loadPlan.viewerMaxBytes, loadPlan.size);", viewer_source)
         self.assertIn("fileFallbackRuntime.renderBlocked(blockedFileMessage(rel, reason, viewerMaxBytes, size));", source)
         self.assertIn("function renderBlocked(message)", viewer_source)
         self.assertIn("reason: String(result.reason || \"\")", viewer_source)
-        self.assertIn('fileStatus.textContent = loadPlan.status;', source)
+        self.assertNotIn('fileStatus.textContent = loadPlan.status;', source)
+        self.assertIn('setStatus(loadPlan.status);', viewer_source)
         self.assertIn('status: `${path} - PDF - ${fmtBytes(size)}`', viewer_source)
         self.assertIn(".filePdfPages {", css_source)
         self.assertIn(".filePlainFallback {", css_source)

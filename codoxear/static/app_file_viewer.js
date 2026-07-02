@@ -553,6 +553,86 @@
     return Object.freeze({ render });
   }
 
+  function createFileLoadResultRuntime(options = {}) {
+    const controller = options.controller || null;
+    if (!controller || typeof controller !== "object") throw new TypeError("file viewer dependency missing: controller");
+    const prepareFileLoadResult = requireFunction(controller.prepareFileLoadResult, "controller.prepareFileLoadResult").bind(controller);
+    const isCurrentFileOpenRequest = requireFunction(controller.isCurrentFileOpenRequest, "controller.isCurrentFileOpenRequest").bind(controller);
+    const handleActiveVideoLoadError = requireFunction(controller.handleActiveVideoLoadError, "controller.handleActiveVideoLoadError").bind(controller);
+    const handleActiveVideoLoadedMetadata = requireFunction(controller.handleActiveVideoLoadedMetadata, "controller.handleActiveVideoLoadedMetadata").bind(controller);
+    const resolveAppUrl = requireFunction(options.resolveAppUrl, "resolveAppUrl");
+    const setStatus = requireFunction(options.setStatus, "setStatus");
+    const disposeFileEditor = requireFunction(options.disposeFileEditor, "disposeFileEditor");
+    const renderMonacoDiff = requireFunction(options.renderMonacoDiff, "renderMonacoDiff");
+    const renderMonacoFile = requireFunction(options.renderMonacoFile, "renderMonacoFile");
+    const renderMarkdownPreview = requireFunction(options.renderMarkdownPreview, "renderMarkdownPreview");
+    const renderBlockedFileNotice = requireFunction(options.renderBlockedFileNotice, "renderBlockedFileNotice");
+    const renderPdfFile = requireFunction(options.renderPdfFile, "renderPdfFile");
+    const showImage = requireFunction(options.showImage, "showImage");
+    const showVideo = requireFunction(options.showVideo, "showVideo");
+    const loadCompatibleVideoPreview = requireFunction(options.loadCompatibleVideoPreview, "loadCompatibleVideoPreview");
+
+    async function apply(rel, result, request, { viewMode = "file" } = {}) {
+      const loadPlan = prepareFileLoadResult(rel, result, request, { viewMode });
+      if (!loadPlan) return false;
+      if (loadPlan.kind === "diff") {
+        if (loadPlan.noDiff) {
+          disposeFileEditor();
+          setStatus(loadPlan.status);
+          return true;
+        }
+        const rendered = await renderMonacoDiff(rel, loadPlan.baseText, loadPlan.currentText, request.line, request);
+        if (!rendered || !isCurrentFileOpenRequest(request)) return false;
+        setStatus(loadPlan.status);
+        return true;
+      }
+      if (loadPlan.kind === "image") {
+        showImage(resolveAppUrl(loadPlan.imageUrl), loadPlan.alt);
+        setStatus(loadPlan.status);
+        return true;
+      }
+      if (loadPlan.kind === "pdf") {
+        const rendered = await renderPdfFile(rel, resolveAppUrl(loadPlan.pdfUrl), request);
+        if (!rendered || !isCurrentFileOpenRequest(request)) return false;
+        setStatus(loadPlan.status);
+        return true;
+      }
+      if (loadPlan.kind === "video") {
+        showVideo(loadPlan, {
+          resolveAppUrl,
+          setStatus,
+          loadPreview: (nextToken, options) => loadCompatibleVideoPreview(nextToken, options),
+          handleError: (plan, helpers) => handleActiveVideoLoadError(plan.token, {
+            rel: plan.rel,
+            previewUrl: plan.previewUrl,
+            clearVideoHandlers: helpers.clearVideoHandlers,
+            loadPreview: helpers.loadPreview,
+          }),
+          handleLoadedMetadata: (plan) => handleActiveVideoLoadedMetadata(plan.token),
+        });
+        return true;
+      }
+      if (loadPlan.kind === "download_only") {
+        renderBlockedFileNotice(rel, loadPlan.reason, loadPlan.viewerMaxBytes, loadPlan.size);
+        setStatus(loadPlan.status);
+        return true;
+      }
+      if (loadPlan.kind === "text") {
+        if (loadPlan.renderPreview) {
+          renderMarkdownPreview(rel, loadPlan.text);
+        } else {
+          const rendered = await renderMonacoFile(rel, loadPlan.text, request.line, "", request);
+          if (!rendered || !isCurrentFileOpenRequest(request)) return false;
+        }
+        setStatus(loadPlan.status);
+        return true;
+      }
+      throw new Error("invalid file load plan");
+    }
+
+    return Object.freeze({ apply });
+  }
+
   function createFileRenderSurfaceRuntime(options = {}) {
     const diff = requireStyledNode(options.diff, "fileDiff");
     const image = requireImageNode(options.image);
@@ -2779,6 +2859,7 @@
     bindFileTouchPress,
     createFileDownloadRuntime,
     createFileFallbackRuntime,
+    createFileLoadResultRuntime,
     createFileModeControlsRuntime,
     createFilePasteDialogRuntime,
     createFilePdfRenderRuntime,
