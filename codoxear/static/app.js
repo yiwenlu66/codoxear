@@ -7248,9 +7248,7 @@
         function resetFileViewerPanel() {
           disposeFileEditor();
           resetActiveFileBufferState();
-          fileImage.removeAttribute("src");
-          clearFileVideo();
-          setFileRenderSurface("diff");
+          fileRenderSurfaceRuntime.reset();
         }
 
         function renderEmptyFileViewerTarget({ updateTouchToolbar = false } = {}) {

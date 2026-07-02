@@ -87,6 +87,13 @@
     return value;
   }
 
+  function requireImageNode(value) {
+    if (!value || !value.style || typeof value.removeAttribute !== "function") {
+      throw new TypeError("file viewer dependency missing: fileImage");
+    }
+    return value;
+  }
+
   function requireToggleClassNode(value, name) {
     if (!value || !value.classList || typeof value.classList.toggle !== "function") {
       throw new TypeError(`file viewer dependency missing: ${name}`);
@@ -219,7 +226,7 @@
 
   function createFileRenderSurfaceRuntime(options = {}) {
     const diff = requireStyledNode(options.diff, "fileDiff");
-    const image = requireStyledNode(options.image, "fileImage");
+    const image = requireImageNode(options.image);
     const video = requireVideoNode(options.video);
     const videoPreviewButton = requireStyledNode(options.videoPreviewButton, "fileVideoPreviewButton");
     const clearActiveVideoFallback = requireFunction(options.clearActiveVideoFallback, "clearActiveVideoFallback");
@@ -231,6 +238,11 @@
       image.style.display = next === "image" ? "block" : "none";
       video.style.display = next === "video" ? "block" : "none";
       return next;
+    }
+
+    function clearImage() {
+      image.removeAttribute("src");
+      return true;
     }
 
     function clearVideo() {
@@ -246,7 +258,14 @@
       return true;
     }
 
-    return Object.freeze({ clearVideo, setSurface });
+    function reset() {
+      clearImage();
+      clearVideo();
+      setSurface("diff");
+      return true;
+    }
+
+    return Object.freeze({ clearImage, clearVideo, reset, setSurface });
   }
 
   function createFilePasteDialogRuntime(options = {}) {

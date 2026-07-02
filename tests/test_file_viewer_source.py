@@ -3341,7 +3341,7 @@ def eval_file_render_surface_visibility() -> dict:
         vm.createContext(ctx);
         vm.runInContext({json.dumps(viewer_source)}, ctx);
         const fileDiff = {{ style: {{ display: "" }} }};
-        const fileImage = {{ style: {{ display: "" }} }};
+        const fileImage = {{ style: {{ display: "" }}, removeAttribute() {{}} }};
         const fileVideo = {{ style: {{ display: "" }}, removeAttribute() {{}}, load() {{}} }};
         const fileVideoPreviewBtn = {{ style: {{ display: "" }}, disabled: false }};
         const runtime = ctx.window.CodoxearFileViewer.createFileRenderSurfaceRuntime({{
@@ -4343,7 +4343,9 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function startFileOpenRequest(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {})", viewer_source)
         self.assertIn("function setFileRenderSurface(surface)", source)
         self.assertIn("return fileRenderSurfaceRuntime.setSurface(surface);", source)
+        self.assertIn("fileRenderSurfaceRuntime.reset();", source)
         self.assertIn("function createFileRenderSurfaceRuntime(options = {})", viewer_source)
+        self.assertIn("function reset()", viewer_source)
         self.assertIn('throw new Error("invalid file render surface")', viewer_source)
         self.assertIn("async function applyFileLoadResult(rel, result, request, { viewMode = \"file\" } = {})", source)
         self.assertNotIn("function finalizeFileOpenSuccess(rel, absPath = null)", source)
@@ -4358,7 +4360,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('kind: "diff"', viewer_source)
         self.assertIn('baseText: res && typeof res.base_text === "string" ? res.base_text : ""', viewer_source)
         self.assertIn('currentText: res && typeof res.current_text === "string" ? res.current_text : ""', viewer_source)
-        self.assertEqual(source.count('setFileRenderSurface("diff");'), 6)
+        self.assertEqual(source.count('setFileRenderSurface("diff");'), 5)
+        self.assertNotIn('fileImage.removeAttribute("src");', source)
         self.assertIn('setFileRenderSurface("image");', source)
         self.assertIn('setFileRenderSurface("video");', source)
         self.assertNotIn("fileDiff.style.display =", source)

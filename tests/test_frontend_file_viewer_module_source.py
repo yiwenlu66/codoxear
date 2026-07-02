@@ -889,7 +889,7 @@ def run_file_render_surface_runtime_probe() -> dict[str, object]:
         const fileViewer = ctx.window.CodoxearFileViewer;
         const events = [];
         const diff = {{ style: {{ display: "" }} }};
-        const image = {{ style: {{ display: "" }} }};
+        const image = {{ style: {{ display: "" }}, removeAttribute: (name) => events.push(["removeImage", name]) }};
         const video = {{
           style: {{ display: "" }},
           onerror: () => {{}},
@@ -915,8 +915,12 @@ def run_file_render_surface_runtime_probe() -> dict[str, object]:
         const videoState = snapshot();
         let invalidMessage = "";
         try {{ runtime.setSurface("audio"); }} catch (err) {{ invalidMessage = err && err.message ? err.message : String(err); }}
+        const clearImageResult = runtime.clearImage();
         const clearVideoResult = runtime.clearVideo();
         const clearState = {{ previewDisplay: previewButton.style.display, previewDisabled: previewButton.disabled, videoDisplay: video.style.display, onerror: video.onerror, onloadedmetadata: video.onloadedmetadata }};
+        runtime.setSurface("video");
+        const resetResult = runtime.reset();
+        const resetState = snapshot();
         process.stdout.write(JSON.stringify({{
           frozen: Object.isFrozen(runtime),
           diffResult,
@@ -926,8 +930,11 @@ def run_file_render_surface_runtime_probe() -> dict[str, object]:
           imageState,
           videoState,
           invalidMessage,
+          clearImageResult,
           clearVideoResult,
           clearState,
+          resetResult,
+          resetState,
           events,
         }}));
         """
@@ -1578,9 +1585,12 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["imageState"], {"diff": "none", "image": "block", "video": "none"})
         self.assertEqual(result["videoState"], {"diff": "none", "image": "none", "video": "block"})
         self.assertEqual(result["invalidMessage"], "invalid file render surface")
+        self.assertTrue(result["clearImageResult"])
         self.assertTrue(result["clearVideoResult"])
         self.assertEqual(result["clearState"], {"previewDisplay": "none", "previewDisabled": True, "videoDisplay": "none", "onerror": None, "onloadedmetadata": None})
-        self.assertEqual(result["events"], [["clearFallback"], ["pause"], ["remove", "src"], ["load"]])
+        self.assertTrue(result["resetResult"])
+        self.assertEqual(result["resetState"], {"diff": "block", "image": "none", "video": "none"})
+        self.assertEqual(result["events"], [["removeImage", "src"], ["clearFallback"], ["pause"], ["remove", "src"], ["load"], ["removeImage", "src"], ["clearFallback"], ["pause"], ["remove", "src"], ["load"]])
 
     def test_file_touch_toolbar_runtime_behavior(self) -> None:
         result = run_file_touch_toolbar_runtime_probe()
