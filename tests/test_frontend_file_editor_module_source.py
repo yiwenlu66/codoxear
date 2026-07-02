@@ -44,12 +44,17 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
           revealLineInCenter: (line) => events.push(["revealLineInCenter", "modified", line]),
           focus: () => events.push(["focus", "modified"]),
         }};
+        const editorInput = {{ classList: {{ contains: (name) => name === "inputarea" }} }};
+        const otherInput = {{ classList: {{ contains: (name) => name === "inputarea" }} }};
+        const nonInput = {{ classList: {{ contains: () => false }} }};
+        const domNode = {{ contains: (target) => target === editorInput }};
         const fileEditor = {{
           tag: "file",
           layout: () => events.push(["layout", "file"]),
           setPosition: (position) => events.push(["setPosition", "file", position]),
           revealLineInCenter: (line) => events.push(["revealLineInCenter", "file", line]),
           focus: () => events.push(["focus", "file"]),
+          getDomNode: () => domNode,
           getModel: () => fileModel,
           getSelection: () => currentSelection,
           setSelection: (selection) => {{ currentSelection = selection; events.push(["setSelection", selection]); }},
@@ -68,6 +73,10 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
         const activeFile = runtime.activeCodeEditor("file") === fileEditor;
         const noDiffEditor = runtime.activeCodeEditor("diff");
         const focusFile = runtime.focusActiveCodeEditor("file") === fileEditor;
+        const activeInput = runtime.isActiveInput("file", editorInput);
+        const outsideInput = runtime.isActiveInput("file", otherInput);
+        const wrongClassInput = runtime.isActiveInput("file", nonInput);
+        const wrongCtorInput = runtime.isActiveInput("file", editorInput, function DifferentElement() {{}});
         const normalizedPosition = runtime.normalizePosition(fileEditor, {{ lineNumber: 20, column: 20 }});
         const selectionTextBefore = runtime.activeSelectionText("file");
         const applyAnchoredSelection = runtime.applySelection(fileEditor, {{ lineNumber: 2, column: 20 }}, {{ lineNumber: 0, column: 0 }}, Selection);
@@ -102,6 +111,10 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
           noDiffEditor,
           activeDiff,
           focusFile,
+          activeInput,
+          outsideInput,
+          wrongClassInput,
+          wrongCtorInput,
           normalizedPosition,
           selectionTextBefore,
           applyAnchoredSelection,
@@ -203,6 +216,10 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertIsNone(result["noDiffEditor"])
         self.assertTrue(result["activeDiff"])
         self.assertTrue(result["focusFile"])
+        self.assertTrue(result["activeInput"])
+        self.assertFalse(result["outsideInput"])
+        self.assertFalse(result["wrongClassInput"])
+        self.assertFalse(result["wrongCtorInput"])
         self.assertEqual(result["normalizedPosition"], {"lineNumber": 4, "column": 4})
         self.assertEqual(result["selectionTextBefore"], "text:1:1-1:3")
         self.assertTrue(result["applyAnchoredSelection"])
@@ -279,6 +296,7 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertIn("fileEditorRuntime.dispose({", app_source)
         self.assertIn("fileEditorRuntime.focusLine(currentFileEditorKind(), lineNumber, normalizeLineNumber);", app_source)
         self.assertIn("fileEditorRuntime.focusActiveCodeEditor(currentFileEditorKind())", app_source)
+        self.assertIn("fileEditorRuntime.isActiveInput(currentFileEditorKind(), target, HTMLElement)", app_source)
         self.assertIn("fileEditorRuntime.normalizePosition(editor, position)", app_source)
         self.assertIn("fileEditorRuntime.applySelection(editor, cursor, anchor, fileEditorMonacoLoader.selectionCtor())", app_source)
         self.assertIn("fileEditorRuntime.isCollapsedSelection(selection)", app_source)

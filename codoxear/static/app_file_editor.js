@@ -174,6 +174,15 @@
       return null;
     }
 
+    function isActiveInput(kind, target, ElementCtor = null) {
+      const Ctor = typeof ElementCtor === "function" ? ElementCtor : null;
+      if (!target || (Ctor && !(target instanceof Ctor))) return false;
+      if (!target.classList || typeof target.classList.contains !== "function" || !target.classList.contains("inputarea")) return false;
+      const targetEditor = activeCodeEditor(kind);
+      const node = targetEditor && typeof targetEditor.getDomNode === "function" ? targetEditor.getDomNode() : null;
+      return Boolean(node && typeof node.contains === "function" && node.contains(target));
+    }
+
     function updateEditorOptions(kind, options) {
       if (String(kind || "") !== "diff" || !editor || typeof editor.updateOptions !== "function") return false;
       editor.updateOptions(options || {});
@@ -278,6 +287,7 @@
       dispose,
       focusActiveCodeEditor,
       focusLine,
+      isActiveInput,
       isCollapsedSelection,
       layoutCurrent,
       normalizePosition,

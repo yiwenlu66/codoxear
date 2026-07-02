@@ -7425,18 +7425,10 @@
           return fileViewerController.moveFileTouchSelection(direction);
         }
 
-        function isActiveFileEditorInput(target) {
-          if (!(target instanceof HTMLElement)) return false;
-          if (!target.classList.contains("inputarea")) return false;
-          const editor = getActiveFileCodeEditor();
-          const node = editor && typeof editor.getDomNode === "function" ? editor.getDomNode() : null;
-          return Boolean(node && node.contains(target));
-        }
-
         function fileEditorShortcutBlocked(target) {
           if (!isFileViewerOpen()) return true;
           if (modalIsolationTargets.some((node) => node !== fileViewer && isModalTargetOpen(node))) return true;
-          if (target && isTextEntryElement(target) && !isActiveFileEditorInput(target)) return true;
+          if (target && isTextEntryElement(target) && !fileEditorRuntime.isActiveInput(currentFileEditorKind(), target, HTMLElement)) return true;
           return false;
         }
 
@@ -8015,7 +8007,7 @@
           clipboardReadAvailable: () => Boolean(window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.readText === "function"),
           readClipboardText: () => navigator.clipboard.readText(),
           fileEditorDeleteCommandForKey: (key) => fileEditorDeleteCommandForKey(key),
-          isActiveFileEditorInput: (target) => isActiveFileEditorInput(target),
+          isActiveFileEditorInput: (target) => fileEditorRuntime.isActiveInput(currentFileEditorKind(), target, HTMLElement),
           getActiveFileSelectionText: () => fileEditorRuntime.activeSelectionText(currentFileEditorKind()),
           copyToClipboard: (text) => copyToClipboard(text),
           focusActiveFileCodeEditor: () => fileEditorRuntime.focusActiveCodeEditor(currentFileEditorKind()),
