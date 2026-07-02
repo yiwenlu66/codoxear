@@ -577,6 +577,7 @@
         typeof codoxearFileViewer.createFileRenderSurfaceRuntime !== "function" ||
         typeof codoxearFileViewer.createFileTouchToolbarRuntime !== "function" ||
         typeof codoxearFileViewer.createFileUnsavedDialogRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileViewerModalRuntime !== "function" ||
         typeof codoxearFileViewer.createFileViewerController !== "function" ||
         typeof codoxearFileViewer.createPdfLoader !== "function"
       )
@@ -7081,6 +7082,19 @@
           pasteButton: fileTouchPasteBtn,
           selectButton: fileTouchSelectBtn,
         });
+        const fileViewerModalRuntime = codoxearFileViewer.createFileViewerModalRuntime({
+          backdrop: fileBackdrop,
+          viewer: fileViewer,
+          pickerInput: filePickerInput,
+          closeButton: fileCloseBtn,
+          prepareModalOpen,
+          afterModalVisibilityChanged,
+          focusModalCloseButton,
+          restoreModalFocus,
+          isModalTargetOpen,
+          setReturnFocusElement: (element, ElementCtor) => fileViewerController.setFileViewerReturnFocusElement(element, ElementCtor),
+          takeReturnFocusElement: () => fileViewerController.takeFileViewerReturnFocusElement(),
+        });
         const fileUnsavedDialogRuntime = codoxearFileViewer.createFileUnsavedDialogRuntime({
           backdrop: fileUnsavedBackdrop,
           dialog: fileUnsavedDialog,
@@ -8624,23 +8638,10 @@
           const wasOpen = isFileViewerOpen();
           if (wasOpen && !(await maybeHandleUnsavedFileChanges())) return;
           cancelPendingFileOpen();
-          if (!wasOpen) fileViewerController.setFileViewerReturnFocusElement(document.activeElement, HTMLElement);
-          prepareModalOpen();
           const explicitPath = String(path ?? "");
           const query = String(pickerQuery ?? "");
           const queryOpen = !explicitPath && query !== "";
-          fileBackdrop.style.display = "block";
-          fileViewer.style.display = "flex";
-          afterModalVisibilityChanged();
-          if (!wasOpen && queryOpen) {
-            try {
-              filePickerInput.focus({ preventScroll: true });
-            } catch (_) {
-              filePickerInput.focus();
-            }
-          } else if (!wasOpen) {
-            focusModalCloseButton(fileViewer, fileCloseBtn);
-          }
+          fileViewerModalRuntime.show({ wasOpen, queryOpen, activeElement: document.activeElement, ElementCtor: HTMLElement });
           updateFileTouchToolbar();
           rememberActiveFileSelection(currentFileViewerSessionId());
           const sid = String(selected || "").trim();
@@ -8682,8 +8683,7 @@
           renderEmptyFileViewerTarget();
         }
         function hideFileViewer() {
-          const wasOpen = isModalTargetOpen(fileViewer);
-          const focusTarget = fileViewerController.takeFileViewerReturnFocusElement();
+          const hideState = fileViewerModalRuntime.beginHide();
           fileViewerController.invalidateFileViewerSessionSync();
           cancelPendingFileOpen();
           hideFileUnsavedDialog();
@@ -8693,14 +8693,12 @@
           closeFilePickerMenu({ restoreInput: true });
           resetFileSearchState();
           filePickerSearchState.setSessionId("");
-          fileBackdrop.style.display = "none";
-          fileViewer.style.display = "none";
+          fileViewerModalRuntime.hideDisplay();
           fileViewerController.clearFileViewerSessionId();
           fileViewerController.clearFileViewerUnavailableSession();
           clearActiveFileIdentity();
           updateFileTouchToolbar();
-          afterModalVisibilityChanged();
-          if (wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(fileViewer));
+          fileViewerModalRuntime.finishHide(hideState);
         }
         function disableFileViewerForUnavailableSession(sid) {
           return fileViewerController.disableFileViewerForUnavailableSession(sid);

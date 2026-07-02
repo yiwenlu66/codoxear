@@ -1086,6 +1086,64 @@ def run_file_touch_toolbar_runtime_probe() -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
+def run_file_viewer_modal_runtime_probe() -> dict[str, object]:
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const fileViewer = ctx.window.CodoxearFileViewer;
+        const events = [];
+        const backdrop = {{ style: {{ display: "none" }} }};
+        const viewer = {{ style: {{ display: "none" }} }};
+        const pickerInput = {{ focus(options) {{ events.push(["pickerFocus", options || null]); }} }};
+        const closeButton = {{ name: "close" }};
+        function FakeElement() {{}}
+        const runtime = fileViewer.createFileViewerModalRuntime({{
+          backdrop,
+          viewer,
+          pickerInput,
+          closeButton,
+          prepareModalOpen: () => events.push(["prepare"]),
+          afterModalVisibilityChanged: () => events.push(["after"]),
+          focusModalCloseButton: (modal, button) => events.push(["focusClose", modal === viewer, button && button.name]),
+          restoreModalFocus: (target, predicate) => events.push(["restore", target && target.name, predicate()]),
+          isModalTargetOpen: (node) => node && node.style && node.style.display === "flex",
+          setReturnFocusElement: (element, ElementCtor) => events.push(["setReturnFocus", element && element.name, ElementCtor === FakeElement]),
+          takeReturnFocusElement: () => ({{ name: "stored-focus" }}),
+        }});
+        const showQuery = runtime.show({{ wasOpen: false, queryOpen: true, activeElement: {{ name: "active-query" }}, ElementCtor: FakeElement }});
+        const showQueryState = {{ backdrop: backdrop.style.display, viewer: viewer.style.display }};
+        const showAlreadyOpen = runtime.show({{ wasOpen: true, queryOpen: true, activeElement: {{ name: "ignored" }}, ElementCtor: FakeElement }});
+        const showAlreadyOpenState = {{ backdrop: backdrop.style.display, viewer: viewer.style.display }};
+        const hideState = runtime.beginHide();
+        const hideDisplay = runtime.hideDisplay();
+        const afterHideDisplayState = {{ backdrop: backdrop.style.display, viewer: viewer.style.display }};
+        const finishHide = runtime.finishHide(hideState);
+        let missingError = "";
+        try {{ fileViewer.createFileViewerModalRuntime({{ backdrop, viewer }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
+        process.stdout.write(JSON.stringify({{
+          frozen: Object.isFrozen(runtime),
+          showQuery,
+          showQueryState,
+          showAlreadyOpen,
+          showAlreadyOpenState,
+          hideState,
+          hideStateFrozen: Object.isFrozen(hideState),
+          hideDisplay,
+          afterHideDisplayState,
+          finishHide,
+          events,
+          missingError,
+        }}));
+        """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def run_file_unsaved_dialog_runtime_probe() -> dict[str, object]:
     viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
@@ -1275,7 +1333,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
     def test_file_viewer_controller_owns_save_conflict_behavior(self) -> None:
         result = run_file_viewer_controller_probe()
         self.assertTrue(result["render"]["exportFrozen"])
-        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFileFallbackRuntime", "createFilePasteDialogRuntime", "createFileRenderSurfaceRuntime", "createFileTouchToolbarRuntime", "createFileUnsavedDialogRuntime", "createFileViewerController", "createPdfLoader"])
+        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFileFallbackRuntime", "createFilePasteDialogRuntime", "createFileRenderSurfaceRuntime", "createFileTouchToolbarRuntime", "createFileUnsavedDialogRuntime", "createFileViewerController", "createFileViewerModalRuntime", "createPdfLoader"])
         self.assertEqual(result["render"]["conflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["currentConflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["labelText"], "src/app.py - save conflict: version mismatch")
@@ -1729,6 +1787,30 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["events"], [["toggle", "active", True], ["toggle", "active", False]])
         self.assertIn("file viewer dependency missing: fileTouchSelectButton", result["missingError"])
 
+    def test_file_viewer_modal_runtime_behavior(self) -> None:
+        result = run_file_viewer_modal_runtime_probe()
+        self.assertTrue(result["frozen"])
+        self.assertTrue(result["showQuery"])
+        self.assertEqual(result["showQueryState"], {"backdrop": "block", "viewer": "flex"})
+        self.assertTrue(result["showAlreadyOpen"])
+        self.assertEqual(result["showAlreadyOpenState"], {"backdrop": "block", "viewer": "flex"})
+        self.assertEqual(result["hideState"], {"wasOpen": True, "focusTarget": {"name": "stored-focus"}})
+        self.assertTrue(result["hideStateFrozen"])
+        self.assertTrue(result["hideDisplay"])
+        self.assertEqual(result["afterHideDisplayState"], {"backdrop": "none", "viewer": "none"})
+        self.assertTrue(result["finishHide"])
+        self.assertEqual(result["events"], [
+            ["setReturnFocus", "active-query", True],
+            ["prepare"],
+            ["after"],
+            ["pickerFocus", {"preventScroll": True}],
+            ["prepare"],
+            ["after"],
+            ["after"],
+            ["restore", "stored-focus", False],
+        ])
+        self.assertIn("file viewer dependency missing: prepareModalOpen", result["missingError"])
+
     def test_file_unsaved_dialog_runtime_behavior(self) -> None:
         result = run_file_unsaved_dialog_runtime_probe()
         self.assertTrue(result["frozen"])
@@ -1813,6 +1895,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn('typeof codoxearFileViewer.createFileRenderSurfaceRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileTouchToolbarRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileUnsavedDialogRuntime !== "function"', app_source)
+        self.assertIn('typeof codoxearFileViewer.createFileViewerModalRuntime !== "function"', app_source)
         self.assertIn('throw new Error("Codoxear file viewer controller failed to load")', app_source)
         self.assertIn("const codoxearFileEditor = window.CodoxearFileEditor;", app_source)
         self.assertIn('throw new Error("Codoxear file editor runtime failed to load")', app_source)
@@ -1826,6 +1909,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn("createFileRenderSurfaceRuntime", viewer_source)
         self.assertIn("createFileTouchToolbarRuntime", viewer_source)
         self.assertIn("createFileUnsavedDialogRuntime", viewer_source)
+        self.assertIn("createFileViewerModalRuntime", viewer_source)
         self.assertIn("createPdfLoader", viewer_source)
         self.assertNotIn("function renderFileSaveConflict", app_source)
 

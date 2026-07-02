@@ -127,6 +127,61 @@
     return value;
   }
 
+  function createFileViewerModalRuntime(options = {}) {
+    const backdrop = requireStyledNode(options.backdrop, "fileBackdrop");
+    const viewer = requireStyledNode(options.viewer, "fileViewer");
+    const pickerInput = options.pickerInput || null;
+    const closeButton = options.closeButton || null;
+    const prepareModalOpen = requireFunction(options.prepareModalOpen, "prepareModalOpen");
+    const afterModalVisibilityChanged = requireFunction(options.afterModalVisibilityChanged, "afterModalVisibilityChanged");
+    const focusModalCloseButton = requireFunction(options.focusModalCloseButton, "focusModalCloseButton");
+    const restoreModalFocus = requireFunction(options.restoreModalFocus, "restoreModalFocus");
+    const isModalTargetOpen = requireFunction(options.isModalTargetOpen, "isModalTargetOpen");
+    const setReturnFocusElement = requireFunction(options.setReturnFocusElement, "setReturnFocusElement");
+    const takeReturnFocusElement = requireFunction(options.takeReturnFocusElement, "takeReturnFocusElement");
+
+    function focusPickerInput() {
+      if (!pickerInput || typeof pickerInput.focus !== "function") return false;
+      try {
+        pickerInput.focus({ preventScroll: true });
+      } catch (_) {
+        pickerInput.focus();
+      }
+      return true;
+    }
+
+    function show({ wasOpen = false, queryOpen = false, activeElement = null, ElementCtor = null } = {}) {
+      if (!wasOpen) setReturnFocusElement(activeElement, ElementCtor);
+      prepareModalOpen();
+      backdrop.style.display = "block";
+      viewer.style.display = "flex";
+      afterModalVisibilityChanged();
+      if (!wasOpen && queryOpen) focusPickerInput();
+      else if (!wasOpen) focusModalCloseButton(viewer, closeButton);
+      return true;
+    }
+
+    function beginHide() {
+      const wasOpen = isModalTargetOpen(viewer);
+      const focusTarget = takeReturnFocusElement();
+      return Object.freeze({ wasOpen, focusTarget });
+    }
+
+    function hideDisplay() {
+      backdrop.style.display = "none";
+      viewer.style.display = "none";
+      return true;
+    }
+
+    function finishHide(state = {}) {
+      afterModalVisibilityChanged();
+      if (state.wasOpen) restoreModalFocus(state.focusTarget, () => isModalTargetOpen(viewer));
+      return true;
+    }
+
+    return Object.freeze({ beginHide, finishHide, hideDisplay, show });
+  }
+
   function createFileUnsavedDialogRuntime(options = {}) {
     const backdrop = requireStyledNode(options.backdrop, "fileUnsavedBackdrop");
     const dialog = requireStyledNode(options.dialog, "fileUnsavedDialog");
@@ -2518,6 +2573,7 @@
     bindFileTouchPress,
     createFileFallbackRuntime,
     createFilePasteDialogRuntime,
+    createFileViewerModalRuntime,
     createFileRenderSurfaceRuntime,
     createFileTouchToolbarRuntime,
     createFileUnsavedDialogRuntime,

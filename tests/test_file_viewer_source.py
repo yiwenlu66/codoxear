@@ -479,8 +479,11 @@ def eval_hide_file_viewer_identity_cleanup() -> dict:
           closeFilePickerMenu: (opts) => calls.push(["closeFilePickerMenu", opts, ctx.activeFilePathValue()]),
           resetFileSearchState: () => calls.push(["resetFileSearchState", ctx.activeFilePathValue()]),
           updateFileTouchToolbar: () => calls.push(["updateFileTouchToolbar", ctx.activeFilePathValue(), ctx.activeFileLineValue()]),
-          afterModalVisibilityChanged: () => calls.push(["afterModalVisibilityChanged", ctx.fileViewer.style.display]),
-          restoreModalFocus: (target, predicate) => calls.push(["restoreModalFocus", target && target.id, predicate()]),
+          fileViewerModalRuntime: {{
+            beginHide() {{ const focusTarget = ctx.fileViewerReturnFocusElement; ctx.fileViewerReturnFocusElement = null; calls.push(["beginHide", ctx.fileViewer.style.display]); return {{ wasOpen: ctx.modalOpen, focusTarget }}; }},
+            hideDisplay() {{ ctx.fileBackdrop.style.display = "none"; ctx.fileViewer.style.display = "none"; calls.push(["hideDisplay", ctx.activeFilePathValue()]); return true; }},
+            finishHide(state) {{ calls.push(["finishHide", state && state.focusTarget && state.focusTarget.id, ctx.fileViewer.style.display]); return true; }},
+          }},
         }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_hide = hideFileViewer;\n")}, ctx);
@@ -3785,6 +3788,9 @@ class TestFileViewerSource(unittest.TestCase):
         hide_start = source.index("function hideFileViewer()")
         hide_end = source.index("function handleFileViewerSessionUnavailable", hide_start)
         hide_block = source[hide_start:hide_end]
+        self.assertIn("const hideState = fileViewerModalRuntime.beginHide();", hide_block)
+        self.assertIn("fileViewerModalRuntime.hideDisplay();", hide_block)
+        self.assertIn("fileViewerModalRuntime.finishHide(hideState);", hide_block)
         self.assertIn("rememberActiveFileSelection();", hide_block)
         self.assertIn("clearActiveFileIdentity();", hide_block)
         self.assertNotIn("activeFileLine = null;", hide_block)
@@ -4424,7 +4430,11 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertNotIn("setFileDirty(false);", fallback_block)
         self.assertIn("function applyPlainTextFallbackState()", viewer_source)
         self.assertIn("setFileEditMode(false);\n      setFileDirty(false);\n      updateFileEditButton();\n      updateFileTouchToolbar();", viewer_source)
-        self.assertIn("cancelPendingFileOpen();\n          if (!wasOpen) fileViewerController.setFileViewerReturnFocusElement(document.activeElement, HTMLElement);\n          prepareModalOpen();\n          const explicitPath = String(path ?? \"\");\n          const query = String(pickerQuery ?? \"\");\n          const queryOpen = !explicitPath && query !== \"\";\n          fileBackdrop.style.display = \"block\";", source)
+        self.assertIn("function createFileViewerModalRuntime(options = {})", viewer_source)
+        self.assertIn("fileViewerModalRuntime.show({ wasOpen, queryOpen, activeElement: document.activeElement, ElementCtor: HTMLElement });", source)
+        self.assertIn("setReturnFocusElement: (element, ElementCtor) => fileViewerController.setFileViewerReturnFocusElement(element, ElementCtor)", source)
+        self.assertNotIn("fileViewerController.setFileViewerReturnFocusElement(document.activeElement, HTMLElement);", source)
+        self.assertNotIn('fileBackdrop.style.display = "block";', source)
         self.assertNotIn("let fileViewerReturnFocusEl = null;", source)
         self.assertNotIn("let fileUnsavedReturnFocusEl = null;", source)
         self.assertIn("let fileViewerReturnFocusElement = null;", APP_FILE_VIEWER_JS.read_text(encoding="utf-8"))
