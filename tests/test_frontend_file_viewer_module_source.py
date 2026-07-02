@@ -35,8 +35,6 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           apiPath: "api-token",
           unavailable: false,
           viewMode: "file",
-          activeEntry: null,
-          gitFresh: false,
           markdownPreviewable: true,
           kind: "text",
           draft: false,
@@ -136,8 +134,6 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             persistFileNonDiffMode: (mode) => events.push(["persistFileNonDiffMode", mode]),
             currentFileEditorKind: () => state.editorKind || "file",
             currentFileEditMode: () => state.editMode !== false,
-            activeFileEntry: () => state.activeEntry,
-            fileCandidateGitStateFresh: () => state.gitFresh,
             isMarkdownPreviewable: () => state.markdownPreviewable,
             resetActiveFileBufferState: () => {{ state.resetCount += 1; events.push(["resetBuffer"]); }},
             updateFileTouchToolbar: () => {{ state.touchCount += 1; events.push(["touchToolbar"]); }},
@@ -240,10 +236,10 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           renderController.setActiveFileIdentity("src/app.py", {{ line: 7, gitPath: true, apiPath: "api-token" }});
           const conflict = renderController.renderSaveConflict("sid-1", "src/app.py", "version mismatch");
           renderController.setFileViewMode("diff");
-          state.gitFresh = true;
-          state.activeEntry = {{ changed: false }};
+          renderController.applyFileCandidateEntries([{{ path: "src/app.py", gitPath: true, changed: false, apiPath: "api-token" }}]);
+          renderController.setFileCandidateGitStateFresh(true);
           const diffFallback = renderController.resolveFileOpenViewMode({{ gitPath: true }}, "src/app.py");
-          state.activeEntry = {{ changed: true }};
+          renderController.applyFileCandidateEntries([{{ path: "src/app.py", gitPath: true, changed: true, apiPath: "api-token" }}]);
           const diffAllowed = renderController.resolveFileOpenViewMode({{ gitPath: true }}, "src/app.py");
           renderController.setFileViewMode("preview");
           state.markdownPreviewable = false;
@@ -586,8 +582,8 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           const missingPathCapabilities = renderController.fileEditorCapabilities({{ path: "", kind: "markdown", editable: true, unavailable: false, viewMode: "file", editorKind: "file", editMode: true, savePending: false }});
           function runModeControlState({{ path = "state.md", viewMode = "file", kind = "markdown", draft = false, gitPath = true, gitFresh = false, changed = false, editMode = false, videoPreviewAvailable = false, videoPreviewPreparing = false }} = {{}}) {{
             renderController.setFileViewMode(editMode ? "file" : viewMode);
-            state.gitFresh = gitFresh;
-            state.activeEntry = changed ? {{ changed: true }} : null;
+            renderController.applyFileCandidateEntries(changed ? [{{ path, gitPath, changed: true, apiPath: "tok" }}] : []);
+            renderController.setFileCandidateGitStateFresh(gitFresh);
             renderController.setActiveFileIdentity(path, {{ gitPath, apiPath: "tok" }});
             renderController.applyActiveFileTextState({{ kind, text: "body", editable: true, version: "v1", draft }});
             renderController.setFileEditMode(editMode);

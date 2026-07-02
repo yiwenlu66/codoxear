@@ -33,7 +33,6 @@
     const currentFileSessionId = requireFunction(deps && deps.currentFileSessionId, "currentFileSessionId");
     const normalizeLineNumber = requireFunction(deps && deps.normalizeLineNumber, "normalizeLineNumber");
     const normalizeFileApiPath = requireFunction(deps && deps.normalizeFileApiPath, "normalizeFileApiPath");
-    const fileApiPathForPath = requireFunction(deps && deps.fileApiPathForPath, "fileApiPathForPath");
     const isFileViewerOpen = requireFunction(deps && deps.isFileViewerOpen, "isFileViewerOpen");
     const hideFileUnsavedDialog = requireFunction(deps && deps.hideFileUnsavedDialog, "hideFileUnsavedDialog");
     const resetFileSearchState = requireFunction(deps && deps.resetFileSearchState, "resetFileSearchState");
@@ -54,8 +53,6 @@
     const disposeOpenRender = requireFunction(deps && deps.disposeOpenRender, "disposeOpenRender");
     const persistFileViewMode = requireFunction(deps && deps.persistFileViewMode, "persistFileViewMode");
     const persistFileNonDiffMode = requireFunction(deps && deps.persistFileNonDiffMode, "persistFileNonDiffMode");
-    const activeFileEntry = requireFunction(deps && deps.activeFileEntry, "activeFileEntry");
-    const fileCandidateGitStateFresh = requireFunction(deps && deps.fileCandidateGitStateFresh, "fileCandidateGitStateFresh");
     const isMarkdownPreviewable = requireFunction(deps && deps.isMarkdownPreviewable, "isMarkdownPreviewable");
     const updateFileTouchToolbar = requireFunction(deps && deps.updateFileTouchToolbar, "updateFileTouchToolbar");
     const isFileTouchToolbarActive = requireFunction(deps && deps.isFileTouchToolbarActive, "isFileTouchToolbarActive");
@@ -90,6 +87,10 @@
     let fileOpenAbortController = null;
     let fileViewerSessionSyncToken = 0;
     let fileCandidateRequestSeq = 0;
+    let fileCandidateList = [];
+    let fileEntryMap = new Map();
+    let fileCandidateGitStateFresh = false;
+    let fileCandidateCache = new Map();
     let fileSaveSeq = 0;
     let activeFileSaveToken = 0;
     let fileSavePending = false;
@@ -237,6 +238,175 @@
 
     function currentActiveFileLine() {
       return activeFileLine;
+    }
+
+    function fileCandidateKey(path, gitPath = false, apiPath = "") {
+      const identity = gitPath && apiPath ? normalizeFileApiPath(apiPath) : String(path ?? "");
+      return `${gitPath ? "git" : "session"}\u0000${identity}`;
+    }
+
+    function normalizeFileCandidateSource(source) {
+      const value = String(source || "").trim();
+      if (value === "changed" || value === "mentioned" || value === "recent") return value;
+      return "";
+    }
+
+    function cloneFileCandidateEntry(entry) {
+      if (!entry || typeof entry.path !== "string" || entry.path === "") return null;
+      const source = normalizeFileCandidateSource(entry.source);
+      const gitPath = entry.gitPath === undefined ? Boolean(entry.changed && source === "changed") : Boolean(entry.gitPath);
+      const apiPath = normalizeFileApiPath(entry.apiPath || entry.api_path);
+      return {
+        path: entry.path,
+        apiPath,
+        gitPath,
+        key: fileCandidateKey(entry.path, gitPath, apiPath),
+        additions: entry.additions ?? null,
+        deletions: entry.deletions ?? null,
+        changed: Boolean(entry.changed),
+        source,
+      };
+    }
+
+    function fileCandidateKeyForEntry(entry) {
+      return fileCandidateKey(entry && entry.path, Boolean(entry && entry.gitPath), normalizeFileApiPath(entry && entry.apiPath));
+    }
+
+    function applyFileCandidateEntries(entries) {
+      const nextList = [];
+      const nextMap = new Map();
+      for (const raw of Array.isArray(entries) ? entries : []) {
+        const entry = cloneFileCandidateEntry(raw);
+        if (!entry || nextMap.has(entry.key)) continue;
+        nextList.push(entry.key);
+        nextMap.set(entry.key, entry);
+      }
+      fileCandidateList = nextList;
+      fileEntryMap = nextMap;
+    }
+
+    function currentFileCandidateKeys() {
+      return fileCandidateList.slice();
+    }
+
+    function currentFileCandidateEntries() {
+      return fileCandidateList
+        .map((key) => cloneFileCandidateEntry(fileEntryMap.get(key)))
+        .filter(Boolean);
+    }
+
+    function fileEntryForKey(key) {
+      return cloneFileCandidateEntry(fileEntryMap.get(String(key || "")));
+    }
+
+    function fileEntryForPath(path, gitPath = false, apiPath = "") {
+      const token = normalizeFileApiPath(apiPath);
+      const preferred = fileEntryMap.get(fileCandidateKey(path, gitPath, token));
+      if (preferred) return cloneFileCandidateEntry(preferred);
+      const fallback = fileEntryMap.get(fileCandidateKey(path, gitPath));
+      if (fallback && (!token || !fallback.apiPath || fallback.apiPath === token)) return cloneFileCandidateEntry(fallback);
+      for (const key of fileCandidateList) {
+        const entry = fileEntryMap.get(key);
+        if (!entry || entry.path !== path || Boolean(entry.gitPath) !== Boolean(gitPath)) continue;
+        if (!token || normalizeFileApiPath(entry.apiPath) === token) return cloneFileCandidateEntry(entry);
+      }
+      return null;
+    }
+
+    function fileApiPathForPath(path, apiPath = "") {
+      const existing = normalizeFileApiPath(apiPath);
+      if (existing) return existing;
+      const entry = fileEntryForPath(path, true);
+      return normalizeFileApiPath(entry && entry.apiPath);
+    }
+
+    function activeFileEntry() {
+      const identity = currentActiveFileIdentity();
+      if (!identity.path) return null;
+      return fileEntryForPath(identity.path, identity.gitPath, identity.apiPath);
+    }
+
+    function isGitFileCandidatePath(path, changed = null, gitPath = null, apiPath = "") {
+      if (gitPath !== null && gitPath !== undefined) return Boolean(gitPath);
+      if (changed !== null && changed !== undefined) return Boolean(changed);
+      const gitEntry = fileEntryForPath(path, true, normalizeFileApiPath(apiPath));
+      if (gitEntry) return true;
+      const sessionEntry = fileEntryForPath(path, false);
+      return Boolean(sessionEntry && sessionEntry.gitPath);
+    }
+
+    function currentFileCandidateGitStateFresh() {
+      return fileCandidateGitStateFresh;
+    }
+
+    function setFileCandidateGitStateFresh(fresh) {
+      fileCandidateGitStateFresh = Boolean(fresh);
+      return fileCandidateGitStateFresh;
+    }
+
+    function rememberFileCandidateCache(sessionId, key, now = Date.now()) {
+      const sid = String(sessionId || "").trim();
+      if (!sid || !key) return false;
+      fileCandidateCache.set(sid, { key, ts: Number(now || 0), entries: currentFileCandidateEntries() });
+      return true;
+    }
+
+    function fileCandidateCacheEntry(sessionId) {
+      const sid = String(sessionId || "").trim();
+      const cached = sid ? fileCandidateCache.get(sid) : null;
+      if (!cached || typeof cached !== "object") return null;
+      return Object.freeze({ key: String(cached.key || ""), ts: Number(cached.ts || 0), entries: Array.isArray(cached.entries) ? cached.entries.map(cloneFileCandidateEntry).filter(Boolean) : [] });
+    }
+
+    function deleteFileCandidateCache(sessionId) {
+      const sid = String(sessionId || "").trim();
+      if (!sid) return false;
+      return fileCandidateCache.delete(sid);
+    }
+
+    function fileCandidateCacheSize() {
+      return fileCandidateCache.size;
+    }
+
+    function upsertFileEntry(entry) {
+      const merged = cloneFileCandidateEntry(entry);
+      if (!merged) return false;
+      const current = fileEntryMap.get(merged.key);
+      const next = current && !merged.source ? { ...merged, source: normalizeFileCandidateSource(current.source) } : merged;
+      if (!fileEntryMap.has(next.key)) fileCandidateList.push(next.key);
+      fileEntryMap.set(next.key, Object.freeze({ ...next }));
+      return true;
+    }
+
+    function pickerEntryForKey(key, { score = 0 } = {}) {
+      const entry = fileEntryForKey(key);
+      return entry ? { ...entry, added: true, score } : null;
+    }
+
+    function pickerEntryForPath(path, { score = 0, gitPath = false } = {}) {
+      const key = fileCandidateKey(path, gitPath);
+      const entry = cloneFileCandidateEntry(fileEntryMap.get(key) || { path, gitPath, additions: null, deletions: null, changed: false, source: "" });
+      if (!entry) return null;
+      return { ...entry, added: fileEntryMap.has(key), score };
+    }
+
+    function resolveFileViewerOpenTarget({ sessionId = "", explicitPath = "", explicitLine = null } = {}) {
+      const sid = String(sessionId || "").trim();
+      if (!sid) return Object.freeze({ kind: "none" });
+      const requestedPath = String(explicitPath ?? "");
+      if (requestedPath) {
+        return Object.freeze({ kind: "path", source: "explicit", path: requestedPath, line: normalizeLineNumber(explicitLine), changed: null, gitPath: false, apiPath: "" });
+      }
+      const preferred = preferredFileSelectionForSession(sid);
+      if (preferred.path) {
+        return Object.freeze({ kind: "path", source: "preferred", path: preferred.path, line: preferred.line, changed: null, gitPath: Boolean(preferred.gitPath), apiPath: normalizeFileApiPath(preferred.apiPath) });
+      }
+      const firstKey = fileCandidateList.length ? fileCandidateList[0] : "";
+      const first = firstKey ? fileEntryForKey(firstKey) : null;
+      if (first) {
+        return Object.freeze({ kind: "path", source: "first", path: first.path, line: null, changed: Boolean(first.changed), gitPath: Boolean(first.gitPath), apiPath: normalizeFileApiPath(first.apiPath) });
+      }
+      return Object.freeze({ kind: "none" });
     }
 
     function beginFileViewerSessionSync() {
@@ -436,7 +606,7 @@
       const openMode = normalizeExplicitFileOpenMode(requestedMode);
       if (openMode) return openMode;
       const entry = activeFileEntry();
-      const canUseDiffView = request && request.gitPath && fileCandidateGitStateFresh() && Boolean(entry && entry.changed);
+      const canUseDiffView = request && request.gitPath && currentFileCandidateGitStateFresh() && Boolean(entry && entry.changed);
       const viewMode = currentFileViewMode();
       return viewMode === "preview" && !isMarkdownPreviewable(rel) ? "file" : viewMode === "diff" && !canUseDiffView ? "file" : viewMode;
     }
@@ -689,7 +859,7 @@
       const canToggleMode = Boolean(hasPath && !draft);
       const isDiff = viewMode === "diff";
       const isPreview = viewMode === "preview";
-      const diffable = Boolean(canToggleMode && identity.gitPath && fileCandidateGitStateFresh() && entry && entry.changed && isDiffableFileKind(currentActiveFileKind()));
+      const diffable = Boolean(canToggleMode && identity.gitPath && currentFileCandidateGitStateFresh() && entry && entry.changed && isDiffableFileKind(currentActiveFileKind()));
       const previewable = Boolean(!draft && currentActiveFileKind() === "markdown");
       const fallback = activeVideoFallback;
       const videoVisible = Boolean(fallback && fallback.previewUrl && !fallback.used);
@@ -1514,6 +1684,27 @@
       currentActiveFileLine,
       rememberActiveFileSelection,
       preferredFileSelectionForSession,
+      fileCandidateKey,
+      fileCandidateKeyForEntry,
+      cloneFileCandidateEntry,
+      applyFileCandidateEntries,
+      currentFileCandidateKeys,
+      currentFileCandidateEntries,
+      fileEntryForKey,
+      fileEntryForPath,
+      fileApiPathForPath,
+      activeFileEntry,
+      isGitFileCandidatePath,
+      currentFileCandidateGitStateFresh,
+      setFileCandidateGitStateFresh,
+      rememberFileCandidateCache,
+      fileCandidateCacheEntry,
+      deleteFileCandidateCache,
+      fileCandidateCacheSize,
+      upsertFileEntry,
+      pickerEntryForKey,
+      pickerEntryForPath,
+      resolveFileViewerOpenTarget,
       beginFileViewerSessionSync,
       invalidateFileViewerSessionSync,
       isCurrentFileViewerSessionSync,

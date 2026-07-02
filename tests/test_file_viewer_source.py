@@ -529,6 +529,18 @@ def eval_file_viewer_open_target() -> dict:
               if (!remembered) return ctx.historyFileSelectionForSession(sid);
               return {{ path: remembered.path, apiPath: ctx.normalizeFileApiPath(remembered.apiPath), line: ctx.normalizeLineNumber(remembered.line), gitPath: Boolean(remembered.gitPath) }};
             }},
+            resolveFileViewerOpenTarget: ({{ sessionId = "", explicitPath = "", explicitLine = null }} = {{}}) => {{
+              const sid = String(sessionId || "").trim();
+              if (!sid) return {{ kind: "none" }};
+              const requestedPath = String(explicitPath ?? "");
+              if (requestedPath) return {{ kind: "path", source: "explicit", path: requestedPath, line: ctx.normalizeLineNumber(explicitLine), changed: null, gitPath: false, apiPath: "" }};
+              const preferred = ctx.fileViewerController.preferredFileSelectionForSession(sid);
+              if (preferred.path) return {{ kind: "path", source: "preferred", path: preferred.path, line: preferred.line, changed: null, gitPath: Boolean(preferred.gitPath), apiPath: ctx.normalizeFileApiPath(preferred.apiPath) }};
+              const firstKey = ctx.fileCandidateList.length ? ctx.fileCandidateList[0] : "";
+              const first = firstKey ? ctx.fileEntryMap.get(firstKey) : null;
+              if (first) return {{ kind: "path", source: "first", path: first.path, line: null, changed: Boolean(first.changed), gitPath: Boolean(first.gitPath), apiPath: ctx.normalizeFileApiPath(first.apiPath) }};
+              return {{ kind: "none" }};
+            }},
           }},
           sessionIndex: new Map(),
           listFromFilesField: () => [],
@@ -1495,7 +1507,6 @@ def eval_file_open_request_sequence() -> dict:
             this.signal.aborted = true;
           }}
         }}
-        const fileApiPathCalls = [];
         let disposeCalls = 0;
         const state = {{ sessionId: "sid-1" }};
         const ctx = {{ window: {{}}, AbortController }};
@@ -1510,10 +1521,6 @@ def eval_file_open_request_sequence() -> dict:
           currentFileSessionId: () => state.sessionId,
           normalizeLineNumber: (value) => value == null ? null : Number(value),
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
-          fileApiPathForPath: (path, apiPath = "") => {{
-            fileApiPathCalls.push([String(path), String(apiPath || "")]);
-            return apiPath ? `kept:${{apiPath}}` : `derived:${{path}}`;
-          }},
           isFileViewerOpen: () => state.viewerOpen !== false,
           invalidateFileViewerSessionSync: () => calls.push(["invalidateFileViewerSessionSync"]),
           hideFileUnsavedDialog: (choice) => calls.push(["hideFileUnsavedDialog", choice]),
@@ -1619,7 +1626,6 @@ def eval_file_open_request_sequence() -> dict:
         }} catch (_) {{
           result.helperRejectsMissingCurrent = true;
         }}
-        result.fileApiPathCalls = fileApiPathCalls;
         controller.setActiveFileIdentity("clear.py", {{ line: 99, gitPath: true, apiPath: "tok-clear" }});
         controller.clearActiveFileIdentity({{ line: "12" }});
         result.clearWithLine = {{ ...controller.currentActiveFileIdentity(), line: controller.currentActiveFileLine() }};
@@ -3397,7 +3403,7 @@ class TestFileViewerSource(unittest.TestCase):
 
         fallback = result["fallback"]
         self.assertTrue(fallback["result"])
-        self.assertEqual(fallback["activeEntryCalls"], 1)
+        self.assertEqual(fallback["activeEntryCalls"], 0)
         self.assertEqual(fallback["fileViewMode"], "file")
         self.assertIn(["persistFileViewMode", "file"], fallback["calls"])
         self.assertIn(["persistFileNonDiffMode", "file"], fallback["calls"])
@@ -3532,14 +3538,14 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("return Boolean(currentGuard());", guard_block)
         self.assertNotIn("const diffable = canToggleMode && activeFileGitPathValue() && fileCandidateGitStateFresh", source)
         self.assertIn("function currentFileModeControlState", viewer_source)
-        self.assertIn("const diffable = Boolean(canToggleMode && identity.gitPath && fileCandidateGitStateFresh() && entry && entry.changed && isDiffableFileKind(currentActiveFileKind()));", viewer_source)
+        self.assertIn("const diffable = Boolean(canToggleMode && identity.gitPath && currentFileCandidateGitStateFresh() && entry && entry.changed && isDiffableFileKind(currentActiveFileKind()));", viewer_source)
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertNotIn("function normalizeExplicitFileOpenMode(requestedMode)", source)
         self.assertNotIn("function resolveFileOpenViewMode(request, rel, requestedMode = null)", source)
         self.assertIn("function normalizeExplicitFileOpenMode(requestedMode)", viewer_source)
         self.assertIn("function resolveFileOpenViewMode(request, rel, requestedMode = null)", viewer_source)
         self.assertIn("async function fetchFileOpenResult(request, rel, viewMode)", viewer_source)
-        self.assertIn("const canUseDiffView = request && request.gitPath && fileCandidateGitStateFresh() && Boolean(entry && entry.changed);", viewer_source)
+        self.assertIn("const canUseDiffView = request && request.gitPath && currentFileCandidateGitStateFresh() && Boolean(entry && entry.changed);", viewer_source)
         self.assertIn('viewMode === "diff" && !canUseDiffView ? "file"', viewer_source)
         self.assertIn("/git/file_versions?path=${encodeURIComponent(rel)}${pathTokenQuery}", viewer_source)
         self.assertIn("/file/read?path=${encodeURIComponent(rel)}${pathTokenQuery}${gitPathQuery}", viewer_source)
@@ -3681,15 +3687,14 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertTrue(result["secondCurrent"])
         self.assertEqual(result["activeIdentity"]["path"], " trail.md ")
         self.assertTrue(result["secondGitPath"])
-        self.assertEqual(result["secondApiPath"], "derived: trail.md ")
+        self.assertEqual(result["secondApiPath"], "")
         self.assertEqual(result["activeLine"], 8)
-        self.assertEqual(result["sameApiPath"], "kept:tok-same")
+        self.assertEqual(result["sameApiPath"], "tok-same")
         self.assertTrue(result["sameGitPath"])
         self.assertEqual(result["explicitApiPath"], "explicit-token")
         self.assertEqual(result["nongitApiPath"], "")
         self.assertFalse(result["nongitGitPath"])
         self.assertTrue(result["helperRejectsMissingCurrent"])
-        self.assertEqual(result["fileApiPathCalls"], [[" trail.md ", ""], ["same.py", "tok-same"]])
         self.assertEqual(result["clearWithLine"], {"path": "", "gitPath": False, "apiPath": "", "line": 12})
         self.assertEqual(result["clearDefault"], {"path": "", "gitPath": False, "apiPath": "", "line": None})
         self.assertEqual(result["handlePath"], "handled.txt")
@@ -4507,7 +4512,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("currentFileSessionId: () => currentFileSessionId()", controller_block)
         self.assertIn("normalizeLineNumber", controller_block)
         self.assertIn("normalizeFileApiPath", controller_block)
-        self.assertIn("fileApiPathForPath", controller_block)
+        self.assertNotIn("fileApiPathForPath", controller_block)
         self.assertNotIn("isUnavailable: () => isFileViewerSessionUnavailable()", controller_block)
         self.assertIn("isFileViewerOpen: () => isFileViewerOpen()", controller_block)
         self.assertNotIn("invalidateFileViewerSessionSync: () =>", controller_block)

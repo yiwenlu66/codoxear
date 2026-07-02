@@ -317,7 +317,7 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
         self.assertIn("newSessionStartBusy = true;\n          newSessionStartBtn.disabled = true;", source)
         self.assertIn("} finally {\n            newSessionStartBusy = false;\n            newSessionStartBtn.disabled = false;", source)
         start = source.index("newSessionStartBtn.onclick = async () => {")
-        end = source.index("        let fileCandidateList", start)
+        end = source.index("        const FILE_CANDIDATE_CACHE_TTL_MS", start)
         block = source[start:end]
         self.assertLess(block.index("newSessionStartBusy = true;"), block.index("await spawnSessionWithCwd("))
 

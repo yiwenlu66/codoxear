@@ -7014,10 +7014,6 @@
             newSessionStartBtn.disabled = false;
           }
         };
-        let fileCandidateList = [];
-        let fileEntryMap = new Map();
-        let fileCandidateGitStateFresh = false;
-        const fileCandidateCache = new Map();
         const FILE_CANDIDATE_CACHE_TTL_MS = 15000;
         let fileViewerReturnFocusEl = null;
         let fileViewerSessionId = "";
@@ -7148,22 +7144,7 @@
         }
 
         function resolveFileViewerOpenTarget({ sessionId = "", explicitPath = "", explicitLine = null } = {}) {
-          const sid = String(sessionId || "").trim();
-          if (!sid) return Object.freeze({ kind: "none" });
-          const requestedPath = String(explicitPath ?? "");
-          if (requestedPath) {
-            return Object.freeze({ kind: "path", source: "explicit", path: requestedPath, line: normalizeLineNumber(explicitLine), changed: null, gitPath: false, apiPath: "" });
-          }
-          const preferred = preferredFileSelectionForSession(sid);
-          if (preferred.path) {
-            return Object.freeze({ kind: "path", source: "preferred", path: preferred.path, line: preferred.line, changed: null, gitPath: Boolean(preferred.gitPath), apiPath: normalizeFileApiPath(preferred.apiPath) });
-          }
-          const firstKey = fileCandidateList.length ? fileCandidateList[0] : "";
-          const first = firstKey ? fileEntryMap.get(firstKey) : null;
-          if (first) {
-            return Object.freeze({ kind: "path", source: "first", path: first.path, line: null, changed: Boolean(first.changed), gitPath: Boolean(first.gitPath), apiPath: normalizeFileApiPath(first.apiPath) });
-          }
-          return Object.freeze({ kind: "none" });
+          return fileViewerController.resolveFileViewerOpenTarget({ sessionId, explicitPath, explicitLine });
         }
 
         function fileVideoPreviewErrorText(err) {
@@ -8236,7 +8217,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           currentFileSessionId: () => currentFileSessionId(),
           normalizeLineNumber,
           normalizeFileApiPath,
-          fileApiPathForPath,
           isFileViewerOpen: () => isFileViewerOpen(),
           hideFileUnsavedDialog: (choice) => hideFileUnsavedDialog(choice),
           resetFileSearchState: () => resetFileSearchState(),
@@ -8259,8 +8239,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           initialFileNonDiffMode: storageGetItem("codexweb.fileNonDiffMode") === "preview" ? "preview" : "file",
           persistFileViewMode: (mode) => storageSetItem("codexweb.fileViewMode", mode),
           persistFileNonDiffMode: (mode) => storageSetItem("codexweb.fileNonDiffMode", mode),
-          activeFileEntry: () => activeFileEntry(),
-          fileCandidateGitStateFresh: () => fileCandidateGitStateFresh,
           isMarkdownPreviewable,
           resetActiveFileBufferState: () => resetActiveFileBufferState(),
           updateFileTouchToolbar: () => updateFileTouchToolbar(),
@@ -8483,47 +8461,27 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function fileCandidateKey(path, gitPath = false, apiPath = "") {
-          const identity = gitPath && apiPath ? apiPath : String(path ?? "");
-          return `${gitPath ? "git" : "session"}\u0000${identity}`;
+          return fileViewerController.fileCandidateKey(path, gitPath, apiPath);
         }
 
         function fileCandidateKeyForEntry(entry) {
-          return fileCandidateKey(entry && entry.path, Boolean(entry && entry.gitPath), normalizeFileApiPath(entry && entry.apiPath));
+          return fileViewerController.fileCandidateKeyForEntry(entry);
         }
 
         function fileEntryForPath(path, gitPath = false, apiPath = "") {
-          const preferred = fileEntryMap.get(fileCandidateKey(path, gitPath, apiPath));
-          if (preferred) return preferred;
-          const fallback = fileEntryMap.get(fileCandidateKey(path, gitPath));
-          if (fallback && (!apiPath || !fallback.apiPath || fallback.apiPath === apiPath)) return fallback;
-          for (const key of fileCandidateList) {
-            const entry = fileEntryMap.get(key);
-            if (!entry || entry.path !== path || Boolean(entry.gitPath) !== Boolean(gitPath)) continue;
-            if (!apiPath || normalizeFileApiPath(entry.apiPath) === apiPath) return entry;
-          }
-          return null;
+          return fileViewerController.fileEntryForPath(path, gitPath, apiPath);
         }
 
         function fileApiPathForPath(path, apiPath = "") {
-          const existing = normalizeFileApiPath(apiPath);
-          if (existing) return existing;
-          const entry = fileEntryForPath(path, true);
-          return normalizeFileApiPath(entry && entry.apiPath);
+          return fileViewerController.fileApiPathForPath(path, apiPath);
         }
 
         function activeFileEntry() {
-          const identity = currentActiveFileIdentity();
-          if (!identity.path) return null;
-          return fileEntryForPath(identity.path, identity.gitPath, identity.apiPath);
+          return fileViewerController.activeFileEntry();
         }
 
         function isGitFileCandidatePath(path, changed = null, gitPath = null, apiPath = "") {
-          if (gitPath !== null && gitPath !== undefined) return Boolean(gitPath);
-          if (changed !== null && changed !== undefined) return Boolean(changed);
-          const gitEntry = fileEntryForPath(path, true, apiPath);
-          if (gitEntry) return true;
-          const sessionEntry = fileEntryForPath(path, false);
-          return Boolean(sessionEntry && sessionEntry.gitPath);
+          return fileViewerController.isGitFileCandidatePath(path, changed, gitPath, apiPath);
         }
 
         async function inspectSessionFilePath(path, { gitPath = false, apiPath = "" } = {}) {
@@ -8555,11 +8513,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const candidateChanged = useGitPath && (changed === null || changed === undefined ? Boolean(identityEntry && identityEntry.changed) : Boolean(changed));
           const inspect = await inspectSessionFilePath(path, { gitPath: useGitPath, apiPath: requestApiPath });
           if (!inspect || !inspect.exists) {
-            if (fileCandidateGitStateFresh && candidateChanged) return "diff";
+            if (fileViewerController.currentFileCandidateGitStateFresh() && candidateChanged) return "diff";
             throw new Error("file not found");
           }
           const kind = String(inspect.kind || "").trim();
-          const isChanged = fileCandidateGitStateFresh && candidateChanged;
+          const isChanged = fileViewerController.currentFileCandidateGitStateFresh() && candidateChanged;
           if (isChanged && isDiffableFileKind(kind)) return "diff";
           if (kind === "markdown" && currentFileNonDiffMode() === "preview") return "preview";
           return "file";
@@ -8585,38 +8543,15 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function cloneFileCandidateEntry(entry) {
-          if (!entry || typeof entry.path !== "string" || entry.path === "") return null;
-          const source = normalizeFileCandidateSource(entry.source);
-          const gitPath = entry.gitPath === undefined ? Boolean(entry.changed && source === "changed") : Boolean(entry.gitPath);
-          const apiPath = normalizeFileApiPath(entry.apiPath || entry.api_path);
-          const cloned = {
-            path: entry.path,
-            apiPath,
-            gitPath,
-            key: fileCandidateKey(entry.path, gitPath, apiPath),
-            additions: entry.additions ?? null,
-            deletions: entry.deletions ?? null,
-            changed: Boolean(entry.changed),
-            source,
-          };
-          return cloned;
+          return fileViewerController.cloneFileCandidateEntry(entry);
         }
 
         function applyFileCandidateEntries(entries) {
-          fileCandidateList = [];
-          fileEntryMap = new Map();
-          for (const raw of Array.isArray(entries) ? entries : []) {
-            const entry = cloneFileCandidateEntry(raw);
-            if (!entry || fileEntryMap.has(entry.key)) continue;
-            fileCandidateList.push(entry.key);
-            fileEntryMap.set(entry.key, entry);
-          }
+          return fileViewerController.applyFileCandidateEntries(entries);
         }
 
         function currentFileCandidateEntries() {
-          return fileCandidateList
-            .map((key) => cloneFileCandidateEntry(fileEntryMap.get(key)))
-            .filter(Boolean);
+          return fileViewerController.currentFileCandidateEntries();
         }
 
         function fileCandidateCacheKey(sid) {
@@ -8627,19 +8562,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function rememberFileCandidateCache(sid, key) {
-          if (!sid || !key) return;
-          fileCandidateCache.set(sid, { key, ts: Date.now(), entries: currentFileCandidateEntries() });
+          return fileViewerController.rememberFileCandidateCache(sid, key, Date.now());
         }
 
         function upsertFileEntry(entry) {
-          const merged = cloneFileCandidateEntry(entry);
-          if (!merged) return;
-          const current = fileEntryMap.get(merged.key);
-          if (current && !merged.source) merged.source = normalizeFileCandidateSource(current.source);
-          if (!fileEntryMap.has(merged.key)) {
-            fileCandidateList.push(merged.key);
-          }
-          fileEntryMap.set(merged.key, merged);
+          return fileViewerController.upsertFileEntry(entry);
         }
 
         function rememberOpenedFile(relPath, absPath = null) {
@@ -8670,7 +8597,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (!abs) return;
           const nextFiles = [abs, ...files.filter((x) => x !== abs)];
           s.files = nextFiles;
-          fileCandidateCache.delete(sid);
+          fileViewerController.deleteFileCandidateCache(sid);
         }
 
         function collectMessageFileRefs() {
@@ -8694,19 +8621,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function pickerEntryForKey(key, { score = 0 } = {}) {
-          const entry = cloneFileCandidateEntry(fileEntryMap.get(key));
-          return entry ? { ...entry, added: true, score } : null;
+          return fileViewerController.pickerEntryForKey(key, { score });
         }
 
         function pickerEntryForPath(path, { score = 0, gitPath = false } = {}) {
-          const key = fileCandidateKey(path, gitPath);
-          const entry = cloneFileCandidateEntry(fileEntryMap.get(key) || { path, gitPath, additions: null, deletions: null, changed: false, source: "" });
-          if (!entry) return null;
-          return {
-            ...entry,
-            added: fileEntryMap.has(key),
-            score,
-          };
+          return fileViewerController.pickerEntryForPath(path, { score, gitPath });
         }
 
         function draftFileEntry(path) {
@@ -8759,8 +8678,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function filePickerEntryContext(query = "") {
           return {
-            candidateKeys: fileCandidateList.slice(),
-            entryForKey: (key) => fileEntryMap.get(key),
+            candidateKeys: fileViewerController.currentFileCandidateKeys(),
+            entryForKey: (key) => fileViewerController.fileEntryForKey(key),
             pickerEntryForKey,
             pickerEntryForPath,
             keyForPath: fileCandidateKey,
@@ -9158,23 +9077,23 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const current = () => fileViewerController.isCurrentFileCandidateRefresh(requestSeq) && (!sessionId || isFileViewerSessionCurrent(sid, syncToken));
           if (!sid) {
             if (!current()) return;
-            fileCandidateGitStateFresh = false;
+            fileViewerController.setFileCandidateGitStateFresh(false);
             applyFileCandidateEntries([]);
             applyFileMode();
             return;
           }
           const cacheKey = fileCandidateCacheKey(sid);
-          const cached = fileCandidateCache.get(sid);
+          const cached = fileViewerController.fileCandidateCacheEntry(sid);
           if (!force && cached && cached.key === cacheKey && Date.now() - Number(cached.ts || 0) < FILE_CANDIDATE_CACHE_TTL_MS) {
             if (!current()) return;
-            fileCandidateGitStateFresh = false;
+            fileViewerController.setFileCandidateGitStateFresh(false);
             applyFileCandidateEntries(cached.entries);
             applyFileMode();
             renderFilePickerMenu();
             return;
           }
           if (!current()) return;
-          fileCandidateGitStateFresh = false;
+          fileViewerController.setFileCandidateGitStateFresh(false);
           applyFileCandidateEntries([]);
           applyFileMode();
           const messageEntries = collectMessageFileRefs().map((path) => ({
@@ -9207,7 +9126,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (fallbackEntries.length) {
             if (!current()) return;
             applyFileCandidateEntries(fallbackEntries);
-            fileCandidateGitStateFresh = false;
+            fileViewerController.setFileCandidateGitStateFresh(false);
             applyFileMode();
             renderFilePickerMenu();
             renderedFallback = true;
@@ -9236,7 +9155,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const merged = mergeCandidateEntries(changedEntries);
           if (!current()) return;
           applyFileCandidateEntries(merged);
-          fileCandidateGitStateFresh = changedEntriesFresh;
+          fileViewerController.setFileCandidateGitStateFresh(changedEntriesFresh);
           applyFileMode();
           if (changedEntriesFresh) rememberFileCandidateCache(sid, cacheKey);
           if (!current()) return;

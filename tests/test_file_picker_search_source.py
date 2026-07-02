@@ -13,6 +13,87 @@ APP_FILE_PICKER_JS = ROOT / "codoxear" / "static" / "app_file_picker.js"
 APP_FILE_VIEWER_JS = ROOT / "codoxear" / "static" / "app_file_viewer.js"
 
 
+def js_candidate_controller_fixture() -> str:
+    return r'''
+          function __candidateKey(path, gitPath = false, apiPath = "") {
+            const identity = gitPath && apiPath ? normalizeFileApiPath(apiPath) : String(path ?? "");
+            return `${gitPath ? "git" : "session"}\u0000${identity}`;
+          }
+          function __candidateClone(entry) {
+            if (!entry || typeof entry.path !== "string" || entry.path === "") return null;
+            const source = normalizeFileCandidateSource(entry.source);
+            const gitPath = entry.gitPath === undefined ? Boolean(entry.changed && source === "changed") : Boolean(entry.gitPath);
+            const apiPath = normalizeFileApiPath(entry.apiPath || entry.api_path);
+            return { path: entry.path, apiPath, gitPath, key: __candidateKey(entry.path, gitPath, apiPath), additions: entry.additions ?? null, deletions: entry.deletions ?? null, changed: Boolean(entry.changed), source };
+          }
+          fileViewerController = {
+            beginFileCandidateRefresh() { fileCandidateRequestSeq += 1; return fileCandidateRequestSeq; },
+            isCurrentFileCandidateRefresh(requestSeq) { return requestSeq === fileCandidateRequestSeq; },
+            fileCandidateKey: __candidateKey,
+            fileCandidateKeyForEntry(entry) { return __candidateKey(entry && entry.path, Boolean(entry && entry.gitPath), normalizeFileApiPath(entry && entry.apiPath)); },
+            cloneFileCandidateEntry: __candidateClone,
+            applyFileCandidateEntries(entries) {
+              fileCandidateList = [];
+              fileEntryMap = new Map();
+              for (const raw of Array.isArray(entries) ? entries : []) {
+                const entry = __candidateClone(raw);
+                if (!entry || fileEntryMap.has(entry.key)) continue;
+                fileCandidateList.push(entry.key);
+                fileEntryMap.set(entry.key, entry);
+              }
+            },
+            currentFileCandidateKeys() { return fileCandidateList.slice(); },
+            currentFileCandidateEntries() { return fileCandidateList.map((key) => __candidateClone(fileEntryMap.get(key))).filter(Boolean); },
+            fileEntryForKey(key) { return __candidateClone(fileEntryMap.get(String(key || ""))); },
+            fileEntryForPath(path, gitPath = false, apiPath = "") {
+              const token = normalizeFileApiPath(apiPath);
+              const preferred = fileEntryMap.get(__candidateKey(path, gitPath, token));
+              if (preferred) return __candidateClone(preferred);
+              const fallback = fileEntryMap.get(__candidateKey(path, gitPath));
+              if (fallback && (!token || !fallback.apiPath || fallback.apiPath === token)) return __candidateClone(fallback);
+              for (const key of fileCandidateList) {
+                const entry = fileEntryMap.get(key);
+                if (!entry || entry.path !== path || Boolean(entry.gitPath) !== Boolean(gitPath)) continue;
+                if (!token || normalizeFileApiPath(entry.apiPath) === token) return __candidateClone(entry);
+              }
+              return null;
+            },
+            fileApiPathForPath(path, apiPath = "") {
+              const existing = normalizeFileApiPath(apiPath);
+              if (existing) return existing;
+              const entry = this.fileEntryForPath(path, true);
+              return normalizeFileApiPath(entry && entry.apiPath);
+            },
+            activeFileEntry() { return null; },
+            isGitFileCandidatePath(path, changed = null, gitPath = null, apiPath = "") {
+              if (gitPath !== null && gitPath !== undefined) return Boolean(gitPath);
+              if (changed !== null && changed !== undefined) return Boolean(changed);
+              const gitEntry = this.fileEntryForPath(path, true, apiPath);
+              if (gitEntry) return true;
+              const sessionEntry = this.fileEntryForPath(path, false);
+              return Boolean(sessionEntry && sessionEntry.gitPath);
+            },
+            currentFileCandidateGitStateFresh() { return fileCandidateGitStateFresh; },
+            setFileCandidateGitStateFresh(fresh) { fileCandidateGitStateFresh = Boolean(fresh); return fileCandidateGitStateFresh; },
+            rememberFileCandidateCache(sid, key, now = Date.now()) { if (!sid || !key) return false; fileCandidateCache.set(sid, { key, ts: Number(now || 0), entries: this.currentFileCandidateEntries() }); return true; },
+            fileCandidateCacheEntry(sid) { const cached = fileCandidateCache.get(String(sid || "")); return cached ? { key: cached.key, ts: cached.ts, entries: (cached.entries || []).map(__candidateClone).filter(Boolean) } : null; },
+            deleteFileCandidateCache(sid) { return fileCandidateCache.delete(String(sid || "")); },
+            fileCandidateCacheSize() { return fileCandidateCache.size; },
+            upsertFileEntry(entry) {
+              const merged = __candidateClone(entry);
+              if (!merged) return false;
+              const current = fileEntryMap.get(merged.key);
+              if (current && !merged.source) merged.source = normalizeFileCandidateSource(current.source);
+              if (!fileEntryMap.has(merged.key)) fileCandidateList.push(merged.key);
+              fileEntryMap.set(merged.key, merged);
+              return true;
+            },
+            pickerEntryForKey(key, { score = 0 } = {}) { const entry = this.fileEntryForKey(key); return entry ? { ...entry, added: true, score } : null; },
+            pickerEntryForPath(path, { score = 0, gitPath = false } = {}) { const key = __candidateKey(path, gitPath); const entry = __candidateClone(fileEntryMap.get(key) || { path, gitPath, additions: null, deletions: null, changed: false, source: "" }); return entry ? { ...entry, added: fileEntryMap.has(key), score } : null; },
+          };
+    '''
+
+
 def js_function(source: str, name: str) -> str:
     raw_start = source.index(f"function {name}")
     start = raw_start - len("async ") if source[max(0, raw_start - len("async ")) : raw_start] == "async " else raw_start
@@ -58,6 +139,9 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
           window: {{}},
           fileCandidateList: [],
           fileEntryMap: new Map(),
+          fileCandidateGitStateFresh: false,
+          fileCandidateCache: new Map(),
+          fileCandidateRequestSeq: 0,
           activeFileDraft: Boolean(state.activeFileDraft),
           currentActiveFileDraft: () => Boolean(state.activeFileDraft),
           activeFilePathValue: () => state.activeFilePath || "",
@@ -82,6 +166,7 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
         vm.runInContext({json.dumps(file_helpers_source)}, ctx);
         vm.runInContext({json.dumps(file_picker_source)}, ctx);
         vm.runInContext({json.dumps(snippet_with_helpers)}, ctx);
+        vm.runInContext({json.dumps(js_candidate_controller_fixture())}, ctx);
         const seedEntries = state.fileEntries || (state.fileCandidateList || []).map((path) => ({{ path }}));
         ctx.__test_file_picker_search.applyFileCandidateEntries(seedEntries);
         const entries = ctx.__test_file_picker_search.visibleFilePickerEntries();
@@ -307,7 +392,7 @@ def eval_file_picker_identity_helpers() -> dict:
 
 def eval_resolve_file_open_mode_cases() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
-    snippet = "\n".join(js_function(source, name) for name in ["normalizeFileApiPath", "fileCandidateKey", "fileEntryForPath", "isGitFileCandidatePath", "resolveFileOpenMode"])
+    snippet = "\n".join(js_function(source, name) for name in ["normalizeFileApiPath", "normalizeFileCandidateSource", "fileCandidateKey", "fileEntryForPath", "isGitFileCandidatePath", "resolveFileOpenMode"])
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -315,6 +400,9 @@ def eval_resolve_file_open_mode_cases() -> dict:
           fileEntryMap: new Map(),
           fileCandidateList: [],
           fileCandidateGitStateFresh: false,
+          fileCandidateCache: new Map(),
+          fileCandidateRequestSeq: 0,
+          codoxearFileHelpers: {{ normalizeFileCandidateSource: (source) => {{ const value = String(source || "").trim(); return value === "changed" || value === "mentioned" || value === "recent" ? value : ""; }} }},
           fileNonDiffMode: "file",
           inspectedKind: "text",
           inspectCalls: [],
@@ -324,6 +412,7 @@ def eval_resolve_file_open_mode_cases() -> dict:
         }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(snippet)}, ctx);
+        vm.runInContext({json.dumps(js_candidate_controller_fixture())}, ctx);
         (async () => {{
           const changedKey = ctx.fileCandidateKey("changed.py", true);
           ctx.fileCandidateList.push(changedKey);
@@ -433,6 +522,7 @@ def eval_file_candidates_while_changed_files_pending() -> dict:
           function isFileViewerSessionCurrent() {{ return true; }}
           function blockUnavailableFileAction() {{ return false; }}
         ` + {json.dumps(snippet)}, ctx);
+        vm.runInContext({json.dumps(js_candidate_controller_fixture())}, ctx);
         (async () => {{
           const task = ctx.refreshFileCandidates();
           const interim = {{
@@ -534,6 +624,7 @@ def eval_file_candidates_after_changed_files_failure() -> dict:
             return false;
           }}
         ` + {json.dumps(snippet)}, ctx);
+        vm.runInContext({json.dumps(js_candidate_controller_fixture())}, ctx);
         (async () => {{
           await ctx.refreshFileCandidates();
           process.stdout.write(JSON.stringify({{
@@ -617,6 +708,7 @@ def eval_file_candidate_cache_helpers() -> dict:
             return false;
           }}
         ` + {json.dumps(snippet)}, ctx);
+        vm.runInContext({json.dumps(js_candidate_controller_fixture())}, ctx);
         (async () => {{
           const literalFiles = ctx.listFromFilesField(["/repo/trail.md ", "/repo/new\\n.md", "", "/repo/trail.md "]);
           const literalRel = ctx.sessionRelativePath("/repo/trail.md ", "s1");
@@ -1045,10 +1137,11 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertIn('return "Mentioned in chat";', helper_source)
         self.assertIn('return "Recently opened";', helper_source)
         self.assertNotIn('return "Changed files";', source)
-        self.assertIn("const fileCandidateCache = new Map();", source)
+        self.assertIn("let fileCandidateCache = new Map();", viewer_source)
+        self.assertNotIn("const fileCandidateCache = new Map();", source)
         self.assertIn("const FILE_CANDIDATE_CACHE_TTL_MS = 15000;", source)
-        self.assertIn("fileCandidateCache.set(sid, { key, ts: Date.now(), entries: currentFileCandidateEntries() });", source)
-        self.assertIn("fileCandidateCache.delete(sid);", source)
+        self.assertIn("fileCandidateCache.set(sid, { key, ts: Number(now || 0), entries: currentFileCandidateEntries() });", viewer_source)
+        self.assertIn("fileViewerController.deleteFileCandidateCache(sid);", source)
         self.assertIn("openFilePathWithResolvedMode(path, { line: filePickerSelectionLine(), changed: Boolean(entry.changed), gitPath: Boolean(entry.gitPath), apiPath: entry.apiPath })", source)
         self.assertIn("openFilePathWithResolvedMode(active.path, { line: filePickerSelectionLine(), changed: Boolean(active.changed), gitPath: Boolean(active.gitPath), apiPath: active.apiPath })", source)
         self.assertIn("compareFilePickerEntries", source)
@@ -1060,10 +1153,10 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertIn("applyFileMode();\n            renderFilePickerMenu();", source)
         self.assertNotIn("const diffable = canToggleMode && activeFileGitPathValue() && fileCandidateGitStateFresh", source)
         self.assertIn("function currentFileModeControlState", viewer_source)
-        self.assertIn("const diffable = Boolean(canToggleMode && identity.gitPath && fileCandidateGitStateFresh()", viewer_source)
-        self.assertIn("const canUseDiffView = request && request.gitPath && fileCandidateGitStateFresh()", viewer_source)
+        self.assertIn("const diffable = Boolean(canToggleMode && identity.gitPath && currentFileCandidateGitStateFresh()", viewer_source)
+        self.assertIn("const canUseDiffView = request && request.gitPath && currentFileCandidateGitStateFresh()", viewer_source)
         self.assertIn("fileCandidateKeyForEntry(entry)", source)
-        self.assertIn("fileEntryMap.has(entry.key)", source)
+        self.assertIn("fileEntryMap.has(next.key)", viewer_source)
         self.assertIn(".fileMenuSection", css)
         self.assertIn("function filePickerIdentityHint(entry, duplicatePaths, options)", source)
         self.assertIn("function duplicateFilePickerPaths(entries)", source)
