@@ -993,6 +993,27 @@
       return Boolean(state && activePdfRender === state);
     }
 
+    function disposeActivePdfRender() {
+      const state = takeActivePdfRenderState();
+      if (!state) return false;
+      if (state.observer) {
+        try {
+          state.observer.disconnect();
+        } catch (_) {}
+      }
+      for (const task of state.renderTasks || []) {
+        try {
+          task.cancel();
+        } catch (_) {}
+      }
+      if (state.loadingTask) {
+        try {
+          state.loadingTask.destroy();
+        } catch (_) {}
+      }
+      return true;
+    }
+
     function currentActiveVideoPreviewToken() {
       const state = activeVideoFallback;
       return state && state.token ? state.token : "";
@@ -2158,6 +2179,7 @@
       takeActivePdfRenderState,
       clearActivePdfRenderState,
       isActivePdfRenderState,
+      disposeActivePdfRender,
       currentActiveVideoPreviewToken,
       prepareActiveVideoLoadResult,
       handleActiveVideoLoadError,

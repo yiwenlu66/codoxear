@@ -651,7 +651,20 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           renderController.setActivePdfRenderState(pdfStateB);
           const pdfClearResult = renderController.clearActivePdfRenderState();
           const pdfBAfterClear = renderController.isActivePdfRenderState(pdfStateB);
-          const pdfRenderState = {{ pdfSetA, pdfAActive, pdfBActive, pdfTaken, pdfAAfterTake, pdfClearResult, pdfBAfterClear }};
+          const pdfDisposeEvents = [];
+          const pdfStateC = {{
+            observer: {{ disconnect: () => pdfDisposeEvents.push(["disconnect"]) }},
+            renderTasks: new Set([
+              {{ cancel: () => pdfDisposeEvents.push(["cancel", "a"]) }},
+              {{ cancel: () => {{ pdfDisposeEvents.push(["cancel", "b"]); throw new Error("cancel failed"); }} }},
+            ]),
+            loadingTask: {{ destroy: () => pdfDisposeEvents.push(["destroy"]) }},
+          }};
+          renderController.setActivePdfRenderState(pdfStateC);
+          const pdfDisposeResult = renderController.disposeActivePdfRender();
+          const pdfCAfterDispose = renderController.isActivePdfRenderState(pdfStateC);
+          const pdfDisposeEmpty = renderController.disposeActivePdfRender();
+          const pdfRenderState = {{ pdfSetA, pdfAActive, pdfBActive, pdfTaken, pdfAAfterTake, pdfClearResult, pdfBAfterClear, pdfDisposeResult, pdfCAfterDispose, pdfDisposeEmpty, pdfDisposeEvents }};
           events.length = 0;
           const loadOpen = renderController.startFileOpenRequest("plan.md", {{ line: 4, gitPath: false, apiPath: "" }});
           const loadRequest = loadOpen.request;
@@ -1248,7 +1261,19 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             },
             "invalidVideoMessage": "invalid video response",
         })
-        self.assertEqual(result["render"]["pdfRenderState"], {"pdfSetA": True, "pdfAActive": True, "pdfBActive": False, "pdfTaken": True, "pdfAAfterTake": False, "pdfClearResult": True, "pdfBAfterClear": False})
+        self.assertEqual(result["render"]["pdfRenderState"], {
+            "pdfSetA": True,
+            "pdfAActive": True,
+            "pdfBActive": False,
+            "pdfTaken": True,
+            "pdfAAfterTake": False,
+            "pdfClearResult": True,
+            "pdfBAfterClear": False,
+            "pdfDisposeResult": True,
+            "pdfCAfterDispose": False,
+            "pdfDisposeEmpty": False,
+            "pdfDisposeEvents": [["disconnect"], ["cancel", "a"], ["cancel", "b"], ["destroy"]],
+        })
         load_plans = result["render"]["loadPlans"]
         self.assertEqual(load_plans["diff"], {"plan": {"kind": "diff", "noDiff": False, "baseText": "old", "currentText": "new", "status": "plan.md - diff"}, "frozen": True})
         self.assertEqual(load_plans["noDiff"], {"plan": {"kind": "diff", "noDiff": True, "status": "plan.md - no diff"}, "frozen": True})

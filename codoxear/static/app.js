@@ -7282,23 +7282,7 @@
         }
 
         function disposePdfRender() {
-          const state = fileViewerController.takeActivePdfRenderState();
-          if (!state) return;
-          if (state.observer) {
-            try {
-              state.observer.disconnect();
-            } catch (_) {}
-          }
-          for (const task of state.renderTasks || []) {
-            try {
-              task.cancel();
-            } catch (_) {}
-          }
-          if (state.loadingTask) {
-            try {
-              state.loadingTask.destroy();
-            } catch (_) {}
-          }
+          return fileViewerController.disposeActivePdfRender();
         }
 
         function isFileViewerOpen() {
