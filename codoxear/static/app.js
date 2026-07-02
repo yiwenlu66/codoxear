@@ -7039,7 +7039,6 @@
         let fileEditorModels = [];
         let fileEditorChangeDisposable = null;
         let fileUnsavedReturnFocusEl = null;
-        let fileUnsavedResolver = null;
 
         function currentFileViewerSessionId() {
           return fileViewerController.currentFileViewerSessionId();
@@ -8139,9 +8138,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function hideFileUnsavedDialog(choice = "cancel") {
-          const resolve = fileUnsavedResolver;
           const focusTarget = fileUnsavedReturnFocusEl;
-          fileUnsavedResolver = null;
           fileUnsavedReturnFocusEl = null;
           fileUnsavedBackdrop.style.display = "none";
           fileUnsavedDialog.style.display = "none";
@@ -8149,7 +8146,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileViewer.removeAttribute("aria-hidden");
           afterModalVisibilityChanged();
           restoreModalFocus(focusTarget, () => isModalTargetOpen(fileUnsavedDialog) || !isModalTargetOpen(fileViewer));
-          if (resolve) resolve(choice);
+          fileViewerController.resolveFileUnsavedPrompt(choice);
         }
 
         function focusFileUnsavedInitialControl() {
@@ -8182,8 +8179,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function promptFileUnsavedChoice() {
-          if (!currentFileDirty()) return Promise.resolve("discard");
-          if (fileUnsavedResolver) return Promise.resolve("cancel");
+          const plan = fileViewerController.fileUnsavedPromptPlan();
+          if (plan.kind === "choice") return Promise.resolve(plan.choice);
           prepareModalOpen();
           fileUnsavedReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
           syncFileUnsavedDialogMode();
@@ -8193,9 +8190,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileUnsavedDialog.style.display = "flex";
           afterModalVisibilityChanged();
           focusFileUnsavedInitialControl();
-          return new Promise((resolve) => {
-            fileUnsavedResolver = resolve;
-          });
+          return fileViewerController.beginFileUnsavedPrompt();
         }
 
         const fileViewerController = codoxearFileViewer.createFileViewerController({

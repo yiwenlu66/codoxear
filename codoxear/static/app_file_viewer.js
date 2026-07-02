@@ -99,6 +99,7 @@
     let fileEditMode = false;
     let fileEditorKind = "";
     let fileEditorProgrammaticChange = false;
+    let fileUnsavedPromptResolver = null;
     let fileViewMode = normalizeFileViewMode(deps && deps.initialFileViewMode);
     let fileNonDiffMode = deps && deps.initialFileNonDiffMode === "preview" ? "preview" : "file";
     let activeFilePath = "";
@@ -1149,6 +1150,32 @@
       setFileEditMode(false);
     }
 
+    function isFileUnsavedPromptPending() {
+      return Boolean(fileUnsavedPromptResolver);
+    }
+
+    function fileUnsavedPromptPlan() {
+      if (!currentFileDirty()) return Object.freeze({ kind: "choice", choice: "discard" });
+      if (fileUnsavedPromptResolver) return Object.freeze({ kind: "choice", choice: "cancel" });
+      return Object.freeze({ kind: "prompt" });
+    }
+
+    function beginFileUnsavedPrompt() {
+      const plan = fileUnsavedPromptPlan();
+      if (plan.kind === "choice") return Promise.resolve(plan.choice);
+      return new Promise((resolve) => {
+        fileUnsavedPromptResolver = resolve;
+      });
+    }
+
+    function resolveFileUnsavedPrompt(choice = "cancel") {
+      const resolve = fileUnsavedPromptResolver;
+      fileUnsavedPromptResolver = null;
+      if (!resolve) return false;
+      resolve(String(choice || "cancel"));
+      return true;
+    }
+
     function applyPlainTextFallbackState() {
       setFileEditMode(false);
       setFileDirty(false);
@@ -1786,6 +1813,10 @@
       submitActiveFileSave,
       saveActiveFileEdits,
       discardActiveFileEdits,
+      isFileUnsavedPromptPending,
+      fileUnsavedPromptPlan,
+      beginFileUnsavedPrompt,
+      resolveFileUnsavedPrompt,
       applyPlainTextFallbackState,
       maybeHandleUnsavedFileChanges,
       handleFileUnsavedSaveChoice,

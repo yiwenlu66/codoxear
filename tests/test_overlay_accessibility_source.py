@@ -156,6 +156,7 @@ class TestOverlayAccessibilitySource(unittest.TestCase):
         self.assertIn("fileViewerReturnFocusEl = null;", hide_block)
         self.assertIn("restoreModalFocus(focusTarget, () => isModalTargetOpen(fileViewer));", hide_block)
         self.assertIn("let fileUnsavedReturnFocusEl = null;", source)
+        self.assertNotIn("let fileUnsavedResolver = null;", source)
         self.assertIn("function focusFileUnsavedInitialControl()", source)
         self.assertIn("fileUnsavedReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;", source)
         self.assertIn("fileViewer.setAttribute(\"inert\", \"\");", source)

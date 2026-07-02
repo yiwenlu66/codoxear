@@ -683,6 +683,31 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             errorMessage: programmaticErrorMessage,
             afterError: programmaticAfterError,
           }};
+          renderController.setFileDirty(false);
+          const unsavedCleanPlan = renderController.fileUnsavedPromptPlan();
+          const unsavedCleanChoice = await renderController.beginFileUnsavedPrompt();
+          renderController.setFileDirty(true);
+          const unsavedPromptPlan = renderController.fileUnsavedPromptPlan();
+          const unsavedPendingBefore = renderController.isFileUnsavedPromptPending();
+          const unsavedPendingPromise = renderController.beginFileUnsavedPrompt();
+          const unsavedPendingAfterBegin = renderController.isFileUnsavedPromptPending();
+          const unsavedDuplicatePlan = renderController.fileUnsavedPromptPlan();
+          const unsavedResolved = renderController.resolveFileUnsavedPrompt("save");
+          const unsavedChoice = await unsavedPendingPromise;
+          const unsavedPendingAfterResolve = renderController.isFileUnsavedPromptPending();
+          const unsavedResolveMissing = renderController.resolveFileUnsavedPrompt("discard");
+          const unsavedPromptState = {{
+            cleanPlan: unsavedCleanPlan,
+            cleanChoice: unsavedCleanChoice,
+            promptPlan: unsavedPromptPlan,
+            pendingBefore: unsavedPendingBefore,
+            pendingAfterBegin: unsavedPendingAfterBegin,
+            duplicatePlan: unsavedDuplicatePlan,
+            resolved: unsavedResolved,
+            choice: unsavedChoice,
+            pendingAfterResolve: unsavedPendingAfterResolve,
+            resolveMissing: unsavedResolveMissing,
+          }};
           const render = {{
             exportFrozen: Object.isFrozen(fileViewer),
             exports: Object.keys(fileViewer).sort(),
@@ -695,6 +720,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             downloadPaths,
             editorKindTransitions,
             programmaticChange,
+            unsavedPromptState,
             restorePlanning,
             selectionMemory,
             candidateRefreshSeq,
@@ -742,7 +768,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
         }})().catch((err) => {{ console.error(err && err.stack ? err.stack : err); process.exit(1); }});
         """
     )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
 
 
@@ -780,6 +806,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         })
         self.assertEqual(result["render"]["editorKindTransitions"], {"initial": "", "file": "file", "currentFile": "file", "diff": "diff", "plain": "plain-fallback", "clear": "", "invalidMessage": "invalid file editor kind"})
         self.assertEqual(result["render"]["programmaticChange"], {"before": False, "inside": True, "returnValue": "ok", "after": False, "errorInside": True, "errorMessage": "boom", "afterError": False})
+        self.assertEqual(result["render"]["unsavedPromptState"], {"cleanPlan": {"kind": "choice", "choice": "discard"}, "cleanChoice": "discard", "promptPlan": {"kind": "prompt"}, "pendingBefore": False, "pendingAfterBegin": True, "duplicatePlan": {"kind": "choice", "choice": "cancel"}, "resolved": True, "choice": "save", "pendingAfterResolve": False, "resolveMissing": False})
         self.assertEqual(result["render"]["restorePlanning"], {"skip": {"kind": "skip"}, "skipFrozen": True, "skipDirty": False, "restore": {"kind": "restore", "text": "body text"}, "restoreFrozen": True, "dirtyBeforeFinish": True, "dirtyAfterFinish": False})
         self.assertEqual(result["render"]["selectionMemory"], {"noSession": {"path": "", "line": None, "gitPath": False}, "history": {"path": "history.txt", "line": 3, "gitPath": False, "apiPath": ""}, "remembered": {"path": "src/app.py", "apiPath": "tok-1", "line": 12, "gitPath": True}})
         self.assertEqual(result["render"]["candidateRefreshSeq"], {"first": 1, "second": 2, "firstCurrent": True, "firstAfterSecond": False, "secondCurrent": True})
