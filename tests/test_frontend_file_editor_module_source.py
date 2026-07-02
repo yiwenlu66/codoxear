@@ -234,6 +234,156 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
+def run_file_editor_renderer_probe() -> dict[str, object]:
+    editor_source = APP_FILE_EDITOR_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(editor_source)}, ctx);
+        const mod = ctx.window.CodoxearFileEditor;
+        const events = [];
+        let currentKind = "";
+        let activeText = "old text";
+        let currentText = "changed text";
+        let programmatic = false;
+        let touchMode = true;
+        let current = true;
+        let ensureMode = "success";
+        let changeCallback = null;
+        const host = {{ name: "fileHost" }};
+        const runtime = {{
+          createFileEditor(monaco, editorHost, options) {{
+            events.push(["createFile", monaco.name, editorHost.name, options.path, options.text, options.languageOverride, options.readOnly]);
+            changeCallback = options.onDidChangeModelContent;
+            return {{ tag: "createdFile" }};
+          }},
+          updateFileEditorText(monaco, options) {{
+            events.push(["updateFile", monaco.name, options.path, options.text, options.languageOverride]);
+            options.runProgrammaticChange(() => events.push(["updateProgrammaticBody"]));
+            return true;
+          }},
+          createDiffEditor(monaco, editorHost, options) {{
+            events.push(["createDiff", monaco.name, editorHost.name, options.path, options.originalText, options.modifiedText]);
+            return {{ diffEditor: {{ tag: "createdDiff" }} }};
+          }},
+          positionCurrentEditorAtLine(kind, lineNumber, normalizeLineNumber) {{
+            const requestedLine = normalizeLineNumber(lineNumber);
+            events.push(["position", kind, requestedLine]);
+            return {{ requestedLine, targetLine: requestedLine || 1 }};
+          }},
+          scheduleLineFocus(kind, requestedLine, options) {{
+            events.push(["schedule", kind, requestedLine, options.isCurrent()]);
+            options.requestAnimationFrame(() => events.push(["frameCallback", kind]));
+            options.setTimeout(() => events.push(["timerCallback", kind]), 60);
+            return true;
+          }},
+          currentFileText(kind, fallbackText) {{
+            events.push(["currentFileText", kind, fallbackText]);
+            return currentText;
+          }},
+        }};
+        const loader = {{
+          ensure: async () => {{
+            events.push(["ensure", ensureMode]);
+            if (ensureMode === "fail") throw new Error("loader boom");
+            return {{ name: "monaco" }};
+          }},
+        }};
+        const renderer = mod.createFileEditorRenderer({{
+          runtime,
+          monacoLoader: loader,
+          host,
+          normalizeLineNumber: (value) => Number(value) || null,
+          requestAnimationFrame: (callback) => {{ events.push(["requestFrame"]); callback(); }},
+          setTimeout: (callback, delay) => {{ events.push(["setTimeout", delay]); callback(); }},
+          isCurrentFileOpenRequest: () => current,
+          renderPlainTextFallback: (rel, text, lineNumber, reason) => events.push(["fallback", rel, text, lineNumber, reason]),
+          disposeFileEditor: () => {{ events.push(["dispose"]); currentKind = ""; }},
+          currentEditorKind: () => currentKind,
+          setEditorKind: (kind) => {{ currentKind = kind; events.push(["setKind", kind]); }},
+          currentFileEditMode: () => true,
+          currentActiveFileEditable: () => true,
+          isUnavailable: () => false,
+          isProgrammaticChange: () => programmatic,
+          currentTouchSelectMode: () => touchMode,
+          resetTouchSelectionState: () => {{ events.push(["resetTouch"]); touchMode = false; }},
+          currentActiveFileText: () => activeText,
+          setDirty: (dirty) => events.push(["setDirty", dirty]),
+          runProgrammaticChange: (callback) => {{ events.push(["programmaticStart"]); callback(); events.push(["programmaticEnd"]); }},
+          syncReadOnly: () => events.push(["syncReadOnly"]),
+          updateTouchToolbar: () => events.push(["updateTouchToolbar"]),
+        }});
+
+        (async () => {{
+          const fileCreated = await renderer.renderFile("src/a.js", "old text", 3, "javascript", {{ id: "req" }});
+          changeCallback();
+          programmatic = true;
+          currentText = "programmatic text";
+          changeCallback();
+          programmatic = false;
+          touchMode = false;
+          activeText = "fresh";
+          currentText = "fresh";
+          const fileUpdated = await renderer.renderFile("src/a.ts", "fresh", null, "typescript", {{ id: "req" }});
+          current = false;
+          const staleFile = await renderer.renderFile("src/stale.js", "stale", 8, "", {{ id: "req" }});
+          current = true;
+          ensureMode = "fail";
+          const fileFallback = await renderer.renderFile("src/fallback.txt", "plain", 4, "", {{ id: "req" }});
+          const diffFallback = await renderer.renderDiff("src/fallback.diff", "old", "new", 5, {{ id: "req" }});
+          ensureMode = "success";
+          currentKind = "plain-fallback";
+          const diffRendered = await renderer.renderDiff("src/a.js", "old", "new", 2, {{ id: "req" }});
+          const ensured = await renderer.ensureMonaco();
+          let missingHostError = "";
+          try {{
+            mod.createFileEditorRenderer({{
+              runtime,
+              monacoLoader: loader,
+              host: null,
+              normalizeLineNumber: () => null,
+              requestAnimationFrame: () => null,
+              setTimeout: () => null,
+              isCurrentFileOpenRequest: () => true,
+              renderPlainTextFallback: () => null,
+              disposeFileEditor: () => null,
+              currentEditorKind: () => "",
+              setEditorKind: () => null,
+              currentFileEditMode: () => false,
+              currentActiveFileEditable: () => false,
+              isUnavailable: () => false,
+              isProgrammaticChange: () => false,
+              currentTouchSelectMode: () => false,
+              resetTouchSelectionState: () => null,
+              currentActiveFileText: () => "",
+              setDirty: () => null,
+              runProgrammaticChange: (callback) => callback(),
+              syncReadOnly: () => null,
+              updateTouchToolbar: () => null,
+            }});
+          }} catch (err) {{ missingHostError = err && err.message ? err.message : String(err); }}
+          process.stdout.write(JSON.stringify({{
+            rendererFrozen: Object.isFrozen(renderer),
+            fileCreated,
+            fileUpdated,
+            staleFile,
+            fileFallback,
+            diffFallback,
+            diffRendered,
+            ensuredName: ensured.name,
+            currentKind,
+            missingHostError,
+            events,
+          }}));
+        }})().catch((err) => {{ console.error(err && err.stack ? err.stack : err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def run_monaco_loader_probe() -> dict[str, object]:
     editor_source = APP_FILE_EDITOR_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
@@ -306,7 +456,7 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         result = run_file_editor_runtime_probe()
         self.assertTrue(result["frozen"])
         self.assertTrue(result["runtimeFrozen"])
-        self.assertEqual(result["exports"], ["createFileEditorRuntime", "createMonacoLoader"])
+        self.assertEqual(result["exports"], ["createFileEditorRenderer", "createFileEditorRuntime", "createMonacoLoader"])
         self.assertIsNone(result["emptyActive"])
         self.assertTrue(result["activeFile"])
         self.assertIsNone(result["noDiffEditor"])
@@ -395,6 +545,64 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         )
         self.assertIn("file editor dependency missing: withCurrentEditor", result["missingCallbackError"])
 
+    def test_file_editor_renderer_behavior(self) -> None:
+        result = run_file_editor_renderer_probe()
+        self.assertTrue(result["rendererFrozen"])
+        self.assertTrue(result["fileCreated"])
+        self.assertTrue(result["fileUpdated"])
+        self.assertFalse(result["staleFile"])
+        self.assertTrue(result["fileFallback"])
+        self.assertTrue(result["diffFallback"])
+        self.assertTrue(result["diffRendered"])
+        self.assertEqual(result["ensuredName"], "monaco")
+        self.assertEqual(result["currentKind"], "diff")
+        self.assertIn("file editor dependency missing: host", result["missingHostError"])
+        self.assertEqual(
+            result["events"],
+            [
+                ["ensure", "success"],
+                ["dispose"],
+                ["createFile", "monaco", "fileHost", "src/a.js", "old text", "javascript", False],
+                ["setKind", "file"],
+                ["syncReadOnly"],
+                ["position", "file", 3],
+                ["schedule", "file", 3, True],
+                ["requestFrame"],
+                ["frameCallback", "file"],
+                ["setTimeout", 60],
+                ["timerCallback", "file"],
+                ["updateTouchToolbar"],
+                ["resetTouch"],
+                ["currentFileText", "file", "old text"],
+                ["setDirty", True],
+                ["ensure", "success"],
+                ["updateFile", "monaco", "src/a.ts", "fresh", "typescript"],
+                ["programmaticStart"],
+                ["updateProgrammaticBody"],
+                ["programmaticEnd"],
+                ["syncReadOnly"],
+                ["position", "file", None],
+                ["updateTouchToolbar"],
+                ["ensure", "success"],
+                ["ensure", "fail"],
+                ["fallback", "src/fallback.txt", "plain", 4, "loader boom"],
+                ["ensure", "fail"],
+                ["fallback", "src/fallback.diff", "new", 5, "Rich diff unavailable: loader boom"],
+                ["ensure", "success"],
+                ["dispose"],
+                ["createDiff", "monaco", "fileHost", "src/a.js", "old", "new"],
+                ["setKind", "diff"],
+                ["position", "diff", 2],
+                ["schedule", "diff", 2, True],
+                ["requestFrame"],
+                ["frameCallback", "diff"],
+                ["setTimeout", 60],
+                ["timerCallback", "diff"],
+                ["updateTouchToolbar"],
+                ["ensure", "success"],
+            ],
+        )
+
     def test_monaco_loader_behavior(self) -> None:
         result = run_monaco_loader_probe()
         self.assertFalse(result["beforeSupport"])
@@ -452,15 +660,24 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertIn("function scheduleLineFocus(kind, requestedLine, options = {})", editor_source)
         self.assertIn("function currentFileText(kind, fallbackText = \"\")", editor_source)
         self.assertIn("function restoreFileText(kind, text, runProgrammaticChange)", editor_source)
-        self.assertIn("fileEditorRuntime.createFileEditor(monaco, fileDiff", app_source)
-        self.assertIn("fileEditorRuntime.updateFileEditorText(monaco", app_source)
+        self.assertIn("function createFileEditorRenderer(options = {})", editor_source)
+        self.assertIn("const fileEditorRenderer = codoxearFileEditor.createFileEditorRenderer({", app_source)
+        self.assertIn("return await fileEditorRenderer.renderFile(rel, text, lineNumber, langOverride, request);", app_source)
+        self.assertIn("return await fileEditorRenderer.renderDiff(rel, originalText, modifiedText, lineNumber, request);", app_source)
+        self.assertNotIn("fileEditorRuntime.createFileEditor(monaco, fileDiff", app_source)
+        self.assertNotIn("fileEditorRuntime.updateFileEditorText(monaco", app_source)
         self.assertIn("fileEditorRuntime.currentFileText(currentFileEditorKind(), currentActiveFileText())", app_source)
         self.assertIn("fileEditorRuntime.restoreFileText(currentFileEditorKind(), restorePlan.text", app_source)
-        self.assertIn("fileEditorRuntime.createDiffEditor(monaco, fileDiff", app_source)
-        self.assertIn("fileEditorRuntime.positionCurrentEditorAtLine(\"file\", lineNumber, normalizeLineNumber)", app_source)
-        self.assertIn("fileEditorRuntime.positionCurrentEditorAtLine(\"diff\", lineNumber, normalizeLineNumber)", app_source)
-        self.assertIn("fileEditorRuntime.scheduleLineFocus(\"file\", requestedLine", app_source)
-        self.assertIn("fileEditorRuntime.scheduleLineFocus(\"diff\", requestedLine", app_source)
+        self.assertNotIn("fileEditorRuntime.createDiffEditor(monaco, fileDiff", app_source)
+        self.assertNotIn("fileEditorRuntime.positionCurrentEditorAtLine(\"file\", lineNumber, normalizeLineNumber)", app_source)
+        self.assertNotIn("fileEditorRuntime.positionCurrentEditorAtLine(\"diff\", lineNumber, normalizeLineNumber)", app_source)
+        self.assertNotIn("fileEditorRuntime.scheduleLineFocus(\"file\", requestedLine", app_source)
+        self.assertNotIn("fileEditorRuntime.scheduleLineFocus(\"diff\", requestedLine", app_source)
+        self.assertIn("createFileEditor(monaco, host", editor_source)
+        self.assertIn("updateFileEditorText(monaco, {", editor_source)
+        self.assertIn("createDiffEditor(monaco, host", editor_source)
+        self.assertIn("schedulePositionFocus(\"file\", lineNumber, request);", editor_source)
+        self.assertIn("schedulePositionFocus(\"diff\", lineNumber, request);", editor_source)
         self.assertNotIn("fileEditorRuntime.setEditor(editor);", app_source)
         self.assertNotIn("fileEditorRuntime.setModels([editor.getModel()].filter(Boolean));", app_source)
         self.assertNotIn("fileEditorRuntime.setChangeDisposable(editor.onDidChangeModelContent", app_source)
@@ -472,7 +689,8 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertNotIn("let monacoNs = null;", app_source)
         self.assertNotIn("let monacoThemeReady = false;", app_source)
         self.assertIn("function createMonacoLoader(options = {})", editor_source)
-        self.assertIn("fileEditorMonacoLoader.ensure();", app_source)
+        self.assertIn("const ensureMonaco = requireMethod(options.monacoLoader, \"ensure\", \"monacoLoader\");", editor_source)
+        self.assertNotIn("fileEditorMonacoLoader.ensure();", app_source)
         self.assertIn("fileEditorMonacoLoader.selectionCtor())", app_source)
         self.assertIn("fileEditorMonacoLoader.editSupportAvailable()", app_source)
 

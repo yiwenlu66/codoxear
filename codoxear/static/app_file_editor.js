@@ -515,7 +515,142 @@
     });
   }
 
+  function requireObject(value, name) {
+    if (!value || typeof value !== "object") throw new TypeError(`file editor dependency missing: ${name}`);
+    return value;
+  }
+
+  function requireMethod(owner, method, label) {
+    const object = requireObject(owner, label);
+    if (typeof object[method] !== "function") throw new TypeError(`file editor dependency missing: ${label}.${method}`);
+    return object[method].bind(object);
+  }
+
+  function createFileEditorRenderer(options = {}) {
+    const runtime = requireObject(options.runtime, "runtime");
+    const ensureMonaco = requireMethod(options.monacoLoader, "ensure", "monacoLoader");
+    const host = options.host;
+    if (!host) throw new TypeError("file editor dependency missing: host");
+    const normalizeLineNumber = requireFunction(options.normalizeLineNumber, "normalizeLineNumber");
+    const requestFrame = requireFunction(options.requestAnimationFrame, "requestAnimationFrame");
+    const setTimer = requireFunction(options.setTimeout, "setTimeout");
+    const isCurrentFileOpenRequest = requireFunction(options.isCurrentFileOpenRequest, "isCurrentFileOpenRequest");
+    const renderPlainTextFallback = requireFunction(options.renderPlainTextFallback, "renderPlainTextFallback");
+    const disposeFileEditor = requireFunction(options.disposeFileEditor, "disposeFileEditor");
+    const currentEditorKind = requireFunction(options.currentEditorKind, "currentEditorKind");
+    const setEditorKind = requireFunction(options.setEditorKind, "setEditorKind");
+    const currentFileEditMode = requireFunction(options.currentFileEditMode, "currentFileEditMode");
+    const currentActiveFileEditable = requireFunction(options.currentActiveFileEditable, "currentActiveFileEditable");
+    const isUnavailable = requireFunction(options.isUnavailable, "isUnavailable");
+    const isProgrammaticChange = requireFunction(options.isProgrammaticChange, "isProgrammaticChange");
+    const currentTouchSelectMode = requireFunction(options.currentTouchSelectMode, "currentTouchSelectMode");
+    const resetTouchSelectionState = requireFunction(options.resetTouchSelectionState, "resetTouchSelectionState");
+    const currentActiveFileText = requireFunction(options.currentActiveFileText, "currentActiveFileText");
+    const setDirty = requireFunction(options.setDirty, "setDirty");
+    const runProgrammaticChange = requireFunction(options.runProgrammaticChange, "runProgrammaticChange");
+    const syncReadOnly = requireFunction(options.syncReadOnly, "syncReadOnly");
+    const updateTouchToolbar = requireFunction(options.updateTouchToolbar, "updateTouchToolbar");
+    const createFileEditor = requireMethod(runtime, "createFileEditor", "runtime");
+    const updateFileEditorText = requireMethod(runtime, "updateFileEditorText", "runtime");
+    const createDiffEditor = requireMethod(runtime, "createDiffEditor", "runtime");
+    const positionCurrentEditorAtLine = requireMethod(runtime, "positionCurrentEditorAtLine", "runtime");
+    const scheduleLineFocus = requireMethod(runtime, "scheduleLineFocus", "runtime");
+    const currentFileText = requireMethod(runtime, "currentFileText", "runtime");
+
+    function requestIsCurrent(request) {
+      return !(request && !isCurrentFileOpenRequest(request));
+    }
+
+    function richEditorUnavailableReason(error, prefix) {
+      const message = error && error.message ? String(error.message) : "";
+      if (!prefix) return message || "Rich file viewer unavailable";
+      return message ? `${prefix}: ${message}` : prefix;
+    }
+
+    function activeFileReadOnly() {
+      return !(currentFileEditMode() && currentActiveFileEditable() && !isUnavailable());
+    }
+
+    function handleFileEditorContentChange() {
+      if (isProgrammaticChange()) return;
+      if (currentTouchSelectMode()) resetTouchSelectionState();
+      const baselineText = String(currentActiveFileText() || "");
+      setDirty(currentFileText("file", baselineText) !== baselineText);
+    }
+
+    function schedulePositionFocus(kind, lineNumber, request) {
+      const positionState = positionCurrentEditorAtLine(kind, lineNumber, normalizeLineNumber);
+      const requestedLine = positionState && positionState.requestedLine;
+      if (!requestedLine) return positionState;
+      scheduleLineFocus(kind, requestedLine, {
+        requestAnimationFrame: requestFrame,
+        setTimeout: setTimer,
+        isCurrent: () => requestIsCurrent(request),
+      });
+      return positionState;
+    }
+
+    async function renderFile(rel, text, lineNumber = null, langOverride = "", request = null) {
+      let monaco;
+      try {
+        monaco = await ensureMonaco();
+      } catch (error) {
+        if (!requestIsCurrent(request)) return false;
+        renderPlainTextFallback(rel, text, lineNumber, richEditorUnavailableReason(error, ""));
+        return true;
+      }
+      if (!requestIsCurrent(request)) return false;
+      if (currentEditorKind() !== "file") {
+        disposeFileEditor();
+        createFileEditor(monaco, host, {
+          path: rel,
+          text,
+          languageOverride: langOverride,
+          readOnly: activeFileReadOnly(),
+          onDidChangeModelContent: handleFileEditorContentChange,
+        });
+        setEditorKind("file");
+      } else {
+        updateFileEditorText(monaco, {
+          path: rel,
+          text,
+          languageOverride: langOverride,
+          runProgrammaticChange,
+        });
+      }
+      syncReadOnly();
+      schedulePositionFocus("file", lineNumber, request);
+      updateTouchToolbar();
+      return true;
+    }
+
+    async function renderDiff(rel, originalText, modifiedText, lineNumber = null, request = null) {
+      let monaco;
+      try {
+        monaco = await ensureMonaco();
+      } catch (error) {
+        if (!requestIsCurrent(request)) return false;
+        renderPlainTextFallback(rel, modifiedText, lineNumber, richEditorUnavailableReason(error, "Rich diff unavailable"));
+        return true;
+      }
+      if (!requestIsCurrent(request)) return false;
+      disposeFileEditor();
+      createDiffEditor(monaco, host, { path: rel, originalText, modifiedText });
+      setEditorKind("diff");
+      schedulePositionFocus("diff", lineNumber, request);
+      updateTouchToolbar();
+      return true;
+    }
+
+    return Object.freeze({
+      ensureMonaco,
+      renderDiff,
+      renderFile,
+    });
+  }
+
   window.CodoxearFileEditor = Object.freeze({
+    createFileEditorRenderer,
     createFileEditorRuntime,
     createMonacoLoader,
   });

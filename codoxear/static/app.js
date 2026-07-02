@@ -596,6 +596,7 @@
       if (
         !codoxearFileEditor ||
         typeof codoxearFileEditor.createFileEditorRuntime !== "function" ||
+        typeof codoxearFileEditor.createFileEditorRenderer !== "function" ||
         typeof codoxearFileEditor.createMonacoLoader !== "function"
       )
         throw new Error("Codoxear file editor runtime failed to load");
@@ -7063,6 +7064,30 @@
           resolveAppUrl,
           timeoutMs: MONACO_LOADER_TIMEOUT_MS,
         });
+        const fileEditorRenderer = codoxearFileEditor.createFileEditorRenderer({
+          runtime: fileEditorRuntime,
+          monacoLoader: fileEditorMonacoLoader,
+          host: fileDiff,
+          normalizeLineNumber,
+          requestAnimationFrame: (callback) => requestAnimationFrame(callback),
+          setTimeout: (callback, delay) => setTimeout(callback, delay),
+          isCurrentFileOpenRequest: (request) => isCurrentFileOpenRequest(request),
+          renderPlainTextFallback: (rel, text, lineNumber, reason) => renderPlainTextFallback(rel, text, lineNumber, reason),
+          disposeFileEditor: () => disposeFileEditor(),
+          currentEditorKind: () => currentFileEditorKind(),
+          setEditorKind: (kind) => setFileEditorKind(kind),
+          currentFileEditMode: () => currentFileEditMode(),
+          currentActiveFileEditable: () => currentActiveFileEditable(),
+          isUnavailable: () => isFileViewerSessionUnavailable(),
+          isProgrammaticChange: () => fileViewerController.isFileEditorProgrammaticChange(),
+          currentTouchSelectMode: () => currentFileTouchSelectMode(),
+          resetTouchSelectionState: () => resetFileTouchSelectionState(),
+          currentActiveFileText: () => currentActiveFileText(),
+          setDirty: (dirty) => setFileDirty(dirty),
+          runProgrammaticChange: (callback) => fileViewerController.runFileEditorProgrammaticChange(callback),
+          syncReadOnly: () => syncFileEditorReadOnly(),
+          updateTouchToolbar: () => updateFileTouchToolbar(),
+        });
         const filePdfLoader = codoxearFileViewer.createPdfLoader({
           resolveAppUrl,
           timeoutMs: PDFJS_LOADER_TIMEOUT_MS,
@@ -7547,10 +7572,6 @@
           updateFileTouchToolbar();
         }
 
-        function ensureMonaco() {
-          return fileEditorMonacoLoader.ensure();
-        }
-
         async function ensurePdfJs() {
           return await filePdfLoader.ensure();
         }
@@ -7560,75 +7581,11 @@
         }
 
         async function renderMonacoFile(rel, text, lineNumber = null, langOverride = "", request = null) {
-          let monaco;
-          try {
-            monaco = await ensureMonaco();
-          } catch (e) {
-            if (request && !isCurrentFileOpenRequest(request)) return false;
-            renderPlainTextFallback(rel, text, lineNumber, e && e.message ? e.message : "Rich file viewer unavailable");
-            return true;
-          }
-          if (request && !isCurrentFileOpenRequest(request)) return false;
-          if (currentFileEditorKind() !== "file") {
-            disposeFileEditor();
-            fileEditorRuntime.createFileEditor(monaco, fileDiff, {
-              path: rel,
-              text,
-              languageOverride: langOverride,
-              readOnly: !(currentFileEditMode() && currentActiveFileEditable() && !isFileViewerSessionUnavailable()),
-              onDidChangeModelContent: () => {
-                if (fileViewerController.isFileEditorProgrammaticChange()) return;
-                if (currentFileTouchSelectMode()) resetFileTouchSelectionState();
-                setFileDirty(getFileEditorText() !== String(currentActiveFileText() || ""));
-              },
-            });
-            setFileEditorKind("file");
-          } else {
-            fileEditorRuntime.updateFileEditorText(monaco, {
-              path: rel,
-              text,
-              languageOverride: langOverride,
-              runProgrammaticChange: (callback) => fileViewerController.runFileEditorProgrammaticChange(callback),
-            });
-          }
-          syncFileEditorReadOnly();
-          const positionState = fileEditorRuntime.positionCurrentEditorAtLine("file", lineNumber, normalizeLineNumber);
-          const requestedLine = positionState && positionState.requestedLine;
-          if (requestedLine) {
-            fileEditorRuntime.scheduleLineFocus("file", requestedLine, {
-              requestAnimationFrame: (callback) => requestAnimationFrame(callback),
-              setTimeout: (callback, delay) => setTimeout(callback, delay),
-              isCurrent: () => !(request && !isCurrentFileOpenRequest(request)),
-            });
-          }
-          updateFileTouchToolbar();
-          return true;
+          return await fileEditorRenderer.renderFile(rel, text, lineNumber, langOverride, request);
         }
 
         async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null) {
-          let monaco;
-          try {
-            monaco = await ensureMonaco();
-          } catch (e) {
-            if (request && !isCurrentFileOpenRequest(request)) return false;
-            renderPlainTextFallback(rel, modifiedText, lineNumber, e && e.message ? `Rich diff unavailable: ${e.message}` : "Rich diff unavailable");
-            return true;
-          }
-          if (request && !isCurrentFileOpenRequest(request)) return false;
-          disposeFileEditor();
-          fileEditorRuntime.createDiffEditor(monaco, fileDiff, { path: rel, originalText, modifiedText });
-          setFileEditorKind("diff");
-          const positionState = fileEditorRuntime.positionCurrentEditorAtLine("diff", lineNumber, normalizeLineNumber);
-          const requestedLine = positionState && positionState.requestedLine;
-          if (requestedLine) {
-            fileEditorRuntime.scheduleLineFocus("diff", requestedLine, {
-              requestAnimationFrame: (callback) => requestAnimationFrame(callback),
-              setTimeout: (callback, delay) => setTimeout(callback, delay),
-              isCurrent: () => !(request && !isCurrentFileOpenRequest(request)),
-            });
-          }
-          updateFileTouchToolbar();
-          return true;
+          return await fileEditorRenderer.renderDiff(rel, originalText, modifiedText, lineNumber, request);
         }
 
         function renderMarkdownPreview(rel, text) {
