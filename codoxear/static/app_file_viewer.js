@@ -98,6 +98,7 @@
     let fileDirty = false;
     let fileEditMode = false;
     let fileEditorKind = "";
+    let fileEditorProgrammaticChange = false;
     let fileViewMode = normalizeFileViewMode(deps && deps.initialFileViewMode);
     let fileNonDiffMode = deps && deps.initialFileNonDiffMode === "preview" ? "preview" : "file";
     let activeFilePath = "";
@@ -477,6 +478,30 @@
 
     function currentFileEditorKind() {
       return fileEditorKind;
+    }
+
+    function isFileEditorProgrammaticChange() {
+      return fileEditorProgrammaticChange;
+    }
+
+    function beginFileEditorProgrammaticChange() {
+      fileEditorProgrammaticChange = true;
+      return true;
+    }
+
+    function finishFileEditorProgrammaticChange() {
+      fileEditorProgrammaticChange = false;
+      return true;
+    }
+
+    function runFileEditorProgrammaticChange(callback) {
+      const fn = requireFunction(callback, "runFileEditorProgrammaticChange");
+      beginFileEditorProgrammaticChange();
+      try {
+        return fn();
+      } finally {
+        finishFileEditorProgrammaticChange();
+      }
     }
 
     function setFileEditorKind(kind) {
@@ -1811,6 +1836,10 @@
       isCurrentFileCandidateRefresh,
       currentFileEditMode,
       currentFileEditorKind,
+      isFileEditorProgrammaticChange,
+      beginFileEditorProgrammaticChange,
+      finishFileEditorProgrammaticChange,
+      runFileEditorProgrammaticChange,
       setFileEditorKind,
       prepareFileEditorTextRestore,
       finishFileEditorTextRestore,

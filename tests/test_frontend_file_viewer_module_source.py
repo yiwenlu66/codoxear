@@ -656,6 +656,33 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             events: events.slice(),
           }};
           loadOpen.done();
+          const programmaticBefore = renderController.isFileEditorProgrammaticChange();
+          let programmaticInside = false;
+          const programmaticReturn = renderController.runFileEditorProgrammaticChange(() => {{
+            programmaticInside = renderController.isFileEditorProgrammaticChange();
+            return "ok";
+          }});
+          const programmaticAfter = renderController.isFileEditorProgrammaticChange();
+          let programmaticErrorMessage = "";
+          let programmaticErrorInside = false;
+          try {{
+            renderController.runFileEditorProgrammaticChange(() => {{
+              programmaticErrorInside = renderController.isFileEditorProgrammaticChange();
+              throw new Error("boom");
+            }});
+          }} catch (err) {{
+            programmaticErrorMessage = err && err.message ? err.message : String(err);
+          }}
+          const programmaticAfterError = renderController.isFileEditorProgrammaticChange();
+          const programmaticChange = {{
+            before: programmaticBefore,
+            inside: programmaticInside,
+            returnValue: programmaticReturn,
+            after: programmaticAfter,
+            errorInside: programmaticErrorInside,
+            errorMessage: programmaticErrorMessage,
+            afterError: programmaticAfterError,
+          }};
           const render = {{
             exportFrozen: Object.isFrozen(fileViewer),
             exports: Object.keys(fileViewer).sort(),
@@ -667,6 +694,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             fetchResults: {{ diffFetch, diffFetchEvents, readFetch, readFetchEvents }},
             downloadPaths,
             editorKindTransitions,
+            programmaticChange,
             restorePlanning,
             selectionMemory,
             candidateRefreshSeq,
@@ -751,6 +779,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "downloadUnavailableStatus": "Session is no longer available; copy unsaved edits before closing.",
         })
         self.assertEqual(result["render"]["editorKindTransitions"], {"initial": "", "file": "file", "currentFile": "file", "diff": "diff", "plain": "plain-fallback", "clear": "", "invalidMessage": "invalid file editor kind"})
+        self.assertEqual(result["render"]["programmaticChange"], {"before": False, "inside": True, "returnValue": "ok", "after": False, "errorInside": True, "errorMessage": "boom", "afterError": False})
         self.assertEqual(result["render"]["restorePlanning"], {"skip": {"kind": "skip"}, "skipFrozen": True, "skipDirty": False, "restore": {"kind": "restore", "text": "body text"}, "restoreFrozen": True, "dirtyBeforeFinish": True, "dirtyAfterFinish": False})
         self.assertEqual(result["render"]["selectionMemory"], {"noSession": {"path": "", "line": None, "gitPath": False}, "history": {"path": "history.txt", "line": 3, "gitPath": False, "apiPath": ""}, "remembered": {"path": "src/app.py", "apiPath": "tok-1", "line": 12, "gitPath": True}})
         self.assertEqual(result["render"]["candidateRefreshSeq"], {"first": 1, "second": 2, "firstCurrent": True, "firstAfterSecond": False, "secondCurrent": True})

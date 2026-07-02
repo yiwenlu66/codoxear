@@ -7038,7 +7038,6 @@
         let fileEditor = null;
         let fileEditorModels = [];
         let fileEditorChangeDisposable = null;
-        let fileEditorProgrammaticChange = false;
         let fileUnsavedReturnFocusEl = null;
         let fileUnsavedResolver = null;
 
@@ -7281,7 +7280,7 @@
             } catch (_) {}
             fileEditorChangeDisposable = null;
           }
-          fileEditorProgrammaticChange = false;
+          fileViewerController.finishFileEditorProgrammaticChange();
           fileDiff.innerHTML = "";
           for (const model of fileEditorModels) {
             try {
@@ -7650,9 +7649,9 @@
             fileViewerController.finishFileEditorTextRestore();
             return;
           }
-          fileEditorProgrammaticChange = true;
-          model.setValue(restorePlan.text);
-          fileEditorProgrammaticChange = false;
+          fileViewerController.runFileEditorProgrammaticChange(() => {
+            model.setValue(restorePlan.text);
+          });
           fileViewerController.finishFileEditorTextRestore();
         }
 
@@ -7874,16 +7873,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             setFileEditorKind("file");
             fileEditorModels = [fileEditor.getModel()].filter(Boolean);
             fileEditorChangeDisposable = fileEditor.onDidChangeModelContent(() => {
-              if (fileEditorProgrammaticChange) return;
+              if (fileViewerController.isFileEditorProgrammaticChange()) return;
               if (currentFileTouchSelectMode()) resetFileTouchSelectionState();
               setFileDirty(getFileEditorText() !== String(currentActiveFileText() || ""));
             });
           } else {
             const model = fileEditor.getModel();
-            fileEditorProgrammaticChange = true;
-            monaco.editor.setModelLanguage(model, lang || "plaintext");
-            model.setValue(String(text || ""));
-            fileEditorProgrammaticChange = false;
+            fileViewerController.runFileEditorProgrammaticChange(() => {
+              monaco.editor.setModelLanguage(model, lang || "plaintext");
+              model.setValue(String(text || ""));
+            });
           }
           syncFileEditorReadOnly();
           const requestedLine = normalizeLineNumber(lineNumber);
