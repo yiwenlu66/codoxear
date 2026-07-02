@@ -560,6 +560,8 @@
       const codoxearFilePicker = window.CodoxearFilePicker;
       if (
         !codoxearFilePicker ||
+        typeof codoxearFilePicker.appendDraftFileMenuItem !== "function" ||
+        typeof codoxearFilePicker.appendFilePickerSection !== "function" ||
         typeof codoxearFilePicker.appendHighlightedFileMenuPath !== "function" ||
         typeof codoxearFilePicker.createMenuDomRuntime !== "function" ||
         typeof codoxearFilePicker.createMenuState !== "function" ||
@@ -8164,26 +8166,14 @@
         }
 
         function appendFilePickerSection(label) {
-          if (!label) return;
-          filePickerMenu.appendChild(el("div", { class: "fileMenuSection", role: "presentation", text: label }));
+          return codoxearFilePicker.appendFilePickerSection(filePickerMenu, label, { el });
         }
 
         function appendDraftFileMenuItem(path, idx, active) {
-          const btn = el("button", {
-            id: `filePickerOption-${idx}`,
-            class: "fileMenuItem fileMenuCreate" + (active ? " active" : ""),
-            type: "button",
-            role: "option",
-            "aria-selected": active ? "true" : "false",
-            title: path,
+          return codoxearFilePicker.appendDraftFileMenuItem(filePickerMenu, path, idx, active, {
+            el,
+            openDraftFilePath: (draftPath) => openDraftFilePathWithGuard(draftPath),
           });
-          btn.appendChild(el("span", { class: "fileMenuPath", text: `Create new file: ${path}` }));
-          btn.appendChild(el("span", { class: "fileMenuHint", text: "Creates only when you save" }));
-          btn.onmousedown = (e) => e.preventDefault();
-          btn.onclick = () => {
-            void openDraftFilePathWithGuard(path);
-          };
-          filePickerMenu.appendChild(btn);
         }
 
         function renderFilePickerMenu() {

@@ -109,6 +109,16 @@ def run_picker_module_probe() -> dict[str, object]:
         const plain = picker.appendHighlightedFileMenuPath(plainParent, "README.md", "", {{ el, createTextNode }});
         let highlightHostError = "";
         try {{ picker.appendHighlightedFileMenuPath(highlightParent, "x", "x", {{ el }}); }} catch (err) {{ highlightHostError = err && err.message ? err.message : String(err); }}
+        const menuParent = {{ children: [], appendChild(child) {{ this.children.push(child); return child; }} }};
+        const sectionResult = picker.appendFilePickerSection(menuParent, "Changed files", {{ el }});
+        const emptySectionResult = picker.appendFilePickerSection(menuParent, "", {{ el }});
+        const draftEvents = [];
+        const draftItem = picker.appendDraftFileMenuItem(menuParent, "draft/new.txt", 2, true, {{ el, openDraftFilePath: (path) => draftEvents.push(["openDraft", path]) }});
+        let draftPrevented = 0;
+        draftItem.onmousedown({{ preventDefault() {{ draftPrevented += 1; }} }});
+        draftItem.onclick();
+        let draftHostError = "";
+        try {{ picker.appendDraftFileMenuItem(menuParent, "x", 0, false, {{ el }}); }} catch (err) {{ draftHostError = err && err.message ? err.message : String(err); }}
         process.stdout.write(JSON.stringify({{
           frozen: Object.isFrozen(picker),
           exports: Object.keys(picker).sort(),
@@ -117,6 +127,7 @@ def run_picker_module_probe() -> dict[str, object]:
           menuHostError,
           domHostError,
           highlightHostError,
+          draftHostError,
           menuState: {{
             opened,
             selectionBeforeInput,
@@ -146,6 +157,14 @@ def run_picker_module_probe() -> dict[str, object]:
             plainText: plain.textContent,
             plainParentChildCount: plainParent.children.length,
           }},
+          menuRenderState: {{
+            sectionResult,
+            emptySectionResult,
+            parentChildren: menuParent.children.map((child) => [child.tag, child.attrs.class || "", child.attrs.text || "", child.attrs.id || "", child.attrs["aria-selected"] || ""]),
+            draftItemChildren: draftItem.children.map((child) => [child.tag, child.attrs.class || "", child.attrs.text || ""]),
+            draftPrevented,
+            draftEvents,
+          }},
         }}));
         """
     )
@@ -160,6 +179,8 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         self.assertEqual(
             result["exports"],
             [
+                "appendDraftFileMenuItem",
+                "appendFilePickerSection",
                 "appendHighlightedFileMenuPath",
                 "createMenuDomRuntime",
                 "createMenuState",
@@ -176,6 +197,7 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         self.assertIn("Codoxear file picker host missing normalizeLineNumber", result["menuHostError"])
         self.assertIn("Codoxear file picker host missing snapshot", result["domHostError"])
         self.assertIn("Codoxear file picker host missing createTextNode", result["highlightHostError"])
+        self.assertIn("Codoxear file picker host missing openDraftFilePath", result["draftHostError"])
 
     def test_file_picker_menu_state_behavior(self) -> None:
         result = run_picker_module_probe()["menuState"]
@@ -200,6 +222,21 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         self.assertEqual(result["highlightedChildren"], [["text", "src/"], ["mark", "fileMenuMatch", "foo"], ["text", "_bar.py"]])
         self.assertEqual(result["plainText"], "README.md")
         self.assertEqual(result["plainParentChildCount"], 1)
+
+    def test_file_picker_menu_render_helpers_behavior(self) -> None:
+        result = run_picker_module_probe()["menuRenderState"]
+        self.assertTrue(result["sectionResult"])
+        self.assertFalse(result["emptySectionResult"])
+        self.assertEqual(result["parentChildren"], [
+            ["div", "fileMenuSection", "Changed files", "", ""],
+            ["button", "fileMenuItem fileMenuCreate active", "", "filePickerOption-2", "true"],
+        ])
+        self.assertEqual(result["draftItemChildren"], [
+            ["span", "fileMenuPath", "Create new file: draft/new.txt"],
+            ["span", "fileMenuHint", "Creates only when you save"],
+        ])
+        self.assertEqual(result["draftPrevented"], 1)
+        self.assertEqual(result["draftEvents"], [["openDraft", "draft/new.txt"]])
 
     def test_file_picker_dom_runtime_behavior(self) -> None:
         result = run_picker_module_probe()["domState"]
@@ -230,6 +267,8 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         self.assertLess(index_source.index("app_file_picker.js"), index_source.index("app.js"))
         self.assertIn('"app_file_picker.js"', routes_source)
         self.assertIn("const codoxearFilePicker = window.CodoxearFilePicker;", app_source)
+        self.assertIn('typeof codoxearFilePicker.appendDraftFileMenuItem !== "function"', app_source)
+        self.assertIn('typeof codoxearFilePicker.appendFilePickerSection !== "function"', app_source)
         self.assertIn('typeof codoxearFilePicker.appendHighlightedFileMenuPath !== "function"', app_source)
         self.assertIn('typeof codoxearFilePicker.createMenuDomRuntime !== "function"', app_source)
         self.assertIn("const filePickerDomRuntime = codoxearFilePicker.createMenuDomRuntime", app_source)
@@ -238,6 +277,13 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         self.assertIn("return filePickerDomRuntime.close({ restoreInput, inputValue: activeFilePathValue() || \"\" });", app_source)
         self.assertNotIn("filePickerField.classList.toggle(\"active\", state.open);", app_source)
         self.assertIn("return codoxearFilePicker.appendHighlightedFileMenuPath(parent, text, query, {", app_source)
+        self.assertIn("return codoxearFilePicker.appendFilePickerSection(filePickerMenu, label, { el });", app_source)
+        self.assertIn("return codoxearFilePicker.appendDraftFileMenuItem(filePickerMenu, path, idx, active, {", app_source)
+        draft_start = app_source.index("function appendDraftFileMenuItem(path, idx, active)")
+        draft_end = app_source.index("function renderFilePickerMenu()", draft_start)
+        draft_block = app_source[draft_start:draft_end]
+        self.assertNotIn('filePickerMenu.appendChild(el("div", { class: "fileMenuSection"', app_source)
+        self.assertNotIn("btn.onmousedown = (e) => e.preventDefault();", draft_block)
         self.assertNotIn("filePickerMenuState.resetInputState();\n          filePickerInput.value = activeFilePathValue() || \"\";", app_source)
         self.assertNotIn("document.createTextNode(value.slice(cursor", app_source)
         self.assertIn('throw new Error("Codoxear file picker helpers failed to load")', app_source)

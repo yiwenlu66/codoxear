@@ -285,6 +285,36 @@
     return span;
   }
 
+  function appendFilePickerSection(parent, label, host = {}) {
+    if (!label) return false;
+    if (!parent || typeof parent.appendChild !== "function") throw new Error("Codoxear file picker host missing fileMenuParent");
+    const createEl = requireFunction(host, "el");
+    parent.appendChild(createEl("div", { class: "fileMenuSection", role: "presentation", text: label }));
+    return true;
+  }
+
+  function appendDraftFileMenuItem(parent, path, idx, active, host = {}) {
+    if (!parent || typeof parent.appendChild !== "function") throw new Error("Codoxear file picker host missing fileMenuParent");
+    const createEl = requireFunction(host, "el");
+    const openDraftFilePath = requireFunction(host, "openDraftFilePath");
+    const btn = createEl("button", {
+      id: `filePickerOption-${idx}`,
+      class: "fileMenuItem fileMenuCreate" + (active ? " active" : ""),
+      type: "button",
+      role: "option",
+      "aria-selected": active ? "true" : "false",
+      title: path,
+    });
+    btn.appendChild(createEl("span", { class: "fileMenuPath", text: `Create new file: ${path}` }));
+    btn.appendChild(createEl("span", { class: "fileMenuHint", text: "Creates only when you save" }));
+    btn.onmousedown = (e) => e.preventDefault();
+    btn.onclick = () => {
+      void openDraftFilePath(path);
+    };
+    parent.appendChild(btn);
+    return btn;
+  }
+
   function createMenuDomRuntime(options = {}) {
     const menuState = options.menuState || null;
     const field = requireClassToggleNode(options.field, "filePickerField");
@@ -546,6 +576,8 @@
   }
 
   window.CodoxearFilePicker = Object.freeze({
+    appendDraftFileMenuItem,
+    appendFilePickerSection,
     appendHighlightedFileMenuPath,
     createMenuDomRuntime,
     createMenuState,
