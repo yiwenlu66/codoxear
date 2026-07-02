@@ -10,7 +10,7 @@ APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
 
 def eval_file_picker_session_helpers() -> dict[str, object]:
     source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function currentFileSessionId() {")
+    start = source.index("function currentFileViewerSessionId() {")
     end = source.index("function extToEditorLang(p) {", start)
     snippet = source[start:end]
     js = textwrap.dedent(
@@ -21,6 +21,7 @@ def eval_file_picker_session_helpers() -> dict[str, object]:
           fileViewerSessionId: "session-a",
           identity: {{ path: "file-a.py", apiPath: "token-a", gitPath: true, line: 7 }},
           fileViewerController: {{
+            currentFileViewerSessionId: () => String(ctx.fileViewerSessionId || "").trim(),
             currentActiveFileIdentity: () => ({{ path: ctx.identity.path, apiPath: ctx.identity.apiPath, gitPath: ctx.identity.gitPath }}),
             currentActiveFileLine: () => ctx.identity.line,
             nextActiveFileIdentity: (current, nextPath, opts = {{}}) => ({{ path: String(nextPath ?? ""), gitPath: Boolean(opts.gitPath ?? current.gitPath), apiPath: String(opts.apiPath ?? current.apiPath ?? "") }}),

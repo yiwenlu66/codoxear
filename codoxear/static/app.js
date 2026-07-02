@@ -4435,7 +4435,7 @@
           updateUnattendedBtnState();
           if (isFileViewerOpen() && !currentFileDirty() && !fileViewerSyncStarted) {
             void ensureCurrentFileViewerSession();
-          } else if (isFileViewerOpen() && !currentFileDirty() && fileViewerSessionId === sessionId) {
+          } else if (isFileViewerOpen() && !currentFileDirty() && currentFileViewerSessionId() === sessionId) {
             void refreshFileCandidates({ sessionId }).catch((e) => console.error("file candidates refresh failed after transcript load", e));
           }
           return data;
@@ -7016,7 +7016,6 @@
         };
         const FILE_CANDIDATE_CACHE_TTL_MS = 15000;
         let fileViewerReturnFocusEl = null;
-        let fileViewerSessionId = "";
         let fileMenuOpen = false;
         let fileMenuFocus = -1;
         let filePickerSearchActive = false;
@@ -7026,7 +7025,7 @@
         let filePickerSuppressDraftQuery = "";
         const filePickerSearchState = codoxearFilePicker.createSearchState({
           blocked: () => blockUnavailableFileAction(),
-          currentSessionId: () => fileViewerSessionId || selected || "",
+          currentSessionId: () => currentFileViewerSessionId() || selected || "",
           api,
           inputValue: () => filePickerInput.value,
           isMenuOpen: () => fileMenuOpen,
@@ -7047,8 +7046,12 @@
         let fileUnsavedReturnFocusEl = null;
         let fileUnsavedResolver = null;
 
+        function currentFileViewerSessionId() {
+          return fileViewerController.currentFileViewerSessionId();
+        }
+
         function currentFileSessionId() {
-          return String(fileViewerSessionId || selected || "").trim();
+          return String(currentFileViewerSessionId() || selected || "").trim();
         }
 
         function isFileViewerSessionUnavailable() {
@@ -7117,7 +7120,7 @@
           const sid = String(sessionId || "").trim();
           return Boolean(
             isFileViewerSelectionCurrent(sid, token) &&
-              String(fileViewerSessionId || "").trim() === sid
+              currentFileViewerSessionId() === sid
           );
         }
 
@@ -7225,17 +7228,17 @@
           if (!isFileViewerOpen()) return true;
           const sid = String(selected || "").trim();
           if (!sid) return false;
-          if (fileViewerSessionId === sid) return true;
+          if (currentFileViewerSessionId() === sid) return true;
           const syncToken = fileViewerController.beginFileViewerSessionSync();
           if (!(await maybeHandleUnsavedFileChanges())) return false;
           if (!isFileViewerSelectionCurrent(sid, syncToken)) return false;
           cancelPendingFileOpen();
-          rememberActiveFileSelection(fileViewerSessionId);
-          fileViewerSessionId = sid;
+          rememberActiveFileSelection(currentFileViewerSessionId());
+          fileViewerController.setFileViewerSessionId(sid);
           fileViewerController.clearFileViewerUnavailableSession();
-          if (filePickerSearchSnapshot().sessionId !== fileViewerSessionId) {
+          if (filePickerSearchSnapshot().sessionId !== currentFileViewerSessionId()) {
             resetFileSearchState();
-            filePickerSearchState.setSessionId(fileViewerSessionId);
+            filePickerSearchState.setSessionId(currentFileViewerSessionId());
           }
           await refreshFileCandidates({ sessionId: sid, syncToken });
           if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
@@ -8001,7 +8004,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           setFileRenderSurface("diff");
           const preview = el("div", {
             class: "md fileMarkdownPreview",
-            html: markdownPreviewHtml(String(text || ""), { filePath: rel, sessionId: fileViewerSessionId || selected || "" }),
+            html: markdownPreviewHtml(String(text || ""), { filePath: rel, sessionId: currentFileViewerSessionId() || selected || "" }),
           });
           fileDiff.appendChild(preview);
           void upgradeCandidateFileRefs(preview);
@@ -8205,7 +8208,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileStatus,
           fileEditButton: fileEditBtn,
           iconSvg,
-          currentSessionId: () => fileViewerSessionId,
+          currentSessionId: () => currentFileViewerSessionId(),
           currentFileSessionId: () => currentFileSessionId(),
           normalizeLineNumber,
           normalizeFileApiPath,
@@ -8477,7 +8480,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function inspectSessionFilePath(path, { gitPath = false, apiPath = "" } = {}) {
-          const sid = fileViewerSessionId || selected || "";
+          const sid = currentFileViewerSessionId() || selected || "";
           if (!sid) throw new Error("select a session first");
           try {
             const body = { session_id: sid, path };
@@ -8534,7 +8537,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function rememberOpenedFile(relPath, absPath = null) {
           const raw = String(relPath ?? "");
-          const sid = fileViewerSessionId || selected || "";
+          const sid = currentFileViewerSessionId() || selected || "";
           const rel = sessionRelativePath(raw, sid) || raw;
           if (!rel) return;
           const identity = currentActiveFileIdentity();
@@ -9035,7 +9038,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         async function refreshFileCandidates({ force = false, sessionId = null, syncToken = null } = {}) {
           if (!sessionId && blockUnavailableFileAction()) return;
-          const sid = String(sessionId || fileViewerSessionId || selected || "").trim();
+          const sid = String(sessionId || currentFileViewerSessionId() || selected || "").trim();
           const requestSeq = fileViewerController.beginFileCandidateRefresh();
           const current = () => fileViewerController.isCurrentFileCandidateRefresh(requestSeq) && (!sessionId || isFileViewerSessionCurrent(sid, syncToken));
           if (!sid) {
@@ -9147,14 +9150,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             focusModalCloseButton(fileViewer, fileCloseBtn);
           }
           updateFileTouchToolbar();
-          rememberActiveFileSelection(fileViewerSessionId);
+          rememberActiveFileSelection(currentFileViewerSessionId());
           const sid = String(selected || "").trim();
           const syncToken = fileViewerController.beginFileViewerSessionSync();
-          fileViewerSessionId = sid;
+          fileViewerController.setFileViewerSessionId(sid);
           fileViewerController.clearFileViewerUnavailableSession();
-          if (filePickerSearchSnapshot().sessionId !== fileViewerSessionId) {
+          if (filePickerSearchSnapshot().sessionId !== currentFileViewerSessionId()) {
             resetFileSearchState();
-            filePickerSearchState.setSessionId(fileViewerSessionId);
+            filePickerSearchState.setSessionId(currentFileViewerSessionId());
           }
           if (mode === "file" || mode === "diff" || mode === "preview") setFileViewMode(mode);
           else applyFileMode();
@@ -9201,7 +9204,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           filePickerSearchState.setSessionId("");
           fileBackdrop.style.display = "none";
           fileViewer.style.display = "none";
-          fileViewerSessionId = "";
+          fileViewerController.clearFileViewerSessionId();
           fileViewerController.clearFileViewerUnavailableSession();
           clearActiveFileIdentity();
           updateFileTouchToolbar();
@@ -9334,9 +9337,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           renderFilePickerMenu();
           fileMenuOpen = true;
           applyFileMenuState();
-          if (!query || !(fileViewerSessionId || selected)) {
+          if (!query || !(currentFileViewerSessionId() || selected)) {
             resetFileSearchState();
-            filePickerSearchState.setSessionId(fileViewerSessionId || selected || "");
+            filePickerSearchState.setSessionId(currentFileViewerSessionId() || selected || "");
             renderFilePickerMenu();
             applyFileMenuState();
             return;

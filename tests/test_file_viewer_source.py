@@ -47,6 +47,9 @@ def controller_identity_ctx_js(
               return Object.freeze({{ path: String(ctx.identity.path ?? ""), gitPath: Boolean(ctx.identity.gitPath), apiPath: String(ctx.identity.apiPath || "") }});
             }},
             currentActiveFileLine() {{ return ctx.identity.line; }},
+            currentFileViewerSessionId() {{ return String(ctx.fileViewerSessionId || "").trim(); }},
+            setFileViewerSessionId(sid) {{ ctx.fileViewerSessionId = String(sid || "").trim(); return ctx.fileViewerSessionId; }},
+            clearFileViewerSessionId() {{ ctx.fileViewerSessionId = ""; }},
             isFileViewerSessionUnavailable() {{ return Boolean(ctx.fileViewerUnavailableSessionId && ctx.fileViewerSessionId && ctx.fileViewerUnavailableSessionId === ctx.fileViewerSessionId); }},
             clearFileViewerUnavailableSession() {{ ctx.fileViewerUnavailableSessionId = ""; }},
             beginFileViewerSessionSync() {{ ctx.fileViewerSessionSyncToken += 1; return ctx.fileViewerSessionSyncToken; }},
@@ -1698,7 +1701,7 @@ def eval_file_open_request_sequence() -> dict:
 
 def eval_file_viewer_session_sync_race() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function currentFileSessionId() {")
+    start = source.index("function currentFileViewerSessionId() {")
     end = source.index("function extToEditorLang", start)
     snippet = source[start:end]
     js = textwrap.dedent(
@@ -4602,7 +4605,11 @@ class TestFileViewerSource(unittest.TestCase):
         controller_start = source.index("const fileViewerController = codoxearFileViewer.createFileViewerController")
         controller_end = source.index("function beginActiveFileSaveRequest", controller_start)
         controller_block = source[controller_start:controller_end]
-        self.assertIn("currentSessionId: () => fileViewerSessionId", controller_block)
+        self.assertNotIn("let fileViewerSessionId = \"\";", source)
+        self.assertIn("let fileViewerSessionId = \"\";", viewer_source)
+        self.assertIn("function currentFileViewerSessionId()", source)
+        self.assertIn("return fileViewerController.currentFileViewerSessionId();", source)
+        self.assertIn("currentSessionId: () => currentFileViewerSessionId()", controller_block)
         self.assertIn("currentFileSessionId: () => currentFileSessionId()", controller_block)
         self.assertIn("normalizeLineNumber", controller_block)
         self.assertIn("normalizeFileApiPath", controller_block)

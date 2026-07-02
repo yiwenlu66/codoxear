@@ -85,6 +85,7 @@
     let activeSaveConflict = null;
     let fileOpenRequestId = 0;
     let fileOpenAbortController = null;
+    let fileViewerSessionId = "";
     let fileViewerSessionSyncToken = 0;
     let fileCandidateRequestSeq = 0;
     let fileCandidateList = [];
@@ -407,6 +408,19 @@
         return Object.freeze({ kind: "path", source: "first", path: first.path, line: null, changed: Boolean(first.changed), gitPath: Boolean(first.gitPath), apiPath: normalizeFileApiPath(first.apiPath) });
       }
       return Object.freeze({ kind: "none" });
+    }
+
+    function currentFileViewerSessionId() {
+      return normalizeSessionId(fileViewerSessionId);
+    }
+
+    function setFileViewerSessionId(sessionId) {
+      fileViewerSessionId = normalizeSessionId(sessionId);
+      return fileViewerSessionId;
+    }
+
+    function clearFileViewerSessionId() {
+      fileViewerSessionId = "";
     }
 
     function beginFileViewerSessionSync() {
@@ -1765,6 +1779,9 @@
       pickerEntryForKey,
       pickerEntryForPath,
       resolveFileViewerOpenTarget,
+      currentFileViewerSessionId,
+      setFileViewerSessionId,
+      clearFileViewerSessionId,
       beginFileViewerSessionSync,
       invalidateFileViewerSessionSync,
       isCurrentFileViewerSessionSync,
