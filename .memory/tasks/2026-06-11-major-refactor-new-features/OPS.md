@@ -7544,3 +7544,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: PDF page rendering belongs to `app_file_viewer.js`. App still owns file-load plan dispatch/status text, selected-session/current request orchestration, fallback callbacks, file-picker menu DOM, and global event binding.
+
+## 2026-07-02T19:37:00Z File-picker menu chrome picker-module ownership
+- Functional commit `798e136 Move file picker menu chrome into picker module` moved file-picker menu chrome/input DOM application from inline `codoxear/static/app.js` into `codoxear/static/app_file_picker.js` as `createMenuDomRuntime(...)`.
+- Mechanism: `app_file_picker.js` already owns file-picker menu state and search state. Applying that state to the picker field/menu/input DOM (`active`/`open` classes, `aria-expanded`, active-descendant removal), resetting the input to the active file path, and closing the menu with optional input restore are DOM representations of the same picker state, so they now live beside the state owner. `app.js` retains wrapper functions and supplies the active file path value.
+- Tests updated: executable picker module coverage now exercises open-state DOM application, input reset, close-with-restore, frozen runtime export, missing menu-state dependency failure, export list, app load guard, and source sentinels rejecting restored app-owned menu class/input reset mutations.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_picker_module_source.py tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_picker.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_picker_module_source.py tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py` returned `73 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `245 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1303 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: file-picker menu chrome/input state application belongs to `app_file_picker.js`. App still owns file-picker menu item rendering, candidate gathering/scoring context, file-open side effects, and global focus/keyboard event wiring.
