@@ -705,7 +705,63 @@
       return true;
     }
 
-    return Object.freeze({ hide });
+    function ensureSessionDeps() {
+      return {
+        isFileViewerOpen: requireFunction(options.isFileViewerOpen, "isFileViewerOpen"),
+        selectedSessionId: requireFunction(options.selectedSessionId, "selectedSessionId"),
+        maybeHandleUnsavedFileChanges: requireFunction(options.maybeHandleUnsavedFileChanges, "maybeHandleUnsavedFileChanges"),
+        isSelectionCurrent: requireFunction(options.isSelectionCurrent, "isSelectionCurrent"),
+        isSessionCurrent: requireFunction(options.isSessionCurrent, "isSessionCurrent"),
+        filePickerSearchSessionId: requireFunction(options.filePickerSearchSessionId, "filePickerSearchSessionId"),
+        refreshFileCandidates: requireFunction(options.refreshFileCandidates, "refreshFileCandidates"),
+        setFilePath: requireFunction(options.setFilePath, "setFilePath"),
+        openFilePathWithResolvedMode: requireFunction(options.openFilePathWithResolvedMode, "openFilePathWithResolvedMode"),
+        renderEmptyFileViewerTarget: requireFunction(options.renderEmptyFileViewerTarget, "renderEmptyFileViewerTarget"),
+        setStatus: requireFunction(options.setStatus, "setStatus"),
+      };
+    }
+
+    async function ensureCurrentSession() {
+      const deps = ensureSessionDeps();
+      if (!deps.isFileViewerOpen()) return true;
+      const sid = String(deps.selectedSessionId() || "").trim();
+      if (!sid) return false;
+      const currentViewerSessionId = requireFunction(controller.currentFileViewerSessionId, "controller.currentFileViewerSessionId").bind(controller);
+      if (currentViewerSessionId() === sid) return true;
+      const beginSessionSync = requireFunction(controller.beginFileViewerSessionSync, "controller.beginFileViewerSessionSync").bind(controller);
+      const setViewerSessionId = requireFunction(controller.setFileViewerSessionId, "controller.setFileViewerSessionId").bind(controller);
+      const clearUnavailable = requireFunction(controller.clearFileViewerUnavailableSession, "controller.clearFileViewerUnavailableSession").bind(controller);
+      const resolveOpenTarget = requireFunction(controller.resolveFileViewerOpenTarget, "controller.resolveFileViewerOpenTarget").bind(controller);
+      const syncToken = beginSessionSync();
+      if (!(await deps.maybeHandleUnsavedFileChanges())) return false;
+      if (!deps.isSelectionCurrent(sid, syncToken)) return false;
+      cancelPendingFileOpen();
+      rememberActiveFileSelection(currentViewerSessionId());
+      setViewerSessionId(sid);
+      clearUnavailable();
+      if (deps.filePickerSearchSessionId() !== currentViewerSessionId()) {
+        resetFileSearchState();
+        setFileSearchSessionId(currentViewerSessionId());
+      }
+      await deps.refreshFileCandidates({ sessionId: sid, syncToken });
+      if (!deps.isSessionCurrent(sid, syncToken)) return false;
+      const target = resolveOpenTarget({ sessionId: sid });
+      if (target.kind === "path") {
+        deps.setFilePath(target.path, { line: target.line, gitPath: target.gitPath, apiPath: target.apiPath });
+        try {
+          await deps.openFilePathWithResolvedMode(target.path, { line: target.line, changed: target.changed, gitPath: target.gitPath, apiPath: target.apiPath, isCurrent: () => deps.isSessionCurrent(sid, syncToken) });
+        } catch (error) {
+          if (!deps.isSessionCurrent(sid, syncToken)) return false;
+          deps.setStatus(`error: ${error && error.message ? error.message : "unable to inspect path"}`);
+        }
+        return deps.isSessionCurrent(sid, syncToken);
+      }
+      if (!deps.isSessionCurrent(sid, syncToken)) return false;
+      deps.renderEmptyFileViewerTarget({ updateTouchToolbar: true });
+      return true;
+    }
+
+    return Object.freeze({ ensureCurrentSession, hide });
   }
 
   function createFileCandidateRefreshRuntime(options = {}) {

@@ -1739,80 +1739,70 @@ def eval_file_open_request_sequence() -> dict:
 
 
 def eval_file_viewer_session_sync_race() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function currentFileViewerSessionId() {")
-    end = source.index("function disposeFileEditor()", start)
-    snippet = source[start:end]
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
         let resolveUnsaved;
         const calls = [];
-        const ctx = {{
+        const state = {{
           selected: "sid-b",
-          fileViewerSessionId: "sid-a",
-{controller_identity_ctx_js("old.txt", "", False, 1)}
-          fileSearchSessionId: "sid-a",
-          fileCandidateList: ["candidate.txt"],
-          fileViewerSessionSyncToken: 0,
-          fileStatus: {{ textContent: "" }},
-          fileOpenAbortController: null,
-          isFileViewerOpen: () => true,
-          maybeHandleUnsavedFileChanges: () => new Promise((resolve) => {{ resolveUnsaved = resolve; }}),
-          disposePdfRender: () => calls.push("disposePdfRender"),
+          viewerSessionId: "sid-a",
+          searchSessionId: "sid-a",
+          syncToken: 0,
+          identity: {{ path: "old.txt", apiPath: "", gitPath: false, line: 1 }},
+          status: "",
+        }};
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(display_source)}, ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const runtime = ctx.window.CodoxearFileViewer.createFileViewerLifecycleRuntime({{
+          controller: {{
+            invalidateFileViewerSessionSync() {{ state.syncToken += 1; calls.push(["invalidate", state.syncToken]); return state.syncToken; }},
+            cancelPendingFileOpen() {{ calls.push("cancelPendingFileOpen"); }},
+            rememberActiveFileSelection(sessionId) {{ calls.push(["rememberActiveFileSelection", sessionId]); }},
+            clearFileViewerSessionId() {{ state.viewerSessionId = ""; }},
+            clearFileViewerUnavailableSession() {{}},
+            clearActiveFileIdentity() {{ state.identity = {{ path: "", apiPath: "", gitPath: false, line: null }}; }},
+            currentFileViewerSessionId() {{ return state.viewerSessionId; }},
+            beginFileViewerSessionSync() {{ state.syncToken += 1; calls.push(["beginSync", state.syncToken]); return state.syncToken; }},
+            setFileViewerSessionId(sessionId) {{ state.viewerSessionId = String(sessionId || ""); calls.push(["setSession", state.viewerSessionId]); return state.viewerSessionId; }},
+            resolveFileViewerOpenTarget() {{ calls.push("resolveTarget"); return {{ kind: "path", path: "preferred.txt", line: 9, changed: false, gitPath: false, apiPath: "" }}; }},
+          }},
+          beginHide: () => ({{}}),
+          hideDisplay: () => {{}},
+          finishHide: () => {{}},
+          hideFileUnsavedDialog: () => {{}},
+          hideFilePasteDialog: () => {{}},
+          resetFileViewerPanel: () => calls.push("resetFileViewerPanel"),
+          closeFilePickerMenu: () => {{}},
           resetFileSearchState: () => calls.push("resetFileSearchState"),
-          refreshFileCandidates: async () => calls.push("refreshFileCandidates"),
-          preferredFileSelectionForSession: () => ({{ path: "preferred.txt", line: 9 }}),
+          setFileSearchSessionId: (sessionId) => {{ state.searchSessionId = sessionId; calls.push(["setSearchSession", sessionId]); }},
+          updateFileTouchToolbar: () => {{}},
+          isFileViewerOpen: () => true,
+          selectedSessionId: () => state.selected,
+          maybeHandleUnsavedFileChanges: () => new Promise((resolve) => {{ resolveUnsaved = resolve; }}),
+          isSelectionCurrent: (sessionId, syncToken) => state.selected === sessionId && state.syncToken === syncToken,
+          isSessionCurrent: (sessionId, syncToken) => state.selected === sessionId && state.viewerSessionId === sessionId && state.syncToken === syncToken,
+          filePickerSearchSessionId: () => state.searchSessionId,
+          refreshFileCandidates: async (options) => calls.push(["refreshFileCandidates", options]),
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
           openFilePathWithResolvedMode: async (...args) => calls.push(["openFilePathWithResolvedMode", ...args]),
-          resetFileViewerPanel: () => calls.push("resetFileViewerPanel"),
-          resetFilePickerInput: () => calls.push("resetFilePickerInput"),
-          renderFilePickerMenu: () => calls.push("renderFilePickerMenu"),
-          updateFileTouchToolbar: () => calls.push("updateFileTouchToolbar"),
-          currentFileTouchSelectMode: () => false,
-          useTouchFileEditorControls: () => false,
-          hasActiveFileCodeEditor: () => false,
-          hasBlockingFileEditorModal: () => false,
-          isTextEntryTarget: () => false,
-          eventTargetElement: (value) => value || null,
-          normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
-          applyFileEditorSelection: () => {{}},
-          isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
-          positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
-          fileEditorEditSupportAvailable: () => true,
-          updateFileDiffEditorOptions: () => {{}},
-          showFilePasteDialog: () => false,
-          hideFilePasteDialog: () => {{}},
-          clipboardReadAvailable: () => false,
-          readClipboardText: async () => "",
-          resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
-          moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
-          fileEditorDeleteCommandForKey: () => "",
-          isActiveFileEditorInput: () => false,
-          getActiveFileSelectionText: () => "",
-          copyToClipboard: async () => {{}},
-          focusActiveFileCodeEditor: () => null,
-          nowMs: () => 0,
-          setToast: (message) => calls.push(["toast", message]),
-          normalizeLineNumber: (value) => value == null ? null : Number(value),
-          AbortController: class {{
-            constructor() {{ this.signal = {{ aborted: false }}; }}
-            abort() {{ this.signal.aborted = true; }}
-          }},
-          console,
-        }};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = { ensureCurrentFileViewerSession };\n")}, ctx);
-        const promise = ctx.__test.ensureCurrentFileViewerSession();
-        ctx.selected = "sid-c";
+          renderEmptyFileViewerTarget: (options) => calls.push(["renderEmptyFileViewerTarget", options]),
+          setStatus: (status) => {{ state.status = status; }},
+        }});
+        const promise = runtime.ensureCurrentSession();
+        state.selected = "sid-c";
         resolveUnsaved(true);
         promise.then((result) => {{
           process.stdout.write(JSON.stringify({{
             result,
-            selected: ctx.selected,
-            fileViewerSessionId: ctx.fileViewerSessionId,
+            selected: state.selected,
+            fileViewerSessionId: state.viewerSessionId,
             calls,
-            status: ctx.fileStatus.textContent,
+            status: state.status,
           }}));
         }}).catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """
@@ -3590,15 +3580,20 @@ class TestFileViewerSource(unittest.TestCase):
         ensure_start = source.index("async function ensureCurrentFileViewerSession()")
         ensure_end = source.index("function disposeFileEditor()", ensure_start)
         ensure_block = source[ensure_start:ensure_end]
-        self.assertIn("const syncToken = fileViewerController.beginFileViewerSessionSync();", ensure_block)
-        self.assertIn("if (!isFileViewerSelectionCurrent(sid, syncToken)) return false;", ensure_block)
-        self.assertIn("await refreshFileCandidates({ sessionId: sid, syncToken });", ensure_block)
-        self.assertIn("if (!isFileViewerSessionCurrent(sid, syncToken)) return false;", ensure_block)
-        self.assertIn("const target = resolveFileViewerOpenTarget({ sessionId: sid });", ensure_block)
-        self.assertIn("setFilePath(target.path, { line: target.line, gitPath: target.gitPath, apiPath: target.apiPath });", ensure_block)
-        self.assertIn("await openFilePathWithResolvedMode(target.path, { line: target.line, changed: target.changed, gitPath: target.gitPath, apiPath: target.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) });", ensure_block)
-        self.assertIn("renderEmptyFileViewerTarget({ updateTouchToolbar: true });", ensure_block)
-        self.assertNotIn("const first = firstKey ? fileEntryMap.get(firstKey) : null;", ensure_block)
+        lifecycle_start = viewer_source.index("function createFileViewerLifecycleRuntime(options = {})")
+        lifecycle_end = viewer_source.index("function createFileCandidateRefreshRuntime", lifecycle_start)
+        lifecycle_block = viewer_source[lifecycle_start:lifecycle_end]
+        self.assertIn("return await fileViewerLifecycleRuntime.ensureCurrentSession();", ensure_block)
+        self.assertNotIn("const syncToken = fileViewerController.beginFileViewerSessionSync();", ensure_block)
+        self.assertIn("const syncToken = beginSessionSync();", lifecycle_block)
+        self.assertIn("if (!deps.isSelectionCurrent(sid, syncToken)) return false;", lifecycle_block)
+        self.assertIn("await deps.refreshFileCandidates({ sessionId: sid, syncToken });", lifecycle_block)
+        self.assertIn("if (!deps.isSessionCurrent(sid, syncToken)) return false;", lifecycle_block)
+        self.assertIn("const target = resolveOpenTarget({ sessionId: sid });", lifecycle_block)
+        self.assertIn("deps.setFilePath(target.path, { line: target.line, gitPath: target.gitPath, apiPath: target.apiPath });", lifecycle_block)
+        self.assertIn("await deps.openFilePathWithResolvedMode(target.path, { line: target.line, changed: target.changed, gitPath: target.gitPath, apiPath: target.apiPath, isCurrent: () => deps.isSessionCurrent(sid, syncToken) });", lifecycle_block)
+        self.assertIn("deps.renderEmptyFileViewerTarget({ updateTouchToolbar: true });", lifecycle_block)
+        self.assertNotIn("const first = firstKey ? fileEntryMap.get(firstKey) : null;", lifecycle_block)
         refresh_start = source.index("async function refreshFileCandidates(")
         refresh_end = source.index("async function showFileViewer", refresh_start)
         refresh_block = source[refresh_start:refresh_end]

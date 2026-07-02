@@ -7378,37 +7378,7 @@
         }
 
         async function ensureCurrentFileViewerSession() {
-          if (!isFileViewerOpen()) return true;
-          const sid = String(selected || "").trim();
-          if (!sid) return false;
-          if (currentFileViewerSessionId() === sid) return true;
-          const syncToken = fileViewerController.beginFileViewerSessionSync();
-          if (!(await maybeHandleUnsavedFileChanges())) return false;
-          if (!isFileViewerSelectionCurrent(sid, syncToken)) return false;
-          cancelPendingFileOpen();
-          rememberActiveFileSelection(currentFileViewerSessionId());
-          fileViewerController.setFileViewerSessionId(sid);
-          fileViewerController.clearFileViewerUnavailableSession();
-          if (filePickerSearchSnapshot().sessionId !== currentFileViewerSessionId()) {
-            resetFileSearchState();
-            filePickerSearchState.setSessionId(currentFileViewerSessionId());
-          }
-          await refreshFileCandidates({ sessionId: sid, syncToken });
-          if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
-          const target = resolveFileViewerOpenTarget({ sessionId: sid });
-          if (target.kind === "path") {
-            setFilePath(target.path, { line: target.line, gitPath: target.gitPath, apiPath: target.apiPath });
-            try {
-              await openFilePathWithResolvedMode(target.path, { line: target.line, changed: target.changed, gitPath: target.gitPath, apiPath: target.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) });
-            } catch (e) {
-              if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
-              fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
-            }
-            return isFileViewerSessionCurrent(sid, syncToken);
-          }
-          if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
-          renderEmptyFileViewerTarget({ updateTouchToolbar: true });
-          return true;
+          return await fileViewerLifecycleRuntime.ensureCurrentSession();
         }
 
         function disposeFileEditor() {
@@ -7747,6 +7717,19 @@
           resetFileSearchState: () => resetFileSearchState(),
           setFileSearchSessionId: (sessionId) => filePickerSearchState.setSessionId(sessionId),
           updateFileTouchToolbar: () => updateFileTouchToolbar(),
+          isFileViewerOpen: () => isFileViewerOpen(),
+          selectedSessionId: () => selected,
+          maybeHandleUnsavedFileChanges: () => maybeHandleUnsavedFileChanges(),
+          isSelectionCurrent: (sessionId, syncToken) => isFileViewerSelectionCurrent(sessionId, syncToken),
+          isSessionCurrent: (sessionId, syncToken) => isFileViewerSessionCurrent(sessionId, syncToken),
+          filePickerSearchSessionId: () => filePickerSearchSnapshot().sessionId,
+          refreshFileCandidates: (options) => refreshFileCandidates(options),
+          setFilePath: (path, options) => setFilePath(path, options),
+          openFilePathWithResolvedMode: (path, options) => openFilePathWithResolvedMode(path, options),
+          renderEmptyFileViewerTarget: (options) => renderEmptyFileViewerTarget(options),
+          setStatus: (status) => {
+            fileStatus.textContent = status;
+          },
         });
         const fileLoadResultRuntime = codoxearFileViewer.createFileLoadResultRuntime({
           controller: fileViewerController,
