@@ -7220,3 +7220,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: shortcut-blocking policy belongs to the file-viewer controller. App still owns raw modal DOM state, the list of isolation targets, general text-entry classification from `app_viewport.js`, and active editor input observation through `app_file_editor.js`.
+
+## 2026-07-02T10:42:00Z Monaco editor creation runtime ownership
+- Functional commit `52c70a9 Move Monaco editor creation into editor runtime` moved Monaco language mapping, file-editor creation options, diff-editor creation options, side-editor options, model/change-disposable wiring, model-language/text replacement, and initial file/diff line positioning from inline `codoxear/static/app.js` into `codoxear/static/app_file_editor.js`.
+- Mechanism: `app_file_editor.js` already owns current editor/model/disposable identity, Monaco loading, layout/line focus, selection helpers, and active-input identity. Monaco construction options and first-positioning mechanics are part of that same runtime: they determine editor semantics, suggestion suppression, diff display defaults, model ownership, and which editor(s) are positioned after render. `app.js` now owns only the render orchestration decisions, fallback handling, currentness checks, dirty callback body, and delayed focus scheduling; it delegates creation/update/positioning through `createFileEditor`, `updateFileEditorText`, `createDiffEditor`, and `positionCurrentEditorAtLine`.
+- Tests updated: `tests/test_frontend_file_editor_module_source.py` now executes file-editor creation, change-listener binding, language inference (`.py`), read-only/suggestion option projection, line positioning, programmatic markdown model update, diff model creation (`.ts`), diff option projection, side-editor option projection, and diff initial positioning. File-viewer source tests now assert suggestion suppression and initial positioning in `app_file_editor.js`, not app-owned Monaco construction blocks.
+- Negative evidence preserved: first focused validation after the move failed two source assertions that still expected suggestion options and `normalizeLineNumber` initial positioning inside app.js. Those were stale ownership assertions; executable runtime probes now cover the moved behavior.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_editor_module_source.py tests/test_file_viewer_source.py tests/test_file_picker_session_state.py` passed.
+  - `node --check codoxear/static/app_file_editor.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_editor_module_source.py tests/test_file_viewer_source.py tests/test_file_picker_session_state.py` returned `50 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `236 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1294 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: editor runtime now owns Monaco editor construction, option policy, model registration, change-disposable registration, text/language replacement, and initial positioning. App still owns render request currentness, Monaco loader invocation, plain fallback decisions, dirty-state callback semantics, delayed focus scheduling, DOM host/surface selection, and file-viewer status/mode side effects.
