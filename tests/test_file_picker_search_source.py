@@ -1199,9 +1199,10 @@ class TestFilePickerSearchSource(unittest.TestCase):
         app_block = source[app_start:app_end]
         self.assertIn("return codoxearFilePicker.appendHighlightedFileMenuPath(parent, text, query, {", app_block)
         self.assertNotIn("document.createTextNode(value.slice(cursor", app_block)
-        self.assertIn("appendHighlightedFileMenuPath(btn, path, query);", source)
-        self.assertIn("appendHighlightedFileMenuPath(btn, `Create new file: ${path}`, query);", source)
-        self.assertIn("title: filePickerTitle(entry, identityHint)", source)
+        self.assertIn("appendHighlightedFileMenuPath(btn, path, query, host);", picker_source)
+        self.assertIn("appendHighlightedFileMenuPath(btn, `Create new file: ${path}`, query, host);", picker_source)
+        self.assertIn("filePickerTitle(entry, identityHint)", source)
+        self.assertIn("title,", picker_source)
         self.assertIn(".fileMenuMatch", css)
 
     def test_file_picker_candidate_sections_and_cache_are_present(self) -> None:
@@ -1221,7 +1222,7 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertIn("const FILE_CANDIDATE_CACHE_TTL_MS = 15000;", source)
         self.assertIn("fileCandidateCache.set(sid, { key, ts: Number(now || 0), entries: currentFileCandidateEntries() });", viewer_source)
         self.assertIn("fileViewerController.deleteFileCandidateCache(sid);", source)
-        self.assertIn("openFilePathWithResolvedMode(path, { line: filePickerSelectionLine(), changed: Boolean(entry.changed), gitPath: Boolean(entry.gitPath), apiPath: entry.apiPath })", source)
+        self.assertIn("openFilePathWithResolvedMode(selectedEntry.path, { line: filePickerSelectionLine(), changed: Boolean(selectedEntry.changed), gitPath: Boolean(selectedEntry.gitPath), apiPath: selectedEntry.apiPath })", source)
         self.assertIn("openFilePathWithResolvedMode(active.path, { line: filePickerSelectionLine(), changed: Boolean(active.changed), gitPath: Boolean(active.gitPath), apiPath: active.apiPath })", source)
         self.assertIn("compareFilePickerEntries", source)
         self.assertIn("filePickerMenuState = codoxearFilePicker.createMenuState", source)
@@ -1252,8 +1253,8 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertIn("function filePickerIdentityHint(entry, duplicatePaths, options)", source)
         self.assertIn("function duplicateFilePickerPaths(entries)", source)
         self.assertNotIn('"aria-label": filePickerTitle(entry, identityHint)', source)
-        self.assertIn("title: filePickerTitle(entry, identityHint)", source)
-        self.assertIn("fileMenuHint fileMenuIdentity", source)
+        self.assertIn("filePickerTitle(entry, identityHint)", source)
+        self.assertIn("fileMenuHint fileMenuIdentity", picker_source)
         self.assertIn(".fileMenuIdentity", css)
 
 

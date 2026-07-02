@@ -226,7 +226,7 @@ class TestMarkdownTables(unittest.TestCase):
         self.assertIn("function filePickerAmbiguousChoiceActive()", source)
         self.assertIn("if (filePickerAmbiguousChoiceActive()) {", source)
         self.assertIn("const showDraft = draftPath && !filePickerDraftSuppressed();", source)
-        self.assertIn("await openFilePathWithResolvedMode(path, { line: filePickerSelectionLine(),", source)
+        self.assertIn("await openFilePathWithResolvedMode(selectedEntry.path, { line: filePickerSelectionLine(),", source)
         self.assertIn("void openFilePathWithResolvedMode(active.path, { line: filePickerSelectionLine(),", source)
         self.assertIn(".inlineFileAmbiguousRef", css)
         self.assertIn(".inlineFileChoiceHint", css)

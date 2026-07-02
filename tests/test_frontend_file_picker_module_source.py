@@ -119,6 +119,36 @@ def run_picker_module_probe() -> dict[str, object]:
         draftItem.onclick();
         let draftHostError = "";
         try {{ picker.appendDraftFileMenuItem(menuParent, "x", 0, false, {{ el }}); }} catch (err) {{ draftHostError = err && err.message ? err.message : String(err); }}
+        const entryParent = {{ children: [], appendChild(child) {{ this.children.push(child); return child; }} }};
+        const entryEvents = [];
+        const entryHost = {{
+          el,
+          createTextNode,
+          openDraftFilePath: (path) => entryEvents.push(["openDraft", path]),
+          openEntry: (entry) => entryEvents.push(["openEntry", entry.path, Boolean(entry.changed), Boolean(entry.gitPath), entry.apiPath || ""]),
+        }};
+        const createEntryItem = picker.appendFilePickerEntryItem(entryParent, {{ path: "draft/new.txt", createNew: true }}, 0, false, "draft", "", "Create title", entryHost);
+        const changedEntryItem = picker.appendFilePickerEntryItem(entryParent, {{ path: "src/app.py", changed: true, additions: null, deletions: 2, gitPath: true, apiPath: "tok" }}, 1, true, "app", "git version", "Changed title", entryHost);
+        const regularEntryItem = picker.appendFilePickerEntryItem(entryParent, {{ path: "README.md" }}, 2, false, "", "recent file", "Regular title", entryHost);
+        let entryPrevented = 0;
+        changedEntryItem.onmousedown({{ preventDefault() {{ entryPrevented += 1; }} }});
+        createEntryItem.onclick();
+        changedEntryItem.onclick();
+        regularEntryItem.onclick();
+        let entryHostError = "";
+        try {{ picker.appendFilePickerEntryItem(entryParent, {{ path: "x" }}, 0, false, "", "", "", {{ el, createTextNode }}); }} catch (err) {{ entryHostError = err && err.message ? err.message : String(err); }}
+        function summarizeNode(node) {{
+          const attrs = node.attrs || {{}};
+          return {{
+            tag: node.tag,
+            cls: attrs.class || "",
+            text: attrs.text || node.text || node.textContent || "",
+            id: attrs.id || "",
+            title: attrs.title || "",
+            aria: attrs["aria-selected"] || "",
+            children: (node.children || []).map(summarizeNode),
+          }};
+        }}
         process.stdout.write(JSON.stringify({{
           frozen: Object.isFrozen(picker),
           exports: Object.keys(picker).sort(),
@@ -128,6 +158,7 @@ def run_picker_module_probe() -> dict[str, object]:
           domHostError,
           highlightHostError,
           draftHostError,
+          entryHostError,
           menuState: {{
             opened,
             selectionBeforeInput,
@@ -165,6 +196,11 @@ def run_picker_module_probe() -> dict[str, object]:
             draftPrevented,
             draftEvents,
           }},
+          entryRenderState: {{
+            rows: entryParent.children.map(summarizeNode),
+            entryPrevented,
+            entryEvents,
+          }},
         }}));
         """
     )
@@ -180,6 +216,7 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
             result["exports"],
             [
                 "appendDraftFileMenuItem",
+                "appendFilePickerEntryItem",
                 "appendFilePickerSection",
                 "appendHighlightedFileMenuPath",
                 "createMenuDomRuntime",
@@ -198,6 +235,7 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         self.assertIn("Codoxear file picker host missing snapshot", result["domHostError"])
         self.assertIn("Codoxear file picker host missing createTextNode", result["highlightHostError"])
         self.assertIn("Codoxear file picker host missing openDraftFilePath", result["draftHostError"])
+        self.assertIn("Codoxear file picker host missing openDraftFilePath", result["entryHostError"])
 
     def test_file_picker_menu_state_behavior(self) -> None:
         result = run_picker_module_probe()["menuState"]
@@ -238,6 +276,25 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         self.assertEqual(result["draftPrevented"], 1)
         self.assertEqual(result["draftEvents"], [["openDraft", "draft/new.txt"]])
 
+    def test_file_picker_entry_row_renderer_behavior(self) -> None:
+        result = run_picker_module_probe()["entryRenderState"]
+        rows = result["rows"]
+        self.assertEqual([row["cls"] for row in rows], ["fileMenuItem fileMenuCreate", "fileMenuItem active", "fileMenuItem"])
+        self.assertEqual([row["id"] for row in rows], ["filePickerOption-0", "filePickerOption-1", "filePickerOption-2"])
+        self.assertEqual([row["title"] for row in rows], ["Create title", "Changed title", "Regular title"])
+        self.assertEqual([row["aria"] for row in rows], ["false", "true", "false"])
+        self.assertEqual(rows[0]["children"][1]["text"], "Creates only when you save")
+        self.assertEqual(rows[1]["children"][1]["text"], "git version")
+        self.assertEqual(rows[1]["children"][2]["cls"], "fileMenuStat changed")
+        self.assertEqual([child["text"] for child in rows[1]["children"][2]["children"]], ["+?", "-2"])
+        self.assertEqual(rows[2]["children"][1]["text"], "recent file")
+        self.assertEqual(result["entryPrevented"], 1)
+        self.assertEqual(result["entryEvents"], [
+            ["openDraft", "draft/new.txt"],
+            ["openEntry", "src/app.py", True, True, "tok"],
+            ["openEntry", "README.md", False, False, ""],
+        ])
+
     def test_file_picker_dom_runtime_behavior(self) -> None:
         result = run_picker_module_probe()["domState"]
         self.assertTrue(result["frozen"])
@@ -268,6 +325,7 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         self.assertIn('"app_file_picker.js"', routes_source)
         self.assertIn("const codoxearFilePicker = window.CodoxearFilePicker;", app_source)
         self.assertIn('typeof codoxearFilePicker.appendDraftFileMenuItem !== "function"', app_source)
+        self.assertIn('typeof codoxearFilePicker.appendFilePickerEntryItem !== "function"', app_source)
         self.assertIn('typeof codoxearFilePicker.appendFilePickerSection !== "function"', app_source)
         self.assertIn('typeof codoxearFilePicker.appendHighlightedFileMenuPath !== "function"', app_source)
         self.assertIn('typeof codoxearFilePicker.createMenuDomRuntime !== "function"', app_source)
@@ -279,11 +337,17 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         self.assertIn("return codoxearFilePicker.appendHighlightedFileMenuPath(parent, text, query, {", app_source)
         self.assertIn("return codoxearFilePicker.appendFilePickerSection(filePickerMenu, label, { el });", app_source)
         self.assertIn("return codoxearFilePicker.appendDraftFileMenuItem(filePickerMenu, path, idx, active, {", app_source)
+        self.assertIn("codoxearFilePicker.appendFilePickerEntryItem(filePickerMenu, entry, idx, active, query, identityHint, filePickerTitle(entry, identityHint), {", app_source)
         draft_start = app_source.index("function appendDraftFileMenuItem(path, idx, active)")
         draft_end = app_source.index("function renderFilePickerMenu()", draft_start)
         draft_block = app_source[draft_start:draft_end]
         self.assertNotIn('filePickerMenu.appendChild(el("div", { class: "fileMenuSection"', app_source)
         self.assertNotIn("btn.onmousedown = (e) => e.preventDefault();", draft_block)
+        render_start = app_source.index("function renderFilePickerMenu()")
+        render_end = app_source.index("function fileRefValidationKey", render_start)
+        render_block = app_source[render_start:render_end]
+        self.assertNotIn('const stat = el("span", { class: "fileMenuStat changed" });', render_block)
+        self.assertNotIn('btn.appendChild(el("span", { class: "fileMenuHint fileMenuIdentity"', render_block)
         self.assertNotIn("filePickerMenuState.resetInputState();\n          filePickerInput.value = activeFilePathValue() || \"\";", app_source)
         self.assertNotIn("document.createTextNode(value.slice(cursor", app_source)
         self.assertIn('throw new Error("Codoxear file picker helpers failed to load")', app_source)

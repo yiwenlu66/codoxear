@@ -315,6 +315,48 @@
     return btn;
   }
 
+  function appendFilePickerEntryItem(parent, entry, idx, active, query, identityHint, title, host = {}) {
+    if (!parent || typeof parent.appendChild !== "function") throw new Error("Codoxear file picker host missing fileMenuParent");
+    const createEl = requireFunction(host, "el");
+    const openDraftFilePath = requireFunction(host, "openDraftFilePath");
+    const openEntry = requireFunction(host, "openEntry");
+    const item = entry || {};
+    const path = String(item.path || "");
+    const hint = String(identityHint || "");
+    const btn = createEl("button", {
+      id: `filePickerOption-${idx}`,
+      class: "fileMenuItem" + (item.createNew ? " fileMenuCreate" : "") + (active ? " active" : ""),
+      type: "button",
+      role: "option",
+      "aria-selected": active ? "true" : "false",
+      title,
+    });
+    if (item.createNew) {
+      appendHighlightedFileMenuPath(btn, `Create new file: ${path}`, query, host);
+      btn.appendChild(createEl("span", { class: "fileMenuHint", text: "Creates only when you save" }));
+    } else if (item.changed) {
+      appendHighlightedFileMenuPath(btn, path, query, host);
+      if (hint) btn.appendChild(createEl("span", { class: "fileMenuHint fileMenuIdentity", text: hint }));
+      const stat = createEl("span", { class: "fileMenuStat changed" });
+      stat.appendChild(createEl("span", { class: "fileMenuAdd", text: item.additions == null ? "+?" : `+${item.additions}` }));
+      stat.appendChild(createEl("span", { class: "fileMenuDel", text: item.deletions == null ? "-?" : `-${item.deletions}` }));
+      btn.appendChild(stat);
+    } else {
+      appendHighlightedFileMenuPath(btn, path, query, host);
+      if (hint) btn.appendChild(createEl("span", { class: "fileMenuHint fileMenuIdentity", text: hint }));
+    }
+    btn.onmousedown = (e) => e.preventDefault();
+    btn.onclick = () => {
+      if (item.createNew) {
+        void openDraftFilePath(path);
+        return;
+      }
+      void openEntry(item);
+    };
+    parent.appendChild(btn);
+    return btn;
+  }
+
   function createMenuDomRuntime(options = {}) {
     const menuState = options.menuState || null;
     const field = requireClassToggleNode(options.field, "filePickerField");
@@ -577,6 +619,7 @@
 
   window.CodoxearFilePicker = Object.freeze({
     appendDraftFileMenuItem,
+    appendFilePickerEntryItem,
     appendFilePickerSection,
     appendHighlightedFileMenuPath,
     createMenuDomRuntime,

@@ -561,6 +561,7 @@
       if (
         !codoxearFilePicker ||
         typeof codoxearFilePicker.appendDraftFileMenuItem !== "function" ||
+        typeof codoxearFilePicker.appendFilePickerEntryItem !== "function" ||
         typeof codoxearFilePicker.appendFilePickerSection !== "function" ||
         typeof codoxearFilePicker.appendHighlightedFileMenuPath !== "function" ||
         typeof codoxearFilePicker.createMenuDomRuntime !== "function" ||
@@ -8220,41 +8221,18 @@
             const entryApiPath = normalizeFileApiPath(entry.apiPath);
             const activeIdentity = currentActiveFileIdentity();
             const active = focusIndex === idx || (focusIndex < 0 && activeIdentity.path === path && activeIdentity.gitPath === Boolean(entry.gitPath) && activeIdentity.apiPath === entryApiPath && !query);
-            const btn = el("button", {
-              id: `filePickerOption-${idx}`,
-              class: "fileMenuItem" + (entry.createNew ? " fileMenuCreate" : "") + (active ? " active" : ""),
-              type: "button",
-              role: "option",
-              "aria-selected": active ? "true" : "false",
-              title: filePickerTitle(entry, identityHint),
+            codoxearFilePicker.appendFilePickerEntryItem(filePickerMenu, entry, idx, active, query, identityHint, filePickerTitle(entry, identityHint), {
+              el,
+              createTextNode: (value) => document.createTextNode(value),
+              openDraftFilePath: (draftPath) => openDraftFilePathWithGuard(draftPath),
+              openEntry: async (selectedEntry) => {
+                try {
+                  await openFilePathWithResolvedMode(selectedEntry.path, { line: filePickerSelectionLine(), changed: Boolean(selectedEntry.changed), gitPath: Boolean(selectedEntry.gitPath), apiPath: selectedEntry.apiPath });
+                } catch (e) {
+                  fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
+                }
+              },
             });
-            if (entry.createNew) {
-              appendHighlightedFileMenuPath(btn, `Create new file: ${path}`, query);
-              btn.appendChild(el("span", { class: "fileMenuHint", text: "Creates only when you save" }));
-            } else if (entry.changed) {
-              appendHighlightedFileMenuPath(btn, path, query);
-              if (identityHint) btn.appendChild(el("span", { class: "fileMenuHint fileMenuIdentity", text: identityHint }));
-              const stat = el("span", { class: "fileMenuStat changed" });
-              stat.appendChild(el("span", { class: "fileMenuAdd", text: entry.additions == null ? "+?" : `+${entry.additions}` }));
-              stat.appendChild(el("span", { class: "fileMenuDel", text: entry.deletions == null ? "-?" : `-${entry.deletions}` }));
-              btn.appendChild(stat);
-            } else {
-              appendHighlightedFileMenuPath(btn, path, query);
-              if (identityHint) btn.appendChild(el("span", { class: "fileMenuHint fileMenuIdentity", text: identityHint }));
-            }
-            btn.onmousedown = (e) => e.preventDefault();
-            btn.onclick = async () => {
-              if (entry.createNew) {
-                void openDraftFilePathWithGuard(path);
-                return;
-              }
-              try {
-                await openFilePathWithResolvedMode(path, { line: filePickerSelectionLine(), changed: Boolean(entry.changed), gitPath: Boolean(entry.gitPath), apiPath: entry.apiPath });
-              } catch (e) {
-                fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
-              }
-            };
-            filePickerMenu.appendChild(btn);
           }
           if (query && searchState.pendingQuery === query) {
             filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: "Searching full project..." }));
