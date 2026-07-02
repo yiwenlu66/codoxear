@@ -878,6 +878,65 @@ def run_file_viewer_touch_binding_probe() -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
+def run_file_fallback_runtime_probe() -> dict[str, object]:
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const fileViewer = ctx.window.CodoxearFileViewer;
+        const events = [];
+        const host = {{
+          innerHTML: "stale",
+          scrollTop: 0,
+          children: [],
+          appendChild(node) {{ this.children.push(node); events.push(["append", node.tag, node.attrs && node.attrs.class]); return node; }},
+        }};
+        function el(tag, attrs = {{}}, children = []) {{
+          const node = {{ tag, attrs, children: Array.isArray(children) ? children : [] }};
+          if (Object.prototype.hasOwnProperty.call(attrs, "text")) node.text = attrs.text;
+          return node;
+        }}
+        const runtime = fileViewer.createFileFallbackRuntime({{
+          host,
+          el,
+          normalizeLineNumber: (value) => value == null ? null : Number(value) || null,
+          requestAnimationFrame: (callback) => {{ events.push(["raf"]); callback(); }},
+        }});
+        const plainResult = runtime.renderPlainText("src/app.py", "hello", 4, "No Monaco");
+        const plainNode = host.children[0];
+        const plainState = {{ innerHTML: host.innerHTML, scrollTop: host.scrollTop, className: plainNode.attrs.class, path: plainNode.attrs["data-path"], title: plainNode.children[0].children[0].text, message: plainNode.children[0].children[1].text, body: plainNode.children[1].text }};
+        host.children = [];
+        const downloadResult = runtime.renderDownload("video.mov", "/download", "Codec unsupported");
+        const downloadNode = host.children[0];
+        const downloadLink = downloadNode.children[2].children[0];
+        const downloadState = {{ className: downloadNode.attrs.class, message: downloadNode.children[1].text, linkHref: downloadLink.attrs.href, linkText: downloadLink.text }};
+        host.children = [];
+        const blockedResult = runtime.renderBlocked("large.bin is too large");
+        const blockedNode = host.children[0];
+        const blockedState = {{ className: blockedNode.attrs.class, title: blockedNode.children[0].text, message: blockedNode.children[1].text }};
+        let missingError = "";
+        try {{ fileViewer.createFileFallbackRuntime({{ host, el, normalizeLineNumber: () => null }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
+        process.stdout.write(JSON.stringify({{
+          frozen: Object.isFrozen(runtime),
+          plainResult,
+          plainFrozen: Object.isFrozen(plainResult),
+          plainState,
+          downloadResult,
+          downloadState,
+          blockedResult,
+          blockedState,
+          events,
+          missingError,
+        }}));
+        """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def run_file_render_surface_runtime_probe() -> dict[str, object]:
     viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
@@ -1186,7 +1245,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
     def test_file_viewer_controller_owns_save_conflict_behavior(self) -> None:
         result = run_file_viewer_controller_probe()
         self.assertTrue(result["render"]["exportFrozen"])
-        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFilePasteDialogRuntime", "createFileRenderSurfaceRuntime", "createFileTouchToolbarRuntime", "createFileUnsavedDialogRuntime", "createFileViewerController", "createPdfLoader"])
+        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFileFallbackRuntime", "createFilePasteDialogRuntime", "createFileRenderSurfaceRuntime", "createFileTouchToolbarRuntime", "createFileUnsavedDialogRuntime", "createFileViewerController", "createPdfLoader"])
         self.assertEqual(result["render"]["conflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["currentConflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["labelText"], "src/app.py - save conflict: version mismatch")
@@ -1592,6 +1651,32 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["resetState"], {"diff": "block", "image": "none", "video": "none"})
         self.assertEqual(result["events"], [["removeImage", "src"], ["clearFallback"], ["pause"], ["remove", "src"], ["load"], ["removeImage", "src"], ["clearFallback"], ["pause"], ["remove", "src"], ["load"]])
 
+    def test_file_fallback_runtime_behavior(self) -> None:
+        result = run_file_fallback_runtime_probe()
+        self.assertTrue(result["frozen"])
+        self.assertTrue(result["plainFrozen"])
+        self.assertEqual(result["plainResult"], {"targetLine": 4})
+        self.assertEqual(result["plainState"], {
+            "innerHTML": "",
+            "scrollTop": 54,
+            "className": "filePlainFallback",
+            "path": "src/app.py",
+            "title": "Plain text fallback",
+            "message": "No Monaco. Showing a read-only plain-text view.",
+            "body": "hello",
+        })
+        self.assertTrue(result["downloadResult"])
+        self.assertEqual(result["downloadState"], {
+            "className": "fileBlockedNotice fileDownloadFallback",
+            "message": "Codec unsupported. You can still open or download video.mov.",
+            "linkHref": "/download",
+            "linkText": "Open or download file",
+        })
+        self.assertTrue(result["blockedResult"])
+        self.assertEqual(result["blockedState"], {"className": "fileBlockedNotice", "title": "Preview unavailable", "message": "large.bin is too large"})
+        self.assertEqual(result["events"], [["append", "div", "filePlainFallback"], ["raf"], ["append", "div", "fileBlockedNotice fileDownloadFallback"], ["append", "div", "fileBlockedNotice"]])
+        self.assertIn("file viewer dependency missing: requestAnimationFrame", result["missingError"])
+
     def test_file_touch_toolbar_runtime_behavior(self) -> None:
         result = run_file_touch_toolbar_runtime_probe()
         self.assertTrue(result["frozen"])
@@ -1684,6 +1769,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn('"app_file_viewer.js"', routes_source)
         self.assertIn('"app_file_editor.js"', routes_source)
         self.assertIn("const codoxearFileViewer = window.CodoxearFileViewer;", app_source)
+        self.assertIn('typeof codoxearFileViewer.createFileFallbackRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFilePasteDialogRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileRenderSurfaceRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileTouchToolbarRuntime !== "function"', app_source)
@@ -1696,6 +1782,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn("renderSaveConflict", viewer_source)
         self.assertIn("bindFileTouchPress", viewer_source)
         self.assertIn("bindFileTouchClick", viewer_source)
+        self.assertIn("createFileFallbackRuntime", viewer_source)
         self.assertIn("createFilePasteDialogRuntime", viewer_source)
         self.assertIn("createFileRenderSurfaceRuntime", viewer_source)
         self.assertIn("createFileTouchToolbarRuntime", viewer_source)

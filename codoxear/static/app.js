@@ -572,6 +572,7 @@
         !codoxearFileViewer ||
         typeof codoxearFileViewer.bindFileTouchClick !== "function" ||
         typeof codoxearFileViewer.bindFileTouchPress !== "function" ||
+        typeof codoxearFileViewer.createFileFallbackRuntime !== "function" ||
         typeof codoxearFileViewer.createFilePasteDialogRuntime !== "function" ||
         typeof codoxearFileViewer.createFileRenderSurfaceRuntime !== "function" ||
         typeof codoxearFileViewer.createFileTouchToolbarRuntime !== "function" ||
@@ -7050,6 +7051,12 @@
           resolveAppUrl,
           timeoutMs: PDFJS_LOADER_TIMEOUT_MS,
         });
+        const fileFallbackRuntime = codoxearFileViewer.createFileFallbackRuntime({
+          host: fileDiff,
+          el,
+          normalizeLineNumber,
+          requestAnimationFrame: (callback) => requestAnimationFrame(callback),
+        });
         const filePasteDialogRuntime = codoxearFileViewer.createFilePasteDialogRuntime({
           backdrop: filePasteBackdrop,
           dialog: filePasteDialog,
@@ -7465,37 +7472,18 @@
         function renderPlainTextFallback(rel, text, lineNumber = null, reason = "Rich file viewer unavailable") {
           disposeFileEditor();
           clearFileVideo();
-          fileDiff.innerHTML = "";
           setFileRenderSurface("diff");
           setFileEditorKind("plain-fallback");
           fileViewerController.applyPlainTextFallbackState();
-          const targetLine = normalizeLineNumber(lineNumber) || 1;
-          const notice = el("div", { class: "fileFallbackNotice" }, [
-            el("div", { class: "title", text: "Plain text fallback" }),
-            el("p", { text: `${reason}. Showing a read-only plain-text view.` }),
-          ]);
-          const pre = el("pre", { class: "filePlainFallbackText", text: String(text || "") });
-          fileDiff.appendChild(el("div", { class: "filePlainFallback", "data-path": rel }, [notice, pre]));
-          if (targetLine > 1) {
-            requestAnimationFrame(() => {
-              fileDiff.scrollTop = Math.max(0, (targetLine - 1) * 18);
-            });
-          }
+          fileFallbackRuntime.renderPlainText(rel, text, lineNumber, reason);
         }
 
         function renderDownloadFallback(rel, url, reason = "Preview unavailable") {
           disposeFileEditor();
           disposePdfRender();
           clearFileVideo();
-          fileDiff.innerHTML = "";
           setFileRenderSurface("diff");
-          const link = el("a", { href: url, target: "_blank", rel: "noopener", text: "Open or download file" });
-          const body = el("div", { class: "fileBlockedNotice fileDownloadFallback" }, [
-            el("div", { class: "title", text: "Preview unavailable" }),
-            el("p", { text: `${reason}. You can still open or download ${rel}.` }),
-            el("div", { class: "fileFallbackActions" }, [link]),
-          ]);
-          fileDiff.appendChild(body);
+          fileFallbackRuntime.renderDownload(rel, url, reason);
           updateFileTouchToolbar();
         }
 
@@ -7600,13 +7588,8 @@
         function renderBlockedFileNotice(rel, reason, viewerMaxBytes, size) {
           disposeFileEditor();
           clearFileVideo();
-          fileDiff.innerHTML = "";
           setFileRenderSurface("diff");
-          const body = el("div", { class: "fileBlockedNotice" }, [
-            el("div", { class: "title", text: "Preview unavailable" }),
-            el("p", { text: blockedFileMessage(rel, reason, viewerMaxBytes, size) }),
-          ]);
-          fileDiff.appendChild(body);
+          fileFallbackRuntime.renderBlocked(blockedFileMessage(rel, reason, viewerMaxBytes, size));
           updateFileTouchToolbar();
         }
 

@@ -75,6 +75,13 @@
     return value;
   }
 
+  function requireRenderHostNode(value, name) {
+    if (!value || !("innerHTML" in value) || typeof value.appendChild !== "function") {
+      throw new TypeError(`file viewer dependency missing: ${name}`);
+    }
+    return value;
+  }
+
   function requirePasteInput(value) {
     if (!value || !("value" in value)) throw new TypeError("file viewer dependency missing: filePasteInput");
     return value;
@@ -222,6 +229,54 @@
     }
 
     return Object.freeze({ update });
+  }
+
+  function createFileFallbackRuntime(options = {}) {
+    const host = requireRenderHostNode(options.host, "fileFallbackHost");
+    const el = requireFunction(options.el, "el");
+    const normalizeLineNumber = requireFunction(options.normalizeLineNumber, "normalizeLineNumber");
+    const requestFrame = requireFunction(options.requestAnimationFrame, "requestAnimationFrame");
+
+    function renderPlainText(rel, text, lineNumber = null, reason = "Rich file viewer unavailable") {
+      host.innerHTML = "";
+      const targetLine = normalizeLineNumber(lineNumber) || 1;
+      const notice = el("div", { class: "fileFallbackNotice" }, [
+        el("div", { class: "title", text: "Plain text fallback" }),
+        el("p", { text: `${reason}. Showing a read-only plain-text view.` }),
+      ]);
+      const pre = el("pre", { class: "filePlainFallbackText", text: String(text || "") });
+      host.appendChild(el("div", { class: "filePlainFallback", "data-path": rel }, [notice, pre]));
+      if (targetLine > 1) {
+        requestFrame(() => {
+          host.scrollTop = Math.max(0, (targetLine - 1) * 18);
+        });
+      }
+      return Object.freeze({ targetLine });
+    }
+
+    function renderDownload(rel, url, reason = "Preview unavailable") {
+      host.innerHTML = "";
+      const link = el("a", { href: url, target: "_blank", rel: "noopener", text: "Open or download file" });
+      const body = el("div", { class: "fileBlockedNotice fileDownloadFallback" }, [
+        el("div", { class: "title", text: "Preview unavailable" }),
+        el("p", { text: `${reason}. You can still open or download ${rel}.` }),
+        el("div", { class: "fileFallbackActions" }, [link]),
+      ]);
+      host.appendChild(body);
+      return true;
+    }
+
+    function renderBlocked(message) {
+      host.innerHTML = "";
+      const body = el("div", { class: "fileBlockedNotice" }, [
+        el("div", { class: "title", text: "Preview unavailable" }),
+        el("p", { text: String(message || "") }),
+      ]);
+      host.appendChild(body);
+      return true;
+    }
+
+    return Object.freeze({ renderBlocked, renderDownload, renderPlainText });
   }
 
   function createFileRenderSurfaceRuntime(options = {}) {
@@ -2411,6 +2466,7 @@
   window.CodoxearFileViewer = Object.freeze({
     bindFileTouchClick,
     bindFileTouchPress,
+    createFileFallbackRuntime,
     createFilePasteDialogRuntime,
     createFileRenderSurfaceRuntime,
     createFileTouchToolbarRuntime,
