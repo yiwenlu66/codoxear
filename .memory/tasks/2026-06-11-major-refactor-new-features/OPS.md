@@ -6980,3 +6980,11 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: active PDF render currentness state belongs to the controller. App still owns raw pdfjs/canvas/IntersectionObserver/render-task side effects, raw Monaco editor/diff-editor objects, model arrays/disposables, model disposal and setValue side effects, raw load-result render plan application, fallback DOM construction/scrolling, touch-toolbar DOM/binding mechanics, persisted mode UI wiring, file-video element handlers/loading, file-picker input/menu DOM mutation/rendering, inspect transport, candidate evidence collection/API refresh/cache-key/rendering, unsaved dialog DOM and return-focus state, paste dialog DOM mechanics, and selected-session identity predicates.
+
+## 2026-07-02T06:25:00Z Clean-room review runner failure after continued file-viewer work
+- Observation: async read-only architect review run `550f8b0c-50fe-4a06-900a-4670a6580326` failed before writing a result.
+- Raw failure reported by runner/user: `Async runner process 2072010 exited or disappeared before writing a result. Marked run failed by stale-run reconciliation.`
+- Intended output file: `/tmp/codoxear-file-viewer-continued-review.md`.
+- Scope of intended review: recent Workbench item 2 frontend ownership moves through `c40ef97`.
+- Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against the file-viewer code. The evidence basis remains syntax checks, focused tests, broader targeted tests, full local pytest, Docker sandbox validation, and diff checks recorded in OPS entries for the functional commits.
+- Decision: continue direct local inspection/refactoring; retry clean-room review only at a real yield/decision gate or if the review runner produces concrete findings.
