@@ -162,6 +162,10 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
           filePickerSearchActive: Boolean(state.filePickerSearchActive),
           filePickerInput: {{ value: state.filePickerInputValue || "" }},
           filePickerSuppressDraftQuery: state.filePickerSuppressDraftQuery || "",
+          normalizeLineNumber: (value) => {{
+            const n = Number(value);
+            return Number.isFinite(n) && n >= 1 ? Math.floor(n) : null;
+          }},
           filePickerSearchState: {{
             snapshot: () => ({{
               results: state.fileSearchResults || [],
@@ -179,6 +183,11 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
         vm.runInContext({json.dumps(display_source)}, ctx);
         vm.runInContext({json.dumps(file_helpers_source)}, ctx);
         vm.runInContext({json.dumps(file_picker_source)}, ctx);
+        vm.runInContext(`
+          const filePickerMenuState = window.CodoxearFilePicker.createMenuState({{ normalizeLineNumber }});
+          if (filePickerSearchActive) filePickerMenuState.handleInput(filePickerInput.value);
+          if (filePickerSuppressDraftQuery) filePickerMenuState.openSearchQuery(filePickerSuppressDraftQuery, {{ suppressDraft: true }});
+        `, ctx);
         vm.runInContext({json.dumps(snippet_with_helpers)}, ctx);
         vm.runInContext({json.dumps(js_candidate_controller_fixture())}, ctx);
         const seedEntries = state.fileEntries || (state.fileCandidateList || []).map((path) => ({{ path }}));
@@ -1207,9 +1216,18 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertIn("openFilePathWithResolvedMode(path, { line: filePickerSelectionLine(), changed: Boolean(entry.changed), gitPath: Boolean(entry.gitPath), apiPath: entry.apiPath })", source)
         self.assertIn("openFilePathWithResolvedMode(active.path, { line: filePickerSelectionLine(), changed: Boolean(active.changed), gitPath: Boolean(active.gitPath), apiPath: active.apiPath })", source)
         self.assertIn("compareFilePickerEntries", source)
+        self.assertIn("filePickerMenuState = codoxearFilePicker.createMenuState", source)
         self.assertIn("filePickerSearchState = codoxearFilePicker.createSearchState", source)
+        self.assertIn("function createMenuState(host = {})", picker_source)
         self.assertIn("function createSearchState(host)", picker_source)
         self.assertIn("function visibleFilePickerEntries(context)", picker_source)
+        self.assertNotIn("let fileMenuOpen", source)
+        self.assertNotIn("let fileMenuFocus", source)
+        self.assertNotIn("let filePickerSearchActive", source)
+        self.assertNotIn("let filePickerReferenceLineQuery", source)
+        self.assertNotIn("let filePickerReferenceLine", source)
+        self.assertNotIn("let filePickerPreserveSearchOnFocus", source)
+        self.assertNotIn("let filePickerSuppressDraftQuery", source)
         self.assertIn("prependPendingSessionPathEntry(localFilePickerSearchEntries(context, query), query)", picker_source)
         self.assertIn("function filePickerCandidateScore(path, query)", source)
         self.assertIn("function applyFreshFileCandidateCache", viewer_source)

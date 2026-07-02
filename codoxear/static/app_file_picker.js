@@ -81,6 +81,172 @@
     return entries;
   }
 
+  function normalizeMenuFocusIndex(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.trunc(n) : -1;
+  }
+
+  function createMenuState(host = {}) {
+    const normalizeLineNumber = requireFunction(host, "normalizeLineNumber");
+    let open = false;
+    let focus = -1;
+    let searchActive = false;
+    let referenceLineQuery = "";
+    let referenceLine = null;
+    let preserveSearchOnFocus = false;
+    let suppressDraftQuery = "";
+
+    function snapshot() {
+      return {
+        open,
+        focus,
+        searchActive,
+        referenceLineQuery,
+        referenceLine,
+        preserveSearchOnFocus,
+        suppressDraftQuery,
+      };
+    }
+
+    function isOpen() {
+      return open;
+    }
+
+    function isSearchActive() {
+      return searchActive;
+    }
+
+    function focusIndex() {
+      return focus;
+    }
+
+    function setOpen(value) {
+      open = Boolean(value);
+      return open;
+    }
+
+    function setFocus(value) {
+      focus = normalizeMenuFocusIndex(value);
+      return focus;
+    }
+
+    function resetInputState() {
+      searchActive = false;
+      referenceLineQuery = "";
+      referenceLine = null;
+      preserveSearchOnFocus = false;
+      suppressDraftQuery = "";
+      focus = -1;
+      return snapshot();
+    }
+
+    function close() {
+      open = false;
+      focus = -1;
+      return snapshot();
+    }
+
+    function selectionLine(query) {
+      const line = normalizeLineNumber(referenceLine);
+      if (!line || !searchActive) return null;
+      const rawQuery = String(query || "");
+      if (rawQuery === "" || rawQuery !== referenceLineQuery) return null;
+      return line;
+    }
+
+    function openSearchQuery(query, { line = null, suppressDraft = false } = {}) {
+      const rawQuery = String(query ?? "");
+      if (rawQuery === "") return false;
+      searchActive = true;
+      referenceLineQuery = rawQuery;
+      referenceLine = normalizeLineNumber(line);
+      suppressDraftQuery = suppressDraft ? rawQuery : "";
+      open = true;
+      focus = 0;
+      preserveSearchOnFocus = false;
+      return true;
+    }
+
+    function draftSuppressed(query) {
+      const rawQuery = String(query || "");
+      return Boolean(suppressDraftQuery && rawQuery === suppressDraftQuery);
+    }
+
+    function ambiguousChoiceActive(query) {
+      return Boolean(searchActive && draftSuppressed(query));
+    }
+
+    function visibleQuery(query) {
+      return searchActive ? String(query || "").trim() : "";
+    }
+
+    function setPreserveSearchOnFocus(value) {
+      preserveSearchOnFocus = Boolean(value);
+      return preserveSearchOnFocus;
+    }
+
+    function takePreservedSearchOnFocus() {
+      const preserved = Boolean(preserveSearchOnFocus && searchActive);
+      preserveSearchOnFocus = false;
+      return preserved;
+    }
+
+    function handleInput(query) {
+      const rawQuery = String(query || "");
+      searchActive = true;
+      if (rawQuery !== referenceLineQuery) {
+        referenceLineQuery = "";
+        referenceLine = null;
+      }
+      if (rawQuery !== suppressDraftQuery) suppressDraftQuery = "";
+      preserveSearchOnFocus = false;
+      focus = -1;
+      return snapshot();
+    }
+
+    function clampFocus(count) {
+      const n = Math.max(0, Number(count) || 0);
+      if (focus >= n) focus = n ? n - 1 : -1;
+      return focus;
+    }
+
+    function moveFocus(count, delta) {
+      const n = Math.max(0, Number(count) || 0);
+      if (!n) return -1;
+      open = true;
+      const step = Number(delta) || 0;
+      if (focus < 0) focus = step > 0 ? 0 : n - 1;
+      else focus = (focus + step + n) % n;
+      return focus;
+    }
+
+    function enterIndex() {
+      return focus >= 0 ? focus : searchActive ? 0 : -1;
+    }
+
+    return Object.freeze({
+      ambiguousChoiceActive,
+      clampFocus,
+      close,
+      draftSuppressed,
+      enterIndex,
+      focusIndex,
+      handleInput,
+      isOpen,
+      isSearchActive,
+      moveFocus,
+      openSearchQuery,
+      resetInputState,
+      selectionLine,
+      setFocus,
+      setOpen,
+      setPreserveSearchOnFocus,
+      snapshot,
+      takePreservedSearchOnFocus,
+      visibleQuery,
+    });
+  }
+
   function visibleFilePickerEntries(context) {
     const searchState = (context && context.searchState) || {};
     const query = context && context.searchActive ? String((context && context.query) || "").trim() : "";
@@ -307,6 +473,7 @@
   }
 
   window.CodoxearFilePicker = Object.freeze({
+    createMenuState,
     createSearchState,
     localFilePickerSearchEntries,
     normalizeSamePathFilePickerScores,

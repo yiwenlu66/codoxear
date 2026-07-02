@@ -41,11 +41,53 @@ def run_picker_module_probe() -> dict[str, object]:
         }} catch (err) {{
           hostError = err && err.message ? err.message : String(err);
         }}
+        let menuHostError = "";
+        try {{
+          picker.createMenuState({{}});
+        }} catch (err) {{
+          menuHostError = err && err.message ? err.message : String(err);
+        }}
+        const menu = picker.createMenuState({{
+          normalizeLineNumber: (value) => {{
+            const n = Number(value);
+            return Number.isFinite(n) && n >= 1 ? Math.floor(n) : null;
+          }},
+        }});
+        const opened = menu.openSearchQuery("src/app.js", {{ line: "42", suppressDraft: true }});
+        const selectionBeforeInput = menu.selectionLine("src/app.js");
+        const draftSuppressedBeforeInput = menu.draftSuppressed("src/app.js");
+        menu.setPreserveSearchOnFocus(true);
+        const preservedFirst = menu.takePreservedSearchOnFocus();
+        const preservedSecond = menu.takePreservedSearchOnFocus();
+        menu.handleInput("src/other.js");
+        const selectionAfterInput = menu.selectionLine("src/other.js");
+        const draftSuppressedAfterInput = menu.draftSuppressed("src/other.js");
+        const visibleQueryAfterInput = menu.visibleQuery(" src/other.js ");
+        menu.setFocus(10);
+        const clampedFocus = menu.clampFocus(2);
+        const movedFocus = menu.moveFocus(2, 1);
+        const enterIndex = menu.enterIndex();
+        const closed = menu.close();
         process.stdout.write(JSON.stringify({{
           frozen: Object.isFrozen(picker),
           exports: Object.keys(picker).sort(),
           missingError,
           hostError,
+          menuHostError,
+          menuState: {{
+            opened,
+            selectionBeforeInput,
+            draftSuppressedBeforeInput,
+            preservedFirst,
+            preservedSecond,
+            selectionAfterInput,
+            draftSuppressedAfterInput,
+            visibleQueryAfterInput,
+            clampedFocus,
+            movedFocus,
+            enterIndex,
+            closed,
+          }},
         }}));
         """
     )
@@ -60,6 +102,7 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         self.assertEqual(
             result["exports"],
             [
+                "createMenuState",
                 "createSearchState",
                 "localFilePickerSearchEntries",
                 "normalizeSamePathFilePickerScores",
@@ -70,6 +113,23 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         )
         self.assertIn("Codoxear file picker helpers failed to load", result["missingError"])
         self.assertIn("Codoxear file picker host missing blocked", result["hostError"])
+        self.assertIn("Codoxear file picker host missing normalizeLineNumber", result["menuHostError"])
+
+    def test_file_picker_menu_state_behavior(self) -> None:
+        result = run_picker_module_probe()["menuState"]
+        self.assertTrue(result["opened"])
+        self.assertEqual(result["selectionBeforeInput"], 42)
+        self.assertTrue(result["draftSuppressedBeforeInput"])
+        self.assertTrue(result["preservedFirst"])
+        self.assertFalse(result["preservedSecond"])
+        self.assertIsNone(result["selectionAfterInput"])
+        self.assertFalse(result["draftSuppressedAfterInput"])
+        self.assertEqual(result["visibleQueryAfterInput"], "src/other.js")
+        self.assertEqual(result["clampedFocus"], 1)
+        self.assertEqual(result["movedFocus"], 0)
+        self.assertEqual(result["enterIndex"], 0)
+        self.assertFalse(result["closed"]["open"])
+        self.assertEqual(result["closed"]["focus"], -1)
 
     def test_file_picker_module_registered_before_app_js(self) -> None:
         index_source = INDEX_HTML.read_text(encoding="utf-8")

@@ -2033,7 +2033,7 @@
           if (unattendedMenuOpen) hideUnattendedMenu();
           if (closeSearch && chatSearchOpen) closeChatSearch();
           if (document.body.classList.contains("sidebar-open")) setSidebarOpen(false);
-          fileMenuOpen = false;
+          filePickerMenuState.close();
           filePickerMenu.classList.remove("open");
           filePickerInput.setAttribute("aria-expanded", "false");
           newSessionCwdMenuOpen = false;
@@ -7016,19 +7016,15 @@
         };
         const FILE_CANDIDATE_CACHE_TTL_MS = 15000;
         let fileViewerReturnFocusEl = null;
-        let fileMenuOpen = false;
-        let fileMenuFocus = -1;
-        let filePickerSearchActive = false;
-        let filePickerReferenceLineQuery = "";
-        let filePickerReferenceLine = null;
-        let filePickerPreserveSearchOnFocus = false;
-        let filePickerSuppressDraftQuery = "";
+        const filePickerMenuState = codoxearFilePicker.createMenuState({
+          normalizeLineNumber,
+        });
         const filePickerSearchState = codoxearFilePicker.createSearchState({
           blocked: () => blockUnavailableFileAction(),
           currentSessionId: () => currentFileViewerSessionId() || selected || "",
           api,
           inputValue: () => filePickerInput.value,
-          isMenuOpen: () => fileMenuOpen,
+          isMenuOpen: () => filePickerMenuState.isOpen(),
           renderMenu: () => renderFilePickerMenu(),
           applyMenuState: () => applyFileMenuState(),
         });
@@ -8395,47 +8391,32 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function applyFileMenuState() {
-          filePickerField.classList.toggle("active", fileMenuOpen);
-          filePickerMenu.classList.toggle("open", fileMenuOpen);
-          filePickerInput.setAttribute("aria-expanded", fileMenuOpen ? "true" : "false");
-          if (!fileMenuOpen && fileMenuFocus < 0) filePickerInput.removeAttribute("aria-activedescendant");
+          const state = filePickerMenuState.snapshot();
+          filePickerField.classList.toggle("active", state.open);
+          filePickerMenu.classList.toggle("open", state.open);
+          filePickerInput.setAttribute("aria-expanded", state.open ? "true" : "false");
+          if (!state.open && state.focus < 0) filePickerInput.removeAttribute("aria-activedescendant");
         }
 
         function resetFilePickerInput() {
-          filePickerSearchActive = false;
-          filePickerReferenceLineQuery = "";
-          filePickerReferenceLine = null;
-          filePickerPreserveSearchOnFocus = false;
-          filePickerSuppressDraftQuery = "";
-          fileMenuFocus = -1;
+          filePickerMenuState.resetInputState();
           filePickerInput.value = activeFilePathValue() || "";
           filePickerInput.removeAttribute("aria-activedescendant");
         }
 
         function closeFilePickerMenu({ restoreInput = false } = {}) {
-          fileMenuOpen = false;
-          fileMenuFocus = -1;
+          filePickerMenuState.close();
           if (restoreInput) resetFilePickerInput();
           applyFileMenuState();
         }
 
         function filePickerSelectionLine() {
-          const line = normalizeLineNumber(filePickerReferenceLine);
-          if (!line || !filePickerSearchActive) return null;
-          const query = String(filePickerInput.value || "");
-          if (query === "" || query !== filePickerReferenceLineQuery) return null;
-          return line;
+          return filePickerMenuState.selectionLine(filePickerInput.value);
         }
 
         function openFilePickerSearchQuery(query, { line = null, suppressDraft = false } = {}) {
           const rawQuery = String(query ?? "");
-          if (rawQuery === "") return false;
-          filePickerSearchActive = true;
-          filePickerReferenceLineQuery = rawQuery;
-          filePickerReferenceLine = normalizeLineNumber(line);
-          filePickerSuppressDraftQuery = suppressDraft ? rawQuery : "";
-          fileMenuOpen = true;
-          fileMenuFocus = 0;
+          if (!filePickerMenuState.openSearchQuery(rawQuery, { line, suppressDraft })) return false;
           filePickerInput.value = rawQuery;
           scheduleSessionFileSearch(rawQuery);
           renderFilePickerMenu();
@@ -8450,7 +8431,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         function setFilePath(rel, { line = null, gitPath = undefined, apiPath = undefined } = {}) {
           fileViewerController.setActiveFileIdentity(rel, { line, gitPath, apiPath });
           resetFilePickerInput();
-          fileMenuOpen = false;
+          filePickerMenuState.close();
           applyFileMenuState();
           applyFileMode();
         }
@@ -8652,7 +8633,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             draftEntry: draftFileEntry,
             activeFileDraft: currentActiveFileDraft(),
             activeFilePath: activeFilePathValue(),
-            searchActive: filePickerSearchActive,
+            searchActive: filePickerMenuState.isSearchActive(),
             query,
             searchState: filePickerSearchSnapshot(),
             draftSuppressed: () => filePickerDraftSuppressed(),
@@ -8676,12 +8657,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function filePickerDraftSuppressed() {
-          const rawQuery = String(filePickerInput.value || "");
-          return Boolean(filePickerSuppressDraftQuery && rawQuery === filePickerSuppressDraftQuery);
+          return filePickerMenuState.draftSuppressed(filePickerInput.value);
         }
 
         function filePickerAmbiguousChoiceActive() {
-          return Boolean(filePickerSearchActive && filePickerDraftSuppressed());
+          return filePickerMenuState.ambiguousChoiceActive(filePickerInput.value);
         }
 
         function prependDraftFileEntry(entries, query) {
@@ -8694,7 +8674,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function visibleFilePickerEntries() {
-          const query = filePickerSearchActive ? String(filePickerInput.value || "").trim() : "";
+          const query = filePickerMenuState.visibleQuery(filePickerInput.value);
           return codoxearFilePicker.visibleFilePickerEntries(filePickerEntryContext(query));
         }
 
@@ -8768,19 +8748,20 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         function renderFilePickerMenu() {
           filePickerMenu.innerHTML = "";
           const entries = visibleFilePickerEntries();
-          const query = filePickerSearchActive ? String(filePickerInput.value || "").trim() : "";
+          const query = filePickerMenuState.visibleQuery(filePickerInput.value);
+          let focusIndex = filePickerMenuState.focusIndex();
           const searchState = filePickerSearchSnapshot();
           const draftPath = normalizeDraftFilePath(query);
           if (entries === null) {
             const showDraft = draftPath && !filePickerDraftSuppressed();
-            if (showDraft) appendDraftFileMenuItem(draftPath, 0, fileMenuFocus === 0);
+            if (showDraft) appendDraftFileMenuItem(draftPath, 0, focusIndex === 0);
             filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: "Searching files..." }));
             return showDraft ? [draftFileEntry(draftPath)] : [];
           }
           if (!entries.length) {
             const showDraft = draftPath && !filePickerDraftSuppressed();
             if (showDraft) {
-              appendDraftFileMenuItem(draftPath, 0, fileMenuFocus === 0);
+              appendDraftFileMenuItem(draftPath, 0, focusIndex === 0);
               filePickerInput.setAttribute("aria-activedescendant", "filePickerOption-0");
               return [draftFileEntry(draftPath)];
             }
@@ -8793,7 +8774,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             filePickerInput.removeAttribute("aria-activedescendant");
             return entries;
           }
-          if (fileMenuFocus >= entries.length) fileMenuFocus = entries.length ? entries.length - 1 : -1;
+          focusIndex = filePickerMenuState.clampFocus(entries.length);
           const showSourceSections = !query;
           const duplicatePaths = duplicateFilePickerPaths(entries);
           let lastSourceSection = "";
@@ -8807,7 +8788,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const identityHint = filePickerIdentityHint(entry, duplicatePaths, { showSourceSections });
             const entryApiPath = normalizeFileApiPath(entry.apiPath);
             const activeIdentity = currentActiveFileIdentity();
-            const active = fileMenuFocus === idx || (fileMenuFocus < 0 && activeIdentity.path === path && activeIdentity.gitPath === Boolean(entry.gitPath) && activeIdentity.apiPath === entryApiPath && !query);
+            const active = focusIndex === idx || (focusIndex < 0 && activeIdentity.path === path && activeIdentity.gitPath === Boolean(entry.gitPath) && activeIdentity.apiPath === entryApiPath && !query);
             const btn = el("button", {
               id: `filePickerOption-${idx}`,
               class: "fileMenuItem" + (entry.createNew ? " fileMenuCreate" : "") + (active ? " active" : ""),
@@ -8851,7 +8832,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           } else if (query && searchState.truncatedQuery === query) {
             filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: "Search capped at top matches." }));
           }
-          if (fileMenuFocus >= 0) filePickerInput.setAttribute("aria-activedescendant", `filePickerOption-${fileMenuFocus}`);
+          focusIndex = filePickerMenuState.focusIndex();
+          if (focusIndex >= 0) filePickerInput.setAttribute("aria-activedescendant", `filePickerOption-${focusIndex}`);
           else filePickerInput.removeAttribute("aria-activedescendant");
           return entries;
         }
@@ -9153,7 +9135,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             clearActiveFileIdentity({ line });
             fileStatus.textContent = "Choose which file to open.";
             openFilePickerSearchQuery(query, { line, suppressDraft: true });
-            filePickerPreserveSearchOnFocus = true;
+            filePickerMenuState.setPreserveSearchOnFocus(true);
           }
           await refreshFileCandidates({ sessionId: sid, syncToken });
           if (!isFileViewerSessionCurrent(sid, syncToken)) return;
@@ -9282,17 +9264,15 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         };
         filePickerInput.onfocus = async () => {
           if (!(await ensureCurrentFileViewerSession())) return;
-          if (filePickerPreserveSearchOnFocus && filePickerSearchActive) {
-            filePickerPreserveSearchOnFocus = false;
+          if (filePickerMenuState.takePreservedSearchOnFocus()) {
             renderFilePickerMenu();
-            fileMenuOpen = true;
+            filePickerMenuState.setOpen(true);
             applyFileMenuState();
             return;
           }
-          filePickerPreserveSearchOnFocus = false;
           resetFilePickerInput();
           renderFilePickerMenu();
-          fileMenuOpen = true;
+          filePickerMenuState.setOpen(true);
           applyFileMenuState();
         };
         filePickerInput.onclick = async (e) => {
@@ -9300,29 +9280,22 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (!(await ensureCurrentFileViewerSession())) return;
           if (filePickerAmbiguousChoiceActive()) {
             renderFilePickerMenu();
-            fileMenuOpen = true;
+            filePickerMenuState.setOpen(true);
             applyFileMenuState();
             return;
           }
           resetFilePickerInput();
           renderFilePickerMenu();
-          fileMenuOpen = true;
+          filePickerMenuState.setOpen(true);
           applyFileMenuState();
         };
         filePickerInput.oninput = async () => {
           if (!(await ensureCurrentFileViewerSession())) return;
-          filePickerSearchActive = true;
           const rawQuery = String(filePickerInput.value || "");
-          if (rawQuery !== filePickerReferenceLineQuery) {
-            filePickerReferenceLineQuery = "";
-            filePickerReferenceLine = null;
-          }
-          if (rawQuery !== filePickerSuppressDraftQuery) filePickerSuppressDraftQuery = "";
-          filePickerPreserveSearchOnFocus = false;
+          filePickerMenuState.handleInput(rawQuery);
           const query = rawQuery.trim();
-          fileMenuFocus = -1;
           renderFilePickerMenu();
-          fileMenuOpen = true;
+          filePickerMenuState.setOpen(true);
           applyFileMenuState();
           if (!query || !(currentFileViewerSessionId() || selected)) {
             resetFileSearchState();
@@ -9347,18 +9320,17 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             if (!entries || !entries.length) return;
             e.preventDefault();
-            fileMenuOpen = true;
             const delta = e.key === "ArrowDown" ? 1 : -1;
-            if (fileMenuFocus < 0) fileMenuFocus = delta > 0 ? 0 : entries.length - 1;
-            else fileMenuFocus = (fileMenuFocus + delta + entries.length) % entries.length;
+            const focusIndex = filePickerMenuState.moveFocus(entries.length, delta);
             renderFilePickerMenu();
             applyFileMenuState();
-            const active = document.getElementById(`filePickerOption-${fileMenuFocus}`);
+            const active = document.getElementById(`filePickerOption-${focusIndex}`);
             if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" });
             return;
           }
-          if (e.key === "Enter" && fileMenuOpen) {
-            const active = entries && entries.length ? entries[fileMenuFocus >= 0 ? fileMenuFocus : filePickerSearchActive ? 0 : -1] : null;
+          if (e.key === "Enter" && filePickerMenuState.isOpen()) {
+            const enterIndex = filePickerMenuState.enterIndex();
+            const active = entries && entries.length ? entries[enterIndex] : null;
             if (!active) return;
             e.preventDefault();
             if (active.createNew) {
@@ -9370,13 +9342,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             });
             return;
           }
-          if (e.key === "Escape" && fileMenuOpen) {
+          if (e.key === "Escape" && filePickerMenuState.isOpen()) {
             e.preventDefault();
             e.stopPropagation();
             closeFilePickerMenu({ restoreInput: true });
             return;
           }
-          if (e.key === "Tab" && fileMenuOpen) {
+          if (e.key === "Tab" && filePickerMenuState.isOpen()) {
             closeFilePickerMenu({ restoreInput: true });
           }
         };
@@ -9545,7 +9517,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         addAppEvent(document, "click", (e) => {
           const t = e.target instanceof Element ? e.target : null;
           if (!t) return;
-          if (fileViewer.style.display === "flex" && fileMenuOpen && !t.closest("#fileCandRow")) {
+          if (fileViewer.style.display === "flex" && filePickerMenuState.isOpen() && !t.closest("#fileCandRow")) {
             closeFilePickerMenu({ restoreInput: true });
           }
           if (editDependencyMenuOpen && !t.closest("#editDependencyBtn") && !t.closest("#editDependencyMenu")) {
