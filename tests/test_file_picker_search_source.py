@@ -464,7 +464,7 @@ def eval_resolve_file_open_mode_cases() -> dict:
           isCollapsedFileSelection: () => true,
           positionAfterInsertedText: (start, text) => ({{ lineNumber: start.lineNumber, column: start.column + String(text || "").length }}),
           fileEditorEditSupportAvailable: () => false,
-          syncFileDiffSelectionMode: () => {{}},
+          updateFileDiffEditorOptions: () => {{}},
           showFilePasteDialog: () => false,
           hideFilePasteDialog: () => {{}},
           clipboardReadAvailable: () => false,

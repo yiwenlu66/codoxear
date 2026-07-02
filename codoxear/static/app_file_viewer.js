@@ -161,7 +161,7 @@
         ? deps.positionAfterInsertedText
         : requireFunction(fileHelpers.positionAfterInsertedText, "CodoxearFileHelpers.positionAfterInsertedText");
     const fileEditorEditSupportAvailable = requireFunction(deps && deps.fileEditorEditSupportAvailable, "fileEditorEditSupportAvailable");
-    const syncFileDiffSelectionMode = requireFunction(deps && deps.syncFileDiffSelectionMode, "syncFileDiffSelectionMode");
+    const updateFileDiffEditorOptions = requireFunction(deps && deps.updateFileDiffEditorOptions, "updateFileDiffEditorOptions");
     const showFilePasteDialog = requireFunction(deps && deps.showFilePasteDialog, "showFilePasteDialog");
     const hideFilePasteDialog = requireFunction(deps && deps.hideFilePasteDialog, "hideFilePasteDialog");
     const clipboardReadAvailable = requireFunction(deps && deps.clipboardReadAvailable, "clipboardReadAvailable");
@@ -1483,6 +1483,21 @@
         copyVisible: Boolean(getActiveFileSelectionText()),
         pasteVisible: activeFileEditorIdleTextWritable(),
       });
+    }
+
+    function fileDiffSelectionHideOptions() {
+      return fileTouchSelectMode
+        ? { enabled: false }
+        : {
+            enabled: true,
+            contextLineCount: 4,
+            minimumLineCount: 1,
+            revealLineCount: 2,
+          };
+    }
+
+    function syncFileDiffSelectionMode() {
+      updateFileDiffEditorOptions({ hideUnchangedRegions: fileDiffSelectionHideOptions() });
     }
 
     function resetFileTouchSelectionState({ collapse = false } = {}) {

@@ -148,7 +148,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
             positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
             fileEditorEditSupportAvailable: () => true,
-            syncFileDiffSelectionMode: () => {{}},
+            updateFileDiffEditorOptions: () => {{}},
             showFilePasteDialog: () => false,
             hideFilePasteDialog: () => {{}},
             clipboardReadAvailable: () => false,

@@ -7354,18 +7354,6 @@
           return fileViewerController.syncFileEditorReadOnly();
         }
 
-        function syncFileDiffSelectionMode() {
-          const hideOpts = currentFileTouchSelectMode()
-            ? { enabled: false }
-            : {
-                enabled: true,
-                contextLineCount: 4,
-                minimumLineCount: 1,
-                revealLineCount: 2,
-              };
-          fileEditorRuntime.updateEditorOptions(currentFileEditorKind(), { hideUnchangedRegions: hideOpts });
-        }
-
         function updateFileTouchToolbar() {
           const toolbarState = fileViewerController.currentFileTouchToolbarState();
           if (!toolbarState.visible) {
@@ -7984,7 +7972,7 @@
           applyFileEditorSelection: (editor, cursor, anchor) => fileEditorRuntime.applySelection(editor, cursor, anchor, fileEditorMonacoLoader.selectionCtor()),
           isCollapsedFileSelection: (selection) => fileEditorRuntime.isCollapsedSelection(selection),
           fileEditorEditSupportAvailable: () => fileEditorMonacoLoader.editSupportAvailable(),
-          syncFileDiffSelectionMode: () => syncFileDiffSelectionMode(),
+          updateFileDiffEditorOptions: (options) => fileEditorRuntime.updateEditorOptions(currentFileEditorKind(), options),
           showFilePasteDialog: () => showFilePasteDialog(),
           hideFilePasteDialog: (options) => hideFilePasteDialog(options),
           clipboardReadAvailable: () => Boolean(window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.readText === "function"),

@@ -337,7 +337,7 @@ def eval_video_preview_failure_path() -> dict:
           isCollapsedFileSelection: () => true,
           positionAfterInsertedText: (start, text) => ({{ lineNumber: start.lineNumber, column: start.column + String(text || "").length }}),
           fileEditorEditSupportAvailable: () => false,
-          syncFileDiffSelectionMode: () => {{}},
+          updateFileDiffEditorOptions: () => {{}},
           showFilePasteDialog: () => false,
           hideFilePasteDialog: () => {{}},
           clipboardReadAvailable: () => false,
@@ -406,7 +406,7 @@ def eval_empty_file_viewer_target() -> dict:
           isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
           positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
           fileEditorEditSupportAvailable: () => true,
-          syncFileDiffSelectionMode: () => {{}},
+          updateFileDiffEditorOptions: () => {{}},
           showFilePasteDialog: () => false,
           hideFilePasteDialog: () => {{}},
           clipboardReadAvailable: () => false,
@@ -799,7 +799,7 @@ def eval_file_paste_dialog_fallback() -> dict:
             isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
             positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
             fileEditorEditSupportAvailable: () => opts.insertOk !== false,
-            syncFileDiffSelectionMode: () => {{}},
+            updateFileDiffEditorOptions: () => {{}},
             showFilePasteDialog: () => ctx.__test_showPaste(),
             hideFilePasteDialog: (options) => ctx.__test_hidePaste(options),
             clipboardReadAvailable: () => Boolean(opts.secure && opts.clipboard !== "missing"),
@@ -941,7 +941,7 @@ def eval_file_paste_insert_button_guard() -> dict:
             isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
             positionAfterInsertedText: (start, value) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(value || "").length }}),
             fileEditorEditSupportAvailable: () => true,
-            syncFileDiffSelectionMode: () => {{}},
+            updateFileDiffEditorOptions: () => {{}},
             showFilePasteDialog: () => false,
             hideFilePasteDialog: () => {{ state.hidden += 1; state.inputValue = ""; }},
             clipboardReadAvailable: () => false,
@@ -1128,7 +1128,7 @@ def eval_file_editor_save_shortcut() -> dict:
             isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
             positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
             fileEditorEditSupportAvailable: () => true,
-            syncFileDiffSelectionMode: () => {{}},
+            updateFileDiffEditorOptions: () => {{}},
             showFilePasteDialog: () => false,
             hideFilePasteDialog: () => {{}},
             clipboardReadAvailable: () => false,
@@ -1223,7 +1223,7 @@ def eval_file_touch_selection_keydown() -> dict:
           }}
         }}
         function runCase(overrides = {{}}) {{
-          const events = {{ moves: [], selections: [], syncReadOnly: 0, syncDiff: 0, toolbar: 0, focus: 0, toasts: [] }};
+          const events = {{ moves: [], selections: [], syncReadOnly: 0, syncDiff: 0, diffOptions: [], toolbar: 0, focus: 0, toasts: [] }};
           const pos = {{ lineNumber: 1, column: 1 }};
           const editor = {{
             getPosition: () => ({{ ...pos }}),
@@ -1289,7 +1289,7 @@ def eval_file_touch_selection_keydown() -> dict:
             isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
             positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
             fileEditorEditSupportAvailable: () => true,
-            syncFileDiffSelectionMode: () => {{ events.syncDiff += 1; }},
+            updateFileDiffEditorOptions: (options) => {{ events.syncDiff += 1; events.diffOptions.push(options); }},
             showFilePasteDialog: () => false,
             hideFilePasteDialog: () => {{}},
             clipboardReadAvailable: () => false,
@@ -1337,7 +1337,7 @@ def eval_file_touch_selection_keydown() -> dict:
             stopPropagation() {{ this.stopped += 1; }},
           }};
           controller.handleFileTouchSelectionKeydown(event);
-          return {{ prevented: event.prevented, stopped: event.stopped, moves: events.moves, mode: controller.currentFileTouchSelectMode(), selections: events.selections }};
+          return {{ prevented: event.prevented, stopped: event.stopped, moves: events.moves, mode: controller.currentFileTouchSelectMode(), selections: events.selections, diffOptions: events.diffOptions }};
         }}
         (() => {{
           const editorInput = new FakeElement({{ textEntry: true, editorInput: true, inViewer: true }});
@@ -1451,7 +1451,7 @@ def eval_file_editor_delete_shortcut() -> dict:
             isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
             positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
             fileEditorEditSupportAvailable: () => true,
-            syncFileDiffSelectionMode: () => {{}},
+            updateFileDiffEditorOptions: () => {{}},
             showFilePasteDialog: () => false,
             hideFilePasteDialog: () => {{}},
             clipboardReadAvailable: () => false,
@@ -1615,7 +1615,7 @@ def eval_file_open_request_sequence() -> dict:
           isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
           positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
           fileEditorEditSupportAvailable: () => true,
-          syncFileDiffSelectionMode: () => {{}},
+          updateFileDiffEditorOptions: () => {{}},
           showFilePasteDialog: () => false,
           hideFilePasteDialog: () => {{}},
           clipboardReadAvailable: () => false,
@@ -1752,7 +1752,7 @@ def eval_file_viewer_session_sync_race() -> dict:
           isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
           positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
           fileEditorEditSupportAvailable: () => true,
-          syncFileDiffSelectionMode: () => {{}},
+          updateFileDiffEditorOptions: () => {{}},
           showFilePasteDialog: () => false,
           hideFilePasteDialog: () => {{}},
           clipboardReadAvailable: () => false,
@@ -1852,7 +1852,7 @@ def eval_resolved_open_current_guard() -> dict:
           isCollapsedFileSelection: () => true,
           positionAfterInsertedText: (start, text) => ({{ lineNumber: start.lineNumber, column: start.column + String(text || "").length }}),
           fileEditorEditSupportAvailable: () => false,
-          syncFileDiffSelectionMode: () => {{}},
+          updateFileDiffEditorOptions: () => {{}},
           showFilePasteDialog: () => false,
           hideFilePasteDialog: () => {{}},
           clipboardReadAvailable: () => false,
@@ -1955,7 +1955,7 @@ def eval_open_file_guard_mode_validation() -> dict:
           isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
           positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
           fileEditorEditSupportAvailable: () => true,
-          syncFileDiffSelectionMode: () => {{}},
+          updateFileDiffEditorOptions: () => {{}},
           showFilePasteDialog: () => false,
           hideFilePasteDialog: () => {{}},
           clipboardReadAvailable: () => false,
@@ -2086,7 +2086,7 @@ def eval_open_file_path_mode_ownership() -> dict:
           isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
           positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
           fileEditorEditSupportAvailable: () => true,
-          syncFileDiffSelectionMode: () => {{}},
+          updateFileDiffEditorOptions: () => {{}},
           showFilePasteDialog: () => false,
           hideFilePasteDialog: () => {{}},
           clipboardReadAvailable: () => false,
@@ -2277,7 +2277,7 @@ def eval_active_file_save_request_helpers() -> dict:
           isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
           positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
           fileEditorEditSupportAvailable: () => true,
-          syncFileDiffSelectionMode: () => {{}},
+          updateFileDiffEditorOptions: () => {{}},
           showFilePasteDialog: () => false,
           hideFilePasteDialog: () => {{}},
           clipboardReadAvailable: () => false,
@@ -2514,7 +2514,7 @@ def eval_active_file_save_success() -> dict:
           isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
           positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
           fileEditorEditSupportAvailable: () => true,
-          syncFileDiffSelectionMode: () => {{}},
+          updateFileDiffEditorOptions: () => {{}},
           showFilePasteDialog: () => false,
           hideFilePasteDialog: () => {{}},
           clipboardReadAvailable: () => false,
@@ -2697,7 +2697,7 @@ def eval_active_file_save_transport() -> dict:
           isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
           positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
           fileEditorEditSupportAvailable: () => true,
-          syncFileDiffSelectionMode: () => {{}},
+          updateFileDiffEditorOptions: () => {{}},
           showFilePasteDialog: () => false,
           hideFilePasteDialog: () => {{}},
           clipboardReadAvailable: () => false,
@@ -2896,7 +2896,7 @@ def eval_draft_file_load_choreography() -> dict:
           isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
           positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
           fileEditorEditSupportAvailable: () => true,
-          syncFileDiffSelectionMode: () => {{}},
+          updateFileDiffEditorOptions: () => {{}},
           showFilePasteDialog: () => false,
           hideFilePasteDialog: () => {{}},
           clipboardReadAvailable: () => false,
@@ -3054,7 +3054,7 @@ def eval_file_open_success_finalizer() -> dict:
           isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
           positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
           fileEditorEditSupportAvailable: () => true,
-          syncFileDiffSelectionMode: () => {{}},
+          updateFileDiffEditorOptions: () => {{}},
           showFilePasteDialog: () => false,
           hideFilePasteDialog: () => {{}},
           clipboardReadAvailable: () => false,
@@ -4152,8 +4152,10 @@ class TestFileViewerSource(unittest.TestCase):
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertNotIn("function focusActiveFileCodeEditor()", source)
         self.assertIn("focusActiveFileCodeEditor()", viewer_source)
-        self.assertIn("syncFileDiffSelectionMode()", source)
-        self.assertIn("? { enabled: false }", source)
+        self.assertNotIn("function syncFileDiffSelectionMode()", source)
+        self.assertIn("function syncFileDiffSelectionMode()", viewer_source)
+        self.assertIn("updateFileDiffEditorOptions: (options) => fileEditorRuntime.updateEditorOptions(currentFileEditorKind(), options)", source)
+        self.assertIn("? { enabled: false }", viewer_source)
         self.assertNotIn('function bindFileTouchPress(button, handler)', source)
         self.assertNotIn('function bindFileTouchClick(button, handler)', source)
         self.assertIn('function bindFileTouchPress(button, handler, options = {})', viewer_source)
@@ -4176,11 +4178,19 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(result["validMove"]["stopped"], 1)
         self.assertEqual(result["validMove"]["moves"], ["right"])
         self.assertTrue(result["validMove"]["mode"])
+        self.assertEqual(result["validMove"]["diffOptions"], [{"hideUnchangedRegions": {"enabled": False}}])
         self.assertEqual(result["validEscape"]["prevented"], 1)
         self.assertEqual(result["validEscape"]["stopped"], 1)
         self.assertEqual(result["validEscape"]["moves"], [])
         self.assertFalse(result["validEscape"]["mode"])
         self.assertEqual(result["validEscape"]["selections"][-1], {"cursor": {"lineNumber": 1, "column": 1}, "anchor": None})
+        self.assertEqual(
+            result["validEscape"]["diffOptions"],
+            [
+                {"hideUnchangedRegions": {"enabled": False}},
+                {"hideUnchangedRegions": {"enabled": True, "contextLineCount": 4, "minimumLineCount": 1, "revealLineCount": 2}},
+            ],
+        )
         self.assertEqual(result["printableBlocked"]["prevented"], 1)
         self.assertEqual(result["printableBlocked"]["stopped"], 1)
         self.assertEqual(result["printableBlocked"]["moves"], [])
