@@ -7020,3 +7020,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: Monaco load/cache/theme/Selection readiness belongs to `app_file_editor.js`. App still owns Monaco editor construction options and render fallbacks, PDF loader/cache state, pdfjs/canvas/observer side effects, line-focus scheduling, raw load-result render plan application, fallback DOM construction/scrolling, touch-toolbar DOM/binding mechanics, persisted mode UI wiring, file-video element handlers/loading, file-picker input/menu DOM mutation/rendering, inspect transport, candidate evidence collection/API refresh/cache-key/rendering, unsaved dialog DOM and return-focus state, paste dialog DOM mechanics, and selected-session identity predicates.
+
+## 2026-07-02T07:09:00Z PDF loader/cache viewer module ownership
+- Functional commit `e8c4e3e Move PDF loader state into viewer module` moved PDF.js loader/cache/worker setup state from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: `pdfjsReadyPromise` and `ensurePdfJs()` are file-viewer runtime state because they coordinate a single PDF.js load, reuse browser-global `pdfjsLib`, time out local module imports, set the worker URL, and reset the cache after load failure. `app_file_viewer.js` now owns `createPdfLoader({ resolveAppUrl, timeoutMs, importModule, globalObject })`, PDF import timeout, namespace cache, global-pdf fast path, worker setup, and cache reset after failure. `app.js` still owns PDF canvas/page DOM rendering, IntersectionObserver, active render currentness checks through the controller, fallback rendering, and user-facing PDF status decisions.
+- Tests updated: file-viewer module probe covers imported PDF path, cached second ensure, global `pdfjsLib` path without import, worker URL setup, and fail-loud missing `resolveAppUrl`. Source/security tests now look for PDF import ownership in `app_file_viewer.js`, reject app-owned `pdfjsReadyPromise`, and require app delegation through `filePdfLoader.ensure()`.
+- Negative evidence preserved: first focused validation after the move failed because the VM context for the new loader probe lacked browser timer globals (`setTimeout`/`clearTimeout`), and static/source tests still expected app-owned PDF import strings. These were stale/invalid measurement assumptions; repairs preserved behavior and asserted the new owner.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py tests/test_static_assets.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py tests/test_static_assets.py` returned `61 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `235 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1293 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: PDF.js loader/cache/worker setup belongs to `app_file_viewer.js`. App still owns PDF canvas/page DOM rendering, IntersectionObserver and render-task side effects, active render currentness checks, render fallbacks, Monaco construction options, line-focus scheduling, raw load-result render plan application, fallback DOM construction/scrolling, touch-toolbar DOM/binding mechanics, persisted mode UI wiring, file-video element handlers/loading, file-picker input/menu DOM mutation/rendering, inspect transport, candidate evidence collection/API refresh/cache-key/rendering, unsaved dialog DOM and return-focus state, paste dialog DOM mechanics, and selected-session identity predicates.
