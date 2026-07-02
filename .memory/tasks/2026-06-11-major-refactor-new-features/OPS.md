@@ -7170,3 +7170,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: controller owns touch-toolbar activation and toolbar state projection; app still owns toolbar DOM nodes/style mutation and supplies viewport/editor-presence observations.
+
+## 2026-07-02T09:11:00Z Touch-selection diff option policy viewer-controller ownership
+- Functional commit `be57eed Move touch selection diff options into viewer controller` moved the touch-selection diff-editor `hideUnchangedRegions` option computation from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: whether diff unchanged-region hiding is disabled depends on `fileTouchSelectMode`, which the viewer controller owns. The controller now computes `{ enabled: false }` while touch selection is active and restores `{ enabled: true, contextLineCount: 4, minimumLineCount: 1, revealLineCount: 2 }` when selection collapses. App supplies only `updateFileDiffEditorOptions(options)` that delegates to `fileEditorRuntime.updateEditorOptions(currentFileEditorKind(), options)`.
+- Tests updated: controller fixtures now provide `updateFileDiffEditorOptions` instead of `syncFileDiffSelectionMode`; the touch-selection executable test asserts the exact option payloads for entering and leaving touch-selection mode. Source tests reject app-owned `syncFileDiffSelectionMode()` and require controller-owned computation plus app-owned option application.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_file_picker_search_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_file_picker_search_source.py` returned `72 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `236 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1294 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: controller owns touch-selection diff option policy; app still owns the editor-runtime side effect of applying options to the current Monaco/diff editor.
