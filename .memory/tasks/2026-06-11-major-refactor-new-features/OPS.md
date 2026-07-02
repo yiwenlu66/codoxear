@@ -7462,3 +7462,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: video load DOM application belongs to `app_file_viewer.js`. App still owns status text storage, URL resolution, compatible preview transport, and controller policy callbacks. Raw PDF rendering and file-viewer modal show/hide remain app-owned seams.
+
+## 2026-07-02T17:08:00Z File-viewer modal chrome viewer-module ownership
+- Functional commit `58a6bc2 Move file viewer modal chrome into viewer module` moved file-viewer backdrop/viewer display, return-focus capture/restore, initial picker-input focus, and close-button focus mechanics from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js` as `createFileViewerModalRuntime(...)`.
+- Mechanism: the controller owns file-viewer return-focus slots; the modal runtime now owns DOM chrome application around those slots. Hide is split into `beginHide()`, `hideDisplay()`, and `finishHide(state)` so app-owned cleanup ordering remains explicit while DOM display and focus restoration no longer live inline.
+- Tests updated: modal-runtime VM coverage executes query-open show, already-open show, hide-state capture, hide display, focus restoration finalization, missing dependency, export list, and load guard. File-viewer and overlay source tests now assert runtime delegation and reject restored app-owned return-focus capture, backdrop/viewer display, and close/query initial focus code.
+- Negative evidence preserved: an initial implementation put display hiding inside `beginHide()`, which would have moved hide display earlier than the old cleanup order. The runtime was corrected to split capture/display/finalize before validation.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py tests/test_overlay_accessibility_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py tests/test_overlay_accessibility_source.py` returned `63 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `242 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1300 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: file-viewer modal chrome belongs to `app_file_viewer.js`. App still owns show/hide state orchestration, file-picker search rendering, PDF page rendering, selected-session authority, and global keyboard/backdrop/button event binding.
