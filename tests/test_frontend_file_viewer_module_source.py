@@ -628,6 +628,17 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
           let invalidVideoMessage = "";
           try {{ renderController.prepareActiveVideoLoadResult("bad.mkv", {{ kind: "video", video_preview_url: "/preview.mp4" }}, {{ requestId: 11 }}); }} catch (err) {{ invalidVideoMessage = err && err.message ? err.message : String(err); }}
           const videoPolicy = {{ videoPlanState, videoRetry, videoMetadata, videoUsedError, unsupportedVideo, invalidVideoMessage }};
+          const pdfStateA = {{ id: "a" }};
+          const pdfStateB = {{ id: "b" }};
+          const pdfSetA = renderController.setActivePdfRenderState(pdfStateA) === pdfStateA;
+          const pdfAActive = renderController.isActivePdfRenderState(pdfStateA);
+          const pdfBActive = renderController.isActivePdfRenderState(pdfStateB);
+          const pdfTaken = renderController.takeActivePdfRenderState() === pdfStateA;
+          const pdfAAfterTake = renderController.isActivePdfRenderState(pdfStateA);
+          renderController.setActivePdfRenderState(pdfStateB);
+          const pdfClearResult = renderController.clearActivePdfRenderState();
+          const pdfBAfterClear = renderController.isActivePdfRenderState(pdfStateB);
+          const pdfRenderState = {{ pdfSetA, pdfAActive, pdfBActive, pdfTaken, pdfAAfterTake, pdfClearResult, pdfBAfterClear }};
           events.length = 0;
           const loadOpen = renderController.startFileOpenRequest("plan.md", {{ line: 4, gitPath: false, apiPath: "" }});
           const loadRequest = loadOpen.request;
@@ -745,6 +756,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             modeControl: {{ modeControlDiffable, modeControlNoPath, modeControlPreviewExitEdit, modeControlDraft }},
             plainFallbackState,
             videoPolicy,
+            pdfRenderState,
             loadPlans,
           }};
           const availableReloadFailure = await runReloadCase("");
@@ -1050,6 +1062,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             },
             "invalidVideoMessage": "invalid video response",
         })
+        self.assertEqual(result["render"]["pdfRenderState"], {"pdfSetA": True, "pdfAActive": True, "pdfBActive": False, "pdfTaken": True, "pdfAAfterTake": False, "pdfClearResult": True, "pdfBAfterClear": False})
         load_plans = result["render"]["loadPlans"]
         self.assertEqual(load_plans["diff"], {"plan": {"kind": "diff", "noDiff": False, "baseText": "old", "currentText": "new", "status": "plan.md - diff"}, "frozen": True})
         self.assertEqual(load_plans["noDiff"], {"plan": {"kind": "diff", "noDiff": True, "status": "plan.md - no diff"}, "frozen": True})

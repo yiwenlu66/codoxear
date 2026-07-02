@@ -7034,7 +7034,6 @@
         let pdfjsReadyPromise = null;
         const MONACO_LOADER_TIMEOUT_MS = 4000;
         const PDFJS_LOADER_TIMEOUT_MS = 6000;
-        let activePdfRender = null;
         let fileEditor = null;
         let fileEditorModels = [];
         let fileEditorChangeDisposable = null;
@@ -7298,8 +7297,7 @@
         }
 
         function disposePdfRender() {
-          const state = activePdfRender;
-          activePdfRender = null;
+          const state = fileViewerController.takeActivePdfRenderState();
           if (!state) return;
           if (state.observer) {
             try {
@@ -8051,12 +8049,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             rendering: new Set(),
             pdf: null,
           };
-          activePdfRender = state;
+          fileViewerController.setActivePdfRenderState(state);
           const pdf = await loadingTask.promise;
-          if (activePdfRender !== state || !isCurrentFileOpenRequest(request)) return false;
+          if (!fileViewerController.isActivePdfRenderState(state) || !isCurrentFileOpenRequest(request)) return false;
           state.pdf = pdf;
           const firstPage = await pdf.getPage(1);
-          if (activePdfRender !== state || !isCurrentFileOpenRequest(request)) return false;
+          if (!fileViewerController.isActivePdfRenderState(state) || !isCurrentFileOpenRequest(request)) return false;
           const unitViewport = firstPage.getViewport({ scale: 1 });
           const maxWidth = Math.max(240, container.clientWidth - 24);
           const scale = maxWidth / Math.max(1, unitViewport.width);
@@ -8069,7 +8067,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             slot.classList.add("rendering");
             try {
               const page = pageNumber === 1 ? firstPage : await pdf.getPage(pageNumber);
-              if (activePdfRender !== state || !isCurrentFileOpenRequest(request)) return;
+              if (!fileViewerController.isActivePdfRenderState(state) || !isCurrentFileOpenRequest(request)) return;
               const viewport = page.getViewport({ scale });
               const outputScale = window.devicePixelRatio || 1;
               const canvas = document.createElement("canvas");
@@ -8089,13 +8087,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               state.renderTasks.add(task);
               await task.promise;
               state.renderTasks.delete(task);
-              if (activePdfRender !== state || !isCurrentFileOpenRequest(request)) return;
+              if (!fileViewerController.isActivePdfRenderState(state) || !isCurrentFileOpenRequest(request)) return;
               slot.replaceChildren(canvas);
               slot.classList.remove("rendering");
               state.rendered.add(pageNumber);
             } catch (e) {
               if (e && e.name === "RenderingCancelledException") return;
-              if (activePdfRender !== state || !isCurrentFileOpenRequest(request)) return;
+              if (!fileViewerController.isActivePdfRenderState(state) || !isCurrentFileOpenRequest(request)) return;
               slot.textContent = `Page ${pageNumber} failed to render`;
               slot.classList.add("failed");
             } finally {

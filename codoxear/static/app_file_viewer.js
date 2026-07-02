@@ -112,6 +112,7 @@
     let activeFileVersion = "";
     let activeFileDraft = false;
     let activeVideoFallback = null;
+    let activePdfRender = null;
     let unavailableSessionId = "";
     let fileSessionSelections = new Map();
     let fileTouchSelectMode = false;
@@ -787,6 +788,26 @@
 
     function currentActiveVideoFallback() {
       return activeVideoFallbackSnapshot();
+    }
+
+    function setActivePdfRenderState(state) {
+      activePdfRender = state || null;
+      return activePdfRender;
+    }
+
+    function takeActivePdfRenderState() {
+      const state = activePdfRender;
+      activePdfRender = null;
+      return state;
+    }
+
+    function clearActivePdfRenderState() {
+      activePdfRender = null;
+      return true;
+    }
+
+    function isActivePdfRenderState(state) {
+      return Boolean(state && activePdfRender === state);
     }
 
     function currentActiveVideoPreviewToken() {
@@ -1914,6 +1935,10 @@
       setActiveVideoFallback,
       clearActiveVideoFallback,
       currentActiveVideoFallback,
+      setActivePdfRenderState,
+      takeActivePdfRenderState,
+      clearActivePdfRenderState,
+      isActivePdfRenderState,
       currentActiveVideoPreviewToken,
       prepareActiveVideoLoadResult,
       handleActiveVideoLoadError,
