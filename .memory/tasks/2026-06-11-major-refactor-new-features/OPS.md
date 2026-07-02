@@ -7349,3 +7349,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: editor post-render line-focus scheduling belongs to `app_file_editor.js`. App still owns render currentness and raw file/diff renderer orchestration.
+
+## 2026-07-02T13:58:00Z Touch-toolbar DOM runtime viewer-module ownership
+- Functional commit `ee70dd7 Move touch toolbar DOM updates into viewer module` moved touch-toolbar DOM visibility/class application from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js` as `createFileTouchToolbarRuntime(...)`.
+- Mechanism: the file-viewer controller already computes touch-toolbar state (`visible`, `selectActive`, `dpadVisible`, `copyVisible`, `pasteVisible`). Applying that state to the viewer toolbar nodes is viewer DOM runtime behavior, not app-level policy. `app.js` now only asks the controller for current state and delegates to `fileTouchToolbarRuntime.update(...)`.
+- Tests updated: `tests/test_frontend_file_viewer_module_source.py` now executes hidden, visible, partial-visible, class-toggle, frozen-result, missing-dependency, export-list, and load-guard behavior for the runtime. `tests/test_file_viewer_source.py` now rejects restored app-owned `fileTouch*style.display = toolbarState...` mutations and requires runtime delegation.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` returned `52 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `239 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1297 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: touch-toolbar DOM application belongs to `app_file_viewer.js`. App still owns the concrete DOM nodes, event bindings, and controller dependency wiring.
