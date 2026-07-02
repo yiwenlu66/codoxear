@@ -566,6 +566,7 @@
         typeof codoxearFilePicker.appendFilePickerStatusRow !== "function" ||
         typeof codoxearFilePicker.appendHighlightedFileMenuPath !== "function" ||
         typeof codoxearFilePicker.createMenuDomRuntime !== "function" ||
+        typeof codoxearFilePicker.createMenuRenderRuntime !== "function" ||
         typeof codoxearFilePicker.createMenuState !== "function" ||
         typeof codoxearFilePicker.createSearchState !== "function" ||
         typeof codoxearFilePicker.localFilePickerSearchEntries !== "function" ||
@@ -7058,6 +7059,33 @@
           renderMenu: () => renderFilePickerMenu(),
           applyMenuState: () => applyFileMenuState(),
         });
+        const filePickerRenderRuntime = codoxearFilePicker.createMenuRenderRuntime({
+          menu: filePickerMenu,
+          menuState: filePickerMenuState,
+          inputValue: () => filePickerInput.value,
+          visibleEntries: () => visibleFilePickerEntries(),
+          searchSnapshot: () => filePickerSearchSnapshot(),
+          normalizeDraftFilePath: (query) => normalizeDraftFilePath(query),
+          draftSuppressed: () => filePickerDraftSuppressed(),
+          draftEntry: (path) => draftFileEntry(path),
+          syncActiveDescendant: (focusIndex) => filePickerDomRuntime.syncActiveDescendant(focusIndex),
+          sectionLabel: (source) => filePickerSectionLabel(source),
+          duplicatePaths: (entries) => duplicateFilePickerPaths(entries),
+          identityHint: (entry, duplicatePaths, options) => filePickerIdentityHint(entry, duplicatePaths, options),
+          titleForEntry: (entry, hint) => filePickerTitle(entry, hint),
+          normalizeFileApiPath: (value) => normalizeFileApiPath(value),
+          activeIdentity: () => currentActiveFileIdentity(),
+          openDraftFilePath: (draftPath) => openDraftFilePathWithGuard(draftPath),
+          openEntry: async (selectedEntry) => {
+            try {
+              await openFilePathWithResolvedMode(selectedEntry.path, { line: filePickerSelectionLine(), changed: Boolean(selectedEntry.changed), gitPath: Boolean(selectedEntry.gitPath), apiPath: selectedEntry.apiPath });
+            } catch (e) {
+              fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
+            }
+          },
+          el,
+          createTextNode: (value) => document.createTextNode(value),
+        });
         const MONACO_LOADER_TIMEOUT_MS = 4000;
         const PDFJS_LOADER_TIMEOUT_MS = 6000;
         const fileEditorRuntime = codoxearFileEditor.createFileEditorRuntime();
@@ -8141,92 +8169,8 @@
           return resolved;
         }
 
-        function appendFilePickerSection(label) {
-          return codoxearFilePicker.appendFilePickerSection(filePickerMenu, label, { el });
-        }
-
-        function appendFilePickerStatusRow(text) {
-          return codoxearFilePicker.appendFilePickerStatusRow(filePickerMenu, text, { el });
-        }
-
-        function syncFilePickerActiveDescendant(focusIndex) {
-          return filePickerDomRuntime.syncActiveDescendant(focusIndex);
-        }
-
-        function appendDraftFileMenuItem(path, idx, active) {
-          return codoxearFilePicker.appendDraftFileMenuItem(filePickerMenu, path, idx, active, {
-            el,
-            openDraftFilePath: (draftPath) => openDraftFilePathWithGuard(draftPath),
-          });
-        }
-
         function renderFilePickerMenu() {
-          filePickerMenu.innerHTML = "";
-          const entries = visibleFilePickerEntries();
-          const query = filePickerMenuState.visibleQuery(filePickerInput.value);
-          let focusIndex = filePickerMenuState.focusIndex();
-          const searchState = filePickerSearchSnapshot();
-          const draftPath = normalizeDraftFilePath(query);
-          if (entries === null) {
-            const showDraft = draftPath && !filePickerDraftSuppressed();
-            if (showDraft) appendDraftFileMenuItem(draftPath, 0, focusIndex === 0);
-            appendFilePickerStatusRow("Searching files...");
-            return showDraft ? [draftFileEntry(draftPath)] : [];
-          }
-          if (!entries.length) {
-            const showDraft = draftPath && !filePickerDraftSuppressed();
-            if (showDraft) {
-              appendDraftFileMenuItem(draftPath, 0, focusIndex === 0);
-              syncFilePickerActiveDescendant(0);
-              return [draftFileEntry(draftPath)];
-            }
-            const emptyText = query
-              ? searchState.errorQuery === query
-                ? searchState.error || "Unable to search files"
-                : "No matching files"
-              : "Type to search files.";
-            appendFilePickerStatusRow(emptyText);
-            syncFilePickerActiveDescendant(-1);
-            return entries;
-          }
-          focusIndex = filePickerMenuState.clampFocus(entries.length);
-          const showSourceSections = !query;
-          const duplicatePaths = duplicateFilePickerPaths(entries);
-          let lastSourceSection = "";
-          for (const [idx, entry] of entries.entries()) {
-            const section = showSourceSections ? filePickerSectionLabel(entry.source) : "";
-            if (section && section !== lastSourceSection) {
-              appendFilePickerSection(section);
-              lastSourceSection = section;
-            }
-            const path = entry.path;
-            const identityHint = filePickerIdentityHint(entry, duplicatePaths, { showSourceSections });
-            const entryApiPath = normalizeFileApiPath(entry.apiPath);
-            const activeIdentity = currentActiveFileIdentity();
-            const active = focusIndex === idx || (focusIndex < 0 && activeIdentity.path === path && activeIdentity.gitPath === Boolean(entry.gitPath) && activeIdentity.apiPath === entryApiPath && !query);
-            codoxearFilePicker.appendFilePickerEntryItem(filePickerMenu, entry, idx, active, query, identityHint, filePickerTitle(entry, identityHint), {
-              el,
-              createTextNode: (value) => document.createTextNode(value),
-              openDraftFilePath: (draftPath) => openDraftFilePathWithGuard(draftPath),
-              openEntry: async (selectedEntry) => {
-                try {
-                  await openFilePathWithResolvedMode(selectedEntry.path, { line: filePickerSelectionLine(), changed: Boolean(selectedEntry.changed), gitPath: Boolean(selectedEntry.gitPath), apiPath: selectedEntry.apiPath });
-                } catch (e) {
-                  fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
-                }
-              },
-            });
-          }
-          if (query && searchState.pendingQuery === query) {
-            appendFilePickerStatusRow("Searching full project...");
-          } else if (query && searchState.errorQuery === query) {
-            appendFilePickerStatusRow(searchState.error || "Full project search unavailable.");
-          } else if (query && searchState.truncatedQuery === query) {
-            appendFilePickerStatusRow("Search capped at top matches.");
-          }
-          focusIndex = filePickerMenuState.focusIndex();
-          syncFilePickerActiveDescendant(focusIndex);
-          return entries;
+          return filePickerRenderRuntime.render();
         }
 
         function fileRefValidationKey(path, gitPath = false) {

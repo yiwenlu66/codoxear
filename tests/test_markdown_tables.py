@@ -205,6 +205,7 @@ class TestMarkdownTables(unittest.TestCase):
 
     def test_ambiguous_candidate_file_refs_open_identity_picker(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        picker_source = (APP_JS.parent / "app_file_picker.js").read_text(encoding="utf-8")
         css = APP_CSS.read_text(encoding="utf-8")
         self.assertIn("function replaceAmbiguousFileRefNode(node, path, line = null)", source)
         self.assertIn('class: "inlineFileLink inlineFileAmbiguousRef"', source)
@@ -225,7 +226,8 @@ class TestMarkdownTables(unittest.TestCase):
         self.assertIn("function filePickerDraftSuppressed()", source)
         self.assertIn("function filePickerAmbiguousChoiceActive()", source)
         self.assertIn("if (filePickerAmbiguousChoiceActive()) {", source)
-        self.assertIn("const showDraft = draftPath && !filePickerDraftSuppressed();", source)
+        self.assertNotIn("const showDraft = draftPath && !filePickerDraftSuppressed();", source)
+        self.assertIn("const showDraft = draftPath && !draftSuppressed();", picker_source)
         self.assertIn("await openFilePathWithResolvedMode(selectedEntry.path, { line: filePickerSelectionLine(),", source)
         self.assertIn("void openFilePathWithResolvedMode(active.path, { line: filePickerSelectionLine(),", source)
         self.assertIn(".inlineFileAmbiguousRef", css)

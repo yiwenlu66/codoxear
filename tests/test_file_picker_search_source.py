@@ -1040,9 +1040,11 @@ class TestFilePickerSearchSource(unittest.TestCase):
 
     def test_source_shows_pending_full_project_footer(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        picker_source = APP_FILE_PICKER_JS.read_text(encoding="utf-8")
         self.assertIn("function localFilePickerSearchEntries(query)", source)
         self.assertIn("function prependDraftFileEntry(entries, query)", source)
-        self.assertIn('appendFilePickerStatusRow("Searching full project...");', source)
+        self.assertNotIn('appendFilePickerStatusRow("Searching full project...");', source)
+        self.assertIn('appendStatus("Searching full project...");', picker_source)
         self.assertNotIn("if (fileSearchPendingQuery === query) return null;", source)
 
     def test_file_candidates_show_fallback_while_changed_files_pending(self) -> None:
@@ -1188,7 +1190,7 @@ class TestFilePickerSearchSource(unittest.TestCase):
         picker_source = APP_FILE_PICKER_JS.read_text(encoding="utf-8")
         css = (APP_JS.parent / "app.css").read_text(encoding="utf-8")
         start = picker_source.index("function appendHighlightedFileMenuPath(parent, text, query, host = {}) {")
-        end = picker_source.index("function createMenuDomRuntime", start)
+        end = picker_source.index("function appendFilePickerSection", start)
         block = picker_source[start:end]
         self.assertIn("span.appendChild(createTextNode(value.slice(cursor, start)));", block)
         self.assertIn('span.appendChild(createEl("mark", { class: "fileMenuMatch", text: value.slice(start, end) }));', block)
@@ -1201,7 +1203,7 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertNotIn("document.createTextNode(value.slice(cursor", app_block)
         self.assertIn("appendHighlightedFileMenuPath(btn, path, query, host);", picker_source)
         self.assertIn("appendHighlightedFileMenuPath(btn, `Create new file: ${path}`, query, host);", picker_source)
-        self.assertIn("filePickerTitle(entry, identityHint)", source)
+        self.assertIn("titleForEntry: (entry, hint) => filePickerTitle(entry, hint)", source)
         self.assertIn("title,", picker_source)
         self.assertIn(".fileMenuMatch", css)
 
@@ -1253,7 +1255,7 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertIn("function filePickerIdentityHint(entry, duplicatePaths, options)", source)
         self.assertIn("function duplicateFilePickerPaths(entries)", source)
         self.assertNotIn('"aria-label": filePickerTitle(entry, identityHint)', source)
-        self.assertIn("filePickerTitle(entry, identityHint)", source)
+        self.assertIn("titleForEntry: (entry, hint) => filePickerTitle(entry, hint)", source)
         self.assertIn("fileMenuHint fileMenuIdentity", picker_source)
         self.assertIn(".fileMenuIdentity", css)
 

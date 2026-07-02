@@ -365,6 +365,103 @@
     return btn;
   }
 
+  function createMenuRenderRuntime(options = {}) {
+    const menu = options.menu || null;
+    if (!menu || !("innerHTML" in menu) || typeof menu.appendChild !== "function") throw new Error("Codoxear file picker host missing filePickerMenu");
+    const menuState = options.menuState || null;
+    const visibleQuery = requireFunction(menuState, "visibleQuery");
+    const focusIndex = requireFunction(menuState, "focusIndex");
+    const clampFocus = requireFunction(menuState, "clampFocus");
+    const inputValue = requireFunction(options, "inputValue");
+    const visibleEntries = requireFunction(options, "visibleEntries");
+    const searchSnapshot = requireFunction(options, "searchSnapshot");
+    const normalizeDraftFilePath = requireFunction(options, "normalizeDraftFilePath");
+    const draftSuppressed = requireFunction(options, "draftSuppressed");
+    const draftEntry = requireFunction(options, "draftEntry");
+    const syncActiveDescendant = requireFunction(options, "syncActiveDescendant");
+    const sectionLabel = requireFunction(options, "sectionLabel");
+    const duplicatePaths = requireFunction(options, "duplicatePaths");
+    const identityHint = requireFunction(options, "identityHint");
+    const titleForEntry = requireFunction(options, "titleForEntry");
+    const normalizeFileApiPath = requireFunction(options, "normalizeFileApiPath");
+    const activeIdentity = requireFunction(options, "activeIdentity");
+    const openDraftFilePath = requireFunction(options, "openDraftFilePath");
+    const openEntry = requireFunction(options, "openEntry");
+    const host = {
+      el: requireFunction(options, "el"),
+      createTextNode: requireFunction(options, "createTextNode"),
+      openDraftFilePath,
+      openEntry,
+    };
+
+    function appendDraft(path, idx, active) {
+      return appendDraftFileMenuItem(menu, path, idx, active, host);
+    }
+
+    function appendStatus(text) {
+      return appendFilePickerStatusRow(menu, text, host);
+    }
+
+    function render() {
+      menu.innerHTML = "";
+      const entries = visibleEntries();
+      const query = visibleQuery(inputValue());
+      let focus = focusIndex();
+      const state = searchSnapshot();
+      const draftPath = normalizeDraftFilePath(query);
+      if (entries === null) {
+        const showDraft = draftPath && !draftSuppressed();
+        if (showDraft) appendDraft(draftPath, 0, focus === 0);
+        appendStatus("Searching files...");
+        return showDraft ? [draftEntry(draftPath)] : [];
+      }
+      if (!entries.length) {
+        const showDraft = draftPath && !draftSuppressed();
+        if (showDraft) {
+          appendDraft(draftPath, 0, focus === 0);
+          syncActiveDescendant(0);
+          return [draftEntry(draftPath)];
+        }
+        const emptyText = query
+          ? state.errorQuery === query
+            ? state.error || "Unable to search files"
+            : "No matching files"
+          : "Type to search files.";
+        appendStatus(emptyText);
+        syncActiveDescendant(-1);
+        return entries;
+      }
+      focus = clampFocus(entries.length);
+      const showSourceSections = !query;
+      const duplicatePathSet = duplicatePaths(entries);
+      let lastSourceSection = "";
+      for (const [idx, entry] of entries.entries()) {
+        const section = showSourceSections ? sectionLabel(entry.source) : "";
+        if (section && section !== lastSourceSection) {
+          appendFilePickerSection(menu, section, host);
+          lastSourceSection = section;
+        }
+        const path = entry.path;
+        const hint = identityHint(entry, duplicatePathSet, { showSourceSections });
+        const entryApiPath = normalizeFileApiPath(entry.apiPath);
+        const active = activeIdentity();
+        const rowActive = focus === idx || (focus < 0 && active.path === path && active.gitPath === Boolean(entry.gitPath) && active.apiPath === entryApiPath && !query);
+        appendFilePickerEntryItem(menu, entry, idx, rowActive, query, hint, titleForEntry(entry, hint), host);
+      }
+      if (query && state.pendingQuery === query) {
+        appendStatus("Searching full project...");
+      } else if (query && state.errorQuery === query) {
+        appendStatus(state.error || "Full project search unavailable.");
+      } else if (query && state.truncatedQuery === query) {
+        appendStatus("Search capped at top matches.");
+      }
+      syncActiveDescendant(focusIndex());
+      return entries;
+    }
+
+    return Object.freeze({ render });
+  }
+
   function createMenuDomRuntime(options = {}) {
     const menuState = options.menuState || null;
     const field = requireClassToggleNode(options.field, "filePickerField");
@@ -639,6 +736,7 @@
     appendFilePickerStatusRow,
     appendHighlightedFileMenuPath,
     createMenuDomRuntime,
+    createMenuRenderRuntime,
     createMenuState,
     createSearchState,
     localFilePickerSearchEntries,

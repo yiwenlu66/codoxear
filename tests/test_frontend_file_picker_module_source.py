@@ -219,7 +219,103 @@ def run_picker_module_probe() -> dict[str, object]:
         }}));
         """
     )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
+def run_picker_render_runtime_probe() -> dict[str, object]:
+    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
+    helper_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
+    picker_source = APP_FILE_PICKER_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(display_source)}, ctx);
+        vm.runInContext({json.dumps(helper_source)}, ctx);
+        vm.runInContext({json.dumps(picker_source)}, ctx);
+        const picker = ctx.window.CodoxearFilePicker;
+        function el(tag, attrs = {{}}) {{
+          return {{ tag, attrs, textContent: "", children: [], onclick: null, onmousedown: null, appendChild(child) {{ this.children.push(child); return child; }} }};
+        }}
+        function createTextNode(text) {{ return {{ tag: "#text", text: String(text) }}; }}
+        const menu = {{ innerHTML: "stale", children: [], appendChild(child) {{ this.children.push(child); return child; }} }};
+        let query = "";
+        let entries = [];
+        let focus = -1;
+        let suppressed = false;
+        let snapshot = {{}};
+        let active = {{ path: "", gitPath: false, apiPath: "" }};
+        const syncs = [];
+        const opened = [];
+        const menuState = {{
+          visibleQuery: () => query,
+          focusIndex: () => focus,
+          clampFocus(count) {{ if (focus >= count) focus = count ? count - 1 : -1; return focus; }},
+        }};
+        const runtime = picker.createMenuRenderRuntime({{
+          menu,
+          menuState,
+          inputValue: () => query,
+          visibleEntries: () => entries,
+          searchSnapshot: () => snapshot,
+          normalizeDraftFilePath: (value) => String(value || "").trim(),
+          draftSuppressed: () => suppressed,
+          draftEntry: (path) => ({{ path, createNew: true }}),
+          syncActiveDescendant: (idx) => syncs.push(idx),
+          sectionLabel: (source) => source === "changed" ? "Changed files" : source === "recent" ? "Recent files" : "",
+          duplicatePaths: (items) => new Set(items.map((item) => item.path).filter((path, _idx, arr) => arr.indexOf(path) !== arr.lastIndexOf(path))),
+          identityHint: (entry, duplicatePaths, options) => duplicatePaths.has(entry.path) ? (options.showSourceSections ? "duplicate" : "same path") : "",
+          titleForEntry: (entry, hint) => hint ? `${{entry.path}} (${{hint}})` : entry.path,
+          normalizeFileApiPath: (value) => String(value || ""),
+          activeIdentity: () => active,
+          openDraftFilePath: (path) => opened.push(["draft", path]),
+          openEntry: (entry) => opened.push(["entry", entry.path, Boolean(entry.gitPath), entry.apiPath || ""]),
+          el,
+          createTextNode,
+        }});
+        function summarize(node) {{
+          return {{
+            tag: node.tag,
+            cls: (node.attrs && node.attrs.class) || "",
+            id: (node.attrs && node.attrs.id) || "",
+            text: (node.attrs && node.attrs.text) || node.text || node.textContent || "",
+            aria: (node.attrs && node.attrs["aria-selected"]) || "",
+            title: (node.attrs && node.attrs.title) || "",
+            children: (node.children || []).map(summarize),
+          }};
+        }}
+        function resetMenu() {{ menu.innerHTML = "stale"; menu.children = []; syncs.length = 0; opened.length = 0; }}
+        function runCase(next) {{
+          resetMenu();
+          Object.assign({{}}, next);
+          query = next.query;
+          entries = next.entries;
+          focus = next.focus;
+          suppressed = Boolean(next.suppressed);
+          snapshot = next.snapshot || {{}};
+          active = next.active || {{ path: "", gitPath: false, apiPath: "" }};
+          const returned = runtime.render();
+          return {{ returned, innerHTML: menu.innerHTML, rows: menu.children.map(summarize), syncs: syncs.slice(), opened: opened.slice() }};
+        }}
+        const pending = runCase({{ query: "draft/new.txt", entries: null, focus: 0, suppressed: false, snapshot: {{ pendingQuery: "draft/new.txt" }} }});
+        const empty = runCase({{ query: "missing", entries: [], focus: -1, suppressed: true, snapshot: {{ errorQuery: "missing", error: "search failed" }} }});
+        const populated = runCase({{
+          query: "",
+          focus: -1,
+          active: {{ path: "README.md", gitPath: false, apiPath: "" }},
+          entries: [
+            {{ path: "src/app.py", source: "changed", changed: true, additions: 1, deletions: 2, gitPath: true, apiPath: "tok" }},
+            {{ path: "README.md", source: "recent", gitPath: false, apiPath: "" }},
+          ],
+          snapshot: {{}},
+        }});
+        const footer = runCase({{ query: "app", focus: 0, entries: [{{ path: "src/app.py", source: "search" }}], snapshot: {{ pendingQuery: "app" }} }});
+        process.stdout.write(JSON.stringify({{ pending, empty, populated, footer, frozen: Object.isFrozen(runtime) }}));
+        """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
 
 
@@ -236,6 +332,7 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
                 "appendFilePickerStatusRow",
                 "appendHighlightedFileMenuPath",
                 "createMenuDomRuntime",
+                "createMenuRenderRuntime",
                 "createMenuState",
                 "createSearchState",
                 "localFilePickerSearchEntries",
@@ -253,6 +350,28 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         self.assertIn("Codoxear file picker host missing openDraftFilePath", result["draftHostError"])
         self.assertIn("Codoxear file picker host missing openDraftFilePath", result["entryHostError"])
         self.assertIn("Codoxear file picker host missing el", result["statusHostError"])
+
+    def test_file_picker_menu_render_runtime_behavior(self) -> None:
+        result = run_picker_render_runtime_probe()
+        self.assertTrue(result["frozen"])
+        pending = result["pending"]
+        self.assertEqual(pending["returned"], [{"path": "draft/new.txt", "createNew": True}])
+        self.assertEqual([row["cls"] for row in pending["rows"]], ["fileMenuItem fileMenuCreate active", "pickerEmpty"])
+        self.assertEqual(pending["rows"][1]["text"], "Searching files...")
+        self.assertEqual(pending["syncs"], [])
+        empty = result["empty"]
+        self.assertEqual(empty["rows"], [{"tag": "div", "cls": "pickerEmpty", "id": "", "text": "search failed", "aria": "", "title": "", "children": []}])
+        self.assertEqual(empty["syncs"], [-1])
+        populated = result["populated"]
+        self.assertEqual([row["text"] for row in populated["rows"] if row["cls"] == "fileMenuSection"], ["Changed files", "Recent files"])
+        self.assertEqual(populated["rows"][1]["id"], "filePickerOption-0")
+        self.assertEqual(populated["rows"][1]["aria"], "false")
+        self.assertEqual(populated["rows"][3]["id"], "filePickerOption-1")
+        self.assertEqual(populated["rows"][3]["aria"], "true")
+        self.assertEqual(populated["syncs"], [-1])
+        footer = result["footer"]
+        self.assertEqual(footer["rows"][-1]["text"], "Searching full project...")
+        self.assertEqual(footer["syncs"], [0])
 
     def test_file_picker_menu_state_behavior(self) -> None:
         result = run_picker_module_probe()["menuState"]
@@ -355,25 +474,24 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         self.assertIn('typeof codoxearFilePicker.appendFilePickerStatusRow !== "function"', app_source)
         self.assertIn('typeof codoxearFilePicker.appendHighlightedFileMenuPath !== "function"', app_source)
         self.assertIn('typeof codoxearFilePicker.createMenuDomRuntime !== "function"', app_source)
+        self.assertIn('typeof codoxearFilePicker.createMenuRenderRuntime !== "function"', app_source)
         self.assertIn("const filePickerDomRuntime = codoxearFilePicker.createMenuDomRuntime", app_source)
+        self.assertIn("const filePickerRenderRuntime = codoxearFilePicker.createMenuRenderRuntime", app_source)
         self.assertIn("return filePickerDomRuntime.apply();", app_source)
         self.assertIn("return filePickerDomRuntime.resetInput(activeFilePathValue() || \"\");", app_source)
         self.assertIn("return filePickerDomRuntime.close({ restoreInput, inputValue: activeFilePathValue() || \"\" });", app_source)
         self.assertNotIn("filePickerField.classList.toggle(\"active\", state.open);", app_source)
         self.assertIn("return codoxearFilePicker.appendHighlightedFileMenuPath(parent, text, query, {", app_source)
-        self.assertIn("return codoxearFilePicker.appendFilePickerSection(filePickerMenu, label, { el });", app_source)
-        self.assertIn("return codoxearFilePicker.appendDraftFileMenuItem(filePickerMenu, path, idx, active, {", app_source)
-        self.assertIn("return codoxearFilePicker.appendFilePickerStatusRow(filePickerMenu, text, { el });", app_source)
-        self.assertIn("return filePickerDomRuntime.syncActiveDescendant(focusIndex);", app_source)
-        self.assertIn("codoxearFilePicker.appendFilePickerEntryItem(filePickerMenu, entry, idx, active, query, identityHint, filePickerTitle(entry, identityHint), {", app_source)
-        draft_start = app_source.index("function appendDraftFileMenuItem(path, idx, active)")
-        draft_end = app_source.index("function renderFilePickerMenu()", draft_start)
-        draft_block = app_source[draft_start:draft_end]
+        self.assertNotIn("function appendFilePickerSection(label)", app_source)
+        self.assertNotIn("function appendDraftFileMenuItem(path, idx, active)", app_source)
+        self.assertNotIn("function appendFilePickerStatusRow(text)", app_source)
+        self.assertNotIn("function syncFilePickerActiveDescendant(focusIndex)", app_source)
+        self.assertNotIn("codoxearFilePicker.appendFilePickerEntryItem(filePickerMenu, entry, idx, active, query, identityHint, filePickerTitle(entry, identityHint), {", app_source)
         self.assertNotIn('filePickerMenu.appendChild(el("div", { class: "fileMenuSection"', app_source)
-        self.assertNotIn("btn.onmousedown = (e) => e.preventDefault();", draft_block)
         render_start = app_source.index("function renderFilePickerMenu()")
         render_end = app_source.index("function fileRefValidationKey", render_start)
         render_block = app_source[render_start:render_end]
+        self.assertIn("return filePickerRenderRuntime.render();", render_block)
         self.assertNotIn('const stat = el("span", { class: "fileMenuStat changed" });', render_block)
         self.assertNotIn('btn.appendChild(el("span", { class: "fileMenuHint fileMenuIdentity"', render_block)
         self.assertNotIn('filePickerMenu.appendChild(el("div", { class: "pickerEmpty"', render_block)
