@@ -6988,3 +6988,19 @@
 - Scope of intended review: recent Workbench item 2 frontend ownership moves through `c40ef97`.
 - Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against the file-viewer code. The evidence basis remains syntax checks, focused tests, broader targeted tests, full local pytest, Docker sandbox validation, and diff checks recorded in OPS entries for the functional commits.
 - Decision: continue direct local inspection/refactoring; retry clean-room review only at a real yield/decision gate or if the review runner produces concrete findings.
+
+## 2026-07-02T06:38:00Z Raw editor lifecycle runtime module ownership
+- Functional commit `19a4544 Move raw editor lifecycle into editor runtime` introduced `codoxear/static/app_file_editor.js` and moved raw editor instance/model/disposable lifecycle out of inline `codoxear/static/app.js`.
+- Mechanism: `fileEditor`, `fileEditorModels`, and `fileEditorChangeDisposable` are editor-runtime lifecycle state: they decide which Monaco editor is current, which models/disposables must be cleaned up, and which nested editor receives focus/options. The new `CodoxearFileEditor.createFileEditorRuntime()` owns current editor, model list, change-disposable, disposal order, active-code-editor projection, diff option updates, and current-editor callback access. `app.js` still owns Monaco library loading, editor/diff-editor construction options, DOM host clearing, line focus scheduling, controller state transitions, and user-facing render/fallback policy.
+- Tests updated: new `tests/test_frontend_file_editor_module_source.py` executes editor runtime behavior for active file/diff editor projection, wrong-kind diff option no-op, diff option update, model/disposable disposal including swallowed dispose errors matching prior behavior, host clearing, after-dispose callback, current-editor access, fail-loud missing callback, static asset registration, and app source ownership boundaries. Static asset/version/package tests now include `app_file_editor.js`. File-viewer module registration tests assert the editor runtime loads before `app.js`.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_editor_module_source.py tests/test_static_assets.py tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_editor.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_editor_module_source.py tests/test_static_assets.py tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `63 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `233 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1291 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: raw editor instance/model/disposable lifecycle belongs to `app_file_editor.js`. App still owns Monaco import/loader cache, Monaco editor construction options, DOM host clearing, line-focus scheduling, raw load-result render plan application, fallback DOM construction/scrolling, touch-toolbar DOM/binding mechanics, persisted mode UI wiring, file-video element handlers/loading, pdfjs/canvas/observer side effects, file-picker input/menu DOM mutation/rendering, inspect transport, candidate evidence collection/API refresh/cache-key/rendering, unsaved dialog DOM and return-focus state, paste dialog DOM mechanics, and selected-session identity predicates.
