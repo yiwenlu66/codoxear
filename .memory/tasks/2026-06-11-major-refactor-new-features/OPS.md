@@ -7593,3 +7593,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: file download activation DOM belongs to `app_file_viewer.js`. App still owns the download button event binding and active API path wrapper.
+
+## 2026-07-02T21:00:00Z File-picker section and draft item picker-module ownership
+- Functional commit `9dadeaf Move file picker draft item rendering into picker module` moved file-picker section row and draft/create-new item DOM construction from inline `codoxear/static/app.js` into `codoxear/static/app_file_picker.js` as `appendFilePickerSection(...)` and `appendDraftFileMenuItem(...)`.
+- Mechanism: section rows and draft/create-new rows are file-picker menu rendering mechanics. The picker module now owns their DOM attributes, hint copy, mousedown suppression, and draft-open click binding; app supplies `el` and the `openDraftFilePath` callback so file-open side effects remain injected.
+- Tests updated: executable picker module coverage verifies section append/no-op for empty labels, draft button attributes/classes/children, mousedown preventDefault, open-draft callback invocation, missing callback failure, export list, app load guard, and source sentinels rejecting restored app-owned draft helper internals.
+- Negative evidence preserved: focused validation initially showed the source sentinel was too broad because regular non-draft file rows still legitimately set `btn.onmousedown` in app. The sentinel was narrowed to the draft helper wrapper boundary.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_picker_module_source.py tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_picker.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_picker_module_source.py tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py` returned `75 passed, 25 subtests passed` after source sentinel repair.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `248 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1306 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: picker section and draft/create-new row rendering belongs to `app_file_picker.js`. App still owns regular file row rendering, visible-entry iteration, candidate identity hints, and file-open side effects for existing entries.
