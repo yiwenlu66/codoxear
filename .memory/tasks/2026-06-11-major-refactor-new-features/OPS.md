@@ -7683,3 +7683,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit, and staged diff inspection showed only app/viewer/test files in the functional commit.
 - Scope note: file load-result application is viewer-module owned. App.js still owns selected-session authority, file-picker menu orchestration, candidate refresh/search orchestration, render wrapper dependency wiring, save wrappers/delegation, and inline event binding.
+
+## 2026-07-02T13:24:00Z File-picker menu rendering picker-module ownership
+- Functional commit `08b1510 Move file picker menu rendering into picker module` moved `renderFilePickerMenu()` DOM projection from inline `codoxear/static/app.js` into `codoxear/static/app_file_picker.js` as `createMenuRenderRuntime(...)`.
+- Mechanism: previous picker work moved row builders but app.js still owned the menu projection sequence: clearing the menu, choosing draft/status/empty rows, section grouping, active row calculation, footer status rows, and `aria-activedescendant` sync. The new runtime owns that sequence while app.js injects visible-entry evidence, search snapshot, draft suppression, active identity, title/hint/section helpers, API-path normalization, and open-entry side effects.
+- Tests updated: `tests/test_frontend_file_picker_module_source.py` adds an executable render-runtime probe covering pending-search draft/status rendering, empty error rendering and active-descendant clearing, populated source sections and active row selection, search pending footer rendering, and frozen runtime export. Source sentinels now reject restored app-owned section/draft/status/entry/active-descendant render code and require `renderFilePickerMenu()` to delegate to `filePickerRenderRuntime.render()`.
+- Negative evidence preserved: broader validation initially found stale source sentinels in `tests/test_file_picker_search_source.py` and `tests/test_markdown_tables.py` that still pointed to app-owned footer/draft/title logic. Those assertions were redirected to the picker runtime owner and app injection callbacks.
+- Validation:
+  - `node --check codoxear/static/app_file_picker.js` and `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_frontend_file_picker_module_source.py tests/test_file_picker_search_source.py` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_picker_module_source.py tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py` returned `77 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `260 passed, 77 subtests passed` after sentinel repair.
+  - Full local `python3 -m pytest -q` returned `1309 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit, and staged diff inspection showed only app/picker/test files in the functional commit.
+- Scope note: file-picker menu DOM projection is picker-module owned. App.js still owns candidate evidence refresh/search orchestration, active identity source data, open-entry side effects, selected-session authority, and file-viewer event binding.
