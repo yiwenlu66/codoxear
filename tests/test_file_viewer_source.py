@@ -3185,6 +3185,15 @@ function applyActiveFileNonTextState(kind) {
               this.setSurface("image");
               return true;
             }},
+            showVideo(loadPlan, callbacks) {{
+              ctx.calls.push(["showVideo", loadPlan.token, loadPlan.shouldPreviewFirst]);
+              ctx.fileVideo.onerror = () => callbacks.handleError(loadPlan, {{ clearVideoHandlers: () => {{ ctx.fileVideo.onerror = null; ctx.fileVideo.onloadedmetadata = null; }}, loadPreview: callbacks.loadPreview }});
+              ctx.fileVideo.onloadedmetadata = () => callbacks.handleLoadedMetadata(loadPlan);
+              this.setSurface("video");
+              if (loadPlan.shouldPreviewFirst) callbacks.loadPreview(loadPlan.token, {{ explicit: false }});
+              else {{ ctx.fileVideo.src = callbacks.resolveAppUrl(loadPlan.videoUrl); callbacks.setStatus(loadPlan.initialStatus); }}
+              return true;
+            }},
           }},
           fileStatus: {{ textContent: "" }},
           Date: {{ now: () => 4242 }},
@@ -4007,7 +4016,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertTrue(result["videoPreview"]["ok"])
         self.assertEqual(result["videoPreview"]["state"]["kind"], "video")
         self.assertEqual(result["videoPreview"]["surface"], {"diff": "none", "image": "none", "video": "block"})
-        self.assertEqual(result["videoPreview"]["calls"], [["applyFileMode"], ["loadCompatibleVideoPreview", "7:doc.md:4242", {"explicit": False}]])
+        self.assertEqual(result["videoPreview"]["calls"], [["applyFileMode"], ["showVideo", "7:doc.md:4242", True], ["loadCompatibleVideoPreview", "7:doc.md:4242", {"explicit": False}]])
         self.assertEqual(result["videoPreview"]["video"]["fallback"], {"token": "7:doc.md:4242", "previewUrl": "/preview.mp4", "used": False, "preparing": False, "rel": "doc.md", "size": 9})
         self.assertTrue(result["markdownPreview"]["ok"])
         self.assertEqual(result["markdownPreview"]["state"], {"kind": "markdown", "text": "# h", "editable": False, "version": "v3", "draft": False})
@@ -4376,7 +4385,9 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertNotIn('fileImage.src = resolveAppUrl(loadPlan.imageUrl);', source)
         self.assertNotIn('fileImage.alt = loadPlan.alt;', source)
         self.assertNotIn('setFileRenderSurface("image");', source)
-        self.assertIn('setFileRenderSurface("video");', source)
+        self.assertIn("fileRenderSurfaceRuntime.showVideo(loadPlan, {", source)
+        self.assertIn("function showVideo(loadPlan = {}, callbacks = {})", viewer_source)
+        self.assertNotIn('setFileRenderSurface("video");', source)
         self.assertNotIn("fileDiff.style.display =", source)
         self.assertNotIn("fileImage.style.display =", source)
         self.assertIn("diff.style.display =", viewer_source)
@@ -4882,7 +4893,10 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function createFileRenderSurfaceRuntime(options = {})", viewer_source)
         self.assertIn("video.pause();", viewer_source)
         self.assertNotIn("fileVideo.pause();", source)
-        self.assertIn('fileVideo.src = resolveAppUrl(loadPlan.videoUrl);', source)
+        self.assertIn("fileRenderSurfaceRuntime.showVideo(loadPlan, {", source)
+        self.assertIn("function showVideo(loadPlan = {}, callbacks = {})", viewer_source)
+        self.assertIn("video.src = resolveAppUrl(loadPlan.videoUrl);", viewer_source)
+        self.assertNotIn('fileVideo.src = resolveAppUrl(loadPlan.videoUrl);', source)
         self.assertIn('const BROWSER_SAFE_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/ogg"]);', viewer_source)
         self.assertIn('function prepareActiveVideoLoadResult(rel, result, request)', viewer_source)
         self.assertIn('const shouldPreviewFirst = Boolean(previewUrl && contentType && !BROWSER_SAFE_VIDEO_TYPES.has(contentType));', viewer_source)
@@ -4906,11 +4920,15 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('fileVideoPreviewBtn.onclick = (e) => {', source)
         self.assertIn('void handleFileVideoPreviewButtonPress();', source)
         self.assertNotIn('void loadCompatibleVideoPreview(token, { explicit: true });', source)
-        self.assertIn('if (loadPlan.shouldPreviewFirst) {', source)
-        self.assertIn('void loadCompatibleVideoPreview(loadPlan.token, { explicit: false });', source)
-        self.assertIn("fileVideo.onerror = () => {", source)
-        self.assertIn("fileViewerController.handleActiveVideoLoadError(loadPlan.token", source)
-        self.assertIn("fileViewerController.handleActiveVideoLoadedMetadata(loadPlan.token);", source)
+        self.assertIn('if (loadPlan.shouldPreviewFirst) {', viewer_source)
+        self.assertIn('void loadPreview(token, { explicit: false });', viewer_source)
+        self.assertIn("video.onerror = () => {", viewer_source)
+        self.assertIn("handleError(loadPlan, { clearVideoHandlers, loadPreview });", viewer_source)
+        self.assertIn("handleLoadedMetadata(loadPlan);", viewer_source)
+        self.assertNotIn("fileVideo.onerror = () => {", source)
+        self.assertNotIn("fileViewerController.handleActiveVideoLoadError(loadPlan.token", source)
+        self.assertIn("handleError: (plan, helpers) => fileViewerController.handleActiveVideoLoadError(plan.token", source)
+        self.assertIn("handleLoadedMetadata: (plan) => fileViewerController.handleActiveVideoLoadedMetadata(plan.token)", source)
         self.assertIn("fileStatus.textContent = explicit ? `${rel} - building compatible video preview...` : `${rel} - trying compatible video preview...`;", viewer_source)
         self.assertNotIn("fileStatus.textContent = explicit ? `${rel} - building compatible video preview...` : `${rel} - trying compatible video preview...`;", source)
         self.assertIn("fileVideo.src = resolveAppUrl(previewUrl);", source)
@@ -4918,8 +4936,9 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("fileStatus.textContent = `${rel} - video preview unavailable after conversion`;", viewer_source)
         self.assertNotIn("fileStatus.textContent = `${rel} - compatible video preview - ${fmtBytes(size)}`;", source)
         self.assertNotIn("fileStatus.textContent = `${rel} - video preview unavailable after conversion`;", source)
-        self.assertIn('setFileRenderSurface("video");', source)
-        self.assertIn('fileStatus.textContent = loadPlan.initialStatus;', source)
+        self.assertNotIn('setFileRenderSurface("video");', source)
+        self.assertNotIn('fileStatus.textContent = loadPlan.initialStatus;', source)
+        self.assertIn("setStatus: (status) => {", source)
         self.assertIn('initialStatus: `${path} - video - ${fmtBytes(size)}`', viewer_source)
         self.assertIn('result.kind === "download_only"', viewer_source)
         self.assertIn('loadPlan.kind === "download_only"', source)

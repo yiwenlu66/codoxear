@@ -341,7 +341,36 @@
       return true;
     }
 
-    return Object.freeze({ clearImage, clearVideo, reset, setSurface, showImage });
+    function clearVideoHandlers() {
+      video.onerror = null;
+      video.onloadedmetadata = null;
+      return true;
+    }
+
+    function showVideo(loadPlan = {}, callbacks = {}) {
+      const resolveAppUrl = requireFunction(callbacks.resolveAppUrl, "resolveAppUrl");
+      const setStatus = requireFunction(callbacks.setStatus, "setStatus");
+      const loadPreview = requireFunction(callbacks.loadPreview, "loadPreview");
+      const handleError = requireFunction(callbacks.handleError, "handleError");
+      const handleLoadedMetadata = requireFunction(callbacks.handleLoadedMetadata, "handleLoadedMetadata");
+      const token = String(loadPlan.token || "");
+      video.onerror = () => {
+        handleError(loadPlan, { clearVideoHandlers, loadPreview });
+      };
+      video.onloadedmetadata = () => {
+        handleLoadedMetadata(loadPlan);
+      };
+      setSurface("video");
+      if (loadPlan.shouldPreviewFirst) {
+        void loadPreview(token, { explicit: false });
+      } else {
+        video.src = resolveAppUrl(loadPlan.videoUrl);
+        setStatus(loadPlan.initialStatus);
+      }
+      return true;
+    }
+
+    return Object.freeze({ clearImage, clearVideo, clearVideoHandlers, reset, setSurface, showImage, showVideo });
   }
 
   function createFilePasteDialogRuntime(options = {}) {

@@ -8735,27 +8735,20 @@
             return true;
           }
           if (loadPlan.kind === "video") {
-            fileVideo.onerror = () => {
-              fileViewerController.handleActiveVideoLoadError(loadPlan.token, {
-                rel: loadPlan.rel,
-                previewUrl: loadPlan.previewUrl,
-                clearVideoHandlers: () => {
-                  fileVideo.onerror = null;
-                  fileVideo.onloadedmetadata = null;
-                },
-                loadPreview: (nextToken, options) => loadCompatibleVideoPreview(nextToken, options),
-              });
-            };
-            fileVideo.onloadedmetadata = () => {
-              fileViewerController.handleActiveVideoLoadedMetadata(loadPlan.token);
-            };
-            setFileRenderSurface("video");
-            if (loadPlan.shouldPreviewFirst) {
-              void loadCompatibleVideoPreview(loadPlan.token, { explicit: false });
-            } else {
-              fileVideo.src = resolveAppUrl(loadPlan.videoUrl);
-              fileStatus.textContent = loadPlan.initialStatus;
-            }
+            fileRenderSurfaceRuntime.showVideo(loadPlan, {
+              resolveAppUrl,
+              setStatus: (status) => {
+                fileStatus.textContent = status;
+              },
+              loadPreview: (nextToken, options) => loadCompatibleVideoPreview(nextToken, options),
+              handleError: (plan, helpers) => fileViewerController.handleActiveVideoLoadError(plan.token, {
+                rel: plan.rel,
+                previewUrl: plan.previewUrl,
+                clearVideoHandlers: helpers.clearVideoHandlers,
+                loadPreview: helpers.loadPreview,
+              }),
+              handleLoadedMetadata: (plan) => fileViewerController.handleActiveVideoLoadedMetadata(plan.token),
+            });
             return true;
           }
           if (loadPlan.kind === "download_only") {

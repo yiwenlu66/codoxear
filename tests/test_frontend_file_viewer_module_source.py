@@ -989,6 +989,20 @@ def run_file_render_surface_runtime_probe() -> dict[str, object]:
         const resetState = snapshot();
         const showImageResult = runtime.showImage("/img.png", "Alt text");
         const showImageState = {{ surface: snapshot(), src: image.src, alt: image.alt }};
+        const videoCallbacks = {{
+          resolveAppUrl: (path) => `app:${{path}}`,
+          setStatus: (status) => events.push(["status", status]),
+          loadPreview: (token, options) => events.push(["preview", token, options]),
+          handleError: (plan, helpers) => {{ events.push(["videoError", plan.token]); helpers.clearVideoHandlers(); }},
+          handleLoadedMetadata: (plan) => events.push(["loaded", plan.token]),
+        }};
+        const showVideoDirectResult = runtime.showVideo({{ token: "direct-token", videoUrl: "/raw.mov", initialStatus: "video status", shouldPreviewFirst: false }}, videoCallbacks);
+        const showVideoDirectState = {{ surface: snapshot(), src: video.src, hasError: typeof video.onerror === "function", hasLoaded: typeof video.onloadedmetadata === "function" }};
+        video.onloadedmetadata();
+        const showVideoPreviewResult = runtime.showVideo({{ token: "preview-token", videoUrl: "/raw.mov", initialStatus: "preview status", shouldPreviewFirst: true }}, videoCallbacks);
+        const showVideoPreviewState = {{ surface: snapshot(), src: video.src, hasError: typeof video.onerror === "function", hasLoaded: typeof video.onloadedmetadata === "function" }};
+        video.onerror();
+        const afterVideoErrorState = {{ onerror: video.onerror, onloadedmetadata: video.onloadedmetadata }};
         process.stdout.write(JSON.stringify({{
           frozen: Object.isFrozen(runtime),
           diffResult,
@@ -1005,6 +1019,11 @@ def run_file_render_surface_runtime_probe() -> dict[str, object]:
           resetState,
           showImageResult,
           showImageState,
+          showVideoDirectResult,
+          showVideoDirectState,
+          showVideoPreviewResult,
+          showVideoPreviewState,
+          afterVideoErrorState,
           events,
         }}));
         """
@@ -1662,7 +1681,12 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["resetState"], {"diff": "block", "image": "none", "video": "none"})
         self.assertTrue(result["showImageResult"])
         self.assertEqual(result["showImageState"], {"surface": {"diff": "none", "image": "block", "video": "none"}, "src": "/img.png", "alt": "Alt text"})
-        self.assertEqual(result["events"], [["removeImage", "src"], ["clearFallback"], ["pause"], ["remove", "src"], ["load"], ["removeImage", "src"], ["clearFallback"], ["pause"], ["remove", "src"], ["load"], ["clearFallback"], ["pause"], ["remove", "src"], ["load"]])
+        self.assertTrue(result["showVideoDirectResult"])
+        self.assertEqual(result["showVideoDirectState"], {"surface": {"diff": "none", "image": "none", "video": "block"}, "src": "app:/raw.mov", "hasError": True, "hasLoaded": True})
+        self.assertTrue(result["showVideoPreviewResult"])
+        self.assertEqual(result["showVideoPreviewState"], {"surface": {"diff": "none", "image": "none", "video": "block"}, "src": "app:/raw.mov", "hasError": True, "hasLoaded": True})
+        self.assertEqual(result["afterVideoErrorState"], {"onerror": None, "onloadedmetadata": None})
+        self.assertEqual(result["events"], [["removeImage", "src"], ["clearFallback"], ["pause"], ["remove", "src"], ["load"], ["removeImage", "src"], ["clearFallback"], ["pause"], ["remove", "src"], ["load"], ["clearFallback"], ["pause"], ["remove", "src"], ["load"], ["status", "video status"], ["loaded", "direct-token"], ["preview", "preview-token", {"explicit": False}], ["videoError", "preview-token"]])
 
     def test_file_fallback_runtime_behavior(self) -> None:
         result = run_file_fallback_runtime_probe()
