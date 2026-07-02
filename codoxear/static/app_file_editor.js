@@ -294,6 +294,19 @@
       return nextEditor;
     }
 
+    function restoreFileText(kind, text, runProgrammaticChange) {
+      if (String(kind || "") !== "file") return false;
+      const targetEditor = currentEditor();
+      if (!targetEditor || typeof targetEditor.getModel !== "function") return false;
+      const model = targetEditor.getModel();
+      if (!model || typeof model.setValue !== "function") return false;
+      const run = requireFunction(runProgrammaticChange, "runProgrammaticChange");
+      run(() => {
+        model.setValue(String(text || ""));
+      });
+      return true;
+    }
+
     function updateFileEditorText(monaco, options = {}) {
       const editorApi = requireMonacoEditor(monaco, "setModelLanguage");
       const targetEditor = currentEditor();
@@ -458,6 +471,7 @@
       layoutCurrent,
       normalizePosition,
       positionCurrentEditorAtLine,
+      restoreFileText,
       selectionText,
       setChangeDisposable,
       setEditor,

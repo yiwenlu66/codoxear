@@ -7447,19 +7447,7 @@
         function restoreFileEditorText(text) {
           const restorePlan = fileViewerController.prepareFileEditorTextRestore(text);
           if (!restorePlan || restorePlan.kind !== "restore") return;
-          const editor = fileEditorRuntime.currentEditor();
-          if (currentFileEditorKind() !== "file" || !editor || typeof editor.getModel !== "function") {
-            fileViewerController.finishFileEditorTextRestore();
-            return;
-          }
-          const model = editor.getModel();
-          if (!model || typeof model.setValue !== "function") {
-            fileViewerController.finishFileEditorTextRestore();
-            return;
-          }
-          fileViewerController.runFileEditorProgrammaticChange(() => {
-            model.setValue(restorePlan.text);
-          });
+          fileEditorRuntime.restoreFileText(currentFileEditorKind(), restorePlan.text, (callback) => fileViewerController.runFileEditorProgrammaticChange(callback));
           fileViewerController.finishFileEditorTextRestore();
         }
 

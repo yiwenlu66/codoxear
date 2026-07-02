@@ -135,6 +135,8 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
           text: "# title",
           runProgrammaticChange: (callback) => {{ creationEvents.push(["programmaticStart"]); callback(); creationEvents.push(["programmaticEnd"]); }},
         }});
+        const restoreFileTextResult = fileRuntime.restoreFileText("file", "restored", (callback) => {{ creationEvents.push(["restoreProgrammaticStart"]); callback(); creationEvents.push(["restoreProgrammaticEnd"]); }});
+        const restoreWrongKind = fileRuntime.restoreFileText("diff", "ignored", () => creationEvents.push(["unexpectedRestore"]));
 
         const diffRuntime = mod.createFileEditorRuntime();
         const originalEditor = {{
@@ -169,6 +171,8 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
           createFileEditorResult,
           filePositionState,
           updateFileTextResult,
+          restoreFileTextResult,
+          restoreWrongKind,
           diffCreateResult,
           diffPositionState,
           fileModelCount: fileRuntime.currentModels().length,
@@ -311,6 +315,8 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         creation = result["creation"]
         self.assertEqual(creation["createFileEditorResult"], "createdFile")
         self.assertTrue(creation["updateFileTextResult"])
+        self.assertTrue(creation["restoreFileTextResult"])
+        self.assertFalse(creation["restoreWrongKind"])
         self.assertEqual(creation["diffCreateResult"], "createdDiff")
         self.assertEqual(creation["fileModelCount"], 1)
         self.assertEqual(creation["diffModelCount"], 2)
@@ -326,6 +332,7 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertIn(["filePosition", {"lineNumber": 3, "column": 1}], creation_events)
         self.assertIn(["setLanguage", True, "markdown"], creation_events)
         self.assertIn(["setValue", "# title"], creation_events)
+        self.assertIn(["setValue", "restored"], creation_events)
         diff_create = next(event for event in creation_events if event[0] == "createDiff")
         self.assertEqual(diff_create[1], "diffHost")
         self.assertTrue(diff_create[2]["readOnly"])
@@ -408,8 +415,10 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertIn("function createFileEditor(monaco, host, options = {})", editor_source)
         self.assertIn("function createDiffEditor(monaco, host, options = {})", editor_source)
         self.assertIn("function positionCurrentEditorAtLine(kind, lineNumber, normalizeLineNumber)", editor_source)
+        self.assertIn("function restoreFileText(kind, text, runProgrammaticChange)", editor_source)
         self.assertIn("fileEditorRuntime.createFileEditor(monaco, fileDiff", app_source)
         self.assertIn("fileEditorRuntime.updateFileEditorText(monaco", app_source)
+        self.assertIn("fileEditorRuntime.restoreFileText(currentFileEditorKind(), restorePlan.text", app_source)
         self.assertIn("fileEditorRuntime.createDiffEditor(monaco, fileDiff", app_source)
         self.assertIn("fileEditorRuntime.positionCurrentEditorAtLine(\"file\", lineNumber, normalizeLineNumber)", app_source)
         self.assertIn("fileEditorRuntime.positionCurrentEditorAtLine(\"diff\", lineNumber, normalizeLineNumber)", app_source)
@@ -418,6 +427,7 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertNotIn("fileEditorRuntime.setChangeDisposable(editor.onDidChangeModelContent", app_source)
         self.assertNotIn("monaco.editor.create(fileDiff", app_source)
         self.assertNotIn("monaco.editor.createDiffEditor(fileDiff", app_source)
+        self.assertNotIn("model.setValue(restorePlan.text);", app_source)
         self.assertNotIn("let monacoReadyPromise = null;", app_source)
         self.assertNotIn("let monacoNs = null;", app_source)
         self.assertNotIn("let monacoThemeReady = false;", app_source)
