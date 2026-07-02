@@ -7186,3 +7186,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: controller owns touch-selection diff option policy; app still owns the editor-runtime side effect of applying options to the current Monaco/diff editor.
+
+## 2026-07-02T09:35:00Z File viewer/unsaved return-focus controller ownership
+- Functional commit `eca4ee2 Move file viewer return focus state into controller` moved the file-viewer dialog and unsaved-dialog return-focus element slots from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: return-focus slots are modal interaction state tied to file-viewer/unsaved-dialog lifecycle. The controller now owns `fileViewerReturnFocusElement`, `fileUnsavedReturnFocusElement`, element validation via optional `ElementCtor`, and set/take semantics that clear the slot on restoration. `app.js` still owns raw modal DOM display, inert/aria toggling, initial-focus placement, and the generic `restoreModalFocus(...)` side effect.
+- Tests updated: the file-viewer controller VM probe executes set/take/clear semantics for viewer and unsaved slots, including rejection of a non-instance when an element constructor is supplied. File-viewer and overlay source tests reject restored app-owned `fileViewerReturnFocusEl`/`fileUnsavedReturnFocusEl` variables and require app delegation through `fileViewerController.set*/take*ReturnFocusElement(...)`.
+- Negative evidence preserved: broader validation first failed in `tests/test_overlay_accessibility_source.py` because it still asserted app-owned return-focus variables. That failure was a stale source-test assumption after ownership moved, not a runtime behavior regression; the repaired test now asserts controller ownership plus preserved app restoration calls.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_overlay_accessibility_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_overlay_accessibility_source.py` returned `57 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `236 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1294 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: return-focus storage belongs to the file-viewer controller. App still owns modal DOM mechanics, file viewer open/hide orchestration, unsaved dialog DOM/show/hide internals, and the actual focus restoration side effect.
