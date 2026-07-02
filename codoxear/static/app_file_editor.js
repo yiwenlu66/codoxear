@@ -16,6 +16,129 @@
     return value;
   }
 
+  const MONACO_THEME_NAME = "codoxear-github-light";
+
+  function defineCodoxearMonacoTheme(monaco) {
+    if (!monaco || !monaco.editor || typeof monaco.editor.defineTheme !== "function") throw new Error("monaco failed to initialize");
+    monaco.editor.defineTheme(MONACO_THEME_NAME, {
+      base: "vs",
+      inherit: true,
+      rules: [],
+      colors: {
+        "editor.background": "#ffffff",
+        "editor.lineHighlightBackground": "#f6f8fa",
+        "editorGutter.background": "#ffffff",
+        "editorLineNumber.foreground": "#8c959f",
+        "editorLineNumber.activeForeground": "#57606a",
+        "diffEditor.insertedTextBackground": "#dafbe1",
+        "diffEditor.removedTextBackground": "#ffebe9",
+        "diffEditor.insertedLineBackground": "#f0fff4",
+        "diffEditor.removedLineBackground": "#fff5f5",
+      },
+    });
+  }
+
+  function createMonacoLoader(options = {}) {
+    const resolveAppUrl = requireFunction(options.resolveAppUrl, "resolveAppUrl");
+    const globalObject = options.globalObject || window;
+    const timeoutMs = Math.max(1, Number(options.timeoutMs || 4000));
+    const pollMs = Math.max(1, Number(options.pollMs || 25));
+    const timerSet = typeof options.setTimeout === "function" ? options.setTimeout : globalObject.setTimeout.bind(globalObject);
+    let readyPromise = null;
+    let monacoNs = null;
+    let themeReady = false;
+
+    function currentMonaco() {
+      return monacoNs;
+    }
+
+    function selectionCtor() {
+      return monacoNs && monacoNs.Selection ? monacoNs.Selection : null;
+    }
+
+    function editSupportAvailable() {
+      return Boolean(monacoNs);
+    }
+
+    function ensure() {
+      if (readyPromise) return readyPromise;
+      readyPromise = new Promise((resolve, reject) => {
+        let done = false;
+        const startedAt = Date.now();
+        const fail = (error) => {
+          if (done) return;
+          done = true;
+          reject(error instanceof Error ? error : new Error(String(error || "monaco failed")));
+        };
+        const succeed = (value) => {
+          if (done) return;
+          done = true;
+          resolve(value);
+        };
+        const finish = () => {
+          if (done) return;
+          if (!(globalObject.require && globalObject.require.config)) {
+            fail(new Error("monaco loader unavailable"));
+            return;
+          }
+          const base = resolveAppUrl("monaco/vs");
+          globalObject.MonacoEnvironment = {
+            getWorkerUrl(_moduleId, _label) {
+              const src = `\nself.MonacoEnvironment={baseUrl:${JSON.stringify(base + "/")}};\nimportScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});\n`;
+              return `data:text/javascript;charset=utf-8,${encodeURIComponent(src)}`;
+            },
+          };
+          globalObject.require.config({ paths: { vs: base } });
+          globalObject.require(["vs/editor/editor.main"], () => {
+            monacoNs = globalObject.monaco;
+            if (!monacoNs) {
+              fail(new Error("monaco failed to initialize"));
+              return;
+            }
+            if (!themeReady) {
+              defineCodoxearMonacoTheme(monacoNs);
+              themeReady = true;
+            }
+            succeed(monacoNs);
+          }, fail);
+        };
+        if (globalObject.monaco && globalObject.monaco.editor) {
+          monacoNs = globalObject.monaco;
+          finish();
+          return;
+        }
+        if (globalObject.require && globalObject.require.config) {
+          finish();
+          return;
+        }
+        const waitForLoader = () => {
+          if (done) return;
+          if (globalObject.require && globalObject.require.config) {
+            finish();
+            return;
+          }
+          if (Date.now() - startedAt >= timeoutMs) {
+            fail(new Error("monaco loader timed out"));
+            return;
+          }
+          timerSet(waitForLoader, pollMs);
+        };
+        waitForLoader();
+      });
+      readyPromise.catch(() => {
+        readyPromise = null;
+      });
+      return readyPromise;
+    }
+
+    return Object.freeze({
+      currentMonaco,
+      editSupportAvailable,
+      ensure,
+      selectionCtor,
+    });
+  }
+
   function createFileEditorRuntime() {
     let editor = null;
     let models = [];
@@ -91,5 +214,6 @@
 
   window.CodoxearFileEditor = Object.freeze({
     createFileEditorRuntime,
+    createMonacoLoader,
   });
 })();

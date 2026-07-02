@@ -1160,6 +1160,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn("const codoxearFileEditor = window.CodoxearFileEditor;", app_source)
         self.assertIn('throw new Error("Codoxear file editor runtime failed to load")', app_source)
         self.assertIn("createFileEditorRuntime", editor_source)
+        self.assertIn("createMonacoLoader", editor_source)
         self.assertIn("renderSaveConflict", viewer_source)
         self.assertNotIn("function renderFileSaveConflict", app_source)
 

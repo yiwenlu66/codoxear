@@ -111,6 +111,7 @@ class TestStaticAssets(unittest.TestCase):
         app_file_helpers = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
         app_file_picker = APP_FILE_PICKER_JS.read_text(encoding="utf-8")
         app_file_viewer = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+        app_file_editor = APP_FILE_EDITOR_JS.read_text(encoding="utf-8")
         app_session_helpers = APP_SESSION_HELPERS_JS.read_text(encoding="utf-8")
         app_viewport = APP_VIEWPORT_JS.read_text(encoding="utf-8")
         app_polling = APP_POLLING_JS.read_text(encoding="utf-8")
@@ -140,6 +141,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertNotIn(forbidden, app_file_helpers)
             self.assertNotIn(forbidden, app_file_picker)
             self.assertNotIn(forbidden, app_file_viewer)
+            self.assertNotIn(forbidden, app_file_editor)
             self.assertNotIn(forbidden, app_session_helpers)
             self.assertNotIn(forbidden, app_viewport)
             self.assertNotIn(forbidden, app_polling)
@@ -155,7 +157,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn("script-src 'self' 'unsafe-inline'", index)
         self.assertIn("connect-src 'self'", index)
         self.assertIn("connect-src 'self'", CONTENT_SECURITY_POLICY)
-        self.assertIn('const base = resolveAppUrl("monaco/vs");', app)
+        self.assertIn('const base = resolveAppUrl("monaco/vs");', app_file_editor)
         self.assertIn('import(resolveAppUrl("pdf.mjs"))', app)
 
     def test_frontend_asset_manifest_drives_version_files(self) -> None:

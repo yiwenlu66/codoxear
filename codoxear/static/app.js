@@ -579,7 +579,12 @@
       if (!codoxearFileViewer || typeof codoxearFileViewer.createFileViewerController !== "function") throw new Error("Codoxear file viewer controller failed to load");
 
       const codoxearFileEditor = window.CodoxearFileEditor;
-      if (!codoxearFileEditor || typeof codoxearFileEditor.createFileEditorRuntime !== "function") throw new Error("Codoxear file editor runtime failed to load");
+      if (
+        !codoxearFileEditor ||
+        typeof codoxearFileEditor.createFileEditorRuntime !== "function" ||
+        typeof codoxearFileEditor.createMonacoLoader !== "function"
+      )
+        throw new Error("Codoxear file editor runtime failed to load");
 
       const codoxearMarkdown = window.CodoxearMarkdown;
       if (
@@ -7032,13 +7037,14 @@
           renderMenu: () => renderFilePickerMenu(),
           applyMenuState: () => applyFileMenuState(),
         });
-        let monacoReadyPromise = null;
-        let monacoNs = null;
-        let monacoThemeReady = false;
         let pdfjsReadyPromise = null;
         const MONACO_LOADER_TIMEOUT_MS = 4000;
         const PDFJS_LOADER_TIMEOUT_MS = 6000;
         const fileEditorRuntime = codoxearFileEditor.createFileEditorRuntime();
+        const fileEditorMonacoLoader = codoxearFileEditor.createMonacoLoader({
+          resolveAppUrl,
+          timeoutMs: MONACO_LOADER_TIMEOUT_MS,
+        });
         let fileUnsavedReturnFocusEl = null;
 
         function currentFileViewerSessionId() {
@@ -7380,13 +7386,14 @@
         }
 
         function applyFileEditorSelection(editor, cursor, anchor = null) {
-          if (!editor || !monacoNs || !monacoNs.Selection) return;
+          const Selection = fileEditorMonacoLoader.selectionCtor();
+          if (!editor || !Selection) return;
           const nextCursor = normalizeFileEditorPosition(editor, cursor);
           if (!nextCursor) return;
           const nextAnchor = anchor ? normalizeFileEditorPosition(editor, anchor) : null;
           const selection = nextAnchor
-            ? new monacoNs.Selection(nextAnchor.lineNumber, nextAnchor.column, nextCursor.lineNumber, nextCursor.column)
-            : new monacoNs.Selection(nextCursor.lineNumber, nextCursor.column, nextCursor.lineNumber, nextCursor.column);
+            ? new Selection(nextAnchor.lineNumber, nextAnchor.column, nextCursor.lineNumber, nextCursor.column)
+            : new Selection(nextCursor.lineNumber, nextCursor.column, nextCursor.lineNumber, nextCursor.column);
           if (typeof editor.setSelection === "function") editor.setSelection(selection);
           if (!nextAnchor && typeof editor.setPosition === "function") editor.setPosition(nextCursor);
           if (typeof editor.revealPositionInCenterIfOutsideViewport === "function") editor.revealPositionInCenterIfOutsideViewport(nextCursor);
@@ -7693,92 +7700,7 @@
         }
 
         function ensureMonaco() {
-          if (monacoReadyPromise) return monacoReadyPromise;
-          monacoReadyPromise = new Promise((resolve, reject) => {
-            let done = false;
-            const startedAt = Date.now();
-            const fail = (error) => {
-              if (done) return;
-              done = true;
-              reject(error instanceof Error ? error : new Error(String(error || "monaco failed")));
-            };
-            const succeed = (value) => {
-              if (done) return;
-              done = true;
-              resolve(value);
-            };
-            const finish = () => {
-              if (done) return;
-              if (!(window.require && window.require.config)) {
-                fail(new Error("monaco loader unavailable"));
-                return;
-              }
-              const base = resolveAppUrl("monaco/vs");
-              window.MonacoEnvironment = {
-                getWorkerUrl(_moduleId, _label) {
-                  const src = `
-self.MonacoEnvironment={baseUrl:${JSON.stringify(base + "/")}};
-importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
-`;
-                  return `data:text/javascript;charset=utf-8,${encodeURIComponent(src)}`;
-                },
-              };
-              window.require.config({ paths: { vs: base } });
-              window.require(["vs/editor/editor.main"], () => {
-                monacoNs = window.monaco;
-                if (!monacoNs) {
-                  fail(new Error("monaco failed to initialize"));
-                  return;
-                }
-                if (!monacoThemeReady) {
-                  monacoNs.editor.defineTheme("codoxear-github-light", {
-                    base: "vs",
-                    inherit: true,
-                    rules: [],
-                    colors: {
-                      "editor.background": "#ffffff",
-                      "editor.lineHighlightBackground": "#f6f8fa",
-                      "editorGutter.background": "#ffffff",
-                      "editorLineNumber.foreground": "#8c959f",
-                      "editorLineNumber.activeForeground": "#57606a",
-                      "diffEditor.insertedTextBackground": "#dafbe1",
-                      "diffEditor.removedTextBackground": "#ffebe9",
-                      "diffEditor.insertedLineBackground": "#f0fff4",
-                      "diffEditor.removedLineBackground": "#fff5f5",
-                    },
-                  });
-                  monacoThemeReady = true;
-                }
-                succeed(monacoNs);
-              }, fail);
-            };
-            if (window.monaco && window.monaco.editor) {
-              monacoNs = window.monaco;
-              finish();
-              return;
-            }
-            if (window.require && window.require.config) {
-              finish();
-              return;
-            }
-            const waitForLoader = () => {
-              if (done) return;
-              if (window.require && window.require.config) {
-                finish();
-                return;
-              }
-              if (Date.now() - startedAt >= MONACO_LOADER_TIMEOUT_MS) {
-                fail(new Error("monaco loader timed out"));
-                return;
-              }
-              setTimeout(waitForLoader, 25);
-            };
-            waitForLoader();
-          });
-          monacoReadyPromise.catch(() => {
-            monacoReadyPromise = null;
-          });
-          return monacoReadyPromise;
+          return fileEditorMonacoLoader.ensure();
         }
 
         async function ensurePdfJs() {
@@ -8221,7 +8143,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           applyFileEditorSelection: (editor, cursor, anchor) => applyFileEditorSelection(editor, cursor, anchor),
           isCollapsedFileSelection: (selection) => isCollapsedFileSelection(selection),
           positionAfterInsertedText: (start, text) => positionAfterInsertedText(start, text),
-          fileEditorEditSupportAvailable: () => Boolean(monacoNs),
+          fileEditorEditSupportAvailable: () => fileEditorMonacoLoader.editSupportAvailable(),
           syncFileDiffSelectionMode: () => syncFileDiffSelectionMode(),
           showFilePasteDialog: () => showFilePasteDialog(),
           hideFilePasteDialog: (options) => hideFilePasteDialog(options),
