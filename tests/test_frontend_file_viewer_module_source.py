@@ -944,6 +944,161 @@ def run_file_fallback_runtime_probe() -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
+def run_file_pdf_render_runtime_probe() -> dict[str, object]:
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const fileViewer = ctx.window.CodoxearFileViewer;
+        const events = [];
+        (async () => {{
+        const observers = [];
+        function classListFor(node) {{
+          return {{
+            add(name) {{ node.classes.push(name); events.push(["classAdd", node.attrs && node.attrs["data-page-number"], name]); }},
+            remove(name) {{ node.classes = node.classes.filter((item) => item !== name); events.push(["classRemove", node.attrs && node.attrs["data-page-number"], name]); }},
+          }};
+        }}
+        function makeNode(tag, attrs = {{}}, children = []) {{
+          const node = {{
+            tag,
+            attrs,
+            children: Array.isArray(children) ? children : [],
+            style: {{}},
+            classes: [],
+            textContent: attrs && attrs.text ? String(attrs.text) : "",
+            dataset: {{}},
+            clientWidth: tag === "div" && attrs && attrs.class === "filePdfPages" ? 524 : 0,
+            appendChild(child) {{ this.children.push(child); events.push(["append", this.attrs && this.attrs.class, child.attrs && child.attrs.class]); return child; }},
+            replaceChildren(...next) {{ this.children = next; events.push(["replace", this.attrs && this.attrs["data-page-number"], next.map((child) => child.tag || "canvas")]); }},
+            querySelectorAll(selector) {{ return selector === ".filePdfPage" ? this.children.filter((child) => child.attrs && child.attrs.class === "filePdfPage") : []; }},
+          }};
+          node.classList = classListFor(node);
+          if (attrs && attrs["data-page-number"]) node.dataset.pageNumber = String(attrs["data-page-number"]);
+          if (attrs && attrs.style) node.styleText = attrs.style;
+          return node;
+        }}
+        const host = makeNode("div", {{ class: "host" }});
+        host.innerHTML = "old";
+        host.scrollTop = 99;
+        const observed = [];
+        class FakeIntersectionObserver {{
+          constructor(callback, options) {{ this.callback = callback; this.options = options; observers.push(this); events.push(["observer", options.root === host, options.rootMargin]); }}
+          observe(slot) {{ observed.push(slot); events.push(["observe", slot.dataset.pageNumber]); }}
+        }}
+        function makePage(pageNumber, reject = false) {{
+          return {{
+            getViewport({{ scale }}) {{ return {{ width: 100 * scale, height: 200 * scale }}; }},
+            render(args) {{
+              events.push(["render", pageNumber, args.viewport.width, args.viewport.height, args.transform, args.background, Boolean(args.canvasContext)]);
+              return {{ promise: reject ? Promise.reject(new Error("boom")) : Promise.resolve() }};
+            }},
+          }};
+        }}
+        const pages = {{ 1: makePage(1), 2: makePage(2, true) }};
+        const pdf = {{ numPages: 2, getPage: async (pageNumber) => {{ events.push(["getPage", pageNumber]); return pages[pageNumber]; }} }};
+        const loadingTask = {{ promise: Promise.resolve(pdf), destroy: () => events.push(["destroy"]) }};
+        let activeState = null;
+        const runtime = fileViewer.createFilePdfRenderRuntime({{
+          host,
+          el: makeNode,
+          ensurePdfJs: async () => ({{ getDocument: (options) => {{ events.push(["getDocument", options]); return loadingTask; }} }}),
+          createCanvas: () => ({{ tag: "canvas", style: {{}}, getContext: (_kind, options) => {{ events.push(["context", options]); return {{ ok: true }}; }} }}),
+          devicePixelRatio: () => 2,
+          disposeFileEditor: () => events.push(["disposeEditor"]),
+          disposePdfRender: () => events.push(["disposePdf"]),
+          clearFileVideo: () => events.push(["clearVideo"]),
+          setFileRenderSurface: (surface) => events.push(["surface", surface]),
+          renderDownloadFallback: (rel, url, reason) => events.push(["fallback", rel, url, reason]),
+          isCurrentFileOpenRequest: (request) => request && request.current !== false,
+          setActivePdfRenderState: (state) => {{ activeState = state; events.push(["setState", state.request.id]); }},
+          isActivePdfRenderState: (state) => state === activeState,
+          updateFileTouchToolbar: () => events.push(["touchToolbar"]),
+          IntersectionObserverCtor: FakeIntersectionObserver,
+        }});
+        const renderResult = await runtime.render("doc.pdf", "/doc.pdf", {{ id: "req-1", current: true }});
+        observers[0].callback([{{ isIntersecting: true, target: observed[0] }}]);
+        await new Promise((resolve) => setImmediate(resolve));
+        observers[0].callback([{{ isIntersecting: true, target: observed[1] }}]);
+        await new Promise((resolve) => setImmediate(resolve));
+        const container = host.children[0];
+        const firstSlot = observed[0];
+        const secondSlot = observed[1];
+        const renderState = {{
+          renderResult,
+          hostInnerHTML: host.innerHTML,
+          hostScrollTop: host.scrollTop,
+          containerClass: container.attrs.class,
+          containerAria: container.attrs["aria-label"],
+          slotCount: observed.length,
+          firstSlotStyle: firstSlot.styleText,
+          firstSlotChildren: firstSlot.children.map((child) => child.tag || "canvas"),
+          firstSlotClasses: firstSlot.classes,
+          secondSlotText: secondSlot.textContent,
+          secondSlotClasses: secondSlot.classes,
+          rendered: Array.from(activeState.rendered),
+          renderingSize: activeState.rendering.size,
+          renderTaskSize: activeState.renderTasks.size,
+          statePdfSet: activeState.pdf === pdf,
+        }};
+        const fallbackHost = makeNode("div", {{ class: "fallbackHost" }});
+        fallbackHost.innerHTML = "old";
+        const noObserverRuntime = fileViewer.createFilePdfRenderRuntime({{
+          host: fallbackHost,
+          el: makeNode,
+          ensurePdfJs: async () => {{ throw new Error("should not load"); }},
+          createCanvas: () => ({{}}),
+          devicePixelRatio: () => 1,
+          disposeFileEditor: () => events.push(["noIoDisposeEditor"]),
+          disposePdfRender: () => events.push(["noIoDisposePdf"]),
+          clearFileVideo: () => events.push(["noIoClearVideo"]),
+          setFileRenderSurface: (surface) => events.push(["noIoSurface", surface]),
+          renderDownloadFallback: (rel, url, reason) => events.push(["noIoFallback", rel, url, reason]),
+          isCurrentFileOpenRequest: () => true,
+          setActivePdfRenderState: () => events.push(["noIoSetState"]),
+          isActivePdfRenderState: () => true,
+          updateFileTouchToolbar: () => events.push(["noIoTouch"]),
+          IntersectionObserverCtor: null,
+        }});
+        const noObserverResult = await noObserverRuntime.render("doc.pdf", "/doc.pdf", {{ id: "req-2" }});
+        const loaderFailRuntime = fileViewer.createFilePdfRenderRuntime({{
+          host: fallbackHost,
+          el: makeNode,
+          ensurePdfJs: async () => {{ throw new Error("loader down"); }},
+          createCanvas: () => ({{}}),
+          devicePixelRatio: () => 1,
+          disposeFileEditor: () => events.push(["failDisposeEditor"]),
+          disposePdfRender: () => events.push(["failDisposePdf"]),
+          clearFileVideo: () => events.push(["failClearVideo"]),
+          setFileRenderSurface: (surface) => events.push(["failSurface", surface]),
+          renderDownloadFallback: (rel, url, reason) => events.push(["failFallback", rel, url, reason]),
+          isCurrentFileOpenRequest: () => true,
+          setActivePdfRenderState: () => events.push(["failSetState"]),
+          isActivePdfRenderState: () => true,
+          updateFileTouchToolbar: () => events.push(["failTouch"]),
+          IntersectionObserverCtor: FakeIntersectionObserver,
+        }});
+        const loaderFailResult = await loaderFailRuntime.render("fail.pdf", "/fail.pdf", {{ id: "req-3" }});
+        let missingError = "";
+        try {{ fileViewer.createFilePdfRenderRuntime({{ host, el: makeNode }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
+        process.stdout.write(JSON.stringify({{
+          frozen: Object.isFrozen(runtime),
+          renderState,
+          noObserverResult,
+          loaderFailResult,
+          events,
+          missingError,
+        }}));
+        }})().catch((err) => {{ console.error(err && err.stack ? err.stack : err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def run_file_render_surface_runtime_probe() -> dict[str, object]:
     viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
@@ -1446,7 +1601,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
     def test_file_viewer_controller_owns_save_conflict_behavior(self) -> None:
         result = run_file_viewer_controller_probe()
         self.assertTrue(result["render"]["exportFrozen"])
-        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFileFallbackRuntime", "createFileModeControlsRuntime", "createFilePasteDialogRuntime", "createFileRenderSurfaceRuntime", "createFileTouchToolbarRuntime", "createFileUnsavedDialogRuntime", "createFileViewerController", "createFileViewerModalRuntime", "createPdfLoader"])
+        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFileFallbackRuntime", "createFileModeControlsRuntime", "createFilePasteDialogRuntime", "createFilePdfRenderRuntime", "createFileRenderSurfaceRuntime", "createFileTouchToolbarRuntime", "createFileUnsavedDialogRuntime", "createFileViewerController", "createFileViewerModalRuntime", "createPdfLoader"])
         self.assertEqual(result["render"]["conflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["currentConflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["labelText"], "src/app.py - save conflict: version mismatch")
@@ -1835,6 +1990,42 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["laterClick"], [1, 1])
         self.assertEqual(result["plainClick"], [1, 1])
 
+    def test_file_pdf_render_runtime_behavior(self) -> None:
+        result = run_file_pdf_render_runtime_probe()
+        self.assertTrue(result["frozen"])
+        render_state = result["renderState"]
+        self.assertTrue(render_state["renderResult"])
+        self.assertEqual(render_state["hostInnerHTML"], "")
+        self.assertEqual(render_state["hostScrollTop"], 0)
+        self.assertEqual(render_state["containerClass"], "filePdfPages")
+        self.assertEqual(render_state["containerAria"], "doc.pdf PDF preview")
+        self.assertEqual(render_state["slotCount"], 2)
+        self.assertEqual(render_state["firstSlotStyle"], "width: 500px; min-height: 1000px;")
+        self.assertEqual(render_state["firstSlotChildren"], ["canvas"])
+        self.assertEqual(render_state["firstSlotClasses"], [])
+        self.assertEqual(render_state["secondSlotText"], "Page 2 failed to render")
+        self.assertEqual(render_state["secondSlotClasses"], ["rendering", "failed"])
+        self.assertEqual(render_state["rendered"], [1])
+        self.assertEqual(render_state["renderingSize"], 0)
+        self.assertEqual(render_state["renderTaskSize"], 1)
+        self.assertTrue(render_state["statePdfSet"])
+        self.assertTrue(result["noObserverResult"])
+        self.assertTrue(result["loaderFailResult"])
+        events = result["events"]
+        self.assertIn(["disposeEditor"], events)
+        self.assertIn(["disposePdf"], events)
+        self.assertIn(["clearVideo"], events)
+        self.assertIn(["surface", "diff"], events)
+        self.assertIn(["getDocument", {"url": "/doc.pdf", "withCredentials": True}], events)
+        self.assertIn(["observer", True, "900px 0px"], events)
+        self.assertIn(["observe", "1"], events)
+        self.assertIn(["observe", "2"], events)
+        self.assertIn(["render", 1, 500, 1000, [2, 0, 0, 2, 0, 0], "rgb(255, 255, 255)", True], events)
+        self.assertIn(["replace", "1", ["canvas"]], events)
+        self.assertIn(["noIoFallback", "doc.pdf", "/doc.pdf", "PDF lazy renderer unavailable"], events)
+        self.assertIn(["failFallback", "fail.pdf", "/fail.pdf", "loader down"], events)
+        self.assertIn("file viewer dependency missing: ensurePdfJs", result["missingError"])
+
     def test_file_render_surface_runtime_behavior(self) -> None:
         result = run_file_render_surface_runtime_probe()
         self.assertTrue(result["frozen"])
@@ -2055,6 +2246,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn('typeof codoxearFileViewer.createFileFallbackRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileModeControlsRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFilePasteDialogRuntime !== "function"', app_source)
+        self.assertIn('typeof codoxearFileViewer.createFilePdfRenderRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileRenderSurfaceRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileTouchToolbarRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileUnsavedDialogRuntime !== "function"', app_source)
@@ -2070,6 +2262,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn("createFileFallbackRuntime", viewer_source)
         self.assertIn("createFileModeControlsRuntime", viewer_source)
         self.assertIn("createFilePasteDialogRuntime", viewer_source)
+        self.assertIn("createFilePdfRenderRuntime", viewer_source)
         self.assertIn("createFileRenderSurfaceRuntime", viewer_source)
         self.assertIn("createFileTouchToolbarRuntime", viewer_source)
         self.assertIn("createFileUnsavedDialogRuntime", viewer_source)

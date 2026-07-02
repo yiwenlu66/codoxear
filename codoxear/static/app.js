@@ -575,6 +575,7 @@
         typeof codoxearFileViewer.createFileFallbackRuntime !== "function" ||
         typeof codoxearFileViewer.createFileModeControlsRuntime !== "function" ||
         typeof codoxearFileViewer.createFilePasteDialogRuntime !== "function" ||
+        typeof codoxearFileViewer.createFilePdfRenderRuntime !== "function" ||
         typeof codoxearFileViewer.createFileRenderSurfaceRuntime !== "function" ||
         typeof codoxearFileViewer.createFileTouchToolbarRuntime !== "function" ||
         typeof codoxearFileViewer.createFileUnsavedDialogRuntime !== "function" ||
@@ -7059,6 +7060,23 @@
           normalizeLineNumber,
           requestAnimationFrame: (callback) => requestAnimationFrame(callback),
         });
+        const filePdfRenderRuntime = codoxearFileViewer.createFilePdfRenderRuntime({
+          host: fileDiff,
+          el,
+          ensurePdfJs: () => ensurePdfJs(),
+          createCanvas: () => document.createElement("canvas"),
+          devicePixelRatio: () => window.devicePixelRatio || 1,
+          disposeFileEditor: () => disposeFileEditor(),
+          disposePdfRender: () => disposePdfRender(),
+          clearFileVideo: () => clearFileVideo(),
+          setFileRenderSurface: (surface) => setFileRenderSurface(surface),
+          renderDownloadFallback: (rel, url, reason) => renderDownloadFallback(rel, url, reason),
+          isCurrentFileOpenRequest: (request) => isCurrentFileOpenRequest(request),
+          setActivePdfRenderState: (state) => fileViewerController.setActivePdfRenderState(state),
+          isActivePdfRenderState: (state) => fileViewerController.isActivePdfRenderState(state),
+          updateFileTouchToolbar: () => updateFileTouchToolbar(),
+          IntersectionObserverCtor: typeof IntersectionObserver === "function" ? IntersectionObserver : null,
+        });
         const filePasteDialogRuntime = codoxearFileViewer.createFilePasteDialogRuntime({
           backdrop: filePasteBackdrop,
           dialog: filePasteDialog,
@@ -7613,110 +7631,7 @@
         }
 
         async function renderPdfFile(rel, url, request) {
-          disposeFileEditor();
-          disposePdfRender();
-          clearFileVideo();
-          fileDiff.innerHTML = "";
-          setFileRenderSurface("diff");
-          fileDiff.scrollTop = 0;
-          const container = el("div", { class: "filePdfPages", role: "document", "aria-label": `${rel} PDF preview` });
-          fileDiff.appendChild(container);
-          if (typeof IntersectionObserver !== "function") {
-            if (!isCurrentFileOpenRequest(request)) return false;
-            renderDownloadFallback(rel, url, "PDF lazy renderer unavailable");
-            return true;
-          }
-          let pdfjs;
-          try {
-            pdfjs = await ensurePdfJs();
-          } catch (e) {
-            if (!isCurrentFileOpenRequest(request)) return false;
-            renderDownloadFallback(rel, url, e && e.message ? e.message : "PDF renderer unavailable");
-            return true;
-          }
-          if (!isCurrentFileOpenRequest(request)) return false;
-          const loadingTask = pdfjs.getDocument({ url, withCredentials: true });
-          const state = {
-            request,
-            loadingTask,
-            observer: null,
-            renderTasks: new Set(),
-            rendered: new Set(),
-            rendering: new Set(),
-            pdf: null,
-          };
-          fileViewerController.setActivePdfRenderState(state);
-          const pdf = await loadingTask.promise;
-          if (!fileViewerController.isActivePdfRenderState(state) || !isCurrentFileOpenRequest(request)) return false;
-          state.pdf = pdf;
-          const firstPage = await pdf.getPage(1);
-          if (!fileViewerController.isActivePdfRenderState(state) || !isCurrentFileOpenRequest(request)) return false;
-          const unitViewport = firstPage.getViewport({ scale: 1 });
-          const maxWidth = Math.max(240, container.clientWidth - 24);
-          const scale = maxWidth / Math.max(1, unitViewport.width);
-          const pageWidth = Math.floor(unitViewport.width * scale);
-          const pageHeight = Math.floor(unitViewport.height * scale);
-          const renderPage = async (slot) => {
-            const pageNumber = Number(slot.dataset.pageNumber || "0");
-            if (!pageNumber || state.rendered.has(pageNumber) || state.rendering.has(pageNumber)) return;
-            state.rendering.add(pageNumber);
-            slot.classList.add("rendering");
-            try {
-              const page = pageNumber === 1 ? firstPage : await pdf.getPage(pageNumber);
-              if (!fileViewerController.isActivePdfRenderState(state) || !isCurrentFileOpenRequest(request)) return;
-              const viewport = page.getViewport({ scale });
-              const outputScale = window.devicePixelRatio || 1;
-              const canvas = document.createElement("canvas");
-              const context = canvas.getContext("2d", { alpha: false });
-              if (!context) throw new Error("PDF canvas unavailable");
-              canvas.width = Math.floor(viewport.width * outputScale);
-              canvas.height = Math.floor(viewport.height * outputScale);
-              canvas.style.width = `${Math.floor(viewport.width)}px`;
-              canvas.style.height = `${Math.floor(viewport.height)}px`;
-              const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
-              const task = page.render({
-                canvasContext: context,
-                viewport,
-                transform,
-                background: "rgb(255, 255, 255)",
-              });
-              state.renderTasks.add(task);
-              await task.promise;
-              state.renderTasks.delete(task);
-              if (!fileViewerController.isActivePdfRenderState(state) || !isCurrentFileOpenRequest(request)) return;
-              slot.replaceChildren(canvas);
-              slot.classList.remove("rendering");
-              state.rendered.add(pageNumber);
-            } catch (e) {
-              if (e && e.name === "RenderingCancelledException") return;
-              if (!fileViewerController.isActivePdfRenderState(state) || !isCurrentFileOpenRequest(request)) return;
-              slot.textContent = `Page ${pageNumber} failed to render`;
-              slot.classList.add("failed");
-            } finally {
-              state.rendering.delete(pageNumber);
-            }
-          };
-          for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-            const slot = el("div", {
-              class: "filePdfPage",
-              "data-page-number": String(pageNumber),
-              style: `width: ${pageWidth}px; min-height: ${pageHeight}px;`,
-            }, [
-              el("span", { class: "filePdfPageLabel", text: `Page ${pageNumber}` }),
-            ]);
-            container.appendChild(slot);
-          }
-          state.observer = new IntersectionObserver(
-            (entries) => {
-              for (const entry of entries) {
-                if (entry.isIntersecting) void renderPage(entry.target);
-              }
-            },
-            { root: fileDiff, rootMargin: "900px 0px" }
-          );
-          container.querySelectorAll(".filePdfPage").forEach((slot) => state.observer.observe(slot));
-          updateFileTouchToolbar();
-          return true;
+          return await filePdfRenderRuntime.render(rel, url, request);
         }
 
         function currentFileEditMode() {
