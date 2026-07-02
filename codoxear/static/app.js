@@ -7436,12 +7436,7 @@
         }
 
         function getFileEditorText() {
-          const editor = fileEditorRuntime.currentEditor();
-          if (currentFileEditorKind() === "file" && editor && typeof editor.getModel === "function") {
-            const model = editor.getModel();
-            if (model && typeof model.getValue === "function") return String(model.getValue());
-          }
-          return String(currentActiveFileText() || "");
+          return fileEditorRuntime.currentFileText(currentFileEditorKind(), currentActiveFileText());
         }
 
         function restoreFileEditorText(text) {

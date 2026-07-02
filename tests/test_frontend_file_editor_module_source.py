@@ -36,6 +36,7 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
         const fileModel = {{
           getLineCount: () => 4,
           getLineMaxColumn: (lineNumber) => lineNumber === 2 ? 6 : 4,
+          getValue: () => "current editor text",
           getValueInRange: (range) => `text:${{range.startLineNumber}}:${{range.startColumn}}-${{range.endLineNumber}}:${{range.endColumn}}`,
         }};
         const modifiedEditor = {{
@@ -78,12 +79,14 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
         const wrongClassInput = runtime.isActiveInput("file", nonInput);
         const wrongCtorInput = runtime.isActiveInput("file", editorInput, function DifferentElement() {{}});
         const normalizedPosition = runtime.normalizePosition(fileEditor, {{ lineNumber: 20, column: 20 }});
+        const currentFileText = runtime.currentFileText("file", "fallback text");
         const selectionTextBefore = runtime.activeSelectionText("file");
         const applyAnchoredSelection = runtime.applySelection(fileEditor, {{ lineNumber: 2, column: 20 }}, {{ lineNumber: 0, column: 0 }}, Selection);
         const selectionTextAfter = runtime.selectionText(fileEditor);
         const collapsedSelection = runtime.isCollapsedSelection({{ startLineNumber: 2, startColumn: 1, endLineNumber: 2, endColumn: 1 }});
         runtime.setEditor(diffEditor);
         const activeDiff = runtime.activeCodeEditor("diff") === modifiedEditor;
+        const currentDiffTextFallback = runtime.currentFileText("diff", "fallback text");
         const updateWrongKind = runtime.updateEditorOptions("file", {{ readOnly: true }});
         const updateDiff = runtime.updateEditorOptions("diff", {{ hideUnchangedRegions: {{ enabled: false }} }});
         const layoutDiff = runtime.layoutCurrent();
@@ -193,6 +196,8 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
           wrongClassInput,
           wrongCtorInput,
           normalizedPosition,
+          currentFileText,
+          currentDiffTextFallback,
           selectionTextBefore,
           applyAnchoredSelection,
           selectionTextAfter,
@@ -299,6 +304,8 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertFalse(result["wrongClassInput"])
         self.assertFalse(result["wrongCtorInput"])
         self.assertEqual(result["normalizedPosition"], {"lineNumber": 4, "column": 4})
+        self.assertEqual(result["currentFileText"], "current editor text")
+        self.assertEqual(result["currentDiffTextFallback"], "fallback text")
         self.assertEqual(result["selectionTextBefore"], "text:1:1-1:3")
         self.assertTrue(result["applyAnchoredSelection"])
         self.assertEqual(result["selectionTextAfter"], "text:1:1-2:6")
@@ -415,9 +422,11 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertIn("function createFileEditor(monaco, host, options = {})", editor_source)
         self.assertIn("function createDiffEditor(monaco, host, options = {})", editor_source)
         self.assertIn("function positionCurrentEditorAtLine(kind, lineNumber, normalizeLineNumber)", editor_source)
+        self.assertIn("function currentFileText(kind, fallbackText = \"\")", editor_source)
         self.assertIn("function restoreFileText(kind, text, runProgrammaticChange)", editor_source)
         self.assertIn("fileEditorRuntime.createFileEditor(monaco, fileDiff", app_source)
         self.assertIn("fileEditorRuntime.updateFileEditorText(monaco", app_source)
+        self.assertIn("fileEditorRuntime.currentFileText(currentFileEditorKind(), currentActiveFileText())", app_source)
         self.assertIn("fileEditorRuntime.restoreFileText(currentFileEditorKind(), restorePlan.text", app_source)
         self.assertIn("fileEditorRuntime.createDiffEditor(monaco, fileDiff", app_source)
         self.assertIn("fileEditorRuntime.positionCurrentEditorAtLine(\"file\", lineNumber, normalizeLineNumber)", app_source)

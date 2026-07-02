@@ -294,6 +294,15 @@
       return nextEditor;
     }
 
+    function currentFileText(kind, fallbackText = "") {
+      if (String(kind || "") !== "file") return String(fallbackText || "");
+      const targetEditor = currentEditor();
+      if (!targetEditor || typeof targetEditor.getModel !== "function") return String(fallbackText || "");
+      const model = targetEditor.getModel();
+      if (!model || typeof model.getValue !== "function") return String(fallbackText || "");
+      return String(model.getValue());
+    }
+
     function restoreFileText(kind, text, runProgrammaticChange) {
       if (String(kind || "") !== "file") return false;
       const targetEditor = currentEditor();
@@ -462,6 +471,7 @@
       createDiffEditor,
       createFileEditor,
       currentEditor,
+      currentFileText,
       currentModels,
       dispose,
       focusActiveCodeEditor,
