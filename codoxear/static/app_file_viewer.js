@@ -148,7 +148,8 @@
     const persistFileNonDiffMode = requireFunction(deps && deps.persistFileNonDiffMode, "persistFileNonDiffMode");
     const isMarkdownPreviewable = requireFunction(deps && deps.isMarkdownPreviewable, "isMarkdownPreviewable");
     const updateFileTouchToolbar = requireFunction(deps && deps.updateFileTouchToolbar, "updateFileTouchToolbar");
-    const isFileTouchToolbarActive = requireFunction(deps && deps.isFileTouchToolbarActive, "isFileTouchToolbarActive");
+    const useTouchFileEditorControls = requireFunction(deps && deps.useTouchFileEditorControls, "useTouchFileEditorControls");
+    const hasActiveFileCodeEditor = requireFunction(deps && deps.hasActiveFileCodeEditor, "hasActiveFileCodeEditor");
     const fileEditorShortcutBlocked = requireFunction(deps && deps.fileEditorShortcutBlocked, "fileEditorShortcutBlocked");
     const eventTargetElement = requireFunction(deps && deps.eventTargetElement, "eventTargetElement");
     const normalizeFileEditorPosition = requireFunction(deps && deps.normalizeFileEditorPosition, "normalizeFileEditorPosition");
@@ -1461,8 +1462,18 @@
       return fileTouchSelectMode;
     }
 
+    function isFileTouchToolbarActive() {
+      return Boolean(
+        useTouchFileEditorControls() &&
+          isFileViewerOpen() &&
+          isTextFileKind(currentActiveFileKind()) &&
+          currentFileViewMode() !== "preview" &&
+          hasActiveFileCodeEditor()
+      );
+    }
+
     function currentFileTouchToolbarState() {
-      const visible = Boolean(isFileTouchToolbarActive());
+      const visible = isFileTouchToolbarActive();
       const selectActive = Boolean(currentFileTouchSelectMode());
       if (!visible) return Object.freeze({ visible: false, selectActive, dpadVisible: false, copyVisible: false, pasteVisible: false });
       return Object.freeze({

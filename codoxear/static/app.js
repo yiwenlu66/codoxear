@@ -7354,10 +7354,6 @@
           return fileViewerController.syncFileEditorReadOnly();
         }
 
-        function getActiveFileCodeEditor() {
-          return fileEditorRuntime.activeCodeEditor(currentFileEditorKind());
-        }
-
         function syncFileDiffSelectionMode() {
           const hideOpts = currentFileTouchSelectMode()
             ? { enabled: false }
@@ -7368,16 +7364,6 @@
                 revealLineCount: 2,
               };
           fileEditorRuntime.updateEditorOptions(currentFileEditorKind(), { hideUnchangedRegions: hideOpts });
-        }
-
-        function isFileTouchToolbarActive() {
-          return Boolean(
-            useTouchFileEditorControls() &&
-            isFileViewerOpen() &&
-            isTextFileKind(currentActiveFileKind()) &&
-            currentFileViewMode() !== "preview" &&
-            getActiveFileCodeEditor()
-          );
         }
 
         function updateFileTouchToolbar() {
@@ -7990,7 +7976,8 @@
           isMarkdownPreviewable,
           resetActiveFileBufferState: () => resetActiveFileBufferState(),
           updateFileTouchToolbar: () => updateFileTouchToolbar(),
-          isFileTouchToolbarActive: () => isFileTouchToolbarActive(),
+          useTouchFileEditorControls: () => useTouchFileEditorControls(),
+          hasActiveFileCodeEditor: () => Boolean(fileEditorRuntime.activeCodeEditor(currentFileEditorKind())),
           fileEditorShortcutBlocked: (target) => fileEditorShortcutBlocked(target),
           eventTargetElement: (value) => value instanceof HTMLElement ? value : null,
           normalizeFileEditorPosition: (editor, position) => fileEditorRuntime.normalizePosition(editor, position),
