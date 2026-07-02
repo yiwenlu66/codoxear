@@ -7203,3 +7203,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: return-focus storage belongs to the file-viewer controller. App still owns modal DOM mechanics, file viewer open/hide orchestration, unsaved dialog DOM/show/hide internals, and the actual focus restoration side effect.
+
+## 2026-07-02T10:05:00Z File editor shortcut-blocking policy controller ownership
+- Functional commit `2dc25f3 Move file editor shortcut blocking into viewer controller` moved the file-editor keyboard shortcut blocking predicate from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: save/delete/touch-selection keyboard actions are already controller-owned; their gating must be computed beside those actions rather than supplied as an opaque app answer. The controller now owns `fileEditorShortcutBlocked(target)`, combining viewer-open state, nested-modal blocking, text-entry target classification, and active-editor-input identity. `app.js` supplies explicit observations only: `isFileViewerOpen`, `hasBlockingFileEditorModal`, `isTextEntryTarget`, `eventTargetElement`, and `isActiveFileEditorInput`.
+- Tests updated: source sentinels reject the restored app-owned `function fileEditorShortcutBlocked(target)` and require controller-owned closed-viewer/nested-modal/text-entry blocking. Executable save-shortcut, touch-selection keydown, and delete-key probes now model nested dialogs, closed viewer state, active editor input, other text entries, and outside-viewer targets through explicit observation dependencies.
+- Negative evidence preserved: first focused validation after the move failed in `validMeta` save shortcut and `validMove` touch-selection cases because test fixtures still treated active editor inputs as part of the old opaque shortcut callback. Updating the fixtures to model active-editor input through `isActiveFileEditorInput(...)` restored the intended behavior. This failure distinguished stale test measurement from product regression.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_file_picker_search_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_file_picker_search_source.py` returned `72 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `236 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1294 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: shortcut-blocking policy belongs to the file-viewer controller. App still owns raw modal DOM state, the list of isolation targets, general text-entry classification from `app_viewport.js`, and active editor input observation through `app_file_editor.js`.
