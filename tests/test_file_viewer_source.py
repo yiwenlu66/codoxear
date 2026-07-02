@@ -56,6 +56,10 @@ def controller_identity_ctx_js(
             beginFileViewerSessionSync() {{ ctx.fileViewerSessionSyncToken += 1; return ctx.fileViewerSessionSyncToken; }},
             invalidateFileViewerSessionSync() {{ ctx.fileViewerSessionSyncToken += 1; return ctx.fileViewerSessionSyncToken; }},
             isCurrentFileViewerSessionSync(token) {{ return token === ctx.fileViewerSessionSyncToken; }},
+            setFileViewerReturnFocusElement(value) {{ ctx.fileViewerReturnFocusElement = value || null; return ctx.fileViewerReturnFocusElement; }},
+            takeFileViewerReturnFocusElement() {{ const value = ctx.fileViewerReturnFocusElement || null; ctx.fileViewerReturnFocusElement = null; return value; }},
+            setFileUnsavedReturnFocusElement(value) {{ ctx.fileUnsavedReturnFocusElement = value || null; return ctx.fileUnsavedReturnFocusElement; }},
+            takeFileUnsavedReturnFocusElement() {{ const value = ctx.fileUnsavedReturnFocusElement || null; ctx.fileUnsavedReturnFocusElement = null; return value; }},
             rememberActiveFileSelection(sid = ctx.currentFileSessionId ? ctx.currentFileSessionId() : "") {{
               const saved = {{
                 key: sid,
@@ -458,7 +462,7 @@ def eval_hide_file_viewer_identity_cleanup() -> dict:
           fileViewerSessionId: "sid-1",
           fileViewerUnavailableSessionId: "",
           fileViewerSessionSyncToken: 10,
-          fileViewerReturnFocusEl: {{ id: "return" }},
+          fileViewerReturnFocusElement: {{ id: "return" }},
           fileBackdrop: {{ style: {{ display: "block" }} }},
           fileViewer: {{ style: {{ display: "block" }} }},
           filePickerSearchState: {{ setSessionId: (sid) => calls.push(["filePickerSearchState.setSessionId", sid]) }},
@@ -484,7 +488,7 @@ def eval_hide_file_viewer_identity_cleanup() -> dict:
           identity: {{ path: ctx.activeFilePathValue(), apiPath: ctx.activeFileApiPathValue(), gitPath: ctx.activeFileGitPathValue(), line: ctx.activeFileLineValue() }},
           session: {{ id: ctx.fileViewerSessionId, unavailable: ctx.fileViewerUnavailableSessionId, syncToken: ctx.fileViewerSessionSyncToken }},
           displays: {{ backdrop: ctx.fileBackdrop.style.display, viewer: ctx.fileViewer.style.display }},
-          returnFocus: ctx.fileViewerReturnFocusEl,
+          returnFocus: ctx.fileViewerReturnFocusElement,
         }}));
         """
     )
@@ -4329,7 +4333,11 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertNotIn("setFileDirty(false);", fallback_block)
         self.assertIn("function applyPlainTextFallbackState()", viewer_source)
         self.assertIn("setFileEditMode(false);\n      setFileDirty(false);\n      updateFileEditButton();\n      updateFileTouchToolbar();", viewer_source)
-        self.assertIn("cancelPendingFileOpen();\n          if (!wasOpen) fileViewerReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;\n          prepareModalOpen();\n          const explicitPath = String(path ?? \"\");\n          const query = String(pickerQuery ?? \"\");\n          const queryOpen = !explicitPath && query !== \"\";\n          fileBackdrop.style.display = \"block\";", source)
+        self.assertIn("cancelPendingFileOpen();\n          if (!wasOpen) fileViewerController.setFileViewerReturnFocusElement(document.activeElement, HTMLElement);\n          prepareModalOpen();\n          const explicitPath = String(path ?? \"\");\n          const query = String(pickerQuery ?? \"\");\n          const queryOpen = !explicitPath && query !== \"\";\n          fileBackdrop.style.display = \"block\";", source)
+        self.assertNotIn("let fileViewerReturnFocusEl = null;", source)
+        self.assertNotIn("let fileUnsavedReturnFocusEl = null;", source)
+        self.assertIn("let fileViewerReturnFocusElement = null;", APP_FILE_VIEWER_JS.read_text(encoding="utf-8"))
+        self.assertIn("let fileUnsavedReturnFocusElement = null;", APP_FILE_VIEWER_JS.read_text(encoding="utf-8"))
         self.assertIn("cancelPendingFileOpen();\n          hideFileUnsavedDialog();", source)
 
     def test_active_file_save_request_helpers_are_single_owned(self) -> None:

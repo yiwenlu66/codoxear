@@ -235,6 +235,16 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
         }}
         (async () => {{
           const renderController = makeController();
+          function FakeFocusElement(name) {{ this.name = name; }}
+          const viewerFocus = new FakeFocusElement("viewer");
+          const unsavedFocus = new FakeFocusElement("unsaved");
+          const viewerFocusSet = renderController.setFileViewerReturnFocusElement(viewerFocus, FakeFocusElement).name;
+          const viewerFocusTaken = renderController.takeFileViewerReturnFocusElement().name;
+          const viewerFocusAfterTake = renderController.takeFileViewerReturnFocusElement();
+          const viewerFocusInvalid = renderController.setFileViewerReturnFocusElement({{ name: "invalid" }}, FakeFocusElement);
+          const unsavedFocusSet = renderController.setFileUnsavedReturnFocusElement(unsavedFocus, FakeFocusElement).name;
+          const unsavedFocusTaken = renderController.takeFileUnsavedReturnFocusElement().name;
+          const unsavedFocusAfterTake = renderController.takeFileUnsavedReturnFocusElement();
           renderController.setActiveFileIdentity("src/app.py", {{ line: 7, gitPath: true, apiPath: "api-token" }});
           const conflict = renderController.renderSaveConflict("sid-1", "src/app.py", "version mismatch");
           renderController.setFileViewMode("diff");
@@ -760,6 +770,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             videoPolicy,
             pdfRenderState,
             loadPlans,
+            focusSlots: {{ viewerFocusSet, viewerFocusTaken, viewerFocusAfterTake, viewerFocusInvalid, unsavedFocusSet, unsavedFocusTaken, unsavedFocusAfterTake }},
           }};
           const availableReloadFailure = await runReloadCase("");
           const canceledReload = await runReloadCase("", false);
@@ -935,6 +946,15 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["render"]["selectionMemory"], {"noSession": {"path": "", "line": None, "gitPath": False}, "history": {"path": "history.txt", "line": 3, "gitPath": False, "apiPath": ""}, "remembered": {"path": "src/app.py", "apiPath": "tok-1", "line": 12, "gitPath": True}})
         self.assertEqual(result["render"]["candidateRefreshSeq"], {"first": 1, "second": 2, "firstCurrent": True, "firstAfterSecond": False, "secondCurrent": True})
         self.assertEqual(result["render"]["sessionSyncSeq"], {"first": 1, "invalidated": 2, "firstCurrent": True, "firstAfterInvalidate": False, "invalidatedCurrent": True})
+        self.assertEqual(result["render"]["focusSlots"], {
+            "viewerFocusSet": "viewer",
+            "viewerFocusTaken": "viewer",
+            "viewerFocusAfterTake": None,
+            "viewerFocusInvalid": None,
+            "unsavedFocusSet": "unsaved",
+            "unsavedFocusTaken": "unsaved",
+            "unsavedFocusAfterTake": None,
+        })
         reset_events = [
             ["editorOptions", {"readOnly": True}],
             ["touchToolbar"],

@@ -7023,7 +7023,6 @@
           }
         };
         const FILE_CANDIDATE_CACHE_TTL_MS = 15000;
-        let fileViewerReturnFocusEl = null;
         const filePickerMenuState = codoxearFilePicker.createMenuState({
           normalizeLineNumber,
         });
@@ -7047,7 +7046,6 @@
           resolveAppUrl,
           timeoutMs: PDFJS_LOADER_TIMEOUT_MS,
         });
-        let fileUnsavedReturnFocusEl = null;
 
         function currentFileViewerSessionId() {
           return fileViewerController.currentFileViewerSessionId();
@@ -7875,8 +7873,7 @@
         }
 
         function hideFileUnsavedDialog(choice = "cancel") {
-          const focusTarget = fileUnsavedReturnFocusEl;
-          fileUnsavedReturnFocusEl = null;
+          const focusTarget = fileViewerController.takeFileUnsavedReturnFocusElement();
           fileUnsavedBackdrop.style.display = "none";
           fileUnsavedDialog.style.display = "none";
           fileViewer.removeAttribute("inert");
@@ -7919,7 +7916,7 @@
           const plan = fileViewerController.fileUnsavedPromptPlan();
           if (plan.kind === "choice") return Promise.resolve(plan.choice);
           prepareModalOpen();
-          fileUnsavedReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          fileViewerController.setFileUnsavedReturnFocusElement(document.activeElement, HTMLElement);
           syncFileUnsavedDialogMode();
           fileViewer.setAttribute("inert", "");
           fileViewer.setAttribute("aria-hidden", "true");
@@ -8831,7 +8828,7 @@
           const wasOpen = isFileViewerOpen();
           if (wasOpen && !(await maybeHandleUnsavedFileChanges())) return;
           cancelPendingFileOpen();
-          if (!wasOpen) fileViewerReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          if (!wasOpen) fileViewerController.setFileViewerReturnFocusElement(document.activeElement, HTMLElement);
           prepareModalOpen();
           const explicitPath = String(path ?? "");
           const query = String(pickerQuery ?? "");
@@ -8890,8 +8887,7 @@
         }
         function hideFileViewer() {
           const wasOpen = isModalTargetOpen(fileViewer);
-          const focusTarget = fileViewerReturnFocusEl;
-          fileViewerReturnFocusEl = null;
+          const focusTarget = fileViewerController.takeFileViewerReturnFocusElement();
           fileViewerController.invalidateFileViewerSessionSync();
           cancelPendingFileOpen();
           hideFileUnsavedDialog();

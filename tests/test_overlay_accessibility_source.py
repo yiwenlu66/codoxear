@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_FILE_VIEWER_JS = ROOT / "codoxear" / "static" / "app_file_viewer.js"
 APP_MODAL_JS = ROOT / "codoxear" / "static" / "app_modal.js"
 
 
@@ -129,18 +130,20 @@ class TestOverlayAccessibilitySource(unittest.TestCase):
 
     def test_file_viewer_dialog_restores_focus_and_announces_status(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertIn('id: "fileStatus", role: "status", "aria-live": "polite"', source)
         self.assertIn('id: "fileViewer", role: "dialog", "aria-modal": "true", "aria-label": "File viewer"', source)
         self.assertIn('id: "fileUnsavedDialog", role: "dialog", "aria-modal": "true", "aria-label": "Unsaved file changes"', source)
         self.assertIn('id: "filePasteDialog", role: "dialog", "aria-modal": "true", "aria-label": "Paste into file"', source)
-        self.assertIn("let fileViewerReturnFocusEl = null;", source)
+        self.assertNotIn("let fileViewerReturnFocusEl = null;", source)
+        self.assertIn("let fileViewerReturnFocusElement = null;", viewer_source)
         show_start = source.index("async function showFileViewer")
         hide_start = source.index("function hideFileViewer", show_start)
         show_block = source[show_start:hide_start]
         hide_end = source.index("function handleFileViewerSessionUnavailable", hide_start)
         hide_block = source[hide_start:hide_end]
         self.assertIn("const wasOpen = isFileViewerOpen();", show_block)
-        self.assertIn("if (!wasOpen) fileViewerReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;", show_block)
+        self.assertIn("if (!wasOpen) fileViewerController.setFileViewerReturnFocusElement(document.activeElement, HTMLElement);", show_block)
         self.assertIn("prepareModalOpen();", show_block)
         self.assertIn("const queryOpen = !explicitPath && query !== \"\";", show_block)
         self.assertIn("if (!wasOpen && queryOpen) {", show_block)
@@ -152,18 +155,20 @@ class TestOverlayAccessibilitySource(unittest.TestCase):
         self.assertIn("if (queryOpen) {\n            try {\n              filePickerInput.focus({ preventScroll: true });", show_block)
         self.assertIn("filePickerInput.focus({ preventScroll: true });", show_block)
         self.assertIn("const wasOpen = isModalTargetOpen(fileViewer);", hide_block)
-        self.assertIn("const focusTarget = fileViewerReturnFocusEl;", hide_block)
-        self.assertIn("fileViewerReturnFocusEl = null;", hide_block)
+        self.assertIn("const focusTarget = fileViewerController.takeFileViewerReturnFocusElement();", hide_block)
+        self.assertNotIn("fileViewerReturnFocusEl = null;", hide_block)
         self.assertIn("restoreModalFocus(focusTarget, () => isModalTargetOpen(fileViewer));", hide_block)
-        self.assertIn("let fileUnsavedReturnFocusEl = null;", source)
+        self.assertNotIn("let fileUnsavedReturnFocusEl = null;", source)
+        self.assertIn("let fileUnsavedReturnFocusElement = null;", viewer_source)
         self.assertNotIn("let fileUnsavedResolver = null;", source)
         self.assertIn("function focusFileUnsavedInitialControl()", source)
-        self.assertIn("fileUnsavedReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;", source)
+        self.assertIn("fileViewerController.setFileUnsavedReturnFocusElement(document.activeElement, HTMLElement);", source)
         self.assertIn("fileViewer.setAttribute(\"inert\", \"\");", source)
         self.assertIn("fileViewer.setAttribute(\"aria-hidden\", \"true\");", source)
         self.assertIn("focusFileUnsavedInitialControl();", source)
         self.assertIn("fileViewer.removeAttribute(\"inert\");", source)
         self.assertIn("fileViewer.removeAttribute(\"aria-hidden\");", source)
+        self.assertIn("const focusTarget = fileViewerController.takeFileUnsavedReturnFocusElement();", source)
         self.assertIn("restoreModalFocus(focusTarget, () => isModalTargetOpen(fileUnsavedDialog) || !isModalTargetOpen(fileViewer));", source)
 
     def test_queue_help_details_dialogs_restore_focus(self) -> None:

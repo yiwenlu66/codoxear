@@ -221,6 +221,14 @@
     let fileTouchSelectHead = null;
     let fileTouchSelectGoalColumn = null;
     let fileTouchDeleteNativeSuppressUntil = 0;
+    let fileViewerReturnFocusElement = null;
+    let fileUnsavedReturnFocusElement = null;
+
+    function focusReturnElement(value, ElementCtor = null) {
+      const Ctor = typeof ElementCtor === "function" ? ElementCtor : null;
+      if (!value || (Ctor && !(value instanceof Ctor))) return null;
+      return value;
+    }
 
     function normalizeFileViewMode(mode) {
       return mode === "preview" ? "preview" : mode === "file" ? "file" : "diff";
@@ -228,6 +236,28 @@
 
     function currentFileViewMode() {
       return fileViewMode;
+    }
+
+    function setFileViewerReturnFocusElement(value, ElementCtor = null) {
+      fileViewerReturnFocusElement = focusReturnElement(value, ElementCtor);
+      return fileViewerReturnFocusElement;
+    }
+
+    function takeFileViewerReturnFocusElement() {
+      const value = fileViewerReturnFocusElement;
+      fileViewerReturnFocusElement = null;
+      return value;
+    }
+
+    function setFileUnsavedReturnFocusElement(value, ElementCtor = null) {
+      fileUnsavedReturnFocusElement = focusReturnElement(value, ElementCtor);
+      return fileUnsavedReturnFocusElement;
+    }
+
+    function takeFileUnsavedReturnFocusElement() {
+      const value = fileUnsavedReturnFocusElement;
+      fileUnsavedReturnFocusElement = null;
+      return value;
     }
 
     function currentFileNonDiffMode() {
@@ -2056,6 +2086,10 @@
       activeFileEditorIdleTextWritable,
       activeFileEditModeAllowedInCurrentView,
       currentFileViewMode,
+      setFileViewerReturnFocusElement,
+      takeFileViewerReturnFocusElement,
+      setFileUnsavedReturnFocusElement,
+      takeFileUnsavedReturnFocusElement,
       currentFileNonDiffMode,
       setFileViewMode,
       setActiveVideoFallback,
