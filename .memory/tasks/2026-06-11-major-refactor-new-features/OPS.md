@@ -7627,3 +7627,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: picker entry row DOM belongs to `app_file_picker.js`. App still owns `renderFilePickerMenu()` orchestration, empty/searching/truncated footer rows, active-descendant assignment, visible-entry computation, and file-open callback implementation.
+
+## 2026-07-02T22:18:00Z File-picker status row and active-descendant picker-module ownership
+- Functional commit `dd183b0 Move file picker status rows into picker module` moved picker empty/status row DOM construction into `codoxear/static/app_file_picker.js` as `appendFilePickerStatusRow(...)` and moved picker input active-descendant updates into `createMenuDomRuntime(...).syncActiveDescendant(...)`.
+- Mechanism: empty/searching/error/truncated rows are picker menu DOM, and active-descendant is the input's DOM projection of picker focus. Both now live with the picker DOM runtime/state owner. App's `renderFilePickerMenu()` keeps orchestration over which rows are needed.
+- Tests updated: executable picker module coverage verifies status row construction, missing `el` failure, positive and negative active-descendant sync, export list, app load guard, and source sentinels rejecting restored app-owned `pickerEmpty` row appends and `filePickerInput.setAttribute("aria-activedescendant"...)` in the render block.
+- Negative evidence preserved: first focused validation found a missing brace introduced while extending `createMenuDomRuntime`; `node --check` caught it before tests. A stale source sentinel still expected inline `text: "Searching full project..."`; it now asserts `appendFilePickerStatusRow(...)`.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_picker_module_source.py tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_picker.js` passed after the brace repair.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_picker_module_source.py tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py` returned `76 passed, 25 subtests passed` after source sentinel repair.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `249 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1307 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: picker status rows and active-descendant DOM updates belong to `app_file_picker.js`. App still owns `renderFilePickerMenu()` orchestration, `filePickerMenu.innerHTML = ""`, visible-entry computation, duplicate path calculation, and open-entry error handling.
