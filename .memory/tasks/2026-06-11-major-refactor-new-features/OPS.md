@@ -7577,3 +7577,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: highlighted path node construction belongs to `app_file_picker.js`. App still owns full file-picker menu row/section rendering and file-open click side effects.
+
+## 2026-07-02T20:31:00Z File download activation viewer-module ownership
+- Functional commit `63d427b Move file download activation into viewer module` moved hidden-anchor download activation from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js` as `createFileDownloadRuntime(...)`.
+- Mechanism: `createFileViewerController.activeFileDownloadApiPath()` owns the download API path policy, while the hidden anchor/click/remove sequence is viewer DOM runtime behavior. `app.js` now delegates the active API path to `fileDownloadRuntime.download(...)`.
+- Tests updated: executable viewer-module coverage verifies empty-path no-op, anchor creation, resolved href, `rel=noopener`, hidden display, append/click/remove order, missing document dependency, export list, and app load guard. Source sentinels reject restored app-owned `document.createElement("a")` and `const apiPath = activeFileDownloadApiPath()` logic.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` returned `58 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `247 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1305 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: file download activation DOM belongs to `app_file_viewer.js`. App still owns the download button event binding and active API path wrapper.
