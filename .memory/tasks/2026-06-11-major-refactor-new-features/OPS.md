@@ -7066,3 +7066,20 @@
 - Intended output artifact was `/tmp/codoxear-file-viewer-editor-review-after-line-focus.md`; no usable review artifact was produced by the run.
 - The immediately preceding OPS entry lost literal run/path details because the append command used an unquoted heredoc and shell-expanded backtick-delimited text. That malformed entry is an OPS recording artifact, not a product-code event.
 - Interpretation/decision remains unchanged: the failed review is infrastructure-only negative evidence and does not support a code finding. It does not block continuing Workbench item 2, but a future clean-room review is still required before any yield/acceptance claim.
+
+## 2026-07-02T07:08:00Z File touch button binding helper ownership
+- Functional commit `4da5248 Move file touch binding helpers into viewer module` moved the file touch toolbar button binding mechanics from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the per-button `pointerdown`/`touchstart`/`click` suppression state (`suppressClickUntil`, `sawPointerTouchAt`, passive touchstart policy, and click-only copy/paste binding) is file-viewer interaction behavior. App now supplies DOM buttons and action handlers, while `app_file_viewer.js` owns `bindFileTouchPress()` and `bindFileTouchClick()`.
+- Tests updated: the file-viewer module VM probe now executes touch binding behavior with fake buttons/events and injected time, covering touchstart suppression after touch pointerdown, click suppression inside the dedupe window, later click activation, passive:false touchstart registration, click-only activation, invalid-bind false returns, and the preserved no-argument handler contract. Source tests now require the binders in `app_file_viewer.js` and app delegation through `codoxearFileViewer.bindFileTouch*`.
+- Negative evidence preserved: first focused validation after the move failed because `test_touch_select_mode_refocuses_editor_and_blocks_printable_edits` still asserted app-owned `button.addEventListener("pointerdown")`/`Date.now()` implementation details. The stale source assertion was repaired to assert the new owner while the executable touch-binding probe covers behavior.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` returned `49 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `236 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1294 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: app still owns touch toolbar DOM nodes, visibility mutations from controller state, button placement, and concrete action handlers. The module owns binding mechanics and controller-owned state machines own touch selection/delete/paste/copy semantics.
