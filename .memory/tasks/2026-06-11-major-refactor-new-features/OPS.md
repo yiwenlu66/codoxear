@@ -7121,3 +7121,19 @@
 - User instruction: continue according to the Workbench, do not stop until every item is fully finished, perform thorough refactoring, and treat any report referring to a “current tranche/boundary” as bogus.
 - PROMPT.md updated to make all eight Workbench items the completion condition and to reject clean checkpoints, validation passes, commits, review attempts, helper extractions, or named tranche/boundary labels as stopping/reporting substitutes.
 - Interpretation: the operative deliverable is full Workbench completion across frontend file-viewer/editor, transcript/chat, backend adapters, busy/idle/readiness authority, per-session lifecycle, sessiond decision, and test architecture cleanup. Workbench item 2 remains the active local surface only because it is the current causal path, not because it is a completion boundary.
+
+## 2026-07-02T08:18:00Z Editor active-input detection runtime ownership
+- Functional commit `93c64f8 Move editor input detection into editor runtime` moved active Monaco input target detection from inline `codoxear/static/app.js` into `codoxear/static/app_file_editor.js`.
+- Mechanism: determining whether a DOM event target is the active editor input depends on the runtime's current file/diff editor identity and that editor's DOM node. `createFileEditorRuntime().isActiveInput(kind, target, ElementCtor)` now owns the `inputarea` class check, optional `HTMLElement` instance check, active editor projection, `getDomNode()` lookup, and containment test. `app.js` retains modal isolation and general text-entry blocking policy, and delegates active-editor input identity to the runtime.
+- Tests updated: `test_frontend_file_editor_module_source.py` runtime probe covers true active input, outside input, wrong class, and wrong element constructor paths. File-viewer source tests now reject app-owned `isActiveFileEditorInput()` and require runtime-backed shortcut/controller dependency wiring.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_editor_module_source.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_editor.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_editor_module_source.py tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `53 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `236 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1294 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: editor runtime now owns current editor identity, lifecycle, loader readiness, layout/line focus, selection/text helpers, and active input target detection. App still owns modal isolation, general text-entry classification, DOM hosts, render creation parameters, and user-facing mode/status wiring.
