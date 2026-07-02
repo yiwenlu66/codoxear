@@ -7100,3 +7100,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: editor runtime now owns current editor/model/disposable lifecycle, Monaco loader/theme/edit-support readiness, current-editor layout/line focus, and selection/focus/text helpers. App still owns editor DOM hosts, active editor input detection, shortcut block predicates, Monaco editor creation parameters, render scheduling/currentness, modal/paste/unsaved dialog DOM, and user-facing mode/status wiring.
+
+## 2026-07-02T07:43:00Z Insert-position helper dependency moved into viewer module
+- Functional commit `36e3d20 Move insert cursor helper dependency into viewer module` removed the `positionAfterInsertedText()` trampoline from inline `codoxear/static/app.js` and made `codoxear/static/app_file_viewer.js` resolve the helper directly.
+- Mechanism: paste insertion cursor positioning is viewer/editor behavior using a pure file-helper function. Since `app_file_helpers.js` loads before `app_file_viewer.js`, the viewer controller can require `window.CodoxearFileHelpers.positionAfterInsertedText` directly while preserving an explicit injected override for isolated controller tests. If neither dependency exists, controller creation fails loudly via `requireFunction`.
+- Tests updated: file-viewer and file-helper source tests now require no app-owned wrapper, preserve app's fail-loud file-helper load guard, and assert direct viewer dependency on `CodoxearFileHelpers.positionAfterInsertedText`.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_helpers_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_helpers_source.py tests/test_frontend_file_viewer_module_source.py` returned `52 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `236 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1294 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: `app.js` still owns file-helper wrappers for helpers it calls directly; the insert-cursor helper is now owned by the helper module and consumed by the viewer controller, not by app-level dependency plumbing.
