@@ -6841,3 +6841,19 @@
 - Scope of requested review: functional commit `39bfc3a` plus matching tests.
 - Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against the file-candidate state code. The evidence basis remains syntax checks, focused tests, available broader frontend/file/auth/static route tests, full local pytest, Docker sandbox, and diff checks recorded in the candidate-state OPS entry.
 - Decision: continue workbench progress and do not treat absent reviewer output as a product blocker. A future review should be retried only at a real yield/decision gate or if the runner produces concrete findings.
+
+## 2026-07-02T04:33:19Z Compatible-video preview load orchestration controller ownership
+- Functional commit `f33f3d7 Move compatible video preview load into viewer controller` moved compatible-preview load orchestration from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: compatible-video preview loading is controller behavior because it mutates controller-owned `activeVideoFallback` (`preparing`, `used`) and owns the user-visible transition statuses for building/trying/loading/failure. The app wrapper now only injects app-owned side effects: preview fetch/auth handling through `prepareCompatibleVideoPreview`, raw video DOM loading through `fileVideo.src = resolveAppUrl(previewUrl); fileVideo.load();`, and route-error text formatting through `fileVideoPreviewErrorText`.
+- Tests updated: source sentinels now require controller-owned `loadCompatibleVideoPreview(expectedToken, options)`, require app delegation to `fileViewerController.loadCompatibleVideoPreview`, and reject the compatible-preview building/trying status transition in `app.js`. The route-error VM now seeds the real controller via `setActiveVideoFallback()` and exercises the app wrapper plus injected fetch/DOM dependencies, instead of stubbing the old begin/complete/fail transition methods in `app.js`.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth validation returned `208 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: compatible-preview orchestration/status and active-video fallback transitions belong to the file-viewer controller. App still owns preview fetch/auth transport, raw video DOM mutation/loading, file-video element handlers, raw renderer/DOM plan application, raw Monaco editor/diff-editor objects, model disposal and setValue side effects, fallback DOM construction/scrolling, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, persisted mode UI wiring, and raw Monaco selection helpers.
