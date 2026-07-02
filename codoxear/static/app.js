@@ -560,6 +560,7 @@
       const codoxearFilePicker = window.CodoxearFilePicker;
       if (
         !codoxearFilePicker ||
+        typeof codoxearFilePicker.appendHighlightedFileMenuPath !== "function" ||
         typeof codoxearFilePicker.createMenuDomRuntime !== "function" ||
         typeof codoxearFilePicker.createMenuState !== "function" ||
         typeof codoxearFilePicker.createSearchState !== "function" ||
@@ -8036,23 +8037,10 @@
         }
 
         function appendHighlightedFileMenuPath(parent, text, query) {
-          const value = String(text || "");
-          const span = el("span", { class: "fileMenuPath" });
-          const ranges = String(query || "").trim() ? filePickerMatchRangesForQuery(value, query) : [];
-          if (!ranges.length) {
-            span.textContent = value;
-            parent.appendChild(span);
-            return span;
-          }
-          let cursor = 0;
-          for (const [start, end] of ranges) {
-            if (start > cursor) span.appendChild(document.createTextNode(value.slice(cursor, start)));
-            span.appendChild(el("mark", { class: "fileMenuMatch", text: value.slice(start, end) }));
-            cursor = Math.max(cursor, end);
-          }
-          if (cursor < value.length) span.appendChild(document.createTextNode(value.slice(cursor)));
-          parent.appendChild(span);
-          return span;
+          return codoxearFilePicker.appendHighlightedFileMenuPath(parent, text, query, {
+            el,
+            createTextNode: (value) => document.createTextNode(value),
+          });
         }
 
         function resetFileSearchState() {

@@ -1185,14 +1185,20 @@ class TestFilePickerSearchSource(unittest.TestCase):
 
     def test_file_picker_highlights_matches_without_rewriting_path_identity(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        picker_source = APP_FILE_PICKER_JS.read_text(encoding="utf-8")
         css = (APP_JS.parent / "app.css").read_text(encoding="utf-8")
-        start = source.index("function appendHighlightedFileMenuPath(parent, text, query) {")
-        end = source.index("function resetFileSearchState()", start)
-        block = source[start:end]
-        self.assertIn('span.appendChild(document.createTextNode(value.slice(cursor, start)));', block)
-        self.assertIn('span.appendChild(el("mark", { class: "fileMenuMatch", text: value.slice(start, end) }));', block)
+        start = picker_source.index("function appendHighlightedFileMenuPath(parent, text, query, host = {}) {")
+        end = picker_source.index("function createMenuDomRuntime", start)
+        block = picker_source[start:end]
+        self.assertIn("span.appendChild(createTextNode(value.slice(cursor, start)));", block)
+        self.assertIn('span.appendChild(createEl("mark", { class: "fileMenuMatch", text: value.slice(start, end) }));', block)
         self.assertIn("parent.appendChild(span);", block)
         self.assertNotIn("innerHTML", block)
+        app_start = source.index("function appendHighlightedFileMenuPath(parent, text, query) {")
+        app_end = source.index("function resetFileSearchState()", app_start)
+        app_block = source[app_start:app_end]
+        self.assertIn("return codoxearFilePicker.appendHighlightedFileMenuPath(parent, text, query, {", app_block)
+        self.assertNotIn("document.createTextNode(value.slice(cursor", app_block)
         self.assertIn("appendHighlightedFileMenuPath(btn, path, query);", source)
         self.assertIn("appendHighlightedFileMenuPath(btn, `Create new file: ${path}`, query);", source)
         self.assertIn("title: filePickerTitle(entry, identityHint)", source)

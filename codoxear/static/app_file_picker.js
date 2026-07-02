@@ -6,7 +6,8 @@
     !fileHelpers ||
     typeof fileHelpers.normalizeDraftFilePath !== "function" ||
     typeof fileHelpers.filePickerCandidateScore !== "function" ||
-    typeof fileHelpers.compareFilePickerEntries !== "function"
+    typeof fileHelpers.compareFilePickerEntries !== "function" ||
+    typeof fileHelpers.filePickerMatchRangesForQuery !== "function"
   )
     throw new Error("Codoxear file picker helpers failed to load");
 
@@ -259,6 +260,29 @@
       takePreservedSearchOnFocus,
       visibleQuery,
     });
+  }
+
+  function appendHighlightedFileMenuPath(parent, text, query, host = {}) {
+    if (!parent || typeof parent.appendChild !== "function") throw new Error("Codoxear file picker host missing fileMenuParent");
+    const createEl = requireFunction(host, "el");
+    const createTextNode = requireFunction(host, "createTextNode");
+    const value = String(text || "");
+    const span = createEl("span", { class: "fileMenuPath" });
+    const ranges = String(query || "").trim() ? fileHelpers.filePickerMatchRangesForQuery(value, query) : [];
+    if (!ranges.length) {
+      span.textContent = value;
+      parent.appendChild(span);
+      return span;
+    }
+    let cursor = 0;
+    for (const [start, end] of ranges) {
+      if (start > cursor) span.appendChild(createTextNode(value.slice(cursor, start)));
+      span.appendChild(createEl("mark", { class: "fileMenuMatch", text: value.slice(start, end) }));
+      cursor = Math.max(cursor, end);
+    }
+    if (cursor < value.length) span.appendChild(createTextNode(value.slice(cursor)));
+    parent.appendChild(span);
+    return span;
   }
 
   function createMenuDomRuntime(options = {}) {
@@ -522,6 +546,7 @@
   }
 
   window.CodoxearFilePicker = Object.freeze({
+    appendHighlightedFileMenuPath,
     createMenuDomRuntime,
     createMenuState,
     createSearchState,
