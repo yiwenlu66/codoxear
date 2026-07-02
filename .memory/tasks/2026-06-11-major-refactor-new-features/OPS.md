@@ -7365,3 +7365,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: touch-toolbar DOM application belongs to `app_file_viewer.js`. App still owns the concrete DOM nodes, event bindings, and controller dependency wiring.
+
+## 2026-07-02T14:31:00Z Unsaved-dialog DOM runtime viewer-module ownership
+- Functional commit `89ae324 Move unsaved dialog DOM into viewer module` moved file-unsaved dialog display, inert/aria isolation, return-focus restoration, initial-control focus scheduling, unavailable-mode text/button state, and prompt begin/choice bridging from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js` as `createFileUnsavedDialogRuntime(...)`.
+- Mechanism: the file-viewer controller already owns unsaved prompt state and return-focus slots. The remaining app-owned mechanics were modal DOM application around that state. The new runtime receives explicit DOM nodes and controller callbacks; `app.js` delegates hide/focus/sync/prompt wrappers and supplies active element/currentness dependencies.
+- Tests updated: `tests/test_frontend_file_viewer_module_source.py` executes choice short-circuit, prompt display, viewer inert/aria, focus of Save vs Discard under unavailable mode, hide/restore/resolve flow, frozen mode result, missing dependency, export list, and load guard. `tests/test_file_viewer_source.py` and `tests/test_overlay_accessibility_source.py` now assert the runtime boundary and reject restored app-owned unsaved-dialog DOM mutation.
+- Negative evidence preserved: first focused validation found a fake test viewer that lacked open-state style, causing the focus-restore predicate to evaluate true unlike the intended open viewer; the fake was corrected. Broader validation then found stale overlay source assertions expecting app-owned inert/return-focus mechanics; those were repaired to the runtime callback boundary.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py tests/test_overlay_accessibility_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` returned `53 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `240 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1298 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: unsaved-dialog DOM mechanics belong to `app_file_viewer.js`. App still owns the created DOM nodes, global Escape/backdrop/button event binding, and selected-session/file-viewer orchestration.
