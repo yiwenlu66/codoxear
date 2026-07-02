@@ -12,7 +12,6 @@ Do not merge, promote, or modify `/home/yiwen/codex-web` or `main` without expli
 6. Consolidate per-session persistent state lifecycle in the session store layer so deletion, load, save, and migration are not hand-maintained across many JSON maps.
 7. Resolve `sessiond.py` as either a broker-compatible headless runner sharing the same state/control/log machinery or a documented/deprecated reduced-fidelity path.
 8. Replace source-text and monkeypatch scaffolding with executable behavior tests and real interfaces wherever the dependency is not OS/process/socket/network I/O.
-9. Keep task memory as the live task authority: update `OPS.md` and `EPISTEMIC.md` for durable architectural changes, and update this prompt when the roadmap itself changes.
 
 ## Context
 - Active checkout: `/home/yiwen/codex-web-product-recovery`.
@@ -123,13 +122,6 @@ Replace monkeypatch seams with explicit dependency injection where the dependenc
 When a compatibility wrapper exists only because an earlier extraction avoided redesign, remove it after callers are moved. Do not add new wrappers unless a real public import, browser global, or external compatibility contract requires them.
 
 Why: source-text and monkeypatch scaffolding are now part of the architecture problem. They should shrink as real interfaces appear.
-
-### 9. Memory and durable project knowledge
-`PROMPT.md` is the active task source. `EPISTEMIC.md` should state the current architecture model: what owns what, what remains entangled, what has been ruled out, and which change would most improve the design. `OPS.md` should preserve commands, commits, review artifacts, validation, and failed explanations.
-
-When a durable architecture fact belongs in code, README, tests, or a project doc, update that canonical artifact rather than burying it only in memory. `recon/` is supporting reconnaissance, not task authority.
-
-Why: memory should prevent repeated drift and repeated rediscovery, not become another pile of summaries.
 
 ## Operating mode
 - Continue according to this workbench by default; do not yield merely because a bounded tranche completed.
