@@ -568,6 +568,7 @@
       const codoxearFilePicker = window.CodoxearFilePicker;
       if (
         !codoxearFilePicker ||
+        typeof codoxearFilePicker.createMenuState !== "function" ||
         typeof codoxearFilePicker.createSearchState !== "function" ||
         typeof codoxearFilePicker.localFilePickerSearchEntries !== "function" ||
         typeof codoxearFilePicker.visibleFilePickerEntries !== "function"
@@ -576,6 +577,9 @@
 
       const codoxearFileViewer = window.CodoxearFileViewer;
       if (!codoxearFileViewer || typeof codoxearFileViewer.createFileViewerController !== "function") throw new Error("Codoxear file viewer controller failed to load");
+
+      const codoxearFileEditor = window.CodoxearFileEditor;
+      if (!codoxearFileEditor || typeof codoxearFileEditor.createFileEditorRuntime !== "function") throw new Error("Codoxear file editor runtime failed to load");
 
       const codoxearMarkdown = window.CodoxearMarkdown;
       if (
@@ -7034,9 +7038,7 @@
         let pdfjsReadyPromise = null;
         const MONACO_LOADER_TIMEOUT_MS = 4000;
         const PDFJS_LOADER_TIMEOUT_MS = 6000;
-        let fileEditor = null;
-        let fileEditorModels = [];
-        let fileEditorChangeDisposable = null;
+        const fileEditorRuntime = codoxearFileEditor.createFileEditorRuntime();
         let fileUnsavedReturnFocusEl = null;
 
         function currentFileViewerSessionId() {
@@ -7272,28 +7274,16 @@
         }
 
         function disposeFileEditor() {
-          if (fileEditorChangeDisposable) {
-            try {
-              fileEditorChangeDisposable.dispose();
-            } catch (_) {}
-            fileEditorChangeDisposable = null;
-          }
           fileViewerController.finishFileEditorProgrammaticChange();
-          fileDiff.innerHTML = "";
-          for (const model of fileEditorModels) {
-            try {
-              model.dispose();
-            } catch (_) {}
-          }
-          fileEditorModels = [];
-          if (fileEditor) {
-            try {
-              fileEditor.dispose();
-            } catch (_) {}
-            fileEditor = null;
-          }
-          setFileEditorKind("");
-          clearFileTouchSelectionState();
+          fileEditorRuntime.dispose({
+            clearHost: () => {
+              fileDiff.innerHTML = "";
+            },
+            afterDispose: () => {
+              setFileEditorKind("");
+              clearFileTouchSelectionState();
+            },
+          });
         }
 
         function disposePdfRender() {
@@ -7357,15 +7347,10 @@
         }
 
         function getActiveFileCodeEditor() {
-          if (currentFileEditorKind() === "diff" && fileEditor && typeof fileEditor.getModifiedEditor === "function") {
-            return fileEditor.getModifiedEditor();
-          }
-          if (currentFileEditorKind() === "file" && fileEditor) return fileEditor;
-          return null;
+          return fileEditorRuntime.activeCodeEditor(currentFileEditorKind());
         }
 
         function syncFileDiffSelectionMode() {
-          if (currentFileEditorKind() !== "diff" || !fileEditor || typeof fileEditor.updateOptions !== "function") return;
           const hideOpts = currentFileTouchSelectMode()
             ? { enabled: false }
             : {
@@ -7374,7 +7359,7 @@
                 minimumLineCount: 1,
                 revealLineCount: 2,
               };
-          fileEditor.updateOptions({ hideUnchangedRegions: hideOpts });
+          fileEditorRuntime.updateEditorOptions(currentFileEditorKind(), { hideUnchangedRegions: hideOpts });
         }
 
         function focusActiveFileCodeEditor() {
@@ -7627,8 +7612,9 @@
         }
 
         function getFileEditorText() {
-          if (currentFileEditorKind() === "file" && fileEditor && typeof fileEditor.getModel === "function") {
-            const model = fileEditor.getModel();
+          const editor = fileEditorRuntime.currentEditor();
+          if (currentFileEditorKind() === "file" && editor && typeof editor.getModel === "function") {
+            const model = editor.getModel();
             if (model && typeof model.getValue === "function") return String(model.getValue());
           }
           return String(currentActiveFileText() || "");
@@ -7637,11 +7623,12 @@
         function restoreFileEditorText(text) {
           const restorePlan = fileViewerController.prepareFileEditorTextRestore(text);
           if (!restorePlan || restorePlan.kind !== "restore") return;
-          if (currentFileEditorKind() !== "file" || !fileEditor || typeof fileEditor.getModel !== "function") {
+          const editor = fileEditorRuntime.currentEditor();
+          if (currentFileEditorKind() !== "file" || !editor || typeof editor.getModel !== "function") {
             fileViewerController.finishFileEditorTextRestore();
             return;
           }
-          const model = fileEditor.getModel();
+          const model = editor.getModel();
           if (!model || typeof model.setValue !== "function") {
             fileViewerController.finishFileEditorTextRestore();
             return;
@@ -7813,18 +7800,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function applyEditorLineFocus(lineNumber) {
           const line = normalizeLineNumber(lineNumber);
-          if (!fileEditor || !line) return;
-          if (currentFileEditorKind() === "diff" && fileEditor.getModifiedEditor) {
-            const editor = fileEditor.getModifiedEditor();
+          const editor = fileEditorRuntime.activeCodeEditor(currentFileEditorKind()) || fileEditorRuntime.currentEditor();
+          if (!editor || !line) return;
+          if (typeof editor.setPosition === "function") {
             editor.setPosition({ lineNumber: line, column: 1 });
             editor.revealLineInCenter(line);
             editor.focus();
-            return;
-          }
-          if (fileEditor.setPosition) {
-            fileEditor.setPosition({ lineNumber: line, column: 1 });
-            fileEditor.revealLineInCenter(line);
-            fileEditor.focus();
           }
         }
 
@@ -7842,7 +7823,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const lang = langOverride || extToEditorLang(rel);
           if (currentFileEditorKind() !== "file") {
             disposeFileEditor();
-            fileEditor = monaco.editor.create(host, {
+            const editor = monaco.editor.create(host, {
               language: lang || "plaintext",
               value: String(text || ""),
               readOnly: !(currentFileEditMode() && currentActiveFileEditable() && !isFileViewerSessionUnavailable()),
@@ -7867,38 +7848,43 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               tabCompletion: "off",
               wordBasedSuggestions: "off",
             });
+            fileEditorRuntime.setEditor(editor);
             setFileEditorKind("file");
-            fileEditorModels = [fileEditor.getModel()].filter(Boolean);
-            fileEditorChangeDisposable = fileEditor.onDidChangeModelContent(() => {
+            fileEditorRuntime.setModels([editor.getModel()].filter(Boolean));
+            fileEditorRuntime.setChangeDisposable(editor.onDidChangeModelContent(() => {
               if (fileViewerController.isFileEditorProgrammaticChange()) return;
               if (currentFileTouchSelectMode()) resetFileTouchSelectionState();
               setFileDirty(getFileEditorText() !== String(currentActiveFileText() || ""));
-            });
+            }));
           } else {
-            const model = fileEditor.getModel();
+            const editor = fileEditorRuntime.currentEditor();
+            const model = editor.getModel();
             fileViewerController.runFileEditorProgrammaticChange(() => {
               monaco.editor.setModelLanguage(model, lang || "plaintext");
               model.setValue(String(text || ""));
             });
           }
           syncFileEditorReadOnly();
+          const editor = fileEditorRuntime.currentEditor();
           const requestedLine = normalizeLineNumber(lineNumber);
           const targetLine = requestedLine || 1;
-          fileEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
-          fileEditor.setPosition({ lineNumber: targetLine, column: 1 });
-          fileEditor.revealPositionInCenter({ lineNumber: targetLine, column: 1 });
-          fileEditor.layout();
+          editor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
+          editor.setPosition({ lineNumber: targetLine, column: 1 });
+          editor.revealPositionInCenter({ lineNumber: targetLine, column: 1 });
+          editor.layout();
           if (requestedLine) {
             requestAnimationFrame(() => {
-              if (!fileEditor) return;
+              const currentEditor = fileEditorRuntime.currentEditor();
+              if (!currentEditor) return;
               if (request && !isCurrentFileOpenRequest(request)) return;
-              fileEditor.layout();
+              currentEditor.layout();
               applyEditorLineFocus(requestedLine);
             });
             setTimeout(() => {
-              if (!fileEditor) return;
+              const currentEditor = fileEditorRuntime.currentEditor();
+              if (!currentEditor) return;
               if (request && !isCurrentFileOpenRequest(request)) return;
-              fileEditor.layout();
+              currentEditor.layout();
               applyEditorLineFocus(requestedLine);
             }, 60);
           }
@@ -7921,7 +7907,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           disposeFileEditor();
           const originalModel = monaco.editor.createModel(String(originalText || ""), lang || "plaintext");
           const modifiedModel = monaco.editor.createModel(String(modifiedText || ""), lang || "plaintext");
-          fileEditor = monaco.editor.createDiffEditor(host, {
+          const diffEditor = monaco.editor.createDiffEditor(host, {
             readOnly: true,
             theme: "codoxear-github-light",
             renderSideBySide: false,
@@ -7944,11 +7930,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               revealLineCount: 2,
             },
           });
-          fileEditor.setModel({ original: originalModel, modified: modifiedModel });
+          diffEditor.setModel({ original: originalModel, modified: modifiedModel });
+          fileEditorRuntime.setEditor(diffEditor);
           setFileEditorKind("diff");
-          fileEditorModels = [originalModel, modifiedModel];
-          const originalEditor = fileEditor.getOriginalEditor();
-          const modifiedEditor = fileEditor.getModifiedEditor();
+          fileEditorRuntime.setModels([originalModel, modifiedModel]);
+          const originalEditor = diffEditor.getOriginalEditor();
+          const modifiedEditor = diffEditor.getModifiedEditor();
           originalEditor.updateOptions({
             wordWrap: "on",
             lineNumbers: "off",
@@ -7970,18 +7957,20 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           originalEditor.setPosition({ lineNumber: targetLine, column: 1 });
           modifiedEditor.setPosition({ lineNumber: targetLine, column: 1 });
           modifiedEditor.revealPositionInCenter({ lineNumber: targetLine, column: 1 });
-          fileEditor.layout();
+          diffEditor.layout();
           if (requestedLine) {
             requestAnimationFrame(() => {
-              if (!fileEditor) return;
+              const currentEditor = fileEditorRuntime.currentEditor();
+              if (!currentEditor) return;
               if (request && !isCurrentFileOpenRequest(request)) return;
-              fileEditor.layout();
+              currentEditor.layout();
               applyEditorLineFocus(requestedLine);
             });
             setTimeout(() => {
-              if (!fileEditor) return;
+              const currentEditor = fileEditorRuntime.currentEditor();
+              if (!currentEditor) return;
               if (request && !isCurrentFileOpenRequest(request)) return;
-              fileEditor.layout();
+              currentEditor.layout();
               applyEditorLineFocus(requestedLine);
             }, 60);
           }

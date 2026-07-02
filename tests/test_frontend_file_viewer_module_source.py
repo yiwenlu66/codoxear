@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_FILE_VIEWER_JS = ROOT / "codoxear" / "static" / "app_file_viewer.js"
+APP_FILE_EDITOR_JS = ROOT / "codoxear" / "static" / "app_file_editor.js"
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 STATIC_ROUTES = ROOT / "codoxear" / "static_routes.py"
@@ -1147,12 +1148,18 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         routes_source = STATIC_ROUTES.read_text(encoding="utf-8")
         app_source = APP_JS.read_text(encoding="utf-8")
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+        editor_source = APP_FILE_EDITOR_JS.read_text(encoding="utf-8")
         self.assertLess(index_source.index("app_file_picker.js"), index_source.index("app_file_viewer.js"))
-        self.assertLess(index_source.index("app_file_viewer.js"), index_source.index("app_session_helpers.js"))
-        self.assertLess(index_source.index("app_file_viewer.js"), index_source.index("app.js"))
+        self.assertLess(index_source.index("app_file_viewer.js"), index_source.index("app_file_editor.js"))
+        self.assertLess(index_source.index("app_file_editor.js"), index_source.index("app_session_helpers.js"))
+        self.assertLess(index_source.index("app_file_editor.js"), index_source.index("app.js"))
         self.assertIn('"app_file_viewer.js"', routes_source)
+        self.assertIn('"app_file_editor.js"', routes_source)
         self.assertIn("const codoxearFileViewer = window.CodoxearFileViewer;", app_source)
         self.assertIn('throw new Error("Codoxear file viewer controller failed to load")', app_source)
+        self.assertIn("const codoxearFileEditor = window.CodoxearFileEditor;", app_source)
+        self.assertIn('throw new Error("Codoxear file editor runtime failed to load")', app_source)
+        self.assertIn("createFileEditorRuntime", editor_source)
         self.assertIn("renderSaveConflict", viewer_source)
         self.assertNotIn("function renderFileSaveConflict", app_source)
 
