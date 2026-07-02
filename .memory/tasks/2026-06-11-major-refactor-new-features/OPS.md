@@ -7495,3 +7495,18 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: file-viewer open-state display predicate belongs to `app_file_viewer.js`. App still has direct display checks in global event handlers that should be considered for subsequent modal-runtime/event extraction.
+
+## 2026-07-02T17:42:00Z File-viewer event checks consume modal-runtime predicate
+- Functional commit `adfa151 Use modal runtime predicate for file viewer checks` replaced the remaining app-level direct `fileViewer.style.display === "flex"` open checks in global click/Escape handlers with `isFileViewerOpen()`, which delegates to `createFileViewerModalRuntime(...).isOpen()` after `bd10b75`.
+- Mechanism: after modal display state moved to `app_file_viewer.js`, app-level event handlers should consume the file-viewer open contract instead of re-reading the underlying display representation. This prevents a second ownership path from preserving display-state knowledge in `app.js`.
+- Tests/search evidence: direct grep after the change found no remaining `fileViewer.style.display === "flex"` checks in `codoxear/static/app.js`; source sentinels continue to reject the restored direct predicate.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_overlay_accessibility_source.py` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_overlay_accessibility_source.py` returned `52 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `242 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1300 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: global click/Escape handlers still live in `app.js`, but they no longer own the file-viewer display representation.
