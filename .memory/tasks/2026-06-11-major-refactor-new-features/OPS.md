@@ -7293,3 +7293,20 @@
 - Scope of intended review: Workbench item 2 file-viewer/editor ownership moves through recent commits `eca4ee2`, `2dc25f3`, `52c70a9`, `59e11f8`, and `7539c78`.
 - Interpretation: no review artifact or concrete finding was produced, so this is infrastructure-only negative evidence about the review runner. It does not support a code claim for or against the branch. A successful clean-room/adversarial review is still required before any yield/acceptance claim.
 - Decision: continue direct refactoring and validation; retry review only when needed for a real yield/decision gate or if the review runner can produce a usable artifact.
+
+## 2026-07-02T12:32:00Z Editor text restore runtime ownership
+- Functional commit `fef2a38 Move editor text restore into editor runtime` moved the raw current-editor `model.setValue(...)` restore mutation from inline `codoxear/static/app.js` into `codoxear/static/app_file_editor.js` as `restoreFileText(kind, text, runProgrammaticChange)`.
+- Mechanism: `app_file_editor.js` owns current editor/model identity, programmatic text replacement for file loads, and model lifecycle. Restoring an unsaved dirty buffer to the controller baseline is the same raw editor/model mutation. `app.js` now asks the controller for a restore plan, delegates the model mutation to the editor runtime, and always signals `finishFileEditorTextRestore()` as before.
+- Tests updated: editor-runtime tests now execute successful file restore, wrong-kind no-op, and programmatic callback wrapping. File-viewer source sentinels reject restored app-owned `model.setValue(restorePlan.text)` and require `fileEditorRuntime.restoreFileText(...)`.
+- Negative evidence preserved: first focused validation after the move failed a stale source assertion that still expected an app-owned `runFileEditorProgrammaticChange(() => ...)` block. The repaired sentinel now asserts runtime-owned restore mutation and app-level callback delegation.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_editor_module_source.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_editor.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_editor_module_source.py tests/test_file_viewer_source.py` returned `48 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `238 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1296 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: raw restore text mutation belongs to `app_file_editor.js`. App still owns restore-plan orchestration with the file-viewer controller and dirty-baseline semantics.
