@@ -7382,3 +7382,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: unsaved-dialog DOM mechanics belong to `app_file_viewer.js`. App still owns the created DOM nodes, global Escape/backdrop/button event binding, and selected-session/file-viewer orchestration.
+
+## 2026-07-02T14:55:00Z Render-surface reset viewer-module ownership
+- Functional commit `5dd1586 Move render surface reset into viewer module` moved image clearing and default diff-surface reset from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js` as `createFileRenderSurfaceRuntime(...).clearImage()` and `.reset()`.
+- Mechanism: `createFileRenderSurfaceRuntime` already owns surface display switching and video cleanup. Resetting the render panel's image/video/surface state is the same viewer DOM runtime lifecycle. `app.js` now disposes editor/buffer state, then delegates surface cleanup to `fileRenderSurfaceRuntime.reset()`.
+- Tests updated: render-surface runtime probes now require image `removeAttribute`, execute `clearImage()`, `clearVideo()`, and `reset()`, and verify reset returns the surface to diff while clearing image/video. File-viewer source sentinels reject restored app-owned `fileImage.removeAttribute("src")` and require runtime reset.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` returned `53 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `240 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1298 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: render-panel image/video/surface reset belongs to `app_file_viewer.js`. App still owns raw image/video URL assignment and load-result render orchestration.
