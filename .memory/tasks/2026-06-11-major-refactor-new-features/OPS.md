@@ -7058,3 +7058,11 @@
 - Async read-only  review  failed before producing a child session/result: runner process  exited or disappeared and stale-run reconciliation marked the run failed.
 - Output target  was not produced as a usable review artifact by the run.
 - Interpretation/decision: this is infrastructure-only negative evidence about the review runner, not evidence for or against the current file-viewer/editor refactor. It does not change the code causal model and is not a blocker to continuing Workbench item 2. A future clean-room review is still required before any yield/acceptance claim.
+
+## 2026-07-02T06:52:00Z Correction for fresh file-viewer/editor architecture review failure record
+- Correction to immediately preceding OPS entry: the failed async read-only architect run id was `044bccf4-8b58-45c6-9a78-eeee39ebe78d`.
+- Stale-run reconciliation reported: `Async runner process 2310757 exited or disappeared before writing a result. Marked run failed by stale-run reconciliation.`
+- Run metadata: started `2026-07-02T06:48:58.727Z`, updated `2026-07-02T06:49:00.768Z`, run dir `/tmp/pi-subagents-uid-1000/async-subagent-runs/044bccf4-8b58-45c6-9a78-eeee39ebe78d`, events file `/tmp/pi-subagents-uid-1000/async-subagent-runs/044bccf4-8b58-45c6-9a78-eeee39ebe78d/events.jsonl`; no child session file was persisted and resume was unavailable.
+- Intended output artifact was `/tmp/codoxear-file-viewer-editor-review-after-line-focus.md`; no usable review artifact was produced by the run.
+- The immediately preceding OPS entry lost literal run/path details because the append command used an unquoted heredoc and shell-expanded backtick-delimited text. That malformed entry is an OPS recording artifact, not a product-code event.
+- Interpretation/decision remains unchanged: the failed review is infrastructure-only negative evidence and does not support a code finding. It does not block continuing Workbench item 2, but a future clean-room review is still required before any yield/acceptance claim.
