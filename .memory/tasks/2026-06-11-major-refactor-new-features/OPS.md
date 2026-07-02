@@ -7310,3 +7310,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: raw restore text mutation belongs to `app_file_editor.js`. App still owns restore-plan orchestration with the file-viewer controller and dirty-baseline semantics.
+
+## 2026-07-02T12:58:00Z Editor text read runtime ownership
+- Functional commit `dcd3f3f Move editor text reads into editor runtime` moved raw current-editor `model.getValue()` reads from inline `codoxear/static/app.js` into `codoxear/static/app_file_editor.js` as `currentFileText(kind, fallbackText = "")`.
+- Mechanism: `app_file_editor.js` owns current editor/model identity and raw Monaco model access. Reading current file text for save/dirty comparison is the same ownership domain as model replacement and restore. `app.js` now supplies the file-editor kind and controller baseline fallback, while the editor runtime decides whether a file editor/model can produce current text.
+- Tests updated: the editor-runtime VM probe now exercises file-kind current text from a fake model and wrong-kind fallback behavior. Source sentinels require `fileEditorRuntime.currentFileText(currentFileEditorKind(), currentActiveFileText())` in app and `currentFileText(...)` in the runtime.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_editor_module_source.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_editor.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_editor_module_source.py tests/test_file_viewer_source.py` returned `48 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `238 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1296 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: current text reads belong to `app_file_editor.js`. App still owns the wrapper name consumed by the file-viewer controller dependency surface and supplies the baseline fallback text.
