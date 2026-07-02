@@ -7116,3 +7116,8 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: `app.js` still owns file-helper wrappers for helpers it calls directly; the insert-cursor helper is now owned by the helper module and consumed by the viewer controller, not by app-level dependency plumbing.
+
+## 2026-07-02T08:02:00Z User tightened continuation/completion contract
+- User instruction: continue according to the Workbench, do not stop until every item is fully finished, perform thorough refactoring, and treat any report referring to a “current tranche/boundary” as bogus.
+- PROMPT.md updated to make all eight Workbench items the completion condition and to reject clean checkpoints, validation passes, commits, review attempts, helper extractions, or named tranche/boundary labels as stopping/reporting substitutes.
+- Interpretation: the operative deliverable is full Workbench completion across frontend file-viewer/editor, transcript/chat, backend adapters, busy/idle/readiness authority, per-session lifecycle, sessiond decision, and test architecture cleanup. Workbench item 2 remains the active local surface only because it is the current causal path, not because it is a completion boundary.

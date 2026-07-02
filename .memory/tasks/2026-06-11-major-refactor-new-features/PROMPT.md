@@ -1,6 +1,8 @@
 ## Objective
 Continue the Codoxear product recovery and architecture refactor in `/home/yiwen/codex-web-product-recovery` on branch `recovery/product-gaps`. The work is not to make isolated repairs look safe; it is to move real ownership of state, behavior, and failure semantics out of tangled centers until the system has coherent subsystems.
 
+The user's current instruction is stronger than incremental progress: continue according to the Workbench until every one of the eight Workbench items is fully finished. Thorough refactoring is the deliverable; a clean checkpoint, validation pass, commit, review attempt, local helper extraction, or named “tranche/boundary” is not a stopping condition and must not be reported as if it were the task state.
+
 Do not merge, promote, or modify `/home/yiwen/codex-web` or `main` without explicit user approval.
 
 ## Workbench
@@ -124,13 +126,14 @@ When a compatibility wrapper exists only because an earlier extraction avoided r
 Why: source-text and monkeypatch scaffolding are now part of the architecture problem. They should shrink as real interfaces appear.
 
 ## Operating mode
-- Continue according to this workbench by default; do not yield merely because a bounded tranche completed.
+- Continue according to this Workbench by default until all eight Workbench items are fully finished; do not yield merely because a bounded change completed, tests passed, a commit exists, or a reviewer ran.
+- Do not use “current tranche”, “boundary”, or similar labels as a progress substitute or stopping justification. Only concrete ownership movement, validated behavior, unresolved user decisions, or actual blockers matter.
 - Keep the internal state organized as Deliverables, Completed, Next actions, and Parked user decisions. Surface those sections only when yielding is necessary.
 - Before each action, reason through the mechanism, failure modes, and verification path; prefer reading, tracing, inspection, and causal reasoning over trial-and-error.
 - Resolve crashes, bugs, and design mistakes without asking the user unless the next step is irreversible/high-risk or requires information only the user can provide.
 - Use the strongest available verification, including Docker sandbox validation for acceptance-quality claims.
 - Do not repeat the same command, edit, or analysis unless a concrete new reason changes what it can prove.
-- Yield only when all deliverables are complete, the only remaining gap is a parked user decision, or the next step is irreversible/high-risk.
+- Yield only when every Workbench deliverable is complete, the only remaining gap is a parked user decision, or the next step is irreversible/high-risk.
 - Before any necessary yield, run a clean-room adversarial review with a dedicated subagent using the user intent, deliverables, completed evidence, remaining next actions, parked decisions, constraints, and changed artifacts; apply findings before yielding or surface the exact unresolved decision/risk.
 
 ## Constraints
