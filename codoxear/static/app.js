@@ -541,10 +541,6 @@
         return codoxearFileHelpers.filePickerTitle(entry, hint);
       }
 
-      function fileEditorDeleteCommandForKey(key) {
-        return codoxearFileHelpers.fileEditorDeleteCommandForKey(key);
-      }
-
       function safeAttachmentStem(name) {
         return codoxearFileHelpers.attachmentSafeStem(name);
       }
@@ -8006,7 +8002,6 @@
           hideFilePasteDialog: (options) => hideFilePasteDialog(options),
           clipboardReadAvailable: () => Boolean(window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.readText === "function"),
           readClipboardText: () => navigator.clipboard.readText(),
-          fileEditorDeleteCommandForKey: (key) => fileEditorDeleteCommandForKey(key),
           isActiveFileEditorInput: (target) => fileEditorRuntime.isActiveInput(currentFileEditorKind(), target, HTMLElement),
           getActiveFileSelectionText: () => fileEditorRuntime.activeSelectionText(currentFileEditorKind()),
           copyToClipboard: (text) => copyToClipboard(text),

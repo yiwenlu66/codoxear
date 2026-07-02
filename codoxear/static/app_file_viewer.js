@@ -165,7 +165,10 @@
     const hideFilePasteDialog = requireFunction(deps && deps.hideFilePasteDialog, "hideFilePasteDialog");
     const clipboardReadAvailable = requireFunction(deps && deps.clipboardReadAvailable, "clipboardReadAvailable");
     const readClipboardText = requireFunction(deps && deps.readClipboardText, "readClipboardText");
-    const fileEditorDeleteCommandForKey = requireFunction(deps && deps.fileEditorDeleteCommandForKey, "fileEditorDeleteCommandForKey");
+    const fileEditorDeleteCommandForKey =
+      typeof (deps && deps.fileEditorDeleteCommandForKey) === "function"
+        ? deps.fileEditorDeleteCommandForKey
+        : requireFunction(fileHelpers.fileEditorDeleteCommandForKey, "CodoxearFileHelpers.fileEditorDeleteCommandForKey");
     const isActiveFileEditorInput = requireFunction(deps && deps.isActiveFileEditorInput, "isActiveFileEditorInput");
     const getActiveFileSelectionText = requireFunction(deps && deps.getActiveFileSelectionText, "getActiveFileSelectionText");
     const copyToClipboard = requireFunction(deps && deps.copyToClipboard, "copyToClipboard");

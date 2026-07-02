@@ -164,12 +164,13 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
             "duplicateFilePickerPaths",
             "filePickerIdentityHint",
             "filePickerTitle",
-            "fileEditorDeleteCommandForKey",
         ]:
             self.assertIn(f"typeof codoxearFileHelpers.{helper} !== \"function\"", source)
             self.assertIn(f"function {helper}", source)
         self.assertIn('typeof codoxearFileHelpers.positionAfterInsertedText !== "function"', source)
+        self.assertIn('typeof codoxearFileHelpers.fileEditorDeleteCommandForKey !== "function"', source)
         self.assertNotIn("function positionAfterInsertedText", source)
+        self.assertNotIn("function fileEditorDeleteCommandForKey", source)
         for helper in [
             "attachmentSafeStem",
             "attachmentExtensionLower",
@@ -191,8 +192,9 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertIn("return codoxearFileHelpers.filePickerTitle(entry, hint);", source)
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertNotIn("return codoxearFileHelpers.positionAfterInsertedText(start, text);", source)
+        self.assertNotIn("return codoxearFileHelpers.fileEditorDeleteCommandForKey(key);", source)
         self.assertIn("CodoxearFileHelpers.positionAfterInsertedText", viewer_source)
-        self.assertIn("return codoxearFileHelpers.fileEditorDeleteCommandForKey(key);", source)
+        self.assertIn("CodoxearFileHelpers.fileEditorDeleteCommandForKey", viewer_source)
         self.assertIn("return codoxearFileHelpers.attachmentSafeStem(name);", source)
         self.assertIn("return codoxearFileHelpers.attachmentIsLikelyHeic(file);", source)
         self.assertIn("return codoxearFileHelpers.attachmentLooksLikeImage(file);", source)
