@@ -6948,3 +6948,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: the programmatic-change guard belongs to the controller. App still owns raw Monaco editor/diff-editor objects, model arrays/disposables, model disposal and setValue side effects, Monaco language mutation, editor event binding, fallback DOM construction/scrolling, raw load-result render plan application, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, persisted mode UI wiring, file-video element handlers/loading, file-picker input/menu DOM mutation/rendering, inspect transport, and selected-session identity predicates.
+
+## 2026-07-02T06:07:00Z File-unsaved prompt resolver controller ownership
+- Functional commit `1e8f647 Move unsaved prompt resolver into controller` moved the pending unsaved-choice resolver from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the pending unsaved-choice promise is editor state-machine coordination: clean files resolve to discard, duplicate prompts resolve to cancel, a dirty file opens exactly one pending choice, and hide/save/discard/cancel resolves the pending choice. The controller now owns `fileUnsavedPromptResolver`, `isFileUnsavedPromptPending()`, `fileUnsavedPromptPlan()`, `beginFileUnsavedPrompt()`, and `resolveFileUnsavedPrompt(choice)`. `app.js` still owns the unsaved dialog DOM: focus capture/restore, inert/aria toggling, button visibility/text, backdrop/dialog display, and initial-control focus.
+- Tests updated: real controller probe covers clean-choice planning, dirty prompt planning, pending-state transition, duplicate cancel planning, resolution to the chosen value, pending reset after resolution, and no-op missing resolution. Source sentinels reject app-owned `let fileUnsavedResolver = null` while preserving app-owned `fileUnsavedReturnFocusEl` DOM focus state. The large file-viewer controller probe now runs Node through stdin rather than `node -e`; the earlier failure was OS argv-limit infrastructure after the probe grew, not code behavior evidence.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_overlay_accessibility_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_overlay_accessibility_source.py` returned `55 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `230 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1288 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: unsaved-choice pending/resolution state belongs to the controller. App still owns unsaved dialog DOM and return-focus state, paste dialog DOM mechanics, raw Monaco editor/diff-editor objects, model arrays/disposables, model disposal and setValue side effects, raw load-result render plan application, fallback DOM construction/scrolling, touch-toolbar DOM/binding mechanics, persisted mode UI wiring, file-video element handlers/loading, file-picker input/menu DOM mutation/rendering, inspect transport, candidate evidence collection/API refresh/cache-key/rendering, and selected-session identity predicates.
