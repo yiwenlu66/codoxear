@@ -633,6 +633,120 @@
     return Object.freeze({ apply });
   }
 
+  function createFileCandidateRefreshRuntime(options = {}) {
+    const controller = options.controller || null;
+    if (!controller) throw new TypeError("file viewer dependency missing: controller");
+    const beginRefresh = requireFunction(controller.beginFileCandidateRefresh, "controller.beginFileCandidateRefresh").bind(controller);
+    const isCurrentRefresh = requireFunction(controller.isCurrentFileCandidateRefresh, "controller.isCurrentFileCandidateRefresh").bind(controller);
+    const clearRefreshEntries = requireFunction(controller.clearFileCandidateRefreshEntries, "controller.clearFileCandidateRefreshEntries").bind(controller);
+    const applyRefreshEntries = requireFunction(controller.applyFileCandidateRefreshEntries, "controller.applyFileCandidateRefreshEntries").bind(controller);
+    const applyFreshCache = requireFunction(controller.applyFreshFileCandidateCache, "controller.applyFreshFileCandidateCache").bind(controller);
+    const fileCandidateKeyForEntry = requireFunction(controller.fileCandidateKeyForEntry, "controller.fileCandidateKeyForEntry").bind(controller);
+    const rememberCandidateCache = requireFunction(controller.rememberFileCandidateCache, "controller.rememberFileCandidateCache").bind(controller);
+    const currentSessionId = requireFunction(options.currentSessionId, "currentSessionId");
+    const selectedSessionId = requireFunction(options.selectedSessionId, "selectedSessionId");
+    const blockUnavailableFileAction = requireFunction(options.blockUnavailableFileAction, "blockUnavailableFileAction");
+    const isSessionCurrent = requireFunction(options.isSessionCurrent, "isSessionCurrent");
+    const candidateCacheKey = requireFunction(options.candidateCacheKey, "candidateCacheKey");
+    const collectMessageFileRefs = requireFunction(options.collectMessageFileRefs, "collectMessageFileRefs");
+    const sessionFiles = requireFunction(options.sessionFiles, "sessionFiles");
+    const sessionRelativePath = requireFunction(options.sessionRelativePath, "sessionRelativePath");
+    const api = requireFunction(options.api, "api");
+    const normalizeFileApiPath = requireFunction(options.normalizeFileApiPath, "normalizeFileApiPath");
+    const renderMenu = requireFunction(options.renderMenu, "renderMenu");
+    const nowMs = typeof options.nowMs === "function" ? options.nowMs : () => Date.now();
+    const ttlMs = Number(options.ttlMs || 0);
+
+    function mentionedEntry(path) {
+      return { path, additions: null, deletions: null, changed: false, gitPath: false, source: "mentioned" };
+    }
+
+    function recentEntry(path) {
+      return { path, additions: null, deletions: null, changed: false, gitPath: false, source: "recent" };
+    }
+
+    function normalizeChangedEntry(entry) {
+      if (!entry || typeof entry.path !== "string" || entry.path === "") return null;
+      return {
+        path: entry.path,
+        apiPath: normalizeFileApiPath(entry.api_path || entry.apiPath),
+        additions: typeof entry.additions === "number" && Number.isFinite(entry.additions) ? entry.additions : null,
+        deletions: typeof entry.deletions === "number" && Number.isFinite(entry.deletions) ? entry.deletions : null,
+        changed: true,
+        gitPath: true,
+        source: "changed",
+      };
+    }
+
+    function mergeCandidateEntries(baseEntries, messageEntries, manualEntries) {
+      const merged = [];
+      const seen = new Set();
+      for (const entry of [...baseEntries, ...messageEntries, ...manualEntries]) {
+        if (!entry || entry.path === "") continue;
+        const key = fileCandidateKeyForEntry(entry);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push(entry);
+      }
+      return merged;
+    }
+
+    function manualEntriesForSession(sid) {
+      return sessionFiles(sid)
+        .map((abs) => sessionRelativePath(abs, sid))
+        .filter((rel) => typeof rel === "string" && rel && rel !== ".")
+        .map(recentEntry);
+    }
+
+    async function refresh({ force = false, sessionId = null, syncToken = null } = {}) {
+      const explicitSession = sessionId !== null && sessionId !== undefined && String(sessionId || "").trim() !== "";
+      if (!explicitSession && blockUnavailableFileAction()) return false;
+      const sid = String(sessionId || currentSessionId() || selectedSessionId() || "").trim();
+      const requestSeq = beginRefresh();
+      const current = () => isCurrentRefresh(requestSeq) && (!explicitSession || isSessionCurrent(sid, syncToken));
+      if (!sid) {
+        if (!current()) return false;
+        clearRefreshEntries();
+        return true;
+      }
+      const cacheKey = candidateCacheKey(sid);
+      if (!force && current() && applyFreshCache(sid, cacheKey, { now: nowMs(), ttl: ttlMs })) {
+        renderMenu();
+        return true;
+      }
+      if (!current()) return false;
+      clearRefreshEntries();
+      const messageEntries = collectMessageFileRefs().map(mentionedEntry);
+      const manualEntries = manualEntriesForSession(sid);
+      const fallbackEntries = mergeCandidateEntries([], messageEntries, manualEntries);
+      let renderedFallback = false;
+      if (fallbackEntries.length) {
+        if (!current()) return false;
+        applyRefreshEntries(fallbackEntries, { gitStateFresh: false });
+        renderMenu();
+        renderedFallback = true;
+      }
+      let changedEntries = [];
+      let changedEntriesFresh = false;
+      try {
+        const res = await api(`/api/sessions/${sid}/git/changed_files`);
+        const entriesIn = Array.isArray(res.entries) ? res.entries : [];
+        changedEntries = entriesIn.map(normalizeChangedEntry).filter(Boolean);
+        changedEntriesFresh = true;
+      } catch (_) {}
+      if (!changedEntriesFresh && renderedFallback) return true;
+      const merged = mergeCandidateEntries(changedEntries, messageEntries, manualEntries);
+      if (!current()) return false;
+      applyRefreshEntries(merged, { gitStateFresh: changedEntriesFresh });
+      if (changedEntriesFresh) rememberCandidateCache(sid, cacheKey, nowMs());
+      if (!current()) return false;
+      renderMenu();
+      return true;
+    }
+
+    return Object.freeze({ refresh });
+  }
+
   function createFileRenderSurfaceRuntime(options = {}) {
     const diff = requireStyledNode(options.diff, "fileDiff");
     const image = requireImageNode(options.image);
@@ -2860,6 +2974,7 @@
     createFileDownloadRuntime,
     createFileFallbackRuntime,
     createFileLoadResultRuntime,
+    createFileCandidateRefreshRuntime,
     createFileModeControlsRuntime,
     createFilePasteDialogRuntime,
     createFilePdfRenderRuntime,

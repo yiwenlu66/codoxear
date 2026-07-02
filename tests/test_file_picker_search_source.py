@@ -523,308 +523,241 @@ def eval_resolve_file_open_mode_cases() -> dict:
         }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """
     )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
+def file_candidate_refresh_runtime_prelude() -> str:
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
+    file_helpers_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
+    fixture_source = r'''
+      const codoxearFileHelpers = window.CodoxearFileHelpers;
+      const codoxearFileViewer = window.CodoxearFileViewer;
+      function normalizeFileApiPath(value) { return typeof value === "string" && value !== "" ? value : ""; }
+      function normalizeFileCandidateSource(source) { return codoxearFileHelpers.normalizeFileCandidateSource(source); }
+      function listFromFilesField(value) { return codoxearFileHelpers.listFromFilesField(value); }
+      function stripPathLocationSuffix(rawPath) { return codoxearFileHelpers.stripPathLocationSuffix(rawPath); }
+      function sessionRelativePath(rawPath, sidOverride = null) {
+        const sid = typeof sidOverride === "string" && sidOverride ? sidOverride : selected;
+        const s = sid ? sessionIndex.get(sid) : null;
+        if (!s || !s.cwd) return null;
+        const abs = stripPathLocationSuffix(rawPath);
+        const cwd = String(s.cwd || "").replace(/\/+$/, "");
+        if (!abs) return null;
+        if (abs === cwd) return ".";
+        if (abs.startsWith(cwd + "/")) return abs.slice(cwd.length + 1);
+        return null;
+      }
+      class Element {
+        constructor(attrs) { this.attrs = attrs || {}; }
+        getAttribute(name) { return this.attrs[name] || ""; }
+      }
+      function collectMessageFileRefs() {
+        if (!selected) return [];
+        const out = [];
+        const seen = new Set();
+        const nodes = Array.from(chatInner.querySelectorAll("[data-file-path]"));
+        for (const node of nodes) {
+          if (!(node instanceof Element)) continue;
+          const kind = String(node.getAttribute("data-file-kind") || "").trim();
+          if (kind === "directory") continue;
+          const rawAbs = String(node.getAttribute("data-file-path") ?? "");
+          const raw = rawAbs;
+          if (raw === "") continue;
+          const rel = raw.startsWith("/") ? sessionRelativePath(raw) || "" : raw.replace(/^\.?\//, "");
+          if (!rel || rel === "." || seen.has(rel)) continue;
+          seen.add(rel);
+          out.push(rel);
+        }
+        return out;
+      }
+      function fileCandidateCacheKey(sid) {
+        const s = sid ? sessionIndex.get(sid) : null;
+        const filesKey = JSON.stringify(listFromFilesField(s && s.files));
+        const refsKey = JSON.stringify(collectMessageFileRefs());
+        return `${sid || ""}\u0000${filesKey}\u0000${refsKey}`;
+      }
+      function applyFileMode() { applyModeCount += 1; }
+      function renderFilePickerMenu() { renderCount += 1; }
+    '''
+    runtime_source = r'''
+      const fileCandidateRefreshRuntime = codoxearFileViewer.createFileCandidateRefreshRuntime({
+        controller: fileViewerController,
+        currentSessionId: () => fileViewerSessionId,
+        selectedSessionId: () => selected,
+        blockUnavailableFileAction: () => false,
+        isSessionCurrent: () => true,
+        candidateCacheKey: (sid) => fileCandidateCacheKey(sid),
+        ttlMs: FILE_CANDIDATE_CACHE_TTL_MS,
+        nowMs: () => now,
+        collectMessageFileRefs: () => collectMessageFileRefs(),
+        sessionFiles: (sid) => listFromFilesField((sessionIndex.get(sid) || {}).files),
+        sessionRelativePath: (rawPath, sid) => sessionRelativePath(rawPath, sid),
+        api: (url) => api(url),
+        normalizeFileApiPath: (value) => normalizeFileApiPath(value),
+        renderMenu: () => renderFilePickerMenu(),
+      });
+      async function refreshFileCandidates(options = {}) { return await fileCandidateRefreshRuntime.refresh(options); }
+      function currentFileCandidateEntries() { return fileViewerController.currentFileCandidateEntries(); }
+    '''
+    return textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{
+          window: {{}},
+          process,
+          console,
+          fileCandidateList: [],
+          fileEntryMap: new Map(),
+          fileCandidateGitStateFresh: false,
+          fileCandidateCache: new Map(),
+          fileCandidateRequestSeq: 0,
+          FILE_CANDIDATE_CACHE_TTL_MS: 15000,
+          fileViewerSessionId: "s1",
+          selected: "s1",
+          sessionIndex: new Map([["s1", {{ cwd: "/repo", files: ["/repo/recent.txt"] }}]]),
+          chatInner: {{ querySelectorAll() {{ return []; }} }},
+          renderCount: 0,
+          applyModeCount: 0,
+          apiCalls: [],
+          now: 1000,
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(display_source)}, ctx);
+        vm.runInContext({json.dumps(file_helpers_source)}, ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        vm.runInContext({json.dumps(fixture_source)}, ctx);
+        vm.runInContext({json.dumps(js_candidate_controller_fixture())}, ctx);
+        vm.runInContext({json.dumps(runtime_source)}, ctx);
+        """
+    )
+
+def run_file_candidate_refresh_probe(setup_js: str, body_js: str) -> dict:
+    js = file_candidate_refresh_runtime_prelude() + textwrap.dedent(
+        f"""
+        vm.runInContext({json.dumps(setup_js)}, ctx);
+        vm.runInContext({json.dumps(body_js)}, ctx);
+        """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
 
 
 def eval_file_candidates_while_changed_files_pending() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    names = [
-        "listFromFilesField",
-        "stripPathLocationSuffix",
-        "normalizeFileApiPath",
-        "fileCandidateKey",
-        "fileCandidateKeyForEntry",
-        "normalizeFileCandidateSource",
-        "cloneFileCandidateEntry",
-        "applyFileCandidateEntries",
-        "currentFileCandidateEntries",
-        "collectMessageFileRefs",
-        "fileCandidateCacheKey",
-        "rememberFileCandidateCache",
-        "sessionRelativePath",
-        "refreshFileCandidates",
-    ]
-    snippet = "\n".join(js_function(source, name) for name in names)
-    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
-    file_helpers_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
-    js = textwrap.dedent(
-        f"""
-        const vm = require("vm");
-        const ctx = {{
-          window: {{}},
-          fileCandidateList: [],
-          fileEntryMap: new Map(),
-          fileCandidateGitStateFresh: false,
-          fileCandidateCache: new Map(),
-          fileCandidateRequestSeq: 0,
-          fileViewerController: {{
-            beginFileCandidateRefresh() {{ ctx.fileCandidateRequestSeq += 1; return ctx.fileCandidateRequestSeq; }},
-            isCurrentFileCandidateRefresh(requestSeq) {{ return requestSeq === ctx.fileCandidateRequestSeq; }},
-          }},
-          FILE_CANDIDATE_CACHE_TTL_MS: 15000,
-          fileViewerSessionId: "s1",
-          currentFileViewerSessionId: () => ctx.fileViewerSessionId,
-          selected: "s1",
-          sessionIndex: new Map([["s1", {{ cwd: "/repo", files: ["/repo/recent.txt"] }}]]),
-          chatInner: {{ querySelectorAll() {{ return []; }} }},
-          renderCount: 0,
-          applyModeCount: 0,
-          apiCalls: [],
-          resolveChangedFiles: null,
-        }};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(display_source)}, ctx);
-        vm.runInContext({json.dumps(file_helpers_source)}, ctx);
-        vm.runInContext(`
-          const codoxearFileHelpers = window.CodoxearFileHelpers;
-          class Element {{
-            constructor(attrs) {{ this.attrs = attrs || {{}}; }}
-            getAttribute(name) {{ return this.attrs[name] || ""; }}
-          }}
-          const messageNodes = [new Element({{ "data-file-path": "/repo/src/app.py", "data-file-kind": "text" }})];
-          chatInner.querySelectorAll = () => messageNodes;
-          async function api(path) {{
-            apiCalls.push(String(path));
-            return await new Promise((resolve) => {{ resolveChangedFiles = resolve; }});
-          }}
-          function applyFileMode() {{ applyModeCount += 1; }}
-          function renderFilePickerMenu() {{ renderCount += 1; }}
-          function isFileViewerSessionCurrent() {{ return true; }}
-          function blockUnavailableFileAction() {{ return false; }}
-        ` + {json.dumps(snippet)}, ctx);
-        vm.runInContext({json.dumps(js_candidate_controller_fixture())}, ctx);
-        (async () => {{
-          const task = ctx.refreshFileCandidates();
-          const interim = {{
-            entries: ctx.currentFileCandidateEntries().map((entry) => ({{ path: entry.path, gitPath: entry.gitPath, source: entry.source }})),
-            fresh: ctx.fileCandidateGitStateFresh,
-            renderCount: ctx.renderCount,
-            applyModeCount: ctx.applyModeCount,
-          }};
-          ctx.resolveChangedFiles({{ entries: [{{ path: "changed.py", additions: 1, deletions: 0 }}] }});
-          await task;
-          process.stdout.write(JSON.stringify({{
-            interim,
-            finalEntries: ctx.currentFileCandidateEntries().map((entry) => ({{ path: entry.path, gitPath: entry.gitPath, source: entry.source }})),
-            finalFresh: ctx.fileCandidateGitStateFresh,
-            cacheSize: ctx.fileCandidateCache.size,
-            apiCalls: ctx.apiCalls,
-            renderCount: ctx.renderCount,
-            applyModeCount: ctx.applyModeCount,
-          }}));
-        }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
-        """
-    )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    return json.loads(proc.stdout)
+    setup_js = r'''
+      const messageNodes = [new Element({ "data-file-path": "/repo/src/app.py", "data-file-kind": "text" })];
+      chatInner.querySelectorAll = () => messageNodes;
+      async function api(path) {
+        apiCalls.push(String(path));
+        return await new Promise((resolve) => { resolveChangedFiles = resolve; });
+      }
+    '''
+    body_js = r'''
+      (async () => {
+        const task = refreshFileCandidates();
+        const interim = {
+          entries: currentFileCandidateEntries().map((entry) => ({ path: entry.path, gitPath: entry.gitPath, source: entry.source })),
+          fresh: fileCandidateGitStateFresh,
+          renderCount,
+          applyModeCount,
+        };
+        resolveChangedFiles({ entries: [{ path: "changed.py", additions: 1, deletions: 0 }] });
+        await task;
+        process.stdout.write(JSON.stringify({
+          interim,
+          finalEntries: currentFileCandidateEntries().map((entry) => ({ path: entry.path, gitPath: entry.gitPath, source: entry.source })),
+          finalFresh: fileCandidateGitStateFresh,
+          cacheSize: fileCandidateCache.size,
+          apiCalls,
+          renderCount,
+          applyModeCount,
+        }));
+      })().catch((err) => { console.error(err && err.stack || err); process.exit(1); });
+    '''
+    return run_file_candidate_refresh_probe(setup_js, body_js)
 
 
 def eval_file_candidates_after_changed_files_failure() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    names = [
-        "listFromFilesField",
-        "stripPathLocationSuffix",
-        "normalizeFileApiPath",
-        "fileCandidateKey",
-        "fileCandidateKeyForEntry",
-        "normalizeFileCandidateSource",
-        "cloneFileCandidateEntry",
-        "applyFileCandidateEntries",
-        "currentFileCandidateEntries",
-        "collectMessageFileRefs",
-        "fileCandidateCacheKey",
-        "rememberFileCandidateCache",
-        "sessionRelativePath",
-        "refreshFileCandidates",
-    ]
-    snippet = "\n".join(js_function(source, name) for name in names)
-    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
-    file_helpers_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
-    js = textwrap.dedent(
-        f"""
-        const vm = require("vm");
-        const ctx = {{
-          window: {{}},
-          fileCandidateList: [],
-          fileEntryMap: new Map(),
-          fileCandidateGitStateFresh: false,
-          fileCandidateCache: new Map(),
-          fileCandidateRequestSeq: 0,
-          fileViewerController: {{
-            beginFileCandidateRefresh() {{ ctx.fileCandidateRequestSeq += 1; return ctx.fileCandidateRequestSeq; }},
-            isCurrentFileCandidateRefresh(requestSeq) {{ return requestSeq === ctx.fileCandidateRequestSeq; }},
-          }},
-          FILE_CANDIDATE_CACHE_TTL_MS: 15000,
-          fileViewerSessionId: "s1",
-          currentFileViewerSessionId: () => ctx.fileViewerSessionId,
-          selected: "s1",
-          sessionIndex: new Map([["s1", {{ cwd: "/repo", files: ["/repo/recent.txt"] }}]]),
-          chatInner: {{ querySelectorAll() {{ return []; }} }},
-          renderCount: 0,
-          applyModeCount: 0,
-          apiCalls: [],
-        }};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(display_source)}, ctx);
-        vm.runInContext({json.dumps(file_helpers_source)}, ctx);
-        vm.runInContext(`
-          const codoxearFileHelpers = window.CodoxearFileHelpers;
-          class Element {{
-            constructor(attrs) {{ this.attrs = attrs || {{}}; }}
-            getAttribute(name) {{ return this.attrs[name] || ""; }}
-          }}
-          const messageNodes = [
-            new Element({{ "data-file-path": "/repo/src/app.py", "data-file-kind": "text" }}),
-            new Element({{ "data-file-path": "/repo/docs", "data-file-kind": "directory" }}),
-          ];
-          chatInner.querySelectorAll = () => messageNodes;
-          async function api(path) {{
-            apiCalls.push(String(path));
-            throw new Error("not a git repository");
-          }}
-          function applyFileMode() {{
-            applyModeCount += 1;
-          }}
-          function renderFilePickerMenu() {{
-            renderCount += 1;
-          }}
-          function isFileViewerSessionCurrent() {{
-            return true;
-          }}
-          function blockUnavailableFileAction() {{
-            return false;
-          }}
-        ` + {json.dumps(snippet)}, ctx);
-        vm.runInContext({json.dumps(js_candidate_controller_fixture())}, ctx);
-        (async () => {{
-          await ctx.refreshFileCandidates();
-          process.stdout.write(JSON.stringify({{
-            entries: ctx.currentFileCandidateEntries().map((entry) => ({{ path: entry.path, gitPath: entry.gitPath, source: entry.source }})),
-            fresh: ctx.fileCandidateGitStateFresh,
-            cacheSize: ctx.fileCandidateCache.size,
-            apiCalls: ctx.apiCalls,
-            renderCount: ctx.renderCount,
-            applyModeCount: ctx.applyModeCount,
-          }}));
-        }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
-        """
-    )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    return json.loads(proc.stdout)
+    setup_js = r'''
+      const messageNodes = [
+        new Element({ "data-file-path": "/repo/src/app.py", "data-file-kind": "text" }),
+        new Element({ "data-file-path": "/repo/docs", "data-file-kind": "directory" }),
+      ];
+      chatInner.querySelectorAll = () => messageNodes;
+      async function api(path) {
+        apiCalls.push(String(path));
+        throw new Error("not a git repository");
+      }
+    '''
+    body_js = r'''
+      (async () => {
+        await refreshFileCandidates();
+        process.stdout.write(JSON.stringify({
+          entries: currentFileCandidateEntries().map((entry) => ({ path: entry.path, gitPath: entry.gitPath, source: entry.source })),
+          fresh: fileCandidateGitStateFresh,
+          cacheSize: fileCandidateCache.size,
+          apiCalls,
+          renderCount,
+          applyModeCount,
+        }));
+      })().catch((err) => { console.error(err && err.stack || err); process.exit(1); });
+    '''
+    return run_file_candidate_refresh_probe(setup_js, body_js)
 
 
 def eval_file_candidate_cache_helpers() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    names = [
-        "listFromFilesField",
-        "stripPathLocationSuffix",
-        "normalizeFileApiPath",
-        "fileCandidateKey",
-        "fileCandidateKeyForEntry",
-        "normalizeFileCandidateSource",
-        "cloneFileCandidateEntry",
-        "applyFileCandidateEntries",
-        "currentFileCandidateEntries",
-        "collectMessageFileRefs",
-        "fileCandidateCacheKey",
-        "rememberFileCandidateCache",
-        "sessionRelativePath",
-        "refreshFileCandidates",
-    ]
-    snippet = "\n".join(js_function(source, name) for name in names)
-    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
-    file_helpers_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
-    js = textwrap.dedent(
-        f"""
-        const vm = require("vm");
-        const ctx = {{
-          window: {{}},
-          fileCandidateList: [],
-          fileEntryMap: new Map(),
-          fileCandidateGitStateFresh: false,
-          fileCandidateCache: new Map(),
-          fileCandidateRequestSeq: 0,
-          fileViewerController: {{
-            beginFileCandidateRefresh() {{ ctx.fileCandidateRequestSeq += 1; return ctx.fileCandidateRequestSeq; }},
-            isCurrentFileCandidateRefresh(requestSeq) {{ return requestSeq === ctx.fileCandidateRequestSeq; }},
-          }},
-          FILE_CANDIDATE_CACHE_TTL_MS: 15000,
-          fileViewerSessionId: "s1",
-          currentFileViewerSessionId: () => ctx.fileViewerSessionId,
-          selected: "",
-          sessionIndex: new Map([["s1", {{ cwd: "/repo", files: ["/repo/recent.txt"] }}]]),
-          chatInner: {{ querySelectorAll() {{ return []; }} }},
-          renderCount: 0,
-          applyModeCount: 0,
-          apiCalls: 0,
-        }};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(display_source)}, ctx);
-        vm.runInContext({json.dumps(file_helpers_source)}, ctx);
-        vm.runInContext(`
-          const codoxearFileHelpers = window.CodoxearFileHelpers;
-          async function api(path) {{
-            apiCalls += 1;
-            return {{ entries: [{{ path: "changed.py", additions: 1, deletions: 0 }}] }};
-          }}
-          function applyFileMode() {{
-            applyModeCount += 1;
-          }}
-          function renderFilePickerMenu() {{
-            renderCount += 1;
-          }}
-          function isFileViewerSessionCurrent() {{
-            return true;
-          }}
-          function blockUnavailableFileAction() {{
-            return false;
-          }}
-        ` + {json.dumps(snippet)}, ctx);
-        vm.runInContext({json.dumps(js_candidate_controller_fixture())}, ctx);
-        (async () => {{
-          const literalFiles = ctx.listFromFilesField(["/repo/trail.md ", "/repo/new\\n.md", "", "/repo/trail.md "]);
-          const literalRel = ctx.sessionRelativePath("/repo/trail.md ", "s1");
-          const literalSuffix = ctx.stripPathLocationSuffix("/repo/trail.md ");
-          ctx.applyFileCandidateEntries([{{ path: "trail.md ", changed: true, source: "changed" }}, {{ path: "new\\n.md", source: "recent" }}]);
-          const literalCandidates = ctx.currentFileCandidateEntries().map((entry) => ({{ path: entry.path, gitPath: entry.gitPath, source: entry.source }}));
-          ctx.sessionIndex.get("s1").files = literalFiles;
-          const literalCacheKey = ctx.fileCandidateCacheKey("s1");
-          ctx.sessionIndex.get("s1").files = ["/repo/recent.txt"];
-          ctx.fileCandidateList = [];
-          ctx.fileEntryMap = new Map();
-          await ctx.refreshFileCandidates();
-          const first = ctx.currentFileCandidateEntries().map((entry) => ({{ path: entry.path, gitPath: entry.gitPath, source: entry.source }}));
-          const firstFresh = ctx.fileCandidateGitStateFresh;
-          await ctx.refreshFileCandidates();
-          const second = ctx.currentFileCandidateEntries().map((entry) => ({{ path: entry.path, gitPath: entry.gitPath, source: entry.source }}));
-          const secondFresh = ctx.fileCandidateGitStateFresh;
-          await ctx.refreshFileCandidates({{ force: true }});
-          const third = ctx.currentFileCandidateEntries().map((entry) => ({{ path: entry.path, gitPath: entry.gitPath, source: entry.source }}));
-          const thirdFresh = ctx.fileCandidateGitStateFresh;
-          process.stdout.write(JSON.stringify({{
-            apiCalls: ctx.apiCalls,
-            renderCount: ctx.renderCount,
-            applyModeCount: ctx.applyModeCount,
-            first,
-            second,
-            third,
-            firstFresh,
-            secondFresh,
-            thirdFresh,
-            cacheSize: ctx.fileCandidateCache.size,
-            sources: ctx.currentFileCandidateEntries().map((entry) => entry.source || ""),
-            literalFiles,
-            literalRel,
-            literalSuffix,
-            literalCandidates,
-            literalCacheKey,
-          }}));
-        }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
-        """
-    )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    return json.loads(proc.stdout)
+    setup_js = r'''
+      selected = "";
+      async function api(path) {
+        apiCalls.push(String(path));
+        return { entries: [{ path: "changed.py", additions: 1, deletions: 0 }] };
+      }
+    '''
+    body_js = r'''
+      (async () => {
+        const literalFiles = listFromFilesField(["/repo/trail.md ", "/repo/new\n.md", "", "/repo/trail.md "]);
+        const literalRel = sessionRelativePath("/repo/trail.md ", "s1");
+        const literalSuffix = stripPathLocationSuffix("/repo/trail.md ");
+        fileViewerController.applyFileCandidateEntries([{ path: "trail.md ", changed: true, source: "changed" }, { path: "new\n.md", source: "recent" }]);
+        const literalCandidates = currentFileCandidateEntries().map((entry) => ({ path: entry.path, gitPath: entry.gitPath, source: entry.source }));
+        sessionIndex.get("s1").files = literalFiles;
+        const literalCacheKey = fileCandidateCacheKey("s1");
+        sessionIndex.get("s1").files = ["/repo/recent.txt"];
+        fileCandidateList = [];
+        fileEntryMap = new Map();
+        await refreshFileCandidates();
+        const first = currentFileCandidateEntries().map((entry) => ({ path: entry.path, gitPath: entry.gitPath, source: entry.source }));
+        const firstFresh = fileCandidateGitStateFresh;
+        now += 1;
+        await refreshFileCandidates();
+        const second = currentFileCandidateEntries().map((entry) => ({ path: entry.path, gitPath: entry.gitPath, source: entry.source }));
+        const secondFresh = fileCandidateGitStateFresh;
+        now += 1;
+        await refreshFileCandidates({ force: true });
+        const third = currentFileCandidateEntries().map((entry) => ({ path: entry.path, gitPath: entry.gitPath, source: entry.source }));
+        const thirdFresh = fileCandidateGitStateFresh;
+        process.stdout.write(JSON.stringify({
+          apiCalls: apiCalls.length,
+          renderCount,
+          applyModeCount,
+          first,
+          second,
+          third,
+          firstFresh,
+          secondFresh,
+          thirdFresh,
+          cacheSize: fileCandidateCache.size,
+          sources: currentFileCandidateEntries().map((entry) => entry.source || ""),
+          literalFiles,
+          literalRel,
+          literalSuffix,
+          literalCandidates,
+          literalCacheKey,
+        }));
+      })().catch((err) => { console.error(err && err.stack || err); process.exit(1); });
+    '''
+    return run_file_candidate_refresh_probe(setup_js, body_js)
 
 
 class TestFilePickerSearchSource(unittest.TestCase):
@@ -1243,13 +1176,18 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertIn("function filePickerCandidateScore(path, query)", source)
         self.assertIn("function applyFreshFileCandidateCache", viewer_source)
         self.assertIn("return applyFileCandidateRefreshEntries(cached.entries, { gitStateFresh: false });", viewer_source)
-        self.assertIn("fileViewerController.applyFreshFileCandidateCache(sid, cacheKey", source)
-        self.assertIn("fileViewerController.applyFileCandidateRefreshEntries(merged, { gitStateFresh: changedEntriesFresh });", source)
+        self.assertIn("const fileCandidateRefreshRuntime = codoxearFileViewer.createFileCandidateRefreshRuntime({", source)
+        self.assertIn("return await fileCandidateRefreshRuntime.refresh({ force, sessionId, syncToken });", source)
+        self.assertNotIn("fileViewerController.applyFreshFileCandidateCache(sid, cacheKey", source)
+        self.assertIn("applyFreshCache(sid, cacheKey", viewer_source)
+        self.assertNotIn("fileViewerController.applyFileCandidateRefreshEntries(merged, { gitStateFresh: changedEntriesFresh });", source)
+        self.assertIn("applyRefreshEntries(merged, { gitStateFresh: changedEntriesFresh });", viewer_source)
         self.assertNotIn("const diffable = canToggleMode && activeFileGitPathValue() && fileCandidateGitStateFresh", source)
         self.assertIn("function currentFileModeControlState", viewer_source)
         self.assertIn("const diffable = Boolean(canToggleMode && identity.gitPath && currentFileCandidateGitStateFresh()", viewer_source)
         self.assertIn("const canUseDiffView = request && request.gitPath && currentFileCandidateGitStateFresh()", viewer_source)
-        self.assertIn("fileCandidateKeyForEntry(entry)", source)
+        self.assertNotIn("function fileCandidateKeyForEntry(entry)", source)
+        self.assertIn("fileCandidateKeyForEntry(entry)", viewer_source)
         self.assertIn("fileEntryMap.has(next.key)", viewer_source)
         self.assertIn(".fileMenuSection", css)
         self.assertIn("function filePickerIdentityHint(entry, duplicatePaths, options)", source)

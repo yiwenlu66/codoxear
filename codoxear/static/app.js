@@ -582,6 +582,7 @@
         typeof codoxearFileViewer.createFileDownloadRuntime !== "function" ||
         typeof codoxearFileViewer.createFileFallbackRuntime !== "function" ||
         typeof codoxearFileViewer.createFileLoadResultRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileCandidateRefreshRuntime !== "function" ||
         typeof codoxearFileViewer.createFileModeControlsRuntime !== "function" ||
         typeof codoxearFileViewer.createFilePasteDialogRuntime !== "function" ||
         typeof codoxearFileViewer.createFilePdfRenderRuntime !== "function" ||
@@ -7744,6 +7745,25 @@
           showVideo: (loadPlan, options) => fileRenderSurfaceRuntime.showVideo(loadPlan, options),
           loadCompatibleVideoPreview: (token, options) => loadCompatibleVideoPreview(token, options),
         });
+        const fileCandidateRefreshRuntime = codoxearFileViewer.createFileCandidateRefreshRuntime({
+          controller: fileViewerController,
+          currentSessionId: () => currentFileViewerSessionId(),
+          selectedSessionId: () => selected,
+          blockUnavailableFileAction: () => blockUnavailableFileAction(),
+          isSessionCurrent: (sessionId, syncToken) => isFileViewerSessionCurrent(sessionId, syncToken),
+          candidateCacheKey: (sessionId) => fileCandidateCacheKey(sessionId),
+          ttlMs: FILE_CANDIDATE_CACHE_TTL_MS,
+          nowMs: () => Date.now(),
+          collectMessageFileRefs: () => collectMessageFileRefs(),
+          sessionFiles: (sessionId) => {
+            const s = sessionId ? sessionIndex.get(sessionId) : null;
+            return listFromFilesField(s && s.files);
+          },
+          sessionRelativePath: (rawPath, sessionId) => sessionRelativePath(rawPath, sessionId),
+          api: (url) => api(url),
+          normalizeFileApiPath: (value) => normalizeFileApiPath(value),
+          renderMenu: () => renderFilePickerMenu(),
+        });
 
         function fileSavePendingValue() {
           return fileViewerController.isFileSavePending();
@@ -7900,10 +7920,6 @@
           return fileViewerController.fileCandidateKey(path, gitPath, apiPath);
         }
 
-        function fileCandidateKeyForEntry(entry) {
-          return fileViewerController.fileCandidateKeyForEntry(entry);
-        }
-
         function fileEntryForPath(path, gitPath = false, apiPath = "") {
           return fileViewerController.fileEntryForPath(path, gitPath, apiPath);
         }
@@ -7957,19 +7973,11 @@
           return fileViewerController.applyFileCandidateEntries(entries);
         }
 
-        function currentFileCandidateEntries() {
-          return fileViewerController.currentFileCandidateEntries();
-        }
-
         function fileCandidateCacheKey(sid) {
           const s = sid ? sessionIndex.get(sid) : null;
           const filesKey = JSON.stringify(listFromFilesField(s && s.files));
           const refsKey = JSON.stringify(collectMessageFileRefs());
           return `${sid || ""}\u0000${filesKey}\u0000${refsKey}`;
-        }
-
-        function rememberFileCandidateCache(sid, key) {
-          return fileViewerController.rememberFileCandidateCache(sid, key, Date.now());
         }
 
         function upsertFileEntry(entry) {
@@ -8354,82 +8362,7 @@
         }
 
         async function refreshFileCandidates({ force = false, sessionId = null, syncToken = null } = {}) {
-          if (!sessionId && blockUnavailableFileAction()) return;
-          const sid = String(sessionId || currentFileViewerSessionId() || selected || "").trim();
-          const requestSeq = fileViewerController.beginFileCandidateRefresh();
-          const current = () => fileViewerController.isCurrentFileCandidateRefresh(requestSeq) && (!sessionId || isFileViewerSessionCurrent(sid, syncToken));
-          if (!sid) {
-            if (!current()) return;
-            fileViewerController.clearFileCandidateRefreshEntries();
-            return;
-          }
-          const cacheKey = fileCandidateCacheKey(sid);
-          if (!force && current() && fileViewerController.applyFreshFileCandidateCache(sid, cacheKey, { now: Date.now(), ttl: FILE_CANDIDATE_CACHE_TTL_MS })) {
-            renderFilePickerMenu();
-            return;
-          }
-          if (!current()) return;
-          fileViewerController.clearFileCandidateRefreshEntries();
-          const messageEntries = collectMessageFileRefs().map((path) => ({
-            path,
-            additions: null,
-            deletions: null,
-            changed: false,
-            gitPath: false,
-            source: "mentioned",
-          }));
-          const s = sid ? sessionIndex.get(sid) : null;
-          const manualEntries = listFromFilesField(s && s.files)
-            .map((abs) => sessionRelativePath(abs, sid))
-            .filter((rel) => typeof rel === "string" && rel && rel !== ".")
-            .map((path) => ({ path, gitPath: false, additions: null, deletions: null, changed: false, source: "recent" }));
-          const mergeCandidateEntries = (changedEntriesIn = []) => {
-            const merged = [];
-            const seen = new Set();
-            for (const entry of [...changedEntriesIn, ...messageEntries, ...manualEntries]) {
-              if (!entry || entry.path === "") continue;
-              const key = fileCandidateKeyForEntry(entry);
-              if (seen.has(key)) continue;
-              seen.add(key);
-              merged.push(entry);
-            }
-            return merged;
-          };
-          const fallbackEntries = mergeCandidateEntries([]);
-          let renderedFallback = false;
-          if (fallbackEntries.length) {
-            if (!current()) return;
-            fileViewerController.applyFileCandidateRefreshEntries(fallbackEntries, { gitStateFresh: false });
-            renderFilePickerMenu();
-            renderedFallback = true;
-          }
-          let changedEntries = [];
-          let changedEntriesFresh = false;
-          try {
-            const res = await api(`/api/sessions/${sid}/git/changed_files`);
-            const entriesIn = Array.isArray(res.entries) ? res.entries : [];
-            changedEntries = entriesIn
-              .filter((entry) => entry && typeof entry.path === "string" && entry.path !== "")
-              .map((entry) => ({
-                path: entry.path,
-                apiPath: normalizeFileApiPath(entry.api_path || entry.apiPath),
-                additions:
-                  typeof entry.additions === "number" && Number.isFinite(entry.additions) ? entry.additions : entry.additions == null ? null : null,
-                deletions:
-                  typeof entry.deletions === "number" && Number.isFinite(entry.deletions) ? entry.deletions : entry.deletions == null ? null : null,
-                changed: true,
-                gitPath: true,
-                source: "changed",
-              }));
-            changedEntriesFresh = true;
-          } catch (e) {}
-          if (!changedEntriesFresh && renderedFallback) return;
-          const merged = mergeCandidateEntries(changedEntries);
-          if (!current()) return;
-          fileViewerController.applyFileCandidateRefreshEntries(merged, { gitStateFresh: changedEntriesFresh });
-          if (changedEntriesFresh) rememberFileCandidateCache(sid, cacheKey);
-          if (!current()) return;
-          renderFilePickerMenu();
+          return await fileCandidateRefreshRuntime.refresh({ force, sessionId, syncToken });
         }
 
         async function showFileViewer({ path = "", mode = "", manual = false, line = null, pickerQuery = "" } = {}) {

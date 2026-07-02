@@ -3598,9 +3598,14 @@ class TestFileViewerSource(unittest.TestCase):
         refresh_start = source.index("async function refreshFileCandidates(")
         refresh_end = source.index("async function showFileViewer", refresh_start)
         refresh_block = source[refresh_start:refresh_end]
-        self.assertIn("const requestSeq = fileViewerController.beginFileCandidateRefresh();", refresh_block)
-        self.assertIn("const current = () => fileViewerController.isCurrentFileCandidateRefresh(requestSeq)", refresh_block)
-        self.assertIn("if (!current()) return;", refresh_block)
+        viewer_refresh_start = viewer_source.index("function createFileCandidateRefreshRuntime(options = {})")
+        viewer_refresh_end = viewer_source.index("function createFileRenderSurfaceRuntime", viewer_refresh_start)
+        viewer_refresh_block = viewer_source[viewer_refresh_start:viewer_refresh_end]
+        self.assertIn("return await fileCandidateRefreshRuntime.refresh({ force, sessionId, syncToken });", refresh_block)
+        self.assertNotIn("beginFileCandidateRefresh", refresh_block)
+        self.assertIn("const requestSeq = beginRefresh();", viewer_refresh_block)
+        self.assertIn("const current = () => isCurrentRefresh(requestSeq)", viewer_refresh_block)
+        self.assertIn("if (!current()) return false;", viewer_refresh_block)
         show_start = source.index("async function showFileViewer")
         show_end = source.index("function hideFileViewer", show_start)
         show_block = source[show_start:show_end]
