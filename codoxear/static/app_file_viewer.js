@@ -94,6 +94,100 @@
     return value;
   }
 
+  function requireModalHostNode(value, name) {
+    if (!value || typeof value.setAttribute !== "function" || typeof value.removeAttribute !== "function") {
+      throw new TypeError(`file viewer dependency missing: ${name}`);
+    }
+    return value;
+  }
+
+  function requireTextNode(value, name) {
+    if (!value || !("textContent" in value)) throw new TypeError(`file viewer dependency missing: ${name}`);
+    return value;
+  }
+
+  function requireUnsavedButtonNode(value, name) {
+    if (!value || !("hidden" in value) || !("disabled" in value) || !("textContent" in value)) {
+      throw new TypeError(`file viewer dependency missing: ${name}`);
+    }
+    return value;
+  }
+
+  function createFileUnsavedDialogRuntime(options = {}) {
+    const backdrop = requireStyledNode(options.backdrop, "fileUnsavedBackdrop");
+    const dialog = requireStyledNode(options.dialog, "fileUnsavedDialog");
+    const viewer = requireModalHostNode(options.viewer, "fileViewer");
+    const title = requireTextNode(options.title, "fileUnsavedTitle");
+    const message = requireTextNode(options.message, "fileUnsavedMessage");
+    const saveButton = requireUnsavedButtonNode(options.saveButton, "fileUnsavedSaveButton");
+    const discardButton = requireUnsavedButtonNode(options.discardButton, "fileUnsavedDiscardButton");
+    const cancelButton = requireUnsavedButtonNode(options.cancelButton, "fileUnsavedCancelButton");
+    const prepareModalOpen = requireFunction(options.prepareModalOpen, "prepareModalOpen");
+    const afterModalVisibilityChanged = requireFunction(options.afterModalVisibilityChanged, "afterModalVisibilityChanged");
+    const restoreModalFocus = requireFunction(options.restoreModalFocus, "restoreModalFocus");
+    const isModalTargetOpen = requireFunction(options.isModalTargetOpen, "isModalTargetOpen");
+    const requestFrame = requireFunction(options.requestAnimationFrame, "requestAnimationFrame");
+    const promptPlan = requireFunction(options.promptPlan, "promptPlan");
+    const beginPrompt = requireFunction(options.beginPrompt, "beginPrompt");
+    const resolvePrompt = requireFunction(options.resolvePrompt, "resolvePrompt");
+    const setReturnFocusElement = requireFunction(options.setReturnFocusElement, "setReturnFocusElement");
+    const takeReturnFocusElement = requireFunction(options.takeReturnFocusElement, "takeReturnFocusElement");
+    const isUnavailable = requireFunction(options.isUnavailable, "isUnavailable");
+
+    function syncMode() {
+      const unavailable = Boolean(isUnavailable());
+      title.textContent = unavailable ? "Session unavailable" : "Unsaved changes";
+      message.textContent = unavailable
+        ? "This session is no longer available. Copy your edits before closing; they cannot be saved here."
+        : "Save this file before leaving the editor?";
+      saveButton.hidden = unavailable;
+      saveButton.disabled = unavailable;
+      discardButton.textContent = unavailable ? "Close without saving" : "Discard";
+      return Object.freeze({ unavailable });
+    }
+
+    function focusInitialControl() {
+      requestFrame(() => {
+        if (!isModalTargetOpen(dialog)) return;
+        const target = saveButton && !saveButton.hidden && !saveButton.disabled ? saveButton : discardButton || cancelButton;
+        if (!target || typeof target.focus !== "function") return;
+        try {
+          target.focus({ preventScroll: true });
+        } catch (_) {}
+      });
+      return true;
+    }
+
+    function hide(choice = "cancel") {
+      const focusTarget = takeReturnFocusElement();
+      backdrop.style.display = "none";
+      dialog.style.display = "none";
+      viewer.removeAttribute("inert");
+      viewer.removeAttribute("aria-hidden");
+      afterModalVisibilityChanged();
+      restoreModalFocus(focusTarget, () => isModalTargetOpen(dialog) || !isModalTargetOpen(viewer));
+      resolvePrompt(choice);
+      return true;
+    }
+
+    function promptChoice(activeElement = null, ElementCtor = null) {
+      const plan = promptPlan();
+      if (plan.kind === "choice") return Promise.resolve(plan.choice);
+      prepareModalOpen();
+      setReturnFocusElement(activeElement, ElementCtor);
+      syncMode();
+      viewer.setAttribute("inert", "");
+      viewer.setAttribute("aria-hidden", "true");
+      backdrop.style.display = "block";
+      dialog.style.display = "flex";
+      afterModalVisibilityChanged();
+      focusInitialControl();
+      return beginPrompt();
+    }
+
+    return Object.freeze({ focusInitialControl, hide, promptChoice, syncMode });
+  }
+
   function createFileTouchToolbarRuntime(options = {}) {
     const toolbar = requireStyledNode(options.toolbar, "fileTouchToolbar");
     const actions = requireStyledNode(options.actions, "fileTouchActions");
@@ -2301,6 +2395,7 @@
     createFilePasteDialogRuntime,
     createFileRenderSurfaceRuntime,
     createFileTouchToolbarRuntime,
+    createFileUnsavedDialogRuntime,
     createFileViewerController,
     createPdfLoader,
   });

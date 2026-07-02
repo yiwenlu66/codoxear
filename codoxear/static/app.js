@@ -575,6 +575,7 @@
         typeof codoxearFileViewer.createFilePasteDialogRuntime !== "function" ||
         typeof codoxearFileViewer.createFileRenderSurfaceRuntime !== "function" ||
         typeof codoxearFileViewer.createFileTouchToolbarRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileUnsavedDialogRuntime !== "function" ||
         typeof codoxearFileViewer.createFileViewerController !== "function" ||
         typeof codoxearFileViewer.createPdfLoader !== "function"
       )
@@ -7073,6 +7074,27 @@
           pasteButton: fileTouchPasteBtn,
           selectButton: fileTouchSelectBtn,
         });
+        const fileUnsavedDialogRuntime = codoxearFileViewer.createFileUnsavedDialogRuntime({
+          backdrop: fileUnsavedBackdrop,
+          dialog: fileUnsavedDialog,
+          viewer: fileViewer,
+          title: fileUnsavedDialog.querySelector(".title"),
+          message: fileUnsavedDialog.querySelector(".muted"),
+          saveButton: $("#fileUnsavedSaveBtn"),
+          discardButton: $("#fileUnsavedDiscardBtn"),
+          cancelButton: $("#fileUnsavedCancelBtn"),
+          prepareModalOpen,
+          afterModalVisibilityChanged,
+          restoreModalFocus,
+          isModalTargetOpen,
+          requestAnimationFrame: (callback) => requestAnimationFrame(callback),
+          promptPlan: () => fileViewerController.fileUnsavedPromptPlan(),
+          beginPrompt: () => fileViewerController.beginFileUnsavedPrompt(),
+          resolvePrompt: (choice) => fileViewerController.resolveFileUnsavedPrompt(choice),
+          setReturnFocusElement: (element, ElementCtor) => fileViewerController.setFileUnsavedReturnFocusElement(element, ElementCtor),
+          takeReturnFocusElement: () => fileViewerController.takeFileUnsavedReturnFocusElement(),
+          isUnavailable: () => isFileViewerSessionUnavailable(),
+        });
 
         function currentFileViewerSessionId() {
           return fileViewerController.currentFileViewerSessionId();
@@ -7710,58 +7732,19 @@
         }
 
         function hideFileUnsavedDialog(choice = "cancel") {
-          const focusTarget = fileViewerController.takeFileUnsavedReturnFocusElement();
-          fileUnsavedBackdrop.style.display = "none";
-          fileUnsavedDialog.style.display = "none";
-          fileViewer.removeAttribute("inert");
-          fileViewer.removeAttribute("aria-hidden");
-          afterModalVisibilityChanged();
-          restoreModalFocus(focusTarget, () => isModalTargetOpen(fileUnsavedDialog) || !isModalTargetOpen(fileViewer));
-          fileViewerController.resolveFileUnsavedPrompt(choice);
+          return fileUnsavedDialogRuntime.hide(choice);
         }
 
         function focusFileUnsavedInitialControl() {
-          requestAnimationFrame(() => {
-            if (!isModalTargetOpen(fileUnsavedDialog)) return;
-            const saveBtn = $("#fileUnsavedSaveBtn");
-            const discardBtn = $("#fileUnsavedDiscardBtn");
-            const cancelBtn = $("#fileUnsavedCancelBtn");
-            const target = saveBtn && !saveBtn.hidden && !saveBtn.disabled ? saveBtn : discardBtn || cancelBtn;
-            if (!target || typeof target.focus !== "function") return;
-            try {
-              target.focus({ preventScroll: true });
-            } catch {}
-          });
+          return fileUnsavedDialogRuntime.focusInitialControl();
         }
 
         function syncFileUnsavedDialogMode() {
-          const unavailable = isFileViewerSessionUnavailable();
-          const title = fileUnsavedDialog.querySelector(".title");
-          const message = fileUnsavedDialog.querySelector(".muted");
-          const saveBtn = $("#fileUnsavedSaveBtn");
-          const discardBtn = $("#fileUnsavedDiscardBtn");
-          if (title) title.textContent = unavailable ? "Session unavailable" : "Unsaved changes";
-          if (message) message.textContent = unavailable ? "This session is no longer available. Copy your edits before closing; they cannot be saved here." : "Save this file before leaving the editor?";
-          if (saveBtn) {
-            saveBtn.hidden = unavailable;
-            saveBtn.disabled = unavailable;
-          }
-          if (discardBtn) discardBtn.textContent = unavailable ? "Close without saving" : "Discard";
+          return fileUnsavedDialogRuntime.syncMode();
         }
 
         function promptFileUnsavedChoice() {
-          const plan = fileViewerController.fileUnsavedPromptPlan();
-          if (plan.kind === "choice") return Promise.resolve(plan.choice);
-          prepareModalOpen();
-          fileViewerController.setFileUnsavedReturnFocusElement(document.activeElement, HTMLElement);
-          syncFileUnsavedDialogMode();
-          fileViewer.setAttribute("inert", "");
-          fileViewer.setAttribute("aria-hidden", "true");
-          fileUnsavedBackdrop.style.display = "block";
-          fileUnsavedDialog.style.display = "flex";
-          afterModalVisibilityChanged();
-          focusFileUnsavedInitialControl();
-          return fileViewerController.beginFileUnsavedPrompt();
+          return fileUnsavedDialogRuntime.promptChoice(document.activeElement, HTMLElement);
         }
 
         const fileViewerController = codoxearFileViewer.createFileViewerController({
