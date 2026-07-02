@@ -333,7 +333,15 @@
       return true;
     }
 
-    return Object.freeze({ clearImage, clearVideo, reset, setSurface });
+    function showImage(src, alt = "") {
+      clearVideo();
+      image.src = String(src || "");
+      image.alt = String(alt || "");
+      setSurface("image");
+      return true;
+    }
+
+    return Object.freeze({ clearImage, clearVideo, reset, setSurface, showImage });
   }
 
   function createFilePasteDialogRuntime(options = {}) {

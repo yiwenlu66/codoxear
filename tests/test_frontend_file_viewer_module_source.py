@@ -987,6 +987,8 @@ def run_file_render_surface_runtime_probe() -> dict[str, object]:
         runtime.setSurface("video");
         const resetResult = runtime.reset();
         const resetState = snapshot();
+        const showImageResult = runtime.showImage("/img.png", "Alt text");
+        const showImageState = {{ surface: snapshot(), src: image.src, alt: image.alt }};
         process.stdout.write(JSON.stringify({{
           frozen: Object.isFrozen(runtime),
           diffResult,
@@ -1001,6 +1003,8 @@ def run_file_render_surface_runtime_probe() -> dict[str, object]:
           clearState,
           resetResult,
           resetState,
+          showImageResult,
+          showImageState,
           events,
         }}));
         """
@@ -1656,7 +1660,9 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["clearState"], {"previewDisplay": "none", "previewDisabled": True, "videoDisplay": "none", "onerror": None, "onloadedmetadata": None})
         self.assertTrue(result["resetResult"])
         self.assertEqual(result["resetState"], {"diff": "block", "image": "none", "video": "none"})
-        self.assertEqual(result["events"], [["removeImage", "src"], ["clearFallback"], ["pause"], ["remove", "src"], ["load"], ["removeImage", "src"], ["clearFallback"], ["pause"], ["remove", "src"], ["load"]])
+        self.assertTrue(result["showImageResult"])
+        self.assertEqual(result["showImageState"], {"surface": {"diff": "none", "image": "block", "video": "none"}, "src": "/img.png", "alt": "Alt text"})
+        self.assertEqual(result["events"], [["removeImage", "src"], ["clearFallback"], ["pause"], ["remove", "src"], ["load"], ["removeImage", "src"], ["clearFallback"], ["pause"], ["remove", "src"], ["load"], ["clearFallback"], ["pause"], ["remove", "src"], ["load"]])
 
     def test_file_fallback_runtime_behavior(self) -> None:
         result = run_file_fallback_runtime_probe()

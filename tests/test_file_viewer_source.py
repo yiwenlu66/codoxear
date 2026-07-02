@@ -3176,6 +3176,15 @@ function applyActiveFileNonTextState(kind) {
               ctx.fileVideo.style.display = next === "video" ? "block" : "none";
               return next;
             }},
+            showImage(src, alt) {{
+              ctx.calls.push(["showImage", src, alt]);
+              ctx.fileVideo.style.display = "none";
+              ctx.fileVideo.src = "";
+              ctx.fileImage.src = String(src || "");
+              ctx.fileImage.alt = String(alt || "");
+              this.setSurface("image");
+              return true;
+            }},
           }},
           fileStatus: {{ textContent: "" }},
           Date: {{ now: () => 4242 }},
@@ -4362,7 +4371,11 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('currentText: res && typeof res.current_text === "string" ? res.current_text : ""', viewer_source)
         self.assertEqual(source.count('setFileRenderSurface("diff");'), 5)
         self.assertNotIn('fileImage.removeAttribute("src");', source)
-        self.assertIn('setFileRenderSurface("image");', source)
+        self.assertIn("fileRenderSurfaceRuntime.showImage(resolveAppUrl(loadPlan.imageUrl), loadPlan.alt);", source)
+        self.assertIn("function showImage(src, alt = \"\")", viewer_source)
+        self.assertNotIn('fileImage.src = resolveAppUrl(loadPlan.imageUrl);', source)
+        self.assertNotIn('fileImage.alt = loadPlan.alt;', source)
+        self.assertNotIn('setFileRenderSurface("image");', source)
         self.assertIn('setFileRenderSurface("video");', source)
         self.assertNotIn("fileDiff.style.display =", source)
         self.assertNotIn("fileImage.style.display =", source)

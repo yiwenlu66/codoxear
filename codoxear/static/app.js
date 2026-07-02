@@ -8724,10 +8724,7 @@
             return true;
           }
           if (loadPlan.kind === "image") {
-            clearFileVideo();
-            fileImage.src = resolveAppUrl(loadPlan.imageUrl);
-            fileImage.alt = loadPlan.alt;
-            setFileRenderSurface("image");
+            fileRenderSurfaceRuntime.showImage(resolveAppUrl(loadPlan.imageUrl), loadPlan.alt);
             fileStatus.textContent = loadPlan.status;
             return true;
           }
