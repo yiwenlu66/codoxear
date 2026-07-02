@@ -9027,7 +9027,7 @@
         addAppEvent(document, "click", (e) => {
           const t = e.target instanceof Element ? e.target : null;
           if (!t) return;
-          if (fileViewer.style.display === "flex" && filePickerMenuState.isOpen() && !t.closest("#fileCandRow")) {
+          if (isFileViewerOpen() && filePickerMenuState.isOpen() && !t.closest("#fileCandRow")) {
             closeFilePickerMenu({ restoreInput: true });
           }
           if (editDependencyMenuOpen && !t.closest("#editDependencyBtn") && !t.closest("#editDependencyMenu")) {
@@ -9085,7 +9085,7 @@
             hideFileUnsavedDialog("cancel");
             return;
           }
-          if (fileViewer.style.display === "flex") {
+          if (isFileViewerOpen()) {
             e.preventDefault();
             void requestHideFileViewer();
             return;
