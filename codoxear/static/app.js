@@ -584,6 +584,7 @@
         typeof codoxearFileViewer.createFileLoadResultRuntime !== "function" ||
         typeof codoxearFileViewer.createFileCandidateRefreshRuntime !== "function" ||
         typeof codoxearFileViewer.createFileViewerPanelRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileViewerLifecycleRuntime !== "function" ||
         typeof codoxearFileViewer.createFileModeControlsRuntime !== "function" ||
         typeof codoxearFileViewer.createFilePasteDialogRuntime !== "function" ||
         typeof codoxearFileViewer.createFilePdfRenderRuntime !== "function" ||
@@ -7734,6 +7735,19 @@
             fileStatus.textContent = status;
           },
         });
+        const fileViewerLifecycleRuntime = codoxearFileViewer.createFileViewerLifecycleRuntime({
+          controller: fileViewerController,
+          beginHide: () => fileViewerModalRuntime.beginHide(),
+          hideDisplay: () => fileViewerModalRuntime.hideDisplay(),
+          finishHide: (state) => fileViewerModalRuntime.finishHide(state),
+          hideFileUnsavedDialog: () => hideFileUnsavedDialog(),
+          hideFilePasteDialog: () => hideFilePasteDialog(),
+          resetFileViewerPanel: () => resetFileViewerPanel(),
+          closeFilePickerMenu: (options) => closeFilePickerMenu(options),
+          resetFileSearchState: () => resetFileSearchState(),
+          setFileSearchSessionId: (sessionId) => filePickerSearchState.setSessionId(sessionId),
+          updateFileTouchToolbar: () => updateFileTouchToolbar(),
+        });
         const fileLoadResultRuntime = codoxearFileViewer.createFileLoadResultRuntime({
           controller: fileViewerController,
           resolveAppUrl,
@@ -8419,22 +8433,7 @@
           renderEmptyFileViewerTarget();
         }
         function hideFileViewer() {
-          const hideState = fileViewerModalRuntime.beginHide();
-          fileViewerController.invalidateFileViewerSessionSync();
-          cancelPendingFileOpen();
-          hideFileUnsavedDialog();
-          hideFilePasteDialog();
-          rememberActiveFileSelection();
-          resetFileViewerPanel();
-          closeFilePickerMenu({ restoreInput: true });
-          resetFileSearchState();
-          filePickerSearchState.setSessionId("");
-          fileViewerModalRuntime.hideDisplay();
-          fileViewerController.clearFileViewerSessionId();
-          fileViewerController.clearFileViewerUnavailableSession();
-          clearActiveFileIdentity();
-          updateFileTouchToolbar();
-          fileViewerModalRuntime.finishHide(hideState);
+          return fileViewerLifecycleRuntime.hide();
         }
         function disableFileViewerForUnavailableSession(sid) {
           return fileViewerController.disableFileViewerForUnavailableSession(sid);

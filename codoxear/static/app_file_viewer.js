@@ -665,6 +665,49 @@
     return Object.freeze({ renderEmptyTarget, resetPanel });
   }
 
+  function createFileViewerLifecycleRuntime(options = {}) {
+    const controller = options.controller || null;
+    if (!controller) throw new TypeError("file viewer dependency missing: controller");
+    const invalidateSessionSync = requireFunction(controller.invalidateFileViewerSessionSync, "controller.invalidateFileViewerSessionSync").bind(controller);
+    const cancelPendingFileOpen = requireFunction(controller.cancelPendingFileOpen, "controller.cancelPendingFileOpen").bind(controller);
+    const rememberActiveFileSelection = requireFunction(controller.rememberActiveFileSelection, "controller.rememberActiveFileSelection").bind(controller);
+    const clearFileViewerSessionId = requireFunction(controller.clearFileViewerSessionId, "controller.clearFileViewerSessionId").bind(controller);
+    const clearFileViewerUnavailableSession = requireFunction(controller.clearFileViewerUnavailableSession, "controller.clearFileViewerUnavailableSession").bind(controller);
+    const clearActiveFileIdentity = requireFunction(controller.clearActiveFileIdentity, "controller.clearActiveFileIdentity").bind(controller);
+    const beginHide = requireFunction(options.beginHide, "beginHide");
+    const hideDisplay = requireFunction(options.hideDisplay, "hideDisplay");
+    const finishHide = requireFunction(options.finishHide, "finishHide");
+    const hideFileUnsavedDialog = requireFunction(options.hideFileUnsavedDialog, "hideFileUnsavedDialog");
+    const hideFilePasteDialog = requireFunction(options.hideFilePasteDialog, "hideFilePasteDialog");
+    const resetFileViewerPanel = requireFunction(options.resetFileViewerPanel, "resetFileViewerPanel");
+    const closeFilePickerMenu = requireFunction(options.closeFilePickerMenu, "closeFilePickerMenu");
+    const resetFileSearchState = requireFunction(options.resetFileSearchState, "resetFileSearchState");
+    const setFileSearchSessionId = requireFunction(options.setFileSearchSessionId, "setFileSearchSessionId");
+    const updateFileTouchToolbar = requireFunction(options.updateFileTouchToolbar, "updateFileTouchToolbar");
+
+    function hide() {
+      const hideState = beginHide();
+      invalidateSessionSync();
+      cancelPendingFileOpen();
+      hideFileUnsavedDialog();
+      hideFilePasteDialog();
+      rememberActiveFileSelection();
+      resetFileViewerPanel();
+      closeFilePickerMenu({ restoreInput: true });
+      resetFileSearchState();
+      setFileSearchSessionId("");
+      hideDisplay();
+      clearFileViewerSessionId();
+      clearFileViewerUnavailableSession();
+      clearActiveFileIdentity();
+      updateFileTouchToolbar();
+      finishHide(hideState);
+      return true;
+    }
+
+    return Object.freeze({ hide });
+  }
+
   function createFileCandidateRefreshRuntime(options = {}) {
     const controller = options.controller || null;
     if (!controller) throw new TypeError("file viewer dependency missing: controller");
@@ -3008,6 +3051,7 @@
     createFileLoadResultRuntime,
     createFileCandidateRefreshRuntime,
     createFileViewerPanelRuntime,
+    createFileViewerLifecycleRuntime,
     createFileModeControlsRuntime,
     createFilePasteDialogRuntime,
     createFilePdfRenderRuntime,

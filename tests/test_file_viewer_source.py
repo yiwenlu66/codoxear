@@ -444,57 +444,61 @@ def eval_empty_file_viewer_target() -> dict:
 
 
 def eval_hide_file_viewer_identity_cleanup() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    clear_start = source.index("function clearActiveFileIdentity(")
-    clear_end = source.index("function isCurrentFileOpenRequest", clear_start)
-    hide_start = source.index("function hideFileViewer()")
-    hide_end = source.index("function handleFileViewerSessionUnavailable", hide_start)
-    snippet = source[clear_start:clear_end] + "\n" + source[hide_start:hide_end]
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
         const calls = [];
-        const ctx = {{
-{controller_identity_ctx_js("src/app.py", "token-1", True, 42)}
-          fileViewerSessionId: "sid-1",
-          fileViewerUnavailableSessionId: "",
-          fileViewerSessionSyncToken: 10,
-          fileViewerReturnFocusElement: {{ id: "return" }},
-          fileBackdrop: {{ style: {{ display: "block" }} }},
-          fileViewer: {{ style: {{ display: "block" }} }},
-          filePickerSearchState: {{ setSessionId: (sid) => calls.push(["filePickerSearchState.setSessionId", sid]) }},
-          modalOpen: true,
-          normalizeLineNumber: (value) => value == null ? null : Number(value),
-          isModalTargetOpen: () => ctx.modalOpen,
-          cancelPendingFileOpen: () => calls.push(["cancelPendingFileOpen", ctx.activeFilePathValue()]),
-          hideFileUnsavedDialog: () => calls.push(["hideFileUnsavedDialog", ctx.activeFilePathValue()]),
-          hideFilePasteDialog: () => calls.push(["hideFilePasteDialog", ctx.activeFilePathValue()]),
-          rememberActiveFileSelection: () => calls.push(["rememberActiveFileSelection", ctx.activeFilePathValue(), ctx.activeFileApiPathValue(), ctx.activeFileGitPathValue(), ctx.activeFileLineValue()]),
-          resetFileViewerPanel: () => calls.push(["resetFileViewerPanel", ctx.activeFilePathValue()]),
-          closeFilePickerMenu: (opts) => calls.push(["closeFilePickerMenu", opts, ctx.activeFilePathValue()]),
-          resetFileSearchState: () => calls.push(["resetFileSearchState", ctx.activeFilePathValue()]),
-          updateFileTouchToolbar: () => calls.push(["updateFileTouchToolbar", ctx.activeFilePathValue(), ctx.activeFileLineValue()]),
-          fileViewerModalRuntime: {{
-            beginHide() {{ const focusTarget = ctx.fileViewerReturnFocusElement; ctx.fileViewerReturnFocusElement = null; calls.push(["beginHide", ctx.fileViewer.style.display]); return {{ wasOpen: ctx.modalOpen, focusTarget }}; }},
-            hideDisplay() {{ ctx.fileBackdrop.style.display = "none"; ctx.fileViewer.style.display = "none"; calls.push(["hideDisplay", ctx.activeFilePathValue()]); return true; }},
-            finishHide(state) {{ calls.push(["finishHide", state && state.focusTarget && state.focusTarget.id, ctx.fileViewer.style.display]); return true; }},
-          }},
+        const state = {{
+          sessionId: "sid-1",
+          unavailableSessionId: "sid-1",
+          syncToken: 10,
+          identity: {{ path: "src/app.py", apiPath: "token-1", gitPath: true, line: 42 }},
+          displays: {{ backdrop: "block", viewer: "block" }},
+          returnFocus: {{ id: "return" }},
         }};
+        const ctx = {{ window: {{}} }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_hide = hideFileViewer;\n")}, ctx);
-        ctx.__test_hide();
+        vm.runInContext({json.dumps(display_source)}, ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const runtime = ctx.window.CodoxearFileViewer.createFileViewerLifecycleRuntime({{
+          controller: {{
+            invalidateFileViewerSessionSync() {{ calls.push(["invalidateFileViewerSessionSync", state.syncToken]); state.syncToken += 1; return state.syncToken; }},
+            cancelPendingFileOpen() {{ calls.push(["cancelPendingFileOpen", state.identity.path]); }},
+            rememberActiveFileSelection() {{ calls.push(["rememberActiveFileSelection", state.identity.path, state.identity.apiPath, state.identity.gitPath, state.identity.line]); }},
+            clearFileViewerSessionId() {{ calls.push(["clearFileViewerSessionId", state.sessionId]); state.sessionId = ""; }},
+            clearFileViewerUnavailableSession() {{ calls.push(["clearFileViewerUnavailableSession", state.unavailableSessionId]); state.unavailableSessionId = ""; }},
+            clearActiveFileIdentity() {{ calls.push(["clearActiveFileIdentity", state.identity.path]); state.identity = {{ path: "", apiPath: "", gitPath: false, line: null }}; }},
+          }},
+          beginHide() {{ const focusTarget = state.returnFocus; state.returnFocus = null; calls.push(["beginHide", state.displays.viewer]); return {{ wasOpen: true, focusTarget }}; }},
+          hideDisplay() {{ state.displays.backdrop = "none"; state.displays.viewer = "none"; calls.push(["hideDisplay", state.identity.path]); return true; }},
+          finishHide(hideState) {{ calls.push(["finishHide", hideState && hideState.focusTarget && hideState.focusTarget.id, state.displays.viewer]); return true; }},
+          hideFileUnsavedDialog: () => calls.push(["hideFileUnsavedDialog", state.identity.path]),
+          hideFilePasteDialog: () => calls.push(["hideFilePasteDialog", state.identity.path]),
+          resetFileViewerPanel: () => calls.push(["resetFileViewerPanel", state.identity.path]),
+          closeFilePickerMenu: (options) => calls.push(["closeFilePickerMenu", options, state.identity.path]),
+          resetFileSearchState: () => calls.push(["resetFileSearchState", state.identity.path]),
+          setFileSearchSessionId: (sessionId) => calls.push(["setFileSearchSessionId", sessionId]),
+          updateFileTouchToolbar: () => calls.push(["updateFileTouchToolbar", state.identity.path, state.identity.line]),
+        }});
+        const result = runtime.hide();
+        let missingError = "";
+        try {{ ctx.window.CodoxearFileViewer.createFileViewerLifecycleRuntime({{ controller: {{}} }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
         process.stdout.write(JSON.stringify({{
+          result,
           calls,
-          identity: {{ path: ctx.activeFilePathValue(), apiPath: ctx.activeFileApiPathValue(), gitPath: ctx.activeFileGitPathValue(), line: ctx.activeFileLineValue() }},
-          session: {{ id: ctx.fileViewerSessionId, unavailable: ctx.fileViewerUnavailableSessionId, syncToken: ctx.fileViewerSessionSyncToken }},
-          displays: {{ backdrop: ctx.fileBackdrop.style.display, viewer: ctx.fileViewer.style.display }},
-          returnFocus: ctx.fileViewerReturnFocusElement,
+          identity: state.identity,
+          session: {{ id: state.sessionId, unavailable: state.unavailableSessionId, syncToken: state.syncToken }},
+          displays: state.displays,
+          returnFocus: state.returnFocus,
+          missingError,
+          frozen: Object.isFrozen(runtime),
         }}));
         """
     )
     proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
-
 
 
 def eval_disable_file_viewer_for_unavailable_session() -> dict:
@@ -3363,8 +3367,11 @@ class TestFileViewerSource(unittest.TestCase):
             {"path": "", "apiPath": "", "gitPath": False, "line": None},
         )
         self.assertEqual(result["session"], {"id": "", "unavailable": "", "syncToken": 11})
+        self.assertTrue(result["result"])
         self.assertEqual(result["displays"], {"backdrop": "none", "viewer": "none"})
         self.assertIsNone(result["returnFocus"])
+        self.assertIn("controller.invalidateFileViewerSessionSync", result["missingError"])
+        self.assertTrue(result["frozen"])
         self.assertIn(["rememberActiveFileSelection", "src/app.py", "token-1", True, 42], result["calls"])
         self.assertIn(["closeFilePickerMenu", {"restoreInput": True}, "src/app.py"], result["calls"])
         self.assertIn(["updateFileTouchToolbar", "", None], result["calls"])
@@ -3614,7 +3621,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("renderEmptyFileViewerTarget();", show_block)
         self.assertNotIn("const preferredGitPath = explicitPath ? false : Boolean(preferredSelection.gitPath);", show_block)
         self.assertNotIn("const first = firstKey ? fileEntryMap.get(firstKey) : null;", show_block)
-        self.assertIn("fileViewerController.invalidateFileViewerSessionSync();\n          cancelPendingFileOpen();", source)
+        self.assertNotIn("fileViewerController.invalidateFileViewerSessionSync();\n          cancelPendingFileOpen();", source)
+        self.assertIn("invalidateSessionSync();\n      cancelPendingFileOpen();", viewer_source)
         open_start = source.index("async function openSession(sessionId")
         open_end = source.index("async function pollMessages", open_start)
         open_block = source[open_start:open_end]
@@ -3741,14 +3749,19 @@ class TestFileViewerSource(unittest.TestCase):
         hide_start = source.index("function hideFileViewer()")
         hide_end = source.index("function handleFileViewerSessionUnavailable", hide_start)
         hide_block = source[hide_start:hide_end]
-        self.assertIn("const hideState = fileViewerModalRuntime.beginHide();", hide_block)
-        self.assertIn("fileViewerModalRuntime.hideDisplay();", hide_block)
-        self.assertIn("fileViewerModalRuntime.finishHide(hideState);", hide_block)
-        self.assertIn("rememberActiveFileSelection();", hide_block)
-        self.assertIn("clearActiveFileIdentity();", hide_block)
-        self.assertNotIn("activeFileLine = null;", hide_block)
-        self.assertLess(hide_block.index("rememberActiveFileSelection();"), hide_block.index("clearActiveFileIdentity();"))
-        self.assertLess(hide_block.index("closeFilePickerMenu({ restoreInput: true });"), hide_block.index("clearActiveFileIdentity();"))
+        lifecycle_start = viewer_source.index("function createFileViewerLifecycleRuntime(options = {})")
+        lifecycle_end = viewer_source.index("function createFileCandidateRefreshRuntime", lifecycle_start)
+        lifecycle_block = viewer_source[lifecycle_start:lifecycle_end]
+        self.assertIn("return fileViewerLifecycleRuntime.hide();", hide_block)
+        self.assertNotIn("const hideState = fileViewerModalRuntime.beginHide();", hide_block)
+        self.assertIn("const hideState = beginHide();", lifecycle_block)
+        self.assertIn("hideDisplay();", lifecycle_block)
+        self.assertIn("finishHide(hideState);", lifecycle_block)
+        self.assertIn("rememberActiveFileSelection();", lifecycle_block)
+        self.assertIn("clearActiveFileIdentity();", lifecycle_block)
+        self.assertNotIn("activeFileLine = null;", lifecycle_block)
+        self.assertLess(lifecycle_block.index("rememberActiveFileSelection();"), lifecycle_block.index("clearActiveFileIdentity();"))
+        self.assertLess(lifecycle_block.index("closeFilePickerMenu({ restoreInput: true });"), lifecycle_block.index("clearActiveFileIdentity();"))
         open_primitive_start = viewer_source.index("async function openFilePath(nextPath")
         open_primitive_end = viewer_source.index("async function applyDraftFileLoad", open_primitive_start)
         open_primitive_block = viewer_source[open_primitive_start:open_primitive_end]
@@ -4410,7 +4423,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertNotIn("let fileUnsavedReturnFocusEl = null;", source)
         self.assertIn("let fileViewerReturnFocusElement = null;", APP_FILE_VIEWER_JS.read_text(encoding="utf-8"))
         self.assertIn("let fileUnsavedReturnFocusElement = null;", APP_FILE_VIEWER_JS.read_text(encoding="utf-8"))
-        self.assertIn("cancelPendingFileOpen();\n          hideFileUnsavedDialog();", source)
+        self.assertNotIn("cancelPendingFileOpen();\n          hideFileUnsavedDialog();", source)
+        self.assertIn("cancelPendingFileOpen();\n      hideFileUnsavedDialog();", viewer_source)
 
     def test_active_file_save_request_helpers_are_single_owned(self) -> None:
         result = eval_active_file_save_request_helpers()
