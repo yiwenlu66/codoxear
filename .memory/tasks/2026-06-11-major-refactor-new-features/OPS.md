@@ -6864,3 +6864,20 @@
 - Intended output file `/tmp/codoxear-next-file-viewer-seams.md` was checked and returned `missing-or-empty`.
 - Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against any file-viewer seam or code behavior.
 - Decision: continue direct local code inspection and implementation; do not treat absent scout output as a blocker or as a clean-room review.
+
+## 2026-07-02T04:50:25Z Resolved file-open policy controller ownership
+- Functional commit `956ff6f Move resolved file open policy into viewer controller` moved inspect-driven file-open mode resolution and stale-currentness handoff from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: resolved file-open policy depends on controller-owned candidate entries, git-path inference, candidate git freshness, current non-diff mode, unavailable-session blocking, and open-guard/currentness sequencing. The controller now owns `resolveFileOpenMode(path, options)` and `openFilePathWithResolvedMode(path, options)`. `app.js` retains the `/api/files/inspect` POST transport in `inspectSessionFilePath()` and call sites that supply app-owned currentness predicates.
+- Tests updated: resolved-mode cases now instantiate the real controller and seed candidate state through `applyFileCandidateEntries()` / `setFileCandidateGitStateFresh()` rather than executing old app-sliced candidate globals. Stale-currentness coverage now proves that an inspect may occur before currentness flips, but no open mutation/render/API/read side effect happens after the supplied `isCurrent` guard turns false. Source sentinels now require app wrapper delegation and controller-owned resolved-open policy lines.
+- Negative evidence preserved: the first focused run after the move failed because tests still expected app-owned policy (`resolveFileOpenMode` on a fake controller, source assertions for `currentGuard` in app, and no call records at all in the stale-currentness path). Those failures were stale test-boundary assumptions; repairs preserved the user-facing invariant while routing policy through the controller.
+- Validation:
+  - `python3 -m py_compile tests/test_file_picker_search_source.py tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_picker_search_source.py tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `70 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown validation returned `221 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1287 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: resolved mode/currentness policy belongs to the file-viewer controller. App still owns inspect POST transport, selected/session identity predicates supplied as guards, candidate evidence collection/API refresh/cache-key/rendering, raw load-result render plan application, raw Monaco editor/diff-editor objects, model disposal and setValue side effects, fallback DOM construction/scrolling, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, persisted mode UI wiring, file-video element handlers/loading, and raw Monaco selection helpers.
