@@ -7414,3 +7414,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: fallback DOM construction belongs to `app_file_viewer.js`. App still owns render orchestration, markdown preview rendering, raw PDF page rendering, raw image/video URL assignment, and candidate-link upgrade behavior.
+
+## 2026-07-02T15:42:00Z Markdown preview DOM viewer-module ownership
+- Functional commit `7a7ca4c Move markdown preview DOM into viewer module` moved markdown preview host clearing, preview node construction, append, and candidate-reference upgrade invocation from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js` as `createFileFallbackRuntime(...).renderMarkdown(...)`.
+- Mechanism: app still owns deciding that markdown preview mode is active and supplies `markdownPreviewHtml`, session id, and `upgradeCandidateFileRefs`. The viewer module owns the DOM mechanics for rendering the preview into the file-viewer host, consistent with the fallback DOM runtime added in `1cca38c`.
+- Tests updated: fallback runtime VM coverage now executes markdown HTML callback context, preview node creation, upgrade callback invocation, missing markdown callback failure, and source sentinels rejecting restored app-owned markdown preview `fileDiff.innerHTML`/`appendChild`/`upgradeCandidateFileRefs(preview)` mechanics.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` returned `54 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `241 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1299 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: markdown preview DOM construction belongs to `app_file_viewer.js`. App still owns markdown HTML generation, candidate reference upgrade semantics, render-mode decisions, raw PDF rendering, raw image/video URL assignment, and file-picker DOM rendering.
