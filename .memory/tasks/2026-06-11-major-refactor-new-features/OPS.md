@@ -7610,3 +7610,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: picker section and draft/create-new row rendering belongs to `app_file_picker.js`. App still owns regular file row rendering, visible-entry iteration, candidate identity hints, and file-open side effects for existing entries.
+
+## 2026-07-02T21:42:00Z File-picker entry row picker-module ownership
+- Functional commit `abc0759 Move file picker entry rows into picker module` moved regular/create-new/changed file-picker entry row construction from inline `codoxear/static/app.js` into `codoxear/static/app_file_picker.js` as `appendFilePickerEntryItem(...)`.
+- Mechanism: the app still computes visible entries, active identity, identity hints, and file-open side effects. The picker module now owns DOM attributes/classes, create-new highlighting/hint, changed-file add/delete stat rendering, identity hint rendering, mousedown suppression, and click dispatch through injected `openDraftFilePath`/`openEntry` callbacks.
+- Tests updated: executable picker module coverage verifies create-new, changed, and regular row attributes, titles, aria state, hints, add/delete stat text, mousedown suppression, open-draft/open-entry callbacks, missing callback failure, export list, app load guard, and source sentinels rejecting restored app-owned changed/stat/identity hint DOM. Markdown/file-picker source sentinels were updated to the injected `openEntry(selectedEntry)` boundary.
+- Negative evidence preserved: focused validation initially failed because the new probe summarizer treated text nodes as element nodes; the summarizer now handles nodes without `attrs`. Broader validation then surfaced a stale markdown source sentinel expecting inline `openFilePathWithResolvedMode(path, ...)`; it now asserts the injected `selectedEntry` callback path.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_picker_module_source.py tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_picker.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_picker_module_source.py tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py` returned `76 passed, 25 subtests passed` after probe/test repair.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `249 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1307 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: picker entry row DOM belongs to `app_file_picker.js`. App still owns `renderFilePickerMenu()` orchestration, empty/searching/truncated footer rows, active-descendant assignment, visible-entry computation, and file-open callback implementation.
