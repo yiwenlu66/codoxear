@@ -574,6 +574,7 @@
         !codoxearFileViewer ||
         typeof codoxearFileViewer.bindFileTouchClick !== "function" ||
         typeof codoxearFileViewer.bindFileTouchPress !== "function" ||
+        typeof codoxearFileViewer.createFileDownloadRuntime !== "function" ||
         typeof codoxearFileViewer.createFileFallbackRuntime !== "function" ||
         typeof codoxearFileViewer.createFileModeControlsRuntime !== "function" ||
         typeof codoxearFileViewer.createFilePasteDialogRuntime !== "function" ||
@@ -7068,6 +7069,10 @@
           normalizeLineNumber,
           requestAnimationFrame: (callback) => requestAnimationFrame(callback),
         });
+        const fileDownloadRuntime = codoxearFileViewer.createFileDownloadRuntime({
+          resolveAppUrl,
+          document,
+        });
         const filePdfRenderRuntime = codoxearFileViewer.createFilePdfRenderRuntime({
           host: fileDiff,
           el,
@@ -8785,16 +8790,7 @@
         fileDownloadBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          const apiPath = activeFileDownloadApiPath();
-          if (!apiPath) return;
-          const url = resolveAppUrl(apiPath);
-          const link = document.createElement("a");
-          link.href = url;
-          link.rel = "noopener";
-          link.style.display = "none";
-          document.body.appendChild(link);
-          link.click();
-          link.remove();
+          fileDownloadRuntime.download(activeFileDownloadApiPath());
         };
         codoxearFileViewer.bindFileTouchPress(fileTouchSelectBtn, () => {
           toggleFileTouchSelectionMode();

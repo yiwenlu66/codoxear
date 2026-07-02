@@ -275,6 +275,29 @@
     return Object.freeze({ focusInitialControl, hide, promptChoice, syncMode });
   }
 
+  function createFileDownloadRuntime(options = {}) {
+    const resolveAppUrl = requireFunction(options.resolveAppUrl, "resolveAppUrl");
+    const documentRef = options.document || null;
+    if (!documentRef || typeof documentRef.createElement !== "function" || !documentRef.body || typeof documentRef.body.appendChild !== "function") {
+      throw new TypeError("file viewer dependency missing: document");
+    }
+
+    function download(apiPath) {
+      const path = String(apiPath || "");
+      if (!path) return false;
+      const link = documentRef.createElement("a");
+      link.href = resolveAppUrl(path);
+      link.rel = "noopener";
+      link.style.display = "none";
+      documentRef.body.appendChild(link);
+      link.click();
+      link.remove();
+      return true;
+    }
+
+    return Object.freeze({ download });
+  }
+
   function createFileModeControlsRuntime(options = {}) {
     const diffButton = requireModeControlButton(options.diffButton, "fileModeDiffButton");
     const previewButton = requireModeControlButton(options.previewButton, "fileModePreviewButton");
@@ -2754,6 +2777,7 @@
   window.CodoxearFileViewer = Object.freeze({
     bindFileTouchClick,
     bindFileTouchPress,
+    createFileDownloadRuntime,
     createFileFallbackRuntime,
     createFileModeControlsRuntime,
     createFilePasteDialogRuntime,
