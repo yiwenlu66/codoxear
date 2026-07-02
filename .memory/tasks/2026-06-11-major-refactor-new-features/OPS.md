@@ -7137,3 +7137,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: editor runtime now owns current editor identity, lifecycle, loader readiness, layout/line focus, selection/text helpers, and active input target detection. App still owns modal isolation, general text-entry classification, DOM hosts, render creation parameters, and user-facing mode/status wiring.
+
+## 2026-07-02T08:32:00Z Delete-command helper dependency moved into viewer module
+- Functional commit `f24467a Move editor delete command dependency into viewer module` removed the `fileEditorDeleteCommandForKey()` trampoline from inline `codoxear/static/app.js` and made `codoxear/static/app_file_viewer.js` resolve the helper directly.
+- Mechanism: delete/backspace command mapping is viewer/editor keyboard behavior using a pure file-helper function. Since `app_file_helpers.js` loads before `app_file_viewer.js`, the viewer controller can require `window.CodoxearFileHelpers.fileEditorDeleteCommandForKey` directly while preserving an explicit injected override for isolated controller tests. Missing helper dependency fails loudly through `requireFunction`.
+- Tests updated: file-viewer and file-helper source tests now require no app-owned delete-command wrapper, preserve app's fail-loud file-helper load guard, and assert direct viewer dependency on `CodoxearFileHelpers.fileEditorDeleteCommandForKey`.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_helpers_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_helpers_source.py tests/test_frontend_file_viewer_module_source.py` returned `52 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `236 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1294 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: `app.js` still owns file-helper wrappers for helpers it calls directly; delete-key command mapping is now owned by the helper module and consumed by the viewer controller, not app-level dependency plumbing.
