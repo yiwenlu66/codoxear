@@ -574,6 +574,7 @@
         typeof codoxearFileViewer.bindFileTouchPress !== "function" ||
         typeof codoxearFileViewer.createFilePasteDialogRuntime !== "function" ||
         typeof codoxearFileViewer.createFileRenderSurfaceRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileTouchToolbarRuntime !== "function" ||
         typeof codoxearFileViewer.createFileViewerController !== "function" ||
         typeof codoxearFileViewer.createPdfLoader !== "function"
       )
@@ -7064,6 +7065,14 @@
           videoPreviewButton: fileVideoPreviewBtn,
           clearActiveVideoFallback: () => fileViewerController.clearActiveVideoFallback(),
         });
+        const fileTouchToolbarRuntime = codoxearFileViewer.createFileTouchToolbarRuntime({
+          toolbar: fileTouchToolbar,
+          actions: fileTouchActions,
+          dpad: fileTouchDpad,
+          copyButton: fileTouchCopyBtn,
+          pasteButton: fileTouchPasteBtn,
+          selectButton: fileTouchSelectBtn,
+        });
 
         function currentFileViewerSessionId() {
           return fileViewerController.currentFileViewerSessionId();
@@ -7323,20 +7332,7 @@
         }
 
         function updateFileTouchToolbar() {
-          const toolbarState = fileViewerController.currentFileTouchToolbarState();
-          if (!toolbarState.visible) {
-            fileTouchToolbar.style.display = "none";
-            fileTouchDpad.style.display = "none";
-            fileTouchCopyBtn.style.display = "none";
-            fileTouchPasteBtn.style.display = "none";
-            return;
-          }
-          fileTouchSelectBtn.classList.toggle("active", toolbarState.selectActive);
-          fileTouchDpad.style.display = toolbarState.dpadVisible ? "grid" : "none";
-          fileTouchCopyBtn.style.display = toolbarState.copyVisible ? "" : "none";
-          fileTouchPasteBtn.style.display = toolbarState.pasteVisible ? "" : "none";
-          fileTouchActions.style.display = "flex";
-          fileTouchToolbar.style.display = "flex";
+          return fileTouchToolbarRuntime.update(fileViewerController.currentFileTouchToolbarState());
         }
 
         function clearFileTouchSelectionState() {

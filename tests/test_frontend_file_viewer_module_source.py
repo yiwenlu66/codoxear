@@ -936,6 +936,60 @@ def run_file_render_surface_runtime_probe() -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
+def run_file_touch_toolbar_runtime_probe() -> dict[str, object]:
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const fileViewer = ctx.window.CodoxearFileViewer;
+        const events = [];
+        function styled(display = "") {{ return {{ style: {{ display }} }}; }}
+        const toolbar = styled("visible");
+        const actions = styled("");
+        const dpad = styled("");
+        const copyButton = styled("");
+        const pasteButton = styled("");
+        const selectButton = {{
+          active: false,
+          classList: {{ toggle(name, enabled) {{ events.push(["toggle", name, Boolean(enabled)]); selectButton.active = Boolean(enabled); }} }},
+        }};
+        const runtime = fileViewer.createFileTouchToolbarRuntime({{
+          toolbar,
+          actions,
+          dpad,
+          copyButton,
+          pasteButton,
+          selectButton,
+        }});
+        const hiddenResult = runtime.update({{ visible: false, selectActive: true, dpadVisible: true, copyVisible: true, pasteVisible: true }});
+        const hiddenState = {{ toolbar: toolbar.style.display, dpad: dpad.style.display, copy: copyButton.style.display, paste: pasteButton.style.display, actions: actions.style.display, active: selectButton.active }};
+        const visibleResult = runtime.update({{ visible: true, selectActive: true, dpadVisible: true, copyVisible: false, pasteVisible: true }});
+        const visibleState = {{ toolbar: toolbar.style.display, dpad: dpad.style.display, copy: copyButton.style.display, paste: pasteButton.style.display, actions: actions.style.display, active: selectButton.active }};
+        const partialResult = runtime.update({{ visible: true, selectActive: false, dpadVisible: false, copyVisible: true, pasteVisible: false }});
+        const partialState = {{ toolbar: toolbar.style.display, dpad: dpad.style.display, copy: copyButton.style.display, paste: pasteButton.style.display, actions: actions.style.display, active: selectButton.active }};
+        let missingError = "";
+        try {{ fileViewer.createFileTouchToolbarRuntime({{ toolbar, actions, dpad, copyButton, pasteButton }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
+        process.stdout.write(JSON.stringify({{
+          frozen: Object.isFrozen(runtime),
+          hiddenResult,
+          hiddenFrozen: Object.isFrozen(hiddenResult),
+          hiddenState,
+          visibleResult,
+          visibleState,
+          partialResult,
+          partialState,
+          events,
+          missingError,
+        }}));
+        """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def run_file_paste_dialog_runtime_probe() -> dict[str, object]:
     viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
@@ -1036,7 +1090,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
     def test_file_viewer_controller_owns_save_conflict_behavior(self) -> None:
         result = run_file_viewer_controller_probe()
         self.assertTrue(result["render"]["exportFrozen"])
-        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFilePasteDialogRuntime", "createFileRenderSurfaceRuntime", "createFileViewerController", "createPdfLoader"])
+        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFilePasteDialogRuntime", "createFileRenderSurfaceRuntime", "createFileTouchToolbarRuntime", "createFileViewerController", "createPdfLoader"])
         self.assertEqual(result["render"]["conflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["currentConflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["labelText"], "src/app.py - save conflict: version mismatch")
@@ -1439,6 +1493,19 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["clearState"], {"previewDisplay": "none", "previewDisabled": True, "videoDisplay": "none", "onerror": None, "onloadedmetadata": None})
         self.assertEqual(result["events"], [["clearFallback"], ["pause"], ["remove", "src"], ["load"]])
 
+    def test_file_touch_toolbar_runtime_behavior(self) -> None:
+        result = run_file_touch_toolbar_runtime_probe()
+        self.assertTrue(result["frozen"])
+        self.assertTrue(result["hiddenFrozen"])
+        self.assertEqual(result["hiddenResult"], {"visible": False})
+        self.assertEqual(result["hiddenState"], {"toolbar": "none", "dpad": "none", "copy": "none", "paste": "none", "actions": "", "active": False})
+        self.assertEqual(result["visibleResult"], {"visible": True})
+        self.assertEqual(result["visibleState"], {"toolbar": "flex", "dpad": "grid", "copy": "none", "paste": "", "actions": "flex", "active": True})
+        self.assertEqual(result["partialResult"], {"visible": True})
+        self.assertEqual(result["partialState"], {"toolbar": "flex", "dpad": "none", "copy": "", "paste": "none", "actions": "flex", "active": False})
+        self.assertEqual(result["events"], [["toggle", "active", True], ["toggle", "active", False]])
+        self.assertIn("file viewer dependency missing: fileTouchSelectButton", result["missingError"])
+
     def test_file_paste_dialog_runtime_behavior(self) -> None:
         result = run_file_paste_dialog_runtime_probe()
         self.assertTrue(result["frozen"])
@@ -1475,6 +1542,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn("const codoxearFileViewer = window.CodoxearFileViewer;", app_source)
         self.assertIn('typeof codoxearFileViewer.createFilePasteDialogRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileRenderSurfaceRuntime !== "function"', app_source)
+        self.assertIn('typeof codoxearFileViewer.createFileTouchToolbarRuntime !== "function"', app_source)
         self.assertIn('throw new Error("Codoxear file viewer controller failed to load")', app_source)
         self.assertIn("const codoxearFileEditor = window.CodoxearFileEditor;", app_source)
         self.assertIn('throw new Error("Codoxear file editor runtime failed to load")', app_source)
@@ -1485,6 +1553,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn("bindFileTouchClick", viewer_source)
         self.assertIn("createFilePasteDialogRuntime", viewer_source)
         self.assertIn("createFileRenderSurfaceRuntime", viewer_source)
+        self.assertIn("createFileTouchToolbarRuntime", viewer_source)
         self.assertIn("createPdfLoader", viewer_source)
         self.assertNotIn("function renderFileSaveConflict", app_source)
 

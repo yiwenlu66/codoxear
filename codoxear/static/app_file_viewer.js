@@ -87,6 +87,42 @@
     return value;
   }
 
+  function requireToggleClassNode(value, name) {
+    if (!value || !value.classList || typeof value.classList.toggle !== "function") {
+      throw new TypeError(`file viewer dependency missing: ${name}`);
+    }
+    return value;
+  }
+
+  function createFileTouchToolbarRuntime(options = {}) {
+    const toolbar = requireStyledNode(options.toolbar, "fileTouchToolbar");
+    const actions = requireStyledNode(options.actions, "fileTouchActions");
+    const dpad = requireStyledNode(options.dpad, "fileTouchDpad");
+    const copyButton = requireStyledNode(options.copyButton, "fileTouchCopyButton");
+    const pasteButton = requireStyledNode(options.pasteButton, "fileTouchPasteButton");
+    const selectButton = requireToggleClassNode(options.selectButton, "fileTouchSelectButton");
+
+    function update(state = {}) {
+      const toolbarState = state || {};
+      if (!toolbarState.visible) {
+        toolbar.style.display = "none";
+        dpad.style.display = "none";
+        copyButton.style.display = "none";
+        pasteButton.style.display = "none";
+        return Object.freeze({ visible: false });
+      }
+      selectButton.classList.toggle("active", Boolean(toolbarState.selectActive));
+      dpad.style.display = toolbarState.dpadVisible ? "grid" : "none";
+      copyButton.style.display = toolbarState.copyVisible ? "" : "none";
+      pasteButton.style.display = toolbarState.pasteVisible ? "" : "none";
+      actions.style.display = "flex";
+      toolbar.style.display = "flex";
+      return Object.freeze({ visible: true });
+    }
+
+    return Object.freeze({ update });
+  }
+
   function createFileRenderSurfaceRuntime(options = {}) {
     const diff = requireStyledNode(options.diff, "fileDiff");
     const image = requireStyledNode(options.image, "fileImage");
@@ -2264,6 +2300,7 @@
     bindFileTouchPress,
     createFilePasteDialogRuntime,
     createFileRenderSurfaceRuntime,
+    createFileTouchToolbarRuntime,
     createFileViewerController,
     createPdfLoader,
   });
