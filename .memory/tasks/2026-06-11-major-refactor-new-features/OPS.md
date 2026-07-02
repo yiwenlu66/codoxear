@@ -7254,3 +7254,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: paste-dialog DOM mechanics belong to `app_file_viewer.js`. App still owns the paste DOM nodes, generic modal isolation helpers, button/backdrop event binding, and editor-runtime focus observation.
+
+## 2026-07-02T11:38:00Z Active PDF render cleanup controller ownership
+- Functional commit `7539c78 Move PDF render cleanup into viewer controller` moved active PDF observer/render-task/loading-task cleanup from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js` as `disposeActivePdfRender()`.
+- Mechanism: the controller already owns the active PDF render state/currentness token; cleanup of that state's observer, render tasks, and loading task is the same lifecycle owner. The controller now takes and clears the active PDF state, disconnects the observer, cancels all render tasks while preserving the old swallowed-cancel-error behavior, destroys the loading task, and reports whether anything was disposed. `app.js` retains only a wrapper used by raw render reset paths.
+- Tests updated: the file-viewer controller VM probe now executes `disposeActivePdfRender()` with observer disconnect, two render tasks including a throwing cancel, loading-task destroy, state clear, and empty-dispose false result. Source sentinels require controller-owned cleanup and reject app-owned `takeActivePdfRenderState()` cleanup.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` returned `50 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `237 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1295 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: active PDF cleanup belongs to the controller. App still owns raw PDF canvas/page DOM creation, IntersectionObserver construction, render-task creation, and page render scheduling.
