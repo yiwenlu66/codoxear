@@ -560,6 +560,7 @@
       const codoxearFilePicker = window.CodoxearFilePicker;
       if (
         !codoxearFilePicker ||
+        typeof codoxearFilePicker.createMenuDomRuntime !== "function" ||
         typeof codoxearFilePicker.createMenuState !== "function" ||
         typeof codoxearFilePicker.createSearchState !== "function" ||
         typeof codoxearFilePicker.localFilePickerSearchEntries !== "function" ||
@@ -7034,6 +7035,12 @@
         const filePickerMenuState = codoxearFilePicker.createMenuState({
           normalizeLineNumber,
         });
+        const filePickerDomRuntime = codoxearFilePicker.createMenuDomRuntime({
+          field: filePickerField,
+          menu: filePickerMenu,
+          input: filePickerInput,
+          menuState: filePickerMenuState,
+        });
         const filePickerSearchState = codoxearFilePicker.createSearchState({
           blocked: () => blockUnavailableFileAction(),
           currentSessionId: () => currentFileViewerSessionId() || selected || "",
@@ -7840,23 +7847,15 @@
         }
 
         function applyFileMenuState() {
-          const state = filePickerMenuState.snapshot();
-          filePickerField.classList.toggle("active", state.open);
-          filePickerMenu.classList.toggle("open", state.open);
-          filePickerInput.setAttribute("aria-expanded", state.open ? "true" : "false");
-          if (!state.open && state.focus < 0) filePickerInput.removeAttribute("aria-activedescendant");
+          return filePickerDomRuntime.apply();
         }
 
         function resetFilePickerInput() {
-          filePickerMenuState.resetInputState();
-          filePickerInput.value = activeFilePathValue() || "";
-          filePickerInput.removeAttribute("aria-activedescendant");
+          return filePickerDomRuntime.resetInput(activeFilePathValue() || "");
         }
 
         function closeFilePickerMenu({ restoreInput = false } = {}) {
-          filePickerMenuState.close();
-          if (restoreInput) resetFilePickerInput();
-          applyFileMenuState();
+          return filePickerDomRuntime.close({ restoreInput, inputValue: activeFilePathValue() || "" });
         }
 
         function filePickerSelectionLine() {

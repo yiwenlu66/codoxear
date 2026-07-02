@@ -16,6 +16,20 @@
     return value;
   }
 
+  function requireClassToggleNode(value, name) {
+    if (!value || !value.classList || typeof value.classList.toggle !== "function") {
+      throw new Error(`Codoxear file picker host missing ${name}`);
+    }
+    return value;
+  }
+
+  function requirePickerInputNode(value, name) {
+    if (!value || !("value" in value) || typeof value.setAttribute !== "function" || typeof value.removeAttribute !== "function") {
+      throw new Error(`Codoxear file picker host missing ${name}`);
+    }
+    return value;
+  }
+
   function normalizeSamePathFilePickerScores(entries) {
     const scoreByPath = new Map();
     for (const entry of Array.isArray(entries) ? entries : []) {
@@ -247,6 +261,41 @@
     });
   }
 
+  function createMenuDomRuntime(options = {}) {
+    const menuState = options.menuState || null;
+    const field = requireClassToggleNode(options.field, "filePickerField");
+    const menu = requireClassToggleNode(options.menu, "filePickerMenu");
+    const input = requirePickerInputNode(options.input, "filePickerInput");
+    const snapshot = requireFunction(menuState, "snapshot");
+    const closeState = requireFunction(menuState, "close");
+    const resetInputState = requireFunction(menuState, "resetInputState");
+
+    function apply() {
+      const state = snapshot();
+      field.classList.toggle("active", state.open);
+      menu.classList.toggle("open", state.open);
+      input.setAttribute("aria-expanded", state.open ? "true" : "false");
+      if (!state.open && state.focus < 0) input.removeAttribute("aria-activedescendant");
+      return state;
+    }
+
+    function resetInput(value = "") {
+      const state = resetInputState();
+      input.value = String(value || "");
+      input.removeAttribute("aria-activedescendant");
+      return state;
+    }
+
+    function close({ restoreInput = false, inputValue = "" } = {}) {
+      const state = closeState();
+      if (restoreInput) resetInput(inputValue);
+      apply();
+      return state;
+    }
+
+    return Object.freeze({ apply, close, resetInput });
+  }
+
   function visibleFilePickerEntries(context) {
     const searchState = (context && context.searchState) || {};
     const query = context && context.searchActive ? String((context && context.query) || "").trim() : "";
@@ -473,6 +522,7 @@
   }
 
   window.CodoxearFilePicker = Object.freeze({
+    createMenuDomRuntime,
     createMenuState,
     createSearchState,
     localFilePickerSearchEntries,
