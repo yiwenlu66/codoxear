@@ -6857,3 +6857,10 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: compatible-preview orchestration/status and active-video fallback transitions belong to the file-viewer controller. App still owns preview fetch/auth transport, raw video DOM mutation/loading, file-video element handlers, raw renderer/DOM plan application, raw Monaco editor/diff-editor objects, model disposal and setValue side effects, fallback DOM construction/scrolling, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, persisted mode UI wiring, and raw Monaco selection helpers.
+
+## 2026-07-02T04:36:05Z File-viewer next-seam scout runner failure
+- Observation: async read-only architect scout run `3382280c-7d5c-4024-91e3-cc90bb119600` failed before writing a result.
+- Raw failure: `Async runner process 1580449 exited or disappeared before writing a result. Marked run failed by stale-run reconciliation.`
+- Intended output file `/tmp/codoxear-next-file-viewer-seams.md` was checked and returned `missing-or-empty`.
+- Interpretation: this is subagent/runtime infrastructure failure, not evidence for or against any file-viewer seam or code behavior.
+- Decision: continue direct local code inspection and implementation; do not treat absent scout output as a blocker or as a clean-room review.
