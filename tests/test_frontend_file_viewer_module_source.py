@@ -917,6 +917,11 @@ def run_file_fallback_runtime_probe() -> dict[str, object]:
         const blockedResult = runtime.renderBlocked("large.bin is too large");
         const blockedNode = host.children[0];
         const blockedState = {{ className: blockedNode.attrs.class, title: blockedNode.children[0].text, message: blockedNode.children[1].text }};
+        host.children = [];
+        const markdownNode = runtime.renderMarkdown("README.md", "# hi", "sid-1", (body, context) => {{ events.push(["markdownHtml", body, context]); return `<p>${{body}}</p>`; }}, (node) => events.push(["upgrade", node.attrs.class, node.attrs.html]));
+        const markdownState = {{ className: markdownNode.attrs.class, html: markdownNode.attrs.html }};
+        let markdownMissingError = "";
+        try {{ runtime.renderMarkdown("README.md", "# hi", "sid-1", null, () => {{}}); }} catch (err) {{ markdownMissingError = err && err.message ? err.message : String(err); }}
         let missingError = "";
         try {{ fileViewer.createFileFallbackRuntime({{ host, el, normalizeLineNumber: () => null }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
         process.stdout.write(JSON.stringify({{
@@ -928,6 +933,8 @@ def run_file_fallback_runtime_probe() -> dict[str, object]:
           downloadState,
           blockedResult,
           blockedState,
+          markdownState,
+          markdownMissingError,
           events,
           missingError,
         }}));
@@ -1674,7 +1681,9 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         })
         self.assertTrue(result["blockedResult"])
         self.assertEqual(result["blockedState"], {"className": "fileBlockedNotice", "title": "Preview unavailable", "message": "large.bin is too large"})
-        self.assertEqual(result["events"], [["append", "div", "filePlainFallback"], ["raf"], ["append", "div", "fileBlockedNotice fileDownloadFallback"], ["append", "div", "fileBlockedNotice"]])
+        self.assertEqual(result["markdownState"], {"className": "md fileMarkdownPreview", "html": "<p># hi</p>"})
+        self.assertIn("file viewer dependency missing: markdownPreviewHtml", result["markdownMissingError"])
+        self.assertEqual(result["events"], [["append", "div", "filePlainFallback"], ["raf"], ["append", "div", "fileBlockedNotice fileDownloadFallback"], ["append", "div", "fileBlockedNotice"], ["markdownHtml", "# hi", {"filePath": "README.md", "sessionId": "sid-1"}], ["append", "div", "md fileMarkdownPreview"], ["upgrade", "md fileMarkdownPreview", "<p># hi</p>"]])
         self.assertIn("file viewer dependency missing: requestAnimationFrame", result["missingError"])
 
     def test_file_touch_toolbar_runtime_behavior(self) -> None:

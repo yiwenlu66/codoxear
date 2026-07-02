@@ -7574,14 +7574,8 @@
         function renderMarkdownPreview(rel, text) {
           disposeFileEditor();
           clearFileVideo();
-          fileDiff.innerHTML = "";
           setFileRenderSurface("diff");
-          const preview = el("div", {
-            class: "md fileMarkdownPreview",
-            html: markdownPreviewHtml(String(text || ""), { filePath: rel, sessionId: currentFileViewerSessionId() || selected || "" }),
-          });
-          fileDiff.appendChild(preview);
-          void upgradeCandidateFileRefs(preview);
+          fileFallbackRuntime.renderMarkdown(rel, text, currentFileViewerSessionId() || selected || "", markdownPreviewHtml, upgradeCandidateFileRefs);
           updateFileTouchToolbar();
         }
 

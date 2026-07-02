@@ -276,7 +276,20 @@
       return true;
     }
 
-    return Object.freeze({ renderBlocked, renderDownload, renderPlainText });
+    function renderMarkdown(rel, text, sessionId, markdownPreviewHtml, upgradeCandidateFileRefs) {
+      const renderHtml = requireFunction(markdownPreviewHtml, "markdownPreviewHtml");
+      const upgradeRefs = requireFunction(upgradeCandidateFileRefs, "upgradeCandidateFileRefs");
+      host.innerHTML = "";
+      const preview = el("div", {
+        class: "md fileMarkdownPreview",
+        html: renderHtml(String(text || ""), { filePath: rel, sessionId: String(sessionId || "") }),
+      });
+      host.appendChild(preview);
+      void upgradeRefs(preview);
+      return preview;
+    }
+
+    return Object.freeze({ renderBlocked, renderDownload, renderMarkdown, renderPlainText });
   }
 
   function createFileRenderSurfaceRuntime(options = {}) {

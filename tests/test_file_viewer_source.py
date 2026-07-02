@@ -4820,7 +4820,14 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const PDFJS_LOADER_TIMEOUT_MS = 6000;", source)
         self.assertIn("function renderPlainTextFallback(rel, text, lineNumber = null", source)
         self.assertIn("function renderDownloadFallback(rel, url, reason = \"Preview unavailable\")", source)
+        self.assertIn("function renderMarkdownPreview(rel, text)", source)
         self.assertIn("function createFileFallbackRuntime(options = {})", viewer_source)
+        self.assertIn("fileFallbackRuntime.renderMarkdown(rel, text, currentFileViewerSessionId() || selected || \"\", markdownPreviewHtml, upgradeCandidateFileRefs);", source)
+        self.assertIn("function renderMarkdown(rel, text, sessionId, markdownPreviewHtml, upgradeCandidateFileRefs)", viewer_source)
+        markdown_block = source[source.index("function renderMarkdownPreview("):source.index("function renderBlockedFileNotice", source.index("function renderMarkdownPreview("))]
+        self.assertNotIn("fileDiff.innerHTML", markdown_block)
+        self.assertNotIn("fileDiff.appendChild", markdown_block)
+        self.assertNotIn("upgradeCandidateFileRefs(preview)", markdown_block)
         self.assertIn("fileFallbackRuntime.renderDownload(rel, url, reason);", source)
         self.assertIn("function renderDownload(rel, url, reason = \"Preview unavailable\")", viewer_source)
         download_block = source[source.index("function renderDownloadFallback("):source.index("function ensureMonaco", source.index("function renderDownloadFallback("))]
