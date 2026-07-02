@@ -7378,55 +7378,6 @@
           fileEditorRuntime.updateEditorOptions(currentFileEditorKind(), { hideUnchangedRegions: hideOpts });
         }
 
-        function focusActiveFileCodeEditor() {
-          const editor = getActiveFileCodeEditor();
-          if (editor && typeof editor.focus === "function") editor.focus();
-          return editor;
-        }
-
-        function normalizeFileEditorPosition(editor, pos) {
-          if (!editor || !pos) return null;
-          const model = typeof editor.getModel === "function" ? editor.getModel() : null;
-          if (!model) return null;
-          const lineCount = Math.max(1, Number(model.getLineCount && model.getLineCount()) || 1);
-          const lineNumber = Math.max(1, Math.min(lineCount, Number(pos.lineNumber) || 1));
-          const lineMaxColumn = Math.max(1, Number(model.getLineMaxColumn && model.getLineMaxColumn(lineNumber)) || 1);
-          const column = Math.max(1, Math.min(lineMaxColumn, Number(pos.column) || 1));
-          return { lineNumber, column };
-        }
-
-        function applyFileEditorSelection(editor, cursor, anchor = null) {
-          const Selection = fileEditorMonacoLoader.selectionCtor();
-          if (!editor || !Selection) return;
-          const nextCursor = normalizeFileEditorPosition(editor, cursor);
-          if (!nextCursor) return;
-          const nextAnchor = anchor ? normalizeFileEditorPosition(editor, anchor) : null;
-          const selection = nextAnchor
-            ? new Selection(nextAnchor.lineNumber, nextAnchor.column, nextCursor.lineNumber, nextCursor.column)
-            : new Selection(nextCursor.lineNumber, nextCursor.column, nextCursor.lineNumber, nextCursor.column);
-          if (typeof editor.setSelection === "function") editor.setSelection(selection);
-          if (!nextAnchor && typeof editor.setPosition === "function") editor.setPosition(nextCursor);
-          if (typeof editor.revealPositionInCenterIfOutsideViewport === "function") editor.revealPositionInCenterIfOutsideViewport(nextCursor);
-          else if (typeof editor.revealPositionInCenter === "function") editor.revealPositionInCenter(nextCursor);
-        }
-
-        function isCollapsedFileSelection(selection) {
-          return !selection || (
-            selection.startLineNumber === selection.endLineNumber &&
-            selection.startColumn === selection.endColumn
-          );
-        }
-
-        function getActiveFileSelectionText() {
-          const editor = getActiveFileCodeEditor();
-          if (!editor || typeof editor.getSelection !== "function" || typeof editor.getModel !== "function") return "";
-          const selection = editor.getSelection();
-          if (isCollapsedFileSelection(selection)) return "";
-          const model = editor.getModel();
-          if (!model || typeof model.getValueInRange !== "function") return "";
-          return String(model.getValueInRange(selection) || "");
-        }
-
         function isFileTouchToolbarActive() {
           return Boolean(
             useTouchFileEditorControls() &&
@@ -7514,7 +7465,7 @@
           filePasteDialog.style.display = "none";
           filePasteInput.value = "";
           afterModalVisibilityChanged();
-          if (restoreFocus) focusActiveFileCodeEditor();
+          if (restoreFocus) fileEditorRuntime.focusActiveCodeEditor(currentFileEditorKind());
         }
 
         function showFilePasteDialog() {
@@ -8046,7 +7997,7 @@
           normalizeDraftFilePath: (path) => normalizeDraftFilePath(path),
           inspectSessionFilePath: (path, options) => inspectSessionFilePath(path, options),
           api: (url, options) => api(url, options),
-          focusEditor: () => getActiveFileCodeEditor(),
+          focusEditor: () => fileEditorRuntime.focusActiveCodeEditor(currentFileEditorKind()),
           disposeOpenRender: () => disposePdfRender(),
           initialFileViewMode: storageGetItem("codexweb.fileViewMode") || "diff",
           initialFileNonDiffMode: storageGetItem("codexweb.fileNonDiffMode") === "preview" ? "preview" : "file",
@@ -8058,9 +8009,9 @@
           isFileTouchToolbarActive: () => isFileTouchToolbarActive(),
           fileEditorShortcutBlocked: (target) => fileEditorShortcutBlocked(target),
           eventTargetElement: (value) => value instanceof HTMLElement ? value : null,
-          normalizeFileEditorPosition: (editor, position) => normalizeFileEditorPosition(editor, position),
-          applyFileEditorSelection: (editor, cursor, anchor) => applyFileEditorSelection(editor, cursor, anchor),
-          isCollapsedFileSelection: (selection) => isCollapsedFileSelection(selection),
+          normalizeFileEditorPosition: (editor, position) => fileEditorRuntime.normalizePosition(editor, position),
+          applyFileEditorSelection: (editor, cursor, anchor) => fileEditorRuntime.applySelection(editor, cursor, anchor, fileEditorMonacoLoader.selectionCtor()),
+          isCollapsedFileSelection: (selection) => fileEditorRuntime.isCollapsedSelection(selection),
           positionAfterInsertedText: (start, text) => positionAfterInsertedText(start, text),
           fileEditorEditSupportAvailable: () => fileEditorMonacoLoader.editSupportAvailable(),
           syncFileDiffSelectionMode: () => syncFileDiffSelectionMode(),
@@ -8070,9 +8021,9 @@
           readClipboardText: () => navigator.clipboard.readText(),
           fileEditorDeleteCommandForKey: (key) => fileEditorDeleteCommandForKey(key),
           isActiveFileEditorInput: (target) => isActiveFileEditorInput(target),
-          getActiveFileSelectionText: () => getActiveFileSelectionText(),
+          getActiveFileSelectionText: () => fileEditorRuntime.activeSelectionText(currentFileEditorKind()),
           copyToClipboard: (text) => copyToClipboard(text),
-          focusActiveFileCodeEditor: () => focusActiveFileCodeEditor(),
+          focusActiveFileCodeEditor: () => fileEditorRuntime.focusActiveCodeEditor(currentFileEditorKind()),
           nowMs: () => Date.now(),
           setToast: (message) => setToast(message),
           setFileViewMode: (mode) => setFileViewMode(mode),

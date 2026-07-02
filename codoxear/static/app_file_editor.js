@@ -180,6 +180,59 @@
       return true;
     }
 
+    function focusActiveCodeEditor(kind) {
+      const target = activeCodeEditor(kind);
+      if (target && typeof target.focus === "function") target.focus();
+      return target || null;
+    }
+
+    function normalizePosition(targetEditor, position) {
+      if (!targetEditor || !position) return null;
+      const model = typeof targetEditor.getModel === "function" ? targetEditor.getModel() : null;
+      if (!model) return null;
+      const lineCount = Math.max(1, Number(model.getLineCount && model.getLineCount()) || 1);
+      const lineNumber = Math.max(1, Math.min(lineCount, Number(position.lineNumber) || 1));
+      const lineMaxColumn = Math.max(1, Number(model.getLineMaxColumn && model.getLineMaxColumn(lineNumber)) || 1);
+      const column = Math.max(1, Math.min(lineMaxColumn, Number(position.column) || 1));
+      return { lineNumber, column };
+    }
+
+    function isCollapsedSelection(selection) {
+      return !selection || (
+        selection.startLineNumber === selection.endLineNumber &&
+        selection.startColumn === selection.endColumn
+      );
+    }
+
+    function applySelection(targetEditor, cursor, anchor = null, selectionCtor = null) {
+      const Selection = typeof selectionCtor === "function" ? selectionCtor : null;
+      if (!targetEditor || !Selection) return false;
+      const nextCursor = normalizePosition(targetEditor, cursor);
+      if (!nextCursor) return false;
+      const nextAnchor = anchor ? normalizePosition(targetEditor, anchor) : null;
+      const selection = nextAnchor
+        ? new Selection(nextAnchor.lineNumber, nextAnchor.column, nextCursor.lineNumber, nextCursor.column)
+        : new Selection(nextCursor.lineNumber, nextCursor.column, nextCursor.lineNumber, nextCursor.column);
+      if (typeof targetEditor.setSelection === "function") targetEditor.setSelection(selection);
+      if (!nextAnchor && typeof targetEditor.setPosition === "function") targetEditor.setPosition(nextCursor);
+      if (typeof targetEditor.revealPositionInCenterIfOutsideViewport === "function") targetEditor.revealPositionInCenterIfOutsideViewport(nextCursor);
+      else if (typeof targetEditor.revealPositionInCenter === "function") targetEditor.revealPositionInCenter(nextCursor);
+      return true;
+    }
+
+    function selectionText(targetEditor) {
+      if (!targetEditor || typeof targetEditor.getSelection !== "function" || typeof targetEditor.getModel !== "function") return "";
+      const selection = targetEditor.getSelection();
+      if (isCollapsedSelection(selection)) return "";
+      const model = targetEditor.getModel();
+      if (!model || typeof model.getValueInRange !== "function") return "";
+      return String(model.getValueInRange(selection) || "");
+    }
+
+    function activeSelectionText(kind) {
+      return selectionText(activeCodeEditor(kind));
+    }
+
     function layoutCurrent() {
       if (!editor || typeof editor.layout !== "function") return false;
       editor.layout();
@@ -218,11 +271,17 @@
 
     return Object.freeze({
       activeCodeEditor,
+      activeSelectionText,
+      applySelection,
       currentEditor,
       currentModels,
       dispose,
+      focusActiveCodeEditor,
       focusLine,
+      isCollapsedSelection,
       layoutCurrent,
+      normalizePosition,
+      selectionText,
       setChangeDisposable,
       setEditor,
       setModels,

@@ -10,6 +10,7 @@ APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
 APP_FILE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_file_helpers.js"
 APP_FILE_PICKER_JS = ROOT / "codoxear" / "static" / "app_file_picker.js"
+APP_FILE_EDITOR_JS = ROOT / "codoxear" / "static" / "app_file_editor.js"
 APP_FILE_VIEWER_JS = ROOT / "codoxear" / "static" / "app_file_viewer.js"
 APP_VIEWPORT_JS = ROOT / "codoxear" / "static" / "app_viewport.js"
 APP_CSS = ROOT / "codoxear" / "static" / "app.css"
@@ -725,6 +726,8 @@ def eval_file_paste_dialog_fallback() -> dict:
           ctx.afterModalVisibilityChanged = () => {{ ctx.modalSyncCount += 1; }};
           ctx.requestAnimationFrame = (cb) => {{ ctx.rafCount += 1; cb(); }};
           ctx.focusActiveFileCodeEditor = () => {{ ctx.focusEditorCount += 1; return editor; }};
+          ctx.currentFileEditorKind = () => "file";
+          ctx.fileEditorRuntime = {{ focusActiveCodeEditor: () => ctx.focusActiveFileCodeEditor() }};
           vm.createContext(ctx);
           vm.runInContext(dialogSnippet, ctx);
           vm.runInContext(viewerSource, ctx);
@@ -4123,7 +4126,8 @@ class TestFileViewerSource(unittest.TestCase):
     def test_touch_select_mode_refocuses_editor_and_blocks_printable_edits(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
-        self.assertIn("focusActiveFileCodeEditor()", source)
+        self.assertNotIn("function focusActiveFileCodeEditor()", source)
+        self.assertIn("focusActiveFileCodeEditor()", viewer_source)
         self.assertIn("syncFileDiffSelectionMode()", source)
         self.assertIn("? { enabled: false }", source)
         self.assertNotIn('function bindFileTouchPress(button, handler)', source)
@@ -4219,7 +4223,8 @@ class TestFileViewerSource(unittest.TestCase):
 
     def test_range_selection_does_not_collapse_back_to_cursor(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('if (!nextAnchor && typeof editor.setPosition === "function") editor.setPosition(nextCursor);', source)
+        editor_source = APP_FILE_EDITOR_JS.read_text(encoding="utf-8")
+        self.assertIn('if (!nextAnchor && typeof targetEditor.setPosition === "function") targetEditor.setPosition(nextCursor);', editor_source)
 
     def test_file_open_race_guard_is_wired_through_fetch_and_render(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -4660,7 +4665,11 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertNotIn("openDraftFilePath: (path, options) => openDraftFilePath(path, options)", controller_block)
         self.assertIn("normalizeDraftFilePath: (path) => normalizeDraftFilePath(path)", controller_block)
         self.assertIn("inspectSessionFilePath: (path, options) => inspectSessionFilePath(path, options)", controller_block)
-        self.assertIn("focusEditor: () => getActiveFileCodeEditor()", controller_block)
+        self.assertIn("focusEditor: () => fileEditorRuntime.focusActiveCodeEditor(currentFileEditorKind())", controller_block)
+        self.assertIn("normalizeFileEditorPosition: (editor, position) => fileEditorRuntime.normalizePosition(editor, position)", controller_block)
+        self.assertIn("applyFileEditorSelection: (editor, cursor, anchor) => fileEditorRuntime.applySelection(editor, cursor, anchor, fileEditorMonacoLoader.selectionCtor())", controller_block)
+        self.assertIn("isCollapsedFileSelection: (selection) => fileEditorRuntime.isCollapsedSelection(selection)", controller_block)
+        self.assertIn("getActiveFileSelectionText: () => fileEditorRuntime.activeSelectionText(currentFileEditorKind())", controller_block)
         save_start = source.index("async function saveActiveFileEdits")
         save_end = source.index("async function maybeHandleUnsavedFileChanges", save_start)
         save_block = source[save_start:save_end]

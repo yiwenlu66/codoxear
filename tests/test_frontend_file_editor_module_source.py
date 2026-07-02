@@ -26,6 +26,18 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
           return {{ dispose() {{ events.push(["dispose", name]); if (throws) throw new Error(`${{name}} failed`); }} }};
         }}
         const runtime = mod.createFileEditorRuntime();
+        function Selection(startLineNumber, startColumn, endLineNumber, endColumn) {{
+          this.startLineNumber = startLineNumber;
+          this.startColumn = startColumn;
+          this.endLineNumber = endLineNumber;
+          this.endColumn = endColumn;
+        }}
+        let currentSelection = {{ startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 3 }};
+        const fileModel = {{
+          getLineCount: () => 4,
+          getLineMaxColumn: (lineNumber) => lineNumber === 2 ? 6 : 4,
+          getValueInRange: (range) => `text:${{range.startLineNumber}}:${{range.startColumn}}-${{range.endLineNumber}}:${{range.endColumn}}`,
+        }};
         const modifiedEditor = {{
           tag: "modified",
           setPosition: (position) => events.push(["setPosition", "modified", position]),
@@ -38,6 +50,10 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
           setPosition: (position) => events.push(["setPosition", "file", position]),
           revealLineInCenter: (line) => events.push(["revealLineInCenter", "file", line]),
           focus: () => events.push(["focus", "file"]),
+          getModel: () => fileModel,
+          getSelection: () => currentSelection,
+          setSelection: (selection) => {{ currentSelection = selection; events.push(["setSelection", selection]); }},
+          revealPositionInCenterIfOutsideViewport: (position) => events.push(["revealPosition", position]),
           dispose: () => events.push(["dispose", "fileEditor"]),
         }};
         const diffEditor = {{
@@ -51,6 +67,12 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
         runtime.setEditor(fileEditor);
         const activeFile = runtime.activeCodeEditor("file") === fileEditor;
         const noDiffEditor = runtime.activeCodeEditor("diff");
+        const focusFile = runtime.focusActiveCodeEditor("file") === fileEditor;
+        const normalizedPosition = runtime.normalizePosition(fileEditor, {{ lineNumber: 20, column: 20 }});
+        const selectionTextBefore = runtime.activeSelectionText("file");
+        const applyAnchoredSelection = runtime.applySelection(fileEditor, {{ lineNumber: 2, column: 20 }}, {{ lineNumber: 0, column: 0 }}, Selection);
+        const selectionTextAfter = runtime.selectionText(fileEditor);
+        const collapsedSelection = runtime.isCollapsedSelection({{ startLineNumber: 2, startColumn: 1, endLineNumber: 2, endColumn: 1 }});
         runtime.setEditor(diffEditor);
         const activeDiff = runtime.activeCodeEditor("diff") === modifiedEditor;
         const updateWrongKind = runtime.updateEditorOptions("file", {{ readOnly: true }});
@@ -79,6 +101,12 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
           activeFile,
           noDiffEditor,
           activeDiff,
+          focusFile,
+          normalizedPosition,
+          selectionTextBefore,
+          applyAnchoredSelection,
+          selectionTextAfter,
+          collapsedSelection,
           updateWrongKind,
           updateDiff,
           layoutDiff,
@@ -174,6 +202,12 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertTrue(result["activeFile"])
         self.assertIsNone(result["noDiffEditor"])
         self.assertTrue(result["activeDiff"])
+        self.assertTrue(result["focusFile"])
+        self.assertEqual(result["normalizedPosition"], {"lineNumber": 4, "column": 4})
+        self.assertEqual(result["selectionTextBefore"], "text:1:1-1:3")
+        self.assertTrue(result["applyAnchoredSelection"])
+        self.assertEqual(result["selectionTextAfter"], "text:1:1-2:6")
+        self.assertTrue(result["collapsedSelection"])
         self.assertFalse(result["updateWrongKind"])
         self.assertTrue(result["updateDiff"])
         self.assertTrue(result["layoutDiff"])
@@ -186,6 +220,9 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertEqual(
             result["events"],
             [
+                ["focus", "file"],
+                ["setSelection", {"startLineNumber": 1, "startColumn": 1, "endLineNumber": 2, "endColumn": 6}],
+                ["revealPosition", {"lineNumber": 2, "column": 6}],
                 ["updateOptions", {"hideUnchangedRegions": {"enabled": False}}],
                 ["layout", "diff"],
                 ["setPosition", "modified", {"lineNumber": 9, "column": 1}],
@@ -241,6 +278,11 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertIn("let changeDisposable = null;", editor_source)
         self.assertIn("fileEditorRuntime.dispose({", app_source)
         self.assertIn("fileEditorRuntime.focusLine(currentFileEditorKind(), lineNumber, normalizeLineNumber);", app_source)
+        self.assertIn("fileEditorRuntime.focusActiveCodeEditor(currentFileEditorKind())", app_source)
+        self.assertIn("fileEditorRuntime.normalizePosition(editor, position)", app_source)
+        self.assertIn("fileEditorRuntime.applySelection(editor, cursor, anchor, fileEditorMonacoLoader.selectionCtor())", app_source)
+        self.assertIn("fileEditorRuntime.isCollapsedSelection(selection)", app_source)
+        self.assertIn("fileEditorRuntime.activeSelectionText(currentFileEditorKind())", app_source)
         self.assertIn("fileEditorRuntime.layoutCurrent()", app_source)
         self.assertIn("fileEditorRuntime.setEditor(editor);", app_source)
         self.assertIn("fileEditorRuntime.setModels([editor.getModel()].filter(Boolean));", app_source)
@@ -250,7 +292,7 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertNotIn("let monacoThemeReady = false;", app_source)
         self.assertIn("function createMonacoLoader(options = {})", editor_source)
         self.assertIn("fileEditorMonacoLoader.ensure();", app_source)
-        self.assertIn("fileEditorMonacoLoader.selectionCtor();", app_source)
+        self.assertIn("fileEditorMonacoLoader.selectionCtor())", app_source)
         self.assertIn("fileEditorMonacoLoader.editSupportAvailable()", app_source)
 
 
