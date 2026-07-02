@@ -154,7 +154,11 @@
     const normalizeFileEditorPosition = requireFunction(deps && deps.normalizeFileEditorPosition, "normalizeFileEditorPosition");
     const applyFileEditorSelection = requireFunction(deps && deps.applyFileEditorSelection, "applyFileEditorSelection");
     const isCollapsedFileSelection = requireFunction(deps && deps.isCollapsedFileSelection, "isCollapsedFileSelection");
-    const positionAfterInsertedText = requireFunction(deps && deps.positionAfterInsertedText, "positionAfterInsertedText");
+    const fileHelpers = window.CodoxearFileHelpers || {};
+    const positionAfterInsertedText =
+      typeof (deps && deps.positionAfterInsertedText) === "function"
+        ? deps.positionAfterInsertedText
+        : requireFunction(fileHelpers.positionAfterInsertedText, "CodoxearFileHelpers.positionAfterInsertedText");
     const fileEditorEditSupportAvailable = requireFunction(deps && deps.fileEditorEditSupportAvailable, "fileEditorEditSupportAvailable");
     const syncFileDiffSelectionMode = requireFunction(deps && deps.syncFileDiffSelectionMode, "syncFileDiffSelectionMode");
     const showFilePasteDialog = requireFunction(deps && deps.showFilePasteDialog, "showFilePasteDialog");

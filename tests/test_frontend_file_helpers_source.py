@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
 APP_FILE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_file_helpers.js"
+APP_FILE_VIEWER_JS = ROOT / "codoxear" / "static" / "app_file_viewer.js"
 INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 
 
@@ -163,11 +164,12 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
             "duplicateFilePickerPaths",
             "filePickerIdentityHint",
             "filePickerTitle",
-            "positionAfterInsertedText",
             "fileEditorDeleteCommandForKey",
         ]:
             self.assertIn(f"typeof codoxearFileHelpers.{helper} !== \"function\"", source)
             self.assertIn(f"function {helper}", source)
+        self.assertIn('typeof codoxearFileHelpers.positionAfterInsertedText !== "function"', source)
+        self.assertNotIn("function positionAfterInsertedText", source)
         for helper in [
             "attachmentSafeStem",
             "attachmentExtensionLower",
@@ -187,7 +189,9 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertIn("return codoxearFileHelpers.duplicateFilePickerPaths(entries);", source)
         self.assertIn("return codoxearFileHelpers.filePickerIdentityHint(entry, duplicatePaths, options);", source)
         self.assertIn("return codoxearFileHelpers.filePickerTitle(entry, hint);", source)
-        self.assertIn("return codoxearFileHelpers.positionAfterInsertedText(start, text);", source)
+        viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+        self.assertNotIn("return codoxearFileHelpers.positionAfterInsertedText(start, text);", source)
+        self.assertIn("CodoxearFileHelpers.positionAfterInsertedText", viewer_source)
         self.assertIn("return codoxearFileHelpers.fileEditorDeleteCommandForKey(key);", source)
         self.assertIn("return codoxearFileHelpers.attachmentSafeStem(name);", source)
         self.assertIn("return codoxearFileHelpers.attachmentIsLikelyHeic(file);", source)

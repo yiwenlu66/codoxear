@@ -541,10 +541,6 @@
         return codoxearFileHelpers.filePickerTitle(entry, hint);
       }
 
-      function positionAfterInsertedText(start, text) {
-        return codoxearFileHelpers.positionAfterInsertedText(start, text);
-      }
-
       function fileEditorDeleteCommandForKey(key) {
         return codoxearFileHelpers.fileEditorDeleteCommandForKey(key);
       }
@@ -8012,7 +8008,6 @@
           normalizeFileEditorPosition: (editor, position) => fileEditorRuntime.normalizePosition(editor, position),
           applyFileEditorSelection: (editor, cursor, anchor) => fileEditorRuntime.applySelection(editor, cursor, anchor, fileEditorMonacoLoader.selectionCtor()),
           isCollapsedFileSelection: (selection) => fileEditorRuntime.isCollapsedSelection(selection),
-          positionAfterInsertedText: (start, text) => positionAfterInsertedText(start, text),
           fileEditorEditSupportAvailable: () => fileEditorMonacoLoader.editSupportAvailable(),
           syncFileDiffSelectionMode: () => syncFileDiffSelectionMode(),
           showFilePasteDialog: () => showFilePasteDialog(),
