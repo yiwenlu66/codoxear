@@ -97,6 +97,10 @@ def run_picker_module_probe() -> dict[str, object]:
         input.setAttribute("aria-activedescendant", "filePickerOption-0");
         const closeDomState = domRuntime.close({{ restoreInput: true, inputValue: "restored.py" }});
         const closeDomSnapshot = {{ fieldActive: Boolean(field.classes.active), menuOpen: Boolean(menuNode.classes.open), expanded: input.attrs["aria-expanded"], activeDescendant: input.attrs["aria-activedescendant"] || "", value: input.value, focus: closeDomState.focus }};
+        const syncPositive = domRuntime.syncActiveDescendant(3);
+        const syncPositiveValue = input.attrs["aria-activedescendant"] || "";
+        const syncNegative = domRuntime.syncActiveDescendant(-1);
+        const syncNegativeValue = input.attrs["aria-activedescendant"] || "";
         let domHostError = "";
         try {{ picker.createMenuDomRuntime({{ field, menu: menuNode, input }}); }} catch (err) {{ domHostError = err && err.message ? err.message : String(err); }}
         function el(tag, attrs = {{}}) {{
@@ -112,6 +116,10 @@ def run_picker_module_probe() -> dict[str, object]:
         const menuParent = {{ children: [], appendChild(child) {{ this.children.push(child); return child; }} }};
         const sectionResult = picker.appendFilePickerSection(menuParent, "Changed files", {{ el }});
         const emptySectionResult = picker.appendFilePickerSection(menuParent, "", {{ el }});
+        const statusParent = {{ children: [], appendChild(child) {{ this.children.push(child); return child; }} }};
+        const statusRow = picker.appendFilePickerStatusRow(statusParent, "Searching full project...", {{ el }});
+        let statusHostError = "";
+        try {{ picker.appendFilePickerStatusRow(statusParent, "x", {{}}); }} catch (err) {{ statusHostError = err && err.message ? err.message : String(err); }}
         const draftEvents = [];
         const draftItem = picker.appendDraftFileMenuItem(menuParent, "draft/new.txt", 2, true, {{ el, openDraftFilePath: (path) => draftEvents.push(["openDraft", path]) }});
         let draftPrevented = 0;
@@ -159,6 +167,7 @@ def run_picker_module_probe() -> dict[str, object]:
           highlightHostError,
           draftHostError,
           entryHostError,
+          statusHostError,
           menuState: {{
             opened,
             selectionBeforeInput,
@@ -179,6 +188,10 @@ def run_picker_module_probe() -> dict[str, object]:
             openDomSnapshot,
             resetDomSnapshot,
             closeDomSnapshot,
+            syncPositive,
+            syncPositiveValue,
+            syncNegative,
+            syncNegativeValue,
             domEvents,
           }},
           highlightState: {{
@@ -195,6 +208,8 @@ def run_picker_module_probe() -> dict[str, object]:
             draftItemChildren: draftItem.children.map((child) => [child.tag, child.attrs.class || "", child.attrs.text || ""]),
             draftPrevented,
             draftEvents,
+            statusRow: [statusRow.tag, statusRow.attrs.class || "", statusRow.attrs.text || ""],
+            statusParentChildCount: statusParent.children.length,
           }},
           entryRenderState: {{
             rows: entryParent.children.map(summarizeNode),
@@ -218,6 +233,7 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
                 "appendDraftFileMenuItem",
                 "appendFilePickerEntryItem",
                 "appendFilePickerSection",
+                "appendFilePickerStatusRow",
                 "appendHighlightedFileMenuPath",
                 "createMenuDomRuntime",
                 "createMenuState",
@@ -236,6 +252,7 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         self.assertIn("Codoxear file picker host missing createTextNode", result["highlightHostError"])
         self.assertIn("Codoxear file picker host missing openDraftFilePath", result["draftHostError"])
         self.assertIn("Codoxear file picker host missing openDraftFilePath", result["entryHostError"])
+        self.assertIn("Codoxear file picker host missing el", result["statusHostError"])
 
     def test_file_picker_menu_state_behavior(self) -> None:
         result = run_picker_module_probe()["menuState"]
@@ -275,6 +292,8 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         ])
         self.assertEqual(result["draftPrevented"], 1)
         self.assertEqual(result["draftEvents"], [["openDraft", "draft/new.txt"]])
+        self.assertEqual(result["statusRow"], ["div", "pickerEmpty", "Searching full project..."])
+        self.assertEqual(result["statusParentChildCount"], 1)
 
     def test_file_picker_entry_row_renderer_behavior(self) -> None:
         result = run_picker_module_probe()["entryRenderState"]
@@ -302,6 +321,10 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         self.assertEqual(result["openDomSnapshot"], {"fieldActive": True, "menuOpen": True, "expanded": "true"})
         self.assertEqual(result["resetDomSnapshot"], {"value": "src/current.py", "activeDescendant": "", "focus": -1})
         self.assertEqual(result["closeDomSnapshot"], {"fieldActive": False, "menuOpen": False, "expanded": "false", "activeDescendant": "", "value": "restored.py", "focus": -1})
+        self.assertTrue(result["syncPositive"])
+        self.assertEqual(result["syncPositiveValue"], "filePickerOption-3")
+        self.assertTrue(result["syncNegative"])
+        self.assertEqual(result["syncNegativeValue"], "")
         self.assertEqual(result["domEvents"], [
             ["toggle", "field", "active", True],
             ["toggle", "menu", "open", True],
@@ -312,6 +335,8 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
             ["toggle", "field", "active", False],
             ["toggle", "menu", "open", False],
             ["setAttr", "aria-expanded", "false"],
+            ["removeAttr", "aria-activedescendant"],
+            ["setAttr", "aria-activedescendant", "filePickerOption-3"],
             ["removeAttr", "aria-activedescendant"],
         ])
 
@@ -327,6 +352,7 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         self.assertIn('typeof codoxearFilePicker.appendDraftFileMenuItem !== "function"', app_source)
         self.assertIn('typeof codoxearFilePicker.appendFilePickerEntryItem !== "function"', app_source)
         self.assertIn('typeof codoxearFilePicker.appendFilePickerSection !== "function"', app_source)
+        self.assertIn('typeof codoxearFilePicker.appendFilePickerStatusRow !== "function"', app_source)
         self.assertIn('typeof codoxearFilePicker.appendHighlightedFileMenuPath !== "function"', app_source)
         self.assertIn('typeof codoxearFilePicker.createMenuDomRuntime !== "function"', app_source)
         self.assertIn("const filePickerDomRuntime = codoxearFilePicker.createMenuDomRuntime", app_source)
@@ -337,6 +363,8 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         self.assertIn("return codoxearFilePicker.appendHighlightedFileMenuPath(parent, text, query, {", app_source)
         self.assertIn("return codoxearFilePicker.appendFilePickerSection(filePickerMenu, label, { el });", app_source)
         self.assertIn("return codoxearFilePicker.appendDraftFileMenuItem(filePickerMenu, path, idx, active, {", app_source)
+        self.assertIn("return codoxearFilePicker.appendFilePickerStatusRow(filePickerMenu, text, { el });", app_source)
+        self.assertIn("return filePickerDomRuntime.syncActiveDescendant(focusIndex);", app_source)
         self.assertIn("codoxearFilePicker.appendFilePickerEntryItem(filePickerMenu, entry, idx, active, query, identityHint, filePickerTitle(entry, identityHint), {", app_source)
         draft_start = app_source.index("function appendDraftFileMenuItem(path, idx, active)")
         draft_end = app_source.index("function renderFilePickerMenu()", draft_start)
@@ -348,6 +376,8 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         render_block = app_source[render_start:render_end]
         self.assertNotIn('const stat = el("span", { class: "fileMenuStat changed" });', render_block)
         self.assertNotIn('btn.appendChild(el("span", { class: "fileMenuHint fileMenuIdentity"', render_block)
+        self.assertNotIn('filePickerMenu.appendChild(el("div", { class: "pickerEmpty"', render_block)
+        self.assertNotIn('filePickerInput.setAttribute("aria-activedescendant"', render_block)
         self.assertNotIn("filePickerMenuState.resetInputState();\n          filePickerInput.value = activeFilePathValue() || \"\";", app_source)
         self.assertNotIn("document.createTextNode(value.slice(cursor", app_source)
         self.assertIn('throw new Error("Codoxear file picker helpers failed to load")', app_source)

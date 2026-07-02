@@ -315,6 +315,14 @@
     return btn;
   }
 
+  function appendFilePickerStatusRow(parent, text, host = {}) {
+    if (!parent || typeof parent.appendChild !== "function") throw new Error("Codoxear file picker host missing fileMenuParent");
+    const createEl = requireFunction(host, "el");
+    const row = createEl("div", { class: "pickerEmpty", text: String(text || "") });
+    parent.appendChild(row);
+    return row;
+  }
+
   function appendFilePickerEntryItem(parent, entry, idx, active, query, identityHint, title, host = {}) {
     if (!parent || typeof parent.appendChild !== "function") throw new Error("Codoxear file picker host missing fileMenuParent");
     const createEl = requireFunction(host, "el");
@@ -389,7 +397,14 @@
       return state;
     }
 
-    return Object.freeze({ apply, close, resetInput });
+    function syncActiveDescendant(focusIndex) {
+      const index = Number(focusIndex);
+      if (Number.isFinite(index) && index >= 0) input.setAttribute("aria-activedescendant", `filePickerOption-${Math.trunc(index)}`);
+      else input.removeAttribute("aria-activedescendant");
+      return true;
+    }
+
+    return Object.freeze({ apply, close, resetInput, syncActiveDescendant });
   }
 
   function visibleFilePickerEntries(context) {
@@ -621,6 +636,7 @@
     appendDraftFileMenuItem,
     appendFilePickerEntryItem,
     appendFilePickerSection,
+    appendFilePickerStatusRow,
     appendHighlightedFileMenuPath,
     createMenuDomRuntime,
     createMenuState,

@@ -563,6 +563,7 @@
         typeof codoxearFilePicker.appendDraftFileMenuItem !== "function" ||
         typeof codoxearFilePicker.appendFilePickerEntryItem !== "function" ||
         typeof codoxearFilePicker.appendFilePickerSection !== "function" ||
+        typeof codoxearFilePicker.appendFilePickerStatusRow !== "function" ||
         typeof codoxearFilePicker.appendHighlightedFileMenuPath !== "function" ||
         typeof codoxearFilePicker.createMenuDomRuntime !== "function" ||
         typeof codoxearFilePicker.createMenuState !== "function" ||
@@ -8170,6 +8171,14 @@
           return codoxearFilePicker.appendFilePickerSection(filePickerMenu, label, { el });
         }
 
+        function appendFilePickerStatusRow(text) {
+          return codoxearFilePicker.appendFilePickerStatusRow(filePickerMenu, text, { el });
+        }
+
+        function syncFilePickerActiveDescendant(focusIndex) {
+          return filePickerDomRuntime.syncActiveDescendant(focusIndex);
+        }
+
         function appendDraftFileMenuItem(path, idx, active) {
           return codoxearFilePicker.appendDraftFileMenuItem(filePickerMenu, path, idx, active, {
             el,
@@ -8187,14 +8196,14 @@
           if (entries === null) {
             const showDraft = draftPath && !filePickerDraftSuppressed();
             if (showDraft) appendDraftFileMenuItem(draftPath, 0, focusIndex === 0);
-            filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: "Searching files..." }));
+            appendFilePickerStatusRow("Searching files...");
             return showDraft ? [draftFileEntry(draftPath)] : [];
           }
           if (!entries.length) {
             const showDraft = draftPath && !filePickerDraftSuppressed();
             if (showDraft) {
               appendDraftFileMenuItem(draftPath, 0, focusIndex === 0);
-              filePickerInput.setAttribute("aria-activedescendant", "filePickerOption-0");
+              syncFilePickerActiveDescendant(0);
               return [draftFileEntry(draftPath)];
             }
             const emptyText = query
@@ -8202,8 +8211,8 @@
                 ? searchState.error || "Unable to search files"
                 : "No matching files"
               : "Type to search files.";
-            filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: emptyText }));
-            filePickerInput.removeAttribute("aria-activedescendant");
+            appendFilePickerStatusRow(emptyText);
+            syncFilePickerActiveDescendant(-1);
             return entries;
           }
           focusIndex = filePickerMenuState.clampFocus(entries.length);
@@ -8235,15 +8244,14 @@
             });
           }
           if (query && searchState.pendingQuery === query) {
-            filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: "Searching full project..." }));
+            appendFilePickerStatusRow("Searching full project...");
           } else if (query && searchState.errorQuery === query) {
-            filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: searchState.error || "Full project search unavailable." }));
+            appendFilePickerStatusRow(searchState.error || "Full project search unavailable.");
           } else if (query && searchState.truncatedQuery === query) {
-            filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: "Search capped at top matches." }));
+            appendFilePickerStatusRow("Search capped at top matches.");
           }
           focusIndex = filePickerMenuState.focusIndex();
-          if (focusIndex >= 0) filePickerInput.setAttribute("aria-activedescendant", `filePickerOption-${focusIndex}`);
-          else filePickerInput.removeAttribute("aria-activedescendant");
+          syncFilePickerActiveDescendant(focusIndex);
           return entries;
         }
 

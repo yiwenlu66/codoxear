@@ -1042,7 +1042,7 @@ class TestFilePickerSearchSource(unittest.TestCase):
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("function localFilePickerSearchEntries(query)", source)
         self.assertIn("function prependDraftFileEntry(entries, query)", source)
-        self.assertIn('text: "Searching full project..."', source)
+        self.assertIn('appendFilePickerStatusRow("Searching full project...");', source)
         self.assertNotIn("if (fileSearchPendingQuery === query) return null;", source)
 
     def test_file_candidates_show_fallback_while_changed_files_pending(self) -> None:
