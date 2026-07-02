@@ -7644,3 +7644,10 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: picker status rows and active-descendant DOM updates belong to `app_file_picker.js`. App still owns `renderFilePickerMenu()` orchestration, `filePickerMenu.innerHTML = ""`, visible-entry computation, duplicate path calculation, and open-entry error handling.
+
+## 2026-07-02T22:29:00Z Remaining-seams architect runner failure
+- Observation: async read-only architect scout run `ef6f2bbc-51c4-46b2-ab76-05e38b3ecf01` failed before writing a result. User/runner reported: `Async runner process 4065770 exited or disappeared before writing a result. Marked run failed by stale-run reconciliation.`
+- Intended output artifact: `/tmp/codoxear-file-viewer-editor-remaining-seams-20260702.md`.
+- Scope of intended review: identify remaining Workbench item 2 file-viewer/editor/picker ownership seams after file-picker entry/status row moves through `dd183b0`/`86784d8`.
+- Interpretation: no review artifact or concrete finding was produced, so this is infrastructure-only evidence about the async runner. It does not support or refute any code or architecture claim. Direct inspection remains the evidence source for the next extraction.
+- Decision: continue direct Workbench item 2 refactoring and validation; do not wait for or depend on this failed review.
