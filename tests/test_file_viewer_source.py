@@ -701,15 +701,10 @@ def eval_open_file_reference_nonliteral() -> dict:
 
 
 def eval_file_paste_dialog_fallback() -> dict:
-    app_source = APP_JS.read_text(encoding="utf-8")
     viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
-    start = app_source.index("function hideFilePasteDialog({ restoreFocus = false } = {}) {")
-    end = app_source.index("async function pasteFromClipboardIntoActiveFile", start)
-    dialog_snippet = app_source[start:end]
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const dialogSnippet = {json.dumps(dialog_snippet + "\nglobalThis.__test_showPaste = showFilePasteDialog;\nglobalThis.__test_hidePaste = hideFilePasteDialog;\n")};
         const viewerSource = {json.dumps(viewer_source)};
         async function runCase(opts) {{
           const ctx = {{ window: {{}} }};
@@ -737,8 +732,18 @@ def eval_file_paste_dialog_fallback() -> dict:
           ctx.currentFileEditorKind = () => "file";
           ctx.fileEditorRuntime = {{ focusActiveCodeEditor: () => ctx.focusActiveFileCodeEditor() }};
           vm.createContext(ctx);
-          vm.runInContext(dialogSnippet, ctx);
           vm.runInContext(viewerSource, ctx);
+          const pasteRuntime = ctx.window.CodoxearFileViewer.createFilePasteDialogRuntime({{
+            backdrop: ctx.filePasteBackdrop,
+            dialog: ctx.filePasteDialog,
+            input: ctx.filePasteInput,
+            prepareModalOpen: () => ctx.prepareModalOpen(),
+            afterModalVisibilityChanged: () => ctx.afterModalVisibilityChanged(),
+            focusActiveEditor: () => ctx.focusActiveFileCodeEditor(),
+            requestAnimationFrame: (callback) => ctx.requestAnimationFrame(callback),
+          }});
+          ctx.__test_showPaste = () => pasteRuntime.show();
+          ctx.__test_hidePaste = (options) => pasteRuntime.hide(options);
           const pos = {{ lineNumber: 1, column: 1 }};
           const model = {{ value: "", getValue() {{ return this.value; }} }};
           const editor = {{
@@ -4927,17 +4932,23 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("navigator.clipboard", source)
         self.assertIn("readText", source)
         self.assertIn('setToast("pasted")', viewer_source)
+        self.assertIn('const filePasteDialogRuntime = codoxearFileViewer.createFilePasteDialogRuntime({', source)
         self.assertIn('function showFilePasteDialog()', source)
+        self.assertIn('return filePasteDialogRuntime.show();', source)
         self.assertIn('function hideFilePasteDialog({ restoreFocus = false } = {})', source)
+        self.assertIn('return filePasteDialogRuntime.hide({ restoreFocus });', source)
         self.assertIn('hideFilePasteDialog({ restoreFocus: true });', source)
+        self.assertIn('filePasteDialogRuntime.isOpen()', source)
+        self.assertIn('function createFilePasteDialogRuntime(options = {})', viewer_source)
         self.assertIn('function requestManualFilePasteDialog()', viewer_source)
         show_start = source.index('function showFilePasteDialog()')
         show_end = source.index('async function pasteFromClipboardIntoActiveFile', show_start)
         self.assertNotIn('if (!activeFileEditorIdleTextWritable()) return false;', source[show_start:show_end])
         self.assertIn('$("#filePasteInsertBtn").onclick = () => {\n          handleFilePasteInsert(filePasteInput.value);\n        };', source)
         self.assertIn('function handleFilePasteInsert(text)', viewer_source)
-        self.assertIn('filePasteDialog.style.display = "flex";', source)
-        self.assertIn('filePasteInput.focus({ preventScroll: true });', source)
+        self.assertNotIn('filePasteDialog.style.display = "flex";', source)
+        self.assertIn('dialog.style.display = "flex";', viewer_source)
+        self.assertIn('input.focus({ preventScroll: true });', viewer_source)
         self.assertIn('setToast("paste manually")', viewer_source)
         self.assertIn('function pasteFromClipboardIntoActiveFile()', viewer_source)
         self.assertIn('return await fileViewerController.pasteFromClipboardIntoActiveFile();', source)

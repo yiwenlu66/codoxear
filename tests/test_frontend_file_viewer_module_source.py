@@ -865,6 +865,59 @@ def run_file_viewer_touch_binding_probe() -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
+def run_file_paste_dialog_runtime_probe() -> dict[str, object]:
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const fileViewer = ctx.window.CodoxearFileViewer;
+        const events = [];
+        const backdrop = {{ style: {{ display: "none" }} }};
+        const dialog = {{ style: {{ display: "none" }} }};
+        const input = {{
+          style: {{}},
+          value: "stale",
+          focus(options) {{ events.push(["focus", options]); }},
+          select() {{ events.push(["select"]); }},
+        }};
+        const runtime = fileViewer.createFilePasteDialogRuntime({{
+          backdrop,
+          dialog,
+          input,
+          prepareModalOpen: () => events.push(["prepare"]),
+          afterModalVisibilityChanged: () => events.push(["after"]),
+          focusActiveEditor: () => events.push(["focusEditor"]),
+          requestAnimationFrame: (callback) => {{ events.push(["raf"]); callback(); }},
+        }});
+        const showResult = runtime.show();
+        const openAfterShow = runtime.isOpen();
+        const stateAfterShow = {{ backdrop: backdrop.style.display, dialog: dialog.style.display, value: input.value }};
+        input.value = "manual text";
+        const hideResult = runtime.hide({{ restoreFocus: true }});
+        const openAfterHide = runtime.isOpen();
+        const stateAfterHide = {{ backdrop: backdrop.style.display, dialog: dialog.style.display, value: input.value }};
+        let missingError = "";
+        try {{ fileViewer.createFilePasteDialogRuntime({{ backdrop, dialog, input }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
+        process.stdout.write(JSON.stringify({{
+          frozen: Object.isFrozen(runtime),
+          showResult,
+          hideResult,
+          openAfterShow,
+          openAfterHide,
+          stateAfterShow,
+          stateAfterHide,
+          events,
+          missingError,
+        }}));
+        """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def run_file_viewer_pdf_loader_probe() -> dict[str, object]:
     viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
@@ -912,7 +965,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
     def test_file_viewer_controller_owns_save_conflict_behavior(self) -> None:
         result = run_file_viewer_controller_probe()
         self.assertTrue(result["render"]["exportFrozen"])
-        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFileViewerController", "createPdfLoader"])
+        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFilePasteDialogRuntime", "createFileViewerController", "createPdfLoader"])
         self.assertEqual(result["render"]["conflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["currentConflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["labelText"], "src/app.py - save conflict: version mismatch")
@@ -1289,6 +1342,18 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["laterClick"], [1, 1])
         self.assertEqual(result["plainClick"], [1, 1])
 
+    def test_file_paste_dialog_runtime_behavior(self) -> None:
+        result = run_file_paste_dialog_runtime_probe()
+        self.assertTrue(result["frozen"])
+        self.assertTrue(result["showResult"])
+        self.assertTrue(result["hideResult"])
+        self.assertTrue(result["openAfterShow"])
+        self.assertFalse(result["openAfterHide"])
+        self.assertEqual(result["stateAfterShow"], {"backdrop": "block", "dialog": "flex", "value": ""})
+        self.assertEqual(result["stateAfterHide"], {"backdrop": "none", "dialog": "none", "value": ""})
+        self.assertEqual(result["events"], [["prepare"], ["after"], ["raf"], ["focus", {"preventScroll": True}], ["select"], ["after"], ["focusEditor"]])
+        self.assertIn("file viewer dependency missing: prepareModalOpen", result["missingError"])
+
     def test_file_viewer_pdf_loader_behavior(self) -> None:
         result = run_file_viewer_pdf_loader_probe()
         self.assertTrue(result["sameImported"])
@@ -1319,6 +1384,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn("renderSaveConflict", viewer_source)
         self.assertIn("bindFileTouchPress", viewer_source)
         self.assertIn("bindFileTouchClick", viewer_source)
+        self.assertIn("createFilePasteDialogRuntime", viewer_source)
         self.assertIn("createPdfLoader", viewer_source)
         self.assertNotIn("function renderFileSaveConflict", app_source)
 

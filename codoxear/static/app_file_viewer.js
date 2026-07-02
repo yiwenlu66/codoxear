@@ -70,6 +70,57 @@
     return true;
   }
 
+  function requireStyledNode(value, name) {
+    if (!value || !value.style) throw new TypeError(`file viewer dependency missing: ${name}`);
+    return value;
+  }
+
+  function requirePasteInput(value) {
+    if (!value || !("value" in value)) throw new TypeError("file viewer dependency missing: filePasteInput");
+    return value;
+  }
+
+  function createFilePasteDialogRuntime(options = {}) {
+    const backdrop = requireStyledNode(options.backdrop, "filePasteBackdrop");
+    const dialog = requireStyledNode(options.dialog, "filePasteDialog");
+    const input = requirePasteInput(options.input);
+    const prepareModalOpen = requireFunction(options.prepareModalOpen, "prepareModalOpen");
+    const afterModalVisibilityChanged = requireFunction(options.afterModalVisibilityChanged, "afterModalVisibilityChanged");
+    const focusActiveEditor = requireFunction(options.focusActiveEditor, "focusActiveEditor");
+    const requestFrame = requireFunction(options.requestAnimationFrame, "requestAnimationFrame");
+
+    function isOpen() {
+      return dialog.style.display === "flex";
+    }
+
+    function hide({ restoreFocus = false } = {}) {
+      backdrop.style.display = "none";
+      dialog.style.display = "none";
+      input.value = "";
+      afterModalVisibilityChanged();
+      if (restoreFocus) focusActiveEditor();
+      return true;
+    }
+
+    function show() {
+      prepareModalOpen();
+      input.value = "";
+      backdrop.style.display = "block";
+      dialog.style.display = "flex";
+      afterModalVisibilityChanged();
+      requestFrame(() => {
+        if (!isOpen()) return;
+        try {
+          input.focus({ preventScroll: true });
+          input.select();
+        } catch (_) {}
+      });
+      return true;
+    }
+
+    return Object.freeze({ hide, isOpen, show });
+  }
+
   function timeoutPromise(promise, timeoutMs, message) {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
@@ -2150,6 +2201,7 @@
   window.CodoxearFileViewer = Object.freeze({
     bindFileTouchClick,
     bindFileTouchPress,
+    createFilePasteDialogRuntime,
     createFileViewerController,
     createPdfLoader,
   });

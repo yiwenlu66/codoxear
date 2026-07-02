@@ -7046,6 +7046,15 @@
           resolveAppUrl,
           timeoutMs: PDFJS_LOADER_TIMEOUT_MS,
         });
+        const filePasteDialogRuntime = codoxearFileViewer.createFilePasteDialogRuntime({
+          backdrop: filePasteBackdrop,
+          dialog: filePasteDialog,
+          input: filePasteInput,
+          prepareModalOpen,
+          afterModalVisibilityChanged,
+          focusActiveEditor: () => fileEditorRuntime.focusActiveCodeEditor(currentFileEditorKind()),
+          requestAnimationFrame: (callback) => requestAnimationFrame(callback),
+        });
 
         function currentFileViewerSessionId() {
           return fileViewerController.currentFileViewerSessionId();
@@ -7390,27 +7399,11 @@
         }
 
         function hideFilePasteDialog({ restoreFocus = false } = {}) {
-          filePasteBackdrop.style.display = "none";
-          filePasteDialog.style.display = "none";
-          filePasteInput.value = "";
-          afterModalVisibilityChanged();
-          if (restoreFocus) fileEditorRuntime.focusActiveCodeEditor(currentFileEditorKind());
+          return filePasteDialogRuntime.hide({ restoreFocus });
         }
 
         function showFilePasteDialog() {
-          prepareModalOpen();
-          filePasteInput.value = "";
-          filePasteBackdrop.style.display = "block";
-          filePasteDialog.style.display = "flex";
-          afterModalVisibilityChanged();
-          requestAnimationFrame(() => {
-            if (filePasteDialog.style.display !== "flex") return;
-            try {
-              filePasteInput.focus({ preventScroll: true });
-              filePasteInput.select();
-            } catch {}
-          });
-          return true;
+          return filePasteDialogRuntime.show();
         }
 
         async function pasteFromClipboardIntoActiveFile() {
@@ -9188,7 +9181,7 @@
         );
         addAppEvent(document, "keydown", (e) => {
           if (e.key !== "Escape") return;
-          if (filePasteDialog.style.display === "flex") {
+          if (filePasteDialogRuntime.isOpen()) {
             hideFilePasteDialog({ restoreFocus: true });
             return;
           }
