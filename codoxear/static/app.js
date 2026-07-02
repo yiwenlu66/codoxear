@@ -576,7 +576,12 @@
         throw new Error("Codoxear file picker helpers failed to load");
 
       const codoxearFileViewer = window.CodoxearFileViewer;
-      if (!codoxearFileViewer || typeof codoxearFileViewer.createFileViewerController !== "function") throw new Error("Codoxear file viewer controller failed to load");
+      if (
+        !codoxearFileViewer ||
+        typeof codoxearFileViewer.createFileViewerController !== "function" ||
+        typeof codoxearFileViewer.createPdfLoader !== "function"
+      )
+        throw new Error("Codoxear file viewer controller failed to load");
 
       const codoxearFileEditor = window.CodoxearFileEditor;
       if (
@@ -7037,13 +7042,16 @@
           renderMenu: () => renderFilePickerMenu(),
           applyMenuState: () => applyFileMenuState(),
         });
-        let pdfjsReadyPromise = null;
         const MONACO_LOADER_TIMEOUT_MS = 4000;
         const PDFJS_LOADER_TIMEOUT_MS = 6000;
         const fileEditorRuntime = codoxearFileEditor.createFileEditorRuntime();
         const fileEditorMonacoLoader = codoxearFileEditor.createMonacoLoader({
           resolveAppUrl,
           timeoutMs: MONACO_LOADER_TIMEOUT_MS,
+        });
+        const filePdfLoader = codoxearFileViewer.createPdfLoader({
+          resolveAppUrl,
+          timeoutMs: PDFJS_LOADER_TIMEOUT_MS,
         });
         let fileUnsavedReturnFocusEl = null;
 
@@ -7646,22 +7654,6 @@
           fileViewerController.finishFileEditorTextRestore();
         }
 
-        function timeoutPromise(promise, timeoutMs, message) {
-          return new Promise((resolve, reject) => {
-            const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
-            promise.then(
-              (value) => {
-                clearTimeout(timer);
-                resolve(value);
-              },
-              (error) => {
-                clearTimeout(timer);
-                reject(error);
-              }
-            );
-          });
-        }
-
         function renderPlainTextFallback(rel, text, lineNumber = null, reason = "Rich file viewer unavailable") {
           disposeFileEditor();
           clearFileVideo();
@@ -7704,20 +7696,7 @@
         }
 
         async function ensurePdfJs() {
-          if (pdfjsReadyPromise) return pdfjsReadyPromise;
-          if (window.pdfjsLib && typeof window.pdfjsLib.getDocument === "function") {
-            pdfjsReadyPromise = Promise.resolve(window.pdfjsLib);
-          } else {
-            pdfjsReadyPromise = timeoutPromise(import(resolveAppUrl("pdf.mjs")), PDFJS_LOADER_TIMEOUT_MS, "PDF renderer timed out");
-          }
-          pdfjsReadyPromise = pdfjsReadyPromise.then((pdfjs) => {
-            if (pdfjs.GlobalWorkerOptions) pdfjs.GlobalWorkerOptions.workerSrc = resolveAppUrl("pdf.worker.mjs");
-            return pdfjs;
-          });
-          pdfjsReadyPromise.catch(() => {
-            pdfjsReadyPromise = null;
-          });
-          return pdfjsReadyPromise;
+          return await filePdfLoader.ensure();
         }
 
         function applyEditorLineFocus(lineNumber) {

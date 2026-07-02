@@ -785,11 +785,54 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
+def run_file_viewer_pdf_loader_probe() -> dict[str, object]:
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}}, setTimeout, clearTimeout }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const fileViewer = ctx.window.CodoxearFileViewer;
+        const events = [];
+        const importedPdf = {{ GlobalWorkerOptions: {{}} }};
+        const loader = fileViewer.createPdfLoader({{
+          resolveAppUrl: (path) => `app:${{path}}`,
+          importModule: async (url) => {{ events.push(["import", url]); return importedPdf; }},
+          timeoutMs: 50,
+        }});
+        (async () => {{
+          const first = await loader.ensure();
+          const second = await loader.ensure();
+          const globalPdf = {{ getDocument() {{}}, GlobalWorkerOptions: {{}} }};
+          const globalLoader = fileViewer.createPdfLoader({{
+            resolveAppUrl: (path) => `app:${{path}}`,
+            globalObject: {{ pdfjsLib: globalPdf }},
+            importModule: async (url) => {{ events.push(["unexpected-import", url]); return {{}}; }},
+          }});
+          const globalResult = await globalLoader.ensure();
+          let missingResolveError = "";
+          try {{ fileViewer.createPdfLoader({{}}); }} catch (err) {{ missingResolveError = err && err.message ? err.message : String(err); }}
+          process.stdout.write(JSON.stringify({{
+            sameImported: first === importedPdf && second === importedPdf,
+            importedWorker: importedPdf.GlobalWorkerOptions.workerSrc,
+            globalResult: globalResult === globalPdf,
+            globalWorker: globalPdf.GlobalWorkerOptions.workerSrc,
+            events,
+            missingResolveError,
+          }}));
+        }})().catch((err) => {{ console.error(err && err.stack ? err.stack : err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 class TestFrontendFileViewerModuleSource(unittest.TestCase):
     def test_file_viewer_controller_owns_save_conflict_behavior(self) -> None:
         result = run_file_viewer_controller_probe()
         self.assertTrue(result["render"]["exportFrozen"])
-        self.assertEqual(result["render"]["exports"], ["createFileViewerController"])
+        self.assertEqual(result["render"]["exports"], ["createFileViewerController", "createPdfLoader"])
         self.assertEqual(result["render"]["conflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["currentConflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["labelText"], "src/app.py - save conflict: version mismatch")
@@ -1143,6 +1186,15 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn("fileViewerController.currentActiveFileIdentity()", app_source)
         self.assertNotIn("activeFilePath: () => activeFilePath", app_source)
 
+    def test_file_viewer_pdf_loader_behavior(self) -> None:
+        result = run_file_viewer_pdf_loader_probe()
+        self.assertTrue(result["sameImported"])
+        self.assertEqual(result["importedWorker"], "app:pdf.worker.mjs")
+        self.assertTrue(result["globalResult"])
+        self.assertEqual(result["globalWorker"], "app:pdf.worker.mjs")
+        self.assertEqual(result["events"], [["import", "app:pdf.mjs"]])
+        self.assertIn("file viewer dependency missing: resolveAppUrl", result["missingResolveError"])
+
     def test_file_viewer_module_registered_before_app_js(self) -> None:
         index_source = INDEX_HTML.read_text(encoding="utf-8")
         routes_source = STATIC_ROUTES.read_text(encoding="utf-8")
@@ -1162,6 +1214,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn("createFileEditorRuntime", editor_source)
         self.assertIn("createMonacoLoader", editor_source)
         self.assertIn("renderSaveConflict", viewer_source)
+        self.assertIn("createPdfLoader", viewer_source)
         self.assertNotIn("function renderFileSaveConflict", app_source)
 
 

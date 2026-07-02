@@ -20,6 +20,49 @@
 
   const BROWSER_SAFE_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/ogg"]);
 
+  function timeoutPromise(promise, timeoutMs, message) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      promise.then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error) => {
+          clearTimeout(timer);
+          reject(error);
+        }
+      );
+    });
+  }
+
+  function createPdfLoader(options = {}) {
+    const resolveAppUrl = requireFunction(options.resolveAppUrl, "resolveAppUrl");
+    const globalObject = options.globalObject || window;
+    const timeoutMs = Math.max(1, Number(options.timeoutMs || 6000));
+    const importModule = typeof options.importModule === "function" ? options.importModule : (url) => import(url);
+    let readyPromise = null;
+
+    function ensure() {
+      if (readyPromise) return readyPromise;
+      if (globalObject.pdfjsLib && typeof globalObject.pdfjsLib.getDocument === "function") {
+        readyPromise = Promise.resolve(globalObject.pdfjsLib);
+      } else {
+        readyPromise = timeoutPromise(importModule(resolveAppUrl("pdf.mjs")), timeoutMs, "PDF renderer timed out");
+      }
+      readyPromise = readyPromise.then((pdfjs) => {
+        if (pdfjs && pdfjs.GlobalWorkerOptions) pdfjs.GlobalWorkerOptions.workerSrc = resolveAppUrl("pdf.worker.mjs");
+        return pdfjs;
+      });
+      readyPromise.catch(() => {
+        readyPromise = null;
+      });
+      return readyPromise;
+    }
+
+    return Object.freeze({ ensure });
+  }
+
   function fileSaveConflictTarget(sessionId, path) {
     return Object.freeze({ sessionId, path });
   }
@@ -1981,5 +2024,6 @@
 
   window.CodoxearFileViewer = Object.freeze({
     createFileViewerController,
+    createPdfLoader,
   });
 })();

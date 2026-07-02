@@ -158,7 +158,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn("connect-src 'self'", index)
         self.assertIn("connect-src 'self'", CONTENT_SECURITY_POLICY)
         self.assertIn('const base = resolveAppUrl("monaco/vs");', app_file_editor)
-        self.assertIn('import(resolveAppUrl("pdf.mjs"))', app)
+        self.assertIn('importModule(resolveAppUrl("pdf.mjs"))', app_file_viewer)
 
     def test_frontend_asset_manifest_drives_version_files(self) -> None:
         self.assertEqual(STATIC_ASSET_VERSION_FILES, FRONTEND_ASSET_FILES + SHELL_ASSET_FILES + UI_IMAGE_ASSET_FILES)
