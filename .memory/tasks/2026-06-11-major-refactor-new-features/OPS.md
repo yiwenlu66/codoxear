@@ -7270,3 +7270,26 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: active PDF cleanup belongs to the controller. App still owns raw PDF canvas/page DOM creation, IntersectionObserver construction, render-task creation, and page render scheduling.
+
+## 2026-07-02T12:05:00Z File render-surface runtime viewer-module ownership
+- Functional commit `669d841 Move file render surface runtime into viewer module` moved file render-surface display mechanics and video-clear mechanics from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js` as `createFileRenderSurfaceRuntime(...)`.
+- Mechanism: selecting the active viewer surface and clearing the current video element are file-viewer DOM runtime mechanics, not app-level policy. The viewer module now owns diff/image/video display toggling, invalid-surface fail-loud behavior, active video fallback clearing, video preview button reset, video event-handler reset, pause/src-removal/load, and video hiding. `app.js` supplies concrete DOM nodes and keeps wrapper names because raw render paths still call `setFileRenderSurface(...)`/`clearFileVideo(...)`.
+- Tests updated: `tests/test_frontend_file_viewer_module_source.py` executes render-surface runtime behavior for diff/image/video states, invalid surface error, video clear side effects, and module export/load-guard presence. `tests/test_file_viewer_source.py` now evaluates render-surface behavior through the module runtime and asserts app delegates to `fileRenderSurfaceRuntime` rather than owning raw display mutation.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` returned `51 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `238 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1296 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: render-surface/video-clear DOM mechanics belong to `app_file_viewer.js`. App still owns raw image/video src assignment, video load event binding, PDF/markdown/fallback raw renderers, and file-viewer render orchestration.
+
+## 2026-07-02T11:45:00Z Clean-room review runner failure after continued file-viewer work
+- Observation: async read-only architect review run `faadad40-a031-408c-8028-4162adf2e9f4` failed before writing a result. User/runner reported: `Async runner process 3038273 exited or disappeared before writing a result. Marked run failed by stale-run reconciliation.`
+- Intended output artifact: `/tmp/codoxear-file-viewer-editor-review-current.md`.
+- Scope of intended review: Workbench item 2 file-viewer/editor ownership moves through recent commits `eca4ee2`, `2dc25f3`, `52c70a9`, `59e11f8`, and `7539c78`.
+- Interpretation: no review artifact or concrete finding was produced, so this is infrastructure-only negative evidence about the review runner. It does not support a code claim for or against the branch. A successful clean-room/adversarial review is still required before any yield/acceptance claim.
+- Decision: continue direct refactoring and validation; retry review only when needed for a real yield/decision gate or if the review runner can produce a usable artifact.
