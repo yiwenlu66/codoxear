@@ -150,7 +150,8 @@
     const updateFileTouchToolbar = requireFunction(deps && deps.updateFileTouchToolbar, "updateFileTouchToolbar");
     const useTouchFileEditorControls = requireFunction(deps && deps.useTouchFileEditorControls, "useTouchFileEditorControls");
     const hasActiveFileCodeEditor = requireFunction(deps && deps.hasActiveFileCodeEditor, "hasActiveFileCodeEditor");
-    const fileEditorShortcutBlocked = requireFunction(deps && deps.fileEditorShortcutBlocked, "fileEditorShortcutBlocked");
+    const hasBlockingFileEditorModal = requireFunction(deps && deps.hasBlockingFileEditorModal, "hasBlockingFileEditorModal");
+    const isTextEntryTarget = requireFunction(deps && deps.isTextEntryTarget, "isTextEntryTarget");
     const eventTargetElement = requireFunction(deps && deps.eventTargetElement, "eventTargetElement");
     const normalizeFileEditorPosition = requireFunction(deps && deps.normalizeFileEditorPosition, "normalizeFileEditorPosition");
     const applyFileEditorSelection = requireFunction(deps && deps.applyFileEditorSelection, "applyFileEditorSelection");
@@ -1595,6 +1596,13 @@
       } catch (error) {
         setToast(`selection move error: ${error && error.message ? error.message : "unknown error"}`);
       }
+    }
+
+    function fileEditorShortcutBlocked(target) {
+      if (!isFileViewerOpen()) return true;
+      if (hasBlockingFileEditorModal()) return true;
+      if (target && isTextEntryTarget(target) && !isActiveFileEditorInput(target)) return true;
+      return false;
     }
 
     function handleFileTouchSelectionKeydown(event) {

@@ -7393,13 +7393,6 @@
           return fileViewerController.moveFileTouchSelection(direction);
         }
 
-        function fileEditorShortcutBlocked(target) {
-          if (!isFileViewerOpen()) return true;
-          if (modalIsolationTargets.some((node) => node !== fileViewer && isModalTargetOpen(node))) return true;
-          if (target && isTextEntryElement(target) && !fileEditorRuntime.isActiveInput(currentFileEditorKind(), target, HTMLElement)) return true;
-          return false;
-        }
-
         function handleFileEditorSaveShortcut(e) {
           return fileViewerController.handleFileEditorSaveShortcut(e);
         }
@@ -7963,7 +7956,8 @@
           updateFileTouchToolbar: () => updateFileTouchToolbar(),
           useTouchFileEditorControls: () => useTouchFileEditorControls(),
           hasActiveFileCodeEditor: () => Boolean(fileEditorRuntime.activeCodeEditor(currentFileEditorKind())),
-          fileEditorShortcutBlocked: (target) => fileEditorShortcutBlocked(target),
+          hasBlockingFileEditorModal: () => modalIsolationTargets.some((node) => node !== fileViewer && isModalTargetOpen(node)),
+          isTextEntryTarget: (target) => isTextEntryElement(target),
           eventTargetElement: (value) => value instanceof HTMLElement ? value : null,
           normalizeFileEditorPosition: (editor, position) => fileEditorRuntime.normalizePosition(editor, position),
           applyFileEditorSelection: (editor, cursor, anchor) => fileEditorRuntime.applySelection(editor, cursor, anchor, fileEditorMonacoLoader.selectionCtor()),

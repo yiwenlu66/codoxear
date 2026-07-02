@@ -334,7 +334,8 @@ def eval_video_preview_failure_path() -> dict:
           updateFileTouchToolbar: () => {{}},
           useTouchFileEditorControls: () => false,
           hasActiveFileCodeEditor: () => false,
-          fileEditorShortcutBlocked: () => false,
+          hasBlockingFileEditorModal: () => false,
+          isTextEntryTarget: () => false,
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position || null,
           applyFileEditorSelection: () => {{}},
@@ -403,7 +404,8 @@ def eval_empty_file_viewer_target() -> dict:
           currentFileTouchSelectMode: () => false,
           useTouchFileEditorControls: () => false,
           hasActiveFileCodeEditor: () => false,
-          fileEditorShortcutBlocked: () => false,
+          hasBlockingFileEditorModal: () => false,
+          isTextEntryTarget: () => false,
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
           applyFileEditorSelection: () => {{}},
@@ -796,7 +798,8 @@ def eval_file_paste_dialog_fallback() -> dict:
             updateFileTouchToolbar: () => {{}},
             useTouchFileEditorControls: () => false,
           hasActiveFileCodeEditor: () => false,
-            fileEditorShortcutBlocked: () => false,
+            hasBlockingFileEditorModal: () => false,
+            isTextEntryTarget: () => false,
             eventTargetElement: (value) => value || null,
             normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
             applyFileEditorSelection: (_editor, cursor) => {{ pos.lineNumber = cursor.lineNumber; pos.column = cursor.column; }},
@@ -938,7 +941,8 @@ def eval_file_paste_insert_button_guard() -> dict:
             updateFileTouchToolbar: () => {{}},
             useTouchFileEditorControls: () => false,
           hasActiveFileCodeEditor: () => false,
-            fileEditorShortcutBlocked: () => false,
+            hasBlockingFileEditorModal: () => false,
+            isTextEntryTarget: () => false,
             eventTargetElement: (value) => value || null,
             normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
             applyFileEditorSelection: (_editor, cursor) => {{ pos.lineNumber = cursor.lineNumber; pos.column = cursor.column; }},
@@ -1125,7 +1129,8 @@ def eval_file_editor_save_shortcut() -> dict:
             updateFileTouchToolbar: () => events.push(["touchToolbar"]),
             useTouchFileEditorControls: () => true,
             hasActiveFileCodeEditor: () => true,
-            fileEditorShortcutBlocked: (target) => Boolean(!state.viewerOpen || state.nestedDialog || (target && target.textEntry && !target.editorInput)),
+            hasBlockingFileEditorModal: () => Boolean(state.nestedDialog),
+            isTextEntryTarget: (target) => Boolean(target && target.textEntry),
             eventTargetElement: (value) => value || null,
             normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
             applyFileEditorSelection: () => {{}},
@@ -1138,7 +1143,7 @@ def eval_file_editor_save_shortcut() -> dict:
             clipboardReadAvailable: () => false,
             readClipboardText: async () => "",
             fileEditorDeleteCommandForKey: () => "",
-            isActiveFileEditorInput: (target) => Boolean(target && target.inputarea && editorNode.contains(target)),
+            isActiveFileEditorInput: (target) => Boolean(target && target.classList && target.classList.contains("inputarea") && editorNode.contains(target)),
             getActiveFileSelectionText: () => "",
             copyToClipboard: async () => {{}},
             focusActiveFileCodeEditor: () => null,
@@ -1286,7 +1291,8 @@ def eval_file_touch_selection_keydown() -> dict:
             updateFileTouchToolbar: () => {{ events.toolbar += 1; }},
             useTouchFileEditorControls: () => overrides.toolbarActive !== false,
             hasActiveFileCodeEditor: () => overrides.toolbarActive !== false,
-            fileEditorShortcutBlocked: (target) => Boolean(overrides.nestedDialog || (target && target.shortcutBlocked) || (target && target.textEntry && !target.editorInput)),
+            hasBlockingFileEditorModal: () => Boolean(overrides.nestedDialog),
+            isTextEntryTarget: (target) => Boolean(target && (target.textEntry || target.shortcutBlocked)),
             eventTargetElement: (value) => value instanceof FakeElement ? value : null,
             normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
             applyFileEditorSelection: (_editor, cursor, anchor) => {{ events.selections.push({{ cursor, anchor: anchor || null }}); }},
@@ -1299,7 +1305,7 @@ def eval_file_touch_selection_keydown() -> dict:
             clipboardReadAvailable: () => false,
             readClipboardText: async () => "",
             fileEditorDeleteCommandForKey: () => "",
-            isActiveFileEditorInput: () => false,
+            isActiveFileEditorInput: (target) => Boolean(target && target.editorInput),
             getActiveFileSelectionText: () => "",
             copyToClipboard: async () => {{}},
             focusActiveFileCodeEditor: () => {{ events.focus += 1; return editor; }},
@@ -1448,7 +1454,8 @@ def eval_file_editor_delete_shortcut() -> dict:
             updateFileTouchToolbar: () => {{}},
             useTouchFileEditorControls: () => true,
             hasActiveFileCodeEditor: () => true,
-            fileEditorShortcutBlocked: (target) => Boolean(overrides.nestedDialog || overrides.viewerOpen === false || (target && target.textEntry && !target.editorInput)),
+            hasBlockingFileEditorModal: () => Boolean(overrides.nestedDialog),
+            isTextEntryTarget: (target) => Boolean(target && target.textEntry),
             eventTargetElement: (value) => value instanceof FakeElement ? value : null,
             normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
             applyFileEditorSelection: () => {{}},
@@ -1612,7 +1619,8 @@ def eval_file_open_request_sequence() -> dict:
           currentFileTouchSelectMode: () => false,
           useTouchFileEditorControls: () => false,
           hasActiveFileCodeEditor: () => false,
-          fileEditorShortcutBlocked: () => false,
+          hasBlockingFileEditorModal: () => false,
+          isTextEntryTarget: () => false,
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
           applyFileEditorSelection: () => {{}},
@@ -1749,7 +1757,8 @@ def eval_file_viewer_session_sync_race() -> dict:
           currentFileTouchSelectMode: () => false,
           useTouchFileEditorControls: () => false,
           hasActiveFileCodeEditor: () => false,
-          fileEditorShortcutBlocked: () => false,
+          hasBlockingFileEditorModal: () => false,
+          isTextEntryTarget: () => false,
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
           applyFileEditorSelection: () => {{}},
@@ -1849,7 +1858,8 @@ def eval_resolved_open_current_guard() -> dict:
           updateFileTouchToolbar: () => calls.push(["touchToolbar"]),
           useTouchFileEditorControls: () => false,
           hasActiveFileCodeEditor: () => false,
-          fileEditorShortcutBlocked: () => false,
+          hasBlockingFileEditorModal: () => false,
+          isTextEntryTarget: () => false,
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position || null,
           applyFileEditorSelection: () => {{}},
@@ -1952,7 +1962,8 @@ def eval_open_file_guard_mode_validation() -> dict:
           currentFileTouchSelectMode: () => false,
           useTouchFileEditorControls: () => false,
           hasActiveFileCodeEditor: () => false,
-          fileEditorShortcutBlocked: () => false,
+          hasBlockingFileEditorModal: () => false,
+          isTextEntryTarget: () => false,
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
           applyFileEditorSelection: () => {{}},
@@ -2083,7 +2094,8 @@ def eval_open_file_path_mode_ownership() -> dict:
           currentFileTouchSelectMode: () => false,
           useTouchFileEditorControls: () => false,
           hasActiveFileCodeEditor: () => false,
-          fileEditorShortcutBlocked: () => false,
+          hasBlockingFileEditorModal: () => false,
+          isTextEntryTarget: () => false,
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
           applyFileEditorSelection: () => {{}},
@@ -2274,7 +2286,8 @@ def eval_active_file_save_request_helpers() -> dict:
           currentFileTouchSelectMode: () => false,
           useTouchFileEditorControls: () => false,
           hasActiveFileCodeEditor: () => false,
-          fileEditorShortcutBlocked: () => false,
+          hasBlockingFileEditorModal: () => false,
+          isTextEntryTarget: () => false,
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
           applyFileEditorSelection: () => {{}},
@@ -2511,7 +2524,8 @@ def eval_active_file_save_success() -> dict:
           currentFileTouchSelectMode: () => false,
           useTouchFileEditorControls: () => false,
           hasActiveFileCodeEditor: () => false,
-          fileEditorShortcutBlocked: () => false,
+          hasBlockingFileEditorModal: () => false,
+          isTextEntryTarget: () => false,
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
           applyFileEditorSelection: () => {{}},
@@ -2694,7 +2708,8 @@ def eval_active_file_save_transport() -> dict:
           currentFileTouchSelectMode: () => false,
           useTouchFileEditorControls: () => false,
           hasActiveFileCodeEditor: () => false,
-          fileEditorShortcutBlocked: () => false,
+          hasBlockingFileEditorModal: () => false,
+          isTextEntryTarget: () => false,
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
           applyFileEditorSelection: () => {{}},
@@ -2893,7 +2908,8 @@ def eval_draft_file_load_choreography() -> dict:
           currentFileTouchSelectMode: () => false,
           useTouchFileEditorControls: () => false,
           hasActiveFileCodeEditor: () => false,
-          fileEditorShortcutBlocked: () => false,
+          hasBlockingFileEditorModal: () => false,
+          isTextEntryTarget: () => false,
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
           applyFileEditorSelection: () => {{}},
@@ -3051,7 +3067,8 @@ def eval_file_open_success_finalizer() -> dict:
           currentFileTouchSelectMode: () => false,
           useTouchFileEditorControls: () => false,
           hasActiveFileCodeEditor: () => false,
-          fileEditorShortcutBlocked: () => false,
+          hasBlockingFileEditorModal: () => false,
+          isTextEntryTarget: () => false,
           eventTargetElement: (value) => value || null,
           normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
           applyFileEditorSelection: () => {{}},
@@ -4131,9 +4148,16 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function handleFileEditorSaveShortcut(e)", source)
         self.assertIn("return fileViewerController.handleFileEditorSaveShortcut(e);", source)
         self.assertIn('key !== "s" || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey', viewer_source)
+        self.assertIn("function fileEditorShortcutBlocked(target)", viewer_source)
+        self.assertIn("if (!isFileViewerOpen()) return true;", viewer_source)
+        self.assertIn("if (hasBlockingFileEditorModal()) return true;", viewer_source)
+        self.assertIn("if (target && isTextEntryTarget(target) && !isActiveFileEditorInput(target)) return true;", viewer_source)
         self.assertIn("fileEditorShortcutBlocked(target)", viewer_source)
         self.assertIn("void saveActiveFileEdits({ exitEditMode: false });", viewer_source)
+        self.assertNotIn("function fileEditorShortcutBlocked(target)", source)
         self.assertNotIn('key !== "s" || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey', source)
+        self.assertIn("hasBlockingFileEditorModal: () => modalIsolationTargets.some((node) => node !== fileViewer && isModalTargetOpen(node))", source)
+        self.assertIn("isTextEntryTarget: (target) => isTextEntryElement(target)", source)
         self.assertIn('addAppEvent(document, "keydown", handleFileEditorSaveShortcut, true);', source)
         result = eval_file_editor_save_shortcut()
         for key in ("validCtrl", "validMeta"):
@@ -4177,6 +4201,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('resetFileTouchSelectionState({ collapse: true });', viewer_source)
         self.assertIn('if (fileEditorShortcutBlocked(target)) return;', viewer_source)
         self.assertNotIn('isTextEntryElement(target) && !target.classList.contains("inputarea")', source)
+        self.assertNotIn("fileEditorShortcutBlocked: (target) => fileEditorShortcutBlocked(target)", source)
         result = eval_file_touch_selection_keydown()
         self.assertEqual(result["validMove"]["prevented"], 1)
         self.assertEqual(result["validMove"]["stopped"], 1)
