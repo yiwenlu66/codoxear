@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
 APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
 APP_FILE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_file_helpers.js"
 APP_FILE_PICKER_JS = ROOT / "codoxear" / "static" / "app_file_picker.js"
@@ -386,60 +387,54 @@ def eval_video_preview_failure_path() -> dict:
 
 
 def eval_empty_file_viewer_target() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function renderEmptyFileViewerTarget(")
-    end = source.index("async function ensureCurrentFileViewerSession", start)
-    snippet = source[start:end]
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
         const calls = [];
-        const ctx = {{
-          fileStatus: {{ textContent: "old" }},
-          resetFileViewerPanel: () => calls.push(["resetFileViewerPanel"]),
-          clearActiveFileIdentity: () => calls.push(["clearActiveFileIdentity"]),
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(display_source)}, ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const runtime = ctx.window.CodoxearFileViewer.createFileViewerPanelRuntime({{
+          controller: {{
+            resetActiveFileBufferState: () => calls.push(["resetActiveFileBufferState"]),
+            clearActiveFileIdentity: () => calls.push(["clearActiveFileIdentity"]),
+          }},
+          disposeFileEditor: () => calls.push(["disposeFileEditor"]),
+          resetRenderSurface: () => calls.push(["resetRenderSurface"]),
           resetFilePickerInput: () => calls.push(["resetFilePickerInput"]),
           renderFilePickerMenu: () => calls.push(["renderFilePickerMenu"]),
           updateFileTouchToolbar: () => calls.push(["updateFileTouchToolbar"]),
-          currentFileTouchSelectMode: () => false,
-          useTouchFileEditorControls: () => false,
-          hasActiveFileCodeEditor: () => false,
-          hasBlockingFileEditorModal: () => false,
-          isTextEntryTarget: () => false,
-          eventTargetElement: (value) => value || null,
-          normalizeFileEditorPosition: (_editor, position) => position ? {{ lineNumber: Number(position.lineNumber) || 1, column: Number(position.column) || 1 }} : null,
-          applyFileEditorSelection: () => {{}},
-          isCollapsedFileSelection: (selection) => !selection || (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn),
-          positionAfterInsertedText: (start, text) => ({{ lineNumber: Number(start && start.lineNumber) || 1, column: (Number(start && start.column) || 1) + String(text || "").length }}),
-          fileEditorEditSupportAvailable: () => true,
-          updateFileDiffEditorOptions: () => {{}},
-          showFilePasteDialog: () => false,
-          hideFilePasteDialog: () => {{}},
-          clipboardReadAvailable: () => false,
-          readClipboardText: async () => "",
-          resetFileTouchSelectionState: (options) => calls.push(["resetFileTouchSelectionState", options || {{}}]),
-          moveFileTouchSelection: (direction) => calls.push(["moveFileTouchSelection", direction]),
-          fileEditorDeleteCommandForKey: () => "",
-          isActiveFileEditorInput: () => false,
-          getActiveFileSelectionText: () => "",
-          copyToClipboard: async () => {{}},
-          focusActiveFileCodeEditor: () => null,
-          nowMs: () => 0,
-          setToast: (message) => calls.push(["toast", message]),
-        }};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_empty = renderEmptyFileViewerTarget;\n")}, ctx);
-        ctx.__test_empty();
+          setStatus: (status) => calls.push(["setStatus", status]),
+        }});
+        runtime.renderEmptyTarget();
         const defaultCalls = calls.slice();
-        const defaultStatus = ctx.fileStatus.textContent;
         calls.length = 0;
-        ctx.fileStatus.textContent = "old again";
-        ctx.__test_empty({{ updateTouchToolbar: true }});
+        runtime.renderEmptyTarget({{ updateTouchToolbar: true }});
+        const resetOnlyCalls = [];
+        const resetRuntime = ctx.window.CodoxearFileViewer.createFileViewerPanelRuntime({{
+          controller: {{
+            resetActiveFileBufferState: () => resetOnlyCalls.push(["resetActiveFileBufferState"]),
+            clearActiveFileIdentity: () => resetOnlyCalls.push(["clearActiveFileIdentity"]),
+          }},
+          disposeFileEditor: () => resetOnlyCalls.push(["disposeFileEditor"]),
+          resetRenderSurface: () => resetOnlyCalls.push(["resetRenderSurface"]),
+          resetFilePickerInput: () => resetOnlyCalls.push(["resetFilePickerInput"]),
+          renderFilePickerMenu: () => resetOnlyCalls.push(["renderFilePickerMenu"]),
+          updateFileTouchToolbar: () => resetOnlyCalls.push(["updateFileTouchToolbar"]),
+          setStatus: (status) => resetOnlyCalls.push(["setStatus", status]),
+        }});
+        resetRuntime.resetPanel();
+        let missingError = "";
+        try {{ ctx.window.CodoxearFileViewer.createFileViewerPanelRuntime({{ controller: {{}} }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
         process.stdout.write(JSON.stringify({{
           defaultCalls,
-          defaultStatus,
           touchCalls: calls.slice(),
-          touchStatus: ctx.fileStatus.textContent,
+          resetOnlyCalls,
+          missingError,
+          frozen: Object.isFrozen(runtime),
         }}));
         """
     )
@@ -3348,16 +3343,18 @@ def eval_file_render_surface_visibility() -> dict:
 class TestFileViewerSource(unittest.TestCase):
     def test_render_empty_file_viewer_target_resets_empty_state(self) -> None:
         result = eval_empty_file_viewer_target()
-        base_calls = [
-            ["resetFileViewerPanel"],
+        reset_calls = [["disposeFileEditor"], ["resetActiveFileBufferState"], ["resetRenderSurface"]]
+        base_calls = reset_calls + [
             ["clearActiveFileIdentity"],
             ["resetFilePickerInput"],
             ["renderFilePickerMenu"],
+            ["setStatus", "Type to search files."],
         ]
         self.assertEqual(result["defaultCalls"], base_calls)
-        self.assertEqual(result["defaultStatus"], "Type to search files.")
         self.assertEqual(result["touchCalls"], base_calls + [["updateFileTouchToolbar"]])
-        self.assertEqual(result["touchStatus"], "Type to search files.")
+        self.assertEqual(result["resetOnlyCalls"], reset_calls)
+        self.assertIn("controller.resetActiveFileBufferState", result["missingError"])
+        self.assertTrue(result["frozen"])
 
     def test_hide_file_viewer_clears_active_file_identity_after_saving_selection(self) -> None:
         result = eval_hide_file_viewer_identity_cleanup()
@@ -3737,8 +3734,10 @@ class TestFileViewerSource(unittest.TestCase):
         resolved_end = viewer_source.index("async function openDraftFilePathWithGuard", resolved_start)
         self.assertIn("if (blockUnavailableFileAction()) return false;", viewer_source[resolved_start:resolved_end])
         self.assertIn("function renderEmptyFileViewerTarget({ updateTouchToolbar = false } = {})", source)
-        self.assertEqual(source.count("resetFileViewerPanel();"), 3)
-        self.assertEqual(viewer_source.count("resetFileViewerPanel();"), 2)
+        self.assertIn("return fileViewerPanelRuntime.renderEmptyTarget({ updateTouchToolbar });", source)
+        self.assertIn("return fileViewerPanelRuntime.resetPanel();", source)
+        self.assertIn("function createFileViewerPanelRuntime(options = {})", viewer_source)
+        self.assertIn("function renderEmptyTarget({ updateTouchToolbar = false } = {})", viewer_source)
         hide_start = source.index("function hideFileViewer()")
         hide_end = source.index("function handleFileViewerSessionUnavailable", hide_start)
         hide_block = source[hide_start:hide_end]
@@ -4323,7 +4322,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function startFileOpenRequest(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {})", viewer_source)
         self.assertIn("function setFileRenderSurface(surface)", source)
         self.assertIn("return fileRenderSurfaceRuntime.setSurface(surface);", source)
-        self.assertIn("fileRenderSurfaceRuntime.reset();", source)
+        self.assertIn("resetRenderSurface: () => fileRenderSurfaceRuntime.reset()", source)
+        self.assertIn("resetRenderSurface();", viewer_source)
         self.assertIn("function createFileRenderSurfaceRuntime(options = {})", viewer_source)
         self.assertIn("function reset()", viewer_source)
         self.assertIn('throw new Error("invalid file render surface")', viewer_source)

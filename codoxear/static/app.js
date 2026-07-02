@@ -583,6 +583,7 @@
         typeof codoxearFileViewer.createFileFallbackRuntime !== "function" ||
         typeof codoxearFileViewer.createFileLoadResultRuntime !== "function" ||
         typeof codoxearFileViewer.createFileCandidateRefreshRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileViewerPanelRuntime !== "function" ||
         typeof codoxearFileViewer.createFileModeControlsRuntime !== "function" ||
         typeof codoxearFileViewer.createFilePasteDialogRuntime !== "function" ||
         typeof codoxearFileViewer.createFilePdfRenderRuntime !== "function" ||
@@ -7368,18 +7369,11 @@
         }
 
         function resetFileViewerPanel() {
-          disposeFileEditor();
-          resetActiveFileBufferState();
-          fileRenderSurfaceRuntime.reset();
+          return fileViewerPanelRuntime.resetPanel();
         }
 
         function renderEmptyFileViewerTarget({ updateTouchToolbar = false } = {}) {
-          resetFileViewerPanel();
-          clearActiveFileIdentity();
-          resetFilePickerInput();
-          renderFilePickerMenu();
-          fileStatus.textContent = "Type to search files.";
-          if (updateTouchToolbar) updateFileTouchToolbar();
+          return fileViewerPanelRuntime.renderEmptyTarget({ updateTouchToolbar });
         }
 
         async function ensureCurrentFileViewerSession() {
@@ -7728,6 +7722,17 @@
           rememberOpenedFile: (rel, absPath) => rememberOpenedFile(rel, absPath),
           historyFileSelectionForSession: (sessionId) => historyFileSelectionForSession(sessionId),
           renderFilePickerMenu: () => renderFilePickerMenu(),
+        });
+        const fileViewerPanelRuntime = codoxearFileViewer.createFileViewerPanelRuntime({
+          controller: fileViewerController,
+          disposeFileEditor: () => disposeFileEditor(),
+          resetRenderSurface: () => fileRenderSurfaceRuntime.reset(),
+          resetFilePickerInput: () => resetFilePickerInput(),
+          renderFilePickerMenu: () => renderFilePickerMenu(),
+          updateFileTouchToolbar: () => updateFileTouchToolbar(),
+          setStatus: (status) => {
+            fileStatus.textContent = status;
+          },
         });
         const fileLoadResultRuntime = codoxearFileViewer.createFileLoadResultRuntime({
           controller: fileViewerController,

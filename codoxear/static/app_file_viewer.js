@@ -633,6 +633,38 @@
     return Object.freeze({ apply });
   }
 
+  function createFileViewerPanelRuntime(options = {}) {
+    const controller = options.controller || null;
+    if (!controller) throw new TypeError("file viewer dependency missing: controller");
+    const resetActiveFileBufferState = requireFunction(controller.resetActiveFileBufferState, "controller.resetActiveFileBufferState").bind(controller);
+    const clearActiveFileIdentity = requireFunction(controller.clearActiveFileIdentity, "controller.clearActiveFileIdentity").bind(controller);
+    const disposeFileEditor = requireFunction(options.disposeFileEditor, "disposeFileEditor");
+    const resetRenderSurface = requireFunction(options.resetRenderSurface, "resetRenderSurface");
+    const resetFilePickerInput = requireFunction(options.resetFilePickerInput, "resetFilePickerInput");
+    const renderFilePickerMenu = requireFunction(options.renderFilePickerMenu, "renderFilePickerMenu");
+    const updateFileTouchToolbar = requireFunction(options.updateFileTouchToolbar, "updateFileTouchToolbar");
+    const setStatus = requireFunction(options.setStatus, "setStatus");
+
+    function resetPanel() {
+      disposeFileEditor();
+      resetActiveFileBufferState();
+      resetRenderSurface();
+      return true;
+    }
+
+    function renderEmptyTarget({ updateTouchToolbar = false } = {}) {
+      resetPanel();
+      clearActiveFileIdentity();
+      resetFilePickerInput();
+      renderFilePickerMenu();
+      setStatus("Type to search files.");
+      if (updateTouchToolbar) updateFileTouchToolbar();
+      return true;
+    }
+
+    return Object.freeze({ renderEmptyTarget, resetPanel });
+  }
+
   function createFileCandidateRefreshRuntime(options = {}) {
     const controller = options.controller || null;
     if (!controller) throw new TypeError("file viewer dependency missing: controller");
@@ -2975,6 +3007,7 @@
     createFileFallbackRuntime,
     createFileLoadResultRuntime,
     createFileCandidateRefreshRuntime,
+    createFileViewerPanelRuntime,
     createFileModeControlsRuntime,
     createFilePasteDialogRuntime,
     createFilePdfRenderRuntime,
