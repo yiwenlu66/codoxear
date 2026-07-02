@@ -7037,3 +7037,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: PDF.js loader/cache/worker setup belongs to `app_file_viewer.js`. App still owns PDF canvas/page DOM rendering, IntersectionObserver and render-task side effects, active render currentness checks, render fallbacks, Monaco construction options, line-focus scheduling, raw load-result render plan application, fallback DOM construction/scrolling, touch-toolbar DOM/binding mechanics, persisted mode UI wiring, file-video element handlers/loading, file-picker input/menu DOM mutation/rendering, inspect transport, candidate evidence collection/API refresh/cache-key/rendering, unsaved dialog DOM and return-focus state, paste dialog DOM mechanics, and selected-session identity predicates.
+
+## 2026-07-02T07:22:00Z Editor line-focus/layout runtime ownership
+- Functional commit `3d3552c Move editor line focus into editor runtime` moved current-editor layout and line-focus mechanics from inline `codoxear/static/app.js` into `codoxear/static/app_file_editor.js`.
+- Mechanism: because `app_file_editor.js` now owns the current editor and diff modified-editor identity, the operation that selects the active code editor, normalizes/focuses a line, reveals it, focuses the editor, and performs current-editor layout is editor-runtime behavior rather than app-level orchestration. `app.js` still owns animation-frame/timer scheduling, request-currentness checks, and deciding which render path requests line focus.
+- Tests updated: `test_frontend_file_editor_module_source.py` runtime probe now covers `layoutCurrent()` and `focusLine("diff", ...)`, including modified-editor target selection for diff editors, normalized line positioning, reveal, focus, and app delegation strings.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_editor_module_source.py` passed.
+  - `node --check codoxear/static/app_file_editor.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_editor_module_source.py tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `52 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `235 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1293 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: editor runtime now owns current editor/model/disposable lifecycle, Monaco loader/theme/edit-support readiness, and current editor layout/line focus. App keeps DOM hosts, render scheduling/currentness, Monaco editor creation parameters, render fallback decisions, and user-facing mode/status wiring.
