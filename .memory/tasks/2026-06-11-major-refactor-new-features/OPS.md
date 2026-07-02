@@ -7479,3 +7479,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: file-viewer modal chrome belongs to `app_file_viewer.js`. App still owns show/hide state orchestration, file-picker search rendering, PDF page rendering, selected-session authority, and global keyboard/backdrop/button event binding.
+
+## 2026-07-02T17:25:00Z File-viewer open predicate modal-runtime ownership
+- Functional commit `bd10b75 Move file viewer open predicate into modal runtime` moved the file-viewer display/open predicate from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js` as `createFileViewerModalRuntime(...).isOpen()`.
+- Mechanism: the modal runtime owns file-viewer backdrop/viewer display state after `58a6bc2`; checking whether that display state represents an open viewer belongs with the same owner. `app.js` keeps the public local wrapper `isFileViewerOpen()` for controller and app call sites, but the wrapper now delegates.
+- Tests updated: modal runtime VM coverage now checks initially closed, open after show, and closed after hideDisplay. Source sentinels require `fileViewerModalRuntime.isOpen()` and reject restored inline `return fileViewer.style.display === "flex"`.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py tests/test_overlay_accessibility_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py tests/test_overlay_accessibility_source.py` returned `63 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `242 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1300 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: file-viewer open-state display predicate belongs to `app_file_viewer.js`. App still has direct display checks in global event handlers that should be considered for subsequent modal-runtime/event extraction.
