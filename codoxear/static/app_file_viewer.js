@@ -20,6 +20,56 @@
 
   const BROWSER_SAFE_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/ogg"]);
 
+  function bindFileTouchPress(button, handler, options = {}) {
+    if (!button || typeof button.addEventListener !== "function" || typeof handler !== "function") return false;
+    const nowMs = typeof options.nowMs === "function" ? options.nowMs : () => Date.now();
+    let suppressClickUntil = 0;
+    let sawPointerTouchAt = 0;
+    const run = (event) => {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      suppressClickUntil = nowMs() + 700;
+      handler();
+    };
+    button.addEventListener("pointerdown", (event) => {
+      if (event && event.pointerType === "touch") sawPointerTouchAt = nowMs();
+      run(event);
+    });
+    button.addEventListener(
+      "touchstart",
+      (event) => {
+        if (nowMs() - sawPointerTouchAt < 700) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        run(event);
+      },
+      { passive: false }
+    );
+    button.addEventListener("click", (event) => {
+      if (nowMs() < suppressClickUntil) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      run(event);
+    });
+    return true;
+  }
+
+  function bindFileTouchClick(button, handler) {
+    if (!button || typeof button.addEventListener !== "function" || typeof handler !== "function") return false;
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      handler();
+    });
+    return true;
+  }
+
   function timeoutPromise(promise, timeoutMs, message) {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
@@ -2023,6 +2073,8 @@
   }
 
   window.CodoxearFileViewer = Object.freeze({
+    bindFileTouchClick,
+    bindFileTouchPress,
     createFileViewerController,
     createPdfLoader,
   });

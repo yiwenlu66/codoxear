@@ -4126,13 +4126,16 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("focusActiveFileCodeEditor()", source)
         self.assertIn("syncFileDiffSelectionMode()", source)
         self.assertIn("? { enabled: false }", source)
-        self.assertIn('function bindFileTouchPress(button, handler)', source)
-        self.assertIn('function bindFileTouchClick(button, handler)', source)
-        self.assertIn('button.addEventListener("pointerdown"', source)
-        self.assertIn('"touchstart"', source)
-        self.assertIn("let sawPointerTouchAt = 0;", source)
-        self.assertIn("if (e && e.pointerType === \"touch\") sawPointerTouchAt = Date.now();", source)
-        self.assertIn("if (Date.now() - sawPointerTouchAt < 700)", source)
+        self.assertNotIn('function bindFileTouchPress(button, handler)', source)
+        self.assertNotIn('function bindFileTouchClick(button, handler)', source)
+        self.assertIn('function bindFileTouchPress(button, handler, options = {})', viewer_source)
+        self.assertIn('function bindFileTouchClick(button, handler)', viewer_source)
+        self.assertNotIn('button.addEventListener("pointerdown"', source)
+        self.assertIn('button.addEventListener("pointerdown"', viewer_source)
+        self.assertIn('"touchstart"', viewer_source)
+        self.assertIn("let sawPointerTouchAt = 0;", viewer_source)
+        self.assertIn("if (event && event.pointerType === \"touch\") sawPointerTouchAt = nowMs();", viewer_source)
+        self.assertIn("if (nowMs() - sawPointerTouchAt < 700)", viewer_source)
         self.assertIn('touch-action: none;', APP_CSS.read_text(encoding="utf-8"))
         self.assertIn('const blocksEdit =', viewer_source)
         self.assertIn('key === "backspace"', viewer_source)
@@ -4858,8 +4861,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('return fileViewerController.insertIntoActiveFileEditor(text);', source)
         self.assertIn('setToast("paste unavailable")', viewer_source)
         self.assertIn('setToast("clipboard empty")', viewer_source)
-        self.assertIn('bindFileTouchClick(fileTouchPasteBtn, () => {', source)
-        self.assertNotIn('bindFileTouchPress(fileTouchPasteBtn, () => {', source)
+        self.assertIn('codoxearFileViewer.bindFileTouchClick(fileTouchPasteBtn, () => {', source)
+        self.assertNotIn('codoxearFileViewer.bindFileTouchPress(fileTouchPasteBtn, () => {', source)
 
     def test_touch_paste_manual_dialog_fallback_behavior(self) -> None:
         result = eval_file_paste_dialog_fallback()
@@ -4897,8 +4900,8 @@ class TestFileViewerSource(unittest.TestCase):
 
     def test_touch_copy_uses_click_activation_not_press_wrapper(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('bindFileTouchClick(fileTouchCopyBtn, () => {', source)
-        self.assertNotIn('bindFileTouchPress(fileTouchCopyBtn, () => {', source)
+        self.assertIn('codoxearFileViewer.bindFileTouchClick(fileTouchCopyBtn, () => {', source)
+        self.assertNotIn('codoxearFileViewer.bindFileTouchPress(fileTouchCopyBtn, () => {', source)
 
 
 if __name__ == "__main__":

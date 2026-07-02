@@ -578,6 +578,8 @@
       const codoxearFileViewer = window.CodoxearFileViewer;
       if (
         !codoxearFileViewer ||
+        typeof codoxearFileViewer.bindFileTouchClick !== "function" ||
+        typeof codoxearFileViewer.bindFileTouchPress !== "function" ||
         typeof codoxearFileViewer.createFileViewerController !== "function" ||
         typeof codoxearFileViewer.createPdfLoader !== "function"
       )
@@ -7503,53 +7505,6 @@
           return fileViewerController.suppressFileEditorNativeDelete(e);
         }
 
-        function bindFileTouchPress(button, handler) {
-          if (!button || typeof handler !== "function") return;
-          let suppressClickUntil = 0;
-          let sawPointerTouchAt = 0;
-          const run = (e) => {
-            if (e) {
-              e.preventDefault();
-              e.stopPropagation();
-            }
-            suppressClickUntil = Date.now() + 700;
-            handler();
-          };
-          button.addEventListener("pointerdown", (e) => {
-            if (e && e.pointerType === "touch") sawPointerTouchAt = Date.now();
-            run(e);
-          });
-          button.addEventListener(
-            "touchstart",
-            (e) => {
-              if (Date.now() - sawPointerTouchAt < 700) {
-                e.preventDefault();
-                e.stopPropagation();
-                return;
-              }
-              run(e);
-            },
-            { passive: false }
-          );
-          button.addEventListener("click", (e) => {
-            if (Date.now() < suppressClickUntil) {
-              e.preventDefault();
-              e.stopPropagation();
-              return;
-            }
-            run(e);
-          });
-        }
-
-        function bindFileTouchClick(button, handler) {
-          if (!button || typeof handler !== "function") return;
-          button.addEventListener("click", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            handler();
-          });
-        }
-
         async function copyActiveFileSelection() {
           return await fileViewerController.copyActiveFileSelection();
         }
@@ -9254,25 +9209,25 @@
           link.click();
           link.remove();
         };
-        bindFileTouchPress(fileTouchSelectBtn, () => {
+        codoxearFileViewer.bindFileTouchPress(fileTouchSelectBtn, () => {
           toggleFileTouchSelectionMode();
         });
-        bindFileTouchClick(fileTouchCopyBtn, () => {
+        codoxearFileViewer.bindFileTouchClick(fileTouchCopyBtn, () => {
           void copyActiveFileSelection();
         });
-        bindFileTouchClick(fileTouchPasteBtn, () => {
+        codoxearFileViewer.bindFileTouchClick(fileTouchPasteBtn, () => {
           void pasteFromClipboardIntoActiveFile();
         });
-        bindFileTouchPress(fileTouchUpBtn, () => {
+        codoxearFileViewer.bindFileTouchPress(fileTouchUpBtn, () => {
           handleFileTouchMoveButtonPress("up");
         });
-        bindFileTouchPress(fileTouchLeftBtn, () => {
+        codoxearFileViewer.bindFileTouchPress(fileTouchLeftBtn, () => {
           handleFileTouchMoveButtonPress("left");
         });
-        bindFileTouchPress(fileTouchDownBtn, () => {
+        codoxearFileViewer.bindFileTouchPress(fileTouchDownBtn, () => {
           handleFileTouchMoveButtonPress("down");
         });
-        bindFileTouchPress(fileTouchRightBtn, () => {
+        codoxearFileViewer.bindFileTouchPress(fileTouchRightBtn, () => {
           handleFileTouchMoveButtonPress("right");
         });
         fileCloseBtn.onclick = (e) => {

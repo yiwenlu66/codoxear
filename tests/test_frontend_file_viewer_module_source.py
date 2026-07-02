@@ -785,6 +785,73 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
+def run_file_viewer_touch_binding_probe() -> dict[str, object]:
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}}, setTimeout, clearTimeout, Date }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const fileViewer = ctx.window.CodoxearFileViewer;
+        const events = [];
+        function button() {{
+          return {{
+            listeners: {{}},
+            options: {{}},
+            addEventListener(type, handler, options) {{
+              this.listeners[type] = handler;
+              this.options[type] = options || null;
+            }},
+          }};
+        }}
+        function event(type, pointerType = "") {{
+          return {{
+            type,
+            pointerType,
+            prevented: 0,
+            stopped: 0,
+            preventDefault() {{ this.prevented += 1; }},
+            stopPropagation() {{ this.stopped += 1; }},
+          }};
+        }}
+        let now = 1000;
+        const pressButton = button();
+        const clickButton = button();
+        const pressBound = fileViewer.bindFileTouchPress(pressButton, () => events.push(["press"]), {{ nowMs: () => now }});
+        const clickBound = fileViewer.bindFileTouchClick(clickButton, () => events.push(["click"]));
+        const pointer = event("pointerdown", "touch");
+        pressButton.listeners.pointerdown(pointer);
+        now = 1100;
+        const touch = event("touchstart");
+        pressButton.listeners.touchstart(touch);
+        now = 1200;
+        const suppressedClick = event("click");
+        pressButton.listeners.click(suppressedClick);
+        now = 1800;
+        const laterClick = event("click");
+        pressButton.listeners.click(laterClick);
+        const plainClick = event("click");
+        clickButton.listeners.click(plainClick);
+        process.stdout.write(JSON.stringify({{
+          pressBound,
+          clickBound,
+          invalidPress: fileViewer.bindFileTouchPress(null, () => {{}}),
+          invalidClick: fileViewer.bindFileTouchClick(clickButton, null),
+          touchPassiveFalse: pressButton.options.touchstart && pressButton.options.touchstart.passive === false,
+          events,
+          pointerPrevented: pointer.prevented,
+          touchSuppressed: [touch.prevented, touch.stopped],
+          suppressedClick: [suppressedClick.prevented, suppressedClick.stopped],
+          laterClick: [laterClick.prevented, laterClick.stopped],
+          plainClick: [plainClick.prevented, plainClick.stopped],
+        }}));
+        """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def run_file_viewer_pdf_loader_probe() -> dict[str, object]:
     viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
@@ -832,7 +899,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
     def test_file_viewer_controller_owns_save_conflict_behavior(self) -> None:
         result = run_file_viewer_controller_probe()
         self.assertTrue(result["render"]["exportFrozen"])
-        self.assertEqual(result["render"]["exports"], ["createFileViewerController", "createPdfLoader"])
+        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFileViewerController", "createPdfLoader"])
         self.assertEqual(result["render"]["conflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["currentConflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["labelText"], "src/app.py - save conflict: version mismatch")
@@ -1186,6 +1253,20 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn("fileViewerController.currentActiveFileIdentity()", app_source)
         self.assertNotIn("activeFilePath: () => activeFilePath", app_source)
 
+    def test_file_viewer_touch_binding_behavior(self) -> None:
+        result = run_file_viewer_touch_binding_probe()
+        self.assertTrue(result["pressBound"])
+        self.assertTrue(result["clickBound"])
+        self.assertFalse(result["invalidPress"])
+        self.assertFalse(result["invalidClick"])
+        self.assertTrue(result["touchPassiveFalse"])
+        self.assertEqual(result["events"], [["press"], ["press"], ["click"]])
+        self.assertEqual(result["pointerPrevented"], 1)
+        self.assertEqual(result["touchSuppressed"], [1, 1])
+        self.assertEqual(result["suppressedClick"], [1, 1])
+        self.assertEqual(result["laterClick"], [1, 1])
+        self.assertEqual(result["plainClick"], [1, 1])
+
     def test_file_viewer_pdf_loader_behavior(self) -> None:
         result = run_file_viewer_pdf_loader_probe()
         self.assertTrue(result["sameImported"])
@@ -1214,6 +1295,8 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn("createFileEditorRuntime", editor_source)
         self.assertIn("createMonacoLoader", editor_source)
         self.assertIn("renderSaveConflict", viewer_source)
+        self.assertIn("bindFileTouchPress", viewer_source)
+        self.assertIn("bindFileTouchClick", viewer_source)
         self.assertIn("createPdfLoader", viewer_source)
         self.assertNotIn("function renderFileSaveConflict", app_source)
 
