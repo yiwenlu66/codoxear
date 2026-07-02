@@ -7510,3 +7510,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: global click/Escape handlers still live in `app.js`, but they no longer own the file-viewer display representation.
+
+## 2026-07-02T18:18:00Z File mode controls viewer-module ownership
+- Functional commit `0592b48 Move file mode controls into viewer module` moved file-viewer mode toolbar DOM application from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js` as `createFileModeControlsRuntime(...)`.
+- Mechanism: `createFileViewerController.currentFileModeControlState()` already owns the mode/editability/download/video-preview policy. Applying that computed policy to the diff/preview/download/video-preview controls is viewer DOM runtime behavior, like touch-toolbar and render-surface updates. `app.js` now delegates `applyFileMode()` to `fileModeControlsRuntime.apply(...)` and keeps only controller state retrieval.
+- Tests updated: executable VM coverage now exercises active/hidden mode states, disabled/display/title/aria mutations, paste-dialog hiding, edit-mode exit, read-only sync, edit-button refresh, missing button dependency, and invalid state failure. Source sentinels require runtime delegation and reject restored app-owned `fileModeDiffBtn.classList.toggle(...)` and `fileVideoPreviewBtn.style.display ...` mutations. Load guards and export-list tests include `createFileModeControlsRuntime`.
+- Negative evidence preserved: focused validation initially failed with `OSError: [Errno 7] Argument list too long: 'node'` in a source-executing test that passed the full app script through `node -e`. The failure was a test transport artifact exposed by app/script growth, not a product behavior regression. The executable Node probes in `tests/test_file_viewer_source.py` now pass scripts through stdin, preserving behavior while removing argv-size sensitivity.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` returned `56 passed, 25 subtests passed` after the stdin harness repair.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `243 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1301 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: mode-toolbar DOM application belongs to `app_file_viewer.js`. App still owns raw file-picker menu DOM, PDF page rendering, file-open render dispatch, selected-session orchestration, and global event binding.
