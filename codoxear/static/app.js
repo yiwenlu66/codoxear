@@ -9043,25 +9043,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const current = () => fileViewerController.isCurrentFileCandidateRefresh(requestSeq) && (!sessionId || isFileViewerSessionCurrent(sid, syncToken));
           if (!sid) {
             if (!current()) return;
-            fileViewerController.setFileCandidateGitStateFresh(false);
-            applyFileCandidateEntries([]);
-            applyFileMode();
+            fileViewerController.clearFileCandidateRefreshEntries();
             return;
           }
           const cacheKey = fileCandidateCacheKey(sid);
-          const cached = fileViewerController.fileCandidateCacheEntry(sid);
-          if (!force && cached && cached.key === cacheKey && Date.now() - Number(cached.ts || 0) < FILE_CANDIDATE_CACHE_TTL_MS) {
-            if (!current()) return;
-            fileViewerController.setFileCandidateGitStateFresh(false);
-            applyFileCandidateEntries(cached.entries);
-            applyFileMode();
+          if (!force && current() && fileViewerController.applyFreshFileCandidateCache(sid, cacheKey, { now: Date.now(), ttl: FILE_CANDIDATE_CACHE_TTL_MS })) {
             renderFilePickerMenu();
             return;
           }
           if (!current()) return;
-          fileViewerController.setFileCandidateGitStateFresh(false);
-          applyFileCandidateEntries([]);
-          applyFileMode();
+          fileViewerController.clearFileCandidateRefreshEntries();
           const messageEntries = collectMessageFileRefs().map((path) => ({
             path,
             additions: null,
@@ -9091,9 +9082,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           let renderedFallback = false;
           if (fallbackEntries.length) {
             if (!current()) return;
-            applyFileCandidateEntries(fallbackEntries);
-            fileViewerController.setFileCandidateGitStateFresh(false);
-            applyFileMode();
+            fileViewerController.applyFileCandidateRefreshEntries(fallbackEntries, { gitStateFresh: false });
             renderFilePickerMenu();
             renderedFallback = true;
           }
@@ -9120,9 +9109,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (!changedEntriesFresh && renderedFallback) return;
           const merged = mergeCandidateEntries(changedEntries);
           if (!current()) return;
-          applyFileCandidateEntries(merged);
-          fileViewerController.setFileCandidateGitStateFresh(changedEntriesFresh);
-          applyFileMode();
+          fileViewerController.applyFileCandidateRefreshEntries(merged, { gitStateFresh: changedEntriesFresh });
           if (changedEntriesFresh) rememberFileCandidateCache(sid, cacheKey);
           if (!current()) return;
           renderFilePickerMenu();

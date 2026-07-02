@@ -79,6 +79,20 @@ def js_candidate_controller_fixture() -> str:
             fileCandidateCacheEntry(sid) { const cached = fileCandidateCache.get(String(sid || "")); return cached ? { key: cached.key, ts: cached.ts, entries: (cached.entries || []).map(__candidateClone).filter(Boolean) } : null; },
             deleteFileCandidateCache(sid) { return fileCandidateCache.delete(String(sid || "")); },
             fileCandidateCacheSize() { return fileCandidateCache.size; },
+            applyFileCandidateRefreshEntries(entries, { gitStateFresh = false } = {}) {
+              this.applyFileCandidateEntries(entries);
+              this.setFileCandidateGitStateFresh(gitStateFresh);
+              applyFileMode();
+              return true;
+            },
+            clearFileCandidateRefreshEntries() { return this.applyFileCandidateRefreshEntries([], { gitStateFresh: false }); },
+            applyFreshFileCandidateCache(sid, key, { now = Date.now(), ttl = 0 } = {}) {
+              const cached = this.fileCandidateCacheEntry(sid);
+              if (!cached || cached.key !== key) return false;
+              const age = Number(now || 0) - Number(cached.ts || 0);
+              if (!(age >= 0 && age < Number(ttl || 0))) return false;
+              return this.applyFileCandidateRefreshEntries(cached.entries, { gitStateFresh: false });
+            },
             upsertFileEntry(entry) {
               const merged = __candidateClone(entry);
               if (!merged) return false;
@@ -1198,7 +1212,10 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertIn("function visibleFilePickerEntries(context)", picker_source)
         self.assertIn("prependPendingSessionPathEntry(localFilePickerSearchEntries(context, query), query)", picker_source)
         self.assertIn("function filePickerCandidateScore(path, query)", source)
-        self.assertIn("applyFileMode();\n            renderFilePickerMenu();", source)
+        self.assertIn("function applyFreshFileCandidateCache", viewer_source)
+        self.assertIn("return applyFileCandidateRefreshEntries(cached.entries, { gitStateFresh: false });", viewer_source)
+        self.assertIn("fileViewerController.applyFreshFileCandidateCache(sid, cacheKey", source)
+        self.assertIn("fileViewerController.applyFileCandidateRefreshEntries(merged, { gitStateFresh: changedEntriesFresh });", source)
         self.assertNotIn("const diffable = canToggleMode && activeFileGitPathValue() && fileCandidateGitStateFresh", source)
         self.assertIn("function currentFileModeControlState", viewer_source)
         self.assertIn("const diffable = Boolean(canToggleMode && identity.gitPath && currentFileCandidateGitStateFresh()", viewer_source)

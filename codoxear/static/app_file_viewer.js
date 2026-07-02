@@ -369,6 +369,25 @@
       return fileCandidateCache.size;
     }
 
+    function applyFileCandidateRefreshEntries(entries, { gitStateFresh = false } = {}) {
+      applyFileCandidateEntries(entries);
+      setFileCandidateGitStateFresh(gitStateFresh);
+      applyFileMode();
+      return true;
+    }
+
+    function clearFileCandidateRefreshEntries() {
+      return applyFileCandidateRefreshEntries([], { gitStateFresh: false });
+    }
+
+    function applyFreshFileCandidateCache(sid, key, { now = Date.now(), ttl = 0 } = {}) {
+      const cached = fileCandidateCacheEntry(sid);
+      if (!cached || cached.key !== key) return false;
+      const age = Number(now || 0) - Number(cached.ts || 0);
+      if (!(age >= 0 && age < Number(ttl || 0))) return false;
+      return applyFileCandidateRefreshEntries(cached.entries, { gitStateFresh: false });
+    }
+
     function upsertFileEntry(entry) {
       const merged = cloneFileCandidateEntry(entry);
       if (!merged) return false;
@@ -1775,6 +1794,9 @@
       fileCandidateCacheEntry,
       deleteFileCandidateCache,
       fileCandidateCacheSize,
+      applyFileCandidateRefreshEntries,
+      clearFileCandidateRefreshEntries,
+      applyFreshFileCandidateCache,
       upsertFileEntry,
       pickerEntryForKey,
       pickerEntryForPath,
