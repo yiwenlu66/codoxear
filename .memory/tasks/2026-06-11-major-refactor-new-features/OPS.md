@@ -7731,3 +7731,18 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
   - `git diff --check` and staged `git diff --cached --check` passed before commit, and staged diff inspection showed only app/viewer/test files in the functional commit.
 - Scope note: file-viewer panel reset and empty-target projection are viewer-module owned. App.js still owns session show/hide/sync orchestration, picker input event binding, file-reference click routing, and selected-session authority.
+
+## 2026-07-02T15:04:00Z File viewer hide lifecycle viewer-module ownership
+- Functional commit `d3e2fad Move file viewer hide lifecycle into viewer module` moved file-viewer hide cleanup/session-clear ordering from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js` as `createFileViewerLifecycleRuntime(...).hide()`.
+- Mechanism: app.js still owned the hide transition across modal state capture, viewer-session sync invalidation, pending-open cancellation, nested unsaved/paste dialog dismissal, active selection persistence, panel reset, picker/search cleanup, modal display hide, viewer session/unavailable state clear, active identity clear, touch-toolbar refresh, and modal focus restoration. The lifecycle runtime now owns that order while app.js injects modal/picker/dialog side effects and the viewer controller supplies session/identity state mutations.
+- Tests updated: `eval_hide_file_viewer_identity_cleanup()` now loads `app_file_viewer.js` and executes `createFileViewerLifecycleRuntime(...)` directly, covering cleanup order, session/identity clearing, modal display state, return-focus consumption, frozen runtime export, and fail-loud missing-controller dependency behavior. Source sentinels in viewer and overlay tests now require app.js to delegate `hideFileViewer()` to `fileViewerLifecycleRuntime.hide()` and require modal hide callbacks to be injected into the lifecycle runtime.
+- Negative evidence preserved: broader validation initially exposed a stale overlay accessibility source assertion that still expected `fileViewerModalRuntime.beginHide()` inside app.js. It was redirected to the lifecycle runtime owner and modal callback injection.
+- Validation:
+  - `node --check codoxear/static/app_file_viewer.js` and `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `58 passed, 25 subtests passed` after source sentinel repair.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `260 passed, 77 subtests passed` after overlay sentinel repair.
+  - Full local `python3 -m pytest -q` returned `1309 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit, and staged diff inspection showed only app/viewer/test files in the functional commit.
+- Scope note: file-viewer hide lifecycle is viewer-module owned. App.js still owns show/open session lifecycle, session-switch synchronization (`ensureCurrentFileViewerSession()`), file-picker input event binding, file-reference click routing, and selected-session authority.
