@@ -7053,3 +7053,8 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: editor runtime now owns current editor/model/disposable lifecycle, Monaco loader/theme/edit-support readiness, and current editor layout/line focus. App keeps DOM hosts, render scheduling/currentness, Monaco editor creation parameters, render fallback decisions, and user-facing mode/status wiring.
+
+## 2026-07-02T06:50:26Z Fresh file-viewer/editor architecture review failed before output
+- Async read-only  review  failed before producing a child session/result: runner process  exited or disappeared and stale-run reconciliation marked the run failed.
+- Output target  was not produced as a usable review artifact by the run.
+- Interpretation/decision: this is infrastructure-only negative evidence about the review runner, not evidence for or against the current file-viewer/editor refactor. It does not change the code causal model and is not a blocker to continuing Workbench item 2. A future clean-room review is still required before any yield/acceptance claim.
