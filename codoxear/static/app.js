@@ -7531,16 +7531,11 @@
           const positionState = fileEditorRuntime.positionCurrentEditorAtLine("file", lineNumber, normalizeLineNumber);
           const requestedLine = positionState && positionState.requestedLine;
           if (requestedLine) {
-            requestAnimationFrame(() => {
-              if (request && !isCurrentFileOpenRequest(request)) return;
-              if (!fileEditorRuntime.layoutCurrent()) return;
-              applyEditorLineFocus(requestedLine);
+            fileEditorRuntime.scheduleLineFocus("file", requestedLine, {
+              requestAnimationFrame: (callback) => requestAnimationFrame(callback),
+              setTimeout: (callback, delay) => setTimeout(callback, delay),
+              isCurrent: () => !(request && !isCurrentFileOpenRequest(request)),
             });
-            setTimeout(() => {
-              if (request && !isCurrentFileOpenRequest(request)) return;
-              if (!fileEditorRuntime.layoutCurrent()) return;
-              applyEditorLineFocus(requestedLine);
-            }, 60);
           }
           updateFileTouchToolbar();
           return true;
@@ -7562,16 +7557,11 @@
           const positionState = fileEditorRuntime.positionCurrentEditorAtLine("diff", lineNumber, normalizeLineNumber);
           const requestedLine = positionState && positionState.requestedLine;
           if (requestedLine) {
-            requestAnimationFrame(() => {
-              if (request && !isCurrentFileOpenRequest(request)) return;
-              if (!fileEditorRuntime.layoutCurrent()) return;
-              applyEditorLineFocus(requestedLine);
+            fileEditorRuntime.scheduleLineFocus("diff", requestedLine, {
+              requestAnimationFrame: (callback) => requestAnimationFrame(callback),
+              setTimeout: (callback, delay) => setTimeout(callback, delay),
+              isCurrent: () => !(request && !isCurrentFileOpenRequest(request)),
             });
-            setTimeout(() => {
-              if (request && !isCurrentFileOpenRequest(request)) return;
-              if (!fileEditorRuntime.layoutCurrent()) return;
-              applyEditorLineFocus(requestedLine);
-            }, 60);
           }
           updateFileTouchToolbar();
           return true;

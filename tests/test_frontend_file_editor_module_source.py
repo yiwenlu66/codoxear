@@ -91,6 +91,17 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
         const updateDiff = runtime.updateEditorOptions("diff", {{ hideUnchangedRegions: {{ enabled: false }} }});
         const layoutDiff = runtime.layoutCurrent();
         const focusDiff = runtime.focusLine("diff", "9", (value) => Number(value) || null);
+        const scheduledLineFocus = runtime.scheduleLineFocus("diff", "5", {{
+          requestAnimationFrame: (callback) => {{ events.push(["scheduleFrame"]); callback(); }},
+          setTimeout: (callback, delay) => {{ events.push(["scheduleTimer", delay]); callback(); }},
+          isCurrent: () => true,
+          delayMs: 12,
+        }});
+        const staleScheduledLineFocus = runtime.scheduleLineFocus("diff", "6", {{
+          requestAnimationFrame: (callback) => {{ events.push(["staleFrame"]); callback(); }},
+          setTimeout: (callback, delay) => {{ events.push(["staleTimer", delay]); callback(); }},
+          isCurrent: () => false,
+        }});
         const modelA = disposable("modelA");
         const modelB = disposable("modelB", true);
         runtime.setModels([modelA, null, modelB]);
@@ -206,6 +217,8 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
           updateDiff,
           layoutDiff,
           focusDiff,
+          scheduledLineFocus,
+          staleScheduledLineFocus,
           modelCountBeforeDispose,
           withCurrent,
           disposeResult,
@@ -314,6 +327,8 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertTrue(result["updateDiff"])
         self.assertTrue(result["layoutDiff"])
         self.assertTrue(result["focusDiff"])
+        self.assertTrue(result["scheduledLineFocus"])
+        self.assertTrue(result["staleScheduledLineFocus"])
         self.assertEqual(result["modelCountBeforeDispose"], 2)
         self.assertEqual(result["withCurrent"], "diff")
         self.assertTrue(result["disposeResult"])
@@ -358,6 +373,18 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
                 ["setPosition", "modified", {"lineNumber": 9, "column": 1}],
                 ["revealLineInCenter", "modified", 9],
                 ["focus", "modified"],
+                ["scheduleFrame"],
+                ["layout", "diff"],
+                ["setPosition", "modified", {"lineNumber": 5, "column": 1}],
+                ["revealLineInCenter", "modified", 5],
+                ["focus", "modified"],
+                ["scheduleTimer", 12],
+                ["layout", "diff"],
+                ["setPosition", "modified", {"lineNumber": 5, "column": 1}],
+                ["revealLineInCenter", "modified", 5],
+                ["focus", "modified"],
+                ["staleFrame"],
+                ["staleTimer", 60],
                 ["dispose", "change"],
                 ["clearHost"],
                 ["dispose", "modelA"],
@@ -414,7 +441,7 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertIn("fileEditorRuntime.applySelection(editor, cursor, anchor, fileEditorMonacoLoader.selectionCtor())", app_source)
         self.assertIn("fileEditorRuntime.isCollapsedSelection(selection)", app_source)
         self.assertIn("fileEditorRuntime.activeSelectionText(currentFileEditorKind())", app_source)
-        self.assertIn("fileEditorRuntime.layoutCurrent()", app_source)
+        self.assertNotIn("fileEditorRuntime.layoutCurrent()", app_source)
         self.assertNotIn("function extToEditorLang", app_source)
         self.assertIn("function editorLanguageForPath(path)", editor_source)
         self.assertIn("function fileEditorCreateOptions", editor_source)
@@ -422,6 +449,7 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertIn("function createFileEditor(monaco, host, options = {})", editor_source)
         self.assertIn("function createDiffEditor(monaco, host, options = {})", editor_source)
         self.assertIn("function positionCurrentEditorAtLine(kind, lineNumber, normalizeLineNumber)", editor_source)
+        self.assertIn("function scheduleLineFocus(kind, requestedLine, options = {})", editor_source)
         self.assertIn("function currentFileText(kind, fallbackText = \"\")", editor_source)
         self.assertIn("function restoreFileText(kind, text, runProgrammaticChange)", editor_source)
         self.assertIn("fileEditorRuntime.createFileEditor(monaco, fileDiff", app_source)
@@ -431,11 +459,14 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertIn("fileEditorRuntime.createDiffEditor(monaco, fileDiff", app_source)
         self.assertIn("fileEditorRuntime.positionCurrentEditorAtLine(\"file\", lineNumber, normalizeLineNumber)", app_source)
         self.assertIn("fileEditorRuntime.positionCurrentEditorAtLine(\"diff\", lineNumber, normalizeLineNumber)", app_source)
+        self.assertIn("fileEditorRuntime.scheduleLineFocus(\"file\", requestedLine", app_source)
+        self.assertIn("fileEditorRuntime.scheduleLineFocus(\"diff\", requestedLine", app_source)
         self.assertNotIn("fileEditorRuntime.setEditor(editor);", app_source)
         self.assertNotIn("fileEditorRuntime.setModels([editor.getModel()].filter(Boolean));", app_source)
         self.assertNotIn("fileEditorRuntime.setChangeDisposable(editor.onDidChangeModelContent", app_source)
         self.assertNotIn("monaco.editor.create(fileDiff", app_source)
         self.assertNotIn("monaco.editor.createDiffEditor(fileDiff", app_source)
+        self.assertNotIn("applyEditorLineFocus(requestedLine);", app_source)
         self.assertNotIn("model.setValue(restorePlan.text);", app_source)
         self.assertNotIn("let monacoReadyPromise = null;", app_source)
         self.assertNotIn("let monacoNs = null;", app_source)

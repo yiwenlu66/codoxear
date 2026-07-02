@@ -434,14 +434,36 @@
       return true;
     }
 
-    function focusLine(kind, lineNumber, normalizeLineNumber) {
-      const normalize = requireFunction(normalizeLineNumber, "normalizeLineNumber");
-      const line = normalize(lineNumber);
+    function focusResolvedLine(kind, lineNumber) {
+      const line = Math.max(1, Number(lineNumber) || 0);
       const target = activeCodeEditor(kind) || editor;
       if (!target || !line || typeof target.setPosition !== "function") return false;
       target.setPosition({ lineNumber: line, column: 1 });
       if (typeof target.revealLineInCenter === "function") target.revealLineInCenter(line);
       if (typeof target.focus === "function") target.focus();
+      return true;
+    }
+
+    function focusLine(kind, lineNumber, normalizeLineNumber) {
+      const normalize = requireFunction(normalizeLineNumber, "normalizeLineNumber");
+      const line = normalize(lineNumber);
+      return focusResolvedLine(kind, line);
+    }
+
+    function scheduleLineFocus(kind, requestedLine, options = {}) {
+      const line = Math.max(1, Number(requestedLine) || 0);
+      if (!line) return false;
+      const requestFrame = requireFunction(options.requestAnimationFrame, "requestAnimationFrame");
+      const setTimer = requireFunction(options.setTimeout, "setTimeout");
+      const isCurrent = typeof options.isCurrent === "function" ? options.isCurrent : () => true;
+      const delayMs = Math.max(0, Number(options.delayMs == null ? 60 : options.delayMs) || 0);
+      const runFocus = () => {
+        if (!isCurrent()) return false;
+        if (!layoutCurrent()) return false;
+        return focusResolvedLine(kind, line);
+      };
+      requestFrame(runFocus);
+      setTimer(runFocus, delayMs);
       return true;
     }
 
@@ -482,6 +504,7 @@
       normalizePosition,
       positionCurrentEditorAtLine,
       restoreFileText,
+      scheduleLineFocus,
       selectionText,
       setChangeDisposable,
       setEditor,
