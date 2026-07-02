@@ -7560,3 +7560,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: file-picker menu chrome/input state application belongs to `app_file_picker.js`. App still owns file-picker menu item rendering, candidate gathering/scoring context, file-open side effects, and global focus/keyboard event wiring.
+
+## 2026-07-02T20:04:00Z File-picker highlighted path picker-module ownership
+- Functional commit `7461ec4 Move file picker path highlighting into picker module` moved highlighted file-picker path DOM construction from inline `codoxear/static/app.js` into `codoxear/static/app_file_picker.js` as `appendHighlightedFileMenuPath(...)`.
+- Mechanism: highlighted path rendering is pure file-picker menu DOM behavior. The picker module already consumes `filePickerMatchRangesForQuery`; it now owns span/mark/text-node construction while app supplies generic `el` and `document.createTextNode` dependencies through the wrapper.
+- Tests updated: executable picker module coverage verifies highlighted and plain path rendering, preserved text-node segments and `mark.fileMenuMatch` spans, missing `createTextNode` dependency failure, export list, app load guard, and source sentinels requiring module-owned construction while rejecting restored app-owned `document.createTextNode(value.slice(cursor...` logic.
+- Negative evidence preserved: focused validation initially failed because an existing source test still expected app-owned path highlighting. The sentinel was corrected to inspect `app_file_picker.js` and the app wrapper boundary.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_picker_module_source.py tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_picker.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_picker_module_source.py tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py` returned `74 passed, 25 subtests passed` after source sentinel repair.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `246 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1304 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: highlighted path node construction belongs to `app_file_picker.js`. App still owns full file-picker menu row/section rendering and file-open click side effects.
