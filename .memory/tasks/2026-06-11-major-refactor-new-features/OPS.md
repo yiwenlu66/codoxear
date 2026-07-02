@@ -7717,3 +7717,17 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
   - `git diff --check` and staged `git diff --cached --check` passed before commit, and staged diff inspection showed only app/viewer/test files in the functional commit.
 - Scope note: candidate refresh request/cache/fallback/git-state sequencing is viewer-module owned. App.js still owns transcript DOM file-ref collection, session file-history/cwd evidence, cache-key construction from app evidence, selected-session authority, session switch/show/hide orchestration, and file-picker input event binding.
+
+## 2026-07-02T14:38:00Z File viewer panel reset viewer-module ownership
+- Functional commit `040f16d Move file viewer panel reset into viewer module` moved the panel reset and empty-target rendering sequence from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js` as `createFileViewerPanelRuntime(...)`.
+- Mechanism: app.js still owned a small but stateful panel transition that disposed the editor, reset active buffer state, reset render surfaces, cleared active identity, reset picker input, rerendered the picker menu, projected the empty-target status, and optionally refreshed the touch toolbar. The new runtime owns that transition while app.js injects editor disposal, render-surface reset, picker reset/menu rendering, touch-toolbar update, status projection, and the viewer controller.
+- Tests updated: `eval_empty_file_viewer_target()` now loads `app_file_viewer.js` and executes `createFileViewerPanelRuntime(...)` directly, covering reset-only ordering, empty-target ordering/status, optional touch toolbar update, frozen runtime export, and fail-loud missing-controller dependency behavior. Source sentinels now require app.js wrapper delegation to `fileViewerPanelRuntime` and require render-surface reset to be injected into the runtime rather than directly executed by app-owned reset logic.
+- Validation:
+  - `node --check codoxear/static/app_file_viewer.js` and `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `58 passed, 25 subtests passed` after source sentinel repair.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `260 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1309 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit, and staged diff inspection showed only app/viewer/test files in the functional commit.
+- Scope note: file-viewer panel reset and empty-target projection are viewer-module owned. App.js still owns session show/hide/sync orchestration, picker input event binding, file-reference click routing, and selected-session authority.
