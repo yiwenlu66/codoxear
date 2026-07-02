@@ -7153,3 +7153,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: `app.js` still owns file-helper wrappers for helpers it calls directly; delete-key command mapping is now owned by the helper module and consumed by the viewer controller, not app-level dependency plumbing.
+
+## 2026-07-02T08:52:00Z Touch toolbar activation policy viewer-controller ownership
+- Functional commit `3996305 Move touch toolbar activation into viewer controller` moved the touch toolbar activation predicate from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: touch toolbar visibility is a file-viewer/editor capability decision combining viewport touch capability, viewer open state, active file text kind, non-preview view mode, and active editor presence. The viewer controller already owns active file kind and view mode; app now supplies only observations (`useTouchFileEditorControls`, `hasActiveFileCodeEditor`) and DOM visibility mutation. The controller owns `isFileTouchToolbarActive()` and `currentFileTouchToolbarState()`.
+- Tests updated: controller fixtures now provide viewport/editor-presence observations instead of a precomputed toolbar-active predicate. Source tests reject app-owned `isFileTouchToolbarActive()` and require app observation injection plus controller-owned predicate. The touch-selection executable fixture now initializes active text-file state before asserting keyboard handling, matching the real predicate's text-file requirement.
+- Negative evidence preserved: first focused validation failed because `eval_file_touch_selection_keydown()` had not initialized active file text state; after the predicate moved, the controller correctly considered the toolbar inactive. Broader validation then exposed one remaining stale controller fixture in `test_file_picker_search_source.py` that still passed the removed `isFileTouchToolbarActive` dependency. Both were test-fixture/measurement defects caused by the more explicit controller contract, not product-code regressions.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_file_picker_search_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_file_picker_search_source.py` returned `72 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `236 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1294 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: controller owns touch-toolbar activation and toolbar state projection; app still owns toolbar DOM nodes/style mutation and supplies viewport/editor-presence observations.
