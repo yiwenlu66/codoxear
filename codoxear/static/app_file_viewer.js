@@ -80,6 +80,45 @@
     return value;
   }
 
+  function requireVideoNode(value) {
+    if (!value || !value.style || typeof value.removeAttribute !== "function" || typeof value.load !== "function") {
+      throw new TypeError("file viewer dependency missing: fileVideo");
+    }
+    return value;
+  }
+
+  function createFileRenderSurfaceRuntime(options = {}) {
+    const diff = requireStyledNode(options.diff, "fileDiff");
+    const image = requireStyledNode(options.image, "fileImage");
+    const video = requireVideoNode(options.video);
+    const videoPreviewButton = requireStyledNode(options.videoPreviewButton, "fileVideoPreviewButton");
+    const clearActiveVideoFallback = requireFunction(options.clearActiveVideoFallback, "clearActiveVideoFallback");
+
+    function setSurface(surface) {
+      const next = String(surface || "");
+      if (next !== "diff" && next !== "image" && next !== "video") throw new Error("invalid file render surface");
+      diff.style.display = next === "diff" ? "block" : "none";
+      image.style.display = next === "image" ? "block" : "none";
+      video.style.display = next === "video" ? "block" : "none";
+      return next;
+    }
+
+    function clearVideo() {
+      clearActiveVideoFallback();
+      videoPreviewButton.style.display = "none";
+      videoPreviewButton.disabled = true;
+      video.onerror = null;
+      video.onloadedmetadata = null;
+      if (typeof video.pause === "function") video.pause();
+      video.removeAttribute("src");
+      video.load();
+      video.style.display = "none";
+      return true;
+    }
+
+    return Object.freeze({ clearVideo, setSurface });
+  }
+
   function createFilePasteDialogRuntime(options = {}) {
     const backdrop = requireStyledNode(options.backdrop, "filePasteBackdrop");
     const dialog = requireStyledNode(options.dialog, "filePasteDialog");
@@ -2224,6 +2263,7 @@
     bindFileTouchClick,
     bindFileTouchPress,
     createFilePasteDialogRuntime,
+    createFileRenderSurfaceRuntime,
     createFileViewerController,
     createPdfLoader,
   });

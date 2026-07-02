@@ -3167,6 +3167,16 @@ function applyActiveFileNonTextState(kind) {
           fileDiff: {{ style: {{ display: "" }}, innerHTML: "" }},
           fileImage: {{ style: {{ display: "" }}, src: "", alt: "" }},
           fileVideo: {{ style: {{ display: "" }}, src: "", onerror: null, onloadedmetadata: null }},
+          fileRenderSurfaceRuntime: {{
+            setSurface(surface) {{
+              const next = String(surface || "");
+              if (next !== "diff" && next !== "image" && next !== "video") throw new Error("invalid file render surface");
+              ctx.fileDiff.style.display = next === "diff" ? "block" : "none";
+              ctx.fileImage.style.display = next === "image" ? "block" : "none";
+              ctx.fileVideo.style.display = next === "video" ? "block" : "none";
+              return next;
+            }},
+          }},
           fileStatus: {{ textContent: "" }},
           Date: {{ now: () => 4242 }},
           isCurrentFileOpenRequest: () => ctx.current,
@@ -3323,33 +3333,37 @@ function applyActiveFileNonTextState(kind) {
 
 
 def eval_file_render_surface_visibility() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function setFileRenderSurface(surface)")
-    end = source.index("function resetFileViewerPanel()", start)
-    snippet = source[start:end]
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const ctx = {{
-          fileDiff: {{ style: {{ display: "" }} }},
-          fileImage: {{ style: {{ display: "" }} }},
-          fileVideo: {{ style: {{ display: "" }} }},
-        }};
+        const ctx = {{ window: {{}} }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_surface = setFileRenderSurface;\n")}, ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const fileDiff = {{ style: {{ display: "" }} }};
+        const fileImage = {{ style: {{ display: "" }} }};
+        const fileVideo = {{ style: {{ display: "" }}, removeAttribute() {{}}, load() {{}} }};
+        const fileVideoPreviewBtn = {{ style: {{ display: "" }}, disabled: false }};
+        const runtime = ctx.window.CodoxearFileViewer.createFileRenderSurfaceRuntime({{
+          diff: fileDiff,
+          image: fileImage,
+          video: fileVideo,
+          videoPreviewButton: fileVideoPreviewBtn,
+          clearActiveVideoFallback: () => {{}},
+        }});
         function snapshot() {{
-          return {{ diff: ctx.fileDiff.style.display, image: ctx.fileImage.style.display, video: ctx.fileVideo.style.display }};
+          return {{ diff: fileDiff.style.display, image: fileImage.style.display, video: fileVideo.style.display }};
         }}
         const result = {{}};
-        ctx.__test_surface("diff");
+        runtime.setSurface("diff");
         result.diff = snapshot();
-        ctx.__test_surface("image");
+        runtime.setSurface("image");
         result.image = snapshot();
-        ctx.__test_surface("video");
+        runtime.setSurface("video");
         result.video = snapshot();
         result.invalidThrows = false;
         try {{
-          ctx.__test_surface("audio");
+          runtime.setSurface("audio");
         }} catch (err) {{
           result.invalidThrows = err && err.message === "invalid file render surface";
         }}
@@ -4321,7 +4335,9 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertNotIn("function startFileOpenRequest(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {})", source)
         self.assertIn("function startFileOpenRequest(nextPath = null, { line = undefined, gitPath = undefined, apiPath = undefined } = {})", viewer_source)
         self.assertIn("function setFileRenderSurface(surface)", source)
-        self.assertIn('throw new Error("invalid file render surface")', source)
+        self.assertIn("return fileRenderSurfaceRuntime.setSurface(surface);", source)
+        self.assertIn("function createFileRenderSurfaceRuntime(options = {})", viewer_source)
+        self.assertIn('throw new Error("invalid file render surface")', viewer_source)
         self.assertIn("async function applyFileLoadResult(rel, result, request, { viewMode = \"file\" } = {})", source)
         self.assertNotIn("function finalizeFileOpenSuccess(rel, absPath = null)", source)
         self.assertIn("function finalizeFileOpenSuccess(rel, absPath = null)", viewer_source)
@@ -4338,9 +4354,11 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(source.count('setFileRenderSurface("diff");'), 6)
         self.assertIn('setFileRenderSurface("image");', source)
         self.assertIn('setFileRenderSurface("video");', source)
-        self.assertEqual(source.count("fileDiff.style.display ="), 1)
-        self.assertEqual(source.count("fileImage.style.display ="), 1)
-        self.assertEqual(source.count("fileVideo.style.display ="), 2)
+        self.assertNotIn("fileDiff.style.display =", source)
+        self.assertNotIn("fileImage.style.display =", source)
+        self.assertIn("diff.style.display =", viewer_source)
+        self.assertIn("image.style.display =", viewer_source)
+        self.assertIn("video.style.display =", viewer_source)
         self.assertNotIn("return fileViewerController.beginFileOpenRequest(nextPath, { line, gitPath, apiPath });", source)
         self.assertIn("const request = beginFileOpenRequest(nextPath, { line, gitPath, apiPath });", viewer_source)
         self.assertIn("const openRequest = startFileOpenRequest(nextPath, { line, gitPath, apiPath });", viewer_source)
@@ -4817,7 +4835,10 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('result.kind === "video"', viewer_source)
         self.assertIn('loadPlan.kind === "video"', source)
         self.assertIn("function clearFileVideo()", source)
-        self.assertIn("fileVideo.pause();", source)
+        self.assertIn("return fileRenderSurfaceRuntime.clearVideo();", source)
+        self.assertIn("function createFileRenderSurfaceRuntime(options = {})", viewer_source)
+        self.assertIn("video.pause();", viewer_source)
+        self.assertNotIn("fileVideo.pause();", source)
         self.assertIn('fileVideo.src = resolveAppUrl(loadPlan.videoUrl);', source)
         self.assertIn('const BROWSER_SAFE_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/ogg"]);', viewer_source)
         self.assertIn('function prepareActiveVideoLoadResult(rel, result, request)', viewer_source)

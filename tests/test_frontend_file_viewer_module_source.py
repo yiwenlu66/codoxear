@@ -878,6 +878,64 @@ def run_file_viewer_touch_binding_probe() -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
+def run_file_render_surface_runtime_probe() -> dict[str, object]:
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const fileViewer = ctx.window.CodoxearFileViewer;
+        const events = [];
+        const diff = {{ style: {{ display: "" }} }};
+        const image = {{ style: {{ display: "" }} }};
+        const video = {{
+          style: {{ display: "" }},
+          onerror: () => {{}},
+          onloadedmetadata: () => {{}},
+          pause: () => events.push(["pause"]),
+          removeAttribute: (name) => events.push(["remove", name]),
+          load: () => events.push(["load"]),
+        }};
+        const previewButton = {{ style: {{ display: "" }}, disabled: false }};
+        const runtime = fileViewer.createFileRenderSurfaceRuntime({{
+          diff,
+          image,
+          video,
+          videoPreviewButton: previewButton,
+          clearActiveVideoFallback: () => events.push(["clearFallback"]),
+        }});
+        function snapshot() {{ return {{ diff: diff.style.display, image: image.style.display, video: video.style.display }}; }}
+        const diffResult = runtime.setSurface("diff");
+        const diffState = snapshot();
+        const imageResult = runtime.setSurface("image");
+        const imageState = snapshot();
+        const videoResult = runtime.setSurface("video");
+        const videoState = snapshot();
+        let invalidMessage = "";
+        try {{ runtime.setSurface("audio"); }} catch (err) {{ invalidMessage = err && err.message ? err.message : String(err); }}
+        const clearVideoResult = runtime.clearVideo();
+        const clearState = {{ previewDisplay: previewButton.style.display, previewDisabled: previewButton.disabled, videoDisplay: video.style.display, onerror: video.onerror, onloadedmetadata: video.onloadedmetadata }};
+        process.stdout.write(JSON.stringify({{
+          frozen: Object.isFrozen(runtime),
+          diffResult,
+          imageResult,
+          videoResult,
+          diffState,
+          imageState,
+          videoState,
+          invalidMessage,
+          clearVideoResult,
+          clearState,
+          events,
+        }}));
+        """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def run_file_paste_dialog_runtime_probe() -> dict[str, object]:
     viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
@@ -978,7 +1036,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
     def test_file_viewer_controller_owns_save_conflict_behavior(self) -> None:
         result = run_file_viewer_controller_probe()
         self.assertTrue(result["render"]["exportFrozen"])
-        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFilePasteDialogRuntime", "createFileViewerController", "createPdfLoader"])
+        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFilePasteDialogRuntime", "createFileRenderSurfaceRuntime", "createFileViewerController", "createPdfLoader"])
         self.assertEqual(result["render"]["conflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["currentConflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["labelText"], "src/app.py - save conflict: version mismatch")
@@ -1367,6 +1425,20 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["laterClick"], [1, 1])
         self.assertEqual(result["plainClick"], [1, 1])
 
+    def test_file_render_surface_runtime_behavior(self) -> None:
+        result = run_file_render_surface_runtime_probe()
+        self.assertTrue(result["frozen"])
+        self.assertEqual(result["diffResult"], "diff")
+        self.assertEqual(result["imageResult"], "image")
+        self.assertEqual(result["videoResult"], "video")
+        self.assertEqual(result["diffState"], {"diff": "block", "image": "none", "video": "none"})
+        self.assertEqual(result["imageState"], {"diff": "none", "image": "block", "video": "none"})
+        self.assertEqual(result["videoState"], {"diff": "none", "image": "none", "video": "block"})
+        self.assertEqual(result["invalidMessage"], "invalid file render surface")
+        self.assertTrue(result["clearVideoResult"])
+        self.assertEqual(result["clearState"], {"previewDisplay": "none", "previewDisabled": True, "videoDisplay": "none", "onerror": None, "onloadedmetadata": None})
+        self.assertEqual(result["events"], [["clearFallback"], ["pause"], ["remove", "src"], ["load"]])
+
     def test_file_paste_dialog_runtime_behavior(self) -> None:
         result = run_file_paste_dialog_runtime_probe()
         self.assertTrue(result["frozen"])
@@ -1401,6 +1473,8 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn('"app_file_viewer.js"', routes_source)
         self.assertIn('"app_file_editor.js"', routes_source)
         self.assertIn("const codoxearFileViewer = window.CodoxearFileViewer;", app_source)
+        self.assertIn('typeof codoxearFileViewer.createFilePasteDialogRuntime !== "function"', app_source)
+        self.assertIn('typeof codoxearFileViewer.createFileRenderSurfaceRuntime !== "function"', app_source)
         self.assertIn('throw new Error("Codoxear file viewer controller failed to load")', app_source)
         self.assertIn("const codoxearFileEditor = window.CodoxearFileEditor;", app_source)
         self.assertIn('throw new Error("Codoxear file editor runtime failed to load")', app_source)
@@ -1410,6 +1484,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn("bindFileTouchPress", viewer_source)
         self.assertIn("bindFileTouchClick", viewer_source)
         self.assertIn("createFilePasteDialogRuntime", viewer_source)
+        self.assertIn("createFileRenderSurfaceRuntime", viewer_source)
         self.assertIn("createPdfLoader", viewer_source)
         self.assertNotIn("function renderFileSaveConflict", app_source)
 

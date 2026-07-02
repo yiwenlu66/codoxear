@@ -572,6 +572,8 @@
         !codoxearFileViewer ||
         typeof codoxearFileViewer.bindFileTouchClick !== "function" ||
         typeof codoxearFileViewer.bindFileTouchPress !== "function" ||
+        typeof codoxearFileViewer.createFilePasteDialogRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileRenderSurfaceRuntime !== "function" ||
         typeof codoxearFileViewer.createFileViewerController !== "function" ||
         typeof codoxearFileViewer.createPdfLoader !== "function"
       )
@@ -7055,6 +7057,13 @@
           focusActiveEditor: () => fileEditorRuntime.focusActiveCodeEditor(currentFileEditorKind()),
           requestAnimationFrame: (callback) => requestAnimationFrame(callback),
         });
+        const fileRenderSurfaceRuntime = codoxearFileViewer.createFileRenderSurfaceRuntime({
+          diff: fileDiff,
+          image: fileImage,
+          video: fileVideo,
+          videoPreviewButton: fileVideoPreviewBtn,
+          clearActiveVideoFallback: () => fileViewerController.clearActiveVideoFallback(),
+        });
 
         function currentFileViewerSessionId() {
           return fileViewerController.currentFileViewerSessionId();
@@ -7198,23 +7207,11 @@
         }
 
         function clearFileVideo() {
-          fileViewerController.clearActiveVideoFallback();
-          fileVideoPreviewBtn.style.display = "none";
-          fileVideoPreviewBtn.disabled = true;
-          fileVideo.onerror = null;
-          fileVideo.onloadedmetadata = null;
-          fileVideo.pause();
-          fileVideo.removeAttribute("src");
-          fileVideo.load();
-          fileVideo.style.display = "none";
+          return fileRenderSurfaceRuntime.clearVideo();
         }
 
         function setFileRenderSurface(surface) {
-          const next = String(surface || "");
-          if (next !== "diff" && next !== "image" && next !== "video") throw new Error("invalid file render surface");
-          fileDiff.style.display = next === "diff" ? "block" : "none";
-          fileImage.style.display = next === "image" ? "block" : "none";
-          fileVideo.style.display = next === "video" ? "block" : "none";
+          return fileRenderSurfaceRuntime.setSurface(surface);
         }
 
         function resetFileViewerPanel() {
