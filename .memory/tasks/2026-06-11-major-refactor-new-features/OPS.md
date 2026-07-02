@@ -7237,3 +7237,20 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: editor runtime now owns Monaco editor construction, option policy, model registration, change-disposable registration, text/language replacement, and initial positioning. App still owns render request currentness, Monaco loader invocation, plain fallback decisions, dirty-state callback semantics, delayed focus scheduling, DOM host/surface selection, and file-viewer status/mode side effects.
+
+## 2026-07-02T11:15:00Z File paste dialog runtime viewer-module ownership
+- Functional commit `59e11f8 Move file paste dialog runtime into viewer module` moved paste-dialog show/hide/open-state/focus DOM mechanics from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js` as `createFilePasteDialogRuntime(...)`.
+- Mechanism: paste action policy already belongs to the file-viewer controller; the remaining paste-dialog mechanics were app-owned DOM behavior that prepared modal isolation, reset textarea content, toggled backdrop/dialog visibility, synchronized modal visibility, focused/selects the textarea on animation frame, detects Escape-open state, and restores editor focus on close. The new viewer-module runtime owns those mechanics with explicit DOM/dependency injection. `app.js` now instantiates it with the paste DOM nodes and app-owned modal/focus side effects, and its `showFilePasteDialog`/`hideFilePasteDialog` wrappers only delegate.
+- Tests updated: `tests/test_frontend_file_viewer_module_source.py` executes the runtime show/hide/open-state/focus behavior and missing-dependency failure. The paste fallback behavior probe now uses the module runtime directly instead of slicing app.js show/hide snippets. Source sentinels assert app delegation through `filePasteDialogRuntime.show()/hide()/isOpen()` and module-owned raw display/focus mutations.
+- Negative evidence preserved: first focused validation after the move failed because `requireStyledNode(...)` incorrectly required the textarea fake to expose `.style`, even though the runtime only needs input `.value`, `focus`, and `select`. The contract was repaired with `requirePasteInput(...)`; focused validation then passed. This failure corrected an over-constrained dependency contract rather than changing product semantics.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` returned `50 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `237 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1295 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: paste-dialog DOM mechanics belong to `app_file_viewer.js`. App still owns the paste DOM nodes, generic modal isolation helpers, button/backdrop event binding, and editor-runtime focus observation.
