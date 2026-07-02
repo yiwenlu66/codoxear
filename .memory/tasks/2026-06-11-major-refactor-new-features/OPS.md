@@ -7430,3 +7430,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: markdown preview DOM construction belongs to `app_file_viewer.js`. App still owns markdown HTML generation, candidate reference upgrade semantics, render-mode decisions, raw PDF rendering, raw image/video URL assignment, and file-picker DOM rendering.
+
+## 2026-07-02T16:05:00Z Image load DOM viewer-module ownership
+- Functional commit `1f9fab9 Move image load DOM into viewer module` moved image `src`/`alt` assignment, compatible video cleanup, and image surface selection from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js` as `createFileRenderSurfaceRuntime(...).showImage(...)`.
+- Mechanism: the render-surface runtime already owns image/video/diff surface display, video cleanup, image clearing, and panel reset. Applying an image load plan to the image element is the same media DOM lifecycle. `app.js` now passes the resolved image URL and alt text to the runtime and keeps status/render-plan orchestration.
+- Tests updated: render-surface runtime probes now execute `showImage()` and verify video cleanup, image `src`/`alt`, and image-surface display. File-load dispatcher executable tests model the new runtime method. Source sentinels reject restored app-owned `fileImage.src`, `fileImage.alt`, and image surface switching in the image branch.
+- Validation:
+  - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` returned `54 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `241 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1299 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: image load DOM application belongs to `app_file_viewer.js`. App still owns image URL resolution, status text, video load handlers/source assignment, PDF page rendering, and file-viewer modal open/close orchestration.
