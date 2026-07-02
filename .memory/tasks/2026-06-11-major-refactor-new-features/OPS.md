@@ -6932,3 +6932,19 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
   - Staged `git diff --cached --check` passed before commit.
 - Scope note: file-picker scalar menu/search state belongs to `app_file_picker.js`. App still owns selected-session identity predicates, session open/hide DOM orchestration, file-picker input/menu DOM mutation, search scheduling, menu rendering, inspect transport, candidate evidence collection/API refresh/cache-key/rendering, raw load-result render plan application, raw Monaco editor/diff-editor objects, model disposal and setValue side effects, fallback DOM construction/scrolling, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, persisted mode UI wiring, file-video element handlers/loading, and raw Monaco selection helpers.
+
+## 2026-07-02T05:52:00Z File-editor programmatic-change controller ownership
+- Functional commit `16ee092 Move editor programmatic change guard into controller` moved the `fileEditorProgrammaticChange` dirty-suppression flag from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js`.
+- Mechanism: the flag is editor state-machine policy, not a raw Monaco object. It distinguishes user edits from app-driven model replacement during restore/load so dirty state and touch-selection reset are not falsely triggered. The controller now owns `isFileEditorProgrammaticChange()`, `beginFileEditorProgrammaticChange()`, `finishFileEditorProgrammaticChange()`, and `runFileEditorProgrammaticChange(callback)`. `app.js` still owns raw Monaco `model.setValue(...)`, `setModelLanguage(...)`, editor creation/disposal, and model-change event binding; it queries the controller guard and wraps app-driven model mutations in `runFileEditorProgrammaticChange()`.
+- Tests updated: real controller probe covers guard false/true/false transitions, callback return value preservation, and `finally` reset after thrown errors. Source sentinels reject app-owned `let fileEditorProgrammaticChange = false` and require controller-owned guard methods plus app delegation.
+- Validation:
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - `node --check codoxear/static/app_file_viewer.js` passed.
+  - `node --check codoxear/static/app.js` passed.
+  - `git diff --check` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `47 passed, 25 subtests passed`.
+  - Broader frontend/file/static/auth/markdown/overlay validation returned `230 passed, 77 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1288 passed, 136 subtests passed`.
+  - Full Docker `scripts/codoxear-docker-sandbox test -q` built/reused the sandbox image and reached pytest progress `100%` with no failures.
+  - Staged `git diff --cached --check` passed before commit.
+- Scope note: the programmatic-change guard belongs to the controller. App still owns raw Monaco editor/diff-editor objects, model arrays/disposables, model disposal and setValue side effects, Monaco language mutation, editor event binding, fallback DOM construction/scrolling, raw load-result render plan application, unsaved modal DOM internals, paste dialog DOM mechanics, touch-toolbar DOM/binding mechanics, persisted mode UI wiring, file-video element handlers/loading, file-picker input/menu DOM mutation/rendering, inspect transport, and selected-session identity predicates.
