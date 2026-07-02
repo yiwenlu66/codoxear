@@ -26,11 +26,24 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
           return {{ dispose() {{ events.push(["dispose", name]); if (throws) throw new Error(`${{name}} failed`); }} }};
         }}
         const runtime = mod.createFileEditorRuntime();
-        const modifiedEditor = {{ tag: "modified" }};
-        const fileEditor = {{ tag: "file", dispose: () => events.push(["dispose", "fileEditor"]) }};
+        const modifiedEditor = {{
+          tag: "modified",
+          setPosition: (position) => events.push(["setPosition", "modified", position]),
+          revealLineInCenter: (line) => events.push(["revealLineInCenter", "modified", line]),
+          focus: () => events.push(["focus", "modified"]),
+        }};
+        const fileEditor = {{
+          tag: "file",
+          layout: () => events.push(["layout", "file"]),
+          setPosition: (position) => events.push(["setPosition", "file", position]),
+          revealLineInCenter: (line) => events.push(["revealLineInCenter", "file", line]),
+          focus: () => events.push(["focus", "file"]),
+          dispose: () => events.push(["dispose", "fileEditor"]),
+        }};
         const diffEditor = {{
           tag: "diff",
           getModifiedEditor: () => modifiedEditor,
+          layout: () => events.push(["layout", "diff"]),
           updateOptions: (options) => events.push(["updateOptions", options]),
           dispose: () => events.push(["dispose", "diffEditor"]),
         }};
@@ -42,6 +55,8 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
         const activeDiff = runtime.activeCodeEditor("diff") === modifiedEditor;
         const updateWrongKind = runtime.updateEditorOptions("file", {{ readOnly: true }});
         const updateDiff = runtime.updateEditorOptions("diff", {{ hideUnchangedRegions: {{ enabled: false }} }});
+        const layoutDiff = runtime.layoutCurrent();
+        const focusDiff = runtime.focusLine("diff", "9", (value) => Number(value) || null);
         const modelA = disposable("modelA");
         const modelB = disposable("modelB", true);
         runtime.setModels([modelA, null, modelB]);
@@ -66,6 +81,8 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
           activeDiff,
           updateWrongKind,
           updateDiff,
+          layoutDiff,
+          focusDiff,
           modelCountBeforeDispose,
           withCurrent,
           disposeResult,
@@ -159,6 +176,8 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertTrue(result["activeDiff"])
         self.assertFalse(result["updateWrongKind"])
         self.assertTrue(result["updateDiff"])
+        self.assertTrue(result["layoutDiff"])
+        self.assertTrue(result["focusDiff"])
         self.assertEqual(result["modelCountBeforeDispose"], 2)
         self.assertEqual(result["withCurrent"], "diff")
         self.assertTrue(result["disposeResult"])
@@ -168,6 +187,10 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
             result["events"],
             [
                 ["updateOptions", {"hideUnchangedRegions": {"enabled": False}}],
+                ["layout", "diff"],
+                ["setPosition", "modified", {"lineNumber": 9, "column": 1}],
+                ["revealLineInCenter", "modified", 9],
+                ["focus", "modified"],
                 ["dispose", "change"],
                 ["clearHost"],
                 ["dispose", "modelA"],
@@ -217,6 +240,8 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertIn("let models = [];", editor_source)
         self.assertIn("let changeDisposable = null;", editor_source)
         self.assertIn("fileEditorRuntime.dispose({", app_source)
+        self.assertIn("fileEditorRuntime.focusLine(currentFileEditorKind(), lineNumber, normalizeLineNumber);", app_source)
+        self.assertIn("fileEditorRuntime.layoutCurrent()", app_source)
         self.assertIn("fileEditorRuntime.setEditor(editor);", app_source)
         self.assertIn("fileEditorRuntime.setModels([editor.getModel()].filter(Boolean));", app_source)
         self.assertIn("fileEditorRuntime.setChangeDisposable(editor.onDidChangeModelContent", app_source)

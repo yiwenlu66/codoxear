@@ -180,6 +180,23 @@
       return true;
     }
 
+    function layoutCurrent() {
+      if (!editor || typeof editor.layout !== "function") return false;
+      editor.layout();
+      return true;
+    }
+
+    function focusLine(kind, lineNumber, normalizeLineNumber) {
+      const normalize = requireFunction(normalizeLineNumber, "normalizeLineNumber");
+      const line = normalize(lineNumber);
+      const target = activeCodeEditor(kind) || editor;
+      if (!target || !line || typeof target.setPosition !== "function") return false;
+      target.setPosition({ lineNumber: line, column: 1 });
+      if (typeof target.revealLineInCenter === "function") target.revealLineInCenter(line);
+      if (typeof target.focus === "function") target.focus();
+      return true;
+    }
+
     function dispose(options = {}) {
       const clearHost = typeof options.clearHost === "function" ? options.clearHost : null;
       const afterDispose = typeof options.afterDispose === "function" ? options.afterDispose : null;
@@ -204,6 +221,8 @@
       currentEditor,
       currentModels,
       dispose,
+      focusLine,
+      layoutCurrent,
       setChangeDisposable,
       setEditor,
       setModels,

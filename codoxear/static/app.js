@@ -7700,14 +7700,7 @@
         }
 
         function applyEditorLineFocus(lineNumber) {
-          const line = normalizeLineNumber(lineNumber);
-          const editor = fileEditorRuntime.activeCodeEditor(currentFileEditorKind()) || fileEditorRuntime.currentEditor();
-          if (!editor || !line) return;
-          if (typeof editor.setPosition === "function") {
-            editor.setPosition({ lineNumber: line, column: 1 });
-            editor.revealLineInCenter(line);
-            editor.focus();
-          }
+          return fileEditorRuntime.focusLine(currentFileEditorKind(), lineNumber, normalizeLineNumber);
         }
 
         async function renderMonacoFile(rel, text, lineNumber = null, langOverride = "", request = null) {
@@ -7775,17 +7768,13 @@
           editor.layout();
           if (requestedLine) {
             requestAnimationFrame(() => {
-              const currentEditor = fileEditorRuntime.currentEditor();
-              if (!currentEditor) return;
               if (request && !isCurrentFileOpenRequest(request)) return;
-              currentEditor.layout();
+              if (!fileEditorRuntime.layoutCurrent()) return;
               applyEditorLineFocus(requestedLine);
             });
             setTimeout(() => {
-              const currentEditor = fileEditorRuntime.currentEditor();
-              if (!currentEditor) return;
               if (request && !isCurrentFileOpenRequest(request)) return;
-              currentEditor.layout();
+              if (!fileEditorRuntime.layoutCurrent()) return;
               applyEditorLineFocus(requestedLine);
             }, 60);
           }
@@ -7861,17 +7850,13 @@
           diffEditor.layout();
           if (requestedLine) {
             requestAnimationFrame(() => {
-              const currentEditor = fileEditorRuntime.currentEditor();
-              if (!currentEditor) return;
               if (request && !isCurrentFileOpenRequest(request)) return;
-              currentEditor.layout();
+              if (!fileEditorRuntime.layoutCurrent()) return;
               applyEditorLineFocus(requestedLine);
             });
             setTimeout(() => {
-              const currentEditor = fileEditorRuntime.currentEditor();
-              if (!currentEditor) return;
               if (request && !isCurrentFileOpenRequest(request)) return;
-              currentEditor.layout();
+              if (!fileEditorRuntime.layoutCurrent()) return;
               applyEditorLineFocus(requestedLine);
             }, 60);
           }
