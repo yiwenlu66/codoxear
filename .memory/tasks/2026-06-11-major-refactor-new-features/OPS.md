@@ -7835,3 +7835,13 @@
   - `python3 -m py_compile tests/test_frontend_file_editor_module_source.py tests/test_file_viewer_source.py` passed.
   - Focused validation `python3 -m pytest -q tests/test_frontend_file_editor_module_source.py tests/test_file_viewer_source.py` returned `49 passed, 25 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T01:05:00Z Opened-file history viewer-module ownership
+- Functional commit `2714a6e Move opened file history into viewer module` moved `rememberOpenedFile(...)` behavior from inline `codoxear/static/app.js` into `createOpenedFileRuntime(...).remember(...)` in `codoxear/static/app_file_viewer.js`.
+- Mechanism: app.js still owned opened-file persistence ordering: normalize relative path against viewer/selected session, read active identity, preserve changed-file additions/deletions/source metadata, upsert the candidate entry, update the session `files` MRU list, synthesize absolute paths from cwd when needed, and invalidate candidate cache. The opened-file runtime now owns that transition while app.js injects session lookup, relative-path resolution, active identity, entry lookup/upsert, file-list normalization, and cache deletion.
+- Tests updated: `tests/test_frontend_file_viewer_module_source.py` executes `createOpenedFileRuntime(...)` for changed git entries, explicit absolute paths, selected-session fallback, empty path, frozen export, and fail-loud dependency behavior. Source sentinels now require opened-file runtime construction and runtime-owned cache deletion.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app_file_viewer.js` and `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_picker_search_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py tests/test_file_picker_search_source.py` returned `82 passed, 25 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
