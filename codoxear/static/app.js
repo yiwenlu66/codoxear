@@ -7327,24 +7327,6 @@
           return fileViewerController.isCurrentFileOpenRequest(request);
         }
 
-        function isFileViewerSelectionCurrent(sessionId, token = null) {
-          const sid = String(sessionId || "").trim();
-          return Boolean(
-            sid &&
-              isFileViewerOpen() &&
-              String(selected || "").trim() === sid &&
-              (token === null || fileViewerController.isCurrentFileViewerSessionSync(token))
-          );
-        }
-
-        function isFileViewerSessionCurrent(sessionId, token = null) {
-          const sid = String(sessionId || "").trim();
-          return Boolean(
-            isFileViewerSelectionCurrent(sid, token) &&
-              currentFileViewerSessionId() === sid
-          );
-        }
-
         function rememberActiveFileSelection(sessionId = currentFileSessionId()) {
           return fileViewerController.rememberActiveFileSelection(sessionId);
         }
@@ -7721,8 +7703,6 @@
           isFileViewerOpen: () => isFileViewerOpen(),
           selectedSessionId: () => selected,
           maybeHandleUnsavedFileChanges: () => maybeHandleUnsavedFileChanges(),
-          isSelectionCurrent: (sessionId, syncToken) => isFileViewerSelectionCurrent(sessionId, syncToken),
-          isSessionCurrent: (sessionId, syncToken) => isFileViewerSessionCurrent(sessionId, syncToken),
           filePickerSearchSessionId: () => filePickerSearchSnapshot().sessionId,
           refreshFileCandidates: (options) => refreshFileCandidates(options),
           setFilePath: (path, options) => setFilePath(path, options),
@@ -7773,7 +7753,7 @@
           currentSessionId: () => currentFileViewerSessionId(),
           selectedSessionId: () => selected,
           blockUnavailableFileAction: () => blockUnavailableFileAction(),
-          isSessionCurrent: (sessionId, syncToken) => isFileViewerSessionCurrent(sessionId, syncToken),
+          isSessionCurrent: (sessionId, syncToken) => fileViewerLifecycleRuntime.isSessionCurrent(sessionId, syncToken),
           ttlMs: FILE_CANDIDATE_CACHE_TTL_MS,
           nowMs: () => Date.now(),
           collectMessageFileRefs: () => collectMessageFileRefs(),

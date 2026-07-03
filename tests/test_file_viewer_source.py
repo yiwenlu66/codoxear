@@ -1795,6 +1795,7 @@ def eval_file_viewer_session_sync_race() -> dict:
             clearActiveFileIdentity() {{ state.identity = {{ path: "", apiPath: "", gitPath: false, line: null }}; }},
             currentFileViewerSessionId() {{ return state.viewerSessionId; }},
             beginFileViewerSessionSync() {{ state.syncToken += 1; calls.push(["beginSync", state.syncToken]); return state.syncToken; }},
+            isCurrentFileViewerSessionSync(syncToken) {{ return state.syncToken === syncToken; }},
             setFileViewerSessionId(sessionId) {{ state.viewerSessionId = String(sessionId || ""); calls.push(["setSession", state.viewerSessionId]); return state.viewerSessionId; }},
             resolveFileViewerOpenTarget() {{ calls.push("resolveTarget"); return {{ kind: "path", path: "preferred.txt", line: 9, changed: false, gitPath: false, apiPath: "" }}; }},
           }},
@@ -1811,8 +1812,6 @@ def eval_file_viewer_session_sync_race() -> dict:
           isFileViewerOpen: () => true,
           selectedSessionId: () => state.selected,
           maybeHandleUnsavedFileChanges: () => new Promise((resolve) => {{ resolveUnsaved = resolve; }}),
-          isSelectionCurrent: (sessionId, syncToken) => state.selected === sessionId && state.syncToken === syncToken,
-          isSessionCurrent: (sessionId, syncToken) => state.selected === sessionId && state.viewerSessionId === sessionId && state.syncToken === syncToken,
           filePickerSearchSessionId: () => state.searchSessionId,
           refreshFileCandidates: async (options) => calls.push(["refreshFileCandidates", options]),
           setFilePath: (...args) => calls.push(["setFilePath", ...args]),
@@ -3612,8 +3611,10 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function preferredFileSelectionForSession(sessionId)", source)
         self.assertIn("return fileViewerController.preferredFileSelectionForSession(sessionId);", source)
         self.assertIn("historyFileSelectionForSession: (sessionId) => historyFileSelectionForSession(sessionId)", source)
-        self.assertIn("function isFileViewerSelectionCurrent(sessionId, token = null)", source)
-        self.assertIn("function isFileViewerSessionCurrent(sessionId, token = null)", source)
+        self.assertNotIn("function isFileViewerSelectionCurrent(sessionId, token = null)", source)
+        self.assertNotIn("function isFileViewerSessionCurrent(sessionId, token = null)", source)
+        self.assertIn("function isSelectionCurrent(sessionId, token = null)", viewer_source)
+        self.assertIn("function isSessionCurrent(sessionId, token = null)", viewer_source)
         ensure_start = source.index("async function ensureCurrentFileViewerSession()")
         ensure_end = source.index("function disposeFileEditor()", ensure_start)
         ensure_block = source[ensure_start:ensure_end]
@@ -3623,12 +3624,12 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("return await fileViewerLifecycleRuntime.ensureCurrentSession();", ensure_block)
         self.assertNotIn("const syncToken = fileViewerController.beginFileViewerSessionSync();", ensure_block)
         self.assertIn("const syncToken = transition.beginSessionSync();", lifecycle_block)
-        self.assertIn("if (!deps.isSelectionCurrent(sid, syncToken)) return false;", lifecycle_block)
+        self.assertIn("if (!isSelectionCurrent(sid, syncToken)) return false;", lifecycle_block)
         self.assertIn("await deps.refreshFileCandidates({ sessionId: sid, syncToken });", lifecycle_block)
-        self.assertIn("if (!deps.isSessionCurrent(sid, syncToken)) return false;", lifecycle_block)
+        self.assertIn("if (!isSessionCurrent(sid, syncToken)) return false;", lifecycle_block)
         self.assertIn("const target = transition.resolveOpenTarget({ sessionId: sid });", lifecycle_block)
         self.assertIn("deps.setFilePath(target.path, { line: target.line, gitPath: target.gitPath, apiPath: target.apiPath });", lifecycle_block)
-        self.assertIn("await deps.openFilePathWithResolvedMode(target.path, { line: target.line, changed: target.changed, gitPath: target.gitPath, apiPath: target.apiPath, isCurrent: () => deps.isSessionCurrent(sid, syncToken) });", lifecycle_block)
+        self.assertIn("await deps.openFilePathWithResolvedMode(target.path, { line: target.line, changed: target.changed, gitPath: target.gitPath, apiPath: target.apiPath, isCurrent: () => isSessionCurrent(sid, syncToken) });", lifecycle_block)
         self.assertIn("deps.renderEmptyFileViewerTarget({ updateTouchToolbar: true });", lifecycle_block)
         self.assertNotIn("const first = firstKey ? fileEntryMap.get(firstKey) : null;", lifecycle_block)
         refresh_start = source.index("async function refreshFileCandidates(")
@@ -3650,9 +3651,9 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const wasOpen = deps.isFileViewerOpen();", lifecycle_block)
         self.assertIn("ui.showModal({ wasOpen, queryOpen });", lifecycle_block)
         self.assertIn("await deps.refreshFileCandidates({ sessionId: sid, syncToken });", lifecycle_block)
-        self.assertIn("if (!deps.isSessionCurrent(sid, syncToken)) return false;", lifecycle_block)
+        self.assertIn("if (!isSessionCurrent(sid, syncToken)) return false;", lifecycle_block)
         self.assertIn("const target = transition.resolveOpenTarget({ sessionId: sid, explicitPath, explicitLine: line });", lifecycle_block)
-        self.assertIn("void deps.openFilePathWithResolvedMode(target.path, { line: target.line, changed: target.changed, gitPath: target.gitPath, apiPath: target.apiPath, isCurrent: () => deps.isSessionCurrent(sid, syncToken) })", lifecycle_block)
+        self.assertIn("void deps.openFilePathWithResolvedMode(target.path, { line: target.line, changed: target.changed, gitPath: target.gitPath, apiPath: target.apiPath, isCurrent: () => isSessionCurrent(sid, syncToken) })", lifecycle_block)
         self.assertIn("deps.renderEmptyFileViewerTarget();", lifecycle_block)
         self.assertNotIn("const preferredGitPath = explicitPath ? false : Boolean(preferredSelection.gitPath);", lifecycle_block)
         self.assertNotIn("const first = firstKey ? fileEntryMap.get(firstKey) : null;", lifecycle_block)

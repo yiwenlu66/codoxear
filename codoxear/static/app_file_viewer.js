@@ -777,8 +777,6 @@
         isFileViewerOpen: requireFunction(options.isFileViewerOpen, "isFileViewerOpen"),
         selectedSessionId: requireFunction(options.selectedSessionId, "selectedSessionId"),
         maybeHandleUnsavedFileChanges: requireFunction(options.maybeHandleUnsavedFileChanges, "maybeHandleUnsavedFileChanges"),
-        isSelectionCurrent: requireFunction(options.isSelectionCurrent, "isSelectionCurrent"),
-        isSessionCurrent: requireFunction(options.isSessionCurrent, "isSessionCurrent"),
         filePickerSearchSessionId: requireFunction(options.filePickerSearchSessionId, "filePickerSearchSessionId"),
         refreshFileCandidates: requireFunction(options.refreshFileCandidates, "refreshFileCandidates"),
         setFilePath: requireFunction(options.setFilePath, "setFilePath"),
@@ -791,11 +789,30 @@
     function sessionTransitionDeps() {
       return {
         currentViewerSessionId: requireFunction(controller.currentFileViewerSessionId, "controller.currentFileViewerSessionId").bind(controller),
+        isCurrentSync: requireFunction(controller.isCurrentFileViewerSessionSync, "controller.isCurrentFileViewerSessionSync").bind(controller),
         beginSessionSync: requireFunction(controller.beginFileViewerSessionSync, "controller.beginFileViewerSessionSync").bind(controller),
         setViewerSessionId: requireFunction(controller.setFileViewerSessionId, "controller.setFileViewerSessionId").bind(controller),
         clearUnavailable: requireFunction(controller.clearFileViewerUnavailableSession, "controller.clearFileViewerUnavailableSession").bind(controller),
         resolveOpenTarget: requireFunction(controller.resolveFileViewerOpenTarget, "controller.resolveFileViewerOpenTarget").bind(controller),
       };
+    }
+
+    function isSelectionCurrent(sessionId, token = null) {
+      const deps = ensureSessionDeps();
+      const transition = sessionTransitionDeps();
+      const sid = String(sessionId || "").trim();
+      return Boolean(
+        sid &&
+          deps.isFileViewerOpen() &&
+          String(deps.selectedSessionId() || "").trim() === sid &&
+          (token === null || transition.isCurrentSync(token))
+      );
+    }
+
+    function isSessionCurrent(sessionId, token = null) {
+      const transition = sessionTransitionDeps();
+      const sid = String(sessionId || "").trim();
+      return Boolean(isSelectionCurrent(sid, token) && transition.currentViewerSessionId() === sid);
     }
 
     async function ensureCurrentSession() {
@@ -807,7 +824,7 @@
       if (transition.currentViewerSessionId() === sid) return true;
       const syncToken = transition.beginSessionSync();
       if (!(await deps.maybeHandleUnsavedFileChanges())) return false;
-      if (!deps.isSelectionCurrent(sid, syncToken)) return false;
+      if (!isSelectionCurrent(sid, syncToken)) return false;
       cancelPendingFileOpen();
       rememberActiveFileSelection(transition.currentViewerSessionId());
       transition.setViewerSessionId(sid);
@@ -817,19 +834,19 @@
         setFileSearchSessionId(transition.currentViewerSessionId());
       }
       await deps.refreshFileCandidates({ sessionId: sid, syncToken });
-      if (!deps.isSessionCurrent(sid, syncToken)) return false;
+      if (!isSessionCurrent(sid, syncToken)) return false;
       const target = transition.resolveOpenTarget({ sessionId: sid });
       if (target.kind === "path") {
         deps.setFilePath(target.path, { line: target.line, gitPath: target.gitPath, apiPath: target.apiPath });
         try {
-          await deps.openFilePathWithResolvedMode(target.path, { line: target.line, changed: target.changed, gitPath: target.gitPath, apiPath: target.apiPath, isCurrent: () => deps.isSessionCurrent(sid, syncToken) });
+          await deps.openFilePathWithResolvedMode(target.path, { line: target.line, changed: target.changed, gitPath: target.gitPath, apiPath: target.apiPath, isCurrent: () => isSessionCurrent(sid, syncToken) });
         } catch (error) {
-          if (!deps.isSessionCurrent(sid, syncToken)) return false;
+          if (!isSessionCurrent(sid, syncToken)) return false;
           deps.setStatus(`error: ${error && error.message ? error.message : "unable to inspect path"}`);
         }
-        return deps.isSessionCurrent(sid, syncToken);
+        return isSessionCurrent(sid, syncToken);
       }
-      if (!deps.isSessionCurrent(sid, syncToken)) return false;
+      if (!isSessionCurrent(sid, syncToken)) return false;
       deps.renderEmptyFileViewerTarget({ updateTouchToolbar: true });
       return true;
     }
@@ -878,7 +895,7 @@
         ui.setPreserveSearchOnFocus(true);
       }
       await deps.refreshFileCandidates({ sessionId: sid, syncToken });
-      if (!deps.isSessionCurrent(sid, syncToken)) return false;
+      if (!isSessionCurrent(sid, syncToken)) return false;
       if (queryOpen) {
         ui.focusFilePickerInput();
         return true;
@@ -886,8 +903,8 @@
       const target = transition.resolveOpenTarget({ sessionId: sid, explicitPath, explicitLine: line });
       if (target.kind === "path") {
         deps.setFilePath(target.path, { line: target.line, gitPath: target.gitPath, apiPath: target.apiPath });
-        void deps.openFilePathWithResolvedMode(target.path, { line: target.line, changed: target.changed, gitPath: target.gitPath, apiPath: target.apiPath, isCurrent: () => deps.isSessionCurrent(sid, syncToken) }).catch((error) => {
-          if (!deps.isSessionCurrent(sid, syncToken)) return;
+        void deps.openFilePathWithResolvedMode(target.path, { line: target.line, changed: target.changed, gitPath: target.gitPath, apiPath: target.apiPath, isCurrent: () => isSessionCurrent(sid, syncToken) }).catch((error) => {
+          if (!isSessionCurrent(sid, syncToken)) return;
           deps.setStatus(`error: ${error && error.message ? error.message : "unable to inspect path"}`);
         });
         return true;
@@ -896,7 +913,7 @@
       return true;
     }
 
-    return Object.freeze({ ensureCurrentSession, hide, show });
+    return Object.freeze({ ensureCurrentSession, hide, isSelectionCurrent, isSessionCurrent, show });
   }
 
   function createFileCandidateRefreshRuntime(options = {}) {
