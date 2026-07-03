@@ -7331,20 +7331,6 @@
           return fileViewerController.rememberActiveFileSelection(sessionId);
         }
 
-        function historyFileSelectionForSession(sessionId) {
-          const sid = String(sessionId || "").trim();
-          if (!sid) return { path: "", line: null, gitPath: false };
-          const s = sessionIndex.get(sid);
-          if (!s) return { path: "", line: null, gitPath: false };
-          for (const abs of listFromFilesField(s.files)) {
-            const rel = sessionRelativePath(abs, sid);
-            if (typeof rel === "string" && rel && rel !== ".") {
-              return { path: rel, line: null, gitPath: false };
-            }
-          }
-          return { path: "", line: null, gitPath: false };
-        }
-
         function preferredFileSelectionForSession(sessionId) {
           return fileViewerController.preferredFileSelectionForSession(sessionId);
         }
@@ -7672,7 +7658,7 @@
           fmtBytes: (value) => fmtBytes(value),
           applyFileMode: () => applyFileMode(),
           rememberOpenedFile: (rel, absPath) => rememberOpenedFile(rel, absPath),
-          historyFileSelectionForSession: (sessionId) => historyFileSelectionForSession(sessionId),
+          historyFileSelectionForSession: (sessionId) => openedFileRuntime.historySelection(sessionId),
           renderFilePickerMenu: () => renderFilePickerMenu(),
         });
         const fileViewerPanelRuntime = codoxearFileViewer.createFileViewerPanelRuntime({

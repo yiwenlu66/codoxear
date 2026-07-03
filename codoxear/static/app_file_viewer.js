@@ -1491,6 +1491,20 @@
     const listFromFilesField = requireFunction(options.listFromFilesField, "listFromFilesField");
     const deleteCandidateCache = requireFunction(options.deleteCandidateCache, "deleteCandidateCache");
 
+    function historySelection(sessionId) {
+      const sid = String(sessionId || "").trim();
+      if (!sid) return { path: "", line: null, gitPath: false };
+      const session = sessionById(sid);
+      if (!session) return { path: "", line: null, gitPath: false };
+      for (const abs of listFromFilesField(session.files)) {
+        const rel = sessionRelativePath(abs, sid);
+        if (typeof rel === "string" && rel && rel !== ".") {
+          return { path: rel, line: null, gitPath: false };
+        }
+      }
+      return { path: "", line: null, gitPath: false };
+    }
+
     function remember(relPath, absPath = null) {
       const raw = String(relPath ?? "");
       const sid = currentSessionId() || selectedSessionId() || "";
@@ -1524,7 +1538,7 @@
       return true;
     }
 
-    return Object.freeze({ remember });
+    return Object.freeze({ historySelection, remember });
   }
 
   function createFileRenderSurfaceRuntime(options = {}) {

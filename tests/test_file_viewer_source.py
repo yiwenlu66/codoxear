@@ -517,7 +517,7 @@ def eval_hide_file_viewer_identity_cleanup() -> dict:
 def eval_disable_file_viewer_for_unavailable_session() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     remember_start = source.index("function rememberActiveFileSelection(")
-    remember_end = source.index("function historyFileSelectionForSession", remember_start)
+    remember_end = source.index("function preferredFileSelectionForSession", remember_start)
     disable_start = source.index("function disableFileViewerForUnavailableSession(")
     disable_end = source.index("function handleFileViewerSessionUnavailable", disable_start)
     snippet = source[remember_start:remember_end] + "\n" + source[disable_start:disable_end]
@@ -3610,7 +3610,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("return fileViewerController.rememberActiveFileSelection(sessionId);", source)
         self.assertIn("function preferredFileSelectionForSession(sessionId)", source)
         self.assertIn("return fileViewerController.preferredFileSelectionForSession(sessionId);", source)
-        self.assertIn("historyFileSelectionForSession: (sessionId) => historyFileSelectionForSession(sessionId)", source)
+        self.assertIn("historyFileSelectionForSession: (sessionId) => openedFileRuntime.historySelection(sessionId)", source)
+        self.assertIn("function historySelection(sessionId)", viewer_source)
         self.assertNotIn("function isFileViewerSelectionCurrent(sessionId, token = null)", source)
         self.assertNotIn("function isFileViewerSessionCurrent(sessionId, token = null)", source)
         self.assertIn("function isSelectionCurrent(sessionId, token = null)", viewer_source)
