@@ -173,6 +173,12 @@
         typeof codoxearLaunch.redactedLaunchErrorText !== "function"
       )
         throw new Error("Codoxear launch helpers failed to load");
+      const codoxearNewSession = window.CodoxearNewSession;
+      if (
+        !codoxearNewSession ||
+        typeof codoxearNewSession.createNewSessionController !== "function"
+      )
+        throw new Error("Codoxear new session controller failed to load");
       function lastProviderKey(backend) {
         return codoxearLaunch.lastProviderKey(backend);
       }
@@ -5792,112 +5798,91 @@
           newSessionBackendName.textContent = agentBackendDisplayName(newSessionBackend);
         }
 
+        const newSessionController = codoxearNewSession.createNewSessionController({
+          backend: () => newSessionBackend,
+          provider: () => newSessionProvider,
+          reasoningEffort: () => newSessionReasoningEffort,
+          literalModelInputValue: () => newSessionLiteralModelInputValue,
+          launchPresetProviderAbsent: () => newSessionLaunchPresetProviderAbsent,
+          defaultsSource: () => newSessionDefaults,
+          latestSessions: () => latestSessions,
+          tmuxAvailable: () => tmuxAvailable,
+          assignProvider: (value) => {
+            newSessionProvider = value;
+          },
+          assignReasoningEffort: (value) => {
+            newSessionReasoningEffort = value;
+          },
+          assignLiteralModelInputValue: (value) => {
+            newSessionLiteralModelInputValue = value;
+          },
+          assignLaunchPresetProviderAbsent: (value) => {
+            newSessionLaunchPresetProviderAbsent = Boolean(value);
+          },
+          modelInput: newSessionModelInput,
+          modelField: newSessionModelField,
+          status: newSessionStatus,
+          reasoningBtn: newSessionReasoningBtn,
+          setPickerButtonContent: (button, primaryText, secondaryText, placeholder) => setPickerButtonContent(button, primaryText, secondaryText, placeholder),
+          renderReasoningMenu: () => renderNewSessionReasoningMenu(),
+          renderModelMenu: () => renderNewSessionModelMenu(),
+          setFast: (value) => setNewSessionFast(value),
+          setBackend: (value, opts) => setNewSessionBackend(value, opts),
+          setTmuxChecked: (value) => {
+            newSessionTmuxToggle.checked = value;
+          },
+          applyDialogMenus: () => applyDialogMenus(),
+          closeModelMenu: () => {
+            newSessionModelMenuOpen = false;
+            newSessionModelMenuFocus = -1;
+          },
+        });
         function newSessionProviderChoices() {
-          return providerChoicesForBackend(newSessionBackend);
+          return newSessionController.newSessionProviderChoices();
         }
 
         function newSessionHasProviderChoices() {
-          return newSessionProviderChoices().length > 0;
+          return newSessionController.newSessionHasProviderChoices();
         }
 
         function defaultNewSessionProviderChoice() {
-          const choices = newSessionProviderChoices();
-          if (!choices.length) return "";
-          const defaults = defaultsForAgentBackend(newSessionBackend);
-          const configured = typeof defaults.provider_choice === "string" ? defaults.provider_choice.trim() : "";
-          const remembered = loadRememberedProviderChoice(newSessionBackend);
-          if (remembered && choices.includes(remembered)) return remembered;
-          if (configured && choices.includes(configured)) return configured;
-          if (newSessionProvider && choices.includes(newSessionProvider)) return newSessionProvider;
-          return choices[0] || "";
+          return newSessionController.defaultNewSessionProviderChoice();
         }
 
         function newSessionProviderModelDisplay(model, providerChoice = "") {
-          return providerModelDisplay(model, providerChoice, {
-            hasProviderChoices: newSessionHasProviderChoices(),
-            allowCustomProvider: newSessionAllowsCustomProvider(),
-          });
+          return newSessionController.newSessionProviderModelDisplay(model, providerChoice);
         }
 
         function newSessionAllowsCustomProvider() {
-          return newSessionBackend === "pi";
+          return newSessionController.newSessionAllowsCustomProvider();
         }
 
         function parseNewSessionProviderModelInput(value = newSessionModelInput.value) {
-          const raw = String(value || "").trim();
-          const choices = newSessionProviderChoices();
-          const allowCustomProvider = newSessionAllowsCustomProvider();
-          const hasProviders = choices.length > 0 || allowCustomProvider;
-          const defaults = defaultsForAgentBackend(newSessionBackend);
-          const fallbackModel = typeof defaults.model === "string" && defaults.model.trim() ? defaults.model.trim() : "default";
-          let providerChoice = hasProviders ? defaultNewSessionProviderChoice() : "";
-          let model = raw || fallbackModel;
-          let providerError = "";
-          const providerAbsent = Boolean(newSessionLaunchPresetProviderAbsent && raw && raw === newSessionLiteralModelInputValue);
-          if (providerAbsent) providerChoice = "";
-          if (hasProviders && raw.includes("/") && raw !== newSessionLiteralModelInputValue) {
-            const slash = raw.indexOf("/");
-            const typedProvider = raw.slice(0, slash).trim();
-            const typedModel = raw.slice(slash + 1).trim();
-            if (typedProvider && (choices.includes(typedProvider) || allowCustomProvider)) {
-              providerChoice = typedProvider;
-            } else if (typedProvider) {
-              providerError = `Provider must be one of ${choices.join(", ")}.`;
-            }
-            model = typedModel || fallbackModel;
-          }
-          return { providerChoice, model: model || "default", providerError, providerAbsent };
+          return newSessionController.parseNewSessionProviderModelInput(value);
         }
 
         function rememberedNewSessionProviderModelChoice() {
-          const remembered = loadRememberedProviderModelChoice(newSessionBackend);
-          if (!remembered) return null;
-          const absent = rememberedProviderModelAbsentChoice(remembered);
-          if (absent) return absent;
-          const parsed = parseNewSessionProviderModelInput(remembered);
-          if (parsed.providerError) return null;
-          const choices = newSessionProviderChoices();
-          if (choices.length && parsed.providerChoice && !choices.includes(parsed.providerChoice) && !newSessionAllowsCustomProvider()) return null;
-          return parsed;
+          return newSessionController.rememberedNewSessionProviderModelChoice();
         }
 
         function newSessionDefaultsWarningText() {
-          const warnings = newSessionDefaults && typeof newSessionDefaults === "object" && newSessionDefaults.warnings && typeof newSessionDefaults.warnings === "object" ? newSessionDefaults.warnings : null;
-          if (!warnings) return "";
-          const names = Object.keys(warnings).map(agentBackendDisplayName).filter(Boolean);
-          if (!names.length) return "";
-          return `Launch defaults degraded for ${names.join(", ")}; using safe defaults.`;
+          return newSessionController.newSessionDefaultsWarningText();
         }
 
         function clearNewSessionProviderModelError() {
-          newSessionModelField.classList.remove("error");
-          if (String(newSessionStatus.textContent || "").startsWith("Provider must be one of ")) {
-            newSessionStatus.textContent = newSessionDefaultsWarningText();
-          }
+          return newSessionController.clearNewSessionProviderModelError();
         }
 
         function syncNewSessionProviderFromModelInput() {
-          const parsed = parseNewSessionProviderModelInput();
-          newSessionModelField.classList.toggle("error", Boolean(parsed.providerError));
-          if (!parsed.providerError) clearNewSessionProviderModelError();
-          if (parsed.providerChoice && !parsed.providerError && parsed.providerChoice !== newSessionProvider) {
-            setNewSessionProvider(parsed.providerChoice);
-          }
-          return parsed;
+          return newSessionController.syncNewSessionProviderFromModelInput();
         }
 
         function currentNewSessionModelForCapabilities() {
-          const parsed = parseNewSessionProviderModelInput();
-          const model = parsed.model;
-          return model && model.toLowerCase() !== "default" ? model : null;
+          return newSessionController.currentNewSessionModelForCapabilities();
         }
 
         function currentReasoningChoices() {
-          const parsed = parseNewSessionProviderModelInput();
-          return reasoningChoicesForBackend(newSessionBackend, {
-            provider: parsed.providerAbsent ? "" : parsed.providerChoice || newSessionProvider,
-            model: currentNewSessionModelForCapabilities(),
-          });
+          return newSessionController.currentReasoningChoices();
         }
 
         function renderNewSessionReasoningMenu() {
@@ -5974,85 +5959,23 @@
         }
 
         function setNewSessionProvider(value) {
-          const options = providerChoicesForBackend(newSessionBackend);
-          const fallback = String(defaultsForAgentBackend(newSessionBackend).provider_choice || "").trim();
-          const next = String(value || "").trim();
-          newSessionProvider = options.includes(next) || (next && newSessionAllowsCustomProvider()) ? next : (fallback && options.includes(fallback) ? fallback : options[0] || "");
-          rememberProviderChoice(newSessionBackend, newSessionProvider);
-          setNewSessionReasoningEffort(newSessionReasoningEffort);
-          renderNewSessionReasoningMenu();
+          return newSessionController.setNewSessionProvider(value);
         }
 
         function newSessionModelOption(model, { providerChoice = "", recent = false, configured = false, providerAbsent = false } = {}) {
-          const cleanModel = String(model || "").trim() || "default";
-          const cleanProvider = providerAbsent ? "" : String(providerChoice || "").trim();
-          const displayText = newSessionProviderModelDisplay(cleanModel, cleanProvider);
-          return {
-            model: cleanModel,
-            providerChoice: cleanProvider,
-            providerAbsent: !!providerAbsent,
-            recent: !!recent,
-            configured: !!configured,
-            displayText,
-            searchText: cleanProvider ? `${cleanProvider}/${cleanModel} ${cleanModel}` : cleanModel,
-          };
-        }
-
-        function addNewSessionModelOption(out, seen, model, opts = {}) {
-          const cleanModel = String(model || "").trim();
-          if (!cleanModel) return;
-          const cleanProvider = String(opts.providerChoice || "").trim();
-          const key = `${cleanProvider}|${cleanModel}`;
-          if (seen.has(key)) return;
-          seen.add(key);
-          out.push(newSessionModelOption(cleanModel, opts));
+          return newSessionController.newSessionModelOption(model, { providerChoice, recent, configured, providerAbsent });
         }
 
         function sessionModelOptions() {
-          const seen = new Set();
-          const out = [];
-          const defaults = defaultsForAgentBackend(newSessionBackend);
-          const providerChoices = newSessionProviderChoices();
-          const configuredDefault = typeof defaults.model === "string" ? defaults.model.trim() : "";
-          const activeProvider = providerChoices.length ? defaultNewSessionProviderChoice() : "";
-          if (configuredDefault) addNewSessionModelOption(out, seen, configuredDefault, { providerChoice: activeProvider, configured: true });
-          for (const item of latestSessions) {
-            if (sessionAgentBackend(item) !== newSessionBackend) continue;
-            const model = typeof item.model === "string" ? item.model.trim() : "";
-            if (!model) continue;
-            const provider = sessionProviderChoice(item);
-            const providerChoice = providerChoices.includes(provider) || (provider && newSessionAllowsCustomProvider()) ? provider : "";
-            const providerAbsent = newSessionBackend === "pi" && !providerChoice && !(typeof item.model_provider === "string" && item.model_provider.trim());
-            addNewSessionModelOption(out, seen, model, { providerChoice, providerAbsent, recent: true });
-          }
-          const configuredModels = Array.isArray(defaults.models) ? defaults.models : [];
-          if (providerChoices.length) {
-            for (const providerChoice of providerChoices) {
-              for (const value of configuredModels) addNewSessionModelOption(out, seen, value, { providerChoice, configured: true });
-            }
-          } else {
-            for (const value of configuredModels) addNewSessionModelOption(out, seen, value, { configured: true });
-          }
-          if (!out.length) addNewSessionModelOption(out, seen, "default", { providerChoice: activeProvider, configured: true });
-          return out;
+          return newSessionController.sessionModelOptions();
         }
 
         function filteredNewSessionModelOptions() {
-          const query = String(newSessionModelInput.value || "").trim().toLowerCase();
-          const options = sessionModelOptions();
-          if (!query) return options.slice(0, 12);
-          const exact = options.filter((item) => String(item.model || "").toLowerCase() === query || String(item.searchText || "").toLowerCase() === query);
-          const prefix = options.filter((item) => !exact.includes(item) && String(item.searchText || item.model || "").toLowerCase().startsWith(query));
-          const contains = options.filter((item) => !exact.includes(item) && !prefix.includes(item) && modelOptionMatches(item, query));
-          return exact.concat(prefix, contains).slice(0, 12);
+          return newSessionController.filteredNewSessionModelOptions();
         }
 
         function setNewSessionReasoningEffort(value) {
-          const choices = currentReasoningChoices();
-          const next = String(value || "").trim().toLowerCase();
-          const fallback = String(defaultsForAgentBackend(newSessionBackend).reasoning_effort || "").trim().toLowerCase();
-          newSessionReasoningEffort = choices.includes(next) ? next : (choices.includes(fallback) ? fallback : choices[0] || "high");
-          setPickerButtonContent(newSessionReasoningBtn, newSessionReasoningEffort);
+          return newSessionController.setNewSessionReasoningEffort(value);
         }
 
         function setNewSessionFast(value) {
@@ -6132,30 +6055,7 @@
         }
 
         function selectNewSessionModel(option) {
-          newSessionLiteralModelInputValue = "";
-          newSessionLaunchPresetProviderAbsent = false;
-          const item = option && typeof option === "object" ? option : newSessionModelOption(option || "default");
-          const selectedProvider = item.providerAbsent ? "" : item.providerChoice || newSessionProvider;
-          if (item.providerChoice && !item.providerAbsent && newSessionProviderChoices().includes(item.providerChoice)) {
-            setNewSessionProvider(item.providerChoice);
-          }
-          newSessionModelInput.value = newSessionProviderModelDisplay(item.model || "default", selectedProvider);
-          if (item.providerAbsent) {
-            newSessionLiteralModelInputValue = newSessionModelInput.value;
-            newSessionLaunchPresetProviderAbsent = true;
-          }
-          rememberProviderModelChoice(newSessionBackend, selectedProvider, item.model || "default", { providerAbsent: Boolean(item.providerAbsent) });
-          newSessionModelField.classList.remove("error");
-          newSessionModelMenuOpen = false;
-          newSessionModelMenuFocus = -1;
-          setNewSessionReasoningEffort(newSessionReasoningEffort);
-          renderNewSessionReasoningMenu();
-          applyDialogMenus();
-          newSessionModelInput.focus();
-          const end = newSessionModelInput.value.length;
-          try {
-            newSessionModelInput.setSelectionRange(end, end);
-          } catch (_) {}
+          return newSessionController.selectNewSessionModel(option);
         }
 
         function renderNewSessionModelMenu() {
@@ -6376,50 +6276,11 @@
         }
 
         function launchPresetProviderChoice(s) {
-          if (!s || typeof s !== "object") return "";
-          const backend = sessionAgentBackend(s);
-          const provider = typeof s.model_provider === "string" ? s.model_provider.trim() : "";
-          if (backend === "pi") return provider;
-          if (backend === "cc") return "";
-          const explicit = typeof s.provider_choice === "string" ? s.provider_choice.trim() : "";
-          if (explicit) return explicit;
-          if (!provider) return "";
-          if (backend === "codex" && provider === "openai") {
-            const auth = typeof s.preferred_auth_method === "string" ? s.preferred_auth_method.trim() : "";
-            return auth === "chatgpt" ? "chatgpt" : "openai-api";
-          }
-          return provider;
+          return newSessionController.launchPresetProviderChoice(s);
         }
 
         function applyNewSessionLaunchPreset(sessionInfo) {
-          const s = sessionInfo && typeof sessionInfo === "object" ? sessionInfo : null;
-          if (!s) return false;
-          const backend = sessionAgentBackend(s);
-          if (backend !== newSessionBackend) setNewSessionBackend(backend, { resetSelections: true });
-          const provider = launchPresetProviderChoice(s);
-          const providerChoices = newSessionProviderChoices();
-          const acceptsProvider = Boolean(provider && (providerChoices.includes(provider) || newSessionAllowsCustomProvider()));
-          if (acceptsProvider) setNewSessionProvider(provider);
-          const model = typeof s.model === "string" && s.model.trim() ? s.model.trim() : "";
-          const providerAbsent = backend === "pi" && !provider;
-          newSessionLiteralModelInputValue = "";
-          newSessionLaunchPresetProviderAbsent = false;
-          if (model || providerAbsent || acceptsProvider) {
-            newSessionModelInput.value = newSessionProviderModelDisplay(model || "default", acceptsProvider ? provider : "");
-            if (!acceptsProvider) {
-              newSessionLiteralModelInputValue = newSessionModelInput.value;
-              newSessionLaunchPresetProviderAbsent = providerAbsent;
-            }
-          }
-          clearNewSessionProviderModelError();
-          const reasoning = typeof s.reasoning_effort === "string" ? s.reasoning_effort.trim().toLowerCase() : "";
-          if (reasoning) setNewSessionReasoningEffort(reasoning);
-          const defaults = defaultsForAgentBackend(newSessionBackend);
-          if (defaults && defaults.supports_fast) setNewSessionFast(String(s.service_tier || "").trim().toLowerCase() === "fast");
-          if (tmuxAvailable) newSessionTmuxToggle.checked = Boolean(s.transport === "tmux" || s.tmux_session || s.tmux_window);
-          renderNewSessionReasoningMenu();
-          renderNewSessionModelMenu();
-          return true;
+          return newSessionController.applyNewSessionLaunchPreset(sessionInfo);
         }
 
         function openNewSessionDialog({ cwd = null, statusText = "", likeSession = null, returnFocusEl = null } = {}) {

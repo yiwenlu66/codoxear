@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_LAUNCH_JS = ROOT / "codoxear" / "static" / "app_launch.js"
+APP_NEW_SESSION_JS = ROOT / "codoxear" / "static" / "app_new_session.js"
 SERVER_PY = ROOT / "codoxear" / "server.py"
 LAUNCH_CONFIG_PY = ROOT / "codoxear" / "launch_config.py"
 AGENT_BACKEND_PY = ROOT / "codoxear" / "agent_backend.py"
@@ -26,7 +27,8 @@ class TestReasoningEffortSource(unittest.TestCase):
 
     def test_frontend_revalidates_reasoning_when_model_changes(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("setNewSessionReasoningEffort(newSessionReasoningEffort);\n          renderNewSessionReasoningMenu();\n          applyDialogMenus();\n          newSessionModelInput.focus();", source)
+        module_source = APP_NEW_SESSION_JS.read_text(encoding="utf-8")
+        self.assertIn("setNewSessionReasoningEffort(reasoningEffort());\n      renderReasoningMenu();\n      applyDialogMenus();\n      modelInput.focus();", module_source)
         self.assertIn("newSessionModelInput.oninput = () =>", source)
         self.assertIn("renderNewSessionModelMenu();\n          setNewSessionReasoningEffort(newSessionReasoningEffort);\n          renderNewSessionReasoningMenu();", source)
 

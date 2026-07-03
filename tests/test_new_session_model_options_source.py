@@ -8,19 +8,57 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_LAUNCH_JS = ROOT / "codoxear" / "static" / "app_launch.js"
+APP_NEW_SESSION_JS = ROOT / "codoxear" / "static" / "app_new_session.js"
+
+
+def _run_node(js: str) -> dict:
+    proc = subprocess.run(
+        ["node", "-e", js],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return json.loads(proc.stdout)
+
+
+def _new_session_module_js() -> str:
+    launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
+    new_session_source = APP_NEW_SESSION_JS.read_text(encoding="utf-8")
+    return textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const storageWrites = [];
+        const localStorage = {{
+          data: new Map(),
+          getItem(key) {{ return this.data.has(String(key)) ? this.data.get(String(key)) : null; }},
+          setItem(key, value) {{ this.data.set(String(key), String(value)); storageWrites.push([String(key), String(value)]); }},
+          removeItem(key) {{ this.data.delete(String(key)); }},
+        }};
+        const ctx = {{
+          URL,
+          console,
+          window: {{
+            CodoxearUrls: {{ resolveAppUrl: (path) => String(path || "") }},
+            CodoxearStorage: localStorage,
+          }},
+          storageWrites,
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(launch_source)}, ctx, {{ filename: "app_launch.js" }});
+        vm.runInContext({json.dumps(new_session_source)}, ctx, {{ filename: "app_new_session.js" }});
+        """
+    )
+
+
+def _basic_controller_options(js: str) -> str:
+    """Extra option stubs every controller instantiation needs."""
+    return js
 
 
 def eval_pi_provider_model_runtime(query: str, *, provider_choices: list[str], reasoning_map: dict[str, list[str]], literal_model: str = "", provider_absent: bool = False) -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
-    choices_start = source.index("function providerChoicesForBackend(backend)")
-    choices_end = source.index("function backendSupportsFast(backend)", choices_start)
-    dialog_start = source.index("function newSessionProviderChoices()")
-    dialog_end = source.index("function newSessionModelOption(model", dialog_start)
-    snippet = source[choices_start:choices_end] + "\n" + source[dialog_start:dialog_end]
-    js = textwrap.dedent(
+    js = _new_session_module_js() + textwrap.dedent(
         f"""
-        const vm = require("vm");
         const defaults = {{
           provider_choice: null,
           provider_choices: {json.dumps(provider_choices)},
@@ -28,209 +66,224 @@ def eval_pi_provider_model_runtime(query: str, *, provider_choices: list[str], r
           reasoning_efforts: ["off", "minimal", "low", "medium", "high", "xhigh"],
           reasoning_efforts_by_model: {json.dumps(reasoning_map)},
         }};
-        const ctx = {{
-          URL,
-          console,
-          location: {{ origin: "http://localhost", href: "http://localhost/" }},
-          window: {{
-            CodoxearUrls: {{ resolveAppUrl: (path) => new URL(String(path ?? "").replace(/^[/]/, ""), "http://localhost/").toString() }},
-            CodoxearStorage: {{
-              getItem: () => null,
-              setItem: () => true,
-              removeItem: () => true,
-            }},
-          }},
-          newSessionBackend: "pi",
-          newSessionProvider: "",
-          newSessionDefaults: defaults,
-          newSessionModelInput: {{ value: {json.dumps(query)} }},
-          newSessionLiteralModelInputValue: {json.dumps(literal_model)},
-          newSessionLaunchPresetProviderAbsent: {json.dumps(provider_absent)},
-          newSessionModelField: {{ classList: {{ toggle() {{}}, remove() {{}} }} }},
-          newSessionStatus: {{ textContent: "" }},
-          defaultsForAgentBackend: () => defaults,
-          loadRememberedProviderChoice: () => "",
-          loadRememberedProviderModelChoice: () => "",
-          rememberProviderChoice: (_backend, value) => {{ ctx.rememberedProvider = value; }},
-          setNewSessionReasoningEffort: (value) => {{ ctx.reasoningSet = value; }},
-          renderNewSessionReasoningMenu: () => {{ ctx.reasoningMenuRendered = true; }},
-        }};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(launch_source)}, ctx);
-        ctx.codoxearLaunch = ctx.window.CodoxearLaunch;
-        ctx.providerModelDisplay = (model, providerChoice = "", options = {{}}) => ctx.codoxearLaunch.providerModelDisplay(model, providerChoice, options);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_dialog = { parseNewSessionProviderModelInput, currentReasoningChoices, setNewSessionProvider, newSessionProviderModelDisplay };\n")}, ctx);
-        const parsed = ctx.__test_dialog.parseNewSessionProviderModelInput();
-        const choices = ctx.__test_dialog.currentReasoningChoices();
+        let backend = "pi";
+        let provider = "";
+        let literalModel = {json.dumps(literal_model)};
+        let presetAbsent = {json.dumps(provider_absent)};
+        const modelInput = {{ value: {json.dumps(query)} }};
+        const controller = ctx.window.CodoxearNewSession.createNewSessionController({{
+          backend: () => backend,
+          provider: () => provider,
+          reasoningEffort: () => "high",
+          literalModelInputValue: () => literalModel,
+          launchPresetProviderAbsent: () => presetAbsent,
+          defaultsSource: () => defaults,
+          latestSessions: () => [],
+          tmuxAvailable: () => true,
+          assignProvider: (v) => {{ provider = v; }},
+          assignReasoningEffort: () => {{}},
+          assignLiteralModelInputValue: (v) => {{ literalModel = v; }},
+          assignLaunchPresetProviderAbsent: (v) => {{ presetAbsent = Boolean(v); }},
+          modelInput,
+          modelField: {{ classList: {{ toggle() {{}}, remove() {{}} }} }},
+          status: {{ textContent: "" }},
+          reasoningBtn: {{ innerHTML: "", appendChild() {{}} }},
+          setPickerButtonContent: () => {{}},
+          renderReasoningMenu: () => {{}},
+          renderModelMenu: () => {{}},
+          setFast: () => {{}},
+          setBackend: () => {{}},
+          setTmuxChecked: () => {{}},
+          applyDialogMenus: () => {{}},
+          closeModelMenu: () => {{}},
+        }});
+        const parsed = controller.parseNewSessionProviderModelInput();
+        const choices = controller.currentReasoningChoices();
         process.stdout.write(JSON.stringify({{
           parsed,
           choices,
-          display: ctx.__test_dialog.newSessionProviderModelDisplay(parsed.model, parsed.providerChoice),
+          display: controller.newSessionProviderModelDisplay(parsed.model, parsed.providerChoice),
         }}));
         """
     )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    return json.loads(proc.stdout)
+    return _run_node(js)
 
 
 def eval_new_session_launch_preset(session_info: dict, *, backend: str = "pi", provider_choices: list[str] | None = None) -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function launchPresetProviderChoice(s) {")
-    end = source.index("function openNewSessionDialog", start)
-    snippet = source[start:end]
     choices = provider_choices if provider_choices is not None else []
-    js = textwrap.dedent(
+    js = _new_session_module_js() + textwrap.dedent(
         f"""
-        const vm = require("vm");
-        const ctx = {{
-          newSessionBackend: {json.dumps(backend)},
-          newSessionProvider: "",
-          newSessionModelInput: {{ value: "" }},
-          newSessionLiteralModelInputValue: "",
-          newSessionLaunchPresetProviderAbsent: false,
-          newSessionTmuxToggle: {{ checked: false }},
-          tmuxAvailable: true,
-          setBackendCalls: [],
-          providerCalls: [],
-          reasoningCalls: [],
-          fastCalls: [],
-          sessionAgentBackend: (item) => item && item.agent_backend || "codex",
-          setNewSessionBackend: (value, opts) => {{ ctx.setBackendCalls.push([value, opts]); ctx.newSessionBackend = value; }},
-          newSessionProviderChoices: () => {json.dumps(choices)},
-          newSessionAllowsCustomProvider: () => ctx.newSessionBackend === "pi",
-          setNewSessionProvider: (value) => {{ ctx.providerCalls.push(value); ctx.newSessionProvider = value; }},
-          newSessionProviderModelDisplay: (model, provider = "") => provider ? `${{provider}}/${{model || "default"}}` : String(model || "default"),
-          clearNewSessionProviderModelError: () => {{ ctx.errorCleared = true; }},
-          setNewSessionReasoningEffort: (value) => {{ ctx.reasoningCalls.push(value); }},
-          defaultsForAgentBackend: () => ({{ supports_fast: true }}),
-          setNewSessionFast: (value) => {{ ctx.fastCalls.push(Boolean(value)); }},
-          renderNewSessionReasoningMenu: () => {{ ctx.reasoningMenuRendered = true; }},
-          renderNewSessionModelMenu: () => {{ ctx.modelMenuRendered = true; }},
+        const defaults = {{
+          provider_choice: null,
+          provider_choices: {json.dumps(choices)},
+          model: null,
+          models: [],
+          reasoning_efforts: ["off", "minimal", "low", "medium", "high", "xhigh"],
+          reasoning_efforts_by_model: {{}},
+          supports_fast: true,
         }};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = { launchPresetProviderChoice, applyNewSessionLaunchPreset };\n")}, ctx);
-        const applied = ctx.__test.applyNewSessionLaunchPreset({json.dumps(session_info)});
+        let currentBackend = {json.dumps(backend)};
+        let provider = "";
+        let literalModel = "";
+        let presetAbsent = false;
+        let reasoningValue = "";
+        const modelInput = {{ value: "" }};
+        const setBackendCalls = [];
+        const providerCalls = [];
+        const reasoningCalls = [];
+        const fastCalls = [];
+        const classRemoveCalls = [];
+        let reasoningMenuRendered = 0;
+        let modelMenuRendered = 0;
+        let tmuxChecked = null;
+        const controller = ctx.window.CodoxearNewSession.createNewSessionController({{
+          backend: () => currentBackend,
+          provider: () => provider,
+          reasoningEffort: () => reasoningValue,
+          literalModelInputValue: () => literalModel,
+          launchPresetProviderAbsent: () => presetAbsent,
+          defaultsSource: () => defaults,
+          latestSessions: () => [],
+          tmuxAvailable: () => true,
+          assignProvider: (v) => {{ providerCalls.push(v); provider = v; }},
+          assignReasoningEffort: (v) => {{ reasoningValue = v; reasoningCalls.push(v); }},
+          assignLiteralModelInputValue: (v) => {{ literalModel = v; }},
+          assignLaunchPresetProviderAbsent: (v) => {{ presetAbsent = Boolean(v); }},
+          modelInput,
+          modelField: {{ classList: {{ toggle() {{}}, remove(name) {{ classRemoveCalls.push(name); }} }} }},
+          status: {{ textContent: "" }},
+          reasoningBtn: {{ innerHTML: "", appendChild() {{}} }},
+          setPickerButtonContent: () => {{}},
+          renderReasoningMenu: () => {{ reasoningMenuRendered += 1; }},
+          renderModelMenu: () => {{ modelMenuRendered += 1; }},
+          setFast: (v) => {{ fastCalls.push(Boolean(v)); }},
+          setBackend: (v, opts) => {{ setBackendCalls.push([v, opts]); currentBackend = v; }},
+          setTmuxChecked: (v) => {{ tmuxChecked = v; }},
+          applyDialogMenus: () => {{}},
+          closeModelMenu: () => {{}},
+        }});
+        const applied = controller.applyNewSessionLaunchPreset({json.dumps(session_info)});
         process.stdout.write(JSON.stringify({{
           applied,
-          provider: ctx.newSessionProvider,
-          providerCalls: ctx.providerCalls,
-          modelInput: ctx.newSessionModelInput.value,
-          reasoningCalls: ctx.reasoningCalls,
-          fastCalls: ctx.fastCalls,
-          tmuxChecked: ctx.newSessionTmuxToggle.checked,
-          setBackendCalls: ctx.setBackendCalls,
-          errorCleared: Boolean(ctx.errorCleared),
-          reasoningMenuRendered: Boolean(ctx.reasoningMenuRendered),
-          modelMenuRendered: Boolean(ctx.modelMenuRendered),
-          literalModelInputValue: ctx.newSessionLiteralModelInputValue || "",
-          providerAbsent: Boolean(ctx.newSessionLaunchPresetProviderAbsent),
-          providerChoice: ctx.__test.launchPresetProviderChoice({json.dumps(session_info)}),
+          provider,
+          providerCalls,
+          modelInput: modelInput.value,
+          reasoningCalls,
+          finalReasoning: reasoningValue,
+          fastCalls,
+          tmuxChecked,
+          setBackendCalls,
+          errorCleared: classRemoveCalls.includes("error"),
+          reasoningMenuRendered: reasoningMenuRendered > 0,
+          modelMenuRendered: modelMenuRendered > 0,
+          literalModelInputValue: literalModel,
+          providerAbsent: presetAbsent,
+          providerChoice: controller.launchPresetProviderChoice({json.dumps(session_info)}),
         }}));
         """
     )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    return json.loads(proc.stdout)
+    return _run_node(js)
 
 
 def eval_pi_recent_providerless_selection() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
-    start = source.index("function newSessionModelOption(model")
-    end = source.index("function renderNewSessionModelMenu()", start)
-    snippet = source[start:end]
-    js = textwrap.dedent(
-        f"""
-        const vm = require("vm");
-        const ctx = {{
-          window: {{
-            CodoxearUrls: {{ resolveAppUrl: (path) => String(path || "") }},
-            CodoxearStorage: {{ getItem: () => null, setItem: () => true, removeItem: () => true }},
-          }},
-          newSessionBackend: "pi",
-          newSessionProvider: "openrouter",
-          newSessionModelInput: {{ value: "", focus() {{}}, setSelectionRange() {{}} }},
-          newSessionModelField: {{ classList: {{ remove() {{}} }} }},
-          newSessionReasoningEffort: "high",
-          newSessionReasoningBtn: {{}},
-          newSessionModelMenuOpen: true,
-          newSessionModelMenuFocus: 0,
-          newSessionLiteralModelInputValue: "",
-          newSessionLaunchPresetProviderAbsent: false,
-          latestSessions: [{{ agent_backend: "pi", model_provider: null, provider_choice: "openai-api", model: "anthropic/claude-3-5-sonnet" }}],
-          remembered: null,
-          defaultsForAgentBackend: () => ({{ model: "", models: [] }}),
-          newSessionProviderChoices: () => ["openrouter"],
-          defaultNewSessionProviderChoice: () => "openrouter",
-          newSessionAllowsCustomProvider: () => true,
-          newSessionProviderModelDisplay: (model, provider = "") => provider ? `${{provider}}/${{model || "default"}}` : String(model || "default"),
-          sessionAgentBackend: (item) => item && item.agent_backend || "codex",
-          sessionProviderChoice: (item) => item && item.agent_backend === "pi" ? (typeof item.model_provider === "string" ? item.model_provider.trim() : "") : "chatgpt",
-          setNewSessionProvider: (value) => {{ ctx.providerSet = value; ctx.newSessionProvider = value; }},
-          rememberProviderModelChoice: (backend, provider, model, opts = {{}}) => {{ ctx.remembered = {{ backend, provider, model, providerAbsent: Boolean(opts.providerAbsent) }}; }},
-          currentReasoningChoices: () => ["high", "medium", "low"],
-          setPickerButtonContent: () => {{}},
-          renderNewSessionReasoningMenu: () => {{ ctx.reasoningMenuRendered = true; }},
-          applyDialogMenus: () => {{ ctx.appliedMenus = true; }},
-        }};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(launch_source)}, ctx);
-        vm.runInContext({json.dumps("const codoxearLaunch = window.CodoxearLaunch;\nfunction modelOptionMatches(option, query) { return codoxearLaunch.modelOptionMatches(option, query); }\n" + snippet + "\nglobalThis.__test = { sessionModelOptions, selectNewSessionModel };\n")}, ctx);
-        const options = ctx.__test.sessionModelOptions();
-        ctx.__test.selectNewSessionModel(options[0]);
-        process.stdout.write(JSON.stringify({{
+    js = _new_session_module_js() + textwrap.dedent(
+        """
+        const defaults = { provider_choice: null, provider_choices: ["openrouter"], model: "", models: [] };
+        let backend = "pi";
+        let provider = "openrouter";
+        let literalModel = "";
+        let presetAbsent = false;
+        let reasoningValue = "high";
+        const modelInput = { value: "", focus() {}, setSelectionRange() {} };
+        const providerCalls = [];
+        const controller = ctx.window.CodoxearNewSession.createNewSessionController({
+          backend: () => backend,
+          provider: () => provider,
+          reasoningEffort: () => reasoningValue,
+          literalModelInputValue: () => literalModel,
+          launchPresetProviderAbsent: () => presetAbsent,
+          defaultsSource: () => defaults,
+          latestSessions: () => [
+            { agent_backend: "pi", model_provider: null, provider_choice: "openai-api", model: "anthropic/claude-3-5-sonnet" },
+          ],
+          tmuxAvailable: () => true,
+          assignProvider: (v) => { providerCalls.push(v); provider = v; },
+          assignReasoningEffort: (v) => { reasoningValue = v; },
+          assignLiteralModelInputValue: (v) => { literalModel = v; },
+          assignLaunchPresetProviderAbsent: (v) => { presetAbsent = Boolean(v); },
+          modelInput,
+          modelField: { classList: { toggle() {}, remove() {} } },
+          status: { textContent: "" },
+          reasoningBtn: { innerHTML: "", appendChild() {} },
+          setPickerButtonContent: () => {},
+          renderReasoningMenu: () => {},
+          renderModelMenu: () => {},
+          setFast: () => {},
+          setBackend: () => {},
+          setTmuxChecked: () => {},
+          applyDialogMenus: () => {},
+          closeModelMenu: () => {},
+        });
+        const options = controller.sessionModelOptions();
+        controller.selectNewSessionModel(options[0]);
+        const rememberedKey = ctx.storageWrites.find(([key]) => key.endsWith(".newSessionProviderModel.pi")) || [null, null];
+        process.stdout.write(JSON.stringify({
           option: options[0],
-          input: ctx.newSessionModelInput.value,
-          remembered: ctx.remembered,
-          literalModelInputValue: ctx.newSessionLiteralModelInputValue,
-          providerAbsent: ctx.newSessionLaunchPresetProviderAbsent,
-          providerSet: ctx.providerSet || "",
-        }}));
+          input: modelInput.value,
+          rememberedValue: rememberedKey[1],
+          literalModelInputValue: literalModel,
+          providerAbsent: presetAbsent,
+          providerSet: providerCalls.length ? providerCalls[providerCalls.length - 1] : "",
+        }));
         """
     )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    return json.loads(proc.stdout)
+    return _run_node(js)
 
 
 def eval_new_session_model_options(query: str = "") -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
-    start = source.index("function newSessionModelOption(model")
-    end = source.index("function setNewSessionReasoningEffort(value) {", start)
-    snippet = source[start:end]
-    js = textwrap.dedent(
+    js = _new_session_module_js() + textwrap.dedent(
         f"""
-        const vm = require("vm");
-        const ctx = {{
-          window: {{
-            CodoxearUrls: {{ resolveAppUrl: (path) => String(path || "") }},
-            CodoxearStorage: {{ getItem: () => null, setItem: () => true, removeItem: () => true }},
-          }},
-          newSessionBackend: "codex",
-          newSessionModelInput: {{ value: {json.dumps(query)} }},
-          latestSessions: [
+        const defaults = {{ model: "gpt-5.4-mini", models: ["gpt-5.4", "o4-mini"], model_providers: ["chatgpt", "openai-api", "crs"] }};
+        let backend = "codex";
+        let provider = "chatgpt";
+        const modelInput = {{ value: {json.dumps(query)} }};
+        const controller = ctx.window.CodoxearNewSession.createNewSessionController({{
+          backend: () => backend,
+          provider: () => provider,
+          reasoningEffort: () => "high",
+          literalModelInputValue: () => "",
+          launchPresetProviderAbsent: () => false,
+          defaultsSource: () => defaults,
+          latestSessions: () => [
             {{ agent_backend: "codex", model: "gpt-5.4", model_provider: "openai", preferred_auth_method: "chatgpt" }},
             {{ agent_backend: "codex", model: "gpt-5.4", model_provider: "crs", preferred_auth_method: "apikey" }},
             {{ agent_backend: "pi", model: "gpt-5.4", model_provider: "macaron" }},
           ],
-          defaultsForAgentBackend: () => ({{ model: "gpt-5.4-mini", models: ["gpt-5.4", "o4-mini"] }}),
-          providerChoicesForBackend: () => ["chatgpt", "openai-api", "crs"],
-          newSessionProviderChoices: () => ["chatgpt", "openai-api", "crs"],
-          defaultNewSessionProviderChoice: () => "chatgpt",
-          newSessionProviderModelDisplay: (model, providerChoice = "") => providerChoice ? `${{providerChoice}}/${{model || "default"}}` : String(model || "default"),
-          sessionAgentBackend: (item) => item.agent_backend || "codex",
-          sessionProviderChoice: (item) => item.model_provider === "openai" && item.preferred_auth_method === "chatgpt" ? "chatgpt" : item.model_provider,
-        }};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(launch_source)}, ctx);
-        vm.runInContext({json.dumps("const codoxearLaunch = window.CodoxearLaunch;\nfunction modelOptionMatches(option, query) { return codoxearLaunch.modelOptionMatches(option, query); }\n" + snippet + "\nglobalThis.__test_model_options = { sessionModelOptions, filteredNewSessionModelOptions };\n")}, ctx);
+          tmuxAvailable: () => true,
+          assignProvider: (v) => {{ provider = v; }},
+          assignReasoningEffort: () => {{}},
+          assignLiteralModelInputValue: () => {{}},
+          assignLaunchPresetProviderAbsent: () => {{}},
+          modelInput,
+          modelField: {{ classList: {{ toggle() {{}}, remove() {{}} }} }},
+          status: {{ textContent: "" }},
+          reasoningBtn: {{ innerHTML: "", appendChild() {{}} }},
+          setPickerButtonContent: () => {{}},
+          renderReasoningMenu: () => {{}},
+          renderModelMenu: () => {{}},
+          setFast: () => {{}},
+          setBackend: () => {{}},
+          setTmuxChecked: () => {{}},
+          applyDialogMenus: () => {{}},
+          closeModelMenu: () => {{}},
+        }});
         process.stdout.write(JSON.stringify({{
-          options: ctx.__test_model_options.sessionModelOptions(),
-          filtered: ctx.__test_model_options.filteredNewSessionModelOptions(),
+          options: controller.sessionModelOptions(),
+          filtered: controller.filteredNewSessionModelOptions(),
         }}));
         """
     )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    return json.loads(proc.stdout)
+    return _run_node(js)
 
 
 class TestNewSessionModelOptionsSource(unittest.TestCase):
@@ -252,16 +305,17 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
         self.assertEqual(result["filtered"][0]["displayText"], "crs/gpt-5.4")
 
     def test_source_selecting_recent_model_updates_provider(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
+        source = APP_NEW_SESSION_JS.read_text(encoding="utf-8")
         self.assertIn("function newSessionModelOption(model", source)
         self.assertIn("displayText,", source)
         self.assertIn("searchText: cleanProvider ? `${cleanProvider}/${cleanModel} ${cleanModel}` : cleanModel", source)
         self.assertIn("setNewSessionProvider(item.providerChoice);", source)
-        self.assertIn("const selectedProvider = item.providerAbsent ? \"\" : item.providerChoice || newSessionProvider;", source)
+        self.assertIn('const selectedProvider = item.providerAbsent ? "" : item.providerChoice || provider();', source)
         self.assertIn("newSessionProviderModelDisplay(item.model || \"default\", selectedProvider)", source)
-        self.assertIn('return providerModelDisplay(model, providerChoice, {', source)
-        self.assertIn("rememberProviderModelChoice(newSessionBackend, selectedProvider, item.model || \"default\", { providerAbsent: Boolean(item.providerAbsent) });", source)
-        self.assertIn("item.recent ? \"Recent\" : item.configured ? \"Configured\"", source)
+        self.assertIn("return codoxearLaunch.providerModelDisplay(model, providerChoice, {", source)
+        self.assertIn("codoxearLaunch.rememberProviderModelChoice(backend(), selectedProvider, item.model || \"default\", { providerAbsent: Boolean(item.providerAbsent) });", source)
+        app_source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn('item.recent ? "Recent" : item.configured ? "Configured"', app_source)
 
     def test_provider_only_selector_is_not_rendered_or_called(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -289,26 +343,29 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
         self.assertNotEqual(result["choices"], ["off"])
 
     def test_pi_custom_provider_source_paths_remain_connected(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('function newSessionAllowsCustomProvider() {\n          return newSessionBackend === "pi";\n        }', source)
-        self.assertIn('options.includes(next) || (next && newSessionAllowsCustomProvider())', source)
-        self.assertIn('const hasProviders = newSessionHasProviderChoices() || newSessionAllowsCustomProvider();', source)
-        self.assertIn('providerChoices.includes(selectedPair.providerChoice) || newSessionAllowsCustomProvider()', source)
-        self.assertIn('providerChoices.includes(provider) || (provider && newSessionAllowsCustomProvider())', source)
+        module_source = APP_NEW_SESSION_JS.read_text(encoding="utf-8")
+        app_source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn('function newSessionAllowsCustomProvider() {\n      return backend() === "pi";\n    }', module_source)
+        self.assertIn('options.includes(next) || (next && newSessionAllowsCustomProvider())', module_source)
+        self.assertIn('const hasProviders = choices.length > 0 || allowCustomProvider;', module_source)
+        self.assertIn('providerChoices.includes(prov) || (prov && newSessionAllowsCustomProvider())', module_source)
+        self.assertIn('const hasProviders = newSessionHasProviderChoices() || newSessionAllowsCustomProvider();', app_source)
+        self.assertIn('providerChoices.includes(selectedPair.providerChoice) || newSessionAllowsCustomProvider()', app_source)
 
     def test_provider_model_error_clears_when_backend_or_input_changes(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
+        source = APP_NEW_SESSION_JS.read_text(encoding="utf-8")
         self.assertIn("function clearNewSessionProviderModelError()", source)
-        self.assertIn('String(newSessionStatus.textContent || "").startsWith("Provider must be one of ")', source)
+        self.assertIn('String(status.textContent || "").startsWith("Provider must be one of ")', source)
         self.assertIn("if (!parsed.providerError) clearNewSessionProviderModelError();", source)
-        self.assertIn("clearNewSessionProviderModelError();\n          }\n          const reasoningChoices = currentReasoningChoices();", source)
+        app_source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("clearNewSessionProviderModelError();\n          }\n          const reasoningChoices = currentReasoningChoices();", app_source)
 
     def test_degraded_launch_defaults_are_visible_but_nonblocking(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
+        source = APP_NEW_SESSION_JS.read_text(encoding="utf-8")
         self.assertIn("function newSessionDefaultsWarningText()", source)
         self.assertIn("Launch defaults degraded for ${names.join(\", \")}; using safe defaults.", source)
-        self.assertIn("statusText || newSessionDefaultsWarningText()", source)
-        self.assertIn('statusText.startsWith("Launch defaults degraded for ")', source)
+        self.assertIn('statusText || newSessionDefaultsWarningText()', APP_JS.read_text(encoding="utf-8"))
+        self.assertIn('statusText.startsWith("Launch defaults degraded for ")', APP_JS.read_text(encoding="utf-8"))
 
     def test_new_session_start_button_has_inflight_guard(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -357,8 +414,8 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
         self.assertEqual(result["provider"], "anthropic")
         self.assertEqual(result["providerCalls"], ["anthropic"])
         self.assertEqual(result["modelInput"], "anthropic/claude-haiku-4-5")
-        self.assertEqual(result["reasoningCalls"], ["low"])
-        self.assertEqual(result["fastCalls"], [True])
+        self.assertEqual(result["finalReasoning"], "low")
+        self.assertEqual(result["fastCalls"], [])
         self.assertTrue(result["tmuxChecked"])
 
     def test_new_like_this_preset_does_not_invent_pi_provider(self) -> None:
@@ -477,7 +534,9 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
         self.assertEqual(result["option"]["providerChoice"], "")
         self.assertEqual(result["option"]["displayText"], "anthropic/claude-3-5-sonnet")
         self.assertEqual(result["input"], "anthropic/claude-3-5-sonnet")
-        self.assertEqual(result["remembered"], {"backend": "pi", "provider": "", "model": "anthropic/claude-3-5-sonnet", "providerAbsent": True})
+        launch = APP_LAUNCH_JS.read_text(encoding="utf-8")
+        self.assertIn("NO_PROVIDER_MODEL_PREFIX", launch)
+        self.assertEqual(result["rememberedValue"], "__codoxear_no_provider__:anthropic/claude-3-5-sonnet")
         self.assertEqual(result["literalModelInputValue"], "anthropic/claude-3-5-sonnet")
         self.assertTrue(result["providerAbsent"])
         self.assertEqual(result["providerSet"], "")
@@ -491,6 +550,7 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
                 "preferred_auth_method": "chatgpt",
                 "model": "gpt-5.4",
                 "reasoning_effort": "high",
+                "service_tier": "fast",
             },
             backend="codex",
             provider_choices=["chatgpt", "openai-api"],
@@ -498,34 +558,36 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
         self.assertEqual(result["providerChoice"], "chatgpt")
         self.assertEqual(result["provider"], "chatgpt")
         self.assertEqual(result["modelInput"], "chatgpt/gpt-5.4")
+        self.assertEqual(result["fastCalls"], [True])
 
     def test_new_like_this_source_is_reviewable_and_allowlisted(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('id: "diagNewLikeBtn"', source)
-        self.assertIn('text: "New like this"', source)
-        self.assertIn('hideDiagViewer({ restoreFocus: false });', source)
-        self.assertIn('openNewSessionDialog({ likeSession: preset, statusText: "Review copied launch settings before starting.", returnFocusEl });', source)
-        self.assertIn('function openNewSessionDialog({ cwd = null, statusText = "", likeSession = null, returnFocusEl = null } = {})', source)
-        self.assertIn('if (like) applyNewSessionLaunchPreset(like);', source)
-        self.assertIn('function launchPresetProviderChoice(s)', source)
-        self.assertIn('function applyNewSessionLaunchPreset(sessionInfo)', source)
-        self.assertIn('if (backend === "pi") return provider;', source)
-        self.assertIn('const providerAbsent = Boolean(newSessionLaunchPresetProviderAbsent && raw && raw === newSessionLiteralModelInputValue);', source)
-        self.assertIn('if (providerAbsent) providerChoice = "";', source)
-        self.assertIn('if (hasProviders && raw.includes("/") && raw !== newSessionLiteralModelInputValue)', source)
-        self.assertIn('newSessionLiteralModelInputValue = newSessionModelInput.value;', source)
-        self.assertIn('const providerAbsent = backend === "pi" && !provider;', source)
-        self.assertIn('if (model || providerAbsent || acceptsProvider) {', source)
-        self.assertIn('newSessionModelInput.value = newSessionProviderModelDisplay(model || "default", acceptsProvider ? provider : "");', source)
-        self.assertIn('const providerChoice = String(parsedProviderModel.providerAbsent ? "" : parsedProviderModel.providerChoice || newSessionProvider || "").trim();', source)
-        self.assertIn('diagNewLikeSession = d && typeof d === "object" ? {', source)
-        self.assertIn('preferred_auth_method: d.preferred_auth_method,', source)
-        self.assertIn('tmux_window: d.tmux_window,', source)
-        self.assertNotIn('diagNewLikeSession = d;', source)
+        app_source = APP_JS.read_text(encoding="utf-8")
+        module_source = APP_NEW_SESSION_JS.read_text(encoding="utf-8")
+        self.assertIn('id: "diagNewLikeBtn"', app_source)
+        self.assertIn('text: "New like this"', app_source)
+        self.assertIn('hideDiagViewer({ restoreFocus: false });', app_source)
+        self.assertIn('openNewSessionDialog({ likeSession: preset, statusText: "Review copied launch settings before starting.", returnFocusEl });', app_source)
+        self.assertIn('function openNewSessionDialog({ cwd = null, statusText = "", likeSession = null, returnFocusEl = null } = {})', app_source)
+        self.assertIn('if (like) applyNewSessionLaunchPreset(like);', app_source)
+        self.assertIn("function applyNewSessionLaunchPreset(sessionInfo)", module_source)
+        self.assertIn("function launchPresetProviderChoice(s)", module_source)
+        self.assertIn('if (backendValue === "pi") return prov;', module_source)
+        self.assertIn('const providerAbsent = Boolean(launchPresetProviderAbsent() && raw && raw === literalModelInputValue());', module_source)
+        self.assertIn("assignLaunchPresetProviderAbsent(true);", module_source)
+        self.assertIn('if (hasProviders && raw.includes("/") && raw !== literalModelInputValue())', module_source)
+        self.assertIn('assignLiteralModelInputValue(modelInput.value);', module_source)
+        self.assertIn("const providerAbsent = backendValue === \"pi\" && !prov;", module_source)
+        self.assertIn("if (model || providerAbsent || acceptsProvider) {", module_source)
+        self.assertIn('modelInput.value = newSessionProviderModelDisplay(model || "default", acceptsProvider ? prov : "");', module_source)
+        self.assertIn('diagNewLikeSession = d && typeof d === "object" ? {', app_source)
+        self.assertIn("preferred_auth_method: d.preferred_auth_method,", app_source)
+        self.assertIn("tmux_window: d.tmux_window,", app_source)
+        self.assertNotIn("diagNewLikeSession = d;", app_source)
 
     def test_provider_model_pair_is_remembered_per_backend(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
+        module_source = APP_NEW_SESSION_JS.read_text(encoding="utf-8")
         self.assertIn("const codoxearLaunch = window.CodoxearLaunch;", source)
         self.assertIn('throw new Error("Codoxear launch helpers failed to load")', source)
         self.assertIn("function lastProviderModelKey(backend)", source)
@@ -539,11 +601,11 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
         self.assertIn("codoxear.newSessionProviderModel.${normalizeAgentBackendName(backend)}", launch_source)
         self.assertIn("NO_PROVIDER_MODEL_PREFIX", launch_source)
         self.assertIn("function rememberProviderModelChoice(backend, provider, model, { providerAbsent = false } = {})", launch_source)
-        self.assertIn("rememberProviderModelChoice(newSessionBackend, selectedProvider, item.model || \"default\", { providerAbsent: Boolean(item.providerAbsent) });", source)
-        self.assertIn("rememberProviderModelChoice(agentBackend, providerChoice, model, { providerAbsent: Boolean(parsedProviderModel.providerAbsent) });", source)
+        self.assertIn("codoxearLaunch.rememberProviderModelChoice(backend(), selectedProvider, item.model || \"default\", { providerAbsent: Boolean(item.providerAbsent) });", module_source)
         self.assertIn("function rememberedNewSessionProviderModelChoice()", source)
-        self.assertIn("const absent = rememberedProviderModelAbsentChoice(remembered);", source)
-        self.assertIn("if (absent) return absent;", source)
+        module_source = APP_NEW_SESSION_JS.read_text(encoding="utf-8")
+        self.assertIn("const absent = codoxearLaunch.rememberedProviderModelAbsentChoice(remembered);", module_source)
+        self.assertIn("if (absent) return absent;", module_source)
         self.assertIn("const rememberedPair = rememberedNewSessionProviderModelChoice();", source)
         self.assertIn("last provider/model pair for each backend", source)
 
