@@ -25,6 +25,14 @@ class TestUnattendedModeSource(unittest.TestCase):
         self.assertNotIn('"Harness mode"', source)
         self.assertNotIn('/harness`', source)
 
+    def test_unattended_button_blocks_failed_launches(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn('const unattendedBlocked = Boolean(selected && sessionLaunchFailed(s));', source)
+        self.assertIn('unattendedBlocked ? "Failed launch has no unattended mode" : "Unattended mode"', source)
+        self.assertIn('unattendedBtn.disabled = !selected || unattendedBlocked;', source)
+        self.assertIn('unattendedBtn.setAttribute("aria-label", unattendedLabel);', source)
+        self.assertIn('if (selectedSessionLaunchFailed()) {\n            setToast("failed launch has no unattended mode");\n            return;\n          }', source)
+
     def test_unattended_popover_has_keyboard_and_focus_semantics(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn('"aria-controls": "unattendedMenu"', source)

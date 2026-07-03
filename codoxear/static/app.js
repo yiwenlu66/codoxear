@@ -4448,7 +4448,11 @@
           const s = selected ? sessionIndex.get(selected) : null;
           syncTitleEditState();
           const on = Boolean(s && s.unattended_enabled);
-          unattendedBtn.disabled = !selected;
+          const unattendedBlocked = Boolean(selected && sessionLaunchFailed(s));
+          const unattendedLabel = !selected ? "Select a session for unattended mode" : unattendedBlocked ? "Failed launch has no unattended mode" : "Unattended mode";
+          unattendedBtn.disabled = !selected || unattendedBlocked;
+          unattendedBtn.title = unattendedLabel;
+          unattendedBtn.setAttribute("aria-label", unattendedLabel);
           unattendedBtn.classList.toggle("active", Boolean(selected && on));
           if (
             selected &&
@@ -4643,6 +4647,10 @@
 
         async function showUnattendedMenu({ opener = null } = {}) {
           if (!selected) return;
+          if (selectedSessionLaunchFailed()) {
+            setToast("failed launch has no unattended mode");
+            return;
+          }
           const sid = selected;
           const openToken = unattendedMenuToken + 1;
           unattendedMenuToken = openToken;
