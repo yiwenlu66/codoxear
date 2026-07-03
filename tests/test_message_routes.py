@@ -73,6 +73,9 @@ class _LiveManager:
     def mark_log_delta(self, *args, **kwargs) -> None:
         self.marked.append((args, kwargs))
 
+    def _attach_notification_texts(self, events):
+        return events
+
 
 def _deps(**overrides):
     responses: list[tuple[int, dict[str, object]]] = []
@@ -176,6 +179,52 @@ def test_messages_live_rejects_bad_cursor_without_mutating_log_state() -> None:
     assert responses == [(409, {"error": "cursor_invalid"})]
     # The bad cursor must short-circuit before any log mutation.
     assert manager.marked == []
+
+
+def test_messages_live_streams_new_events_after_valid_cursor() -> None:
+    # Regression: the live route must pass an explicit read bound to the JSONL
+    # reader. A dropped max_bytes broke every live poll on a bound cursor
+    # (TypeError) while tail-only tests stayed green.
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "rollout.jsonl"
+        rows = [
+            {"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}, "ts": 1.0},
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "world"}],
+                    "phase": "final_answer",
+                },
+                "ts": 2.0,
+            },
+        ]
+        log_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+        session = _session(td, log_path)
+
+        deps, responses, metrics = _deps()
+        manager = _LiveManager(session)
+        cursor = encode_message_cursor(kind="live", session=session, pos=0, secret=_SECRET)
+        handle_messages_live(
+            _FakeHandler(),
+            session_id="s1",
+            query=f"cursor={cursor}",
+            manager=manager,
+            deps=deps,
+        )
+
+    assert len(responses) == 1
+    status, body = responses[0]
+    assert status == 200
+    assert [event["role"] for event in body["events"]] == ["user", "assistant"]
+    assert body["events"][1]["text"] == "world"
+    next_cursor = body["live_cursor"]
+    assert isinstance(next_cursor, str)
+    assert decode_message_cursor(next_cursor, kind="live", session=session, secret=_SECRET) > 0
+    # The consumed delta must be marked so busy/idle caches advance.
+    assert manager.marked and manager.marked[0][1]["new_off"] > 0
+    assert metrics and metrics[0][0] == "api_messages_poll_ms"
 
 
 def test_messages_tail_missing_session_returns_launch_payload_or_404() -> None:

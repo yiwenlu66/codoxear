@@ -16,6 +16,10 @@ from .transcript_search import search_chat_log_bounded as _search_chat_log_bound
 JsonResponse = Callable[[Any, int, dict[str, Any]], None]
 RouteMatcher = Callable[[str, str, str], str | None]
 
+# Per-poll read bound for the live message stream. Restores the 2 MiB default
+# that the pre-extraction server wrapper applied to this exact call path.
+LIVE_POLL_READ_MAX_BYTES = 2 * 1024 * 1024
+
 
 @dataclass(frozen=True)
 class MessageRouteDeps:
@@ -360,7 +364,7 @@ def handle_messages_live(handler: Any, *, session_id: str, query: str, manager: 
     except MessageCursorError as e:
         deps.json_response(handler, 409, {"error": str(e)})
         return
-    records, next_after = _rollout_log._read_jsonl_records_from_offset(s.log_path, after_byte)
+    records, next_after = _rollout_log._read_jsonl_records_from_offset(s.log_path, after_byte, max_bytes=LIVE_POLL_READ_MAX_BYTES)
     objs = [record.obj for record in records]
     initial_cc_pending = _rollout_log._cc_pending_tool_ids_before(s.log_path, after_byte) if records and after_byte > 0 else set()
     events, meta_delta, flags, diag = _rollout_log._extract_chat_events(objs, initial_cc_pending_tool_ids=initial_cc_pending)
