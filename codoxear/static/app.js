@@ -7114,7 +7114,7 @@
           selectedSessionId: () => selected,
           resetSearchState: () => resetFileSearchState(),
           setSearchSessionId: (sessionId) => filePickerSearchState.setSessionId(sessionId),
-          scheduleSearch: (query) => scheduleSessionFileSearch(query),
+          scheduleSearch: (query) => filePickerSearchState.schedule(query),
           selectionLine: () => filePickerSelectionLine(),
           openDraftFilePathWithGuard: (path) => openDraftFilePathWithGuard(path),
           openFilePathWithResolvedMode: (path, options) => openFilePathWithResolvedMode(path, options),
@@ -7934,32 +7934,12 @@
           filePickerSearchState.reset();
         }
 
-        async function requestSessionFileSearch(query) {
-          return await filePickerSearchState.request(query);
-        }
-
-        function scheduleSessionFileSearch(query) {
-          return filePickerSearchState.schedule(query);
-        }
-
         function filePickerSearchSnapshot() {
           return filePickerSearchState.snapshot();
         }
 
-        async function getKnownFileRefCandidates() {
-          return await fileReferenceRuntime.getKnownCandidates();
-        }
-
         function renderFilePickerMenu() {
           return filePickerRenderRuntime.render();
-        }
-
-        async function inspectFileRefPath(path) {
-          return await fileReferenceRuntime.inspectPath(path);
-        }
-
-        function replaceAmbiguousFileRefNode(node, path, line = null) {
-          return fileReferenceRuntime.replaceAmbiguousNode(node, path, line);
         }
 
         async function upgradeCandidateFileRefs(root) {
