@@ -30,7 +30,7 @@ class TestSessiondPackaging(unittest.TestCase):
         self.assertIn("CODEX_WEB_AGENT_BACKEND=cc codoxear-sessiond --cwd /path/to/repo", data)
         self.assertIn("Arguments after `--` are passed to the selected backend; do not repeat the backend executable name.", data)
         self.assertIn("uses the same backend adapter launch options as web-owned sessions", data)
-        self.assertIn("same control state schema (`busy`, `queue_len`, `interrupted_idle`)", data)
+        self.assertIn("same control state schema (`busy`, `queue_len`, `token`, `interrupted_idle`)", data)
         self.assertNotIn("codoxear-sessiond --cwd /path/to/repo -- codex", data)
         self.assertNotIn("codoxear-sessiond --cwd /path/to/repo -- pi", data)
         self.assertNotIn("codoxear-sessiond --cwd /path/to/repo -- claude", data)
