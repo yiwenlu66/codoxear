@@ -8026,3 +8026,17 @@
   - `python3 -m py_compile tests/test_chat_transcript_runtime.py tests/test_chat_navigation_source.py` passed.
   - Focused validation `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_navigation_source.py tests/test_auth_cleanup_source.py tests/test_chat_scrollback_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py` returned `63 passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T05:04:00Z Moved transcript scroll state into runtime
+- Functional commit `f09abbb Move transcript scroll state into runtime` added `CodoxearTranscript.createTranscriptScrollRuntime(...)` and moved transcript bottom-lock/scroll state out of app.js: `autoScroll`, `renderedAtLiveTail`, `lastScrollTop`, touch scroll intent, jump-button projection, visible-time-chip projection, scroll-to-bottom scheduling, scroll/wheel/touch event policy, older-load cancellation threshold, top-triggered older auto-load, preserve-scroll-after-decoration, and explicit scroll positioning now live in `app_transcript.js`.
+- Mechanism: app.js previously let render, typing, history prepend, search/detached-window navigation, viewport shifts, and input events mutate scroll-follow state and schedule bottom scrolls independently. The new runtime owns the state and predicates (`shouldStickToBottom`, `shouldAutoScrollOrNearBottom`, `isNearBottom`), while app.js supplies DOM nodes and callbacks for selection, search-open state, first visible row, time formatting, older-load cancellation, and older auto-load transport.
+- App.js no longer declares `let autoScroll`, `let renderedAtLiveTail`, `let lastScrollTop`, `let touchY`, or wrapper functions `isNearBottom`, `syncVisibleTimeIndicator`, `syncJumpButton`, and `scrollToBottom`; call sites use `transcriptScrollRuntime` directly.
+- Behavior evidence: added `test_transcript_scroll_runtime_owns_bottom_lock_and_input_policy`, covering bottom-lock projection, time-chip visibility, scroll delta state changes, older-load cancel/top thresholds, wheel/touch intent, scheduled bottom scrolling, reset, and fail-loud missing dependency errors. Existing live-delta tests now provide the runtime dependency explicitly rather than reconstructing deleted globals.
+- Validation under checkpoint cadence:
+  - Invalid validation target preserved: `tests/test_frontend_module_boundaries_source.py` does not exist in this checkout, so that command was discarded as a bad test target rather than evidence.
+  - `node --check codoxear/static/app.js` passed.
+  - `node --check codoxear/static/app_transcript.js` passed.
+  - `python3 -m py_compile tests/test_chat_transcript_runtime.py tests/test_chat_navigation_source.py tests/test_chat_scrollback_source.py tests/test_frontend_message_rows_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_navigation_source.py tests/test_auth_cleanup_source.py tests/test_chat_scrollback_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py tests/test_static_assets.py` returned `77 passed`.
+  - Source audit `! rg -n "let autoScroll|let renderedAtLiveTail|let lastScrollTop|let touchY|function isNearBottom\\(|function syncVisibleTimeIndicator\\(|function syncJumpButton\\(|function scrollToBottom\\(" codoxear/static/app.js` passed.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
