@@ -5,10 +5,6 @@ import sys
 from pathlib import Path
 
 from .agent_backend import get_agent_backend
-from .agent_backend import normalize_agent_backend
-from .session_log_paths import _is_cc_session_log_path
-from .session_log_paths import _is_codex_rollout_log_path
-from .session_log_paths import _is_pi_session_log_path
 
 
 def _macos_children(pid: int) -> list[int]:
@@ -42,8 +38,8 @@ def _macos_descendants(root_pid: int) -> list[int]:
 
 def _macos_open_rollout_logs(root_pid: int, *, agent_backend: str = "codex") -> set[Path]:
     import subprocess
-    backend_name = normalize_agent_backend(agent_backend)
-    sessions_dir = get_agent_backend(backend_name).sessions_dir()
+    backend = get_agent_backend(agent_backend)
+    sessions_dir = backend.sessions_dir()
     pids = _macos_descendants(root_pid)
     if not pids:
         return set()
@@ -63,14 +59,7 @@ def _macos_open_rollout_logs(root_pid: int, *, agent_backend: str = "codex") -> 
         if not tgt.startswith("/") or not tgt.endswith(".jsonl"):
             continue
         path = Path(tgt)
-        if backend_name == "codex":
-            if _is_codex_rollout_log_path(path):
-                out.add(path)
-            continue
-        if backend_name == "pi" and _is_pi_session_log_path(path, sessions_dir=sessions_dir):
-            out.add(path)
-            continue
-        if backend_name == "cc" and _is_cc_session_log_path(path, sessions_dir=sessions_dir):
+        if backend.is_session_log_path(path, sessions_dir=sessions_dir):
             out.add(path)
     return out
 
@@ -146,11 +135,11 @@ def proc_open_rollout_logs(proc_root: Path, root_pid: int, *, agent_backend: str
 
 
 def proc_open_rollout_logs_for_backend(proc_root: Path, root_pid: int, *, agent_backend: str) -> set[Path]:
-    backend_name = normalize_agent_backend(agent_backend)
+    backend = get_agent_backend(agent_backend)
     if sys.platform == "darwin":
-        return _macos_open_rollout_logs(root_pid, agent_backend=backend_name)
+        return _macos_open_rollout_logs(root_pid, agent_backend=backend.name)
     uid = int(os.getuid())
-    sessions_dir = get_agent_backend(backend_name).sessions_dir()
+    sessions_dir = backend.sessions_dir()
     out: set[Path] = set()
     for pid in _proc_descendants(proc_root, root_pid):
         puid = _proc_pid_uid(proc_root, pid)
@@ -173,15 +162,7 @@ def proc_open_rollout_logs_for_backend(proc_root: Path, root_pid: int, *, agent_
             if (not tgt.startswith("/")) or (not tgt.endswith(".jsonl")):
                 continue
             path = Path(tgt)
-            if backend_name == "codex":
-                if not _is_codex_rollout_log_path(path):
-                    continue
-                out.add(path)
-                continue
-            if backend_name == "pi" and _is_pi_session_log_path(path, sessions_dir=sessions_dir):
-                out.add(path)
-                continue
-            if backend_name == "cc" and _is_cc_session_log_path(path, sessions_dir=sessions_dir):
+            if backend.is_session_log_path(path, sessions_dir=sessions_dir):
                 out.add(path)
     return out
 
@@ -191,11 +172,11 @@ def proc_open_writable_rollout_logs(proc_root: Path, root_pid: int, *, agent_bac
 
 
 def proc_open_writable_rollout_logs_for_backend(proc_root: Path, root_pid: int, *, agent_backend: str) -> set[Path]:
-    backend_name = normalize_agent_backend(agent_backend)
+    backend = get_agent_backend(agent_backend)
     if sys.platform == "darwin":
-        return _macos_open_rollout_logs(root_pid, agent_backend=backend_name)
+        return _macos_open_rollout_logs(root_pid, agent_backend=backend.name)
     uid = int(os.getuid())
-    sessions_dir = get_agent_backend(backend_name).sessions_dir()
+    sessions_dir = backend.sessions_dir()
     out: set[Path] = set()
     for pid in _proc_descendants(proc_root, root_pid):
         puid = _proc_pid_uid(proc_root, pid)
@@ -221,14 +202,6 @@ def proc_open_writable_rollout_logs_for_backend(proc_root: Path, root_pid: int, 
             if (not tgt.startswith("/")) or (not tgt.endswith(".jsonl")):
                 continue
             path = Path(tgt)
-            if backend_name == "codex":
-                if not _is_codex_rollout_log_path(path):
-                    continue
-                out.add(path)
-                continue
-            if backend_name == "pi" and _is_pi_session_log_path(path, sessions_dir=sessions_dir):
-                out.add(path)
-                continue
-            if backend_name == "cc" and _is_cc_session_log_path(path, sessions_dir=sessions_dir):
+            if backend.is_session_log_path(path, sessions_dir=sessions_dir):
                 out.add(path)
     return out
