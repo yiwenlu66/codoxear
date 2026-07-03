@@ -352,6 +352,28 @@ class SessionStore:
             return True
         return False
 
+    def remember_recent_cwd(self, cwd_value: Any, *, ts: Any = None, now: Callable[[], float] = time.time) -> bool:
+        if isinstance(ts, bool):
+            ts_value = now()
+        else:
+            try:
+                ts_value = float(ts) if ts is not None else now()
+            except (TypeError, ValueError, OverflowError):
+                ts_value = now()
+        if not math.isfinite(ts_value) or ts_value <= 0:
+            ts_value = now()
+        changed = self.note_recent_cwd(cwd_value, ts_value)
+        if not changed:
+            return False
+        if len(self.recent_cwds) > self.recent_cwd_max * 2:
+            keep = dict(sorted(self.recent_cwds.items(), key=lambda item: (-float(item[1]), item[0]))[: self.recent_cwd_max])
+            self.recent_cwds.clear()
+            self.recent_cwds.update(keep)
+        return True
+
+    def list_recent_cwds(self, *, limit: int) -> list[str]:
+        return [cwd for cwd, _ts in sorted(self.recent_cwds.items(), key=lambda item: (-float(item[1]), item[0]))[: max(0, int(limit))]]
+
     def clear_deleted_session_state(
         self,
         session_id: str,

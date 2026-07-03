@@ -219,6 +219,24 @@ def test_session_store_recent_cwd_records_newer_timestamps_only() -> None:
     assert store.note_recent_cwd("", 12.0) is False
 
 
+def test_session_store_recent_cwd_remember_normalizes_trims_and_lists() -> None:
+    mgr = SessionManager.__new__(SessionManager)
+    mgr._lock = threading.Lock()
+    store = mgr._session_store_for_manager()
+    store.recent_cwd_max = 2
+    now_calls = iter([100.0, 101.0])
+
+    assert store.remember_recent_cwd("/repo", ts="bad", now=lambda: next(now_calls)) is True
+    assert store.remember_recent_cwd("/repo", ts=99.0, now=lambda: 102.0) is False
+    assert store.remember_recent_cwd("/other", ts=True, now=lambda: next(now_calls)) is True
+    assert store.remember_recent_cwd("/third", ts=103.0, now=lambda: 104.0) is True
+    assert store.remember_recent_cwd("/fourth", ts=104.0, now=lambda: 105.0) is True
+    assert store.remember_recent_cwd("/fifth", ts=105.0, now=lambda: 106.0) is True
+
+    assert store.list_recent_cwds(limit=3) == ["/fifth", "/fourth"]
+    assert store.recent_cwds == {"/fourth": 104.0, "/fifth": 105.0}
+
+
 def test_session_store_load_persistent_state_owns_bootstrap_order() -> None:
     with TemporaryDirectory() as td:
         root = Path(td)

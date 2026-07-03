@@ -519,14 +519,11 @@ def pending_state_coordinator_for_manager(manager: Any, caps: SessionManagerFact
 def recent_cwd_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
     return SessionRecentCwdCoordinator(
         lock=_registry_lock(manager),
-        recent_cwds=lambda: getattr(manager, "_recent_cwds", None),
-        set_recent_cwds=lambda value: setattr(manager, "_recent_cwds", value),
-        clean_recent_cwd=caps.clean_recent_cwd,
+        store=manager._session_store_for_manager,
         iter_session_logs=caps.iter_session_logs,
         resume_candidate_from_log=caps.resume_candidate_from_log,
         save_recent_cwds=manager._save_recent_cwds,
         now=caps.now,
-        max_recent_cwds=caps.recent_cwd_max,
     )
 
 
