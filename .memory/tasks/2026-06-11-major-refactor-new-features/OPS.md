@@ -7941,3 +7941,13 @@
   - `python3 -m py_compile tests/test_file_viewer_source.py` passed.
   - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_file_picker_search_source.py` returned `83 passed, 25 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T02:58:00Z Stale file save wrapper cleanup
+- Functional cleanup commit `312da50 Remove stale file save helper wrappers` removed app.js wrappers for low-level save-state methods already owned by `createFileViewerController(...)`: pending-state read/clear, request begin/current/mark/finish, save body construction, save error rendering, save success application, and submit transport.
+- Mechanism: after the file-viewer controller became the save-state owner, these app wrappers had no runtime callers; keeping them preserved obsolete ownership anchors and made tests extract app.js instead of the real controller implementation. App.js keeps only the user-facing `saveActiveFileEdits(...)` wrapper used by event/unsaved-choice callers.
+- Tests updated: body/error probes now extract the controller-owned functions from `app_file_viewer.js`; source sentinels reject the deleted app wrappers and keep asserting controller-owned save behavior.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_file_viewer_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `60 passed, 25 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
