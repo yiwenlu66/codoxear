@@ -8197,3 +8197,11 @@
   - Focused rollout idle/chat and adapter slice returned `131 passed`.
   - Broader backend/chat/idle/broker slice returned `182 passed, 4 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T10:25:00Z Used backend adapters for session metadata inference
+- Functional commit `074a402 Use backend adapters for session metadata inference` removed explicit Pi/Claude path-relative inference branches from `session_log_metadata.infer_session_meta_backend(...)` and reused adapter log-path recognition for Pi and Claude Code before falling back to Codex.
+- Mechanism: session metadata backend inference now asks `get_agent_backend(name).is_session_log_path(...)`; `sessions_dir_for_backend(...)` uses normalized backend name as a map key rather than an if-chain.
+- Validation under checkpoint cadence:
+  - `python3 -m py_compile codoxear/session_log_metadata.py` passed.
+  - Focused metadata/path/resume/sidecar tests returned `65 passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
