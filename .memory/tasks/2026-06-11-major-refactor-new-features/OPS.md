@@ -7790,3 +7790,13 @@
   - `python3 -m py_compile tests/test_frontend_file_picker_module_source.py tests/test_file_picker_search_source.py` passed.
   - Focused validation `python3 -m pytest -q tests/test_frontend_file_picker_module_source.py tests/test_file_picker_search_source.py tests/test_file_viewer_source.py tests/test_overlay_accessibility_source.py` returned `84 passed, 25 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T00:28:00Z File fallback application viewer-module ownership
+- Functional commit `f824cff Move fallback application into viewer module` moved fallback application sequencing from inline `codoxear/static/app.js` into `createFileFallbackRuntime(...)` in `codoxear/static/app_file_viewer.js`.
+- Mechanism: the fallback runtime already owned plain/download/blocked/markdown DOM construction, but app.js still owned the surrounding transition: editor disposal, PDF disposal for download fallback, video cleanup, diff-surface selection, plain-fallback editor-kind projection, controller fallback-state application, markdown session context, blocked-message construction, and touch-toolbar refresh. The runtime now owns those application methods (`applyPlainText`, `applyDownload`, `applyMarkdown`, `applyBlocked`) while app.js injects the required side effects and keeps wrapper names for editor/load-result/PDF-render callers.
+- Tests updated: `tests/test_frontend_file_viewer_module_source.py` now executes fallback application methods and verifies ordering for plain-text, download, markdown, and blocked fallbacks plus fail-loud missing dependency behavior. Source sentinels now reject app-owned diff-surface/fallback application code and point to runtime-owned application methods.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app_file_viewer.js` and `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py tests/test_overlay_accessibility_source.py` returned `66 passed, 25 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
