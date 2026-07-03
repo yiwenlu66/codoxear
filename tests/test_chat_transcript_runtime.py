@@ -586,6 +586,108 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["failed"]["state"], "failed")
         self.assertTrue(out["frozen"])
 
+    def test_typing_row_runtime_owns_row_anchor_and_scroll_projection(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const ctx = {{ window: {{}} }};
+            const vm = require("vm");
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            const tx = ctx.window.CodoxearTranscript;
+            const calls = [];
+            const bottom = {{ name: "bottom", isConnected: true }};
+            const root = {{
+              children: [bottom],
+              insertBefore(node, before) {{
+                const existing = this.children.indexOf(node);
+                if (existing >= 0) this.children.splice(existing, 1);
+                const idx = this.children.indexOf(before);
+                this.children.splice(idx >= 0 ? idx : this.children.length, 0, node);
+                node.isConnected = true;
+                refreshSiblings();
+              }},
+            }};
+            function refreshSiblings() {{
+              for (let i = 0; i < root.children.length; i += 1) root.children[i].nextSibling = root.children[i + 1] || null;
+            }}
+            function fakeEl(tag, attrs = {{}}, children = []) {{
+              const node = {{
+                tag,
+                attrs,
+                children: [],
+                dataset: {{}},
+                isConnected: false,
+                appendChild(child) {{ this.children.push(child); return child; }},
+                remove() {{
+                  const idx = root.children.indexOf(this);
+                  if (idx >= 0) root.children.splice(idx, 1);
+                  this.isConnected = false;
+                  refreshSiblings();
+                }},
+              }};
+              for (const child of children || []) node.appendChild(child);
+              return node;
+            }}
+            let autoScroll = true;
+            const runtime = tx.createTypingRowRuntime({{
+              root,
+              bottomSentinel: bottom,
+              el: fakeEl,
+              shouldAutoScroll: () => autoScroll,
+              scheduleScrollToBottom: () => calls.push(["scroll"]),
+            }});
+            const initialAnchor = runtime.anchor().name;
+            const shown = runtime.setVisible(true);
+            const row = root.children[0];
+            const afterShowAnchorIsRow = runtime.anchor() === row;
+            runtime.setVisible(true);
+            autoScroll = false;
+            runtime.setVisible(true);
+            const beforeHide = {{ childNames: root.children.map((node) => node.name || node.attrs.class), scrollCalls: calls.slice(), rowNextIsBottom: row.nextSibling === bottom }};
+            runtime.setVisible(false);
+            const afterHide = {{ snapshot: runtime.snapshot(), anchor: runtime.anchor().name, childNames: root.children.map((node) => node.name || node.attrs.class) }};
+            runtime.setVisible(true);
+            runtime.reset();
+            let missingRoot = false;
+            try {{ tx.createTypingRowRuntime({{ bottomSentinel: bottom, el: fakeEl, shouldAutoScroll: () => false, scheduleScrollToBottom: () => {{}} }}); }} catch (err) {{ missingRoot = /root/.test(String(err && err.message || err)); }}
+            process.stdout.write(JSON.stringify({{
+              initialAnchor,
+              shown,
+              rowClass: row.attrs.class,
+              rowRole: row.dataset.role,
+              bubbleClass: row.children[0].attrs.class,
+              dotsClass: row.children[0].children[0].attrs.class,
+              dotCount: row.children[0].children[0].children.length,
+              afterShowAnchorIsRow,
+              beforeHide,
+              afterHide,
+              afterReset: runtime.snapshot(),
+              missingRoot,
+              frozen: Object.isFrozen(runtime),
+            }}));
+            """
+        )
+        out = _run_node(js)
+
+        self.assertEqual(out["initialAnchor"], "bottom")
+        self.assertTrue(out["shown"]["connected"])
+        self.assertEqual(out["rowClass"], "msg-row assistant typing-row")
+        self.assertEqual(out["rowRole"], "assistant")
+        self.assertEqual(out["bubbleClass"], "msg assistant typing")
+        self.assertEqual(out["dotsClass"], "typingDots")
+        self.assertEqual(out["dotCount"], 3)
+        self.assertTrue(out["afterShowAnchorIsRow"])
+        self.assertEqual(out["beforeHide"]["childNames"], ["msg-row assistant typing-row", "bottom"])
+        self.assertEqual(out["beforeHide"]["scrollCalls"], [["scroll"], ["scroll"]])
+        self.assertTrue(out["beforeHide"]["rowNextIsBottom"])
+        self.assertFalse(out["afterHide"]["snapshot"]["connected"])
+        self.assertEqual(out["afterHide"]["anchor"], "bottom")
+        self.assertEqual(out["afterHide"]["childNames"], ["bottom"])
+        self.assertFalse(out["afterReset"]["connected"])
+        self.assertTrue(out["missingRoot"])
+        self.assertTrue(out["frozen"])
+
     def test_transcript_slot_runtime_uses_current_session_lookup_for_tail_append(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
@@ -921,8 +1023,8 @@ class TestChatTranscriptRuntime(unittest.TestCase):
                 return {{ row: {{}}, bubble: {{}} }};
               }},
               Date,
-              typingRow: null,
               bottomSentinel: {{}},
+              typingRowRuntime: {{ anchor: () => ctx.bottomSentinel }},
               chatInner: {{ insertBefore: () => {{ ctx.inserted = true; }} }},
               trimRenderedRows: () => {{ ctx.trimmed = true; }},
               rebuildDecorations: () => {{ ctx.rebuilt = true; }},
@@ -980,8 +1082,8 @@ class TestChatTranscriptRuntime(unittest.TestCase):
                 ctx.made += 1;
                 return {{ row: {{}}, bubble: {{}} }};
               }},
-              typingRow: null,
               bottomSentinel: {{}},
+              typingRowRuntime: {{ anchor: () => ctx.bottomSentinel }},
               chatInner: {{ insertBefore: () => {{ ctx.inserted += 1; }} }},
               trimRenderedRows: () => {{ ctx.trimmed = true; }},
               rebuildDecorations: () => {{ ctx.rebuilt = true; }},

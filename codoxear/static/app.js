@@ -807,7 +807,6 @@
 			        let backfillToken = 0;
         let backfillState = null;
 				    let lastToken = null;
-				    let typingRow = null;
         let attachBadgeEl = null;
         let queueBadgeEl = null;
         let editDependencyMenuOpen = false;
@@ -2186,7 +2185,7 @@
           clearTranscriptDom();
           messageCopyNavigationRuntime.reset();
               setOlderState({ hasMore: false, isLoading: false });
-	          typingRow = null;
+          typingRowRuntime.reset();
           jumpBtn.style.display = "none";
               updateChatNavButtons();
               if (loadedChatSearchSnapshot().open) closeChatSearch();
@@ -2699,6 +2698,7 @@
           typeof codoxearTranscript.rememberTailSnapshot !== "function" ||
           typeof codoxearTranscript.appendTailSnapshotEvents !== "function" ||
           typeof codoxearTranscript.createTranscriptSlotRuntime !== "function" ||
+          typeof codoxearTranscript.createTypingRowRuntime !== "function" ||
           typeof codoxearTranscript.createTranscriptScrollRuntime !== "function" ||
           typeof codoxearTranscript.createTranscriptEventRuntime !== "function" ||
           typeof codoxearTranscript.createOlderLoadRuntime !== "function" ||
@@ -2731,6 +2731,14 @@
         function loadedChatSearchSnapshot() {
           return loadedChatSearchRuntime.snapshot();
         }
+
+        const typingRowRuntime = codoxearTranscript.createTypingRowRuntime({
+          root: chatInner,
+          bottomSentinel,
+          el,
+          shouldAutoScroll: () => transcriptScrollRuntime.snapshot().autoScroll,
+          scheduleScrollToBottom: () => transcriptScrollRuntime.scheduleScrollToBottom(),
+        });
 
         const transcriptScrollRuntime = codoxearTranscript.createTranscriptScrollRuntime({
           chat,
@@ -2915,34 +2923,8 @@
             pushPerfSample("click_to_first_message_ms", dt);
           }
 
-	        function ensureTypingRow() {
-	          if (typingRow && typingRow.isConnected) return typingRow;
-	          const row = el("div", { class: "msg-row assistant typing-row" });
-	          row.dataset.role = "assistant";
-	          const bubble = el("div", { class: "msg assistant typing" });
-	          const dots = el("div", { class: "typingDots", "aria-label": "Running", title: "Running" }, [
-	            el("span", { class: "typingDot" }),
-	            el("span", { class: "typingDot" }),
-	            el("span", { class: "typingDot" }),
-	          ]);
-	          bubble.appendChild(dots);
-	          row.appendChild(bubble);
-	          typingRow = row;
-	          return row;
-	        }
-
 	        function setTyping(show) {
-	          if (!show) {
-	            if (typingRow && typingRow.isConnected) typingRow.remove();
-	            return;
-	          }
-	          const row = ensureTypingRow();
-	          if (!row.isConnected) {
-	            chatInner.insertBefore(row, bottomSentinel);
-	          } else if (row.nextSibling !== bottomSentinel) {
-	            chatInner.insertBefore(row, bottomSentinel);
-	          }
-	          if (transcriptScrollRuntime.snapshot().autoScroll) transcriptScrollRuntime.scheduleScrollToBottom();
+	          typingRowRuntime.setVisible(show);
 	        }
 
         function ymd(d) {
@@ -3589,8 +3571,7 @@
           }
           const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : ev.pending ? Date.now() / 1000 : null;
           const { row } = safeMakeRow(ev, { ts, pending });
-	          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
-	          chatInner.insertBefore(row, anchor);
+	          chatInner.insertBefore(row, typingRowRuntime.anchor());
             trimRenderedRows({ fromTop: stick });
           rebuildDecorations({ preserveScroll: false });
           if (typeof renderRecoveryPanelIfNeeded === "function") renderRecoveryPanelIfNeeded(typeof selected === "undefined" ? null : selected);
@@ -3677,8 +3658,7 @@
           const anchorRow = preserveViewport ? firstVisibleMessageRow() : null;
           const anchorOffset = anchorRow ? anchorRow.offsetTop - chat.scrollTop : 0;
           const firstMsg = chatInner.querySelector(".msg-row:not(.typing-row)");
-          const anchor = firstMsg || (typingRow && typingRow.isConnected ? typingRow : bottomSentinel);
-          chatInner.insertBefore(frag, anchor);
+          chatInner.insertBefore(frag, firstMsg || typingRowRuntime.anchor());
           const wasAtLiveTail = transcriptScrollRuntime.snapshot().renderedAtLiveTail;
           if (!preserveViewport) transcriptScrollRuntime.setScrollTop(1);
           trimRenderedRows({ fromTop: false, maxRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK });
@@ -4085,8 +4065,7 @@
           actions.appendChild(copyAction);
           bubble.appendChild(actions);
           row.appendChild(bubble);
-          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
-          chatInner.insertBefore(row, anchor);
+          chatInner.insertBefore(row, typingRowRuntime.anchor());
           if (focusDescriptor && !focusRecoveryAction(row, focusDescriptor)) focusRecoveryFallback(focusDescriptor);
           return true;
         }

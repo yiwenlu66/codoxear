@@ -627,7 +627,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         start = source.index("function prependOlderEvents(allEvents")
         end = source.index("async function loadOlderMessages", start)
         block = source[start:end]
-        self.assertIn("chatInner.insertBefore(frag, anchor);", block)
+        self.assertIn("chatInner.insertBefore(frag, firstMsg || typingRowRuntime.anchor());", block)
         self.assertIn("trimRenderedRows({ fromTop: false, maxRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK });", block)
         self.assertNotIn("trimRenderedRowsBeforeViewport({ maxRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK });", block)
 
@@ -786,7 +786,8 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn('const actions = el("div", { class: "sessionActionsInline" }, [...sessionEditActions, delBtn]);', source)
         self.assertIn('if (launchRow) {\n                 if (launchFailed) void selectSession(s.session_id);', source)
         self.assertNotIn('class: "msg assistant recovery-panel", role: "status"', source)
-        self.assertIn('const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;', source)
+        self.assertIn('const typingRowRuntime = codoxearTranscript.createTypingRowRuntime({', source)
+        self.assertIn('chatInner.insertBefore(row, typingRowRuntime.anchor());', source)
         self.assertIn('let pendingRecoveryFocusDescriptor = null;', source)
         self.assertIn('function focusedRecoveryActionDescriptor(sessionId)', source)
         self.assertIn('pendingRecoveryFocusDescriptor.sessionId === sessionId', source)

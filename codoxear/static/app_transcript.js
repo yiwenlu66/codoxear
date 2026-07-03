@@ -266,6 +266,67 @@
     });
   }
 
+  function createTypingRowRuntime(options = {}) {
+    const root = requireNode(options.root, "root");
+    const bottomSentinel = requireNode(options.bottomSentinel, "bottomSentinel");
+    const el = requireFunction(options.el, "el");
+    const shouldAutoScroll = requireFunction(options.shouldAutoScroll, "shouldAutoScroll");
+    const scheduleScrollToBottom = requireFunction(options.scheduleScrollToBottom, "scheduleScrollToBottom");
+    let typingRow = null;
+
+    function ensureRow() {
+      if (typingRow && typingRow.isConnected) return typingRow;
+      const row = el("div", { class: "msg-row assistant typing-row" });
+      row.dataset.role = "assistant";
+      const bubble = el("div", { class: "msg assistant typing" });
+      const dots = el("div", { class: "typingDots", "aria-label": "Running", title: "Running" }, [
+        el("span", { class: "typingDot" }),
+        el("span", { class: "typingDot" }),
+        el("span", { class: "typingDot" }),
+      ]);
+      bubble.appendChild(dots);
+      row.appendChild(bubble);
+      typingRow = row;
+      return row;
+    }
+
+    function anchor() {
+      return typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
+    }
+
+    function setVisible(show) {
+      if (!show) {
+        if (typingRow && typingRow.isConnected && typeof typingRow.remove === "function") typingRow.remove();
+        return snapshot();
+      }
+      const row = ensureRow();
+      if (!row.isConnected) {
+        root.insertBefore(row, bottomSentinel);
+      } else if (row.nextSibling !== bottomSentinel) {
+        root.insertBefore(row, bottomSentinel);
+      }
+      if (shouldAutoScroll()) scheduleScrollToBottom();
+      return snapshot();
+    }
+
+    function reset() {
+      if (typingRow && typingRow.isConnected && typeof typingRow.remove === "function") typingRow.remove();
+      typingRow = null;
+      return snapshot();
+    }
+
+    function snapshot() {
+      return Object.freeze({ connected: Boolean(typingRow && typingRow.isConnected) });
+    }
+
+    return Object.freeze({
+      anchor,
+      reset,
+      setVisible,
+      snapshot,
+    });
+  }
+
   function createTranscriptScrollRuntime(options = {}) {
     const chat = requireNode(options.chat, "chat");
     const jumpButton = requireNode(options.jumpButton, "jumpButton");
@@ -946,6 +1007,7 @@
     rememberTailSnapshot,
     appendTailSnapshotEvents,
     createTranscriptSlotRuntime,
+    createTypingRowRuntime,
     createTranscriptScrollRuntime,
     createTranscriptEventRuntime,
     createOlderLoadRuntime,
