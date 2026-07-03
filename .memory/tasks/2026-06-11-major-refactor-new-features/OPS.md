@@ -8341,3 +8341,9 @@
   - Focused validations for each replaced cluster passed before commit.
   - `git diff --check` and staged `git diff --cached --check` passed before commits.
 - Commitment: Workbench item 8 is supported as complete for its stated mechanism. It did not delete all source-named tests; it removed the ones whose target was directly executable and left static/browser/build/public-contract sentinels in scope.
+
+## 2026-07-03T13:05:00Z Acceptance validation before clean-room review
+- Full local validation after Workbench items 5-8 and source-test replacements: `python3 -m pytest -q` returned `1344 passed, 136 subtests passed`.
+- Docker sandbox validation: `CODOXEAR_DOCKER_PORT=19073 scripts/codoxear-docker-sandbox test` built/used the isolated `codoxear-sandbox:latest` image and returned `1343 passed, 1 skipped, 136 subtests passed` inside the container.
+- The earlier full local run produced three failures after ownership moves (`hidden_sessions_startup`, `overlay_accessibility_source`, `reasoning_effort_source`); these were stale-test/fixture expectations rather than product regressions. Repair commit `8e16b51 Update tests for store and adapter ownership` aligned them with store-level load lifecycle, file-unsaved focus ownership in `app_file_viewer.js`, and adapter-owned Pi launch validation.
+- Clean-room review dispatch: async run `2214a3e0-aec7-4aa6-b791-c6f64b954e40` with `architect` and `critic`, read-only, focused on Workbench items 5-8 and all-workbench completion evidence. Results pending at this OPS entry.
