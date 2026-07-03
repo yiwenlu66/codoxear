@@ -70,6 +70,17 @@ class TestAuthCleanupSource(unittest.TestCase):
         self.assertIn("cleanup();", cleanup)
         self.assertIn("clearApiCache();", cleanup)
 
+    def test_hide_new_session_dialog_disposes_resume_load_timer(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        hide_start = source.index("function hideNewSessionDialog()")
+        hide_end = source.index("function launchPresetProviderChoice(s)", hide_start)
+        hide_block = source[hide_start:hide_end]
+        self.assertIn("if (newSessionController) newSessionController.disposeResumeLoadTimer();", hide_block)
+        # The dispose call must run unconditionally on close, before menu/state reset.
+        dispose_idx = hide_block.index("if (newSessionController) newSessionController.disposeResumeLoadTimer();")
+        status_idx = hide_block.index("newSessionStatus.textContent = \"\";")
+        self.assertLess(dispose_idx, status_idx)
+
     def test_auth_loss_and_logout_use_shared_cleanup(self) -> None:
         app = render_app_block()
         self.assertIn("function handleAppAuthLoss() {\n          if (appDisposed) return;\n          cleanupApp();\n          renderLogin(renderApp);\n        }", app)

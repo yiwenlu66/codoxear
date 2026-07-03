@@ -303,6 +303,24 @@ class TestStaticAssets(unittest.TestCase):
             self.assertIn(f"app_voice_helpers.js?v={version}", rendered)
             self.assertIn(f"app.js?v={version}", rendered)
 
+    def test_index_html_has_load_error_sentinel_before_deferred_assets(self) -> None:
+        source = INDEX_HTML.read_text(encoding="utf-8")
+        sentinel_marker = "window.__codoxearLoadError = null;"
+        self.assertIn(sentinel_marker, source)
+        self.assertIn('window.addEventListener("error"', source)
+        self.assertIn('window.addEventListener("unhandledrejection"', source)
+        self.assertIn('window.addEventListener("load"', source)
+        self.assertIn('window.__codoxearRenderLoadErrorFallback', source)
+        self.assertIn('data-codoxear-load-error', source)
+        sentinel_index = source.index(sentinel_marker)
+        first_deferred_index = source.index('app_url.js?v=__CODOXEAR_ASSET_VERSION__')
+        self.assertLess(sentinel_index, first_deferred_index)
+        csp_index = source.index('Content-Security-Policy')
+        self.assertLess(csp_index, sentinel_index)
+        sentinel_block = source[source.index('window.__codoxearLoadError'):source.index('window.__codoxearRenderLoadErrorFallback')]
+        self.assertNotIn('https://', sentinel_block)
+        self.assertNotIn('http://', sentinel_block)
+
     def test_static_cache_headers_default_to_no_store(self) -> None:
         self.assertEqual(
             _static_cache_control_headers(enabled=False),

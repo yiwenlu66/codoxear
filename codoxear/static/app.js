@@ -6118,6 +6118,7 @@
 
         function hideNewSessionDialog() {
           const wasOpen = isModalTargetOpen(newSessionViewer);
+          if (newSessionController) newSessionController.disposeResumeLoadTimer();
           newSessionStatus.textContent = "";
           newSessionCwdMenuOpen = false;
           newSessionCwdMenuFocus = -1;

@@ -21,6 +21,104 @@
       window.CODOXEAR_ASSET_VERSION = "__CODOXEAR_ASSET_VERSION__";
       window.CODOXEAR_ATTACH_MAX_BYTES = __CODOXEAR_ATTACH_MAX_BYTES__;
     </script>
+    <script>
+      (function () {
+        window.__codoxearLoadError = null;
+        function record(message, source, lineno, colno, error) {
+          window.__codoxearLoadError = {
+            message: message || (error && error.message) || "unknown load error",
+            source: source || "",
+            lineno: lineno || 0,
+            colno: colno || 0,
+            stack: (error && error.stack) || "",
+            time: Date.now(),
+          };
+        }
+        window.addEventListener("error", function (event) {
+          record(
+            event.message || (event.error && event.error.message) || "uncaught error",
+            event.filename || "",
+            event.lineno || 0,
+            event.colno || 0,
+            event.error
+          );
+        });
+        window.addEventListener("unhandledrejection", function (event) {
+          var reason = event && event.reason;
+          record(
+            (reason && (reason.message || String(reason))) || "unhandled promise rejection",
+            "",
+            0,
+            0,
+            reason instanceof Error ? reason : null
+          );
+        });
+        function renderLoadErrorFallback(detail) {
+          var root = document.getElementById("root");
+          if (root && (root.childNodes.length || (root.textContent && root.textContent.trim()))) return;
+          var panel = document.createElement("div");
+          panel.setAttribute("data-codoxear-load-error", "true");
+          panel.style.cssText = [
+            "position:fixed",
+            "inset:0",
+            "display:flex",
+            "flex-direction:column",
+            "align-items:center",
+            "justify-content:center",
+            "padding:24px",
+            "font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif",
+            "background:#0b1220",
+            "color:#e5e7eb",
+            "text-align:center",
+          ].join(";");
+          var title = document.createElement("strong");
+          title.textContent = "Codoxear failed to load";
+          title.style.cssText = "font-size:18px;margin-bottom:8px;";
+          var msg = document.createElement("pre");
+          msg.textContent = detail
+            ? detail.message +
+              (detail.source ? "\n" + detail.source + ":" + detail.lineno + ":" + detail.colno : "") +
+              (detail.stack ? "\n" + detail.stack : "")
+            : "The application UI did not initialize. Reload to retry; if the problem persists, check the browser console.";
+          msg.style.cssText = [
+            "max-width:560px",
+            "white-space:pre-wrap",
+            "word-break:break-word",
+            "margin:0 0 12px",
+            "font-size:13px",
+            "color:#cbd5e1",
+          ].join(";");
+          var reload = document.createElement("button");
+          reload.type = "button";
+          reload.textContent = "Reload";
+          reload.style.cssText = [
+            "padding:6px 14px",
+            "font-size:14px",
+            "border:1px solid #475569",
+            "background:#1d4ed8",
+            "color:#fff",
+            "border-radius:6px",
+            "cursor:pointer",
+          ].join(";");
+          reload.onclick = function () {
+            window.location.reload();
+          };
+          panel.appendChild(title);
+          panel.appendChild(msg);
+          panel.appendChild(reload);
+          (root || document.body).appendChild(panel);
+        }
+        window.__codoxearRenderLoadErrorFallback = renderLoadErrorFallback;
+        window.addEventListener("load", function () {
+          window.setTimeout(function () {
+            var root = document.getElementById("root");
+            if (root && root.childNodes.length === 0 && !(root.textContent && root.textContent.trim())) {
+              renderLoadErrorFallback(window.__codoxearLoadError);
+            }
+          }, 0);
+        });
+      })();
+    </script>
     <link rel="icon" type="image/png" href="favicon.png?v=__CODOXEAR_ASSET_VERSION__" />
     <link rel="manifest" href="manifest.webmanifest?v=__CODOXEAR_ASSET_VERSION__" />
 			    <link rel="stylesheet" href="app.css?v=__CODOXEAR_ASSET_VERSION__" />
