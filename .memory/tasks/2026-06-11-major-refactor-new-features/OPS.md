@@ -7951,3 +7951,11 @@
   - `python3 -m py_compile tests/test_file_viewer_source.py` passed.
   - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `60 passed, 25 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T03:04:00Z Stale file reference/search wrapper cleanup
+- Functional cleanup commit `96b9375 Remove stale file reference wrapper functions` removed app.js wrappers made dead by file-reference runtime ownership and picker search-state ownership: `requestSessionFileSearch`, `scheduleSessionFileSearch`, `getKnownFileRefCandidates`, `inspectFileRefPath`, and `replaceAmbiguousFileRefNode`.
+- Mechanism: picker input scheduling can call `filePickerSearchState.schedule(...)` directly, and file-reference inspection/replacement now lives behind `fileReferenceRuntime`; keeping these wrappers preserved obsolete call anchors without runtime use. `upgradeCandidateFileRefs(...)` remains because message-row dependency construction occurs before the runtime declaration and uses a stable wrapper.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app.js` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_file_picker_search_source.py tests/test_frontend_file_picker_module_source.py tests/test_markdown_tables.py` returned `89 passed, 25 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
