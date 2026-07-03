@@ -810,8 +810,6 @@
         const sessionTailCache = new Map();
         let recentCwds = [];
 	        let sending = false;
-	        let localEchoSeq = 0;
-	        const pendingUser = [];
 	        let attachedFiles = 0;
 			        let backfillToken = 0;
         let backfillState = null;
@@ -894,9 +892,6 @@
         const LIVE_AUDIO_STALL_GRACE_MS = 12000;
         const LIVE_AUDIO_RESTART_THROTTLE_MS = 4000;
         let swRegistration = null;
-         const recentEventKeys = [];
-         const recentEventKeySet = new Set();
-         const RECENT_EVENT_KEYS_MAX = 320;
                  let clickLoadT0 = 0;
                  let clickMetricPending = false;
               let unattendedMenuOpen = false;
@@ -2190,8 +2185,7 @@
           invalidateOlderLoad();
           transcriptScrollRuntime.enableAutoScroll();
           sending = false;
-          recentEventKeys.length = 0;
-          recentEventKeySet.clear();
+          transcriptEventRuntime.resetRecentEvents();
           liveCursor = null;
           transcriptScrollRuntime.markLiveTail();
           olderLoadRuntime.resetAutoTrigger();
@@ -2733,6 +2727,7 @@
           typeof codoxearTranscript.rememberTailSnapshot !== "function" ||
           typeof codoxearTranscript.appendTailSnapshotEvents !== "function" ||
           typeof codoxearTranscript.createTranscriptScrollRuntime !== "function" ||
+          typeof codoxearTranscript.createTranscriptEventRuntime !== "function" ||
           typeof codoxearTranscript.createOlderLoadRuntime !== "function" ||
           typeof codoxearTranscript.createLoadedChatSearchRuntime !== "function" ||
           typeof codoxearTranscript.createChatSearchAllRuntime !== "function"
@@ -2832,22 +2827,15 @@
         }
 
         function dropPendingUserRows(sessionId, predicate = null) {
-          if (!sessionId || !pendingUser.length) return;
-          const kept = [];
-          for (const item of pendingUser) {
-            const match = !!(item && item.sessionId === sessionId && (!predicate || predicate(item)));
-            if (!match) {
-              kept.push(item);
-              continue;
-            }
-            if (selected === sessionId && item.id) {
-              const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${item.id}"]`);
-              const row = pendingEl ? pendingEl.closest(".msg-row") : null;
-              if (row) row.remove();
-            }
+          if (!sessionId) return;
+          const dropped = transcriptEventRuntime.dropPendingUsers(sessionId, predicate);
+          if (selected !== sessionId) return;
+          for (const item of dropped) {
+            if (!item || !item.id) continue;
+            const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${item.id}"]`);
+            const row = pendingEl ? pendingEl.closest(".msg-row") : null;
+            if (row) row.remove();
           }
-          pendingUser.length = 0;
-          pendingUser.push(...kept);
         }
 
         function updateSessionTranscriptSlot(sessionId, data) {
@@ -2920,9 +2908,7 @@
         function restorePendingUserRowsForSession(sessionId) {
           if (!sessionId) return;
           const slot = getSessionTranscriptSlot(sessionId);
-          const items = pendingUser
-            .filter((item) => item && item.sessionId === sessionId && Number(item.epoch || 0) === Number(slot.epoch || 0))
-            .sort((a, b) => Number(a.t0 || 0) - Number(b.t0 || 0));
+          const items = transcriptEventRuntime.pendingUsersForSession(sessionId, Number(slot.epoch || 0));
           for (const item of items) {
             if (!item || !item.id) continue;
             if (chatInner.querySelector(`.msg.user[data-local-id="${item.id}"]`)) continue;
@@ -2940,8 +2926,7 @@
           clearRenderedTranscriptRange();
           setAttachCount(0);
           invalidateOlderLoad();
-          recentEventKeys.length = 0;
-          recentEventKeySet.clear();
+          transcriptEventRuntime.resetRecentEvents();
           backfillToken += 1;
           backfillState = null;
           transcriptScrollRuntime.enableAutoScroll();
@@ -3123,26 +3108,24 @@
         return codoxearMessageIdentity.normalizeTextForPendingMatch(s);
       }
 
+      const transcriptEventRuntime = codoxearTranscript.createTranscriptEventRuntime({
+        eventKey: codoxearMessageIdentity.eventKey,
+        pendingMatchKey: codoxearMessageIdentity.pendingMatchKey,
+        normalizePendingText: codoxearMessageIdentity.normalizeTextForPendingMatch,
+        assistantDedupeKey: codoxearMessageIdentity.chatAssistantDedupeKey,
+        maxRecentEventKeys: 320,
+      });
+
       function eventKey(ev) {
         return codoxearMessageIdentity.eventKey(ev);
       }
 
         function markEventSeen(ev) {
-          const key = eventKey(ev);
-          if (!key) return;
-          if (recentEventKeySet.has(key)) return;
-          recentEventKeySet.add(key);
-          recentEventKeys.push(key);
-          if (recentEventKeys.length > RECENT_EVENT_KEYS_MAX) {
-            const drop = recentEventKeys.splice(0, recentEventKeys.length - RECENT_EVENT_KEYS_MAX);
-            for (const k of drop) recentEventKeySet.delete(k);
-          }
+          transcriptEventRuntime.markEventSeen(ev);
         }
 
         function isDuplicateEvent(ev) {
-          const key = eventKey(ev);
-          if (!key) return false;
-          return recentEventKeySet.has(key);
+          return transcriptEventRuntime.isDuplicateEvent(ev);
         }
 
         function chatAssistantDedupeKey(ev) {
@@ -3150,12 +3133,10 @@
         }
 
         function isAdjacentAssistantDuplicateEvent(ev) {
-          if (!transcriptScrollRuntime.snapshot().renderedAtLiveTail || !ev || ev.pending || ev.role !== "assistant") return false;
-          const key = chatAssistantDedupeKey(ev);
-          if (!key) return false;
-          const rows = renderedMessageRows();
-          const last = rows.length ? rows[rows.length - 1] : null;
-          return Boolean(last && last.dataset.role === "assistant" && last.dataset.assistantDedupeKey === key);
+          return transcriptEventRuntime.isAdjacentAssistantDuplicateEvent(ev, {
+            renderedAtLiveTail: transcriptScrollRuntime.snapshot().renderedAtLiveTail,
+            rows: renderedMessageRows(),
+          });
         }
 
         function pendingMatchKey(s) {
@@ -3169,41 +3150,8 @@
       }
 
       function takePendingUserMatch(ev, sessionId = selected, { allowUntimedCommit = true } = {}) {
-        if (ev.role !== "user" || ev.pending) return false;
         const slot = getSessionTranscriptSlot(sessionId);
-        const slotEpoch = Number(slot.epoch || 0);
-        const key = pendingMatchKey(ev.text);
-        const loose = normalizeTextForPendingMatch(ev.text);
-        const evTs = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
-        const sameSlot = [];
-        const exactCandidates = [];
-        for (let i = 0; i < pendingUser.length; i++) {
-          const x = pendingUser[i];
-          if (!x || x.sessionId !== sessionId || Number(x.epoch || 0) !== slotEpoch) continue;
-          const candidate = { i, x };
-          sameSlot.push(candidate);
-          if (x.key === key || x.loose === loose) exactCandidates.push(candidate);
-        }
-        const candidates = exactCandidates.length
-          ? exactCandidates
-          : sameSlot.filter(({ x }) => evTs !== null ? evTs >= Number(x.t0 || 0) - 5 : allowUntimedCommit);
-          if (!candidates.length) return false;
-          let best = candidates[0];
-          if (exactCandidates.length && evTs !== null) {
-            let bestD = Math.abs(evTs - (best.x.t0 || evTs));
-            for (const c of candidates.slice(1)) {
-              const d = Math.abs(evTs - (c.x.t0 || evTs));
-              if (d < bestD) {
-                best = c;
-                bestD = d;
-              }
-          }
-        }
-        const idx = best.i;
-        if (idx < 0) return null;
-        const match = pendingUser[idx];
-        pendingUser.splice(idx, 1);
-        return match || null;
+        return transcriptEventRuntime.takePendingUserMatch(ev, sessionId, Number(slot.epoch || 0), { allowUntimedCommit });
       }
 
       function consumePendingUserIfMatches(ev, sessionId = selected) {
@@ -3736,8 +3684,7 @@
             restorePendingUserRowsForSession(selected);
             return;
           }
-          recentEventKeys.length = 0;
-          recentEventKeySet.clear();
+          transcriptEventRuntime.resetRecentEvents();
           const frag = document.createDocumentFragment();
           for (const ev of msgs) {
             const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
@@ -3759,8 +3706,7 @@
             transcriptScrollRuntime.syncJumpButton();
             return false;
           }
-          recentEventKeys.length = 0;
-          recentEventKeySet.clear();
+          transcriptEventRuntime.resetRecentEvents();
           const frag = document.createDocumentFragment();
           for (const ev of msgs) {
             const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
@@ -9131,7 +9077,7 @@
           syncAttachButtonState();
           setToast("sending...");
 
-          const localId = ++localEchoSeq;
+          const localId = transcriptEventRuntime.nextLocalEchoId();
           const t0 = Date.now() / 1000;
           if (renderHere && !renewsTranscript) {
             if (!transcriptScrollRuntime.snapshot().renderedAtLiveTail) {
@@ -9140,7 +9086,7 @@
               setOlderState({ hasMore: false, isLoading: false });
             }
             const slot = getSessionTranscriptSlot(sessionId);
-            pendingUser.push({ id: localId, sessionId, epoch: slot.epoch, key: pendingMatchKey(raw), loose: normalizeTextForPendingMatch(raw), t0, text: raw });
+            transcriptEventRuntime.addPendingUser({ id: localId, sessionId, epoch: slot.epoch, text: raw, t0 });
             appendEvent({ role: "user", text: raw, pending: true, localId, ts: t0 });
             turnOpen = true;
             currentRunning = true;
@@ -9212,17 +9158,14 @@
               }
             }
             if (renderHere) {
-              for (let i = pendingUser.length - 1; i >= 0; i -= 1) {
-                const pending = pendingUser[i];
-                if (pending && pending.id === localId && pending.sessionId === sessionId) pendingUser.splice(i, 1);
-              }
+              transcriptEventRuntime.dropPendingUsers(sessionId, (pending) => pending && pending.id === localId);
               const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${localId}"]`);
               if (pendingEl) {
                 const pendingRow = pendingEl.closest(".msg-row");
                 if (pendingRow) pendingRow.remove();
                 else pendingEl.remove();
               }
-              if (!pendingUser.some((pending) => pending && pending.sessionId === sessionId)) {
+              if (!transcriptEventRuntime.hasPendingForSession(sessionId)) {
                 turnOpen = false;
                 currentRunning = false;
               }

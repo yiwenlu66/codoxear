@@ -151,6 +151,86 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertIn("transcript dependency missing: requestAnimationFrame", out["missingError"])
         self.assertTrue(out["frozen"])
 
+    def test_transcript_event_runtime_owns_recent_events_and_pending_echoes(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        identity_source = APP_MESSAGE_IDENTITY_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const ctx = {{ window: {{}} }};
+            const vm = require("vm");
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(identity_source)}, ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            const identity = ctx.window.CodoxearMessageIdentity;
+            const runtime = ctx.window.CodoxearTranscript.createTranscriptEventRuntime({{
+              eventKey: identity.eventKey,
+              pendingMatchKey: identity.pendingMatchKey,
+              normalizePendingText: identity.normalizeTextForPendingMatch,
+              assistantDedupeKey: identity.chatAssistantDedupeKey,
+              maxRecentEventKeys: 2,
+            }});
+            const firstSeen = runtime.markEventSeen({{ role: "assistant", text: "one", ts: 1 }});
+            const firstDuplicate = runtime.isDuplicateEvent({{ role: "assistant", text: "one", ts: 1 }});
+            runtime.markEventSeen({{ role: "assistant", text: "two", ts: 2 }});
+            runtime.markEventSeen({{ role: "assistant", text: "three", ts: 3 }});
+            const afterEvict = {{ keys: runtime.snapshot().recentEventKeys, evictedDuplicate: runtime.isDuplicateEvent({{ role: "assistant", text: "one", ts: 1 }}) }};
+            const adjacentTrue = runtime.isAdjacentAssistantDuplicateEvent(
+              {{ role: "assistant", text: "same final text", message_class: "final_response", ts: 4 }},
+              {{ renderedAtLiveTail: true, rows: [{{ dataset: {{ role: "assistant", assistantDedupeKey: "final_response|same final text" }} }}] }}
+            );
+            const adjacentFalseOffTail = runtime.isAdjacentAssistantDuplicateEvent(
+              {{ role: "assistant", text: "same final text", message_class: "final_response", ts: 5 }},
+              {{ renderedAtLiveTail: false, rows: [{{ dataset: {{ role: "assistant", assistantDedupeKey: "final_response|same final text" }} }}] }}
+            );
+            const id1 = runtime.nextLocalEchoId();
+            runtime.addPendingUser({{ id: id1, sessionId: "sid", epoch: 1, text: "hello  ", t0: 10 }});
+            runtime.addPendingUser({{ sessionId: "sid", epoch: 1, text: "later", t0: 12 }});
+            runtime.addPendingUser({{ sessionId: "sid", epoch: 2, text: "other epoch", t0: 8 }});
+            const pendingEpoch1 = runtime.pendingUsersForSession("sid", 1).map((item) => [item.id, item.text, item.epoch]);
+            const exactMatch = runtime.takePendingUserMatch({{ role: "user", text: "hello", ts: 10.2 }}, "sid", 1);
+            const hasAfterExact = runtime.hasPendingForSession("sid");
+            const noUntimed = runtime.takePendingUserMatch({{ role: "user", text: "unrelated" }}, "sid", 1, {{ allowUntimedCommit: false }});
+            const fallbackTimed = runtime.takePendingUserMatch({{ role: "user", text: "unrelated", ts: 20 }}, "sid", 1);
+            const dropped = runtime.dropPendingUsers("sid", (item) => item.epoch === 2);
+            const finalSnapshot = runtime.snapshot();
+            let missingError = "";
+            try {{ ctx.window.CodoxearTranscript.createTranscriptEventRuntime({{ eventKey: () => "" }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
+            process.stdout.write(JSON.stringify({{
+              firstSeen,
+              firstDuplicate,
+              afterEvict,
+              adjacentTrue,
+              adjacentFalseOffTail,
+              id1,
+              pendingEpoch1,
+              exactMatch: exactMatch && {{ id: exactMatch.id, text: exactMatch.text, epoch: exactMatch.epoch }},
+              hasAfterExact,
+              noUntimed,
+              fallbackTimed: fallbackTimed && {{ text: fallbackTimed.text, epoch: fallbackTimed.epoch }},
+              dropped: dropped.map((item) => item.text),
+              finalSnapshot,
+              missingError,
+              frozen: Object.isFrozen(runtime),
+            }}));
+            """
+        )
+        out = _run_node(js)
+        self.assertTrue(out["firstSeen"])
+        self.assertTrue(out["firstDuplicate"])
+        self.assertEqual(out["afterEvict"], {"keys": ["assistant|2000|two", "assistant|3000|three"], "evictedDuplicate": False})
+        self.assertTrue(out["adjacentTrue"])
+        self.assertFalse(out["adjacentFalseOffTail"])
+        self.assertEqual(out["id1"], 1)
+        self.assertEqual(out["pendingEpoch1"], [[1, "hello  ", 1], [2, "later", 1]])
+        self.assertEqual(out["exactMatch"], {"id": 1, "text": "hello  ", "epoch": 1})
+        self.assertTrue(out["hasAfterExact"])
+        self.assertFalse(out["noUntimed"])
+        self.assertEqual(out["fallbackTimed"], {"text": "later", "epoch": 1})
+        self.assertEqual(out["dropped"], ["other epoch"])
+        self.assertEqual(out["finalSnapshot"]["pendingCount"], 0)
+        self.assertIn("transcript dependency missing: pendingMatchKey", out["missingError"])
+        self.assertTrue(out["frozen"])
+
     def test_older_load_runtime_owns_state_currentness_and_ui_projection(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
@@ -424,7 +504,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               activeThreadId: null,
               activeLogPath: null,
               sessionTranscriptSlots: new Map(),
-              pendingUser: [],
+              transcriptEventRuntime: {{ dropPendingUsers: () => [] }},
               chatInner: {{ querySelector: () => null }},
               window: {{}},
             }};
@@ -813,6 +893,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
 
     def test_live_delta_dedupes_adjacent_assistant_text_across_polls(self) -> None:
         identity_source = APP_MESSAGE_IDENTITY_JS.read_text(encoding="utf-8")
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         helper_snippet = _source_between("function eventKey(ev) {", "function isTranscriptRenewalCommand(")
         append_snippet = _source_between("function appendEvent(ev) {", "function renderTranscript(")
         js = textwrap.dedent(
@@ -824,9 +905,6 @@ class TestChatTranscriptRuntime(unittest.TestCase):
                 syncJumpButton: () => {{ ctx.jumped = true; }},
                 scheduleScrollToBottom: () => {{ ctx.scrolled = true; }},
               }},
-              recentEventKeys: [],
-              recentEventKeySet: new Set(),
-              RECENT_EVENT_KEYS_MAX: 320,
               made: 0,
               inserted: 0,
               rows: [{{ dataset: {{ role: "assistant", assistantDedupeKey: "final_response|same final text" }} }}],
@@ -851,16 +929,24 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             vm = require("vm");
             vm.createContext(ctx);
             vm.runInContext({json.dumps(identity_source)}, ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
             ctx.codoxearMessageIdentity = ctx.window.CodoxearMessageIdentity;
+            ctx.transcriptEventRuntime = ctx.window.CodoxearTranscript.createTranscriptEventRuntime({{
+              eventKey: ctx.codoxearMessageIdentity.eventKey,
+              pendingMatchKey: ctx.codoxearMessageIdentity.pendingMatchKey,
+              normalizePendingText: ctx.codoxearMessageIdentity.normalizeTextForPendingMatch,
+              assistantDedupeKey: ctx.codoxearMessageIdentity.chatAssistantDedupeKey,
+              maxRecentEventKeys: 320,
+            }});
             vm.runInContext({json.dumps(helper_snippet)}, ctx);
             vm.runInContext({json.dumps(append_snippet)}, ctx);
             ctx.appendEvent({{ role: "assistant", text: "same final text", message_class: "final_response", ts: 2.4 }});
-            const afterDuplicate = {{ made: ctx.made, inserted: ctx.inserted, seen: ctx.recentEventKeys.slice() }};
+            const afterDuplicate = {{ made: ctx.made, inserted: ctx.inserted, seen: ctx.transcriptEventRuntime.snapshot().recentEventKeys }};
             ctx.rows = [{{ dataset: {{ role: "user" }} }}];
             ctx.appendEvent({{ role: "assistant", text: "same final text", message_class: "final_response", ts: 3.0 }});
             process.stdout.write(JSON.stringify({{
               afterDuplicate,
-              final: {{ made: ctx.made, inserted: ctx.inserted, seen: ctx.recentEventKeys.slice() }},
+              final: {{ made: ctx.made, inserted: ctx.inserted, seen: ctx.transcriptEventRuntime.snapshot().recentEventKeys }},
             }}));
             """
         )
@@ -883,11 +969,15 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             const ctx = {{
               selected: "sid",
               sending: false,
-              localEchoSeq: 0,
+              transcriptEventRuntime: {{
+                nextLocalEchoId: () => 1,
+                addPendingUser: () => ({{ id: 1 }}),
+                dropPendingUsers: () => [],
+                hasPendingForSession: () => false,
+              }},
               transcriptScrollRuntime: {{
                 snapshot: () => ({{ renderedAtLiveTail: true }}),
               }},
-              pendingUser: [],
               sessionIndex: new Map([["sid", {{ agent_backend: "codex" }}]]),
               detached: 0,
               renderedPending: 0,

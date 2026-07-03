@@ -658,7 +658,8 @@ class TestChatScrollbackSource(unittest.TestCase):
         end = source.index("form.onsubmit = async", start)
         block = source[start:end]
         self.assertIn("const slot = getSessionTranscriptSlot(sessionId);", block)
-        self.assertIn("pendingUser.push({ id: localId, sessionId, epoch: slot.epoch, key: pendingMatchKey(raw)", block)
+        self.assertIn("transcriptEventRuntime.addPendingUser({ id: localId, sessionId, epoch: slot.epoch, text: raw, t0 });", block)
+        self.assertNotIn("pendingUser.push", block)
         self.assertIn("appendEvent({ role: \"user\", text: raw, pending: true, localId, ts: t0 });", block)
         self.assertIn("void refreshSessions().catch((e) => {", block)
         self.assertIn("if (e && e.status === 401) handleAppAuthLoss();", block)
@@ -682,7 +683,9 @@ class TestChatScrollbackSource(unittest.TestCase):
         end = source.index("function updateQueueBadge()", start)
         block = source[start:end]
         self.assertIn("const slot = getSessionTranscriptSlot(sessionId);", block)
-        self.assertIn("Number(item.epoch || 0) === Number(slot.epoch || 0)", block)
+        self.assertIn("transcriptEventRuntime.pendingUsersForSession(sessionId, Number(slot.epoch || 0));", block)
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        self.assertIn("Number(item.epoch || 0) === slotEpoch", transcript_source)
 
     def test_render_transcript_rebuilds_authoritative_events_after_pending_match(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -700,15 +703,17 @@ class TestChatScrollbackSource(unittest.TestCase):
 
     def test_pending_commit_reconciliation_does_not_require_text_equality(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         start = source.index("function takePendingUserMatch(")
         end = source.index("function consumePendingUserIfMatches(", start)
         block = source[start:end]
-        self.assertIn("const sameSlot = [];", block)
-        self.assertIn("const exactCandidates = [];", block)
-        self.assertIn("sameSlot.push(candidate);", block)
-        self.assertIn("exactCandidates.length", block)
-        self.assertIn("evTs >= Number(x.t0 || 0) - 5", block)
-        self.assertIn("allowUntimedCommit", block)
+        self.assertIn("return transcriptEventRuntime.takePendingUserMatch(ev, sessionId, Number(slot.epoch || 0), { allowUntimedCommit });", block)
+        self.assertIn("const sameSlot = [];", transcript_source)
+        self.assertIn("const exactCandidates = [];", transcript_source)
+        self.assertIn("sameSlot.push(candidate);", transcript_source)
+        self.assertIn("exactCandidates.length", transcript_source)
+        self.assertIn("evTs >= Number(x.t0 || 0) - 5", transcript_source)
+        self.assertIn("allowUntimedCommit", transcript_source)
 
     def test_error_and_warning_message_classes_are_rendered(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -870,7 +875,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("let allowPendingAttachment = Boolean(renderHere && localAttachmentCount > 0);", block)
         self.assertIn("sessionInfo && sessionInfo.pending_attachment", block)
         self.assertIn("window.confirm(\"This session has a pending file attachment. Send it with this message?\")", block)
-        self.assertLess(block.index("window.confirm"), block.index("pendingUser.push"))
+        self.assertLess(block.index("window.confirm"), block.index("transcriptEventRuntime.addPendingUser"))
         self.assertIn("const res = await api(`/api/sessions/${sessionId}/send`, { method: \"POST\", body: { text: raw, allow_pending_attachment: allowPendingAttachment } });", block)
         self.assertIn("if (renderHere && renewsTranscript) {", block)
         self.assertIn("beginTranscriptRenewal(sessionId);", block)
@@ -889,7 +894,8 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("/broker must be restarted/i.test", block)
         self.assertIn("pending_attachment/clear", block)
         self.assertIn("attachment status unknown; check before retrying", source)
-        self.assertIn("pendingUser.splice(i, 1);", block)
+        self.assertIn("transcriptEventRuntime.dropPendingUsers(sessionId, (pending) => pending && pending.id === localId);", block)
+        self.assertNotIn("pendingUser.splice", block)
         self.assertIn("const pendingRow = pendingEl.closest(\".msg-row\");", block)
         self.assertIn("if (pendingRow) pendingRow.remove();", block)
         self.assertIn("currentRunning = false;", block)

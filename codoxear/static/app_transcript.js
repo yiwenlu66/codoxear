@@ -334,6 +334,162 @@
     });
   }
 
+  function createTranscriptEventRuntime(options = {}) {
+    const eventKey = requireFunction(options.eventKey, "eventKey");
+    const pendingMatchKey = requireFunction(options.pendingMatchKey, "pendingMatchKey");
+    const normalizePendingText = requireFunction(options.normalizePendingText, "normalizePendingText");
+    const assistantDedupeKey = requireFunction(options.assistantDedupeKey, "assistantDedupeKey");
+    const maxRecentEventKeys = Math.max(1, Number(options.maxRecentEventKeys) || 320);
+    const recentEventKeys = [];
+    const recentEventKeySet = new Set();
+    let localEchoSeq = 0;
+    let pendingUsers = [];
+
+    function clonePending(item) {
+      return item ? { ...item } : item;
+    }
+
+    function snapshot() {
+      return Object.freeze({
+        localEchoSeq,
+        pendingCount: pendingUsers.length,
+        recentEventKeys: recentEventKeys.slice(),
+      });
+    }
+
+    function resetRecentEvents() {
+      recentEventKeys.length = 0;
+      recentEventKeySet.clear();
+      return snapshot();
+    }
+
+    function markEventSeen(ev) {
+      const key = eventKey(ev);
+      if (!key) return false;
+      if (recentEventKeySet.has(key)) return false;
+      recentEventKeySet.add(key);
+      recentEventKeys.push(key);
+      if (recentEventKeys.length > maxRecentEventKeys) {
+        const drop = recentEventKeys.splice(0, recentEventKeys.length - maxRecentEventKeys);
+        for (const k of drop) recentEventKeySet.delete(k);
+      }
+      return true;
+    }
+
+    function isDuplicateEvent(ev) {
+      const key = eventKey(ev);
+      if (!key) return false;
+      return recentEventKeySet.has(key);
+    }
+
+    function isAdjacentAssistantDuplicateEvent(ev, { renderedAtLiveTail = false, rows = [] } = {}) {
+      if (!renderedAtLiveTail || !ev || ev.pending || ev.role !== "assistant") return false;
+      const key = assistantDedupeKey(ev);
+      if (!key) return false;
+      const list = Array.isArray(rows) ? rows : [];
+      const last = list.length ? list[list.length - 1] : null;
+      return Boolean(last && last.dataset && last.dataset.role === "assistant" && last.dataset.assistantDedupeKey === key);
+    }
+
+    function nextLocalEchoId() {
+      localEchoSeq += 1;
+      return localEchoSeq;
+    }
+
+    function addPendingUser({ id = null, sessionId = "", epoch = 0, text = "", t0 = 0 } = {}) {
+      const pendingId = Number.isFinite(Number(id)) && Number(id) > 0 ? Number(id) : nextLocalEchoId();
+      if (pendingId > localEchoSeq) localEchoSeq = pendingId;
+      const raw = String(text || "");
+      const item = {
+        id: pendingId,
+        sessionId,
+        epoch: Number(epoch || 0),
+        key: pendingMatchKey(raw),
+        loose: normalizePendingText(raw),
+        t0: Number(t0 || 0),
+        text: raw,
+      };
+      pendingUsers.push(item);
+      return clonePending(item);
+    }
+
+    function pendingUsersForSession(sessionId, epoch) {
+      const slotEpoch = Number(epoch || 0);
+      return pendingUsers
+        .filter((item) => item && item.sessionId === sessionId && Number(item.epoch || 0) === slotEpoch)
+        .sort((a, b) => Number(a.t0 || 0) - Number(b.t0 || 0))
+        .map(clonePending);
+    }
+
+    function dropPendingUsers(sessionId, predicate = null) {
+      const pred = typeof predicate === "function" ? predicate : () => true;
+      const kept = [];
+      const dropped = [];
+      for (const item of pendingUsers) {
+        const match = Boolean(item && item.sessionId === sessionId && pred(clonePending(item)));
+        if (match) dropped.push(clonePending(item));
+        else kept.push(item);
+      }
+      pendingUsers = kept;
+      return dropped;
+    }
+
+    function hasPendingForSession(sessionId) {
+      return pendingUsers.some((pending) => pending && pending.sessionId === sessionId);
+    }
+
+    function takePendingUserMatch(ev, sessionId, epoch, { allowUntimedCommit = true } = {}) {
+      if (!ev || ev.role !== "user" || ev.pending) return false;
+      const slotEpoch = Number(epoch || 0);
+      const key = pendingMatchKey(ev.text);
+      const loose = normalizePendingText(ev.text);
+      const evTs = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
+      const sameSlot = [];
+      const exactCandidates = [];
+      for (let i = 0; i < pendingUsers.length; i += 1) {
+        const x = pendingUsers[i];
+        if (!x || x.sessionId !== sessionId || Number(x.epoch || 0) !== slotEpoch) continue;
+        const candidate = { i, x };
+        sameSlot.push(candidate);
+        if (x.key === key || x.loose === loose) exactCandidates.push(candidate);
+      }
+      const candidates = exactCandidates.length
+        ? exactCandidates
+        : sameSlot.filter(({ x }) => (evTs !== null ? evTs >= Number(x.t0 || 0) - 5 : allowUntimedCommit));
+      if (!candidates.length) return false;
+      let best = candidates[0];
+      if (exactCandidates.length && evTs !== null) {
+        let bestD = Math.abs(evTs - (best.x.t0 || evTs));
+        for (const c of candidates.slice(1)) {
+          const d = Math.abs(evTs - (c.x.t0 || evTs));
+          if (d < bestD) {
+            best = c;
+            bestD = d;
+          }
+        }
+      }
+      const idx = best.i;
+      if (idx < 0) return null;
+      const match = pendingUsers[idx];
+      pendingUsers.splice(idx, 1);
+      return clonePending(match) || null;
+    }
+
+    return Object.freeze({
+      addPendingUser,
+      dropPendingUsers,
+      hasPendingForSession,
+      isAdjacentAssistantDuplicateEvent,
+      isDuplicateEvent,
+      markEventSeen,
+      nextLocalEchoId,
+      pendingUsersForSession,
+      resetRecentEvents,
+      snapshot,
+      takePendingUserMatch,
+    });
+  }
+
   function createOlderLoadRuntime(options = {}) {
     const wrap = requireNode(options.olderWrap, "olderWrap");
     const button = requireNode(options.olderButton, "olderButton");
@@ -649,6 +805,7 @@
     rememberTailSnapshot,
     appendTailSnapshotEvents,
     createTranscriptScrollRuntime,
+    createTranscriptEventRuntime,
     createOlderLoadRuntime,
     createLoadedChatSearchRuntime,
     createChatSearchAllRuntime,
