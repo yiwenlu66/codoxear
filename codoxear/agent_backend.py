@@ -3,6 +3,26 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Mapping
+
+
+_REQUEST_ENV_VARS = (
+    "CODEX_WEB_MODEL_PROVIDER",
+    "CODEX_WEB_PREFERRED_AUTH_METHOD",
+    "CODEX_WEB_MODEL",
+    "CODEX_WEB_REASONING_EFFORT",
+    "CODEX_WEB_SERVICE_TIER",
+    "CODEX_WEB_TRANSPORT",
+    "CODEX_WEB_TMUX_SESSION",
+    "CODEX_WEB_TMUX_WINDOW",
+    "CODEX_WEB_LAUNCH_ID",
+    "CODEX_WEB_SPAWN_NONCE",
+    "CODEX_WEB_RESUME_SESSION_ID",
+    "CODEX_WEB_RESUME_LOG_PATH",
+)
+
+_BACKEND_HOME_ENV_VARS = ("CODEX_HOME", "PI_HOME", "CLAUDE_CONFIG_DIR")
+_BACKEND_BIN_ENV_VARS = ("CODEX_BIN", "PI_BIN", "CLAUDE_BIN")
 
 
 @dataclass(frozen=True)
@@ -29,8 +49,228 @@ class AgentBackend:
     def sessions_dir(self, env: dict[str, str] | None = None) -> Path:
         return self.home(env).joinpath(*self.sessions_relpath)
 
+    def build_launch_args(
+        self,
+        *,
+        spawn_cwd: Path,
+        codex_trust_override: str,
+        model_provider: str | None = None,
+        preferred_auth_method: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+        service_tier: str | None = None,
+    ) -> list[str]:
+        raise NotImplementedError(f"{self.name} backend does not implement launch args")
 
-CODEX_BACKEND = AgentBackend(
+    def build_resume_args(self, *, resume_id: str, resume_row: Mapping[str, Any] | None = None) -> list[str]:
+        raise NotImplementedError(f"{self.name} backend does not implement resume args")
+
+    def apply_launch_environment(
+        self,
+        env: dict[str, str],
+        *,
+        homes: Mapping[str, str | Path],
+        model_provider: str | None = None,
+        preferred_auth_method: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+        service_tier: str | None = None,
+        resume_session_id: str | None = None,
+    ) -> dict[str, str]:
+        if self.name not in homes:
+            raise ValueError(f"missing home path for {self.name}")
+
+        env["CODEX_WEB_OWNER"] = "web"
+        env["CODEX_WEB_AGENT_BACKEND"] = self.name
+        env.setdefault(self.home_env_var, str(homes[self.name]))
+        for key in _BACKEND_HOME_ENV_VARS:
+            if key != self.home_env_var:
+                env.pop(key, None)
+        for key in _REQUEST_ENV_VARS:
+            env.pop(key, None)
+
+        self._apply_request_environment(
+            env,
+            model_provider=model_provider,
+            preferred_auth_method=preferred_auth_method,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            service_tier=service_tier,
+            resume_session_id=resume_session_id,
+        )
+        return env
+
+    def build_tmux_inline_env(
+        self,
+        env: Mapping[str, str],
+        *,
+        tmux_session: str,
+        tmux_window: str,
+        launch_id: str,
+        spawn_nonce: str,
+        resume_session_id: str | None = None,
+        model_provider: str | None = None,
+        preferred_auth_method: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+        service_tier: str | None = None,
+        inherited_backend_bin: str | None = None,
+    ) -> dict[str, str]:
+        inline_env = {
+            "CODEX_WEB_OWNER": "web",
+            "CODEX_WEB_AGENT_BACKEND": self.name,
+            "CODEX_WEB_TRANSPORT": "tmux",
+            "CODEX_WEB_TMUX_SESSION": tmux_session,
+            "CODEX_WEB_TMUX_WINDOW": tmux_window,
+            "CODEX_WEB_LAUNCH_ID": launch_id,
+            "CODEX_WEB_SPAWN_NONCE": spawn_nonce,
+            self.home_env_var: str(env[self.home_env_var]),
+        }
+        self._apply_request_environment(
+            inline_env,
+            model_provider=model_provider,
+            preferred_auth_method=preferred_auth_method,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            service_tier=service_tier,
+            resume_session_id=resume_session_id,
+        )
+        if inherited_backend_bin is not None:
+            inline_env[self.bin_env_var] = inherited_backend_bin
+        return inline_env
+
+    @staticmethod
+    def tmux_unset_vars() -> list[str]:
+        return [
+            *_BACKEND_HOME_ENV_VARS,
+            *_BACKEND_BIN_ENV_VARS,
+            "CODEX_WEB_OWNER",
+            "CODEX_WEB_AGENT_BACKEND",
+            *_REQUEST_ENV_VARS,
+        ]
+
+    @staticmethod
+    def _apply_request_environment(
+        env: dict[str, str],
+        *,
+        model_provider: str | None,
+        preferred_auth_method: str | None,
+        model: str | None,
+        reasoning_effort: str | None,
+        service_tier: str | None,
+        resume_session_id: str | None,
+    ) -> None:
+        if model_provider is not None:
+            env["CODEX_WEB_MODEL_PROVIDER"] = model_provider
+        if preferred_auth_method is not None:
+            env["CODEX_WEB_PREFERRED_AUTH_METHOD"] = preferred_auth_method
+        if model is not None:
+            env["CODEX_WEB_MODEL"] = model
+        if reasoning_effort is not None:
+            env["CODEX_WEB_REASONING_EFFORT"] = reasoning_effort
+        if service_tier is not None:
+            env["CODEX_WEB_SERVICE_TIER"] = service_tier
+        if resume_session_id is not None:
+            env["CODEX_WEB_RESUME_SESSION_ID"] = resume_session_id
+
+
+class CodexBackend(AgentBackend):
+    def build_launch_args(
+        self,
+        *,
+        spawn_cwd: Path,
+        codex_trust_override: str,
+        model_provider: str | None = None,
+        preferred_auth_method: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+        service_tier: str | None = None,
+    ) -> list[str]:
+        args = [
+            "-c",
+            codex_trust_override,
+            "-c",
+            "check_for_update_on_startup=false",
+            "--disable",
+            "goals",
+            "--dangerously-bypass-approvals-and-sandbox",
+        ]
+        if model is not None:
+            args.extend(["--model", model])
+        if reasoning_effort is not None:
+            args.extend(["-c", f'model_reasoning_effort="{reasoning_effort}"'])
+        if model_provider is not None:
+            args.extend(["-c", f'model_provider="{model_provider}"'])
+        if preferred_auth_method is not None:
+            args.extend(["-c", f'preferred_auth_method="{preferred_auth_method}"'])
+        if service_tier is not None:
+            args.extend(["-c", f'service_tier="{service_tier}"'])
+        return args
+
+    def build_resume_args(self, *, resume_id: str, resume_row: Mapping[str, Any] | None = None) -> list[str]:
+        return ["resume", resume_id]
+
+
+class PiBackend(AgentBackend):
+    def build_launch_args(
+        self,
+        *,
+        spawn_cwd: Path,
+        codex_trust_override: str,
+        model_provider: str | None = None,
+        preferred_auth_method: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+        service_tier: str | None = None,
+    ) -> list[str]:
+        if preferred_auth_method is not None:
+            raise ValueError("preferred_auth_method is not supported for pi")
+        if service_tier is not None:
+            raise ValueError("service_tier is not supported for pi")
+        args: list[str] = []
+        if model_provider is not None:
+            args.extend(["--provider", model_provider])
+        if model is not None:
+            args.extend(["--model", model])
+        if reasoning_effort is not None:
+            args.extend(["--thinking", reasoning_effort])
+        return args
+
+    def build_resume_args(self, *, resume_id: str, resume_row: Mapping[str, Any] | None = None) -> list[str]:
+        resume_target = str((resume_row or {}).get("log_path") or "").strip()
+        return ["--session", resume_target or resume_id]
+
+
+class ClaudeCodeBackend(AgentBackend):
+    def build_launch_args(
+        self,
+        *,
+        spawn_cwd: Path,
+        codex_trust_override: str,
+        model_provider: str | None = None,
+        preferred_auth_method: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+        service_tier: str | None = None,
+    ) -> list[str]:
+        if model_provider is not None:
+            raise ValueError("model_provider is not supported for cc")
+        if preferred_auth_method is not None:
+            raise ValueError("preferred_auth_method is not supported for cc")
+        if service_tier is not None:
+            raise ValueError("service_tier is not supported for cc")
+        args = ["--dangerously-skip-permissions"]
+        if model is not None:
+            args.extend(["--model", model])
+        if reasoning_effort is not None:
+            args.extend(["--effort", reasoning_effort])
+        return args
+
+    def build_resume_args(self, *, resume_id: str, resume_row: Mapping[str, Any] | None = None) -> list[str]:
+        return ["--resume", resume_id]
+
+
+CODEX_BACKEND = CodexBackend(
     name="codex",
     bin_env_var="CODEX_BIN",
     home_env_var="CODEX_HOME",
@@ -39,7 +279,7 @@ CODEX_BACKEND = AgentBackend(
     sessions_relpath=("sessions",),
 )
 
-PI_BACKEND = AgentBackend(
+PI_BACKEND = PiBackend(
     name="pi",
     bin_env_var="PI_BIN",
     home_env_var="PI_HOME",
@@ -48,7 +288,7 @@ PI_BACKEND = AgentBackend(
     sessions_relpath=("agent", "sessions"),
 )
 
-CC_BACKEND = AgentBackend(
+CC_BACKEND = ClaudeCodeBackend(
     name="cc",
     bin_env_var="CLAUDE_BIN",
     home_env_var="CLAUDE_CONFIG_DIR",
@@ -94,4 +334,3 @@ def infer_agent_backend_from_log_path(path: Path) -> str | None:
         except Exception:
             pass
     return None
-

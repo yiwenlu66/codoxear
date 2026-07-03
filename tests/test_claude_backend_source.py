@@ -8,6 +8,7 @@ APP_LAUNCH_JS = ROOT / "codoxear" / "static" / "app_launch.js"
 SERVER_PY = ROOT / "codoxear" / "server.py"
 BROKER_PY = ROOT / "codoxear" / "broker.py"
 BACKEND_LAUNCH_PY = ROOT / "codoxear" / "backend_launch.py"
+AGENT_BACKEND_PY = ROOT / "codoxear" / "agent_backend.py"
 LAUNCH_CONFIG_PY = ROOT / "codoxear" / "launch_config.py"
 
 
@@ -30,15 +31,18 @@ class TestClaudeBackendSource(unittest.TestCase):
         server_source = SERVER_PY.read_text(encoding="utf-8")
         server_config_source = (SERVER_PY.parent / "server_config.py").read_text(encoding="utf-8")
         launch_source = BACKEND_LAUNCH_PY.read_text(encoding="utf-8")
+        backend_source = AGENT_BACKEND_PY.read_text(encoding="utf-8")
         config_source = LAUNCH_CONFIG_PY.read_text(encoding="utf-8")
         self.assertIn('CC_SETTINGS_PATH=cc_home / "settings.json"', server_config_source)
         self.assertIn("_export_server_config(globals(), _SERVER_CONFIG)", server_source)
         self.assertIn('def _read_cc_launch_defaults()', server_source)
         self.assertIn('"cc": cc', config_source)
-        self.assertIn('args = ["--dangerously-skip-permissions"]', launch_source)
-        self.assertIn('args.extend(["--effort", reasoning_effort])', launch_source)
-        self.assertIn('return ["--resume", resume_id]', launch_source)
-        self.assertIn('"cc": "CLAUDE_CONFIG_DIR"', launch_source)
+        self.assertIn('return get_agent_backend(agent_backend).build_launch_args(', launch_source)
+        self.assertIn('class ClaudeCodeBackend(AgentBackend):', backend_source)
+        self.assertIn('args = ["--dangerously-skip-permissions"]', backend_source)
+        self.assertIn('args.extend(["--effort", reasoning_effort])', backend_source)
+        self.assertIn('return ["--resume", resume_id]', backend_source)
+        self.assertIn('home_env_var="CLAUDE_CONFIG_DIR"', backend_source)
 
     def test_broker_has_cc_closed_log_discovery_fallback(self) -> None:
         source = BROKER_PY.read_text(encoding="utf-8")

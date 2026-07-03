@@ -6,9 +6,28 @@ from codoxear.backend_launch import build_backend_args
 from codoxear.backend_launch import build_backend_resume_args
 from codoxear.backend_launch import build_tmux_inline_env
 from codoxear.backend_launch import tmux_unset_vars
+from codoxear.agent_backend import ClaudeCodeBackend
+from codoxear.agent_backend import CodexBackend
+from codoxear.agent_backend import PiBackend
+from codoxear.agent_backend import get_agent_backend
 
 
 class TestBackendLaunchAdapter(unittest.TestCase):
+    def test_backend_registry_returns_explicit_adapter_objects(self) -> None:
+        self.assertIsInstance(get_agent_backend("codex"), CodexBackend)
+        self.assertIsInstance(get_agent_backend("pi"), PiBackend)
+        self.assertIsInstance(get_agent_backend("cc"), ClaudeCodeBackend)
+        self.assertEqual(get_agent_backend("pi").build_resume_args(resume_id="sid", resume_row={"log_path": "/tmp/pi.jsonl"}), ["--session", "/tmp/pi.jsonl"])
+        self.assertEqual(get_agent_backend("cc").build_launch_args(spawn_cwd=Path("/repo"), codex_trust_override="", model="sonnet"), ["--dangerously-skip-permissions", "--model", "sonnet"])
+
+    def test_backend_launch_module_is_compatibility_facade(self) -> None:
+        source = Path("codoxear/backend_launch.py").read_text(encoding="utf-8")
+        self.assertNotIn('backend_name == "codex"', source)
+        self.assertNotIn('backend_name == "pi"', source)
+        self.assertNotIn('backend_name == "cc"', source)
+        self.assertIn("get_agent_backend(agent_backend).build_launch_args(", source)
+        self.assertIn("get_agent_backend(agent_backend).apply_launch_environment(", source)
+
     def test_codex_args_match_web_owned_launch_contract(self) -> None:
         args = build_backend_args(
             agent_backend="codex",

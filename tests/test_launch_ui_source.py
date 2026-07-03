@@ -169,7 +169,8 @@ def test_failed_launch_rows_are_clickable_transcripts() -> None:
     assert 'return !!(s && !sessionLaunchPending(s));' in session_helper_source
     assert 'raw === "bound" || raw === "pending_bind" || raw === "failed"' in transcript_source
     assert 'if (slotChange.current.state !== "failed") kickPoll(900);' in source
-    assert 'if (activeTranscriptState === "failed") return;' in source
+    assert 'if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);' in source
+    assert 'if (sessionLaunchFailed(sessionIndex.get(selected))) {' in source
     assert 'failed session cannot receive messages' in source
 
 
