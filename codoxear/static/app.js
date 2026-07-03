@@ -565,6 +565,7 @@
         typeof codoxearFilePicker.appendFilePickerSection !== "function" ||
         typeof codoxearFilePicker.appendFilePickerStatusRow !== "function" ||
         typeof codoxearFilePicker.appendHighlightedFileMenuPath !== "function" ||
+        typeof codoxearFilePicker.createInputRuntime !== "function" ||
         typeof codoxearFilePicker.createMenuDomRuntime !== "function" ||
         typeof codoxearFilePicker.createMenuRenderRuntime !== "function" ||
         typeof codoxearFilePicker.createMenuState !== "function" ||
@@ -7089,6 +7090,29 @@
           el,
           createTextNode: (value) => document.createTextNode(value),
         });
+        const filePickerInputRuntime = codoxearFilePicker.createInputRuntime({
+          input: filePickerInput,
+          menuState: filePickerMenuState,
+          ensureCurrentSession: () => ensureCurrentFileViewerSession(),
+          renderMenu: () => renderFilePickerMenu(),
+          applyMenuState: () => applyFileMenuState(),
+          resetInput: () => resetFilePickerInput(),
+          closeMenu: (options) => closeFilePickerMenu(options),
+          currentSessionId: () => currentFileViewerSessionId(),
+          selectedSessionId: () => selected,
+          resetSearchState: () => resetFileSearchState(),
+          setSearchSessionId: (sessionId) => filePickerSearchState.setSessionId(sessionId),
+          scheduleSearch: (query) => scheduleSessionFileSearch(query),
+          selectionLine: () => filePickerSelectionLine(),
+          openDraftFilePathWithGuard: (path) => openDraftFilePathWithGuard(path),
+          openFilePathWithResolvedMode: (path, options) => openFilePathWithResolvedMode(path, options),
+          setStatus: (status) => {
+            fileStatus.textContent = status;
+          },
+          optionElementById: (id) => document.getElementById(id),
+          isFocusInsideField: () => filePickerField.contains(document.activeElement),
+          requestAnimationFrame: (callback) => requestAnimationFrame(callback),
+        });
         const MONACO_LOADER_TIMEOUT_MS = 4000;
         const PDFJS_LOADER_TIMEOUT_MS = 6000;
         const fileEditorRuntime = codoxearFileEditor.createFileEditorRuntime();
@@ -8400,96 +8424,11 @@
           e.stopPropagation();
           void showFileViewer();
         };
-        filePickerInput.onfocus = async () => {
-          if (!(await ensureCurrentFileViewerSession())) return;
-          if (filePickerMenuState.takePreservedSearchOnFocus()) {
-            renderFilePickerMenu();
-            filePickerMenuState.setOpen(true);
-            applyFileMenuState();
-            return;
-          }
-          resetFilePickerInput();
-          renderFilePickerMenu();
-          filePickerMenuState.setOpen(true);
-          applyFileMenuState();
-        };
-        filePickerInput.onclick = async (e) => {
-          e.stopPropagation();
-          if (!(await ensureCurrentFileViewerSession())) return;
-          if (filePickerAmbiguousChoiceActive()) {
-            renderFilePickerMenu();
-            filePickerMenuState.setOpen(true);
-            applyFileMenuState();
-            return;
-          }
-          resetFilePickerInput();
-          renderFilePickerMenu();
-          filePickerMenuState.setOpen(true);
-          applyFileMenuState();
-        };
-        filePickerInput.oninput = async () => {
-          if (!(await ensureCurrentFileViewerSession())) return;
-          const rawQuery = String(filePickerInput.value || "");
-          filePickerMenuState.handleInput(rawQuery);
-          const query = rawQuery.trim();
-          renderFilePickerMenu();
-          filePickerMenuState.setOpen(true);
-          applyFileMenuState();
-          if (!query || !(currentFileViewerSessionId() || selected)) {
-            resetFileSearchState();
-            filePickerSearchState.setSessionId(currentFileViewerSessionId() || selected || "");
-            renderFilePickerMenu();
-            applyFileMenuState();
-            return;
-          }
-          scheduleSessionFileSearch(query);
-          renderFilePickerMenu();
-          applyFileMenuState();
-        };
-        filePickerInput.onblur = () => {
-          requestAnimationFrame(() => {
-            if (filePickerField.contains(document.activeElement)) return;
-            closeFilePickerMenu({ restoreInput: true });
-          });
-        };
-        filePickerInput.onkeydown = async (e) => {
-          if (!(await ensureCurrentFileViewerSession())) return;
-          const entries = renderFilePickerMenu();
-          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-            if (!entries || !entries.length) return;
-            e.preventDefault();
-            const delta = e.key === "ArrowDown" ? 1 : -1;
-            const focusIndex = filePickerMenuState.moveFocus(entries.length, delta);
-            renderFilePickerMenu();
-            applyFileMenuState();
-            const active = document.getElementById(`filePickerOption-${focusIndex}`);
-            if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" });
-            return;
-          }
-          if (e.key === "Enter" && filePickerMenuState.isOpen()) {
-            const enterIndex = filePickerMenuState.enterIndex();
-            const active = entries && entries.length ? entries[enterIndex] : null;
-            if (!active) return;
-            e.preventDefault();
-            if (active.createNew) {
-              void openDraftFilePathWithGuard(active.path);
-              return;
-            }
-            void openFilePathWithResolvedMode(active.path, { line: filePickerSelectionLine(), changed: Boolean(active.changed), gitPath: Boolean(active.gitPath), apiPath: active.apiPath }).catch((err) => {
-              fileStatus.textContent = `error: ${err && err.message ? err.message : "unable to inspect path"}`;
-            });
-            return;
-          }
-          if (e.key === "Escape" && filePickerMenuState.isOpen()) {
-            e.preventDefault();
-            e.stopPropagation();
-            closeFilePickerMenu({ restoreInput: true });
-            return;
-          }
-          if (e.key === "Tab" && filePickerMenuState.isOpen()) {
-            closeFilePickerMenu({ restoreInput: true });
-          }
-        };
+        filePickerInput.onfocus = () => filePickerInputRuntime.focus();
+        filePickerInput.onclick = (e) => filePickerInputRuntime.click(e);
+        filePickerInput.oninput = () => filePickerInputRuntime.input();
+        filePickerInput.onblur = () => filePickerInputRuntime.blur();
+        filePickerInput.onkeydown = (e) => filePickerInputRuntime.keydown(e);
         fileModeDiffBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();

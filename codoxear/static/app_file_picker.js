@@ -558,6 +558,136 @@
     return prependDraftFileEntry(prependPendingSessionPathEntry(limited, query), query, context);
   }
 
+  function createInputRuntime(options = {}) {
+    const menuState = options.menuState || null;
+    const input = requirePickerInputNode(options.input, "filePickerInput");
+    const ensureCurrentSession = requireFunction(options, "ensureCurrentSession");
+    const renderMenu = requireFunction(options, "renderMenu");
+    const applyMenuState = requireFunction(options, "applyMenuState");
+    const resetInput = requireFunction(options, "resetInput");
+    const closeMenu = requireFunction(options, "closeMenu");
+    const currentSessionId = requireFunction(options, "currentSessionId");
+    const selectedSessionId = requireFunction(options, "selectedSessionId");
+    const resetSearchState = requireFunction(options, "resetSearchState");
+    const setSearchSessionId = requireFunction(options, "setSearchSessionId");
+    const scheduleSearch = requireFunction(options, "scheduleSearch");
+    const selectionLine = requireFunction(options, "selectionLine");
+    const openDraftFilePathWithGuard = requireFunction(options, "openDraftFilePathWithGuard");
+    const openFilePathWithResolvedMode = requireFunction(options, "openFilePathWithResolvedMode");
+    const setStatus = requireFunction(options, "setStatus");
+    const optionElementById = requireFunction(options, "optionElementById");
+    const isFocusInsideField = requireFunction(options, "isFocusInsideField");
+    const animationFrame = requireFunction(options, "requestAnimationFrame");
+    const takePreservedSearchOnFocus = requireFunction(menuState, "takePreservedSearchOnFocus");
+    const setOpen = requireFunction(menuState, "setOpen");
+    const handleInputState = requireFunction(menuState, "handleInput");
+    const ambiguousChoiceActive = requireFunction(menuState, "ambiguousChoiceActive");
+    const moveFocus = requireFunction(menuState, "moveFocus");
+    const isOpen = requireFunction(menuState, "isOpen");
+    const enterIndex = requireFunction(menuState, "enterIndex");
+
+    function openRenderedMenu() {
+      const entries = renderMenu();
+      setOpen(true);
+      applyMenuState();
+      return entries;
+    }
+
+    async function focus() {
+      if (!(await ensureCurrentSession())) return false;
+      if (takePreservedSearchOnFocus()) {
+        openRenderedMenu();
+        return true;
+      }
+      resetInput();
+      openRenderedMenu();
+      return true;
+    }
+
+    async function click(event) {
+      if (event && typeof event.stopPropagation === "function") event.stopPropagation();
+      if (!(await ensureCurrentSession())) return false;
+      if (ambiguousChoiceActive(input.value)) {
+        openRenderedMenu();
+        return true;
+      }
+      resetInput();
+      openRenderedMenu();
+      return true;
+    }
+
+    async function inputChanged() {
+      if (!(await ensureCurrentSession())) return false;
+      const rawQuery = String(input.value || "");
+      handleInputState(rawQuery);
+      const query = rawQuery.trim();
+      openRenderedMenu();
+      const sessionId = currentSessionId() || selectedSessionId() || "";
+      if (!query || !sessionId) {
+        resetSearchState();
+        setSearchSessionId(sessionId);
+        renderMenu();
+        applyMenuState();
+        return true;
+      }
+      scheduleSearch(query);
+      renderMenu();
+      applyMenuState();
+      return true;
+    }
+
+    function blur() {
+      animationFrame(() => {
+        if (isFocusInsideField()) return;
+        closeMenu({ restoreInput: true });
+      });
+      return true;
+    }
+
+    async function keydown(event) {
+      if (!(await ensureCurrentSession())) return false;
+      const entries = renderMenu();
+      if (event && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+        if (!entries || !entries.length) return false;
+        if (typeof event.preventDefault === "function") event.preventDefault();
+        const delta = event.key === "ArrowDown" ? 1 : -1;
+        const focusIndex = moveFocus(entries.length, delta);
+        renderMenu();
+        applyMenuState();
+        const active = optionElementById(`filePickerOption-${focusIndex}`);
+        if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" });
+        return true;
+      }
+      if (event && event.key === "Enter" && isOpen()) {
+        const index = enterIndex();
+        const active = entries && entries.length ? entries[index] : null;
+        if (!active) return false;
+        if (typeof event.preventDefault === "function") event.preventDefault();
+        if (active.createNew) {
+          void openDraftFilePathWithGuard(active.path);
+          return true;
+        }
+        void openFilePathWithResolvedMode(active.path, { line: selectionLine(input.value), changed: Boolean(active.changed), gitPath: Boolean(active.gitPath), apiPath: active.apiPath }).catch((error) => {
+          setStatus(`error: ${error && error.message ? error.message : "unable to inspect path"}`);
+        });
+        return true;
+      }
+      if (event && event.key === "Escape" && isOpen()) {
+        if (typeof event.preventDefault === "function") event.preventDefault();
+        if (typeof event.stopPropagation === "function") event.stopPropagation();
+        closeMenu({ restoreInput: true });
+        return true;
+      }
+      if (event && event.key === "Tab" && isOpen()) {
+        closeMenu({ restoreInput: true });
+        return true;
+      }
+      return false;
+    }
+
+    return Object.freeze({ blur, click, focus, input: inputChanged, keydown });
+  }
+
   function createSearchState(host) {
     const blocked = requireFunction(host, "blocked");
     const currentSessionId = requireFunction(host, "currentSessionId");
@@ -735,6 +865,7 @@
     appendFilePickerSection,
     appendFilePickerStatusRow,
     appendHighlightedFileMenuPath,
+    createInputRuntime,
     createMenuDomRuntime,
     createMenuRenderRuntime,
     createMenuState,

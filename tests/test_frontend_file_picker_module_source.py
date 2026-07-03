@@ -319,6 +319,111 @@ def run_picker_render_runtime_probe() -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
+def run_picker_input_runtime_probe() -> dict[str, object]:
+    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
+    helper_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
+    picker_source = APP_FILE_PICKER_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(display_source)}, ctx);
+        vm.runInContext({json.dumps(helper_source)}, ctx);
+        vm.runInContext({json.dumps(picker_source)}, ctx);
+        const picker = ctx.window.CodoxearFilePicker;
+        const events = [];
+        let entries = [];
+        let currentSession = "";
+        let selectedSession = "sid-selected";
+        let focusInside = false;
+        let rafCallback = null;
+        const input = {{
+          value: "",
+          attrs: {{}},
+          setAttribute(name, value) {{ this.attrs[name] = String(value); }},
+          removeAttribute(name) {{ delete this.attrs[name]; }},
+        }};
+        const menuState = picker.createMenuState({{ normalizeLineNumber: (value) => Number(value) || null }});
+        const runtime = picker.createInputRuntime({{
+          input,
+          menuState,
+          ensureCurrentSession: async () => {{ events.push(["ensure"]); return true; }},
+          renderMenu: () => {{ events.push(["render"]); return entries; }},
+          applyMenuState: () => events.push(["apply"]),
+          resetInput: () => {{ events.push(["resetInput"]); input.value = "active.py"; }},
+          closeMenu: (options) => events.push(["close", options]),
+          currentSessionId: () => currentSession,
+          selectedSessionId: () => selectedSession,
+          resetSearchState: () => events.push(["resetSearch"]),
+          setSearchSessionId: (sessionId) => events.push(["setSearchSession", sessionId]),
+          scheduleSearch: (query) => events.push(["schedule", query]),
+          selectionLine: () => menuState.selectionLine(input.value),
+          openDraftFilePathWithGuard: (path) => events.push(["openDraft", path]),
+          openFilePathWithResolvedMode: (path, options) => {{ events.push(["openFile", path, options]); return Promise.resolve(true); }},
+          setStatus: (status) => events.push(["status", status]),
+          optionElementById: (id) => ({{ scrollIntoView(options) {{ events.push(["scroll", id, options]); }} }}),
+          isFocusInsideField: () => focusInside,
+          requestAnimationFrame: (callback) => {{ rafCallback = callback; events.push(["raf"]); }},
+        }});
+        async function run() {{
+          entries = [{{ path: "src/app.py", changed: true, gitPath: true, apiPath: "tok" }}];
+          menuState.openSearchQuery("src/app.py", {{ line: 42, suppressDraft: true }});
+          menuState.setPreserveSearchOnFocus(true);
+          input.value = "src/app.py";
+          const focusResult = await runtime.focus();
+          const focusEvents = events.splice(0);
+          const clickEvent = {{ stopped: 0, stopPropagation() {{ this.stopped += 1; events.push(["stop"]); }} }};
+          const clickResult = await runtime.click(clickEvent);
+          const clickEvents = events.splice(0);
+          input.value = "";
+          currentSession = "";
+          selectedSession = "sid-selected";
+          const emptyInputResult = await runtime.input();
+          const emptyInputEvents = events.splice(0);
+          input.value = "abc";
+          currentSession = "sid-current";
+          const searchInputResult = await runtime.input();
+          const searchInputEvents = events.splice(0);
+          entries = [{{ path: "src/app.py", changed: true, gitPath: true, apiPath: "tok" }}];
+          menuState.setOpen(true);
+          const arrowEvent = {{ key: "ArrowDown", prevented: 0, preventDefault() {{ this.prevented += 1; events.push(["prevent"]); }} }};
+          const arrowResult = await runtime.keydown(arrowEvent);
+          const arrowEvents = events.splice(0);
+          entries = [{{ path: "draft/new.txt", createNew: true }}];
+          menuState.setOpen(true);
+          const draftEvent = {{ key: "Enter", preventDefault() {{ events.push(["prevent"]); }} }};
+          const draftResult = await runtime.keydown(draftEvent);
+          const draftEvents = events.splice(0);
+          entries = [{{ path: "src/app.py", changed: true, gitPath: true, apiPath: "tok" }}];
+          menuState.openSearchQuery("src/app.py", {{ line: 42 }});
+          input.value = "src/app.py";
+          const enterEvent = {{ key: "Enter", preventDefault() {{ events.push(["prevent"]); }} }};
+          const enterResult = await runtime.keydown(enterEvent);
+          const enterEvents = events.splice(0);
+          menuState.setOpen(true);
+          const escapeEvent = {{ key: "Escape", preventDefault() {{ events.push(["prevent"]); }}, stopPropagation() {{ events.push(["stop"]); }} }};
+          const escapeResult = await runtime.keydown(escapeEvent);
+          const escapeEvents = events.splice(0);
+          menuState.setOpen(true);
+          const tabResult = await runtime.keydown({{ key: "Tab" }});
+          const tabEvents = events.splice(0);
+          focusInside = false;
+          const blurResult = runtime.blur();
+          const blurScheduledEvents = events.splice(0);
+          rafCallback();
+          const blurEvents = events.splice(0);
+          let missingError = "";
+          try {{ picker.createInputRuntime({{ input, menuState }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
+          return {{ focusResult, focusEvents, clickResult, clickEvents, clickStopped: clickEvent.stopped, emptyInputResult, emptyInputEvents, searchInputResult, searchInputEvents, arrowResult, arrowEvents, arrowPrevented: arrowEvent.prevented, draftResult, draftEvents, enterResult, enterEvents, escapeResult, escapeEvents, tabResult, tabEvents, blurResult, blurScheduledEvents, blurEvents, missingError, frozen: Object.isFrozen(runtime) }};
+        }}
+        run().then((result) => process.stdout.write(JSON.stringify(result))).catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 class TestFrontendFilePickerModuleSource(unittest.TestCase):
     def test_file_picker_module_exports_and_fails_closed(self) -> None:
         result = run_picker_module_probe()
@@ -331,6 +436,7 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
                 "appendFilePickerSection",
                 "appendFilePickerStatusRow",
                 "appendHighlightedFileMenuPath",
+                "createInputRuntime",
                 "createMenuDomRuntime",
                 "createMenuRenderRuntime",
                 "createMenuState",
@@ -372,6 +478,34 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         footer = result["footer"]
         self.assertEqual(footer["rows"][-1]["text"], "Searching full project...")
         self.assertEqual(footer["syncs"], [0])
+
+    def test_file_picker_input_runtime_behavior(self) -> None:
+        result = run_picker_input_runtime_probe()
+        self.assertTrue(result["frozen"])
+        self.assertTrue(result["focusResult"])
+        self.assertEqual(result["focusEvents"], [["ensure"], ["render"], ["apply"]])
+        self.assertTrue(result["clickResult"])
+        self.assertEqual(result["clickStopped"], 1)
+        self.assertEqual(result["clickEvents"], [["stop"], ["ensure"], ["render"], ["apply"]])
+        self.assertTrue(result["emptyInputResult"])
+        self.assertEqual(result["emptyInputEvents"], [["ensure"], ["render"], ["apply"], ["resetSearch"], ["setSearchSession", "sid-selected"], ["render"], ["apply"]])
+        self.assertTrue(result["searchInputResult"])
+        self.assertEqual(result["searchInputEvents"], [["ensure"], ["render"], ["apply"], ["schedule", "abc"], ["render"], ["apply"]])
+        self.assertTrue(result["arrowResult"])
+        self.assertEqual(result["arrowPrevented"], 1)
+        self.assertEqual(result["arrowEvents"], [["ensure"], ["render"], ["prevent"], ["render"], ["apply"], ["scroll", "filePickerOption-0", {"block": "nearest"}]])
+        self.assertTrue(result["draftResult"])
+        self.assertEqual(result["draftEvents"], [["ensure"], ["render"], ["prevent"], ["openDraft", "draft/new.txt"]])
+        self.assertTrue(result["enterResult"])
+        self.assertEqual(result["enterEvents"], [["ensure"], ["render"], ["prevent"], ["openFile", "src/app.py", {"line": 42, "changed": True, "gitPath": True, "apiPath": "tok"}]])
+        self.assertTrue(result["escapeResult"])
+        self.assertEqual(result["escapeEvents"], [["ensure"], ["render"], ["prevent"], ["stop"], ["close", {"restoreInput": True}]])
+        self.assertTrue(result["tabResult"])
+        self.assertEqual(result["tabEvents"], [["ensure"], ["render"], ["close", {"restoreInput": True}]])
+        self.assertTrue(result["blurResult"])
+        self.assertEqual(result["blurScheduledEvents"], [["raf"]])
+        self.assertEqual(result["blurEvents"], [["close", {"restoreInput": True}]])
+        self.assertIn("Codoxear file picker host missing ensureCurrentSession", result["missingError"])
 
     def test_file_picker_menu_state_behavior(self) -> None:
         result = run_picker_module_probe()["menuState"]
