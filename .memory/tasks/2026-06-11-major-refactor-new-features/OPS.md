@@ -8245,3 +8245,12 @@
   - Focused runtime/readiness/unattended tests returned `46 passed`.
   - Broader runtime/readiness/listing/messages/queue/unattended validation returned `190 passed, 4 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T11:18:00Z Used runtime status model for diagnostics
+- Functional commit `5bd9780 Use runtime status model for diagnostics` changed diagnostics to call `manager._runtime_status_from_state_and_log(...)` instead of reconstructing broker/log/boundary RuntimeStatus locally.
+- Mechanism: diagnostics now consumes the same readiness coordinator RuntimeStatus as send/queue/attachment/unattended, while still projecting broker busy and token details into the diagnostics payload.
+- Validation under checkpoint cadence:
+  - `python3 -m py_compile codoxear/diagnostics_routes.py tests/test_diagnostics_routes.py` passed.
+  - Focused diagnostics/runtime tests returned `33 passed`.
+  - Broader runtime/readiness/listing/messages/queue/unattended validation returned `196 passed, 4 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
