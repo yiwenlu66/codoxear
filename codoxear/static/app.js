@@ -700,6 +700,7 @@
 	        const app = el("div", { class: "app" });
         const sidebar = el("div", { class: "sidebar" });
         const sessionsWrap = el("div", { class: "sessions" });
+        const sidebarEmptyHint = el("div", { class: "sidebarEmptyHint muted", text: "No sessions yet" });
          const sidebarFooter = el("footer", {}, [
           el("button", { id: "helpBtnSide", type: "button", title: "Help", "aria-label": "Help", html: iconSvg("help") + "Help" }),
           el("button", { id: "settingsBtnSide", type: "button", title: "Settings", "aria-label": "Settings", html: iconSvg("settings") + "Settings" }),
@@ -707,6 +708,10 @@
         ]);
         const main = el("div", { class: "main" });
         const chatWrap = el("div", { class: "chatWrap", id: "chatWrap" });
+        const chatEmptyState = el("div", { class: "chatEmptyState", id: "chatEmptyState" }, [
+          el("div", { class: "chatEmptyCopy muted", text: "Start a session to begin a conversation." }),
+          el("button", { id: "chatEmptyNewBtn", class: "icon-btn text-btn", type: "button", title: "New session", "aria-label": "New session", text: "New session" }),
+        ]);
         const chat = el("div", { class: "chat", id: "chat" });
         const chatInner = el("div", { class: "chatInner", id: "chatInner" });
         const olderWrap = el("div", { class: "olderWrap", id: "olderWrap" });
@@ -759,6 +764,7 @@
         chatInner.appendChild(bottomSentinel);
         chat.appendChild(chatInner);
         chatWrap.appendChild(chat);
+        chatWrap.appendChild(chatEmptyState);
         chatWrap.appendChild(jumpBtn);
         chatWrap.appendChild(chatTimeChip);
         chatWrap.appendChild(chatSearchBar);
@@ -1873,6 +1879,7 @@
         ]);
         const newSessionModelLabel = el("span", { class: "fieldLabel", text: "Provider / model" });
         const newSessionBackendTabs = el("div", { class: "agentBackendTabs", id: "newSessionBackendTabs" });
+        const newSessionBackendName = el("span", { class: "agentBackendTabName", id: "newSessionBackendName" });
         let newSessionReasoningEffort = "high";
         const newSessionReasoningBtn = el("button", {
           id: "newSessionReasoningBtn",
@@ -1947,6 +1954,7 @@
             el("div", { class: "newSessionHeaderLead" }, [
               el("div", { class: "title", text: "New session" }),
               newSessionBackendTabs,
+              newSessionBackendName,
             ]),
             el("div", { class: "actions" }, [newSessionCloseBtn]),
           ]),
@@ -3524,6 +3532,11 @@
 	             sessionsWrap.appendChild(card);
 	            }
               }
+              if (sessionsWrap.childElementCount === 0) {
+                if (!sidebarEmptyHint.parentElement) sessionsWrap.appendChild(sidebarEmptyHint);
+              } else if (sidebarEmptyHint.parentElement) {
+                sidebarEmptyHint.remove();
+              }
 	          if (openSwipeSessionId && !sessionIndex.has(openSwipeSessionId)) {
 	            openSwipeSessionId = null;
 	            openSwipeTargetX = 0;
@@ -4488,6 +4501,7 @@
           chatSearchBtn.disabled = !selected;
           sessionContextBar.style.display = selected ? "flex" : "none";
           chatNavRail.style.display = selected ? "flex" : "none";
+          chatEmptyState.style.display = selected ? "none" : "flex";
           if (unattendedMenuOpen && (!selected || unattendedMenuSessionId !== selected)) hideUnattendedMenu();
           if (!selected && loadedChatSearchSnapshot().open) closeChatSearch();
           updateChatNavButtons();
@@ -5775,6 +5789,7 @@
             btn.onclick = () => setNewSessionBackend(backend, { resetSelections: true });
             newSessionBackendTabs.appendChild(btn);
           }
+          newSessionBackendName.textContent = agentBackendDisplayName(newSessionBackend);
         }
 
         function newSessionProviderChoices() {
@@ -8474,6 +8489,9 @@
           }
         }
         $("#newBtn").onclick = async () => {
+          openNewSessionDialog();
+        };
+        $("#chatEmptyNewBtn").onclick = async () => {
           openNewSessionDialog();
         };
 	        async function interruptSelectedSession() {

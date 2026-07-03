@@ -124,6 +124,10 @@
         min-height: 0;
         -webkit-overflow-scrolling: touch;
       }
+      .sidebarEmptyHint {
+        padding: 12px 14px;
+        font-size: 13px;
+      }
       .sidebar footer {
         padding: 10px 12px;
         border-top: 1px solid var(--border);
@@ -624,8 +628,17 @@
         flex-wrap: nowrap;
       }
       .toast {
-        padding: 4px 12px 0 12px;
+        align-self: flex-start;
+        margin: 6px 12px 0 12px;
+        padding: 6px 12px;
         min-height: 0;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.9);
+        color: #fff;
+        box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+        font-size: 13px;
+        line-height: 1.4;
+        max-width: min(70vw, 520px);
       }
       .toast:empty {
         display: none;
@@ -773,6 +786,23 @@
         min-width: 0;
         display: flex;
         flex-direction: column;
+      }
+      .chatEmptyState {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        text-align: center;
+        pointer-events: none;
+      }
+      .chatEmptyState > * {
+        pointer-events: auto;
+      }
+      .chatEmptyCopy {
+        font-size: 14px;
       }
       .chat {
         order: 1;
@@ -1385,6 +1415,20 @@ select {
       }
       .composer .icon-btn.primary:hover {
         background: rgba(29, 78, 216, 1);
+      }
+      .composer .icon-btn:disabled,
+      .composer .icon-btn:disabled:hover {
+        opacity: 0.45;
+        background: transparent;
+        box-shadow: none;
+        cursor: not-allowed;
+      }
+      .composer .icon-btn.primary:disabled,
+      .composer .icon-btn.primary:disabled:hover {
+        opacity: 0.5;
+        background: rgba(29, 78, 216, 0.45);
+        border-color: rgba(29, 78, 216, 0.12);
+        cursor: not-allowed;
       }
       .composer .icon-btn.primary .icon {
         filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.06));
@@ -2018,6 +2062,12 @@ select {
         align-items: center;
         gap: 6px;
       }
+      .agentBackendTabName {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+        white-space: nowrap;
+      }
       .agentBackendTab {
         width: 34px;
         height: 34px;
@@ -2030,9 +2080,9 @@ select {
         padding: 0;
       }
       .agentBackendTab.active {
-        border-color: rgba(29, 78, 216, 0.48);
-        background: rgba(29, 78, 216, 0.1);
-        box-shadow: inset 0 0 0 1px rgba(29, 78, 216, 0.08);
+        border-color: rgba(29, 78, 216, 0.6);
+        background: rgba(29, 78, 216, 0.14);
+        box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.18), inset 0 0 0 1px rgba(29, 78, 216, 0.16);
       }
       .agentBackendTabLogo {
         width: 20px;
