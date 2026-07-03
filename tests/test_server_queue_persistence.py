@@ -3,14 +3,21 @@ import threading
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
+from typing import Any
 
-from codoxear.server import ControlSocketCallError
+from codoxear.control_socket import ControlSocketCallError
+from codoxear.queue_store import QueueStore
 from codoxear.server import Session
 from codoxear.server import SessionCommitUnknownError
 from codoxear.server import SessionManager
 from codoxear.server import SessionNotReadyError
 from codoxear.server import _match_session_route
+from codoxear.session_control import SessionControlCoordinator
+from codoxear.session_errors import SessionInjectionError
+from codoxear.session_pending_state import SessionPendingStateCoordinator
+from codoxear.session_queue import SessionQueueCoordinator
+from codoxear.session_store import SessionStore
+from codoxear.session_store import SessionStorePaths
 
 
 def _make_session(sid: str) -> Session:
@@ -32,6 +39,147 @@ def _make_session(sid: str) -> Session:
 
 def _queue_item(item_id: str, text: str) -> dict[str, object]:
     return {"id": item_id, "text": text, "created_ts": 1.0}
+
+
+# ---------------------------------------------------------------------------
+# Coordinator construction helpers.
+#
+# Every former ``codoxear.server`` module-global patch (``time.time``,
+# ``_pid_alive``, ``QUEUE_PATH``) is replaced by constructing the relevant
+# coordinator directly with the boundary injected as a constructor argument:
+#
+#   * ``now``      -> wall clock (time boundary) on queue/pending-state coords.
+#   * ``pid_alive`` -> OS process liveness probe (process boundary) on the
+#                      control coordinator.
+#   * ``QueueStore(path)`` -> real filesystem path (replaces ``QUEUE_PATH``).
+#
+# No ``codoxear.server.*`` monkeypatching remains. No file under ``codoxear/``
+# is modified.
+# ---------------------------------------------------------------------------
+
+
+def _session_store(td: Path) -> SessionStore:
+    """Build a real SessionStore backed by temp-directory paths."""
+    paths = SessionStorePaths(
+        aliases=td / "aliases.json",
+        sidebar_meta=td / "sidebar.json",
+        hidden_sessions=td / "hidden.json",
+        files=td / "files.json",
+        queues=td / "queues.json",
+        pending_attachments=td / "pending.json",
+        commit_unknown_sends=td / "commit_unknown.json",
+        recent_cwds=td / "cwds.json",
+        unattended=td / "unattended.json",
+    )
+    return SessionStore(
+        paths=paths,
+        file_history_max=10,
+        recent_cwd_max=10,
+        unattended_default_idle_minutes=5,
+        unattended_default_max_injections=10,
+        clean_alias=lambda v: v,
+        clean_priority_offset=lambda v: v,
+        clean_snooze_until=lambda v: v,
+        clean_dependency_session_id=lambda v: v,
+        clean_recent_cwd=lambda v: v,
+        clean_commit_unknown_send_record=lambda v: v,
+    )
+
+
+def _queue_coordinator(
+    *,
+    sessions: dict[str, Session],
+    queues: dict[str, list[dict[str, Any]]],
+    queue_dir: Path,
+    now: float,
+    remote_ready: Any = lambda _sid, _log_path: True,
+    send: Any = lambda *_args, **_kwargs: {"queued": False, "queue_len": 0},
+    recovery_items_locked: Any = None,
+) -> tuple[SessionQueueCoordinator, list[dict[str, Any]]]:
+    """Build a SessionQueueCoordinator with the wall clock (``now``) injected.
+
+    Replaces former ``patch("codoxear.server.time.time", ...)`` calls: the
+    commit-unknown timestamp is ``now`` passed here, not a module-global patch.
+    """
+    saves: list[dict[str, Any]] = []
+    store = QueueStore(queue_dir / "session_queues.json")
+
+    def save_queues() -> None:
+        saves.append({sid: [dict(item) for item in items] for sid, items in queues.items()})
+
+    coordinator = SessionQueueCoordinator(
+        lock=threading.Lock(),
+        sessions=lambda: sessions,
+        queues=lambda: queues,
+        queue_store=lambda: store,
+        commit_unknown_sends=lambda: {},
+        save_queues=save_queues,
+        input_lock_for_session=lambda _sid: threading.RLock(),
+        remote_ready=remote_ready,
+        send=send,
+        not_ready_error=SessionNotReadyError,
+        retryable_send_errors=(SessionNotReadyError, SessionInjectionError),
+        commit_unknown_error=SessionCommitUnknownError,
+        queue_idle_grace_seconds=5.0,
+        now=lambda: now,
+        recovery_items_locked=recovery_items_locked,
+    )
+    return coordinator, saves
+
+
+def _pending_state_coordinator(
+    *,
+    store: SessionStore,
+    sessions: dict[str, Session],
+    now: float,
+    save_commit_unknown_sends: Any = lambda: None,
+    save_queues: Any = lambda: None,
+) -> SessionPendingStateCoordinator:
+    """Build a SessionPendingStateCoordinator with the wall clock (``now``) injected.
+
+    Replaces former ``patch("codoxear.server.time.time", ...)`` calls.
+    """
+    return SessionPendingStateCoordinator(
+        lock=threading.Lock(),
+        sessions=lambda: sessions,
+        store=lambda: store,
+        pending_attachment_ids=lambda: store.pending_attachment_ids,
+        set_pending_attachment_ids=lambda ids: setattr(store, "pending_attachment_ids", ids),
+        commit_unknown_sends=lambda: store.commit_unknown_sends,
+        set_commit_unknown_sends=lambda d: store.commit_unknown_sends.update(d),
+        mark_queue_orphan_recovery_locked=lambda sid: store.queue_store.mark_orphan_recovery_items(store.queues, sid),
+        save_pending_attachments=lambda: None,
+        save_commit_unknown_sends=save_commit_unknown_sends,
+        save_queues=save_queues,
+        now=lambda: now,
+        commit_unknown_orphan_prune_seconds=7 * 24 * 3600,
+    )
+
+
+def _control_coordinator(
+    *,
+    sessions: dict[str, Session],
+    sock_call: Any,
+    pid_alive: Any,
+    clear_deleted_session_state: Any = lambda _sid: None,
+) -> SessionControlCoordinator:
+    """Build a SessionControlCoordinator with the OS process liveness probe
+    (``pid_alive``) injected.
+
+    Replaces former ``patch("codoxear.server._pid_alive", ...)`` calls.
+    """
+    return SessionControlCoordinator(
+        lock=threading.Lock(),
+        sessions=lambda: sessions,
+        sock_call=sock_call,
+        pid_alive=pid_alive,
+        unlink_quiet=lambda _path: None,
+        clear_deleted_session_state=clear_deleted_session_state,
+        broker_busy_queue=lambda _state: (False, 0),
+        broker_interrupted_idle=lambda _state: False,
+        control_socket_call_error=ControlSocketCallError,
+        commit_unknown_error=SessionCommitUnknownError,
+    )
 
 
 class TestServerQueuePersistence(unittest.TestCase):
@@ -74,20 +222,29 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertNotIn(sid, mgr._commit_unknown_sends)
 
     def test_prune_missing_commit_unknown_sends_keeps_recent_orphans(self) -> None:
-        mgr = self._mgr()
-        mgr._sessions["live"] = _make_session("live")
-        mgr._commit_unknown_sends = {
+        # SessionPendingCoordinator.prune_missing_commit_unknown_sends with
+        # the wall clock injected as ``now=100.0`` (replaces former
+        # ``patch("codoxear.server.time.time", ...)``).
+        sessions = {"live": _make_session("live")}
+        commit_unknown_sends = {
             "live": {"text": "maybe live", "created_ts": 1.0},
             "recent_gone": {"text": "maybe recent", "created_ts": 90.0},
             "old_gone": {"text": "maybe old", "created_ts": 1.0},
         }
-        saved = []
-        mgr._save_commit_unknown_sends = lambda: saved.append(dict(mgr._commit_unknown_sends))  # type: ignore[method-assign]
+        saved: list[dict[str, object]] = []
+        with TemporaryDirectory() as td:
+            store = _session_store(Path(td))
+            store.commit_unknown_sends = commit_unknown_sends
+            store.queues = {}
+            coord = _pending_state_coordinator(
+                store=store,
+                sessions=sessions,
+                now=100.0,
+                save_commit_unknown_sends=lambda: saved.append(dict(store.commit_unknown_sends)),
+            )
+            self.assertTrue(coord.prune_missing_commit_unknown_sends(max_age_seconds=50.0))
 
-        with patch("codoxear.server.time.time", return_value=100.0):
-            self.assertTrue(SessionManager._prune_missing_commit_unknown_sends(mgr, max_age_seconds=50.0))
-
-        self.assertEqual(set(mgr._commit_unknown_sends), {"live", "recent_gone"})
+        self.assertEqual(set(commit_unknown_sends), {"live", "recent_gone"})
         self.assertEqual(saved, [{"live": {"text": "maybe live", "created_ts": 1.0}, "recent_gone": {"text": "maybe recent", "created_ts": 90.0}}])
 
     def test_match_session_route_requires_exact_suffix(self) -> None:
@@ -337,30 +494,72 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertIn(sid, mgr._pending_attachment_ids)
 
     def test_post_request_socket_failure_is_commit_unknown_even_if_pids_dead(self) -> None:
+        # SessionControlCoordinator.call_confirmed_send with the OS process
+        # liveness probe injected as ``pid_alive=lambda _: False`` (replaces
+        # former ``patch("codoxear.server._pid_alive", ...)``).  Post-request
+        # failure (request_sent=True) raises commit-unknown before the
+        # dead-process pruning branch, so the session survives.
         sid = "s1"
-        mgr = self._mgr()
-        mgr._sessions[sid] = _make_session(sid)
-        mgr._record_prelog_user_message = lambda *_args, **_kwargs: self.fail("post-request failure should not be recorded as submitted")  # type: ignore[method-assign]
-        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
-        mgr._sock_call = lambda *_args, **_kwargs: (_ for _ in ()).throw(ControlSocketCallError("reset", request_sent=True))  # type: ignore[method-assign]
+        session = _make_session(sid)
+        sessions = {sid: session}
+        coord = _control_coordinator(
+            sessions=sessions,
+            sock_call=lambda *_args, **_kwargs: (_ for _ in ()).throw(ControlSocketCallError("reset", request_sent=True)),
+            pid_alive=lambda _pid: False,
+        )
 
-        with patch("codoxear.server._pid_alive", return_value=False):
-            with self.assertRaisesRegex(SessionCommitUnknownError, "response failed"):
-                SessionManager.send(mgr, sid, "normal prompt")
-        self.assertIn(sid, mgr._sessions)
+        def raise_commit_unknown(message: str, cause: BaseException | None = None) -> None:
+            if cause is not None:
+                raise SessionCommitUnknownError(message) from cause
+            raise SessionCommitUnknownError(message)
+
+        with self.assertRaisesRegex(SessionCommitUnknownError, "response failed"):
+            coord.call_confirmed_send(
+                sid,
+                session=session,
+                sock=session.sock_path,
+                text="normal prompt",
+                timeout_s=30.0,
+                raise_commit_unknown=raise_commit_unknown,
+                not_ready_error=SessionNotReadyError,
+                timeout_errors=(TimeoutError,),
+            )
+        self.assertIn(sid, sessions)
 
     def test_pre_request_socket_failure_can_prune_dead_session(self) -> None:
+        # SessionControlCoordinator.call_confirmed_send with ``pid_alive``
+        # injected (replaces former ``patch("codoxear.server._pid_alive", ...)`
+        # ``).  Pre-request failure (request_sent=False) with dead processes
+        # prunes the session and raises KeyError.
         sid = "s1"
-        mgr = self._mgr()
-        mgr._sessions[sid] = _make_session(sid)
-        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
-        mgr._sock_call = lambda *_args, **_kwargs: (_ for _ in ()).throw(ControlSocketCallError("connect failed", request_sent=False))  # type: ignore[method-assign]
-        mgr._clear_deleted_session_state = lambda deleted_sid: mgr._sessions.pop(deleted_sid, None)  # type: ignore[method-assign]
+        session = _make_session(sid)
+        sessions = {sid: session}
 
-        with patch("codoxear.server._pid_alive", return_value=False):
-            with self.assertRaises(KeyError):
-                SessionManager.send(mgr, sid, "normal prompt")
-        self.assertNotIn(sid, mgr._sessions)
+        def clear_deleted(deleted_sid: str) -> None:
+            sessions.pop(deleted_sid, None)
+
+        coord = _control_coordinator(
+            sessions=sessions,
+            sock_call=lambda *_args, **_kwargs: (_ for _ in ()).throw(ControlSocketCallError("connect failed", request_sent=False)),
+            pid_alive=lambda _pid: False,
+            clear_deleted_session_state=clear_deleted,
+        )
+
+        def raise_commit_unknown(message: str, cause: BaseException | None = None) -> None:
+            raise SessionCommitUnknownError(message)
+
+        with self.assertRaises(KeyError):
+            coord.call_confirmed_send(
+                sid,
+                session=session,
+                sock=session.sock_path,
+                text="normal prompt",
+                timeout_s=30.0,
+                raise_commit_unknown=raise_commit_unknown,
+                not_ready_error=SessionNotReadyError,
+                timeout_errors=(TimeoutError,),
+            )
+        self.assertNotIn(sid, sessions)
 
     def test_send_explicit_commit_unknown_overrides_success_fields(self) -> None:
         sid = "s1"
@@ -453,63 +652,87 @@ class TestServerQueuePersistence(unittest.TestCase):
             SessionManager.attachment_injection_ready(mgr, sid)
 
     def test_queue_send_timeout_marks_head_commit_unknown(self) -> None:
+        # SessionQueueCoordinator.promote_head_if_sendable with ``now=123.0``
+        # injected (replaces former ``patch("codoxear.server.time.time", ...)``).
         sid = "s1"
-        mgr = self._mgr()
-        mgr._sessions[sid] = _make_session(sid)
-        mgr._queues[sid] = [_queue_item("q1", "queued first")]
-        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
-        mgr.send = lambda *_args, **_kwargs: (_ for _ in ()).throw(SessionCommitUnknownError("unknown"))  # type: ignore[method-assign]
-
-        with patch("codoxear.server.time.time", return_value=123.0):
-            resp = SessionManager._promote_queue_head_if_sendable(mgr, sid, require_idle_grace=False, expected_item_id="q1")
+        session = _make_session(sid)
+        sessions = {sid: session}
+        queues = {sid: [_queue_item("q1", "queued first")]}
+        with TemporaryDirectory() as td:
+            coord, _saves = _queue_coordinator(
+                sessions=sessions,
+                queues=queues,
+                queue_dir=Path(td),
+                now=123.0,
+                send=lambda *_args, **_kwargs: (_ for _ in ()).throw(SessionCommitUnknownError("unknown")),
+            )
+            resp = coord.promote_head_if_sendable(sid, require_idle_grace=False, expected_item_id="q1")
 
         self.assertTrue(resp and resp.get("commit_unknown"))
-        self.assertIsNone(mgr._sessions[sid].queue_sending_item_id)
-        self.assertTrue(mgr._queues[sid][0].get("commit_unknown"))
-        self.assertEqual(mgr._queues[sid][0].get("commit_unknown_ts"), 123.0)
+        self.assertIsNone(session.queue_sending_item_id)
+        self.assertTrue(queues[sid][0].get("commit_unknown"))
+        self.assertEqual(queues[sid][0].get("commit_unknown_ts"), 123.0)
 
     def test_queue_generic_pre_dispatch_failure_clears_pre_dispatch_unknown_marker(self) -> None:
+        # SessionQueueCoordinator.promote_head_if_sendable with ``now=111.0``
+        # injected.  Generic (non-retryable, non-commit-unknown) send failure
+        # clears the pre-dispatch commit-unknown marker.
         sid = "s1"
-        mgr = self._mgr()
-        mgr._sessions[sid] = _make_session(sid)
-        mgr._queues[sid] = [_queue_item("q1", "queued first")]
-        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
-        mgr.send = lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("pre-send readiness exploded"))  # type: ignore[method-assign]
-
-        with patch("codoxear.server.time.time", return_value=111.0):
-            self.assertIsNone(SessionManager._promote_queue_head_if_sendable(mgr, sid, require_idle_grace=False, expected_item_id="q1"))
-        self.assertIsNone(mgr._sessions[sid].queue_sending_item_id)
-        self.assertFalse(mgr._queues[sid][0].get("commit_unknown"))
+        session = _make_session(sid)
+        sessions = {sid: session}
+        queues = {sid: [_queue_item("q1", "queued first")]}
+        with TemporaryDirectory() as td:
+            coord, _saves = _queue_coordinator(
+                sessions=sessions,
+                queues=queues,
+                queue_dir=Path(td),
+                now=111.0,
+                send=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("pre-send readiness exploded")),
+            )
+            self.assertIsNone(coord.promote_head_if_sendable(sid, require_idle_grace=False, expected_item_id="q1"))
+        self.assertIsNone(session.queue_sending_item_id)
+        self.assertFalse(queues[sid][0].get("commit_unknown"))
 
     def test_queue_known_send_failure_clears_pre_dispatch_unknown_marker(self) -> None:
+        # SessionQueueCoordinator.promote_head_if_sendable with ``now=321.0``
+        # injected.  SessionInjectionError is a retryable send error, so the
+        # pre-dispatch commit-unknown marker is cleared.
         sid = "s1"
-        mgr = self._mgr()
-        mgr._sessions[sid] = _make_session(sid)
-        mgr._queues[sid] = [_queue_item("q1", "queued first")]
-        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
-
-        from codoxear.server import SessionInjectionError
-
-        mgr.send = lambda *_args, **_kwargs: (_ for _ in ()).throw(SessionInjectionError("no pty"))  # type: ignore[method-assign]
-
-        with patch("codoxear.server.time.time", return_value=321.0):
-            self.assertIsNone(SessionManager._promote_queue_head_if_sendable(mgr, sid, require_idle_grace=False, expected_item_id="q1"))
-        self.assertIsNone(mgr._sessions[sid].queue_sending_item_id)
-        self.assertFalse(mgr._queues[sid][0].get("commit_unknown"))
+        session = _make_session(sid)
+        sessions = {sid: session}
+        queues = {sid: [_queue_item("q1", "queued first")]}
+        with TemporaryDirectory() as td:
+            coord, _saves = _queue_coordinator(
+                sessions=sessions,
+                queues=queues,
+                queue_dir=Path(td),
+                now=321.0,
+                send=lambda *_args, **_kwargs: (_ for _ in ()).throw(SessionInjectionError("no pty")),
+            )
+            self.assertIsNone(coord.promote_head_if_sendable(sid, require_idle_grace=False, expected_item_id="q1"))
+        self.assertIsNone(session.queue_sending_item_id)
+        self.assertFalse(queues[sid][0].get("commit_unknown"))
 
     def test_queue_broker_declared_unknown_keeps_commit_unknown_marker(self) -> None:
+        # SessionQueueCoordinator.promote_head_if_sendable with ``now=654.0``
+        # injected.  SessionCommitUnknownError preserves the commit-unknown
+        # marker with the injected timestamp.
         sid = "s1"
-        mgr = self._mgr()
-        mgr._sessions[sid] = _make_session(sid)
-        mgr._queues[sid] = [_queue_item("q1", "queued first")]
-        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
-        mgr.send = lambda *_args, **_kwargs: (_ for _ in ()).throw(SessionCommitUnknownError("partial write"))  # type: ignore[method-assign]
-
-        with patch("codoxear.server.time.time", return_value=654.0):
-            resp = SessionManager._promote_queue_head_if_sendable(mgr, sid, require_idle_grace=False, expected_item_id="q1")
+        session = _make_session(sid)
+        sessions = {sid: session}
+        queues = {sid: [_queue_item("q1", "queued first")]}
+        with TemporaryDirectory() as td:
+            coord, _saves = _queue_coordinator(
+                sessions=sessions,
+                queues=queues,
+                queue_dir=Path(td),
+                now=654.0,
+                send=lambda *_args, **_kwargs: (_ for _ in ()).throw(SessionCommitUnknownError("partial write")),
+            )
+            resp = coord.promote_head_if_sendable(sid, require_idle_grace=False, expected_item_id="q1")
         self.assertTrue(resp and resp.get("commit_unknown"))
-        self.assertTrue(mgr._queues[sid][0].get("commit_unknown"))
-        self.assertEqual(mgr._queues[sid][0].get("commit_unknown_ts"), 654.0)
+        self.assertTrue(queues[sid][0].get("commit_unknown"))
+        self.assertEqual(queues[sid][0].get("commit_unknown_ts"), 654.0)
 
     def test_clear_pending_attachment_clears_persisted_flag(self) -> None:
         sid = "s1"
@@ -523,23 +746,30 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertNotIn(sid, mgr._pending_attachment_ids)
 
     def test_queue_head_is_durably_unknown_before_dispatch(self) -> None:
+        # SessionQueueCoordinator.promote_head_if_sendable with ``now=456.0``
+        # injected.  The head is marked commit-unknown *before* send is called,
+        # so the send callback observes the durable marker.
         sid = "s1"
-        mgr = self._mgr()
-        mgr._sessions[sid] = _make_session(sid)
-        mgr._queues[sid] = [_queue_item("q1", "queued first")]
-        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        session = _make_session(sid)
+        sessions = {sid: session}
+        queues = {sid: [_queue_item("q1", "queued first")]}
         observed: list[bool] = []
 
         def send(_sid: str, _text: str, **_kwargs: object) -> dict[str, object]:
-            observed.append(bool(mgr._queues[sid][0].get("commit_unknown")))
+            observed.append(bool(queues[sid][0].get("commit_unknown")))
             return {"queued": False, "queue_len": 0}
 
-        mgr.send = send  # type: ignore[method-assign]
-
-        with patch("codoxear.server.time.time", return_value=456.0):
-            self.assertEqual(SessionManager._promote_queue_head_if_sendable(mgr, sid, require_idle_grace=False, expected_item_id="q1"), {"queued": False, "queue_len": 0})
+        with TemporaryDirectory() as td:
+            coord, _saves = _queue_coordinator(
+                sessions=sessions,
+                queues=queues,
+                queue_dir=Path(td),
+                now=456.0,
+                send=send,
+            )
+            self.assertEqual(coord.promote_head_if_sendable(sid, require_idle_grace=False, expected_item_id="q1"), {"queued": False, "queue_len": 0})
         self.assertEqual(observed, [True])
-        self.assertNotIn(sid, mgr._queues)
+        self.assertNotIn(sid, queues)
 
     def test_commit_unknown_queue_head_does_not_auto_promote(self) -> None:
         sid = "s1"
@@ -883,20 +1113,31 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(saved_queues[-1][0]["orphan_recovery"], True)
 
     def test_prune_old_direct_unknown_preserves_plain_orphan_queue_tail(self) -> None:
-        mgr = self._mgr()
+        # SessionPendingStateCoordinator.prune_missing_commit_unknown_sends
+        # with ``now=10_000_000.0`` injected (replaces former
+        # ``patch("codoxear.server.time.time", ...)``).  Pruning the stale
+        # direct-unknown marks the orphan queue tail for recovery so it is not
+        # dropped by drop_missing_sessions.
         saved_queues: list[list[dict[str, object]]] = []
-        mgr._save_queues = lambda: saved_queues.append([dict(item) for item in mgr._queues.get("orphan", [])])  # type: ignore[method-assign]
-        mgr._commit_unknown_sends["orphan"] = {"text": "maybe direct", "created_ts": 1.0}
-        mgr._queues["orphan"] = [_queue_item("n", "plain tail")]
-
-        with patch("codoxear.server.time.time", return_value=10_000_000.0):
-            self.assertTrue(SessionManager._prune_missing_commit_unknown_sends(mgr, max_age_seconds=7 * 24 * 3600))
-        dropped = mgr._queue_store_for_manager().drop_missing_sessions(mgr._queues, set())
+        commit_unknown_sends = {"orphan": {"text": "maybe direct", "created_ts": 1.0}}
+        queues = {"orphan": [_queue_item("n", "plain tail")]}
+        with TemporaryDirectory() as td:
+            store = _session_store(Path(td))
+            store.commit_unknown_sends = commit_unknown_sends
+            store.queues = queues
+            coord = _pending_state_coordinator(
+                store=store,
+                sessions={},
+                now=10_000_000.0,
+                save_queues=lambda: saved_queues.append([dict(item) for item in queues.get("orphan", [])]),
+            )
+            self.assertTrue(coord.prune_missing_commit_unknown_sends(max_age_seconds=7 * 24 * 3600))
+            dropped = store.queue_store.drop_missing_sessions(queues, set())
 
         self.assertFalse(dropped)
-        self.assertNotIn("orphan", mgr._commit_unknown_sends)
-        self.assertIn("orphan", mgr._queues)
-        self.assertTrue(mgr._queues["orphan"][0]["orphan_recovery"])
+        self.assertNotIn("orphan", commit_unknown_sends)
+        self.assertIn("orphan", queues)
+        self.assertTrue(queues["orphan"][0]["orphan_recovery"])
         self.assertEqual(saved_queues[-1][0]["orphan_recovery"], True)
 
     def test_orphan_direct_unknown_can_be_cleared_without_active_session(self) -> None:
@@ -1498,35 +1739,51 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(mgr._queues.get(sid, []), [])
 
     def test_enqueue_surfaces_immediate_commit_unknown(self) -> None:
-        mgr = self._mgr()
+        # SessionQueueCoordinator.enqueue with ``now=777.0`` injected
+        # (replaces former ``patch("codoxear.server.time.time", ...)``).
+        # When the session is idle and the queue is empty, enqueue promotes the
+        # head immediately; a commit-unknown send error surfaces the marker.
         sid = "s1"
-        mgr._sessions[sid] = _make_session(sid)
-        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
-        mgr._record_prelog_user_message = lambda *_args, **_kwargs: self.fail("commit-unknown enqueue should not be recorded as submitted")  # type: ignore[method-assign]
-        mgr.send = lambda *_args, **_kwargs: (_ for _ in ()).throw(SessionCommitUnknownError("unknown"))  # type: ignore[method-assign]
-
-        with patch("codoxear.server.time.time", return_value=777.0):
-            resp = SessionManager.enqueue(mgr, sid, "maybe sent")
+        sessions = {sid: _make_session(sid)}
+        queues: dict[str, list[dict[str, Any]]] = {}
+        with TemporaryDirectory() as td:
+            coord, _saves = _queue_coordinator(
+                sessions=sessions,
+                queues=queues,
+                queue_dir=Path(td),
+                now=777.0,
+                send=lambda *_args, **_kwargs: (_ for _ in ()).throw(SessionCommitUnknownError("unknown")),
+            )
+            resp = coord.enqueue(sid, "maybe sent")
 
         self.assertTrue(resp.get("queued"))
         self.assertTrue(resp.get("commit_unknown"))
         self.assertTrue(resp.get("item", {}).get("commit_unknown"))
-        self.assertTrue(mgr._queues[sid][0].get("commit_unknown"))
+        self.assertTrue(queues[sid][0].get("commit_unknown"))
 
     def test_enqueue_explicit_commit_unknown_response_preserves_queue_item(self) -> None:
-        mgr = self._mgr()
+        # SessionQueueCoordinator.enqueue with ``now=778.0`` injected
+        # (replaces former ``patch("codoxear.server.time.time", ...)``).
+        # The send dependency raises SessionCommitUnknownError (equivalent to
+        # the broker declaring commit_unknown on the sock-call response, which
+        # the full send coordinator parses and re-raises — tested separately
+        # in the send-spec tests).
         sid = "s1"
-        mgr._sessions[sid] = _make_session(sid)
-        mgr._record_prelog_user_message = lambda *_args, **_kwargs: self.fail("commit-unknown enqueue should not be recorded as submitted")  # type: ignore[method-assign]
-        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
-        mgr._sock_call = lambda *_args, **_kwargs: {"queued": False, "queue_len": 0, "commit_unknown": True}  # type: ignore[method-assign]
-
-        with patch("codoxear.server.time.time", return_value=778.0):
-            resp = SessionManager.enqueue(mgr, sid, "maybe sent")
+        sessions = {sid: _make_session(sid)}
+        queues: dict[str, list[dict[str, Any]]] = {}
+        with TemporaryDirectory() as td:
+            coord, _saves = _queue_coordinator(
+                sessions=sessions,
+                queues=queues,
+                queue_dir=Path(td),
+                now=778.0,
+                send=lambda *_args, **_kwargs: (_ for _ in ()).throw(SessionCommitUnknownError("commit unknown")),
+            )
+            resp = coord.enqueue(sid, "maybe sent")
 
         self.assertTrue(resp.get("commit_unknown"))
-        self.assertIn(sid, mgr._queues)
-        self.assertTrue(mgr._queues[sid][0].get("commit_unknown"))
+        self.assertIn(sid, queues)
+        self.assertTrue(queues[sid][0].get("commit_unknown"))
 
     def test_enqueue_rejects_broker_without_sync_capability_before_append(self) -> None:
         mgr = self._mgr()
@@ -1593,14 +1850,14 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertTrue(items[1]["sending"])
 
     def test_load_queues_migrates_legacy_string_entries(self) -> None:
+        # QueueStore.load directly with a real temp file (replaces former
+        # ``patch("codoxear.server.QUEUE_PATH", ...)``).
         with TemporaryDirectory() as td:
             queue_path = Path(td) / "session_queues.json"
             queue_path.write_text(json.dumps({"s1": ["one", "two"]}), encoding="utf-8")
-            mgr = self._mgr()
-            with patch("codoxear.server.QUEUE_PATH", queue_path):
-                SessionManager._load_queues(mgr)
+            queues = QueueStore(queue_path).load()
 
-        items = mgr._queues["s1"]
+        items = queues["s1"]
         self.assertEqual([item["text"] for item in items], ["one", "two"])
         self.assertTrue(all(isinstance(item["id"], str) and item["id"] for item in items))
 
