@@ -47,7 +47,10 @@ class TestAuthCleanupSource(unittest.TestCase):
         ]:
             self.assertIn(f"if ({name}) clearTimeout({name});", cleanup)
             self.assertIn(f"{name} = null;", cleanup)
-        self.assertIn("chatSearchAllRuntime.dispose();", cleanup)
+        # Search cleanup is now owned by the CodoxearChatSearch controller;
+        # app.js only delegates through chatSearchController.dispose().
+        self.assertIn("if (chatSearchController) chatSearchController.dispose();", cleanup)
+        self.assertNotIn("chatSearchAllRuntime.dispose();", cleanup)
         self.assertNotIn("chatSearchAllAbort", cleanup)
         self.assertNotIn("chatSearchAllTimer", cleanup)
         self.assertIn("olderLoadRuntime.invalidate();", cleanup)
