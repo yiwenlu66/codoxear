@@ -5,6 +5,8 @@ from codoxear.diagnostics_routes import DiagnosticsRouteDeps
 from codoxear.diagnostics_routes import handle_diagnostics_get_route
 from codoxear.server import Session
 from codoxear.server import _match_session_route
+from codoxear.session_runtime import broker_runtime_state
+from codoxear.session_runtime import resolve_runtime_status
 
 
 class Handler:
@@ -42,6 +44,18 @@ class Manager:
 
     def idle_from_log(self, session_id):
         return self.idle
+
+    def _runtime_status_from_state_and_log(self, session_id, state, log_path):
+        log_available = log_path is not None and log_path.exists()
+        log_size = self._log_size_or_none(log_path)
+        boundary = self._confirmed_send_boundary_unresolved_for_session(session_id, log_path, log_size)
+        log_idle = self.idle_from_log(session_id) if log_available and not boundary else None
+        return resolve_runtime_status(
+            broker=broker_runtime_state(state),
+            log_exists=log_available,
+            log_idle=log_idle,
+            send_boundary_unresolved=boundary,
+        )
 
     def sidebar_meta_get(self, session_id):
         return dict(self.sidebar)

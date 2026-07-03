@@ -5,8 +5,6 @@ from pathlib import Path
 from typing import Any, Callable
 import time
 
-from .session_runtime import broker_runtime_state
-from .session_runtime import resolve_runtime_status
 from .session_runtime import select_runtime_token
 
 
@@ -47,17 +45,9 @@ def handle_diagnostics_get_route(
         deps.json_response(handler, 404, {"error": "unknown session"})
         return True
     state = manager.get_state(session_id)
-    broker_runtime = broker_runtime_state(state)
     log_available = s.log_path is not None and s.log_path.exists()
-    log_size = manager._log_size_or_none(s.log_path)
-    boundary_unresolved = manager._confirmed_send_boundary_unresolved_for_session(session_id, s.log_path, log_size)
-    log_idle = manager.idle_from_log(session_id) if log_available and not boundary_unresolved else None
-    runtime = resolve_runtime_status(
-        broker=broker_runtime,
-        log_exists=log_available,
-        log_idle=log_idle,
-        send_boundary_unresolved=boundary_unresolved,
-    )
+    runtime = manager._runtime_status_from_state_and_log(session_id, state, s.log_path)
+    broker_runtime = runtime.broker
     token_val = select_runtime_token(
         broker_state=state,
         session_token=s.token,
