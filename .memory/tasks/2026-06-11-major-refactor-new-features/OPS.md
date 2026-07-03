@@ -7972,3 +7972,14 @@
 ## 2026-07-03T03:10:30Z Workbench item 2 async architect review failure
 - Async read-only architect run `93c95499-132c-4b8a-96db-fed62884cae1` failed before producing a result: `Async runner process 619920 exited or disappeared before writing a result. Marked run failed by stale-run reconciliation.`
 - Interpretation: infrastructure-only negative observation. It produced no findings and therefore supports or refutes no code/architecture claim.
+
+## 2026-07-03T03:31:00Z Removed stale file viewer wrapper APIs
+- Functional cleanup commit `3c7bfda Remove stale file viewer wrapper APIs` removed app.js one-line wrappers that had no app-side callers after the file-viewer controller/runtime ownership moves. Deleted wrapper surfaces include pending-open identity helpers, remembered-selection/open-target helpers, editor capability predicates, touch-selection insert/move helpers, active-kind/version helpers, save/edit guard helpers, file-open mode/candidate helpers, unavailable-session disable wrapper, and the video-preview button wrapper.
+- Mechanism: the controller already owns these state transitions and predicates. Leaving dead wrappers in app.js made source probes and future edits treat app.js as a behavior owner even though runtime traffic had moved. App.js now keeps only live wrappers needed by dependency wiring, event binding, or cross-subsystem callback surfaces; the video-preview click binding calls `fileVideoPreviewRuntime.handleButtonPress()` directly.
+- Test probes migrated from app.js wrapper snippets to the module/controller APIs for unavailable-session disabling, open-target resolution, and editor capability predicates. This exposed and preserved the controller's real binary-file capability behavior: non-text active files do not enter writable edit mode.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app.js` passed.
+  - `node --check codoxear/static/app_file_viewer.js`, `app_file_picker.js`, and `app_file_editor.js` passed.
+  - `python3 -m py_compile tests/test_file_viewer_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_file_picker_search_source.py tests/test_markdown_tables.py` returned `96 passed, 25 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
