@@ -329,6 +329,62 @@ class TestStaticAssets(unittest.TestCase):
         self.assertNotIn('https://', sentinel_block)
         self.assertNotIn('http://', sentinel_block)
 
+    def test_index_html_has_bootstrap_marker_and_partial_root_fallback_gate(self) -> None:
+        source = INDEX_HTML.read_text(encoding="utf-8")
+        # Bootstrap-success marker installed by the early sentinel.
+        self.assertIn("window.__codoxearAppBootstrapped = false;", source)
+        self.assertIn("window.__codoxearMarkBootstrapped = function ()", source)
+        marker_index = source.index("window.__codoxearAppBootstrapped = false;")
+        first_deferred_index = source.index('app_url.js?v=__CODOXEAR_ASSET_VERSION__')
+        self.assertLess(marker_index, first_deferred_index)
+
+        # The fallback gate must render not only on empty #root but also when a
+        # load error was recorded yet bootstrap never completed (partial shell).
+        fn_start = source.index("function renderLoadErrorFallback(detail)")
+        fn_end = source.index("window.__codoxearRenderLoadErrorFallback", fn_start)
+        fn_block = source[fn_start:fn_end]
+        self.assertIn("var rootEmpty =", fn_block)
+        self.assertIn("var shouldRender =", fn_block)
+        self.assertIn(
+            "rootEmpty ||\n            (window.__codoxearLoadError && !window.__codoxearAppBootstrapped)",
+            fn_block,
+        )
+        # When #root holds a broken partial skeleton, it must be cleared so the
+        # fallback is the only visible surface (no silent overlay/hide).
+        self.assertIn('if (root && !rootEmpty) root.innerHTML = "";', fn_block)
+        # The load listener now delegates gating to the function unconditionally.
+        load_start = source.index('window.addEventListener("load"', fn_end)
+        load_end = source.index("})();", load_start)
+        load_block = source[load_start:load_end]
+        self.assertIn("renderLoadErrorFallback(window.__codoxearLoadError);", load_block)
+        self.assertNotIn("childNodes.length === 0", load_block)
+
+    def test_app_js_marks_bootstrap_after_login_and_app_shell(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        # renderLogin marks after the login form + handlers + focus are installed.
+        login_start = source.index("function renderLogin(onAuthed)")
+        login_end = source.index("function renderApp()", login_start)
+        login_block = source[login_start:login_end]
+        focus_idx = login_block.index("pwInput.focus();")
+        mark_idx = login_block.index(
+            'if (typeof window.__codoxearMarkBootstrapped === "function") window.__codoxearMarkBootstrapped();'
+        )
+        self.assertGreater(mark_idx, focus_idx)
+
+        # renderApp marks after the synchronous shell/controllers/handlers are
+        # built and activeAppCleanup = cleanupApp is set, before the async refresh.
+        app_start = source.index("function renderApp()")
+        app_end = source.index("(async function boot()", app_start)
+        app_block = source[app_start:app_end]
+        cleanup_assign_idx = app_block.index("activeAppCleanup = cleanupApp;")
+        app_mark_idx = app_block.index(
+            'if (typeof window.__codoxearMarkBootstrapped === "function") window.__codoxearMarkBootstrapped();',
+            cleanup_assign_idx,
+        )
+        async_iife_idx = app_block.index("(async () => {", app_mark_idx)
+        self.assertLess(cleanup_assign_idx, app_mark_idx)
+        self.assertLess(app_mark_idx, async_iife_idx)
+
     def test_static_cache_headers_default_to_no_store(self) -> None:
         self.assertEqual(
             _static_cache_control_headers(enabled=False),

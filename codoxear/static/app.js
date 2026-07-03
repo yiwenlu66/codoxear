@@ -695,6 +695,7 @@
           }
         };
         pwInput.focus();
+        if (typeof window.__codoxearMarkBootstrapped === "function") window.__codoxearMarkBootstrapped();
       }
 
 	      function renderApp() {
@@ -8512,6 +8513,7 @@
         };
 
         activeAppCleanup = cleanupApp;
+        if (typeof window.__codoxearMarkBootstrapped === "function") window.__codoxearMarkBootstrapped();
 
 	        (async () => {
 	          if (storageGetItem("codexweb.sidebarCollapsed") === "1") setSidebarCollapsed(true);

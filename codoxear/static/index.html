@@ -24,6 +24,15 @@
     <script>
       (function () {
         window.__codoxearLoadError = null;
+        // Bootstrap-success marker. Set by app.js once renderLogin()/renderApp()
+        // has constructed a valid synchronous UI shell. The load-error fallback
+        // uses this to decide whether a partially-populated #root is a usable
+        // app (leave it alone) or a broken skeleton from a mid-bootstrap throw
+        // (replace it with the visible error panel).
+        window.__codoxearAppBootstrapped = false;
+        window.__codoxearMarkBootstrapped = function () {
+          window.__codoxearAppBootstrapped = true;
+        };
         function record(message, source, lineno, colno, error) {
           window.__codoxearLoadError = {
             message: message || (error && error.message) || "unknown load error",
@@ -55,7 +64,21 @@
         });
         function renderLoadErrorFallback(detail) {
           var root = document.getElementById("root");
-          if (root && (root.childNodes.length || (root.textContent && root.textContent.trim()))) return;
+          var rootEmpty =
+            !root ||
+            (root.childNodes.length === 0 && !(root.textContent && root.textContent.trim()));
+          // Render the visible fallback when #root never received any UI, OR
+          // when a load error was recorded but the app never reached a valid
+          // bootstrap state (e.g. a fail-loud dependency threw after a partial
+          // shell was appended). When bootstrapping succeeded we keep the
+          // usable UI even if a later error was recorded.
+          var shouldRender =
+            rootEmpty ||
+            (window.__codoxearLoadError && !window.__codoxearAppBootstrapped);
+          if (!shouldRender) return;
+          // If #root holds a broken partial skeleton, clear it so the fallback
+          // panel is the only visible surface and stays self-contained.
+          if (root && !rootEmpty) root.innerHTML = "";
           var panel = document.createElement("div");
           panel.setAttribute("data-codoxear-load-error", "true");
           panel.style.cssText = [
@@ -111,10 +134,7 @@
         window.__codoxearRenderLoadErrorFallback = renderLoadErrorFallback;
         window.addEventListener("load", function () {
           window.setTimeout(function () {
-            var root = document.getElementById("root");
-            if (root && root.childNodes.length === 0 && !(root.textContent && root.textContent.trim())) {
-              renderLoadErrorFallback(window.__codoxearLoadError);
-            }
+            renderLoadErrorFallback(window.__codoxearLoadError);
           }, 0);
         });
       })();
