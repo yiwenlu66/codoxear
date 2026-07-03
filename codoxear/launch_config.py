@@ -552,50 +552,24 @@ def parse_new_session_launch_request(
     cwd = obj.get("cwd")
     if not isinstance(cwd, str) or not cwd.strip():
         raise LaunchRequestValidationError("cwd required", field="cwd")
-    if agent_backend == "codex":
-        allowed_providers = set(codex_launch_defaults_provider().get("model_providers") or ["openai"])
-        model_provider = normalize_requested_model_provider(
-            obj.get("model_provider"),
-            allowed=set(["openai", *[p for p in allowed_providers if p not in {"chatgpt", "openai-api"}]]),
-        )
-        preferred_auth_method = normalize_requested_preferred_auth_method(obj.get("preferred_auth_method"))
-        reasoning_effort = normalize_requested_reasoning_effort(obj.get("reasoning_effort"))
-        service_tier = normalize_requested_service_tier(obj.get("service_tier"))
-    elif agent_backend == "pi":
-        pi_launch_defaults = pi_launch_defaults_provider()
-        # Pi's CLI is the authority for provider names. The local defaults cache
-        # can be a partial/stale UI hint (for example custom providers only), so
-        # do not reject explicit provider names here before Pi can validate them.
-        model_provider = normalize_requested_model_provider(obj.get("model_provider"), allowed=None)
-        if obj.get("preferred_auth_method") not in (None, ""):
-            raise LaunchRequestValidationError(f"preferred_auth_method is not supported for {agent_backend}")
-        preferred_auth_method = None
-        service_tier = None
-    elif agent_backend == "cc":
-        if obj.get("model_provider") not in (None, ""):
-            raise LaunchRequestValidationError("model_provider is not supported for cc")
-        if obj.get("preferred_auth_method") not in (None, ""):
-            raise LaunchRequestValidationError(f"preferred_auth_method is not supported for {agent_backend}")
-        model_provider = None
-        preferred_auth_method = None
-        service_tier = None
-    else:
-        raise LaunchRequestValidationError(f"unsupported agent_backend: {agent_backend}")
-
     model = normalize_requested_model(obj.get("model"))
-    if agent_backend == "pi":
-        reasoning_effort = normalize_requested_pi_reasoning_effort(
-            obj.get("reasoning_effort"),
-            model_provider=model_provider,
-            model=model,
-            reasoning_efforts_by_model=pi_launch_defaults.get("reasoning_efforts_by_model") if isinstance(pi_launch_defaults, dict) else None,
-        )
-        if obj.get("service_tier") not in (None, ""):
-            raise LaunchRequestValidationError("service_tier is not supported for pi")
-    elif agent_backend == "cc":
-        reasoning_effort = normalize_requested_cc_reasoning_effort(obj.get("reasoning_effort"))
-        if obj.get("service_tier") not in (None, ""):
-            raise LaunchRequestValidationError("service_tier is not supported for cc")
+    options = get_agent_backend(agent_backend).normalize_launch_request_options(
+        obj,
+        model=model,
+        validation_error_type=LaunchRequestValidationError,
+        normalize_model_provider=normalize_requested_model_provider,
+        normalize_preferred_auth_method=normalize_requested_preferred_auth_method,
+        normalize_reasoning_effort=normalize_requested_reasoning_effort,
+        normalize_pi_reasoning_effort=normalize_requested_pi_reasoning_effort,
+        normalize_cc_reasoning_effort=normalize_requested_cc_reasoning_effort,
+        normalize_service_tier=normalize_requested_service_tier,
+        codex_launch_defaults_provider=codex_launch_defaults_provider,
+        pi_launch_defaults_provider=pi_launch_defaults_provider,
+    )
+    model_provider = options["model_provider"]
+    preferred_auth_method = options["preferred_auth_method"]
+    reasoning_effort = options["reasoning_effort"]
+    service_tier = options["service_tier"]
 
     create_in_tmux_raw = obj.get("create_in_tmux")
     if create_in_tmux_raw is None:

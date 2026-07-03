@@ -10,6 +10,13 @@ from codoxear.agent_backend import ClaudeCodeBackend
 from codoxear.agent_backend import CodexBackend
 from codoxear.agent_backend import PiBackend
 from codoxear.agent_backend import get_agent_backend
+from codoxear.launch_config import LaunchRequestValidationError
+from codoxear.launch_config import normalize_requested_cc_reasoning_effort
+from codoxear.launch_config import normalize_requested_model_provider
+from codoxear.launch_config import normalize_requested_pi_reasoning_effort
+from codoxear.launch_config import normalize_requested_preferred_auth_method
+from codoxear.launch_config import normalize_requested_reasoning_effort
+from codoxear.launch_config import normalize_requested_service_tier
 
 
 class TestBackendLaunchAdapter(unittest.TestCase):
@@ -27,6 +34,39 @@ class TestBackendLaunchAdapter(unittest.TestCase):
         self.assertNotIn('backend_name == "cc"', source)
         self.assertIn("get_agent_backend(agent_backend).build_launch_args(", source)
         self.assertIn("get_agent_backend(agent_backend).apply_launch_environment(", source)
+
+    def test_backend_adapters_normalize_launch_request_options(self) -> None:
+        kwargs = {
+            "validation_error_type": LaunchRequestValidationError,
+            "normalize_model_provider": normalize_requested_model_provider,
+            "normalize_preferred_auth_method": normalize_requested_preferred_auth_method,
+            "normalize_reasoning_effort": normalize_requested_reasoning_effort,
+            "normalize_pi_reasoning_effort": normalize_requested_pi_reasoning_effort,
+            "normalize_cc_reasoning_effort": normalize_requested_cc_reasoning_effort,
+            "normalize_service_tier": normalize_requested_service_tier,
+            "codex_launch_defaults_provider": lambda: {"model_providers": ["openai", "custom"]},
+            "pi_launch_defaults_provider": lambda: {"reasoning_efforts_by_model": {"macaron/gpt-pi": ["off", "high"]}},
+        }
+        codex = get_agent_backend("codex").normalize_launch_request_options(
+            {"model_provider": "custom", "preferred_auth_method": "apikey", "reasoning_effort": "high", "service_tier": "fast"},
+            model="gpt-codex",
+            **kwargs,
+        )
+        self.assertEqual(codex, {"model_provider": "custom", "preferred_auth_method": "apikey", "reasoning_effort": "high", "service_tier": "fast"})
+        pi = get_agent_backend("pi").normalize_launch_request_options(
+            {"model_provider": "macaron", "reasoning_effort": "high"},
+            model="gpt-pi",
+            **kwargs,
+        )
+        self.assertEqual(pi, {"model_provider": "macaron", "preferred_auth_method": None, "reasoning_effort": "high", "service_tier": None})
+        cc = get_agent_backend("cc").normalize_launch_request_options(
+            {"reasoning_effort": "max"},
+            model="sonnet",
+            **kwargs,
+        )
+        self.assertEqual(cc, {"model_provider": None, "preferred_auth_method": None, "reasoning_effort": "max", "service_tier": None})
+        with self.assertRaises(LaunchRequestValidationError):
+            get_agent_backend("cc").normalize_launch_request_options({"model_provider": "openai"}, model="sonnet", **kwargs)
 
     def test_backend_adapters_project_launch_default_metadata(self) -> None:
         codex = get_agent_backend("codex").project_launch_defaults(

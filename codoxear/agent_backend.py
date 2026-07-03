@@ -91,6 +91,23 @@ class AgentBackend:
         out.setdefault("supports_fast", False)
         return out
 
+    def normalize_launch_request_options(
+        self,
+        obj: Mapping[str, Any],
+        *,
+        model: str | None,
+        validation_error_type: type[ValueError],
+        normalize_model_provider: Callable[..., str | None],
+        normalize_preferred_auth_method: Callable[[Any], str | None],
+        normalize_reasoning_effort: Callable[[Any], str | None],
+        normalize_pi_reasoning_effort: Callable[..., str | None],
+        normalize_cc_reasoning_effort: Callable[[Any], str | None],
+        normalize_service_tier: Callable[[Any], str | None],
+        codex_launch_defaults_provider: Callable[[], dict[str, Any]],
+        pi_launch_defaults_provider: Callable[[], dict[str, Any]],
+    ) -> dict[str, str | None]:
+        raise NotImplementedError(f"{self.name} backend does not implement launch request normalization")
+
     def build_launch_args(
         self,
         *,
@@ -238,6 +255,33 @@ class CodexBackend(AgentBackend):
         out["supports_fast"] = True
         return out
 
+    def normalize_launch_request_options(
+        self,
+        obj: Mapping[str, Any],
+        *,
+        model: str | None,
+        validation_error_type: type[ValueError],
+        normalize_model_provider: Callable[..., str | None],
+        normalize_preferred_auth_method: Callable[[Any], str | None],
+        normalize_reasoning_effort: Callable[[Any], str | None],
+        normalize_pi_reasoning_effort: Callable[..., str | None],
+        normalize_cc_reasoning_effort: Callable[[Any], str | None],
+        normalize_service_tier: Callable[[Any], str | None],
+        codex_launch_defaults_provider: Callable[[], dict[str, Any]],
+        pi_launch_defaults_provider: Callable[[], dict[str, Any]],
+    ) -> dict[str, str | None]:
+        allowed_providers = set(codex_launch_defaults_provider().get("model_providers") or ["openai"])
+        model_provider = normalize_model_provider(
+            obj.get("model_provider"),
+            allowed=set(["openai", *[p for p in allowed_providers if p not in {"chatgpt", "openai-api"}]]),
+        )
+        return {
+            "model_provider": model_provider,
+            "preferred_auth_method": normalize_preferred_auth_method(obj.get("preferred_auth_method")),
+            "reasoning_effort": normalize_reasoning_effort(obj.get("reasoning_effort")),
+            "service_tier": normalize_service_tier(obj.get("service_tier")),
+        }
+
     def read_run_settings_from_log(
         self,
         log_path: Path,
@@ -328,6 +372,39 @@ class PiBackend(AgentBackend):
     ) -> tuple[str | None, str | None, str | None]:
         return read_pi_run_settings(log_path)
 
+    def normalize_launch_request_options(
+        self,
+        obj: Mapping[str, Any],
+        *,
+        model: str | None,
+        validation_error_type: type[ValueError],
+        normalize_model_provider: Callable[..., str | None],
+        normalize_preferred_auth_method: Callable[[Any], str | None],
+        normalize_reasoning_effort: Callable[[Any], str | None],
+        normalize_pi_reasoning_effort: Callable[..., str | None],
+        normalize_cc_reasoning_effort: Callable[[Any], str | None],
+        normalize_service_tier: Callable[[Any], str | None],
+        codex_launch_defaults_provider: Callable[[], dict[str, Any]],
+        pi_launch_defaults_provider: Callable[[], dict[str, Any]],
+    ) -> dict[str, str | None]:
+        pi_launch_defaults = pi_launch_defaults_provider()
+        model_provider = normalize_model_provider(obj.get("model_provider"), allowed=None)
+        if obj.get("preferred_auth_method") not in (None, ""):
+            raise validation_error_type(f"preferred_auth_method is not supported for {self.name}")
+        if obj.get("service_tier") not in (None, ""):
+            raise validation_error_type("service_tier is not supported for pi")
+        return {
+            "model_provider": model_provider,
+            "preferred_auth_method": None,
+            "reasoning_effort": normalize_pi_reasoning_effort(
+                obj.get("reasoning_effort"),
+                model_provider=model_provider,
+                model=model,
+                reasoning_efforts_by_model=pi_launch_defaults.get("reasoning_efforts_by_model") if isinstance(pi_launch_defaults, dict) else None,
+            ),
+            "service_tier": None,
+        }
+
     def message_keeps_turn_busy(self, obj: Mapping[str, Any]) -> bool:
         from .pi_log import pi_assistant_thinking_count
         from .pi_log import pi_assistant_tool_use_count
@@ -402,6 +479,34 @@ class ClaudeCodeBackend(AgentBackend):
         find_latest_turn_context: Callable[..., Any],
     ) -> tuple[str | None, str | None, str | None]:
         return read_cc_run_settings(log_path)
+
+    def normalize_launch_request_options(
+        self,
+        obj: Mapping[str, Any],
+        *,
+        model: str | None,
+        validation_error_type: type[ValueError],
+        normalize_model_provider: Callable[..., str | None],
+        normalize_preferred_auth_method: Callable[[Any], str | None],
+        normalize_reasoning_effort: Callable[[Any], str | None],
+        normalize_pi_reasoning_effort: Callable[..., str | None],
+        normalize_cc_reasoning_effort: Callable[[Any], str | None],
+        normalize_service_tier: Callable[[Any], str | None],
+        codex_launch_defaults_provider: Callable[[], dict[str, Any]],
+        pi_launch_defaults_provider: Callable[[], dict[str, Any]],
+    ) -> dict[str, str | None]:
+        if obj.get("model_provider") not in (None, ""):
+            raise validation_error_type("model_provider is not supported for cc")
+        if obj.get("preferred_auth_method") not in (None, ""):
+            raise validation_error_type(f"preferred_auth_method is not supported for {self.name}")
+        if obj.get("service_tier") not in (None, ""):
+            raise validation_error_type("service_tier is not supported for cc")
+        return {
+            "model_provider": None,
+            "preferred_auth_method": None,
+            "reasoning_effort": normalize_cc_reasoning_effort(obj.get("reasoning_effort")),
+            "service_tier": None,
+        }
 
     def message_keeps_turn_busy(self, obj: Mapping[str, Any]) -> bool:
         from .cc_log import cc_assistant_thinking_count
