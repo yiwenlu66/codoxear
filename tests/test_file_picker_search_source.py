@@ -127,9 +127,8 @@ def js_function(source: str, name: str) -> str:
 
 def eval_file_picker_search_helpers(state: dict) -> dict:
     source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function normalizeFileApiPath(value)")
-    end = source.index("async function getKnownFileRefCandidates() {", start)
     wrapper_names = [
+        "normalizeFileApiPath",
         "fileSearchScore",
         "normalizeDraftFilePath",
         "filePickerFoldedSearchText",
@@ -140,8 +139,8 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
         "compareFilePickerEntries",
         "normalizeFileCandidateSource",
     ]
-    snippet = "\n".join(js_function(source, name) for name in wrapper_names) + "\n" + source[start:end]
-    snippet_with_helpers = "const codoxearFileHelpers = window.CodoxearFileHelpers;\nconst codoxearFilePicker = window.CodoxearFilePicker;\n" + snippet + "\nglobalThis.__test_file_picker_search = { applyFileCandidateEntries, visibleFilePickerEntries, localFilePickerSearchEntries: (query) => codoxearFilePicker.localFilePickerSearchEntries(filePickerEntryContext(query), query) };\n"
+    snippet = "\n".join(js_function(source, name) for name in wrapper_names)
+    snippet_with_helpers = "const codoxearFileHelpers = window.CodoxearFileHelpers;\nconst codoxearFilePicker = window.CodoxearFilePicker;\n" + snippet
     display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
     file_helpers_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
     file_picker_source = APP_FILE_PICKER_JS.read_text(encoding="utf-8")
@@ -184,12 +183,31 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
         vm.runInContext({json.dumps(file_helpers_source)}, ctx);
         vm.runInContext({json.dumps(file_picker_source)}, ctx);
         vm.runInContext(`
-          const filePickerMenuState = window.CodoxearFilePicker.createMenuState({{ normalizeLineNumber }});
+          globalThis.filePickerMenuState = window.CodoxearFilePicker.createMenuState({{ normalizeLineNumber }});
           if (filePickerSearchActive) filePickerMenuState.handleInput(filePickerInput.value);
           if (filePickerSuppressDraftQuery) filePickerMenuState.openSearchQuery(filePickerSuppressDraftQuery, {{ suppressDraft: true }});
         `, ctx);
         vm.runInContext({json.dumps(snippet_with_helpers)}, ctx);
         vm.runInContext({json.dumps(js_candidate_controller_fixture())}, ctx);
+        vm.runInContext(`
+          globalThis.filePickerEntryRuntime = window.CodoxearFilePicker.createEntryRuntime({{
+            menuState: filePickerMenuState,
+            inputValue: () => filePickerInput.value,
+            candidateKeys: () => fileViewerController.currentFileCandidateKeys(),
+            entryForKey: (key) => fileViewerController.fileEntryForKey(key),
+            pickerEntryForKey: (key, options) => fileViewerController.pickerEntryForKey(key, options),
+            pickerEntryForPath: (path, options) => fileViewerController.pickerEntryForPath(path, options),
+            keyForPath: (path, gitPath, apiPath) => fileViewerController.fileCandidateKey(path, gitPath, apiPath),
+            activeFileDraft: () => currentActiveFileDraft(),
+            activeFilePath: () => activeFilePathValue(),
+            searchSnapshot: () => filePickerSearchState.snapshot(),
+          }});
+          globalThis.__test_file_picker_search = {{
+            applyFileCandidateEntries: (entries) => fileViewerController.applyFileCandidateEntries(entries),
+            visibleFilePickerEntries: () => filePickerEntryRuntime.visibleEntries(),
+            localFilePickerSearchEntries: (query) => window.CodoxearFilePicker.localFilePickerSearchEntries(filePickerEntryRuntime.entryContext(query), query),
+          }};
+        `, ctx);
         const seedEntries = state.fileEntries || (state.fileCandidateList || []).map((path) => ({{ path }}));
         ctx.__test_file_picker_search.applyFileCandidateEntries(seedEntries);
         const entries = ctx.__test_file_picker_search.visibleFilePickerEntries();
@@ -1130,11 +1148,8 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertIn('span.appendChild(createEl("mark", { class: "fileMenuMatch", text: value.slice(start, end) }));', block)
         self.assertIn("parent.appendChild(span);", block)
         self.assertNotIn("innerHTML", block)
-        app_start = source.index("function appendHighlightedFileMenuPath(parent, text, query) {")
-        app_end = source.index("function resetFileSearchState()", app_start)
-        app_block = source[app_start:app_end]
-        self.assertIn("return codoxearFilePicker.appendHighlightedFileMenuPath(parent, text, query, {", app_block)
-        self.assertNotIn("document.createTextNode(value.slice(cursor", app_block)
+        self.assertNotIn("function appendHighlightedFileMenuPath(parent, text, query) {", source)
+        self.assertNotIn("document.createTextNode(value.slice(cursor", source)
         self.assertIn("appendHighlightedFileMenuPath(btn, path, query, host);", picker_source)
         self.assertIn("appendHighlightedFileMenuPath(btn, `Create new file: ${path}`, query, host);", picker_source)
         self.assertIn("titleForEntry: (entry, hint) => filePickerTitle(entry, hint)", source)

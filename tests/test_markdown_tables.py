@@ -226,7 +226,7 @@ class TestMarkdownTables(unittest.TestCase):
         self.assertIn("ui.setPreserveSearchOnFocus(true);", (APP_JS.parent / "app_file_viewer.js").read_text(encoding="utf-8"))
         self.assertNotIn("function filePickerDraftSuppressed()", source)
         self.assertNotIn("function filePickerAmbiguousChoiceActive()", source)
-        self.assertIn("draftSuppressed: () => filePickerMenuState.draftSuppressed(filePickerInput.value)", source)
+        self.assertIn("draftSuppressed: () => Boolean(menuState && typeof menuState.draftSuppressed === \"function\" && menuState.draftSuppressed(inputValue()))", picker_source)
         self.assertIn("if (ambiguousChoiceActive(input.value)) {", picker_source)
         self.assertNotIn("const showDraft = draftPath && !filePickerDraftSuppressed();", source)
         self.assertIn("const showDraft = draftPath && !draftSuppressed();", picker_source)

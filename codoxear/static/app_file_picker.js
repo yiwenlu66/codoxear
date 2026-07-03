@@ -504,6 +504,55 @@
     return Object.freeze({ apply, close, resetInput, syncActiveDescendant });
   }
 
+  function createEntryRuntime(options = {}) {
+    const menuState = options.menuState || null;
+    const inputValue = requireFunction(options, "inputValue");
+    const candidateKeys = requireFunction(options, "candidateKeys");
+    const entryForKey = requireFunction(options, "entryForKey");
+    const pickerEntryForKey = requireFunction(options, "pickerEntryForKey");
+    const pickerEntryForPath = requireFunction(options, "pickerEntryForPath");
+    const keyForPath = requireFunction(options, "keyForPath");
+    const activeFileDraft = requireFunction(options, "activeFileDraft");
+    const activeFilePath = requireFunction(options, "activeFilePath");
+    const searchSnapshot = requireFunction(options, "searchSnapshot");
+
+    function draftEntry(path) {
+      return {
+        path,
+        additions: null,
+        deletions: null,
+        changed: false,
+        added: false,
+        score: 0,
+        createNew: true,
+      };
+    }
+
+    function entryContext(query = "") {
+      return {
+        candidateKeys: candidateKeys(),
+        entryForKey: (key) => entryForKey(key),
+        pickerEntryForKey: (key, options) => pickerEntryForKey(key, options),
+        pickerEntryForPath: (path, options) => pickerEntryForPath(path, options),
+        keyForPath: (path, gitPath, apiPath) => keyForPath(path, gitPath, apiPath),
+        draftEntry,
+        activeFileDraft: activeFileDraft(),
+        activeFilePath: activeFilePath(),
+        searchActive: Boolean(menuState && typeof menuState.isSearchActive === "function" && menuState.isSearchActive()),
+        query,
+        searchState: searchSnapshot(),
+        draftSuppressed: () => Boolean(menuState && typeof menuState.draftSuppressed === "function" && menuState.draftSuppressed(inputValue())),
+      };
+    }
+
+    function visibleEntries() {
+      const query = menuState && typeof menuState.visibleQuery === "function" ? menuState.visibleQuery(inputValue()) : "";
+      return visibleFilePickerEntries(entryContext(query));
+    }
+
+    return Object.freeze({ draftEntry, entryContext, visibleEntries });
+  }
+
   function visibleFilePickerEntries(context) {
     const searchState = (context && context.searchState) || {};
     const query = context && context.searchActive ? String((context && context.query) || "").trim() : "";
@@ -876,6 +925,7 @@
     appendFilePickerSection,
     appendFilePickerStatusRow,
     appendHighlightedFileMenuPath,
+    createEntryRuntime,
     createInputRuntime,
     createMenuDomRuntime,
     createMenuRenderRuntime,
