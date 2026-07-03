@@ -1013,6 +1013,36 @@
     return Object.freeze({ refresh });
   }
 
+  function createFileInspectRuntime(options = {}) {
+    const currentSessionId = requireFunction(options.currentSessionId, "currentSessionId");
+    const selectedSessionId = requireFunction(options.selectedSessionId, "selectedSessionId");
+    const normalizeFileApiPath = requireFunction(options.normalizeFileApiPath, "normalizeFileApiPath");
+    const api = requireFunction(options.api, "api");
+
+    async function inspectSessionFilePath(path, { gitPath = false, apiPath = "" } = {}) {
+      const sid = currentSessionId() || selectedSessionId() || "";
+      if (!sid) throw new Error("select a session first");
+      try {
+        const body = { session_id: sid, path };
+        if (gitPath) {
+          body.git_path = true;
+          const token = normalizeFileApiPath(apiPath);
+          if (token) body.path_token = token;
+        }
+        const res = await api("/api/files/inspect", {
+          method: "POST",
+          body,
+        });
+        return { exists: true, ...res };
+      } catch (error) {
+        if (error && error.status === 404) return { exists: false };
+        throw error;
+      }
+    }
+
+    return Object.freeze({ inspectSessionFilePath });
+  }
+
   function createFileReferenceRuntime(options = {}) {
     const selectedSessionId = requireFunction(options.selectedSessionId, "selectedSessionId");
     const sessionById = requireFunction(options.sessionById, "sessionById");
@@ -3645,6 +3675,7 @@
     bindFileTouchPress,
     createFileDownloadRuntime,
     createFileFallbackRuntime,
+    createFileInspectRuntime,
     createFileLoadResultRuntime,
     createFileCandidateRefreshRuntime,
     createFileViewerPanelRuntime,

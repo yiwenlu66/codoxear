@@ -1734,11 +1734,59 @@ def run_file_viewer_pdf_loader_probe() -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
+def run_file_inspect_runtime_probe() -> dict[str, object]:
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}}, calls: [], currentSid: "", selectedSid: "sid-selected", notFound: false }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const runtime = ctx.window.CodoxearFileViewer.createFileInspectRuntime({{
+          currentSessionId: () => ctx.currentSid,
+          selectedSessionId: () => ctx.selectedSid,
+          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+          api: async (url, options) => {{
+            ctx.calls.push([url, options]);
+            if (ctx.notFound) {{ const err = new Error("missing"); err.status = 404; throw err; }}
+            return {{ kind: "text", path: "/abs/" + options.body.path }};
+          }},
+        }});
+        (async () => {{
+          const selectedResult = await runtime.inspectSessionFilePath("src/app.py");
+          ctx.currentSid = "sid-current";
+          const gitResult = await runtime.inspectSessionFilePath("src/app.py", {{ gitPath: true, apiPath: "tok" }});
+          ctx.notFound = true;
+          const missingResult = await runtime.inspectSessionFilePath("missing.py");
+          ctx.currentSid = "";
+          ctx.selectedSid = "";
+          let noSessionMessage = "";
+          try {{ await runtime.inspectSessionFilePath("x.py"); }} catch (err) {{ noSessionMessage = err && err.message || String(err); }}
+          process.stdout.write(JSON.stringify({{ selectedResult, gitResult, missingResult, noSessionMessage, calls: ctx.calls }}));
+        }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 class TestFrontendFileViewerModuleSource(unittest.TestCase):
+    def test_file_inspect_runtime_owns_request_body_and_404_policy(self) -> None:
+        result = run_file_inspect_runtime_probe()
+        self.assertEqual(result["selectedResult"], {"exists": True, "kind": "text", "path": "/abs/src/app.py"})
+        self.assertEqual(result["gitResult"], {"exists": True, "kind": "text", "path": "/abs/src/app.py"})
+        self.assertEqual(result["missingResult"], {"exists": False})
+        self.assertEqual(result["noSessionMessage"], "select a session first")
+        self.assertEqual(result["calls"], [
+            ["/api/files/inspect", {"method": "POST", "body": {"session_id": "sid-selected", "path": "src/app.py"}}],
+            ["/api/files/inspect", {"method": "POST", "body": {"session_id": "sid-current", "path": "src/app.py", "git_path": True, "path_token": "tok"}}],
+            ["/api/files/inspect", {"method": "POST", "body": {"session_id": "sid-current", "path": "missing.py"}}],
+        ])
+
     def test_file_viewer_controller_owns_save_conflict_behavior(self) -> None:
         result = run_file_viewer_controller_probe()
         self.assertTrue(result["render"]["exportFrozen"])
-        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFileCandidateRefreshRuntime", "createFileDownloadRuntime", "createFileFallbackRuntime", "createFileLoadResultRuntime", "createFileModeControlsRuntime", "createFilePasteDialogRuntime", "createFilePdfRenderRuntime", "createFileReferenceRuntime", "createFileRenderSurfaceRuntime", "createFileTouchToolbarRuntime", "createFileUnsavedDialogRuntime", "createFileViewerController", "createFileViewerLifecycleRuntime", "createFileViewerModalRuntime", "createFileViewerPanelRuntime", "createOpenedFileRuntime", "createPdfLoader"])
+        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFileCandidateRefreshRuntime", "createFileDownloadRuntime", "createFileFallbackRuntime", "createFileInspectRuntime", "createFileLoadResultRuntime", "createFileModeControlsRuntime", "createFilePasteDialogRuntime", "createFilePdfRenderRuntime", "createFileReferenceRuntime", "createFileRenderSurfaceRuntime", "createFileTouchToolbarRuntime", "createFileUnsavedDialogRuntime", "createFileViewerController", "createFileViewerLifecycleRuntime", "createFileViewerModalRuntime", "createFileViewerPanelRuntime", "createOpenedFileRuntime", "createPdfLoader"])
         self.assertEqual(result["render"]["conflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["currentConflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["labelText"], "src/app.py - save conflict: version mismatch")
@@ -2425,6 +2473,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn("const codoxearFileViewer = window.CodoxearFileViewer;", app_source)
         self.assertIn('typeof codoxearFileViewer.createFileDownloadRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileFallbackRuntime !== "function"', app_source)
+        self.assertIn('typeof codoxearFileViewer.createFileInspectRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileCandidateRefreshRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileViewerPanelRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileViewerLifecycleRuntime !== "function"', app_source)
@@ -2447,6 +2496,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn("bindFileTouchClick", viewer_source)
         self.assertIn("createFileDownloadRuntime", viewer_source)
         self.assertIn("createFileFallbackRuntime", viewer_source)
+        self.assertIn("createFileInspectRuntime", viewer_source)
         self.assertIn("createFileCandidateRefreshRuntime", viewer_source)
         self.assertIn("createFileViewerPanelRuntime", viewer_source)
         self.assertIn("createFileViewerLifecycleRuntime", viewer_source)

@@ -582,6 +582,7 @@
         typeof codoxearFileViewer.bindFileTouchPress !== "function" ||
         typeof codoxearFileViewer.createFileDownloadRuntime !== "function" ||
         typeof codoxearFileViewer.createFileFallbackRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileInspectRuntime !== "function" ||
         typeof codoxearFileViewer.createFileLoadResultRuntime !== "function" ||
         typeof codoxearFileViewer.createFileCandidateRefreshRuntime !== "function" ||
         typeof codoxearFileViewer.createFileViewerPanelRuntime !== "function" ||
@@ -7645,6 +7646,13 @@
           return fileUnsavedDialogRuntime.promptChoice(document.activeElement, HTMLElement);
         }
 
+        const fileInspectRuntime = codoxearFileViewer.createFileInspectRuntime({
+          currentSessionId: () => currentFileViewerSessionId(),
+          selectedSessionId: () => selected,
+          normalizeFileApiPath: (value) => normalizeFileApiPath(value),
+          api: (url, options) => api(url, options),
+        });
+
         const fileViewerController = codoxearFileViewer.createFileViewerController({
           el,
           fileStatus,
@@ -7668,7 +7676,7 @@
           resetFileViewerPanel: () => resetFileViewerPanel(),
           applyFileLoadResult: (rel, result, request, options) => applyFileLoadResult(rel, result, request, options),
           normalizeDraftFilePath: (path) => normalizeDraftFilePath(path),
-          inspectSessionFilePath: (path, options) => inspectSessionFilePath(path, options),
+          inspectSessionFilePath: (path, options) => fileInspectRuntime.inspectSessionFilePath(path, options),
           api: (url, options) => api(url, options),
           focusEditor: () => fileEditorRuntime.focusActiveCodeEditor(currentFileEditorKind()),
           disposeOpenRender: () => disposePdfRender(),
@@ -7983,27 +7991,6 @@
 
         function isGitFileCandidatePath(path, changed = null, gitPath = null, apiPath = "") {
           return fileViewerController.isGitFileCandidatePath(path, changed, gitPath, apiPath);
-        }
-
-        async function inspectSessionFilePath(path, { gitPath = false, apiPath = "" } = {}) {
-          const sid = currentFileViewerSessionId() || selected || "";
-          if (!sid) throw new Error("select a session first");
-          try {
-            const body = { session_id: sid, path };
-            if (gitPath) {
-              body.git_path = true;
-              const token = normalizeFileApiPath(apiPath);
-              if (token) body.path_token = token;
-            }
-            const res = await api("/api/files/inspect", {
-              method: "POST",
-              body,
-            });
-            return { exists: true, ...res };
-          } catch (e) {
-            if (e && e.status === 404) return { exists: false };
-            throw e;
-          }
         }
 
         async function resolveFileOpenMode(path, { changed = null, gitPath = null, apiPath = "" } = {}) {
