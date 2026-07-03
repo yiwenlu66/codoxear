@@ -64,6 +64,103 @@ def test_session_store_file_history_clear_removes_session_and_cwd_legacy_keys() 
     assert store.files == {"sid:other": ["keep.py"]}
 
 
+def test_session_store_clear_deleted_session_state_cleans_persistent_maps_and_cwd_history() -> None:
+    mgr = SessionManager.__new__(SessionManager)
+    mgr._lock = threading.Lock()
+    store = mgr._session_store_for_manager()
+    store.aliases = {"s1": "alpha", "keep": "beta"}
+    store.hidden_sessions = {"s1", "keep"}
+    store.sidebar_meta = {
+        "s1": {"priority_offset": 0.5},
+        "dependent": {"priority_offset": 0.0, "dependency_session_id": "s1"},
+        "keep": {"dependency_session_id": "other"},
+    }
+    store.unattended = {"s1": {"enabled": True}, "keep": {"enabled": True}}
+    store.files = {"sid:s1": ["new.py"], "s1": ["old.py"], "cwd:/repo": ["leak.py"], "sid:keep": ["keep.py"]}
+    store.pending_attachment_ids = {"s1", "keep"}
+    store.commit_unknown_sends = {"s1": {"text": "maybe", "created_ts": 1.0}, "keep": {"text": "keep", "created_ts": 2.0}}
+    store.queues = {"s1": [{"id": "q1", "text": "later"}], "keep": [{"id": "q2", "text": "keep"}]}
+
+    changes = store.clear_deleted_session_state("s1", clear_recovery=True, cwd="/repo")
+
+    assert changes.aliases is True
+    assert changes.hidden_sessions is True
+    assert changes.sidebar_meta is True
+    assert changes.unattended is True
+    assert changes.files is True
+    assert changes.pending_attachments is True
+    assert changes.commit_unknown_sends is True
+    assert changes.queues is True
+    assert store.aliases == {"keep": "beta"}
+    assert store.hidden_sessions == {"keep"}
+    assert store.sidebar_meta == {"dependent": {"priority_offset": 0.0}, "keep": {"dependency_session_id": "other"}}
+    assert store.unattended == {"keep": {"enabled": True}}
+    assert store.files == {"sid:keep": ["keep.py"]}
+    assert store.pending_attachment_ids == {"keep"}
+    assert store.commit_unknown_sends == {"keep": {"text": "keep", "created_ts": 2.0}}
+    assert store.queues == {"keep": [{"id": "q2", "text": "keep"}]}
+
+
+def test_session_store_clear_deleted_session_state_preserves_recovery_queue_until_explicit() -> None:
+    mgr = SessionManager.__new__(SessionManager)
+    mgr._lock = threading.Lock()
+    store = mgr._session_store_for_manager()
+    store.commit_unknown_sends = {"s1": {"text": "maybe direct", "created_ts": 1.0}}
+    store.queues = {"s1": [{"id": "q1", "text": "later"}]}
+
+    changes = store.clear_deleted_session_state("s1")
+
+    assert changes.queues is True
+    assert changes.commit_unknown_sends is False
+    assert store.commit_unknown_sends == {"s1": {"text": "maybe direct", "created_ts": 1.0}}
+    assert store.queues == {"s1": [{"id": "q1", "text": "later", "orphan_recovery": True}]}
+
+    changes = store.clear_deleted_session_state("s1", clear_recovery=True)
+
+    assert changes.queues is True
+    assert changes.commit_unknown_sends is True
+    assert store.commit_unknown_sends == {}
+    assert store.queues == {}
+
+
+def test_session_store_deleted_state_save_order_uses_changed_maps_only() -> None:
+    mgr = SessionManager.__new__(SessionManager)
+    mgr._lock = threading.Lock()
+    store = mgr._session_store_for_manager()
+    calls: list[str] = []
+    changes = store.clear_deleted_session_state("missing")
+
+    store.save_deleted_session_state_changes(
+        changes,
+        save_pending_attachments=lambda: calls.append("pending"),
+        save_commit_unknown_sends=lambda: calls.append("unknown"),
+        save_aliases=lambda: calls.append("aliases"),
+        save_sidebar_meta=lambda: calls.append("sidebar"),
+        save_hidden_sessions=lambda: calls.append("hidden"),
+        save_unattended=lambda: calls.append("unattended"),
+        save_files=lambda: calls.append("files"),
+        save_queues=lambda: calls.append("queues"),
+    )
+    assert calls == []
+
+    store.aliases = {"s1": "alpha"}
+    store.hidden_sessions = {"s1"}
+    store.pending_attachment_ids = {"s1"}
+    changes = store.clear_deleted_session_state("s1")
+    store.save_deleted_session_state_changes(
+        changes,
+        save_pending_attachments=lambda: calls.append("pending"),
+        save_commit_unknown_sends=lambda: calls.append("unknown"),
+        save_aliases=lambda: calls.append("aliases"),
+        save_sidebar_meta=lambda: calls.append("sidebar"),
+        save_hidden_sessions=lambda: calls.append("hidden"),
+        save_unattended=lambda: calls.append("unattended"),
+        save_files=lambda: calls.append("files"),
+        save_queues=lambda: calls.append("queues"),
+    )
+    assert calls == ["pending", "aliases", "hidden"]
+
+
 def test_session_store_sidebar_state_repairs_invalid_dependency_and_expired_snooze() -> None:
     mgr = SessionManager.__new__(SessionManager)
     mgr._lock = threading.Lock()

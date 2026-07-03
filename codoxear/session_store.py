@@ -25,6 +25,18 @@ class SidebarSessionState:
 
 
 @dataclass(frozen=True)
+class DeletedSessionStateChanges:
+    aliases: bool = False
+    sidebar_meta: bool = False
+    hidden_sessions: bool = False
+    unattended: bool = False
+    files: bool = False
+    queues: bool = False
+    pending_attachments: bool = False
+    commit_unknown_sends: bool = False
+
+
+@dataclass(frozen=True)
 class SessionStorePaths:
     aliases: Path
     sidebar_meta: Path
@@ -317,3 +329,106 @@ class SessionStore:
             self.recent_cwds[cwd] = updated_ts
             return True
         return False
+
+    def clear_deleted_session_state(
+        self,
+        session_id: str,
+        *,
+        clear_recovery: bool = False,
+        cwd: str = "",
+    ) -> DeletedSessionStateChanges:
+        aliases_changed = False
+        sidebar_changed = False
+        hidden_changed = False
+        unattended_changed = False
+        files_changed = False
+        queues_changed = False
+        pending_changed = False
+        unknown_changed = False
+
+        if session_id in self.aliases:
+            self.aliases.pop(session_id, None)
+            aliases_changed = True
+
+        if session_id in self.hidden_sessions:
+            self.hidden_sessions.discard(session_id)
+            hidden_changed = True
+
+        if session_id in self.sidebar_meta:
+            self.sidebar_meta.pop(session_id, None)
+            sidebar_changed = True
+        for entry in self.sidebar_meta.values():
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("dependency_session_id") != session_id:
+                continue
+            entry.pop("dependency_session_id", None)
+            sidebar_changed = True
+
+        if session_id in self.unattended:
+            self.unattended.pop(session_id, None)
+            unattended_changed = True
+
+        if self.clear_file_history_for_keys(f"sid:{session_id}", [session_id], cwd=cwd):
+            files_changed = True
+
+        if session_id in self.pending_attachment_ids:
+            self.pending_attachment_ids.discard(session_id)
+            pending_changed = True
+
+        has_direct_unknown = session_id in self.commit_unknown_sends
+        queue = self.queues.get(session_id)
+        if isinstance(queue, list):
+            has_queued_recovery = self.queue_store.has_recovery_items(self.queues, session_id)
+            if queue and has_direct_unknown:
+                if self.queue_store.mark_orphan_recovery_items(self.queues, session_id):
+                    queues_changed = True
+                has_queued_recovery = True
+            if clear_recovery or not has_queued_recovery:
+                self.queues.pop(session_id, None)
+                queues_changed = True
+
+        if clear_recovery and has_direct_unknown:
+            self.commit_unknown_sends.pop(session_id, None)
+            unknown_changed = True
+
+        return DeletedSessionStateChanges(
+            aliases=aliases_changed,
+            sidebar_meta=sidebar_changed,
+            hidden_sessions=hidden_changed,
+            unattended=unattended_changed,
+            files=files_changed,
+            queues=queues_changed,
+            pending_attachments=pending_changed,
+            commit_unknown_sends=unknown_changed,
+        )
+
+    def save_deleted_session_state_changes(
+        self,
+        changes: DeletedSessionStateChanges,
+        *,
+        save_aliases: Callable[[], None],
+        save_sidebar_meta: Callable[[], None],
+        save_hidden_sessions: Callable[[], None],
+        save_unattended: Callable[[], None],
+        save_files: Callable[[], None],
+        save_queues: Callable[[], None],
+        save_pending_attachments: Callable[[], None],
+        save_commit_unknown_sends: Callable[[], None],
+    ) -> None:
+        if changes.pending_attachments:
+            save_pending_attachments()
+        if changes.commit_unknown_sends:
+            save_commit_unknown_sends()
+        if changes.aliases:
+            save_aliases()
+        if changes.sidebar_meta:
+            save_sidebar_meta()
+        if changes.hidden_sessions:
+            save_hidden_sessions()
+        if changes.unattended:
+            save_unattended()
+        if changes.files:
+            save_files()
+        if changes.queues:
+            save_queues()

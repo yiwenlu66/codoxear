@@ -23,7 +23,6 @@ class SessionLifecycleCoordinator:
     read_launch_attempts: Callable[[], Iterable[dict[str, Any]]]
     launch_attempt_row: Callable[[dict[str, Any]], dict[str, Any] | None]
     hide_session: Callable[[str], None]
-    files_clear: Callable[[str], None]
     clean_optional_text: Callable[[Any], str | None] = lambda value: value if isinstance(value, str) and value.strip() else None
     kill_session_via_pids_fallback: Callable[[Session], bool] | None = None
 
@@ -106,10 +105,10 @@ class SessionLifecycleCoordinator:
         ok = self.kill_session(session_id)
         if ok:
             launch_id = session.launch_id
-            self.files_clear(session_id)
+            cwd = session.cwd
             with self.lock:
                 self.sessions().pop(session_id, None)
             if launch_id:
                 self.hide_session(launch_id)
-            self.clear_deleted_session_state(session_id, clear_recovery=True)
+            self.clear_deleted_session_state(session_id, clear_recovery=True, cwd=cwd)
         return ok

@@ -257,6 +257,17 @@ class QueueStore:
             return False
         return any(isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery"))) for item in q)
 
+    def mark_orphan_recovery_items(self, queues: QueueMap, session_id: str) -> bool:
+        q = queues.get(session_id)
+        if not isinstance(q, list) or not q:
+            return False
+        changed = False
+        for item in q:
+            if isinstance(item, dict) and not bool(item.get("orphan_recovery")):
+                item["orphan_recovery"] = True
+                changed = True
+        return changed
+
     def promotion_head(self, queues: QueueMap, session_id: str, *, expected_item_id: str | None = None) -> QueuePromotionHead | None:
         q = queues.get(session_id)
         if not isinstance(q, list) or not q:

@@ -48,15 +48,7 @@ class SessionQueueCoordinator:
         qmap = self.queues()
         if not isinstance(qmap, dict):
             return False
-        q = qmap.get(session_id)
-        if not isinstance(q, list) or not q:
-            return False
-        changed = False
-        for item in q:
-            if isinstance(item, dict) and not bool(item.get("orphan_recovery")):
-                item["orphan_recovery"] = True
-                changed = True
-        return changed
+        return self.queue_store().mark_orphan_recovery_items(qmap, session_id)
 
     def has_recovery_items_locked(self, session_id: str) -> bool:
         qmap = self.queues()

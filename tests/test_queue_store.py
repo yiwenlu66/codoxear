@@ -135,6 +135,15 @@ class TestQueueStore(unittest.TestCase):
         self.assertEqual(store.delete(queues, "s1", "r", allow_orphan_recovery=True), 1)
         self.assertEqual([item["id"] for item in queues["s1"]], ["n"])
 
+    def test_mark_orphan_recovery_items_marks_all_preserved_queue_items(self) -> None:
+        store = QueueStore(Path("/tmp/unused.json"))
+        queues = {"s1": [{"id": "a", "text": "one"}, {"id": "b", "text": "two", "orphan_recovery": True}]}
+
+        self.assertTrue(store.mark_orphan_recovery_items(queues, "s1"))
+        self.assertTrue(queues["s1"][0]["orphan_recovery"])
+        self.assertTrue(queues["s1"][1]["orphan_recovery"])
+        self.assertFalse(store.mark_orphan_recovery_items(queues, "s1"))
+
     def test_drop_missing_sessions_preserves_unknown_queue_evidence(self) -> None:
         with TemporaryDirectory() as td:
             path = Path(td) / "queues.json"
