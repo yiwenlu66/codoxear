@@ -54,3 +54,14 @@
 - Worktree branch verified with throwaway git repo created only inside sandbox at `/tmp/codoxear-ui-git`: cwd classification showed worktree field; toggling worktree enabled branch input and changed start button to `Create worktree session`. Pi start path then created real live session `broker-255` from `/workspace` using `deepseek/deepseek-v4-flash`. Screenshots: d29 (dialog), d30 (created session). Committed functional pass 2 as `31a08b0`.
 - Test-architecture contracts landed: `5bd9b4c` converted `tests/test_unattended_sweep.py` (14 cases, 17 monkeypatch sites + SessionManager.__new__ scaffold removed; 27 passed); `aecbba0` converted `tests/test_session_sidebar_priority.py` (20 cases, server/path/process patches removed; 34 passed).
 - Dispatched queue contracts `56e5353b`: `tests/test_queue_sweep_idle_guard.py` and `tests/test_server_queue_persistence.py`, disjoint file scopes. Acceptance/Docker waits until these in-flight edits are resolved.
+
+## 2026-07-04T17:55:00Z Remaining test clusters landed; acceptance validation current
+- Converted and committed remaining internal-seam clusters:
+  - `e5a3795` `tests/test_stale_sidecars.py`: discovery/refresh stale-sidecar tests now drive discovery/registry/refresh coordinators with injected process/socket/filesystem/time boundaries; 38 passed, 3 subtests.
+  - `5223759` `tests/test_launch_provenance.py`: launch attempt/failure-row/provenance tests now use launch ledger/list/prune/lifecycle seams directly; 29 passed, 12 subtests.
+  - `770cec6` `tests/test_queue_sweep_idle_guard.py`: queue-sweep idle/readiness tests now use real SessionReadinessCoordinator/runtime status and real log idle parsing; 23 passed.
+  - `f724c30` `tests/test_server_queue_persistence.py`: queue persistence/commit-unknown tests now use QueueStore, SessionQueueCoordinator, SessionPendingStateCoordinator, SessionControlCoordinator with injected time/pid/queue path; 106 passed, 22 subtests.
+- Full local validation after all commits: `1359 passed, 132 subtests passed`.
+- Docker validation: `CODOXEAR_DOCKER_PORT=19086 scripts/codoxear-docker-sandbox test` -> `1358 passed, 1 skipped, 132 subtests passed`; `CODOXEAR_DOCKER_PORT=19087 scripts/codoxear-docker-sandbox smoke` -> pre-login `/api/me` 401, post-login `/api/sessions` 200.
+- Clean-browser check on smoke sandbox 19087: login works; empty state shown (`No sessions yet`, centered `Start a session...` CTA); `window.CodoxearLaunch`, `window.CodoxearDisplay`, and `window.CodoxearNewSession` all true; no `__codoxearLoadError`; New Session opens with cwd input, backend label `Codex`, name placeholder `session-name`, resume label `Start fresh`. Screenshot d31.
+- Dispatched clean-room critic c6109f6e after validation. Acceptance pending review result.
