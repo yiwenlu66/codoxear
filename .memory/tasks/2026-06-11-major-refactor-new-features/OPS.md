@@ -7760,3 +7760,14 @@
   - Full Docker `scripts/codoxear-docker-sandbox test -q` reached `100%` with no failures.
   - `git diff --check` and staged `git diff --cached --check` passed before commit, and staged diff inspection showed only app/viewer/test files in the functional commit.
 - Scope note: open-viewer session synchronization is viewer-module owned. App.js still owns initial `showFileViewer(...)` orchestration, file-picker input event binding, file-reference click routing, and selected-session authority.
+
+## 2026-07-03T00:00:00Z Commit cadence constraint and file viewer show lifecycle ownership
+- Prompt constraint commit `b09164d Document checkpoint commit cadence` recorded the user's correction: commits on `recovery/product-gaps` are rollback/evidence checkpoints, not release-risk boundaries; frequent coherent functional commits should not wait for full local or Docker validation every time; broader/full/Docker validation remains integration and acceptance evidence.
+- Functional commit `b5ed289 Move file viewer show lifecycle into viewer module` moved initial `showFileViewer(...)` orchestration from inline `codoxear/static/app.js` into `codoxear/static/app_file_viewer.js` as `createFileViewerLifecycleRuntime(...).show(...)`.
+- Mechanism: app.js still owned the modal-open/session-init/query-open/open-target sequence for opening the viewer: unsaved prompt on already-open viewer, pending-open cancellation, modal show with return-focus capture, touch toolbar refresh, active-selection persistence, viewer session id/unavailable reset, file-search session reset, explicit mode application, query-open empty panel/status/search preservation, candidate refresh, query focus, target resolution, guarded async open, error projection, and empty-target fallback. The lifecycle runtime now owns that transition while app.js injects modal show, mode application, search-query opening, focus, selected-session/currentness evidence, candidate refresh, file path/open callbacks, empty-target rendering, and status projection.
+- Validation used under the updated checkpoint cadence:
+  - `node --check codoxear/static/app_file_viewer.js` and `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_overlay_accessibility_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_overlay_accessibility_source.py` returned `66 passed, 25 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
+- Scope note: file-viewer show/open-session lifecycle is viewer-module owned. App.js still owns file-picker input event binding, file-reference click routing, selected-session authority, and save/edit wrapper seams.
