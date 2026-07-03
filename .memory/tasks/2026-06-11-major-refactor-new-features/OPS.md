@@ -7898,3 +7898,13 @@
   - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
   - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `60 passed, 25 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T02:18:00Z File picker entry projection picker-module ownership
+- Functional commit `461b14a Move file picker entry projection into picker module` moved draft-entry construction, visible-entry context assembly, visible-entry projection, and the now-dead app highlight wrapper out of inline `codoxear/static/app.js` into `createEntryRuntime(...)` in `codoxear/static/app_file_picker.js`.
+- Mechanism: the picker module already owned search/render/input behavior, but app.js still assembled candidate keys, entry lookup callbacks, draft state, search snapshot, active path, and draft suppression into the context consumed by `visibleFilePickerEntries(...)`. The new picker entry runtime owns that projection and exposes `visibleEntries()`, `entryContext(...)`, and `draftEntry(...)`; app.js injects controller/state callbacks only.
+- Tests updated: file-picker search probes now instantiate `createEntryRuntime(...)` directly instead of extracting removed app wrappers. Source sentinels require `createEntryRuntime` load/export wiring and reject app-owned `appendHighlightedFileMenuPath`, `filePickerEntryContext`, and `visibleFilePickerEntries` wrappers.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app_file_picker.js` and `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_file_picker_search_source.py tests/test_frontend_file_picker_module_source.py tests/test_markdown_tables.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_picker_module_source.py tests/test_file_picker_search_source.py tests/test_markdown_tables.py tests/test_file_viewer_source.py` returned `89 passed, 25 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
