@@ -30,3 +30,9 @@ Non-blocking backlog from review: dispose the resume debounce timer on dialog cl
 
 ## New iteration observations
 - Browser scout after accepted checkpoint found a new polish/impaired-affordance issue: failed-launch rows disable attach/queue/send actions correctly, but leave the main composer textarea editable with `Enter your instructions here`. This does not allow delivery because buttons are disabled, but it misleads users into typing into a session that cannot receive messages. Fix should project sendability/readiness into the composer input state/placeholder, not just the action buttons.
+
+
+## Follow-up state
+- The former `__codoxearLoadError` check is no longer vacuous after `3b762f5`: the page installs a real early error/unhandled-rejection recorder and renders a visible load-failure panel if bootstrap leaves `#root` empty. Browser evidence on sandbox 19088 proved normal load keeps the sentinel null and synthetic fallback rendering works.
+- New Session resume debounce cleanup is now tied to dialog close, eliminating the critic's trailing hidden request mechanism.
+- Next architecture target from read-only scout: extract queue orchestration into `CodoxearQueue`, but only after current app.js UI fix is committed.
