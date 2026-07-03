@@ -7299,18 +7299,6 @@
           return currentActiveFileIdentity().path;
         }
 
-        function activeFileApiPathValue() {
-          return currentActiveFileIdentity().apiPath;
-        }
-
-        function activeFileGitPathValue() {
-          return currentActiveFileIdentity().gitPath;
-        }
-
-        function activeFileLineValue() {
-          return fileViewerController.currentActiveFileLine();
-        }
-
         function currentFileEditorKind() {
           return fileViewerController.currentFileEditorKind();
         }
@@ -7539,10 +7527,6 @@
           return await filePdfLoader.ensure();
         }
 
-        function applyEditorLineFocus(lineNumber) {
-          return fileEditorRuntime.focusLine(currentFileEditorKind(), lineNumber, normalizeLineNumber);
-        }
-
         async function renderMonacoFile(rel, text, lineNumber = null, langOverride = "", request = null) {
           return await fileEditorRenderer.renderFile(rel, text, lineNumber, langOverride, request);
         }
@@ -7577,14 +7561,6 @@
 
         function hideFileUnsavedDialog(choice = "cancel") {
           return fileUnsavedDialogRuntime.hide(choice);
-        }
-
-        function focusFileUnsavedInitialControl() {
-          return fileUnsavedDialogRuntime.focusInitialControl();
-        }
-
-        function syncFileUnsavedDialogMode() {
-          return fileUnsavedDialogRuntime.syncMode();
         }
 
         function promptFileUnsavedChoice() {
