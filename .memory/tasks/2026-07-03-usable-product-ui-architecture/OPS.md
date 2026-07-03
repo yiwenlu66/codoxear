@@ -32,3 +32,10 @@
 - Toast diagnosis sharpened: mobile toast is separately styled (dark pill, bottom); desktop #toast is class "muted toast" bare text (app.js ~1148) — polish item rephrased accordingly.
 - Mobile live round (viewport 390x844, session broker-71): transcript scroll-follow, typing dots, user/assistant bubbles, ctx chip, utility icons all render cleanly (m04-m06). No new defects.
 - In flight: executor cc3f1ee7 (test_file_inspect.py monkeypatch conversion), executor 5a49347a (UX polish: empty state, composer disabled affordance, backend-tab contrast, desktop toast pill).
+
+## 2026-07-03T23:20:00Z Polish + file-inspect contracts landed; next contracts dispatched
+- Executor contract (UX polish) delivered and browser-verified on clean sandbox: sidebar "No sessions yet" hint + centered chat CTA (d26), disabled composer buttons visibly muted (opacity 0.5), backend-tab active ring + name label follows tab switching ("Pi"), desktop toast now pill-styled (computed: bg rgba(15,23,42,0.9), radius 999px). Committed `3e4faec`.
+- Executor contract (test_file_inspect.py) delivered: 45 monkeypatch blocks over 7 internal server seams converted to injected deps; report correctly identified that server git helpers are closures over module singletons and rebuilt them from git_ops/client_file_paths impl primitives instead of bypassing; residual patches are genuine OS/filesystem/environment boundaries (TOCTOU races, env pathspecs, atomic-write races). Committed `8cb7021`. Validation: 73 passed, 52 subtests.
+- The polish executor's "8 pre-existing full-suite failures" were concurrent-pytest artifacts (two executors ran suites simultaneously): full suite alone is `1358 passed, 132 subtests`. Prediction recorded before rerun; confirmed. Parallel-edit discipline rule already in PROMPT.
+- Docker acceptance on final state: `1357 passed, 1 skipped, 132 subtests`.
+- Dispatched next contracts: executor c89002b9 (tests/test_session_resume.py conversion, ~38 seams, glm-5.2) and executor 98ac662b (new-session dialog extraction from app.js, ~476 refs, gpt-5.5, clean-boundary partial allowed). Scopes disjoint; no full-suite runs while in flight.
