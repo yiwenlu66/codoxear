@@ -48,9 +48,10 @@ class TestAuthCleanupSource(unittest.TestCase):
         ]:
             self.assertIn(f"if ({name}) clearTimeout({name});", cleanup)
             self.assertIn(f"{name} = null;", cleanup)
-        for name in ["chatSearchAllAbort", "olderLoadController"]:
-            self.assertIn(f"abortController({name});", cleanup)
-            self.assertIn(f"{name} = null;", cleanup)
+        self.assertIn("abortController(chatSearchAllAbort);", cleanup)
+        self.assertIn("chatSearchAllAbort = null;", cleanup)
+        self.assertIn("olderLoadRuntime.invalidate();", cleanup)
+        self.assertNotIn("olderLoadController", cleanup)
         self.assertIn("fileViewerController.abortPendingFileOpenTransport();", cleanup)
         self.assertIn("filePickerSearchState.dispose();", cleanup)
         self.assertIn("unattendedSaveTimers.forEach((timer) => clearTimeout(timer));", cleanup)

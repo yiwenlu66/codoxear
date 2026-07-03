@@ -30,6 +30,87 @@ def _source_between(start: str, end: str) -> str:
 
 
 class TestChatTranscriptRuntime(unittest.TestCase):
+    def test_older_load_runtime_owns_state_currentness_and_ui_projection(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const ctx = {{ window: {{}}, AbortController }};
+            const vm = require("vm");
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            let now = 1000;
+            const olderWrap = {{ style: {{ display: "" }} }};
+            const olderButton = {{ disabled: false, textContent: "" }};
+            const olderError = {{ style: {{ display: "" }} }};
+            const olderErrorText = {{ textContent: "" }};
+            const runtime = ctx.window.CodoxearTranscript.createOlderLoadRuntime({{
+              olderWrap,
+              olderButton,
+              olderError,
+              olderErrorText,
+              AbortControllerCtor: AbortController,
+              nowMs: () => now,
+              autoCooldownMs: 450,
+            }});
+            const initial = runtime.snapshot();
+            runtime.setState({{ hasMore: true, isLoading: false }});
+            const visible = {{ wrap: olderWrap.style.display, disabled: olderButton.disabled, text: olderButton.textContent }};
+            const firstAuto = runtime.markAutoTrigger();
+            const secondAuto = runtime.markAutoTrigger();
+            now += 500;
+            const thirdAuto = runtime.markAutoTrigger();
+            const load = runtime.beginLoad({{ cancelOnScroll: true }});
+            const loading = {{ snapshot: runtime.snapshot(), wrap: olderWrap.style.display, disabled: olderButton.disabled, text: olderButton.textContent }};
+            const currentBeforeInvalidate = runtime.isCurrent(load);
+            const cancelBeforeInvalidate = runtime.shouldCancelOnScroll();
+            runtime.invalidate();
+            const currentAfterInvalidate = runtime.isCurrent(load);
+            const afterInvalidate = runtime.snapshot();
+            runtime.showError();
+            const errorShown = {{ display: olderError.style.display, text: olderErrorText.textContent }};
+            runtime.setState({{ hasMore: false, isLoading: false }});
+            const afterHide = {{ snapshot: runtime.snapshot(), wrap: olderWrap.style.display, error: olderError.style.display, errorText: olderErrorText.textContent }};
+            let missingError = "";
+            try {{ ctx.window.CodoxearTranscript.createOlderLoadRuntime({{ olderWrap }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
+            process.stdout.write(JSON.stringify({{
+              initial,
+              visible,
+              firstAuto,
+              secondAuto,
+              thirdAuto,
+              loading,
+              currentBeforeInvalidate,
+              cancelBeforeInvalidate,
+              currentAfterInvalidate,
+              afterInvalidate,
+              errorShown,
+              afterHide,
+              missingError,
+              frozen: Object.isFrozen(runtime),
+            }}));
+            """
+        )
+        out = _run_node(js)
+        self.assertEqual(out["initial"], {"hasMore": False, "isLoading": False, "requestId": 0, "cancelOnScroll": True, "hasController": False})
+        self.assertEqual(out["visible"], {"wrap": "flex", "disabled": False, "text": "Load older messages"})
+        self.assertTrue(out["firstAuto"])
+        self.assertFalse(out["secondAuto"])
+        self.assertTrue(out["thirdAuto"])
+        self.assertTrue(out["loading"]["snapshot"]["isLoading"])
+        self.assertTrue(out["loading"]["snapshot"]["hasController"])
+        self.assertEqual(out["loading"]["text"], "Loading...")
+        self.assertTrue(out["currentBeforeInvalidate"])
+        self.assertTrue(out["cancelBeforeInvalidate"])
+        self.assertFalse(out["currentAfterInvalidate"])
+        self.assertFalse(out["afterInvalidate"]["isLoading"])
+        self.assertFalse(out["afterInvalidate"]["hasController"])
+        self.assertEqual(out["errorShown"], {"display": "flex", "text": "Couldn’t load older messages."})
+        self.assertEqual(out["afterHide"]["wrap"], "none")
+        self.assertEqual(out["afterHide"]["error"], "none")
+        self.assertEqual(out["afterHide"]["errorText"], "")
+        self.assertIn("transcript dependency missing: olderButton", out["missingError"])
+        self.assertTrue(out["frozen"])
+
     def test_transcript_module_normalizes_and_trims_tail_cache(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
@@ -178,6 +259,29 @@ class TestChatTranscriptRuntime(unittest.TestCase):
                 return {{ events: [{{ role: "assistant", text: "older" }}], has_older: false }};
               }},
             }};
+            ctx.olderLoadSnapshot = () => ctx.olderLoadRuntime.snapshot();
+            ctx.hasOlderMessages = () => ctx.olderLoadSnapshot().hasMore;
+            ctx.isLoadingOlderMessages = () => ctx.olderLoadSnapshot().isLoading;
+            ctx.olderLoadRuntime = {{
+              snapshot: () => ({{ hasMore: Boolean(ctx.hasOlder), isLoading: Boolean(ctx.loadingOlder), requestId: ctx.olderLoadRequestId, cancelOnScroll: ctx.olderLoadCancelOnScroll !== false, hasController: Boolean(ctx.olderLoadController) }}),
+              markAutoTrigger: () => {{
+                const now = ctx.performance.now();
+                if (now - ctx.olderAutoTriggerAt < ctx.OLDER_AUTO_COOLDOWN_MS) return false;
+                ctx.olderAutoTriggerAt = now;
+                return true;
+              }},
+              beginLoad: ({{ cancelOnScroll = true }} = {{}}) => {{
+                ctx.olderLoadRequestId += 1;
+                const ctl = new AbortController();
+                ctx.olderLoadController = ctl;
+                ctx.olderLoadCancelOnScroll = Boolean(cancelOnScroll);
+                ctx.setOlderState({{ hasMore: ctx.hasOlder, isLoading: true }});
+                return {{ requestId: ctx.olderLoadRequestId, controller: ctl, signal: ctl.signal }};
+              }},
+              isCurrent: (load) => load && load.requestId === ctx.olderLoadRequestId,
+              finishLoad: (load) => {{ if (load && ctx.olderLoadController === load.controller) ctx.olderLoadController = null; ctx.olderLoadCancelOnScroll = true; }},
+              invalidate: () => {{ ctx.olderLoadRequestId += 1; ctx.olderLoadController = null; ctx.olderLoadCancelOnScroll = true; if (ctx.loadingOlder) ctx.setOlderState({{ hasMore: ctx.hasOlder, isLoading: false }}); }},
+            }};
             vm = require("vm");
             vm.createContext(ctx);
             vm.runInContext({json.dumps(snippet)}, ctx);
@@ -220,6 +324,29 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               prependOlderEvents: () => {{ ctx.prepended = true; }},
               openSession: async () => {{ throw new Error("should not reopen"); }},
               api: async () => {{ const err = new Error("unavailable"); err.status = 503; throw err; }},
+            }};
+            ctx.olderLoadSnapshot = () => ctx.olderLoadRuntime.snapshot();
+            ctx.hasOlderMessages = () => ctx.olderLoadSnapshot().hasMore;
+            ctx.isLoadingOlderMessages = () => ctx.olderLoadSnapshot().isLoading;
+            ctx.olderLoadRuntime = {{
+              snapshot: () => ({{ hasMore: Boolean(ctx.hasOlder), isLoading: Boolean(ctx.loadingOlder), requestId: ctx.olderLoadRequestId, cancelOnScroll: ctx.olderLoadCancelOnScroll !== false, hasController: Boolean(ctx.olderLoadController) }}),
+              markAutoTrigger: () => {{
+                const now = ctx.performance.now();
+                if (now - ctx.olderAutoTriggerAt < ctx.OLDER_AUTO_COOLDOWN_MS) return false;
+                ctx.olderAutoTriggerAt = now;
+                return true;
+              }},
+              beginLoad: ({{ cancelOnScroll = true }} = {{}}) => {{
+                ctx.olderLoadRequestId += 1;
+                const ctl = new AbortController();
+                ctx.olderLoadController = ctl;
+                ctx.olderLoadCancelOnScroll = Boolean(cancelOnScroll);
+                ctx.setOlderState({{ hasMore: ctx.hasOlder, isLoading: true }});
+                return {{ requestId: ctx.olderLoadRequestId, controller: ctl, signal: ctl.signal }};
+              }},
+              isCurrent: (load) => load && load.requestId === ctx.olderLoadRequestId,
+              finishLoad: (load) => {{ if (load && ctx.olderLoadController === load.controller) ctx.olderLoadController = null; ctx.olderLoadCancelOnScroll = true; }},
+              invalidate: () => {{ ctx.olderLoadRequestId += 1; ctx.olderLoadController = null; ctx.olderLoadCancelOnScroll = true; if (ctx.loadingOlder) ctx.setOlderState({{ hasMore: ctx.hasOlder, isLoading: false }}); }},
             }};
             vm = require("vm");
             vm.createContext(ctx);
@@ -265,6 +392,29 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               openSession: async () => {{ throw new Error("should not reopen"); }},
               api: async () => {{ const err = new Error("unauthorized"); err.status = 401; throw err; }},
             }};
+            ctx.olderLoadSnapshot = () => ctx.olderLoadRuntime.snapshot();
+            ctx.hasOlderMessages = () => ctx.olderLoadSnapshot().hasMore;
+            ctx.isLoadingOlderMessages = () => ctx.olderLoadSnapshot().isLoading;
+            ctx.olderLoadRuntime = {{
+              snapshot: () => ({{ hasMore: Boolean(ctx.hasOlder), isLoading: Boolean(ctx.loadingOlder), requestId: ctx.olderLoadRequestId, cancelOnScroll: ctx.olderLoadCancelOnScroll !== false, hasController: Boolean(ctx.olderLoadController) }}),
+              markAutoTrigger: () => {{
+                const now = ctx.performance.now();
+                if (now - ctx.olderAutoTriggerAt < ctx.OLDER_AUTO_COOLDOWN_MS) return false;
+                ctx.olderAutoTriggerAt = now;
+                return true;
+              }},
+              beginLoad: ({{ cancelOnScroll = true }} = {{}}) => {{
+                ctx.olderLoadRequestId += 1;
+                const ctl = new AbortController();
+                ctx.olderLoadController = ctl;
+                ctx.olderLoadCancelOnScroll = Boolean(cancelOnScroll);
+                ctx.setOlderState({{ hasMore: ctx.hasOlder, isLoading: true }});
+                return {{ requestId: ctx.olderLoadRequestId, controller: ctl, signal: ctl.signal }};
+              }},
+              isCurrent: (load) => load && load.requestId === ctx.olderLoadRequestId,
+              finishLoad: (load) => {{ if (load && ctx.olderLoadController === load.controller) ctx.olderLoadController = null; ctx.olderLoadCancelOnScroll = true; }},
+              invalidate: () => {{ ctx.olderLoadRequestId += 1; ctx.olderLoadController = null; ctx.olderLoadCancelOnScroll = true; if (ctx.loadingOlder) ctx.setOlderState({{ hasMore: ctx.hasOlder, isLoading: false }}); }},
+            }};
             vm = require("vm");
             vm.createContext(ctx);
             vm.runInContext({json.dumps(snippet)}, ctx);
@@ -308,6 +458,29 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               prependOlderEvents: () => {{ ctx.prepended = true; }},
               openSession: async () => {{ throw new Error("should not reopen"); }},
               api: async () => {{ ctx.olderLoadRequestId += 1; const err = new Error("unauthorized"); err.status = 401; throw err; }},
+            }};
+            ctx.olderLoadSnapshot = () => ctx.olderLoadRuntime.snapshot();
+            ctx.hasOlderMessages = () => ctx.olderLoadSnapshot().hasMore;
+            ctx.isLoadingOlderMessages = () => ctx.olderLoadSnapshot().isLoading;
+            ctx.olderLoadRuntime = {{
+              snapshot: () => ({{ hasMore: Boolean(ctx.hasOlder), isLoading: Boolean(ctx.loadingOlder), requestId: ctx.olderLoadRequestId, cancelOnScroll: ctx.olderLoadCancelOnScroll !== false, hasController: Boolean(ctx.olderLoadController) }}),
+              markAutoTrigger: () => {{
+                const now = ctx.performance.now();
+                if (now - ctx.olderAutoTriggerAt < ctx.OLDER_AUTO_COOLDOWN_MS) return false;
+                ctx.olderAutoTriggerAt = now;
+                return true;
+              }},
+              beginLoad: ({{ cancelOnScroll = true }} = {{}}) => {{
+                ctx.olderLoadRequestId += 1;
+                const ctl = new AbortController();
+                ctx.olderLoadController = ctl;
+                ctx.olderLoadCancelOnScroll = Boolean(cancelOnScroll);
+                ctx.setOlderState({{ hasMore: ctx.hasOlder, isLoading: true }});
+                return {{ requestId: ctx.olderLoadRequestId, controller: ctl, signal: ctl.signal }};
+              }},
+              isCurrent: (load) => load && load.requestId === ctx.olderLoadRequestId,
+              finishLoad: (load) => {{ if (load && ctx.olderLoadController === load.controller) ctx.olderLoadController = null; ctx.olderLoadCancelOnScroll = true; }},
+              invalidate: () => {{ ctx.olderLoadRequestId += 1; ctx.olderLoadController = null; ctx.olderLoadCancelOnScroll = true; if (ctx.loadingOlder) ctx.setOlderState({{ hasMore: ctx.hasOlder, isLoading: false }}); }},
             }};
             vm = require("vm");
             vm.createContext(ctx);

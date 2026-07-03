@@ -115,6 +115,120 @@
     });
   }
 
+  function requireFunction(value, name) {
+    if (typeof value !== "function") throw new TypeError(`transcript dependency missing: ${name}`);
+    return value;
+  }
+
+  function requireNode(value, name) {
+    if (!value || typeof value !== "object") throw new TypeError(`transcript dependency missing: ${name}`);
+    return value;
+  }
+
+  function createOlderLoadRuntime(options = {}) {
+    const wrap = requireNode(options.olderWrap, "olderWrap");
+    const button = requireNode(options.olderButton, "olderButton");
+    const error = requireNode(options.olderError, "olderError");
+    const errorText = requireNode(options.olderErrorText, "olderErrorText");
+    const AbortControllerCtor = requireFunction(options.AbortControllerCtor, "AbortControllerCtor");
+    const nowMs = requireFunction(options.nowMs, "nowMs");
+    const autoCooldownMs = Math.max(0, Number(options.autoCooldownMs) || 0);
+    let hasMore = false;
+    let isLoading = false;
+    let requestId = 0;
+    let controller = null;
+    let cancelOnScroll = true;
+    let autoTriggerAt = 0;
+
+    function snapshot() {
+      return Object.freeze({ hasMore, isLoading, requestId, cancelOnScroll, hasController: Boolean(controller) });
+    }
+
+    function clearError() {
+      error.style.display = "none";
+      errorText.textContent = "";
+    }
+
+    function showError(message = "Couldn’t load older messages.") {
+      errorText.textContent = String(message || "Couldn’t load older messages.");
+      error.style.display = "flex";
+    }
+
+    function setState({ hasMore: nextHasMore, isLoading: nextLoading } = {}) {
+      hasMore = Boolean(nextHasMore);
+      isLoading = Boolean(nextLoading);
+      wrap.style.display = hasMore ? "flex" : "none";
+      button.disabled = isLoading;
+      button.textContent = isLoading ? "Loading..." : "Load older messages";
+      if (isLoading || !hasMore) clearError();
+      return snapshot();
+    }
+
+    function resetAutoTrigger() {
+      autoTriggerAt = 0;
+    }
+
+    function markAutoTrigger() {
+      const now = Number(nowMs()) || 0;
+      if (now - autoTriggerAt < autoCooldownMs) return false;
+      autoTriggerAt = now;
+      return true;
+    }
+
+    function beginLoad({ cancelOnScroll: nextCancelOnScroll = true } = {}) {
+      requestId += 1;
+      const ctl = new AbortControllerCtor();
+      controller = ctl;
+      cancelOnScroll = Boolean(nextCancelOnScroll);
+      setState({ hasMore, isLoading: true });
+      return Object.freeze({ requestId, controller: ctl, signal: ctl.signal });
+    }
+
+    function isCurrent(load) {
+      const id = load && typeof load === "object" ? load.requestId : load;
+      return id === requestId;
+    }
+
+    function finishLoad(load) {
+      if (load && typeof load === "object" && controller === load.controller) controller = null;
+      cancelOnScroll = true;
+      return snapshot();
+    }
+
+    function invalidate() {
+      if (!isLoading && !controller) return snapshot();
+      requestId += 1;
+      if (controller) {
+        const ctl = controller;
+        controller = null;
+        try {
+          ctl.abort();
+        } catch (_) {}
+      }
+      cancelOnScroll = true;
+      if (isLoading) setState({ hasMore, isLoading: false });
+      return snapshot();
+    }
+
+    function shouldCancelOnScroll() {
+      return Boolean(isLoading && cancelOnScroll);
+    }
+
+    return Object.freeze({
+      beginLoad,
+      clearError,
+      finishLoad,
+      invalidate,
+      isCurrent,
+      markAutoTrigger,
+      resetAutoTrigger,
+      setState,
+      shouldCancelOnScroll,
+      showError,
+      snapshot,
+    });
+  }
+
   window.CodoxearTranscript = Object.freeze({
     normalizeTailEvent,
     normalizeTranscriptState,
@@ -124,5 +238,6 @@
     tailCacheMatchesSession,
     rememberTailSnapshot,
     appendTailSnapshotEvents,
+    createOlderLoadRuntime,
   });
 })();

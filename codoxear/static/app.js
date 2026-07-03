@@ -793,13 +793,7 @@
         let chatSearchLoadingOlder = false;
         let activeMessageCopyRow = null;
         let pendingRecoveryFocusDescriptor = null;
-        let hasOlder = false;
         let renderedAtLiveTail = true;
-        let loadingOlder = false;
-        let olderLoadRequestId = 0;
-        let olderLoadController = null;
-        let olderLoadCancelOnScroll = true;
-        let olderAutoTriggerAt = 0;
         let openSessionTailAbortController = null;
         let messagePollAbortController = null;
         const OLDER_AUTO_COOLDOWN_MS = 450;
@@ -1024,8 +1018,7 @@
           queuePendingDeletes.clear();
           abortController(chatSearchAllAbort);
           chatSearchAllAbort = null;
-          abortController(olderLoadController);
-          olderLoadController = null;
+          olderLoadRuntime.invalidate();
           fileViewerController.abortPendingFileOpenTransport();
           stopAnnouncementHeartbeat();
           stopLiveAudioWatchdog();
@@ -2207,17 +2200,7 @@
         };
 
         function invalidateOlderLoad() {
-          if (!loadingOlder && !olderLoadController) return;
-          olderLoadRequestId += 1;
-          if (olderLoadController) {
-            const ctl = olderLoadController;
-            olderLoadController = null;
-            try {
-              ctl.abort();
-            } catch {}
-          }
-          olderLoadCancelOnScroll = true;
-          if (loadingOlder) setOlderState({ hasMore: hasOlder, isLoading: false });
+          olderLoadRuntime.invalidate();
         }
 
         function resetChatRenderState() {
@@ -2227,10 +2210,8 @@
           recentEventKeys.length = 0;
           recentEventKeySet.clear();
           liveCursor = null;
-          hasOlder = false;
           renderedAtLiveTail = true;
-          loadingOlder = false;
-          olderAutoTriggerAt = 0;
+          olderLoadRuntime.resetAutoTrigger();
               clickMetricPending = false;
           clearTranscriptDom();
               setOlderState({ hasMore: false, isLoading: false });
@@ -2252,22 +2233,15 @@
         }
 
         function clearOlderLoadError() {
-          olderError.style.display = "none";
-          olderErrorText.textContent = "";
+          olderLoadRuntime.clearError();
         }
 
         function showOlderLoadError() {
-          olderErrorText.textContent = "Couldn’t load older messages.";
-          olderError.style.display = "flex";
+          olderLoadRuntime.showError();
         }
 
         function setOlderState({ hasMore, isLoading }) {
-          hasOlder = Boolean(hasMore);
-          loadingOlder = Boolean(isLoading);
-          olderWrap.style.display = hasOlder ? "flex" : "none";
-          olderBtn.disabled = loadingOlder;
-          olderBtn.textContent = loadingOlder ? "Loading..." : "Load older messages";
-          if (loadingOlder || !hasOlder) clearOlderLoadError();
+          olderLoadRuntime.setState({ hasMore, isLoading });
         }
 
         const codoxearMessageRows = window.CodoxearMessageRows;
@@ -2477,9 +2451,9 @@
             chatSearchQuery &&
               Number.isFinite(chatSearchAllCount) &&
               (chatSearchAllCountTruncated || chatSearchAllCount > total) &&
-              hasOlder &&
+              hasOlderMessages() &&
               !chatSearchLoadingOlder &&
-              !loadingOlder
+              !isLoadingOlderMessages()
           );
           const showAllHint = Boolean(chatSearchQuery && !chatSearchLoadingOlder && Number.isFinite(chatSearchAllCount) && (chatSearchAllCountTruncated || chatSearchAllCount > total) && chatSearchAllHint);
           chatSearchStatus.textContent = chatSearchQuery ? `${total ? chatSearchIndex + 1 : 0}/${total} loaded${allSuffix}` : "Loaded";
@@ -2633,7 +2607,7 @@
           syncChatSearchStatus();
           try {
             for (let i = 0; i < maxPages; i += 1) {
-              if (selected !== sid || pollGen !== gen || chatSearchQuery !== query || !hasOlder) return false;
+              if (selected !== sid || pollGen !== gen || chatSearchQuery !== query || !hasOlderMessages()) return false;
               const loaded = await loadOlderMessages({ auto: false, cancelOnScroll: false });
               if (selected !== sid || pollGen !== gen || chatSearchQuery !== query) return false;
               refreshLoadedChatSearch({ jump: false, preserveCurrent: false });
@@ -2647,7 +2621,7 @@
                 focusChatSearchMatch(0, { jump: true });
                 return true;
               }
-              if (!loaded || !hasOlder) return false;
+              if (!loaded || !hasOlderMessages()) return false;
             }
             return false;
           } finally {
@@ -2660,7 +2634,7 @@
           if (!chatSearchOpen) openChatSearch();
           refreshLoadedChatSearch({ jump: false, preserveCurrent: true, refreshAllCount: false });
           if (!chatSearchMatches.length) {
-            if (chatSearchQuery && Number.isFinite(chatSearchAllCount) && chatSearchAllCount > 0 && hasOlder) {
+            if (chatSearchQuery && Number.isFinite(chatSearchAllCount) && chatSearchAllCount > 0 && hasOlderMessages()) {
               const jumped = await loadNearestOlderChatSearchWindow();
               if (jumped) return;
               const found = await loadOlderUntilChatSearchMatch();
@@ -2673,7 +2647,7 @@
           }
           const startIndex = chatSearchIndex;
           const unloadedTranscriptMatches = Number.isFinite(chatSearchAllCount) ? (chatSearchAllCountTruncated || chatSearchAllCount > chatSearchMatches.length) : true;
-          const canLoadOlderMatches = Boolean(chatSearchQuery && unloadedTranscriptMatches && hasOlder);
+          const canLoadOlderMatches = Boolean(chatSearchQuery && unloadedTranscriptMatches && hasOlderMessages());
           const atForwardWrap = delta > 0 && startIndex >= chatSearchMatches.length - 1;
           const atBackwardWrap = delta < 0 && startIndex <= 0;
           if (canLoadOlderMatches && (atForwardWrap || atBackwardWrap)) {
@@ -2759,7 +2733,7 @@
         }
 
         function clearRenderedTranscriptRange() {
-          hasOlder = false;
+          setOlderState({ hasMore: false, isLoading: false });
           renderedAtLiveTail = true;
         }
 
@@ -2781,9 +2755,32 @@
           typeof codoxearTranscript.transcriptIdentityFromData !== "function" ||
           typeof codoxearTranscript.tailCacheMatchesSession !== "function" ||
           typeof codoxearTranscript.rememberTailSnapshot !== "function" ||
-          typeof codoxearTranscript.appendTailSnapshotEvents !== "function"
+          typeof codoxearTranscript.appendTailSnapshotEvents !== "function" ||
+          typeof codoxearTranscript.createOlderLoadRuntime !== "function"
         )
           throw new Error("Codoxear transcript helpers failed to load");
+
+        const olderLoadRuntime = codoxearTranscript.createOlderLoadRuntime({
+          olderWrap,
+          olderButton: olderBtn,
+          olderError,
+          olderErrorText,
+          AbortControllerCtor: AbortController,
+          nowMs: () => performance.now(),
+          autoCooldownMs: OLDER_AUTO_COOLDOWN_MS,
+        });
+
+        function olderLoadSnapshot() {
+          return olderLoadRuntime.snapshot();
+        }
+
+        function hasOlderMessages() {
+          return olderLoadSnapshot().hasMore;
+        }
+
+        function isLoadingOlderMessages() {
+          return olderLoadSnapshot().isLoading;
+        }
 
         function normalizeTailEvent(ev) {
           return codoxearTranscript.normalizeTailEvent(ev);
@@ -3835,27 +3832,19 @@
         }
 
         async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {
-          if (!selected || !hasOlder || loadingOlder) return false;
-          if (auto) {
-            const now = performance.now();
-            if (now - olderAutoTriggerAt < OLDER_AUTO_COOLDOWN_MS) return false;
-            olderAutoTriggerAt = now;
-          }
+          const state = olderLoadSnapshot();
+          if (!selected || !state.hasMore || state.isLoading) return false;
+          if (auto && !olderLoadRuntime.markAutoTrigger()) return false;
           const sid = selected;
           const gen = pollGen;
-          const reqId = olderLoadRequestId + 1;
-          olderLoadRequestId = reqId;
-          const ctl = new AbortController();
-          olderLoadController = ctl;
-          olderLoadCancelOnScroll = Boolean(cancelOnScroll);
-          setOlderState({ hasMore: hasOlder, isLoading: true });
+          const load = olderLoadRuntime.beginLoad({ cancelOnScroll });
           try {
             const reqCursor = oldestRenderedHistoryCursor();
             if (!reqCursor) throw new Error("history cursor missing");
             const data = await api(`/api/sessions/${sid}/messages/history?cursor=${encodeURIComponent(reqCursor)}&limit=${olderPageLimit()}`, {
-              signal: ctl.signal,
+              signal: load.signal,
             });
-            if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return false;
+            if (selected !== sid || pollGen !== gen || !olderLoadRuntime.isCurrent(load)) return false;
             const evs = Array.isArray(data.events) ? data.events : [];
             const nextHasOlder = Boolean(data.has_older);
             clearOlderLoadError();
@@ -3870,17 +3859,16 @@
               handleAppAuthLoss();
               return false;
             }
-            if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return false;
+            if (selected !== sid || pollGen !== gen || !olderLoadRuntime.isCurrent(load)) return false;
             if (e && e.status === 409) {
               await openSession(sid, { useCache: false });
               return false;
             }
-            setOlderState({ hasMore: hasOlder, isLoading: false });
+            setOlderState({ hasMore: hasOlderMessages(), isLoading: false });
             showOlderLoadError();
             return false;
           } finally {
-            if (olderLoadController === ctl) olderLoadController = null;
-            olderLoadCancelOnScroll = true;
+            olderLoadRuntime.finishLoad(load);
           }
         }
 
@@ -3922,18 +3910,14 @@
           const gen = pollGen;
           const query = chatSearchQuery;
           invalidateOlderLoad();
-          const reqId = olderLoadRequestId + 1;
-          olderLoadRequestId = reqId;
-          const ctl = new AbortController();
-          olderLoadController = ctl;
+          const load = olderLoadRuntime.beginLoad({ cancelOnScroll: false });
           chatSearchLoadingOlder = true;
-          setOlderState({ hasMore: hasOlder, isLoading: true });
           syncChatSearchStatus();
           try {
             const data = await api(`/api/sessions/${sid}/messages/history?cursor=${encodeURIComponent(cleanCursor)}&limit=${olderPageLimit()}`, {
-              signal: ctl.signal,
+              signal: load.signal,
             });
-            if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId || chatSearchQuery !== query || String(chatSearchQuery || "") === "") return false;
+            if (selected !== sid || pollGen !== gen || !olderLoadRuntime.isCurrent(load) || chatSearchQuery !== query || String(chatSearchQuery || "") === "") return false;
             const evs = Array.isArray(data.events) ? data.events : [];
             if (!evs.length) return false;
             const rendered = renderDetachedTranscriptWindow(evs, { hasMore: Boolean(data.has_older) });
@@ -3949,7 +3933,7 @@
               handleAppAuthLoss();
               return false;
             }
-            if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return false;
+            if (selected !== sid || pollGen !== gen || !olderLoadRuntime.isCurrent(load)) return false;
             if (e && e.status === 409) {
               await openSession(sid, { useCache: false });
               return false;
@@ -3957,10 +3941,9 @@
             showOlderLoadError();
             return false;
           } finally {
-            if (olderLoadController === ctl) olderLoadController = null;
+            olderLoadRuntime.finishLoad(load);
             chatSearchLoadingOlder = false;
-            olderLoadCancelOnScroll = true;
-            if (loadingOlder) setOlderState({ hasMore: hasOlder, isLoading: false });
+            if (isLoadingOlderMessages()) setOlderState({ hasMore: hasOlderMessages(), isLoading: false });
             syncChatSearchStatus();
           }
         }
@@ -8783,7 +8766,7 @@
 	          lastScrollTop = cur;
 	          if (d < 0) autoScroll = false;
           else if (isNearBottom()) autoScroll = true;
-          if (loadingOlder && olderLoadCancelOnScroll && cur > OLDER_CANCEL_PX) invalidateOlderLoad();
+          if (olderLoadRuntime.shouldCancelOnScroll() && cur > OLDER_CANCEL_PX) invalidateOlderLoad();
           if (cur <= OLDER_TOP_TRIGGER_PX && d <= 0) maybeAutoLoadOlder();
           syncJumpButton();
         });
