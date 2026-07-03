@@ -8125,3 +8125,16 @@
   - Wider frontend/source slice returned `98 passed` for the standard transcript/front-end source set including auth/send/session-poll/static tests.
   - Specific wrapper audit confirmed app.js `normalizedTranscriptEvents(...)` no longer contains local `seen`/`msgs`/pending-match logic.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T09:21:00Z Moved transcript render orchestration into runtime
+- Functional commit `418d0a1 Move transcript render orchestration into runtime` added `CodoxearTranscript.createTranscriptRenderRuntime(...)` and moved the live append, authoritative transcript render, detached search-window render, and older-history prepend sequencing out of app.js.
+- Mechanism: app.js previously owned the render pipeline across duplicate/pending checks, live-tail splicing prevention, row insertion before typing anchors, render-window fragment creation, recent-event reset, recovery-panel refresh, first-paint marking, detached-window state, older prepend viewport preservation, history-window trimming, and scroll/jump synchronization. The new runtime owns those sequences through explicit row, event, DOM-window, typing, scroll, pending, and recovery callbacks; app.js keeps transport selection and status/session callbacks.
+- Behavior evidence: `test_transcript_render_runtime_owns_window_render_and_history_prepend` executes full-window render, detached-window render, and older prepend sequencing directly. Existing live-delta tests now instantiate `createTranscriptRenderRuntime(...)` directly for detached-history no-splice and adjacent assistant dedupe behavior. Source tests assert app.js wrappers delegate to the runtime.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app.js` passed.
+  - `node --check codoxear/static/app_transcript.js` passed.
+  - `python3 -m py_compile tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py tests/test_chat_navigation_source.py` returned `64 passed`.
+  - Wider frontend/source slice `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py tests/test_chat_navigation_source.py tests/test_auth_cleanup_source.py tests/test_send_button_source.py tests/test_session_polling_source.py tests/test_static_assets.py` returned `99 passed`.
+  - Wrapper audit confirmed app.js `appendEvent`, `renderTranscript`, `renderDetachedTranscriptWindow`, and `prependOlderEvents` no longer contain fragment creation, history-window trim, live-tail no-splice logic, or direct fragment insertion.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
