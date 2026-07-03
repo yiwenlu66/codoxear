@@ -24,3 +24,11 @@
   3. (Earlier round) `dce2ce6` recent_cwds default limit.
 - Full local suite after everything: `1358 passed, 132 subtests passed`. Docker test (19084): `1357 passed, 1 skipped, 132 subtests`. Docker smoke (19085): 401/200 correct.
 - Pattern now three-for-three: every functional break lived in a seam that unit tests faked away and only a live server+real session exposed. Live-session browser validation is non-negotiable acceptance evidence for this codebase.
+
+## 2026-07-03T22:55:00Z Delegation-first correction; mobile live round; contracts in flight
+- User directive: main agent must not own code-level details. Division encoded in PROMPT: all code/test edits go to executors; main agent keeps browser evidence, mechanism diagnosis, contracts, diff review, commits, acceptance.
+- Agent registry churn: user rewrote agent definitions (~22:25); `worker`/`reviewer` names collided with disabled builtins and failed dispatch; user restored them as `executor`/`critic`. Temporary `impl` agent created then removed.
+- glm-5.2 is text-only: a contract that referenced screenshot PNGs failed with API 400 (not a VLM) when the child read them. Contracts for glm executors must describe visual evidence textually and forbid image reads.
+- Toast diagnosis sharpened: mobile toast is separately styled (dark pill, bottom); desktop #toast is class "muted toast" bare text (app.js ~1148) — polish item rephrased accordingly.
+- Mobile live round (viewport 390x844, session broker-71): transcript scroll-follow, typing dots, user/assistant bubbles, ctx chip, utility icons all render cleanly (m04-m06). No new defects.
+- In flight: executor cc3f1ee7 (test_file_inspect.py monkeypatch conversion), executor 5a49347a (UX polish: empty state, composer disabled affordance, backend-tab contrast, desktop toast pill).
