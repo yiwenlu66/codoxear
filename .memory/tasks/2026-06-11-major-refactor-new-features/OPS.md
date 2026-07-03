@@ -8112,3 +8112,16 @@
   - Focused+wider frontend/source validation `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py tests/test_chat_navigation_source.py tests/test_auth_cleanup_source.py tests/test_send_button_source.py tests/test_session_polling_source.py tests/test_static_assets.py` returned `97 passed`.
   - Source audit `! rg -n 'chatInner\\.innerHTML = ""|\\.day-sep|const scrollPosition = transcriptScrollRuntime\\.captureScrollPosition|for \\(const row of targets\\) row\\.remove\\(\\)|transcriptScrollRuntime\\.setRenderedAtLiveTail\\(Boolean\\(fromTop\\)\\)' codoxear/static/app.js` passed.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T09:05:00Z Moved transcript render event normalization into runtime
+- Functional commit `4c2f5c0 Move transcript render event normalization into runtime` added `CodoxearTranscript.normalizedTranscriptEvents(...)` and moved full-render event filtering, per-render event-key dedupe, and pending-user consume-on-authoritative-render policy out of app.js.
+- Mechanism: app.js previously rebuilt authoritative transcript windows with local `msgs`/`seen` state and called `takePendingUserMatch(..., { allowUntimedCommit: false })` inline. The transcript helper now owns that policy through injected `eventKey` and `takePendingMatch` functions, while app.js supplies selected-session identity and keeps higher-level render orchestration.
+- Behavior evidence: `test_normalized_transcript_events_filters_dedupes_and_consumes_pending` executes the helper directly for invalid-role filtering, keyed dedupe, no-key preservation, pending consume calls with `allowUntimedCommit: false`, and fail-loud missing dependency behavior. Source tests now assert app.js delegates to the transcript helper.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app.js` passed.
+  - `node --check codoxear/static/app_transcript.js` passed.
+  - `python3 -m py_compile tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py tests/test_chat_navigation_source.py` returned `63 passed`.
+  - Wider frontend/source slice returned `98 passed` for the standard transcript/front-end source set including auth/send/session-poll/static tests.
+  - Specific wrapper audit confirmed app.js `normalizedTranscriptEvents(...)` no longer contains local `seen`/`msgs`/pending-match logic.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
