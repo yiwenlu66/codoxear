@@ -7417,15 +7417,13 @@
         }
 
         function disposeFileEditor() {
-          fileViewerController.finishFileEditorProgrammaticChange();
-          fileEditorRuntime.dispose({
+          return fileEditorRuntime.disposeCurrentFile({
+            finishProgrammaticChange: () => fileViewerController.finishFileEditorProgrammaticChange(),
             clearHost: () => {
               fileDiff.innerHTML = "";
             },
-            afterDispose: () => {
-              setFileEditorKind("");
-              clearFileTouchSelectionState();
-            },
+            setFileEditorKind: (kind) => setFileEditorKind(kind),
+            clearFileTouchSelectionState: () => clearFileTouchSelectionState(),
           });
         }
 

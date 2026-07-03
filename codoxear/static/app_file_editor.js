@@ -481,6 +481,21 @@
       return true;
     }
 
+    function disposeCurrentFile(options = {}) {
+      const finishProgrammaticChange = requireFunction(options.finishProgrammaticChange, "finishProgrammaticChange");
+      const clearHost = requireFunction(options.clearHost, "clearHost");
+      const setFileEditorKind = requireFunction(options.setFileEditorKind, "setFileEditorKind");
+      const clearFileTouchSelectionState = requireFunction(options.clearFileTouchSelectionState, "clearFileTouchSelectionState");
+      finishProgrammaticChange();
+      return dispose({
+        clearHost,
+        afterDispose: () => {
+          setFileEditorKind("");
+          clearFileTouchSelectionState();
+        },
+      });
+    }
+
     function withCurrentEditor(callback) {
       const fn = requireFunction(callback, "withCurrentEditor");
       return fn(editor);
@@ -496,6 +511,7 @@
       currentFileText,
       currentModels,
       dispose,
+      disposeCurrentFile,
       focusActiveCodeEditor,
       focusLine,
       isActiveInput,

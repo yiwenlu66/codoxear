@@ -117,6 +117,20 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
         let missingCallbackError = "";
         try {{ runtime.withCurrentEditor(null); }} catch (err) {{ missingCallbackError = err && err.message ? err.message : String(err); }}
 
+        const disposeLifecycleEvents = [];
+        const disposeLifecycleRuntime = mod.createFileEditorRuntime();
+        disposeLifecycleRuntime.setEditor({{ dispose: () => disposeLifecycleEvents.push(["disposeEditor"]) }});
+        disposeLifecycleRuntime.setModels([{{ dispose: () => disposeLifecycleEvents.push(["disposeModel"]) }}]);
+        disposeLifecycleRuntime.setChangeDisposable({{ dispose: () => disposeLifecycleEvents.push(["disposeChange"]) }});
+        const disposeCurrentFileResult = disposeLifecycleRuntime.disposeCurrentFile({{
+          finishProgrammaticChange: () => disposeLifecycleEvents.push(["finishProgrammaticChange"]),
+          clearHost: () => disposeLifecycleEvents.push(["clearHost"]),
+          setFileEditorKind: (kind) => disposeLifecycleEvents.push(["setKind", kind]),
+          clearFileTouchSelectionState: () => disposeLifecycleEvents.push(["clearTouchSelection"]),
+        }});
+        let disposeCurrentMissingError = "";
+        try {{ disposeLifecycleRuntime.disposeCurrentFile({{}}); }} catch (err) {{ disposeCurrentMissingError = err && err.message ? err.message : String(err); }}
+
         const creationEvents = [];
         const fileRuntime = mod.createFileEditorRuntime();
         const createdFileModel = {{
@@ -224,6 +238,9 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
           disposeResult,
           currentAfterDispose,
           modelCountAfterDispose,
+          disposeCurrentFileResult,
+          disposeLifecycleEvents,
+          disposeCurrentMissingError,
           creation,
           events,
           missingCallbackError,
@@ -484,6 +501,17 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertTrue(result["disposeResult"])
         self.assertIsNone(result["currentAfterDispose"])
         self.assertEqual(result["modelCountAfterDispose"], 0)
+        self.assertTrue(result["disposeCurrentFileResult"])
+        self.assertEqual(result["disposeLifecycleEvents"], [
+            ["finishProgrammaticChange"],
+            ["disposeChange"],
+            ["clearHost"],
+            ["disposeModel"],
+            ["disposeEditor"],
+            ["setKind", ""],
+            ["clearTouchSelection"],
+        ])
+        self.assertIn("file editor dependency missing: finishProgrammaticChange", result["disposeCurrentMissingError"])
         creation = result["creation"]
         self.assertEqual(creation["createFileEditorResult"], "createdFile")
         self.assertTrue(creation["updateFileTextResult"])
@@ -641,7 +669,7 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertIn("let editor = null;", editor_source)
         self.assertIn("let models = [];", editor_source)
         self.assertIn("let changeDisposable = null;", editor_source)
-        self.assertIn("fileEditorRuntime.dispose({", app_source)
+        self.assertIn("fileEditorRuntime.disposeCurrentFile({", app_source)
         self.assertIn("fileEditorRuntime.focusLine(currentFileEditorKind(), lineNumber, normalizeLineNumber);", app_source)
         self.assertIn("fileEditorRuntime.focusActiveCodeEditor(currentFileEditorKind())", app_source)
         self.assertIn("fileEditorRuntime.isActiveInput(currentFileEditorKind(), target, HTMLElement)", app_source)
