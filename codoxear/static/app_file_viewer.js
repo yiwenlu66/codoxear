@@ -638,10 +638,13 @@
     if (!controller) throw new TypeError("file viewer dependency missing: controller");
     const resetActiveFileBufferState = requireFunction(controller.resetActiveFileBufferState, "controller.resetActiveFileBufferState").bind(controller);
     const clearActiveFileIdentity = requireFunction(controller.clearActiveFileIdentity, "controller.clearActiveFileIdentity").bind(controller);
+    const setActiveFileIdentity = requireFunction(controller.setActiveFileIdentity, "controller.setActiveFileIdentity").bind(controller);
     const disposeFileEditor = requireFunction(options.disposeFileEditor, "disposeFileEditor");
     const resetRenderSurface = requireFunction(options.resetRenderSurface, "resetRenderSurface");
     const resetFilePickerInput = requireFunction(options.resetFilePickerInput, "resetFilePickerInput");
     const renderFilePickerMenu = requireFunction(options.renderFilePickerMenu, "renderFilePickerMenu");
+    const closeFilePickerMenu = requireFunction(options.closeFilePickerMenu, "closeFilePickerMenu");
+    const applyFileMode = requireFunction(options.applyFileMode, "applyFileMode");
     const updateFileTouchToolbar = requireFunction(options.updateFileTouchToolbar, "updateFileTouchToolbar");
     const setStatus = requireFunction(options.setStatus, "setStatus");
 
@@ -662,7 +665,15 @@
       return true;
     }
 
-    return Object.freeze({ renderEmptyTarget, resetPanel });
+    function setFilePath(rel, { line = null, gitPath = undefined, apiPath = undefined } = {}) {
+      setActiveFileIdentity(rel, { line, gitPath, apiPath });
+      resetFilePickerInput();
+      closeFilePickerMenu();
+      applyFileMode();
+      return true;
+    }
+
+    return Object.freeze({ renderEmptyTarget, resetPanel, setFilePath });
   }
 
   function createFileViewerLifecycleRuntime(options = {}) {

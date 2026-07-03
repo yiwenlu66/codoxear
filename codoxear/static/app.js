@@ -7700,6 +7700,8 @@
           resetRenderSurface: () => fileRenderSurfaceRuntime.reset(),
           resetFilePickerInput: () => resetFilePickerInput(),
           renderFilePickerMenu: () => renderFilePickerMenu(),
+          closeFilePickerMenu: () => closeFilePickerMenu(),
+          applyFileMode: () => applyFileMode(),
           updateFileTouchToolbar: () => updateFileTouchToolbar(),
           setStatus: (status) => {
             fileStatus.textContent = status;
@@ -7923,11 +7925,7 @@
         }
 
         function setFilePath(rel, { line = null, gitPath = undefined, apiPath = undefined } = {}) {
-          fileViewerController.setActiveFileIdentity(rel, { line, gitPath, apiPath });
-          resetFilePickerInput();
-          filePickerMenuState.close();
-          applyFileMenuState();
-          applyFileMode();
+          return fileViewerPanelRuntime.setFilePath(rel, { line, gitPath, apiPath });
         }
 
         function fileCandidateKey(path, gitPath = false, apiPath = "") {

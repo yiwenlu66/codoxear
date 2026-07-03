@@ -401,16 +401,22 @@ def eval_empty_file_viewer_target() -> dict:
           controller: {{
             resetActiveFileBufferState: () => calls.push(["resetActiveFileBufferState"]),
             clearActiveFileIdentity: () => calls.push(["clearActiveFileIdentity"]),
+            setActiveFileIdentity: (...args) => calls.push(["setActiveFileIdentity", ...args]),
           }},
           disposeFileEditor: () => calls.push(["disposeFileEditor"]),
           resetRenderSurface: () => calls.push(["resetRenderSurface"]),
           resetFilePickerInput: () => calls.push(["resetFilePickerInput"]),
           renderFilePickerMenu: () => calls.push(["renderFilePickerMenu"]),
+          closeFilePickerMenu: () => calls.push(["closeFilePickerMenu"]),
+          applyFileMode: () => calls.push(["applyFileMode"]),
           updateFileTouchToolbar: () => calls.push(["updateFileTouchToolbar"]),
           setStatus: (status) => calls.push(["setStatus", status]),
         }});
         runtime.renderEmptyTarget();
         const defaultCalls = calls.slice();
+        calls.length = 0;
+        runtime.setFilePath("src/app.py", {{ line: 42, gitPath: true, apiPath: "tok" }});
+        const pathCalls = calls.slice();
         calls.length = 0;
         runtime.renderEmptyTarget({{ updateTouchToolbar: true }});
         const resetOnlyCalls = [];
@@ -418,11 +424,14 @@ def eval_empty_file_viewer_target() -> dict:
           controller: {{
             resetActiveFileBufferState: () => resetOnlyCalls.push(["resetActiveFileBufferState"]),
             clearActiveFileIdentity: () => resetOnlyCalls.push(["clearActiveFileIdentity"]),
+            setActiveFileIdentity: (...args) => resetOnlyCalls.push(["setActiveFileIdentity", ...args]),
           }},
           disposeFileEditor: () => resetOnlyCalls.push(["disposeFileEditor"]),
           resetRenderSurface: () => resetOnlyCalls.push(["resetRenderSurface"]),
           resetFilePickerInput: () => resetOnlyCalls.push(["resetFilePickerInput"]),
           renderFilePickerMenu: () => resetOnlyCalls.push(["renderFilePickerMenu"]),
+          closeFilePickerMenu: () => resetOnlyCalls.push(["closeFilePickerMenu"]),
+          applyFileMode: () => resetOnlyCalls.push(["applyFileMode"]),
           updateFileTouchToolbar: () => resetOnlyCalls.push(["updateFileTouchToolbar"]),
           setStatus: (status) => resetOnlyCalls.push(["setStatus", status]),
         }});
@@ -431,6 +440,7 @@ def eval_empty_file_viewer_target() -> dict:
         try {{ ctx.window.CodoxearFileViewer.createFileViewerPanelRuntime({{ controller: {{}} }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
         process.stdout.write(JSON.stringify({{
           defaultCalls,
+          pathCalls,
           touchCalls: calls.slice(),
           resetOnlyCalls,
           missingError,
@@ -3345,6 +3355,12 @@ class TestFileViewerSource(unittest.TestCase):
             ["setStatus", "Type to search files."],
         ]
         self.assertEqual(result["defaultCalls"], base_calls)
+        self.assertEqual(result["pathCalls"], [
+            ["setActiveFileIdentity", "src/app.py", {"line": 42, "gitPath": True, "apiPath": "tok"}],
+            ["resetFilePickerInput"],
+            ["closeFilePickerMenu"],
+            ["applyFileMode"],
+        ])
         self.assertEqual(result["touchCalls"], base_calls + [["updateFileTouchToolbar"]])
         self.assertEqual(result["resetOnlyCalls"], reset_calls)
         self.assertIn("controller.resetActiveFileBufferState", result["missingError"])
