@@ -721,31 +721,37 @@
       };
     }
 
+    function sessionTransitionDeps() {
+      return {
+        currentViewerSessionId: requireFunction(controller.currentFileViewerSessionId, "controller.currentFileViewerSessionId").bind(controller),
+        beginSessionSync: requireFunction(controller.beginFileViewerSessionSync, "controller.beginFileViewerSessionSync").bind(controller),
+        setViewerSessionId: requireFunction(controller.setFileViewerSessionId, "controller.setFileViewerSessionId").bind(controller),
+        clearUnavailable: requireFunction(controller.clearFileViewerUnavailableSession, "controller.clearFileViewerUnavailableSession").bind(controller),
+        resolveOpenTarget: requireFunction(controller.resolveFileViewerOpenTarget, "controller.resolveFileViewerOpenTarget").bind(controller),
+      };
+    }
+
     async function ensureCurrentSession() {
       const deps = ensureSessionDeps();
       if (!deps.isFileViewerOpen()) return true;
       const sid = String(deps.selectedSessionId() || "").trim();
       if (!sid) return false;
-      const currentViewerSessionId = requireFunction(controller.currentFileViewerSessionId, "controller.currentFileViewerSessionId").bind(controller);
-      if (currentViewerSessionId() === sid) return true;
-      const beginSessionSync = requireFunction(controller.beginFileViewerSessionSync, "controller.beginFileViewerSessionSync").bind(controller);
-      const setViewerSessionId = requireFunction(controller.setFileViewerSessionId, "controller.setFileViewerSessionId").bind(controller);
-      const clearUnavailable = requireFunction(controller.clearFileViewerUnavailableSession, "controller.clearFileViewerUnavailableSession").bind(controller);
-      const resolveOpenTarget = requireFunction(controller.resolveFileViewerOpenTarget, "controller.resolveFileViewerOpenTarget").bind(controller);
-      const syncToken = beginSessionSync();
+      const transition = sessionTransitionDeps();
+      if (transition.currentViewerSessionId() === sid) return true;
+      const syncToken = transition.beginSessionSync();
       if (!(await deps.maybeHandleUnsavedFileChanges())) return false;
       if (!deps.isSelectionCurrent(sid, syncToken)) return false;
       cancelPendingFileOpen();
-      rememberActiveFileSelection(currentViewerSessionId());
-      setViewerSessionId(sid);
-      clearUnavailable();
-      if (deps.filePickerSearchSessionId() !== currentViewerSessionId()) {
+      rememberActiveFileSelection(transition.currentViewerSessionId());
+      transition.setViewerSessionId(sid);
+      transition.clearUnavailable();
+      if (deps.filePickerSearchSessionId() !== transition.currentViewerSessionId()) {
         resetFileSearchState();
-        setFileSearchSessionId(currentViewerSessionId());
+        setFileSearchSessionId(transition.currentViewerSessionId());
       }
       await deps.refreshFileCandidates({ sessionId: sid, syncToken });
       if (!deps.isSessionCurrent(sid, syncToken)) return false;
-      const target = resolveOpenTarget({ sessionId: sid });
+      const target = transition.resolveOpenTarget({ sessionId: sid });
       if (target.kind === "path") {
         deps.setFilePath(target.path, { line: target.line, gitPath: target.gitPath, apiPath: target.apiPath });
         try {
@@ -761,7 +767,69 @@
       return true;
     }
 
-    return Object.freeze({ ensureCurrentSession, hide });
+    function showDeps() {
+      return {
+        showModal: requireFunction(options.showModal, "showModal"),
+        updateFileTouchToolbar: requireFunction(options.updateFileTouchToolbar, "updateFileTouchToolbar"),
+        setFileViewMode: requireFunction(options.setFileViewMode, "setFileViewMode"),
+        applyFileMode: requireFunction(options.applyFileMode, "applyFileMode"),
+        resetFileViewerPanel: requireFunction(options.resetFileViewerPanel, "resetFileViewerPanel"),
+        openFilePickerSearchQuery: requireFunction(options.openFilePickerSearchQuery, "openFilePickerSearchQuery"),
+        setPreserveSearchOnFocus: requireFunction(options.setPreserveSearchOnFocus, "setPreserveSearchOnFocus"),
+        focusFilePickerInput: requireFunction(options.focusFilePickerInput, "focusFilePickerInput"),
+      };
+    }
+
+    async function show({ path = "", mode = "", line = null, pickerQuery = "" } = {}) {
+      const deps = ensureSessionDeps();
+      const transition = sessionTransitionDeps();
+      const ui = showDeps();
+      const wasOpen = deps.isFileViewerOpen();
+      if (wasOpen && !(await deps.maybeHandleUnsavedFileChanges())) return false;
+      cancelPendingFileOpen();
+      const explicitPath = String(path ?? "");
+      const query = String(pickerQuery ?? "");
+      const queryOpen = !explicitPath && query !== "";
+      ui.showModal({ wasOpen, queryOpen });
+      ui.updateFileTouchToolbar();
+      rememberActiveFileSelection(transition.currentViewerSessionId());
+      const sid = String(deps.selectedSessionId() || "").trim();
+      const syncToken = transition.beginSessionSync();
+      transition.setViewerSessionId(sid);
+      transition.clearUnavailable();
+      if (deps.filePickerSearchSessionId() !== transition.currentViewerSessionId()) {
+        resetFileSearchState();
+        setFileSearchSessionId(transition.currentViewerSessionId());
+      }
+      if (mode === "file" || mode === "diff" || mode === "preview") ui.setFileViewMode(mode);
+      else ui.applyFileMode();
+      if (queryOpen) {
+        ui.resetFileViewerPanel();
+        clearActiveFileIdentity({ line });
+        deps.setStatus("Choose which file to open.");
+        ui.openFilePickerSearchQuery(query, { line, suppressDraft: true });
+        ui.setPreserveSearchOnFocus(true);
+      }
+      await deps.refreshFileCandidates({ sessionId: sid, syncToken });
+      if (!deps.isSessionCurrent(sid, syncToken)) return false;
+      if (queryOpen) {
+        ui.focusFilePickerInput();
+        return true;
+      }
+      const target = transition.resolveOpenTarget({ sessionId: sid, explicitPath, explicitLine: line });
+      if (target.kind === "path") {
+        deps.setFilePath(target.path, { line: target.line, gitPath: target.gitPath, apiPath: target.apiPath });
+        void deps.openFilePathWithResolvedMode(target.path, { line: target.line, changed: target.changed, gitPath: target.gitPath, apiPath: target.apiPath, isCurrent: () => deps.isSessionCurrent(sid, syncToken) }).catch((error) => {
+          if (!deps.isSessionCurrent(sid, syncToken)) return;
+          deps.setStatus(`error: ${error && error.message ? error.message : "unable to inspect path"}`);
+        });
+        return true;
+      }
+      deps.renderEmptyFileViewerTarget();
+      return true;
+    }
+
+    return Object.freeze({ ensureCurrentSession, hide, show });
   }
 
   function createFileCandidateRefreshRuntime(options = {}) {

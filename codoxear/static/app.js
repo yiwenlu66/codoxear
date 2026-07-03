@@ -7730,6 +7730,18 @@
           setStatus: (status) => {
             fileStatus.textContent = status;
           },
+          showModal: (options) => fileViewerModalRuntime.show({ ...options, activeElement: document.activeElement, ElementCtor: HTMLElement }),
+          setFileViewMode: (nextMode) => setFileViewMode(nextMode),
+          applyFileMode: () => applyFileMode(),
+          openFilePickerSearchQuery: (query, options) => openFilePickerSearchQuery(query, options),
+          setPreserveSearchOnFocus: (value) => filePickerMenuState.setPreserveSearchOnFocus(value),
+          focusFilePickerInput: () => {
+            try {
+              filePickerInput.focus({ preventScroll: true });
+            } catch (_) {
+              filePickerInput.focus();
+            }
+          },
         });
         const fileLoadResultRuntime = codoxearFileViewer.createFileLoadResultRuntime({
           controller: fileViewerController,
@@ -8368,52 +8380,8 @@
         }
 
         async function showFileViewer({ path = "", mode = "", manual = false, line = null, pickerQuery = "" } = {}) {
-          const wasOpen = isFileViewerOpen();
-          if (wasOpen && !(await maybeHandleUnsavedFileChanges())) return;
-          cancelPendingFileOpen();
-          const explicitPath = String(path ?? "");
-          const query = String(pickerQuery ?? "");
-          const queryOpen = !explicitPath && query !== "";
-          fileViewerModalRuntime.show({ wasOpen, queryOpen, activeElement: document.activeElement, ElementCtor: HTMLElement });
-          updateFileTouchToolbar();
-          rememberActiveFileSelection(currentFileViewerSessionId());
-          const sid = String(selected || "").trim();
-          const syncToken = fileViewerController.beginFileViewerSessionSync();
-          fileViewerController.setFileViewerSessionId(sid);
-          fileViewerController.clearFileViewerUnavailableSession();
-          if (filePickerSearchSnapshot().sessionId !== currentFileViewerSessionId()) {
-            resetFileSearchState();
-            filePickerSearchState.setSessionId(currentFileViewerSessionId());
-          }
-          if (mode === "file" || mode === "diff" || mode === "preview") setFileViewMode(mode);
-          else applyFileMode();
-          if (queryOpen) {
-            resetFileViewerPanel();
-            clearActiveFileIdentity({ line });
-            fileStatus.textContent = "Choose which file to open.";
-            openFilePickerSearchQuery(query, { line, suppressDraft: true });
-            filePickerMenuState.setPreserveSearchOnFocus(true);
-          }
-          await refreshFileCandidates({ sessionId: sid, syncToken });
-          if (!isFileViewerSessionCurrent(sid, syncToken)) return;
-          if (queryOpen) {
-            try {
-              filePickerInput.focus({ preventScroll: true });
-            } catch (_) {
-              filePickerInput.focus();
-            }
-            return;
-          }
-          const target = resolveFileViewerOpenTarget({ sessionId: sid, explicitPath, explicitLine: line });
-          if (target.kind === "path") {
-            setFilePath(target.path, { line: target.line, gitPath: target.gitPath, apiPath: target.apiPath });
-            void openFilePathWithResolvedMode(target.path, { line: target.line, changed: target.changed, gitPath: target.gitPath, apiPath: target.apiPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) }).catch((e) => {
-              if (!isFileViewerSessionCurrent(sid, syncToken)) return;
-              fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
-            });
-            return;
-          }
-          renderEmptyFileViewerTarget();
+          void manual;
+          return await fileViewerLifecycleRuntime.show({ path, mode, line, pickerQuery });
         }
         function hideFileViewer() {
           return fileViewerLifecycleRuntime.hide();
