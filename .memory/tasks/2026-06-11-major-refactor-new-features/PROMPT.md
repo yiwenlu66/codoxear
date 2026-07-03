@@ -1,3 +1,6 @@
+## Status: COMPLETE / SUPERSEDED (2026-07-03)
+All eight Workbench items plus challenged-review fixes are complete at commit `02e3e64`. The active task is now `.memory/tasks/2026-07-03-usable-product-ui-architecture/PROMPT.md` (fully usable product, decent UI, clean architecture).
+
 ## Objective
 Continue the Codoxear product recovery and architecture refactor in `/home/yiwen/codex-web-product-recovery` on branch `recovery/product-gaps`. The work is not to make isolated repairs look safe; it is to move real ownership of state, behavior, and failure semantics out of tangled centers until the system has coherent subsystems.
 
