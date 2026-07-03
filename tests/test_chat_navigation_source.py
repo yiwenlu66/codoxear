@@ -4,6 +4,7 @@ from pathlib import Path
 
 APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
 APP_CSS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.css"
+APP_CHAT_NAVIGATION_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app_chat_navigation.js"
 APP_DISPLAY_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app_display.js"
 APP_MESSAGE_ROWS_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app_message_rows.js"
 APP_TRANSCRIPT_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app_transcript.js"
@@ -36,7 +37,9 @@ class TestChatNavigationSource(unittest.TestCase):
             self.assertNotIn(name, topbar_block)
         self.assertIn("interruptBtn", topbar_block)
 
-    def test_jump_logic_is_loaded_user_rows_only(self) -> None:
+    def test_loaded_user_message_rows_helper_remains_in_app_js(self) -> None:
+        # The message-row helpers (loadedUserMessageRows / loadedUserJumpTarget)
+        # and the row-source implementation stay in app.js / app_message_rows.js.
         source = APP_JS.read_text(encoding="utf-8")
         row_source = APP_MESSAGE_ROWS_JS.read_text(encoding="utf-8")
         self.assertIn('function loadedUserMessageRows() {', source)
@@ -44,15 +47,44 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('row.dataset.role === "user"', row_source)
         self.assertIn('function loadedUserJumpTarget(rows, direction, threshold)', row_source)
         self.assertIn('return codoxearMessageRows.loadedUserJumpTarget(rows, direction, threshold);', source)
-        self.assertIn('function jumpToLoadedUserMessage(direction)', source)
-        self.assertIn('setToast("No loaded user messages")', source)
-        self.assertIn('"At first loaded user message"', source)
-        self.assertIn('"At last loaded user message"', source)
-        self.assertIn('target.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "auto" : "smooth" })', source)
+        self.assertIn('row.dataset.role === "user"', row_source)
+
+    def test_navigation_jumps_are_delegated_to_controller(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        module_source = APP_CHAT_NAVIGATION_JS.read_text(encoding="utf-8")
+        # app.js instantiates the controller and wires the message-row helpers.
+        self.assertIn("const chatNavigationController = (function instantiateChatNavigationController() {", source)
+        self.assertIn('const codoxearChatNavigation = window.CodoxearChatNavigation;', source)
+        self.assertIn("codoxearChatNavigation.createChatNavigationController({", source)
+        self.assertIn("loadedUserMessageRows,", source)
+        self.assertIn("loadedCopyMessageRows,", source)
+        self.assertIn("loadedUserJumpTarget,", source)
+        self.assertIn("loadedCopyJumpTarget,", source)
+        self.assertIn("getScrollTop: () => chat.scrollTop,", source)
+        self.assertIn("prefersReducedMotion,", source)
+        self.assertIn("pulseNavigatedRow,", source)
+        self.assertIn("openChatSearch,", source)
+        self.assertIn("isTextEntryElement,", source)
+        self.assertIn("modalIsolationTargets,", source)
+        self.assertIn("isModalTargetOpen,", source)
+        self.assertIn("addAppEvent,", source)
+        # app.js thin wrappers delegate to the controller; the inline bodies
+        # moved out.
+        self.assertIn("function updateChatNavButtons() {\n          chatNavigationController.syncButtons();\n        }", source)
+        self.assertIn("function jumpToLoadedUserMessage(direction) {\n          chatNavigationController.jumpToLoadedUserMessage(direction);\n        }", source)
+        self.assertIn("function jumpToLoadedMessage(direction) {\n          chatNavigationController.jumpToLoadedMessage(direction);\n        }", source)
+        # The controller owns the boundary toasts and scroll/pulse behavior.
+        self.assertIn('setToast("No loaded user messages")', module_source)
+        self.assertIn('"At first loaded user message"', module_source)
+        self.assertIn('"At last loaded user message"', module_source)
+        self.assertIn('target.scrollIntoView({ block: "start", behavior: scrollBehavior() })', module_source)
 
     def test_jump_target_has_temporary_pulse_style(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         css = APP_CSS.read_text(encoding="utf-8")
+        # pulseNavigatedRow stays in app.js so the chat-search path shares a
+        # single row-pulse authority.
+        self.assertIn("function pulseNavigatedRow(row)", source)
         self.assertIn('row.classList.add("nav-pulse")', source)
         self.assertIn(".msg-row.nav-pulse .msg", css)
         self.assertIn("@keyframes navPulse", css)
@@ -183,8 +215,8 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('if (active) btn.removeAttribute("aria-hidden");', row_source)
         self.assertIn('else btn.setAttribute("aria-hidden", "true");', row_source)
         self.assertIn('tabindex: "-1",', row_source)
-        self.assertIn('disabled: "true",', row_source)
-        self.assertIn('"aria-hidden": "true",', row_source)
+        self.assertIn('disabled: "true"', row_source)
+        self.assertIn('"aria-hidden": "true"', row_source)
         self.assertIn('.msg-copy-btn[aria-hidden="true"],', css)
         self.assertIn('visibility: hidden;', css)
         self.assertIn('pointer-events: none;', css)
@@ -196,33 +228,34 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('function loadedCopyJumpTarget(rows, activeRow, direction, threshold)', row_source)
         self.assertIn('function createMessageCopyNavigationRuntime(options = {})', row_source)
         self.assertIn('return messageCopyNavigationRuntime.jumpTarget(rows, direction, threshold);', source)
+        self.assertIn('function loadedCopyMessageRows()', source)
         self.assertIn('function jumpToLoadedMessage(direction)', source)
-        self.assertIn('const rows = loadedCopyMessageRows();', source)
-        self.assertIn('jumpToLoadedMessage(e.key === "ArrowUp" ? -1 : 1);', source)
-        self.assertIn('Alt+Shift+↑', source)
-        self.assertIn('syncMessageCopyTabStops();\n            if (loadedChatSearchSnapshot().open) refreshLoadedChatSearch', source)
 
-    def test_chat_search_has_safe_keyboard_shortcut(self) -> None:
+    def test_chat_navigation_shortcuts_are_owned_by_controller(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('function chatNavigationShortcutBlocked(target) {', source)
-        self.assertIn('if (!selected) return true;', source)
-        self.assertIn('if (isTextEntryElement(target)) return true;', source)
-        self.assertIn('if (document.body.classList.contains("sidebar-open")) return true;', source)
-        self.assertIn('return modalIsolationTargets.some(isModalTargetOpen);', source)
-        self.assertIn('function chatSearchShortcutBlocked(target) {', source)
-        self.assertIn('return chatNavigationShortcutBlocked(target);', source)
-        self.assertIn('if (e.defaultPrevented) return;', source)
-        self.assertIn('if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {', source)
-        self.assertIn('if (chatSearchShortcutBlocked(e.target)) return;', source)
-        self.assertIn('openChatSearch();', source)
-        self.assertIn('Use <b>/</b> to search the loaded chat; Previous/Next can load an older matching window when the transcript count shows more matches.', source)
-
-    def test_loaded_user_turn_navigation_has_keyboard_shortcut(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('if (e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {', source)
-        self.assertIn('if (chatNavigationShortcutBlocked(e.target)) return;', source)
-        self.assertIn('jumpToLoadedUserMessage(e.key === "ArrowUp" ? -1 : 1);', source)
-        self.assertIn('Use <b>Alt+↑</b>/<b>Alt+↓</b> to jump between loaded user messages.', source)
+        module_source = APP_CHAT_NAVIGATION_JS.read_text(encoding="utf-8")
+        # The blocking predicate and the keydown handler moved to the module.
+        self.assertNotIn("function chatNavigationShortcutBlocked(target) {", source)
+        self.assertNotIn("function chatSearchShortcutBlocked(target) {", source)
+        self.assertIn("function chatNavigationShortcutBlocked(target) {", module_source)
+        self.assertIn("function chatSearchShortcutBlocked(target) {", module_source)
+        self.assertIn("if (!getSelected()) return true;", module_source)
+        self.assertIn("if (isTextEntryElement(target)) return true;", module_source)
+        self.assertIn("if (isSidebarOpen()) return true;", module_source)
+        self.assertIn("return modalIsolationTargets.some(isModalTargetOpen);", module_source)
+        self.assertIn('return chatNavigationShortcutBlocked(target);', module_source)
+        self.assertIn("if (e.defaultPrevented) return;", module_source)
+        self.assertIn('if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {', module_source)
+        self.assertIn("if (chatSearchShortcutBlocked(e.target)) return;", module_source)
+        self.assertIn("openChatSearch();", module_source)
+        self.assertIn("if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && (e.key === \"ArrowUp\" || e.key === \"ArrowDown\")) {", module_source)
+        self.assertIn("jumpToLoadedMessage(e.key === \"ArrowUp\" ? -1 : 1);", module_source)
+        self.assertIn("if (e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey && (e.key === \"ArrowUp\" || e.key === \"ArrowDown\")) {", module_source)
+        self.assertIn("jumpToLoadedUserMessage(e.key === \"ArrowUp\" ? -1 : 1);", module_source)
+        # The help text remains in app.js.
+        self.assertIn("Use <b>/</b> to search the loaded chat; Previous/Next can load an older matching window when the transcript count shows more matches.", source)
+        self.assertIn("Use <b>Alt+↑</b>/<b>Alt+↓</b> to jump between loaded user messages.", source)
+        self.assertIn("Alt+Shift+↑", source)
 
     def test_loaded_chat_search_has_compact_in_flow_styles(self) -> None:
         css = APP_CSS.read_text(encoding="utf-8")

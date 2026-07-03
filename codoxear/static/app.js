@@ -980,6 +980,7 @@
           if (queueController) queueController.dispose();
           if (diagController) diagController.dispose();
           if (recoveryController) recoveryController.dispose();
+          if (chatNavigationController) chatNavigationController.dispose();
           olderLoadRuntime.invalidate();
           fileViewerController.abortPendingFileOpenTransport();
           stopAnnouncementHeartbeat();
@@ -2290,12 +2291,6 @@
           if (row && chatInner.contains(row)) setActiveMessageCopyRow(row);
         });
 
-        function updateChatNavButtons() {
-          const enabled = Boolean(selected && loadedUserMessageRows().length);
-          prevUserBtn.disabled = !enabled;
-          nextUserBtn.disabled = !enabled;
-        }
-
         function prefersReducedMotion() {
           return codoxearViewport.prefersReducedMotion();
         }
@@ -2309,49 +2304,49 @@
           setTimeout(() => row.classList.remove("nav-pulse"), 1400);
         }
 
+        // Loaded-chat navigation rail + document shortcut orchestration now
+        // lives in the CodoxearChatNavigation controller
+        // (codoxear/static/app_chat_navigation.js). app.js keeps DOM
+        // construction for prevUserBtn/nextUserBtn and the thin wrappers below.
+        // The controller is instantiated after the DOM nodes and message-row
+        // helpers exist; it wires the prev/next button handlers and the
+        // document keydown listener itself. Chat search internals stay here.
+        const chatNavigationController = (function instantiateChatNavigationController() {
+          const codoxearChatNavigation = window.CodoxearChatNavigation;
+          if (!codoxearChatNavigation || typeof codoxearChatNavigation.createChatNavigationController !== "function")
+            throw new Error("Codoxear chat navigation controller failed to load");
+          return codoxearChatNavigation.createChatNavigationController({
+            prevUserBtn,
+            nextUserBtn,
+            getSelected: () => selected,
+            loadedUserMessageRows,
+            loadedCopyMessageRows,
+            loadedUserJumpTarget,
+            loadedCopyJumpTarget,
+            getScrollTop: () => chat.scrollTop,
+            prefersReducedMotion,
+            pulseNavigatedRow,
+            setToast,
+            openChatSearch,
+            isTextEntryElement,
+            modalIsolationTargets,
+            isModalTargetOpen,
+            addAppEvent,
+            documentTarget: document,
+          });
+        })();
+
+        function updateChatNavButtons() {
+          chatNavigationController.syncButtons();
+        }
+
         function jumpToLoadedUserMessage(direction) {
-          const rows = loadedUserMessageRows();
-          updateChatNavButtons();
-          if (!rows.length) {
-            setToast("No loaded user messages");
-            return;
-          }
-          const result = loadedUserJumpTarget(rows, direction, chat.scrollTop + 24);
-          if (!result.target) {
-            setToast(result.reason === "first" ? "At first loaded user message" : "At last loaded user message");
-            return;
-          }
-          const target = result.target;
-          target.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "auto" : "smooth" });
-          pulseNavigatedRow(target);
+          chatNavigationController.jumpToLoadedUserMessage(direction);
         }
 
         function jumpToLoadedMessage(direction) {
-          const rows = loadedCopyMessageRows();
-          if (!rows.length) {
-            setToast("No loaded messages");
-            return;
-          }
-          const result = loadedCopyJumpTarget(rows, direction, chat.scrollTop + 24);
-          if (!result.target) {
-            setToast(result.reason === "first" ? "At first loaded message" : "At last loaded message");
-            return;
-          }
-          const target = result.target;
-          target.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "auto" : "smooth" });
-          pulseNavigatedRow(target);
+          chatNavigationController.jumpToLoadedMessage(direction);
         }
-
-        prevUserBtn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          jumpToLoadedUserMessage(-1);
-        };
-        nextUserBtn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          jumpToLoadedUserMessage(1);
-        };
 
         function clearChatSearchMarks() {
           codoxearMessageRows.clearChatSearchMarks(renderedMessageRows());
@@ -2617,37 +2612,11 @@
           closeChatSearch();
         };
 
-        function chatNavigationShortcutBlocked(target) {
-          if (!selected) return true;
-          if (isTextEntryElement(target)) return true;
-          if (document.body.classList.contains("sidebar-open")) return true;
-          return modalIsolationTargets.some(isModalTargetOpen);
-        }
-
-        function chatSearchShortcutBlocked(target) {
-          return chatNavigationShortcutBlocked(target);
-        }
-
-        addAppEvent(document, "keydown", (e) => {
-          if (e.defaultPrevented) return;
-          if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            if (chatSearchShortcutBlocked(e.target)) return;
-            e.preventDefault();
-            openChatSearch();
-            return;
-          }
-          if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
-            if (chatNavigationShortcutBlocked(e.target)) return;
-            e.preventDefault();
-            jumpToLoadedMessage(e.key === "ArrowUp" ? -1 : 1);
-            return;
-          }
-          if (e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
-            if (chatNavigationShortcutBlocked(e.target)) return;
-            e.preventDefault();
-            jumpToLoadedUserMessage(e.key === "ArrowUp" ? -1 : 1);
-          }
-        });
+        // Loaded-chat navigation shortcut blocking and the document keydown
+        // handler for `/`, Alt+Shift+↑/↓ (copy-message nav), and Alt+↑/↓
+        // (user-message nav) now live in the CodoxearChatNavigation
+        // controller (codoxear/static/app_chat_navigation.js), wired via
+        // chatNavigationController above.
 
         function oldestRenderedHistoryCursor() {
           return codoxearMessageRows.oldestRenderedHistoryCursor(renderedMessageRows());
