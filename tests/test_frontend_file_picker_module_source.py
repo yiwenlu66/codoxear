@@ -376,6 +376,9 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
           const clickEvent = {{ stopped: 0, stopPropagation() {{ this.stopped += 1; events.push(["stop"]); }} }};
           const clickResult = await runtime.click(clickEvent);
           const clickEvents = events.splice(0);
+          const openSearchResult = runtime.openSearchQuery("ambig", {{ line: 7, suppressDraft: true }});
+          const openSearchEvents = events.splice(0);
+          const openSearchState = {{ value: input.value, selectionLine: menuState.selectionLine("ambig"), draftSuppressed: menuState.draftSuppressed("ambig") }};
           input.value = "";
           currentSession = "";
           selectedSession = "sid-selected";
@@ -415,7 +418,7 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
           const blurEvents = events.splice(0);
           let missingError = "";
           try {{ picker.createInputRuntime({{ input, menuState }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
-          return {{ focusResult, focusEvents, clickResult, clickEvents, clickStopped: clickEvent.stopped, emptyInputResult, emptyInputEvents, searchInputResult, searchInputEvents, arrowResult, arrowEvents, arrowPrevented: arrowEvent.prevented, draftResult, draftEvents, enterResult, enterEvents, escapeResult, escapeEvents, tabResult, tabEvents, blurResult, blurScheduledEvents, blurEvents, missingError, frozen: Object.isFrozen(runtime) }};
+          return {{ focusResult, focusEvents, clickResult, clickEvents, clickStopped: clickEvent.stopped, openSearchResult, openSearchEvents, openSearchState, emptyInputResult, emptyInputEvents, searchInputResult, searchInputEvents, arrowResult, arrowEvents, arrowPrevented: arrowEvent.prevented, draftResult, draftEvents, enterResult, enterEvents, escapeResult, escapeEvents, tabResult, tabEvents, blurResult, blurScheduledEvents, blurEvents, missingError, frozen: Object.isFrozen(runtime) }};
         }}
         run().then((result) => process.stdout.write(JSON.stringify(result))).catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """
@@ -487,6 +490,9 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         self.assertTrue(result["clickResult"])
         self.assertEqual(result["clickStopped"], 1)
         self.assertEqual(result["clickEvents"], [["stop"], ["ensure"], ["render"], ["apply"]])
+        self.assertTrue(result["openSearchResult"])
+        self.assertEqual(result["openSearchEvents"], [["schedule", "ambig"], ["render"], ["apply"]])
+        self.assertEqual(result["openSearchState"], {"value": "ambig", "selectionLine": 7, "draftSuppressed": True})
         self.assertTrue(result["emptyInputResult"])
         self.assertEqual(result["emptyInputEvents"], [["ensure"], ["render"], ["apply"], ["resetSearch"], ["setSearchSession", "sid-selected"], ["render"], ["apply"]])
         self.assertTrue(result["searchInputResult"])

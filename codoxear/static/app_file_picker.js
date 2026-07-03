@@ -578,6 +578,7 @@
     const optionElementById = requireFunction(options, "optionElementById");
     const isFocusInsideField = requireFunction(options, "isFocusInsideField");
     const animationFrame = requireFunction(options, "requestAnimationFrame");
+    const openSearchQueryState = requireFunction(menuState, "openSearchQuery");
     const takePreservedSearchOnFocus = requireFunction(menuState, "takePreservedSearchOnFocus");
     const setOpen = requireFunction(menuState, "setOpen");
     const handleInputState = requireFunction(menuState, "handleInput");
@@ -644,6 +645,16 @@
       return true;
     }
 
+    function openSearchQuery(query, { line = null, suppressDraft = false } = {}) {
+      const rawQuery = String(query ?? "");
+      if (!openSearchQueryState(rawQuery, { line, suppressDraft })) return false;
+      input.value = rawQuery;
+      scheduleSearch(rawQuery);
+      renderMenu();
+      applyMenuState();
+      return true;
+    }
+
     async function keydown(event) {
       if (!(await ensureCurrentSession())) return false;
       const entries = renderMenu();
@@ -685,7 +696,7 @@
       return false;
     }
 
-    return Object.freeze({ blur, click, focus, input: inputChanged, keydown });
+    return Object.freeze({ blur, click, focus, input: inputChanged, keydown, openSearchQuery });
   }
 
   function createSearchState(host) {

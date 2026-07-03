@@ -7928,13 +7928,7 @@
         }
 
         function openFilePickerSearchQuery(query, { line = null, suppressDraft = false } = {}) {
-          const rawQuery = String(query ?? "");
-          if (!filePickerMenuState.openSearchQuery(rawQuery, { line, suppressDraft })) return false;
-          filePickerInput.value = rawQuery;
-          scheduleSessionFileSearch(rawQuery);
-          renderFilePickerMenu();
-          applyFileMenuState();
-          return true;
+          return filePickerInputRuntime.openSearchQuery(query, { line, suppressDraft });
         }
 
         function normalizeFileApiPath(value) {
