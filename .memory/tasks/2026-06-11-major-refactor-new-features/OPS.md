@@ -8369,3 +8369,9 @@
 - Full local validation after `0a90b21`: `python3 -m pytest -q` -> `1347 passed, 136 subtests passed`.
 - Docker sandbox validation after `0a90b21`: `CODOXEAR_DOCKER_PORT=19076 scripts/codoxear-docker-sandbox test` -> `1346 passed, 1 skipped, 136 subtests passed`.
 - Interpretation: the concrete sessiond state/control blockers and the deeper duplicate-turn-reducer blocker are repaired in the current HEAD. A fresh clean-room review remains required before final acceptance/yield.
+
+## 2026-07-03T14:05:00Z Final clean-room review result
+- Ran a fresh independent read-only local `pi` CLI clean-room review after sessiond parity fixes and memory update. Command used `--tools read,grep,find,ls`, `--no-skills`, `--no-prompt-templates`, and wrote output to `/tmp/codoxear-final-cleanroom-review-latest-local-pi.txt`.
+- Review result: `NO BLOCKERS` for Workbench items 5-8 and final all-workbench acceptance evidence.
+- Review specifically confirmed: RuntimeStatus/readiness unification has no hidden route-level busy/idle authority; SessionStore covers the per-session persistent maps and deletion/save lifecycle; sessiond shares broker log/PTY/interrupt/quiet-window turn machinery and emits token/interrupted-idle state; remaining source tests and monkeypatches are bounded to allowed static/import/security/browser-DOM or OS/process/socket/network seams.
+- Bounded residuals from review: Codex subagent parent-thread resolution remains broker-domain rather than adapter-domain; `sessiond_state` row-signal helpers are probes over the shared broker reducer; `test_jsonl_offset_source.py` is a legitimate import-architecture sentinel; Docker validation covers the last functional commit `0a90b21` while HEAD later added docs-only memory commits; the clean-room review used local `pi` CLI because async subagent runner was infrastructure-broken.
