@@ -8296,3 +8296,19 @@
   - Focused store/queue/server-persistence/factory/binding/runtime validation returned `132 passed, 22 subtests passed`.
   - Broader store/lifecycle/listing/queue/readiness validation returned `228 passed, 26 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commits.
+
+## 2026-07-03T12:08:00Z Consolidated per-session persistent lifecycle in SessionStore
+- Functional commits:
+  - `4d0ab52 Move persistent state bootstrap into session store` made `SessionStore.reset_in_memory_state()` and `SessionStore.load_persistent_state()` own boot-time reset/load ordering for aliases, sidebar metadata, hidden sessions, file history, queues, pending attachments, direct commit-unknown sends, recent cwd records, and unattended config.
+  - `b144c94 Move stale unknown-send pruning into session store` moved stale direct commit-unknown cleanup and queue recovery marking into `SessionStore.prune_missing_commit_unknown_sends(...)`.
+  - `b7d8b4b Move recent cwd lifecycle into session store` moved recent-cwd normalization, timestamp repair, trimming, and listing into `SessionStore`.
+  - `e4a3d2b Update file history fixture for store load lifecycle` updated a test fixture to patch the new store-level load hook instead of obsolete per-map manager load hooks.
+- Combined with `82500b7`, deletion cleanup is now store-owned: aliases, sidebar dependencies, hidden ids, unattended config, file history including legacy cwd buckets, queues/recovery markers, pending attachment ids, and direct unknown-send records are cleaned by `SessionStore.clear_deleted_session_state(...)`, with save ordering centralized in `save_deleted_session_state_changes(...)`.
+- Mechanism: managers/coordinators now provide locks, live registry/input-lock cleanup, and save callbacks, while the store decides which persisted maps change and in what lifecycle order. New per-session persistent maps should extend `SessionStore` lifecycle methods rather than adding another ad hoc deletion/load/prune block.
+- Validation under checkpoint cadence:
+  - py_compile for changed store/bootstrap/pending/recent/test files passed.
+  - Focused store/pending/factory/binding validation returned `115 passed, 22 subtests passed`.
+  - Focused recent-cwd/store validation returned `31 passed`.
+  - Broader item-6 validation after the fixture repair returned `231 passed, 26 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commits.
+- Commitment: Workbench item 6 is supported as complete for its stated lifecycle mechanism. Full local, Docker, and clean-room review remain all-workbench acceptance gates.
