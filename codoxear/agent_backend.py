@@ -83,6 +83,9 @@ class AgentBackend:
     def message_keeps_turn_busy(self, obj: Mapping[str, Any]) -> bool:
         return False
 
+    def chat_event_from_log_row(self, obj: Mapping[str, Any], *, cc_pending_tool_ids: set[str] | None = None) -> dict[str, Any] | None:
+        return None
+
     def project_launch_defaults(self, defaults: Mapping[str, Any], *, reasoning_efforts: tuple[str, ...]) -> dict[str, Any]:
         out = dict(defaults)
         out["agent_backend"] = self.name
@@ -255,6 +258,76 @@ class CodexBackend(AgentBackend):
         out["supports_fast"] = True
         return out
 
+    def chat_event_from_log_row(self, obj: Mapping[str, Any], *, cc_pending_tool_ids: set[str] | None = None) -> dict[str, Any] | None:
+        from .rollout_events import _codex_event_text
+        from .rollout_events import _event_ts
+        from .rollout_events import _text_message_id
+
+        row = dict(obj)
+        typ = row.get("type")
+        if typ == "event_msg":
+            payload = row.get("payload")
+            if not isinstance(payload, dict):
+                raise ValueError("invalid event_msg payload")
+            if payload.get("type") != "user_message":
+                payload_type = payload.get("type")
+                if payload_type in ("error", "stream_error", "warning"):
+                    text = _codex_event_text(payload)
+                    if text is None:
+                        return None
+                    ts = _event_ts(row)
+                    message_class = "warning" if payload_type == "warning" else "error"
+                    event: dict[str, Any] = {
+                        "role": "assistant",
+                        "text": text,
+                        "message_class": message_class,
+                        "message_id": _text_message_id(message_class=message_class, text=text, ts=ts),
+                    }
+                    if ts is not None:
+                        event["ts"] = ts
+                    return event
+                return None
+            message = payload.get("message")
+            if not isinstance(message, str):
+                return None
+            ts = _event_ts(row)
+            event = {"role": "user", "text": message}
+            if ts is not None:
+                event["ts"] = ts
+            return event
+
+        if typ == "response_item":
+            payload = row.get("payload")
+            if not isinstance(payload, dict):
+                raise ValueError("invalid response_item payload")
+            if payload.get("type") != "message" or payload.get("role") != "assistant":
+                return None
+            content = payload.get("content")
+            if not isinstance(content, list):
+                raise ValueError("invalid assistant message content")
+            out_text_parts: list[str] = []
+            for part in content:
+                if not isinstance(part, dict):
+                    continue
+                if part.get("type") == "output_text" and isinstance(part.get("text"), str):
+                    out_text_parts.append(part["text"])
+            if not out_text_parts:
+                return None
+            text = "".join(out_text_parts)
+            ts = _event_ts(row)
+            message_class = "final_response" if (payload.get("phase") == "final_answer" or payload.get("end_turn") is True) else "narration"
+            event = {
+                "role": "assistant",
+                "text": text,
+                "message_class": message_class,
+                "message_id": _text_message_id(message_class=message_class, text=text, ts=ts),
+            }
+            if ts is not None:
+                event["ts"] = ts
+            return event
+
+        return None
+
     def normalize_launch_request_options(
         self,
         obj: Mapping[str, Any],
@@ -416,6 +489,52 @@ class PiBackend(AgentBackend):
             return True
         return (pi_assistant_thinking_count(row) > 0) or (pi_assistant_tool_use_count(row) > 0)
 
+    def chat_event_from_log_row(self, obj: Mapping[str, Any], *, cc_pending_tool_ids: set[str] | None = None) -> dict[str, Any] | None:
+        from .pi_log import pi_assistant_error_text
+        from .pi_log import pi_assistant_is_aborted_turn
+        from .pi_log import pi_assistant_is_final_turn_end
+        from .pi_log import pi_assistant_text
+        from .pi_log import pi_user_text
+        from .rollout_events import _event_ts
+        from .rollout_events import _text_message_id
+
+        row = dict(obj)
+        if row.get("type") != "message":
+            return None
+        user_text = pi_user_text(row)
+        if isinstance(user_text, str) and user_text:
+            ts = _event_ts(row)
+            event: dict[str, Any] = {"role": "user", "text": user_text}
+            if ts is not None:
+                event["ts"] = ts
+            return event
+        if pi_assistant_is_aborted_turn(row):
+            return None
+        assistant_text = pi_assistant_text(row)
+        if isinstance(assistant_text, str) and assistant_text:
+            ts = _event_ts(row)
+            message_class = "final_response" if pi_assistant_is_final_turn_end(row) else "narration"
+            event = {
+                "role": "assistant",
+                "text": assistant_text,
+                "message_class": message_class,
+                "message_id": _text_message_id(message_class=message_class, text=assistant_text, ts=ts),
+            }
+            if ts is not None:
+                event["ts"] = ts
+            return event
+        error_text = pi_assistant_error_text(row)
+        if isinstance(error_text, str) and error_text:
+            ts = _event_ts(row)
+            return {
+                "role": "assistant",
+                "text": error_text,
+                "message_class": "error",
+                "message_id": _text_message_id(message_class="error", text=error_text, ts=ts),
+                **({"ts": ts} if ts is not None else {}),
+            }
+        return None
+
     def build_launch_args(
         self,
         *,
@@ -518,6 +637,53 @@ class ClaudeCodeBackend(AgentBackend):
         if role == "toolResult":
             return True
         return (cc_assistant_thinking_count(row) > 0) or (cc_assistant_tool_use_count(row) > 0)
+
+    def chat_event_from_log_row(self, obj: Mapping[str, Any], *, cc_pending_tool_ids: set[str] | None = None) -> dict[str, Any] | None:
+        from .cc_log import cc_apply_tool_result_to_pending
+        from .cc_log import cc_assistant_is_final_turn_end
+        from .cc_log import cc_assistant_pending_tool_use_ids
+        from .cc_log import cc_assistant_text
+        from .cc_log import cc_assistant_tool_use_count
+        from .cc_log import cc_message_role
+        from .cc_log import cc_user_text
+        from .rollout_events import _event_ts
+        from .rollout_events import _text_message_id
+
+        row = dict(obj)
+        typ = row.get("type")
+        if typ == "user":
+            user_text = cc_user_text(row)
+            if isinstance(user_text, str) and user_text:
+                if cc_pending_tool_ids is not None:
+                    cc_pending_tool_ids.clear()
+                ts = _event_ts(row)
+                event: dict[str, Any] = {"role": "user", "text": user_text}
+                if ts is not None:
+                    event["ts"] = ts
+                return event
+            if cc_pending_tool_ids is not None and cc_message_role(row) == "toolResult":
+                cc_apply_tool_result_to_pending(row, cc_pending_tool_ids)
+            return None
+
+        if typ == "assistant":
+            if cc_pending_tool_ids is not None and cc_assistant_tool_use_count(row) > 0:
+                cc_pending_tool_ids.update(cc_assistant_pending_tool_use_ids(row))
+            assistant_text = cc_assistant_text(row)
+            if isinstance(assistant_text, str) and assistant_text:
+                ts = _event_ts(row)
+                message_class = "final_response" if cc_assistant_is_final_turn_end(row) and not cc_pending_tool_ids else "narration"
+                event = {
+                    "role": "assistant",
+                    "text": assistant_text,
+                    "message_class": message_class,
+                    "message_id": _text_message_id(message_class=message_class, text=assistant_text, ts=ts),
+                }
+                if ts is not None:
+                    event["ts"] = ts
+                return event
+            return None
+
+        return None
 
     def build_launch_args(
         self,

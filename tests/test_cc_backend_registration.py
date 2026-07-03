@@ -72,6 +72,30 @@ class TestCcBackendRegistration(unittest.TestCase):
         )
         self.assertEqual(cc_settings, (None, "sonnet", "max"))
 
+    def test_backend_adapters_own_single_chat_event_parsing(self) -> None:
+        codex = get_agent_backend("codex")
+        pi = get_agent_backend("pi")
+        cc = get_agent_backend("cc")
+        self.assertEqual(
+            codex.chat_event_from_log_row({"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}}),
+            {"role": "user", "text": "hello"},
+        )
+        codex_assistant = codex.chat_event_from_log_row({"type": "response_item", "payload": {"type": "message", "role": "assistant", "phase": "final_answer", "content": [{"type": "output_text", "text": "done"}]}})
+        self.assertEqual(codex_assistant["role"], "assistant")
+        self.assertEqual(codex_assistant["text"], "done")
+        self.assertEqual(codex_assistant["message_class"], "final_response")
+        self.assertEqual(
+            pi.chat_event_from_log_row({"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "pi hi"}]}}),
+            {"role": "user", "text": "pi hi"},
+        )
+        pending = {"tool-a"}
+        cc_user = cc.chat_event_from_log_row({"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": "cc hi"}]}}, cc_pending_tool_ids=pending)
+        self.assertEqual(cc_user, {"role": "user", "text": "cc hi"})
+        self.assertEqual(pending, set())
+        pending = {"tool-a"}
+        cc_assistant = cc.chat_event_from_log_row({"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "working"}], "stop_reason": "end_turn"}}, cc_pending_tool_ids=pending)
+        self.assertEqual(cc_assistant["message_class"], "narration")
+
     def test_backend_adapters_own_row_busy_predicates(self) -> None:
         pi = get_agent_backend("pi")
         cc = get_agent_backend("cc")
