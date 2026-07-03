@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
 from .cc_log import CC_SUPPORTED_REASONING_EFFORTS
 
@@ -502,28 +503,35 @@ def launch_defaults_warning(exc: BaseException) -> str:
 
 def read_new_session_defaults(paths: LaunchConfigPaths, *, default_agent_backend: str) -> dict[str, Any]:
     warnings: dict[str, str] = {}
-    try:
-        codex = read_codex_launch_defaults(paths)
-    except Exception as exc:
-        codex = fallback_codex_launch_defaults()
-        warnings["codex"] = launch_defaults_warning(exc)
-    codex["agent_backend"] = "codex"
-    codex["provider_choices"] = list(codex.get("model_providers") or [])
-    codex["reasoning_efforts"] = list(SUPPORTED_REASONING_EFFORTS)
-    codex["supports_fast"] = True
-    try:
-        pi = read_pi_launch_defaults(paths)
-    except Exception as exc:
-        pi = fallback_pi_launch_defaults()
-        warnings["pi"] = launch_defaults_warning(exc)
-    try:
-        cc = read_cc_launch_defaults(paths)
-    except Exception as exc:
-        cc = fallback_cc_launch_defaults()
-        warnings["cc"] = launch_defaults_warning(exc)
+    readers = {
+        "codex": read_codex_launch_defaults,
+        "pi": read_pi_launch_defaults,
+        "cc": read_cc_launch_defaults,
+    }
+    fallbacks = {
+        "codex": fallback_codex_launch_defaults,
+        "pi": fallback_pi_launch_defaults,
+        "cc": fallback_cc_launch_defaults,
+    }
+    reasoning_efforts = {
+        "codex": SUPPORTED_REASONING_EFFORTS,
+        "pi": SUPPORTED_PI_REASONING_EFFORTS,
+        "cc": SUPPORTED_CC_REASONING_EFFORTS,
+    }
+    backends: dict[str, dict[str, Any]] = {}
+    for backend_name in ("codex", "pi", "cc"):
+        try:
+            defaults = readers[backend_name](paths)
+        except Exception as exc:
+            defaults = fallbacks[backend_name]()
+            warnings[backend_name] = launch_defaults_warning(exc)
+        backends[backend_name] = get_agent_backend(backend_name).project_launch_defaults(
+            defaults,
+            reasoning_efforts=reasoning_efforts[backend_name],
+        )
     out = {
         "default_backend": default_agent_backend,
-        "backends": {"codex": codex, "pi": pi, "cc": cc},
+        "backends": backends,
     }
     if warnings:
         out["warnings"] = warnings

@@ -83,6 +83,14 @@ class AgentBackend:
     def message_keeps_turn_busy(self, obj: Mapping[str, Any]) -> bool:
         return False
 
+    def project_launch_defaults(self, defaults: Mapping[str, Any], *, reasoning_efforts: tuple[str, ...]) -> dict[str, Any]:
+        out = dict(defaults)
+        out["agent_backend"] = self.name
+        out.setdefault("provider_choices", list(out.get("provider_choices") or []))
+        out["reasoning_efforts"] = list(out.get("reasoning_efforts") or reasoning_efforts)
+        out.setdefault("supports_fast", False)
+        return out
+
     def build_launch_args(
         self,
         *,
@@ -221,6 +229,14 @@ class CodexBackend(AgentBackend):
 
     def log_matches_session_id(self, log_path: Path, session_id: str) -> bool:
         return bool(session_id and session_id in log_path.name)
+
+    def project_launch_defaults(self, defaults: Mapping[str, Any], *, reasoning_efforts: tuple[str, ...]) -> dict[str, Any]:
+        out = dict(defaults)
+        out["agent_backend"] = self.name
+        out["provider_choices"] = list(out.get("model_providers") or [])
+        out["reasoning_efforts"] = list(reasoning_efforts)
+        out["supports_fast"] = True
+        return out
 
     def read_run_settings_from_log(
         self,

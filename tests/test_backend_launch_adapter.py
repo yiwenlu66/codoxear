@@ -28,6 +28,24 @@ class TestBackendLaunchAdapter(unittest.TestCase):
         self.assertIn("get_agent_backend(agent_backend).build_launch_args(", source)
         self.assertIn("get_agent_backend(agent_backend).apply_launch_environment(", source)
 
+    def test_backend_adapters_project_launch_default_metadata(self) -> None:
+        codex = get_agent_backend("codex").project_launch_defaults(
+            {"model_providers": ["chatgpt", "openai-api", "custom"], "reasoning_effort": None},
+            reasoning_efforts=("xhigh", "high"),
+        )
+        self.assertEqual(codex["agent_backend"], "codex")
+        self.assertEqual(codex["provider_choices"], ["chatgpt", "openai-api", "custom"])
+        self.assertEqual(codex["reasoning_efforts"], ["xhigh", "high"])
+        self.assertTrue(codex["supports_fast"])
+        pi = get_agent_backend("pi").project_launch_defaults(
+            {"provider_choices": ["macaron"], "reasoning_efforts": ["off", "high"]},
+            reasoning_efforts=("off", "minimal", "high"),
+        )
+        self.assertEqual(pi["agent_backend"], "pi")
+        self.assertEqual(pi["provider_choices"], ["macaron"])
+        self.assertEqual(pi["reasoning_efforts"], ["off", "high"])
+        self.assertFalse(pi["supports_fast"])
+
     def test_codex_args_match_web_owned_launch_contract(self) -> None:
         args = build_backend_args(
             agent_backend="codex",
