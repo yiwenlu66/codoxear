@@ -4475,7 +4475,11 @@
             if (enabledEl) enabledEl.checked = Boolean(selected && on);
           }
           syncAttachButtonState();
-          fileBtn.disabled = !selected;
+          const fileViewerBlocked = Boolean(selected && selectedSessionLaunchFailed());
+          const fileViewerLabel = !selected ? "Select a session to view files" : fileViewerBlocked ? "Failed launch has no file browser" : "View file";
+          fileBtn.disabled = !selected || fileViewerBlocked;
+          fileBtn.title = fileViewerLabel;
+          fileBtn.setAttribute("aria-label", fileViewerLabel);
           copyConversationBtn.disabled = !selected;
           chatSearchBtn.disabled = !selected;
           sessionContextBar.style.display = selected ? "flex" : "none";
@@ -7519,6 +7523,10 @@
 
         async function showFileViewer({ path = "", mode = "", manual = false, line = null, pickerQuery = "" } = {}) {
           void manual;
+          if (selectedSessionLaunchFailed()) {
+            setToast("failed launch has no file browser");
+            return false;
+          }
           return await fileViewerLifecycleRuntime.show({ path, mode, line, pickerQuery });
         }
         function hideFileViewer() {

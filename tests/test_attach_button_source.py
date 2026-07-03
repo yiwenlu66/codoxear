@@ -22,6 +22,15 @@ class TestAttachButtonSource(unittest.TestCase):
         self.assertIn('attachControl.setAttribute("aria-label", attachLabel);', source)
         self.assertIn('syncAttachButtonState();\n          updateQueueBadge();', source)
 
+    def test_file_view_button_blocks_failed_launches(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+
+        self.assertIn('const fileViewerBlocked = Boolean(selected && selectedSessionLaunchFailed());', source)
+        self.assertIn('fileViewerBlocked ? "Failed launch has no file browser" : "View file"', source)
+        self.assertIn('fileBtn.disabled = !selected || fileViewerBlocked;', source)
+        self.assertIn('fileBtn.setAttribute("aria-label", fileViewerLabel);', source)
+        self.assertIn('if (selectedSessionLaunchFailed()) {\n            setToast("failed launch has no file browser");\n            return false;\n          }', source)
+
     def test_attach_upload_uses_selection_captured_at_file_pick(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
 
