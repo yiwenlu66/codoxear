@@ -33,7 +33,9 @@ Currently supported agent backends:
 ### `codoxear.sessiond`
 
 - Headless session helper that can launch a backend session without an interactive terminal.
-- Writes the same `socks/*.sock` + `socks/*.json` metadata the server expects.
+- Uses backend adapter-owned launch options for Codex, Pi, and Claude Code, including backend-specific model/provider/reasoning flags.
+- Writes the same `socks/*.sock` + `socks/*.json` metadata shape the server expects and exposes the same control state schema (`busy`, `queue_len`, `interrupted_idle`) for readiness projection.
+- Reuses shared terminal-query responses and backend log busy reducers where behavior should match the broker; it intentionally does not provide a foreground terminal UX.
 - Linux and macOS.
 
 ### `codoxear.rollout_log` and `codoxear.pi_log`

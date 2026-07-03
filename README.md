@@ -83,7 +83,7 @@ Install Codoxear (installs `codoxear-server`, `codoxear-broker`, and `codoxear-s
    CODEX_WEB_AGENT_BACKEND=cc codoxear-sessiond --cwd /path/to/repo
    ```
 
-   Arguments after `--` are passed to the selected backend; do not repeat the backend executable name.
+   Arguments after `--` are passed to the selected backend; do not repeat the backend executable name. `codoxear-sessiond` uses the same backend adapter launch options as web-owned sessions for Codex/Pi/Claude Code, writes the same socket metadata shape, and exposes the same control state schema (`busy`, `queue_len`, `interrupted_idle`) for server readiness. It is headless by design, so it does not preserve a foreground terminal UI.
 
 5. On your phone, open `http://<your-computer>:8743`, enter the password, and select the session.
 
