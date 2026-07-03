@@ -8040,3 +8040,16 @@
   - Focused validation `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_navigation_source.py tests/test_auth_cleanup_source.py tests/test_chat_scrollback_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py tests/test_static_assets.py` returned `77 passed`.
   - Source audit `! rg -n "let autoScroll|let renderedAtLiveTail|let lastScrollTop|let touchY|function isNearBottom\\(|function syncVisibleTimeIndicator\\(|function syncJumpButton\\(|function scrollToBottom\\(" codoxear/static/app.js` passed.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T05:29:00Z Moved transcript event/pending state into runtime
+- Functional commit `6a9e8ff Move transcript event state into runtime` added `CodoxearTranscript.createTranscriptEventRuntime(...)` and moved recent-event dedupe plus pending/local-echo state out of app.js: bounded recent event keys, duplicate detection, adjacent assistant dedupe, local echo id sequence, pending user records, session/epoch pending filtering, pending drop, pending presence, and server-user pending reconciliation now live in `app_transcript.js`.
+- Mechanism: app.js previously held `localEchoSeq`, `pendingUser`, `recentEventKeys`, `recentEventKeySet`, and `RECENT_EVENT_KEYS_MAX`, so send, render, append, transcript renewal, and session deletion each mutated shared arrays/sets. The new runtime owns the state and matching algorithm while app.js supplies message identity functions, scroll live-tail state, rendered rows, and DOM update/removal side effects.
+- App.js no longer declares `let localEchoSeq`, `const pendingUser`, `const recentEventKeys`, `const recentEventKeySet`, or `RECENT_EVENT_KEYS_MAX`; source audit confirmed those names are absent from app.js.
+- Behavior evidence: added `test_transcript_event_runtime_owns_recent_events_and_pending_echoes`, covering bounded recent-key eviction, duplicate detection, adjacent assistant dedupe, local echo ids, pending add/filter/sort, exact pending match, timed fallback, untimed-block behavior, pending drop, session pending presence, and fail-loud missing dependency errors. Existing live-delta/send/renewal tests now use `transcriptEventRuntime` instead of reconstructing deleted globals.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app.js` passed.
+  - `node --check codoxear/static/app_transcript.js` passed.
+  - `python3 -m py_compile tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py tests/test_chat_navigation_source.py tests/test_frontend_message_rows_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py tests/test_chat_navigation_source.py tests/test_auth_cleanup_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py tests/test_static_assets.py` returned `78 passed`.
+  - Source audit `! rg -n "let localEchoSeq|const pendingUser|const recentEventKeys|const recentEventKeySet|RECENT_EVENT_KEYS_MAX" codoxear/static/app.js` passed.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
