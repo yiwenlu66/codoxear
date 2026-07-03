@@ -1,0 +1,247 @@
+from __future__ import annotations
+
+import json
+import tempfile
+from pathlib import Path
+from types import SimpleNamespace
+
+from codoxear.message_cursor import MessageCursorError
+from codoxear.message_cursor import decode_message_cursor
+from codoxear.message_cursor import encode_message_cursor
+from codoxear.message_routes import MessageRouteDeps
+from codoxear.message_routes import handle_messages_live
+from codoxear.message_routes import handle_messages_tail
+from codoxear.session_model import Session
+
+# Fixed HMAC secret so encode/decode are exercised against the real signing
+# implementation, preserving the signed-cursor public contract under test.
+_SECRET = b"test-message-route-secret"
+
+
+class _FakeHandler:
+    def __init__(self) -> None:
+        self.unauthorized = False
+
+    def _unauthorized(self) -> None:
+        self.unauthorized = True
+
+
+def _session(td: str, log_path: Path | None) -> Session:
+    return Session(
+        session_id="s1",
+        thread_id="thread-1",
+        broker_pid=1,
+        codex_pid=1,
+        agent_backend="codex",
+        owned=False,
+        start_ts=0.0,
+        cwd=td,
+        log_path=log_path,
+        sock_path=Path(td) / "s1.sock",
+    )
+
+
+class _TailManager:
+    """Manager fake for the tail route: only the methods the handler calls."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def refresh_session_meta(self, _sid: str) -> None:
+        return None
+
+    def get_session(self, _sid: str) -> Session:
+        return self._session
+
+    def _attach_notification_texts(self, events):
+        return events
+
+
+class _LiveManager:
+    """Manager fake for the live route: records mark_log_delta calls."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+        self.marked: list[tuple[tuple, dict]] = []
+
+    def refresh_session_meta(self, _sid: str) -> None:
+        return None
+
+    def get_session(self, _sid: str) -> Session:
+        return self._session
+
+    def mark_log_delta(self, *args, **kwargs) -> None:
+        self.marked.append((args, kwargs))
+
+
+def _deps(**overrides):
+    responses: list[tuple[int, dict[str, object]]] = []
+    metrics: list[tuple[str, float]] = []
+
+    def json_response(_handler, status: int, payload: dict[str, object]) -> None:
+        responses.append((status, payload))
+
+    def encode_cursor(*, kind: str, session, pos: int) -> str:
+        return encode_message_cursor(kind=kind, session=session, pos=pos, secret=_SECRET)
+
+    def decode_cursor(token: str, *, kind: str, session) -> int:
+        return decode_message_cursor(token, kind=kind, session=session, secret=_SECRET)
+
+    def runtime_snapshot(_sid: str, _session, **_kw):
+        # state, busy, queue_len, token
+        return {}, False, 0, None
+
+    deps = MessageRouteDeps(
+        require_auth=lambda _handler: True,
+        json_response=json_response,
+        launch_attempt_transcript_for_session_id=lambda _sid: None,
+        transcript_export_max_bytes=50 * 1024 * 1024,
+        transcript_search_max_line_bytes=64 * 1024,
+        decode_message_cursor=decode_cursor,
+        encode_message_cursor=encode_cursor,
+        record_metric=lambda name, value: metrics.append((name, value)),
+        message_runtime_snapshot=runtime_snapshot,
+    )
+    for name, value in overrides.items():
+        object.__setattr__(deps, name, value)
+    return deps, responses, metrics
+
+
+def test_messages_tail_returns_signed_live_and_history_cursors() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "rollout.jsonl"
+        rows = [
+            {"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}, "ts": 1.0},
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "world"}],
+                    "phase": "final_answer",
+                },
+                "ts": 2.0,
+            },
+        ]
+        log_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+        session = _session(td, log_path)
+
+        deps, responses, metrics = _deps()
+        handle_messages_tail(
+            _FakeHandler(),
+            session_id="s1",
+            query="limit=20",
+            manager=_TailManager(session),
+            deps=deps,
+        )
+
+    assert len(responses) == 1
+    status, body = responses[0]
+    assert status == 200
+    # Only two rows and limit=20 -> no older page, so no history cursor on the page.
+    assert body["history_cursor"] is None
+    live_cursor = body["live_cursor"]
+    assert isinstance(live_cursor, str)
+    # Strengthen: the live cursor is a real signed cursor that decodes for this session.
+    assert decode_message_cursor(live_cursor, kind="live", session=session, secret=_SECRET) >= 0
+    assert [event["role"] for event in body["events"]] == ["user", "assistant"]
+    assert body["events"][0]["text"] == "hello"
+    assert body["events"][1]["text"] == "world"
+    # The first event carries a per-event signed history cursor.
+    ev0_cursor = body["events"][0].get("history_cursor")
+    assert isinstance(ev0_cursor, str)
+    assert decode_message_cursor(ev0_cursor, kind="history", session=session, secret=_SECRET) >= 0
+    assert body["busy"] is False
+    assert body["queue_len"] == 0
+    assert body["token"] is None
+    assert metrics and metrics[0][0] == "api_messages_init_ms"
+
+
+def test_messages_live_rejects_bad_cursor_without_mutating_log_state() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "rollout.jsonl"
+        log_path.write_text("", encoding="utf-8")
+        session = _session(td, log_path)
+
+        deps, responses, _metrics = _deps()
+        manager = _LiveManager(session)
+        handle_messages_live(
+            _FakeHandler(),
+            session_id="s1",
+            query="cursor=not-a-valid-cursor",
+            manager=manager,
+            deps=deps,
+        )
+
+    assert responses == [(409, {"error": "cursor_invalid"})]
+    # The bad cursor must short-circuit before any log mutation.
+    assert manager.marked == []
+
+
+def test_messages_tail_missing_session_returns_launch_payload_or_404() -> None:
+    # Strengthens coverage of the unknown-session branch in the tail route.
+    deps, responses, _metrics = _deps(
+        launch_attempt_transcript_for_session_id=lambda _sid: {"transcript_state": "pending_bind", "events": []},
+    )
+
+    class _MissingManager:
+        def refresh_session_meta(self, _sid: str) -> None:
+            return None
+
+        def get_session(self, _sid: str):
+            return None
+
+    handle_messages_tail(
+        _FakeHandler(),
+        session_id="nope",
+        query="limit=20",
+        manager=_MissingManager(),
+        deps=deps,
+    )
+    assert responses == [(200, {"transcript_state": "pending_bind", "events": []})]
+
+
+def test_messages_live_requires_cursor() -> None:
+    # Strengthens coverage: missing cursor -> 400 before any log mutation.
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "rollout.jsonl"
+        log_path.write_text("", encoding="utf-8")
+        session = _session(td, log_path)
+
+        deps, responses, _metrics = _deps()
+        manager = _LiveManager(session)
+        handle_messages_live(
+            _FakeHandler(),
+            session_id="s1",
+            query="",
+            manager=manager,
+            deps=deps,
+        )
+
+    assert responses == [(400, {"error": "cursor required"})]
+    assert manager.marked == []
+
+
+def test_messages_unauthorized_short_circuits() -> None:
+    # Strengthens coverage: auth gate precedes all manager work.
+    deps, responses, _metrics = _deps(require_auth=lambda _handler: False)
+    handler = _FakeHandler()
+
+    class _TouchManager:
+        def __init__(self) -> None:
+            self.touched = False
+
+        def refresh_session_meta(self, _sid: str) -> None:
+            self.touched = True
+
+    manager = _TouchManager()
+    handle_messages_tail(
+        handler,
+        session_id="s1",
+        query="limit=20",
+        manager=manager,
+        deps=deps,
+    )
+    assert handler.unauthorized is True
+    assert responses == []
+    assert manager.touched is False
