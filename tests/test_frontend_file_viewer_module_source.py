@@ -878,6 +878,69 @@ def run_file_viewer_touch_binding_probe() -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
+
+def run_opened_file_runtime_probe() -> dict[str, object]:
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const fileViewer = ctx.window.CodoxearFileViewer;
+        const events = [];
+        let identity = {{ gitPath: true, apiPath: "tok" }};
+        let currentSession = "sid-1";
+        let selectedSession = "sid-selected";
+        const sessions = new Map([
+          ["sid-1", {{ cwd: "/repo", files: ["/repo/old.py", "/repo/src/app.py"] }}],
+          ["sid-selected", {{ cwd: "/selected", files: [] }}],
+        ]);
+        const runtime = fileViewer.createOpenedFileRuntime({{
+          currentSessionId: () => currentSession,
+          selectedSessionId: () => selectedSession,
+          sessionRelativePath: (rawPath, sessionId) => {{
+            const session = sessions.get(sessionId);
+            const cwd = session && session.cwd;
+            const raw = String(rawPath || "");
+            return cwd && raw.startsWith(cwd + "/") ? raw.slice(cwd.length + 1) : "";
+          }},
+          activeIdentity: () => identity,
+          fileEntryForPath: (rel, gitPath, apiPath) => {{ events.push(["entry", rel, gitPath, apiPath]); return rel === "src/app.py" ? {{ changed: true, additions: 5, deletions: 2 }} : null; }},
+          upsertFileEntry: (entry) => events.push(["upsert", entry]),
+          sessionById: (sessionId) => sessions.get(sessionId) || null,
+          listFromFilesField: (files) => Array.isArray(files) ? files.slice() : [],
+          deleteCandidateCache: (sessionId) => events.push(["deleteCache", sessionId]),
+        }});
+        const changedResult = runtime.remember("/repo/src/app.py");
+        const changedFiles = sessions.get("sid-1").files.slice();
+        identity = {{ gitPath: false, apiPath: "plain-token" }};
+        const explicitResult = runtime.remember("docs/readme.md", "/tmp/readme.md");
+        const explicitFiles = sessions.get("sid-1").files.slice();
+        currentSession = "";
+        selectedSession = "sid-selected";
+        const selectedResult = runtime.remember("note.txt");
+        const selectedFiles = sessions.get("sid-selected").files.slice();
+        const emptyResult = runtime.remember("");
+        let missingError = "";
+        try {{ fileViewer.createOpenedFileRuntime({{}}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
+        process.stdout.write(JSON.stringify({{
+          frozen: Object.isFrozen(runtime),
+          changedResult,
+          changedFiles,
+          explicitResult,
+          explicitFiles,
+          selectedResult,
+          selectedFiles,
+          emptyResult,
+          events,
+          missingError,
+        }}));
+        """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
 def run_file_download_runtime_probe() -> dict[str, object]:
     viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
@@ -1675,7 +1738,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
     def test_file_viewer_controller_owns_save_conflict_behavior(self) -> None:
         result = run_file_viewer_controller_probe()
         self.assertTrue(result["render"]["exportFrozen"])
-        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFileCandidateRefreshRuntime", "createFileDownloadRuntime", "createFileFallbackRuntime", "createFileLoadResultRuntime", "createFileModeControlsRuntime", "createFilePasteDialogRuntime", "createFilePdfRenderRuntime", "createFileRenderSurfaceRuntime", "createFileTouchToolbarRuntime", "createFileUnsavedDialogRuntime", "createFileViewerController", "createFileViewerLifecycleRuntime", "createFileViewerModalRuntime", "createFileViewerPanelRuntime", "createPdfLoader"])
+        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFileCandidateRefreshRuntime", "createFileDownloadRuntime", "createFileFallbackRuntime", "createFileLoadResultRuntime", "createFileModeControlsRuntime", "createFilePasteDialogRuntime", "createFilePdfRenderRuntime", "createFileRenderSurfaceRuntime", "createFileTouchToolbarRuntime", "createFileUnsavedDialogRuntime", "createFileViewerController", "createFileViewerLifecycleRuntime", "createFileViewerModalRuntime", "createFileViewerPanelRuntime", "createOpenedFileRuntime", "createPdfLoader"])
         self.assertEqual(result["render"]["conflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["currentConflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["labelText"], "src/app.py - save conflict: version mismatch")
@@ -2064,6 +2127,29 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["laterClick"], [1, 1])
         self.assertEqual(result["plainClick"], [1, 1])
 
+    def test_opened_file_runtime_behavior(self) -> None:
+        result = run_opened_file_runtime_probe()
+        self.assertTrue(result["frozen"])
+        self.assertTrue(result["changedResult"])
+        self.assertEqual(result["changedFiles"], ["/repo/src/app.py", "/repo/old.py"])
+        self.assertTrue(result["explicitResult"])
+        self.assertEqual(result["explicitFiles"], ["/tmp/readme.md", "/repo/src/app.py", "/repo/old.py"])
+        self.assertTrue(result["selectedResult"])
+        self.assertEqual(result["selectedFiles"], ["/selected/note.txt"])
+        self.assertFalse(result["emptyResult"])
+        self.assertEqual(result["events"], [
+            ["entry", "src/app.py", True, "tok"],
+            ["upsert", {"path": "src/app.py", "apiPath": "tok", "gitPath": True, "additions": 5, "deletions": 2, "changed": True, "source": "changed"}],
+            ["deleteCache", "sid-1"],
+            ["entry", "docs/readme.md", False, "plain-token"],
+            ["upsert", {"path": "docs/readme.md", "apiPath": "", "gitPath": False, "additions": None, "deletions": None, "changed": False, "source": "recent"}],
+            ["deleteCache", "sid-1"],
+            ["entry", "note.txt", False, "plain-token"],
+            ["upsert", {"path": "note.txt", "apiPath": "", "gitPath": False, "additions": None, "deletions": None, "changed": False, "source": "recent"}],
+            ["deleteCache", "sid-selected"],
+        ])
+        self.assertIn("file viewer dependency missing: currentSessionId", result["missingError"])
+
     def test_file_download_runtime_behavior(self) -> None:
         result = run_file_download_runtime_probe()
         self.assertTrue(result["frozen"])
@@ -2346,6 +2432,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn('typeof codoxearFileViewer.createFilePasteDialogRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFilePdfRenderRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileRenderSurfaceRuntime !== "function"', app_source)
+        self.assertIn('typeof codoxearFileViewer.createOpenedFileRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileTouchToolbarRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileUnsavedDialogRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileViewerModalRuntime !== "function"', app_source)
@@ -2366,6 +2453,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn("createFilePasteDialogRuntime", viewer_source)
         self.assertIn("createFilePdfRenderRuntime", viewer_source)
         self.assertIn("createFileRenderSurfaceRuntime", viewer_source)
+        self.assertIn("createOpenedFileRuntime", viewer_source)
         self.assertIn("createFileTouchToolbarRuntime", viewer_source)
         self.assertIn("createFileUnsavedDialogRuntime", viewer_source)
         self.assertIn("createFileViewerModalRuntime", viewer_source)

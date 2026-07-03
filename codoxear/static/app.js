@@ -590,6 +590,7 @@
         typeof codoxearFileViewer.createFilePasteDialogRuntime !== "function" ||
         typeof codoxearFileViewer.createFilePdfRenderRuntime !== "function" ||
         typeof codoxearFileViewer.createFileRenderSurfaceRuntime !== "function" ||
+        typeof codoxearFileViewer.createOpenedFileRuntime !== "function" ||
         typeof codoxearFileViewer.createFileTouchToolbarRuntime !== "function" ||
         typeof codoxearFileViewer.createFileUnsavedDialogRuntime !== "function" ||
         typeof codoxearFileViewer.createFileViewerModalRuntime !== "function" ||
@@ -7797,6 +7798,17 @@
           normalizeFileApiPath: (value) => normalizeFileApiPath(value),
           renderMenu: () => renderFilePickerMenu(),
         });
+        const openedFileRuntime = codoxearFileViewer.createOpenedFileRuntime({
+          currentSessionId: () => currentFileViewerSessionId(),
+          selectedSessionId: () => selected,
+          sessionRelativePath: (rawPath, sessionId) => sessionRelativePath(rawPath, sessionId),
+          activeIdentity: () => currentActiveFileIdentity(),
+          fileEntryForPath: (rel, gitPath, apiPath) => fileEntryForPath(rel, gitPath, apiPath),
+          upsertFileEntry: (entry) => upsertFileEntry(entry),
+          sessionById: (sessionId) => sessionIndex.get(sessionId) || null,
+          listFromFilesField: (files) => listFromFilesField(files),
+          deleteCandidateCache: (sessionId) => fileViewerController.deleteFileCandidateCache(sessionId),
+        });
 
         function fileSavePendingValue() {
           return fileViewerController.isFileSavePending();
@@ -8008,34 +8020,7 @@
         }
 
         function rememberOpenedFile(relPath, absPath = null) {
-          const raw = String(relPath ?? "");
-          const sid = currentFileViewerSessionId() || selected || "";
-          const rel = sessionRelativePath(raw, sid) || raw;
-          if (!rel) return;
-          const identity = currentActiveFileIdentity();
-          const gitPath = Boolean(identity.gitPath);
-          const current = fileEntryForPath(rel, gitPath, identity.apiPath);
-          upsertFileEntry({
-            path: rel,
-            apiPath: gitPath ? identity.apiPath : "",
-            gitPath,
-            additions: current && current.changed ? current.additions : null,
-            deletions: current && current.changed ? current.deletions : null,
-            changed: Boolean(current && current.changed),
-            source: current && current.changed ? "changed" : "recent",
-          });
-          const s = sid ? sessionIndex.get(sid) : null;
-          if (!s) return;
-          const files = listFromFilesField(s.files);
-          const abs = typeof absPath === "string" && absPath !== ""
-            ? absPath
-            : s.cwd && rel !== "."
-              ? `${String(s.cwd).replace(/\/+$/, "")}/${rel.replace(/^\.?\//, "")}`
-              : "";
-          if (!abs) return;
-          const nextFiles = [abs, ...files.filter((x) => x !== abs)];
-          s.files = nextFiles;
-          fileViewerController.deleteFileCandidateCache(sid);
+          return openedFileRuntime.remember(relPath, absPath);
         }
 
         function collectMessageFileRefs() {

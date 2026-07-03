@@ -1013,6 +1013,53 @@
     return Object.freeze({ refresh });
   }
 
+  function createOpenedFileRuntime(options = {}) {
+    const currentSessionId = requireFunction(options.currentSessionId, "currentSessionId");
+    const selectedSessionId = requireFunction(options.selectedSessionId, "selectedSessionId");
+    const sessionRelativePath = requireFunction(options.sessionRelativePath, "sessionRelativePath");
+    const activeIdentity = requireFunction(options.activeIdentity, "activeIdentity");
+    const fileEntryForPath = requireFunction(options.fileEntryForPath, "fileEntryForPath");
+    const upsertFileEntry = requireFunction(options.upsertFileEntry, "upsertFileEntry");
+    const sessionById = requireFunction(options.sessionById, "sessionById");
+    const listFromFilesField = requireFunction(options.listFromFilesField, "listFromFilesField");
+    const deleteCandidateCache = requireFunction(options.deleteCandidateCache, "deleteCandidateCache");
+
+    function remember(relPath, absPath = null) {
+      const raw = String(relPath ?? "");
+      const sid = currentSessionId() || selectedSessionId() || "";
+      const rel = sessionRelativePath(raw, sid) || raw;
+      if (!rel) return false;
+      const identity = activeIdentity();
+      const gitPath = Boolean(identity && identity.gitPath);
+      const apiPath = identity && identity.apiPath ? identity.apiPath : "";
+      const current = fileEntryForPath(rel, gitPath, apiPath);
+      upsertFileEntry({
+        path: rel,
+        apiPath: gitPath ? apiPath : "",
+        gitPath,
+        additions: current && current.changed ? current.additions : null,
+        deletions: current && current.changed ? current.deletions : null,
+        changed: Boolean(current && current.changed),
+        source: current && current.changed ? "changed" : "recent",
+      });
+      const session = sid ? sessionById(sid) : null;
+      if (!session) return false;
+      const files = listFromFilesField(session.files);
+      const abs = typeof absPath === "string" && absPath !== ""
+        ? absPath
+        : session.cwd && rel !== "."
+          ? `${String(session.cwd).replace(/\/+$/, "")}/${rel.replace(/^\.?\//, "")}`
+          : "";
+      if (!abs) return false;
+      const nextFiles = [abs, ...files.filter((value) => value !== abs)];
+      session.files = nextFiles;
+      deleteCandidateCache(sid);
+      return true;
+    }
+
+    return Object.freeze({ remember });
+  }
+
   function createFileRenderSurfaceRuntime(options = {}) {
     const diff = requireStyledNode(options.diff, "fileDiff");
     const image = requireImageNode(options.image);
@@ -3248,6 +3295,7 @@
     createFilePdfRenderRuntime,
     createFileViewerModalRuntime,
     createFileRenderSurfaceRuntime,
+    createOpenedFileRuntime,
     createFileTouchToolbarRuntime,
     createFileUnsavedDialogRuntime,
     createFileViewerController,
