@@ -7780,3 +7780,13 @@
   - `python3 -m py_compile tests/test_file_viewer_source.py` passed.
   - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_overlay_accessibility_source.py` returned `66 passed, 25 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T00:18:00Z File picker input handling picker-module ownership
+- Functional commit `e073542 Move file picker input handling into picker module` moved the file-picker input focus/click/input/blur/keydown state machine from inline `codoxear/static/app.js` into `codoxear/static/app_file_picker.js` as `createInputRuntime(...)`.
+- Mechanism: app.js still owned picker input event behavior: ensure-current-session gating, preserved ambiguous-search focus, click ambiguity behavior, input search-state transitions, search reset/schedule, blur delayed close, arrow-key focus movement/scroll, Enter draft/open dispatch, and Escape/Tab close. The picker input runtime now owns those transitions while app.js injects session synchronization, menu render/apply, input reset/close, session ids, search reset/schedule, file open callbacks, status projection, option lookup, focus containment, and animation-frame scheduling.
+- Tests updated: `tests/test_frontend_file_picker_module_source.py` now executes `createInputRuntime(...)` across focus, ambiguous click, empty-input reset, search scheduling, arrow navigation/scroll, Enter draft/open dispatch, Escape/Tab close, blur delayed close, frozen export, and fail-loud missing dependency behavior. `tests/test_file_picker_search_source.py` now points Enter-key open mechanics to the picker module and app.js runtime construction.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app_file_picker.js` and `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_frontend_file_picker_module_source.py tests/test_file_picker_search_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_picker_module_source.py tests/test_file_picker_search_source.py tests/test_file_viewer_source.py tests/test_overlay_accessibility_source.py` returned `84 passed, 25 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
