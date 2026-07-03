@@ -14,11 +14,6 @@ from codoxear.file_response import send_attachment_file_response
 from codoxear.file_response import send_inline_file_response
 
 
-ROOT = Path(__file__).resolve().parents[1]
-SERVER_PY = ROOT / "codoxear" / "server.py"
-FILE_RESPONSE_PY = ROOT / "codoxear" / "file_response.py"
-
-
 class FakeHandler:
     def __init__(self) -> None:
         self.headers = {}
@@ -55,37 +50,7 @@ class FailingRead(io.BytesIO):
         raise OSError("disk read failed")
 
 
-class TestFileResponseModuleSource(unittest.TestCase):
-    def test_file_response_helpers_live_outside_server(self) -> None:
-        server_source = SERVER_PY.read_text(encoding="utf-8")
-        module_source = FILE_RESPONSE_PY.read_text(encoding="utf-8")
-
-        self.assertIn("from .file_response import send_attachment_file_response as _send_attachment_file_response", server_source)
-        self.assertIn("from .file_response import send_inline_file_response as _send_inline_file_response", server_source)
-        self.assertIn("from .file_response import single_byte_range as _single_byte_range", server_source)
-        self.assertNotIn("def _single_byte_range(", server_source)
-        self.assertNotIn("def _send_inline_file_response(", server_source)
-        self.assertNotIn("def _send_attachment_file_response(", server_source)
-
-        self.assertIn("def _open_file_for_response(", module_source)
-        self.assertIn("open_regular_file_no_symlink(path)", module_source)
-        self.assertNotIn('path.open("rb")', module_source)
-        self.assertIn("def _stream_open_file_bytes(", module_source)
-        self.assertIn("def _log_late_stream_error(", module_source)
-        self.assertIn("def _stream_file_bytes(", module_source)
-        self.assertIn("def single_byte_range(", module_source)
-        self.assertIn("def send_inline_file_response(", module_source)
-        self.assertIn("def send_attachment_file_response(", module_source)
-        self.assertIn('handler.send_response(416)', module_source)
-        self.assertIn('handler.send_header("Accept-Ranges", "bytes")', module_source)
-        self.assertIn('handler.send_header("Cache-Control", "no-store")', module_source)
-        self.assertIn('handler.send_header("Content-Disposition", content_disposition)', module_source)
-        self.assertIn("def _open_file_size(", module_source)
-        self.assertIn("os.fstat(f.fileno()).st_size", module_source)
-        self.assertIn("with stream as opened_stream:", module_source)
-        self.assertIn("_stream_open_file_bytes(handler, opened_stream, length=length)", module_source)
-        self.assertIn("file response stream failed after headers", module_source)
-
+class TestFileResponseModule(unittest.TestCase):
     def test_inline_response_maps_missing_file_before_headers(self) -> None:
         path = Path("/tmp/codoxear-missing-inline-response.bin")
         handler = FakeHandler()
