@@ -6,6 +6,7 @@ APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
 APP_CSS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.css"
 APP_DISPLAY_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app_display.js"
 APP_MESSAGE_ROWS_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app_message_rows.js"
+APP_TRANSCRIPT_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app_transcript.js"
 
 
 class TestChatNavigationSource(unittest.TestCase):
@@ -65,7 +66,7 @@ class TestChatNavigationSource(unittest.TestCase):
         start = source.index("function syncVisibleTimeIndicator() {")
         end = source.index("function syncJumpButton()", start)
         block = source[start:end]
-        self.assertIn("chatSearchOpen", block)
+        self.assertIn("loadedChatSearchSnapshot().open", block)
         self.assertIn("firstVisibleMessageRow()", block)
         self.assertIn('Number(row.dataset.ts || "0")', block)
         self.assertIn('chatTimeChip.textContent = `${dayLabel(d)} · ${time24(d)}`;', block)
@@ -74,7 +75,7 @@ class TestChatNavigationSource(unittest.TestCase):
         jump_block = source[source.index("function syncJumpButton()") : source.index("function scrollToBottom()")]
         self.assertIn("syncVisibleTimeIndicator();", jump_block)
         self.assertIn("syncVisibleTimeIndicator();\n          refreshLoadedChatSearch", source)
-        self.assertIn("chatSearchLoadingOlder = false;\n          syncVisibleTimeIndicator();", source)
+        self.assertIn("loadedChatSearchRuntime.setLoadingOlder(false);\n          syncVisibleTimeIndicator();", source)
         reset_block = source[source.index("function resetChatRenderState()") : source.index("function clearTranscriptDom()")]
         self.assertIn("syncVisibleTimeIndicator();", reset_block)
         self.assertIn(".chatTimeChip", css)
@@ -91,9 +92,12 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('title: "Search loaded messages"', source)
         self.assertIn('placeholder: "Search loaded chat"', source)
         self.assertIn('function refreshLoadedChatSearch({ jump = false, preserveCurrent = true, refreshAllCount = true } = {})', source)
-        self.assertIn('chatSearchMatches = renderedMessageRows().filter', source)
+        self.assertNotIn('chatSearchMatches = renderedMessageRows().filter', source)
+        self.assertIn('const loadedChatSearchRuntime = codoxearTranscript.createLoadedChatSearchRuntime();', source)
+        self.assertIn('const matches = renderedMessageRows().filter', source)
+        self.assertIn('loadedChatSearchRuntime.setMatches(matches, { preserveCurrent });', source)
         self.assertIn('rowSearchText(row).toLowerCase().includes(query)', source)
-        self.assertIn('setToast(chatSearchQuery ? "No loaded matches" : "Enter a loaded-chat search")', source)
+        self.assertIn('setToast(state.query ? "No loaded matches" : "Enter a loaded-chat search")', source)
         self.assertIn('async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {})', source)
         self.assertIn('if (olderLoadRuntime.shouldCancelOnScroll() && cur > OLDER_CANCEL_PX) invalidateOlderLoad();', source)
         self.assertIn('chatSearchInput.oninput = () => refreshLoadedChatSearch({ jump: true, preserveCurrent: false });', source)
@@ -124,18 +128,18 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('hint: chatSearchTranscriptHint(firstMatch, cleanQuery),', source)
         self.assertIn('chatSearchAllHintEl.textContent = showAllHint ? `all: ${allState.hint}` : "";', source)
         self.assertIn('void stepChatSearch(1);', source)
-        self.assertIn('`${total ? chatSearchIndex + 1 : 0}/${total} loaded${allSuffix}`', source)
+        self.assertIn('`${total ? searchState.index + 1 : 0}/${total} loaded${allSuffix}`', source)
         self.assertIn('${allState.count}${allState.truncated ? "+" : ""} all', source)
         self.assertIn('function loadOlderUntilChatSearchMatch({ boundaryMatch = null, focus = "first" } = {})', source)
         self.assertIn('const maxPages = 12;', source)
         self.assertIn('const loaded = await loadOlderMessages({ auto: false, cancelOnScroll: false });', source)
         self.assertIn('refreshLoadedChatSearch({ jump: false, preserveCurrent: false });', source)
-        self.assertIn('const boundaryIndex = chatSearchMatches.indexOf(boundaryMatch);', source)
+        self.assertIn('const boundaryIndex = matches.indexOf(boundaryMatch);', source)
         self.assertIn('const allState = chatSearchAllSnapshot();', source)
-        self.assertIn('const unloadedTranscriptMatches = Number.isFinite(allState.count) ? (allState.truncated || allState.count > chatSearchMatches.length) : true;', source)
-        self.assertIn('const canLoadOlderMatches = Boolean(chatSearchQuery && unloadedTranscriptMatches && hasOlderMessages());', source)
+        self.assertIn('const unloadedTranscriptMatches = Number.isFinite(allState.count) ? (allState.truncated || allState.count > state.matches.length) : true;', source)
+        self.assertIn('const canLoadOlderMatches = Boolean(state.query && unloadedTranscriptMatches && hasOlderMessages());', source)
         self.assertIn('(allState.truncated || allState.count > total)', source)
-        self.assertIn('(allState.truncated || allState.count > chatSearchMatches.length)', source)
+        self.assertIn('(allState.truncated || allState.count > state.matches.length)', source)
         self.assertIn('async function loadNearestOlderChatSearchWindow()', source)
         self.assertIn('const boundaryCursor = oldestRenderedHistoryCursor();', source)
         self.assertIn('order=latest&before=${encodeURIComponent(boundaryCursor)}', source)
@@ -144,16 +148,16 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('async function loadChatSearchCursorWindow(cursor, { targetHistoryCursor = "" } = {})', source)
         self.assertIn('function ensureChatSearchTargetRow(historyCursor)', source)
         self.assertIn('row.dataset.historyCursor === targetCursor', source)
-        self.assertIn('target.dataset.searchForcedQuery = chatSearchQuery;', source)
+        self.assertIn('target.dataset.searchForcedQuery = normalizeQuery(forcedQuery);', APP_TRANSCRIPT_JS.read_text(encoding='utf-8'))
         self.assertIn('row.dataset.searchForcedQuery === query || rowSearchText(row).toLowerCase().includes(query)', source)
         self.assertIn('const targetIndex = ensureChatSearchTargetRow(targetHistoryCursor);', source)
-        self.assertIn('else if (chatSearchMatches.length) focusChatSearchMatch(chatSearchMatches.length - 1, { jump: true });', source)
+        self.assertIn('else if (currentChatSearchMatches().length) focusChatSearchMatch(currentChatSearchMatches().length - 1, { jump: true });', source)
         self.assertIn('if (!evs.length) return false;', source)
         self.assertIn('renderDetachedTranscriptWindow(evs, { hasMore: Boolean(data.has_older) })', source)
         self.assertIn('const jumped = await loadNearestOlderChatSearchWindow();', source)
-        self.assertIn('const startIndex = chatSearchIndex;', source)
-        self.assertIn('const atForwardWrap = delta > 0 && startIndex >= chatSearchMatches.length - 1;', source)
-        self.assertIn('boundaryMatch: chatSearchMatches[0],', source)
+        self.assertIn('const startIndex = state.index;', source)
+        self.assertIn('const atForwardWrap = delta > 0 && startIndex >= state.matches.length - 1;', source)
+        self.assertIn('boundaryMatch: state.matches[0],', source)
         self.assertNotIn('let olderLoadCancelOnScroll = true;', source)
         self.assertIn('const olderLoadRuntime = codoxearTranscript.createOlderLoadRuntime({', source)
         self.assertIn('async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {})', source)
@@ -188,7 +192,7 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('const rows = loadedCopyMessageRows();', source)
         self.assertIn('jumpToLoadedMessage(e.key === "ArrowUp" ? -1 : 1);', source)
         self.assertIn('Alt+Shift+↑', source)
-        self.assertIn('syncMessageCopyTabStops();\n          if (chatSearchOpen) refreshLoadedChatSearch', source)
+        self.assertIn('syncMessageCopyTabStops();\n          if (loadedChatSearchSnapshot().open) refreshLoadedChatSearch', source)
 
     def test_chat_search_has_safe_keyboard_shortcut(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

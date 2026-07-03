@@ -229,6 +229,95 @@
     });
   }
 
+  function createLoadedChatSearchRuntime() {
+    let open = false;
+    let query = "";
+    let matches = [];
+    let index = -1;
+    let loadingOlder = false;
+
+    function normalizeQuery(value) {
+      return String(value || "").trim().toLowerCase();
+    }
+
+    function snapshot() {
+      return Object.freeze({ open, query, matches: matches.slice(), index, loadingOlder });
+    }
+
+    function setOpen(nextOpen) {
+      open = Boolean(nextOpen);
+      return snapshot();
+    }
+
+    function setLoadingOlder(nextLoading) {
+      loadingOlder = Boolean(nextLoading);
+      return snapshot();
+    }
+
+    function setQuery(value) {
+      query = normalizeQuery(value);
+      return query;
+    }
+
+    function clearMatches() {
+      matches = [];
+      index = -1;
+      return snapshot();
+    }
+
+    function setMatches(nextMatches, { preserveCurrent = true } = {}) {
+      const previous = preserveCurrent && index >= 0 ? matches[index] : null;
+      matches = Array.isArray(nextMatches) ? nextMatches.filter(Boolean) : [];
+      if (!matches.length) {
+        index = -1;
+        return snapshot();
+      }
+      const nextIndex = previous ? matches.indexOf(previous) : -1;
+      index = nextIndex >= 0 ? nextIndex : 0;
+      return snapshot();
+    }
+
+    function focusIndex(nextIndex) {
+      if (!matches.length) {
+        index = -1;
+        return Object.freeze({ index, row: null, matches: [] });
+      }
+      const total = matches.length;
+      index = ((Number(nextIndex) % total) + total) % total;
+      return Object.freeze({ index, row: matches[index], matches: matches.slice() });
+    }
+
+    function ensureTargetRow(target, forcedQuery, compareRowsInDomOrder) {
+      if (!target) return -1;
+      target.dataset.searchForcedQuery = normalizeQuery(forcedQuery);
+      if (!matches.includes(target)) {
+        matches.push(target);
+        if (typeof compareRowsInDomOrder === "function") matches.sort(compareRowsInDomOrder);
+      }
+      index = matches.indexOf(target);
+      return index;
+    }
+
+    function reset() {
+      open = false;
+      query = "";
+      loadingOlder = false;
+      return clearMatches();
+    }
+
+    return Object.freeze({
+      clearMatches,
+      ensureTargetRow,
+      focusIndex,
+      reset,
+      setLoadingOlder,
+      setMatches,
+      setOpen,
+      setQuery,
+      snapshot,
+    });
+  }
+
   function createChatSearchAllRuntime(options = {}) {
     const setTimeoutFn = requireFunction(options.setTimeout, "setTimeout");
     const clearTimeoutFn = requireFunction(options.clearTimeout, "clearTimeout");
@@ -351,6 +440,7 @@
     rememberTailSnapshot,
     appendTailSnapshotEvents,
     createOlderLoadRuntime,
+    createLoadedChatSearchRuntime,
     createChatSearchAllRuntime,
   });
 })();

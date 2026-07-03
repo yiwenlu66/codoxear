@@ -111,6 +111,55 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertIn("transcript dependency missing: olderButton", out["missingError"])
         self.assertTrue(out["frozen"])
 
+    def test_loaded_chat_search_runtime_owns_open_query_matches_and_index(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const ctx = {{ window: {{}} }};
+            const vm = require("vm");
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            const runtime = ctx.window.CodoxearTranscript.createLoadedChatSearchRuntime();
+            const rowA = {{ dataset: {{}}, id: "a" }};
+            const rowB = {{ dataset: {{}}, id: "b" }};
+            const rowC = {{ dataset: {{}}, id: "c" }};
+            const initial = runtime.snapshot();
+            runtime.setOpen(true);
+            const query = runtime.setQuery("  Needle ");
+            const first = runtime.setMatches([rowA, rowB], {{ preserveCurrent: false }});
+            const focused = runtime.focusIndex(1);
+            const preserved = runtime.setMatches([rowB, rowC], {{ preserveCurrent: true }});
+            const targetIndex = runtime.ensureTargetRow(rowA, "Needle", (x, y) => x.id.localeCompare(y.id));
+            runtime.setLoadingOlder(true);
+            const loading = runtime.snapshot();
+            runtime.reset();
+            const reset = runtime.snapshot();
+            process.stdout.write(JSON.stringify({{
+              initial,
+              query,
+              first: {{ index: first.index, ids: first.matches.map((r) => r.id) }},
+              focused: {{ index: focused.index, row: focused.row.id, ids: focused.matches.map((r) => r.id) }},
+              preserved: {{ index: preserved.index, ids: preserved.matches.map((r) => r.id) }},
+              targetIndex,
+              rowAForcedQuery: rowA.dataset.searchForcedQuery,
+              loading: {{ open: loading.open, query: loading.query, index: loading.index, ids: loading.matches.map((r) => r.id), loadingOlder: loading.loadingOlder }},
+              reset,
+              frozen: Object.isFrozen(runtime),
+            }}));
+            """
+        )
+        out = _run_node(js)
+        self.assertEqual(out["initial"], {"open": False, "query": "", "matches": [], "index": -1, "loadingOlder": False})
+        self.assertEqual(out["query"], "needle")
+        self.assertEqual(out["first"], {"index": 0, "ids": ["a", "b"]})
+        self.assertEqual(out["focused"], {"index": 1, "row": "b", "ids": ["a", "b"]})
+        self.assertEqual(out["preserved"], {"index": 0, "ids": ["b", "c"]})
+        self.assertEqual(out["targetIndex"], 0)
+        self.assertEqual(out["rowAForcedQuery"], "needle")
+        self.assertEqual(out["loading"], {"open": True, "query": "needle", "index": 0, "ids": ["a", "b", "c"], "loadingOlder": True})
+        self.assertEqual(out["reset"], {"open": False, "query": "", "matches": [], "index": -1, "loadingOlder": False})
+        self.assertTrue(out["frozen"])
+
     def test_chat_search_all_runtime_owns_debounce_currentness_and_result_state(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
