@@ -8254,3 +8254,14 @@
   - Focused diagnostics/runtime tests returned `33 passed`.
   - Broader runtime/readiness/listing/messages/queue/unattended validation returned `196 passed, 4 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T11:24:00Z Routed message snapshots through runtime status
+- Functional commit `685d8b3 Route message snapshots through runtime status` changed `ServerRouteDepsFactory.message_runtime_snapshot(...)` to consume `manager._runtime_status_from_state_and_log(...)` rather than reconstructing broker/log/boundary state in route dependencies.
+- Test fakes in message-route and pending-log-idle coverage now expose the same runtime-status manager method; boundary tests preserve the session-bound confirmed-send behavior via the same `consume_session_confirmed_send_boundary(...)` helper used by production.
+- Mechanism: message tail/live routes now read busy/queue state from the shared RuntimeStatus model, while token projection remains independent through `select_runtime_token(...)`.
+- Validation under checkpoint cadence:
+  - `python3 -m py_compile codoxear/server_route_deps.py tests/test_message_route_source.py tests/test_sessions_pending_log_idle.py` passed.
+  - Focused message/deps/runtime tests returned `26 passed` before broader pending-log repair.
+  - Pending-log/message-deps tests returned `30 passed, 4 subtests passed`.
+  - Broader runtime/readiness/message/diagnostics/queue/unattended validation returned `198 passed, 4 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
