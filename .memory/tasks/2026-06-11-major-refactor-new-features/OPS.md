@@ -8225,3 +8225,13 @@
   - Focused launch request normalization tests returned `67 passed`.
   - Broader backend/launch/session validation returned `141 passed, 12 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T10:58:00Z Moved single-row chat parsing into backend adapters
+- Functional commit `8835910 Move chat row parsing into backend adapters` added `AgentBackend.chat_event_from_log_row(...)`, with Codex, Pi, and Claude Code overrides for their row formats.
+- Mechanism: Codex `event_msg`/`response_item` user/error/assistant parsing, Pi `message` user/assistant/error parsing, and Claude Code top-level `user`/`assistant` parsing with pending-tool-aware final/narration classification now live on backend adapters. `rollout_chat_events._single_chat_event(...)` remains a row-type selector that dispatches to the appropriate adapter hook.
+- Behavior evidence: `test_backend_adapters_own_single_chat_event_parsing` executes Codex, Pi, and Claude Code row parsing directly on adapter objects, including Claude pending-tool narration behavior. Existing rollout chat/idle, broker busy, transcript export, message route, session runtime, and resume tests continue to pass through old extraction paths.
+- Validation under checkpoint cadence:
+  - `python3 -m py_compile codoxear/agent_backend.py codoxear/rollout_chat_events.py tests/test_cc_backend_registration.py` passed.
+  - Focused chat parsing/rollout tests returned `156 passed, 4 subtests passed`.
+  - Broader backend/chat/idle/session validation returned `239 passed, 8 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
