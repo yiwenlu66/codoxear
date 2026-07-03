@@ -7888,3 +7888,13 @@
   - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` passed.
   - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` returned `60 passed, 25 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T02:05:00Z Video preview transport viewer-module ownership
+- Functional commit `30644a2 Move video preview transport into viewer module` moved compatible-video-preview range fetch, auth-loss handling, error-detail extraction, compatible preview DOM loading, and preview-button dispatch from inline `codoxear/static/app.js` into `createFileVideoPreviewRuntime(...)` in `codoxear/static/app_file_viewer.js`.
+- Mechanism: the viewer controller already owned active video fallback state and status transitions, but app.js still owned the transport and DOM side effects needed to build/load the compatible preview. The new runtime owns that edge while app.js injects fetch, URL resolution, auth-loss handling, helper error text, and the video element.
+- Tests updated: `tests/test_file_viewer_source.py::eval_video_preview_failure_path()` now executes `createFileVideoPreviewRuntime(...).loadCompatibleVideoPreview(...)` rather than extracting app.js helper functions. Source sentinels now require `fileVideoPreviewRuntime` wiring and reject app-owned preview fetch/load helpers.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app_file_viewer.js` and `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `60 passed, 25 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
