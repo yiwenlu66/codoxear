@@ -16,13 +16,11 @@ def sessions_dir_for_backend(
     cc_sessions_dir: Path,
 ) -> Path:
     backend_name = normalize_agent_backend(agent_backend)
-    if backend_name == "codex":
-        return codex_sessions_dir
-    if backend_name == "pi":
-        return pi_sessions_dir
-    if backend_name == "cc":
-        return cc_sessions_dir
-    raise ValueError(f"unsupported agent_backend: {backend_name}")
+    return {
+        "codex": codex_sessions_dir,
+        "pi": pi_sessions_dir,
+        "cc": cc_sessions_dir,
+    }[backend_name]
 
 
 def iter_session_logs_for_backend(
@@ -66,15 +64,11 @@ def find_new_session_log(
 
 
 def infer_session_meta_backend(log_path: Path, *, pi_sessions_dir: Path, cc_sessions_dir: Path) -> str:
-    try:
-        log_path.resolve().relative_to(pi_sessions_dir.resolve())
-        return "pi"
-    except Exception:
-        try:
-            log_path.resolve().relative_to(cc_sessions_dir.resolve())
-            return "cc"
-        except Exception:
-            return "codex"
+    for backend_name, sessions_dir in (("pi", pi_sessions_dir), ("cc", cc_sessions_dir)):
+        backend = get_agent_backend(backend_name)
+        if backend.is_session_log_path(log_path, sessions_dir=sessions_dir):
+            return backend.name
+    return "codex"
 
 
 def read_session_meta(
