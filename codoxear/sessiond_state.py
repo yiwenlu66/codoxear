@@ -12,6 +12,7 @@ from .pi_log import pi_assistant_is_aborted_turn as _pi_assistant_is_aborted_tur
 from .pi_log import pi_assistant_is_final_turn_end as _pi_assistant_is_final_turn_end
 from .pi_log import pi_assistant_text as _pi_assistant_text
 from .pi_log import pi_user_text as _pi_user_text
+from .rollout_tokens import _extract_token_update
 from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 
 
@@ -27,6 +28,10 @@ class State:
     output_tail: str = ""
     output_tail_max: int = 64 * 1024
     log_off: int = 0
+    token: dict[str, Any] | None = None
+    turn_open: bool = False
+    last_interrupt_request_ts: float = 0.0
+    last_interrupted_idle_ts: float = 0.0
 
 
 def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 256 * 1024) -> tuple[list[dict[str, Any]], int]:
@@ -75,3 +80,27 @@ def _busy_value_after_log_batch(objs: list[dict[str, Any]]) -> bool | None:
         if turn_end_signal:
             next_busy = False
     return next_busy
+
+
+def _token_update_after_log_batch(objs: list[dict[str, Any]]) -> dict[str, Any] | None:
+    return _extract_token_update(objs)
+
+
+def apply_log_batch_to_state(st: State, objs: list[dict[str, Any]], *, now_ts: float) -> bool:
+    next_busy = _busy_value_after_log_batch(objs)
+    token_update = _token_update_after_log_batch(objs)
+    if token_update is None and next_busy is None:
+        return False
+    if token_update is not None:
+        st.token = token_update
+    if next_busy is True:
+        st.busy = True
+        st.turn_open = True
+        st.last_interrupted_idle_ts = 0.0
+    elif next_busy is False:
+        interrupted_idle = st.turn_open and st.last_interrupt_request_ts > 0.0
+        st.busy = False
+        st.turn_open = False
+        st.last_interrupt_request_ts = 0.0
+        st.last_interrupted_idle_ts = now_ts if interrupted_idle else 0.0
+    return True

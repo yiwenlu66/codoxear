@@ -28,6 +28,7 @@ from .sessiond_state import State
 from .sessiond_state import _busy_value_after_log_batch
 from .sessiond_state import _log_busy_signals
 from .sessiond_state import _read_jsonl_from_offset
+from .sessiond_state import apply_log_batch_to_state
 from .util import default_app_dir as _default_app_dir
 from .util import now as _now
 from .util import process_group_alive as _process_group_alive
@@ -190,11 +191,9 @@ class Sessiond:
                 continue
             st.log_off = off
 
-            next_busy = _busy_value_after_log_batch(objs)
-            if next_busy is not None:
-                with self._lock:
-                    if self.state:
-                        self.state.busy = next_busy
+            with self._lock:
+                if self.state:
+                    apply_log_batch_to_state(self.state, objs, now_ts=_now())
 
     def _sock_server(self) -> None:
         st = self.state
@@ -242,6 +241,7 @@ class Sessiond:
                 send_json_line=_send_socket_json_line,
                 socket_peer_disconnected=_socket_peer_disconnected,
                 print_exception=traceback.print_exc,
+                now=_now,
             ),
         )
 

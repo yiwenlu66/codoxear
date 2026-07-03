@@ -12,6 +12,7 @@ from codoxear.sessiond import _log_busy_signals
 from codoxear.sessiond import _read_jsonl_from_offset
 from codoxear.sessiond_control import SessiondControlDeps
 from codoxear.sessiond_control import handle_sessiond_control_connection
+from codoxear.sessiond_state import apply_log_batch_to_state
 
 
 def _sessiond_state(*, codex_pid: int, sock_path: Path) -> State:
@@ -66,6 +67,39 @@ class TestSessiondFailClosed(unittest.TestCase):
         self.assertEqual(_log_busy_signals(cc_final), (False, True))
         self.assertIs(_busy_value_after_log_batch([cc_user, cc_final]), False)
 
+    def test_sessiond_log_batch_applies_token_and_interrupted_idle_state(self) -> None:
+        state = _sessiond_state(codex_pid=1234, sock_path=Path("/tmp/sessiond.sock"))
+        user = {"type": "event_msg", "payload": {"type": "user_message", "message": "run"}}
+        token = {
+            "type": "event_msg",
+            "timestamp": "2026-07-03T13:00:00Z",
+            "payload": {
+                "type": "token_count",
+                "info": {
+                    "model_context_window": 1000,
+                    "last_token_usage": {"total_tokens": 321},
+                    "total_token_usage": {},
+                },
+            },
+        }
+        done = {"type": "event_msg", "payload": {"type": "turn_complete"}}
+
+        self.assertTrue(apply_log_batch_to_state(state, [user], now_ts=10.0))
+        self.assertTrue(state.busy)
+        self.assertTrue(state.turn_open)
+
+        self.assertTrue(apply_log_batch_to_state(state, [token], now_ts=10.5))
+        self.assertEqual(state.token["context_window"], 1000)
+        self.assertEqual(state.token["tokens_in_context"], 321)
+
+        self.assertTrue(apply_log_batch_to_state(state, [user], now_ts=11.0))
+        state.last_interrupt_request_ts = 11.5
+        self.assertTrue(apply_log_batch_to_state(state, [done], now_ts=12.0))
+        self.assertFalse(state.busy)
+        self.assertFalse(state.turn_open)
+        self.assertEqual(state.last_interrupt_request_ts, 0.0)
+        self.assertEqual(state.last_interrupted_idle_ts, 12.0)
+
     def test_sessiond_control_state_uses_runtime_state_schema(self) -> None:
         captured: dict[str, object] = {}
 
@@ -88,11 +122,12 @@ class TestSessiondFailClosed(unittest.TestCase):
             send_json_line=lambda _conn, _obj: None,
             socket_peer_disconnected=lambda _exc: False,
             print_exception=lambda: None,
+            now=lambda: 12.0,
         )
 
         handle_sessiond_control_connection(object(), deps=deps)
 
-        self.assertEqual(captured["response"], {"busy": True, "queue_len": 0, "interrupted_idle": False})
+        self.assertEqual(captured["response"], {"busy": True, "queue_len": 0, "token": None, "interrupted_idle": False})
         self.assertIsNone(captured["after"])
 
     def test_sessiond_reader_preserves_missing_file_contract(self) -> None:
