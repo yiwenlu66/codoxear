@@ -26,3 +26,7 @@ Codoxear is moving from test-green refactor recovery to user-perspective usabili
 Clean-room critic c6109f6e accepted the current tranche with no blockers. The accepted mechanism is: New Session state now has a single controller authority and correct fail-loud script order; browser evidence proves the load-order contract from the user's perspective; converted tests exercise real coordinators with injected external boundaries rather than server-global monkeypatches; validation covers local pytest, Docker test/smoke, clean browser, and independent review.
 
 Non-blocking backlog from review: dispose the resume debounce timer on dialog close to avoid one hidden trailing request; replace/drop the vacuous `__codoxearLoadError` probe; continue reducing residual source-text assertions; continue remaining app-shell extractions beyond New Session.
+
+
+## New iteration observations
+- Browser scout after accepted checkpoint found a new polish/impaired-affordance issue: failed-launch rows disable attach/queue/send actions correctly, but leave the main composer textarea editable with `Enter your instructions here`. This does not allow delivery because buttons are disabled, but it misleads users into typing into a session that cannot receive messages. Fix should project sendability/readiness into the composer input state/placeholder, not just the action buttons.
