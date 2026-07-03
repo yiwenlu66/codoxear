@@ -7854,3 +7854,7 @@
   - `python3 -m py_compile tests/test_file_picker_search_source.py tests/test_markdown_tables.py` passed.
   - Focused validation `python3 -m pytest -q tests/test_file_picker_search_source.py tests/test_markdown_tables.py tests/test_frontend_file_picker_module_source.py` returned `45 passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T01:14:00Z Broader frontend/file validation after editor/opened-file cleanup batch
+- Validation after commits through `778e631`: broader subset `python3 -m pytest -q tests/test_frontend_file_editor_module_source.py tests/test_frontend_file_viewer_module_source.py tests/test_frontend_file_picker_module_source.py tests/test_frontend_file_helpers_source.py tests/test_file_viewer_source.py tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_inspect.py tests/test_file_list.py tests/test_file_routes.py tests/test_file_upload.py tests/test_file_write_locks.py tests/test_static_assets.py tests/test_static_routes.py tests/test_auth_cookie.py tests/test_auth_routes.py tests/test_markdown_renderer_source.py tests/test_markdown_tables.py tests/test_overlay_accessibility_source.py` returned `262 passed, 77 subtests passed`.
+- Scope: this is integration evidence for the recent Workbench item 2 frontend file-viewer/editor/picker ownership moves. It is not acceptance/Docker evidence and does not claim Workbench completion.
