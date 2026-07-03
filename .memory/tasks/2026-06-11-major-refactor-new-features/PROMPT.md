@@ -132,6 +132,7 @@ Why: source-text and monkeypatch scaffolding are now part of the architecture pr
 - Before each action, reason through the mechanism, failure modes, and verification path; prefer reading, tracing, inspection, and causal reasoning over trial-and-error.
 - Resolve crashes, bugs, and design mistakes without asking the user unless the next step is irreversible/high-risk or requires information only the user can provide.
 - Use the strongest available verification, including Docker sandbox validation for acceptance-quality claims.
+- Treat commits on this recovery branch as rollback/evidence checkpoints, not release-risk boundaries. Prefer frequent small coherent functional commits after syntax/focused checks sufficient to avoid obviously broken code; do not require full local or Docker validation before every ordinary commit. Broader/full/Docker validation is integration and acceptance evidence, not a prerequisite for preserving a reversible checkpoint.
 - Do not repeat the same command, edit, or analysis unless a concrete new reason changes what it can prove.
 - Yield only when every Workbench deliverable is complete, the only remaining gap is a parked user decision, or the next step is irreversible/high-risk.
 - Before any necessary yield, run a clean-room adversarial review with a dedicated subagent using the user intent, deliverables, completed evidence, remaining next actions, parked decisions, constraints, and changed artifacts; apply findings before yielding or surface the exact unresolved decision/risk.
