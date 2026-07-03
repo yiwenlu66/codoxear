@@ -8178,3 +8178,12 @@
   - Focused metadata/runtime slice returned `82 passed, 4 subtests passed`.
   - Broader backend/runtime/session slice returned `182 passed, 4 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T10:11:00Z Used backend adapters for process-open log filtering
+- Functional commit `85e9b9f Use backend adapters for process log filtering` removed Codex/Pi/Claude path-classification branches from `codoxear/process_log_paths.py`.
+- Mechanism: macOS `lsof` log enumeration, `/proc` open-log enumeration, and `/proc` writable-open-log enumeration now resolve `get_agent_backend(...)`, derive the backend sessions directory from the adapter, and call `backend.is_session_log_path(...)` for candidate filtering. This reuses the adapter log-recognition semantics moved earlier rather than re-encoding the same backend path predicates.
+- Validation under checkpoint cadence:
+  - `python3 -m py_compile codoxear/process_log_paths.py tests/test_process_log_paths_source.py` passed.
+  - Focused process-open/discovery tests returned `35 passed`.
+  - Broader backend/process/session slice returned `143 passed, 4 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
