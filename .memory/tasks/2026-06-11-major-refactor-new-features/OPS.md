@@ -8265,3 +8265,11 @@
   - Pending-log/message-deps tests returned `30 passed, 4 subtests passed`.
   - Broader runtime/readiness/message/diagnostics/queue/unattended validation returned `198 passed, 4 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T11:27:00Z Removed stale route-deps runtime capabilities
+- Functional commit `086ba61 Drop stale runtime caps from route deps` removed `_consume_session_confirmed_send_boundary`, `_log_path_size_or_none`, `_resolve_runtime_status`, and `_runtime_broker_state` from `ServerRouteCaps` because route dependencies no longer synthesize RuntimeStatus locally.
+- Mechanism: after diagnostics and message route consumption moved to `manager._runtime_status_from_state_and_log(...)`, these capability wires became a misleading alternate ownership path; deleting them prevents route-level reconstruction from returning by accident.
+- Validation under checkpoint cadence:
+  - `python3 -m py_compile codoxear/server_route_deps.py` passed.
+  - Route capability/decomposition/message/pending-log validation returned `32 passed, 4 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
