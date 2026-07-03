@@ -7916,3 +7916,13 @@
   - `node --check codoxear/static/app_file_viewer.js` and `node --check codoxear/static/app.js` passed.
   - Focused validation `python3 -m pytest -q tests/test_file_picker_search_source.py tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `83 passed, 25 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T02:36:00Z File viewer currentness lifecycle ownership
+- Functional commit `58822d2 Move file viewer currentness into lifecycle runtime` moved selected-session/viewer-session/sync-token currentness predicates from inline `codoxear/static/app.js` into `createFileViewerLifecycleRuntime(...)` in `codoxear/static/app_file_viewer.js`.
+- Mechanism: lifecycle runtime already owns show/ensure session transitions and sync-token commits, but app.js still decided whether a pending sync/open belonged to the current selected/viewer session. The lifecycle runtime now exposes `isSelectionCurrent(...)` and `isSessionCurrent(...)` and uses those predicates internally for ensure/show guards; candidate refresh receives the lifecycle predicate instead of an app wrapper.
+- Tests updated: session-sync race probes now provide controller `isCurrentFileViewerSessionSync(...)` and no longer inject external currentness callbacks. Source sentinels reject the old app currentness functions and assert lifecycle-owned predicates/guards.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app_file_viewer.js` and `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_file_viewer_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_file_picker_search_source.py` returned `83 passed, 25 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
