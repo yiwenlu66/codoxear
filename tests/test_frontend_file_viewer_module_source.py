@@ -1786,7 +1786,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
     def test_file_viewer_controller_owns_save_conflict_behavior(self) -> None:
         result = run_file_viewer_controller_probe()
         self.assertTrue(result["render"]["exportFrozen"])
-        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFileCandidateRefreshRuntime", "createFileDownloadRuntime", "createFileFallbackRuntime", "createFileInspectRuntime", "createFileLoadResultRuntime", "createFileModeControlsRuntime", "createFilePasteDialogRuntime", "createFilePdfRenderRuntime", "createFileReferenceRuntime", "createFileRenderSurfaceRuntime", "createFileTouchToolbarRuntime", "createFileUnsavedDialogRuntime", "createFileViewerController", "createFileViewerLifecycleRuntime", "createFileViewerModalRuntime", "createFileViewerPanelRuntime", "createOpenedFileRuntime", "createPdfLoader"])
+        self.assertEqual(result["render"]["exports"], ["bindFileTouchClick", "bindFileTouchPress", "createFileCandidateRefreshRuntime", "createFileDownloadRuntime", "createFileFallbackRuntime", "createFileInspectRuntime", "createFileLoadResultRuntime", "createFileModeControlsRuntime", "createFilePasteDialogRuntime", "createFilePdfRenderRuntime", "createFileReferenceRuntime", "createFileRenderSurfaceRuntime", "createFileTouchToolbarRuntime", "createFileUnsavedDialogRuntime", "createFileVideoPreviewRuntime", "createFileViewerController", "createFileViewerLifecycleRuntime", "createFileViewerModalRuntime", "createFileViewerPanelRuntime", "createOpenedFileRuntime", "createPdfLoader"])
         self.assertEqual(result["render"]["conflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["currentConflict"], {"sessionId": "sid-1", "path": "src/app.py"})
         self.assertEqual(result["render"]["labelText"], "src/app.py - save conflict: version mismatch")
@@ -2486,6 +2486,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn('typeof codoxearFileViewer.createFileTouchToolbarRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileUnsavedDialogRuntime !== "function"', app_source)
         self.assertIn('typeof codoxearFileViewer.createFileViewerModalRuntime !== "function"', app_source)
+        self.assertIn('typeof codoxearFileViewer.createFileVideoPreviewRuntime !== "function"', app_source)
         self.assertIn('throw new Error("Codoxear file viewer controller failed to load")', app_source)
         self.assertIn("const codoxearFileEditor = window.CodoxearFileEditor;", app_source)
         self.assertIn('throw new Error("Codoxear file editor runtime failed to load")', app_source)
@@ -2509,6 +2510,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertIn("createFileTouchToolbarRuntime", viewer_source)
         self.assertIn("createFileUnsavedDialogRuntime", viewer_source)
         self.assertIn("createFileViewerModalRuntime", viewer_source)
+        self.assertIn("createFileVideoPreviewRuntime", viewer_source)
         self.assertIn("createPdfLoader", viewer_source)
         self.assertNotIn("function renderFileSaveConflict", app_source)
 

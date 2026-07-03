@@ -597,6 +597,7 @@
         typeof codoxearFileViewer.createFileUnsavedDialogRuntime !== "function" ||
         typeof codoxearFileViewer.createFileViewerModalRuntime !== "function" ||
         typeof codoxearFileViewer.createFileViewerController !== "function" ||
+        typeof codoxearFileViewer.createFileVideoPreviewRuntime !== "function" ||
         typeof codoxearFileViewer.createPdfLoader !== "function"
       )
         throw new Error("Codoxear file viewer controller failed to load");
@@ -7357,43 +7358,6 @@
           return fileViewerController.resolveFileViewerOpenTarget({ sessionId, explicitPath, explicitLine });
         }
 
-        function fileVideoPreviewErrorText(err) {
-          return codoxearFileHelpers.fileVideoPreviewErrorText(err);
-        }
-
-        async function prepareCompatibleVideoPreview(previewUrl) {
-          const res = await fetch(resolveAppUrl(previewUrl), { headers: { Range: "bytes=0-0" } });
-          if (res.status === 401) {
-            handleAppAuthLoss();
-            throw new Error("authentication required");
-          }
-          if (!res.ok) {
-            let detail = "";
-            try {
-              const obj = await res.clone().json();
-              if (obj && typeof obj.error === "string") detail = obj.error;
-            } catch (_) {
-              try {
-                detail = await res.text();
-              } catch (_) {}
-            }
-            throw new Error(detail || `video preview failed (${res.status})`);
-          }
-          return true;
-        }
-
-        async function loadCompatibleVideoPreview(expectedToken = "", { explicit = false } = {}) {
-          return await fileViewerController.loadCompatibleVideoPreview(expectedToken, {
-            explicit,
-            preparePreview: (previewUrl) => prepareCompatibleVideoPreview(previewUrl),
-            loadPreviewDom: (previewUrl) => {
-              fileVideo.src = resolveAppUrl(previewUrl);
-              fileVideo.load();
-            },
-            errorText: (err) => fileVideoPreviewErrorText(err),
-          });
-        }
-
         function clearFileVideo() {
           return fileRenderSurfaceRuntime.clearVideo();
         }
@@ -7767,6 +7731,14 @@
             }
           },
         });
+        const fileVideoPreviewRuntime = codoxearFileViewer.createFileVideoPreviewRuntime({
+          controller: fileViewerController,
+          fetchPreview: (url, options) => fetch(url, options),
+          resolveAppUrl: (url) => resolveAppUrl(url),
+          handleAuthLoss: () => handleAppAuthLoss(),
+          errorText: (error) => codoxearFileHelpers.fileVideoPreviewErrorText(error),
+          video: fileVideo,
+        });
         const fileLoadResultRuntime = codoxearFileViewer.createFileLoadResultRuntime({
           controller: fileViewerController,
           resolveAppUrl,
@@ -7781,7 +7753,7 @@
           renderPdfFile: (rel, url, request) => renderPdfFile(rel, url, request),
           showImage: (src, alt) => fileRenderSurfaceRuntime.showImage(src, alt),
           showVideo: (loadPlan, options) => fileRenderSurfaceRuntime.showVideo(loadPlan, options),
-          loadCompatibleVideoPreview: (token, options) => loadCompatibleVideoPreview(token, options),
+          loadCompatibleVideoPreview: (token, options) => fileVideoPreviewRuntime.loadCompatibleVideoPreview(token, options),
         });
         const fileCandidateRefreshRuntime = codoxearFileViewer.createFileCandidateRefreshRuntime({
           controller: fileViewerController,
@@ -7921,8 +7893,7 @@
         }
 
         async function handleFileVideoPreviewButtonPress() {
-          const token = fileViewerController.currentActiveVideoPreviewToken();
-          return await fileViewerController.handleFileVideoPreviewButtonPress(token, (nextToken, options) => loadCompatibleVideoPreview(nextToken, options));
+          return await fileVideoPreviewRuntime.handleButtonPress();
         }
 
         function activeFileDownloadApiPath() {

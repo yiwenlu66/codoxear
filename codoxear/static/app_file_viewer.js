@@ -1043,6 +1043,62 @@
     return Object.freeze({ inspectSessionFilePath });
   }
 
+  function createFileVideoPreviewRuntime(options = {}) {
+    const controller = options.controller;
+    if (!controller || typeof controller.loadCompatibleVideoPreview !== "function" || typeof controller.handleFileVideoPreviewButtonPress !== "function" || typeof controller.currentActiveVideoPreviewToken !== "function") {
+      throw new TypeError("file viewer dependency missing: controller");
+    }
+    const fetchPreview = requireFunction(options.fetchPreview, "fetchPreview");
+    const resolveAppUrl = requireFunction(options.resolveAppUrl, "resolveAppUrl");
+    const handleAuthLoss = requireFunction(options.handleAuthLoss, "handleAuthLoss");
+    const errorText = requireFunction(options.errorText, "fileVideoPreviewErrorText");
+    const video = options.video;
+    if (!video || typeof video.load !== "function") throw new TypeError("file viewer dependency missing: video");
+
+    async function prepareCompatibleVideoPreview(previewUrl) {
+      const res = await fetchPreview(resolveAppUrl(previewUrl), { headers: { Range: "bytes=0-0" } });
+      if (res.status === 401) {
+        handleAuthLoss();
+        throw new Error("authentication required");
+      }
+      if (!res.ok) {
+        let detail = "";
+        try {
+          const obj = await res.clone().json();
+          if (obj && typeof obj.error === "string") detail = obj.error;
+        } catch (_) {
+          try {
+            detail = await res.text();
+          } catch (_) {}
+        }
+        throw new Error(detail || `video preview failed (${res.status})`);
+      }
+      return true;
+    }
+
+    function loadCompatibleVideoPreviewDom(previewUrl) {
+      video.src = resolveAppUrl(previewUrl);
+      video.load();
+      return true;
+    }
+
+    async function loadCompatibleVideoPreview(expectedToken = "", options = {}) {
+      return await controller.loadCompatibleVideoPreview(expectedToken, {
+        ...options,
+        preparePreview: (previewUrl) => prepareCompatibleVideoPreview(previewUrl),
+        loadPreviewDom: (previewUrl) => loadCompatibleVideoPreviewDom(previewUrl),
+        errorText,
+      });
+    }
+
+    async function handleButtonPress() {
+      const token = controller.currentActiveVideoPreviewToken();
+      return await controller.handleFileVideoPreviewButtonPress(token, (nextToken, options) => loadCompatibleVideoPreview(nextToken, options));
+    }
+
+    return Object.freeze({ handleButtonPress, loadCompatibleVideoPreview, loadCompatibleVideoPreviewDom, prepareCompatibleVideoPreview });
+  }
+
   function createFileReferenceRuntime(options = {}) {
     const selectedSessionId = requireFunction(options.selectedSessionId, "selectedSessionId");
     const sessionById = requireFunction(options.sessionById, "sessionById");
@@ -3678,6 +3734,7 @@
     createFileInspectRuntime,
     createFileLoadResultRuntime,
     createFileCandidateRefreshRuntime,
+    createFileVideoPreviewRuntime,
     createFileViewerPanelRuntime,
     createFileViewerLifecycleRuntime,
     createFileModeControlsRuntime,

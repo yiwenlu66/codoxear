@@ -270,12 +270,8 @@ def controller_identity_ctx_js(
 
 
 def eval_video_preview_failure_path() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
     viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     file_helpers_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
-    start = source.index("function fileVideoPreviewErrorText(err) {")
-    end = source.index("function clearFileVideo() {", start)
-    snippet = source[start:end]
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -365,9 +361,16 @@ def eval_video_preview_failure_path() -> dict:
         }});
         ctx.fileViewerController.setActiveFileIdentity("clip.mkv", {{ gitPath: false, apiPath: "" }});
         ctx.fileViewerController.setActiveVideoFallback({{ token: "video-1", previewUrl: "/preview.mp4", used: false, preparing: false, rel: "clip.mkv" }});
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_loadCompatibleVideoPreview = loadCompatibleVideoPreview;\n")}, ctx);
+        ctx.videoPreviewRuntime = ctx.window.CodoxearFileViewer.createFileVideoPreviewRuntime({{
+          controller: ctx.fileViewerController,
+          fetchPreview: (url, options) => ctx.fetch(url, options),
+          resolveAppUrl: (url) => ctx.resolveAppUrl(url),
+          handleAuthLoss: () => ctx.handleAppAuthLoss(),
+          errorText: (error) => ctx.codoxearFileHelpers.fileVideoPreviewErrorText(error),
+          video: ctx.fileVideo,
+        }});
         (async () => {{
-          const ok = await ctx.__test_loadCompatibleVideoPreview("video-1", {{ explicit: true }});
+          const ok = await ctx.videoPreviewRuntime.loadCompatibleVideoPreview("video-1", {{ explicit: true }});
           const fallback = ctx.fileViewerController.currentActiveVideoFallback();
           process.stdout.write(JSON.stringify({{
             ok,
@@ -572,7 +575,7 @@ def eval_disable_file_viewer_for_unavailable_session() -> dict:
 def eval_file_viewer_open_target() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function preferredFileSelectionForSession(")
-    end = source.index("function fileVideoPreviewErrorText", start)
+    end = source.index("function clearFileVideo", start)
     snippet = source[start:end]
     js = textwrap.dedent(
         f"""
@@ -4958,20 +4961,22 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertNotIn("const previewUrl = typeof result.video_preview_url === \"string\" ? result.video_preview_url : \"\";", source)
         self.assertNotIn('const browserSafeVideoTypes = new Set(["video/mp4", "video/webm", "video/ogg"]);', source)
         self.assertNotIn('const shouldPreviewFirst = Boolean(previewUrl && contentType && !browserSafeVideoTypes.has(contentType));', source)
-        self.assertIn('async function prepareCompatibleVideoPreview(previewUrl) {', source)
-        self.assertIn('headers: { Range: "bytes=0-0" }', source)
-        self.assertIn('if (res.status === 401) {', source)
-        self.assertIn('handleAppAuthLoss();', source)
-        self.assertIn('const obj = await res.clone().json();', source)
-        self.assertIn('if (obj && typeof obj.error === "string") detail = obj.error;', source)
-        self.assertIn('throw new Error(detail || `video preview failed (${res.status})`);', source)
-        self.assertIn('async function loadCompatibleVideoPreview(expectedToken = "", { explicit = false } = {})', source)
-        self.assertIn('return await fileViewerController.loadCompatibleVideoPreview(expectedToken, {', source)
+        self.assertNotIn('async function prepareCompatibleVideoPreview(previewUrl) {', source)
+        self.assertIn('async function prepareCompatibleVideoPreview(previewUrl) {', viewer_source)
+        self.assertIn('headers: { Range: "bytes=0-0" }', viewer_source)
+        self.assertIn('if (res.status === 401) {', viewer_source)
+        self.assertIn('handleAuthLoss();', viewer_source)
+        self.assertIn('const obj = await res.clone().json();', viewer_source)
+        self.assertIn('if (obj && typeof obj.error === "string") detail = obj.error;', viewer_source)
+        self.assertIn('throw new Error(detail || `video preview failed (${res.status})`);', viewer_source)
+        self.assertNotIn('async function loadCompatibleVideoPreview(expectedToken = "", { explicit = false } = {})', source)
+        self.assertIn('const fileVideoPreviewRuntime = codoxearFileViewer.createFileVideoPreviewRuntime', source)
+        self.assertIn('loadCompatibleVideoPreview: (token, options) => fileVideoPreviewRuntime.loadCompatibleVideoPreview(token, options)', source)
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertIn('async function loadCompatibleVideoPreview(expectedToken = "", options = {})', viewer_source)
         self.assertIn('async function handleFileVideoPreviewButtonPress(token, loadPreview)', viewer_source)
         self.assertIn('return await loadCompatiblePreview(token || "", { explicit: true });', viewer_source)
-        self.assertIn('return await fileViewerController.handleFileVideoPreviewButtonPress(token, (nextToken, options) => loadCompatibleVideoPreview(nextToken, options));', source)
+        self.assertIn('return await fileVideoPreviewRuntime.handleButtonPress();', source)
         self.assertIn('fileVideoPreviewBtn.onclick = (e) => {', source)
         self.assertIn('void handleFileVideoPreviewButtonPress();', source)
         self.assertNotIn('void loadCompatibleVideoPreview(token, { explicit: true });', source)
@@ -4988,7 +4993,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("handleLoadedMetadata: (plan) => handleActiveVideoLoadedMetadata(plan.token)", viewer_source)
         self.assertIn("fileStatus.textContent = explicit ? `${rel} - building compatible video preview...` : `${rel} - trying compatible video preview...`;", viewer_source)
         self.assertNotIn("fileStatus.textContent = explicit ? `${rel} - building compatible video preview...` : `${rel} - trying compatible video preview...`;", source)
-        self.assertIn("fileVideo.src = resolveAppUrl(previewUrl);", source)
+        self.assertNotIn("fileVideo.src = resolveAppUrl(previewUrl);", source)
+        self.assertIn("video.src = resolveAppUrl(previewUrl);", viewer_source)
         self.assertIn("fileStatus.textContent = `${fallback.rel || \"video\"} - compatible video preview - ${fmtBytes(fallback.size)}`;", viewer_source)
         self.assertIn("fileStatus.textContent = `${rel} - video preview unavailable after conversion`;", viewer_source)
         self.assertNotIn("fileStatus.textContent = `${rel} - compatible video preview - ${fmtBytes(size)}`;", source)
