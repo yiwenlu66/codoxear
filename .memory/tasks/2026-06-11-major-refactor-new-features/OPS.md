@@ -7932,3 +7932,12 @@
 - Test commit `b4bc4af Update frontend ownership source assertions` redirected those sentinels to current owners: video-preview error text is injected into `createFileVideoPreviewRuntime(...)`, and session refresh clears file-reference discovery through `fileReferenceRuntime.clearDiscoveryCaches()`.
 - Validation after repair: `python3 -m py_compile tests/test_frontend_file_helpers_source.py` passed, and broader subset `python3 -m pytest -q tests/test_frontend_file_editor_module_source.py tests/test_frontend_file_viewer_module_source.py tests/test_frontend_file_picker_module_source.py tests/test_frontend_file_helpers_source.py tests/test_file_viewer_source.py tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_inspect.py tests/test_file_list.py tests/test_file_routes.py tests/test_file_upload.py tests/test_file_write_locks.py tests/test_static_assets.py tests/test_static_routes.py tests/test_auth_cookie.py tests/test_auth_routes.py tests/test_markdown_renderer_source.py tests/test_markdown_tables.py tests/test_overlay_accessibility_source.py` returned `263 passed, 77 subtests passed`.
 - Scope: this is broader local integration evidence for recent Workbench item 2 frontend file-viewer/editor/picker ownership moves. It is not Docker/acceptance evidence and does not claim Workbench completion.
+
+## 2026-07-03T02:48:00Z File history fallback viewer-module ownership
+- Functional commit `ff66820 Move file history fallback into viewer module` moved session file-history fallback selection from inline `codoxear/static/app.js` into `createOpenedFileRuntime(...).historySelection(...)` in `codoxear/static/app_file_viewer.js`.
+- Mechanism: opened-file runtime already owns MRU persistence and cache invalidation; app.js still scanned session `files` and converted absolute paths to session-relative fallbacks for controller open-target resolution. The runtime now owns that fallback using its existing session lookup, file-list normalization, and session-relative path dependencies.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app_file_viewer.js` and `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_file_viewer_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_file_picker_search_source.py` returned `83 passed, 25 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
