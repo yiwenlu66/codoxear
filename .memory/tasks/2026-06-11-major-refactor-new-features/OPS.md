@@ -8215,3 +8215,13 @@
   - Focused launch-default/provider projection tests returned `66 passed`.
   - Broader backend/launch/frontend defaults validation returned `136 passed, 12 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T10:45:00Z Normalized launch requests through backend adapters
+- Functional commit `55e01ea Normalize launch requests through backend adapters` added `AgentBackend.normalize_launch_request_options(...)` with Codex, Pi, and Claude Code overrides.
+- Mechanism: backend-specific launch-request option validation moved out of `launch_config.parse_new_session_launch_request(...)`. The parser now owns common request shape fields (`cwd`, `model`, tmux flag, resume/worktree/args) and delegates backend semantics to adapters: Codex provider/auth/reasoning/service-tier validation, Pi provider pass-through plus Pi model-specific reasoning validation and unsupported auth/service rejection, and Claude unsupported provider/auth/service plus Claude reasoning validation.
+- Behavior evidence: `test_backend_adapters_normalize_launch_request_options` executes each adapter directly, including a Claude unsupported-provider rejection. Existing launch-request tests continue to exercise the public parser and error messages.
+- Validation under checkpoint cadence:
+  - `python3 -m py_compile codoxear/agent_backend.py codoxear/launch_config.py tests/test_backend_launch_adapter.py` passed.
+  - Focused launch request normalization tests returned `67 passed`.
+  - Broader backend/launch/session validation returned `141 passed, 12 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
