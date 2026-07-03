@@ -440,6 +440,15 @@ def resolve_runtime_status(
 ) -> RuntimeStatus:
     log_bound = bool(log_exists)
     boundary = bool(send_boundary_unresolved)
+    if broker.queue_len > 0:
+        return RuntimeStatus(
+            broker=broker,
+            log_exists=log_bound,
+            log_idle=None,
+            send_boundary_unresolved=boundary,
+            busy=True,
+            remote_ready=False,
+        )
     if log_bound and (not boundary) and not isinstance(log_idle, bool):
         raise ValueError("log_idle is required for a bound transcript log")
     if boundary:
@@ -449,9 +458,7 @@ def resolve_runtime_status(
     else:
         busy = not (bool(log_idle) or broker.allows_interrupted_idle_override)
 
-    if broker.queue_len > 0:
-        remote_ready = False
-    elif boundary:
+    if boundary:
         remote_ready = False
     elif log_bound and (log_idle is not True) and not broker.allows_interrupted_idle_override:
         remote_ready = False

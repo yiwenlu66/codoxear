@@ -28,6 +28,13 @@ class SessionReadinessCoordinator:
     def runtime_status_from_state_and_log(self, session_id: str, state: dict[str, Any], log_path: Path | None) -> RuntimeStatus:
         broker = broker_runtime_state(state)
         log_exists = isinstance(log_path, Path) and log_path.exists()
+        if broker.queue_len > 0:
+            return resolve_runtime_status(
+                broker=broker,
+                log_exists=log_exists,
+                log_idle=None,
+                send_boundary_unresolved=False,
+            )
         log_size = self.log_size_or_none(log_path)
         boundary_unresolved = self.confirmed_send_boundary_unresolved_for_session(session_id, log_path, log_size)
         log_idle = bool(self.idle_from_log(session_id)) if log_exists and not boundary_unresolved else None

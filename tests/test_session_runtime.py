@@ -135,6 +135,13 @@ def test_runtime_status_send_boundary_dominates_without_log_idle() -> None:
     assert status.remote_ready is False
 
 
+def test_runtime_status_broker_queue_short_circuits_log_idle_requirement() -> None:
+    status = _status({"busy": False, "queue_len": 1}, log_exists=True, log_idle=None)
+    assert status.busy is True
+    assert status.remote_ready is False
+    assert status.log_idle is None
+
+
 def test_session_runtime_readiness_projects_send_queue_and_unattended_decisions() -> None:
     ready = session_runtime_readiness(_status({"busy": False, "queue_len": 0}, log_exists=True, log_idle=True), local_queue_len=0)
     assert ready.direct_send is True
