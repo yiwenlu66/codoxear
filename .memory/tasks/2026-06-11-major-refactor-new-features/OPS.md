@@ -8353,3 +8353,8 @@
 - Clean-room review attempt `b1c9e3d3-c0ca-4812-ad51-30fd5a176976` dispatched `reviewer` singly. It failed before writing output: async runner process `1849269` disappeared/staled before result creation. Events contained only stale-run reconciliation.
 - Clean-room review attempt `2fa8d184-569d-4e8b-9dc4-7a10f0ff6971` dispatched `critic` singly with explicit recovery checkout cwd and output file. It failed before writing output: async runner process `1853669` disappeared/staled before result creation. Events contained only stale-run reconciliation.
 - Interpretation: these are subagent infrastructure failures, not review findings. They do not satisfy the clean-room review acceptance gate. A minimal async child `4b190ee6-ed76-43fd-98a3-88f0c5be325d` was dispatched to discriminate general subagent-runtime failure from review-task-specific failure.
+
+## 2026-07-03T13:17:00Z Minimal async subagent failure confirms runner-wide issue
+- Minimal async child `4b190ee6-ed76-43fd-98a3-88f0c5be325d` with task `Return exactly: OK` failed before writing output: async runner process `1858519` disappeared/staled before result creation.
+- Mechanism now supported: clean-room review failures are not caused by review prompt size or repo inspection; the async subagent runner is currently unable to persist any child result in this session.
+- Consequence: the required clean-room subagent review remains unsatisfied by the configured subagent tool. Next constructive check is whether an independent local agent CLI can run a read-only review outside the broken async runner while preserving the same clean-room intent.
