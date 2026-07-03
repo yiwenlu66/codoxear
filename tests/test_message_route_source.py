@@ -10,6 +10,8 @@ from unittest.mock import patch
 
 from codoxear import server
 from codoxear.server import Session
+from codoxear.session_runtime import broker_runtime_state
+from codoxear.session_runtime import resolve_runtime_status
 
 
 class TestMessageRouteBehavior(unittest.TestCase):
@@ -58,6 +60,15 @@ class TestMessageRouteBehavior(unittest.TestCase):
 
                 def idle_from_log(self, _sid: str) -> bool:
                     return True
+
+                def _runtime_status_from_state_and_log(self, session_id: str, state: dict, log_path: Path | None):
+                    log_exists = log_path is not None and log_path.exists()
+                    return resolve_runtime_status(
+                        broker=broker_runtime_state(state),
+                        log_exists=log_exists,
+                        log_idle=self.idle_from_log(session_id) if log_exists else None,
+                        send_boundary_unresolved=False,
+                    )
 
                 def _queue_len(self, _sid: str) -> int:
                     return 0

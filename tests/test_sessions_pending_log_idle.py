@@ -7,7 +7,11 @@ from unittest.mock import patch
 
 from codoxear.server import Session
 from codoxear.server import SessionManager
+from codoxear.server import _consume_session_confirmed_send_boundary
+from codoxear.server import _log_path_size_or_none
 from codoxear.server import _message_runtime_snapshot
+from codoxear.session_runtime import broker_runtime_state
+from codoxear.session_runtime import resolve_runtime_status
 
 
 def _make_manager() -> SessionManager:
@@ -21,6 +25,25 @@ def _make_manager() -> SessionManager:
     mgr._prune_dead_sessions = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._update_meta_counters = lambda *args, **kwargs: None  # type: ignore[method-assign]
     return mgr
+
+
+class _RuntimeStatusFakeManager:
+    def __init__(self, session: Session | None = None) -> None:
+        self.session = session
+
+    def _runtime_status_from_state_and_log(self, session_id, state, log_path):
+        log_available = log_path is not None and log_path.exists()
+        log_size = _log_path_size_or_none(log_path)
+        boundary = False
+        if self.session is not None:
+            boundary = _consume_session_confirmed_send_boundary(self.session, log_path, log_size)
+        log_idle = self.idle_from_log(session_id) if log_available and not boundary else None
+        return resolve_runtime_status(
+            broker=broker_runtime_state(state),
+            log_exists=log_available,
+            log_idle=log_idle,
+            send_boundary_unresolved=boundary,
+        )
 
 
 class TestSessionsPendingLogIdle(unittest.TestCase):
@@ -374,7 +397,7 @@ class TestSessionsPendingLogIdle(unittest.TestCase):
         self.assertIsNone(s.idle_cache_value)
 
     def test_message_snapshot_uses_log_idle_over_stale_broker_busy(self) -> None:
-        class _Manager:
+        class _Manager(_RuntimeStatusFakeManager):
             def get_state(self, _session_id):
                 return {"busy": True, "queue_len": 0}
 
@@ -401,14 +424,14 @@ class TestSessionsPendingLogIdle(unittest.TestCase):
                 busy=True,
                 queue_len=0,
             )
-            with patch("codoxear.server.MANAGER", _Manager()):
+            with patch("codoxear.server.MANAGER", _Manager(s)):
                 _state, busy, queue_len, _token = _message_runtime_snapshot("broker-1", s)
 
         self.assertIs(busy, False)
         self.assertEqual(queue_len, 0)
 
     def test_message_snapshot_uses_interrupted_idle_over_busy_log(self) -> None:
-        class _Manager:
+        class _Manager(_RuntimeStatusFakeManager):
             def get_state(self, _session_id):
                 return {"busy": False, "queue_len": 0, "interrupted_idle": True}
 
@@ -435,14 +458,14 @@ class TestSessionsPendingLogIdle(unittest.TestCase):
                 busy=True,
                 queue_len=0,
             )
-            with patch("codoxear.server.MANAGER", _Manager()):
+            with patch("codoxear.server.MANAGER", _Manager(s)):
                 _state, busy, queue_len, _token = _message_runtime_snapshot("broker-1", s)
 
         self.assertIs(busy, False)
         self.assertEqual(queue_len, 0)
 
     def test_message_snapshot_rejects_interrupted_idle_before_confirmed_send_advances(self) -> None:
-        class _Manager:
+        class _Manager(_RuntimeStatusFakeManager):
             def get_state(self, _session_id):
                 return {"busy": False, "queue_len": 0, "interrupted_idle": True}
 
@@ -472,21 +495,21 @@ class TestSessionsPendingLogIdle(unittest.TestCase):
                 last_send_log_path=log_path,
                 last_send_log_size=log_path.stat().st_size,
             )
-            with patch("codoxear.server.MANAGER", _Manager()):
+            with patch("codoxear.server.MANAGER", _Manager(s)):
                 _state, busy, queue_len, _token = _message_runtime_snapshot("broker-1", s)
 
             self.assertIs(busy, True)
             self.assertEqual(queue_len, 0)
 
             s.last_send_log_size -= 1
-            with patch("codoxear.server.MANAGER", _Manager()):
+            with patch("codoxear.server.MANAGER", _Manager(s)):
                 _state, busy, queue_len, _token = _message_runtime_snapshot("broker-1", s)
 
         self.assertIs(busy, False)
         self.assertEqual(queue_len, 0)
 
     def test_message_snapshot_rejects_stale_idle_log_before_confirmed_send_advances(self) -> None:
-        class _Manager:
+        class _Manager(_RuntimeStatusFakeManager):
             def get_state(self, _session_id):
                 return {"busy": False, "queue_len": 0, "interrupted_idle": True}
 
@@ -516,21 +539,21 @@ class TestSessionsPendingLogIdle(unittest.TestCase):
                 last_send_log_path=log_path,
                 last_send_log_size=log_path.stat().st_size,
             )
-            with patch("codoxear.server.MANAGER", _Manager()):
+            with patch("codoxear.server.MANAGER", _Manager(s)):
                 _state, busy, queue_len, _token = _message_runtime_snapshot("broker-1", s)
 
             self.assertIs(busy, True)
             self.assertEqual(queue_len, 0)
 
             s.last_send_log_size -= 1
-            with patch("codoxear.server.MANAGER", _Manager()):
+            with patch("codoxear.server.MANAGER", _Manager(s)):
                 _state, busy, queue_len, _token = _message_runtime_snapshot("broker-1", s)
 
         self.assertIs(busy, False)
         self.assertEqual(queue_len, 0)
 
     def test_message_snapshot_rejects_missing_log_before_confirmed_send_advances(self) -> None:
-        class _Manager:
+        class _Manager(_RuntimeStatusFakeManager):
             def get_state(self, _session_id):
                 return {"busy": False, "queue_len": 0, "interrupted_idle": True}
 
@@ -559,14 +582,14 @@ class TestSessionsPendingLogIdle(unittest.TestCase):
                 last_send_log_path=log_path,
                 last_send_log_size=10,
             )
-            with patch("codoxear.server.MANAGER", _Manager()):
+            with patch("codoxear.server.MANAGER", _Manager(s)):
                 _state, busy, queue_len, _token = _message_runtime_snapshot("broker-1", s)
 
             self.assertIs(busy, True)
             self.assertEqual(queue_len, 0)
 
             s.last_send_log_path = Path(td) / "other.jsonl"
-            with patch("codoxear.server.MANAGER", _Manager()):
+            with patch("codoxear.server.MANAGER", _Manager(s)):
                 _state, busy, queue_len, _token = _message_runtime_snapshot("broker-1", s)
 
         self.assertIs(busy, False)
@@ -641,7 +664,7 @@ class TestSessionsPendingLogIdle(unittest.TestCase):
         self.assertEqual(queue_len, 0)
 
     def test_message_snapshot_rejects_malformed_interrupted_idle(self) -> None:
-        class _Manager:
+        class _Manager(_RuntimeStatusFakeManager):
             def get_state(self, _session_id):
                 return {"busy": False, "queue_len": 0, "interrupted_idle": "true"}
 
@@ -666,12 +689,12 @@ class TestSessionsPendingLogIdle(unittest.TestCase):
                 log_path=log_path,
                 sock_path=Path("/tmp/broker-1.sock"),
             )
-            with patch("codoxear.server.MANAGER", _Manager()):
+            with patch("codoxear.server.MANAGER", _Manager(s)):
                 with self.assertRaisesRegex(ValueError, "invalid broker state response"):
                     _message_runtime_snapshot("broker-1", s)
 
     def test_message_snapshot_rejects_malformed_mocked_broker_state(self) -> None:
-        class _Manager:
+        class _Manager(_RuntimeStatusFakeManager):
             def get_state(self, _session_id):
                 return {"busy": "false", "queue_len": 0}
 
@@ -695,7 +718,7 @@ class TestSessionsPendingLogIdle(unittest.TestCase):
                 _message_runtime_snapshot("broker-1", s)
 
     def test_message_snapshot_prefers_log_token_over_stale_broker_token(self) -> None:
-        class _Manager:
+        class _Manager(_RuntimeStatusFakeManager):
             def get_state(self, _session_id):
                 return {"busy": False, "queue_len": 0, "token": {"tokens_in_context": 0}}
 
@@ -723,13 +746,13 @@ class TestSessionsPendingLogIdle(unittest.TestCase):
                 queue_len=0,
                 token={"tokens_in_context": 185136},
             )
-            with patch("codoxear.server.MANAGER", _Manager()):
+            with patch("codoxear.server.MANAGER", _Manager(s)):
                 _state, _busy, _queue_len, token = _message_runtime_snapshot("broker-1", s)
 
         self.assertEqual(token, {"tokens_in_context": 185136})
 
     def test_message_snapshot_ignores_stale_broker_token_when_log_has_no_token_yet(self) -> None:
-        class _Manager:
+        class _Manager(_RuntimeStatusFakeManager):
             def get_state(self, _session_id):
                 return {"busy": False, "queue_len": 0, "token": {"tokens_in_context": 0}}
 
@@ -757,7 +780,7 @@ class TestSessionsPendingLogIdle(unittest.TestCase):
                 queue_len=0,
                 token=None,
             )
-            with patch("codoxear.server.MANAGER", _Manager()):
+            with patch("codoxear.server.MANAGER", _Manager(s)):
                 _state, _busy, _queue_len, token = _message_runtime_snapshot("broker-1", s)
 
         self.assertIsNone(token)
