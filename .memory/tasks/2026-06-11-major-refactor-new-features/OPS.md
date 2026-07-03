@@ -8187,3 +8187,13 @@
   - Focused process-open/discovery tests returned `35 passed`.
   - Broader backend/process/session slice returned `143 passed, 4 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T10:20:00Z Moved row busy predicates into backend adapters
+- Functional commit `70eac36 Move row busy predicates into backend adapters` added `AgentBackend.message_keeps_turn_busy(...)`, with Pi and Claude Code overrides for backend row-format-specific busy signals.
+- Mechanism: Pi's `toolResult` role plus assistant `thinking`/`toolCall` content and Claude Code's top-level tool-result plus assistant `thinking`/`tool_use` content are now interpreted by backend adapter methods. `rollout_chat_events._pi_message_keeps_turn_busy` and `_cc_message_keeps_turn_busy` remain compatibility helper names but delegate to adapter methods instead of owning the predicates.
+- Behavior evidence: `test_backend_adapters_own_row_busy_predicates` executes Pi and Claude Code busy/idle examples directly on the adapter objects. Existing rollout idle/chat, broker busy, and session pending-log tests continue to pass through the old helper names.
+- Validation under checkpoint cadence:
+  - `python3 -m py_compile codoxear/agent_backend.py codoxear/rollout_chat_events.py tests/test_cc_backend_registration.py` passed.
+  - Focused rollout idle/chat and adapter slice returned `131 passed`.
+  - Broader backend/chat/idle/broker slice returned `182 passed, 4 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
