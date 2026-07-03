@@ -7959,3 +7959,16 @@
   - `node --check codoxear/static/app.js` passed.
   - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_file_picker_search_source.py tests/test_frontend_file_picker_module_source.py tests/test_markdown_tables.py` returned `89 passed, 25 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T03:10:00Z Stale file viewer helper wrapper cleanup
+- Functional cleanup commit `87ceb13 Remove stale file viewer helper wrappers` removed app.js wrappers with no runtime callers after prior ownership moves: active file api/git/line read wrappers, editor line-focus wrapper, and unsaved-dialog focus/sync wrappers.
+- Mechanism: app.js now only keeps wrappers required by event binding, dependency injection order, or stable cross-subsystem callback surfaces; these deleted helpers were no longer call targets and preserved obsolete ownership signals.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_file_viewer_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `60 passed, 25 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T03:10:30Z Workbench item 2 async architect review failure
+- Async read-only architect run `93c95499-132c-4b8a-96db-fed62884cae1` failed before producing a result: `Async runner process 619920 exited or disappeared before writing a result. Marked run failed by stale-run reconciliation.`
+- Interpretation: infrastructure-only negative observation. It produced no findings and therefore supports or refutes no code/architecture claim.
