@@ -7825,3 +7825,13 @@
   - `python3 -m py_compile tests/test_frontend_file_editor_module_source.py` passed.
   - Focused validation `python3 -m pytest -q tests/test_frontend_file_editor_module_source.py tests/test_file_viewer_source.py` returned `49 passed, 25 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T00:55:00Z Editor text-restore orchestration editor-module ownership
+- Functional commit `0bfe75b Move editor text restore orchestration into editor module` moved `restoreFileEditorText(...)` orchestration from inline `codoxear/static/app.js` into `codoxear/static/app_file_editor.js` as `createFileEditorRuntime(...).restoreCurrentFileText(...)`.
+- Mechanism: app.js still sequenced viewer-controller restore-plan preparation, current editor-kind lookup, programmatic raw-editor mutation, and restore completion. The editor runtime now owns that restore transition through injected viewer-controller callbacks and its existing `restoreFileText(...)` primitive; app.js keeps the wrapper name for discard/reload callers.
+- Tests updated: `tests/test_frontend_file_editor_module_source.py` executes `restoreCurrentFileText(...)` for restore and no-op plans and verifies programmatic-change ordering plus fail-loud missing dependency behavior. Source sentinels now require `restoreCurrentFileText(...)` in app/editor boundaries and reject restored app-owned `restoreFileText(currentFileEditorKind(), restorePlan.text, ...)` sequencing.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app_file_editor.js` and `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_frontend_file_editor_module_source.py tests/test_file_viewer_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_editor_module_source.py tests/test_file_viewer_source.py` returned `49 passed, 25 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
