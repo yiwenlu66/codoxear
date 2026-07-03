@@ -8158,3 +8158,13 @@
   - Focused backend launch slice returned `62 passed`.
   - Broader backend/launch/log/source slice returned `193 passed, 12 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T09:54:00Z Moved log recognition into backend adapters
+- Functional commit `4622e5a Move log recognition into backend adapters` added adapter-owned log glob, log-path recognition, path/session-id extraction, and session-id matching semantics for Codex, Pi, and Claude Code.
+- Mechanism: `session_log_paths.py` now preserves compatibility wrapper names while delegating Codex/Pi/CC path classification and Codex rollout-id extraction to adapter methods. `session_log_discovery.py` now uses `get_agent_backend(...)` for log iteration patterns, path filtering, `find_session_log_for_session_id`, and new-log session-id extraction instead of local backend branches with direct Pi/CC id readers.
+- Behavior evidence: `test_backend_adapters_own_log_path_and_session_id_semantics` executes Codex path UUID extraction, Pi session-log id extraction, Claude Code session-log id extraction, and Claude subagent exclusion directly on adapter objects using real temporary JSONL logs. Existing session-log, resume, broker-proc, and pending-log tests continue to pass through the discovery facade.
+- Validation under checkpoint cadence:
+  - `python3 -m py_compile codoxear/agent_backend.py codoxear/session_log_paths.py codoxear/session_log_discovery.py tests/test_cc_backend_registration.py tests/test_session_log_discovery_source.py` passed.
+  - Focused log/path/backend slice returned `65 passed`.
+  - Broader backend/log/discovery/session slice returned `160 passed, 4 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
