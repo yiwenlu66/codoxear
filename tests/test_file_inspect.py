@@ -7,6 +7,7 @@ import tempfile
 import unittest
 import urllib.parse
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -14,6 +15,17 @@ from unittest.mock import patch
 from codoxear import file_text
 from codoxear import git_ops
 from codoxear import server
+from codoxear.client_file_paths import resolve_client_file_path as _resolve_client_file_path_impl
+from codoxear.file_routes import FileGetRouteDeps
+from codoxear.file_routes import FileWriteRouteDeps
+from codoxear.file_routes import GlobalFileRouteDeps
+from codoxear.file_routes import handle_absolute_file_preview_route
+from codoxear.file_routes import handle_file_get_route
+from codoxear.file_routes import handle_file_write_post_route
+from codoxear.file_routes import handle_global_file_post_route
+from codoxear.file_view import ClientFileView
+from codoxear.git_routes import GitRouteDeps
+from codoxear.git_routes import handle_git_get_route
 from codoxear.server import _current_git_branch
 from codoxear.server import _download_disposition
 from codoxear.server import _ensure_video_preview
@@ -30,6 +42,7 @@ from codoxear.file_text import write_new_text_file_atomic as _write_new_text_fil
 from codoxear.file_text import write_text_file_atomic as _write_text_file_atomic
 from codoxear.server import _read_text_or_image
 from codoxear.server import _single_byte_range
+from codoxear.server_routing import match_session_route as _match_session_route
 
 
 REPO_CWD = Path(__file__).resolve().parents[1]
@@ -40,6 +53,269 @@ def _safe_cwd() -> Path:
         return Path.cwd()
     except FileNotFoundError:
         return REPO_CWD
+
+
+# --- Direct route-handler test infrastructure (dependency injection) ---
+#
+# These helpers replace the previous monkeypatch-based tests that patched
+# server.MANAGER, server._require_auth, and server._json_response. All three
+# seams are now satisfied by injecting a FakeManager plus capturing callables
+# into the route-handler deps dataclasses, mirroring the pattern established in
+# tests/test_message_routes.py and tests/test_file_routes.py. Real server
+# functions (server._run_git, server._resolve_git_path, server._resolve_session_cwd,
+# ...) are wired in directly so that real-git / real-filesystem behaviour is
+# exercised without any module-level patching.
+
+
+class _FakeHandler:
+    """Minimal handler object exposing only the attribute route handlers touch."""
+
+    def __init__(self) -> None:
+        self.unauthorized = False
+
+    def _unauthorized(self) -> None:
+        self.unauthorized = True
+
+
+class _FakeManager:
+    """Session manager fake: holds a single session cwd and records file adds."""
+
+    def __init__(self, cwd: str) -> None:
+        self.cwd = cwd
+        self.refreshed: list[str] = []
+        self.recorded: list[tuple[str, str]] = []
+
+    def refresh_session_meta(self, session_id: str) -> None:
+        self.refreshed.append(session_id)
+
+    def get_session(self, _session_id: str) -> object:
+        return SimpleNamespace(cwd=self.cwd)
+
+    def files_add(self, session_id: str, path: str) -> None:
+        self.recorded.append((session_id, path))
+
+
+def _capture_json() -> tuple[list[tuple[int, dict[str, object]]], object]:
+    """Return (responses_list, json_response_callable) capturing every call."""
+    responses: list[tuple[int, dict[str, object]]] = []
+
+    def json_response(_handler, status: int, payload: dict[str, object]) -> None:
+        responses.append((status, payload))
+
+    return responses, json_response
+
+
+def _git_view_resolvers(manager, *, resolve_git_path, read_client_file_view, require_existing_file):
+    """Build resolve_git_client_file_view / resolve_git_existing_regular_file using
+    the injected manager rather than the module-level MANAGER singleton.
+
+    The server._resolve_git_client_file_view closures bake in the module MANAGER,
+    which would bypass the per-test FakeManager. Wiring the impl primitives here
+    keeps the manager seam explicit (dependency injection, no patching).
+    """
+    from codoxear.client_file_paths import resolve_git_client_file_view as _impl_view
+    from codoxear.client_file_paths import resolve_git_existing_regular_file as _impl_existing
+
+    def resolve_git_client_file_view(*, session_id, raw_path):
+        return _impl_view(
+            session_id=session_id,
+            raw_path=raw_path,
+            refresh_session_meta=manager.refresh_session_meta,
+            get_session=manager.get_session,
+            resolve_session_cwd=server._resolve_session_cwd,
+            resolve_git_path=resolve_git_path,
+            read_client_file_view=read_client_file_view,
+        )
+
+    def resolve_git_existing_regular_file(*, session_id, raw_path):
+        return _impl_existing(
+            session_id=session_id,
+            raw_path=raw_path,
+            refresh_session_meta=manager.refresh_session_meta,
+            get_session=manager.get_session,
+            resolve_session_cwd=server._resolve_session_cwd,
+            resolve_git_path=resolve_git_path,
+            require_existing_file=require_existing_file,
+        )
+
+    return resolve_git_client_file_view, resolve_git_existing_regular_file
+
+
+def _file_get_deps(manager=None, **overrides):
+    """FileGetRouteDeps wired with real server resolvers + capturing seams.
+
+    By default auth always passes and json_response captures into the returned
+    list. Real filesystem/git behaviour is preserved because the resolvers point
+    at the actual server implementations. When ``manager`` is supplied the
+    git-path view resolvers are wired to that manager (instead of the module
+    MANAGER singleton) so session-aware git-path resolution honours the injected
+    fake manager. Tests override individual fields (for example to inject a
+    raising resolver) as needed.
+    """
+    responses, json_response = _capture_json()
+    inline: list[tuple[Path, str]] = []
+    attachments: list[tuple[Path, int, str]] = []
+
+    def send_inline(_handler, path: Path, content_type: str) -> None:
+        inline.append((path, content_type))
+
+    def send_attachment(_handler, path: Path, *, size: int, content_disposition: str) -> None:
+        attachments.append((path, size, content_disposition))
+
+    resolve_git_client_file_view = server._resolve_git_client_file_view
+    resolve_git_existing_regular_file = server._resolve_git_existing_regular_file
+    if manager is not None:
+        resolve_git_client_file_view, resolve_git_existing_regular_file = _git_view_resolvers(
+            manager,
+            resolve_git_path=server._resolve_git_path,
+            read_client_file_view=server._read_client_file_view,
+            require_existing_file=server._require_existing_file,
+        )
+
+    deps = FileGetRouteDeps(
+        require_auth=lambda _handler: True,
+        json_response=json_response,
+        resolve_session_cwd=server._resolve_session_cwd,
+        resolve_existing_session_file=server._resolve_existing_session_file,
+        resolve_session_path=server._resolve_session_path,
+        resolve_git_client_file_view=resolve_git_client_file_view,
+        resolve_git_existing_regular_file=resolve_git_existing_regular_file,
+        resolve_existing_absolute_file=server._resolve_existing_absolute_file,
+        read_client_file_view=server._read_client_file_view,
+        read_regular_file_prefix=server._read_regular_file_prefix_no_symlink,
+        search_session_relative_files=server._search_session_relative_files,
+        list_session_relative_files=server._list_session_relative_files,
+        file_kind=server._file_kind,
+        ensure_video_preview=server._ensure_video_preview,
+        inspect_downloadable_file=server._inspect_downloadable_file,
+        download_disposition=server._download_disposition,
+        send_inline_file_response=send_inline,
+        send_attachment_file_response=send_attachment,
+        file_search_limit=server.FILE_SEARCH_LIMIT,
+    )
+    for name, value in overrides.items():
+        object.__setattr__(deps, name, value)
+    return deps, responses, inline, attachments
+
+
+def _git_deps(**overrides):
+    """GitRouteDeps wired with server git helpers + capturing seams.
+
+    require_git_repo / resolve_git_path / git_head_blob_oid are derived from the
+    chosen run_git so that a fake run_git is honoured consistently across every
+    git invocation the route makes (the real server closures bake in the module
+    _run_git, which would bypass an injected fake runner).
+    """
+    responses, json_response = _capture_json()
+    run_git = overrides.pop("run_git", server._run_git)
+    timeout = server.GIT_DIFF_TIMEOUT_SECONDS
+
+    def _resolve_git_path(cwd: Path, raw_path: str):
+        return git_ops.resolve_git_path(cwd, raw_path, run_git_func=run_git, timeout_s=timeout)
+
+    def _git_head_blob_oid(cwd: Path, rel: str):
+        return git_ops.git_head_blob_oid(cwd, rel, run_git_func=run_git, timeout_s=timeout)
+
+    def _require_git_repo(cwd: Path) -> None:
+        git_ops.require_git_repo(cwd, run_git_func=run_git, timeout_s=timeout)
+
+    deps = GitRouteDeps(
+        require_auth=lambda _handler: True,
+        json_response=json_response,
+        resolve_session_cwd=server._resolve_session_cwd,
+        require_git_repo=_require_git_repo,
+        split_git_nul_paths=server._split_git_nul_paths,
+        run_git=run_git,
+        parse_git_numstat=server._parse_git_numstat,
+        resolve_git_path=_resolve_git_path,
+        read_text_file_strict=server._read_text_file_strict,
+        git_head_blob_oid=_git_head_blob_oid,
+        git_changed_files_max=server.GIT_CHANGED_FILES_MAX,
+        git_diff_timeout_seconds=timeout,
+        git_diff_max_bytes=server.GIT_DIFF_MAX_BYTES,
+        file_read_max_bytes=server.FILE_READ_MAX_BYTES,
+    )
+    for name, value in overrides.items():
+        object.__setattr__(deps, name, value)
+    return deps, responses
+
+
+def _file_write_deps(body, manager=None, **overrides):
+    """FileWriteRouteDeps wired with real server resolvers + capturing seams.
+
+    When ``manager`` is supplied the git-path existing-file resolver is wired
+    to that manager instead of the module MANAGER singleton.
+    """
+    responses, json_response = _capture_json()
+
+    @contextmanager
+    def null_write_lock(_path: Path):
+        yield
+
+    resolve_git_existing_regular_file = server._resolve_git_existing_regular_file
+    if manager is not None:
+        _resolve_git_client_file_view, resolve_git_existing_regular_file = _git_view_resolvers(
+            manager,
+            resolve_git_path=server._resolve_git_path,
+            read_client_file_view=server._read_client_file_view,
+            require_existing_file=server._require_existing_file,
+        )
+
+    deps = FileWriteRouteDeps(
+        require_auth=lambda _handler: True,
+        json_response=json_response,
+        read_json_body=lambda _handler, **_kwargs: body,
+        resolve_session_cwd=server._resolve_session_cwd,
+        resolve_create_path=server._resolve_under,
+        resolve_git_existing_regular_file=resolve_git_existing_regular_file,
+        file_write_lock=null_write_lock,
+    )
+    for name, value in overrides.items():
+        object.__setattr__(deps, name, value)
+    return deps, responses
+
+
+def _global_file_deps(body, manager=None, **overrides):
+    """GlobalFileRouteDeps wired with real server resolvers + capturing seams.
+
+    When ``manager`` is supplied the git-path view resolver and the plain
+    client-file-path resolver are wired to that manager instead of the module
+    MANAGER singleton (both server closures bake in the module MANAGER).
+    """
+    responses, json_response = _capture_json()
+    resolve_git_client_file_view = server._resolve_git_client_file_view
+    resolve_client_file_path = server._resolve_client_file_path
+    if manager is not None:
+        resolve_git_client_file_view, _resolve_git_existing_regular_file = _git_view_resolvers(
+            manager,
+            resolve_git_path=server._resolve_git_path,
+            read_client_file_view=server._read_client_file_view,
+            require_existing_file=server._require_existing_file,
+        )
+
+        def resolve_client_file_path(*, session_id, raw_path):
+            return _resolve_client_file_path_impl(
+                session_id=session_id,
+                raw_path=raw_path,
+                refresh_session_meta=manager.refresh_session_meta,
+                get_session=manager.get_session,
+                files_get=lambda sid: manager.files_get(sid) if hasattr(manager, "files_get") else [],
+                expanduser_path=server._expanduser_path,
+                resolve_session_cwd=server._resolve_session_cwd,
+                run_git=server._run_git,
+                git_timeout_s=server.GIT_DIFF_TIMEOUT_SECONDS,
+            )
+    deps = GlobalFileRouteDeps(
+        require_auth=lambda _handler: True,
+        json_response=json_response,
+        read_json_body=lambda _handler, **_kwargs: body,
+        resolve_git_client_file_view=resolve_git_client_file_view,
+        resolve_client_file_path=resolve_client_file_path,
+        read_client_file_view=server._read_client_file_view,
+    )
+    for name, value in overrides.items():
+        object.__setattr__(deps, name, value)
+    return deps, responses
 
 
 class TestInspectOpenableFile(unittest.TestCase):
@@ -256,6 +532,13 @@ class TestInspectOpenableFile(unittest.TestCase):
             finally:
                 server.VIDEO_PREVIEW_DIR = old_dir
 
+    # --- Converted route-handler tests (direct handle_*_route calls) ---
+    #
+    # Each test below previously constructed a server.Handler via __new__ and
+    # patched server.MANAGER / server._require_auth / server._json_response, then
+    # drove server.Handler.do_GET/do_POST. They now call the route handlers
+    # directly with injected deps, preserving the exact status/payload assertions.
+
     def test_unknown_session_file_resolution_does_not_fallback_to_server_cwd(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)
@@ -298,16 +581,27 @@ class TestInspectOpenableFile(unittest.TestCase):
     def test_bad_session_cwd_expanduser_path_is_bad_request_not_runtime_error(self) -> None:
         bad_cwd = f"~definitely-no-such-codoxear-user-{uuid.uuid4().hex}/repo"
 
-        class FakeManager:
-            def refresh_session_meta(self, _session_id: str) -> None:
-                return None
+        def _refresh(_sid: str) -> None:
+            return None
 
-            def get_session(self, _session_id: str) -> object:
-                return SimpleNamespace(cwd=bad_cwd)
+        def _get_session(_sid: str):
+            return SimpleNamespace(cwd=bad_cwd)
 
-        with patch.object(server, "MANAGER", FakeManager()):
-            with self.assertRaisesRegex(ValueError, "home directory"):
-                _resolve_client_file_path(session_id="session-with-bad-cwd", raw_path="note.md")
+        def _files_get(_sid: str):
+            return []
+
+        with self.assertRaisesRegex(ValueError, "home directory"):
+            _resolve_client_file_path_impl(
+                session_id="session-with-bad-cwd",
+                raw_path="note.md",
+                refresh_session_meta=_refresh,
+                get_session=_get_session,
+                files_get=_files_get,
+                expanduser_path=server._expanduser_path,
+                resolve_session_cwd=server._resolve_session_cwd,
+                run_git=server._run_git,
+                git_timeout_s=server.GIT_DIFF_TIMEOUT_SECONDS,
+            )
         with self.assertRaisesRegex(ValueError, "invalid session cwd"):
             _resolve_session_cwd("/tmp/bad\x00cwd")
 
@@ -315,54 +609,70 @@ class TestInspectOpenableFile(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             bad_tracked = f"~definitely-no-such-codoxear-user-{uuid.uuid4().hex}/note.md"
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
+            def _refresh(_sid: str) -> None:
+                return None
 
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=td)
+            def _get_session(_sid: str):
+                return SimpleNamespace(cwd=td)
 
-                def files_get(self, _session_id: str) -> list[str]:
-                    return [bad_tracked]
+            def _files_get(_sid: str):
+                return [bad_tracked]
 
-            with patch.object(server, "MANAGER", FakeManager()):
-                with self.assertRaisesRegex(ValueError, "home directory"):
-                    _resolve_client_file_path(session_id="session-with-bad-tracked", raw_path="note.md")
+            with self.assertRaisesRegex(ValueError, "home directory"):
+                _resolve_client_file_path_impl(
+                    session_id="session-with-bad-tracked",
+                    raw_path="note.md",
+                    refresh_session_meta=_refresh,
+                    get_session=_get_session,
+                    files_get=_files_get,
+                    expanduser_path=server._expanduser_path,
+                    resolve_session_cwd=server._resolve_session_cwd,
+                    run_git=server._run_git,
+                    git_timeout_s=server.GIT_DIFF_TIMEOUT_SECONDS,
+                )
 
     def test_session_file_routes_return_400_for_bad_session_cwd(self) -> None:
         bad_cwds = [f"~definitely-no-such-codoxear-user-{uuid.uuid4().hex}/repo", "/tmp/bad\x00cwd"]
 
-        routes = [
+        get_routes = [
             "/api/sessions/s/file/read?path=note.md",
             "/api/sessions/s/file/search?q=note",
             "/api/sessions/s/file/list",
             "/api/sessions/s/file/blob?path=note.md",
             "/api/sessions/s/file/video_preview?path=clip.mp4",
             "/api/sessions/s/file/download?path=note.md",
+        ]
+        git_routes = [
             "/api/sessions/s/git/changed_files",
             "/api/sessions/s/git/diff?path=note.md",
             "/api/sessions/s/git/file_versions?path=note.md",
         ]
         for bad_cwd in bad_cwds:
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=bad_cwd)
-
-            for route in routes:
+            for route in get_routes + git_routes:
                 with self.subTest(route=route, bad_cwd=bad_cwd):
+                    manager = _FakeManager(bad_cwd)
                     parsed = urllib.parse.urlparse(route)
-                    handler = server.Handler.__new__(server.Handler)
-                    handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-                    handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-                    handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-                    responses = []
-                    with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                        server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-                    ):
-                        server.Handler.do_GET(handler)
+                    if parsed.path.startswith("/api/sessions/s/git/"):
+                        deps, responses = _git_deps()
+                        handled = handle_git_get_route(
+                            _FakeHandler(),
+                            path=parsed.path,
+                            query=parsed.query,
+                            manager=manager,
+                            deps=deps,
+                            match_session_route=_match_session_route,
+                        )
+                    else:
+                        deps, responses, _inline, _attachments = _file_get_deps()
+                        handled = handle_file_get_route(
+                            _FakeHandler(),
+                            path=parsed.path,
+                            query=parsed.query,
+                            manager=manager,
+                            deps=deps,
+                            match_session_route=_match_session_route,
+                        )
+                    self.assertTrue(handled)
                     self.assertEqual(len(responses), 1)
                     status, payload = responses[0]
                     self.assertEqual(status, 400)
@@ -374,31 +684,44 @@ class TestInspectOpenableFile(unittest.TestCase):
             preview = root / "preview.png"
             preview.write_bytes(b"\x89PNG\r\n\x1a\nbody")
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(root))
-
-            routes = [
-                f"/api/sessions/s/file/blob?path={urllib.parse.quote(preview.name)}",
-                f"/api/sessions/s/file/video_preview?path={urllib.parse.quote(preview.name)}",
-                f"/api/files/blob?path={urllib.parse.quote(str(preview))}",
-                f"/api/files/video_preview?path={urllib.parse.quote(str(preview))}",
+            manager = _FakeManager(str(root))
+            session_routes = [
+                ("/api/sessions/s/file/blob", f"path={urllib.parse.quote(preview.name)}"),
+                ("/api/sessions/s/file/video_preview", f"path={urllib.parse.quote(preview.name)}"),
             ]
-            for route in routes:
+            absolute_routes = [
+                "/api/files/blob",
+                "/api/files/video_preview",
+            ]
+            # Session blob/video_preview: resolve_existing_session_file raises.
+            for route_path, query in session_routes:
+                with self.subTest(route=route_path):
+                    deps, responses, _inline, _attachments = _file_get_deps(
+                        resolve_existing_session_file=lambda _base, _rel: (_ for _ in ()).throw(PermissionError("denied")),
+                    )
+                    handled = handle_file_get_route(
+                        _FakeHandler(),
+                        path=route_path,
+                        query=query,
+                        manager=manager,
+                        deps=deps,
+                        match_session_route=_match_session_route,
+                    )
+                    self.assertTrue(handled)
+                    self.assertEqual(responses, [(403, {"error": "denied"})])
+            # Absolute blob/video_preview: resolve_existing_absolute_file raises.
+            for route in absolute_routes:
                 with self.subTest(route=route):
-                    parsed = urllib.parse.urlparse(route)
-                    handler = server.Handler.__new__(server.Handler)
-                    handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-                    handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-                    handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-                    responses = []
-                    with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                        Path, "stat", side_effect=PermissionError("denied")
-                    ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
-                        server.Handler.do_GET(handler)
+                    deps, responses, _inline, _attachments = _file_get_deps(
+                        resolve_existing_absolute_file=lambda _raw: (_ for _ in ()).throw(PermissionError("denied")),
+                    )
+                    handled = handle_absolute_file_preview_route(
+                        _FakeHandler(),
+                        path=route,
+                        query=f"path={urllib.parse.quote(str(preview))}",
+                        deps=deps,
+                    )
+                    self.assertTrue(handled)
                     self.assertEqual(responses, [(403, {"error": "denied"})])
 
     def test_preview_prefix_read_errors_are_route_local(self) -> None:
@@ -407,33 +730,44 @@ class TestInspectOpenableFile(unittest.TestCase):
             preview = root / "preview.png"
             preview.write_bytes(b"\x89PNG\r\n\x1a\nbody")
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(root))
-
-            routes = [
-                f"/api/sessions/s/file/blob?path={urllib.parse.quote(preview.name)}",
-                f"/api/sessions/s/file/video_preview?path={urllib.parse.quote(preview.name)}",
-                f"/api/files/blob?path={urllib.parse.quote(str(preview))}",
-                f"/api/files/video_preview?path={urllib.parse.quote(str(preview))}",
+            manager = _FakeManager(str(root))
+            session_routes = [
+                ("/api/sessions/s/file/blob", f"path={urllib.parse.quote(preview.name)}"),
+                ("/api/sessions/s/file/video_preview", f"path={urllib.parse.quote(preview.name)}"),
             ]
+            absolute_routes = ["/api/files/blob", "/api/files/video_preview"]
             cases = [(PermissionError("denied"), 403), (FileNotFoundError("gone"), 404)]
             for exc, expected_status in cases:
-                for route in routes:
+                for route_path, query in session_routes:
+                    with self.subTest(route=route_path, exc=type(exc).__name__):
+                        deps, responses, _inline, _attachments = _file_get_deps(
+                            read_regular_file_prefix=lambda _path, _byte_count: (_ for _ in ()).throw(exc),
+                        )
+                        handled = handle_file_get_route(
+                            _FakeHandler(),
+                            path=route_path,
+                            query=query,
+                            manager=manager,
+                            deps=deps,
+                            match_session_route=_match_session_route,
+                        )
+                        self.assertTrue(handled)
+                        self.assertEqual(len(responses), 1)
+                        status, payload = responses[0]
+                        self.assertEqual(status, expected_status)
+                        self.assertIn(str(exc), str(payload.get("error", "")))
+                for route in absolute_routes:
                     with self.subTest(route=route, exc=type(exc).__name__):
-                        parsed = urllib.parse.urlparse(route)
-                        handler = server.Handler.__new__(server.Handler)
-                        handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-                        handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-                        handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-                        responses = []
-                        with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                            server, "_read_regular_file_prefix_no_symlink", side_effect=exc
-                        ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
-                            server.Handler.do_GET(handler)
+                        deps, responses, _inline, _attachments = _file_get_deps(
+                            read_regular_file_prefix=lambda _path, _byte_count: (_ for _ in ()).throw(exc),
+                        )
+                        handled = handle_absolute_file_preview_route(
+                            _FakeHandler(),
+                            path=route,
+                            query=f"path={urllib.parse.quote(str(preview))}",
+                            deps=deps,
+                        )
+                        self.assertTrue(handled)
                         self.assertEqual(len(responses), 1)
                         status, payload = responses[0]
                         self.assertEqual(status, expected_status)
@@ -445,31 +779,43 @@ class TestInspectOpenableFile(unittest.TestCase):
             video = root / "clip.mp4"
             video.write_bytes(b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom" + b"\x00" * 32)
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(root))
-
-            routes = [
-                f"/api/sessions/s/file/video_preview?path={urllib.parse.quote(video.name)}",
-                f"/api/files/video_preview?path={urllib.parse.quote(str(video))}",
+            manager = _FakeManager(str(root))
+            session_routes = [
+                ("/api/sessions/s/file/video_preview", f"path={urllib.parse.quote(video.name)}"),
             ]
+            absolute_routes = ["/api/files/video_preview"]
             cases = [(PermissionError("denied"), 403), (FileNotFoundError("gone"), 404)]
             for exc, expected_status in cases:
-                for route in routes:
+                for route_path, query in session_routes:
+                    with self.subTest(route=route_path, exc=type(exc).__name__):
+                        deps, responses, _inline, _attachments = _file_get_deps(
+                            ensure_video_preview=lambda _path: (_ for _ in ()).throw(exc),
+                        )
+                        handled = handle_file_get_route(
+                            _FakeHandler(),
+                            path=route_path,
+                            query=query,
+                            manager=manager,
+                            deps=deps,
+                            match_session_route=_match_session_route,
+                        )
+                        self.assertTrue(handled)
+                        self.assertEqual(len(responses), 1)
+                        status, payload = responses[0]
+                        self.assertEqual(status, expected_status)
+                        self.assertIn(str(exc), str(payload.get("error", "")))
+                for route in absolute_routes:
                     with self.subTest(route=route, exc=type(exc).__name__):
-                        parsed = urllib.parse.urlparse(route)
-                        handler = server.Handler.__new__(server.Handler)
-                        handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-                        handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-                        handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-                        responses = []
-                        with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                            server, "_ensure_video_preview", side_effect=exc
-                        ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
-                            server.Handler.do_GET(handler)
+                        deps, responses, _inline, _attachments = _file_get_deps(
+                            ensure_video_preview=lambda _path: (_ for _ in ()).throw(exc),
+                        )
+                        handled = handle_absolute_file_preview_route(
+                            _FakeHandler(),
+                            path=route,
+                            query=f"path={urllib.parse.quote(str(video))}",
+                            deps=deps,
+                        )
+                        self.assertTrue(handled)
                         self.assertEqual(len(responses), 1)
                         status, payload = responses[0]
                         self.assertEqual(status, expected_status)
@@ -490,23 +836,16 @@ class TestInspectOpenableFile(unittest.TestCase):
             for rel in paths:
                 (repo / rel).write_text("current\n", encoding="utf-8")
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
-
-            parsed = urllib.parse.urlparse("/api/sessions/s/git/changed_files")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-            ):
-                server.Handler.do_GET(handler)
+            manager = _FakeManager(str(repo))
+            deps, responses = _git_deps()
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/changed_files",
+                query="",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 200)
@@ -527,32 +866,38 @@ class TestInspectOpenableFile(unittest.TestCase):
             subprocess.run(["git", "commit", "-m", "add nonutf path"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             path.write_text("current\n", encoding="utf-8")
 
-            class FakeManager:
-                def __init__(self) -> None:
+            class _RecordingManager(_FakeManager):
+                def __init__(self, cwd: str) -> None:
+                    super().__init__(cwd)
                     self.added: list[str] = []
-
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
 
                 def files_add(self, _session_id: str, path_value: str) -> None:
                     self.added.append(path_value)
 
-            manager = FakeManager()
+            manager = _RecordingManager(str(repo))
 
             def route_get(route: str) -> tuple[int, dict]:
                 parsed = urllib.parse.urlparse(route)
-                handler = server.Handler.__new__(server.Handler)
-                handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-                handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-                handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-                responses = []
-                with patch.object(server, "MANAGER", manager), patch.object(server, "_require_auth", return_value=True), patch.object(
-                    server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-                ):
-                    server.Handler.do_GET(handler)
+                if parsed.path.startswith("/api/sessions/s/git/"):
+                    deps, responses = _git_deps()
+                    handle_git_get_route(
+                        _FakeHandler(),
+                        path=parsed.path,
+                        query=parsed.query,
+                        manager=manager,
+                        deps=deps,
+                        match_session_route=_match_session_route,
+                    )
+                else:
+                    deps, responses, _inline, _attachments = _file_get_deps(manager=manager)
+                    handle_file_get_route(
+                        _FakeHandler(),
+                        path=parsed.path,
+                        query=parsed.query,
+                        manager=manager,
+                        deps=deps,
+                        match_session_route=_match_session_route,
+                    )
                 self.assertEqual(len(responses), 1)
                 status, payload = responses[0]
                 json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -589,15 +934,18 @@ class TestInspectOpenableFile(unittest.TestCase):
 
             def route_post(route: str, body: dict) -> tuple[int, dict]:
                 parsed = urllib.parse.urlparse(route)
-                handler = server.Handler.__new__(server.Handler)
-                handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-                handler._handle_voice_post = lambda _path: False  # type: ignore[attr-defined]
-                handler._read_json_body = lambda **_kwargs: body  # type: ignore[attr-defined]
-                responses = []
-                with patch.object(server, "MANAGER", manager), patch.object(server, "_require_auth", return_value=True), patch.object(
-                    server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-                ):
-                    server.Handler.do_POST(handler)
+                if parsed.path == "/api/files/inspect" or parsed.path == "/api/files/read":
+                    deps, responses = _global_file_deps(body, manager=manager)
+                    handle_global_file_post_route(_FakeHandler(), path=parsed.path, manager=manager, deps=deps)
+                else:
+                    deps, responses = _file_write_deps(body, manager=manager)
+                    handle_file_write_post_route(
+                        _FakeHandler(),
+                        path=parsed.path,
+                        manager=manager,
+                        deps=deps,
+                        match_session_route=_match_session_route,
+                    )
                 self.assertEqual(len(responses), 1)
                 status, payload = responses[0]
                 json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -639,23 +987,16 @@ class TestInspectOpenableFile(unittest.TestCase):
             subprocess.run(["git", "commit", "-m", "add old"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             subprocess.run(["git", "mv", "old name.md", "new name.md"], cwd=repo, check=True)
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
-
-            parsed = urllib.parse.urlparse("/api/sessions/s/git/changed_files")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-            ):
-                server.Handler.do_GET(handler)
+            manager = _FakeManager(str(repo))
+            deps, responses = _git_deps()
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/changed_files",
+                query="",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 200)
@@ -666,40 +1007,28 @@ class TestInspectOpenableFile(unittest.TestCase):
 
     def test_git_changed_files_late_git_failure_returns_409(self) -> None:
         with tempfile.TemporaryDirectory() as td:
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=td)
+            manager = _FakeManager(td)
 
             def fake_run_git(_cwd: Path, args: list[str], **_kwargs: object) -> str:
                 if args == ["rev-parse", "--is-inside-work-tree"]:
                     return "true\n"
                 raise RuntimeError("git changed during refresh")
 
-            parsed = urllib.parse.urlparse("/api/sessions/s/git/changed_files")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_run_git", side_effect=fake_run_git
-            ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
-                server.Handler.do_GET(handler)
+            deps, responses = _git_deps(run_git=fake_run_git)
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/changed_files",
+                query="",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(responses, [(409, {"error": "git changed during refresh"})])
 
     def test_git_diff_resolve_git_path_failure_returns_409(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             repo = Path(td)
-
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
+            manager = _FakeManager(str(repo))
 
             def fake_run_git(_cwd: Path, args: list[str], **_kwargs: object) -> str:
                 if args == ["rev-parse", "--is-inside-work-tree"]:
@@ -708,29 +1037,22 @@ class TestInspectOpenableFile(unittest.TestCase):
                     raise RuntimeError("repo vanished")
                 raise AssertionError(f"unexpected git args: {args}")
 
-            parsed = urllib.parse.urlparse("/api/sessions/s/git/diff?path=note.md")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_run_git", side_effect=fake_run_git
-            ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
-                server.Handler.do_GET(handler)
+            deps, responses = _git_deps(run_git=fake_run_git)
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/diff",
+                query="path=note.md",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(responses, [(409, {"error": "repo vanished"})])
 
     def test_git_diff_oversized_output_returns_400(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             repo = Path(td)
             (repo / "note.md").write_text("hello\n", encoding="utf-8")
-
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
+            manager = _FakeManager(str(repo))
 
             def fake_run_git(_cwd: Path, args: list[str], **_kwargs: object) -> str:
                 if args == ["rev-parse", "--is-inside-work-tree"]:
@@ -741,28 +1063,21 @@ class TestInspectOpenableFile(unittest.TestCase):
                     raise ValueError("git output too large")
                 raise AssertionError(f"unexpected git args: {args}")
 
-            parsed = urllib.parse.urlparse("/api/sessions/s/git/diff?path=note.md")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_run_git", side_effect=fake_run_git
-            ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
-                server.Handler.do_GET(handler)
+            deps, responses = _git_deps(run_git=fake_run_git)
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/diff",
+                query="path=note.md",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(responses, [(400, {"error": "git output too large"})])
 
     def test_git_file_versions_resolve_git_path_failure_returns_409(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             repo = Path(td)
-
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
+            manager = _FakeManager(str(repo))
 
             def fake_run_git(_cwd: Path, args: list[str], **_kwargs: object) -> str:
                 if args == ["rev-parse", "--is-inside-work-tree"]:
@@ -771,16 +1086,15 @@ class TestInspectOpenableFile(unittest.TestCase):
                     raise RuntimeError("repo vanished")
                 raise AssertionError(f"unexpected git args: {args}")
 
-            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=note.md")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_run_git", side_effect=fake_run_git
-            ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
-                server.Handler.do_GET(handler)
+            deps, responses = _git_deps(run_git=fake_run_git)
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/file_versions",
+                query="path=note.md",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(responses, [(409, {"error": "repo vanished"})])
 
     def test_git_file_versions_current_read_error_returns_400(self) -> None:
@@ -788,15 +1102,11 @@ class TestInspectOpenableFile(unittest.TestCase):
             repo = Path(td)
             (repo / "note.md").write_text("hello\n", encoding="utf-8")
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
-
+            class _RecordingManager(_FakeManager):
                 def files_add(self, _session_id: str, _path: str) -> None:
                     return None
+
+            manager = _RecordingManager(str(repo))
 
             def fake_run_git(_cwd: Path, args: list[str], **_kwargs: object) -> str:
                 if args == ["rev-parse", "--is-inside-work-tree"]:
@@ -805,33 +1115,29 @@ class TestInspectOpenableFile(unittest.TestCase):
                     return f"{repo}\n"
                 raise AssertionError(f"unexpected git args before current read: {args}")
 
-            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=note.md")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_run_git", side_effect=fake_run_git
-            ), patch.object(server, "_read_text_file_strict", side_effect=ValueError("file too large")), patch.object(
-                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-            ):
-                server.Handler.do_GET(handler)
+            deps, responses = _git_deps(
+                run_git=fake_run_git,
+                read_text_file_strict=lambda *_a, **_kw: (_ for _ in ()).throw(ValueError("file too large")),
+            )
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/file_versions",
+                query="path=note.md",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(responses, [(400, {"error": "file too large"})])
 
     def test_git_file_versions_base_oversized_output_returns_400(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             repo = Path(td)
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
-
+            class _RecordingManager(_FakeManager):
                 def files_add(self, _session_id: str, _path: str) -> None:
                     return None
+
+            manager = _RecordingManager(str(repo))
 
             def fake_run_git(_cwd: Path, args: list[str], **_kwargs: object) -> str:
                 if args == ["rev-parse", "--is-inside-work-tree"]:
@@ -844,31 +1150,26 @@ class TestInspectOpenableFile(unittest.TestCase):
                     raise ValueError("git output too large")
                 raise AssertionError(f"unexpected git args: {args}")
 
-            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=note.md")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_run_git", side_effect=fake_run_git
-            ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
-                server.Handler.do_GET(handler)
+            deps, responses = _git_deps(run_git=fake_run_git)
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/file_versions",
+                query="path=note.md",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(responses, [(400, {"error": "git output too large"})])
 
     def test_git_file_versions_missing_base_keeps_200_when_repo_still_healthy(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             repo = Path(td)
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
-
+            class _RecordingManager(_FakeManager):
                 def files_add(self, _session_id: str, _path: str) -> None:
                     return None
+
+            manager = _RecordingManager(str(repo))
 
             def fake_run_git(_cwd: Path, args: list[str], **_kwargs: object) -> str:
                 if args == ["rev-parse", "--is-inside-work-tree"]:
@@ -879,16 +1180,15 @@ class TestInspectOpenableFile(unittest.TestCase):
                     return ""
                 raise AssertionError(f"unexpected git args: {args}")
 
-            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=note.md")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_run_git", side_effect=fake_run_git
-            ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
-                server.Handler.do_GET(handler)
+            deps, responses = _git_deps(run_git=fake_run_git)
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/file_versions",
+                query="path=note.md",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 200)
@@ -899,15 +1199,11 @@ class TestInspectOpenableFile(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             repo = Path(td)
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
-
+            class _RecordingManager(_FakeManager):
                 def files_add(self, _session_id: str, _path: str) -> None:
                     return None
+
+            manager = _RecordingManager(str(repo))
 
             def fake_run_git(_cwd: Path, args: list[str], **_kwargs: object) -> str:
                 if args == ["rev-parse", "--is-inside-work-tree"]:
@@ -920,16 +1216,15 @@ class TestInspectOpenableFile(unittest.TestCase):
                     raise RuntimeError("bad object deadbeef")
                 raise AssertionError(f"unexpected git args: {args}")
 
-            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=note.md")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_run_git", side_effect=fake_run_git
-            ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
-                server.Handler.do_GET(handler)
+            deps, responses = _git_deps(run_git=fake_run_git)
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/file_versions",
+                query="path=note.md",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(responses, [(409, {"error": "bad object deadbeef"})])
 
     @unittest.skipIf(shutil.which("git") is None, "git required")
@@ -948,26 +1243,20 @@ class TestInspectOpenableFile(unittest.TestCase):
                     blob = subprocess.check_output(["git", "rev-parse", f"HEAD:{rel}"], cwd=repo, text=True).strip()
                     (repo / ".git" / "objects" / blob[:2] / blob[2:]).unlink()
 
-                    class FakeManager:
-                        def refresh_session_meta(self, _session_id: str) -> None:
-                            return None
-
-                        def get_session(self, _session_id: str) -> object:
-                            return SimpleNamespace(cwd=str(repo))
-
+                    class _RecordingManager(_FakeManager):
                         def files_add(self, _session_id: str, _path: str) -> None:
                             return None
 
-                    parsed = urllib.parse.urlparse(f"/api/sessions/s/git/file_versions?path={urllib.parse.quote(rel)}")
-                    handler = server.Handler.__new__(server.Handler)
-                    handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-                    handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-                    handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-                    responses = []
-                    with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                        server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-                    ):
-                        server.Handler.do_GET(handler)
+                    manager = _RecordingManager(str(repo))
+                    deps, responses = _git_deps()
+                    handle_git_get_route(
+                        _FakeHandler(),
+                        path="/api/sessions/s/git/file_versions",
+                        query=f"path={urllib.parse.quote(rel)}",
+                        manager=manager,
+                        deps=deps,
+                        match_session_route=_match_session_route,
+                    )
                     self.assertEqual(len(responses), 1)
                     status, payload = responses[0]
                     self.assertEqual(status, 409)
@@ -989,23 +1278,16 @@ class TestInspectOpenableFile(unittest.TestCase):
             (repo / "root.md").write_text("ROOT current\n", encoding="utf-8")
             (subdir / "root.md").write_text("SUB current\n", encoding="utf-8")
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(subdir))
-
-            parsed = urllib.parse.urlparse("/api/sessions/s/git/diff?path=root.md")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-            ):
-                server.Handler.do_GET(handler)
+            manager = _FakeManager(str(subdir))
+            deps, responses = _git_deps()
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/diff",
+                query="path=root.md",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 200)
@@ -1021,26 +1303,20 @@ class TestInspectOpenableFile(unittest.TestCase):
             note = repo / "note.md"
             note.write_text("current\n", encoding="utf-8")
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
-
+            class _RecordingManager(_FakeManager):
                 def files_add(self, _session_id: str, _path: str) -> None:
                     return None
 
-            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=note.md")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-            ):
-                server.Handler.do_GET(handler)
+            manager = _RecordingManager(str(repo))
+            deps, responses = _git_deps()
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/file_versions",
+                query="path=note.md",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 200)
@@ -1059,26 +1335,20 @@ class TestInspectOpenableFile(unittest.TestCase):
             subprocess.run(["git", "commit", "-m", "add space"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             (repo / " ").write_text("space current\n", encoding="utf-8")
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
-
+            class _RecordingManager(_FakeManager):
                 def files_add(self, _session_id: str, _path: str) -> None:
                     return None
 
-            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=%20")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-            ):
-                server.Handler.do_GET(handler)
+            manager = _RecordingManager(str(repo))
+            deps, responses = _git_deps()
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/file_versions",
+                query="path=%20",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 200)
@@ -1100,26 +1370,20 @@ class TestInspectOpenableFile(unittest.TestCase):
             subprocess.run(["git", "commit", "-m", "add backslash"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             (repo / rel).write_text("current\n", encoding="utf-8")
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
-
+            class _RecordingManager(_FakeManager):
                 def files_add(self, _session_id: str, _path: str) -> None:
                     return None
 
-            parsed = urllib.parse.urlparse(f"/api/sessions/s/git/file_versions?path={urllib.parse.quote(rel)}")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-            ):
-                server.Handler.do_GET(handler)
+            manager = _RecordingManager(str(repo))
+            deps, responses = _git_deps()
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/file_versions",
+                query=f"path={urllib.parse.quote(rel)}",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 200)
@@ -1145,26 +1409,20 @@ class TestInspectOpenableFile(unittest.TestCase):
             (outside / "f").write_text("outside current\n", encoding="utf-8")
             os.symlink(outside, tracked_dir)
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
-
+            class _RecordingManager(_FakeManager):
                 def files_add(self, _session_id: str, _path: str) -> None:
                     return None
 
-            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=d/f")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-            ):
-                server.Handler.do_GET(handler)
+            manager = _RecordingManager(str(repo))
+            deps, responses = _git_deps()
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/file_versions",
+                query="path=d/f",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 200)
@@ -1190,26 +1448,20 @@ class TestInspectOpenableFile(unittest.TestCase):
             os.symlink("secret-target", outside / "link")
             os.symlink(outside, tracked_dir)
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
-
+            class _RecordingManager(_FakeManager):
                 def files_add(self, _session_id: str, _path: str) -> None:
                     return None
 
-            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=d/link")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-            ):
-                server.Handler.do_GET(handler)
+            manager = _RecordingManager(str(repo))
+            deps, responses = _git_deps()
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/file_versions",
+                query="path=d/link",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 200)
@@ -1232,26 +1484,20 @@ class TestInspectOpenableFile(unittest.TestCase):
             subprocess.run(["git", "commit", "-m", "add symlink"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             (repo / "target").write_text("TARGET CURRENT\n", encoding="utf-8")
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
-
+            class _RecordingManager(_FakeManager):
                 def files_add(self, _session_id: str, _path: str) -> None:
                     return None
 
-            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=link")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-            ):
-                server.Handler.do_GET(handler)
+            manager = _RecordingManager(str(repo))
+            deps, responses = _git_deps()
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/file_versions",
+                query="path=link",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 200)
@@ -1274,27 +1520,21 @@ class TestInspectOpenableFile(unittest.TestCase):
             subprocess.run(["git", "commit", "-m", "add symlink"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             (repo / "target").write_text("TARGET CURRENT\n", encoding="utf-8")
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
-
+            class _RecordingManager(_FakeManager):
                 def files_add(self, _session_id: str, _path: str) -> None:
                     return None
 
+            manager = _RecordingManager(str(repo))
             encoded = urllib.parse.quote(str(repo / "link"))
-            parsed = urllib.parse.urlparse(f"/api/sessions/s/git/file_versions?path={encoded}")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-            ):
-                server.Handler.do_GET(handler)
+            deps, responses = _git_deps()
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/file_versions",
+                query=f"path={encoded}",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 200)
@@ -1313,32 +1553,26 @@ class TestInspectOpenableFile(unittest.TestCase):
             subprocess.run(["git", "add", "link"], cwd=repo, check=True)
             subprocess.run(["git", "commit", "-m", "add nonutf symlink"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
-
+            class _RecordingManager(_FakeManager):
                 def files_add(self, _session_id: str, _path: str) -> None:
                     return None
 
-            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=link")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-            ):
-                server.Handler.do_GET(handler)
+            manager = _RecordingManager(str(repo))
+            deps, responses = _git_deps()
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/file_versions",
+                query="path=link",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 200)
-            self.assertEqual(payload["current_text"], "bad�target")
+            self.assertEqual(payload["current_text"], "bad\ufffdtarget")
             self.assertEqual(payload["current_size"], len(b"bad\xfftarget"))
-            self.assertEqual(payload["base_text"], "bad�target")
+            self.assertEqual(payload["base_text"], "bad\ufffdtarget")
 
     @unittest.skipIf(shutil.which("git") is None, "git required")
     def test_git_file_versions_head_tree_current_file_returns_409(self) -> None:
@@ -1355,26 +1589,20 @@ class TestInspectOpenableFile(unittest.TestCase):
             shutil.rmtree(tracked_dir)
             (repo / "d").write_text("current file replacing HEAD dir\n", encoding="utf-8")
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
-
+            class _RecordingManager(_FakeManager):
                 def files_add(self, _session_id: str, _path: str) -> None:
                     return None
 
-            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=d")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-            ):
-                server.Handler.do_GET(handler)
+            manager = _RecordingManager(str(repo))
+            deps, responses = _git_deps()
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/file_versions",
+                query="path=d",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 409)
@@ -1395,26 +1623,20 @@ class TestInspectOpenableFile(unittest.TestCase):
             subprocess.run(["git", "commit", "-m", "add notes"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             (repo / "root.md").write_text("ROOT current modified\n", encoding="utf-8")
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(subdir))
-
+            class _RecordingManager(_FakeManager):
                 def files_add(self, _session_id: str, _path: str) -> None:
                     return None
 
-            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=root.md")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-            ):
-                server.Handler.do_GET(handler)
+            manager = _RecordingManager(str(subdir))
+            deps, responses = _git_deps()
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/file_versions",
+                query="path=root.md",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 200)
@@ -1437,26 +1659,20 @@ class TestInspectOpenableFile(unittest.TestCase):
                     subprocess.run(["git", "commit", "-m", "add note"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     (repo / rel).write_text("current only\n", encoding="utf-8")
 
-                    class FakeManager:
-                        def refresh_session_meta(self, _session_id: str) -> None:
-                            return None
-
-                        def get_session(self, _session_id: str) -> object:
-                            return SimpleNamespace(cwd=str(repo))
-
+                    class _RecordingManager(_FakeManager):
                         def files_add(self, _session_id: str, _path: str) -> None:
                             return None
 
-                    parsed = urllib.parse.urlparse(f"/api/sessions/s/git/file_versions?path={urllib.parse.quote(rel)}")
-                    handler = server.Handler.__new__(server.Handler)
-                    handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-                    handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-                    handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-                    responses = []
-                    with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                        server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-                    ):
-                        server.Handler.do_GET(handler)
+                    manager = _RecordingManager(str(repo))
+                    deps, responses = _git_deps()
+                    handle_git_get_route(
+                        _FakeHandler(),
+                        path="/api/sessions/s/git/file_versions",
+                        query=f"path={urllib.parse.quote(rel)}",
+                        manager=manager,
+                        deps=deps,
+                        match_session_route=_match_session_route,
+                    )
                     self.assertEqual(len(responses), 1)
                     status, payload = responses[0]
                     self.assertEqual(status, 200)
@@ -1466,6 +1682,10 @@ class TestInspectOpenableFile(unittest.TestCase):
 
     @unittest.skipIf(shutil.which("git") is None, "git required")
     def test_git_file_versions_corrupt_blob_ignores_literal_pathspec_env(self) -> None:
+        # Retained patch: patch.dict(os.environ, GIT_*_PATHSPECS) is a
+        # process-environment boundary patch. It proves the server's run_git
+        # honours literal_pathspecs=True regardless of inherited environment
+        # variables that would otherwise alter git's pathspec parsing.
         with tempfile.TemporaryDirectory() as td:
             repo = Path(td)
             subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -1478,26 +1698,21 @@ class TestInspectOpenableFile(unittest.TestCase):
             blob = subprocess.check_output(["git", "rev-parse", "HEAD:note.md"], cwd=repo, text=True).strip()
             (repo / ".git" / "objects" / blob[:2] / blob[2:]).unlink()
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
-
+            class _RecordingManager(_FakeManager):
                 def files_add(self, _session_id: str, _path: str) -> None:
                     return None
 
-            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=note.md")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.dict(os.environ, {"GIT_LITERAL_PATHSPECS": "1", "GIT_GLOB_PATHSPECS": "1", "GIT_ICASE_PATHSPECS": "1"}), patch.object(server, "MANAGER", FakeManager()), patch.object(
-                server, "_require_auth", return_value=True
-            ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
-                server.Handler.do_GET(handler)
+            manager = _RecordingManager(str(repo))
+            deps, responses = _git_deps()
+            with patch.dict(os.environ, {"GIT_LITERAL_PATHSPECS": "1", "GIT_GLOB_PATHSPECS": "1", "GIT_ICASE_PATHSPECS": "1"}):
+                handle_git_get_route(
+                    _FakeHandler(),
+                    path="/api/sessions/s/git/file_versions",
+                    query="path=note.md",
+                    manager=manager,
+                    deps=deps,
+                    match_session_route=_match_session_route,
+                )
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 409)
@@ -1505,77 +1720,66 @@ class TestInspectOpenableFile(unittest.TestCase):
 
     def test_file_write_update_rejects_invalid_path_without_500(self) -> None:
         with tempfile.TemporaryDirectory() as td:
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=td)
-
-            parsed = urllib.parse.urlparse("/api/sessions/s/file/write")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_voice_post = lambda _path: False  # type: ignore[attr-defined]
-            handler._read_json_body = lambda **_kwargs: {"path": "bad\x00name", "text": "new", "version": "old"}  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-            ):
-                server.Handler.do_POST(handler)
+            manager = _FakeManager(td)
+            deps, responses = _file_write_deps({"path": "bad\x00name", "text": "new", "version": "old"})
+            handled = handle_file_write_post_route(
+                _FakeHandler(),
+                path="/api/sessions/s/file/write",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
+            self.assertTrue(handled)
             self.assertEqual(responses, [(400, {"error": "invalid path"})])
 
     def test_file_write_validation_runs_before_unknown_session_lookup(self) -> None:
-        class FakeManager:
+        class FailingManager:
             def refresh_session_meta(self, _session_id: str) -> None:
                 raise AssertionError("session metadata should not be refreshed for invalid write bodies")
 
             def get_session(self, _session_id: str) -> object | None:
                 raise AssertionError("session lookup should not run for invalid write bodies")
 
-        parsed = urllib.parse.urlparse("/api/sessions/missing/file/write")
-        handler = server.Handler.__new__(server.Handler)
-        handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-        handler._handle_voice_post = lambda _path: False  # type: ignore[attr-defined]
-        handler._read_json_body = lambda **_kwargs: {"text": "new"}  # type: ignore[attr-defined]
-        responses = []
-        with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-            server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-        ):
-            server.Handler.do_POST(handler)
+        deps, responses = _file_write_deps({"text": "new"})
+        handled = handle_file_write_post_route(
+            _FakeHandler(),
+            path="/api/sessions/missing/file/write",
+            manager=FailingManager(),
+            deps=deps,
+            match_session_route=_match_session_route,
+        )
+        self.assertTrue(handled)
         self.assertEqual(responses, [(400, {"error": "path required"})])
 
     def test_file_write_create_allows_root_cwd_descendant(self) -> None:
         with tempfile.TemporaryDirectory(dir="/tmp") as td:
             target = Path(td) / "created-from-root.txt"
             rel_from_root = str(target.relative_to(Path("/")))
-            added: list[str] = []
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd="/")
+            class _RecordingManager(_FakeManager):
+                def __init__(self, cwd: str) -> None:
+                    super().__init__(cwd)
+                    self.added: list[str] = []
 
                 def files_add(self, _session_id: str, path: str) -> None:
-                    added.append(path)
+                    self.added.append(path)
 
-            parsed = urllib.parse.urlparse("/api/sessions/s/file/write")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_voice_post = lambda _path: False  # type: ignore[attr-defined]
-            handler._read_json_body = lambda **_kwargs: {"path": rel_from_root, "text": "root cwd create\n", "create": True}  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-            ):
-                server.Handler.do_POST(handler)
+            manager = _RecordingManager("/")
+            deps, responses = _file_write_deps({"path": rel_from_root, "text": "root cwd create\n", "create": True})
+            handled = handle_file_write_post_route(
+                _FakeHandler(),
+                path="/api/sessions/s/file/write",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
+            self.assertTrue(handled)
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 200)
             self.assertEqual(payload["path"], str(target.resolve()))
             self.assertEqual(target.read_text(encoding="utf-8"), "root cwd create\n")
-            self.assertEqual(added, [str(target.resolve())])
+            self.assertEqual(manager.added, [str(target.resolve())])
 
     @unittest.skipIf(not hasattr(os, "symlink"), "symlink required")
     def test_file_write_update_rejects_relative_symlink_parent_escape(self) -> None:
@@ -1586,34 +1790,31 @@ class TestInspectOpenableFile(unittest.TestCase):
             target.write_text("old outside\n", encoding="utf-8")
             os.symlink(outside, base / "link")
             version = hashlib.sha256(b"old outside\n").hexdigest()
-            added: list[str] = []
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(base))
+            class _RecordingManager(_FakeManager):
+                def __init__(self, cwd: str) -> None:
+                    super().__init__(cwd)
+                    self.added: list[str] = []
 
                 def files_add(self, _session_id: str, path: str) -> None:
-                    added.append(path)
+                    self.added.append(path)
 
-            parsed = urllib.parse.urlparse("/api/sessions/s/file/write")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_voice_post = lambda _path: False  # type: ignore[attr-defined]
-            handler._read_json_body = lambda **_kwargs: {"path": "link/note.py", "text": "new outside\n", "version": version}  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-            ):
-                server.Handler.do_POST(handler)
+            manager = _RecordingManager(str(base))
+            deps, responses = _file_write_deps({"path": "link/note.py", "text": "new outside\n", "version": version})
+            handled = handle_file_write_post_route(
+                _FakeHandler(),
+                path="/api/sessions/s/file/write",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
+            self.assertTrue(handled)
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 400)
             self.assertIn("escapes session cwd", str(payload.get("error", "")))
             self.assertEqual(target.read_text(encoding="utf-8"), "old outside\n")
-            self.assertEqual(added, [])
+            self.assertEqual(manager.added, [])
 
     def test_git_branch_probe_tolerates_file_cwd(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -1633,26 +1834,14 @@ class TestInspectOpenableFile(unittest.TestCase):
                 target.write_text("root file\n", encoding="utf-8")
                 subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-                class FakeManager:
-                    def refresh_session_meta(self, _session_id: str) -> None:
-                        return None
-
-                    def get_session(self, _session_id: str) -> object:
-                        return SimpleNamespace(cwd=str(subdir))
-
+                class _RecordingManager(_FakeManager):
                     def files_add(self, _session_id: str, _path: str) -> None:
                         return None
 
-                parsed = urllib.parse.urlparse(route)
-                handler = server.Handler.__new__(server.Handler)
-                handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-                handler._handle_voice_post = lambda _path: False  # type: ignore[attr-defined]
-                handler._read_json_body = lambda **_kwargs: {"path": "d/f.md", "session_id": "s", "git_path": True}  # type: ignore[attr-defined]
-                responses = []
-                with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                    server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-                ):
-                    server.Handler.do_POST(handler)
+                manager = _RecordingManager(str(subdir))
+                deps, responses = _global_file_deps({"path": "d/f.md", "session_id": "s", "git_path": True}, manager=manager)
+                handled = handle_global_file_post_route(_FakeHandler(), path=route, manager=manager, deps=deps)
+                self.assertTrue(handled)
                 self.assertEqual(len(responses), 1)
                 status, payload = responses[0]
                 self.assertEqual(status, 200)
@@ -1673,26 +1862,21 @@ class TestInspectOpenableFile(unittest.TestCase):
             target.write_text("root file\n", encoding="utf-8")
             subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(subdir))
-
+            class _RecordingManager(_FakeManager):
                 def files_add(self, _session_id: str, _path: str) -> None:
                     return None
 
-            parsed = urllib.parse.urlparse("/api/sessions/s/file/read?path=d/f.md&git_path=1")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-            ):
-                server.Handler.do_GET(handler)
+            manager = _RecordingManager(str(subdir))
+            deps, responses, _inline, _attachments = _file_get_deps(manager=manager)
+            handled = handle_file_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/file/read",
+                query="path=d/f.md&git_path=1",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
+            self.assertTrue(handled)
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 200)
@@ -1711,26 +1895,14 @@ class TestInspectOpenableFile(unittest.TestCase):
             image.write_text('<svg xmlns="http://www.w3.org/2000/svg"></svg>\n', encoding="utf-8")
             subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(subdir))
-
+            class _RecordingManager(_FakeManager):
                 def files_add(self, _session_id: str, _path: str) -> None:
                     return None
 
-            parsed = urllib.parse.urlparse("/api/files/read")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_voice_post = lambda _path: False  # type: ignore[attr-defined]
-            handler._read_json_body = lambda **_kwargs: {"path": "assets/icon.svg", "session_id": "s", "git_path": True}  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-            ):
-                server.Handler.do_POST(handler)
+            manager = _RecordingManager(str(subdir))
+            deps, responses = _global_file_deps({"path": "assets/icon.svg", "session_id": "s", "git_path": True}, manager=manager)
+            handled = handle_global_file_post_route(_FakeHandler(), path="/api/files/read", manager=manager, deps=deps)
+            self.assertTrue(handled)
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 200)
@@ -1750,23 +1922,17 @@ class TestInspectOpenableFile(unittest.TestCase):
             os.symlink("secret-target", outside / "link")
             os.symlink(outside, tracked_dir)
 
-            class FakeManager:
-                def refresh_session_meta(self, _session_id: str) -> None:
-                    return None
-
-                def get_session(self, _session_id: str) -> object:
-                    return SimpleNamespace(cwd=str(repo))
-
-            parsed = urllib.parse.urlparse("/api/sessions/s/file/read?path=d/link&git_path=1")
-            handler = server.Handler.__new__(server.Handler)
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
-            responses = []
-            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-            ):
-                server.Handler.do_GET(handler)
+            manager = _FakeManager(str(repo))
+            deps, responses, _inline, _attachments = _file_get_deps(manager=manager)
+            handled = handle_file_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/file/read",
+                query="path=d/link&git_path=1",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
+            self.assertTrue(handled)
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 404)
@@ -1778,26 +1944,10 @@ class TestInspectOpenableFile(unittest.TestCase):
                 base = Path(td)
                 (base / " ").write_text("space file\n", encoding="utf-8")
 
-                class FakeManager:
-                    def refresh_session_meta(self, _session_id: str) -> None:
-                        return None
-
-                    def get_session(self, _session_id: str) -> object:
-                        return SimpleNamespace(cwd=str(base))
-
-                    def files_add(self, _session_id: str, _path: str) -> None:
-                        return None
-
-                parsed = urllib.parse.urlparse(route)
-                handler = server.Handler.__new__(server.Handler)
-                handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-                handler._handle_voice_post = lambda _path: False  # type: ignore[attr-defined]
-                handler._read_json_body = lambda **_kwargs: {"path": " ", "session_id": "s"}  # type: ignore[attr-defined]
-                responses = []
-                with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
-                    server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-                ):
-                    server.Handler.do_POST(handler)
+                manager = _FakeManager(str(base))
+                deps, responses = _global_file_deps({"path": " ", "session_id": "s"}, manager=manager)
+                handled = handle_global_file_post_route(_FakeHandler(), path=route, manager=manager, deps=deps)
+                self.assertTrue(handled)
                 self.assertEqual(len(responses), 1)
                 status, payload = responses[0]
                 self.assertEqual(status, 200)
@@ -1810,18 +1960,10 @@ class TestInspectOpenableFile(unittest.TestCase):
     def test_global_file_routes_reject_non_string_session_id(self) -> None:
         for route in ("/api/files/read", "/api/files/inspect"):
             with self.subTest(route=route):
-                parsed = urllib.parse.urlparse(route)
-                handler = server.Handler.__new__(server.Handler)
-                handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-                handler._handle_voice_post = lambda _path: False  # type: ignore[attr-defined]
-                handler._read_json_body = lambda **_kwargs: {"path": "note.md", "session_id": 123}  # type: ignore[attr-defined]
-                responses = []
-                with patch.object(server, "_require_auth", return_value=True), patch.object(
-                    server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
-                ):
-                    server.Handler.do_POST(handler)
+                deps, responses = _global_file_deps({"path": "note.md", "session_id": 123})
+                handled = handle_global_file_post_route(_FakeHandler(), path=route, manager=_FakeManager("/tmp"), deps=deps)
+                self.assertTrue(handled)
                 self.assertEqual(responses, [(400, {"error": "session_id must be a string"})])
-
     def test_text_file_for_client_marks_utf8_as_editable(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "note.md"
