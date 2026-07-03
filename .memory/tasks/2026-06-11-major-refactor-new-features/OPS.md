@@ -8273,3 +8273,15 @@
   - `python3 -m py_compile codoxear/server_route_deps.py` passed.
   - Route capability/decomposition/message/pending-log validation returned `32 passed, 4 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T11:31:00Z Workbench item 5 completion audit
+- Audit command inspected production references to broker busy/idle/readiness helpers across `codoxear/`; remaining direct broker busy uses are either structured broker/sessiond observation production (`broker_control.py`, `sessiond_control.py`, `sessiond_state.py`) or discovery/prune cache refresh, not route-level readiness decisions.
+- Single runtime authority now has these consumers:
+  - listing: `session_runtime.build_runtime_enriched_session_rows(...)` resolves active-row busy using `RuntimeStatus`;
+  - messages: `ServerRouteDepsFactory.message_runtime_snapshot(...)` consumes `manager._runtime_status_from_state_and_log(...)`;
+  - diagnostics: `diagnostics_routes.py` consumes `manager._runtime_status_from_state_and_log(...)`;
+  - send/queue/attachment: `SessionReadinessCoordinator` derives direct-send, queue-promotion, and attachment readiness through `SessionRuntimeReadiness`;
+  - unattended: `UnattendedSweepCoordinator` receives runtime status and applies `session_runtime_readiness(...).unattended_injection`;
+  - broker/sessiond integration: both emit structured `busy`/`queue_len` state observations accepted by `broker_runtime_state(...)`, with broker also emitting explicit `interrupted_idle` when known.
+- Item-5 validation set after route-cap cleanup: `python3 -m pytest -q tests/test_session_runtime.py tests/test_unattended_sweep.py tests/test_queue_sweep_idle_guard.py tests/test_session_manager_method_bindings.py tests/test_session_manager_factories.py tests/test_diagnostics_routes.py tests/test_diagnostics_source.py tests/test_message_route_source.py tests/test_message_transcript_state.py tests/test_session_routes.py tests/test_queue_routes.py tests/test_queue_runtime.py tests/test_queue_store.py tests/test_session_queue.py tests/test_sessions_pending_log_idle.py tests/test_broker_busy_state.py tests/test_idle_heuristics.py tests/test_server_route_deps_caps.py tests/test_route_decomposition_source.py tests/test_session_listing.py tests/test_session_discovery.py tests/test_sessiond_control_source.py tests/test_sessiond_state_source.py` returned `221 passed, 4 subtests passed`.
+- Commitment: Workbench item 5 is now supported as complete for the specified mechanism; full local, Docker, and clean-room review remain acceptance gates for all eight items, not per-item completion evidence.
