@@ -28,6 +28,8 @@ class State:
     last_interrupt_request_ts: float = 0.0
     last_interrupted_idle_ts: float = 0.0
     pending_calls: set[Any] = field(default_factory=set)
+    interrupt_hint_tail: str = ""
+    interrupt_hint_tail_max: int = 4096
 
 
 def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 256 * 1024) -> tuple[list[dict[str, Any]], int]:
@@ -65,6 +67,7 @@ def _state_snapshot(st: State) -> tuple[Any, ...]:
         st.last_interrupted_idle_ts,
         frozenset(st.pending_calls),
         st.token,
+        st.interrupt_hint_tail,
     )
 
 

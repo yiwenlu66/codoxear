@@ -22,6 +22,7 @@ from .agent_backend import normalize_agent_backend
 from .broker_terminal import _reply_to_terminal_queries
 from .broker_turn_state import _mark_busy_state_idle
 from .broker_turn_state import _should_clear_busy_state as _should_clear_busy_state_impl
+from .broker_turn_state import _update_busy_from_pty_text
 from .control_socket import handle_control_socket_connection as _handle_control_socket_connection
 from . import pty_util as _pty_util
 from .sessiond_control import SessiondControlDeps
@@ -166,6 +167,7 @@ class Sessiond:
                     if not st2:
                         continue
                     st2.output_tail = (st2.output_tail + s)[-st2.output_tail_max :]
+                    _update_busy_from_pty_text(st2, s, _now())
             except OSError:
                 break
 

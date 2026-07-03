@@ -12,6 +12,7 @@ from codoxear.sessiond import _log_busy_signals
 from codoxear.sessiond import _read_jsonl_from_offset
 from codoxear.sessiond import _should_clear_busy_state
 from codoxear.broker_turn_state import _mark_busy_state_idle
+from codoxear.broker_turn_state import _update_busy_from_pty_text
 from codoxear.sessiond_control import SessiondControlDeps
 from codoxear.sessiond_control import handle_sessiond_control_connection
 from codoxear.sessiond_state import apply_log_batch_to_state
@@ -131,6 +132,15 @@ class TestSessiondFailClosed(unittest.TestCase):
 
         self.assertTrue(apply_log_batch_to_state(state, [tool_result], now_ts=31.0))
         self.assertEqual(state.pending_calls, set())
+
+    def test_sessiond_state_accepts_broker_pty_interrupt_hint_updates(self) -> None:
+        state = _sessiond_state(codex_pid=1234, sock_path=Path("/tmp/sessiond.sock"))
+
+        _update_busy_from_pty_text(state, "press Esc to interrupt", 40.0)
+
+        self.assertTrue(state.busy)
+        self.assertEqual(state.last_interrupt_hint_ts, 40.0)
+        self.assertEqual(state.last_turn_activity_ts, 40.0)
 
     def test_sessiond_control_state_uses_runtime_state_schema(self) -> None:
         captured: dict[str, object] = {}
