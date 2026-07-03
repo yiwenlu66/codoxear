@@ -113,3 +113,26 @@
 - Targeted validation before commit: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_static_assets.py tests/test_auth_cleanup_source.py -q` -> 23 passed.
 - Browser validation on fresh sandbox 19093: normal login/app load has `bootstrapped=true`, marker function present, `__codoxearLoadError=null`, no fallback; synthetic partial-root failure (`root.innerHTML=<div id=partial>`, `bootstrapped=false`, loadError set) renders visible `Codoxear failed to load` panel and removes the partial node (d40); synthetic post-bootstrap error (`bootstrapped=true`) leaves valid root content and shows no fallback.
 - Full suite initially failed three brittle module-registration source tests because the new comment contained the substring `app.js`; those tests used broad `index("app.js")` instead of exact asset script markers. Executor 08fb25d2 fixed only those tests to compare `app_*.js?v=__CODOXEAR_ASSET_VERSION__` script markers. Commit `b5764f2`. Full suite after fix: `1385 passed, 132 subtests`.
+
+## 2026-07-04T20:27:00Z Diagnostics/details controller committed; browser and Docker evidence collected
+- Functional/test commit `d22b686 Extract diagnostics modal controller` landed after staged diff review. Explicitly staged files only: `codoxear/static/app_diagnostics.js`, `codoxear/static/app.js`, `codoxear/static/index.html`, `codoxear/static_routes.py`, and diagnostics/static/frontend tests. Memory/screenshots were left unstaged for a separate evidence commit.
+- Local validation before commit:
+  - `node --check codoxear/static/app_diagnostics.js && node --check codoxear/static/app.js` -> OK.
+  - `python3 -m pytest -q tests/test_frontend_diagnostics_module_source.py tests/test_diagnostics_source.py tests/test_overlay_accessibility_source.py tests/test_static_assets.py tests/test_diagnostics_routes.py` -> `52 passed`.
+  - `python3 -m pytest -q tests/test_frontend_session_helpers_source.py tests/test_chat_transcript_runtime.py` -> `22 passed`.
+  - `python3 -m pytest -q` -> `1405 passed, 132 subtests passed`.
+- Docker smoke/browser evidence on fresh sandbox 19094:
+  - Smoke: pre-login `/api/me` 401, post-login `/api/sessions` 200.
+  - Created failed Codex launch `launch-1783109565513-db534fd3`. Browser showed `window.CodoxearDiagnostics` present and no `__codoxearLoadError`. Details modal opened with close button focused, `display:flex`, blank status, local rows `Session/State/Stage/Error/CWD/Agent/Provider/Model/Reasoning/tmux`, and Copy/New-like enabled. Screenshot: `browser-artifacts/d41-diagnostics-failed-launch.png`.
+  - Registered fake live session `fake-diag` through a tiny Unix control socket and sidecar in the sandbox app dir. Browser Details modal fetched live diagnostics and rendered rows including `Provider openai-api`, `Model gpt-test`, `Reasoning high`, `Service tier flex`, `UI d44cedcc1d89`, and `Context 100/800 (90% left; 200 reserved)`; Copy/New-like enabled. Screenshot: `browser-artifacts/d42-diagnostics-live-session.png`.
+  - Browser clipboard write was denied by automation permissions; the UI surfaced `copy failed: Failed to execute 'writeText' on 'Clipboard': Write permission denied.` rather than silently succeeding.
+  - Clicking Details `New like this` hid the Details modal and opened New Session with status `Review copied launch settings before starting.`, cwd `/workspace`, model field `openai-api/gpt-test`, and reasoning `high`. Screenshot: `browser-artifacts/d43-diagnostics-new-like-preset.png`.
+- Post-commit Docker test on fresh sandbox 19095: `1404 passed, 1 skipped, 132 subtests passed`.
+- Clean-room critic attempt `02e133ee` failed due to provider routing (`gpt-5.5` 503 no available distributor), not code evidence. Retried as async critic `1750e854` on `zai/glm-5.2`; acceptance remains pending its verdict.
+
+## 2026-07-04T20:33:00Z Clean-room review accepted diagnostics extraction
+- Clean-room critic retry `1750e854` reviewed commit `d22b686` and reported **ACCEPT** with no blockers. The earlier critic run `02e133ee` failed from provider routing only.
+- Review mechanism: line-by-line comparison of old app.js Details code with `CodoxearDiagnostics` confirmed preserved stale guard (`getSelected() !== sid`), failed-launch local/no-API path with the same 10 rows, live diagnostics path with all row labels and identical new-like preset fields, Copy/New-like toasts and focus ordering, and close/backdrop/Escape delegation through app.js wrappers.
+- Architecture review: controller owns all diag state/rendering/actions; app.js keeps only DOM construction, opener/wrappers, and injected helper factories. Fail-loud module deps and static load order match the established queue-controller pattern.
+- Test review: `test_frontend_diagnostics_module_source.py` executes actual modules in a Node VM and verifies side effects rather than only source text. Non-blocking cosmetic note: one failed-launch VM test has unused placeholder locals, but companion assertions cover the behavior.
+- Acceptance judgment: diagnostics/details extraction tranche is accepted at `d22b686` plus evidence/screenshots d41-d43 and Docker/local validation recorded above.
