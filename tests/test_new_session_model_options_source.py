@@ -10,6 +10,7 @@ APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_LAUNCH_JS = ROOT / "codoxear" / "static" / "app_launch.js"
 APP_NEW_SESSION_JS = ROOT / "codoxear" / "static" / "app_new_session.js"
 APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
+APP_DIAGNOSTICS_JS = ROOT / "codoxear" / "static" / "app_diagnostics.js"
 
 
 def _run_node(js: str) -> dict:
@@ -596,10 +597,15 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
     def test_new_like_this_source_is_reviewable_and_allowlisted(self) -> None:
         app_source = APP_JS.read_text(encoding="utf-8")
         module_source = APP_NEW_SESSION_JS.read_text(encoding="utf-8")
+        diag_source = APP_DIAGNOSTICS_JS.read_text(encoding="utf-8")
+        # The diag New-like-this button DOM stays in app.js; the click behavior
+        # (hide without focus restore + open New Session with the preset) and the
+        # preset construction from diagnostics live in the controller module.
         self.assertIn('id: "diagNewLikeBtn"', app_source)
         self.assertIn('text: "New like this"', app_source)
-        self.assertIn('hideDiagViewer({ restoreFocus: false });', app_source)
-        self.assertIn('openNewSessionDialog({ likeSession: preset, statusText: "Review copied launch settings before starting.", returnFocusEl });', app_source)
+        self.assertIn('diagNewLikeBtn.onclick = (e) => diagController.onNewLikeClick(e);', app_source)
+        self.assertIn('hide({ restoreFocus: false });', diag_source)
+        self.assertIn('openNewSessionDialog({ likeSession: preset, statusText: "Review copied launch settings before starting.", returnFocusEl });', diag_source)
         self.assertIn('function openNewSessionDialog({ cwd = null, statusText = "", likeSession = null, returnFocusEl = null } = {})', app_source)
         self.assertIn('if (like) applyNewSessionLaunchPreset(like);', app_source)
         self.assertIn("function applyNewSessionLaunchPreset(sessionInfo)", module_source)
@@ -612,9 +618,10 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
         self.assertIn("const providerAbsent = backendValue === \"pi\" && !prov;", module_source)
         self.assertIn("if (model || providerAbsent || acceptsProvider) {", module_source)
         self.assertIn('modelInput.value = newSessionProviderModelDisplay(model || "default", acceptsProvider ? prov : "");', module_source)
-        self.assertIn('diagNewLikeSession = d && typeof d === "object" ? {', app_source)
-        self.assertIn("preferred_auth_method: d.preferred_auth_method,", app_source)
-        self.assertIn("tmux_window: d.tmux_window,", app_source)
+        self.assertIn('diagNewLikeSession =\n        d && typeof d === "object"\n          ? {', diag_source)
+        self.assertIn("preferred_auth_method: d.preferred_auth_method,", diag_source)
+        self.assertIn("tmux_window: d.tmux_window,", diag_source)
+        self.assertNotIn("diagNewLikeSession = d;", diag_source)
         self.assertNotIn("diagNewLikeSession = d;", app_source)
 
     def test_provider_model_pair_is_remembered_per_backend(self) -> None:

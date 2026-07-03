@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_SESSION_HELPERS_JS = ROOT / "codoxear" / "static" / "app_session_helpers.js"
+APP_DIAGNOSTICS_JS = ROOT / "codoxear" / "static" / "app_diagnostics.js"
 
 
 def eval_diagnostics_helpers() -> dict:
@@ -38,22 +39,33 @@ def eval_diagnostics_helpers() -> dict:
 
 
 class TestDiagnosticsSource(unittest.TestCase):
-    def test_diagnostics_render_is_bound_to_captured_session(self) -> None:
+    def test_app_js_delegates_diag_rendering_to_controller_module(self) -> None:
+        """The captured-session binding, stale guard, and error path now live in
+        the CodoxearDiagnostics controller module (see
+        test_frontend_diagnostics_module_source.py for the executable behavior).
+        app.js keeps only DOM construction, the Details opener, and thin
+        delegating wrappers."""
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("async function showDiagViewer({ opener = null } = {}) {")
-        end = source.index("function hideDiagViewer", start)
-        block = source[start:end]
-
-        self.assertIn("const sid = selected;\n          if (!sid) return;", block)
-        self.assertIn("api(`/api/sessions/${sid}/diagnostics`)", block)
-        self.assertIn("const selectedInfo = sessionIndex.get(sid) || null;", block)
-        self.assertIn("if (sessionLaunchFailed(selectedInfo)) {", block)
-        self.assertIn("diagCopyText = recoveryDetailsText(sid, selectedInfo);", block)
-        self.assertIn("diagNewLikeSession = launchPresetFromSessionInfo(selectedInfo);", block)
-        self.assertLess(block.index("if (sessionLaunchFailed(selectedInfo)) {"), block.index("api(`/api/sessions/${sid}/diagnostics`)"))
-        self.assertIn("if (selected !== sid) return;\n            diagStatus.textContent = \"\";", block)
-        self.assertIn("catch (e) {\n            if (selected !== sid) return;", block)
-        self.assertNotIn("/api/sessions/${selected}/diagnostics", block)
+        module = APP_DIAGNOSTICS_JS.read_text(encoding="utf-8")
+        # app.js delegates to the controller instead of owning the show body.
+        self.assertIn("const diagController = (function instantiateDiagnosticsController() {", source)
+        self.assertIn("return diagController.show(opts);", source)
+        self.assertIn("return diagController.hide(opts);", source)
+        # The captured-session / stale / error guards now live in the module.
+        self.assertIn("const sid = getSelected();", module)
+        self.assertIn("if (!sid) return;", module)
+        self.assertIn("api(`/api/sessions/${sid}/diagnostics`)", module)
+        self.assertIn("const selectedInfo = getSessionInfo(sid) || null;", module)
+        self.assertIn("if (sessionLaunchFailed(selectedInfo)) {", module)
+        self.assertIn("diagCopyText = recoveryDetailsText(sid, selectedInfo);", module)
+        self.assertIn("diagNewLikeSession = launchPresetFromSessionInfo(selectedInfo);", module)
+        self.assertLess(module.index("if (sessionLaunchFailed(selectedInfo)) {"), module.index("api(`/api/sessions/${sid}/diagnostics`)"))
+        self.assertIn("if (getSelected() !== sid) return;\n        renderLiveRows(sid, d);", module)
+        self.assertIn("catch (e) {\n        if (getSelected() !== sid) return;", module)
+        self.assertNotIn("/api/sessions/${selected}/diagnostics", module)
+        # app.js must not carry the old inline rendering authority.
+        self.assertNotIn("async function showDiagViewer({ opener = null } = {}) {", source)
+        self.assertNotIn("const d = await api(`/api/sessions/${sid}/diagnostics`);", source)
 
     def test_diagnostics_provider_display_is_backend_aware(self) -> None:
         result = eval_diagnostics_helpers()
@@ -64,27 +76,29 @@ class TestDiagnosticsSource(unittest.TestCase):
         self.assertEqual(result["ccIgnored"], "-")
         self.assertEqual(result["nullRow"], "-")
 
-    def test_diagnostics_has_copy_details_action_for_rendered_rows(self) -> None:
+    def test_diagnostics_has_copy_details_action_wired_to_controller(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        module = APP_DIAGNOSTICS_JS.read_text(encoding="utf-8")
+        # DOM construction for the copy/new-like buttons stays in app.js.
         self.assertIn('id: "diagCopyBtn"', source)
         self.assertIn('title: "Copy details"', source)
         self.assertIn('"aria-label": "Copy details"', source)
-        self.assertIn('let diagCopyText = "";', source)
-        self.assertIn('diagCopyBtn.disabled = true;', source)
         self.assertIn('el("div", { class: "actions" }, [diagNewLikeBtn, diagCopyBtn, diagCloseBtn])', source)
         self.assertIn('typeof codoxearSessionHelpers.diagnosticsProviderDisplay !== "function"', source)
         self.assertIn('typeof codoxearSessionHelpers.diagnosticsCopyText !== "function"', source)
         self.assertIn('function diagnosticsProviderDisplay(d) {\n        return codoxearSessionHelpers.diagnosticsProviderDisplay(d, sessionAgentBackend(d));\n      }', source)
-        self.assertIn('addRow("Provider", diagnosticsProviderDisplay(d));', source)
         self.assertIn('function diagnosticsCopyText(sessionId, rows) {\n        return codoxearSessionHelpers.diagnosticsCopyText(sessionId, rows);\n      }', source)
         self.assertIn('function diagnosticsProviderDisplay(d, backend) {', APP_SESSION_HELPERS_JS.read_text(encoding="utf-8"))
         self.assertIn('function diagnosticsCopyText(sessionId, rows) {', APP_SESSION_HELPERS_JS.read_text(encoding="utf-8"))
-        self.assertIn('diagRows.push([cleanLabel, v]);', source)
-        self.assertIn('diagCopyText = diagnosticsCopyText(sid, diagRows);', source)
-        self.assertIn('diagCopyBtn.disabled = !diagCopyText;', source)
-        self.assertIn('diagCopyText = "";\n            diagNewLikeSession = null;\n            diagNewLikeBtn.disabled = true;\n            diagCopyBtn.disabled = true;\n            diagStatus.textContent = `error:', source)
-        self.assertIn('await copyToClipboard(diagCopyText);', source)
-        self.assertIn('setToast("Copied details");', source)
+        # The copy/new-like state and click behavior moved into the module.
+        self.assertIn("let diagCopyText = \"\";", module)
+        self.assertIn('setToast("Copied details");', module)
+        self.assertIn('await copyToClipboard(diagCopyText);', module)
+        self.assertIn('diagCopyBtn.disabled = !diagCopyText;', module)
+        # app.js wires the buttons to the controller; it no longer owns the state.
+        self.assertIn("diagCopyBtn.onclick = (e) => diagController.onCopyClick(e);", source)
+        self.assertIn("diagNewLikeBtn.onclick = (e) => diagController.onNewLikeClick(e);", source)
+        self.assertNotIn("let diagCopyText = \"\";", source)
 
     def test_diagnostics_copy_formatter_uses_label_value_rows(self) -> None:
         result = eval_diagnostics_helpers()

@@ -989,6 +989,7 @@
           desktopNotificationTimers.clear();
           chatSearchAllRuntime.dispose();
           if (queueController) queueController.dispose();
+          if (diagController) diagController.dispose();
           olderLoadRuntime.invalidate();
           fileViewerController.abortPendingFileOpenTransport();
           stopAnnouncementHeartbeat();
@@ -1645,9 +1646,8 @@
           type: "button",
           html: iconSvg("x"),
         });
-        let diagReturnFocusEl = null;
-        let diagCopyText = "";
-        let diagNewLikeSession = null;
+        // diagNewLikeBtn/diagCopyBtn start disabled until the controller loads
+        // copy text / a new-like preset during show().
         diagNewLikeBtn.disabled = true;
         diagCopyBtn.disabled = true;
         const diagStatus = el("div", { class: "muted", id: "diagStatus", text: "" });
@@ -7647,171 +7647,55 @@
           if (wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(helpViewer));
         }
 
-        diagNewLikeBtn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (!diagNewLikeSession) {
-            setToast("details not loaded");
-            return;
-          }
-          const preset = diagNewLikeSession;
-          const returnFocusEl = diagReturnFocusEl && diagReturnFocusEl.isConnected ? diagReturnFocusEl : null;
-          hideDiagViewer({ restoreFocus: false });
-          openNewSessionDialog({ likeSession: preset, statusText: "Review copied launch settings before starting.", returnFocusEl });
-        };
+        // Details/diagnostics modal state, rendering decisions, and the
+        // New-like-this / Copy details / show / hide behavior live in the
+        // CodoxearDiagnostics controller (codoxear/static/app_diagnostics.js).
+        // app.js owns DOM construction for the diag nodes and the thin
+        // delegating wrappers below; all diag rendering authority is delegated.
+        const diagController = (function instantiateDiagnosticsController() {
+          const codoxearDiagnostics = window.CodoxearDiagnostics;
+          if (!codoxearDiagnostics || typeof codoxearDiagnostics.createDiagnosticsController !== "function")
+            throw new Error("Codoxear diagnostics controller failed to load");
+          return codoxearDiagnostics.createDiagnosticsController({
+            diagBackdrop,
+            diagViewer,
+            diagContent,
+            diagStatus,
+            diagCloseBtn,
+            diagNewLikeBtn,
+            diagCopyBtn,
+            getSelected: () => selected,
+            getSessionInfo: (sid) => sessionIndex.get(sid),
+            api,
+            setToast,
+            copyToClipboard,
+            openNewSessionDialog,
+            recoveryDetailsText,
+            launchPresetFromSessionInfo,
+            redactedLaunchErrorText,
+            sessionLaunchLabel,
+            agentBackendDisplayName,
+            diagnosticsProviderDisplay,
+            diagnosticsCopyText,
+            fmtTs,
+            fmtRelativeAge,
+            formatPriorityOffset,
+            prepareModalOpen,
+            afterModalVisibilityChanged,
+            el,
+            uiVersion: UI_VERSION,
+          });
+        })();
 
-        diagCopyBtn.onclick = async (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (!diagCopyText) {
-            setToast("details not loaded");
-            return;
-          }
-          try {
-            await copyToClipboard(diagCopyText);
-            setToast("Copied details");
-          } catch (err) {
-            setToast(`copy failed: ${err && err.message ? err.message : "unknown error"}`);
-          }
-        };
+        diagNewLikeBtn.onclick = (e) => diagController.onNewLikeClick(e);
+        diagCopyBtn.onclick = (e) => diagController.onCopyClick(e);
 
-        async function showDiagViewer({ opener = null } = {}) {
-          const sid = selected;
-          if (!sid) return;
-          diagReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;
-          prepareModalOpen();
-          diagContent.innerHTML = "";
-          diagCopyText = "";
-          diagNewLikeSession = null;
-          diagNewLikeBtn.disabled = true;
-          diagCopyBtn.disabled = true;
-          diagStatus.textContent = "Loading...";
-          diagBackdrop.style.display = "block";
-          diagViewer.style.display = "flex";
-          afterModalVisibilityChanged();
-          focusModalCloseButton(diagViewer, diagCloseBtn);
-          const selectedInfo = sessionIndex.get(sid) || null;
-          if (sessionLaunchFailed(selectedInfo)) {
-            diagStatus.textContent = "";
-            const addRecoveryRow = (label, value, { mono = false } = {}) => {
-              const v = value == null || value === "" ? "-" : String(value);
-              const row = el("div", { class: "detailsRow" });
-              row.appendChild(el("div", { class: "detailsLabel", text: String(label || "") }));
-              row.appendChild(el("div", { class: mono ? "detailsValue mono" : "detailsValue", text: v }));
-              diagContent.appendChild(row);
-            };
-            addRecoveryRow("Session", sid);
-            addRecoveryRow("State", "launch failed");
-            addRecoveryRow("Stage", selectedInfo.launch_stage || "-");
-            addRecoveryRow("Error", redactedLaunchErrorText(selectedInfo.launch_error || "-"));
-            addRecoveryRow("CWD", selectedInfo.cwd || "-", { mono: true });
-            addRecoveryRow("Agent", agentBackendDisplayName(selectedInfo.agent_backend));
-            addRecoveryRow("Provider", diagnosticsProviderDisplay(selectedInfo));
-            addRecoveryRow("Model", selectedInfo.model || "-");
-            addRecoveryRow("Reasoning", selectedInfo.reasoning_effort || "-");
-            addRecoveryRow("tmux", selectedInfo.tmux_session ? `${selectedInfo.tmux_session}${selectedInfo.tmux_window ? ":" + selectedInfo.tmux_window : ""}` : "-");
-            diagCopyText = recoveryDetailsText(sid, selectedInfo);
-            diagNewLikeSession = launchPresetFromSessionInfo(selectedInfo);
-            diagNewLikeBtn.disabled = !diagNewLikeSession;
-            diagCopyBtn.disabled = !diagCopyText;
-            return;
-          }
-          try {
-            const d = await api(`/api/sessions/${sid}/diagnostics`);
-            if (selected !== sid) return;
-            diagStatus.textContent = "";
-            const now = Date.now() / 1000;
-            const diagRows = [];
-            const addRow = (label, value, { mono = false } = {}) => {
-              const cleanLabel = String(label || "");
-              const v = value == null || value === "" ? "-" : String(value);
-              diagRows.push([cleanLabel, v]);
-              const row = el("div", { class: "detailsRow" });
-              row.appendChild(el("div", { class: "detailsLabel", text: cleanLabel }));
-              row.appendChild(el("div", { class: mono ? "detailsValue mono" : "detailsValue", text: v }));
-              diagContent.appendChild(row);
-            };
-            const age = (ts) => {
-              const t = Number(ts);
-              if (!Number.isFinite(t) || t <= 0) return "";
-              const s = Math.max(0, Math.floor(now - t));
-              return fmtRelativeAge(s);
-            };
-            addRow("Session", d && d.session_id ? d.session_id : "-");
-            addRow("Thread", d && d.thread_id ? d.thread_id : "-");
-            addRow("Owned", d ? sessionLaunchLabel(d).replace("-owned", "") : "-");
-            addRow("Busy", d && typeof d.busy === "boolean" ? (d.busy ? "busy" : "idle") : "-");
-            addRow("Queue", d && typeof d.queue_len === "number" ? String(d.queue_len) : "-");
-            addRow("CWD", d && d.cwd ? d.cwd : "-", { mono: true });
-            addRow("Started", d && typeof d.start_ts === "number" ? `${fmtTs(d.start_ts)}${age(d.start_ts) ? " (" + age(d.start_ts) + ")" : ""}` : "-");
-            addRow(
-              "Updated",
-              d && typeof d.updated_ts === "number" ? `${fmtTs(d.updated_ts)}${age(d.updated_ts) ? " (" + age(d.updated_ts) + ")" : ""}` : "-"
-            );
-            addRow("Broker PID", d && typeof d.broker_pid === "number" ? String(d.broker_pid) : "-");
-            addRow("Agent", d ? agentBackendDisplayName(d.agent_backend) : "-");
-            addRow("Agent PID", d && typeof d.codex_pid === "number" ? String(d.codex_pid) : "-");
-	            addRow("Log", d && d.log_path ? d.log_path : "-", { mono: true });
-	            addRow("tmux", d && d.tmux_session ? `${d.tmux_session}${d.tmux_window ? ":" + d.tmux_window : ""}` : "-");
-	            addRow("Branch", d && d.git_branch ? d.git_branch : "-");
-	            addRow("Provider", diagnosticsProviderDisplay(d));
-	            addRow("Model", d && d.model ? d.model : "-");
-	            addRow("Reasoning", d && d.reasoning_effort ? d.reasoning_effort : "-");
-	            addRow("Service tier", d && d.service_tier ? d.service_tier : "-");
-	            addRow("Priority", d && typeof d.final_priority === "number" ? Number(d.final_priority).toFixed(4) : "-");
-	            addRow("Priority offset", d && typeof d.priority_offset === "number" ? formatPriorityOffset(d.priority_offset) : "-");
-	            addRow("Snooze", d && typeof d.snooze_until === "number" ? fmtTs(d.snooze_until) : "-");
-	            addRow("Depends on", d && d.dependency_session_id ? d.dependency_session_id : "-");
-	            addRow("UI", UI_VERSION);
-	            const tok = d && d.token && typeof d.token === "object" ? d.token : null;
-	            if (tok) {
-	              const ctx = Number(tok.context_window);
-	              const used = Number(tok.tokens_in_context);
-	              const pct = Number(tok.percent_remaining);
-              if (Number.isFinite(ctx) && Number.isFinite(used) && ctx > 0 && used >= 0) {
-                const p = Number.isFinite(pct) ? Math.max(0, Math.min(100, Math.round(pct))) : null;
-                const maxInput = Number(tok.max_input_tokens);
-                const reserved = Number(tok.reserved_tokens);
-                const effectiveMaxInput = Number.isFinite(maxInput) && maxInput >= 0 ? maxInput : ctx;
-                const effectiveReserved = Number.isFinite(reserved) && reserved >= 0 ? reserved : Math.max(ctx - effectiveMaxInput, 0);
-                const txt = p === null ? `${used}/${effectiveMaxInput}` : `${used}/${effectiveMaxInput} (${p}% left; ${effectiveReserved} reserved)`;
-                addRow("Context", txt);
-              }
-            }
-            diagCopyText = diagnosticsCopyText(sid, diagRows);
-            diagNewLikeSession = d && typeof d === "object" ? {
-              session_id: d.session_id,
-              cwd: d.cwd,
-              agent_backend: d.agent_backend,
-              provider_choice: d.provider_choice,
-              model_provider: d.model_provider,
-              preferred_auth_method: d.preferred_auth_method,
-              model: d.model,
-              reasoning_effort: d.reasoning_effort,
-              service_tier: d.service_tier,
-              transport: d.transport,
-              tmux_session: d.tmux_session,
-              tmux_window: d.tmux_window,
-            } : null;
-            diagNewLikeBtn.disabled = !diagNewLikeSession;
-            diagCopyBtn.disabled = !diagCopyText;
-          } catch (e) {
-            if (selected !== sid) return;
-            diagCopyText = "";
-            diagNewLikeSession = null;
-            diagNewLikeBtn.disabled = true;
-            diagCopyBtn.disabled = true;
-            diagStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
-          }
+        async function showDiagViewer(opts) {
+          return diagController.show(opts);
         }
-        function hideDiagViewer({ restoreFocus = true } = {}) {
-          const wasOpen = isModalTargetOpen(diagViewer);
-          const focusTarget = diagReturnFocusEl;
-          diagReturnFocusEl = null;
-          diagBackdrop.style.display = "none";
-          diagViewer.style.display = "none";
-          afterModalVisibilityChanged();
-          if (restoreFocus && wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(diagViewer));
+
+        function hideDiagViewer(opts) {
+          return diagController.hide(opts);
         }
 
         const queueBtn = $("#queueBtn");

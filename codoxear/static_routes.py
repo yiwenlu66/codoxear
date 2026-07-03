@@ -35,6 +35,7 @@ FRONTEND_ASSET_FILES = (
     "app_clipboard.js",
     "app_voice_helpers.js",
     "app_queue.js",
+    "app_diagnostics.js",
     "app.js",
     "app.css",
 )

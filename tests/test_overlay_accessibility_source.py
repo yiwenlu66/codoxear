@@ -194,39 +194,60 @@ class TestOverlayAccessibilitySource(unittest.TestCase):
     def test_queue_help_details_dialogs_restore_focus(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         queue_source = (ROOT / "codoxear" / "static" / "app_queue.js").read_text(encoding="utf-8")
+        diag_source = (ROOT / "codoxear" / "static" / "app_diagnostics.js").read_text(encoding="utf-8")
         for label in [
             'id: "queueViewer", role: "dialog", "aria-modal": "true", "aria-label": "Queued messages"',
             'id: "helpViewer", role: "dialog", "aria-modal": "true", "aria-label": "Help"',
             'id: "diagViewer", role: "dialog", "aria-modal": "true", "aria-label": "Details"',
         ]:
             self.assertIn(label, source)
-        # Queue return-focus state is now owned by the CodoxearQueue controller;
-        # Help/Diag keep their app.js-owned return-focus element.
+        # Queue + Diag return-focus state is now owned by their controllers;
+        # Help keeps its app.js-owned return-focus element.
         self.assertIn("let queueReturnFocusEl = null;", queue_source)
         self.assertNotIn("let queueReturnFocusEl = null;", source)
+        self.assertIn("let diagReturnFocusEl = null;", diag_source)
+        self.assertNotIn("let diagReturnFocusEl = null;", source)
         self.assertIn("let helpReturnFocusEl = null;", source)
-        self.assertIn("let diagReturnFocusEl = null;", source)
         self.assertIn("function restoreModalFocus(target, isStillOpen)", source)
         self.assertIn("return codoxearModal.restoreModalFocus(target, isStillOpen);", source)
         self.assertIn("function focusModalCloseButton(viewer, closeBtn)", source)
         self.assertIn("return codoxearModal.focusModalCloseButton(viewer, closeBtn);", source)
-        # Help + Diag still own their show/hide bodies in app.js.
-        for name, close_id in [("Help", "helpCloseBtn"), ("Diag", "diagCloseBtn")]:
-            show_start = source.index(f"function show{name}Viewer")
-            hide_start = source.index(f"function hide{name}Viewer", show_start)
-            show_block = source[show_start:hide_start]
-            next_fn = source.find("\n        function ", hide_start + 1)
-            if next_fn == -1:
-                next_fn = len(source)
-            hide_block = source[hide_start:next_fn]
-            lower = name.lower() if name != "Diag" else "diag"
-            self.assertIn(f"{lower}ReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;", show_block)
-            self.assertIn("prepareModalOpen();", show_block)
-            self.assertIn(f"focusModalCloseButton({lower}Viewer, {close_id});", show_block)
-            self.assertIn(f"const wasOpen = isModalTargetOpen({lower}Viewer);", hide_block)
-            self.assertIn(f"const focusTarget = {lower}ReturnFocusEl;", hide_block)
-            self.assertIn(f"{lower}ReturnFocusEl = null;", hide_block)
-            self.assertIn(f"restoreModalFocus(focusTarget, () => isModalTargetOpen({lower}Viewer));", hide_block)
+        # Help still owns its show/hide bodies in app.js.
+        help_show_start = source.index("function showHelpViewer")
+        help_hide_start = source.index("function hideHelpViewer", help_show_start)
+        help_show_block = source[help_show_start:help_hide_start]
+        help_next_fn = source.find("\n        function ", help_hide_start + 1)
+        if help_next_fn == -1:
+            help_next_fn = len(source)
+        help_hide_block = source[help_hide_start:help_next_fn]
+        self.assertIn("helpReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;", help_show_block)
+        self.assertIn("prepareModalOpen();", help_show_block)
+        self.assertIn("focusModalCloseButton(helpViewer, helpCloseBtn);", help_show_block)
+        self.assertIn("const wasOpen = isModalTargetOpen(helpViewer);", help_hide_block)
+        self.assertIn("const focusTarget = helpReturnFocusEl;", help_hide_block)
+        self.assertIn("helpReturnFocusEl = null;", help_hide_block)
+        self.assertIn("restoreModalFocus(focusTarget, () => isModalTargetOpen(helpViewer));", help_hide_block)
+        # Diag show/hide bodies moved into the CodoxearDiagnostics controller
+        # module with the same modal/focus contract: prepare modal open, focus
+        # close button on show, restore focus to opener on hide (unless skipped).
+        diag_show_start = diag_source.index("async function show({ opener = null } = {}) {")
+        diag_hide_start = diag_source.index("function hide({ restoreFocus = true } = {}) {", diag_show_start)
+        diag_show_block = diag_source[diag_show_start:diag_hide_start]
+        diag_newlike_start = diag_source.index("function onNewLikeClick(e) {", diag_hide_start)
+        diag_hide_block = diag_source[diag_hide_start:diag_newlike_start]
+        self.assertIn("diagReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;", diag_show_block)
+        self.assertIn("prepareModalOpen();", diag_show_block)
+        self.assertIn('diagBackdrop.style.display = "block";', diag_show_block)
+        self.assertIn("focusModalCloseButton(diagViewer, diagCloseBtn, requestFrame);", diag_show_block)
+        self.assertIn("const wasOpen = isModalTargetOpen(diagViewer);", diag_hide_block)
+        self.assertIn("const focusTarget = diagReturnFocusEl;", diag_hide_block)
+        self.assertIn("diagReturnFocusEl = null;", diag_hide_block)
+        self.assertIn("if (restoreFocus && wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(diagViewer), requestFrame);", diag_hide_block)
+        # New-like click hides the diag modal without focus restore before
+        # opening the New Session dialog (owned by the controller module).
+        diag_newlike_block = diag_source[diag_newlike_start:diag_source.index("async function onCopyClick(e) {", diag_newlike_start)]
+        self.assertIn("hide({ restoreFocus: false });", diag_newlike_block)
+        self.assertIn('openNewSessionDialog({ likeSession: preset, statusText: "Review copied launch settings before starting.", returnFocusEl });', diag_newlike_block)
         # Queue show/hide live in the controller module with the same modal/focus
         # contract: prepare modal open, focus close button on show, restore focus
         # to opener or recovery-panel/queue-button fallback on hide.
@@ -236,16 +257,19 @@ class TestOverlayAccessibilitySource(unittest.TestCase):
         queue_hide_block = queue_source[queue_hide_start:queue_source.index("function dispose()", queue_hide_start)]
         self.assertIn("queueReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;", queue_show_block)
         self.assertIn("prepareModalOpen();", queue_show_block)
-        self.assertIn("queueBackdrop.style.display = \"block\";", queue_show_block)
+        self.assertIn('queueBackdrop.style.display = "block";', queue_show_block)
         self.assertIn("focusModalCloseButton(queueViewer, queueCloseBtn, requestFrame);", queue_show_block)
         self.assertIn("const wasOpen = isModalTargetOpen(queueViewer);", queue_hide_block)
         self.assertIn("const focusTarget = queueReturnFocusEl;", queue_hide_block)
         self.assertIn("queueReturnFocusEl = null;", queue_hide_block)
         self.assertIn("const fallback = recoveryPanelFocusFallback() || queueBtn || null;", queue_hide_block)
         self.assertIn("restoreModalFocus(focusTarget && focusTarget.isConnected ? focusTarget : fallback, () => isModalTargetOpen(queueViewer), requestFrame);", queue_hide_block)
+        # app.js keeps the diag opener/close/backdrop wiring and thin wrappers.
         self.assertIn("showQueueViewer({ opener: e.currentTarget });", source)
         self.assertIn("showHelpViewer({ opener: e.currentTarget });", source)
         self.assertIn("showDiagViewer({ opener: e.currentTarget });", source)
+        self.assertIn("return diagController.show(opts);", source)
+        self.assertIn("return diagController.hide(opts);", source)
 
     def test_modal_module_preserves_open_isolation_and_focus_contracts(self) -> None:
         result = eval_modal_helpers()
