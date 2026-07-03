@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from .broker_turn_state import _mark_explicit_interrupt_request
+
 
 @dataclass(frozen=True)
 class SessiondControlDeps:
@@ -51,10 +53,18 @@ def handle_sessiond_control_connection(conn: Any, *, deps: SessiondControlDeps) 
                 return {"error": "no state"}, None
             prev_busy = st.busy
             prev_turn_open = st.turn_open
+            prev_turn_has_completion_candidate = st.turn_has_completion_candidate
+            prev_last_turn_activity_ts = st.last_turn_activity_ts
+            prev_last_interrupt_hint_ts = st.last_interrupt_hint_ts
             prev_last_interrupt_request_ts = st.last_interrupt_request_ts
             prev_last_interrupted_idle_ts = st.last_interrupted_idle_ts
+            prev_pending_calls = set(st.pending_calls)
+            st.pending_calls.clear()
             st.busy = True
             st.turn_open = True
+            st.turn_has_completion_candidate = False
+            st.last_turn_activity_ts = deps.now()
+            st.last_interrupt_hint_ts = 0.0
             st.last_interrupt_request_ts = 0.0
             st.last_interrupted_idle_ts = 0.0
             fd = st.pty_master_fd
@@ -64,8 +74,13 @@ def handle_sessiond_control_connection(conn: Any, *, deps: SessiondControlDeps) 
                 if deps.state() is st:
                     st.busy = prev_busy
                     st.turn_open = prev_turn_open
+                    st.turn_has_completion_candidate = prev_turn_has_completion_candidate
+                    st.last_turn_activity_ts = prev_last_turn_activity_ts
+                    st.last_interrupt_hint_ts = prev_last_interrupt_hint_ts
                     st.last_interrupt_request_ts = prev_last_interrupt_request_ts
                     st.last_interrupted_idle_ts = prev_last_interrupted_idle_ts
+                    st.pending_calls.clear()
+                    st.pending_calls.update(prev_pending_calls)
 
         if sync_commit:
             if fd is None:
@@ -103,8 +118,7 @@ def handle_sessiond_control_connection(conn: Any, *, deps: SessiondControlDeps) 
             try:
                 deps.write_all(st.pty_master_fd, b)
                 if mark_interrupt:
-                    st.last_interrupt_request_ts = deps.now()
-                    st.last_interrupted_idle_ts = 0.0
+                    _mark_explicit_interrupt_request(st, deps.now())
                 return {"ok": True}, None
             except Exception as e:
                 return {"error": str(e), "commit_unknown": True}, None

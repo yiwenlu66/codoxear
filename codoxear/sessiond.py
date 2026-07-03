@@ -20,6 +20,8 @@ from typing import Any
 from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
 from .broker_terminal import _reply_to_terminal_queries
+from .broker_turn_state import _mark_busy_state_idle
+from .broker_turn_state import _should_clear_busy_state as _should_clear_busy_state_impl
 from .control_socket import handle_control_socket_connection as _handle_control_socket_connection
 from . import pty_util as _pty_util
 from .sessiond_control import SessiondControlDeps
@@ -58,6 +60,14 @@ PREFERRED_AUTH_METHOD_OVERRIDE = os.environ.get("CODEX_WEB_PREFERRED_AUTH_METHOD
 MODEL_OVERRIDE = os.environ.get("CODEX_WEB_MODEL", "").strip()
 REASONING_EFFORT_OVERRIDE = os.environ.get("CODEX_WEB_REASONING_EFFORT", "").strip().lower()
 SERVICE_TIER_OVERRIDE = os.environ.get("CODEX_WEB_SERVICE_TIER", "").strip().lower()
+_BUSY_QUIET_RAW = os.environ.get("CODEX_WEB_BUSY_QUIET_SECONDS")
+if _BUSY_QUIET_RAW is None or (not _BUSY_QUIET_RAW.strip()):
+    _BUSY_QUIET_RAW = "3.0"
+BUSY_QUIET_SECONDS = max(float(_BUSY_QUIET_RAW), 0.0)
+_BUSY_INTERRUPT_GRACE_RAW = os.environ.get("CODEX_WEB_BUSY_INTERRUPT_GRACE_SECONDS")
+if _BUSY_INTERRUPT_GRACE_RAW is None or (not _BUSY_INTERRUPT_GRACE_RAW.strip()):
+    _BUSY_INTERRUPT_GRACE_RAW = "3.0"
+BUSY_INTERRUPT_GRACE_SECONDS = max(float(_BUSY_INTERRUPT_GRACE_RAW), 0.0)
 
 
 def _set_winsize(fd: int, rows: int, cols: int) -> None:
@@ -79,6 +89,14 @@ def _write_all(fd: int, data: bytes) -> None:
 def _inject(fd: int, *, text: str, suffix: bytes, delay_s: float = 0.05) -> None:
     _pty_util.inject_bracketed_paste(fd, text=text, suffix=suffix, delay_s=delay_s)
 
+
+def _should_clear_busy_state(st: State, now_ts: float) -> bool:
+    return _should_clear_busy_state_impl(
+        st,
+        now_ts,
+        busy_quiet_seconds=BUSY_QUIET_SECONDS,
+        busy_interrupt_grace_seconds=BUSY_INTERRUPT_GRACE_SECONDS,
+    )
 
 
 class Sessiond:
@@ -187,6 +205,11 @@ class Sessiond:
         while not self._stop.is_set():
             objs, off = _read_jsonl_from_offset(st.log_path, st.log_off, max_bytes=256 * 1024)
             if off == st.log_off:
+                now_ts = _now()
+                with self._lock:
+                    st2 = self.state
+                    if st2 and _should_clear_busy_state(st2, now_ts):
+                        _mark_busy_state_idle(st2, now_ts)
                 time.sleep(0.25)
                 continue
             st.log_off = off

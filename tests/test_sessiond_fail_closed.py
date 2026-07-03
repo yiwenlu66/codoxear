@@ -10,6 +10,8 @@ from codoxear.sessiond import State
 from codoxear.sessiond import _busy_value_after_log_batch
 from codoxear.sessiond import _log_busy_signals
 from codoxear.sessiond import _read_jsonl_from_offset
+from codoxear.sessiond import _should_clear_busy_state
+from codoxear.broker_turn_state import _mark_busy_state_idle
 from codoxear.sessiond_control import SessiondControlDeps
 from codoxear.sessiond_control import handle_sessiond_control_connection
 from codoxear.sessiond_state import apply_log_batch_to_state
@@ -98,7 +100,37 @@ class TestSessiondFailClosed(unittest.TestCase):
         self.assertFalse(state.busy)
         self.assertFalse(state.turn_open)
         self.assertEqual(state.last_interrupt_request_ts, 0.0)
-        self.assertEqual(state.last_interrupted_idle_ts, 12.0)
+        self.assertEqual(state.last_interrupted_idle_ts, 0.0)
+
+        self.assertTrue(apply_log_batch_to_state(state, [user], now_ts=20.0))
+        state.last_interrupt_request_ts = 21.0
+        self.assertFalse(_should_clear_busy_state(state, now_ts=22.0))
+        self.assertTrue(_should_clear_busy_state(state, now_ts=25.0))
+        _mark_busy_state_idle(state, now_ts=25.0)
+        self.assertFalse(state.busy)
+        self.assertEqual(state.last_interrupted_idle_ts, 25.0)
+
+    def test_sessiond_log_batch_uses_shared_pi_pending_tool_state(self) -> None:
+        state = _sessiond_state(codex_pid=1234, sock_path=Path("/tmp/sessiond.sock"))
+        tool_call = {
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "toolCall", "id": "tool-1", "name": "bash", "arguments": {"command": "pwd"}}],
+            },
+        }
+        tool_result = {
+            "type": "message",
+            "message": {"role": "toolResult", "toolCallId": "tool-1", "content": [{"type": "text", "text": "ok"}]},
+        }
+
+        self.assertTrue(apply_log_batch_to_state(state, [tool_call], now_ts=30.0))
+        self.assertTrue(state.busy)
+        self.assertIn("tool-1", state.pending_calls)
+        self.assertFalse(_should_clear_busy_state(state, now_ts=100.0))
+
+        self.assertTrue(apply_log_batch_to_state(state, [tool_result], now_ts=31.0))
+        self.assertEqual(state.pending_calls, set())
 
     def test_sessiond_control_state_uses_runtime_state_schema(self) -> None:
         captured: dict[str, object] = {}

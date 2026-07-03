@@ -1,18 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .cc_log import cc_assistant_is_final_turn_end as _cc_assistant_is_final_turn_end
-from .cc_log import cc_assistant_text as _cc_assistant_text
-from .cc_log import cc_user_text as _cc_user_text
-from .pi_log import pi_assistant_error_text as _pi_assistant_error_text
-from .pi_log import pi_assistant_is_aborted_turn as _pi_assistant_is_aborted_turn
-from .pi_log import pi_assistant_is_final_turn_end as _pi_assistant_is_final_turn_end
-from .pi_log import pi_assistant_text as _pi_assistant_text
-from .pi_log import pi_user_text as _pi_user_text
-from .rollout_tokens import _extract_token_update
+from .broker_log_watcher import _apply_log_objects_to_state
 from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 
 
@@ -30,8 +22,12 @@ class State:
     log_off: int = 0
     token: dict[str, Any] | None = None
     turn_open: bool = False
+    turn_has_completion_candidate: bool = False
+    last_turn_activity_ts: float = 0.0
+    last_interrupt_hint_ts: float = 0.0
     last_interrupt_request_ts: float = 0.0
     last_interrupted_idle_ts: float = 0.0
+    pending_calls: set[Any] = field(default_factory=set)
 
 
 def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 256 * 1024) -> tuple[list[dict[str, Any]], int]:
@@ -40,67 +36,65 @@ def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 256 * 1024
     return _read_jsonl_from_offset_impl(path, offset, max_bytes=max_bytes)
 
 
+def _probe_state(*, busy: bool = False, turn_open: bool = False) -> State:
+    return State(
+        session_id=None,
+        codex_pid=-1,
+        log_path=Path("/dev/null"),
+        sock_path=Path("/dev/null"),
+        pty_master_fd=-1,
+        start_ts=0.0,
+        busy=busy,
+        turn_open=turn_open,
+        last_turn_activity_ts=1.0 if busy or turn_open else 0.0,
+    )
+
+
+def _state_has_active_turn(st: State) -> bool:
+    return st.busy or st.turn_open or bool(st.pending_calls)
+
+
+def _state_snapshot(st: State) -> tuple[Any, ...]:
+    return (
+        st.busy,
+        st.turn_open,
+        st.turn_has_completion_candidate,
+        st.last_turn_activity_ts,
+        st.last_interrupt_hint_ts,
+        st.last_interrupt_request_ts,
+        st.last_interrupted_idle_ts,
+        frozenset(st.pending_calls),
+        st.token,
+    )
+
+
 def _log_busy_signals(obj: dict[str, Any]) -> tuple[bool, bool]:
-    if obj.get("type") == "event_msg":
-        p = obj.get("payload")
-        if not isinstance(p, dict):
-            raise ValueError("invalid rollout event_msg payload")
-        pt = p.get("type")
-        if pt == "user_message":
-            return True, False
-        if pt in {"turn_aborted", "thread_rolled_back", "task_complete", "turn_complete"}:
-            return False, True
-        if pt == "token_count":
-            info = p.get("info")
-            if isinstance(info, dict) and isinstance(info.get("total_token_usage"), dict):
-                return False, True
-        return False, False
-    if obj.get("type") == "message":
-        if _pi_user_text(obj):
-            return True, False
-        if _pi_assistant_is_aborted_turn(obj):
-            return False, True
-        if _pi_assistant_error_text(obj):
-            return False, True
-        if _pi_assistant_text(obj) and _pi_assistant_is_final_turn_end(obj):
-            return False, True
-    if obj.get("type") == "user" and _cc_user_text(obj):
-        return True, False
-    if obj.get("type") == "assistant" and _cc_assistant_text(obj) and _cc_assistant_is_final_turn_end(obj):
-        return False, True
-    return False, False
+    inactive_probe = _probe_state()
+    _apply_log_objects_to_state(inactive_probe, [obj], now=lambda: 1.0)
+    user_signal = _state_has_active_turn(inactive_probe)
+
+    active_probe = _probe_state(busy=True, turn_open=True)
+    _apply_log_objects_to_state(active_probe, [obj], now=lambda: 1.0)
+    turn_end_signal = not _state_has_active_turn(active_probe)
+    return user_signal, turn_end_signal
 
 
 def _busy_value_after_log_batch(objs: list[dict[str, Any]]) -> bool | None:
-    next_busy: bool | None = None
+    if not objs:
+        return None
+    seen_busy_signal = False
     for obj in objs:
         user_signal, turn_end_signal = _log_busy_signals(obj)
-        if user_signal:
-            next_busy = True
-        if turn_end_signal:
-            next_busy = False
-    return next_busy
-
-
-def _token_update_after_log_batch(objs: list[dict[str, Any]]) -> dict[str, Any] | None:
-    return _extract_token_update(objs)
+        if user_signal or turn_end_signal:
+            seen_busy_signal = True
+    if not seen_busy_signal:
+        return None
+    probe = _probe_state()
+    _apply_log_objects_to_state(probe, objs, now=lambda: 1.0)
+    return _state_has_active_turn(probe)
 
 
 def apply_log_batch_to_state(st: State, objs: list[dict[str, Any]], *, now_ts: float) -> bool:
-    next_busy = _busy_value_after_log_batch(objs)
-    token_update = _token_update_after_log_batch(objs)
-    if token_update is None and next_busy is None:
-        return False
-    if token_update is not None:
-        st.token = token_update
-    if next_busy is True:
-        st.busy = True
-        st.turn_open = True
-        st.last_interrupted_idle_ts = 0.0
-    elif next_busy is False:
-        interrupted_idle = st.turn_open and st.last_interrupt_request_ts > 0.0
-        st.busy = False
-        st.turn_open = False
-        st.last_interrupt_request_ts = 0.0
-        st.last_interrupted_idle_ts = now_ts if interrupted_idle else 0.0
-    return True
+    before = _state_snapshot(st)
+    _apply_log_objects_to_state(st, objs, now=lambda: now_ts)
+    return _state_snapshot(st) != before
