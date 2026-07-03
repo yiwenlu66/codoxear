@@ -7,6 +7,7 @@ APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_LAUNCH_JS = ROOT / "codoxear" / "static" / "app_launch.js"
 SERVER_PY = ROOT / "codoxear" / "server.py"
 LAUNCH_CONFIG_PY = ROOT / "codoxear" / "launch_config.py"
+AGENT_BACKEND_PY = ROOT / "codoxear" / "agent_backend.py"
 
 
 class TestReasoningEffortSource(unittest.TestCase):
@@ -32,6 +33,7 @@ class TestReasoningEffortSource(unittest.TestCase):
     def test_server_validates_pi_reasoning_against_model_capabilities(self) -> None:
         server_source = SERVER_PY.read_text(encoding="utf-8")
         source = LAUNCH_CONFIG_PY.read_text(encoding="utf-8")
+        backend_source = AGENT_BACKEND_PY.read_text(encoding="utf-8")
         self.assertIn("def _read_pi_reasoning_efforts_by_model()", server_source)
         self.assertIn("def read_pi_reasoning_efforts_by_model(paths: LaunchConfigPaths)", source)
         self.assertIn('if reasoning is False:\n        return ["off"]', source)
@@ -39,7 +41,8 @@ class TestReasoningEffortSource(unittest.TestCase):
         self.assertIn("reasoning_efforts_by_model: Mapping[str, list[str]] | None = None", source)
         self.assertIn("reasoning_effort must be one of {', '.join(allowed)} for Pi model", source)
         self.assertIn("def parse_new_session_launch_request(", source)
-        self.assertIn("model_provider=model_provider,\n            model=model,\n            reasoning_efforts_by_model=pi_launch_defaults.get", source)
+        self.assertIn("get_agent_backend(agent_backend).normalize_launch_request_options(", source)
+        self.assertIn("model_provider=model_provider,\n                model=model,\n                reasoning_efforts_by_model=pi_launch_defaults.get", backend_source)
 
 
 if __name__ == "__main__":
