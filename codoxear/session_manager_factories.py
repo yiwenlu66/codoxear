@@ -502,6 +502,7 @@ def pending_state_coordinator_for_manager(manager: Any, caps: SessionManagerFact
     return SessionPendingStateCoordinator(
         lock=_registry_lock(manager),
         sessions=lambda: _registry_sessions(manager),
+        store=manager._session_store_for_manager,
         pending_attachment_ids=lambda: getattr(manager, "_pending_attachment_ids", None),
         set_pending_attachment_ids=lambda value: setattr(manager, "_pending_attachment_ids", value),
         commit_unknown_sends=lambda: getattr(manager, "_commit_unknown_sends", None),

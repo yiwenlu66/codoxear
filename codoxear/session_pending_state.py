@@ -5,12 +5,14 @@ import math
 from typing import Any, Callable, MutableMapping
 
 from .session_model import Session
+from .session_store import SessionStore
 
 
 @dataclass(frozen=True)
 class SessionPendingStateCoordinator:
     lock: Any
     sessions: Callable[[], MutableMapping[str, Session]]
+    store: Callable[[], SessionStore]
     pending_attachment_ids: Callable[[], set[str]]
     set_pending_attachment_ids: Callable[[set[str]], None]
     commit_unknown_sends: Callable[[], MutableMapping[str, dict[str, Any]]]
@@ -96,8 +98,6 @@ class SessionPendingStateCoordinator:
         return {"ok": True, "commit_unknown_send": False}
 
     def prune_missing_commit_unknown_sends(self, *, max_age_seconds: float | None = None) -> bool:
-        changed = False
-        queue_changed = False
         now_ts = self.now()
         age_limit = self.commit_unknown_orphan_prune_seconds if max_age_seconds is None else float(max_age_seconds)
         with self.lock:
@@ -105,23 +105,13 @@ class SessionPendingStateCoordinator:
             if not isinstance(unknown_sends, dict):
                 self.set_commit_unknown_sends({})
                 return False
-            active_ids = set(self.sessions().keys())
-            for sid, record in list(unknown_sends.items()):
-                if sid in active_ids:
-                    continue
-                created_raw = record.get("created_ts") if isinstance(record, dict) else None
-                try:
-                    created_ts = float(created_raw)
-                except (TypeError, ValueError):
-                    created_ts = now_ts
-                if math.isfinite(created_ts) and created_ts > 0 and (now_ts - created_ts) < age_limit:
-                    continue
-                if self.mark_queue_orphan_recovery_locked(str(sid)):
-                    queue_changed = True
-                unknown_sends.pop(sid, None)
-                changed = True
-        if queue_changed:
+            changes = self.store().prune_missing_commit_unknown_sends(
+                active_session_ids=self.sessions().keys(),
+                now_ts=now_ts,
+                max_age_seconds=age_limit,
+            )
+        if changes.queues:
             self.save_queues()
-        if changed:
+        if changes.commit_unknown_sends:
             self.save_commit_unknown_sends()
-        return changed
+        return changes.commit_unknown_sends

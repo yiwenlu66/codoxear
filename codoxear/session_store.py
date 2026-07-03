@@ -4,7 +4,7 @@ import math
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 from .queue_store import QueueStore
 from .unattended import UnattendedStore
@@ -424,6 +424,32 @@ class SessionStore:
             pending_attachments=pending_changed,
             commit_unknown_sends=unknown_changed,
         )
+
+    def prune_missing_commit_unknown_sends(
+        self,
+        *,
+        active_session_ids: Iterable[str],
+        now_ts: float,
+        max_age_seconds: float,
+    ) -> DeletedSessionStateChanges:
+        active = {str(sid) for sid in active_session_ids}
+        unknown_changed = False
+        queues_changed = False
+        for sid, record in list(self.commit_unknown_sends.items()):
+            if sid in active:
+                continue
+            created_raw = record.get("created_ts") if isinstance(record, dict) else None
+            try:
+                created_ts = float(created_raw)
+            except (TypeError, ValueError):
+                created_ts = now_ts
+            if math.isfinite(created_ts) and created_ts > 0 and (now_ts - created_ts) < max_age_seconds:
+                continue
+            if self.queue_store.mark_orphan_recovery_items(self.queues, str(sid)):
+                queues_changed = True
+            self.commit_unknown_sends.pop(sid, None)
+            unknown_changed = True
+        return DeletedSessionStateChanges(queues=queues_changed, commit_unknown_sends=unknown_changed)
 
     def save_deleted_session_state_changes(
         self,

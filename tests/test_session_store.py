@@ -127,6 +127,32 @@ def test_session_store_clear_deleted_session_state_preserves_recovery_queue_unti
     assert store.queues == {}
 
 
+def test_session_store_prunes_stale_direct_unknowns_and_marks_queues_for_recovery() -> None:
+    mgr = SessionManager.__new__(SessionManager)
+    mgr._lock = threading.Lock()
+    store = mgr._session_store_for_manager()
+    store.commit_unknown_sends = {
+        "active": {"text": "keep active", "created_ts": 1.0},
+        "fresh": {"text": "keep fresh", "created_ts": 95.0},
+        "stale": {"text": "drop stale", "created_ts": 1.0},
+        "bad": {"text": "drop bad", "created_ts": 0.0},
+    }
+    store.queues = {"stale": [{"id": "q1", "text": "later"}], "bad": [{"id": "q2", "text": "later"}]}
+
+    changes = store.prune_missing_commit_unknown_sends(active_session_ids={"active"}, now_ts=100.0, max_age_seconds=10.0)
+
+    assert changes.commit_unknown_sends is True
+    assert changes.queues is True
+    assert store.commit_unknown_sends == {
+        "active": {"text": "keep active", "created_ts": 1.0},
+        "fresh": {"text": "keep fresh", "created_ts": 95.0},
+    }
+    assert store.queues == {
+        "stale": [{"id": "q1", "text": "later", "orphan_recovery": True}],
+        "bad": [{"id": "q2", "text": "later", "orphan_recovery": True}],
+    }
+
+
 def test_session_store_deleted_state_save_order_uses_changed_maps_only() -> None:
     mgr = SessionManager.__new__(SessionManager)
     mgr._lock = threading.Lock()
