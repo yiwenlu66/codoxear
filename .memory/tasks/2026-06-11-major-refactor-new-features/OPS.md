@@ -8312,3 +8312,14 @@
   - Broader item-6 validation after the fixture repair returned `231 passed, 26 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commits.
 - Commitment: Workbench item 6 is supported as complete for its stated lifecycle mechanism. Full local, Docker, and clean-room review remain all-workbench acceptance gates.
+
+## 2026-07-03T12:28:00Z Resolved sessiond as supported headless runner
+- Functional commit `fe4db05 Align sessiond with backend runtime adapters` resolved sessiond as a supported headless runner rather than a deprecated path.
+- Mechanism: sessiond now consumes backend adapter-owned `sessiond_working_dir(...)` and `build_sessiond_launch_args(...)` for Codex/Pi/Claude Code launch semantics, including backend-specific model/provider/reasoning flags; it reuses the broker terminal-query response helper; its control `state` response emits the shared runtime schema (`busy`, `queue_len`, `interrupted_idle`); its log busy reducer now covers Claude Code user/final-assistant rows in addition to Codex/Pi rows.
+- Docs commit `faf0fe7 Document sessiond support boundary` updated README and AGENTS to state the support boundary: same backend adapter launch options, same socket metadata/control-state shape, shared terminal-query/log-busy pieces where behavior should match, intentionally no foreground terminal UX.
+- Validation under checkpoint cadence:
+  - py_compile for changed sessiond/backend modules and tests passed.
+  - Focused sessiond/backend tests returned `22 passed`.
+  - Broader sessiond/backend/send/runtime/factory validation returned `94 passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commits.
+- Commitment: Workbench item 7 is supported as complete for its stated mechanism. Full local, Docker, and clean-room review remain all-workbench acceptance gates.
