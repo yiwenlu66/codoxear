@@ -125,12 +125,18 @@ def eval_open_session_tail_request_abort() -> dict:
           clickLoadT0: 0,
           clickMetricPending: false,
           fileDirty: false,
+          currentFileDirty: () => false,
           appDisposed: false,
           sessionIndex: new Map([
             ["sid-a", {{ session_id: "sid-a", busy: false, queue_len: 0, token: null }}],
             ["sid-b", {{ session_id: "sid-b", busy: false, queue_len: 0, token: null }}],
           ]),
           sessionTailCache: new Map(),
+          transcriptSlotRuntime: {{
+            setActivePending: () => calls.push(["transcriptSlotRuntime.setActivePending"]),
+            setActiveFailed: () => calls.push(["transcriptSlotRuntime.setActiveFailed"]),
+            getTailCache: () => null,
+          }},
           titleLabel: {{ textContent: "" }},
           hideUnattendedMenu: () => calls.push(["hideUnattendedMenu"]),
           storageSetItem: (...args) => calls.push(["storageSetItem", ...args]),
@@ -231,8 +237,7 @@ def eval_clear_deleted_session_client_state() -> dict:
         const calls = [];
         const ctx = {{
           clearSelectedSessionAfterRemoval: (sid) => {{ calls.push(["clearSelectedSessionAfterRemoval", sid]); return sid === "selected"; }},
-          sessionTranscriptSlots: {{ delete: (sid) => calls.push(["sessionTranscriptSlots.delete", sid]) }},
-          sessionTailCache: {{ delete: (sid) => calls.push(["sessionTailCache.delete", sid]) }},
+          transcriptSlotRuntime: {{ deleteSession: (sid) => calls.push(["transcriptSlotRuntime.deleteSession", sid]) }},
           dropPendingUserRows: (sid, predicate) => calls.push(["dropPendingUserRows", sid, predicate({{}})]),
         }};
         vm.createContext(ctx);
@@ -270,6 +275,16 @@ def eval_clear_selected_session_after_removal() -> dict:
           activeLogPath: "/old.jsonl",
           activeThreadId: "old-thread",
           liveCursor: "cursor",
+          transcriptSlotRuntime: {{
+            setActivePending: () => {{
+              calls.push(["transcriptSlotRuntime.setActivePending"]);
+              ctx.activeTranscriptState = "pending_bind";
+              ctx.activeLogPath = null;
+              ctx.activeThreadId = null;
+              ctx.liveCursor = null;
+            }},
+            deleteSession: (sid) => calls.push(["transcriptSlotRuntime.deleteSession", sid]),
+          }},
           turnOpen: true,
           titleLabel: {{ textContent: "old title" }},
           handleFileViewerSessionUnavailable: (sid) => calls.push(["handleFileViewerSessionUnavailable", sid, ctx.selected]),
@@ -325,8 +340,7 @@ class TestChatScrollbackSource(unittest.TestCase):
             result["selectedCalls"],
             [
                 ["clearSelectedSessionAfterRemoval", "selected"],
-                ["sessionTranscriptSlots.delete", "selected"],
-                ["sessionTailCache.delete", "selected"],
+                ["transcriptSlotRuntime.deleteSession", "selected"],
                 ["dropPendingUserRows", "selected", True],
             ],
         )
@@ -335,8 +349,7 @@ class TestChatScrollbackSource(unittest.TestCase):
             result["otherCalls"],
             [
                 ["clearSelectedSessionAfterRemoval", "other"],
-                ["sessionTranscriptSlots.delete", "other"],
-                ["sessionTailCache.delete", "other"],
+                ["transcriptSlotRuntime.deleteSession", "other"],
                 ["dropPendingUserRows", "other", True],
             ],
         )
@@ -409,11 +422,11 @@ class TestChatScrollbackSource(unittest.TestCase):
         start = source.index("async function openSession(")
         end = source.index("async function pollMessages(", start)
         block = source[start:end]
-        self.assertIn('activeTranscriptState = "pending_bind";', block)
+        self.assertIn("transcriptSlotRuntime.setActivePending();", block)
         self.assertIn("const optimisticBusy = Boolean(s && s.busy);", block)
         self.assertIn("setStatus({ running: optimisticBusy, queueLen: optimisticQueueLen });", block)
         self.assertIn("setTyping(optimisticBusy);", block)
-        self.assertIn("const cachedTail = s ? sessionTailCache.get(sessionId) : null;", block)
+        self.assertIn("const cachedTail = s ? transcriptSlotRuntime.getTailCache(sessionId) : null;", block)
         self.assertIn("let displayedCachedTail = false;", block)
         self.assertIn("tailCacheMatchesSession(cachedTail, s)", block)
         self.assertIn("applyCachedTail(sessionId, cachedTail, s);", block)
@@ -464,12 +477,12 @@ class TestChatScrollbackSource(unittest.TestCase):
         remember_start = source.index("function rememberTailSnapshot(sessionId, session, data)")
         remember_end = source.index("function appendTailSnapshotEvents", remember_start)
         remember_block = source[remember_start:remember_end]
-        self.assertIn("return codoxearTranscript.rememberTailSnapshot(sessionTailCache, sessionId, session, data", remember_block)
+        self.assertIn("return transcriptSlotRuntime.rememberTail(sessionId, session, data);", remember_block)
         append_start = source.index("function appendTailSnapshotEvents(sessionId, events")
         append_end = source.index("function restorePendingUserRowsForSession", append_start)
         append_block = source[append_start:append_end]
         self.assertIn("identityData = null", append_block)
-        self.assertIn("return codoxearTranscript.appendTailSnapshotEvents(sessionTailCache, sessionIndex, sessionId, events", append_block)
+        self.assertIn("return transcriptSlotRuntime.appendTailEvents(sessionId, events", append_block)
         poll_start = source.index("appendTailSnapshotEvents(sid, evs")
         poll_end = source.index("});", poll_start)
         poll_block = source[poll_start:poll_end]
@@ -534,8 +547,8 @@ class TestChatScrollbackSource(unittest.TestCase):
         block = source[start:end]
         self.assertIn("const slotChange = updateSessionTranscriptSlot(sessionId, sessionMeta);", block)
         self.assertIn("if (!slotChange.resetPending) return;", block)
-        self.assertIn("sessionTailCache.delete(sessionId);", block)
-        self.assertIn("liveCursor = null;", block)
+        self.assertIn("transcriptSlotRuntime.deleteTailCache(sessionId);", block)
+        self.assertIn("transcriptSlotRuntime.clearLiveCursor();", block)
         self.assertIn("clearRenderedTranscriptRange();", block)
         self.assertIn('if (slotChange.current.state === "pending_bind") {', block)
         self.assertIn("renderPendingTranscriptSlot(sessionId);", block)
@@ -632,15 +645,15 @@ class TestChatScrollbackSource(unittest.TestCase):
         start = source.index("async function pollMessages(")
         end = source.index("async function pollLoop()", start)
         block = source[start:end]
-        self.assertIn("if (!liveCursor) {", block)
-        self.assertIn('if (activeTranscriptState === "pending_bind") {', block)
+        self.assertIn("if (!transcriptSlotRuntime.activeSnapshot().liveCursor) {", block)
+        self.assertIn('if (activeTranscriptSnapshot().state === "pending_bind") {', block)
         self.assertIn("const slotChange = updateSessionTranscriptSlot(sid, data);", block)
         self.assertIn('if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);', block)
-        self.assertIn('if (activeTranscriptState === "failed") return;', block)
+        self.assertIn('if (activeTranscriptSnapshot().state === "failed") return;', block)
         self.assertIn("await openSession(sid, { useCache: false });", block)
         self.assertIn("await api(`/api/sessions/${sid}/messages/live?cursor=${encodeURIComponent(reqCursor)}`, { signal: pollRequest.signal });", block)
         self.assertIn("const slotInfo = transcriptSnapshotFromData(data);", block)
-        self.assertIn("liveCursor = typeof data.live_cursor === \"string\" && data.live_cursor ? data.live_cursor : null;", block)
+        self.assertIn("transcriptSlotRuntime.setLiveCursor(typeof data.live_cursor === \"string\" && data.live_cursor ? data.live_cursor : null);", block)
         self.assertNotIn("after_byte", block)
         self.assertNotIn("before_byte", block)
 
@@ -856,7 +869,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         end = source.index("const cachedTail =", start)
         block = source[start:end]
         self.assertIn("if (s && s.orphan_recovery) {", block)
-        self.assertIn("activeTranscriptState = \"failed\";", block)
+        self.assertIn("transcriptSlotRuntime.setActiveFailed();", block)
         self.assertIn("syncAttachButtonState();", block)
         self.assertIn("syncQueueSubmitState();", block)
         self.assertIn("syncSendButtonState();", block)

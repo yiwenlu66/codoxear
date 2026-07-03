@@ -125,6 +125,147 @@
     return value;
   }
 
+  function createTranscriptSlotRuntime(options = {}) {
+    const sessionIndex = options.sessionIndex && typeof options.sessionIndex.get === "function" ? options.sessionIndex : new Map();
+    const getSession = typeof options.getSession === "function" ? options.getSession : (sessionId) => sessionIndex.get(sessionId) || null;
+    const sessionLookup = Object.freeze({ get: (sessionId) => getSession(sessionId) || null });
+    const maxTailEvents = Math.max(0, Number(options.maxTailEvents) || 0);
+    const slots = new Map();
+    const tailCache = new Map();
+    let active = defaultSlot();
+    let liveCursor = null;
+
+    function defaultSlot() {
+      return { state: "pending_bind", threadId: null, logPath: null, key: null, epoch: 0, ignoredKey: null };
+    }
+
+    function cloneSlot(slot) {
+      return slot ? { ...slot } : defaultSlot();
+    }
+
+    function getSlot(sessionId) {
+      if (!sessionId) return defaultSlot();
+      return cloneSlot(slots.get(sessionId) || defaultSlot());
+    }
+
+    function syncActiveSlot(sessionId) {
+      active = getSlot(sessionId);
+      return activeSnapshot();
+    }
+
+    function activeSnapshot() {
+      return Object.freeze({ ...active, liveCursor });
+    }
+
+    function setActivePending() {
+      active = defaultSlot();
+      liveCursor = null;
+      return activeSnapshot();
+    }
+
+    function setActiveFailed() {
+      active = { ...defaultSlot(), state: "failed" };
+      liveCursor = null;
+      return activeSnapshot();
+    }
+
+    function setLiveCursor(value) {
+      liveCursor = typeof value === "string" && value ? value : null;
+      return activeSnapshot();
+    }
+
+    function clearLiveCursor() {
+      return setLiveCursor(null);
+    }
+
+    function updateSlot(sessionId, data) {
+      const prev = getSlot(sessionId);
+      const snap = transcriptSnapshotFromData(data);
+      if (prev.state === "pending_bind" && prev.ignoredKey && snap.state === "bound" && snap.key === prev.ignoredKey) {
+        const next = { ...prev };
+        if (sessionId) slots.set(sessionId, next);
+        return Object.freeze({ previous: prev, current: cloneSlot(next), resetPending: false, ignoredStaleBound: true });
+      }
+      let epoch = prev.epoch;
+      let resetPending = false;
+      let ignoredKey = null;
+      if (snap.state === "pending_bind") {
+        if (prev.state === "bound") {
+          epoch += 1;
+          resetPending = true;
+          ignoredKey = prev.key;
+        } else {
+          ignoredKey = prev.ignoredKey || null;
+        }
+      } else if (prev.state === "bound" && prev.key !== snap.key) {
+        epoch += 1;
+        resetPending = true;
+      }
+      const next = { ...snap, epoch, ignoredKey };
+      if (sessionId) slots.set(sessionId, next);
+      return Object.freeze({ previous: prev, current: cloneSlot(next), resetPending, ignoredStaleBound: false });
+    }
+
+    function beginRenewal(sessionId) {
+      if (!sessionId) return null;
+      const prev = getSlot(sessionId);
+      const next = {
+        state: "pending_bind",
+        threadId: null,
+        logPath: null,
+        key: null,
+        epoch: Number(prev.epoch || 0) + 1,
+        ignoredKey: prev.state === "bound" ? prev.key : prev.ignoredKey || null,
+      };
+      slots.set(sessionId, next);
+      return Object.freeze({ previous: prev, current: cloneSlot(next), resetPending: true });
+    }
+
+    function deleteSession(sessionId) {
+      slots.delete(sessionId);
+      tailCache.delete(sessionId);
+    }
+
+    function getTailCache(sessionId) {
+      return tailCache.get(sessionId) || null;
+    }
+
+    function deleteTailCache(sessionId) {
+      return tailCache.delete(sessionId);
+    }
+
+    function rememberTail(sessionId, session, data) {
+      return rememberTailSnapshot(tailCache, sessionId, session, data, maxTailEvents);
+    }
+
+    function appendTailEvents(sessionId, events, options = {}) {
+      return appendTailSnapshotEvents(tailCache, sessionLookup, sessionId, events, { ...options, maxEvents: maxTailEvents });
+    }
+
+    function snapshot() {
+      return Object.freeze({ active: activeSnapshot(), slotCount: slots.size, tailCacheCount: tailCache.size });
+    }
+
+    return Object.freeze({
+      activeSnapshot,
+      appendTailEvents,
+      beginRenewal,
+      clearLiveCursor,
+      deleteSession,
+      deleteTailCache,
+      getSlot,
+      getTailCache,
+      rememberTail,
+      setActiveFailed,
+      setActivePending,
+      setLiveCursor,
+      snapshot,
+      syncActiveSlot,
+      tailCacheMatchesSession,
+      updateSlot,
+    });
+  }
+
   function createTranscriptScrollRuntime(options = {}) {
     const chat = requireNode(options.chat, "chat");
     const jumpButton = requireNode(options.jumpButton, "jumpButton");
@@ -804,6 +945,7 @@
     tailCacheMatchesSession,
     rememberTailSnapshot,
     appendTailSnapshotEvents,
+    createTranscriptSlotRuntime,
     createTranscriptScrollRuntime,
     createTranscriptEventRuntime,
     createOlderLoadRuntime,

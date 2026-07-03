@@ -57,10 +57,12 @@ def eval_message_poll_request_abort() -> dict:
           messagePollErrorStreak: 0,
           pollFastUntilMs: 0,
           turnOpen: false,
-          liveCursor: "cursor-a",
-          activeTranscriptState: "bound",
-          activeLogPath: "/log-a.jsonl",
-          activeThreadId: "thread-a",
+          transcriptActive: {{ state: "bound", logPath: "/log-a.jsonl", threadId: "thread-a", liveCursor: "cursor-a" }},
+          transcriptSlotRuntime: {{
+            activeSnapshot: () => ({{ ...ctx.transcriptActive }}),
+            setLiveCursor: (value) => {{ ctx.transcriptActive.liveCursor = value || null; calls.push(["transcriptSlotRuntime.setLiveCursor", value || null]); }},
+          }},
+          activeTranscriptSnapshot: () => ({{ ...ctx.transcriptActive }}),
           sessionIndex: new Map(),
           titleLabel: {{ textContent: "" }},
           toast: {{ textContent: "" }},
@@ -109,7 +111,7 @@ def eval_message_poll_request_abort() -> dict:
           const firstReq = pending[0];
           ctx.selected = "sid-b";
           ctx.pollGen = 8;
-          ctx.liveCursor = "cursor-b";
+          ctx.transcriptActive = {{ state: "bound", logPath: "/log-a.jsonl", threadId: "thread-a", liveCursor: "cursor-b" }};
           const second = ctx.__test.pollMessages("sid-b", 8);
           await Promise.resolve();
           const secondReq = pending[1];
@@ -121,8 +123,7 @@ def eval_message_poll_request_abort() -> dict:
 
           ctx.selected = "sid-p";
           ctx.pollGen = 20;
-          ctx.liveCursor = null;
-          ctx.activeTranscriptState = "pending_bind";
+          ctx.transcriptActive = {{ state: "pending_bind", logPath: null, threadId: null, liveCursor: null }};
           const third = ctx.__test.pollMessages("sid-p", 20);
           await Promise.resolve();
           const thirdReq = pending[2];

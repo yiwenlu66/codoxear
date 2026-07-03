@@ -495,54 +495,70 @@ class TestChatTranscriptRuntime(unittest.TestCase):
 
     def test_transcript_renewal_ignores_old_bound_identity_until_new_log_arrives(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
-        snippet = _source_between("function normalizeTranscriptState(data) {", "function tailCacheMatchesSession(")
         js = textwrap.dedent(
             f"""
-            const ctx = {{
-              selected: "sid",
-              activeTranscriptState: "pending_bind",
-              activeThreadId: null,
-              activeLogPath: null,
-              sessionTranscriptSlots: new Map(),
-              transcriptEventRuntime: {{ dropPendingUsers: () => [] }},
-              chatInner: {{ querySelector: () => null }},
-              window: {{}},
-            }};
-            vm = require("vm");
+            const ctx = {{ window: {{}} }};
+            const vm = require("vm");
             vm.createContext(ctx);
             vm.runInContext({json.dumps(transcript_source)}, ctx);
-            ctx.codoxearTranscript = ctx.window.CodoxearTranscript;
-            vm.runInContext({json.dumps(snippet)}, ctx);
-            ctx.updateSessionTranscriptSlot("sid", {{
-              transcript_state: "bound",
-              thread_id: "old-thread",
-              log_path: "/old.jsonl",
-            }});
-            const before = ctx.getSessionTranscriptSlot("sid");
-            ctx.beginTranscriptRenewal("sid");
-            const pending = ctx.getSessionTranscriptSlot("sid");
-            const stale = ctx.updateSessionTranscriptSlot("sid", {{
-              transcript_state: "bound",
-              thread_id: "old-thread",
-              log_path: "/old.jsonl",
-            }});
-            const afterStale = ctx.getSessionTranscriptSlot("sid");
-            const fresh = ctx.updateSessionTranscriptSlot("sid", {{
+            const tx = ctx.window.CodoxearTranscript;
+            const sessionIndex = new Map([["sid", {{ thread_id: "new-thread", log_path: "/new.jsonl" }}]]);
+            const runtime = tx.createTranscriptSlotRuntime({{ sessionIndex, maxTailEvents: 2 }});
+            runtime.updateSlot("sid", {{ transcript_state: "bound", thread_id: "old-thread", log_path: "/old.jsonl" }});
+            runtime.syncActiveSlot("sid");
+            const before = runtime.getSlot("sid");
+            const renewal = runtime.beginRenewal("sid");
+            runtime.syncActiveSlot("sid");
+            const pending = runtime.getSlot("sid");
+            const stale = runtime.updateSlot("sid", {{ transcript_state: "bound", thread_id: "old-thread", log_path: "/old.jsonl" }});
+            runtime.syncActiveSlot("sid");
+            const afterStale = runtime.getSlot("sid");
+            const fresh = runtime.updateSlot("sid", {{ transcript_state: "bound", thread_id: "new-thread", log_path: "/new.jsonl" }});
+            runtime.syncActiveSlot("sid");
+            const afterFresh = runtime.getSlot("sid");
+            runtime.setLiveCursor("cursor-1");
+            const activeWithCursor = runtime.activeSnapshot();
+            runtime.rememberTail("sid", {{ thread_id: "new-thread", log_path: "/new.jsonl" }}, {{
               transcript_state: "bound",
               thread_id: "new-thread",
               log_path: "/new.jsonl",
+              live_cursor: "tail-cursor",
+              events: [
+                {{ role: "user", text: "one" }},
+                {{ role: "assistant", text: "two" }},
+                {{ role: "assistant", text: "three" }},
+              ],
+              busy: true,
+              queue_len: 1,
+              token: {{ pct: 50 }},
             }});
-            const afterFresh = ctx.getSessionTranscriptSlot("sid");
+            const cached = runtime.getTailCache("sid");
+            runtime.appendTailEvents("sid", [{{ role: "user", text: "four" }}], {{ liveCursor: "live-2", busy: false, queueLen: 2, token: {{ pct: 49 }} }});
+            const afterAppend = runtime.getTailCache("sid");
+            const matchesSession = runtime.tailCacheMatchesSession(afterAppend, {{ thread_id: "new-thread", log_path: "/new.jsonl" }});
+            const beforeDelete = runtime.snapshot();
+            runtime.deleteSession("sid");
+            const afterDelete = runtime.snapshot();
+            runtime.setActiveFailed();
+            const failed = runtime.activeSnapshot();
             process.stdout.write(JSON.stringify({{
               before,
+              renewal,
               pending,
               staleIgnored: stale.ignoredStaleBound,
               afterStale,
               freshIgnored: fresh.ignoredStaleBound,
               afterFresh,
-              activeTranscriptState: ctx.activeTranscriptState,
-              activeThreadId: ctx.activeThreadId,
-              activeLogPath: ctx.activeLogPath,
+              active: activeWithCursor,
+              cachedTexts: cached.events.map((ev) => ev.text),
+              afterAppendTexts: afterAppend.events.map((ev) => ev.text),
+              afterAppendCursor: afterAppend.liveCursor,
+              afterAppendQueue: afterAppend.queueLen,
+              matchesSession,
+              beforeDelete,
+              afterDelete,
+              failed,
+              frozen: Object.isFrozen(runtime),
             }}));
             """
         )
@@ -550,18 +566,66 @@ class TestChatTranscriptRuntime(unittest.TestCase):
 
         self.assertEqual(out["before"]["state"], "bound")
         self.assertEqual(out["before"]["key"], "old-thread\n/old.jsonl")
+        self.assertEqual(out["renewal"]["current"]["ignoredKey"], "old-thread\n/old.jsonl")
         self.assertEqual(out["pending"]["state"], "pending_bind")
-        self.assertEqual(out["pending"]["ignoredKey"], "old-thread\n/old.jsonl")
         self.assertTrue(out["staleIgnored"])
         self.assertEqual(out["afterStale"]["state"], "pending_bind")
-        self.assertEqual(out["afterStale"]["ignoredKey"], "old-thread\n/old.jsonl")
         self.assertFalse(out["freshIgnored"])
         self.assertEqual(out["afterFresh"]["state"], "bound")
         self.assertEqual(out["afterFresh"]["key"], "new-thread\n/new.jsonl")
-        self.assertEqual(out["afterFresh"]["ignoredKey"], None)
-        self.assertEqual(out["activeTranscriptState"], "bound")
-        self.assertEqual(out["activeThreadId"], "new-thread")
-        self.assertEqual(out["activeLogPath"], "/new.jsonl")
+        self.assertEqual(out["active"]["liveCursor"], "cursor-1")
+        self.assertEqual(out["cachedTexts"], ["two", "three"])
+        self.assertEqual(out["afterAppendTexts"], ["three", "four"])
+        self.assertEqual(out["afterAppendCursor"], "live-2")
+        self.assertEqual(out["afterAppendQueue"], 2)
+        self.assertTrue(out["matchesSession"])
+        self.assertEqual(out["beforeDelete"]["slotCount"], 1)
+        self.assertEqual(out["beforeDelete"]["tailCacheCount"], 1)
+        self.assertEqual(out["afterDelete"]["slotCount"], 0)
+        self.assertEqual(out["afterDelete"]["tailCacheCount"], 0)
+        self.assertEqual(out["failed"]["state"], "failed")
+        self.assertTrue(out["frozen"])
+
+    def test_transcript_slot_runtime_uses_current_session_lookup_for_tail_append(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const ctx = {{ window: {{}} }};
+            const vm = require("vm");
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            const tx = ctx.window.CodoxearTranscript;
+            let sessions = new Map([["sid", {{ thread_id: "old-thread", log_path: "/old.jsonl" }}]]);
+            const runtime = tx.createTranscriptSlotRuntime({{
+              getSession: (sessionId) => sessions.get(sessionId) || null,
+              maxTailEvents: 4,
+            }});
+            runtime.rememberTail("sid", sessions.get("sid"), {{
+              transcript_state: "bound",
+              thread_id: "old-thread",
+              log_path: "/old.jsonl",
+              events: [{{ role: "assistant", text: "old" }}],
+              live_cursor: "old-cursor",
+            }});
+            sessions = new Map([["sid", {{ thread_id: "new-thread", log_path: "/new.jsonl" }}]]);
+            runtime.appendTailEvents("sid", [{{ role: "assistant", text: "new" }}], {{ liveCursor: "new-cursor" }});
+            const cache = runtime.getTailCache("sid");
+            process.stdout.write(JSON.stringify({{
+              threadId: cache.threadId,
+              logPath: cache.logPath,
+              texts: cache.events.map((ev) => ev.text),
+              matchesNew: runtime.tailCacheMatchesSession(cache, sessions.get("sid")),
+              matchesOld: runtime.tailCacheMatchesSession(cache, {{ thread_id: "old-thread", log_path: "/old.jsonl" }}),
+            }}));
+            """
+        )
+        out = _run_node(js)
+
+        self.assertEqual(out["threadId"], "new-thread")
+        self.assertEqual(out["logPath"], "/new.jsonl")
+        self.assertEqual(out["texts"], ["old", "new"])
+        self.assertTrue(out["matchesNew"])
+        self.assertFalse(out["matchesOld"])
 
     def test_history_request_cursor_comes_from_oldest_rendered_row(self) -> None:
         snippet = _source_between("async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {", "function maybeAutoLoadOlder()")

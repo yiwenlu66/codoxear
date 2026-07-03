@@ -767,7 +767,6 @@
         let selected = null;
         let pendingHashSessionId = "";
         let pendingHashSessionSelectInFlight = false;
-        let liveCursor = null;
         const INIT_PAGE_LIMIT_DESKTOP = 60;
         const INIT_PAGE_LIMIT_MOBILE = 24;
         const OLDER_PAGE_LIMIT = 60;
@@ -775,9 +774,6 @@
         const CHAT_DOM_WINDOW_WITH_HISTORY_SLACK = CHAT_DOM_WINDOW + OLDER_PAGE_LIMIT;
         const OLDER_TOP_TRIGGER_PX = 1;
         const OLDER_CANCEL_PX = 48;
-        let activeTranscriptState = "pending_bind";
-        let activeLogPath = null;
-        let activeThreadId = null;
         const CHAT_SEARCH_ALL_DEBOUNCE_MS = 300;
         const CHAT_SEARCH_ALL_COUNT_MAX = 1000;
         let activeMessageCopyRow = null;
@@ -806,8 +802,6 @@
          let sessionsRefreshInFlight = null;
          let sessionsRefreshQueued = false;
 	        let sessionIndex = new Map(); // session_id -> session info
-        const sessionTranscriptSlots = new Map();
-        const sessionTailCache = new Map();
         let recentCwds = [];
 	        let sending = false;
 	        let attachedFiles = 0;
@@ -2186,7 +2180,7 @@
           transcriptScrollRuntime.enableAutoScroll();
           sending = false;
           transcriptEventRuntime.resetRecentEvents();
-          liveCursor = null;
+          transcriptSlotRuntime.clearLiveCursor();
           transcriptScrollRuntime.markLiveTail();
           olderLoadRuntime.resetAutoTrigger();
               clickMetricPending = false;
@@ -2726,6 +2720,7 @@
           typeof codoxearTranscript.tailCacheMatchesSession !== "function" ||
           typeof codoxearTranscript.rememberTailSnapshot !== "function" ||
           typeof codoxearTranscript.appendTailSnapshotEvents !== "function" ||
+          typeof codoxearTranscript.createTranscriptSlotRuntime !== "function" ||
           typeof codoxearTranscript.createTranscriptScrollRuntime !== "function" ||
           typeof codoxearTranscript.createTranscriptEventRuntime !== "function" ||
           typeof codoxearTranscript.createOlderLoadRuntime !== "function" ||
@@ -2745,6 +2740,15 @@
         });
 
         const loadedChatSearchRuntime = codoxearTranscript.createLoadedChatSearchRuntime();
+
+        const transcriptSlotRuntime = codoxearTranscript.createTranscriptSlotRuntime({
+          getSession: (sessionId) => sessionIndex.get(sessionId) || null,
+          maxTailEvents: Math.max(INIT_PAGE_LIMIT_DESKTOP, INIT_PAGE_LIMIT_MOBILE),
+        });
+
+        function activeTranscriptSnapshot() {
+          return transcriptSlotRuntime.activeSnapshot();
+        }
 
         function loadedChatSearchSnapshot() {
           return loadedChatSearchRuntime.snapshot();
@@ -2812,18 +2816,11 @@
         }
 
         function getSessionTranscriptSlot(sessionId) {
-          if (!sessionId) return { state: "pending_bind", threadId: null, logPath: null, key: null, epoch: 0, ignoredKey: null };
-          const current = sessionTranscriptSlots.get(sessionId);
-          if (current) return current;
-          return { state: "pending_bind", threadId: null, logPath: null, key: null, epoch: 0, ignoredKey: null };
+          return transcriptSlotRuntime.getSlot(sessionId);
         }
 
         function syncActiveTranscriptSlot(sessionId) {
-          const slot = getSessionTranscriptSlot(sessionId);
-          activeTranscriptState = slot.state;
-          activeThreadId = slot.threadId;
-          activeLogPath = slot.logPath;
-          return slot;
+          return transcriptSlotRuntime.syncActiveSlot(sessionId);
         }
 
         function dropPendingUserRows(sessionId, predicate = null) {
@@ -2839,69 +2836,35 @@
         }
 
         function updateSessionTranscriptSlot(sessionId, data) {
-          const prev = getSessionTranscriptSlot(sessionId);
-          const snap = transcriptSnapshotFromData(data);
-          if (prev.state === "pending_bind" && prev.ignoredKey && snap.state === "bound" && snap.key === prev.ignoredKey) {
-            const next = { ...prev };
-            if (sessionId) sessionTranscriptSlots.set(sessionId, next);
-            if (selected === sessionId) syncActiveTranscriptSlot(sessionId);
-            return { previous: prev, current: next, resetPending: false, ignoredStaleBound: true };
-          }
-          let epoch = prev.epoch;
-          let resetPending = false;
-          let ignoredKey = null;
-          if (snap.state === "pending_bind") {
-            if (prev.state === "bound") {
-              epoch += 1;
-              resetPending = true;
-              ignoredKey = prev.key;
-            } else {
-              ignoredKey = prev.ignoredKey || null;
-            }
-          } else if (prev.state === "bound" && prev.key !== snap.key) {
-            epoch += 1;
-            resetPending = true;
-          }
-          const next = { ...snap, epoch, ignoredKey };
-          if (sessionId) sessionTranscriptSlots.set(sessionId, next);
-          if (resetPending) dropPendingUserRows(sessionId, () => true);
+          const change = transcriptSlotRuntime.updateSlot(sessionId, data);
+          if (change.resetPending) dropPendingUserRows(sessionId, () => true);
           if (selected === sessionId) syncActiveTranscriptSlot(sessionId);
-          return { previous: prev, current: next, resetPending, ignoredStaleBound: false };
+          return change;
         }
 
         function beginTranscriptRenewal(sessionId) {
-          if (!sessionId) return;
-          const prev = getSessionTranscriptSlot(sessionId);
-          const next = {
-            state: "pending_bind",
-            threadId: null,
-            logPath: null,
-            key: null,
-            epoch: Number(prev.epoch || 0) + 1,
-            ignoredKey: prev.state === "bound" ? prev.key : prev.ignoredKey || null,
-          };
-          sessionTranscriptSlots.set(sessionId, next);
+          const change = transcriptSlotRuntime.beginRenewal(sessionId);
+          if (!change) return;
           dropPendingUserRows(sessionId, () => true);
           if (selected === sessionId) syncActiveTranscriptSlot(sessionId);
         }
 
         function tailCacheMatchesSession(cache, session) {
-          return codoxearTranscript.tailCacheMatchesSession(cache, session);
+          return transcriptSlotRuntime.tailCacheMatchesSession(cache, session);
         }
 
         function rememberTailSnapshot(sessionId, session, data) {
-          return codoxearTranscript.rememberTailSnapshot(sessionTailCache, sessionId, session, data, Math.max(INIT_PAGE_LIMIT_DESKTOP, INIT_PAGE_LIMIT_MOBILE));
+          return transcriptSlotRuntime.rememberTail(sessionId, session, data);
         }
 
         function appendTailSnapshotEvents(sessionId, events, { session = null, identityData = null, liveCursor: nextLiveCursor, busy, queueLen, token } = {}) {
-          return codoxearTranscript.appendTailSnapshotEvents(sessionTailCache, sessionIndex, sessionId, events, {
+          return transcriptSlotRuntime.appendTailEvents(sessionId, events, {
             session,
             identityData,
             liveCursor: nextLiveCursor,
             busy,
             queueLen,
             token,
-            maxEvents: Math.max(INIT_PAGE_LIMIT_DESKTOP, INIT_PAGE_LIMIT_MOBILE),
           });
         }
 
@@ -2921,8 +2884,8 @@
           const slotChange = updateSessionTranscriptSlot(sessionId, sessionMeta);
           if (!slotChange.resetPending) return;
 
-          sessionTailCache.delete(sessionId);
-          liveCursor = null;
+          transcriptSlotRuntime.deleteTailCache(sessionId);
+          transcriptSlotRuntime.clearLiveCursor();
           clearRenderedTranscriptRange();
           setAttachCount(0);
           invalidateOlderLoad();
@@ -3877,7 +3840,7 @@
 
         function applySessionRuntimeFromTail(sessionId, data) {
           const slot = syncActiveTranscriptSlot(sessionId);
-          liveCursor = slot.state === "bound" && typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null;
+          transcriptSlotRuntime.setLiveCursor(slot.state === "bound" && typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null);
           setOlderState({ hasMore: slot.state === "bound" && Boolean(data && data.has_older), isLoading: false });
           const nowBusy = Boolean(data && data.busy);
           turnOpen = nowBusy;
@@ -3889,7 +3852,7 @@
             const s = sessionIndex.get(sessionId);
             if (s) rememberTailSnapshot(sessionId, s, data);
           } else {
-            sessionTailCache.delete(sessionId);
+            transcriptSlotRuntime.deleteTailCache(sessionId);
           }
         }
 
@@ -3969,10 +3932,7 @@
             pollKickPending = false;
             pollKickDelayMs = null;
           }
-          activeTranscriptState = "pending_bind";
-          activeLogPath = null;
-          activeThreadId = null;
-          liveCursor = null;
+          transcriptSlotRuntime.setActivePending();
           clearRenderedTranscriptRange();
           turnOpen = false;
           storageRemoveItem("codexweb.selected");
@@ -3994,8 +3954,7 @@
 
         function clearDeletedSessionClientState(sessionId) {
           const selectedCleared = clearSelectedSessionAfterRemoval(sessionId);
-          sessionTranscriptSlots.delete(sessionId);
-          sessionTailCache.delete(sessionId);
+          transcriptSlotRuntime.deleteSession(sessionId);
           dropPendingUserRows(sessionId, () => true);
           return selectedCleared;
         }
@@ -4234,7 +4193,7 @@
             log_path: cache.logPath || (sessionMeta ? sessionMeta.log_path : null),
           });
           syncActiveTranscriptSlot(sessionId);
-          liveCursor = cache.liveCursor || null;
+          transcriptSlotRuntime.setLiveCursor(cache.liveCursor || null);
           setOlderState({ hasMore: Boolean(cache.hasOlder), isLoading: false });
           renderSessionTail(cache.events);
           const metaBusy = Boolean(sessionMeta && sessionMeta.busy);
@@ -4267,10 +4226,7 @@
           if (unattendedMenuOpen && unattendedMenuSessionId !== sessionId) hideUnattendedMenu();
           storageSetItem("codexweb.selected", sessionId);
           setSessionHash(sessionId);
-          activeTranscriptState = "pending_bind";
-          activeLogPath = null;
-          activeThreadId = null;
-          liveCursor = null;
+          transcriptSlotRuntime.setActivePending();
           clearRenderedTranscriptRange();
           turnOpen = false;
           setAttachCount(0);
@@ -4297,7 +4253,7 @@
 
           if (s && s.orphan_recovery) {
             renderPendingTranscriptSlot(sessionId);
-            activeTranscriptState = "failed";
+            transcriptSlotRuntime.setActiveFailed();
             setStatus({ running: false, queueLen: optimisticQueueLen });
             setContext(null);
             setTyping(false);
@@ -4309,7 +4265,7 @@
             return { events: [], busy: false, queue_len: optimisticQueueLen, token: null, transcript_state: "failed" };
           }
 
-          const cachedTail = s ? sessionTailCache.get(sessionId) : null;
+          const cachedTail = s ? transcriptSlotRuntime.getTailCache(sessionId) : null;
           let displayedCachedTail = false;
           if (useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
             applyCachedTail(sessionId, cachedTail, s);
@@ -4377,8 +4333,8 @@
           if (appDisposed || !sid) return;
           let pollRequest = null;
           try {
-            if (!liveCursor) {
-              if (activeTranscriptState === "pending_bind") {
+            if (!transcriptSlotRuntime.activeSnapshot().liveCursor) {
+              if (activeTranscriptSnapshot().state === "pending_bind") {
                 pollRequest = beginMessagePollRequest(sid, gen);
                 const data = await api(`/api/sessions/${sid}/messages/tail?limit=${initPageLimit()}`, { signal: pollRequest.signal });
                 if (gen !== pollGen || sid !== selected) return;
@@ -4393,18 +4349,18 @@
                 applySessionRuntimeFromTail(sid, data);
                 return;
               }
-              if (activeTranscriptState === "failed") return;
+              if (activeTranscriptSnapshot().state === "failed") return;
               await openSession(sid, { useCache: false });
               return;
             }
-            const reqCursor = liveCursor;
+            const reqCursor = transcriptSlotRuntime.activeSnapshot().liveCursor;
             pollRequest = beginMessagePollRequest(sid, gen);
             const data = await api(`/api/sessions/${sid}/messages/live?cursor=${encodeURIComponent(reqCursor)}`, { signal: pollRequest.signal });
             if (gen !== pollGen || sid !== selected) return;
             markMessagePollSuccess();
             const slotInfo = transcriptSnapshotFromData(data);
             const nowBusy = Boolean(data.busy);
-            if (activeTranscriptState === "bound" && slotInfo.state === "pending_bind") {
+            if (activeTranscriptSnapshot().state === "bound" && slotInfo.state === "pending_bind") {
               updateSessionTranscriptSlot(sid, data);
               resetChatRenderState();
               renderPendingTranscriptSlot(sid);
@@ -4412,12 +4368,12 @@
               applySessionRuntimeFromTail(sid, data);
               return;
             }
-            if (activeTranscriptState === "bound" && slotInfo.state === "bound" && slotInfo.logPath !== activeLogPath) {
+            if (activeTranscriptSnapshot().state === "bound" && slotInfo.state === "bound" && slotInfo.logPath !== activeTranscriptSnapshot().logPath) {
               await openSession(sid, { useCache: false });
               return;
             }
 
-            liveCursor = typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null;
+            transcriptSlotRuntime.setLiveCursor(typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null);
             const evs = Array.isArray(data.events) ? data.events : [];
             for (const ev of evs) appendEvent(ev);
 
@@ -4436,7 +4392,7 @@
             if (evs.length) {
               appendTailSnapshotEvents(sid, evs, {
                 session: s2,
-                liveCursor,
+                liveCursor: transcriptSlotRuntime.activeSnapshot().liveCursor,
                 busy: Boolean(turnOpen || nowBusy),
                 queueLen: data.queue_len,
                 token: data.token,
@@ -9094,9 +9050,9 @@
           try {
             const res = await api(`/api/sessions/${sessionId}/send`, { method: "POST", body: { text: raw, allow_pending_attachment: allowPendingAttachment } });
             if (renderHere && renewsTranscript) {
-              sessionTailCache.delete(sessionId);
+              transcriptSlotRuntime.deleteTailCache(sessionId);
               beginTranscriptRenewal(sessionId);
-              liveCursor = null;
+              transcriptSlotRuntime.clearLiveCursor();
               clearRenderedTranscriptRange();
               invalidateOlderLoad();
               renderPendingTranscriptSlot(sessionId);
