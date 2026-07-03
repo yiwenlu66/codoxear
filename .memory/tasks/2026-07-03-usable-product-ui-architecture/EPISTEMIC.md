@@ -31,6 +31,14 @@ Non-blocking backlog from review: dispose the resume debounce timer on dialog cl
 ## New iteration observations
 - Browser scout after accepted checkpoint found a new polish/impaired-affordance issue: failed-launch rows disable attach/queue/send actions correctly, but leave the main composer textarea editable with `Enter your instructions here`. This does not allow delivery because buttons are disabled, but it misleads users into typing into a session that cannot receive messages. Fix should project sendability/readiness into the composer input state/placeholder, not just the action buttons.
 
+### Resolution (2026-07-04, in-place on recovery/product-gaps)
+- Root mechanism confirmed: `enqueueComposerText` is blocked by the same predicates as `sendText` (`launchFailed`, `orphan_recovery`, `queue_recovery`, `commit_unknown_send`, plus `!selected`). So whenever the send button is structurally blocked, typing into the composer cannot deliver anywhere via send OR enqueue. The textarea's enabled state was therefore a pure false affordance.
+- Fix: added `syncComposerState()` in app.js, driven from the tail of `syncSendButtonState()` (which owns every sendability transition: session select, send start/end, recovery changes). It disables `#msg` and rewrites the `#msgPh` overlay text + textarea `aria-label`/`title` to the specific reason (`Select a session to send` / `Failed launch cannot receive messages` / `Resolve the unknown send before sending` / `Missing session can only be reviewed` / `Review preserved queued recovery items before sending`), defaulting to `Enter your instructions here` when live.
+- `disabled` chosen over `readOnly` for mobile keyboard ergonomics: a disabled textarea cannot receive focus and will not raise the soft keyboard on iOS/Android, whereas `readOnly` can still grab focus and pop the keyboard on some platforms. Disabled also gives a clear greyed visual (paired with `.composer textarea:disabled { opacity: 0.5; cursor: not-allowed; }` in app.css).
+- Transient `sending`/busy states are deliberately NOT projected into the composer (only the structural block is). This preserves the queue/send-choice path during a live turn and respects the constraint not to disable the composer during ordinary busy/queueable states.
+- Queue/recovery button paths untouched; existing toasts preserved.
+- Tests: added tests/test_composer_sendability_source.py (4 cases). Existing send/queue/attach/tooltip/mobile-zoom source sentinels still pass unchanged.
+
 
 ## Follow-up state
 - The former `__codoxearLoadError` check is no longer vacuous after `3b762f5`: the page installs a real early error/unhandled-rejection recorder and renders a visible load-failure panel if bootstrap leaves `#root` empty. Browser evidence on sandbox 19088 proved normal load keeps the sentinel null and synthetic fallback rendering works.
