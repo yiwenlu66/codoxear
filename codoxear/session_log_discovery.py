@@ -5,15 +5,11 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+from .agent_backend import get_agent_backend
 from .agent_backend import infer_agent_backend_from_log_path
 from .agent_backend import normalize_agent_backend
 from .cc_log import read_cc_session_header
-from .cc_log import read_cc_session_id
 from .pi_log import read_pi_session_header
-from .pi_log import read_pi_session_id
-from .session_log_paths import _is_cc_session_log_path
-from .session_log_paths import _is_codex_rollout_log_path
-from .session_log_paths import _is_pi_session_log_path
 from .session_log_paths import _path_in_set
 from .session_log_paths import _payload_cwd_matches
 
@@ -122,17 +118,12 @@ def classify_session_log(
 
 
 def iter_session_logs(sessions_dir: Path, *, agent_backend: str = "codex", log_exception: LogException) -> list[Path]:
-    backend_name = normalize_agent_backend(agent_backend)
+    backend = get_agent_backend(agent_backend)
     if not sessions_dir.exists():
         return []
     out: list[tuple[float, Path]] = []
-    pattern = "rollout-*.jsonl" if backend_name == "codex" else "*.jsonl"
-    for p in sessions_dir.rglob(pattern):
-        if backend_name == "codex" and not _is_codex_rollout_log_path(p):
-            continue
-        if backend_name == "pi" and not _is_pi_session_log_path(p, sessions_dir=sessions_dir):
-            continue
-        if backend_name == "cc" and not _is_cc_session_log_path(p, sessions_dir=sessions_dir):
+    for p in sessions_dir.rglob(backend.log_glob_pattern()):
+        if not backend.is_session_log_path(p, sessions_dir=sessions_dir):
             continue
         try:
             mt = float(p.stat().st_mtime)
@@ -153,19 +144,11 @@ def find_session_log_for_session_id(
     agent_backend: str = "codex",
     iter_session_logs_func: IterLogsFunc,
 ) -> Path | None:
-    backend_name = normalize_agent_backend(agent_backend)
+    backend = get_agent_backend(agent_backend)
     if not session_id:
         return None
-    for p in iter_session_logs_func(sessions_dir, agent_backend=backend_name):
-        if backend_name == "codex":
-            if session_id in p.name:
-                return p
-            continue
-        if backend_name == "pi":
-            if read_pi_session_id(p) == session_id:
-                return p
-            continue
-        if backend_name == "cc" and read_cc_session_id(p) == session_id:
+    for p in iter_session_logs_func(sessions_dir, agent_backend=backend.name):
+        if backend.log_matches_session_id(p, session_id):
             return p
     return None
 
@@ -185,7 +168,8 @@ def find_new_session_log(
     read_session_meta_payload_func: ReadMetaFunc,
     is_subagent_session_meta_func: IsSubagentFunc,
 ) -> tuple[str, Path] | None:
-    backend_name = normalize_agent_backend(agent_backend)
+    backend = get_agent_backend(agent_backend)
+    backend_name = backend.name
     if cwd is not None:
         if not isinstance(cwd, str) or (not cwd.strip()):
             raise ValueError("cwd must be a non-empty string when provided")
@@ -210,12 +194,7 @@ def find_new_session_log(
             if cwd is not None:
                 if not _payload_cwd_matches(payload.get("cwd"), cwd):
                     continue
-            if backend_name == "pi":
-                sid = read_pi_session_id(p)
-            elif backend_name == "cc":
-                sid = read_cc_session_id(p)
-            else:
-                sid = payload.get("id")
+            sid = backend.session_id_from_payload_or_log(p, payload)
             if isinstance(sid, str) and sid:
                 matches.append((sid, p))
         if len(matches) == 1:

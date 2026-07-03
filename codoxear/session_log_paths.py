@@ -1,49 +1,27 @@
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
 
-
-_SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
+from .agent_backend import CC_BACKEND
+from .agent_backend import CODEX_BACKEND
+from .agent_backend import PI_BACKEND
 
 
 def session_id_from_rollout_path(log_path: Path) -> str | None:
-    matches = _SESSION_ID_RE.findall(log_path.name)
-    return matches[-1] if matches else None
+    return CODEX_BACKEND.session_id_from_log_path(log_path)
 
 
 def _is_codex_rollout_log_path(path: Path) -> bool:
-    return path.name.startswith("rollout-") and path.suffix == ".jsonl"
+    return CODEX_BACKEND.is_session_log_path(path)
 
 
 def _is_pi_session_log_path(path: Path, *, sessions_dir: Path | None = None) -> bool:
-    if path.suffix != ".jsonl":
-        return False
-    if sessions_dir is None:
-        return "/.pi/agent/sessions/" in str(path).replace("\\", "/")
-    try:
-        path.resolve().relative_to(sessions_dir.resolve())
-    except Exception:
-        return False
-    return True
+    return PI_BACKEND.is_session_log_path(path, sessions_dir=sessions_dir)
 
 
 def _is_cc_session_log_path(path: Path, *, sessions_dir: Path | None = None) -> bool:
-    if path.suffix != ".jsonl":
-        return False
-    path_text = str(path).replace("\\", "/")
-    if "/subagents/" in path_text:
-        return False
-    if path.name == "history.jsonl":
-        return False
-    if sessions_dir is None:
-        return "/.claude/projects/" in path_text
-    try:
-        path.resolve().relative_to(sessions_dir.resolve())
-    except Exception:
-        return False
-    return True
+    return CC_BACKEND.is_session_log_path(path, sessions_dir=sessions_dir)
 
 
 def _paths_match(a: Path, b: Path) -> bool:

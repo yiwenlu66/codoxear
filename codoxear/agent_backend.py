@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -23,6 +24,7 @@ _REQUEST_ENV_VARS = (
 
 _BACKEND_HOME_ENV_VARS = ("CODEX_HOME", "PI_HOME", "CLAUDE_CONFIG_DIR")
 _BACKEND_BIN_ENV_VARS = ("CODEX_BIN", "PI_BIN", "CLAUDE_BIN")
+_SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,22 @@ class AgentBackend:
 
     def sessions_dir(self, env: dict[str, str] | None = None) -> Path:
         return self.home(env).joinpath(*self.sessions_relpath)
+
+    def log_glob_pattern(self) -> str:
+        return "*.jsonl"
+
+    def is_session_log_path(self, path: Path, *, sessions_dir: Path | None = None) -> bool:
+        raise NotImplementedError(f"{self.name} backend does not implement log path recognition")
+
+    def session_id_from_log_path(self, log_path: Path) -> str | None:
+        return None
+
+    def log_matches_session_id(self, log_path: Path, session_id: str) -> bool:
+        return self.session_id_from_log_path(log_path) == session_id
+
+    def session_id_from_payload_or_log(self, log_path: Path, payload: Mapping[str, Any]) -> str | None:
+        raw = payload.get("id")
+        return raw if isinstance(raw, str) and raw else self.session_id_from_log_path(log_path)
 
     def build_launch_args(
         self,
@@ -175,6 +193,19 @@ class AgentBackend:
 
 
 class CodexBackend(AgentBackend):
+    def log_glob_pattern(self) -> str:
+        return "rollout-*.jsonl"
+
+    def is_session_log_path(self, path: Path, *, sessions_dir: Path | None = None) -> bool:
+        return path.name.startswith("rollout-") and path.suffix == ".jsonl"
+
+    def session_id_from_log_path(self, log_path: Path) -> str | None:
+        matches = _SESSION_ID_RE.findall(log_path.name)
+        return matches[-1] if matches else None
+
+    def log_matches_session_id(self, log_path: Path, session_id: str) -> bool:
+        return bool(session_id and session_id in log_path.name)
+
     def build_launch_args(
         self,
         *,
@@ -212,6 +243,22 @@ class CodexBackend(AgentBackend):
 
 
 class PiBackend(AgentBackend):
+    def is_session_log_path(self, path: Path, *, sessions_dir: Path | None = None) -> bool:
+        if path.suffix != ".jsonl":
+            return False
+        if sessions_dir is None:
+            return "/.pi/agent/sessions/" in str(path).replace("\\", "/")
+        try:
+            path.resolve().relative_to(sessions_dir.resolve())
+        except Exception:
+            return False
+        return True
+
+    def session_id_from_log_path(self, log_path: Path) -> str | None:
+        from .pi_log import read_pi_session_id
+
+        return read_pi_session_id(log_path)
+
     def build_launch_args(
         self,
         *,
@@ -242,6 +289,27 @@ class PiBackend(AgentBackend):
 
 
 class ClaudeCodeBackend(AgentBackend):
+    def is_session_log_path(self, path: Path, *, sessions_dir: Path | None = None) -> bool:
+        if path.suffix != ".jsonl":
+            return False
+        path_text = str(path).replace("\\", "/")
+        if "/subagents/" in path_text:
+            return False
+        if path.name == "history.jsonl":
+            return False
+        if sessions_dir is None:
+            return "/.claude/projects/" in path_text
+        try:
+            path.resolve().relative_to(sessions_dir.resolve())
+        except Exception:
+            return False
+        return True
+
+    def session_id_from_log_path(self, log_path: Path) -> str | None:
+        from .cc_log import read_cc_session_id
+
+        return read_cc_session_id(log_path)
+
     def build_launch_args(
         self,
         *,
@@ -319,18 +387,12 @@ def get_agent_backend(value: object, *, default: str = "codex") -> AgentBackend:
 
 
 def infer_agent_backend_from_log_path(path: Path) -> str | None:
-    name = path.name
-    if name.startswith("rollout-") and name.endswith(".jsonl"):
+    if CODEX_BACKEND.is_session_log_path(path):
         return "codex"
-    path_text = str(path).replace("\\", "/")
-    if "/.pi/agent/sessions/" in path_text and name.endswith(".jsonl"):
+    if PI_BACKEND.is_session_log_path(path):
         return "pi"
-    if name.endswith(".jsonl") and "/subagents/" not in path_text:
-        if "/.claude/projects/" in path_text:
-            return "cc"
-        try:
-            path.resolve(strict=False).relative_to(CC_BACKEND.sessions_dir().resolve(strict=False))
-            return "cc"
-        except Exception:
-            pass
+    if CC_BACKEND.is_session_log_path(path):
+        return "cc"
+    if CC_BACKEND.is_session_log_path(path, sessions_dir=CC_BACKEND.sessions_dir()):
+        return "cc"
     return None
