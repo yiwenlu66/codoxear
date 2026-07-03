@@ -496,6 +496,18 @@
       });
     }
 
+    function restoreCurrentFileText(text, options = {}) {
+      const prepare = requireFunction(options.prepareFileEditorTextRestore, "prepareFileEditorTextRestore");
+      const currentKind = requireFunction(options.currentFileEditorKind, "currentFileEditorKind");
+      const runProgrammaticChange = requireFunction(options.runFileEditorProgrammaticChange, "runFileEditorProgrammaticChange");
+      const finish = requireFunction(options.finishFileEditorTextRestore, "finishFileEditorTextRestore");
+      const restorePlan = prepare(text);
+      if (!restorePlan || restorePlan.kind !== "restore") return false;
+      restoreFileText(currentKind(), restorePlan.text, runProgrammaticChange);
+      finish();
+      return true;
+    }
+
     function withCurrentEditor(callback) {
       const fn = requireFunction(callback, "withCurrentEditor");
       return fn(editor);
@@ -519,6 +531,7 @@
       layoutCurrent,
       normalizePosition,
       positionCurrentEditorAtLine,
+      restoreCurrentFileText,
       restoreFileText,
       scheduleLineFocus,
       selectionText,

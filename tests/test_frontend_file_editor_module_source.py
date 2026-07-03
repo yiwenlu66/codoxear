@@ -131,6 +131,24 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
         let disposeCurrentMissingError = "";
         try {{ disposeLifecycleRuntime.disposeCurrentFile({{}}); }} catch (err) {{ disposeCurrentMissingError = err && err.message ? err.message : String(err); }}
 
+        const restoreLifecycleEvents = [];
+        const restoreLifecycleRuntime = mod.createFileEditorRuntime();
+        restoreLifecycleRuntime.setEditor({{ getModel: () => ({{ setValue: (value) => restoreLifecycleEvents.push(["setValue", value]) }}) }});
+        const restoreCurrentFileResult = restoreLifecycleRuntime.restoreCurrentFileText("input", {{
+          prepareFileEditorTextRestore: (value) => {{ restoreLifecycleEvents.push(["prepare", value]); return {{ kind: "restore", text: "restored text" }}; }},
+          currentFileEditorKind: () => "file",
+          runFileEditorProgrammaticChange: (callback) => {{ restoreLifecycleEvents.push(["programmaticStart"]); callback(); restoreLifecycleEvents.push(["programmaticEnd"]); }},
+          finishFileEditorTextRestore: () => restoreLifecycleEvents.push(["finish"]),
+        }});
+        const restoreCurrentNoop = restoreLifecycleRuntime.restoreCurrentFileText("skip", {{
+          prepareFileEditorTextRestore: () => null,
+          currentFileEditorKind: () => "file",
+          runFileEditorProgrammaticChange: (callback) => callback(),
+          finishFileEditorTextRestore: () => restoreLifecycleEvents.push(["unexpectedFinish"]),
+        }});
+        let restoreCurrentMissingError = "";
+        try {{ restoreLifecycleRuntime.restoreCurrentFileText("x", {{}}); }} catch (err) {{ restoreCurrentMissingError = err && err.message ? err.message : String(err); }}
+
         const creationEvents = [];
         const fileRuntime = mod.createFileEditorRuntime();
         const createdFileModel = {{
@@ -241,6 +259,10 @@ def run_file_editor_runtime_probe() -> dict[str, object]:
           disposeCurrentFileResult,
           disposeLifecycleEvents,
           disposeCurrentMissingError,
+          restoreCurrentFileResult,
+          restoreCurrentNoop,
+          restoreLifecycleEvents,
+          restoreCurrentMissingError,
           creation,
           events,
           missingCallbackError,
@@ -512,6 +534,16 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
             ["clearTouchSelection"],
         ])
         self.assertIn("file editor dependency missing: finishProgrammaticChange", result["disposeCurrentMissingError"])
+        self.assertTrue(result["restoreCurrentFileResult"])
+        self.assertFalse(result["restoreCurrentNoop"])
+        self.assertEqual(result["restoreLifecycleEvents"], [
+            ["prepare", "input"],
+            ["programmaticStart"],
+            ["setValue", "restored text"],
+            ["programmaticEnd"],
+            ["finish"],
+        ])
+        self.assertIn("file editor dependency missing: prepareFileEditorTextRestore", result["restoreCurrentMissingError"])
         creation = result["creation"]
         self.assertEqual(creation["createFileEditorResult"], "createdFile")
         self.assertTrue(creation["updateFileTextResult"])
@@ -670,6 +702,7 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertIn("let models = [];", editor_source)
         self.assertIn("let changeDisposable = null;", editor_source)
         self.assertIn("fileEditorRuntime.disposeCurrentFile({", app_source)
+        self.assertIn("fileEditorRuntime.restoreCurrentFileText(text, {", app_source)
         self.assertIn("fileEditorRuntime.focusLine(currentFileEditorKind(), lineNumber, normalizeLineNumber);", app_source)
         self.assertIn("fileEditorRuntime.focusActiveCodeEditor(currentFileEditorKind())", app_source)
         self.assertIn("fileEditorRuntime.isActiveInput(currentFileEditorKind(), target, HTMLElement)", app_source)
@@ -687,6 +720,7 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertIn("function positionCurrentEditorAtLine(kind, lineNumber, normalizeLineNumber)", editor_source)
         self.assertIn("function scheduleLineFocus(kind, requestedLine, options = {})", editor_source)
         self.assertIn("function currentFileText(kind, fallbackText = \"\")", editor_source)
+        self.assertIn("function restoreCurrentFileText(text, options = {})", editor_source)
         self.assertIn("function restoreFileText(kind, text, runProgrammaticChange)", editor_source)
         self.assertIn("function createFileEditorRenderer(options = {})", editor_source)
         self.assertIn("const fileEditorRenderer = codoxearFileEditor.createFileEditorRenderer({", app_source)
@@ -695,7 +729,8 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertNotIn("fileEditorRuntime.createFileEditor(monaco, fileDiff", app_source)
         self.assertNotIn("fileEditorRuntime.updateFileEditorText(monaco", app_source)
         self.assertIn("fileEditorRuntime.currentFileText(currentFileEditorKind(), currentActiveFileText())", app_source)
-        self.assertIn("fileEditorRuntime.restoreFileText(currentFileEditorKind(), restorePlan.text", app_source)
+        self.assertIn("fileEditorRuntime.restoreCurrentFileText(text, {", app_source)
+        self.assertNotIn("fileEditorRuntime.restoreFileText(currentFileEditorKind(), restorePlan.text", app_source)
         self.assertNotIn("fileEditorRuntime.createDiffEditor(monaco, fileDiff", app_source)
         self.assertNotIn("fileEditorRuntime.positionCurrentEditorAtLine(\"file\", lineNumber, normalizeLineNumber)", app_source)
         self.assertNotIn("fileEditorRuntime.positionCurrentEditorAtLine(\"diff\", lineNumber, normalizeLineNumber)", app_source)

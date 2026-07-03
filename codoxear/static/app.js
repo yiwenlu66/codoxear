@@ -7576,10 +7576,12 @@
         }
 
         function restoreFileEditorText(text) {
-          const restorePlan = fileViewerController.prepareFileEditorTextRestore(text);
-          if (!restorePlan || restorePlan.kind !== "restore") return;
-          fileEditorRuntime.restoreFileText(currentFileEditorKind(), restorePlan.text, (callback) => fileViewerController.runFileEditorProgrammaticChange(callback));
-          fileViewerController.finishFileEditorTextRestore();
+          return fileEditorRuntime.restoreCurrentFileText(text, {
+            prepareFileEditorTextRestore: (value) => fileViewerController.prepareFileEditorTextRestore(value),
+            currentFileEditorKind: () => currentFileEditorKind(),
+            runFileEditorProgrammaticChange: (callback) => fileViewerController.runFileEditorProgrammaticChange(callback),
+            finishFileEditorTextRestore: () => fileViewerController.finishFileEditorTextRestore(),
+          });
         }
 
         function renderPlainTextFallback(rel, text, lineNumber = null, reason = "Rich file viewer unavailable") {
