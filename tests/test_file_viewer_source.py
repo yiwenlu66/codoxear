@@ -18,6 +18,22 @@ APP_CSS = ROOT / "codoxear" / "static" / "app.css"
 SERVER_PY = ROOT / "codoxear" / "server.py"
 
 
+def js_function(source: str, name: str) -> str:
+    raw_start = source.index(f"function {name}")
+    params_end = source.index(")", raw_start)
+    brace = source.index("{", params_end)
+    depth = 0
+    for idx in range(brace, len(source)):
+        ch = source[idx]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return source[raw_start : idx + 1]
+    raise AssertionError(f"could not extract {name}")
+
+
 def controller_identity_ctx_js(
     path: str = "src/app.py",
     api_path: str = "token-1",
@@ -2409,24 +2425,12 @@ def eval_active_file_save_request_helpers() -> dict:
 
 
 def eval_active_file_save_body_builder() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function buildActiveFileSaveBody(")
-    end = source.index("function applyActiveFileSaveSuccess", start)
-    snippet = source[start:end]
+    source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    snippet = js_function(source, "buildActiveFileSaveBody")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const ctx = {{
-          fileViewerController: {{
-            buildActiveFileSaveBody: (save) => {{
-              const body = save.draft
-                ? {{ path: save.path, text: save.text, create: true }}
-                : {{ path: save.path, text: save.text, version: save.version, git_path: save.gitPath }};
-              if (!save.draft && save.gitPath && save.apiPath) body.path_token = save.apiPath;
-              return body;
-            }},
-          }},
-        }};
+        const ctx = {{}};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_save_body = buildActiveFileSaveBody;\n")}, ctx);
         const draft = ctx.__test_save_body({{ path: "new.py", text: "NEW", draft: true, gitPath: true, version: "v1", apiPath: "tok" }});
@@ -2449,25 +2453,15 @@ def eval_active_file_save_body_builder() -> dict:
 
 
 def eval_active_file_save_error_renderer() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function renderActiveFileSaveError(")
-    end = source.index("function applyActiveFileSaveSuccess", start)
-    snippet = source[start:end]
+    source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    snippet = js_function(source, "renderActiveFileSaveError")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
         const ctx = {{
           fileStatus: {{ textContent: "" }},
           calls: [],
-          fileViewerController: {{
-            renderActiveFileSaveError: (save, error) => {{
-              if (error && error.status === 409) {{
-                ctx.calls.push(["renderSaveConflict", save.sessionId, save.path, error && error.message ? error.message : "conflict"]);
-              }} else {{
-                ctx.fileStatus.textContent = `save error: ${{error && error.message ? error.message : "unknown error"}}`;
-              }}
-            }},
-          }},
+          renderSaveConflict: (sessionId, path, message) => ctx.calls.push(["renderSaveConflict", sessionId, path, message]),
         }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_save_error = renderActiveFileSaveError;\n")}, ctx);
@@ -4511,10 +4505,10 @@ class TestFileViewerSource(unittest.TestCase):
         ])
         source = APP_JS.read_text(encoding="utf-8")
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
-        self.assertIn("function fileSavePendingValue()", source)
-        self.assertIn("return fileViewerController.isFileSavePending();", source)
-        self.assertIn("function beginActiveFileSaveRequest()", source)
-        self.assertIn("return fileViewerController.beginActiveFileSaveRequest();", source)
+        self.assertNotIn("function fileSavePendingValue()", source)
+        self.assertNotIn("return fileViewerController.isFileSavePending();", source)
+        self.assertNotIn("function beginActiveFileSaveRequest()", source)
+        self.assertNotIn("return fileViewerController.beginActiveFileSaveRequest();", source)
         self.assertIn("function beginActiveFileSaveRequest()", viewer_source)
         self.assertIn("return Object.freeze({ sessionId, path, apiPath, draft, gitPath, version, text, token });", viewer_source)
         self.assertIn("function isCurrentActiveFileSaveRequest(save)", viewer_source)
@@ -4538,8 +4532,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(result["plainToken"], {"path": "plain.py", "text": "TEXT", "version": "v3", "git_path": False})
         source = APP_JS.read_text(encoding="utf-8")
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
-        self.assertIn("function buildActiveFileSaveBody(save)", source)
-        self.assertIn("return fileViewerController.buildActiveFileSaveBody(save);", source)
+        self.assertNotIn("function buildActiveFileSaveBody(save)", source)
+        self.assertNotIn("return fileViewerController.buildActiveFileSaveBody(save);", source)
         self.assertNotIn("const saveBody = buildActiveFileSaveBody(save);", source)
         self.assertIn("const saveBody = buildActiveFileSaveBody(save);", viewer_source)
         self.assertIn("function buildActiveFileSaveBody(save)", viewer_source)
@@ -4555,8 +4549,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(result["unknown"], {"calls": [], "status": "save error: unknown error"})
         source = APP_JS.read_text(encoding="utf-8")
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
-        self.assertIn("function renderActiveFileSaveError(save, error)", source)
-        self.assertIn("return fileViewerController.renderActiveFileSaveError(save, error);", source)
+        self.assertNotIn("function renderActiveFileSaveError(save, error)", source)
+        self.assertNotIn("return fileViewerController.renderActiveFileSaveError(save, error);", source)
         self.assertIn("renderActiveFileSaveError(save, error);\n        return false;", viewer_source)
         self.assertIn("function renderActiveFileSaveError(save, error)", viewer_source)
         self.assertIn("renderSaveConflict(save.sessionId, save.path", viewer_source)
@@ -4611,8 +4605,8 @@ class TestFileViewerSource(unittest.TestCase):
         })
         source = APP_JS.read_text(encoding="utf-8")
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
-        self.assertIn("function applyActiveFileSaveSuccess(save, res, { exitEditMode = true } = {})", source)
-        self.assertIn("return fileViewerController.applyActiveFileSaveSuccess(save, res, { exitEditMode });", source)
+        self.assertNotIn("function applyActiveFileSaveSuccess(save, res, { exitEditMode = true } = {})", source)
+        self.assertNotIn("return fileViewerController.applyActiveFileSaveSuccess(save, res, { exitEditMode });", source)
         self.assertIn("function applyActiveFileSaveSuccess(save, res, { exitEditMode = true } = {})", viewer_source)
         self.assertIn("const nextKind = String(currentActiveFileKind() || \"text\");", viewer_source)
         self.assertIn("const nextVersion = res && typeof res.version === \"string\" ? res.version : currentActiveFileVersion();", viewer_source)
@@ -4678,7 +4672,7 @@ class TestFileViewerSource(unittest.TestCase):
         end = source.index("async function maybeHandleUnsavedFileChanges", start)
         block = source[start:end]
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
-        self.assertIn("return fileViewerController.beginActiveFileSaveRequest();", source)
+        self.assertNotIn("return fileViewerController.beginActiveFileSaveRequest();", source)
         self.assertIn("const sessionId = currentSessionId();", viewer_source)
         self.assertIn("const identity = currentActiveFileIdentity();", viewer_source)
         self.assertIn("const path = identity.path;", viewer_source)
@@ -4798,7 +4792,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("return applyActiveFileSaveSuccess(save, res, { exitEditMode });", viewer_source)
         self.assertIn("if (!saveStillCurrent()) return false;", viewer_source)
         self.assertIn("finishActiveFileSaveRequest(save);", viewer_source)
-        self.assertIn("return fileViewerController.submitActiveFileSave(save, { exitEditMode });", source)
+        self.assertNotIn("return fileViewerController.submitActiveFileSave(save, { exitEditMode });", source)
         self.assertIn("fileStatus.textContent = `${save.path} - ${fmtBytes(size)}`;", viewer_source)
         self.assertIn("rememberOpenedFile(save.path,", viewer_source)
         self.assertNotIn("activeFileText = save.text;", source)
@@ -4810,7 +4804,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const codoxearFileViewer = window.CodoxearFileViewer;", source)
         self.assertIn("createFileViewerController", source)
         controller_start = source.index("const fileViewerController = codoxearFileViewer.createFileViewerController")
-        controller_end = source.index("function beginActiveFileSaveRequest", controller_start)
+        controller_end = source.index("const fileViewerPanelRuntime = codoxearFileViewer.createFileViewerPanelRuntime", controller_start)
         controller_block = source[controller_start:controller_end]
         self.assertNotIn("let fileViewerSessionId = \"\";", source)
         self.assertIn("let fileViewerSessionId = \"\";", viewer_source)

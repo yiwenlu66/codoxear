@@ -7782,46 +7782,6 @@
           el,
         });
 
-        function fileSavePendingValue() {
-          return fileViewerController.isFileSavePending();
-        }
-
-        function clearActiveFileSaveState() {
-          fileViewerController.clearActiveFileSaveState();
-        }
-
-        function beginActiveFileSaveRequest() {
-          return fileViewerController.beginActiveFileSaveRequest();
-        }
-
-        function isCurrentActiveFileSaveRequest(save) {
-          return fileViewerController.isCurrentActiveFileSaveRequest(save);
-        }
-
-        function markActiveFileSavePending(save) {
-          return fileViewerController.markActiveFileSavePending(save);
-        }
-
-        function finishActiveFileSaveRequest(save) {
-          return fileViewerController.finishActiveFileSaveRequest(save);
-        }
-
-        function buildActiveFileSaveBody(save) {
-          return fileViewerController.buildActiveFileSaveBody(save);
-        }
-
-        function renderActiveFileSaveError(save, error) {
-          return fileViewerController.renderActiveFileSaveError(save, error);
-        }
-
-        function applyActiveFileSaveSuccess(save, res, { exitEditMode = true } = {}) {
-          return fileViewerController.applyActiveFileSaveSuccess(save, res, { exitEditMode });
-        }
-
-        async function submitActiveFileSave(save, { exitEditMode = true } = {}) {
-          return fileViewerController.submitActiveFileSave(save, { exitEditMode });
-        }
-
         async function saveActiveFileEdits({ exitEditMode = true } = {}) {
           return await fileViewerController.saveActiveFileEdits({ exitEditMode });
         }
