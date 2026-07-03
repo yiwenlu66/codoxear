@@ -20,8 +20,12 @@ def eval_launch_recovery_helpers() -> dict:
     launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
     redactor_start = source.index("function redactedLaunchErrorText(value) {")
     redactor_end = source.index("function sessionLaunchLabel(s)", redactor_start)
-    start = source.index("function recoverySessionInfo(sessionId) {")
-    end = source.index("function focusedRecoveryActionDescriptor(sessionId)", start)
+    # recoverySessionInfo moved into the CodoxearRecovery controller; the pure
+    # helpers (recoveryPromptPreview / launchPresetFromSessionInfo /
+    # recoveryDetailsText) stay in app.js and are exercised here so diagnostics
+    # and recovery share a single source of truth.
+    start = source.index("function recoveryPromptPreview(text, maxLen = 320)")
+    end = source.index("function clearSelectedSessionAfterRemoval(sessionId, {", start)
     snippet = source[redactor_start:redactor_end] + "\n" + source[start:end]
     js = textwrap.dedent(
         f"""
@@ -64,10 +68,8 @@ def eval_launch_recovery_helpers() -> dict:
           confirm: () => false,
         }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = { recoverySessionInfo, launchPresetFromSessionInfo, recoveryDetailsText };\n")}, ctx);
-        const info = ctx.__test.recoverySessionInfo("launch-dead");
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = { launchPresetFromSessionInfo, recoveryDetailsText };\n")}, ctx);
         process.stdout.write(JSON.stringify({{
-          hasInfo: info === launchRow,
           details: ctx.__test.recoveryDetailsText("launch-dead", launchRow),
           preset: ctx.__test.launchPresetFromSessionInfo(launchRow),
         }}));
@@ -747,35 +749,32 @@ class TestChatScrollbackSource(unittest.TestCase):
         launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
         row_source = APP_MESSAGE_ROWS_JS.read_text(encoding="utf-8")
         css = APP_CSS.read_text(encoding="utf-8")
+        recovery_source = (ROOT / "codoxear" / "static" / "app_recovery.js").read_text(encoding="utf-8")
+        queue_source = (ROOT / "codoxear" / "static" / "app_queue.js").read_text(encoding="utf-8")
+        # Panel rendering/actions/focus moved into the CodoxearRecovery controller;
+        # app.js keeps a thin delegating wrapper and the pure helpers.
         self.assertIn("function renderRecoveryPanelIfNeeded(sessionId)", source)
-        self.assertIn(".recovery-panel-row", source)
-        self.assertIn('const panelLabel = launchFailed ? "Launch failed" : "Recovery needed";', source)
-        self.assertIn('text: panelLabel', source)
-        self.assertIn('role: "group", "aria-label": panelLabel', source)
-        self.assertIn('text: "Review queue"', source)
-        self.assertIn('showQueueViewer({ opener: e.currentTarget });', source)
-        self.assertIn('text: "Clear unknown marker"', source)
-        self.assertIn('await clearCommitUnknownSend(sessionId, s.commit_unknown_send_text || "");', source)
-        self.assertIn('text: "Copy details"', source)
-        self.assertIn('await copyToClipboard(recoveryDetailsText(sessionId, s));', source)
-        self.assertIn('text: "New like this"', source)
-        self.assertIn('openNewSessionDialog({ likeSession: preset, statusText: "Review copied launch settings before starting.", returnFocusEl: e.currentTarget });', source)
-        self.assertIn('text: "Dismiss launch"', source)
-        self.assertIn('await dismissFailedLaunchRecord(sessionId);', source)
-        self.assertIn('function launchPresetFromSessionInfo(s)', source)
-        self.assertIn('function dismissFailedLaunchRecord(sessionId)', source)
+        self.assertIn("return recoveryController.renderRecoveryPanelIfNeeded(sessionId);", source)
+        self.assertNotIn("let pendingRecoveryFocusDescriptor = null;", source)
+        self.assertNotIn("function focusedRecoveryActionDescriptor(sessionId)", source)
+        self.assertNotIn("function focusRecoveryAction(row, descriptor)", source)
+        self.assertNotIn("function focusRecoveryFallback(descriptor)", source)
+        self.assertNotIn("function recoverySessionInfo(sessionId)", source)
+        self.assertIn("recoveryPanelFocusFallback: () => recoveryController.focusFallbackCandidate(),", source)
+        self.assertIn("if (recoveryController) recoveryController.dispose();", source)
+        # Pure helpers stay in app.js (single source of truth for diagnostics + recovery).
+        self.assertIn("function launchPresetFromSessionInfo(s)", source)
+        self.assertIn("function dismissFailedLaunchRecord(sessionId)", source)
+        self.assertIn("function recoveryDetailsText(sessionId, s)", source)
         self.assertIn('await api(`/api/sessions/${sessionId}/delete`, { method: "POST", body: {} });', source)
-        self.assertIn('function clearSelectedSessionAfterRemoval(sessionId, { incrementPollGen = false, clearPollState = false } = {})', source)
-        self.assertIn('function clearDeletedSessionClientState(sessionId)', source)
-        self.assertIn('clearDeletedSessionClientState(s.session_id);', source)
-        self.assertIn('clearDeletedSessionClientState(sessionId);', source)
-        self.assertIn('if (!s || (!sessionLaunchFailed(s) && !s.orphan_recovery && !s.queue_recovery && !s.commit_unknown_send)) return null;', source)
-        self.assertIn('if (launchFailed) {', source)
-        self.assertIn('text: "This web-owned session failed before a usable session log was bound."', source)
-        self.assertIn('function redactedLaunchErrorText(value)', source)
-        self.assertIn('return codoxearLaunch.redactedLaunchErrorText(value);', source)
+        self.assertIn("function clearSelectedSessionAfterRemoval(sessionId, { incrementPollGen = false, clearPollState = false } = {})", source)
+        self.assertIn("function clearDeletedSessionClientState(sessionId)", source)
+        self.assertIn("clearDeletedSessionClientState(s.session_id);", source)
+        self.assertIn("clearDeletedSessionClientState(sessionId);", source)
+        self.assertIn("function redactedLaunchErrorText(value)", source)
+        self.assertIn("return codoxearLaunch.redactedLaunchErrorText(value);", source)
         self.assertIn('typeof codoxearLaunch.redactedLaunchErrorText !== "function"', source)
-        self.assertIn('function redactedLaunchErrorText(value)', launch_source)
+        self.assertIn("function redactedLaunchErrorText(value)", launch_source)
         self.assertIn('const sensitiveKey = "[A-Z0-9_.-]*(?:TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL|AUTH)[A-Z0-9_.-]*";', launch_source)
         self.assertIn('const secretValue = "', launch_source)
         self.assertIn('(?:Bearer|Basic)', launch_source)
@@ -787,32 +786,46 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn('return redactedLaunchErrorText(s && s.launch_error) || "session launch failed";', source)
         self.assertIn('title: redactedLaunchErrorText(s.launch_error) || "Session launch failed"', source)
         self.assertIn('const safeLaunchError = redactedLaunchErrorText(s.launch_error);', source)
-        self.assertIn('const launchError = launchFailed ? recoveryPromptPreview(redactedLaunchErrorText(s.launch_error), 1200) : "";', source)
+        # Panel render contract lives in the module now.
+        self.assertIn(".recovery-panel-row", recovery_source)
+        self.assertIn('const panelLabel = launchFailed ? "Launch failed" : "Recovery needed";', recovery_source)
+        self.assertIn('text: panelLabel', recovery_source)
+        self.assertIn('role: "group", "aria-label": panelLabel', recovery_source)
+        self.assertIn('text: "Review queue"', recovery_source)
+        self.assertIn('showQueueViewer({ opener: e.currentTarget });', recovery_source)
+        self.assertIn('text: "Clear unknown marker"', recovery_source)
+        self.assertIn('await clearCommitUnknownSend(sessionId, s.commit_unknown_send_text || "");', recovery_source)
+        self.assertIn('text: "Copy details"', recovery_source)
+        self.assertIn('await copyToClipboard(recoveryDetailsText(sessionId, s));', recovery_source)
+        self.assertIn('text: "New like this"', recovery_source)
+        self.assertIn('openNewSessionDialog({ likeSession: preset, statusText: "Review copied launch settings before starting.", returnFocusEl: e.currentTarget });', recovery_source)
+        self.assertIn('text: "Dismiss launch"', recovery_source)
+        self.assertIn('await dismissFailedLaunchRecord(sessionId);', recovery_source)
+        self.assertIn('text: "This web-owned session failed before a usable session log was bound."', recovery_source)
+        self.assertIn('if (!s || (!sessionLaunchFailed(s) && !s.orphan_recovery && !s.queue_recovery && !s.commit_unknown_send)) return null;', recovery_source)
+        self.assertIn('const launchError = launchFailed ? recoveryPromptPreview(redactedLaunchErrorText(s.launch_error), 1200) : "";', recovery_source)
+        self.assertIn('let pendingRecoveryFocusDescriptor = null;', recovery_source)
+        self.assertIn('function focusedRecoveryActionDescriptor(sessionId)', recovery_source)
+        self.assertIn('pendingRecoveryFocusDescriptor.sessionId === sessionId', recovery_source)
+        self.assertIn('function focusRecoveryAction(row, descriptor)', recovery_source)
+        self.assertIn('function focusRecoveryFallback(descriptor)', recovery_source)
+        self.assertIn('chatInner.querySelector(".recovery-panel .icon-btn")', recovery_source)
+        self.assertIn('function focusFallbackCandidate()', recovery_source)
+        self.assertIn('if (focusDescriptor && !focusRecoveryAction(row, focusDescriptor)) focusRecoveryFallback(focusDescriptor);', recovery_source)
+        self.assertNotIn('class: "msg assistant recovery-panel", role: "status"', source)
+        self.assertNotIn('class: "msg assistant recovery-panel", role: "status"', recovery_source)
+        self.assertIn('const typingRowRuntime = codoxearTranscript.createTypingRowRuntime({', source)
+        self.assertIn('typingRowAnchor: () => typingRowRuntime.anchor(),', source)
         self.assertIn('const sessionEditActions = launchRow ? [] : [renameBtn, dupBtn];', source)
         self.assertIn('const rightActions = el("div", { class: "sessionActions right" }, sessionEditActions);', source)
         self.assertIn('const actions = el("div", { class: "sessionActionsInline" }, [...sessionEditActions, delBtn]);', source)
         self.assertIn('if (launchRow) {\n                 if (launchFailed) void selectSession(s.session_id);', source)
-        self.assertNotIn('class: "msg assistant recovery-panel", role: "status"', source)
-        self.assertIn('const typingRowRuntime = codoxearTranscript.createTypingRowRuntime({', source)
-        self.assertIn('chatInner.insertBefore(row, typingRowRuntime.anchor());', source)
-        self.assertIn('let pendingRecoveryFocusDescriptor = null;', source)
-        self.assertIn('function focusedRecoveryActionDescriptor(sessionId)', source)
-        self.assertIn('pendingRecoveryFocusDescriptor.sessionId === sessionId', source)
-        self.assertIn('sessionId,\n            text:', source)
-        self.assertIn('function focusRecoveryAction(row, descriptor)', source)
-        self.assertIn('pendingRecoveryFocusDescriptor = descriptor;', source)
-        self.assertIn('pendingRecoveryFocusDescriptor = null;', source)
-        self.assertIn('function focusRecoveryFallback(descriptor)', source)
-        self.assertIn('if (focusDescriptor && !focusRecoveryAction(row, focusDescriptor)) focusRecoveryFallback(focusDescriptor);', source)
-        self.assertIn('focusRecoveryFallback(focusDescriptor);', source)
-        self.assertIn('pendingRecoveryFocusDescriptor = null;\n            return;', source)
         self.assertIn('function syncRecoveryUiForSession(sessionId)', source)
         self.assertIn('setStatus({ running: currentRunning, queueLen });', source)
         self.assertIn('if (selected === sessionId) syncRecoveryUiForSession(sessionId);', source)
         self.assertIn('if (commitUnknown) syncRecoveryUiForSession(sessionId);', source)
         # syncRecoveryUiForSession(sid) was called from the queue mutation paths
         # (delete/move/update) which now live in the CodoxearQueue controller.
-        queue_source = (ROOT / "codoxear" / "static" / "app_queue.js").read_text(encoding="utf-8")
         self.assertIn('syncRecoveryUiForSession(sid);', queue_source)
         self.assertIn('syncRecoveryUiForSession(selected);', source)
         self.assertIn('renderRecoveryPanel: renderRecoveryPanelIfNeeded,', source)
@@ -823,9 +836,8 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn('transcriptDomRuntime.trimRenderedRows({ fromTop, maxRows });', source)
         self.assertIn('transcriptDomRuntime.trimRowsBeforeViewport({ maxRows, viewportTop: chat.scrollTop + 1 });', source)
         # The queue button submit-state predicate and the queue viewer focus
-        # fallback moved into the CodoxearQueue controller; assert them there while
-        # the recovery panel still opens the queue through the app.js wrapper.
-        queue_source = (ROOT / "codoxear" / "static" / "app_queue.js").read_text(encoding="utf-8")
+        # fallback moved into the CodoxearQueue controller; the queue controller's
+        # recovery-panel focus fallback now routes through the recovery controller.
         self.assertIn('const fallback = recoveryPanelFocusFallback() || queueBtn || null;', queue_source)
         self.assertIn('queueBtn.disabled = !!queueSubmitBusy || !selected || launchFailed || (unknownSend && !orphanQueueRecovery);', queue_source)
         self.assertIn('setToast("failed launch cannot receive queued messages");', queue_source)
@@ -844,7 +856,6 @@ class TestChatScrollbackSource(unittest.TestCase):
 
     def test_launch_recovery_helpers_are_allowlisted(self) -> None:
         result = eval_launch_recovery_helpers()
-        self.assertTrue(result["hasInfo"])
         details = result["details"]
         self.assertIn("state: launch failed", details)
         self.assertIn("launch stage: pty_fork", details)

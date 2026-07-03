@@ -36,6 +36,7 @@ FRONTEND_ASSET_FILES = (
     "app_voice_helpers.js",
     "app_queue.js",
     "app_diagnostics.js",
+    "app_recovery.js",
     "app.js",
     "app.css",
 )
