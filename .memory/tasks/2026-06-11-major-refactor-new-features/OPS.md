@@ -8168,3 +8168,13 @@
   - Focused log/path/backend slice returned `65 passed`.
   - Broader backend/log/discovery/session slice returned `160 passed, 4 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T10:04:00Z Moved run-settings extraction into backend adapters
+- Functional commit `4f65f23 Move run settings extraction into backend adapters` added adapter-owned run-settings extraction for Codex, Pi, and Claude Code.
+- Mechanism: `CodexBackend.read_run_settings_from_log(...)` owns Codex metadata/turn-context fallback semantics; `PiBackend` and `ClaudeCodeBackend` own dispatch to their backend-native run-setting readers. `session_log_metadata.read_run_settings_from_log(...)` now delegates to the adapter rather than branching on `agent_backend`.
+- Behavior evidence: `test_backend_adapters_own_run_settings_extraction` executes Codex meta + turn-context fallback directly and verifies Pi/Claude use only their native readers (not Codex metadata/turn-context dependencies). Existing session-list, diagnostics, sidebar, runtime, and pending-log tests continue to pass through the server/session facades.
+- Validation under checkpoint cadence:
+  - `python3 -m py_compile codoxear/agent_backend.py codoxear/session_log_metadata.py tests/test_cc_backend_registration.py` passed.
+  - Focused metadata/runtime slice returned `82 passed, 4 subtests passed`.
+  - Broader backend/runtime/session slice returned `182 passed, 4 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
