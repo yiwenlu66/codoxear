@@ -18,10 +18,13 @@ Do not merge, promote, or modify `/home/yiwen/codex-web` or `main` without expli
 - Prior task `.memory/tasks/2026-06-11-major-refactor-new-features/` is complete (8 Workbench items + challenged-review fixes). Prior task `.memory/tasks/2026-06-12-structural-refactor-ux-review/` is parked; its mandatory browser-review requirement folds into this task's item 1.
 - Key learned risk: pytest green missed a live `/api/sessions` 500 and two failed-launch UX defects. Server smoke + browser evidence are mandatory for usability claims.
 
-## Delegation
-- Foreground/async subagents for bounded, self-contained work: implementation (worker), audits (reviewer). Contracts must state goal, files in scope, validation commands, and stop rules.
-- Model status 2026-07-03: `occ-glm/glm-5.2` provider-down (503 model_not_found) — this also killed async runs at child startup. `deepseek/deepseek-v4-flash` validated working. Try `occ/gpt-5.5` for harder work; `occ-claude/claude-opus-4-8` for design/review. Local `pi -p` CLI (read-only tools for reviews) is the proven fallback when the runner misbehaves.
-- Main agent keeps: browser/UX evidence, ledger ranking, acceptance judgment, all git commits.
+## Delegation (user-corrected 2026-07-03: main agent must not own code-level details)
+- ALL code-level work is subagent work: file edits, fix implementation, test writing, debugging to patch, refactors. The main agent does not write product or test code itself.
+- Main agent owns: browser/UX evidence collection (decisive artifacts), mechanism-level diagnosis framing, contract authoring, worker diff review, git commits, ledger ranking, acceptance judgment, memory.
+- Execution agent: `impl` (user-scope, glm-5.2, fresh context) — created because the `worker`/`reviewer` names collide with disabled builtins after the 2026-07-03 22:25 agent-definition rewrite, and colliding names fail dispatch with "Unknown agent". Recheck `worker` availability later; prefer it if restored.
+- Contracts must state: goal, context files to read first, files in scope, hard constraints (no commit/no staging/no out-of-scope edits), validation commands, output shape, stop rules.
+- Model status 2026-07-03: glm-5.2 recovered and verified async+foreground. deepseek-v4-flash validated backup. gpt-5.5 for harder work; opus-4-8 for design/review. Local `pi -p` CLI is the fallback if the runner breaks (see .memory/local/pi-subagents-runner-repair.md).
+- Parallel-edit discipline: concurrent contracts must have disjoint file scopes; never run the full local suite for acceptance while a contract is in flight (in-flight edits collide with the run — observed with contract 3).
 
 ## Constraints
 - Do not edit, restart, merge, or promote `/home/yiwen/codex-web`; do not kill live sessions/brokers.
