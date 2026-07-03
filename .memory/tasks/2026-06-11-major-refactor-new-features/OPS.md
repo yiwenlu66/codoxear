@@ -8205,3 +8205,13 @@
   - `python3 -m py_compile codoxear/session_log_metadata.py` passed.
   - Focused metadata/path/resume/sidecar tests returned `65 passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T10:34:00Z Projected launch defaults through backend adapters
+- Functional commit `0140e34 Project launch defaults through backend adapters` added `AgentBackend.project_launch_defaults(...)`, with a Codex override for provider-choice/reasoning/supports-fast projection.
+- Mechanism: `read_new_session_defaults(...)` now loops over the backend registry, reads/falls back per backend, and asks the adapter to project final backend metadata (`agent_backend`, provider choices, reasoning efforts, supports-fast). The previous Codex-specific hard-coded postprocessing in `launch_config.py` moved into `CodexBackend.project_launch_defaults(...)`; Pi/Claude use the base adapter projection to preserve their native defaults.
+- Behavior evidence: `test_backend_adapters_project_launch_default_metadata` executes projection directly for Codex and Pi. Existing launch-default, launch-request, frontend model-option, session-route, and static-asset tests continue to pass.
+- Validation under checkpoint cadence:
+  - `python3 -m py_compile codoxear/agent_backend.py codoxear/launch_config.py tests/test_backend_launch_adapter.py tests/test_claude_backend_source.py` passed.
+  - Focused launch-default/provider projection tests returned `66 passed`.
+  - Broader backend/launch/frontend defaults validation returned `136 passed, 12 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
