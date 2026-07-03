@@ -7878,3 +7878,13 @@
   - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_markdown_tables.py` passed.
   - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_markdown_tables.py tests/test_frontend_file_viewer_module_source.py tests/test_file_picker_search_source.py` returned `95 passed, 25 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T01:52:00Z File inspect transport viewer-module ownership
+- Functional commit `e2221f7 Move file inspect transport into viewer module` moved `/api/files/inspect` body construction, selected/current session selection, git path-token projection, 404-to-`{exists:false}` mapping, and no-session failure from inline `codoxear/static/app.js` into `createFileInspectRuntime(...)` in `codoxear/static/app_file_viewer.js`.
+- Mechanism: `createFileViewerController(...)` already owned file-open mode decisions, but app.js still defined the transport helper that decided which session id and git token entered inspect requests. The new inspect runtime owns that transport contract while app.js injects current/selected session ids, path-token normalization, and API transport.
+- Tests updated: `tests/test_frontend_file_viewer_module_source.py` now executes `createFileInspectRuntime(...).inspectSessionFilePath(...)` for selected-session fallback, current-session precedence, git path-token body fields, 404 handling, and fail-loud no-session behavior. Source sentinels now require controller injection from `fileInspectRuntime` and reject app-owned `inspectSessionFilePath(...)`.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app_file_viewer.js` and `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` returned `60 passed, 25 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
