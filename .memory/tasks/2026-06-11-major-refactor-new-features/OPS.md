@@ -7993,3 +7993,14 @@
 - Observation: `rg` over app.js found no remaining file-viewer/editor/picker state declarations (`let activeFile...`, `let fileEditor...`, `let filePicker...`, `let activePdf...`, Monaco/PDF runtime state) outside DOM nodes and runtime/controller construction. The remaining app.js functions in the file-viewer region are live dependency-injection callbacks, DOM event bindings, selected-session/app-shell bridges, and render/runtime adapters.
 - Interpretation: Workbench item 2's listed state-machine responsibilities are now owned by `app_file_viewer.js`, `app_file_editor.js`, and `app_file_picker.js`. App.js still constructs the file viewer DOM and wires dependencies, which is composition rather than state-machine ownership under the item-2 mechanism.
 - Commitment: proceed to Workbench item 3 (transcript/chat architecture) while preserving item-2 evidence; no acceptance/yield claim is made because Workbench items 3-8 remain.
+
+## 2026-07-03T04:04:00Z Moved older transcript load state into runtime
+- Functional commit `9e0f45b Move older transcript load state into runtime` added `CodoxearTranscript.createOlderLoadRuntime(...)` and moved older-history state/currentness/cancellation/UI projection out of app.js: has-more/loading status, request id, active abort controller, cancel-on-scroll policy, auto-load cooldown, inline retry error display, and cleanup invalidation now live in `app_transcript.js`.
+- Mechanism: older-history loading previously used app.js globals (`hasOlder`, `loadingOlder`, `olderLoadRequestId`, `olderLoadController`, `olderLoadCancelOnScroll`, `olderAutoTriggerAt`) that were read by search, scroll, and history loading. The new runtime exposes `snapshot`, `setState`, `beginLoad`, `isCurrent`, `finishLoad`, `invalidate`, `markAutoTrigger`, and `shouldCancelOnScroll`, so app.js remains a transport/render orchestrator while currentness and UI state transitions have one owner.
+- Behavior evidence: added `test_older_load_runtime_owns_state_currentness_and_ui_projection` to execute the new runtime directly; existing `loadOlderMessages(...)` behavior probes now use a runtime fixture preserving request-id/currentness semantics.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app.js` passed.
+  - `node --check codoxear/static/app_transcript.js` passed.
+  - `python3 -m py_compile tests/test_chat_transcript_runtime.py tests/test_chat_navigation_source.py tests/test_chat_scrollback_source.py tests/test_auth_cleanup_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py tests/test_chat_navigation_source.py tests/test_auth_cleanup_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py` returned `61 passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
