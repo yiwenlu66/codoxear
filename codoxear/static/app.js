@@ -890,16 +890,9 @@
         let swRegistration = null;
                  let clickLoadT0 = 0;
                  let clickMetricPending = false;
-              let unattendedMenuOpen = false;
-              let unattendedMenuToken = 0;
-              let unattendedMenuSessionId = null;
-              let unattendedReturnFocusEl = null;
-              let unattendedCfg = { enabled: false, request: "", cooldown_minutes: 5, remaining_injections: 10 };
-              let unattendedNumberDraft = { cooldown_minutes: "5", remaining_injections: "10" };
-              let unattendedNumberDirty = { cooldown_minutes: false, remaining_injections: false };
-              const unattendedSaveTimers = new Map();
-              const unattendedSaveInFlight = new Map();
-              const unattendedSavePending = new Map();
+              // Unattended menu state, cfg cache, number-input drafts, and the
+              // per-session save timers/in-flight/pending maps live in the
+              // CodoxearUnattended controller (codoxear/static/app_unattended.js).
               let editSessionId = null;
         let appDisposed = false;
         const appEventCleanups = [];
@@ -975,10 +968,7 @@
           if (newSessionController) newSessionController.disposeResumeLoadTimer();
           if (voiceSaveTimer) clearTimeout(voiceSaveTimer);
           voiceSaveTimer = null;
-          unattendedSaveTimers.forEach((timer) => clearTimeout(timer));
-          unattendedSaveTimers.clear();
-          unattendedSavePending.clear();
-          unattendedSaveInFlight.clear();
+          if (unattendedController) unattendedController.dispose();
           if (liveAudioRetryTimer) clearTimeout(liveAudioRetryTimer);
           liveAudioRetryTimer = null;
           filePickerSearchState.dispose();
@@ -2026,7 +2016,7 @@
         }
 
         function closeTransientOverlays({ closeSearch = false } = {}) {
-          if (unattendedMenuOpen) hideUnattendedMenu();
+          if (unattendedController.isOpen()) hideUnattendedMenu();
           if (closeSearch && loadedChatSearchSnapshot().open) closeChatSearch();
           if (document.body.classList.contains("sidebar-open")) setSidebarOpen(false);
           filePickerMenuState.close();
@@ -3803,7 +3793,7 @@
           setAttachCount(0);
           resetChatRenderState();
           updateQueueBadge();
-          if (unattendedMenuOpen) hideUnattendedMenu();
+          if (unattendedController.isOpen()) hideUnattendedMenu();
           updateUnattendedBtnState();
           syncSendButtonState();
           syncQueueSubmitState();
@@ -3955,7 +3945,7 @@
           pollKickDelayMs = null;
 
           selected = sessionId;
-          if (unattendedMenuOpen && unattendedMenuSessionId !== sessionId) hideUnattendedMenu();
+          if (unattendedController.isOpen() && unattendedController.menuSessionId() !== sessionId) hideUnattendedMenu();
           storageSetItem("codexweb.selected", sessionId);
           setSessionHash(sessionId);
           transcriptSlotRuntime.setActivePending();
@@ -4278,90 +4268,52 @@
           await selectSession(sid);
         }
 
-        function parseUnattendedDraftInt(name) {
-          const raw = String(unattendedNumberDraft[name] ?? "").trim();
-          if (!raw) return null;
-          const minValue = name === "cooldown_minutes" ? 1 : 0;
-          const value = Number.parseInt(raw, 10);
-          if (!Number.isInteger(value) || value < minValue) return null;
-          return value;
-        }
-
-        function syncUnattendedNumberDraftsFromCfg() {
-          if (!unattendedNumberDirty.cooldown_minutes) unattendedNumberDraft.cooldown_minutes = String(unattendedCfg.cooldown_minutes);
-          if (!unattendedNumberDirty.remaining_injections) unattendedNumberDraft.remaining_injections = String(unattendedCfg.remaining_injections);
-        }
-
-        function syncUnattendedNumberInputs() {
-          const cooldownEl = $("#unattendedCooldownMinutes");
-          const remainingEl = $("#unattendedRemainingInjections");
-          if (cooldownEl) {
-            cooldownEl.value = unattendedNumberDirty.cooldown_minutes
-              ? unattendedNumberDraft.cooldown_minutes
-              : String(unattendedCfg.cooldown_minutes);
-          }
-          if (remainingEl) {
-            remainingEl.value = unattendedNumberDirty.remaining_injections
-              ? unattendedNumberDraft.remaining_injections
-              : String(unattendedCfg.remaining_injections);
-          }
-        }
-
-        function setUnattendedControlsDisabled(disabled) {
-          const value = Boolean(disabled);
-          ["unattendedEnabled", "unattendedCooldownMinutes", "unattendedRemainingInjections", "unattendedRequest"].forEach((id) => {
-            const node = $(`#${id}`);
-            if (node) node.disabled = value;
+        // Unattended menu state, async load/save orchestration, input draft
+        // handling, menu focus/visibility, and control event handling live in
+        // the CodoxearUnattended controller (codoxear/static/app_unattended.js).
+        // app.js owns DOM construction for the unattended button/menu/controls,
+        // the updateUnattendedBtnState shell projection (which delegates the
+        // unattended-specific projection to the controller), and the thin
+        // delegating wrappers below. The controller is instantiated after the
+        // DOM nodes exist; it wires the button/menu/input handlers and the
+        // document Escape/click + window resize listeners itself.
+        const unattendedController = (function instantiateUnattendedController() {
+          const codoxearUnattended = window.CodoxearUnattended;
+          if (!codoxearUnattended || typeof codoxearUnattended.createUnattendedController !== "function")
+            throw new Error("Codoxear unattended controller failed to load");
+          return codoxearUnattended.createUnattendedController({
+            unattendedBtn,
+            unattendedMenu,
+            enabledEl: $("#unattendedEnabled"),
+            cooldownEl: $("#unattendedCooldownMinutes"),
+            remainingEl: $("#unattendedRemainingInjections"),
+            requestEl: $("#unattendedRequest"),
+            getSelected: () => selected,
+            getSessionInfo: (sid) => sessionIndex.get(sid),
+            isAppDisposed: () => appDisposed,
+            api,
+            refreshSessions,
+            handleAppAuthLoss,
+            setToast,
+            addAppEvent,
+            documentTarget: document,
+            windowTarget: window,
+            requestFrame: requestAnimationFrame,
+            setTimeout,
+            clearTimeout,
+            requestShellProjection: updateUnattendedBtnState,
           });
-        }
+        })();
 
-        function restoreUnattendedNumberDraft(name) {
-          unattendedNumberDirty[name] = false;
-          unattendedNumberDraft[name] = String(unattendedCfg[name]);
-          syncUnattendedNumberInputs();
-        }
-
-        function finalizeUnattendedNumberDraft(name) {
-          const value = parseUnattendedDraftInt(name);
-          if (value === null || value !== unattendedCfg[name]) return;
-          unattendedNumberDirty[name] = false;
-          unattendedNumberDraft[name] = String(unattendedCfg[name]);
-        }
-
+        // App-shell button projection. The unattended-specific projection
+        // (button disabled/title/active, cfg cache sync from session fields,
+        // number-input draft sync, menu enabled-checkbox sync, and the
+        // close-menu-when-selected-changes guard) is delegated to the
+        // controller. Everything else (title edit, attach/file/send/queue/diag
+        // buttons, context bar, chat nav, chat-search close) stays here.
         function updateUnattendedBtnState() {
-          const s = selected ? sessionIndex.get(selected) : null;
           syncTitleEditState();
-          const on = Boolean(s && s.unattended_enabled);
-          const unattendedBlocked = Boolean(selected && sessionLaunchFailed(s));
-          const unattendedLabel = !selected ? "Select a session for unattended mode" : unattendedBlocked ? "Failed launch has no unattended mode" : "Unattended mode";
-          unattendedBtn.disabled = !selected || unattendedBlocked;
-          unattendedBtn.title = unattendedLabel;
-          unattendedBtn.setAttribute("aria-label", unattendedLabel);
-          unattendedBtn.classList.toggle("active", Boolean(selected && on));
-          if (
-            selected &&
-            s &&
-            !unattendedNumberDirty.cooldown_minutes &&
-            Number.isInteger(s.unattended_cooldown_minutes) &&
-            s.unattended_cooldown_minutes >= 1
-          ) {
-            unattendedCfg.cooldown_minutes = s.unattended_cooldown_minutes;
-          }
-          if (
-            selected &&
-            s &&
-            !unattendedNumberDirty.remaining_injections &&
-            Number.isInteger(s.unattended_remaining_injections) &&
-            s.unattended_remaining_injections >= 0
-          ) {
-            unattendedCfg.remaining_injections = s.unattended_remaining_injections;
-          }
-          syncUnattendedNumberDraftsFromCfg();
-          if (unattendedMenuOpen) {
-            const enabledEl = $("#unattendedEnabled");
-            syncUnattendedNumberInputs();
-            if (enabledEl) enabledEl.checked = Boolean(selected && on);
-          }
+          unattendedController.syncButtonState();
           syncAttachButtonState();
           const fileViewerBlocked = Boolean(selected && selectedSessionLaunchFailed());
           const fileViewerLabel = !selected ? "Select a session to view files" : fileViewerBlocked ? "Failed launch has no file browser" : "View file";
@@ -4373,291 +4325,24 @@
           sessionContextBar.style.display = selected ? "flex" : "none";
           chatNavRail.style.display = selected ? "flex" : "none";
           chatEmptyState.style.display = selected ? "none" : "flex";
-          if (unattendedMenuOpen && (!selected || unattendedMenuSessionId !== selected)) hideUnattendedMenu();
           if (!selected && loadedChatSearchSnapshot().open) closeChatSearch();
           updateChatNavButtons();
           syncQueueSubmitState();
           syncSendButtonState();
           diagBtn.disabled = !selected;
         }
-           async function loadUnattendedCfgForSelected({ sid = selected, openToken = null } = {}) {
-             if (!sid) return;
-             sid = String(sid);
-              const d = await api(`/api/sessions/${sid}/unattended`);
-              if (selected !== sid) return;
-              if (openToken !== null && (unattendedMenuToken !== openToken || unattendedMenuSessionId !== sid || !unattendedMenuOpen)) return;
-              if (!d || typeof d !== "object") throw new Error("invalid unattended response");
-              if (typeof d.enabled !== "boolean") throw new Error("invalid unattended.enabled");
-              if (typeof d.request !== "string") throw new Error("invalid unattended.request");
-              if (!Number.isInteger(d.cooldown_minutes) || d.cooldown_minutes < 1) throw new Error("invalid unattended.cooldown_minutes");
-              if (!Number.isInteger(d.remaining_injections) || d.remaining_injections < 0) throw new Error("invalid unattended.remaining_injections");
-              unattendedCfg = {
-                enabled: d.enabled,
-                request: d.request,
-                cooldown_minutes: d.cooldown_minutes,
-                remaining_injections: d.remaining_injections,
-              };
-             unattendedNumberDirty.cooldown_minutes = false;
-             unattendedNumberDirty.remaining_injections = false;
-             syncUnattendedNumberDraftsFromCfg();
-             const enabledEl = $("#unattendedEnabled");
-             const requestEl = $("#unattendedRequest");
-             if (enabledEl) enabledEl.checked = unattendedCfg.enabled;
-             syncUnattendedNumberInputs();
-             if (requestEl) requestEl.value = unattendedCfg.request;
-           }
-			        function validateUnattendedPayload(data) {
-          if (!data || typeof data !== "object") throw new Error("invalid unattended response");
-          if (typeof data.enabled !== "boolean") throw new Error("invalid unattended.enabled");
-          if (typeof data.request !== "string") throw new Error("invalid unattended.request");
-          if (!Number.isInteger(data.cooldown_minutes) || data.cooldown_minutes < 1) throw new Error("invalid unattended.cooldown_minutes");
-          if (!Number.isInteger(data.remaining_injections) || data.remaining_injections < 0) throw new Error("invalid unattended.remaining_injections");
+
+        function hideUnattendedMenu(opts) {
+          return unattendedController.hide(opts);
         }
 
-        function unattendedSaveSnapshot(patch = {}) {
-          const out = {};
-          const has = (name) => Object.prototype.hasOwnProperty.call(patch, name);
-          if (has("request")) out.request = String(patch.request || "");
-          if (has("cooldown_minutes")) out.cooldown_minutes = patch.cooldown_minutes;
-          if (has("remaining_injections")) {
-            const remaining = Number(patch.remaining_injections);
-            out.remaining_injections = remaining;
-            if (Number.isFinite(remaining) && remaining <= 0) out.enabled = false;
-          }
-          if (has("enabled")) {
-            const remaining = has("remaining_injections") ? Number(out.remaining_injections) : Number(unattendedCfg.remaining_injections);
-            out.enabled = Boolean(patch.enabled) && Number.isFinite(remaining) && remaining > 0;
-          }
-          return out;
+        function showUnattendedMenu(opts) {
+          return unattendedController.show(opts);
         }
 
-        function applySavedUnattendedCfg(saved, sid) {
-          if (selected !== sid) return;
-          if (unattendedMenuOpen && unattendedMenuSessionId !== sid) return;
-          unattendedCfg = {
-            enabled: saved.enabled,
-            request: saved.request,
-            cooldown_minutes: saved.cooldown_minutes,
-            remaining_injections: saved.remaining_injections,
-          };
-          const s = sessionIndex.get(sid);
-          if (s) {
-            s.unattended_enabled = Boolean(saved.enabled);
-            s.unattended_cooldown_minutes = saved.cooldown_minutes;
-            s.unattended_remaining_injections = saved.remaining_injections;
-          }
-          finalizeUnattendedNumberDraft("cooldown_minutes");
-          finalizeUnattendedNumberDraft("remaining_injections");
-          syncUnattendedNumberDraftsFromCfg();
-          syncUnattendedNumberInputs();
-          const enabledEl = $("#unattendedEnabled");
-          if (enabledEl) enabledEl.checked = Boolean(saved.enabled);
-          const requestEl = $("#unattendedRequest");
-          if (requestEl) requestEl.value = String(saved.request || "");
+        function toggleUnattendedMenu(opts) {
+          return unattendedController.toggle(opts);
         }
-
-        async function flushUnattendedSave(sid) {
-          if (!sid || appDisposed || unattendedSaveInFlight.get(sid)) return;
-          const snapshot = unattendedSavePending.get(sid);
-          if (!snapshot) return;
-          unattendedSavePending.delete(sid);
-          unattendedSaveInFlight.set(sid, true);
-          try {
-            const saved = await api(`/api/sessions/${sid}/unattended`, {
-              method: "POST",
-              body: snapshot,
-            });
-            validateUnattendedPayload(saved);
-            if (appDisposed) return;
-            if (!unattendedSavePending.has(sid)) applySavedUnattendedCfg(saved, sid);
-            await refreshSessions();
-          } catch (e) {
-            if (e && e.status === 401) {
-              handleAppAuthLoss();
-              return;
-            }
-            console.error("save unattended mode failed", e);
-            if (!appDisposed && selected === sid) setToast(`unattended save error: ${e && e.message ? e.message : "unknown error"}`);
-          } finally {
-            unattendedSaveInFlight.delete(sid);
-            if (!appDisposed && unattendedSavePending.has(sid)) void flushUnattendedSave(sid);
-            else if (!appDisposed && selected === sid) updateUnattendedBtnState();
-          }
-        }
-
-        function scheduleUnattendedSave(patch = {}) {
-          if (!selected) return;
-          const sid = selected;
-          const snapshot = unattendedSaveSnapshot(patch);
-          if (!Object.keys(snapshot).length) return;
-          unattendedSavePending.set(sid, { ...(unattendedSavePending.get(sid) || {}), ...snapshot });
-          const existing = unattendedSaveTimers.get(sid);
-          if (existing) clearTimeout(existing);
-          const timer = setTimeout(() => {
-            unattendedSaveTimers.delete(sid);
-            void flushUnattendedSave(sid);
-          }, 450);
-          unattendedSaveTimers.set(sid, timer);
-        }
-        function setUnattendedMenuExpanded(open) {
-          unattendedMenuOpen = Boolean(open);
-          unattendedMenu.style.display = unattendedMenuOpen ? "block" : "none";
-          unattendedBtn.setAttribute("aria-expanded", unattendedMenuOpen ? "true" : "false");
-        }
-
-        function restoreUnattendedFocus() {
-          const target = unattendedReturnFocusEl;
-          unattendedReturnFocusEl = null;
-          restoreModalFocus(target, () => unattendedMenuOpen);
-        }
-
-        function focusUnattendedInitialControl() {
-          requestAnimationFrame(() => {
-            if (!unattendedMenuOpen) return;
-            const target = $("#unattendedEnabled") || unattendedMenu;
-            try {
-              target.focus({ preventScroll: true });
-            } catch {}
-          });
-        }
-
-        function hideUnattendedMenu({ restoreFocus = false } = {}) {
-          const wasOpen = unattendedMenuOpen;
-          unattendedMenuToken += 1;
-          unattendedMenuSessionId = null;
-          setUnattendedMenuExpanded(false);
-          if (restoreFocus && wasOpen) restoreUnattendedFocus();
-          else unattendedReturnFocusEl = null;
-        }
-
-        async function showUnattendedMenu({ opener = null } = {}) {
-          if (!selected) return;
-          if (selectedSessionLaunchFailed()) {
-            setToast("failed launch has no unattended mode");
-            return;
-          }
-          const sid = selected;
-          const openToken = unattendedMenuToken + 1;
-          unattendedMenuToken = openToken;
-          unattendedMenuSessionId = sid;
-          unattendedReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;
-          setUnattendedControlsDisabled(true);
-          setUnattendedMenuExpanded(true);
-          const rect = unattendedBtn.getBoundingClientRect();
-          const top = Math.min(window.innerHeight - 12, rect.bottom + 8);
-          unattendedMenu.style.top = `${top}px`;
-          unattendedMenu.style.left = "12px";
-          unattendedMenu.style.right = "auto";
-          const w = unattendedMenu.offsetWidth || 320;
-          const left = Math.max(12, Math.min(window.innerWidth - 12 - w, rect.right - w));
-          unattendedMenu.style.left = `${left}px`;
-          try {
-            await loadUnattendedCfgForSelected({ sid, openToken });
-            if (unattendedMenuOpen && unattendedMenuToken === openToken && unattendedMenuSessionId === sid && selected === sid) {
-              setUnattendedControlsDisabled(false);
-              focusUnattendedInitialControl();
-            }
-          } catch (e) {
-            if (unattendedMenuToken !== openToken || unattendedMenuSessionId !== sid || selected !== sid) return;
-            console.error("load unattended mode failed", e);
-            setToast(`unattended load error: ${e && e.message ? e.message : "unknown error"}`);
-            setUnattendedControlsDisabled(false);
-            hideUnattendedMenu({ restoreFocus: true });
-          }
-        }
-
-        function toggleUnattendedMenu({ opener = null } = {}) {
-          if (unattendedMenuOpen) hideUnattendedMenu({ restoreFocus: true });
-          else showUnattendedMenu({ opener });
-        }
-
-        unattendedBtn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          toggleUnattendedMenu({ opener: e.currentTarget });
-        };
-        unattendedMenu.onclick = (e) => e.stopPropagation();
-        const onUnattendedKeydown = (e) => {
-          if (e.key !== "Escape" || !unattendedMenuOpen) return;
-          e.preventDefault();
-          e.stopPropagation();
-          hideUnattendedMenu({ restoreFocus: true });
-        };
-        const onDocClick = () => {
-          if (unattendedMenuOpen) hideUnattendedMenu();
-        };
-        const onResize = () => {
-          if (unattendedMenuOpen) hideUnattendedMenu();
-        };
-        addAppEvent(document, "keydown", onUnattendedKeydown, true);
-        addAppEvent(document, "click", onDocClick);
-        addAppEvent(window, "resize", onResize);
-        const unattendedEnabledEl = $("#unattendedEnabled");
-			        const unattendedCooldownEl = $("#unattendedCooldownMinutes");
-			        const unattendedRemainingEl = $("#unattendedRemainingInjections");
-			        const unattendedRequestEl = $("#unattendedRequest");
-			        if (unattendedEnabledEl)
-			          unattendedEnabledEl.onchange = (e) => {
-			            if (!selected) return;
-                  const requested = Boolean(e.target.checked);
-                  unattendedCfg.enabled = requested && Number(unattendedCfg.remaining_injections) > 0;
-                  if (requested && !unattendedCfg.enabled) setToast("increase injections before enabling unattended mode");
-                  e.target.checked = unattendedCfg.enabled;
-			            const s = sessionIndex.get(selected);
-			            if (s) {
-                  s.unattended_enabled = unattendedCfg.enabled;
-                }
-			            updateUnattendedBtnState();
-			            scheduleUnattendedSave({ enabled: unattendedCfg.enabled });
-			          };
-        if (unattendedCooldownEl)
-          unattendedCooldownEl.oninput = (e) => {
-            if (!selected) return;
-            unattendedNumberDraft.cooldown_minutes = String(e.target.value ?? "");
-            unattendedNumberDirty.cooldown_minutes = true;
-            const value = parseUnattendedDraftInt("cooldown_minutes");
-            if (value === null) return;
-            unattendedCfg.cooldown_minutes = value;
-            scheduleUnattendedSave({ cooldown_minutes: value });
-          };
-        if (unattendedCooldownEl)
-          unattendedCooldownEl.onblur = () => {
-            if (parseUnattendedDraftInt("cooldown_minutes") !== null) return;
-            restoreUnattendedNumberDraft("cooldown_minutes");
-          };
-        if (unattendedRemainingEl)
-          unattendedRemainingEl.oninput = (e) => {
-            if (!selected) return;
-            unattendedNumberDraft.remaining_injections = String(e.target.value ?? "");
-            unattendedNumberDirty.remaining_injections = true;
-            const value = parseUnattendedDraftInt("remaining_injections");
-            if (value === null) return;
-            unattendedCfg.remaining_injections = value;
-            const s = sessionIndex.get(selected);
-            if (s) {
-              s.unattended_remaining_injections = value;
-              if (value <= 0) {
-                unattendedCfg.enabled = false;
-                const enabledEl = $("#unattendedEnabled");
-                if (enabledEl) enabledEl.checked = false;
-                s.unattended_enabled = false;
-              }
-            }
-            updateUnattendedBtnState();
-            scheduleUnattendedSave({ remaining_injections: value, ...(value <= 0 ? { enabled: false } : {}) });
-          };
-        if (unattendedRemainingEl)
-          unattendedRemainingEl.onblur = () => {
-            if (parseUnattendedDraftInt("remaining_injections") !== null) return;
-            restoreUnattendedNumberDraft("remaining_injections");
-          };
-        if (unattendedRequestEl)
-          unattendedRequestEl.oninput = (e) => {
-            if (!selected) return;
-            unattendedCfg.request = String(e.target.value ?? "");
-            scheduleUnattendedSave({ request: unattendedCfg.request });
-          };
-
         function voiceAnnouncementsEnabled() {
           return !!localAnnouncementEnabled;
         }

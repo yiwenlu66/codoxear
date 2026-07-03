@@ -70,7 +70,7 @@ class TestOverlayAccessibilitySource(unittest.TestCase):
 
     def test_modal_openers_close_transient_overlays(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("if (unattendedMenuOpen) hideUnattendedMenu();", source)
+        self.assertIn("if (unattendedController.isOpen()) hideUnattendedMenu();", source)
         self.assertIn('if (document.body.classList.contains("sidebar-open")) setSidebarOpen(false);', source)
         self.assertIn('filePickerMenuState.close();', source)
         self.assertNotIn('fileMenuOpen = false;', source)

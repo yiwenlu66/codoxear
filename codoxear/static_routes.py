@@ -37,6 +37,7 @@ FRONTEND_ASSET_FILES = (
     "app_queue.js",
     "app_diagnostics.js",
     "app_recovery.js",
+    "app_unattended.js",
     "app.js",
     "app.css",
 )

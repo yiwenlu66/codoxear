@@ -196,7 +196,7 @@ class TestVoicePushSource(unittest.TestCase):
     def test_hashchange_refreshes_and_defers_missing_notification_target(self) -> None:
         app_source = APP_JS.read_text(encoding="utf-8")
         start = app_source.index("function rememberPendingHashSession")
-        end = app_source.index("function parseUnattendedDraftInt", start)
+        end = app_source.index("// Unattended menu state, async load/save orchestration", start)
         block = app_source[start:end]
         self.assertIn('let pendingHashSessionId = "";', app_source)
         self.assertIn("let pendingHashSessionSelectInFlight = false;", app_source)

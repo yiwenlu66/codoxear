@@ -54,10 +54,16 @@ class TestAuthCleanupSource(unittest.TestCase):
         self.assertNotIn("olderLoadController", cleanup)
         self.assertIn("fileViewerController.abortPendingFileOpenTransport();", cleanup)
         self.assertIn("filePickerSearchState.dispose();", cleanup)
-        self.assertIn("unattendedSaveTimers.forEach((timer) => clearTimeout(timer));", cleanup)
-        self.assertIn("unattendedSaveTimers.clear();", cleanup)
-        self.assertIn("unattendedSavePending.clear();", cleanup)
-        self.assertIn("unattendedSaveInFlight.clear();", cleanup)
+        # Unattended cleanup is now owned by the CodoxearUnattended controller;
+        # app.js only delegates through unattendedController.dispose().
+        self.assertIn("if (unattendedController) unattendedController.dispose();", cleanup)
+        for removed in [
+            "unattendedSaveTimers.forEach((timer) => clearTimeout(timer));",
+            "unattendedSaveTimers.clear();",
+            "unattendedSavePending.clear();",
+            "unattendedSaveInFlight.clear();",
+        ]:
+            self.assertNotIn(removed, cleanup)
         # Queue cleanup is now owned by the CodoxearQueue controller; app.js only
         # delegates through queueController.dispose().
         self.assertIn("if (queueController) queueController.dispose();", cleanup)
