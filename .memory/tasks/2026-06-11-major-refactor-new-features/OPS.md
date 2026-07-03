@@ -8015,3 +8015,14 @@
   - `python3 -m py_compile tests/test_chat_transcript_runtime.py tests/test_chat_navigation_source.py tests/test_auth_cleanup_source.py` passed.
   - Focused validation `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_navigation_source.py tests/test_auth_cleanup_source.py tests/test_chat_scrollback_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py` returned `62 passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T04:31:00Z Moved loaded-chat search state into runtime
+- Functional commit `2457038 Move loaded chat search state into runtime` added `CodoxearTranscript.createLoadedChatSearchRuntime(...)` and moved loaded-chat search open/query/matches/current-index/loading-older state out of app.js.
+- Mechanism: app.js previously owned `chatSearchOpen`, `chatSearchQuery`, `chatSearchMatches`, `chatSearchIndex`, and `chatSearchLoadingOlder`, so search status, time-chip visibility, match navigation, older-match loading, and target-row forcing all mutated globals directly. The new runtime exposes normalized query, match list/current index, forced target insertion, open/close, and loading-older state through snapshots and methods; app.js now projects DOM and performs transport/search-row collection against that runtime.
+- Behavior evidence: added `test_loaded_chat_search_runtime_owns_open_query_matches_and_index`, covering query normalization, match preservation, index focusing/wrapping, forced target insertion/sorting, loading flag, reset, and frozen public runtime.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app.js` passed.
+  - `node --check codoxear/static/app_transcript.js` passed.
+  - `python3 -m py_compile tests/test_chat_transcript_runtime.py tests/test_chat_navigation_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_navigation_source.py tests/test_auth_cleanup_source.py tests/test_chat_scrollback_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py` returned `63 passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
