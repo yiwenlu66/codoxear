@@ -54,3 +54,8 @@ Non-blocking backlog from review: dispose the resume debounce timer on dialog cl
 
 ## Post-queue review judgment
 Clean-room critic 4aad1a07 accepted the load-error/composer/queue tranche with no blockers. The strongest remaining mechanism is load-error visibility after partial root mount: `__codoxearLoadError` records the error, but the visible fallback only renders when `#root` is empty. A failure after app shell mount but before bootstrap completion could leave a broken skeleton. Next hardening should add an explicit successful-bootstrap marker and render the fallback when an error is recorded before that marker, even if root has partial content.
+
+
+## Sentinel hardening state
+- Partial-root load failures now surface visibly. The sentinel has an explicit successful-bootstrap marker; login/app render mark only after a valid synchronous UI exists. If a load error is recorded before that marker, the fallback clears any partial skeleton and shows the error panel. Browser evidence on 19093 proves normal load, partial-root failure, and post-bootstrap error separation.
+- The source-test failure after this change was a test-locator artifact: broad `index("app.js")` matched a comment rather than the script tag. Tests now pin exact asset-version script markers.
