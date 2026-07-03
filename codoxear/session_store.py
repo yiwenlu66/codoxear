@@ -90,6 +90,28 @@ class SessionStore:
         )
         self.queue_store = QueueStore(paths.queues)
 
+    def reset_in_memory_state(self) -> None:
+        self.unattended = {}
+        self.aliases = {}
+        self.sidebar_meta = {}
+        self.hidden_sessions = set()
+        self.files = {}
+        self.queues = {}
+        self.pending_attachment_ids = set()
+        self.commit_unknown_sends = {}
+        self.recent_cwds = {}
+
+    def load_persistent_state(self) -> None:
+        self.unattended = self.load_unattended()
+        self.aliases = self.load_aliases()
+        self.sidebar_meta = self.load_sidebar_meta()
+        self.hidden_sessions = self.load_hidden_sessions()
+        self.files = self.load_files()
+        self.queues = self.load_queues()
+        self.pending_attachment_ids = self.load_pending_attachments()
+        self.commit_unknown_sends = self.load_commit_unknown_sends()
+        self.recent_cwds = self.load_recent_cwds()
+
     def load_unattended(self) -> dict[str, dict[str, Any]]:
         return self.unattended_store.load()
 

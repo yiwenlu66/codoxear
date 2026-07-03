@@ -1,9 +1,13 @@
+import json
 import threading
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from codoxear import server
 from codoxear.server import SessionManager
+from codoxear.session_manager_store import create_session_store
+from codoxear.session_manager_store import session_store_paths
 
 
 def test_session_manager_persistent_maps_are_store_owned() -> None:
@@ -187,6 +191,62 @@ def test_session_store_recent_cwd_records_newer_timestamps_only() -> None:
     assert store.note_recent_cwd("/repo", 11.0) is True
     assert store.recent_cwds == {"/repo": 11.0}
     assert store.note_recent_cwd("", 12.0) is False
+
+
+def test_session_store_load_persistent_state_owns_bootstrap_order() -> None:
+    with TemporaryDirectory() as td:
+        root = Path(td)
+        paths = session_store_paths(
+            aliases=root / "session_aliases.json",
+            sidebar_meta=root / "session_sidebar.json",
+            hidden_sessions=root / "hidden_sessions.json",
+            files=root / "session_files.json",
+            queues=root / "session_queues.json",
+            pending_attachments=root / "pending_attachments.json",
+            commit_unknown_sends=root / "commit_unknown_sends.json",
+            recent_cwds=root / "recent_cwds.json",
+            unattended=root / "unattended.json",
+        )
+        paths.aliases.write_text(json.dumps({"s1": " alpha "}), encoding="utf-8")
+        paths.sidebar_meta.write_text(json.dumps({"s1": {"priority_offset": 0.5, "dependency_session_id": "dep"}}), encoding="utf-8")
+        paths.hidden_sessions.write_text(json.dumps(["s1", " ", 5]), encoding="utf-8")
+        paths.files.write_text(json.dumps({"s1": ["a.py", "a.py", "b.py"], "cwd:/repo": ["leak.py"]}), encoding="utf-8")
+        paths.queues.write_text(json.dumps({"s1": [{"id": "q1", "text": "queued", "created_ts": 1.0}]}), encoding="utf-8")
+        paths.pending_attachments.write_text(json.dumps(["s1", "", 4]), encoding="utf-8")
+        paths.commit_unknown_sends.write_text(json.dumps({"s1": {"text": "maybe", "created_ts": 1.0}}), encoding="utf-8")
+        paths.recent_cwds.write_text(json.dumps({"/repo": 2.0}), encoding="utf-8")
+        paths.unattended.write_text(json.dumps({"s1": {"enabled": True, "request": "continue"}}), encoding="utf-8")
+        store = create_session_store(
+            paths=paths,
+            file_history_max=3,
+            recent_cwd_max=5,
+            unattended_default_idle_minutes=15,
+            unattended_default_max_injections=7,
+            clean_alias=server._clean_alias,
+            clean_priority_offset=server._clean_priority_offset,
+            clean_snooze_until=server._clean_snooze_until,
+            clean_dependency_session_id=server._clean_dependency_session_id,
+            clean_recent_cwd=server._clean_recent_cwd,
+            clean_commit_unknown_send_record=lambda raw: dict(raw) if isinstance(raw, dict) and isinstance(raw.get("text"), str) else None,
+        )
+        store.aliases = {"junk": "value"}
+        store.pending_attachment_ids = {"junk"}
+
+        store.reset_in_memory_state()
+        assert store.aliases == {}
+        assert store.pending_attachment_ids == set()
+
+        store.load_persistent_state()
+
+        assert store.aliases == {"s1": "alpha"}
+        assert store.sidebar_meta == {"s1": {"priority_offset": 0.5, "dependency_session_id": "dep"}}
+        assert store.hidden_sessions == {"s1"}
+        assert store.files == {"sid:s1": ["a.py", "b.py"]}
+        assert store.queues == {"s1": [{"id": "q1", "text": "queued", "created_ts": 1.0}]}
+        assert store.pending_attachment_ids == {"s1"}
+        assert store.commit_unknown_sends == {"s1": {"text": "maybe", "created_ts": 1.0}}
+        assert store.recent_cwds == {"/repo": 2.0}
+        assert store.unattended == {"s1": {"enabled": True, "request": "continue", "cooldown_minutes": 15, "remaining_injections": 7}}
 
 
 def test_session_store_rebinds_paths_without_losing_in_memory_state() -> None:

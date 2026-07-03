@@ -8,32 +8,16 @@ from .session_registry import session_registry_for_manager
 
 
 def seed_manager_in_memory_state(manager: Any) -> None:
-    manager._unattended = {}
-    manager._aliases = {}
-    manager._sidebar_meta = {}
-    manager._hidden_sessions = set()
-    manager._files = {}
-    manager._queues = {}
+    manager._session_store_for_manager().reset_in_memory_state()
     manager._queue_sweep_cursor = 0
-    manager._pending_attachment_ids = set()
-    manager._commit_unknown_sends = {}
     session_registry_for_manager(manager).input_locks = {}
-    manager._recent_cwds = {}
     manager._include_launch_attempts = True
     manager._unattended_last_injected = {}
     manager._unattended_last_injected_scope = {}
 
 
 def load_manager_persistent_state(manager: Any) -> None:
-    manager._load_unattended()
-    manager._load_aliases()
-    manager._load_sidebar_meta()
-    manager._load_hidden_sessions()
-    manager._load_files()
-    manager._load_queues()
-    manager._load_pending_attachments()
-    manager._load_commit_unknown_sends()
-    manager._load_recent_cwds()
+    manager._session_store_for_manager().load_persistent_state()
     manager._backfill_recent_cwds_from_logs()
 
 
