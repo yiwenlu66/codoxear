@@ -45,6 +45,7 @@ APP_CONVERSATION_COPY_JS = ROOT / "codoxear" / "static" / "app_conversation_copy
 APP_MODAL_JS = ROOT / "codoxear" / "static" / "app_modal.js"
 APP_CLIPBOARD_JS = ROOT / "codoxear" / "static" / "app_clipboard.js"
 APP_VOICE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_voice_helpers.js"
+APP_QUEUE_JS = ROOT / "codoxear" / "static" / "app_queue.js"
 
 
 class TestStaticAssets(unittest.TestCase):
@@ -75,6 +76,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn(f"app_modal.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_clipboard.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_voice_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
+        self.assertIn(f"app_queue.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertLess(source.index(f"app_url.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_storage.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_storage.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_perf.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
@@ -98,7 +100,8 @@ class TestStaticAssets(unittest.TestCase):
         self.assertLess(source.index(f"app_conversation_copy.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_modal.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_modal.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_clipboard.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_clipboard.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_voice_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
-        self.assertLess(source.index(f"app_voice_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_voice_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_queue.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_queue.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
 
     def test_app_shell_does_not_execute_third_party_assets(self) -> None:
         index = INDEX_HTML.read_text(encoding="utf-8")
@@ -126,6 +129,7 @@ class TestStaticAssets(unittest.TestCase):
         app_modal = APP_MODAL_JS.read_text(encoding="utf-8")
         app_clipboard = APP_CLIPBOARD_JS.read_text(encoding="utf-8")
         app_voice_helpers = APP_VOICE_HELPERS_JS.read_text(encoding="utf-8")
+        app_queue = APP_QUEUE_JS.read_text(encoding="utf-8")
         static_routes_source = STATIC_ROUTES_PY.read_text(encoding="utf-8")
         self.assertIn("Content-Security-Policy", index)
         self.assertIn("handler.send_header(\"Content-Security-Policy\", deps.content_security_policy)", static_routes_source)
@@ -157,6 +161,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertNotIn(forbidden, app_modal)
             self.assertNotIn(forbidden, app_clipboard)
             self.assertNotIn(forbidden, app_voice_helpers)
+            self.assertNotIn(forbidden, app_queue)
         self.assertNotIn('src="https://', index)
         self.assertNotIn('href="https://', index)
         self.assertIn("script-src 'self' 'unsafe-inline'", index)
@@ -209,6 +214,7 @@ class TestStaticAssets(unittest.TestCase):
             "app_modal.js": "window.CodoxearModal = {};\n",
             "app_clipboard.js": "window.CodoxearClipboard = {};\n",
             "app_voice_helpers.js": "window.CodoxearVoiceHelpers = {};\n",
+            "app_queue.js": "window.CodoxearQueue = {};\n",
             "app.js": "console.log('one');\n",
             "app.css": "body { color: black; }\n",
             "favicon.png": "png bytes\n",
@@ -267,6 +273,7 @@ class TestStaticAssets(unittest.TestCase):
                     '<script src="app_modal.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_clipboard.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_voice_helpers.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
+                    '<script src="app_queue.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                 ),
                 encoding="utf-8",
@@ -301,6 +308,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertIn(f"app_modal.js?v={version}", rendered)
             self.assertIn(f"app_clipboard.js?v={version}", rendered)
             self.assertIn(f"app_voice_helpers.js?v={version}", rendered)
+            self.assertIn(f"app_queue.js?v={version}", rendered)
             self.assertIn(f"app.js?v={version}", rendered)
 
     def test_index_html_has_load_error_sentinel_before_deferred_assets(self) -> None:
@@ -403,6 +411,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn("codoxear/static/app_modal.js", names)
         self.assertIn("codoxear/static/app_clipboard.js", names)
         self.assertIn("codoxear/static/app_voice_helpers.js", names)
+        self.assertIn("codoxear/static/app_queue.js", names)
         self.assertIn("codoxear/static/codoxear-icon.png", names)
         self.assertIn("codoxear/static/logos/codex.svg", names)
         self.assertIn("codoxear/static/logos/pi.svg", names)

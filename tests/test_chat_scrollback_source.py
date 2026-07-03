@@ -810,7 +810,10 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn('setStatus({ running: currentRunning, queueLen });', source)
         self.assertIn('if (selected === sessionId) syncRecoveryUiForSession(sessionId);', source)
         self.assertIn('if (commitUnknown) syncRecoveryUiForSession(sessionId);', source)
-        self.assertIn('syncRecoveryUiForSession(sid);', source)
+        # syncRecoveryUiForSession(sid) was called from the queue mutation paths
+        # (delete/move/update) which now live in the CodoxearQueue controller.
+        queue_source = (ROOT / "codoxear" / "static" / "app_queue.js").read_text(encoding="utf-8")
+        self.assertIn('syncRecoveryUiForSession(sid);', queue_source)
         self.assertIn('syncRecoveryUiForSession(selected);', source)
         self.assertIn('renderRecoveryPanel: renderRecoveryPanelIfNeeded,', source)
         self.assertIn('getRenderedRows: renderedMessageRows,', source)
@@ -819,11 +822,15 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn('return codoxearMessageRows.firstVisibleMessageRow(renderedMessageRows(), chat.scrollTop + 1);', source)
         self.assertIn('transcriptDomRuntime.trimRenderedRows({ fromTop, maxRows });', source)
         self.assertIn('transcriptDomRuntime.trimRowsBeforeViewport({ maxRows, viewportTop: chat.scrollTop + 1 });', source)
-        self.assertIn('document.querySelector(".recovery-panel .icon-btn") || queueBtn || null', source)
+        # The queue button submit-state predicate and the queue viewer focus
+        # fallback moved into the CodoxearQueue controller; assert them there while
+        # the recovery panel still opens the queue through the app.js wrapper.
+        queue_source = (ROOT / "codoxear" / "static" / "app_queue.js").read_text(encoding="utf-8")
+        self.assertIn('const fallback = recoveryPanelFocusFallback() || queueBtn || null;', queue_source)
+        self.assertIn('queueBtn.disabled = !!queueSubmitBusy || !selected || launchFailed || (unknownSend && !orphanQueueRecovery);', queue_source)
+        self.assertIn('setToast("failed launch cannot receive queued messages");', queue_source)
         self.assertIn('function selectedSessionLaunchFailed()', source)
-        self.assertIn('queueControl.disabled = !!queueSubmitBusy || !selected || launchFailed || (unknownSend && !orphanQueueRecovery);', source)
         self.assertIn('sendControl.disabled = !!sending || !selected || launchFailed || unknownSend || orphanRecovery || recoveryQueue;', source)
-        self.assertIn('setToast("failed launch cannot receive queued messages");', source)
         self.assertIn('setToast("failed launch cannot receive messages");', source)
         load_error_start = source.index('function renderTranscriptLoadError(sessionId, err')
         load_error_end = source.index('function applyCachedTail', load_error_start)

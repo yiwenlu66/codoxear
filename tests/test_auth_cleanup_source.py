@@ -58,10 +58,15 @@ class TestAuthCleanupSource(unittest.TestCase):
         self.assertIn("unattendedSaveTimers.clear();", cleanup)
         self.assertIn("unattendedSavePending.clear();", cleanup)
         self.assertIn("unattendedSaveInFlight.clear();", cleanup)
-        self.assertIn("queueUpdateTimers.forEach((timer) => clearTimeout(timer));", cleanup)
-        self.assertIn("queueUpdateTimers.clear();", cleanup)
-        self.assertIn("queueMutationLocks.clear();", cleanup)
-        self.assertIn("queuePendingDeletes.clear();", cleanup)
+        # Queue cleanup is now owned by the CodoxearQueue controller; app.js only
+        # delegates through queueController.dispose().
+        self.assertIn("if (queueController) queueController.dispose();", cleanup)
+        for removed in [
+            "queueUpdateTimers.forEach((timer) => clearTimeout(timer));",
+            "queueMutationLocks.clear();",
+            "queuePendingDeletes.clear();",
+        ]:
+            self.assertNotIn(removed, cleanup)
         self.assertIn("desktopNotificationTimers.forEach((timer) => clearTimeout(timer));", cleanup)
         self.assertIn("stopAnnouncementHeartbeat();", cleanup)
         self.assertIn("stopLiveAudioWatchdog();", cleanup)
@@ -112,42 +117,19 @@ class TestAuthCleanupSource(unittest.TestCase):
         clear_catch = clear_block[clear_block.index("} catch (e) {") :]
         self.assertLess(clear_catch.index("if (e && e.status === 401)"), clear_catch.index("setToast(`clear unknown send error:"))
 
-        enqueue_start = app.index("async function enqueueComposerText(")
-        enqueue_end = app.index("async function deleteQueueItem", enqueue_start)
-        enqueue_block = app[enqueue_start:enqueue_end]
-        enqueue_catch = enqueue_block[enqueue_block.index("} catch (e) {") : enqueue_block.index("} finally {", enqueue_block.index("} catch (e) {"))]
-        self.assertLess(enqueue_catch.index("if (e && e.status === 401)"), enqueue_catch.index("setToast(`queue error:"))
-        self.assertIn("handleAppAuthLoss();\n              return false;", enqueue_catch)
-
-        delete_start = app.index("async function deleteQueueItem(")
-        delete_end = app.index("async function moveQueueItem", delete_start)
-        delete_block = app[delete_start:delete_end]
-        delete_catch = delete_block[delete_block.index("} catch (e) {") : delete_block.index("} finally {", delete_block.index("} catch (e) {"))]
-        self.assertLess(delete_catch.index("if (e && e.status === 401)"), delete_catch.index("await refreshQueueViewer();"))
-        self.assertLess(delete_catch.index("if (e && e.status === 401)"), delete_catch.index("setToast(`queue delete error:"))
-
-        move_start = app.index("async function moveQueueItem(")
-        move_end = app.index("function scheduleQueueUpdate", move_start)
-        move_block = app[move_start:move_end]
-        move_catch = move_block[move_block.index("} catch (e) {") : move_block.index("} finally {", move_block.index("} catch (e) {"))]
-        self.assertLess(move_catch.index("if (e && e.status === 401)"), move_catch.index("setToast(`queue move error:"))
-
-        update_start = app.index("function scheduleQueueUpdate(")
-        update_end = app.index("function renderQueueList", update_start)
-        update_block = app[update_start:update_end]
-        update_catch = update_block[update_block.index("} catch (e) {") : update_block.index("} finally {", update_block.index("} catch (e) {"))]
-        self.assertLess(update_catch.index("if (appDisposed) return;"), update_catch.index("if (e && e.status === 401)"))
-        self.assertLess(update_catch.index("if (e && e.status === 401)"), update_catch.index("setToast(`queue update error:"))
-        self.assertIn("if (appDisposed) return;", update_block)
-        self.assertIn("if (appDisposed) return;\n              queueLastEditMs = 0;", update_block)
-        self.assertIn("if (!appDisposed && queuePendingDeletes.has(itemKey))", update_block)
-
-        refresh_start = app.index("async function refreshQueueViewer()")
-        refresh_end = app.index("function showQueueViewer({ opener = null } = {})", refresh_start)
-        refresh_block = app[refresh_start:refresh_end]
-        refresh_catch = refresh_block[refresh_block.index("} catch (e) {") :]
-        self.assertLess(refresh_catch.index("if (e && e.status === 401)"), refresh_catch.index("Queue unavailable:"))
-        self.assertLess(refresh_catch.index("if (e && e.status === 401)"), refresh_catch.index("setToast(`queue load error:"))
+        # Queue enqueue/delete/move/update/refresh 401 ordering now lives in the
+        # CodoxearQueue controller module (see test_frontend_queue_module_source).
+        # app.js keeps only the delegating wrappers and the dispose hook; assert
+        # those contracts here while leaving the detailed ordering to the module.
+        self.assertIn("return queueController.enqueueComposerText(raw, opts);", app)
+        self.assertIn("return queueController.refreshQueueViewer();", app)
+        for removed in [
+            "async function deleteQueueItem(",
+            "async function moveQueueItem(",
+            "function scheduleQueueUpdate(",
+            "function renderQueueList() {",
+        ]:
+            self.assertNotIn(removed, app)
 
     def test_async_poll_results_stop_after_cleanup(self) -> None:
         app = render_app_block()

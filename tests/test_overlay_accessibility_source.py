@@ -75,7 +75,12 @@ class TestOverlayAccessibilitySource(unittest.TestCase):
         self.assertIn('filePickerMenuState.close();', source)
         self.assertNotIn('fileMenuOpen = false;', source)
         self.assertIn('prepareModalOpen();\n          helpBackdrop.style.display = "block";', source)
-        self.assertIn('prepareModalOpen();\n          queueViewerSid = selected;', source)
+        # Queue show/hide modal behavior moved into the CodoxearQueue controller;
+        # app.js keeps only the delegating wrapper. The controller owns the
+        # prepareModalOpen/queueViewerSid coordination.
+        self.assertIn('return queueController.showQueueViewer(opts);', source)
+        queue_source = (ROOT / "codoxear" / "static" / "app_queue.js").read_text(encoding="utf-8")
+        self.assertIn('prepareModalOpen();\n      queueViewerSid = selected;', queue_source)
         self.assertIn('prepareModalOpen();\n          voiceSettingsReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;\n          voiceSettingsBackdrop.style.display = "block";', source)
 
     def test_settings_dialog_uses_modal_and_cancel_semantics(self) -> None:
@@ -188,20 +193,25 @@ class TestOverlayAccessibilitySource(unittest.TestCase):
 
     def test_queue_help_details_dialogs_restore_focus(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        queue_source = (ROOT / "codoxear" / "static" / "app_queue.js").read_text(encoding="utf-8")
         for label in [
             'id: "queueViewer", role: "dialog", "aria-modal": "true", "aria-label": "Queued messages"',
             'id: "helpViewer", role: "dialog", "aria-modal": "true", "aria-label": "Help"',
             'id: "diagViewer", role: "dialog", "aria-modal": "true", "aria-label": "Details"',
         ]:
             self.assertIn(label, source)
-        self.assertIn("let queueReturnFocusEl = null;", source)
+        # Queue return-focus state is now owned by the CodoxearQueue controller;
+        # Help/Diag keep their app.js-owned return-focus element.
+        self.assertIn("let queueReturnFocusEl = null;", queue_source)
+        self.assertNotIn("let queueReturnFocusEl = null;", source)
         self.assertIn("let helpReturnFocusEl = null;", source)
         self.assertIn("let diagReturnFocusEl = null;", source)
         self.assertIn("function restoreModalFocus(target, isStillOpen)", source)
         self.assertIn("return codoxearModal.restoreModalFocus(target, isStillOpen);", source)
         self.assertIn("function focusModalCloseButton(viewer, closeBtn)", source)
         self.assertIn("return codoxearModal.focusModalCloseButton(viewer, closeBtn);", source)
-        for name, close_id in [("Queue", "queueCloseBtn"), ("Help", "helpCloseBtn"), ("Diag", "diagCloseBtn")]:
+        # Help + Diag still own their show/hide bodies in app.js.
+        for name, close_id in [("Help", "helpCloseBtn"), ("Diag", "diagCloseBtn")]:
             show_start = source.index(f"function show{name}Viewer")
             hide_start = source.index(f"function hide{name}Viewer", show_start)
             show_block = source[show_start:hide_start]
@@ -216,11 +226,23 @@ class TestOverlayAccessibilitySource(unittest.TestCase):
             self.assertIn(f"const wasOpen = isModalTargetOpen({lower}Viewer);", hide_block)
             self.assertIn(f"const focusTarget = {lower}ReturnFocusEl;", hide_block)
             self.assertIn(f"{lower}ReturnFocusEl = null;", hide_block)
-            if name == "Queue":
-                self.assertIn('const fallback = document.querySelector(".recovery-panel .icon-btn") || queueBtn || null;', hide_block)
-                self.assertIn("restoreModalFocus(focusTarget && focusTarget.isConnected ? focusTarget : fallback, () => isModalTargetOpen(queueViewer));", hide_block)
-            else:
-                self.assertIn(f"restoreModalFocus(focusTarget, () => isModalTargetOpen({lower}Viewer));", hide_block)
+            self.assertIn(f"restoreModalFocus(focusTarget, () => isModalTargetOpen({lower}Viewer));", hide_block)
+        # Queue show/hide live in the controller module with the same modal/focus
+        # contract: prepare modal open, focus close button on show, restore focus
+        # to opener or recovery-panel/queue-button fallback on hide.
+        queue_show_start = queue_source.index("function showQueueViewer({ opener = null } = {})")
+        queue_hide_start = queue_source.index("function hideQueueViewer()", queue_show_start)
+        queue_show_block = queue_source[queue_show_start:queue_hide_start]
+        queue_hide_block = queue_source[queue_hide_start:queue_source.index("function dispose()", queue_hide_start)]
+        self.assertIn("queueReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;", queue_show_block)
+        self.assertIn("prepareModalOpen();", queue_show_block)
+        self.assertIn("queueBackdrop.style.display = \"block\";", queue_show_block)
+        self.assertIn("focusModalCloseButton(queueViewer, queueCloseBtn, requestFrame);", queue_show_block)
+        self.assertIn("const wasOpen = isModalTargetOpen(queueViewer);", queue_hide_block)
+        self.assertIn("const focusTarget = queueReturnFocusEl;", queue_hide_block)
+        self.assertIn("queueReturnFocusEl = null;", queue_hide_block)
+        self.assertIn("const fallback = recoveryPanelFocusFallback() || queueBtn || null;", queue_hide_block)
+        self.assertIn("restoreModalFocus(focusTarget && focusTarget.isConnected ? focusTarget : fallback, () => isModalTargetOpen(queueViewer), requestFrame);", queue_hide_block)
         self.assertIn("showQueueViewer({ opener: e.currentTarget });", source)
         self.assertIn("showHelpViewer({ opener: e.currentTarget });", source)
         self.assertIn("showDiagViewer({ opener: e.currentTarget });", source)
