@@ -29,6 +29,49 @@ class TestCcBackendRegistration(unittest.TestCase):
             path = Path(td) / "projects" / "-repo" / "11111111-2222-3333-4444-555555555555.jsonl"
             self.assertEqual(infer_agent_backend_from_log_path(path), "cc")
 
+    def test_backend_adapters_own_run_settings_extraction(self) -> None:
+        calls = []
+
+        def clean(value):
+            return value.strip() if isinstance(value, str) and value.strip() else None
+
+        def effort(value):
+            return value.strip().lower() if isinstance(value, str) and value.strip() else None
+
+        codex_settings = get_agent_backend("codex").read_run_settings_from_log(
+            Path("/tmp/codex.jsonl"),
+            read_pi_run_settings=lambda path: calls.append(("pi", path)) or ("pi-provider", "pi-model", "medium"),
+            read_cc_run_settings=lambda path: calls.append(("cc", path)) or (None, "cc-model", "high"),
+            read_session_meta_or_none_func=lambda path, **kwargs: {"model_provider": " openai ", "model": "", "reasoning_effort": ""},
+            clean_optional_text=clean,
+            display_reasoning_effort=effort,
+            find_latest_turn_context=lambda path, **kwargs: {"model": " gpt-5.4 ", "effort": "HIGH"},
+        )
+        self.assertEqual(codex_settings, ("openai", "gpt-5.4", "high"))
+        self.assertEqual(calls, [])
+
+        pi_settings = get_agent_backend("pi").read_run_settings_from_log(
+            Path("/tmp/pi.jsonl"),
+            read_pi_run_settings=lambda path: ("macaron", "pi-model", "medium"),
+            read_cc_run_settings=lambda path: self.fail("cc reader should not handle pi settings"),
+            read_session_meta_or_none_func=lambda path, **kwargs: self.fail("codex meta should not handle pi settings"),
+            clean_optional_text=clean,
+            display_reasoning_effort=effort,
+            find_latest_turn_context=lambda path, **kwargs: self.fail("codex turn context should not handle pi settings"),
+        )
+        self.assertEqual(pi_settings, ("macaron", "pi-model", "medium"))
+
+        cc_settings = get_agent_backend("cc").read_run_settings_from_log(
+            Path("/tmp/cc.jsonl"),
+            read_pi_run_settings=lambda path: self.fail("pi reader should not handle cc settings"),
+            read_cc_run_settings=lambda path: (None, "sonnet", "max"),
+            read_session_meta_or_none_func=lambda path, **kwargs: self.fail("codex meta should not handle cc settings"),
+            clean_optional_text=clean,
+            display_reasoning_effort=effort,
+            find_latest_turn_context=lambda path, **kwargs: self.fail("codex turn context should not handle cc settings"),
+        )
+        self.assertEqual(cc_settings, (None, "sonnet", "max"))
+
     def test_backend_adapters_own_log_path_and_session_id_semantics(self) -> None:
         codex = get_agent_backend("codex")
         pi = get_agent_backend("pi")

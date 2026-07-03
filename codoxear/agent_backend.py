@@ -4,7 +4,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 
 _REQUEST_ENV_VARS = (
@@ -66,6 +66,19 @@ class AgentBackend:
     def session_id_from_payload_or_log(self, log_path: Path, payload: Mapping[str, Any]) -> str | None:
         raw = payload.get("id")
         return raw if isinstance(raw, str) and raw else self.session_id_from_log_path(log_path)
+
+    def read_run_settings_from_log(
+        self,
+        log_path: Path,
+        *,
+        read_pi_run_settings: Callable[[Path], tuple[str | None, str | None, str | None]],
+        read_cc_run_settings: Callable[[Path], tuple[str | None, str | None, str | None]],
+        read_session_meta_or_none_func: Callable[..., dict[str, Any] | None],
+        clean_optional_text: Callable[[Any], str | None],
+        display_reasoning_effort: Callable[[Any], str | None],
+        find_latest_turn_context: Callable[..., Any],
+    ) -> tuple[str | None, str | None, str | None]:
+        raise NotImplementedError(f"{self.name} backend does not implement run-settings extraction")
 
     def build_launch_args(
         self,
@@ -206,6 +219,30 @@ class CodexBackend(AgentBackend):
     def log_matches_session_id(self, log_path: Path, session_id: str) -> bool:
         return bool(session_id and session_id in log_path.name)
 
+    def read_run_settings_from_log(
+        self,
+        log_path: Path,
+        *,
+        read_pi_run_settings: Callable[[Path], tuple[str | None, str | None, str | None]],
+        read_cc_run_settings: Callable[[Path], tuple[str | None, str | None, str | None]],
+        read_session_meta_or_none_func: Callable[..., dict[str, Any] | None],
+        clean_optional_text: Callable[[Any], str | None],
+        display_reasoning_effort: Callable[[Any], str | None],
+        find_latest_turn_context: Callable[..., Any],
+    ) -> tuple[str | None, str | None, str | None]:
+        meta = read_session_meta_or_none_func(log_path, agent_backend=self.name, context="run settings")
+        model_provider = clean_optional_text(meta.get("model_provider")) if meta is not None else None
+        model = clean_optional_text(meta.get("model")) if meta is not None else None
+        reasoning_effort = display_reasoning_effort(meta.get("reasoning_effort")) if meta is not None else None
+        if model is None or reasoning_effort is None:
+            payload = find_latest_turn_context(log_path, max_scan_bytes=8 * 1024 * 1024)
+            if isinstance(payload, dict):
+                if model is None:
+                    model = clean_optional_text(payload.get("model"))
+                if reasoning_effort is None:
+                    reasoning_effort = display_reasoning_effort(payload.get("reasoning_effort") or payload.get("effort"))
+        return model_provider, model, reasoning_effort
+
     def build_launch_args(
         self,
         *,
@@ -259,6 +296,19 @@ class PiBackend(AgentBackend):
 
         return read_pi_session_id(log_path)
 
+    def read_run_settings_from_log(
+        self,
+        log_path: Path,
+        *,
+        read_pi_run_settings: Callable[[Path], tuple[str | None, str | None, str | None]],
+        read_cc_run_settings: Callable[[Path], tuple[str | None, str | None, str | None]],
+        read_session_meta_or_none_func: Callable[..., dict[str, Any] | None],
+        clean_optional_text: Callable[[Any], str | None],
+        display_reasoning_effort: Callable[[Any], str | None],
+        find_latest_turn_context: Callable[..., Any],
+    ) -> tuple[str | None, str | None, str | None]:
+        return read_pi_run_settings(log_path)
+
     def build_launch_args(
         self,
         *,
@@ -309,6 +359,19 @@ class ClaudeCodeBackend(AgentBackend):
         from .cc_log import read_cc_session_id
 
         return read_cc_session_id(log_path)
+
+    def read_run_settings_from_log(
+        self,
+        log_path: Path,
+        *,
+        read_pi_run_settings: Callable[[Path], tuple[str | None, str | None, str | None]],
+        read_cc_run_settings: Callable[[Path], tuple[str | None, str | None, str | None]],
+        read_session_meta_or_none_func: Callable[..., dict[str, Any] | None],
+        clean_optional_text: Callable[[Any], str | None],
+        display_reasoning_effort: Callable[[Any], str | None],
+        find_latest_turn_context: Callable[..., Any],
+    ) -> tuple[str | None, str | None, str | None]:
+        return read_cc_run_settings(log_path)
 
     def build_launch_args(
         self,

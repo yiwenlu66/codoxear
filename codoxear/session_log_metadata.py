@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 from typing import Any, Callable, Iterable, Mapping, TextIO
 
+from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
 
 
@@ -139,23 +140,12 @@ def read_run_settings_from_log(
     display_reasoning_effort: Callable[[Any], str | None],
     find_latest_turn_context: Callable[..., Any],
 ) -> tuple[str | None, str | None, str | None]:
-    backend_name = normalize_agent_backend(agent_backend)
-    if backend_name == "pi":
-        return read_pi_run_settings(log_path)
-    if backend_name == "cc":
-        return read_cc_run_settings(log_path)
-    meta = read_session_meta_or_none_func(log_path, agent_backend="codex", context="run settings")
-    model_provider = clean_optional_text(meta.get("model_provider")) if meta is not None else None
-    model = clean_optional_text(meta.get("model")) if meta is not None else None
-    reasoning_effort = display_reasoning_effort(meta.get("reasoning_effort")) if meta is not None else None
-    if model is None or reasoning_effort is None:
-        ctx_model, ctx_effort = turn_context_run_settings(
-            find_latest_turn_context(log_path, max_scan_bytes=8 * 1024 * 1024),
-            clean_optional_text=clean_optional_text,
-            display_reasoning_effort=display_reasoning_effort,
-        )
-        if model is None:
-            model = ctx_model
-        if reasoning_effort is None:
-            reasoning_effort = ctx_effort
-    return model_provider, model, reasoning_effort
+    return get_agent_backend(agent_backend).read_run_settings_from_log(
+        log_path,
+        read_pi_run_settings=read_pi_run_settings,
+        read_cc_run_settings=read_cc_run_settings,
+        read_session_meta_or_none_func=read_session_meta_or_none_func,
+        clean_optional_text=clean_optional_text,
+        display_reasoning_effort=display_reasoning_effort,
+        find_latest_turn_context=find_latest_turn_context,
+    )
