@@ -8144,3 +8144,17 @@
 - Observation: app.js transcript wrappers for `appendEvent`, `renderTranscript`, `renderDetachedTranscriptWindow`, `prependOlderEvents`, `rebuildDecorations`, `trimRenderedRows`, `trimRenderedRowsBeforeViewport`, `clearTranscriptDom`, `normalizedTranscriptEvents`, and `setTyping` delegate to `app_transcript.js`/`app_message_rows.js` runtimes rather than owning the state/DOM policies inline.
 - Interpretation: Workbench item 3's listed ownership responsibilities are now materially moved: older-message state/currentness/UI projection, loaded/all-transcript search state and count hints, scroll scheduling/bottom-lock/time-chip policy, event/pending dedupe, slot/tail-cache identity, message-copy navigation state, typing row state, transcript DOM window/decorations, full-render event normalization, and render/prepend orchestration are module/runtime-owned. App.js still owns selected-session authority, API transport, high-level polling/open-session sequencing, and cross-subsystem status/UI projection, which are app-shell/transport seams rather than the transcript state/rendering owners targeted by item 3.
 - Decision: proceed to Workbench item 4 (backend adapter model) without making an acceptance/yield claim. Full local/Docker validation and clean-room review remain deferred until broader integration/acceptance checkpoints.
+
+## 2026-07-03T09:43:00Z Moved launch semantics into backend adapter objects
+- Functional commit `9a97bce Move launch semantics into backend adapters` made `CODEX_BACKEND`, `PI_BACKEND`, and `CC_BACKEND` explicit polymorphic adapter objects (`CodexBackend`, `PiBackend`, `ClaudeCodeBackend`) in `codoxear/agent_backend.py`.
+- Mechanism: backend-specific web-launch argv construction, resume argv construction, home-env isolation, request-env projection, tmux inline env construction, inherited backend binary env injection, and tmux unset contract moved out of `backend_launch.py` branches into adapter methods. `backend_launch.py` now delegates to `get_agent_backend(...)` and remains a compatibility facade for existing launch/session callers.
+- Negative evidence repaired: broader launch/source validation found a stale `test_claude_backend_source.py` expectation looking for Claude launch argv in `backend_launch.py`; it was retargeted to `agent_backend.py`. `test_launch_ui_source.py` also had a stale `activeTranscriptState` expectation from the earlier transcript-slot move; it now checks current slot-runtime failed-tail rendering plus failed-session send prevention.
+- Behavior/source evidence:
+  - Direct adapter test asserts registry returns `CodexBackend`, `PiBackend`, and `ClaudeCodeBackend` instances and executes Pi resume + Claude launch methods directly.
+  - Compatibility tests continue to execute `build_backend_args`, `build_backend_resume_args`, `apply_backend_environment`, `build_tmux_inline_env`, and `tmux_unset_vars` through the old facade.
+  - Source sentinel confirms `backend_launch.py` no longer contains backend-name branches for codex/pi/cc launch semantics and delegates to adapter methods.
+- Validation under checkpoint cadence:
+  - `python3 -m py_compile codoxear/agent_backend.py codoxear/backend_launch.py tests/test_backend_launch_adapter.py tests/test_claude_backend_source.py` passed.
+  - Focused backend launch slice returned `62 passed`.
+  - Broader backend/launch/log/source slice returned `193 passed, 12 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
