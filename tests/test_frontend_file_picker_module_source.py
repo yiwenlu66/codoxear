@@ -605,8 +605,8 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         routes_source = STATIC_ROUTES.read_text(encoding="utf-8")
         app_source = APP_JS.read_text(encoding="utf-8")
 
-        self.assertLess(index_source.index("app_file_helpers.js"), index_source.index("app_file_picker.js"))
-        self.assertLess(index_source.index("app_file_picker.js"), index_source.index("app.js"))
+        self.assertLess(index_source.index("app_file_helpers.js?v=__CODOXEAR_ASSET_VERSION__"), index_source.index("app_file_picker.js?v=__CODOXEAR_ASSET_VERSION__"))
+        self.assertLess(index_source.index("app_file_picker.js?v=__CODOXEAR_ASSET_VERSION__"), index_source.index("app.js?v=__CODOXEAR_ASSET_VERSION__"))
         self.assertIn('"app_file_picker.js"', routes_source)
         self.assertIn("const codoxearFilePicker = window.CodoxearFilePicker;", app_source)
         self.assertIn('typeof codoxearFilePicker.appendDraftFileMenuItem !== "function"', app_source)
