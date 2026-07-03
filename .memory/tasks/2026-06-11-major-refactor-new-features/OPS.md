@@ -7800,3 +7800,13 @@
   - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` passed.
   - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py tests/test_overlay_accessibility_source.py` returned `66 passed, 25 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T00:34:00Z Programmatic picker search opening picker-module ownership
+- Functional commit `42de134 Move picker search opening into picker module` moved `openFilePickerSearchQuery(...)` behavior from inline `codoxear/static/app.js` into `createInputRuntime(...).openSearchQuery(...)` in `codoxear/static/app_file_picker.js`.
+- Mechanism: ambiguous file references open the picker through the same search state used by direct input. App.js still owned the programmatic path: normalize query, update menu state, write input value, schedule full search, render menu, and apply menu chrome. The picker input runtime now owns that transition; app.js keeps a wrapper for lifecycle/show callers.
+- Tests updated: executable picker input runtime probe now covers `openSearchQuery(...)` value assignment, selection-line preservation, draft suppression, search scheduling, render/apply ordering.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app_file_picker.js` and `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_frontend_file_picker_module_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_file_picker_module_source.py tests/test_file_picker_search_source.py tests/test_file_viewer_source.py` returned `76 passed, 25 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
