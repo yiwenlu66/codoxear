@@ -7572,6 +7572,42 @@
           const sendLabel = !selected ? "Select a session to send" : launchFailed ? "Failed launch cannot receive messages" : unknownSend ? "Resolve the unknown send before sending" : orphanRecovery ? "Missing session can only be reviewed" : recoveryQueue ? "Review preserved queued recovery items before sending" : "Send";
           sendControl.title = sendLabel;
           sendControl.setAttribute("aria-label", sendLabel);
+          syncComposerState();
+        }
+
+        // Composer input mirrors direct-send sendability: enqueueComposerText is
+        // blocked by the same predicates as sendText, so whenever the send button
+        // is structurally blocked (no selection / failed launch / unknown send /
+        // orphan recovery / queued recovery), typing into the composer cannot
+        // deliver anywhere. Disable the textarea and surface the reason via the
+        // placeholder overlay + aria-label so the input never advertises a normal
+        // send affordance. Transient `sending`/busy states are deliberately NOT
+        // reflected here (the send button covers those); the composer stays
+        // editable during a live turn so the queue/send-choice path is unaffected.
+        function syncComposerState() {
+          const composerInput = $("#msg");
+          if (!composerInput) return;
+          const unknownSend = selectedSessionHasUnknownSend();
+          const orphanRecovery = selectedSessionIsOrphanRecovery();
+          const recoveryQueue = selectedSessionHasOrphanQueueRecovery();
+          const launchFailed = selectedSessionLaunchFailed();
+          const composerBlocked = !selected || launchFailed || unknownSend || orphanRecovery || recoveryQueue;
+          const composerLabel = !selected
+            ? "Select a session to send"
+            : launchFailed
+              ? "Failed launch cannot receive messages"
+              : unknownSend
+                ? "Resolve the unknown send before sending"
+                : orphanRecovery
+                  ? "Missing session can only be reviewed"
+                  : recoveryQueue
+                    ? "Review preserved queued recovery items before sending"
+                    : "Enter your instructions here";
+          composerInput.disabled = composerBlocked;
+          composerInput.setAttribute("aria-label", composerLabel);
+          composerInput.title = composerBlocked ? composerLabel : "";
+          const composerPh = $("#msgPh");
+          if (composerPh) composerPh.textContent = composerLabel;
         }
 
         async function enqueueComposerText(raw, { sid = null } = {}) {

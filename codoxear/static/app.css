@@ -1396,6 +1396,10 @@ select {
         padding: 6px 10px;
         line-height: 20px;
       }
+      .composer textarea:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
       .composer button {
         flex: 0 0 auto;
       }
