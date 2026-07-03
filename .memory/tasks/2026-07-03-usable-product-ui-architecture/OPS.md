@@ -136,3 +136,28 @@
 - Architecture review: controller owns all diag state/rendering/actions; app.js keeps only DOM construction, opener/wrappers, and injected helper factories. Fail-loud module deps and static load order match the established queue-controller pattern.
 - Test review: `test_frontend_diagnostics_module_source.py` executes actual modules in a Node VM and verifies side effects rather than only source text. Non-blocking cosmetic note: one failed-launch VM test has unused placeholder locals, but companion assertions cover the behavior.
 - Acceptance judgment: diagnostics/details extraction tranche is accepted at `d22b686` plus evidence/screenshots d41-d43 and Docker/local validation recorded above.
+
+## 2026-07-04T21:10:00Z Recovery panel controller committed; browser and Docker evidence collected
+- Functional/test commit `4b9a8df Extract recovery panel controller` landed after staged diff review. Explicitly staged files only: `codoxear/static/app_recovery.js`, `codoxear/static/app.js`, `codoxear/static/index.html`, `codoxear/static_routes.py`, and recovery/static/frontend tests. Memory/screenshots left unstaged for separate evidence commit.
+- Local validation before commit:
+  - `node --check codoxear/static/app_recovery.js && node --check codoxear/static/app.js` -> OK.
+  - `python3 -m pytest -q tests/test_frontend_recovery_module_source.py tests/test_chat_scrollback_source.py tests/test_static_assets.py tests/test_frontend_queue_module_source.py tests/test_frontend_diagnostics_module_source.py` -> `103 passed`.
+  - `python3 -m pytest -q tests/test_queue_button_source.py tests/test_composer_sendability_source.py tests/test_diagnostics_source.py` -> `10 passed`.
+  - `python3 -m pytest -q` -> `1425 passed, 132 subtests passed`.
+- Browser evidence on fresh sandbox 19096:
+  - Smoke pre-login `/api/me` 401 and post-login `/api/sessions` 200 from sandbox startup.
+  - Created failed Codex launch `launch-1783112590203-072447cb`. Browser showed `window.CodoxearRecovery` present and no `__codoxearLoadError`. Recovery panel rendered as `role=group`, `aria-label=Launch failed`, one `.recovery-panel-row`, failed-launch explanation, stage, redacted failure preview, and actions `New like this` / `Dismiss launch` / `Copy details`. Screenshot: `browser-artifacts/d44-recovery-failed-launch-panel.png`.
+  - Persisted `session_queues.json` with an orphan queue item and restarted only the throwaway sandbox container so the manager loaded it. `/api/sessions` projected `orphan-queue-1` with `orphan_recovery=True`, `queue_len=1`, alias `Recovery needed`, cwd `recovery needed`. Browser selected the row and rendered `aria-label=Recovery needed`, orphan explanation, `1 queued recovery item preserved for review`, actions `Review queue` / `Copy details`, disabled composer/send, enabled queue. Screenshot: `browser-artifacts/d45-recovery-orphan-queue-panel.png`.
+  - Clicking recovery-panel `Review queue` opened the queue modal (`#queueViewer display:flex`, backdrop block, `#queueCloseBtn` focused). Screenshot: `browser-artifacts/d46-recovery-review-queue-action.png`.
+  - Clicking recovery-panel `Copy details` under browser automation surfaced explicit clipboard denial toast: `copy failed: Failed to execute 'writeText' on 'Clipboard': Write permission denied.`
+  - Clicking failed-launch recovery-panel `New like this` opened New Session with status `Review copied launch settings before starting.`, cwd `/workspace`, model `openai-api/default`, reasoning `high`. Screenshot: `browser-artifacts/d47-recovery-new-like-preset.png`.
+- Post-commit Docker test on fresh sandbox 19097: `1424 passed, 1 skipped, 132 subtests passed`.
+- Clean-room critic `fcdc3b58` is running; acceptance remains pending verdict.
+
+## 2026-07-04T21:15:00Z Clean-room review accepted recovery extraction
+- Clean-room critic `fcdc3b58` reviewed commit `4b9a8df` and reported **ACCEPT** with no blockers.
+- Review mechanism: line-by-line comparison of the removed app.js recovery block with `CodoxearRecovery` found identical behavior except intended injections (`sessionIndex.get` -> `getSessionInfo`, `typingRowRuntime.anchor()` -> `typingRowAnchor`, `chatInner` -> injected `chatInner`). Verified preserved recovery predicate, panel-row sweep, Launch failed / Recovery needed titles/list/previews, all actions and toasts, insertion before typing anchor, and focus descriptor/fallback contract.
+- Focus fallback review: `document.querySelector(".recovery-panel .icon-btn")` -> `recoveryController.focusFallbackCandidate()` is equivalent under current invariant because the singleton recovery panel is always rendered into `chatInner`; noted as low-risk future coupling if a panel moves outside chat.
+- Test review: the tightened VM tests are behavioral and mutation-confirmed. Neutralizing `dispose()` fails `test_dispose_clears_pending_focus_descriptor`; neutralizing `focusFallbackCandidate()` fails the fallback/candidate tests.
+- Independent critic validation: `node --check` app_recovery/app.js; `python3 -m pytest -q tests/test_frontend_recovery_module_source.py tests/test_chat_scrollback_source.py tests/test_static_assets.py tests/test_frontend_diagnostics_module_source.py` -> `85 passed`; full suite -> `1425 passed, 132 subtests`.
+- Acceptance judgment: recovery-panel extraction tranche is accepted at `4b9a8df` plus evidence/screenshots d44-d47 and Docker/local validation recorded above.
