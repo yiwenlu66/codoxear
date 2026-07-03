@@ -5,73 +5,110 @@ import unittest
 from pathlib import Path
 
 
-APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
+ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_FILE_VIEWER_JS = ROOT / "codoxear" / "static" / "app_file_viewer.js"
 
 
 def eval_file_picker_session_helpers() -> dict[str, object]:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function currentFileViewerSessionId() {")
-    end = source.index("function disposeFileEditor() {", start)
-    snippet = source[start:end]
+    source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const ctx = {{
-          selected: "session-a",
-          fileViewerSessionId: "session-a",
-          identity: {{ path: "file-a.py", apiPath: "token-a", gitPath: true, line: 7 }},
-          fileViewerController: {{
-            currentFileViewerSessionId: () => String(ctx.fileViewerSessionId || "").trim(),
-            currentActiveFileIdentity: () => ({{ path: ctx.identity.path, apiPath: ctx.identity.apiPath, gitPath: ctx.identity.gitPath }}),
-            currentActiveFileLine: () => ctx.identity.line,
-            nextActiveFileIdentity: (current, nextPath, opts = {{}}) => ({{ path: String(nextPath ?? ""), gitPath: Boolean(opts.gitPath ?? current.gitPath), apiPath: String(opts.apiPath ?? current.apiPath ?? "") }}),
-            clearActiveFileIdentity: () => {{ ctx.identity = {{ path: "", apiPath: "", gitPath: false, line: null }}; }},
-            beginActiveFileIdentity: (nextPath = null) => ({{ path: String(nextPath ?? ctx.identity.path), apiPath: ctx.identity.apiPath, gitPath: ctx.identity.gitPath, line: ctx.identity.line }}),
-            rememberActiveFileSelection: (sid = String(ctx.fileViewerSessionId || ctx.selected || "").trim()) => {{
-              ctx.rememberedSelections.set(String(sid || "").trim(), {{ path: ctx.identity.path, apiPath: ctx.identity.apiPath, line: ctx.identity.line, gitPath: ctx.identity.gitPath }});
-            }},
-            preferredFileSelectionForSession: (sid) => {{
-              const key = String(sid || "").trim();
-              const remembered = ctx.rememberedSelections.get(key);
-              if (remembered) return {{ path: remembered.path, apiPath: ctx.normalizeFileApiPath(remembered.apiPath), line: ctx.normalizeLineNumber(remembered.line), gitPath: Boolean(remembered.gitPath) }};
-              return ctx.historyFileSelectionForSession(key);
-            }},
-          }},
-          rememberedSelections: new Map(),
-          sessionIndex: new Map([
-            ["session-a", {{ cwd: "/project-A", files: ["/project-A/file-a.py"] }}],
-            ["session-b", {{ cwd: "/project-B", files: ["/project-B/file-b.py"] }}],
-          ]),
-          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+        const ctx = {{ window: {{}}, AbortController }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(source)}, ctx);
+        const sessionIndex = new Map([
+          ["session-a", {{ cwd: "/project-A", files: ["/project-A/file-a.py"] }}],
+          ["session-b", {{ cwd: "/project-B", files: ["/project-B/file-b.py"] }}],
+        ]);
+        function historyFileSelectionForSession(sessionId) {{
+          const session = sessionIndex.get(String(sessionId || ""));
+          if (!session || !session.cwd || !Array.isArray(session.files) || !session.files.length) return {{ path: "", line: null, gitPath: false }};
+          const cwd = String(session.cwd || "").replace(/\\/+$/, "");
+          const abs = String(session.files[0] || "").trim();
+          const path = abs.startsWith(cwd + "/") ? abs.slice(cwd.length + 1) : "";
+          return {{ path, line: null, gitPath: false }};
+        }}
+        const fileStatus = {{ textContent: "", replaceChildren() {{}} }};
+        const fileEditButton = {{ classList: {{ toggle() {{}} }}, setAttribute() {{}}, disabled: false }};
+        const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
+          el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children }}),
+          fileStatus,
+          fileEditButton,
+          iconSvg: (name) => name,
+          currentSessionId: () => "session-a",
+          currentFileSessionId: () => controller.currentFileViewerSessionId() || "session-a",
           normalizeLineNumber: (value) => {{
             if (value == null || value === "") return null;
             const n = Number(value);
             return Number.isFinite(n) && n >= 1 ? Math.floor(n) : null;
           }},
-          listFromFilesField: (value) => Array.isArray(value) ? value.slice() : [],
-          sessionRelativePath: (rawPath, sidOverride = null) => {{
-            const sid = sidOverride || ctx.selected;
-            const session = ctx.sessionIndex.get(sid);
-            if (!session || !session.cwd) return null;
-            const abs = String(rawPath || "").trim();
-            const cwd = String(session.cwd || "").replace(/\\/+$/, "");
-            if (!abs) return null;
-            if (abs === cwd) return ".";
-            if (abs.startsWith(cwd + "/")) return abs.slice(cwd.length + 1);
-            return null;
-          }},
-        }};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_file_picker = { rememberActiveFileSelection, preferredFileSelectionForSession, historyFileSelectionForSession };\n")}, ctx);
-        ctx.__test_file_picker.rememberActiveFileSelection();
+          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+          isFileViewerOpen: () => true,
+          hideFileUnsavedDialog: () => {{}},
+          resetFileSearchState: () => {{}},
+          closeFilePickerMenu: () => {{}},
+          isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+          isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
+          confirmReload: () => true,
+          promptUnsavedFileChoice: async () => "cancel",
+          restoreFileEditorText: () => {{}},
+          hideFileViewer: () => {{}},
+          setFilePath: () => {{}},
+          resetFileViewerPanel: () => {{}},
+          applyFileLoadResult: async () => true,
+          normalizeDraftFilePath: (value) => String(value || "").trim(),
+          inspectSessionFilePath: async () => ({{ exists: false }}),
+          api: async () => ({{}}),
+          focusEditor: () => null,
+          disposeOpenRender: () => {{}},
+          persistFileViewMode: () => {{}},
+          persistFileNonDiffMode: () => {{}},
+          isMarkdownPreviewable: () => true,
+          updateFileTouchToolbar: () => {{}},
+          useTouchFileEditorControls: () => false,
+          hasActiveFileCodeEditor: () => false,
+          hasBlockingFileEditorModal: () => false,
+          isTextEntryTarget: () => false,
+          eventTargetElement: (value) => value || null,
+          normalizeFileEditorPosition: (_editor, position) => position || null,
+          applyFileEditorSelection: () => {{}},
+          isCollapsedFileSelection: () => true,
+          positionAfterInsertedText: (start, text) => ({{ lineNumber: start.lineNumber, column: start.column + String(text || "").length }}),
+          fileEditorEditSupportAvailable: () => true,
+          updateFileDiffEditorOptions: () => {{}},
+          showFilePasteDialog: () => false,
+          hideFilePasteDialog: () => {{}},
+          clipboardReadAvailable: () => false,
+          readClipboardText: async () => "",
+          fileEditorDeleteCommandForKey: () => "",
+          isActiveFileEditorInput: () => false,
+          getActiveFileSelectionText: () => "",
+          copyToClipboard: async () => {{}},
+          focusActiveFileCodeEditor: () => null,
+          nowMs: () => 0,
+          setToast: () => {{}},
+          renderMonacoFile: async () => true,
+          getFileEditorText: () => "",
+          fmtBytes: (value) => `${{value}}B`,
+          applyFileMode: () => {{}},
+          rememberOpenedFile: () => {{}},
+          historyFileSelectionForSession,
+          renderFilePickerMenu: () => {{}},
+        }});
+        controller.setFileViewerSessionId("session-a");
+        controller.setActiveFileIdentity("file-a.py", {{ line: 7, gitPath: true, apiPath: "token-a" }});
+        controller.rememberActiveFileSelection();
         process.stdout.write(JSON.stringify({{
-          sessionA: ctx.__test_file_picker.preferredFileSelectionForSession("session-a"),
-          sessionB: ctx.__test_file_picker.preferredFileSelectionForSession("session-b"),
+          sessionA: controller.preferredFileSelectionForSession("session-a"),
+          sessionB: controller.preferredFileSelectionForSession("session-b"),
         }}));
         """
     )
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node"],
+        input=js,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
