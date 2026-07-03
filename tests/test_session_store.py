@@ -8,6 +8,7 @@ from codoxear import server
 from codoxear.server import SessionManager
 from codoxear.session_manager_store import create_session_store
 from codoxear.session_manager_store import session_store_paths
+from codoxear.session_recent_cwd import SessionRecentCwdCoordinator
 
 
 def test_session_manager_persistent_maps_are_store_owned() -> None:
@@ -291,6 +292,46 @@ def test_session_store_load_persistent_state_owns_bootstrap_order() -> None:
         assert store.commit_unknown_sends == {"s1": {"text": "maybe", "created_ts": 1.0}}
         assert store.recent_cwds == {"/repo": 2.0}
         assert store.unattended == {"s1": {"enabled": True, "request": "continue", "cooldown_minutes": 15, "remaining_injections": 7}}
+
+
+def test_recent_cwd_coordinator_lists_store_default_limit_when_route_omits_limit() -> None:
+    with TemporaryDirectory() as td:
+        root = Path(td)
+        store = create_session_store(
+            paths=session_store_paths(
+                aliases=root / "session_aliases.json",
+                sidebar_meta=root / "session_sidebar.json",
+                hidden_sessions=root / "hidden_sessions.json",
+                files=root / "session_files.json",
+                queues=root / "session_queues.json",
+                pending_attachments=root / "pending_attachments.json",
+                commit_unknown_sends=root / "commit_unknown_sends.json",
+                recent_cwds=root / "recent_cwds.json",
+                unattended=root / "unattended.json",
+            ),
+            file_history_max=3,
+            recent_cwd_max=2,
+            unattended_default_idle_minutes=15,
+            unattended_default_max_injections=7,
+            clean_alias=server._clean_alias,
+            clean_priority_offset=server._clean_priority_offset,
+            clean_snooze_until=server._clean_snooze_until,
+            clean_dependency_session_id=server._clean_dependency_session_id,
+            clean_recent_cwd=server._clean_recent_cwd,
+            clean_commit_unknown_send_record=lambda raw: dict(raw) if isinstance(raw, dict) and isinstance(raw.get("text"), str) else None,
+        )
+        store.recent_cwds = {"/old": 1.0, "/new": 3.0, "/mid": 2.0}
+        coordinator = SessionRecentCwdCoordinator(
+            lock=threading.Lock(),
+            store=lambda: store,
+            iter_session_logs=lambda: [],
+            resume_candidate_from_log=lambda _path: None,
+            save_recent_cwds=lambda: None,
+            now=lambda: 4.0,
+        )
+
+        assert coordinator.list_recent() == ["/new", "/mid"]
+        assert coordinator.list_recent(limit=1) == ["/new"]
 
 
 def test_session_store_rebinds_paths_without_losing_in_memory_state() -> None:

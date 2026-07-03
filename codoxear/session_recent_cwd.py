@@ -42,6 +42,8 @@ class SessionRecentCwdCoordinator:
         if changed:
             self.save_recent_cwds()
 
-    def list_recent(self, *, limit: int) -> list[str]:
+    def list_recent(self, *, limit: int | None = None) -> list[str]:
         with self.lock:
-            return self.store().list_recent_cwds(limit=limit)
+            store = self.store()
+            effective_limit = store.recent_cwd_max if limit is None else limit
+            return store.list_recent_cwds(limit=effective_limit)
