@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .cc_log import cc_assistant_is_final_turn_end as _cc_assistant_is_final_turn_end
+from .cc_log import cc_assistant_text as _cc_assistant_text
+from .cc_log import cc_user_text as _cc_user_text
 from .pi_log import pi_assistant_error_text as _pi_assistant_error_text
 from .pi_log import pi_assistant_is_aborted_turn as _pi_assistant_is_aborted_turn
 from .pi_log import pi_assistant_is_final_turn_end as _pi_assistant_is_final_turn_end
@@ -56,6 +59,10 @@ def _log_busy_signals(obj: dict[str, Any]) -> tuple[bool, bool]:
             return False, True
         if _pi_assistant_text(obj) and _pi_assistant_is_final_turn_end(obj):
             return False, True
+    if obj.get("type") == "user" and _cc_user_text(obj):
+        return True, False
+    if obj.get("type") == "assistant" and _cc_assistant_text(obj) and _cc_assistant_is_final_turn_end(obj):
+        return False, True
     return False, False
 
 

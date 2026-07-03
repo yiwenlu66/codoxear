@@ -19,6 +19,7 @@ from typing import Any
 
 from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
+from .broker_terminal import _reply_to_terminal_queries
 from .control_socket import handle_control_socket_connection as _handle_control_socket_connection
 from . import pty_util as _pty_util
 from .sessiond_control import SessiondControlDeps
@@ -87,6 +88,7 @@ class Sessiond:
         self.cols = DEFAULT_COLS
         self._stop = threading.Event()
         self._lock = threading.Lock()
+        self._term_query_buf = b""
         self.state: State | None = None
         self.codex_home = DEFAULT_AGENT_HOME
         self.sessions_dir = BACKEND.sessions_dir()
@@ -126,12 +128,8 @@ class Sessiond:
                 b = os.read(fd, 4096)
                 if not b:
                     break
-                # Minimal terminal-emulator responses for Codex TUI startup.
-                if b"\x1b[6n" in b:
-                    try:
-                        _write_all(fd, b"\x1b[1;1R")
-                    except Exception:
-                        traceback.print_exc()
+                # Shared minimal terminal-emulator responses for backend TUI startup.
+                self._term_query_buf = _reply_to_terminal_queries(term_query_buf=self._term_query_buf, fd=fd, chunk=b, write_all=_write_all)
                 # xterm "report terminal size" queries (some TUIs use these).
                 if b"\x1b[18t" in b:
                     try:
@@ -314,23 +312,19 @@ class Sessiond:
                 os.environ["COLUMNS"] = str(self.cols)
                 os.environ["LINES"] = str(self.rows)
                 os.environ[BACKEND.home_env_var] = str(self.codex_home)
-                if AGENT_BACKEND == "codex":
-                    os.chdir(str(ROOT_REPO_DIR))
-                    forced = [
-                        "--no-alt-screen",
-                        "-c",
-                        "disable_response_storage=false",
-                        "-c",
-                        "disable_paste_burst=true",
-                        "-C",
-                        str(ROOT_REPO_DIR),
-                    ]
-                    if self.cwd:
-                        forced += ["--add-dir", self.cwd]
-                    argv = [AGENT_BIN] + forced + self.codex_args
-                else:
-                    os.chdir(self.cwd or str(ROOT_REPO_DIR))
-                    argv = [AGENT_BIN, *self.codex_args]
+                child_cwd = BACKEND.sessiond_working_dir(root_repo_dir=ROOT_REPO_DIR, requested_cwd=self.cwd)
+                os.chdir(str(child_cwd))
+                launch_args = BACKEND.build_sessiond_launch_args(
+                    root_repo_dir=ROOT_REPO_DIR,
+                    requested_cwd=self.cwd,
+                    extra_args=self.codex_args,
+                    model_provider=MODEL_PROVIDER_OVERRIDE or None,
+                    preferred_auth_method=PREFERRED_AUTH_METHOD_OVERRIDE or None,
+                    model=MODEL_OVERRIDE or None,
+                    reasoning_effort=REASONING_EFFORT_OVERRIDE or None,
+                    service_tier=SERVICE_TIER_OVERRIDE or None,
+                )
+                argv = [AGENT_BIN, *launch_args]
                 os.execvp(argv[0], argv)
             except Exception:
                 traceback.print_exc()

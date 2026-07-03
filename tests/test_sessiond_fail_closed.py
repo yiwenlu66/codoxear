@@ -1,5 +1,6 @@
 import subprocess
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -9,6 +10,8 @@ from codoxear.sessiond import State
 from codoxear.sessiond import _busy_value_after_log_batch
 from codoxear.sessiond import _log_busy_signals
 from codoxear.sessiond import _read_jsonl_from_offset
+from codoxear.sessiond_control import SessiondControlDeps
+from codoxear.sessiond_control import handle_sessiond_control_connection
 
 
 def _sessiond_state(*, codex_pid: int, sock_path: Path) -> State:
@@ -55,6 +58,42 @@ class TestSessiondFailClosed(unittest.TestCase):
         user = {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "new turn"}]}}
         self.assertIs(_busy_value_after_log_batch([aborted, user]), True)
         self.assertIs(_busy_value_after_log_batch([user, aborted]), False)
+
+    def test_log_busy_signals_cover_claude_code_user_and_final_assistant_rows(self) -> None:
+        cc_user = {"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": "run"}]}}
+        cc_final = {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "done"}], "stop_reason": "end_turn"}}
+        self.assertEqual(_log_busy_signals(cc_user), (True, False))
+        self.assertEqual(_log_busy_signals(cc_final), (False, True))
+        self.assertIs(_busy_value_after_log_batch([cc_user, cc_final]), False)
+
+    def test_sessiond_control_state_uses_runtime_state_schema(self) -> None:
+        captured: dict[str, object] = {}
+
+        def fake_control_connection(_conn, *, handlers, **_kwargs):
+            response, after = handlers["state"]({})
+            captured["response"] = response
+            captured["after"] = after
+
+        state = _sessiond_state(codex_pid=1234, sock_path=Path("/tmp/sessiond.sock"))
+        state.busy = True
+        deps = SessiondControlDeps(
+            lock=threading.Lock(),
+            state=lambda: state,
+            encode_enter=lambda: b"\r",
+            seq_bytes=lambda raw: raw.encode("utf-8"),
+            write_all=lambda _fd, _data: None,
+            inject=lambda **_kwargs: None,
+            teardown_managed_process_group=lambda: None,
+            handle_control_socket_connection=fake_control_connection,
+            send_json_line=lambda _conn, _obj: None,
+            socket_peer_disconnected=lambda _exc: False,
+            print_exception=lambda: None,
+        )
+
+        handle_sessiond_control_connection(object(), deps=deps)
+
+        self.assertEqual(captured["response"], {"busy": True, "queue_len": 0, "interrupted_idle": False})
+        self.assertIsNone(captured["after"])
 
     def test_sessiond_reader_preserves_missing_file_contract(self) -> None:
         missing = Path(tempfile.gettempdir()) / "codoxear-missing-sessiond-jsonl-for-test.jsonl"

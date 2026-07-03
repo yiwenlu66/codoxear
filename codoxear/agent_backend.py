@@ -127,6 +127,35 @@ class AgentBackend:
     def build_resume_args(self, *, resume_id: str, resume_row: Mapping[str, Any] | None = None) -> list[str]:
         raise NotImplementedError(f"{self.name} backend does not implement resume args")
 
+    def sessiond_working_dir(self, *, root_repo_dir: Path, requested_cwd: str) -> Path:
+        cwd = str(requested_cwd or "").strip()
+        return Path(cwd) if cwd else root_repo_dir
+
+    def build_sessiond_launch_args(
+        self,
+        *,
+        root_repo_dir: Path,
+        requested_cwd: str,
+        extra_args: list[str],
+        model_provider: str | None = None,
+        preferred_auth_method: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+        service_tier: str | None = None,
+    ) -> list[str]:
+        return [
+            *self.build_launch_args(
+                spawn_cwd=self.sessiond_working_dir(root_repo_dir=root_repo_dir, requested_cwd=requested_cwd),
+                codex_trust_override="projects.*.trust_level=\"trusted\"",
+                model_provider=model_provider,
+                preferred_auth_method=preferred_auth_method,
+                model=model,
+                reasoning_effort=reasoning_effort,
+                service_tier=service_tier,
+            ),
+            *extra_args,
+        ]
+
     def apply_launch_environment(
         self,
         env: dict[str, str],
@@ -413,6 +442,45 @@ class CodexBackend(AgentBackend):
 
     def build_resume_args(self, *, resume_id: str, resume_row: Mapping[str, Any] | None = None) -> list[str]:
         return ["resume", resume_id]
+
+    def sessiond_working_dir(self, *, root_repo_dir: Path, requested_cwd: str) -> Path:
+        return root_repo_dir
+
+    def build_sessiond_launch_args(
+        self,
+        *,
+        root_repo_dir: Path,
+        requested_cwd: str,
+        extra_args: list[str],
+        model_provider: str | None = None,
+        preferred_auth_method: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+        service_tier: str | None = None,
+    ) -> list[str]:
+        args = [
+            "--no-alt-screen",
+            "-c",
+            "disable_response_storage=false",
+            "-c",
+            "disable_paste_burst=true",
+            "-C",
+            str(root_repo_dir),
+        ]
+        if requested_cwd:
+            args.extend(["--add-dir", requested_cwd])
+        if model is not None:
+            args.extend(["--model", model])
+        if reasoning_effort is not None:
+            args.extend(["-c", f'model_reasoning_effort="{reasoning_effort}"'])
+        if model_provider is not None:
+            args.extend(["-c", f'model_provider="{model_provider}"'])
+        if preferred_auth_method is not None:
+            args.extend(["-c", f'preferred_auth_method="{preferred_auth_method}"'])
+        if service_tier is not None:
+            args.extend(["-c", f'service_tier="{service_tier}"'])
+        args.extend(extra_args)
+        return args
 
 
 class PiBackend(AgentBackend):

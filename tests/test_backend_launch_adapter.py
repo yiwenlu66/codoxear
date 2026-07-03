@@ -120,6 +120,42 @@ class TestBackendLaunchAdapter(unittest.TestCase):
             ],
         )
 
+    def test_backend_adapters_build_sessiond_launch_args(self) -> None:
+        codex = get_agent_backend("codex").build_sessiond_launch_args(
+            root_repo_dir=Path("/root-repo"),
+            requested_cwd="/work",
+            extra_args=["--ask-for-approval", "never"],
+            model_provider="openai",
+            preferred_auth_method="apikey",
+            model="gpt-5.4",
+            reasoning_effort="high",
+            service_tier="flex",
+        )
+        self.assertEqual(codex[:8], ["--no-alt-screen", "-c", "disable_response_storage=false", "-c", "disable_paste_burst=true", "-C", "/root-repo", "--add-dir"])
+        self.assertIn("/work", codex)
+        self.assertIn("--model", codex)
+        self.assertIn('model_provider="openai"', codex)
+        self.assertEqual(codex[-2:], ["--ask-for-approval", "never"])
+        pi = get_agent_backend("pi").build_sessiond_launch_args(
+            root_repo_dir=Path("/root-repo"),
+            requested_cwd="/work",
+            extra_args=["--debug"],
+            model_provider="macaron",
+            model="gpt-pi",
+            reasoning_effort="high",
+        )
+        self.assertEqual(pi, ["--provider", "macaron", "--model", "gpt-pi", "--thinking", "high", "--debug"])
+        cc = get_agent_backend("cc").build_sessiond_launch_args(
+            root_repo_dir=Path("/root-repo"),
+            requested_cwd="/work",
+            extra_args=[],
+            model="sonnet",
+            reasoning_effort="max",
+        )
+        self.assertEqual(cc, ["--dangerously-skip-permissions", "--model", "sonnet", "--effort", "max"])
+        self.assertEqual(get_agent_backend("codex").sessiond_working_dir(root_repo_dir=Path("/root-repo"), requested_cwd="/work"), Path("/root-repo"))
+        self.assertEqual(get_agent_backend("pi").sessiond_working_dir(root_repo_dir=Path("/root-repo"), requested_cwd="/work"), Path("/work"))
+
     def test_backend_specific_args_and_resume_args(self) -> None:
         self.assertEqual(
             build_backend_args(agent_backend="pi", spawn_cwd=Path("/repo"), codex_trust_override="", model_provider="macaron", model="gpt-5.4", reasoning_effort="medium"),

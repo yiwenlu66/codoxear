@@ -25,7 +25,7 @@ def handle_sessiond_control_connection(conn: Any, *, deps: SessiondControlDeps) 
             st = deps.state()
             if not st:
                 return {"error": "no state"}, None
-            return {"busy": st.busy, "queue_len": 0}, None
+            return {"busy": st.busy, "queue_len": 0, "interrupted_idle": False}, None
 
     def tail_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
         with deps.lock:
