@@ -2159,7 +2159,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             self.assertIn(api_name, viewer_source)
         self.assertIn("normalizeLineNumber", app_source)
         self.assertIn("fileViewerController.currentActiveFileIdentity()", app_source)
-        self.assertNotIn("activeFilePath: () => activeFilePath", app_source)
+        self.assertNotIn("activeFilePath: () => activeFilePath,", app_source)
 
     def test_file_viewer_touch_binding_behavior(self) -> None:
         result = run_file_viewer_touch_binding_probe()

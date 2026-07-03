@@ -7774,7 +7774,6 @@
           selectedSessionId: () => selected,
           blockUnavailableFileAction: () => blockUnavailableFileAction(),
           isSessionCurrent: (sessionId, syncToken) => isFileViewerSessionCurrent(sessionId, syncToken),
-          candidateCacheKey: (sessionId) => fileCandidateCacheKey(sessionId),
           ttlMs: FILE_CANDIDATE_CACHE_TTL_MS,
           nowMs: () => Date.now(),
           collectMessageFileRefs: () => collectMessageFileRefs(),
@@ -7991,13 +7990,6 @@
 
         function applyFileCandidateEntries(entries) {
           return fileViewerController.applyFileCandidateEntries(entries);
-        }
-
-        function fileCandidateCacheKey(sid) {
-          const s = sid ? sessionIndex.get(sid) : null;
-          const filesKey = JSON.stringify(listFromFilesField(s && s.files));
-          const refsKey = JSON.stringify(collectMessageFileRefs());
-          return `${sid || ""}\u0000${filesKey}\u0000${refsKey}`;
         }
 
         function upsertFileEntry(entry) {

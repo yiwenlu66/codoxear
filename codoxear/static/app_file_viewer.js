@@ -913,7 +913,6 @@
     const selectedSessionId = requireFunction(options.selectedSessionId, "selectedSessionId");
     const blockUnavailableFileAction = requireFunction(options.blockUnavailableFileAction, "blockUnavailableFileAction");
     const isSessionCurrent = requireFunction(options.isSessionCurrent, "isSessionCurrent");
-    const candidateCacheKey = requireFunction(options.candidateCacheKey, "candidateCacheKey");
     const collectMessageFileRefs = requireFunction(options.collectMessageFileRefs, "collectMessageFileRefs");
     const sessionFiles = requireFunction(options.sessionFiles, "sessionFiles");
     const sessionRelativePath = requireFunction(options.sessionRelativePath, "sessionRelativePath");
@@ -962,6 +961,12 @@
         .map((abs) => sessionRelativePath(abs, sid))
         .filter((rel) => typeof rel === "string" && rel && rel !== ".")
         .map(recentEntry);
+    }
+
+    function candidateCacheKey(sid) {
+      const filesKey = JSON.stringify(sessionFiles(sid));
+      const refsKey = JSON.stringify(collectMessageFileRefs());
+      return `${sid || ""}\u0000${filesKey}\u0000${refsKey}`;
     }
 
     async function refresh({ force = false, sessionId = null, syncToken = null } = {}) {
