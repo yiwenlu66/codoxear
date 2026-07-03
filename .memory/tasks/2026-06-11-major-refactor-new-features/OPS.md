@@ -7771,3 +7771,12 @@
   - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_overlay_accessibility_source.py` returned `66 passed, 25 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
 - Scope note: file-viewer show/open-session lifecycle is viewer-module owned. App.js still owns file-picker input event binding, file-reference click routing, selected-session authority, and save/edit wrapper seams.
+
+## 2026-07-03T00:09:00Z File path projection viewer-module ownership
+- Functional commit `3fc089f Move file path projection into viewer module` moved the active-path projection sequence from inline `codoxear/static/app.js` into `createFileViewerPanelRuntime(...).setFilePath(...)` in `codoxear/static/app_file_viewer.js`.
+- Mechanism: app.js still combined controller identity mutation with picker input reset, picker-menu close/apply, and mode-toolbar application. The panel runtime now owns that ordering while app.js injects picker/menu/mode side effects and keeps a wrapper for existing call sites.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app_file_viewer.js` and `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_file_viewer_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_overlay_accessibility_source.py` returned `66 passed, 25 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
