@@ -345,6 +345,150 @@
     return msgs;
   }
 
+  function createTranscriptRenderRuntime(options = {}) {
+    const root = requireNode(options.root, "root");
+    const bottomSentinel = requireNode(options.bottomSentinel, "bottomSentinel");
+    const documentLike = requireNode(options.document, "document");
+    const safeMakeRow = requireFunction(options.safeMakeRow, "safeMakeRow");
+    const normalizeEvents = requireFunction(options.normalizeEvents, "normalizeEvents");
+    const consumePendingUserIfMatches = requireFunction(options.consumePendingUserIfMatches, "consumePendingUserIfMatches");
+    const isDuplicateEvent = requireFunction(options.isDuplicateEvent, "isDuplicateEvent");
+    const isAdjacentAssistantDuplicateEvent = requireFunction(options.isAdjacentAssistantDuplicateEvent, "isAdjacentAssistantDuplicateEvent");
+    const markEventSeen = requireFunction(options.markEventSeen, "markEventSeen");
+    const markFirstPaint = requireFunction(options.markFirstPaint, "markFirstPaint");
+    const renderRecoveryPanel = requireFunction(options.renderRecoveryPanel, "renderRecoveryPanel");
+    const restorePendingRows = requireFunction(options.restorePendingRows, "restorePendingRows");
+    const resetRecentEvents = requireFunction(options.resetRecentEvents, "resetRecentEvents");
+    const setOlderState = requireFunction(options.setOlderState, "setOlderState");
+    const firstVisibleMessageRow = requireFunction(options.firstVisibleMessageRow, "firstVisibleMessageRow");
+    const getScrollTop = requireFunction(options.getScrollTop, "getScrollTop");
+    const getSelectedSessionId = requireFunction(options.getSelectedSessionId, "getSelectedSessionId");
+    const domRuntime = requireNode(options.domRuntime, "domRuntime");
+    requireFunction(domRuntime.clear, "domRuntime.clear");
+    requireFunction(domRuntime.rebuildDecorations, "domRuntime.rebuildDecorations");
+    requireFunction(domRuntime.trimRenderedRows, "domRuntime.trimRenderedRows");
+    const scrollRuntime = requireNode(options.scrollRuntime, "scrollRuntime");
+    requireFunction(scrollRuntime.shouldStickToBottom, "scrollRuntime.shouldStickToBottom");
+    requireFunction(scrollRuntime.snapshot, "scrollRuntime.snapshot");
+    requireFunction(scrollRuntime.syncJumpButton, "scrollRuntime.syncJumpButton");
+    requireFunction(scrollRuntime.scheduleScrollToBottom, "scrollRuntime.scheduleScrollToBottom");
+    requireFunction(scrollRuntime.markLiveTail, "scrollRuntime.markLiveTail");
+    requireFunction(scrollRuntime.disableAutoScroll, "scrollRuntime.disableAutoScroll");
+    requireFunction(scrollRuntime.setRenderedAtLiveTail, "scrollRuntime.setRenderedAtLiveTail");
+    requireFunction(scrollRuntime.setScrollTop, "scrollRuntime.setScrollTop");
+    const typingRowRuntime = requireNode(options.typingRowRuntime, "typingRowRuntime");
+    requireFunction(typingRowRuntime.anchor, "typingRowRuntime.anchor");
+    const historySlackRows = Math.max(1, Math.floor(Number(options.historySlackRows) || 1));
+
+    function fragmentFor(events, { markSeen = false, pending = false } = {}) {
+      const frag = documentLike.createDocumentFragment();
+      for (const ev of events) {
+        const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : pending && ev.pending ? Date.now() / 1000 : null;
+        if (markSeen) markEventSeen(ev);
+        frag.appendChild(safeMakeRow(ev, { ts, pending }).row);
+      }
+      return frag;
+    }
+
+    function appendEvent(ev) {
+      if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return false;
+      if (consumePendingUserIfMatches(ev)) return false;
+      if (isDuplicateEvent(ev)) return false;
+      if (isAdjacentAssistantDuplicateEvent(ev)) {
+        markEventSeen(ev);
+        return false;
+      }
+      const pending = Boolean(ev.pending);
+      const stick = pending || scrollRuntime.shouldStickToBottom();
+      if (!pending && !scrollRuntime.snapshot().renderedAtLiveTail) {
+        markEventSeen(ev);
+        scrollRuntime.syncJumpButton();
+        return false;
+      }
+      const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : ev.pending ? Date.now() / 1000 : null;
+      const { row } = safeMakeRow(ev, { ts, pending });
+      root.insertBefore(row, typingRowRuntime.anchor());
+      domRuntime.trimRenderedRows({ fromTop: stick });
+      domRuntime.rebuildDecorations({ preserveScroll: false });
+      renderRecoveryPanel(getSelectedSessionId());
+      if (!ev.pending) markFirstPaint();
+      markEventSeen(ev);
+      if (stick) scrollRuntime.scheduleScrollToBottom();
+      scrollRuntime.syncJumpButton();
+      return true;
+    }
+
+    function renderTranscript(events, { preserveScroll = false } = {}) {
+      const selectedSessionId = getSelectedSessionId();
+      const msgs = normalizeEvents(events, { consumePending: true });
+      scrollRuntime.markLiveTail();
+      domRuntime.clear();
+      if (!msgs.length) {
+        restorePendingRows(selectedSessionId);
+        return false;
+      }
+      resetRecentEvents();
+      root.insertBefore(fragmentFor(msgs, { markSeen: true, pending: false }), bottomSentinel);
+      domRuntime.rebuildDecorations({ preserveScroll });
+      restorePendingRows(selectedSessionId);
+      return true;
+    }
+
+    function renderDetachedTranscriptWindow(events, { hasMore = false } = {}) {
+      const msgs = normalizeEvents(events, { consumePending: false });
+      scrollRuntime.disableAutoScroll();
+      scrollRuntime.setRenderedAtLiveTail(false);
+      domRuntime.clear();
+      setOlderState({ hasMore: Boolean(hasMore), isLoading: false });
+      if (!msgs.length) {
+        scrollRuntime.syncJumpButton();
+        return false;
+      }
+      resetRecentEvents();
+      root.insertBefore(fragmentFor(msgs, { markSeen: true, pending: false }), bottomSentinel);
+      domRuntime.rebuildDecorations({ preserveScroll: false });
+      scrollRuntime.setScrollTop(1);
+      scrollRuntime.syncJumpButton();
+      return true;
+    }
+
+    function prependOlderEvents(allEvents, { preserveViewport = false } = {}) {
+      const msgs = [];
+      for (const ev of allEvents || []) {
+        if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
+        msgs.push(ev);
+      }
+      if (!msgs.length) return false;
+      scrollRuntime.disableAutoScroll();
+      const frag = fragmentFor(msgs, { markSeen: false, pending: false });
+      const anchorRow = preserveViewport ? firstVisibleMessageRow() : null;
+      const anchorOffset = anchorRow ? anchorRow.offsetTop - getScrollTop() : 0;
+      const firstMsg = root.querySelector(".msg-row:not(.typing-row)");
+      root.insertBefore(frag, firstMsg || typingRowRuntime.anchor());
+      const wasAtLiveTail = scrollRuntime.snapshot().renderedAtLiveTail;
+      if (!preserveViewport) scrollRuntime.setScrollTop(1);
+      domRuntime.trimRenderedRows({ fromTop: false, maxRows: historySlackRows });
+      if (wasAtLiveTail && scrollRuntime.snapshot().renderedAtLiveTail === false) {
+        scrollRuntime.disableAutoScroll();
+      }
+      domRuntime.rebuildDecorations({ preserveScroll: false });
+      if (preserveViewport && anchorRow && anchorRow.isConnected) {
+        scrollRuntime.setScrollTop(Math.max(0, anchorRow.offsetTop - anchorOffset));
+      } else {
+        scrollRuntime.setScrollTop(1);
+      }
+      scrollRuntime.syncJumpButton();
+      return true;
+    }
+
+    return Object.freeze({
+      appendEvent,
+      prependOlderEvents,
+      renderDetachedTranscriptWindow,
+      renderTranscript,
+    });
+  }
+
   function createTranscriptDomRuntime(options = {}) {
     const root = requireNode(options.root, "root");
     requireFunction(root.appendChild, "root.appendChild");
@@ -1108,6 +1252,7 @@
     createTranscriptSlotRuntime,
     createTypingRowRuntime,
     normalizedTranscriptEvents,
+    createTranscriptRenderRuntime,
     createTranscriptDomRuntime,
     createTranscriptScrollRuntime,
     createTranscriptEventRuntime,

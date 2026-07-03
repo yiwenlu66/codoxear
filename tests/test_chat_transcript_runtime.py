@@ -641,6 +641,100 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertTrue(out["missingKey"])
         self.assertTrue(out["missingTake"])
 
+    def test_transcript_render_runtime_owns_window_render_and_history_prepend(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const ctx = {{ window: {{}} }};
+            const vm = require("vm");
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            const tx = ctx.window.CodoxearTranscript;
+            const calls = [];
+            const bottom = {{ name: "bottom" }};
+            const firstMsg = {{ name: "first", offsetTop: 20, isConnected: true }};
+            const root = {{
+              insertBefore(node, before) {{ calls.push(["insert", node.children ? node.children.map((row) => row.name) : node.name || "node", before && before.name]); }},
+              querySelector: (selector) => selector === ".msg-row:not(.typing-row)" ? firstMsg : null,
+            }};
+            const scrollRuntime = {{
+              shouldStickToBottom: () => true,
+              snapshot: () => ({{ renderedAtLiveTail: ctx.renderedAtLiveTail }}),
+              syncJumpButton: () => calls.push(["jump"]),
+              scheduleScrollToBottom: () => calls.push(["scroll"]),
+              markLiveTail: () => calls.push(["markLiveTail"]),
+              disableAutoScroll: () => calls.push(["disableAuto"]),
+              setRenderedAtLiveTail: (value) => {{ ctx.renderedAtLiveTail = value; calls.push(["liveTail", value]); }},
+              setScrollTop: (value) => calls.push(["scrollTop", value]),
+            }};
+            const domRuntime = {{
+              clear: () => calls.push(["clear"]),
+              rebuildDecorations: (opts) => calls.push(["rebuild", Boolean(opts.preserveScroll)]),
+              trimRenderedRows: (opts) => {{ calls.push(["trim", opts.fromTop, opts.maxRows || null]); ctx.renderedAtLiveTail = Boolean(opts.fromTop); return 1; }},
+            }};
+            function makeRuntime(eventsForNormalize) {{
+              return tx.createTranscriptRenderRuntime({{
+                root,
+                bottomSentinel: bottom,
+                document: {{ createDocumentFragment: () => ({{ children: [], appendChild(row) {{ this.children.push(row); }} }}) }},
+                safeMakeRow: (ev) => (calls.push(["make", ev.text]), {{ row: {{ name: ev.text }}, bubble: {{}} }}),
+                normalizeEvents: (events, opts) => (calls.push(["normalize", Boolean(opts.consumePending)]), eventsForNormalize || events),
+                consumePendingUserIfMatches: () => false,
+                isDuplicateEvent: () => false,
+                isAdjacentAssistantDuplicateEvent: () => false,
+                markEventSeen: (ev) => calls.push(["seen", ev.text]),
+                markFirstPaint: () => calls.push(["paint"]),
+                renderRecoveryPanel: (sid) => calls.push(["recovery", sid]),
+                restorePendingRows: (sid) => calls.push(["restore", sid]),
+                resetRecentEvents: () => calls.push(["resetRecent"]),
+                setOlderState: (state) => calls.push(["older", state.hasMore, state.isLoading]),
+                firstVisibleMessageRow: () => firstMsg,
+                getScrollTop: () => 5,
+                getSelectedSessionId: () => "sid",
+                domRuntime,
+                scrollRuntime,
+                typingRowRuntime: {{ anchor: () => bottom }},
+                historySlackRows: 99,
+              }});
+            }}
+            ctx.renderedAtLiveTail = true;
+            const runtime = makeRuntime([{{ role: "user", text: "one", ts: 1 }}, {{ role: "assistant", text: "two", ts: 2 }}]);
+            const full = runtime.renderTranscript([{{ role: "user", text: "ignored" }}], {{ preserveScroll: true }});
+            const afterFull = calls.slice();
+            calls.length = 0;
+            const detached = runtime.renderDetachedTranscriptWindow([{{ role: "assistant", text: "det" }}], {{ hasMore: true }});
+            const afterDetached = calls.slice();
+            calls.length = 0;
+            ctx.renderedAtLiveTail = true;
+            const prepended = runtime.prependOlderEvents([{{ role: "system", text: "skip" }}, {{ role: "user", text: "old" }}], {{ preserveViewport: true }});
+            const afterPrepend = calls.slice();
+            calls.length = 0;
+            const empty = makeRuntime([]).renderTranscript([], {{ preserveScroll: false }});
+            process.stdout.write(JSON.stringify({{ full, detached, prepended, empty, afterFull, afterDetached, afterPrepend, frozen: Object.isFrozen(runtime) }}));
+            """
+        )
+        out = _run_node(js)
+
+        self.assertTrue(out["full"])
+        self.assertTrue(out["detached"])
+        self.assertTrue(out["prepended"])
+        self.assertFalse(out["empty"])
+        self.assertEqual(out["afterFull"], [
+            ["normalize", True], ["markLiveTail"], ["clear"], ["resetRecent"],
+            ["seen", "one"], ["make", "one"], ["seen", "two"], ["make", "two"],
+            ["insert", ["one", "two"], "bottom"], ["rebuild", True], ["restore", "sid"],
+        ])
+        self.assertEqual(out["afterDetached"], [
+            ["normalize", False], ["disableAuto"], ["liveTail", False], ["clear"], ["older", True, False], ["resetRecent"],
+            ["seen", "one"], ["make", "one"], ["seen", "two"], ["make", "two"],
+            ["insert", ["one", "two"], "bottom"], ["rebuild", False], ["scrollTop", 1], ["jump"],
+        ])
+        self.assertEqual(out["afterPrepend"], [
+            ["disableAuto"], ["make", "old"], ["insert", ["old"], "first"], ["trim", False, 99], ["disableAuto"],
+            ["rebuild", False], ["scrollTop", 5], ["jump"],
+        ])
+        self.assertTrue(out["frozen"])
+
     def test_transcript_dom_runtime_owns_clear_decorate_and_trim_window(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
@@ -1183,130 +1277,127 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertFalse(out["prepended"])
 
     def test_live_delta_does_not_splice_into_history_window(self) -> None:
-        snippet = _source_between("function appendEvent(ev) {", "function renderTranscript(")
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
             f"""
-            const ctx = {{
-              transcriptScrollRuntime: {{
-                snapshot: () => ({{ renderedAtLiveTail: false }}),
-                shouldStickToBottom: () => false,
-                syncJumpButton: () => {{ ctx.jumps += 1; }},
-                scheduleScrollToBottom: () => {{ ctx.scrolled = true; }},
-              }},
-              seen: 0,
-              jumps: 0,
-              made: 0,
+            const ctx = {{ window: {{}} }};
+            const vm = require("vm");
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            const calls = [];
+            const bottom = {{}};
+            const scrollRuntime = {{
+              snapshot: () => ({{ renderedAtLiveTail: false }}),
+              shouldStickToBottom: () => false,
+              syncJumpButton: () => calls.push(["jump"]),
+              scheduleScrollToBottom: () => calls.push(["scroll"]),
+              markLiveTail: () => calls.push(["markLiveTail"]),
+              disableAutoScroll: () => calls.push(["disableAuto"]),
+              setRenderedAtLiveTail: (value) => calls.push(["liveTail", value]),
+              setScrollTop: (value) => calls.push(["scrollTop", value]),
+            }};
+            const runtime = ctx.window.CodoxearTranscript.createTranscriptRenderRuntime({{
+              root: {{ insertBefore: () => calls.push(["insert"]), querySelector: () => null }},
+              bottomSentinel: bottom,
+              document: {{ createDocumentFragment: () => ({{ appendChild: () => {{}} }}) }},
+              safeMakeRow: () => (calls.push(["make"]), {{ row: {{}}, bubble: {{}} }}),
+              normalizeEvents: () => [],
               consumePendingUserIfMatches: () => false,
               isDuplicateEvent: () => false,
               isAdjacentAssistantDuplicateEvent: () => false,
-              isNearBottom: () => false,
-              markEventSeen: () => {{ ctx.seen += 1; }},
-              syncJumpButton: () => {{ ctx.jumps += 1; }},
-              safeMakeRow: () => {{
-                ctx.made += 1;
-                return {{ row: {{}}, bubble: {{}} }};
-              }},
-              Date,
-              bottomSentinel: {{}},
-              typingRowRuntime: {{ anchor: () => ctx.bottomSentinel }},
-              chatInner: {{ insertBefore: () => {{ ctx.inserted = true; }} }},
-              trimRenderedRows: () => {{ ctx.trimmed = true; }},
-              rebuildDecorations: () => {{ ctx.rebuilt = true; }},
-              markClickFirstPaint: () => {{ ctx.painted = true; }},
-              requestAnimationFrame: (fn) => fn(),
-              scrollToBottom: () => {{ ctx.scrolled = true; }},
-            }};
-            vm = require("vm");
-            vm.createContext(ctx);
-            vm.runInContext({json.dumps(snippet)}, ctx);
-            ctx.appendEvent({{ role: "assistant", text: "new tail", ts: 2 }});
-            process.stdout.write(JSON.stringify({{
-              made: ctx.made,
-              seen: ctx.seen,
-              jumps: ctx.jumps,
-              inserted: Boolean(ctx.inserted),
-              trimmed: Boolean(ctx.trimmed),
-              rebuilt: Boolean(ctx.rebuilt),
-              painted: Boolean(ctx.painted),
-            }}));
+              markEventSeen: () => calls.push(["seen"]),
+              markFirstPaint: () => calls.push(["paint"]),
+              renderRecoveryPanel: () => calls.push(["recovery"]),
+              restorePendingRows: () => calls.push(["restore"]),
+              resetRecentEvents: () => calls.push(["resetRecent"]),
+              setOlderState: () => calls.push(["older"]),
+              firstVisibleMessageRow: () => null,
+              getScrollTop: () => 0,
+              getSelectedSessionId: () => "sid",
+              domRuntime: {{ clear: () => calls.push(["clear"]), rebuildDecorations: () => calls.push(["rebuild"]), trimRenderedRows: () => calls.push(["trim"]) }},
+              scrollRuntime,
+              typingRowRuntime: {{ anchor: () => bottom }},
+              historySlackRows: 3,
+            }});
+            runtime.appendEvent({{ role: "assistant", text: "new tail", ts: 2 }});
+            process.stdout.write(JSON.stringify({{ calls }}));
             """
         )
         out = _run_node(js)
 
-        self.assertEqual(out["made"], 0)
-        self.assertEqual(out["seen"], 1)
-        self.assertEqual(out["jumps"], 1)
-        self.assertFalse(out["inserted"])
-        self.assertFalse(out["trimmed"])
-        self.assertFalse(out["rebuilt"])
-        self.assertFalse(out["painted"])
+        self.assertEqual(out["calls"], [["seen"], ["jump"]])
 
     def test_live_delta_dedupes_adjacent_assistant_text_across_polls(self) -> None:
         identity_source = APP_MESSAGE_IDENTITY_JS.read_text(encoding="utf-8")
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
-        helper_snippet = _source_between("function eventKey(ev) {", "function isTranscriptRenewalCommand(")
-        append_snippet = _source_between("function appendEvent(ev) {", "function renderTranscript(")
         js = textwrap.dedent(
             f"""
-            const ctx = {{
-              transcriptScrollRuntime: {{
-                snapshot: () => ({{ renderedAtLiveTail: true }}),
-                shouldStickToBottom: () => true,
-                syncJumpButton: () => {{ ctx.jumped = true; }},
-                scheduleScrollToBottom: () => {{ ctx.scrolled = true; }},
-              }},
-              made: 0,
-              inserted: 0,
-              rows: [{{ dataset: {{ role: "assistant", assistantDedupeKey: "final_response|same final text" }} }}],
-              window: {{}},
-              renderedMessageRows: () => ctx.rows,
-              consumePendingUserIfMatches: () => false,
-              isNearBottom: () => true,
-              safeMakeRow: () => {{
-                ctx.made += 1;
-                return {{ row: {{}}, bubble: {{}} }};
-              }},
-              bottomSentinel: {{}},
-              typingRowRuntime: {{ anchor: () => ctx.bottomSentinel }},
-              chatInner: {{ insertBefore: () => {{ ctx.inserted += 1; }} }},
-              trimRenderedRows: () => {{ ctx.trimmed = true; }},
-              rebuildDecorations: () => {{ ctx.rebuilt = true; }},
-              markClickFirstPaint: () => {{ ctx.painted = true; }},
-              requestAnimationFrame: (fn) => fn(),
-              scrollToBottom: () => {{ ctx.scrolled = true; }},
-              syncJumpButton: () => {{ ctx.jumped = true; }},
-            }};
-            vm = require("vm");
+            const ctx = {{ window: {{}} }};
+            const vm = require("vm");
             vm.createContext(ctx);
             vm.runInContext({json.dumps(identity_source)}, ctx);
             vm.runInContext({json.dumps(transcript_source)}, ctx);
-            ctx.codoxearMessageIdentity = ctx.window.CodoxearMessageIdentity;
-            ctx.transcriptEventRuntime = ctx.window.CodoxearTranscript.createTranscriptEventRuntime({{
-              eventKey: ctx.codoxearMessageIdentity.eventKey,
-              pendingMatchKey: ctx.codoxearMessageIdentity.pendingMatchKey,
-              normalizePendingText: ctx.codoxearMessageIdentity.normalizeTextForPendingMatch,
-              assistantDedupeKey: ctx.codoxearMessageIdentity.chatAssistantDedupeKey,
+            const id = ctx.window.CodoxearMessageIdentity;
+            const tx = ctx.window.CodoxearTranscript;
+            const eventRuntime = tx.createTranscriptEventRuntime({{
+              eventKey: id.eventKey,
+              pendingMatchKey: id.pendingMatchKey,
+              normalizePendingText: id.normalizeTextForPendingMatch,
+              assistantDedupeKey: id.chatAssistantDedupeKey,
               maxRecentEventKeys: 320,
             }});
-            vm.runInContext({json.dumps(helper_snippet)}, ctx);
-            vm.runInContext({json.dumps(append_snippet)}, ctx);
-            ctx.appendEvent({{ role: "assistant", text: "same final text", message_class: "final_response", ts: 2.4 }});
-            const afterDuplicate = {{ made: ctx.made, inserted: ctx.inserted, seen: ctx.transcriptEventRuntime.snapshot().recentEventKeys }};
-            ctx.rows = [{{ dataset: {{ role: "user" }} }}];
-            ctx.appendEvent({{ role: "assistant", text: "same final text", message_class: "final_response", ts: 3.0 }});
+            const calls = [];
+            let rows = [{{ dataset: {{ role: "assistant", assistantDedupeKey: "final_response|same final text" }} }}];
+            const bottom = {{}};
+            const scrollRuntime = {{
+              snapshot: () => ({{ renderedAtLiveTail: true }}),
+              shouldStickToBottom: () => true,
+              syncJumpButton: () => calls.push(["jump"]),
+              scheduleScrollToBottom: () => calls.push(["scroll"]),
+              markLiveTail: () => calls.push(["markLiveTail"]),
+              disableAutoScroll: () => calls.push(["disableAuto"]),
+              setRenderedAtLiveTail: (value) => calls.push(["liveTail", value]),
+              setScrollTop: (value) => calls.push(["scrollTop", value]),
+            }};
+            const runtime = tx.createTranscriptRenderRuntime({{
+              root: {{ insertBefore: () => calls.push(["insert"]), querySelector: () => null }},
+              bottomSentinel: bottom,
+              document: {{ createDocumentFragment: () => ({{ appendChild: () => {{}} }}) }},
+              safeMakeRow: () => (calls.push(["make"]), {{ row: {{}}, bubble: {{}} }}),
+              normalizeEvents: () => [],
+              consumePendingUserIfMatches: () => false,
+              isDuplicateEvent: (ev) => eventRuntime.isDuplicateEvent(ev),
+              isAdjacentAssistantDuplicateEvent: (ev) => eventRuntime.isAdjacentAssistantDuplicateEvent(ev, {{ renderedAtLiveTail: true, rows }}),
+              markEventSeen: (ev) => eventRuntime.markEventSeen(ev),
+              markFirstPaint: () => calls.push(["paint"]),
+              renderRecoveryPanel: () => calls.push(["recovery"]),
+              restorePendingRows: () => calls.push(["restore"]),
+              resetRecentEvents: () => eventRuntime.resetRecentEvents(),
+              setOlderState: () => calls.push(["older"]),
+              firstVisibleMessageRow: () => null,
+              getScrollTop: () => 0,
+              getSelectedSessionId: () => "sid",
+              domRuntime: {{ clear: () => calls.push(["clear"]), rebuildDecorations: () => calls.push(["rebuild"]), trimRenderedRows: () => calls.push(["trim"]) }},
+              scrollRuntime,
+              typingRowRuntime: {{ anchor: () => bottom }},
+              historySlackRows: 3,
+            }});
+            runtime.appendEvent({{ role: "assistant", text: "same final text", message_class: "final_response", ts: 2.4 }});
+            const afterDuplicate = {{ calls: calls.slice(), seen: eventRuntime.snapshot().recentEventKeys }};
+            calls.length = 0;
+            rows = [{{ dataset: {{ role: "user" }} }}];
+            runtime.appendEvent({{ role: "assistant", text: "same final text", message_class: "final_response", ts: 3.0 }});
             process.stdout.write(JSON.stringify({{
               afterDuplicate,
-              final: {{ made: ctx.made, inserted: ctx.inserted, seen: ctx.transcriptEventRuntime.snapshot().recentEventKeys }},
+              final: {{ calls: calls.slice(), seen: eventRuntime.snapshot().recentEventKeys }},
             }}));
             """
         )
         out = _run_node(js)
 
-        self.assertEqual(out["afterDuplicate"]["made"], 0)
-        self.assertEqual(out["afterDuplicate"]["inserted"], 0)
+        self.assertEqual(out["afterDuplicate"]["calls"], [])
         self.assertEqual(out["afterDuplicate"]["seen"], ["assistant|2400|same final text"])
-        self.assertEqual(out["final"]["made"], 1)
-        self.assertEqual(out["final"]["inserted"], 1)
+        self.assertEqual(out["final"]["calls"], [["make"], ["insert"], ["trim"], ["rebuild"], ["recovery"], ["paint"], ["scroll"], ["jump"]])
         self.assertEqual(out["final"]["seen"], ["assistant|2400|same final text", "assistant|3000|same final text"])
 
     def test_new_command_send_failure_does_not_detach_current_transcript(self) -> None:

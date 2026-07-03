@@ -601,15 +601,17 @@ class TestChatScrollbackSource(unittest.TestCase):
 
     def test_live_append_does_not_splice_into_history_window(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("function appendEvent(ev) {")
-        end = source.index("function renderTranscript(", start)
-        block = source[start:end]
-        self.assertIn("const stick = pending || transcriptScrollRuntime.shouldStickToBottom();", block)
-        self.assertIn("if (!pending && !transcriptScrollRuntime.snapshot().renderedAtLiveTail) {", block)
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        start = transcript_source.index("function createTranscriptRenderRuntime(options = {}) {")
+        end = transcript_source.index("function createTranscriptDomRuntime(options = {}) {", start)
+        block = transcript_source[start:end]
+        self.assertIn("const stick = pending || scrollRuntime.shouldStickToBottom();", block)
+        self.assertIn("if (!pending && !scrollRuntime.snapshot().renderedAtLiveTail) {", block)
         self.assertIn("markEventSeen(ev);", block)
-        self.assertIn("return;", block)
-        self.assertIn("trimRenderedRows({ fromTop: stick });", block)
-        self.assertNotIn("trimRenderedRows({ fromTop: true });", block)
+        self.assertIn("return false;", block)
+        self.assertIn("domRuntime.trimRenderedRows({ fromTop: stick });", block)
+        self.assertNotIn("domRuntime.trimRenderedRows({ fromTop: true });", block)
+        self.assertIn("transcriptRenderRuntime.appendEvent(ev);", source)
 
     def test_history_request_cursor_is_derived_from_rendered_rows(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -624,12 +626,14 @@ class TestChatScrollbackSource(unittest.TestCase):
 
     def test_history_prepend_does_not_trim_newly_fetched_older_rows(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("function prependOlderEvents(allEvents")
-        end = source.index("async function loadOlderMessages", start)
-        block = source[start:end]
-        self.assertIn("chatInner.insertBefore(frag, firstMsg || typingRowRuntime.anchor());", block)
-        self.assertIn("trimRenderedRows({ fromTop: false, maxRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK });", block)
-        self.assertNotIn("trimRenderedRowsBeforeViewport({ maxRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK });", block)
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        start = transcript_source.index("function createTranscriptRenderRuntime(options = {}) {")
+        end = transcript_source.index("function createTranscriptDomRuntime(options = {}) {", start)
+        block = transcript_source[start:end]
+        self.assertIn("root.insertBefore(frag, firstMsg || typingRowRuntime.anchor());", block)
+        self.assertIn("domRuntime.trimRenderedRows({ fromTop: false, maxRows: historySlackRows });", block)
+        self.assertNotIn("trimRowsBeforeViewport({ maxRows: historySlackRows", block)
+        self.assertIn("return transcriptRenderRuntime.prependOlderEvents(allEvents, { preserveViewport });", source)
 
     def test_rendered_rows_keep_server_history_cursor(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -706,15 +710,16 @@ class TestChatScrollbackSource(unittest.TestCase):
         start = transcript_source.index("function normalizedTranscriptEvents(events, options = {}) {")
         end = transcript_source.index("function createTranscriptDomRuntime(options = {}) {", start)
         helper_block = transcript_source[start:end]
-        render_start = source.index("function renderTranscript(events, { preserveScroll = false } = {}) {")
-        render_end = source.index("function prependOlderEvents(", render_start)
-        render_block = source[render_start:render_end]
+        render_start = transcript_source.index("function createTranscriptRenderRuntime(options = {}) {")
+        render_end = transcript_source.index("function createTranscriptDomRuntime(options = {}) {", render_start)
+        render_block = transcript_source[render_start:render_end]
         self.assertIn("if (consumePending) takePendingMatch(ev, selectedSessionId, { allowUntimedCommit: false });", helper_block)
         self.assertIn("msgs.push(ev);", helper_block)
-        self.assertIn("const msgs = normalizedTranscriptEvents(events, { consumePending: true });", render_block)
-        self.assertIn("const msgs = normalizedTranscriptEvents(events, { consumePending: false });", render_block)
+        self.assertIn("const msgs = normalizeEvents(events, { consumePending: true });", render_block)
+        self.assertIn("const msgs = normalizeEvents(events, { consumePending: false });", render_block)
         self.assertNotIn("if (consumePendingUserIfMatches(ev)) continue;", helper_block)
         self.assertIn("return codoxearTranscript.normalizedTranscriptEvents(events, {", source)
+        self.assertIn("return transcriptRenderRuntime.renderTranscript(events, { preserveScroll });", source)
 
     def test_pending_commit_reconciliation_does_not_require_text_equality(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -807,7 +812,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn('if (commitUnknown) syncRecoveryUiForSession(sessionId);', source)
         self.assertIn('syncRecoveryUiForSession(sid);', source)
         self.assertIn('syncRecoveryUiForSession(selected);', source)
-        self.assertIn('if (typeof renderRecoveryPanelIfNeeded === "function") renderRecoveryPanelIfNeeded(typeof selected === "undefined" ? null : selected);', source)
+        self.assertIn('renderRecoveryPanel: renderRecoveryPanelIfNeeded,', source)
         self.assertIn('getRenderedRows: renderedMessageRows,', source)
         self.assertGreaterEqual(row_source.count('!row.classList.contains("typing-row") && !row.classList.contains("recovery-panel-row")'), 1)
         self.assertEqual(source.count('!x.classList.contains("typing-row") && !x.classList.contains("recovery-panel-row")'), 0)

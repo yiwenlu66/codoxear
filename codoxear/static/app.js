@@ -2686,6 +2686,7 @@
           typeof codoxearTranscript.appendTailSnapshotEvents !== "function" ||
           typeof codoxearTranscript.createTranscriptSlotRuntime !== "function" ||
           typeof codoxearTranscript.createTypingRowRuntime !== "function" ||
+          typeof codoxearTranscript.createTranscriptRenderRuntime !== "function" ||
           typeof codoxearTranscript.createTranscriptDomRuntime !== "function" ||
           typeof codoxearTranscript.createTranscriptScrollRuntime !== "function" ||
           typeof codoxearTranscript.createTranscriptEventRuntime !== "function" ||
@@ -3062,6 +3063,30 @@
           markEventSeen(ev);
           return true;
         }
+
+        const transcriptRenderRuntime = codoxearTranscript.createTranscriptRenderRuntime({
+          root: chatInner,
+          bottomSentinel,
+          document,
+          safeMakeRow,
+          normalizeEvents: normalizedTranscriptEvents,
+          consumePendingUserIfMatches,
+          isDuplicateEvent,
+          isAdjacentAssistantDuplicateEvent,
+          markEventSeen,
+          markFirstPaint: markClickFirstPaint,
+          renderRecoveryPanel: renderRecoveryPanelIfNeeded,
+          restorePendingRows: restorePendingUserRowsForSession,
+          resetRecentEvents: () => transcriptEventRuntime.resetRecentEvents(),
+          setOlderState,
+          firstVisibleMessageRow,
+          getScrollTop: () => chat.scrollTop,
+          getSelectedSessionId: () => selected,
+          domRuntime: transcriptDomRuntime,
+          scrollRuntime: transcriptScrollRuntime,
+          typingRowRuntime,
+          historySlackRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK,
+        });
 
         function isMobile() {
           return codoxearViewport.isMobile();
@@ -3517,34 +3542,7 @@
         }
 
         function appendEvent(ev) {
-          if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return;
-          if (consumePendingUserIfMatches(ev)) return;
-          if (isDuplicateEvent(ev)) return;
-          if (isAdjacentAssistantDuplicateEvent(ev)) {
-            markEventSeen(ev);
-            return;
-          }
-
-          const pending = Boolean(ev.pending);
-          const stick = pending || transcriptScrollRuntime.shouldStickToBottom();
-          if (!pending && !transcriptScrollRuntime.snapshot().renderedAtLiveTail) {
-            markEventSeen(ev);
-            transcriptScrollRuntime.syncJumpButton();
-            return;
-          }
-          const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : ev.pending ? Date.now() / 1000 : null;
-          const { row } = safeMakeRow(ev, { ts, pending });
-	          chatInner.insertBefore(row, typingRowRuntime.anchor());
-            trimRenderedRows({ fromTop: stick });
-          rebuildDecorations({ preserveScroll: false });
-          if (typeof renderRecoveryPanelIfNeeded === "function") renderRecoveryPanelIfNeeded(typeof selected === "undefined" ? null : selected);
-            if (!ev.pending) markClickFirstPaint();
-          markEventSeen(ev);
-
-          if (stick) {
-            transcriptScrollRuntime.scheduleScrollToBottom();
-          }
-          transcriptScrollRuntime.syncJumpButton();
+          transcriptRenderRuntime.appendEvent(ev);
         }
 
         function normalizedTranscriptEvents(events, { consumePending = false } = {}) {
@@ -3557,80 +3555,15 @@
         }
 
         function renderTranscript(events, { preserveScroll = false } = {}) {
-          const msgs = normalizedTranscriptEvents(events, { consumePending: true });
-          transcriptScrollRuntime.markLiveTail();
-          clearTranscriptDom();
-          if (!msgs.length) {
-            restorePendingUserRowsForSession(selected);
-            return;
-          }
-          transcriptEventRuntime.resetRecentEvents();
-          const frag = document.createDocumentFragment();
-          for (const ev of msgs) {
-            const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
-            markEventSeen(ev);
-            frag.appendChild(safeMakeRow(ev, { ts, pending: false }).row);
-          }
-          chatInner.insertBefore(frag, bottomSentinel);
-          rebuildDecorations({ preserveScroll });
-          restorePendingUserRowsForSession(selected);
+          return transcriptRenderRuntime.renderTranscript(events, { preserveScroll });
         }
 
         function renderDetachedTranscriptWindow(events, { hasMore = false } = {}) {
-          const msgs = normalizedTranscriptEvents(events, { consumePending: false });
-          transcriptScrollRuntime.disableAutoScroll();
-          transcriptScrollRuntime.setRenderedAtLiveTail(false);
-          clearTranscriptDom();
-          setOlderState({ hasMore: Boolean(hasMore), isLoading: false });
-          if (!msgs.length) {
-            transcriptScrollRuntime.syncJumpButton();
-            return false;
-          }
-          transcriptEventRuntime.resetRecentEvents();
-          const frag = document.createDocumentFragment();
-          for (const ev of msgs) {
-            const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
-            markEventSeen(ev);
-            frag.appendChild(safeMakeRow(ev, { ts, pending: false }).row);
-          }
-          chatInner.insertBefore(frag, bottomSentinel);
-          rebuildDecorations({ preserveScroll: false });
-          transcriptScrollRuntime.setScrollTop(1);
-          transcriptScrollRuntime.syncJumpButton();
-          return true;
+          return transcriptRenderRuntime.renderDetachedTranscriptWindow(events, { hasMore });
         }
 
         function prependOlderEvents(allEvents, { preserveViewport = false } = {}) {
-          const msgs = [];
-          for (const ev of allEvents) {
-            if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
-            msgs.push(ev);
-          }
-          if (!msgs.length) return;
-          transcriptScrollRuntime.disableAutoScroll();
-          const frag = document.createDocumentFragment();
-          for (const ev of msgs) {
-            const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
-            frag.appendChild(safeMakeRow(ev, { ts, pending: false }).row);
-          }
-          const anchorRow = preserveViewport ? firstVisibleMessageRow() : null;
-          const anchorOffset = anchorRow ? anchorRow.offsetTop - chat.scrollTop : 0;
-          const firstMsg = chatInner.querySelector(".msg-row:not(.typing-row)");
-          chatInner.insertBefore(frag, firstMsg || typingRowRuntime.anchor());
-          const wasAtLiveTail = transcriptScrollRuntime.snapshot().renderedAtLiveTail;
-          if (!preserveViewport) transcriptScrollRuntime.setScrollTop(1);
-          trimRenderedRows({ fromTop: false, maxRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK });
-          if (wasAtLiveTail && transcriptScrollRuntime.snapshot().renderedAtLiveTail === false) {
-            transcriptScrollRuntime.disableAutoScroll();
-          }
-          rebuildDecorations({ preserveScroll: false });
-          if (preserveViewport && anchorRow && anchorRow.isConnected) {
-            transcriptScrollRuntime.setScrollTop(Math.max(0, anchorRow.offsetTop - anchorOffset));
-          } else {
-            transcriptScrollRuntime.setScrollTop(1);
-          }
-
-          transcriptScrollRuntime.syncJumpButton();
+          return transcriptRenderRuntime.prependOlderEvents(allEvents, { preserveViewport });
         }
 
         async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {
