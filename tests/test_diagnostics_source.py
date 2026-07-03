@@ -46,6 +46,11 @@ class TestDiagnosticsSource(unittest.TestCase):
 
         self.assertIn("const sid = selected;\n          if (!sid) return;", block)
         self.assertIn("api(`/api/sessions/${sid}/diagnostics`)", block)
+        self.assertIn("const selectedInfo = sessionIndex.get(sid) || null;", block)
+        self.assertIn("if (sessionLaunchFailed(selectedInfo)) {", block)
+        self.assertIn("diagCopyText = recoveryDetailsText(sid, selectedInfo);", block)
+        self.assertIn("diagNewLikeSession = launchPresetFromSessionInfo(selectedInfo);", block)
+        self.assertLess(block.index("if (sessionLaunchFailed(selectedInfo)) {"), block.index("api(`/api/sessions/${sid}/diagnostics`)"))
         self.assertIn("if (selected !== sid) return;\n            diagStatus.textContent = \"\";", block)
         self.assertIn("catch (e) {\n            if (selected !== sid) return;", block)
         self.assertNotIn("/api/sessions/${selected}/diagnostics", block)

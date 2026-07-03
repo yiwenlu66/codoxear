@@ -8211,6 +8211,32 @@
           diagViewer.style.display = "flex";
           afterModalVisibilityChanged();
           focusModalCloseButton(diagViewer, diagCloseBtn);
+          const selectedInfo = sessionIndex.get(sid) || null;
+          if (sessionLaunchFailed(selectedInfo)) {
+            diagStatus.textContent = "";
+            const addRecoveryRow = (label, value, { mono = false } = {}) => {
+              const v = value == null || value === "" ? "-" : String(value);
+              const row = el("div", { class: "detailsRow" });
+              row.appendChild(el("div", { class: "detailsLabel", text: String(label || "") }));
+              row.appendChild(el("div", { class: mono ? "detailsValue mono" : "detailsValue", text: v }));
+              diagContent.appendChild(row);
+            };
+            addRecoveryRow("Session", sid);
+            addRecoveryRow("State", "launch failed");
+            addRecoveryRow("Stage", selectedInfo.launch_stage || "-");
+            addRecoveryRow("Error", redactedLaunchErrorText(selectedInfo.launch_error || "-"));
+            addRecoveryRow("CWD", selectedInfo.cwd || "-", { mono: true });
+            addRecoveryRow("Agent", agentBackendDisplayName(selectedInfo.agent_backend));
+            addRecoveryRow("Provider", diagnosticsProviderDisplay(selectedInfo));
+            addRecoveryRow("Model", selectedInfo.model || "-");
+            addRecoveryRow("Reasoning", selectedInfo.reasoning_effort || "-");
+            addRecoveryRow("tmux", selectedInfo.tmux_session ? `${selectedInfo.tmux_session}${selectedInfo.tmux_window ? ":" + selectedInfo.tmux_window : ""}` : "-");
+            diagCopyText = recoveryDetailsText(sid, selectedInfo);
+            diagNewLikeSession = launchPresetFromSessionInfo(selectedInfo);
+            diagNewLikeBtn.disabled = !diagNewLikeSession;
+            diagCopyBtn.disabled = !diagCopyText;
+            return;
+          }
           try {
             const d = await api(`/api/sessions/${sid}/diagnostics`);
             if (selected !== sid) return;
