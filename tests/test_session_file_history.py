@@ -8,6 +8,7 @@ from unittest.mock import patch
 import codoxear.server as server
 from codoxear.server import Session
 from codoxear.server import SessionManager
+from codoxear.session_store import SessionStore
 
 
 class _FakeVoicePushCoordinator:
@@ -32,13 +33,7 @@ def _make_session(session_id: str, cwd: str) -> Session:
 
 class TestSessionFileHistory(unittest.TestCase):
     def _build_manager(self) -> SessionManager:
-        with patch.object(SessionManager, "_load_unattended", lambda self: None), \
-            patch.object(SessionManager, "_load_aliases", lambda self: None), \
-            patch.object(SessionManager, "_load_sidebar_meta", lambda self: None), \
-            patch.object(SessionManager, "_load_hidden_sessions", lambda self: None), \
-            patch.object(SessionManager, "_load_files", lambda self: None), \
-            patch.object(SessionManager, "_load_queues", lambda self: None), \
-            patch.object(SessionManager, "_load_recent_cwds", lambda self: None), \
+        with patch.object(SessionStore, "load_persistent_state", lambda self: None), \
             patch.object(SessionManager, "_backfill_recent_cwds_from_logs", lambda self: None), \
             patch.object(SessionManager, "_discover_existing", lambda self, force=True: None), \
             patch.object(server, "VoicePushCoordinator", _FakeVoicePushCoordinator), \
