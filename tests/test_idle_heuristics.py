@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from codoxear.rollout_idle import _analyze_log_chunk
 from codoxear.server import _compute_idle_from_log
 
 
@@ -276,3 +277,45 @@ class TestIdleHeuristics(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAnalyzeLogChunkBackendRows(unittest.TestCase):
+    def test_analyze_log_chunk_counts_pi_thinking_and_tool_rows(self) -> None:
+        # Regression: rollout_idle dropped pi/cc helper imports during
+        # decomposition; these rows raised live NameError in mark_log_delta.
+        objs = [
+            {"type": "message", "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": "hmm"}]}},
+            {"type": "message", "message": {"role": "assistant", "content": [{"type": "toolCall", "id": "t1", "name": "bash", "arguments": {"command": "pwd"}}]}},
+        ]
+        d_th, d_tools, d_sys, _ts, _token, _events = _analyze_log_chunk(objs)
+        self.assertEqual(d_th, 1)
+        self.assertEqual(d_tools, 1)
+        self.assertEqual(d_sys, 0)
+
+    def test_analyze_log_chunk_counts_cc_thinking_and_tool_result_rows(self) -> None:
+        objs = [
+            {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": "hmm"}]}},
+            {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]}},
+        ]
+        d_th, d_tools, d_sys, _ts, _token, _events = _analyze_log_chunk(objs)
+        self.assertEqual(d_th, 1)
+        self.assertGreaterEqual(d_tools, 1)
+
+    def test_compute_idle_handles_pi_tool_turn_and_cc_pending_rows(self) -> None:
+        with TemporaryDirectory() as td:
+            pi_log = Path(td) / "pi.jsonl"
+            rows = [
+                {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "run"}]}},
+                {"type": "message", "message": {"role": "assistant", "content": [{"type": "toolCall", "id": "t1", "name": "bash", "arguments": {"command": "sleep"}}]}},
+            ]
+            pi_log.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+            self.assertFalse(_compute_idle_from_log(pi_log))
+
+            cc_log = Path(td) / "cc.jsonl"
+            cc_rows = [
+                {"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": "run"}]}},
+                {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_1", "name": "bash", "input": {}}]}},
+                {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "ok"}]}},
+            ]
+            cc_log.write_text("".join(json.dumps(r) + "\n" for r in cc_rows), encoding="utf-8")
+            self.assertFalse(_compute_idle_from_log(cc_log))

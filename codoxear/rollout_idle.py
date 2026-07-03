@@ -3,18 +3,26 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .cc_log import cc_apply_tool_result_to_pending
 from .cc_log import cc_assistant_is_final_turn_end
+from .cc_log import cc_assistant_pending_tool_use_ids
 from .cc_log import cc_assistant_text
+from .cc_log import cc_assistant_thinking_count
 from .cc_log import cc_assistant_tool_use_count
 from .cc_log import cc_current_turn_state_before
 from .cc_log import cc_is_turn_end
+from .cc_log import cc_message_role
 from .cc_log import cc_user_text
 from .pi_log import pi_assistant_error_text
 from .pi_log import pi_assistant_is_aborted_turn
 from .pi_log import pi_assistant_is_final_turn_end
 from .pi_log import pi_assistant_text
+from .pi_log import pi_assistant_thinking_count
+from .pi_log import pi_assistant_tool_use_count
 from .pi_log import pi_user_text
 from .rollout_chat_batch import _extract_chat_events
+from .rollout_chat_events import _cc_message_keeps_turn_busy
+from .rollout_chat_events import _pi_message_keeps_turn_busy
 from .rollout_chat_events import _sidebar_conversation_ts
 from .rollout_events import _codex_error_affects_turn_status
 from .rollout_events import _event_ts
