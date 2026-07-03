@@ -126,6 +126,7 @@ When a compatibility wrapper exists only because an earlier extraction avoided r
 Why: source-text and monkeypatch scaffolding are now part of the architecture problem. They should shrink as real interfaces appear.
 
 ## Operating mode
+- Operate in unattended mode for long multi-hour progress: minimize turns, minimize repetition, continue constructive work by default, and surface Deliverables/Completed/Next actions/Parked decisions only when a yield is actually necessary.
 - Continue according to this Workbench by default until all eight Workbench items are fully finished; do not yield merely because a bounded change completed, tests passed, a commit exists, or a reviewer ran.
 - Do not use “current tranche”, “boundary”, or similar labels as a progress substitute or stopping justification. Only concrete ownership movement, validated behavior, unresolved user decisions, or actual blockers matter.
 - Keep the internal state organized as Deliverables, Completed, Next actions, and Parked user decisions. Surface those sections only when yielding is necessary.
