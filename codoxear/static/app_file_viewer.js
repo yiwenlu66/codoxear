@@ -1266,7 +1266,110 @@
       return true;
     }
 
-    return Object.freeze({ clearDiscoveryCaches, collectMessageFileRefs, exactBareMatches, getKnownCandidates, inspectPath, replaceAmbiguousNode, upgradeCandidateRefs });
+    async function openAmbiguousChoice(query, line = null) {
+      const rawQuery = String(query ?? "");
+      if (rawQuery === "") return false;
+      if (!selectedSessionId()) {
+        requireFunction(options.setToast, "setToast")("select a session first");
+        return false;
+      }
+      await requireFunction(options.showFileViewer, "showFileViewer")({ pickerQuery: rawQuery, line });
+      return true;
+    }
+
+    async function openReference(ref) {
+      if (!ref || typeof ref.path !== "string") return false;
+      const rawPath = String(ref.path ?? "");
+      const line = normalizeLineNumber(ref.line);
+      if (rawPath === "") return false;
+      const parsed = ref.literal ? { path: rawPath, line } : requireFunction(options.parseLocalFileRef, "parseLocalFileRef")(rawPath);
+      const setToast = requireFunction(options.setToast, "setToast");
+      if (!parsed) {
+        setToast("unsupported file reference");
+        return false;
+      }
+      const showFileViewer = requireFunction(options.showFileViewer, "showFileViewer");
+      if (!parsed.path.startsWith("/")) {
+        if (!selectedSessionId()) {
+          setToast("select a session first");
+          return false;
+        }
+        await showFileViewer({ path: parsed.path, mode: "file", manual: false, line });
+        return true;
+      }
+      if (selectedSessionId()) {
+        await showFileViewer({ path: parsed.path, mode: "file", manual: false, line });
+        return true;
+      }
+      const currentRel = sessionRelativePath(parsed.path);
+      if (currentRel) {
+        await showFileViewer({ path: currentRel, mode: "file", manual: false, line });
+        return true;
+      }
+      const sessions = requireFunction(options.sessions, "sessions")();
+      const match = (Array.isArray(sessions) ? sessions : []).find((session) => {
+        const cwd = String(session && session.cwd ? session.cwd : "").replace(/\/+$/, "");
+        return cwd && (parsed.path === cwd || parsed.path.startsWith(`${cwd}/`));
+      });
+      if (!match) {
+        setToast("file is outside the known session roots");
+        return false;
+      }
+      await requireFunction(options.selectSession, "selectSession")(match.session_id);
+      const matchRoot = String(match.cwd || "").replace(/\/+$/, "");
+      const rel = parsed.path === matchRoot ? "." : parsed.path.slice(matchRoot.length + 1);
+      await showFileViewer({ path: rel, mode: "file", manual: false, line });
+      return true;
+    }
+
+    async function openDirectoryReference(rawPath) {
+      const cwd = String(rawPath || "").trim();
+      if (!cwd) return false;
+      requireFunction(options.openDirectorySession, "openDirectorySession")({
+        cwd,
+        statusText: "Review resume or worktree options, then start the session.",
+      });
+      return true;
+    }
+
+    async function handleClick(event) {
+      const source = event && (!ElementCtor || event.target instanceof ElementCtor) ? event.target : null;
+      if (!source || typeof source.closest !== "function") return false;
+      const choice = source.closest("a[data-file-picker-query]");
+      if (choice) {
+        if (typeof event.preventDefault === "function") event.preventDefault();
+        const query = String(choice.getAttribute("data-file-picker-query") ?? "");
+        const line = normalizeLineNumber(choice.getAttribute("data-file-line"));
+        await openAmbiguousChoice(query, line);
+        return true;
+      }
+      const target = source.closest("a[data-file-path]");
+      if (!target) return false;
+      if (typeof event.preventDefault === "function") event.preventDefault();
+      const path = String(target.getAttribute("data-file-path") ?? "");
+      const kind = String(target.getAttribute("data-file-kind") || "").trim();
+      const line = normalizeLineNumber(target.getAttribute("data-file-line"));
+      if (kind === "directory") {
+        await openDirectoryReference(path);
+        return true;
+      }
+      await openReference({ path, line, literal: true });
+      return true;
+    }
+
+    return Object.freeze({
+      clearDiscoveryCaches,
+      collectMessageFileRefs,
+      exactBareMatches,
+      getKnownCandidates,
+      handleClick,
+      inspectPath,
+      openAmbiguousChoice,
+      openDirectoryReference,
+      openReference,
+      replaceAmbiguousNode,
+      upgradeCandidateRefs,
+    });
   }
 
   function createOpenedFileRuntime(options = {}) {

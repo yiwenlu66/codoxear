@@ -7808,12 +7808,18 @@
         const fileReferenceRuntime = codoxearFileViewer.createFileReferenceRuntime({
           selectedSessionId: () => selected,
           sessionById: (sessionId) => sessionIndex.get(sessionId) || null,
+          sessions: () => Array.from(sessionIndex.values()),
           chatRoot: chatInner,
           ElementCtor: Element,
           sessionRelativePath: (rawPath, sessionId) => sessionRelativePath(rawPath, sessionId),
           listFromFilesField: (files) => listFromFilesField(files),
           normalizeFileApiPath: (value) => normalizeFileApiPath(value),
           normalizeLineNumber: (value) => normalizeLineNumber(value),
+          parseLocalFileRef,
+          showFileViewer: (options) => showFileViewer(options),
+          selectSession: (sessionId) => selectSession(sessionId),
+          openDirectorySession: (options) => openNewSessionDialog(options),
+          setToast: (message) => setToast(message),
           api: (url, options) => api(url, options),
           el,
         });
@@ -8226,96 +8232,11 @@
         };
         $("#filePasteCancelBtn").onclick = () => hideFilePasteDialog({ restoreFocus: true });
         filePasteBackdrop.onclick = () => hideFilePasteDialog({ restoreFocus: true });
-        async function openAmbiguousFileReferenceChoice(query, line = null) {
-          const rawQuery = String(query ?? "");
-          if (rawQuery === "") return;
-          if (!selected) {
-            setToast("select a session first");
-            return;
-          }
-          await showFileViewer({ pickerQuery: rawQuery, line });
-        }
-
-        async function openFileReference(ref) {
-          if (!ref || typeof ref.path !== "string") return;
-          const rawPath = String(ref.path ?? "");
-          const line = normalizeLineNumber(ref.line);
-          if (rawPath === "") return;
-          const parsed = ref.literal ? { path: rawPath, line } : parseLocalFileRef(rawPath);
-          if (!parsed) {
-            setToast("unsupported file reference");
-            return;
-          }
-          if (!parsed.path.startsWith("/")) {
-            if (!selected) {
-              setToast("select a session first");
-              return;
-            }
-            void showFileViewer({ path: parsed.path, mode: "file", manual: false, line });
-            return;
-          }
-          if (selected) {
-            void showFileViewer({ path: parsed.path, mode: "file", manual: false, line });
-            return;
-          }
-          const currentRel = sessionRelativePath(parsed.path);
-          if (currentRel) {
-            void showFileViewer({ path: currentRel, mode: "file", manual: false, line });
-            return;
-          }
-          const match = [...sessionIndex.values()].find((s) => {
-            const cwd = String(s && s.cwd ? s.cwd : "").replace(/\/+$/, "");
-            return cwd && (parsed.path === cwd || parsed.path.startsWith(cwd + "/"));
-          });
-          if (!match) {
-            setToast("file is outside the known session roots");
-            return;
-          }
-          await selectSession(match.session_id);
-          const matchRoot = String(match.cwd || "").replace(/\/+$/, "");
-          const rel2 = parsed.path === matchRoot ? "." : parsed.path.slice(matchRoot.length + 1);
-          void showFileViewer({ path: rel2, mode: "file", manual: false, line });
-        }
-
-        async function confirmDirectorySession(rawPath) {
-          const cwd = String(rawPath || "").trim();
-          if (!cwd) return;
-          openNewSessionDialog({
-            cwd,
-            statusText: "Review resume or worktree options, then start the session.",
-          });
-        }
-
-        async function handleInlineFileReferenceClick(e) {
-          const source = e.target instanceof Element ? e.target : null;
-          if (!source) return false;
-          const choice = source.closest("a[data-file-picker-query]");
-          if (choice) {
-            e.preventDefault();
-            const query = String(choice.getAttribute("data-file-picker-query") ?? "");
-            const line = normalizeLineNumber(choice.getAttribute("data-file-line"));
-            await openAmbiguousFileReferenceChoice(query, line);
-            return true;
-          }
-          const target = source.closest("a[data-file-path]");
-          if (!target) return false;
-          e.preventDefault();
-          const path = String(target.getAttribute("data-file-path") ?? "");
-          const kind = String(target.getAttribute("data-file-kind") || "").trim();
-          const line = normalizeLineNumber(target.getAttribute("data-file-line"));
-          if (kind === "directory") {
-            await confirmDirectorySession(path);
-            return true;
-          }
-          await openFileReference({ path, line, literal: true });
-          return true;
-        }
-
         chatInner.addEventListener("click", (e) => {
-          void handleInlineFileReferenceClick(e);
+          void fileReferenceRuntime.handleClick(e);
         });
         fileDiff.addEventListener("click", (e) => {
-          void handleInlineFileReferenceClick(e);
+          void fileReferenceRuntime.handleClick(e);
         });
         addAppEvent(document, "click", (e) => {
           const t = e.target instanceof Element ? e.target : null;

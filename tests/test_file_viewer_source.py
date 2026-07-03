@@ -658,21 +658,13 @@ def eval_use_touch_file_editor_controls(query_matches: dict[str, bool]) -> bool:
 
 
 def eval_open_file_reference_nonliteral() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     markdown_source = APP_MARKDOWN_JS.read_text(encoding="utf-8")
-    prelude_start = source.index("const codoxearMarkdown = window.CodoxearMarkdown;")
-    prelude_end = source.index("function iconSvg", prelude_start)
-    prelude = source[prelude_start:prelude_end]
-    open_start = source.index("async function openFileReference(ref) {")
-    open_end = source.index("async function confirmDirectorySession", open_start)
-    snippet = prelude + "\n" + source[open_start:open_end]
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
         const ctx = {{
           URL,
-          console,
-          location: {{ origin: "http://localhost", href: "http://localhost/" }},
           window: {{
             CodoxearUrls: {{
               resolveAppUrl: (path) => new URL(String(path ?? "").replace(/^[/]/, ""), "http://localhost/").toString(),
@@ -683,22 +675,44 @@ def eval_open_file_reference_nonliteral() -> dict:
           toastMessages: [],
           showCalls: [],
           selectCalls: [],
-          fmtBytes: (n) => `${{n}} B`,
+          directoryCalls: [],
         }};
         ctx.setToast = (message) => ctx.toastMessages.push(String(message));
         ctx.showFileViewer = (options) => {{ ctx.showCalls.push(options); return Promise.resolve(); }};
         ctx.sessionRelativePath = () => null;
         ctx.selectSession = async (sessionId) => {{ ctx.selectCalls.push(sessionId); ctx.selected = sessionId; }};
+        ctx.openDirectorySession = (options) => ctx.directoryCalls.push(options);
         vm.createContext(ctx);
         vm.runInContext({json.dumps(markdown_source)}, ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_openFileReference = openFileReference;\n")}, ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        const runtime = ctx.window.CodoxearFileViewer.createFileReferenceRuntime({{
+          selectedSessionId: () => ctx.selected,
+          sessionById: (sessionId) => ctx.sessionIndex.get(sessionId) || null,
+          sessions: () => Array.from(ctx.sessionIndex.values()),
+          chatRoot: {{ querySelectorAll: () => [] }},
+          ElementCtor: null,
+          sessionRelativePath: (rawPath, sessionId) => ctx.sessionRelativePath(rawPath, sessionId),
+          listFromFilesField: (files) => Array.isArray(files) ? files : [],
+          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+          normalizeLineNumber: (value) => {{ const n = Number(value); return Number.isFinite(n) && n > 0 ? Math.floor(n) : null; }},
+          parseLocalFileRef: (value) => ctx.window.CodoxearMarkdown.parseLocalFileRef(value),
+          showFileViewer: (options) => ctx.showFileViewer(options),
+          selectSession: (sessionId) => ctx.selectSession(sessionId),
+          openDirectorySession: (options) => ctx.openDirectorySession(options),
+          setToast: (message) => ctx.setToast(message),
+          api: async () => ({{ entries: [] }}),
+          el: (tag, attrs = {{}}) => ({{ tag, attrs }}),
+        }});
         (async () => {{
-          await ctx.__test_openFileReference({{ path: "src/app.py", line: 7 }});
-          await ctx.__test_openFileReference({{ path: "not a local ref" }});
+          await runtime.openReference({{ path: "src/app.py", line: 7 }});
+          await runtime.openReference({{ path: "not a local ref" }});
+          await runtime.openAmbiguousChoice("foo.py", 9);
+          await runtime.openDirectoryReference("/other/repo");
           process.stdout.write(JSON.stringify({{
             showCalls: ctx.showCalls,
             toastMessages: ctx.toastMessages,
             selectCalls: ctx.selectCalls,
+            directoryCalls: ctx.directoryCalls,
           }}));
         }})().catch((err) => {{ console.error(err && err.stack ? err.stack : err); process.exit(1); }});
         """
@@ -3470,9 +3484,13 @@ class TestFileViewerSource(unittest.TestCase):
 
     def test_open_file_reference_nonliteral_uses_exported_parser(self) -> None:
         result = eval_open_file_reference_nonliteral()
-        self.assertEqual(result["showCalls"], [{"path": "src/app.py", "mode": "file", "manual": False, "line": 7}])
+        self.assertEqual(result["showCalls"], [
+            {"path": "src/app.py", "mode": "file", "manual": False, "line": 7},
+            {"pickerQuery": "foo.py", "line": 9},
+        ])
         self.assertEqual(result["toastMessages"], ["unsupported file reference"])
         self.assertEqual(result["selectCalls"], [])
+        self.assertEqual(result["directoryCalls"], [{"cwd": "/other/repo", "statusText": "Review resume or worktree options, then start the session."}])
 
     def test_file_viewer_session_sync_aborts_after_selected_changes(self) -> None:
         result = eval_file_viewer_session_sync_race()
