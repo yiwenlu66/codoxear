@@ -7908,3 +7908,11 @@
   - `python3 -m py_compile tests/test_file_picker_search_source.py tests/test_frontend_file_picker_module_source.py tests/test_markdown_tables.py` passed.
   - Focused validation `python3 -m pytest -q tests/test_frontend_file_picker_module_source.py tests/test_file_picker_search_source.py tests/test_markdown_tables.py tests/test_file_viewer_source.py` returned `89 passed, 25 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T02:26:00Z File candidate cache-key viewer-module ownership
+- Functional commit `b77f6f0 Move file candidate cache key into viewer module` moved file-candidate refresh cache-key construction from inline `codoxear/static/app.js` into `createFileCandidateRefreshRuntime(...)` in `codoxear/static/app_file_viewer.js`.
+- Mechanism: the candidate refresh runtime already owned refresh sequencing, cache application, changed-file fetch, fallback entries, and cache writes. App.js still constructed the cache key from session file history and message file references. The runtime now owns that key from its existing `sessionFiles(...)` and `collectMessageFileRefs(...)` dependencies, keeping app.js as input provider only.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app_file_viewer.js` and `node --check codoxear/static/app.js` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_picker_search_source.py tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py` returned `83 passed, 25 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
