@@ -1013,6 +1013,262 @@
     return Object.freeze({ refresh });
   }
 
+  function createFileReferenceRuntime(options = {}) {
+    const selectedSessionId = requireFunction(options.selectedSessionId, "selectedSessionId");
+    const sessionById = requireFunction(options.sessionById, "sessionById");
+    const chatRoot = options.chatRoot;
+    const ElementCtor = options.ElementCtor || null;
+    const sessionRelativePath = requireFunction(options.sessionRelativePath, "sessionRelativePath");
+    const listFromFilesField = requireFunction(options.listFromFilesField, "listFromFilesField");
+    const normalizeFileApiPath = requireFunction(options.normalizeFileApiPath, "normalizeFileApiPath");
+    const normalizeLineNumber = requireFunction(options.normalizeLineNumber, "normalizeLineNumber");
+    const api = requireFunction(options.api, "api");
+    const el = requireFunction(options.el, "el");
+    const validationCache = new Map();
+    const validationPending = new Map();
+    const candidateCache = new Map();
+    const searchCache = new Map();
+
+    function clearDiscoveryCaches() {
+      candidateCache.clear();
+      searchCache.clear();
+      return true;
+    }
+
+    function collectMessageFileRefs() {
+      const selected = selectedSessionId();
+      if (!selected) return [];
+      const out = [];
+      const seen = new Set();
+      const nodes = chatRoot && typeof chatRoot.querySelectorAll === "function" ? Array.from(chatRoot.querySelectorAll("[data-file-path]")) : [];
+      for (const node of nodes) {
+        if (ElementCtor && !(node instanceof ElementCtor)) continue;
+        const kind = String(node.getAttribute("data-file-kind") || "").trim();
+        if (kind === "directory") continue;
+        const raw = String(node.getAttribute("data-file-path") ?? "");
+        if (raw === "") continue;
+        const rel = raw.startsWith("/") ? sessionRelativePath(raw) || "" : raw.replace(/^\.?\//, "");
+        if (!rel || rel === "." || seen.has(rel)) continue;
+        seen.add(rel);
+        out.push(rel);
+      }
+      return out;
+    }
+
+    function normalizeCandidate(candidate) {
+      if (typeof candidate === "string") return candidate ? { path: candidate, gitPath: false, apiPath: "" } : null;
+      if (!candidate || typeof candidate !== "object") return null;
+      const path = typeof candidate.path === "string" ? candidate.path : "";
+      if (!path) return null;
+      return { path, gitPath: Boolean(candidate.gitPath), apiPath: normalizeFileApiPath(candidate.apiPath || candidate.api_path || "") };
+    }
+
+    function exactBareMatches(paths, rawPath) {
+      const target = String(rawPath ?? "");
+      const out = [];
+      const seen = new Set();
+      for (const candidate of Array.isArray(paths) ? paths : []) {
+        const entry = normalizeCandidate(candidate);
+        if (!entry) continue;
+        const key = `${entry.gitPath ? "git" : "session"}\u0000${entry.path}\u0000${entry.apiPath || ""}`;
+        if (seen.has(key)) continue;
+        const tail = entry.path.split("/").pop() || "";
+        if (tail !== target) continue;
+        seen.add(key);
+        out.push(entry);
+      }
+      return out;
+    }
+
+    function entriesMayReferToSamePath(entries) {
+      const normalized = (Array.isArray(entries) ? entries : []).map(normalizeCandidate).filter(Boolean);
+      for (let i = 0; i < normalized.length; i += 1) {
+        for (let j = i + 1; j < normalized.length; j += 1) {
+          const a = normalized[i];
+          const b = normalized[j];
+          if (a.gitPath === b.gitPath) continue;
+          if (a.path === b.path || a.path.endsWith(`/${b.path}`) || b.path.endsWith(`/${a.path}`)) return true;
+        }
+      }
+      return false;
+    }
+
+    async function getKnownCandidates() {
+      const sid = selectedSessionId();
+      if (!sid) return [];
+      const hit = candidateCache.get(sid);
+      if (hit) return hit;
+      const task = (async () => {
+        const out = new Set();
+        const session = sessionById(sid);
+        const addCandidate = (path, gitPath = false, apiPath = "") => {
+          const rel = String(path || "");
+          if (!rel || rel === ".") return;
+          const token = normalizeFileApiPath(apiPath);
+          out.add(JSON.stringify({ path: rel, gitPath: Boolean(gitPath), apiPath: token }));
+        };
+        for (const abs of listFromFilesField(session && session.files)) {
+          const rel = sessionRelativePath(abs);
+          if (typeof rel === "string") addCandidate(rel, false);
+        }
+        for (const rel of collectMessageFileRefs()) addCandidate(rel, false);
+        try {
+          const res = await api(`/api/sessions/${sid}/git/changed_files`);
+          const entries = Array.isArray(res.entries) ? res.entries : [];
+          for (const entry of entries) {
+            if (!entry || typeof entry.path !== "string") continue;
+            if (entry.path !== "") addCandidate(entry.path, true, entry.api_path || entry.apiPath || "");
+          }
+        } catch {}
+        return [...out].map((raw) => {
+          try {
+            return JSON.parse(raw);
+          } catch {
+            return null;
+          }
+        }).filter(Boolean);
+      })();
+      candidateCache.set(sid, task);
+      const resolved = await task;
+      candidateCache.set(sid, resolved);
+      return resolved;
+    }
+
+    function validationKey(path, gitPath = false) {
+      return `${selectedSessionId() || ""}|${gitPath ? "git" : "session"}|${String(path ?? "")}`;
+    }
+
+    async function searchBareCandidates(rawPath) {
+      const sid = selectedSessionId() || "";
+      const query = String(rawPath ?? "");
+      if (!sid || query === "" || query.includes("/")) return { matches: [], truncated: false };
+      const key = `${sid}|${query}`;
+      if (searchCache.has(key)) return searchCache.get(key);
+      const task = (async () => {
+        try {
+          const res = await api(`/api/sessions/${sid}/file/search?q=${encodeURIComponent(query)}&limit=80`);
+          const paths = Array.isArray(res && res.matches)
+            ? res.matches.map((item) => item && typeof item.path === "string" ? item.path : "")
+            : [];
+          return { matches: exactBareMatches(paths, query), truncated: Boolean(res && res.truncated), failed: false };
+        } catch {
+          return { matches: [], truncated: true, failed: true };
+        }
+      })();
+      searchCache.set(key, task);
+      const resolved = await task;
+      if (resolved && resolved.failed) searchCache.delete(key);
+      else searchCache.set(key, resolved);
+      return resolved;
+    }
+
+    async function inspectCandidate(entry, rawPath) {
+      const candidate = normalizeCandidate(entry) || { path: String(rawPath ?? ""), gitPath: false, apiPath: "" };
+      const inspectPath = candidate.path;
+      const key = validationKey(inspectPath, candidate.gitPath);
+      if (validationCache.has(key)) return { ...validationCache.get(key), path: rawPath };
+      const pending = validationPending.get(key);
+      if (pending) {
+        const pendingResult = await pending;
+        return pendingResult && typeof pendingResult === "object" ? { ...pendingResult, path: rawPath } : pendingResult;
+      }
+      const task = (async () => {
+        try {
+          const body = { path: inspectPath };
+          const sid = selectedSessionId();
+          if (sid) body.session_id = sid;
+          if (candidate.gitPath) body.git_path = true;
+          const res = await api("/api/files/inspect", { method: "POST", body });
+          return { ok: true, path: rawPath, inspectPath, gitPath: candidate.gitPath, kind: res.kind, resolvedPath: res.path };
+        } catch {
+          return { ok: false, path: rawPath, inspectPath, gitPath: candidate.gitPath };
+        }
+      })();
+      validationPending.set(key, task);
+      const result = await task;
+      validationPending.delete(key);
+      if (result && result.ok) validationCache.set(key, result);
+      return result;
+    }
+
+    async function equivalentInspection(entries, rawPath) {
+      if (!entriesMayReferToSamePath(entries)) return null;
+      const inspected = [];
+      for (const entry of entries) {
+        const result = await inspectCandidate(entry, rawPath);
+        if (!result || !result.ok || !result.resolvedPath) return null;
+        inspected.push(result);
+      }
+      const resolved = new Set(inspected.map((result) => String(result.resolvedPath || "")));
+      if (resolved.size !== 1) return null;
+      return inspected.find((result) => !result.gitPath) || inspected[0] || null;
+    }
+
+    async function inspectPath(path) {
+      const rawPath = String(path ?? "");
+      if (rawPath === "") return { ok: false };
+      let inspectEntry = { path: rawPath, gitPath: false, apiPath: "" };
+      if (!rawPath.includes("/") && selectedSessionId()) {
+        const candidates = await getKnownCandidates();
+        const matches = exactBareMatches(candidates, rawPath);
+        const searched = matches.length > 1 && !entriesMayReferToSamePath(matches) ? { matches: [], truncated: false } : await searchBareCandidates(rawPath);
+        const merged = exactBareMatches([...matches, ...searched.matches], rawPath);
+        if (merged.length === 1 && !searched.truncated) inspectEntry = merged[0];
+        else if (merged.length > 1 && !searched.truncated) {
+          const equivalent = await equivalentInspection(merged, rawPath);
+          if (equivalent) return equivalent;
+          return { ok: false, ambiguous: true, path: rawPath };
+        } else if (searched.truncated) return { ok: false, ambiguous: true, path: rawPath };
+      }
+      return await inspectCandidate(inspectEntry, rawPath);
+    }
+
+    function replaceAmbiguousNode(node, path, line = null) {
+      const query = String(path ?? "");
+      if (!node || query === "") return false;
+      const link = el("a", {
+        href: "#",
+        class: "inlineFileLink inlineFileAmbiguousRef",
+        "data-file-picker-query": query,
+        title: `Choose which ${query} to open`,
+      });
+      if (line) link.setAttribute("data-file-line", String(line));
+      link.appendChild(el("span", { text: node.textContent || query }));
+      link.appendChild(el("span", { class: "inlineFileChoiceHint", text: "choose" }));
+      node.replaceWith(link);
+      return true;
+    }
+
+    async function upgradeCandidateRefs(root) {
+      if (!root) return false;
+      const nodes = Array.from(root.querySelectorAll("[data-candidate-file-path]"));
+      for (const node of nodes) {
+        const path = String(node.getAttribute("data-candidate-file-path") ?? "");
+        const line = normalizeLineNumber(node.getAttribute("data-candidate-file-line"));
+        if (path === "") continue;
+        const result = await inspectPath(path);
+        if (result && result.ambiguous) {
+          replaceAmbiguousNode(node, result.path || path, line);
+          continue;
+        }
+        if (!result || !result.ok) continue;
+        const resolvedPath = String(result.resolvedPath || result.inspectPath || path);
+        const link = el("a", {
+          href: "#",
+          class: "inlineFileLink",
+          "data-file-path": resolvedPath,
+          "data-file-kind": result.kind || "text",
+        });
+        if (line && result.kind !== "directory") link.setAttribute("data-file-line", String(line));
+        link.textContent = node.textContent || path;
+        node.replaceWith(link);
+      }
+      return true;
+    }
+
+    return Object.freeze({ clearDiscoveryCaches, collectMessageFileRefs, exactBareMatches, getKnownCandidates, inspectPath, replaceAmbiguousNode, upgradeCandidateRefs });
+  }
+
   function createOpenedFileRuntime(options = {}) {
     const currentSessionId = requireFunction(options.currentSessionId, "currentSessionId");
     const selectedSessionId = requireFunction(options.selectedSessionId, "selectedSessionId");
@@ -3294,6 +3550,7 @@
     createFilePasteDialogRuntime,
     createFilePdfRenderRuntime,
     createFileViewerModalRuntime,
+    createFileReferenceRuntime,
     createFileRenderSurfaceRuntime,
     createOpenedFileRuntime,
     createFileTouchToolbarRuntime,

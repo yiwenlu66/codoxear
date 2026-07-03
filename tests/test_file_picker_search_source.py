@@ -249,29 +249,15 @@ def eval_file_picker_match_range_helpers() -> dict:
 
 
 def eval_inline_file_ref_inspection_cases() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    snippet = "\n".join(
-        js_function(source, name)
-        for name in [
-            "fileRefValidationKey",
-            "normalizeFileRefCandidate",
-            "exactBareFileRefMatches",
-            "fileRefEntriesMayReferToSamePath",
-            "searchBareFileRefCandidates",
-            "inspectFileRefCandidate",
-            "equivalentFileRefInspection",
-            "inspectFileRefPath",
-        ]
-    )
+    viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
         const ctx = {{
+          window: {{}},
           selected: "s1",
-          fileRefValidationCache: new Map(),
-          fileRefValidationPending: new Map(),
-          fileRefSearchCache: new Map(),
           knownCandidates: [],
+          changedEntries: [],
           searchByQuery: {{}},
           truncatedByQuery: {{}},
           failQueries: {{}},
@@ -279,9 +265,22 @@ def eval_inline_file_ref_inspection_cases() -> dict:
           inspectResolvedPaths: {{}},
           apiCalls: [],
           inspectBodies: [],
-          getKnownFileRefCandidates: async () => ctx.knownCandidates,
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(viewer_source)}, ctx);
+        ctx.runtime = ctx.window.CodoxearFileViewer.createFileReferenceRuntime({{
+          selectedSessionId: () => ctx.selected,
+          sessionById: () => ({{ files: ctx.knownCandidates }}),
+          chatRoot: {{ querySelectorAll: () => [] }},
+          ElementCtor: null,
+          sessionRelativePath: (rawPath) => String(rawPath || ""),
+          listFromFilesField: (value) => Array.isArray(value) ? value.slice() : [],
+          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+          normalizeLineNumber: (value) => Number(value) || null,
+          el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children, appendChild(child) {{ this.children.push(child); return child; }} }}),
           api: async (url, options = {{}}) => {{
             ctx.apiCalls.push(String(url));
+            if (String(url).includes("/git/changed_files")) return {{ entries: ctx.changedEntries }};
             if (String(url).includes("/file/search")) {{
               const parsed = new URL(String(url), "http://localhost");
               const query = parsed.searchParams.get("q") || "";
@@ -301,51 +300,51 @@ def eval_inline_file_ref_inspection_cases() -> dict:
             }}
             throw new Error("unexpected api call " + url);
           }},
-        }};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet)}, ctx);
+        }});
+        async function inspect(path) {{ return await ctx.runtime.inspectPath(path); }}
+        function resetKnown({{ known = [], changed = [] }} = {{}}) {{ ctx.knownCandidates = known; ctx.changedEntries = changed; ctx.runtime.clearDiscoveryCaches(); }}
         (async () => {{
-          ctx.knownCandidates = ["src/foo.py", "tests/foo.py"];
-          const knownDuplicate = await ctx.inspectFileRefPath("foo.py");
+          resetKnown({{ known: ["src/foo.py", "tests/foo.py"] }});
+          const knownDuplicate = await inspect("foo.py");
           const callsAfterKnown = ctx.apiCalls.slice();
 
-          ctx.knownCandidates = [];
+          resetKnown();
           ctx.searchByQuery["bar.py"] = ["src/bar.py", "tests/bar.py"];
-          const searchedDuplicate = await ctx.inspectFileRefPath("bar.py");
+          const searchedDuplicate = await inspect("bar.py");
 
-          ctx.knownCandidates = [];
+          resetKnown();
           ctx.searchByQuery["only.py"] = ["src/only.py"];
-          const searchedUnique = await ctx.inspectFileRefPath("only.py");
+          const searchedUnique = await inspect("only.py");
 
-          ctx.knownCandidates = [{{ path: "sub/a.txt", gitPath: true }}];
+          resetKnown({{ changed: [{{ path: "sub/a.txt", api_path: "" }}] }});
           ctx.searchByQuery["a.txt"] = ["a.txt"];
           ctx.inspectResolvedPaths["git:sub/a.txt"] = "/repo/sub/a.txt";
           ctx.inspectResolvedPaths["session:a.txt"] = "/repo/sub/a.txt";
-          const samePhysical = await ctx.inspectFileRefPath("a.txt");
+          const samePhysical = await inspect("a.txt");
 
-          ctx.knownCandidates = [];
+          resetKnown();
           ctx.searchByQuery["wide.py"] = ["src/wide.py"];
           ctx.truncatedByQuery["wide.py"] = true;
-          const truncatedUnique = await ctx.inspectFileRefPath("wide.py");
+          const truncatedUnique = await inspect("wide.py");
 
-          ctx.knownCandidates = [];
+          resetKnown();
           ctx.searchByQuery["emptywide.py"] = [];
           ctx.truncatedByQuery["emptywide.py"] = true;
-          const truncatedEmpty = await ctx.inspectFileRefPath("emptywide.py");
+          const truncatedEmpty = await inspect("emptywide.py");
 
-          ctx.knownCandidates = [];
+          resetKnown();
           ctx.failQueries["retry.py"] = true;
-          const failedSearch = await ctx.inspectFileRefPath("retry.py");
+          const failedSearch = await inspect("retry.py");
           ctx.failQueries["retry.py"] = false;
           ctx.searchByQuery["retry.py"] = ["src/retry.py"];
-          const retriedSearch = await ctx.inspectFileRefPath("retry.py");
+          const retriedSearch = await inspect("retry.py");
 
-          ctx.knownCandidates = [];
+          resetKnown();
           ctx.searchByQuery["late.py"] = [];
           ctx.inspectFailures["late.py"] = 1;
-          const missingFirst = await ctx.inspectFileRefPath("late.py");
+          const missingFirst = await inspect("late.py");
           const inspectCallsAfterMissingFirst = ctx.inspectBodies.filter((body) => body.path === "late.py").length;
-          const missingSecond = await ctx.inspectFileRefPath("late.py");
+          const missingSecond = await inspect("late.py");
           const inspectCallsAfterMissingSecond = ctx.inspectBodies.filter((body) => body.path === "late.py").length;
 
           process.stdout.write(JSON.stringify({{
@@ -368,7 +367,7 @@ def eval_inline_file_ref_inspection_cases() -> dict:
         }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """
     )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
 
 
@@ -1070,7 +1069,7 @@ class TestFilePickerSearchSource(unittest.TestCase):
         result = eval_inline_file_ref_inspection_cases()
         self.assertFalse(result["knownDuplicate"]["ok"])
         self.assertTrue(result["knownDuplicate"]["ambiguous"])
-        self.assertEqual(result["callsAfterKnown"], [])
+        self.assertEqual(result["callsAfterKnown"], ["/api/sessions/s1/git/changed_files"])
         self.assertFalse(result["searchedDuplicate"]["ok"])
         self.assertTrue(result["searchedDuplicate"]["ambiguous"])
         self.assertTrue(result["searchedUnique"]["ok"])
