@@ -8004,3 +8004,14 @@
   - `python3 -m py_compile tests/test_chat_transcript_runtime.py tests/test_chat_navigation_source.py tests/test_chat_scrollback_source.py tests/test_auth_cleanup_source.py` passed.
   - Focused validation `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py tests/test_chat_navigation_source.py tests/test_auth_cleanup_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py` returned `61 passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T04:17:00Z Moved all-transcript search count state into runtime
+- Functional commit `fec42a6 Move chat search count state into runtime` added `CodoxearTranscript.createChatSearchAllRuntime(...)` and moved all-transcript search-count debounce/currentness state out of app.js: count, truncation marker, hint text, request id, active abort controller, and debounce timer now live in `app_transcript.js`.
+- Mechanism: loaded-chat search still owns local loaded-row matches in app.js, but the async all-transcript count path is now a runtime with `schedule`, `beginRequest`, `isCurrent`, `completeRequest`, `failRequest`, `finishRequest`, `reset`, `dispose`, and `snapshot`; app.js performs transport and DOM status projection from snapshots rather than mutating count/request globals.
+- Behavior evidence: added `test_chat_search_all_runtime_owns_debounce_currentness_and_result_state` for debounce, currentness, stale completion rejection, failure reset, dispose, and missing dependency errors.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app.js` passed.
+  - `node --check codoxear/static/app_transcript.js` passed.
+  - `python3 -m py_compile tests/test_chat_transcript_runtime.py tests/test_chat_navigation_source.py tests/test_auth_cleanup_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_navigation_source.py tests/test_auth_cleanup_source.py tests/test_chat_scrollback_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py` returned `62 passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
