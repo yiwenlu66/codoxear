@@ -37,8 +37,12 @@ def eval_message_rows() -> dict:
               has(name) {{ return this.values.has(name); }},
               contains(name) {{ return this.values.has(name); }},
             }},
+            isConnected: true,
             appendChild(child) {{ this.children.push(child); return child; }},
             setAttribute(name, value) {{ this.attrs[name] = String(value); }},
+            removeAttribute(name) {{ delete this.attrs[name]; }},
+            closest(selector) {{ return selector === ".msg-row" && this.classList.contains("msg-row") ? this : null; }},
+            focus(opts = {{}}) {{ calls.push(["focus", this.name || tag, Boolean(opts.preventScroll)]); }},
           }};
           return node;
         }}
@@ -96,6 +100,30 @@ def eval_message_rows() -> dict:
             {{ name: "visible", offsetTop: 10, offsetHeight: 10 }},
             {{ name: "below", offsetTop: 30, offsetHeight: 10 }},
           ];
+          function makeCopyRow(name, offsetTop = 0, connected = true) {{
+            const row = fakeEl("div", {{ class: "msg-row assistant" }});
+            row.name = name;
+            row.offsetTop = offsetTop;
+            row.isConnected = connected;
+            const btn = fakeEl("button", {{ class: "msg-copy-btn" }});
+            btn.name = `${{name}}-button`;
+            btn.isConnected = connected;
+            btn.closest = (selector) => selector === ".msg-row" ? row : null;
+            row.querySelector = (selector) => selector === ".msg-copy-btn" ? btn : null;
+            row.copyButton = btn;
+            return row;
+          }}
+          const copyRuntimeRows = [makeCopyRow("c1", 10), makeCopyRow("c2", 30), makeCopyRow("c3", 50)];
+          const copyRoot = {{
+            querySelectorAll: (selector) => selector === ".msg-copy-btn" ? copyRuntimeRows.map((row) => row.copyButton) : selector === ".msg-row" ? copyRuntimeRows : [],
+          }};
+          const copyRuntime = rows.createMessageCopyNavigationRuntime({{ root: copyRoot }});
+          const copyRuntimeInitial = copyRuntime.syncTabStops(copyRuntimeRows);
+          const copyRuntimeSet = copyRuntime.setActiveRow(copyRuntimeRows[0], {{ focusCopy: true }});
+          const copyRuntimeJump = copyRuntime.jumpTarget(copyRuntimeRows, 1, 0);
+          const copyRuntimeReset = copyRuntime.reset();
+          let copyRuntimeMissingRoot = false;
+          try {{ rows.createMessageCopyNavigationRuntime({{}}); }} catch (err) {{ copyRuntimeMissingRoot = /root/.test(String(err && err.message || err)); }}
           const trimRows = [
             {{ name: "t1" }},
             {{ name: "t2" }},
@@ -151,6 +179,13 @@ def eval_message_rows() -> dict:
             copyFirstBoundary: rows.loadedCopyJumpTarget(navRows, navRows[0], -1, 0).reason,
             copyLastBoundary: rows.loadedCopyJumpTarget(navRows, navRows[2], 1, 0).reason,
             copyEmptyBoundary: rows.loadedCopyJumpTarget([], null, 1, 0).reason,
+            copyRuntimeInitial: copyRuntimeInitial.name,
+            copyRuntimeSet: copyRuntimeSet.name,
+            copyRuntimeJump: copyRuntimeJump.target.name,
+            copyRuntimeReset: copyRuntimeReset.name,
+            copyRuntimeTabs: copyRuntimeRows.map((row) => ({{ name: row.name, tabIndex: row.copyButton.tabIndex, disabled: row.copyButton.disabled, hidden: row.copyButton.attrs["aria-hidden"] || "" }})),
+            copyRuntimeActive: copyRuntime.activeRow().name,
+            copyRuntimeMissingRoot,
             marksCleared,
             markAHit: markA.classList.has("chat-search-hit"),
             markACurrent: markA.classList.has("chat-search-current"),
@@ -200,10 +235,12 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
         self.assertIn("return codoxearMessageRows.loadedUserMessageRows(chatInner);", source)
         self.assertIn("return codoxearMessageRows.messageCopyButtonForRow(row);", source)
         self.assertIn("return codoxearMessageRows.activeElementIsMessageCopyButton(document);", source)
+        self.assertIn("typeof codoxearMessageRows.createMessageCopyNavigationRuntime !== \"function\"", source)
+        self.assertIn("const messageCopyNavigationRuntime = codoxearMessageRows.createMessageCopyNavigationRuntime({ root: chatInner });", source)
         self.assertIn("return codoxearMessageRows.rowSearchText(row);", source)
         self.assertIn("return codoxearMessageRows.compareRowsInDomOrder(a, b, Node);", source)
         self.assertIn("return codoxearMessageRows.loadedUserJumpTarget(rows, direction, threshold);", source)
-        self.assertIn("return codoxearMessageRows.loadedCopyJumpTarget(rows, activeRow, direction, threshold);", source)
+        self.assertIn("return messageCopyNavigationRuntime.jumpTarget(rows, direction, threshold);", source)
         self.assertIn("codoxearMessageRows.clearChatSearchMarks(renderedMessageRows());", source)
         self.assertIn("codoxearMessageRows.applyChatSearchMarks(matches, currentRow);", source)
         self.assertIn("return codoxearMessageRows.oldestRenderedHistoryCursor(renderedMessageRows());", source)
@@ -225,6 +262,7 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
         self.assertIn("function compareRowsInDomOrder(a, b, nodeLike)", helper_source)
         self.assertIn("function loadedUserJumpTarget(rows, direction, threshold)", helper_source)
         self.assertIn("function loadedCopyJumpTarget(rows, activeRow, direction, threshold)", helper_source)
+        self.assertIn("function createMessageCopyNavigationRuntime(options = {})", helper_source)
         self.assertIn("function clearChatSearchMarks(rows)", helper_source)
         self.assertIn("function applyChatSearchMarks(matches, currentRow)", helper_source)
         self.assertIn("function oldestRenderedHistoryCursor(rows)", helper_source)
@@ -276,6 +314,17 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
         self.assertEqual(result["copyFirstBoundary"], "first")
         self.assertEqual(result["copyLastBoundary"], "last")
         self.assertEqual(result["copyEmptyBoundary"], "none")
+        self.assertEqual(result["copyRuntimeInitial"], "c3")
+        self.assertEqual(result["copyRuntimeSet"], "c1")
+        self.assertEqual(result["copyRuntimeJump"], "c2")
+        self.assertEqual(result["copyRuntimeReset"], "c3")
+        self.assertEqual(result["copyRuntimeTabs"], [
+            {"name": "c1", "tabIndex": -1, "disabled": True, "hidden": "true"},
+            {"name": "c2", "tabIndex": -1, "disabled": True, "hidden": "true"},
+            {"name": "c3", "tabIndex": 0, "disabled": False, "hidden": ""},
+        ])
+        self.assertEqual(result["copyRuntimeActive"], "c3")
+        self.assertTrue(result["copyRuntimeMissingRoot"])
         self.assertTrue(result["marksCleared"])
         self.assertTrue(result["markAHit"])
         self.assertFalse(result["markACurrent"])

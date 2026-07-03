@@ -776,7 +776,6 @@
         const OLDER_CANCEL_PX = 48;
         const CHAT_SEARCH_ALL_DEBOUNCE_MS = 300;
         const CHAT_SEARCH_ALL_COUNT_MAX = 1000;
-        let activeMessageCopyRow = null;
         let pendingRecoveryFocusDescriptor = null;
         let openSessionTailAbortController = null;
         let messagePollAbortController = null;
@@ -2185,6 +2184,7 @@
           olderLoadRuntime.resetAutoTrigger();
               clickMetricPending = false;
           clearTranscriptDom();
+          messageCopyNavigationRuntime.reset();
               setOlderState({ hasMore: false, isLoading: false });
 	          typingRow = null;
           jumpBtn.style.display = "none";
@@ -2224,6 +2224,7 @@
           typeof codoxearMessageRows.loadedUserMessageRows !== "function" ||
           typeof codoxearMessageRows.loadedCopyMessageRows !== "function" ||
           typeof codoxearMessageRows.activeElementIsMessageCopyButton !== "function" ||
+          typeof codoxearMessageRows.createMessageCopyNavigationRuntime !== "function" ||
           typeof codoxearMessageRows.rowSearchText !== "function" ||
           typeof codoxearMessageRows.compareRowsInDomOrder !== "function" ||
           typeof codoxearMessageRows.loadedUserJumpTarget !== "function" ||
@@ -2236,6 +2237,8 @@
           typeof codoxearMessageRows.trimRowsBeforeViewportTargets !== "function"
         )
           throw new Error("Codoxear message row helpers failed to load");
+
+        const messageCopyNavigationRuntime = codoxearMessageRows.createMessageCopyNavigationRuntime({ root: chatInner });
 
         function renderedMessageRows() {
           return codoxearMessageRows.renderedMessageRows(chatInner);
@@ -2269,8 +2272,8 @@
           return codoxearMessageRows.loadedUserJumpTarget(rows, direction, threshold);
         }
 
-        function loadedCopyJumpTarget(rows, activeRow, direction, threshold) {
-          return codoxearMessageRows.loadedCopyJumpTarget(rows, activeRow, direction, threshold);
+        function loadedCopyJumpTarget(rows, direction, threshold) {
+          return messageCopyNavigationRuntime.jumpTarget(rows, direction, threshold);
         }
 
         function applyChatSearchMarks(matches, currentRow) {
@@ -2290,36 +2293,11 @@
         }
 
         function syncMessageCopyTabStops() {
-          const buttons = Array.from(chatInner.querySelectorAll(".msg-copy-btn"));
-          let activeBtn = messageCopyButtonForRow(activeMessageCopyRow);
-          if (!activeBtn || !activeBtn.isConnected) {
-            activeBtn = null;
-            const rows = renderedMessageRows();
-            for (let i = rows.length - 1; i >= 0; i -= 1) {
-              const candidate = messageCopyButtonForRow(rows[i]);
-              if (candidate) {
-                activeBtn = candidate;
-                break;
-              }
-            }
-          }
-          activeMessageCopyRow = activeBtn ? activeBtn.closest(".msg-row") : null;
-          for (const btn of buttons) {
-            const active = btn === activeBtn;
-            btn.tabIndex = active ? 0 : -1;
-            btn.disabled = !active;
-            if (active) btn.removeAttribute("aria-hidden");
-            else btn.setAttribute("aria-hidden", "true");
-          }
+          messageCopyNavigationRuntime.syncTabStops(renderedMessageRows());
         }
 
         function setActiveMessageCopyRow(row, { focusCopy = false } = {}) {
-          activeMessageCopyRow = row && row.isConnected && messageCopyButtonForRow(row) ? row : null;
-          syncMessageCopyTabStops();
-          if (focusCopy && activeMessageCopyRow) {
-            const btn = messageCopyButtonForRow(activeMessageCopyRow);
-            if (btn && btn.tabIndex >= 0) btn.focus({ preventScroll: true });
-          }
+          messageCopyNavigationRuntime.setActiveRow(row, { focusCopy });
         }
 
         addAppEvent(chatInner, "pointerover", (e) => {
@@ -2375,7 +2353,7 @@
             setToast("No loaded messages");
             return;
           }
-          const result = loadedCopyJumpTarget(rows, activeMessageCopyRow, direction, chat.scrollTop + 24);
+          const result = loadedCopyJumpTarget(rows, direction, chat.scrollTop + 24);
           if (!result.target) {
             setToast(result.reason === "first" ? "At first loaded message" : "At last loaded message");
             return;

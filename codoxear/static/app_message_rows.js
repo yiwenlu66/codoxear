@@ -6,6 +6,11 @@
     return value;
   }
 
+  function requireRoot(value, name) {
+    if (!value || typeof value.querySelectorAll !== "function") throw new TypeError(`message row dependency missing: ${name}`);
+    return value;
+  }
+
   function makeRow(ev, { ts, pending }, deps) {
     const el = requireFunction(deps && deps.el, "el");
     const chatMarkdownHtmlCached = requireFunction(deps && deps.chatMarkdownHtmlCached, "chatMarkdownHtmlCached");
@@ -189,6 +194,70 @@
     return { reason: "target", target: rows[nextIndex] };
   }
 
+  function createMessageCopyNavigationRuntime(options = {}) {
+    const root = requireRoot(options.root, "root");
+    let activeRow = null;
+
+    function copyButtons() {
+      return Array.from(root.querySelectorAll(".msg-copy-btn"));
+    }
+
+    function activeRowSnapshot() {
+      return activeRow && activeRow.isConnected ? activeRow : null;
+    }
+
+    function syncTabStops(rows = renderedMessageRows(root)) {
+      const buttons = copyButtons();
+      let activeBtn = messageCopyButtonForRow(activeRowSnapshot());
+      if (!activeBtn || !activeBtn.isConnected) {
+        activeBtn = null;
+        for (let i = rows.length - 1; i >= 0; i -= 1) {
+          const candidate = messageCopyButtonForRow(rows[i]);
+          if (candidate) {
+            activeBtn = candidate;
+            break;
+          }
+        }
+      }
+      activeRow = activeBtn && typeof activeBtn.closest === "function" ? activeBtn.closest(".msg-row") : null;
+      for (const btn of buttons) {
+        const active = btn === activeBtn;
+        btn.tabIndex = active ? 0 : -1;
+        btn.disabled = !active;
+        if (active) btn.removeAttribute("aria-hidden");
+        else btn.setAttribute("aria-hidden", "true");
+      }
+      return activeRowSnapshot();
+    }
+
+    function setActiveRow(row, { focusCopy = false } = {}) {
+      activeRow = row && row.isConnected && messageCopyButtonForRow(row) ? row : null;
+      const current = syncTabStops();
+      if (focusCopy && current) {
+        const btn = messageCopyButtonForRow(current);
+        if (btn && btn.tabIndex >= 0 && typeof btn.focus === "function") btn.focus({ preventScroll: true });
+      }
+      return current;
+    }
+
+    function jumpTarget(rows, direction, threshold) {
+      return loadedCopyJumpTarget(rows, activeRowSnapshot(), direction, threshold);
+    }
+
+    function reset() {
+      activeRow = null;
+      return syncTabStops();
+    }
+
+    return Object.freeze({
+      activeRow: activeRowSnapshot,
+      jumpTarget,
+      reset,
+      setActiveRow,
+      syncTabStops,
+    });
+  }
+
   function clearChatSearchMarks(rows) {
     for (const row of rows) row.classList.remove("chat-search-hit", "chat-search-current");
   }
@@ -247,6 +316,7 @@
     loadedUserMessageRows,
     loadedCopyMessageRows,
     activeElementIsMessageCopyButton,
+    createMessageCopyNavigationRuntime,
     rowSearchText,
     compareRowsInDomOrder,
     loadedUserJumpTarget,
