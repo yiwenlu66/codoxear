@@ -138,6 +138,29 @@ class TestLaunchProvenance(unittest.TestCase):
         self.assertIn("Agent exit status: 1", payload["events"][1]["text"])
         self.assertIn("fatal: provider unavailable", payload["events"][1]["text"])
 
+    def test_failed_launch_transcript_strips_ansi_from_terminal_tail(self) -> None:
+        now = time.time()
+        rec = {
+            "launch_id": "launch-ansi",
+            "state": "failed",
+            "stage": "agent_exit_before_log_bind",
+            "error": "claude exited with status 1 before a session log was bound",
+            "agent_backend": "cc",
+            "cwd": "/tmp/work",
+            "created_ts": now,
+            "updated_ts": now,
+            "pty_tail": "File \x1b[35m\"<string>\"\x1b[0m, line \x1b[35m11\x1b[0m\n\x1b[1;35mFileNotFoundError\x1b[0m: \x1b[35mNo such file or directory: b'/usr/games/claude'\x1b[0m\n",
+        }
+
+        payload = server._launch_attempt_transcript_payload(rec)
+        text = payload["events"][0]["text"]
+
+        self.assertIn('File "<string>", line 11', text)
+        self.assertIn("FileNotFoundError: No such file or directory: b'/usr/games/claude'", text)
+        self.assertNotIn("\x1b", text)
+        self.assertNotIn("[35m", text)
+        self.assertNotIn("[0m", text)
+
     def test_failed_launch_transcript_redacts_error_and_tail_secrets(self) -> None:
         now = time.time()
         rec = {

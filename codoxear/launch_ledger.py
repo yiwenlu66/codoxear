@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from .agent_backend import normalize_agent_backend
+from .broker_turn_state import _strip_ansi
 from .launch_config import provider_choice_for_settings
 from .util import append_launch_attempt
 from .util import read_launch_attempts
@@ -124,7 +125,9 @@ def launch_failure_tail(record: dict[str, Any]) -> str:
     for key in ("pty_tail", "tmux_pane_tail"):
         val = record.get(key)
         if isinstance(val, str) and val.strip():
-            return val[-4000:]
+            cleaned = _strip_ansi(val)
+            if cleaned.strip():
+                return cleaned[-4000:]
     return ""
 
 
