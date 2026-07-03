@@ -784,12 +784,6 @@
         let chatSearchIndex = -1;
         const CHAT_SEARCH_ALL_DEBOUNCE_MS = 300;
         const CHAT_SEARCH_ALL_COUNT_MAX = 1000;
-        let chatSearchAllCount = null;
-        let chatSearchAllCountTruncated = false;
-        let chatSearchAllHint = "";
-        let chatSearchAllRequestId = 0;
-        let chatSearchAllAbort = null;
-        let chatSearchAllTimer = null;
         let chatSearchLoadingOlder = false;
         let activeMessageCopyRow = null;
         let pendingRecoveryFocusDescriptor = null;
@@ -1010,14 +1004,11 @@
           iosViewportGuardTimer = null;
           desktopNotificationTimers.forEach((timer) => clearTimeout(timer));
           desktopNotificationTimers.clear();
-          if (chatSearchAllTimer) clearTimeout(chatSearchAllTimer);
-          chatSearchAllTimer = null;
+          chatSearchAllRuntime.dispose();
           queueUpdateTimers.forEach((timer) => clearTimeout(timer));
           queueUpdateTimers.clear();
           queueMutationLocks.clear();
           queuePendingDeletes.clear();
-          abortController(chatSearchAllAbort);
-          chatSearchAllAbort = null;
           olderLoadRuntime.invalidate();
           fileViewerController.abortPendingFileOpenTransport();
           stopAnnouncementHeartbeat();
@@ -2440,54 +2431,45 @@
 
         function syncChatSearchStatus() {
           const total = chatSearchMatches.length;
+          const allState = chatSearchAllSnapshot();
           const allSuffix = chatSearchQuery
             ? chatSearchLoadingOlder
               ? " · loading older"
-              : Number.isFinite(chatSearchAllCount)
-                ? ` · ${chatSearchAllCount}${chatSearchAllCountTruncated ? "+" : ""} all`
+              : Number.isFinite(allState.count)
+                ? ` · ${allState.count}${allState.truncated ? "+" : ""} all`
                 : ""
             : "";
           const canLoadOlderMatch = Boolean(
             chatSearchQuery &&
-              Number.isFinite(chatSearchAllCount) &&
-              (chatSearchAllCountTruncated || chatSearchAllCount > total) &&
+              Number.isFinite(allState.count) &&
+              (allState.truncated || allState.count > total) &&
               hasOlderMessages() &&
               !chatSearchLoadingOlder &&
               !isLoadingOlderMessages()
           );
-          const showAllHint = Boolean(chatSearchQuery && !chatSearchLoadingOlder && Number.isFinite(chatSearchAllCount) && (chatSearchAllCountTruncated || chatSearchAllCount > total) && chatSearchAllHint);
+          const showAllHint = Boolean(chatSearchQuery && !chatSearchLoadingOlder && Number.isFinite(allState.count) && (allState.truncated || allState.count > total) && allState.hint);
           chatSearchStatus.textContent = chatSearchQuery ? `${total ? chatSearchIndex + 1 : 0}/${total} loaded${allSuffix}` : "Loaded";
-          chatSearchAllHintEl.textContent = showAllHint ? `all: ${chatSearchAllHint}` : "";
-          chatSearchAllHintEl.title = showAllHint ? chatSearchAllHint : "";
+          chatSearchAllHintEl.textContent = showAllHint ? `all: ${allState.hint}` : "";
+          chatSearchAllHintEl.title = showAllHint ? allState.hint : "";
           chatSearchAllHintEl.style.display = showAllHint ? "" : "none";
           chatSearchPrevBtn.disabled = total <= 0;
           chatSearchNextBtn.disabled = total <= 0 && !canLoadOlderMatch;
         }
 
         function resetAllChatSearchCount() {
-          chatSearchAllCount = null;
-          chatSearchAllCountTruncated = false;
-          chatSearchAllHint = "";
-          chatSearchAllRequestId += 1;
-          if (chatSearchAllTimer) clearTimeout(chatSearchAllTimer);
-          chatSearchAllTimer = null;
-          if (chatSearchAllAbort) chatSearchAllAbort.abort();
-          chatSearchAllAbort = null;
+          chatSearchAllRuntime.reset();
         }
 
         function scheduleAllChatSearchCount(query) {
           const cleanQuery = String(query || "").trim();
-          resetAllChatSearchCount();
           if (!selected || !cleanQuery) {
+            resetAllChatSearchCount();
             syncChatSearchStatus();
             return;
           }
-          const reqId = chatSearchAllRequestId;
-          chatSearchAllTimer = setTimeout(() => {
-            chatSearchAllTimer = null;
-            if (reqId !== chatSearchAllRequestId) return;
-            void refreshAllChatSearchCount(cleanQuery);
-          }, CHAT_SEARCH_ALL_DEBOUNCE_MS);
+          chatSearchAllRuntime.schedule(cleanQuery, (scheduledQuery) => {
+            void refreshAllChatSearchCount(scheduledQuery);
+          });
           syncChatSearchStatus();
         }
 
@@ -2499,28 +2481,24 @@
             return;
           }
           const sid = selected;
-          const reqId = chatSearchAllRequestId + 1;
-          chatSearchAllRequestId = reqId;
-          if (chatSearchAllAbort) chatSearchAllAbort.abort();
-          const ctl = new AbortController();
-          chatSearchAllAbort = ctl;
+          const request = chatSearchAllRuntime.beginRequest();
           try {
-            const data = await api(`/api/sessions/${sid}/messages/search?q=${encodeURIComponent(cleanQuery)}&limit=1&text_max=96&count_max=${CHAT_SEARCH_ALL_COUNT_MAX}`, { signal: ctl.signal });
-            if (selected !== sid || reqId !== chatSearchAllRequestId || String(chatSearchQuery || "") !== cleanQuery.toLowerCase()) return;
-            chatSearchAllCount = Number.isFinite(Number(data.match_count)) ? Number(data.match_count) : 0;
-            chatSearchAllCountTruncated = Boolean(data.match_count_truncated);
+            const data = await api(`/api/sessions/${sid}/messages/search?q=${encodeURIComponent(cleanQuery)}&limit=1&text_max=96&count_max=${CHAT_SEARCH_ALL_COUNT_MAX}`, { signal: request.signal });
+            if (selected !== sid || !chatSearchAllRuntime.isCurrent(request) || String(chatSearchQuery || "") !== cleanQuery.toLowerCase()) return;
             const firstMatch = Array.isArray(data.matches) && data.matches.length ? data.matches[0] : null;
-            chatSearchAllHint = chatSearchTranscriptHint(firstMatch, cleanQuery);
+            chatSearchAllRuntime.completeRequest(request, {
+              count: data.match_count,
+              truncated: data.match_count_truncated,
+              hint: chatSearchTranscriptHint(firstMatch, cleanQuery),
+            });
             syncChatSearchStatus();
           } catch (e) {
             if (e && e.name === "AbortError") return;
-            if (selected !== sid || reqId !== chatSearchAllRequestId) return;
-            chatSearchAllCount = null;
-            chatSearchAllCountTruncated = false;
-            chatSearchAllHint = "";
+            if (selected !== sid || !chatSearchAllRuntime.isCurrent(request)) return;
+            chatSearchAllRuntime.failRequest(request);
             syncChatSearchStatus();
           } finally {
-            if (chatSearchAllAbort === ctl) chatSearchAllAbort = null;
+            chatSearchAllRuntime.finishRequest(request);
           }
         }
 
@@ -2634,7 +2612,7 @@
           if (!chatSearchOpen) openChatSearch();
           refreshLoadedChatSearch({ jump: false, preserveCurrent: true, refreshAllCount: false });
           if (!chatSearchMatches.length) {
-            if (chatSearchQuery && Number.isFinite(chatSearchAllCount) && chatSearchAllCount > 0 && hasOlderMessages()) {
+            if (chatSearchQuery && Number.isFinite(chatSearchAllSnapshot().count) && chatSearchAllSnapshot().count > 0 && hasOlderMessages()) {
               const jumped = await loadNearestOlderChatSearchWindow();
               if (jumped) return;
               const found = await loadOlderUntilChatSearchMatch();
@@ -2646,7 +2624,8 @@
             return;
           }
           const startIndex = chatSearchIndex;
-          const unloadedTranscriptMatches = Number.isFinite(chatSearchAllCount) ? (chatSearchAllCountTruncated || chatSearchAllCount > chatSearchMatches.length) : true;
+          const allState = chatSearchAllSnapshot();
+          const unloadedTranscriptMatches = Number.isFinite(allState.count) ? (allState.truncated || allState.count > chatSearchMatches.length) : true;
           const canLoadOlderMatches = Boolean(chatSearchQuery && unloadedTranscriptMatches && hasOlderMessages());
           const atForwardWrap = delta > 0 && startIndex >= chatSearchMatches.length - 1;
           const atBackwardWrap = delta < 0 && startIndex <= 0;
@@ -2756,7 +2735,8 @@
           typeof codoxearTranscript.tailCacheMatchesSession !== "function" ||
           typeof codoxearTranscript.rememberTailSnapshot !== "function" ||
           typeof codoxearTranscript.appendTailSnapshotEvents !== "function" ||
-          typeof codoxearTranscript.createOlderLoadRuntime !== "function"
+          typeof codoxearTranscript.createOlderLoadRuntime !== "function" ||
+          typeof codoxearTranscript.createChatSearchAllRuntime !== "function"
         )
           throw new Error("Codoxear transcript helpers failed to load");
 
@@ -2769,6 +2749,17 @@
           nowMs: () => performance.now(),
           autoCooldownMs: OLDER_AUTO_COOLDOWN_MS,
         });
+
+        const chatSearchAllRuntime = codoxearTranscript.createChatSearchAllRuntime({
+          setTimeout: window.setTimeout.bind(window),
+          clearTimeout: window.clearTimeout.bind(window),
+          AbortControllerCtor: AbortController,
+          debounceMs: CHAT_SEARCH_ALL_DEBOUNCE_MS,
+        });
+
+        function chatSearchAllSnapshot() {
+          return chatSearchAllRuntime.snapshot();
+        }
 
         function olderLoadSnapshot() {
           return olderLoadRuntime.snapshot();

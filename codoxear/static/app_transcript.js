@@ -229,6 +229,118 @@
     });
   }
 
+  function createChatSearchAllRuntime(options = {}) {
+    const setTimeoutFn = requireFunction(options.setTimeout, "setTimeout");
+    const clearTimeoutFn = requireFunction(options.clearTimeout, "clearTimeout");
+    const AbortControllerCtor = requireFunction(options.AbortControllerCtor, "AbortControllerCtor");
+    const debounceMs = Math.max(0, Number(options.debounceMs) || 0);
+    let count = null;
+    let truncated = false;
+    let hint = "";
+    let requestId = 0;
+    let abortController = null;
+    let timer = null;
+
+    function snapshot() {
+      return Object.freeze({
+        count,
+        truncated,
+        hint,
+        requestId,
+        hasAbort: Boolean(abortController),
+        hasTimer: Boolean(timer),
+      });
+    }
+
+    function abortActive() {
+      if (!abortController) return;
+      const ctl = abortController;
+      abortController = null;
+      try {
+        ctl.abort();
+      } catch (_) {}
+    }
+
+    function clearTimer() {
+      if (!timer) return;
+      clearTimeoutFn(timer);
+      timer = null;
+    }
+
+    function reset() {
+      count = null;
+      truncated = false;
+      hint = "";
+      requestId += 1;
+      clearTimer();
+      abortActive();
+      return snapshot();
+    }
+
+    function schedule(query, callback) {
+      const run = requireFunction(callback, "callback");
+      const cleanQuery = String(query || "").trim();
+      reset();
+      if (!cleanQuery) return Object.freeze({ scheduled: false, requestId, query: "" });
+      const reqId = requestId;
+      timer = setTimeoutFn(() => {
+        timer = null;
+        if (reqId !== requestId) return;
+        run(cleanQuery);
+      }, debounceMs);
+      return Object.freeze({ scheduled: true, requestId: reqId, query: cleanQuery });
+    }
+
+    function beginRequest() {
+      requestId += 1;
+      abortActive();
+      const ctl = new AbortControllerCtor();
+      abortController = ctl;
+      return Object.freeze({ requestId, controller: ctl, signal: ctl.signal });
+    }
+
+    function isCurrent(request) {
+      return Boolean(request && request.requestId === requestId);
+    }
+
+    function completeRequest(request, result = {}) {
+      if (!isCurrent(request)) return false;
+      count = Number.isFinite(Number(result.count)) ? Number(result.count) : 0;
+      truncated = Boolean(result.truncated);
+      hint = String(result.hint || "");
+      return true;
+    }
+
+    function failRequest(request) {
+      if (!isCurrent(request)) return false;
+      count = null;
+      truncated = false;
+      hint = "";
+      return true;
+    }
+
+    function finishRequest(request) {
+      if (request && abortController === request.controller) abortController = null;
+      return snapshot();
+    }
+
+    function dispose() {
+      return reset();
+    }
+
+    return Object.freeze({
+      beginRequest,
+      completeRequest,
+      dispose,
+      failRequest,
+      finishRequest,
+      isCurrent,
+      reset,
+      schedule,
+      snapshot,
+    });
+  }
+
   window.CodoxearTranscript = Object.freeze({
     normalizeTailEvent,
     normalizeTranscriptState,
@@ -239,5 +351,6 @@
     rememberTailSnapshot,
     appendTailSnapshotEvents,
     createOlderLoadRuntime,
+    createChatSearchAllRuntime,
   });
 })();

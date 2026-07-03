@@ -111,6 +111,88 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertIn("transcript dependency missing: olderButton", out["missingError"])
         self.assertTrue(out["frozen"])
 
+    def test_chat_search_all_runtime_owns_debounce_currentness_and_result_state(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const ctx = {{ window: {{}}, AbortController }};
+            const vm = require("vm");
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            const timers = [];
+            const cleared = [];
+            const runtime = ctx.window.CodoxearTranscript.createChatSearchAllRuntime({{
+              setTimeout: (fn, ms) => {{ const timer = {{ fn, ms, id: timers.length + 1 }}; timers.push(timer); return timer; }},
+              clearTimeout: (timer) => cleared.push(timer && timer.id),
+              AbortControllerCtor: AbortController,
+              debounceMs: 300,
+            }});
+            const empty = runtime.schedule("", () => {{ throw new Error("empty should not run"); }});
+            const scheduled = runtime.schedule(" query ", (q) => {{ ctx.ranQuery = q; }});
+            const scheduledSnapshot = runtime.snapshot();
+            timers[timers.length - 1].fn();
+            const request1 = runtime.beginRequest();
+            const current1 = runtime.isCurrent(request1);
+            const request2 = runtime.beginRequest();
+            const oldCurrentAfterSecond = runtime.isCurrent(request1);
+            const completedOld = runtime.completeRequest(request1, {{ count: 99, truncated: true, hint: "stale" }});
+            const completedNew = runtime.completeRequest(request2, {{ count: "5", truncated: true, hint: "first match" }});
+            const afterComplete = runtime.snapshot();
+            runtime.finishRequest(request2);
+            const afterFinish = runtime.snapshot();
+            const request3 = runtime.beginRequest();
+            runtime.failRequest(request3);
+            const afterFail = runtime.snapshot();
+            runtime.schedule("later", () => {{ ctx.laterRan = true; }});
+            const beforeDispose = runtime.snapshot();
+            runtime.dispose();
+            const afterDispose = runtime.snapshot();
+            let missingError = "";
+            try {{ ctx.window.CodoxearTranscript.createChatSearchAllRuntime({{ setTimeout: () => {{}} }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
+            process.stdout.write(JSON.stringify({{
+              empty,
+              scheduled,
+              scheduledSnapshot,
+              ranQuery: ctx.ranQuery,
+              current1,
+              oldCurrentAfterSecond,
+              completedOld,
+              completedNew,
+              afterComplete,
+              afterFinish,
+              afterFail,
+              beforeDispose,
+              afterDispose,
+              cleared,
+              missingError,
+              frozen: Object.isFrozen(runtime),
+            }}));
+            """
+        )
+        out = _run_node(js)
+        self.assertFalse(out["empty"]["scheduled"])
+        self.assertTrue(out["scheduled"]["scheduled"])
+        self.assertTrue(out["scheduledSnapshot"]["hasTimer"])
+        self.assertEqual(out["ranQuery"], "query")
+        self.assertTrue(out["current1"])
+        self.assertFalse(out["oldCurrentAfterSecond"])
+        self.assertFalse(out["completedOld"])
+        self.assertTrue(out["completedNew"])
+        self.assertEqual(out["afterComplete"]["count"], 5)
+        self.assertTrue(out["afterComplete"]["truncated"])
+        self.assertEqual(out["afterComplete"]["hint"], "first match")
+        self.assertFalse(out["afterFinish"]["hasAbort"])
+        self.assertIsNone(out["afterFail"]["count"])
+        self.assertFalse(out["afterFail"]["truncated"])
+        self.assertEqual(out["afterFail"]["hint"], "")
+        self.assertTrue(out["beforeDispose"]["hasTimer"])
+        self.assertIsNone(out["afterDispose"]["count"])
+        self.assertFalse(out["afterDispose"]["hasAbort"])
+        self.assertFalse(out["afterDispose"]["hasTimer"])
+        self.assertIn(2, out["cleared"])
+        self.assertIn("transcript dependency missing: clearTimeout", out["missingError"])
+        self.assertTrue(out["frozen"])
+
     def test_transcript_module_normalizes_and_trims_tail_cache(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
