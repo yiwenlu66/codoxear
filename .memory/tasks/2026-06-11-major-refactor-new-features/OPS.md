@@ -8323,3 +8323,21 @@
   - Broader sessiond/backend/send/runtime/factory validation returned `94 passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commits.
 - Commitment: Workbench item 7 is supported as complete for its stated mechanism. Full local, Docker, and clean-room review remain all-workbench acceptance gates.
+
+## 2026-07-03T12:52:00Z Replaced obsolete source-text tests with behavior coverage
+- Functional/test commits replaced source-text scaffolding where the exercised dependency was ordinary Python behavior rather than static registration or browser build wiring:
+  - `dae114d Replace sessiond source tests with behavior tests` rewrote sessiond state/control source sentinels as executable behavior tests and renamed them to `test_sessiond_state.py` and `test_sessiond_control.py`.
+  - `a1638f6 Replace JSON state source test with behavior coverage` moved JSON helper re-export identity into the existing JSON behavior tests and deleted the source-text file.
+  - `fd8b93b Replace socket JSON source test with behavior coverage` renamed socket helper tests and kept only runtime re-export/disconnect/write behavior.
+  - `db5a014 Replace process liveness source test with behavior coverage` replaced source counting/import assertions with facade identity and live-process behavior.
+  - `5667d7f Rename file text behavior test` removed a misleading `_source` filename from an already-behavioral test.
+  - `bbfd3d2 Replace file type source test with behavior coverage` replaced file-type source assertions with direct classification and server facade behavior.
+  - `7869ee2 Replace file response source test with behavior coverage` removed the source sentinel from an existing executable file-response suite and renamed it.
+  - `c0717f5 Remove redundant file search source test` removed source assertions already covered by file-list/file-route behavior.
+- Mechanism: these tests now fail on broken runtime behavior or public facade identity rather than on implementation placement text. Remaining source-named tests are retained only where the checked property is static UI/build/asset wiring, public compatibility/import wiring, security-sensitive literal preservation, or browser-DOM behavior not currently executable in the Python harness.
+- Validation under checkpoint cadence:
+  - Rewritten sessiond behavior tests returned `25 passed` with send-ack coverage.
+  - JSON/socket/process/PTY/file-type/file-text/file-response/file-search/sessiond/backend replacement validation returned `79 passed`.
+  - Focused validations for each replaced cluster passed before commit.
+  - `git diff --check` and staged `git diff --cached --check` passed before commits.
+- Commitment: Workbench item 8 is supported as complete for its stated mechanism. It did not delete all source-named tests; it removed the ones whose target was directly executable and left static/browser/build/public-contract sentinels in scope.
