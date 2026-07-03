@@ -7983,3 +7983,13 @@
   - `python3 -m py_compile tests/test_file_viewer_source.py` passed.
   - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_file_picker_search_source.py tests/test_markdown_tables.py` returned `96 passed, 25 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T03:42:00Z Retargeted stale frontend source probes after item-2 wrapper removal
+- Test-only commit `d63d2ec Retarget stale file viewer source probes` migrated additional probes that still extracted deleted app.js helper blocks. `tests/test_file_picker_session_state.py` now executes `createFileViewerController(...)` from `app_file_viewer.js` for session-scoped remembered selections, and `tests/test_frontend_file_editor_module_source.py` now asserts `focusLine(...)` ownership in `app_file_editor.js` rather than app.js.
+- Mechanism: after app.js stopped exporting remembered-selection and editor line-focus wrappers, source probes that reconstituted those wrappers no longer tested the real owner. Moving the probes to module/controller APIs preserves behavior evidence without reintroducing obsolete app.js contracts.
+- Broader focused frontend validation after this migration returned `99 passed, 25 subtests passed` for `tests/test_frontend_file_viewer_module_source.py`, `tests/test_frontend_file_picker_module_source.py`, `tests/test_frontend_file_editor_module_source.py`, `tests/test_file_viewer_source.py`, `tests/test_file_picker_search_source.py`, and `tests/test_file_picker_session_state.py`.
+
+## 2026-07-03T03:43:00Z Workbench item 2 ownership inspection
+- Observation: `rg` over app.js found no remaining file-viewer/editor/picker state declarations (`let activeFile...`, `let fileEditor...`, `let filePicker...`, `let activePdf...`, Monaco/PDF runtime state) outside DOM nodes and runtime/controller construction. The remaining app.js functions in the file-viewer region are live dependency-injection callbacks, DOM event bindings, selected-session/app-shell bridges, and render/runtime adapters.
+- Interpretation: Workbench item 2's listed state-machine responsibilities are now owned by `app_file_viewer.js`, `app_file_editor.js`, and `app_file_picker.js`. App.js still constructs the file viewer DOM and wires dependencies, which is composition rather than state-machine ownership under the item-2 mechanism.
+- Commitment: proceed to Workbench item 3 (transcript/chat architecture) while preserving item-2 evidence; no acceptance/yield claim is made because Workbench items 3-8 remain.
