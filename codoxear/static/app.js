@@ -7153,6 +7153,17 @@
           el,
           normalizeLineNumber,
           requestAnimationFrame: (callback) => requestAnimationFrame(callback),
+          disposeFileEditor: () => disposeFileEditor(),
+          disposePdfRender: () => disposePdfRender(),
+          clearFileVideo: () => clearFileVideo(),
+          setFileRenderSurface: (surface) => setFileRenderSurface(surface),
+          setFileEditorKind: (kind) => setFileEditorKind(kind),
+          applyPlainTextFallbackState: () => fileViewerController.applyPlainTextFallbackState(),
+          updateFileTouchToolbar: () => updateFileTouchToolbar(),
+          currentSessionId: () => currentFileViewerSessionId() || selected || "",
+          markdownPreviewHtml: (body, context) => markdownPreviewHtml(body, context),
+          upgradeCandidateFileRefs: (node) => upgradeCandidateFileRefs(node),
+          blockedFileMessage: (rel, reason, viewerMaxBytes, size) => blockedFileMessage(rel, reason, viewerMaxBytes, size),
         });
         const fileDownloadRuntime = codoxearFileViewer.createFileDownloadRuntime({
           resolveAppUrl,
@@ -7574,21 +7585,11 @@
         }
 
         function renderPlainTextFallback(rel, text, lineNumber = null, reason = "Rich file viewer unavailable") {
-          disposeFileEditor();
-          clearFileVideo();
-          setFileRenderSurface("diff");
-          setFileEditorKind("plain-fallback");
-          fileViewerController.applyPlainTextFallbackState();
-          fileFallbackRuntime.renderPlainText(rel, text, lineNumber, reason);
+          return fileFallbackRuntime.applyPlainText(rel, text, lineNumber, reason);
         }
 
         function renderDownloadFallback(rel, url, reason = "Preview unavailable") {
-          disposeFileEditor();
-          disposePdfRender();
-          clearFileVideo();
-          setFileRenderSurface("diff");
-          fileFallbackRuntime.renderDownload(rel, url, reason);
-          updateFileTouchToolbar();
+          return fileFallbackRuntime.applyDownload(rel, url, reason);
         }
 
         async function ensurePdfJs() {
@@ -7608,19 +7609,11 @@
         }
 
         function renderMarkdownPreview(rel, text) {
-          disposeFileEditor();
-          clearFileVideo();
-          setFileRenderSurface("diff");
-          fileFallbackRuntime.renderMarkdown(rel, text, currentFileViewerSessionId() || selected || "", markdownPreviewHtml, upgradeCandidateFileRefs);
-          updateFileTouchToolbar();
+          return fileFallbackRuntime.applyMarkdown(rel, text);
         }
 
         function renderBlockedFileNotice(rel, reason, viewerMaxBytes, size) {
-          disposeFileEditor();
-          clearFileVideo();
-          setFileRenderSurface("diff");
-          fileFallbackRuntime.renderBlocked(blockedFileMessage(rel, reason, viewerMaxBytes, size));
-          updateFileTouchToolbar();
+          return fileFallbackRuntime.applyBlocked(rel, reason, viewerMaxBytes, size);
         }
 
         async function renderPdfFile(rel, url, request) {

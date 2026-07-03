@@ -964,6 +964,36 @@ def run_file_fallback_runtime_probe() -> dict[str, object]:
         const markdownState = {{ className: markdownNode.attrs.class, html: markdownNode.attrs.html }};
         let markdownMissingError = "";
         try {{ runtime.renderMarkdown("README.md", "# hi", "sid-1", null, () => {{}}); }} catch (err) {{ markdownMissingError = err && err.message ? err.message : String(err); }}
+        const appEvents = [];
+        const appHost = {{
+          innerHTML: "stale",
+          children: [],
+          appendChild(node) {{ this.children.push(node); appEvents.push(["append", node.tag, node.attrs && node.attrs.class]); return node; }},
+        }};
+        const appRuntime = fileViewer.createFileFallbackRuntime({{
+          host: appHost,
+          el,
+          normalizeLineNumber: (value) => value == null ? null : Number(value) || null,
+          requestAnimationFrame: (callback) => {{ appEvents.push(["raf"]); callback(); }},
+          disposeFileEditor: () => appEvents.push(["disposeFileEditor"]),
+          disposePdfRender: () => appEvents.push(["disposePdfRender"]),
+          clearFileVideo: () => appEvents.push(["clearFileVideo"]),
+          setFileRenderSurface: (surface) => appEvents.push(["setSurface", surface]),
+          setFileEditorKind: (kind) => appEvents.push(["setKind", kind]),
+          applyPlainTextFallbackState: () => appEvents.push(["applyPlainState"]),
+          updateFileTouchToolbar: () => appEvents.push(["touchToolbar"]),
+          currentSessionId: () => "sid-app",
+          markdownPreviewHtml: (body, context) => {{ appEvents.push(["markdownHtml", body, context]); return `<p>${{body}}</p>`; }},
+          upgradeCandidateFileRefs: (node) => appEvents.push(["upgrade", node.attrs.class, node.attrs.html]),
+          blockedFileMessage: (rel, reason, viewerMaxBytes, size) => {{ appEvents.push(["blockedMessage", rel, reason, viewerMaxBytes, size]); return `blocked:${{rel}}:${{reason}}:${{viewerMaxBytes}}:${{size}}`; }},
+        }});
+        appRuntime.applyPlainText("plain.txt", "body", 3, "No editor");
+        appRuntime.applyDownload("video.mov", "/download", "Codec unsupported");
+        appRuntime.applyMarkdown("README.md", "# title");
+        appRuntime.applyBlocked("large.bin", "too large", 100, 200);
+        const applicationEvents = appEvents.slice();
+        let appMissingError = "";
+        try {{ runtime.applyPlainText("x", "", null, "missing"); }} catch (err) {{ appMissingError = err && err.message ? err.message : String(err); }}
         let missingError = "";
         try {{ fileViewer.createFileFallbackRuntime({{ host, el, normalizeLineNumber: () => null }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
         process.stdout.write(JSON.stringify({{
@@ -977,6 +1007,8 @@ def run_file_fallback_runtime_probe() -> dict[str, object]:
           blockedState,
           markdownState,
           markdownMissingError,
+          applicationEvents,
+          appMissingError,
           events,
           missingError,
         }}));
@@ -2131,6 +2163,13 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         self.assertEqual(result["markdownState"], {"className": "md fileMarkdownPreview", "html": "<p># hi</p>"})
         self.assertIn("file viewer dependency missing: markdownPreviewHtml", result["markdownMissingError"])
         self.assertEqual(result["events"], [["append", "div", "filePlainFallback"], ["raf"], ["append", "div", "fileBlockedNotice fileDownloadFallback"], ["append", "div", "fileBlockedNotice"], ["markdownHtml", "# hi", {"filePath": "README.md", "sessionId": "sid-1"}], ["append", "div", "md fileMarkdownPreview"], ["upgrade", "md fileMarkdownPreview", "<p># hi</p>"]])
+        self.assertEqual(result["applicationEvents"], [
+            ["disposeFileEditor"], ["clearFileVideo"], ["setSurface", "diff"], ["setKind", "plain-fallback"], ["applyPlainState"], ["append", "div", "filePlainFallback"], ["raf"],
+            ["disposePdfRender"], ["disposeFileEditor"], ["clearFileVideo"], ["setSurface", "diff"], ["append", "div", "fileBlockedNotice fileDownloadFallback"], ["touchToolbar"],
+            ["disposeFileEditor"], ["clearFileVideo"], ["setSurface", "diff"], ["markdownHtml", "# title", {"filePath": "README.md", "sessionId": "sid-app"}], ["append", "div", "md fileMarkdownPreview"], ["upgrade", "md fileMarkdownPreview", "<p># title</p>"], ["touchToolbar"],
+            ["disposeFileEditor"], ["clearFileVideo"], ["setSurface", "diff"], ["blockedMessage", "large.bin", "too large", 100, 200], ["append", "div", "fileBlockedNotice"], ["touchToolbar"],
+        ])
+        self.assertIn("file viewer dependency missing: disposeFileEditor", result["appMissingError"])
         self.assertIn("file viewer dependency missing: requestAnimationFrame", result["missingError"])
 
     def test_file_mode_controls_runtime_behavior(self) -> None:

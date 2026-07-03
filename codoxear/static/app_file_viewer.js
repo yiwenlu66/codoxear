@@ -417,7 +417,63 @@
       return preview;
     }
 
-    return Object.freeze({ renderBlocked, renderDownload, renderMarkdown, renderPlainText });
+    function applicationDeps() {
+      return {
+        disposeFileEditor: requireFunction(options.disposeFileEditor, "disposeFileEditor"),
+        disposePdfRender: requireFunction(options.disposePdfRender, "disposePdfRender"),
+        clearFileVideo: requireFunction(options.clearFileVideo, "clearFileVideo"),
+        setFileRenderSurface: requireFunction(options.setFileRenderSurface, "setFileRenderSurface"),
+        setFileEditorKind: requireFunction(options.setFileEditorKind, "setFileEditorKind"),
+        applyPlainTextFallbackState: requireFunction(options.applyPlainTextFallbackState, "applyPlainTextFallbackState"),
+        updateFileTouchToolbar: requireFunction(options.updateFileTouchToolbar, "updateFileTouchToolbar"),
+        currentSessionId: requireFunction(options.currentSessionId, "currentSessionId"),
+        markdownPreviewHtml: requireFunction(options.markdownPreviewHtml, "markdownPreviewHtml"),
+        upgradeCandidateFileRefs: requireFunction(options.upgradeCandidateFileRefs, "upgradeCandidateFileRefs"),
+        blockedFileMessage: requireFunction(options.blockedFileMessage, "blockedFileMessage"),
+      };
+    }
+
+    function prepareFallbackSurface(deps) {
+      deps.disposeFileEditor();
+      deps.clearFileVideo();
+      deps.setFileRenderSurface("diff");
+      return true;
+    }
+
+    function applyPlainText(rel, text, lineNumber = null, reason = "Rich file viewer unavailable") {
+      const deps = applicationDeps();
+      prepareFallbackSurface(deps);
+      deps.setFileEditorKind("plain-fallback");
+      deps.applyPlainTextFallbackState();
+      return renderPlainText(rel, text, lineNumber, reason);
+    }
+
+    function applyDownload(rel, url, reason = "Preview unavailable") {
+      const deps = applicationDeps();
+      deps.disposePdfRender();
+      prepareFallbackSurface(deps);
+      const result = renderDownload(rel, url, reason);
+      deps.updateFileTouchToolbar();
+      return result;
+    }
+
+    function applyMarkdown(rel, text) {
+      const deps = applicationDeps();
+      prepareFallbackSurface(deps);
+      const result = renderMarkdown(rel, text, deps.currentSessionId(), deps.markdownPreviewHtml, deps.upgradeCandidateFileRefs);
+      deps.updateFileTouchToolbar();
+      return result;
+    }
+
+    function applyBlocked(rel, reason, viewerMaxBytes, size) {
+      const deps = applicationDeps();
+      prepareFallbackSurface(deps);
+      const result = renderBlocked(deps.blockedFileMessage(rel, reason, viewerMaxBytes, size));
+      deps.updateFileTouchToolbar();
+      return result;
+    }
+
+    return Object.freeze({ applyBlocked, applyDownload, applyMarkdown, applyPlainText, renderBlocked, renderDownload, renderMarkdown, renderPlainText });
   }
 
   function createFilePdfRenderRuntime(options = {}) {
