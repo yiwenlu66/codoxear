@@ -7283,14 +7283,6 @@
           return fileViewerController.blockUnavailableFileAction();
         }
 
-        function cancelPendingFileOpen() {
-          fileViewerController.cancelPendingFileOpen();
-        }
-
-        function nextActiveFileIdentity(current, nextPath, { gitPath = undefined, apiPath = undefined } = {}) {
-          return fileViewerController.nextActiveFileIdentity(current, nextPath, { gitPath, apiPath });
-        }
-
         function currentActiveFileIdentity() {
           return fileViewerController.currentActiveFileIdentity();
         }
@@ -7307,24 +7299,8 @@
           return fileViewerController.setFileEditorKind(kind);
         }
 
-        function clearActiveFileIdentity({ line = null } = {}) {
-          fileViewerController.clearActiveFileIdentity({ line });
-        }
-
         function isCurrentFileOpenRequest(request) {
           return fileViewerController.isCurrentFileOpenRequest(request);
-        }
-
-        function rememberActiveFileSelection(sessionId = currentFileSessionId()) {
-          return fileViewerController.rememberActiveFileSelection(sessionId);
-        }
-
-        function preferredFileSelectionForSession(sessionId) {
-          return fileViewerController.preferredFileSelectionForSession(sessionId);
-        }
-
-        function resolveFileViewerOpenTarget({ sessionId = "", explicitPath = "", explicitLine = null } = {}) {
-          return fileViewerController.resolveFileViewerOpenTarget({ sessionId, explicitPath, explicitLine });
         }
 
         function clearFileVideo() {
@@ -7366,38 +7342,6 @@
           return fileViewerModalRuntime.isOpen();
         }
 
-        function currentFileEditorState() {
-          return fileViewerController.currentFileEditorState();
-        }
-
-        function fileEditorCapabilities(state) {
-          return fileViewerController.fileEditorCapabilities(state);
-        }
-
-        function activeFileEditorCapabilities() {
-          return fileViewerController.activeFileEditorCapabilities();
-        }
-
-        function activeFileCanEnterEditMode() {
-          return fileViewerController.activeFileCanEnterEditMode();
-        }
-
-        function activeFileEditorWritable() {
-          return fileViewerController.activeFileEditorWritable();
-        }
-
-        function activeFileEditorIdleWritable() {
-          return fileViewerController.activeFileEditorIdleWritable();
-        }
-
-        function activeFileEditorIdleTextWritable() {
-          return fileViewerController.activeFileEditorIdleTextWritable();
-        }
-
-        function activeFileEditModeAllowedInCurrentView() {
-          return fileViewerController.activeFileEditModeAllowedInCurrentView();
-        }
-
         function syncFileEditorReadOnly() {
           return fileViewerController.syncFileEditorReadOnly();
         }
@@ -7424,10 +7368,6 @@
 
         function handleFileTouchMoveButtonPress(direction) {
           return fileViewerController.handleFileTouchMoveButtonPress(direction);
-        }
-
-        function moveFileTouchSelection(direction) {
-          return fileViewerController.moveFileTouchSelection(direction);
         }
 
         function handleFileEditorSaveShortcut(e) {
@@ -7458,10 +7398,6 @@
           return await fileViewerController.pasteFromClipboardIntoActiveFile();
         }
 
-        function insertIntoActiveFileEditor(text) {
-          return fileViewerController.insertIntoActiveFileEditor(text);
-        }
-
         function handleFilePasteInsert(text) {
           return fileViewerController.handleFilePasteInsert(text);
         }
@@ -7482,20 +7418,12 @@
           fileViewerController.resetActiveFileBufferState();
         }
 
-        function currentActiveFileKind() {
-          return fileViewerController.currentActiveFileKind();
-        }
-
         function currentActiveFileText() {
           return fileViewerController.currentActiveFileText();
         }
 
         function currentActiveFileEditable() {
           return fileViewerController.currentActiveFileEditable();
-        }
-
-        function currentActiveFileVersion() {
-          return fileViewerController.currentActiveFileVersion();
         }
 
         function currentActiveFileDraft() {
@@ -7553,10 +7481,6 @@
 
         function setFileEditMode(nextMode) {
           return fileViewerController.setFileEditMode(nextMode);
-        }
-
-        function discardActiveFileEdits() {
-          return fileViewerController.discardActiveFileEdits();
         }
 
         function hideFileUnsavedDialog(choice = "cancel") {
@@ -7758,10 +7682,6 @@
           el,
         });
 
-        async function saveActiveFileEdits({ exitEditMode = true } = {}) {
-          return await fileViewerController.saveActiveFileEdits({ exitEditMode });
-        }
-
         async function maybeHandleUnsavedFileChanges() {
           return await fileViewerController.maybeHandleUnsavedFileChanges();
         }
@@ -7778,16 +7698,8 @@
           return fileViewerController.handleFileUnsavedCancelChoice();
         }
 
-        async function openFilePathWithGuard(path, { line = null, mode = null, isCurrent = null, gitPath = false, apiPath = "" } = {}) {
-          return await fileViewerController.openFilePathWithGuard(path, { line, mode, isCurrent, gitPath, apiPath });
-        }
-
         async function openDraftFilePathWithGuard(path) {
           return await fileViewerController.openDraftFilePathWithGuard(path);
-        }
-
-        async function setFileViewModeWithGuard(mode) {
-          return await fileViewerController.setFileViewModeWithGuard(mode);
         }
 
         async function requestHideFileViewer() {
@@ -7806,20 +7718,8 @@
           return await fileViewerController.handleFileEditButtonPress();
         }
 
-        async function handleFileVideoPreviewButtonPress() {
-          return await fileVideoPreviewRuntime.handleButtonPress();
-        }
-
         function activeFileDownloadApiPath() {
           return fileViewerController.activeFileDownloadApiPath();
-        }
-
-        function currentFileViewMode() {
-          return fileViewerController.currentFileViewMode();
-        }
-
-        function currentFileNonDiffMode() {
-          return fileViewerController.currentFileNonDiffMode();
         }
 
         function setFileViewMode(mode) {
@@ -7866,32 +7766,8 @@
           return fileViewerController.fileEntryForPath(path, gitPath, apiPath);
         }
 
-        function fileApiPathForPath(path, apiPath = "") {
-          return fileViewerController.fileApiPathForPath(path, apiPath);
-        }
-
-        function activeFileEntry() {
-          return fileViewerController.activeFileEntry();
-        }
-
-        function isGitFileCandidatePath(path, changed = null, gitPath = null, apiPath = "") {
-          return fileViewerController.isGitFileCandidatePath(path, changed, gitPath, apiPath);
-        }
-
-        async function resolveFileOpenMode(path, { changed = null, gitPath = null, apiPath = "" } = {}) {
-          return await fileViewerController.resolveFileOpenMode(path, { changed, gitPath, apiPath });
-        }
-
         async function openFilePathWithResolvedMode(path, { line = null, changed = null, isCurrent = null, gitPath = null, apiPath = "" } = {}) {
           return await fileViewerController.openFilePathWithResolvedMode(path, { line, changed, isCurrent, gitPath, apiPath });
-        }
-
-        function cloneFileCandidateEntry(entry) {
-          return fileViewerController.cloneFileCandidateEntry(entry);
-        }
-
-        function applyFileCandidateEntries(entries) {
-          return fileViewerController.applyFileCandidateEntries(entries);
         }
 
         function upsertFileEntry(entry) {
@@ -7945,10 +7821,6 @@
         function hideFileViewer() {
           return fileViewerLifecycleRuntime.hide();
         }
-        function disableFileViewerForUnavailableSession(sid) {
-          return fileViewerController.disableFileViewerForUnavailableSession(sid);
-        }
-
         function handleFileViewerSessionUnavailable(sessionId) {
           return fileViewerController.handleFileViewerSessionUnavailable(sessionId);
         }
@@ -7984,7 +7856,7 @@
         fileVideoPreviewBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          void handleFileVideoPreviewButtonPress();
+          void fileVideoPreviewRuntime.handleButtonPress();
         };
 
         fileDownloadBtn.onclick = (e) => {
