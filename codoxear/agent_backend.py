@@ -80,6 +80,9 @@ class AgentBackend:
     ) -> tuple[str | None, str | None, str | None]:
         raise NotImplementedError(f"{self.name} backend does not implement run-settings extraction")
 
+    def message_keeps_turn_busy(self, obj: Mapping[str, Any]) -> bool:
+        return False
+
     def build_launch_args(
         self,
         *,
@@ -309,6 +312,17 @@ class PiBackend(AgentBackend):
     ) -> tuple[str | None, str | None, str | None]:
         return read_pi_run_settings(log_path)
 
+    def message_keeps_turn_busy(self, obj: Mapping[str, Any]) -> bool:
+        from .pi_log import pi_assistant_thinking_count
+        from .pi_log import pi_assistant_tool_use_count
+        from .pi_log import pi_message_role
+
+        row = dict(obj)
+        role = pi_message_role(row)
+        if role == "toolResult":
+            return True
+        return (pi_assistant_thinking_count(row) > 0) or (pi_assistant_tool_use_count(row) > 0)
+
     def build_launch_args(
         self,
         *,
@@ -372,6 +386,17 @@ class ClaudeCodeBackend(AgentBackend):
         find_latest_turn_context: Callable[..., Any],
     ) -> tuple[str | None, str | None, str | None]:
         return read_cc_run_settings(log_path)
+
+    def message_keeps_turn_busy(self, obj: Mapping[str, Any]) -> bool:
+        from .cc_log import cc_assistant_thinking_count
+        from .cc_log import cc_assistant_tool_use_count
+        from .cc_log import cc_message_role
+
+        row = dict(obj)
+        role = cc_message_role(row)
+        if role == "toolResult":
+            return True
+        return (cc_assistant_thinking_count(row) > 0) or (cc_assistant_tool_use_count(row) > 0)
 
     def build_launch_args(
         self,

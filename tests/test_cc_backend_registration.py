@@ -72,6 +72,18 @@ class TestCcBackendRegistration(unittest.TestCase):
         )
         self.assertEqual(cc_settings, (None, "sonnet", "max"))
 
+    def test_backend_adapters_own_row_busy_predicates(self) -> None:
+        pi = get_agent_backend("pi")
+        cc = get_agent_backend("cc")
+        self.assertTrue(pi.message_keeps_turn_busy({"type": "message", "message": {"role": "assistant", "content": [{"type": "toolCall", "id": "tool-a"}]}}))
+        self.assertTrue(pi.message_keeps_turn_busy({"type": "message", "message": {"role": "assistant", "content": [{"type": "thinking", "text": "..."}]}}))
+        self.assertTrue(pi.message_keeps_turn_busy({"type": "message", "message": {"role": "toolResult", "toolCallId": "tool-a"}}))
+        self.assertFalse(pi.message_keeps_turn_busy({"type": "message", "message": {"role": "assistant", "content": [{"type": "text", "text": "done"}]}}))
+        self.assertTrue(cc.message_keeps_turn_busy({"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "tool-a"}]}}))
+        self.assertTrue(cc.message_keeps_turn_busy({"type": "assistant", "message": {"role": "assistant", "content": [{"type": "thinking", "text": "..."}]}}))
+        self.assertTrue(cc.message_keeps_turn_busy({"type": "user", "toolUseResult": {"tool_use_id": "tool-a"}}))
+        self.assertFalse(cc.message_keeps_turn_busy({"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "done"}]}}))
+
     def test_backend_adapters_own_log_path_and_session_id_semantics(self) -> None:
         codex = get_agent_backend("codex")
         pi = get_agent_backend("pi")

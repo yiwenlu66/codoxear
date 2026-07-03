@@ -5,18 +5,15 @@ from typing import Any
 from .cc_log import cc_assistant_is_final_turn_end
 from .cc_log import cc_assistant_pending_tool_use_ids
 from .cc_log import cc_assistant_text
-from .cc_log import cc_assistant_thinking_count
+from .agent_backend import get_agent_backend
 from .cc_log import cc_apply_tool_result_to_pending
 from .cc_log import cc_assistant_tool_use_count
 from .cc_log import cc_message_role
 from .cc_log import cc_user_text
-from .pi_log import pi_assistant_thinking_count
-from .pi_log import pi_assistant_tool_use_count
 from .pi_log import pi_assistant_error_text
 from .pi_log import pi_assistant_is_aborted_turn
 from .pi_log import pi_assistant_text
 from .pi_log import pi_assistant_is_final_turn_end
-from .pi_log import pi_message_role
 from .pi_log import pi_user_text
 from .rollout_events import _codex_error_affects_turn_status
 from .rollout_events import _codex_event_text
@@ -234,17 +231,11 @@ def _single_chat_event(obj: dict[str, Any], *, cc_pending_tool_ids: set[str] | N
 
 
 def _pi_message_keeps_turn_busy(obj: dict[str, Any]) -> bool:
-    role = pi_message_role(obj)
-    if role == "toolResult":
-        return True
-    return (pi_assistant_thinking_count(obj) > 0) or (pi_assistant_tool_use_count(obj) > 0)
+    return get_agent_backend("pi").message_keeps_turn_busy(obj)
 
 
 def _cc_message_keeps_turn_busy(obj: dict[str, Any]) -> bool:
-    role = cc_message_role(obj)
-    if role == "toolResult":
-        return True
-    return (cc_assistant_thinking_count(obj) > 0) or (cc_assistant_tool_use_count(obj) > 0)
+    return get_agent_backend("cc").message_keeps_turn_busy(obj)
 
 
 def _chat_assistant_dedupe_key(event: dict[str, Any]) -> tuple[str, str] | None:
