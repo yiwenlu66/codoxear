@@ -50,3 +50,7 @@ Non-blocking backlog from review: dispose the resume debounce timer on dialog cl
 ## Queue extraction state
 - Queue orchestration now has a controller authority (`CodoxearQueue`) after `52f3021`. `app.js` no longer owns queue timers/locks/drafts/viewer item state; it owns DOM construction/wrappers/recovery panel. Browser evidence on 19090 proved the module load and modal path with a fake discovered session; Docker and clean browser evidence after commit confirm the new asset is registered.
 - Remaining app-shell concentrations after New Session + Queue: chat search/navigation orchestration, recovery panel rendering, unattended menu, diagnostics/details, voice/notifications. The prior scout ranked chat search and voice as higher-risk; diagnostics/details is lower payoff; unattended is coherent but touches recently fixed failed-launch controls.
+
+
+## Post-queue review judgment
+Clean-room critic 4aad1a07 accepted the load-error/composer/queue tranche with no blockers. The strongest remaining mechanism is load-error visibility after partial root mount: `__codoxearLoadError` records the error, but the visible fallback only renders when `#root` is empty. A failure after app shell mount but before bootstrap completion could leave a broken skeleton. Next hardening should add an explicit successful-bootstrap marker and render the fallback when an error is recorded before that marker, even if root has partial content.
