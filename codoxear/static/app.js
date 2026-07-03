@@ -804,8 +804,6 @@
         let recentCwds = [];
 	        let sending = false;
 	        let attachedFiles = 0;
-			        let backfillToken = 0;
-        let backfillState = null;
 				    let lastToken = null;
         let attachBadgeEl = null;
         let queueBadgeEl = null;
@@ -2189,8 +2187,6 @@
           jumpBtn.style.display = "none";
               updateChatNavButtons();
               if (loadedChatSearchSnapshot().open) closeChatSearch();
-	          backfillState = null;
-	          backfillToken += 1;
           transcriptScrollRuntime.reset({ scrollTop: 0 });
               transcriptScrollRuntime.syncVisibleTimeIndicator();
 	        }
@@ -2876,8 +2872,6 @@
           setAttachCount(0);
           invalidateOlderLoad();
           transcriptEventRuntime.resetRecentEvents();
-          backfillToken += 1;
-          backfillState = null;
           transcriptScrollRuntime.enableAutoScroll();
           clearTranscriptDom();
           if (slotChange.current.state === "pending_bind") {
