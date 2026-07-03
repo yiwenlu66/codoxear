@@ -7868,3 +7868,13 @@
   - `python3 -m py_compile tests/test_file_picker_search_source.py tests/test_markdown_tables.py tests/test_frontend_file_viewer_module_source.py` passed.
   - Focused validation `python3 -m pytest -q tests/test_markdown_tables.py tests/test_file_picker_search_source.py tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py` returned `95 passed, 25 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T01:43:00Z File-reference open-routing viewer-module ownership
+- Functional commit `f31c2e4 Move file reference open routing into viewer module` moved inline file-reference click/open behavior from `codoxear/static/app.js` into `createFileReferenceRuntime(...)` in `codoxear/static/app_file_viewer.js`.
+- Mechanism: after inspection/upgrade moved, app.js still owned the continuation from upgraded links to user-visible action: ambiguous-link picker opening, nonliteral parser use, relative/absolute/current-session path routing, selecting a matching session root for absolute paths, directory-reference new-session dialog opening, and click-target dispatch between picker-query/file-path/directory links. The file-reference runtime now owns those decisions while app.js injects selected-session state, session list, parser, show/select/dialog/toast effects, and keeps only event listener binding.
+- Tests updated: `tests/test_file_viewer_source.py::eval_open_file_reference_nonliteral()` now instantiates `createFileReferenceRuntime(...)` and executes nonliteral parser routing, ambiguous picker opening, and directory reference opening. Markdown source sentinels now point ambiguous open/click mechanics to `app_file_viewer.js`.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app_file_viewer.js` and `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_file_viewer_source.py tests/test_markdown_tables.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_markdown_tables.py tests/test_frontend_file_viewer_module_source.py tests/test_file_picker_search_source.py` returned `95 passed, 25 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
