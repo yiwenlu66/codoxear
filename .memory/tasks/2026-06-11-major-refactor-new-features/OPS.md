@@ -8094,3 +8094,8 @@
   - Focused validation `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py tests/test_chat_navigation_source.py` returned `61 passed`.
   - Wider frontend/source slice `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py tests/test_chat_navigation_source.py tests/test_auth_cleanup_source.py tests/test_send_button_source.py tests/test_session_polling_source.py tests/test_static_assets.py` returned `96 passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T08:41:00Z Removed dead transcript backfill state
+- Functional cleanup commit `bf31cbf Remove dead transcript backfill state` removed `backfillToken` and `backfillState` from app.js.
+- Mechanism: source audit showed these names were only declared and reset, with no reads or behavior. Keeping them falsely implied a remaining backfill state machine and would confuse the transcript render/window ownership boundary.
+- Validation under checkpoint cadence: `node --check codoxear/static/app.js`, source audit `! rg -n "backfillState|backfillToken" codoxear/static/app.js tests`, `git diff --check`, and staged `git diff --cached --check` passed before commit.
