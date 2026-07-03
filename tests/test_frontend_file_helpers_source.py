@@ -150,7 +150,6 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
             "isDiffableFileKind",
             "blockedFileMessage",
             "formatPriorityOffset",
-            "fileVideoPreviewErrorText",
             "fileSearchScore",
             "normalizeDraftFilePath",
             "filePickerFoldedSearchText",
@@ -169,8 +168,10 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
             self.assertIn(f"function {helper}", source)
         self.assertIn('typeof codoxearFileHelpers.positionAfterInsertedText !== "function"', source)
         self.assertIn('typeof codoxearFileHelpers.fileEditorDeleteCommandForKey !== "function"', source)
+        self.assertIn('typeof codoxearFileHelpers.fileVideoPreviewErrorText !== "function"', source)
         self.assertNotIn("function positionAfterInsertedText", source)
         self.assertNotIn("function fileEditorDeleteCommandForKey", source)
+        self.assertNotIn("function fileVideoPreviewErrorText", source)
         for helper in [
             "attachmentSafeStem",
             "attachmentExtensionLower",
@@ -182,7 +183,7 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertIn("window.CodoxearFileHelpers = Object.freeze({", helper_source)
         self.assertIn('throw new Error("Codoxear display helpers failed to load")', helper_source)
         self.assertIn('typeof codoxearDisplay.baseName !== "function"', helper_source)
-        self.assertIn("return codoxearFileHelpers.fileVideoPreviewErrorText(err);", source)
+        self.assertIn("errorText: (error) => codoxearFileHelpers.fileVideoPreviewErrorText(error)", source)
         self.assertIn("return codoxearFileHelpers.filePickerMatchRangesForQuery(text, query);", source)
         self.assertIn("return codoxearFileHelpers.filePickerCandidateScore(path, query);", source)
         self.assertIn("return codoxearFileHelpers.normalizeFileCandidateSource(source);", source)
@@ -213,7 +214,7 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertIn('function attachmentLooksLikeImage(file) {', helper_source)
         self.assertIn('function bytesToBase64(bytes, btoaFunc) {', helper_source)
         file_search_region_start = source.index("function collectMessageFileRefs()")
-        file_search_region_end = source.index("function appendHighlightedFileMenuPath(parent, text, query)", file_search_region_start)
+        file_search_region_end = source.index("function resetFileSearchState()", file_search_region_start)
         file_search_region = source[file_search_region_start:file_search_region_end]
         attachment_upload_start = source.index('imgInput.addEventListener("change", async () => {')
         attachment_upload_end = source.index("function clearComposer()", attachment_upload_start)

@@ -326,7 +326,7 @@ class TestStaticAssets(unittest.TestCase):
     def test_refresh_sessions_does_not_rebuild_backend_tabs_while_modal_is_open(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index('if (newSessionViewer.style.display === "flex") {')
-        end = source.index("fileRefCandidateCache.clear();", start)
+        end = source.index("fileReferenceRuntime.clearDiscoveryCaches();", start)
         block = source[start:end]
         self.assertNotIn("renderNewSessionBackendTabs();", block)
         self.assertNotIn("renderNewSessionProviderMenu();", block)
