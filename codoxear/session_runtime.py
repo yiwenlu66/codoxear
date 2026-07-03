@@ -48,6 +48,15 @@ class RuntimeStatus:
 
 
 @dataclass(frozen=True)
+class SessionRuntimeReadiness:
+    status: RuntimeStatus
+    local_queue_len: int
+    direct_send: bool
+    queue_promotion: bool
+    unattended_injection: bool
+
+
+@dataclass(frozen=True)
 class ListingRuntimeProbes:
     last_conversation_ts_from_tail: Callable[[Path], float | None]
     read_run_settings_from_log: Callable[[Path, str], tuple[str | None, str | None, str | None]]
@@ -458,6 +467,26 @@ def resolve_runtime_status(
         send_boundary_unresolved=boundary,
         busy=busy,
         remote_ready=remote_ready,
+    )
+
+
+def session_runtime_readiness(
+    status: RuntimeStatus,
+    *,
+    local_queue_len: int = 0,
+    direct_send_precondition: bool = True,
+    queue_promotion_precondition: bool = True,
+) -> SessionRuntimeReadiness:
+    queue_len = max(0, int(local_queue_len))
+    direct_send = bool(status.remote_ready and direct_send_precondition)
+    queue_promotion = bool(status.remote_ready and queue_promotion_precondition)
+    unattended_injection = bool(status.remote_ready and queue_len == 0)
+    return SessionRuntimeReadiness(
+        status=status,
+        local_queue_len=queue_len,
+        direct_send=direct_send,
+        queue_promotion=queue_promotion,
+        unattended_injection=unattended_injection,
     )
 
 

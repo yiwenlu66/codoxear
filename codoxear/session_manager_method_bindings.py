@@ -89,6 +89,7 @@ SESSION_MANAGER_FORWARD_METHODS: tuple[tuple[str, str, str], ...] = (
     ("_queue_move_local", "_queue_coordinator_for_manager", "move_local"),
     ("_queue_session_state", "_queue_coordinator_for_manager", "session_state"),
     ("_promote_queue_head_if_sendable", "_queue_coordinator_for_manager", "promote_head_if_sendable"),
+    ("_runtime_status_from_state_and_log", "_readiness_coordinator_for_manager", "runtime_status_from_state_and_log"),
     ("_remote_ready_from_state_and_log", "_readiness_coordinator_for_manager", "remote_ready_from_state_and_log"),
     ("_remote_state_after_metadata_probe", "_readiness_coordinator_for_manager", "remote_state_after_metadata_probe"),
     ("_send_remote_ready", "_readiness_coordinator_for_manager", "send_remote_ready"),

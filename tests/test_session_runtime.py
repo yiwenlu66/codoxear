@@ -17,6 +17,7 @@ from codoxear.session_runtime import build_runtime_enriched_session_rows
 from codoxear.session_runtime import log_path_size_or_none
 from codoxear.session_runtime import session_allows_direct_send
 from codoxear.session_runtime import session_allows_queue_promotion
+from codoxear.session_runtime import session_runtime_readiness
 from codoxear.session_runtime import resolve_runtime_status
 from codoxear.session_runtime import select_runtime_token
 
@@ -132,6 +133,32 @@ def test_runtime_status_send_boundary_dominates_without_log_idle() -> None:
     status = _status({"busy": False, "queue_len": 0, "interrupted_idle": True}, log_exists=True, log_idle=None, boundary=True)
     assert status.busy is True
     assert status.remote_ready is False
+
+
+def test_session_runtime_readiness_projects_send_queue_and_unattended_decisions() -> None:
+    ready = session_runtime_readiness(_status({"busy": False, "queue_len": 0}, log_exists=True, log_idle=True), local_queue_len=0)
+    assert ready.direct_send is True
+    assert ready.queue_promotion is True
+    assert ready.unattended_injection is True
+
+    local_queued = session_runtime_readiness(_status({"busy": False, "queue_len": 0}, log_exists=True, log_idle=True), local_queue_len=1)
+    assert local_queued.direct_send is True
+    assert local_queued.queue_promotion is True
+    assert local_queued.unattended_injection is False
+
+    precondition_blocked = session_runtime_readiness(
+        _status({"busy": False, "queue_len": 0}, log_exists=True, log_idle=True),
+        direct_send_precondition=False,
+        queue_promotion_precondition=False,
+    )
+    assert precondition_blocked.direct_send is False
+    assert precondition_blocked.queue_promotion is False
+    assert precondition_blocked.unattended_injection is True
+
+    runtime_blocked = session_runtime_readiness(_status({"busy": True, "queue_len": 0}, log_exists=True, log_idle=False), local_queue_len=0)
+    assert runtime_blocked.direct_send is False
+    assert runtime_blocked.queue_promotion is False
+    assert runtime_blocked.unattended_injection is False
 
 
 def test_runtime_status_no_log_uses_broker_for_remote_readiness_only() -> None:

@@ -380,7 +380,7 @@ def unattended_sweep_coordinator_for_manager(manager: Any, caps: SessionManagerF
         input_lock_for_session=manager._input_lock_for_session,
         save_unattended=manager._save_unattended,
         get_state=manager.get_state,
-        broker_busy_queue_from_state=manager._broker_busy_queue_from_state,
+        runtime_status_from_state=manager._runtime_status_from_state_and_log,
         queue_len=manager._queue_len,
         last_chat_role_ts_from_tail=caps.last_chat_role_ts_from_tail,
         send=manager.send,

@@ -7,6 +7,8 @@ import traceback
 from typing import Any, Callable, MutableMapping
 
 from .session_model import Session
+from .session_runtime import RuntimeStatus
+from .session_runtime import session_runtime_readiness
 from .unattended import disable_unattended_if_exhausted
 from .unattended import record_unattended_success
 from .unattended import unattended_config_state
@@ -28,7 +30,7 @@ class UnattendedSweepCoordinator:
     input_lock_for_session: Callable[[str], Any]
     save_unattended: Callable[[], None]
     get_state: Callable[[str], dict[str, Any]]
-    broker_busy_queue_from_state: Callable[[dict[str, Any]], tuple[bool, int]]
+    runtime_status_from_state: Callable[[str, dict[str, Any], Path | None], RuntimeStatus]
     queue_len: Callable[[str], int]
     last_chat_role_ts_from_tail: Callable[..., tuple[str, float] | None]
     send: Callable[[str, str], dict[str, Any]]
@@ -93,8 +95,9 @@ class UnattendedSweepCoordinator:
                 broker_state = self.get_state(sid)
                 if not isinstance(broker_state, dict):
                     raise ValueError("invalid broker state response")
-                busy, queue_len = self.broker_busy_queue_from_state(broker_state)
-                if busy or queue_len > 0 or self.queue_len(sid) > 0:
+                local_queue_len = self.queue_len(sid)
+                runtime = self.runtime_status_from_state(sid, broker_state, log_path)
+                if not session_runtime_readiness(runtime, local_queue_len=local_queue_len).unattended_injection:
                     continue
                 last = self.last_chat_role_ts_from_tail(log_path, max_scan_bytes=self.max_scan_bytes, final_assistant_only=True)
                 if not unattended_tail_allows_injection(last, now_ts=now_ts, cooldown_seconds=state.cooldown_seconds):
