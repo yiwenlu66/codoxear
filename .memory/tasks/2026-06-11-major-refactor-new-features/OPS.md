@@ -8235,3 +8235,13 @@
   - Focused chat parsing/rollout tests returned `156 passed, 4 subtests passed`.
   - Broader backend/chat/idle/session validation returned `239 passed, 8 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T11:12:00Z Routed readiness through runtime status model
+- Functional commit `3f7feb0 Route readiness through runtime status model` added `SessionRuntimeReadiness` and `session_runtime_readiness(...)` to `codoxear/session_runtime.py`.
+- Mechanism: `RuntimeStatus` remains the single synthesis of broker busy/queue/interrupted-idle, log binding/idle, and confirmed-send-boundary state. The new readiness projection derives direct-send readiness, queue-promotion readiness, and unattended-injection eligibility from that same `RuntimeStatus` plus explicit local preconditions. `SessionReadinessCoordinator` now exposes `runtime_status_from_state_and_log(...)` and uses `session_runtime_readiness(...)` for send, queue, attachment, and remote-ready decisions. `UnattendedSweepCoordinator` now consumes runtime status through the readiness coordinator rather than doing a broker-only busy/queue check.
+- Behavior evidence: `test_session_runtime_readiness_projects_send_queue_and_unattended_decisions` executes direct/queue/unattended readiness projection over ready, local-queued, precondition-blocked, and runtime-busy cases. Existing unattended, queue sweep, diagnostics, message route/source, session route, queue, pending-log, broker busy, and idle tests continue to pass.
+- Validation under checkpoint cadence:
+  - `python3 -m py_compile codoxear/session_runtime.py codoxear/session_readiness.py codoxear/unattended_sweep.py codoxear/session_manager_factories.py codoxear/session_manager_method_bindings.py tests/test_session_runtime.py` passed.
+  - Focused runtime/readiness/unattended tests returned `46 passed`.
+  - Broader runtime/readiness/listing/messages/queue/unattended validation returned `190 passed, 4 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
