@@ -46,7 +46,6 @@ class ServerRouteCaps:
     _clean_unattended_cooldown_minutes: Any
     _clean_unattended_remaining_injections: Any
     _clip01: Any
-    _consume_session_confirmed_send_boundary: Any
     _current_git_branch: Any
     _decode_message_cursor: Any
     _describe_session_cwd: Any
@@ -64,7 +63,6 @@ class ServerRouteCaps:
     _launch_attempt_transcript_for_session_id: Any
     _list_resume_candidates_for_cwd: Any
     _list_session_relative_files: Any
-    _log_path_size_or_none: Any
     _metrics_snapshot: Any
     _parse_git_numstat: Any
     _parse_new_session_launch_request: Any
@@ -86,12 +84,10 @@ class ServerRouteCaps:
     _resolve_git_client_file_view: Any
     _resolve_git_existing_regular_file: Any
     _resolve_git_path: Any
-    _resolve_runtime_status: Any
     _resolve_session_cwd: Any
     _resolve_session_path: Any
     _resolve_under: Any
     _run_git: Any
-    _runtime_broker_state: Any
     _search_session_relative_files: Any
     _select_runtime_token: Any
     _send_attachment_file_response: Any
@@ -135,7 +131,6 @@ def server_route_caps(server: Any) -> ServerRouteCaps:
         _clean_unattended_cooldown_minutes=server._clean_unattended_cooldown_minutes,
         _clean_unattended_remaining_injections=server._clean_unattended_remaining_injections,
         _clip01=server._clip01,
-        _consume_session_confirmed_send_boundary=server._consume_session_confirmed_send_boundary,
         _current_git_branch=server._current_git_branch,
         _decode_message_cursor=server._decode_message_cursor,
         _describe_session_cwd=server._describe_session_cwd,
@@ -153,7 +148,6 @@ def server_route_caps(server: Any) -> ServerRouteCaps:
         _launch_attempt_transcript_for_session_id=server._launch_attempt_transcript_for_session_id,
         _list_resume_candidates_for_cwd=server._list_resume_candidates_for_cwd,
         _list_session_relative_files=server._list_session_relative_files,
-        _log_path_size_or_none=server._log_path_size_or_none,
         _metrics_snapshot=server._metrics_snapshot,
         _parse_git_numstat=server._parse_git_numstat,
         _parse_new_session_launch_request=server._parse_new_session_launch_request,
@@ -175,12 +169,10 @@ def server_route_caps(server: Any) -> ServerRouteCaps:
         _resolve_git_client_file_view=server._resolve_git_client_file_view,
         _resolve_git_existing_regular_file=server._resolve_git_existing_regular_file,
         _resolve_git_path=server._resolve_git_path,
-        _resolve_runtime_status=server._resolve_runtime_status,
         _resolve_session_cwd=server._resolve_session_cwd,
         _resolve_session_path=server._resolve_session_path,
         _resolve_under=server._resolve_under,
         _run_git=server._run_git,
-        _runtime_broker_state=server._runtime_broker_state,
         _search_session_relative_files=server._search_session_relative_files,
         _select_runtime_token=server._select_runtime_token,
         _send_attachment_file_response=server._send_attachment_file_response,
