@@ -77,7 +77,8 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('timeChip.textContent = text;', transcript_source)
         self.assertIn('timeChip.style.display = "inline-flex";', transcript_source)
         self.assertIn('timeChip.style.display = "none";', transcript_source)
-        self.assertIn("transcriptScrollRuntime.syncJumpButton();\n          updateChatNavButtons();", source)
+        self.assertIn("scrollRuntime.syncJumpButton();", transcript_source)
+        self.assertIn("afterDecorate: () => {\n            updateChatNavButtons();", source)
         self.assertIn("loadedChatSearchRuntime.setLoadingOlder(false);\n          transcriptScrollRuntime.syncVisibleTimeIndicator();", source)
         reset_block = source[source.index("function resetChatRenderState()") : source.index("function clearTranscriptDom()")]
         self.assertIn("transcriptScrollRuntime.syncVisibleTimeIndicator();", reset_block)
@@ -199,7 +200,7 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('const rows = loadedCopyMessageRows();', source)
         self.assertIn('jumpToLoadedMessage(e.key === "ArrowUp" ? -1 : 1);', source)
         self.assertIn('Alt+Shift+↑', source)
-        self.assertIn('syncMessageCopyTabStops();\n          if (loadedChatSearchSnapshot().open) refreshLoadedChatSearch', source)
+        self.assertIn('syncMessageCopyTabStops();\n            if (loadedChatSearchSnapshot().open) refreshLoadedChatSearch', source)
 
     def test_chat_search_has_safe_keyboard_shortcut(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

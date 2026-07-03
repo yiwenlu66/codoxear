@@ -586,6 +586,135 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["failed"]["state"], "failed")
         self.assertTrue(out["frozen"])
 
+    def test_transcript_dom_runtime_owns_clear_decorate_and_trim_window(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const ctx = {{ window: {{}} }};
+            const vm = require("vm");
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            const tx = ctx.window.CodoxearTranscript;
+            const calls = [];
+            function classList(initial) {{
+              const values = new Set(String(initial || "").split(/\\s+/).filter(Boolean));
+              return {{
+                values,
+                add: (...names) => names.forEach((name) => values.add(name)),
+                remove: (...names) => names.forEach((name) => values.delete(name)),
+                contains: (name) => values.has(name),
+              }};
+            }}
+            function makeNode(name, cls = "") {{
+              const node = {{
+                name,
+                attrs: {{ class: cls }},
+                children: [],
+                dataset: {{}},
+                classList: classList(cls),
+                isConnected: true,
+                appendChild(child) {{ this.children.push(child); return child; }},
+                remove() {{
+                  const idx = root.children.indexOf(this);
+                  if (idx >= 0) root.children.splice(idx, 1);
+                  this.isConnected = false;
+                }},
+              }};
+              return node;
+            }}
+            const older = makeNode("older");
+            const bottom = makeNode("bottom");
+            const oldSep = makeNode("old-sep", "day-sep");
+            const row1 = makeNode("row1", "msg-row user");
+            row1.dataset.ts = "86400";
+            const row2 = makeNode("row2", "msg-row user");
+            row2.dataset.ts = "86520";
+            const row3 = makeNode("row3", "msg-row assistant");
+            row3.dataset.ts = "172800";
+            const root = {{
+              children: [older, oldSep, row1, row2, row3, bottom],
+              appendChild(node) {{ this.children.push(node); node.isConnected = true; return node; }},
+              insertBefore(node, before) {{
+                const existing = this.children.indexOf(node);
+                if (existing >= 0) this.children.splice(existing, 1);
+                const idx = this.children.indexOf(before);
+                this.children.splice(idx >= 0 ? idx : this.children.length, 0, node);
+                node.isConnected = true;
+                return node;
+              }},
+              querySelectorAll(selector) {{ return selector === ".day-sep" ? this.children.filter((node) => node.classList && node.classList.contains("day-sep")) : []; }},
+            }};
+            Object.defineProperty(root, "innerHTML", {{ set() {{ this.children = []; }} }});
+            function fakeEl(tag, attrs = {{}}) {{
+              const node = makeNode(attrs.text || attrs.class || tag, attrs.class || "");
+              node.tag = tag;
+              node.textContent = attrs.text || "";
+              return node;
+            }}
+            const scrollRuntime = {{
+              captureScrollPosition: () => (calls.push(["capture"]), {{ top: 10 }}),
+              preserveScrollFrom: (pos) => calls.push(["preserve", pos.top]),
+              snapshot: () => ({{ autoScroll: true }}),
+              scheduleScrollToBottom: () => calls.push(["scroll"]),
+              syncJumpButton: () => calls.push(["jump"]),
+              setRenderedAtLiveTail: (value) => calls.push(["liveTail", value]),
+            }};
+            const runtime = tx.createTranscriptDomRuntime({{
+              root,
+              olderWrap: older,
+              bottomSentinel: bottom,
+              el: fakeEl,
+              ymd: (date) => `day-${{date.getUTCDate()}}`,
+              dayLabel: (date) => `Day ${{date.getUTCDate()}}`,
+              getRenderedRows: () => [row1, row2, row3].filter((row) => row.isConnected),
+              trimRenderedRowTargets: (rows, fromTop, maxRows, defaultRows) => {{ calls.push(["trim", fromTop, maxRows, defaultRows]); return rows.slice(0, 1); }},
+              trimRowsBeforeViewportTargets: (rows, maxRows, defaultRows, viewportTop) => {{ calls.push(["trimViewport", maxRows, defaultRows, viewportTop]); return rows.slice(0, 1); }},
+              scrollRuntime,
+              defaultWindowRows: 4,
+              afterDecorate: () => calls.push(["after"]),
+            }});
+            runtime.rebuildDecorations({{ preserveScroll: true }});
+            const afterDecorate = {{
+              children: root.children.map((node) => node.name),
+              row2Grouped: row2.classList.contains("grouped"),
+              row3Grouped: row3.classList.contains("grouped"),
+              row1Connected: row1.isConnected,
+              oldSepConnected: oldSep.isConnected,
+              sepDays: root.children.filter((node) => node.classList && node.classList.contains("day-sep")).map((node) => node.dataset.day),
+              calls: calls.slice(),
+            }};
+            calls.length = 0;
+            const trimmed = runtime.trimRenderedRows({{ fromTop: true, maxRows: 2 }});
+            const trimmedViewport = runtime.trimRowsBeforeViewport({{ maxRows: 3, viewportTop: 42 }});
+            const afterTrim = {{ trimmed, trimmedViewport, row1Connected: row1.isConnected, row2Connected: row2.isConnected, calls: calls.slice() }};
+            runtime.clear();
+            let missingRoot = false;
+            try {{ tx.createTranscriptDomRuntime({{ olderWrap: older, bottomSentinel: bottom, el: fakeEl, ymd: () => "", dayLabel: () => "", getRenderedRows: () => [], trimRenderedRowTargets: () => [], trimRowsBeforeViewportTargets: () => [], scrollRuntime, afterDecorate: () => {{}} }}); }} catch (err) {{ missingRoot = /root/.test(String(err && err.message || err)); }}
+            process.stdout.write(JSON.stringify({{
+              afterDecorate,
+              afterTrim,
+              afterClear: root.children.map((node) => node.name),
+              missingRoot,
+              frozen: Object.isFrozen(runtime),
+            }}));
+            """
+        )
+        out = _run_node(js)
+
+        self.assertFalse(out["afterDecorate"]["oldSepConnected"])
+        self.assertTrue(out["afterDecorate"]["row2Grouped"])
+        self.assertFalse(out["afterDecorate"]["row3Grouped"])
+        self.assertEqual(out["afterDecorate"]["sepDays"], ["day-2", "day-3"])
+        self.assertEqual(out["afterDecorate"]["calls"], [["capture"], ["preserve", 10], ["scroll"], ["jump"], ["after"]])
+        self.assertEqual(out["afterTrim"]["trimmed"], 1)
+        self.assertEqual(out["afterTrim"]["trimmedViewport"], 1)
+        self.assertFalse(out["afterTrim"]["row1Connected"])
+        self.assertFalse(out["afterTrim"]["row2Connected"])
+        self.assertEqual(out["afterTrim"]["calls"], [["trim", True, 2, 4], ["liveTail", True], ["trimViewport", 3, 4, 42]])
+        self.assertEqual(out["afterClear"], ["older", "bottom"])
+        self.assertTrue(out["missingRoot"])
+        self.assertTrue(out["frozen"])
+
     def test_typing_row_runtime_owns_row_anchor_and_scroll_projection(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(

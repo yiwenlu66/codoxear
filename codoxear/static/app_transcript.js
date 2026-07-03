@@ -327,6 +327,87 @@
     });
   }
 
+  function createTranscriptDomRuntime(options = {}) {
+    const root = requireNode(options.root, "root");
+    requireFunction(root.appendChild, "root.appendChild");
+    requireFunction(root.insertBefore, "root.insertBefore");
+    requireFunction(root.querySelectorAll, "root.querySelectorAll");
+    const olderWrap = requireNode(options.olderWrap, "olderWrap");
+    const bottomSentinel = requireNode(options.bottomSentinel, "bottomSentinel");
+    const el = requireFunction(options.el, "el");
+    const ymd = requireFunction(options.ymd, "ymd");
+    const dayLabel = requireFunction(options.dayLabel, "dayLabel");
+    const getRenderedRows = requireFunction(options.getRenderedRows, "getRenderedRows");
+    const trimRenderedRowTargets = requireFunction(options.trimRenderedRowTargets, "trimRenderedRowTargets");
+    const trimRowsBeforeViewportTargets = requireFunction(options.trimRowsBeforeViewportTargets, "trimRowsBeforeViewportTargets");
+    const afterDecorate = requireFunction(options.afterDecorate, "afterDecorate");
+    const scrollRuntime = requireNode(options.scrollRuntime, "scrollRuntime");
+    requireFunction(scrollRuntime.captureScrollPosition, "scrollRuntime.captureScrollPosition");
+    requireFunction(scrollRuntime.preserveScrollFrom, "scrollRuntime.preserveScrollFrom");
+    requireFunction(scrollRuntime.snapshot, "scrollRuntime.snapshot");
+    requireFunction(scrollRuntime.scheduleScrollToBottom, "scrollRuntime.scheduleScrollToBottom");
+    requireFunction(scrollRuntime.syncJumpButton, "scrollRuntime.syncJumpButton");
+    requireFunction(scrollRuntime.setRenderedAtLiveTail, "scrollRuntime.setRenderedAtLiveTail");
+    const defaultWindowRows = Math.max(1, Math.floor(Number(options.defaultWindowRows) || 1));
+
+    function clear() {
+      root.innerHTML = "";
+      root.appendChild(olderWrap);
+      root.appendChild(bottomSentinel);
+    }
+
+    function rebuildDecorations({ preserveScroll = false } = {}) {
+      const scrollPosition = scrollRuntime.captureScrollPosition();
+      for (const n of Array.from(root.querySelectorAll(".day-sep"))) n.remove();
+      const rows = getRenderedRows();
+      let prevRole = null;
+      let prevDay = null;
+      let lastDay = null;
+      for (const row of rows) {
+        const role = row.classList.contains("user") ? "user" : "assistant";
+        const ts = Number(row.dataset.ts || "0");
+        const day = ts ? ymd(new Date(ts * 1000)) : null;
+        row.classList.remove("grouped");
+        if (prevRole === role && prevDay && day && prevDay === day) row.classList.add("grouped");
+        prevRole = role;
+        prevDay = day;
+        if (day && day !== lastDay) {
+          const d = new Date(ts * 1000);
+          const sep = el("div", { class: "day-sep", text: dayLabel(d) });
+          sep.dataset.day = day;
+          root.insertBefore(sep, row);
+          lastDay = day;
+        }
+      }
+      if (preserveScroll) scrollRuntime.preserveScrollFrom(scrollPosition);
+      if (scrollRuntime.snapshot().autoScroll) scrollRuntime.scheduleScrollToBottom();
+      scrollRuntime.syncJumpButton();
+      afterDecorate();
+    }
+
+    function trimRenderedRows({ fromTop, maxRows = defaultWindowRows } = {}) {
+      const targets = trimRenderedRowTargets(getRenderedRows(), fromTop, maxRows, defaultWindowRows);
+      if (!targets.length) return 0;
+      for (const row of targets) row.remove();
+      scrollRuntime.setRenderedAtLiveTail(Boolean(fromTop));
+      return targets.length;
+    }
+
+    function trimRowsBeforeViewport({ maxRows = defaultWindowRows, viewportTop = 0 } = {}) {
+      const targets = trimRowsBeforeViewportTargets(getRenderedRows(), maxRows, defaultWindowRows, viewportTop);
+      if (!targets.length) return 0;
+      for (const row of targets) row.remove();
+      return targets.length;
+    }
+
+    return Object.freeze({
+      clear,
+      rebuildDecorations,
+      trimRenderedRows,
+      trimRowsBeforeViewport,
+    });
+  }
+
   function createTranscriptScrollRuntime(options = {}) {
     const chat = requireNode(options.chat, "chat");
     const jumpButton = requireNode(options.jumpButton, "jumpButton");
@@ -1008,6 +1089,7 @@
     appendTailSnapshotEvents,
     createTranscriptSlotRuntime,
     createTypingRowRuntime,
+    createTranscriptDomRuntime,
     createTranscriptScrollRuntime,
     createTranscriptEventRuntime,
     createOlderLoadRuntime,

@@ -2192,9 +2192,7 @@
 	        }
 
         function clearTranscriptDom() {
-          chatInner.innerHTML = "";
-          chatInner.appendChild(olderWrap);
-          chatInner.appendChild(bottomSentinel);
+          transcriptDomRuntime.clear();
         }
 
         function clearOlderLoadError() {
@@ -2277,14 +2275,6 @@
 
         function firstVisibleMessageRow() {
           return codoxearMessageRows.firstVisibleMessageRow(renderedMessageRows(), chat.scrollTop + 1);
-        }
-
-        function trimRenderedRowTargets(rows, fromTop, maxRows) {
-          return codoxearMessageRows.trimRenderedRowTargets(rows, fromTop, maxRows, CHAT_DOM_WINDOW);
-        }
-
-        function trimRowsBeforeViewportTargets(rows, maxRows, viewportTop) {
-          return codoxearMessageRows.trimRowsBeforeViewportTargets(rows, maxRows, CHAT_DOM_WINDOW, viewportTop);
         }
 
         function syncMessageCopyTabStops() {
@@ -2695,6 +2685,7 @@
           typeof codoxearTranscript.appendTailSnapshotEvents !== "function" ||
           typeof codoxearTranscript.createTranscriptSlotRuntime !== "function" ||
           typeof codoxearTranscript.createTypingRowRuntime !== "function" ||
+          typeof codoxearTranscript.createTranscriptDomRuntime !== "function" ||
           typeof codoxearTranscript.createTranscriptScrollRuntime !== "function" ||
           typeof codoxearTranscript.createTranscriptEventRuntime !== "function" ||
           typeof codoxearTranscript.createOlderLoadRuntime !== "function" ||
@@ -2752,6 +2743,25 @@
           bottomThresholdPx: 80,
           olderTopTriggerPx: OLDER_TOP_TRIGGER_PX,
           olderCancelPx: OLDER_CANCEL_PX,
+        });
+
+        const transcriptDomRuntime = codoxearTranscript.createTranscriptDomRuntime({
+          root: chatInner,
+          olderWrap,
+          bottomSentinel,
+          el,
+          ymd,
+          dayLabel,
+          getRenderedRows: renderedMessageRows,
+          trimRenderedRowTargets: codoxearMessageRows.trimRenderedRowTargets,
+          trimRowsBeforeViewportTargets: codoxearMessageRows.trimRowsBeforeViewportTargets,
+          scrollRuntime: transcriptScrollRuntime,
+          defaultWindowRows: CHAT_DOM_WINDOW,
+          afterDecorate: () => {
+            updateChatNavButtons();
+            syncMessageCopyTabStops();
+            if (loadedChatSearchSnapshot().open) refreshLoadedChatSearch({ jump: false, preserveCurrent: true });
+          },
         });
 
         const chatSearchAllRuntime = codoxearTranscript.createChatSearchAllRuntime({
@@ -2934,57 +2944,15 @@
         }
 
         function rebuildDecorations({ preserveScroll }) {
-          const scrollPosition = transcriptScrollRuntime.captureScrollPosition();
-
-          for (const n of Array.from(chatInner.querySelectorAll(".day-sep"))) n.remove();
-
-          const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((row) => !row.classList.contains("typing-row") && !row.classList.contains("recovery-panel-row"));
-          let prevRole = null;
-          let prevDay = null;
-          let lastDay = null;
-
-          for (const row of rows) {
-            const role = row.classList.contains("user") ? "user" : "assistant";
-            const ts = Number(row.dataset.ts || "0");
-            const day = ts ? ymd(new Date(ts * 1000)) : null;
-
-            row.classList.remove("grouped");
-            if (prevRole === role && prevDay && day && prevDay === day) row.classList.add("grouped");
-            prevRole = role;
-            prevDay = day;
-
-            if (day && day !== lastDay) {
-              const d = new Date(ts * 1000);
-              const sep = el("div", { class: "day-sep", text: dayLabel(d) });
-              sep.dataset.day = day;
-              chatInner.insertBefore(sep, row);
-              lastDay = day;
-            }
-          }
-
-          if (preserveScroll) {
-            transcriptScrollRuntime.preserveScrollFrom(scrollPosition);
-          }
-          if (transcriptScrollRuntime.snapshot().autoScroll) {
-            transcriptScrollRuntime.scheduleScrollToBottom();
-          }
-          transcriptScrollRuntime.syncJumpButton();
-          updateChatNavButtons();
-          syncMessageCopyTabStops();
-          if (loadedChatSearchSnapshot().open) refreshLoadedChatSearch({ jump: false, preserveCurrent: true });
+          transcriptDomRuntime.rebuildDecorations({ preserveScroll });
         }
 
         function trimRenderedRows({ fromTop, maxRows = CHAT_DOM_WINDOW }) {
-          const targets = trimRenderedRowTargets(renderedMessageRows(), fromTop, maxRows);
-          if (!targets.length) return;
-          for (const row of targets) row.remove();
-          transcriptScrollRuntime.setRenderedAtLiveTail(Boolean(fromTop));
+          transcriptDomRuntime.trimRenderedRows({ fromTop, maxRows });
         }
 
         function trimRenderedRowsBeforeViewport({ maxRows = CHAT_DOM_WINDOW } = {}) {
-          const targets = trimRowsBeforeViewportTargets(renderedMessageRows(), maxRows, chat.scrollTop + 1);
-          if (!targets.length) return;
-          for (const row of targets) row.remove();
+          transcriptDomRuntime.trimRowsBeforeViewport({ maxRows, viewportTop: chat.scrollTop + 1 });
         }
 
         function messageRowDeps() {

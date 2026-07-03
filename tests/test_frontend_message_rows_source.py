@@ -221,6 +221,8 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
     def test_app_js_requires_message_rows_without_fallback(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         helper_source = APP_MESSAGE_ROWS_JS.read_text(encoding="utf-8")
+        transcript_source = ROOT / "codoxear" / "static" / "app_transcript.js"
+        transcript_text = transcript_source.read_text(encoding="utf-8")
         self.assertIn("const codoxearMessageRows = window.CodoxearMessageRows;", source)
         self.assertIn('throw new Error("Codoxear message row helpers failed to load")', source)
         self.assertIn("return codoxearMessageRows.makeRow(ev, { ts, pending }, messageRowDeps());", source)
@@ -245,10 +247,10 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
         self.assertIn("codoxearMessageRows.applyChatSearchMarks(matches, currentRow);", source)
         self.assertIn("return codoxearMessageRows.oldestRenderedHistoryCursor(renderedMessageRows());", source)
         self.assertIn("return codoxearMessageRows.firstVisibleMessageRow(renderedMessageRows(), chat.scrollTop + 1);", source)
-        self.assertIn("return codoxearMessageRows.trimRenderedRowTargets(rows, fromTop, maxRows, CHAT_DOM_WINDOW);", source)
-        self.assertIn("return codoxearMessageRows.trimRowsBeforeViewportTargets(rows, maxRows, CHAT_DOM_WINDOW, viewportTop);", source)
-        self.assertIn("for (const row of targets) row.remove();", source)
-        self.assertIn("transcriptScrollRuntime.setRenderedAtLiveTail(Boolean(fromTop));", source)
+        self.assertIn("trimRenderedRowTargets: codoxearMessageRows.trimRenderedRowTargets,", source)
+        self.assertIn("trimRowsBeforeViewportTargets: codoxearMessageRows.trimRowsBeforeViewportTargets,", source)
+        self.assertIn("for (const row of targets) row.remove();", transcript_text)
+        self.assertIn("scrollRuntime.setRenderedAtLiveTail(Boolean(fromTop));", transcript_text)
         self.assertIn("chatAssistantDedupeKey,", source)
         self.assertIn("consoleError: console.error.bind(console)", source)
         self.assertNotIn("function makeRow(ev, { ts, pending }) {\n          const role = ev.role", source)
