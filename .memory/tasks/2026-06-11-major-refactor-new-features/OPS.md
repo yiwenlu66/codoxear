@@ -8099,3 +8099,16 @@
 - Functional cleanup commit `bf31cbf Remove dead transcript backfill state` removed `backfillToken` and `backfillState` from app.js.
 - Mechanism: source audit showed these names were only declared and reset, with no reads or behavior. Keeping them falsely implied a remaining backfill state machine and would confuse the transcript render/window ownership boundary.
 - Validation under checkpoint cadence: `node --check codoxear/static/app.js`, source audit `! rg -n "backfillState|backfillToken" codoxear/static/app.js tests`, `git diff --check`, and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T08:55:00Z Moved transcript DOM window state into runtime
+- Functional commit `9ea67de Move transcript DOM window state into runtime` added `CodoxearTranscript.createTranscriptDomRuntime(...)` and moved transcript DOM clearing, day/group decoration, and DOM-window trimming ownership out of app.js.
+- Mechanism: app.js previously cleared transcript DOM by directly resetting `chatInner`, removed/inserted `.day-sep` rows, grouped adjacent rows, captured/preserved scroll around decoration, scheduled bottom scrolling, synced jump/navigation/copy/search after decoration, and removed trim-target rows while mutating rendered-live-tail state. The new runtime owns clear, decoration rebuild, trim-from-top/bottom removal, trim-before-viewport removal, and live-tail mutation through injected row helper and scroll runtime dependencies. App.js keeps render orchestration and app-specific post-decoration callbacks.
+- App.js no longer contains the day-separator mutation/row-removal/innerHTML mechanisms; source audit confirmed those old implementation anchors are absent from app.js and present behind `createTranscriptDomRuntime(...)`.
+- Behavior evidence: `test_transcript_dom_runtime_owns_clear_decorate_and_trim_window` executes the runtime directly for old separator removal, day separator insertion, grouped-row projection, scroll capture/preserve/schedule/jump sequencing, after-decoration callback, trim target removal, live-tail update, clear reattachment, frozen runtime surface, and fail-loud missing-root dependency.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app.js` passed.
+  - `node --check codoxear/static/app_transcript.js` passed.
+  - `python3 -m py_compile tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py tests/test_frontend_message_rows_source.py tests/test_chat_navigation_source.py` passed.
+  - Focused+wider frontend/source validation `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py tests/test_chat_navigation_source.py tests/test_auth_cleanup_source.py tests/test_send_button_source.py tests/test_session_polling_source.py tests/test_static_assets.py` returned `97 passed`.
+  - Source audit `! rg -n 'chatInner\\.innerHTML = ""|\\.day-sep|const scrollPosition = transcriptScrollRuntime\\.captureScrollPosition|for \\(const row of targets\\) row\\.remove\\(\\)|transcriptScrollRuntime\\.setRenderedAtLiveTail\\(Boolean\\(fromTop\\)\\)' codoxear/static/app.js` passed.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
