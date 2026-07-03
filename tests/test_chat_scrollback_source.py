@@ -702,17 +702,19 @@ class TestChatScrollbackSource(unittest.TestCase):
 
     def test_render_transcript_rebuilds_authoritative_events_after_pending_match(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("function normalizedTranscriptEvents(events, { consumePending = false } = {}) {")
-        end = source.index("function renderTranscript(events, { preserveScroll = false } = {}) {", start)
-        helper_block = source[start:end]
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        start = transcript_source.index("function normalizedTranscriptEvents(events, options = {}) {")
+        end = transcript_source.index("function createTranscriptDomRuntime(options = {}) {", start)
+        helper_block = transcript_source[start:end]
         render_start = source.index("function renderTranscript(events, { preserveScroll = false } = {}) {")
         render_end = source.index("function prependOlderEvents(", render_start)
         render_block = source[render_start:render_end]
-        self.assertIn("if (consumePending) takePendingUserMatch(ev, selected, { allowUntimedCommit: false });", helper_block)
+        self.assertIn("if (consumePending) takePendingMatch(ev, selectedSessionId, { allowUntimedCommit: false });", helper_block)
         self.assertIn("msgs.push(ev);", helper_block)
         self.assertIn("const msgs = normalizedTranscriptEvents(events, { consumePending: true });", render_block)
         self.assertIn("const msgs = normalizedTranscriptEvents(events, { consumePending: false });", render_block)
         self.assertNotIn("if (consumePendingUserIfMatches(ev)) continue;", helper_block)
+        self.assertIn("return codoxearTranscript.normalizedTranscriptEvents(events, {", source)
 
     def test_pending_commit_reconciliation_does_not_require_text_equality(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

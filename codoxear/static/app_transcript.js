@@ -327,6 +327,24 @@
     });
   }
 
+  function normalizedTranscriptEvents(events, options = {}) {
+    const eventKey = requireFunction(options.eventKey, "eventKey");
+    const consumePending = Boolean(options.consumePending);
+    const takePendingMatch = consumePending ? requireFunction(options.takePendingMatch, "takePendingMatch") : null;
+    const selectedSessionId = options.selectedSessionId;
+    const msgs = [];
+    const seen = new Set();
+    for (const ev of events || []) {
+      if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
+      if (consumePending) takePendingMatch(ev, selectedSessionId, { allowUntimedCommit: false });
+      const key = eventKey(ev);
+      if (key && seen.has(key)) continue;
+      if (key) seen.add(key);
+      msgs.push(ev);
+    }
+    return msgs;
+  }
+
   function createTranscriptDomRuntime(options = {}) {
     const root = requireNode(options.root, "root");
     requireFunction(root.appendChild, "root.appendChild");
@@ -1089,6 +1107,7 @@
     appendTailSnapshotEvents,
     createTranscriptSlotRuntime,
     createTypingRowRuntime,
+    normalizedTranscriptEvents,
     createTranscriptDomRuntime,
     createTranscriptScrollRuntime,
     createTranscriptEventRuntime,

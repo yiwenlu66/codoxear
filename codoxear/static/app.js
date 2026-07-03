@@ -2677,6 +2677,7 @@
           !codoxearTranscript ||
           typeof codoxearTranscript.normalizeTailEvent !== "function" ||
           typeof codoxearTranscript.normalizeTranscriptState !== "function" ||
+          typeof codoxearTranscript.normalizedTranscriptEvents !== "function" ||
           typeof codoxearTranscript.transcriptKey !== "function" ||
           typeof codoxearTranscript.transcriptSnapshotFromData !== "function" ||
           typeof codoxearTranscript.transcriptIdentityFromData !== "function" ||
@@ -3547,17 +3548,12 @@
         }
 
         function normalizedTranscriptEvents(events, { consumePending = false } = {}) {
-          const msgs = [];
-          const seen = new Set();
-          for (const ev of events || []) {
-            if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
-            if (consumePending) takePendingUserMatch(ev, selected, { allowUntimedCommit: false });
-            const k = eventKey(ev);
-            if (k && seen.has(k)) continue;
-            if (k) seen.add(k);
-            msgs.push(ev);
-          }
-          return msgs;
+          return codoxearTranscript.normalizedTranscriptEvents(events, {
+            consumePending,
+            selectedSessionId: selected,
+            eventKey,
+            takePendingMatch: takePendingUserMatch,
+          });
         }
 
         function renderTranscript(events, { preserveScroll = false } = {}) {

@@ -586,6 +586,61 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["failed"]["state"], "failed")
         self.assertTrue(out["frozen"])
 
+    def test_normalized_transcript_events_filters_dedupes_and_consumes_pending(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const ctx = {{ window: {{}} }};
+            const vm = require("vm");
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            const tx = ctx.window.CodoxearTranscript;
+            const consumed = [];
+            const events = [
+              null,
+              {{ role: "system", text: "skip" }},
+              {{ role: "user", text: "one", id: "u1" }},
+              {{ role: "user", text: "one duplicate", id: "u1" }},
+              {{ role: "assistant", text: "two", id: "a2" }},
+              {{ role: "assistant", text: "no key" }},
+              {{ role: "assistant", text: "no key again" }},
+            ];
+            const normalized = tx.normalizedTranscriptEvents(events, {{
+              consumePending: true,
+              selectedSessionId: "sid",
+              eventKey: (ev) => ev.id || "",
+              takePendingMatch: (ev, sid, opts) => consumed.push([ev.text, sid, opts.allowUntimedCommit]),
+            }});
+            const withoutConsume = tx.normalizedTranscriptEvents(events, {{
+              eventKey: (ev) => ev.id || "",
+            }});
+            let missingKey = false;
+            try {{ tx.normalizedTranscriptEvents(events, {{}}); }} catch (err) {{ missingKey = /eventKey/.test(String(err && err.message || err)); }}
+            let missingTake = false;
+            try {{ tx.normalizedTranscriptEvents(events, {{ consumePending: true, eventKey: () => "" }}); }} catch (err) {{ missingTake = /takePendingMatch/.test(String(err && err.message || err)); }}
+            process.stdout.write(JSON.stringify({{
+              normalizedTexts: normalized.map((ev) => ev.text),
+              withoutConsumeTexts: withoutConsume.map((ev) => ev.text),
+              consumed,
+              missingKey,
+              missingTake,
+            }}));
+            """
+        )
+        out = _run_node(js)
+
+        self.assertEqual(out["normalizedTexts"], ["one", "two", "no key", "no key again"])
+        self.assertEqual(out["withoutConsumeTexts"], ["one", "two", "no key", "no key again"])
+        self.assertEqual(out["consumed"], [
+            ["one", "sid", False],
+            ["one duplicate", "sid", False],
+            ["two", "sid", False],
+            ["no key", "sid", False],
+            ["no key again", "sid", False],
+        ])
+        self.assertTrue(out["missingKey"])
+        self.assertTrue(out["missingTake"])
+
     def test_transcript_dom_runtime_owns_clear_decorate_and_trim_window(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
