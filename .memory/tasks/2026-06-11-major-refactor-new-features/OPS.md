@@ -8068,3 +8068,16 @@
   - Wider frontend/source slice `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py tests/test_chat_navigation_source.py tests/test_auth_cleanup_source.py tests/test_send_button_source.py tests/test_session_polling_source.py tests/test_static_assets.py` returned `95 passed`.
   - Source audit `! rg -n "\\b(let|const)\\s+(liveCursor|activeTranscriptState|activeLogPath|activeThreadId|sessionTranscriptSlots|sessionTailCache)\\b|\\b(activeTranscriptState|activeLogPath|activeThreadId|liveCursor)\\s*=" codoxear/static/app.js` passed.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T08:26:28Z Moved message copy navigation state into row runtime
+- Functional commit `38c2e6b Move message copy navigation state into row runtime` added `CodoxearMessageRows.createMessageCopyNavigationRuntime(...)` and moved active per-message copy-row state plus roving tab-stop projection out of app.js.
+- Mechanism: app.js previously owned `activeMessageCopyRow`, selected a fallback copy button, mutated copy-button `tabIndex`/`disabled`/`aria-hidden`, focused the active copy button, and passed the active row into copy-message keyboard navigation. The new row runtime owns active-row validation, fallback selection from rendered rows, tab-stop mutation, focus-on-active behavior, reset, and copy jump-target selection. App.js now wires pointer/focus/keyboard events and delegates state changes to the runtime.
+- App.js no longer declares `activeMessageCopyRow`; source audit `! rg -n "\\bactiveMessageCopyRow\\b" codoxear/static/app.js` passed.
+- Behavior evidence: `tests/test_frontend_message_rows_source.py` now executes the runtime directly for fallback active-row selection, explicit active-row set/focus, next-target selection, reset behavior, tab-stop/disabled/aria-hidden projection, active-row snapshot, and fail-loud missing-root dependency. `tests/test_chat_navigation_source.py` now asserts the roving-tab-stop mechanism lives in `app_message_rows.js` while app.js instantiates the runtime.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app.js` passed.
+  - `node --check codoxear/static/app_message_rows.js` passed.
+  - `python3 -m py_compile tests/test_frontend_message_rows_source.py tests/test_chat_navigation_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_frontend_message_rows_source.py tests/test_chat_navigation_source.py tests/test_chat_scrollback_source.py tests/test_chat_transcript_runtime.py` returned `58 passed`.
+  - Wider frontend/source slice `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py tests/test_chat_navigation_source.py tests/test_auth_cleanup_source.py tests/test_send_button_source.py tests/test_session_polling_source.py tests/test_static_assets.py` returned `95 passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
