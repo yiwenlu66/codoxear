@@ -7845,3 +7845,12 @@
   - `python3 -m py_compile tests/test_frontend_file_viewer_module_source.py tests/test_file_picker_search_source.py` passed.
   - Focused validation `python3 -m pytest -q tests/test_frontend_file_viewer_module_source.py tests/test_file_viewer_source.py tests/test_file_picker_search_source.py` returned `82 passed, 25 subtests passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T01:11:00Z Stale picker wrapper cleanup
+- Functional cleanup commit `778e631 Remove stale picker helper wrappers` removed app.js wrappers made dead by picker-module ownership: `normalizeSamePathFilePickerScores`, `localFilePickerSearchEntries`, `pendingSessionPathEntry`, `prependPendingSessionPathEntry`, `filePickerDraftSuppressed`, `filePickerAmbiguousChoiceActive`, and `prependDraftFileEntry`.
+- Mechanism: picker search/render/input runtimes now own these transformations or consume `filePickerMenuState` directly. Keeping app wrappers would falsely preserve old ownership seams and source-test anchors with no runtime caller.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app.js` passed.
+  - `python3 -m py_compile tests/test_file_picker_search_source.py tests/test_markdown_tables.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_file_picker_search_source.py tests/test_markdown_tables.py tests/test_frontend_file_picker_module_source.py` returned `45 passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
