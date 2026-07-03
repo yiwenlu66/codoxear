@@ -8081,3 +8081,16 @@
   - Focused validation `python3 -m pytest -q tests/test_frontend_message_rows_source.py tests/test_chat_navigation_source.py tests/test_chat_scrollback_source.py tests/test_chat_transcript_runtime.py` returned `58 passed`.
   - Wider frontend/source slice `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py tests/test_chat_navigation_source.py tests/test_auth_cleanup_source.py tests/test_send_button_source.py tests/test_session_polling_source.py tests/test_static_assets.py` returned `95 passed`.
   - `git diff --check` and staged `git diff --cached --check` passed before commit.
+
+## 2026-07-03T08:35:00Z Moved typing row state into transcript runtime
+- Functional commit `1c00ede Move typing row state into transcript runtime` added `CodoxearTranscript.createTypingRowRuntime(...)` and moved the running/typing indicator row state out of app.js.
+- Mechanism: app.js previously owned `typingRow`, `ensureTypingRow()`, row construction, row show/hide/repositioning, auto-scroll scheduling after typing display, and insert anchors that kept appended/recovery/older rows before the typing indicator. The new transcript runtime owns row construction, visibility, reset, anchor selection, and scroll scheduling through injected DOM and scroll callbacks. App.js now delegates `setTyping(...)` and insertion anchors to the runtime.
+- App.js no longer declares `typingRow` or `ensureTypingRow`; source audit `! rg -n "\\btypingRow\\b|ensureTypingRow" codoxear/static/app.js` passed.
+- Behavior evidence: `test_typing_row_runtime_owns_row_anchor_and_scroll_projection` executes the runtime directly for row structure, anchor switching, duplicate-free repositioning, auto-scroll scheduling, hide/reset behavior, frozen runtime surface, and fail-loud missing-root dependency. Existing append-event snippets now use `typingRowRuntime.anchor()` instead of reconstructing the old global.
+- Validation under checkpoint cadence:
+  - `node --check codoxear/static/app.js` passed.
+  - `node --check codoxear/static/app_transcript.js` passed.
+  - `python3 -m py_compile tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py` passed.
+  - Focused validation `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py tests/test_chat_navigation_source.py` returned `61 passed`.
+  - Wider frontend/source slice `python3 -m pytest -q tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py tests/test_frontend_message_rows_source.py tests/test_message_transcript_state.py tests/test_chat_navigation_source.py tests/test_auth_cleanup_source.py tests/test_send_button_source.py tests/test_session_polling_source.py tests/test_static_assets.py` returned `96 passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commit.
