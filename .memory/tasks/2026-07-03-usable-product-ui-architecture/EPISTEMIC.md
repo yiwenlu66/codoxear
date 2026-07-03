@@ -20,3 +20,9 @@ Codoxear is moving from test-green refactor recovery to user-perspective usabili
 ## Ruled out
 - "Tests alone prove usability": falsified by live `/api/sessions` 500s, failed-launch UX bugs, and the pass-2 script-order blank page. Browser and real-server evidence are mandatory.
 - Soft-loading `app_new_session.js` without `CodoxearDisplay`: rejected. The dependency is real; load order must satisfy it rather than hiding the violation.
+
+
+## Acceptance judgment after clean-room review
+Clean-room critic c6109f6e accepted the current tranche with no blockers. The accepted mechanism is: New Session state now has a single controller authority and correct fail-loud script order; browser evidence proves the load-order contract from the user's perspective; converted tests exercise real coordinators with injected external boundaries rather than server-global monkeypatches; validation covers local pytest, Docker test/smoke, clean browser, and independent review.
+
+Non-blocking backlog from review: dispose the resume debounce timer on dialog close to avoid one hidden trailing request; replace/drop the vacuous `__codoxearLoadError` probe; continue reducing residual source-text assertions; continue remaining app-shell extractions beyond New Session.

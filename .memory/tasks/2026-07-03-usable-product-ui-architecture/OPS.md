@@ -65,3 +65,12 @@
 - Docker validation: `CODOXEAR_DOCKER_PORT=19086 scripts/codoxear-docker-sandbox test` -> `1358 passed, 1 skipped, 132 subtests passed`; `CODOXEAR_DOCKER_PORT=19087 scripts/codoxear-docker-sandbox smoke` -> pre-login `/api/me` 401, post-login `/api/sessions` 200.
 - Clean-browser check on smoke sandbox 19087: login works; empty state shown (`No sessions yet`, centered `Start a session...` CTA); `window.CodoxearLaunch`, `window.CodoxearDisplay`, and `window.CodoxearNewSession` all true; no `__codoxearLoadError`; New Session opens with cwd input, backend label `Codex`, name placeholder `session-name`, resume label `Start fresh`. Screenshot d31.
 - Dispatched clean-room critic c6109f6e after validation. Acceptance pending review result.
+
+## 2026-07-04T18:05:00Z Clean-room review accepted current tranche
+- Clean-room critic c6109f6e reviewed `ecb934b..51f36a3` and reported **ACCEPT** with **no blockers**. Evidence checked: commit separation, protected checkout untouched, static load order, single new-session state authority, converted test files driving real coordinators, targeted independent test runs/collection, node syntax checks.
+- Non-blocking follow-ups recorded by critic:
+  1. `hideNewSessionDialog()` does not dispose the resume debounce timer; bounded mechanism is one hidden trailing `/api/session_resume_candidates` request after close. Reopen self-heals via timer clearing/reinitialization and stale-seq guard. Follow-up: call `disposeResumeLoadTimer()` on dialog close.
+  2. `window.__codoxearLoadError` browser probe is vacuous because no global is assigned. The real acceptance signal is module-global existence (`CodoxearLaunch/Display/NewSession`) which caught the pass-2 load-order defect. Follow-up: either add a real browser error sentinel or drop the vacuous probe.
+  3. Residual source-text assertions remain in new-session/display tests, but executable VM-module behavior covers the same paths; this remains under PROMPT item 4c.
+  4. Critic did not rerun full Docker/full local because parent already did and no contradiction appeared; critic corroborated with targeted runs and collection.
+- Acceptance claim boundary: current usability/architecture tranche accepted at `51f36a3` plus review result. Follow-ups are backlog, not acceptance blockers.
