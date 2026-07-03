@@ -81,9 +81,9 @@ class TestStaticAssets(unittest.TestCase):
         self.assertLess(source.index(f"app_perf.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_api.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_api.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_markdown.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_markdown.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_launch.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
-        self.assertLess(source.index(f"app_launch.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_new_session.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
-        self.assertLess(source.index(f"app_new_session.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_display.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
-        self.assertLess(source.index(f"app_display.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_dom.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_launch.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_display.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_display.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_new_session.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_new_session.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_dom.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_dom.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_file_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_file_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_file_picker.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_file_picker.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_file_viewer.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
@@ -250,8 +250,8 @@ class TestStaticAssets(unittest.TestCase):
                     '<script src="app_api.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_markdown.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_launch.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
-                    '<script src="app_new_session.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_display.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
+                    '<script src="app_new_session.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_dom.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_file_helpers.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_file_picker.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'

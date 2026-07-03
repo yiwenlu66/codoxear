@@ -10,6 +10,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
+APP_LAUNCH_JS = ROOT / "codoxear" / "static" / "app_launch.js"
+APP_NEW_SESSION_JS = ROOT / "codoxear" / "static" / "app_new_session.js"
 INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 
 
@@ -124,6 +126,86 @@ def eval_icon_outputs(icon_names: set[str]) -> dict:
     return run_node_json(js)
 
 
+def eval_new_session_cwd_filter(query: str, recent_cwds: list[str]) -> dict:
+    """Exercise the controller-owned recent-cwd filtering end-to-end."""
+    launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
+    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
+    new_session_source = APP_NEW_SESSION_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{
+          URL,
+          console,
+          window: {{
+            CodoxearUrls: {{ resolveAppUrl: (path) => String(path || "") }},
+            CodoxearStorage: {{
+              getItem: () => null,
+              setItem: () => true,
+              removeItem: () => true,
+            }},
+          }},
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(launch_source)}, ctx, {{ filename: "app_launch.js" }});
+        vm.runInContext({json.dumps(display_source)}, ctx, {{ filename: "app_display.js" }});
+        vm.runInContext({json.dumps(new_session_source)}, ctx, {{ filename: "app_new_session.js" }});
+        const cwdInput = {{ value: {json.dumps(query)} }};
+        const controller = ctx.window.CodoxearNewSession.createNewSessionController({{
+          backend: () => "codex",
+          provider: () => "",
+          reasoningEffort: () => "high",
+          literalModelInputValue: () => "",
+          launchPresetProviderAbsent: () => false,
+          defaultsSource: () => ({{}}),
+          latestSessions: () => [],
+          tmuxAvailable: () => true,
+          assignProvider: () => {{}},
+          assignReasoningEffort: () => {{}},
+          assignLiteralModelInputValue: () => {{}},
+          assignLaunchPresetProviderAbsent: () => {{}},
+          modelInput: {{ value: "" }},
+          modelField: {{ classList: {{ toggle() {{}}, remove() {{}} }} }},
+          status: {{ textContent: "" }},
+          reasoningBtn: {{}},
+          setPickerButtonContent: () => {{}},
+          renderReasoningMenu: () => {{}},
+          renderModelMenu: () => {{}},
+          setFast: () => {{}},
+          setBackend: () => {{}},
+          setTmuxChecked: () => {{}},
+          applyDialogMenus: () => {{}},
+          closeModelMenu: () => {{}},
+          cwdInput,
+          cwdMenu: {{ innerHTML: "" }},
+          cwdField: {{ classList: {{ toggle() {{}}, remove() {{}} }} }},
+          cwdHint: {{ classList: {{ toggle() {{}} }} }},
+          nameInput: {{ value: "" }},
+          recentCwds: () => {json.dumps(recent_cwds)},
+          cwdMenuFocus: () => -1,
+          assignCwdMenuFocus: () => {{}},
+          closeCwdMenu: () => {{}},
+          el: () => ({{ appendChild() {{}} }}),
+          resumeMenu: {{ innerHTML: "" }},
+          resumeBtn: {{}},
+          closeResumeMenu: () => {{}},
+          fetchResumeCandidates: async () => ({{ sessions: [] }}),
+          tmuxToggle: {{}},
+          tmuxField: {{ style: {{}} }},
+          worktreeToggle: {{}},
+          worktreeInput: {{ value: "" }},
+          worktreeField: {{ style: {{}} }},
+          startBtn: {{}},
+        }});
+        process.stdout.write(JSON.stringify({{
+          options: controller.renderRecentCwdOptions(),
+          filtered: controller.filteredRecentCwdOptions(),
+        }}));
+        """
+    )
+    return run_node_json(js)
+
+
 class TestFrontendDisplayModuleSource(unittest.TestCase):
     def test_index_loads_display_module_before_app(self) -> None:
         source = INDEX_HTML.read_text(encoding="utf-8")
@@ -167,13 +249,20 @@ class TestFrontendDisplayModuleSource(unittest.TestCase):
         self.assertIn("function compactChatSearchSnippet(text, query, limit = 96)", display_source)
         self.assertIn("function chatSearchTranscriptHint(match, query)", display_source)
         self.assertIn("window.CodoxearDisplay = Object.freeze({", display_source)
-        recent_cwd_start = source.index("function renderRecentCwdOptions()")
-        recent_cwd_end = source.index("function filteredRecentCwdOptions()", recent_cwd_start)
-        recent_cwd_block = source[recent_cwd_start:recent_cwd_end]
+        # Recent-cwd suggestion filtering (renderRecentCwdOptions / filteredRecentCwdOptions)
+        # moved into the new-session controller module; app.js keeps only thin
+        # wrappers and the fuzzyRecentCwdScore delegation. The controller must
+        # delegate fuzzy scoring to CodoxearDisplay rather than inlining it.
+        new_session_source = APP_NEW_SESSION_JS.read_text(encoding="utf-8")
+        self.assertIn("function renderRecentCwdOptions()", new_session_source)
+        self.assertIn("function filteredRecentCwdOptions()", new_session_source)
+        self.assertIn("codoxearDisplay.fuzzyRecentCwdScore(cwd, query)", new_session_source)
+        self.assertNotIn('const raw = String(query || "").trim().toLowerCase();', new_session_source)
+        self.assertIn("return newSessionController.renderRecentCwdOptions();", source)
+        self.assertIn("return newSessionController.filteredRecentCwdOptions();", source)
         self.assertNotIn("function fmtBytes(n) {\n        const v = Number(n);", source)
         self.assertNotIn('const raw = String(text || "").replace(/\\s+/g, " ").trim();', source)
-        self.assertNotIn("function fuzzyRecentCwdScore(candidate, query)", recent_cwd_block)
-        self.assertNotIn('const raw = String(query || "").trim().toLowerCase();', recent_cwd_block)
+        self.assertNotIn('const raw = String(query || "").trim().toLowerCase();', source)
         self.assertNotIn("function iconSvg(name) {\n    if (name ===", source)
         self.assertNotIn("const diffDays = Math.round((a - b) / 86400000);", source)
 
@@ -251,6 +340,19 @@ class TestFrontendDisplayModuleSource(unittest.TestCase):
         for name in sorted(required_names):
             self.assertIn("<svg", outputs[name], name)
             self.assertIn("</svg>", outputs[name], name)
+
+    def test_recent_cwd_filter_lives_in_new_session_controller(self) -> None:
+        # No-query path preserves recent-cwd ordering and caps at 10.
+        blank = eval_new_session_cwd_filter("", ["/a", "/b", "/c"])
+        self.assertEqual([item["cwd"] for item in blank["filtered"]], ["/a", "/b", "/c"])
+        self.assertEqual(blank["options"], ["/a", "/b", "/c"])
+        # Subsequence fuzzy match against the basename.
+        matched = eval_new_session_cwd_filter("proj", ["/tmp/project", "/tmp/other"])
+        self.assertEqual([item["cwd"] for item in matched["filtered"]], ["/tmp/project"])
+        # Non-matching query yields an empty filtered list while options remain.
+        missed = eval_new_session_cwd_filter("zzz", ["/tmp/project"])
+        self.assertEqual(missed["filtered"], [])
+        self.assertEqual(missed["options"], ["/tmp/project"])
 
 
 if __name__ == "__main__":

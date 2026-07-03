@@ -39,8 +39,8 @@ class TestAuthCleanupSource(unittest.TestCase):
         self.assertIn("secondaryPollingEnabled = false;", cleanup)
         self.assertIn("stopMessagePolling();", cleanup)
         self.assertIn("stopAllPolling();", cleanup)
+        self.assertIn("if (newSessionController) newSessionController.disposeResumeLoadTimer();", cleanup)
         for name in [
-            "newSessionResumeLoadTimer",
             "voiceSaveTimer",
             "liveAudioRetryTimer",
             "iosViewportGuardTimer",

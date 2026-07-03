@@ -826,15 +826,9 @@
         let newSessionModelMenuFocus = -1;
         let newSessionReasoningMenuOpen = false;
         let newSessionResumeMenuOpen = false;
-        let newSessionResumeCandidates = [];
-        let newSessionResumeSelection = null;
-        let newSessionResumeLoadSeq = 0;
-        let newSessionResumeLoadTimer = null;
         let newSessionStartBusy = false;
         let newSessionLiteralModelInputValue = "";
         let newSessionLaunchPresetProviderAbsent = false;
-        let newSessionCwdInfo = { exists: false, will_create: false, git_repo: false, git_root: "", git_branch: "" };
-        let newSessionCwdError = "";
         newSessionBackend = "codex";
         let newSessionProvider = "chatgpt";
         let newSessionFast = false;
@@ -978,8 +972,7 @@
           secondaryPollingEnabled = false;
           stopMessagePolling();
           stopAllPolling();
-          if (newSessionResumeLoadTimer) clearTimeout(newSessionResumeLoadTimer);
-          newSessionResumeLoadTimer = null;
+          if (newSessionController) newSessionController.disposeResumeLoadTimer();
           if (voiceSaveTimer) clearTimeout(voiceSaveTimer);
           voiceSaveTimer = null;
           unattendedSaveTimers.forEach((timer) => clearTimeout(timer));
@@ -5591,26 +5584,11 @@
           }
         };
         function renderRecentCwdOptions() {
-          const out = [];
-          const seen = new Set();
-          for (const raw of recentCwds) {
-            const cwd = typeof raw === "string" ? raw.trim() : "";
-            if (!cwd || seen.has(cwd)) continue;
-            seen.add(cwd);
-            out.push(cwd);
-          }
-          return out;
+          return newSessionController.renderRecentCwdOptions();
         }
 
         function filteredRecentCwdOptions() {
-          const items = renderRecentCwdOptions();
-          const query = String(newSessionCwdInput.value || "").trim();
-          if (!query) return items.slice(0, 10).map((cwd, idx) => ({ cwd, idx, score: 1000 - idx }));
-          return items
-            .map((cwd, idx) => ({ cwd, idx, score: fuzzyRecentCwdScore(cwd, query) }))
-            .filter((item) => item.score >= 0)
-            .sort((a, b) => b.score - a.score || a.idx - b.idx || a.cwd.localeCompare(b.cwd))
-            .slice(0, 10);
+          return newSessionController.filteredRecentCwdOptions();
         }
 
         function hideEditSession() {
@@ -5692,65 +5670,19 @@
         }
 
         function applyNewSessionCwdSuggestion(cwd) {
-          newSessionCwdInput.value = String(cwd || "");
-          setNewSessionCwdError("");
-          syncNewSessionNamePlaceholder();
-          newSessionCwdMenuOpen = false;
-          newSessionCwdMenuFocus = -1;
-          applyDialogMenus();
-          scheduleNewSessionResumeLoad();
-          newSessionCwdInput.focus();
-          const end = newSessionCwdInput.value.length;
-          try {
-            newSessionCwdInput.setSelectionRange(end, end);
-          } catch {}
+          return newSessionController.applyNewSessionCwdSuggestion(cwd);
         }
 
         function renderRecentCwdMenu() {
-          newSessionCwdMenu.innerHTML = "";
-          const raw = String(newSessionCwdInput.value || "").trim();
-          const items = filteredRecentCwdOptions();
-          if (newSessionCwdMenuFocus >= items.length) newSessionCwdMenuFocus = items.length ? items.length - 1 : -1;
-          if (!items.length) {
-            const emptyText = raw ? "No matching recent directories. Start still uses the typed path." : "No recent directories";
-            newSessionCwdMenu.appendChild(el("div", { class: "pickerEmpty", text: emptyText }));
-            newSessionCwdInput.removeAttribute("aria-activedescendant");
-            return items;
-          }
-          for (const [idx, item] of items.entries()) {
-            const cwd = item.cwd;
-            const active = newSessionCwdMenuFocus === idx || (newSessionCwdMenuFocus < 0 && raw === cwd);
-            const btn = el("button", {
-              id: `newSessionCwdOption-${idx}`,
-              class: "fileMenuItem" + (active ? " active" : ""),
-              type: "button",
-              role: "option",
-              "aria-selected": active ? "true" : "false",
-              title: cwd,
-            });
-            btn.appendChild(el("span", { class: "fileMenuPath", text: cwd }));
-            btn.onmousedown = (e) => e.preventDefault();
-            btn.onclick = () => applyNewSessionCwdSuggestion(cwd);
-            newSessionCwdMenu.appendChild(btn);
-          }
-          if (newSessionCwdMenuFocus >= 0) newSessionCwdInput.setAttribute("aria-activedescendant", `newSessionCwdOption-${newSessionCwdMenuFocus}`);
-          else newSessionCwdInput.removeAttribute("aria-activedescendant");
-          return items;
+          return newSessionController.renderRecentCwdMenu();
         }
 
         function syncNewSessionNamePlaceholder() {
-          const fallback = baseName(String(newSessionCwdInput.value || "").trim());
-          newSessionNameInput.placeholder = fallback || "session-name";
+          return newSessionController.syncNewSessionNamePlaceholder();
         }
 
         function newSessionResumeLabel(item) {
-          if (!item || typeof item !== "object") return "Start fresh";
-          const alias = typeof item.alias === "string" ? item.alias.trim() : "";
-          const firstUser = typeof item.first_user_message === "string" ? item.first_user_message.trim() : "";
-          const primary = alias || firstUser || shortSessionId(item.session_id);
-          const ts = Number(item.updated_ts || 0);
-          const age = ts > 0 ? fmtRelativeAge(Math.max(0, Date.now() / 1000 - ts)) : "";
-          return `${age ? `${age} | ` : ""}${primary}`;
+          return newSessionController.newSessionResumeLabel(item);
         }
 
         function setPickerButtonContent(button, primaryText, secondaryText = "", placeholder = false) {
@@ -5764,14 +5696,7 @@
         }
 
         function setNewSessionResumeSelection(item) {
-          newSessionResumeSelection = item && typeof item === "object" ? item : null;
-          setPickerButtonContent(
-            newSessionResumeBtn,
-            newSessionResumeSelection ? newSessionResumeLabel(newSessionResumeSelection) : "Start fresh",
-            "",
-            !newSessionResumeSelection
-          );
-          syncNewSessionWorktreeUi();
+          return newSessionController.setNewSessionResumeSelection(item);
         }
 
         function renderNewSessionBackendTabs() {
@@ -5836,6 +5761,33 @@
             newSessionModelMenuOpen = false;
             newSessionModelMenuFocus = -1;
           },
+          cwdInput: newSessionCwdInput,
+          cwdMenu: newSessionCwdMenu,
+          cwdField: newSessionCwdField,
+          cwdHint: newSessionCwdHint,
+          nameInput: newSessionNameInput,
+          recentCwds: () => recentCwds,
+          cwdMenuFocus: () => newSessionCwdMenuFocus,
+          assignCwdMenuFocus: (value) => {
+            newSessionCwdMenuFocus = value;
+          },
+          closeCwdMenu: () => {
+            newSessionCwdMenuOpen = false;
+            newSessionCwdMenuFocus = -1;
+          },
+          el,
+          resumeMenu: newSessionResumeMenu,
+          resumeBtn: newSessionResumeBtn,
+          closeResumeMenu: () => {
+            newSessionResumeMenuOpen = false;
+          },
+          fetchResumeCandidates: (cwd, backend) => api(`/api/session_resume_candidates?cwd=${encodeURIComponent(cwd)}&agent_backend=${encodeURIComponent(backend)}`),
+          tmuxToggle: newSessionTmuxToggle,
+          tmuxField: newSessionTmuxField,
+          worktreeToggle: newSessionWorktreeToggle,
+          worktreeInput: newSessionWorktreeInput,
+          worktreeField: newSessionWorktreeField,
+          startBtn: newSessionStartBtn,
         });
         function newSessionProviderChoices() {
           return newSessionController.newSessionProviderChoices();
@@ -5984,74 +5936,27 @@
         }
 
         function syncNewSessionCwdHint() {
-          const errorText = String(newSessionCwdError || "").trim();
-          const hintText = !errorText && newSessionCwdInfo && newSessionCwdInfo.will_create ? "Directory will be created when you start the session." : "";
-          const text = errorText || hintText;
-          newSessionCwdField.classList.toggle("error", !!errorText);
-          newSessionCwdHint.classList.toggle("danger", !!errorText);
-          newSessionCwdHint.textContent = text;
+          return newSessionController.syncNewSessionCwdHint();
         }
 
         function setNewSessionCwdError(message) {
-          newSessionCwdError = String(message || "").trim();
-          syncNewSessionCwdHint();
+          return newSessionController.setNewSessionCwdError(message);
         }
 
         function clearNewSessionCwdInfo() {
-          newSessionCwdInfo = { exists: false, will_create: false, git_repo: false, git_root: "", git_branch: "" };
-          syncNewSessionCwdHint();
+          return newSessionController.clearNewSessionCwdInfo();
         }
 
         function syncNewSessionTmuxUi() {
-          if (!tmuxAvailable) newSessionTmuxToggle.checked = false;
-          newSessionTmuxToggle.disabled = !tmuxAvailable;
-          newSessionTmuxField.style.opacity = tmuxAvailable ? "1" : "0.58";
+          return newSessionController.syncNewSessionTmuxUi();
         }
 
         function syncNewSessionWorktreeUi() {
-          const canOffer = !!(newSessionCwdInfo && newSessionCwdInfo.git_repo) && !newSessionResumeSelection;
-          if (!canOffer) newSessionWorktreeToggle.checked = false;
-          const enabled = canOffer && !!newSessionWorktreeToggle.checked;
-          newSessionWorktreeField.style.display = canOffer ? "" : "none";
-          newSessionWorktreeInput.disabled = !enabled;
-          newSessionWorktreeInput.style.display = enabled ? "" : "none";
-          if (newSessionResumeSelection) newSessionStartBtn.textContent = "Resume session";
-          else if (enabled) newSessionStartBtn.textContent = "Create worktree session";
-          else newSessionStartBtn.textContent = "Start session";
+          return newSessionController.syncNewSessionWorktreeUi();
         }
 
         function renderNewSessionResumeMenu() {
-          newSessionResumeMenu.innerHTML = "";
-          const freshBtn = el("button", {
-            class: "fileMenuItem" + (!newSessionResumeSelection ? " active" : ""),
-            type: "button",
-            title: "Start a new conversation",
-          });
-          freshBtn.appendChild(el("span", { class: "fileMenuPath", text: "Start fresh" }));
-          freshBtn.onclick = () => {
-            setNewSessionResumeSelection(null);
-            newSessionResumeMenuOpen = false;
-            applyDialogMenus();
-          };
-          newSessionResumeMenu.appendChild(freshBtn);
-          if (!newSessionResumeCandidates.length) {
-            newSessionResumeMenu.appendChild(el("div", { class: "pickerEmpty", text: "No matching sessions" }));
-            return;
-          }
-          for (const item of newSessionResumeCandidates) {
-            const btn = el("button", {
-              class: "fileMenuItem" + (newSessionResumeSelection && newSessionResumeSelection.session_id === item.session_id ? " active" : ""),
-              type: "button",
-              title: newSessionResumeLabel(item),
-            });
-            btn.appendChild(el("span", { class: "fileMenuPath", text: newSessionResumeLabel(item) }));
-            btn.onclick = () => {
-              setNewSessionResumeSelection(item);
-              newSessionResumeMenuOpen = false;
-              applyDialogMenus();
-            };
-            newSessionResumeMenu.appendChild(btn);
-          }
+          return newSessionController.renderNewSessionResumeMenu();
         }
 
         function selectNewSessionModel(option) {
@@ -6100,55 +6005,8 @@
           return items;
         }
 
-        async function loadNewSessionResumeCandidates(cwd) {
-          const raw = String(cwd || "").trim();
-          const seq = ++newSessionResumeLoadSeq;
-          const backend = newSessionBackend;
-          if (!raw) {
-            setNewSessionCwdError("");
-            newSessionResumeCandidates = [];
-            setNewSessionResumeSelection(null);
-            clearNewSessionCwdInfo();
-            renderNewSessionResumeMenu();
-            syncNewSessionWorktreeUi();
-            return;
-          }
-          try {
-            const res = await api(`/api/session_resume_candidates?cwd=${encodeURIComponent(raw)}&agent_backend=${encodeURIComponent(backend)}`);
-            if (seq !== newSessionResumeLoadSeq) return;
-            newSessionCwdInfo = {
-              exists: !!(res && res.exists),
-              will_create: !!(res && res.will_create),
-              git_repo: !!(res && res.git_repo),
-              git_root: res && typeof res.git_root === "string" ? res.git_root : "",
-              git_branch: res && typeof res.git_branch === "string" ? res.git_branch : "",
-            };
-            setNewSessionCwdError("");
-            const items = Array.isArray(res && res.sessions) ? res.sessions.filter((item) => item && typeof item === "object" && typeof item.session_id === "string") : [];
-            newSessionResumeCandidates = items;
-            const currentId = newSessionResumeSelection && typeof newSessionResumeSelection.session_id === "string" ? newSessionResumeSelection.session_id : "";
-            const next = currentId ? items.find((item) => item.session_id === currentId) || null : null;
-            setNewSessionResumeSelection(next);
-            renderNewSessionResumeMenu();
-            syncNewSessionWorktreeUi();
-          } catch (e) {
-            if (seq !== newSessionResumeLoadSeq) return;
-            newSessionResumeCandidates = [];
-            setNewSessionResumeSelection(null);
-            clearNewSessionCwdInfo();
-            if (e && e.obj && e.obj.field === "cwd") setNewSessionCwdError(e.message);
-            renderNewSessionResumeMenu();
-            syncNewSessionWorktreeUi();
-          }
-        }
-
         function scheduleNewSessionResumeLoad() {
-          if (newSessionResumeLoadTimer) clearTimeout(newSessionResumeLoadTimer);
-          const cwd = String(newSessionCwdInput.value || "").trim();
-          newSessionResumeLoadTimer = setTimeout(() => {
-            newSessionResumeLoadTimer = null;
-            void loadNewSessionResumeCandidates(cwd);
-          }, 180);
+          return newSessionController.scheduleNewSessionResumeLoad();
         }
 
         function applyDialogMenus() {
@@ -6300,7 +6158,7 @@
           newSessionLiteralModelInputValue = "";
           newSessionLaunchPresetProviderAbsent = false;
           syncNewSessionNamePlaceholder();
-          newSessionResumeCandidates = [];
+          newSessionController.clearNewSessionResumeCandidates();
           setNewSessionResumeSelection(null);
           setNewSessionCwdError("");
           clearNewSessionCwdInfo();
@@ -6605,7 +6463,7 @@
           const providerChoice = String(parsedProviderModel.providerAbsent ? "" : parsedProviderModel.providerChoice || newSessionProvider || "").trim();
           const model = String(parsedProviderModel.model || "default").trim() || "default";
           rememberProviderModelChoice(agentBackend, providerChoice, model, { providerAbsent: Boolean(parsedProviderModel.providerAbsent) });
-          const resumeSessionId = newSessionResumeSelection && newSessionResumeSelection.session_id ? newSessionResumeSelection.session_id : null;
+          const resumeSessionId = (newSessionController.currentResumeSelection() || {}).session_id || null;
           const createInTmux = !!newSessionTmuxToggle.checked;
           const worktreeBranch = !resumeSessionId && newSessionWorktreeToggle.checked ? String(newSessionWorktreeInput.value || "").trim() : null;
           if (newSessionWorktreeToggle.checked && !worktreeBranch) {

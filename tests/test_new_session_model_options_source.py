@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_LAUNCH_JS = ROOT / "codoxear" / "static" / "app_launch.js"
 APP_NEW_SESSION_JS = ROOT / "codoxear" / "static" / "app_new_session.js"
+APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
 
 
 def _run_node(js: str) -> dict:
@@ -24,6 +25,7 @@ def _run_node(js: str) -> dict:
 
 def _new_session_module_js() -> str:
     launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
+    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
     new_session_source = APP_NEW_SESSION_JS.read_text(encoding="utf-8")
     return textwrap.dedent(
         f"""
@@ -46,6 +48,7 @@ def _new_session_module_js() -> str:
         }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(launch_source)}, ctx, {{ filename: "app_launch.js" }});
+        vm.runInContext({json.dumps(display_source)}, ctx, {{ filename: "app_display.js" }});
         vm.runInContext({json.dumps(new_session_source)}, ctx, {{ filename: "app_new_session.js" }});
         """
     )
@@ -54,6 +57,33 @@ def _new_session_module_js() -> str:
 def _basic_controller_options(js: str) -> str:
     """Extra option stubs every controller instantiation needs."""
     return js
+
+
+# Stubs for the pass-2 controller dependencies (cwd/resume/worktree/tmux UI).
+# Injected into every test fixture so existing provider/model assertions keep
+# working without repeating the full DOM surface at each call site.
+_NEW_SESSION_CONTROLLER_DEP_STUBS = (
+    "cwdInput: { value: \"\" },\n"
+    "          cwdMenu: { innerHTML: \"\" },\n"
+    "          cwdField: { classList: { toggle() {}, remove() {} } },\n"
+    "          cwdHint: { classList: { toggle() {} } },\n"
+    "          nameInput: { value: \"\" },\n"
+    "          recentCwds: () => [],\n"
+    "          cwdMenuFocus: () => -1,\n"
+    "          assignCwdMenuFocus: () => {},\n"
+    "          closeCwdMenu: () => {},\n"
+    "          el: () => ({ appendChild() {} }),\n"
+    "          resumeMenu: { innerHTML: \"\" },\n"
+    "          resumeBtn: {},\n"
+    "          closeResumeMenu: () => {},\n"
+    "          fetchResumeCandidates: async () => ({ sessions: [] }),\n"
+    "          tmuxToggle: {},\n"
+    "          tmuxField: { style: {} },\n"
+    "          worktreeToggle: {},\n"
+    "          worktreeInput: { value: \"\" },\n"
+    "          worktreeField: { style: {} },\n"
+    "          startBtn: {},\n"
+)
 
 
 def eval_pi_provider_model_runtime(query: str, *, provider_choices: list[str], reasoning_map: dict[str, list[str]], literal_model: str = "", provider_absent: bool = False) -> dict:
@@ -96,6 +126,7 @@ def eval_pi_provider_model_runtime(query: str, *, provider_choices: list[str], r
           setTmuxChecked: () => {{}},
           applyDialogMenus: () => {{}},
           closeModelMenu: () => {{}},
+          {_NEW_SESSION_CONTROLLER_DEP_STUBS}
         }});
         const parsed = controller.parseNewSessionProviderModelInput();
         const choices = controller.currentReasoningChoices();
@@ -161,6 +192,7 @@ def eval_new_session_launch_preset(session_info: dict, *, backend: str = "pi", p
           setTmuxChecked: (v) => {{ tmuxChecked = v; }},
           applyDialogMenus: () => {{}},
           closeModelMenu: () => {{}},
+          {_NEW_SESSION_CONTROLLER_DEP_STUBS}
         }});
         const applied = controller.applyNewSessionLaunchPreset({json.dumps(session_info)});
         process.stdout.write(JSON.stringify({{
@@ -223,7 +255,7 @@ def eval_pi_recent_providerless_selection() -> dict:
           setTmuxChecked: () => {},
           applyDialogMenus: () => {},
           closeModelMenu: () => {},
-        });
+__DEP_STUBS__        });
         const options = controller.sessionModelOptions();
         controller.selectNewSessionModel(options[0]);
         const rememberedKey = ctx.storageWrites.find(([key]) => key.endsWith(".newSessionProviderModel.pi")) || [null, null];
@@ -236,7 +268,7 @@ def eval_pi_recent_providerless_selection() -> dict:
           providerSet: providerCalls.length ? providerCalls[providerCalls.length - 1] : "",
         }));
         """
-    )
+    ).replace("__DEP_STUBS__", _NEW_SESSION_CONTROLLER_DEP_STUBS)
     return _run_node(js)
 
 
@@ -276,6 +308,7 @@ def eval_new_session_model_options(query: str = "") -> dict:
           setTmuxChecked: () => {{}},
           applyDialogMenus: () => {{}},
           closeModelMenu: () => {{}},
+          {_NEW_SESSION_CONTROLLER_DEP_STUBS}
         }});
         process.stdout.write(JSON.stringify({{
           options: controller.sessionModelOptions(),

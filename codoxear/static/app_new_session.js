@@ -21,6 +21,16 @@
   )
     throw new Error("Codoxear launch helpers failed to load");
 
+  const codoxearDisplay = window.CodoxearDisplay;
+  if (
+    !codoxearDisplay ||
+    typeof codoxearDisplay.baseName !== "function" ||
+    typeof codoxearDisplay.shortSessionId !== "function" ||
+    typeof codoxearDisplay.fmtRelativeAge !== "function" ||
+    typeof codoxearDisplay.fuzzyRecentCwdScore !== "function"
+  )
+    throw new Error("Codoxear display helpers failed to load");
+
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`new session controller dependency missing: ${name}`);
     return value;
@@ -81,6 +91,42 @@
     const setTmuxChecked = requireFunction(options.setTmuxChecked, "setTmuxChecked");
     const applyDialogMenus = requireFunction(options.applyDialogMenus, "applyDialogMenus");
     const closeModelMenu = requireFunction(options.closeModelMenu, "closeModelMenu");
+
+    // Cwd menu + recent-cwd suggestion dependencies.
+    const cwdInput = requireInputNode(options.cwdInput, "cwdInput");
+    const cwdMenu = requirePresentNode(options.cwdMenu, "cwdMenu");
+    const cwdField = requireClassListNode(options.cwdField, "cwdField");
+    const cwdHint = requirePresentNode(options.cwdHint, "cwdHint");
+    const nameInput = requireInputNode(options.nameInput, "nameInput");
+    const recentCwds = requireFunction(options.recentCwds, "recentCwds");
+    const cwdMenuFocus = requireFunction(options.cwdMenuFocus, "cwdMenuFocus");
+    const assignCwdMenuFocus = requireFunction(options.assignCwdMenuFocus, "assignCwdMenuFocus");
+    const closeCwdMenu = requireFunction(options.closeCwdMenu, "closeCwdMenu");
+    const el = requireFunction(options.el, "el");
+
+    // Resume-conversation menu dependencies.
+    const resumeMenu = requirePresentNode(options.resumeMenu, "resumeMenu");
+    const resumeBtn = requirePresentNode(options.resumeBtn, "resumeBtn");
+    const closeResumeMenu = requireFunction(options.closeResumeMenu, "closeResumeMenu");
+    const fetchResumeCandidates = requireFunction(options.fetchResumeCandidates, "fetchResumeCandidates");
+
+    // Worktree / tmux UI dependencies.
+    const tmuxToggle = requirePresentNode(options.tmuxToggle, "tmuxToggle");
+    const tmuxField = requirePresentNode(options.tmuxField, "tmuxField");
+    const worktreeToggle = requirePresentNode(options.worktreeToggle, "worktreeToggle");
+    const worktreeInput = requireInputNode(options.worktreeInput, "worktreeInput");
+    const worktreeField = requirePresentNode(options.worktreeField, "worktreeField");
+    const startBtn = requirePresentNode(options.startBtn, "startBtn");
+
+    // Controller-owned state for cwd validation, resume selection, and the
+    // debounced resume-candidate load. App.js reads these only through the
+    // exposed accessors / methods.
+    let cwdError = "";
+    let cwdInfo = { exists: false, will_create: false, git_repo: false, git_root: "", git_branch: "" };
+    let resumeSelection = null;
+    let resumeCandidates = [];
+    let resumeLoadSeq = 0;
+    let resumeLoadTimer = null;
 
     function newSessionProviderChoices() {
       return codoxearLaunch.providerChoicesForBackend(backend(), defaultsSource());
@@ -351,6 +397,246 @@
       return true;
     }
 
+    // ---- Cwd input + recent-cwd suggestion menu ----
+
+    function renderRecentCwdOptions() {
+      const out = [];
+      const seen = new Set();
+      for (const raw of recentCwds()) {
+        const cwd = typeof raw === "string" ? raw.trim() : "";
+        if (!cwd || seen.has(cwd)) continue;
+        seen.add(cwd);
+        out.push(cwd);
+      }
+      return out;
+    }
+
+    function filteredRecentCwdOptions() {
+      const items = renderRecentCwdOptions();
+      const query = String(cwdInput.value || "").trim();
+      if (!query) return items.slice(0, 10).map((cwd, idx) => ({ cwd, idx, score: 1000 - idx }));
+      return items
+        .map((cwd, idx) => ({ cwd, idx, score: codoxearDisplay.fuzzyRecentCwdScore(cwd, query) }))
+        .filter((item) => item.score >= 0)
+        .sort((a, b) => b.score - a.score || a.idx - b.idx || a.cwd.localeCompare(b.cwd))
+        .slice(0, 10);
+    }
+
+    function syncNewSessionNamePlaceholder() {
+      const fallback = codoxearDisplay.baseName(String(cwdInput.value || "").trim());
+      nameInput.placeholder = fallback || "session-name";
+    }
+
+    function syncNewSessionCwdHint() {
+      const errorText = String(cwdError || "").trim();
+      const hintText = !errorText && cwdInfo && cwdInfo.will_create ? "Directory will be created when you start the session." : "";
+      const text = errorText || hintText;
+      cwdField.classList.toggle("error", !!errorText);
+      cwdHint.classList.toggle("danger", !!errorText);
+      cwdHint.textContent = text;
+    }
+
+    function setNewSessionCwdError(message) {
+      cwdError = String(message || "").trim();
+      syncNewSessionCwdHint();
+    }
+
+    function clearNewSessionCwdInfo() {
+      cwdInfo = { exists: false, will_create: false, git_repo: false, git_root: "", git_branch: "" };
+      syncNewSessionCwdHint();
+    }
+
+    function applyNewSessionCwdSuggestion(cwd) {
+      cwdInput.value = String(cwd || "");
+      setNewSessionCwdError("");
+      syncNewSessionNamePlaceholder();
+      closeCwdMenu();
+      applyDialogMenus();
+      scheduleNewSessionResumeLoad();
+      cwdInput.focus();
+      const end = cwdInput.value.length;
+      try {
+        cwdInput.setSelectionRange(end, end);
+      } catch (_) {}
+    }
+
+    function renderRecentCwdMenu() {
+      cwdMenu.innerHTML = "";
+      const raw = String(cwdInput.value || "").trim();
+      const items = filteredRecentCwdOptions();
+      let focus = cwdMenuFocus();
+      if (focus >= items.length) {
+        focus = items.length ? items.length - 1 : -1;
+        assignCwdMenuFocus(focus);
+      }
+      if (!items.length) {
+        const emptyText = raw ? "No matching recent directories. Start still uses the typed path." : "No recent directories";
+        cwdMenu.appendChild(el("div", { class: "pickerEmpty", text: emptyText }));
+        cwdInput.removeAttribute("aria-activedescendant");
+        return items;
+      }
+      for (const [idx, item] of items.entries()) {
+        const cwd = item.cwd;
+        const active = focus === idx || (focus < 0 && raw === cwd);
+        const btn = el("button", {
+          id: `newSessionCwdOption-${idx}`,
+          class: "fileMenuItem" + (active ? " active" : ""),
+          type: "button",
+          role: "option",
+          "aria-selected": active ? "true" : "false",
+          title: cwd,
+        });
+        btn.appendChild(el("span", { class: "fileMenuPath", text: cwd }));
+        btn.onmousedown = (e) => e.preventDefault();
+        btn.onclick = () => applyNewSessionCwdSuggestion(cwd);
+        cwdMenu.appendChild(btn);
+      }
+      if (focus >= 0) cwdInput.setAttribute("aria-activedescendant", `newSessionCwdOption-${focus}`);
+      else cwdInput.removeAttribute("aria-activedescendant");
+      return items;
+    }
+
+    // ---- Resume-conversation menu ----
+
+    function newSessionResumeLabel(item) {
+      if (!item || typeof item !== "object") return "Start fresh";
+      const alias = typeof item.alias === "string" ? item.alias.trim() : "";
+      const firstUser = typeof item.first_user_message === "string" ? item.first_user_message.trim() : "";
+      const primary = alias || firstUser || codoxearDisplay.shortSessionId(item.session_id);
+      const ts = Number(item.updated_ts || 0);
+      const age = ts > 0 ? codoxearDisplay.fmtRelativeAge(Math.max(0, Date.now() / 1000 - ts)) : "";
+      return `${age ? `${age} | ` : ""}${primary}`;
+    }
+
+    function setNewSessionResumeSelection(item) {
+      resumeSelection = item && typeof item === "object" ? item : null;
+      setPickerButtonContent(
+        resumeBtn,
+        resumeSelection ? newSessionResumeLabel(resumeSelection) : "Start fresh",
+        "",
+        !resumeSelection
+      );
+      syncNewSessionWorktreeUi();
+    }
+
+    function renderNewSessionResumeMenu() {
+      resumeMenu.innerHTML = "";
+      const freshBtn = el("button", {
+        class: "fileMenuItem" + (!resumeSelection ? " active" : ""),
+        type: "button",
+        title: "Start a new conversation",
+      });
+      freshBtn.appendChild(el("span", { class: "fileMenuPath", text: "Start fresh" }));
+      freshBtn.onclick = () => {
+        setNewSessionResumeSelection(null);
+        closeResumeMenu();
+        applyDialogMenus();
+      };
+      resumeMenu.appendChild(freshBtn);
+      if (!resumeCandidates.length) {
+        resumeMenu.appendChild(el("div", { class: "pickerEmpty", text: "No matching sessions" }));
+        return;
+      }
+      for (const item of resumeCandidates) {
+        const btn = el("button", {
+          class: "fileMenuItem" + (resumeSelection && resumeSelection.session_id === item.session_id ? " active" : ""),
+          type: "button",
+          title: newSessionResumeLabel(item),
+        });
+        btn.appendChild(el("span", { class: "fileMenuPath", text: newSessionResumeLabel(item) }));
+        btn.onclick = () => {
+          setNewSessionResumeSelection(item);
+          closeResumeMenu();
+          applyDialogMenus();
+        };
+        resumeMenu.appendChild(btn);
+      }
+    }
+
+    async function loadNewSessionResumeCandidates(cwd) {
+      const raw = String(cwd || "").trim();
+      const seq = ++resumeLoadSeq;
+      const backendValue = backend();
+      if (!raw) {
+        setNewSessionCwdError("");
+        resumeCandidates = [];
+        setNewSessionResumeSelection(null);
+        clearNewSessionCwdInfo();
+        renderNewSessionResumeMenu();
+        syncNewSessionWorktreeUi();
+        return;
+      }
+      try {
+        const res = await fetchResumeCandidates(raw, backendValue);
+        if (seq !== resumeLoadSeq) return;
+        cwdInfo = {
+          exists: !!(res && res.exists),
+          will_create: !!(res && res.will_create),
+          git_repo: !!(res && res.git_repo),
+          git_root: res && typeof res.git_root === "string" ? res.git_root : "",
+          git_branch: res && typeof res.git_branch === "string" ? res.git_branch : "",
+        };
+        setNewSessionCwdError("");
+        const items = Array.isArray(res && res.sessions) ? res.sessions.filter((item) => item && typeof item === "object" && typeof item.session_id === "string") : [];
+        resumeCandidates = items;
+        const currentId = resumeSelection && typeof resumeSelection.session_id === "string" ? resumeSelection.session_id : "";
+        const next = currentId ? items.find((item) => item.session_id === currentId) || null : null;
+        setNewSessionResumeSelection(next);
+        renderNewSessionResumeMenu();
+        syncNewSessionWorktreeUi();
+      } catch (e) {
+        if (seq !== resumeLoadSeq) return;
+        resumeCandidates = [];
+        setNewSessionResumeSelection(null);
+        clearNewSessionCwdInfo();
+        if (e && e.obj && e.obj.field === "cwd") setNewSessionCwdError(e.message);
+        renderNewSessionResumeMenu();
+        syncNewSessionWorktreeUi();
+      }
+    }
+
+    function scheduleNewSessionResumeLoad() {
+      if (resumeLoadTimer) clearTimeout(resumeLoadTimer);
+      const cwd = String(cwdInput.value || "").trim();
+      resumeLoadTimer = setTimeout(() => {
+        resumeLoadTimer = null;
+        void loadNewSessionResumeCandidates(cwd);
+      }, 180);
+    }
+
+    function clearNewSessionResumeCandidates() {
+      resumeCandidates = [];
+    }
+
+    function currentResumeSelection() {
+      return resumeSelection;
+    }
+
+    function disposeResumeLoadTimer() {
+      if (resumeLoadTimer) clearTimeout(resumeLoadTimer);
+      resumeLoadTimer = null;
+    }
+
+    // ---- Worktree / tmux UI sync ----
+
+    function syncNewSessionTmuxUi() {
+      if (!tmuxAvailable()) tmuxToggle.checked = false;
+      tmuxToggle.disabled = !tmuxAvailable();
+      tmuxField.style.opacity = tmuxAvailable() ? "1" : "0.58";
+    }
+
+    function syncNewSessionWorktreeUi() {
+      const canOffer = !!(cwdInfo && cwdInfo.git_repo) && !resumeSelection;
+      if (!canOffer) worktreeToggle.checked = false;
+      const enabled = canOffer && !!worktreeToggle.checked;
+      worktreeField.style.display = canOffer ? "" : "none";
+      worktreeInput.disabled = !enabled;
+      worktreeInput.style.display = enabled ? "" : "none";
+      if (resumeSelection) startBtn.textContent = "Resume session";
+      else if (enabled) startBtn.textContent = "Create worktree session";
+      else startBtn.textContent = "Start session";
+    }
+
     return Object.freeze({
       newSessionProviderChoices,
       newSessionHasProviderChoices,
@@ -372,6 +658,23 @@
       selectNewSessionModel,
       launchPresetProviderChoice,
       applyNewSessionLaunchPreset,
+      renderRecentCwdOptions,
+      filteredRecentCwdOptions,
+      syncNewSessionNamePlaceholder,
+      syncNewSessionCwdHint,
+      setNewSessionCwdError,
+      clearNewSessionCwdInfo,
+      applyNewSessionCwdSuggestion,
+      renderRecentCwdMenu,
+      newSessionResumeLabel,
+      setNewSessionResumeSelection,
+      renderNewSessionResumeMenu,
+      scheduleNewSessionResumeLoad,
+      clearNewSessionResumeCandidates,
+      currentResumeSelection,
+      disposeResumeLoadTimer,
+      syncNewSessionTmuxUi,
+      syncNewSessionWorktreeUi,
     });
   }
 
