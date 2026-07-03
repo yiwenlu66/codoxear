@@ -34,7 +34,7 @@ Currently supported agent backends:
 
 - Headless session helper that can launch a backend session without an interactive terminal.
 - Uses backend adapter-owned launch options for Codex, Pi, and Claude Code, including backend-specific model/provider/reasoning flags.
-- Writes the same `socks/*.sock` + `socks/*.json` metadata shape the server expects and exposes the same control state schema (`busy`, `queue_len`, `interrupted_idle`) for readiness projection.
+- Writes the same `socks/*.sock` + `socks/*.json` metadata shape the server expects and exposes the same control state schema (`busy`, `queue_len`, `token`, `interrupted_idle`) for readiness/token projection.
 - Reuses shared terminal-query responses and backend log busy reducers where behavior should match the broker; it intentionally does not provide a foreground terminal UX.
 - Linux and macOS.
 
