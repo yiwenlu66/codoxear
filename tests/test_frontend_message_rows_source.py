@@ -211,7 +211,7 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
         self.assertIn("return codoxearMessageRows.trimRenderedRowTargets(rows, fromTop, maxRows, CHAT_DOM_WINDOW);", source)
         self.assertIn("return codoxearMessageRows.trimRowsBeforeViewportTargets(rows, maxRows, CHAT_DOM_WINDOW, viewportTop);", source)
         self.assertIn("for (const row of targets) row.remove();", source)
-        self.assertIn("renderedAtLiveTail = Boolean(fromTop);", source)
+        self.assertIn("transcriptScrollRuntime.setRenderedAtLiveTail(Boolean(fromTop));", source)
         self.assertIn("chatAssistantDedupeKey,", source)
         self.assertIn("consoleError: console.error.bind(console)", source)
         self.assertNotIn("function makeRow(ev, { ts, pending }) {\n          const role = ev.role", source)

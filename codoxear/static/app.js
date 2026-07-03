@@ -782,7 +782,6 @@
         const CHAT_SEARCH_ALL_COUNT_MAX = 1000;
         let activeMessageCopyRow = null;
         let pendingRecoveryFocusDescriptor = null;
-        let renderedAtLiveTail = true;
         let openSessionTailAbortController = null;
         let messagePollAbortController = null;
         const OLDER_AUTO_COOLDOWN_MS = 450;
@@ -814,10 +813,8 @@
 	        let localEchoSeq = 0;
 	        const pendingUser = [];
 	        let attachedFiles = 0;
-		        let autoScroll = true;
 			        let backfillToken = 0;
         let backfillState = null;
-			    let lastScrollTop = 0;
 				    let lastToken = null;
 				    let typingRow = null;
         let attachBadgeEl = null;
@@ -2191,25 +2188,24 @@
 
         function resetChatRenderState() {
           invalidateOlderLoad();
-          autoScroll = true;
+          transcriptScrollRuntime.enableAutoScroll();
           sending = false;
           recentEventKeys.length = 0;
           recentEventKeySet.clear();
           liveCursor = null;
-          renderedAtLiveTail = true;
+          transcriptScrollRuntime.markLiveTail();
           olderLoadRuntime.resetAutoTrigger();
               clickMetricPending = false;
           clearTranscriptDom();
               setOlderState({ hasMore: false, isLoading: false });
 	          typingRow = null;
-	          jumpBtn.style.display = "none";
+          jumpBtn.style.display = "none";
               updateChatNavButtons();
               if (loadedChatSearchSnapshot().open) closeChatSearch();
 	          backfillState = null;
 	          backfillToken += 1;
-	          lastScrollTop = 0;
-	          chat.scrollTop = 0;
-              syncVisibleTimeIndicator();
+          transcriptScrollRuntime.reset({ scrollTop: 0 });
+              transcriptScrollRuntime.syncVisibleTimeIndicator();
 	        }
 
         function clearTranscriptDom() {
@@ -2556,7 +2552,7 @@
           if (!selected) return;
           loadedChatSearchRuntime.setOpen(true);
           chatSearchBar.style.display = "flex";
-          syncVisibleTimeIndicator();
+          transcriptScrollRuntime.syncVisibleTimeIndicator();
           refreshLoadedChatSearch({ jump: false, preserveCurrent: true });
           chatSearchInput.focus({ preventScroll: true });
           chatSearchInput.select();
@@ -2568,7 +2564,7 @@
           clearChatSearchMarks();
           resetAllChatSearchCount();
           loadedChatSearchRuntime.setLoadingOlder(false);
-          syncVisibleTimeIndicator();
+          transcriptScrollRuntime.syncVisibleTimeIndicator();
         }
 
         async function loadOlderUntilChatSearchMatch({ boundaryMatch = null, focus = "first" } = {}) {
@@ -2714,7 +2710,7 @@
 
         function clearRenderedTranscriptRange() {
           setOlderState({ hasMore: false, isLoading: false });
-          renderedAtLiveTail = true;
+          transcriptScrollRuntime.markLiveTail();
         }
 
         function initPageLimit() {
@@ -2736,6 +2732,7 @@
           typeof codoxearTranscript.tailCacheMatchesSession !== "function" ||
           typeof codoxearTranscript.rememberTailSnapshot !== "function" ||
           typeof codoxearTranscript.appendTailSnapshotEvents !== "function" ||
+          typeof codoxearTranscript.createTranscriptScrollRuntime !== "function" ||
           typeof codoxearTranscript.createOlderLoadRuntime !== "function" ||
           typeof codoxearTranscript.createLoadedChatSearchRuntime !== "function" ||
           typeof codoxearTranscript.createChatSearchAllRuntime !== "function"
@@ -2757,6 +2754,24 @@
         function loadedChatSearchSnapshot() {
           return loadedChatSearchRuntime.snapshot();
         }
+
+        const transcriptScrollRuntime = codoxearTranscript.createTranscriptScrollRuntime({
+          chat,
+          jumpButton: jumpBtn,
+          timeChip: chatTimeChip,
+          requestAnimationFrame: (callback) => requestAnimationFrame(callback),
+          hasSelection: () => Boolean(selected),
+          isSearchOpen: () => loadedChatSearchSnapshot().open,
+          firstVisibleMessageRow,
+          dayLabel,
+          time24,
+          shouldCancelOlderLoad: () => olderLoadRuntime.shouldCancelOnScroll(),
+          cancelOlderLoad: invalidateOlderLoad,
+          autoLoadOlder: () => { void loadOlderMessages({ auto: true }); },
+          bottomThresholdPx: 80,
+          olderTopTriggerPx: OLDER_TOP_TRIGGER_PX,
+          olderCancelPx: OLDER_CANCEL_PX,
+        });
 
         const chatSearchAllRuntime = codoxearTranscript.createChatSearchAllRuntime({
           setTimeout: window.setTimeout.bind(window),
@@ -2929,13 +2944,13 @@
           recentEventKeySet.clear();
           backfillToken += 1;
           backfillState = null;
-          autoScroll = true;
+          transcriptScrollRuntime.enableAutoScroll();
           clearTranscriptDom();
           if (slotChange.current.state === "pending_bind") {
             renderPendingTranscriptSlot(sessionId);
           } else {
             setOlderState({ hasMore: false, isLoading: false });
-            syncJumpButton();
+            transcriptScrollRuntime.syncJumpButton();
             kickPoll(0);
           }
 
@@ -3001,43 +3016,8 @@
 	          } else if (row.nextSibling !== bottomSentinel) {
 	            chatInner.insertBefore(row, bottomSentinel);
 	          }
-	          if (autoScroll) requestAnimationFrame(() => scrollToBottom());
+	          if (transcriptScrollRuntime.snapshot().autoScroll) transcriptScrollRuntime.scheduleScrollToBottom();
 	        }
-
-        function isNearBottom() {
-          const thresholdPx = 80;
-          return chat.scrollHeight - (chat.scrollTop + chat.clientHeight) <= thresholdPx;
-        }
-
-        function syncVisibleTimeIndicator() {
-          if (!selected || loadedChatSearchSnapshot().open || (renderedAtLiveTail && (autoScroll || isNearBottom()))) {
-            chatTimeChip.style.display = "none";
-            chatTimeChip.textContent = "";
-            return;
-          }
-          const row = firstVisibleMessageRow();
-          const ts = row ? Number(row.dataset.ts || "0") : 0;
-          if (!Number.isFinite(ts) || ts <= 0) {
-            chatTimeChip.style.display = "none";
-            chatTimeChip.textContent = "";
-            return;
-          }
-          const d = new Date(ts * 1000);
-          chatTimeChip.textContent = `${dayLabel(d)} · ${time24(d)}`;
-          chatTimeChip.style.display = "inline-flex";
-        }
-
-        function syncJumpButton() {
-          jumpBtn.style.display = renderedAtLiveTail && (autoScroll || isNearBottom()) ? "none" : "inline-flex";
-          syncVisibleTimeIndicator();
-        }
-
-        function scrollToBottom() {
-          // Avoid scrollIntoView() on mobile Safari, which can scroll the whole page when the
-          // on-screen keyboard opens/closes.
-          chat.scrollTop = chat.scrollHeight;
-          lastScrollTop = chat.scrollTop;
-        }
 
         function ymd(d) {
           return codoxearDisplay.ymd(d);
@@ -3052,8 +3032,7 @@
         }
 
         function rebuildDecorations({ preserveScroll }) {
-          const oldTop = chat.scrollTop;
-          const oldH = chat.scrollHeight;
+          const scrollPosition = transcriptScrollRuntime.captureScrollPosition();
 
           for (const n of Array.from(chatInner.querySelectorAll(".day-sep"))) n.remove();
 
@@ -3082,12 +3061,12 @@
           }
 
           if (preserveScroll) {
-            chat.scrollTop = oldTop + (chat.scrollHeight - oldH);
+            transcriptScrollRuntime.preserveScrollFrom(scrollPosition);
           }
-          if (autoScroll) {
-            requestAnimationFrame(() => scrollToBottom());
+          if (transcriptScrollRuntime.snapshot().autoScroll) {
+            transcriptScrollRuntime.scheduleScrollToBottom();
           }
-          syncJumpButton();
+          transcriptScrollRuntime.syncJumpButton();
           updateChatNavButtons();
           syncMessageCopyTabStops();
           if (loadedChatSearchSnapshot().open) refreshLoadedChatSearch({ jump: false, preserveCurrent: true });
@@ -3097,7 +3076,7 @@
           const targets = trimRenderedRowTargets(renderedMessageRows(), fromTop, maxRows);
           if (!targets.length) return;
           for (const row of targets) row.remove();
-          renderedAtLiveTail = Boolean(fromTop);
+          transcriptScrollRuntime.setRenderedAtLiveTail(Boolean(fromTop));
         }
 
         function trimRenderedRowsBeforeViewport({ maxRows = CHAT_DOM_WINDOW } = {}) {
@@ -3171,7 +3150,7 @@
         }
 
         function isAdjacentAssistantDuplicateEvent(ev) {
-          if (!renderedAtLiveTail || !ev || ev.pending || ev.role !== "assistant") return false;
+          if (!transcriptScrollRuntime.snapshot().renderedAtLiveTail || !ev || ev.pending || ev.role !== "assistant") return false;
           const key = chatAssistantDedupeKey(ev);
           if (!key) return false;
           const rows = renderedMessageRows();
@@ -3713,10 +3692,10 @@
           }
 
           const pending = Boolean(ev.pending);
-          const stick = pending || (renderedAtLiveTail && (autoScroll || isNearBottom()));
-          if (!pending && !renderedAtLiveTail) {
+          const stick = pending || transcriptScrollRuntime.shouldStickToBottom();
+          if (!pending && !transcriptScrollRuntime.snapshot().renderedAtLiveTail) {
             markEventSeen(ev);
-            syncJumpButton();
+            transcriptScrollRuntime.syncJumpButton();
             return;
           }
           const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : ev.pending ? Date.now() / 1000 : null;
@@ -3730,9 +3709,9 @@
           markEventSeen(ev);
 
           if (stick) {
-            requestAnimationFrame(() => scrollToBottom());
+            transcriptScrollRuntime.scheduleScrollToBottom();
           }
-          syncJumpButton();
+          transcriptScrollRuntime.syncJumpButton();
         }
 
         function normalizedTranscriptEvents(events, { consumePending = false } = {}) {
@@ -3751,7 +3730,7 @@
 
         function renderTranscript(events, { preserveScroll = false } = {}) {
           const msgs = normalizedTranscriptEvents(events, { consumePending: true });
-          renderedAtLiveTail = true;
+          transcriptScrollRuntime.markLiveTail();
           clearTranscriptDom();
           if (!msgs.length) {
             restorePendingUserRowsForSession(selected);
@@ -3772,12 +3751,12 @@
 
         function renderDetachedTranscriptWindow(events, { hasMore = false } = {}) {
           const msgs = normalizedTranscriptEvents(events, { consumePending: false });
-          autoScroll = false;
-          renderedAtLiveTail = false;
+          transcriptScrollRuntime.disableAutoScroll();
+          transcriptScrollRuntime.setRenderedAtLiveTail(false);
           clearTranscriptDom();
           setOlderState({ hasMore: Boolean(hasMore), isLoading: false });
           if (!msgs.length) {
-            syncJumpButton();
+            transcriptScrollRuntime.syncJumpButton();
             return false;
           }
           recentEventKeys.length = 0;
@@ -3790,9 +3769,8 @@
           }
           chatInner.insertBefore(frag, bottomSentinel);
           rebuildDecorations({ preserveScroll: false });
-          chat.scrollTop = 1;
-          lastScrollTop = chat.scrollTop;
-          syncJumpButton();
+          transcriptScrollRuntime.setScrollTop(1);
+          transcriptScrollRuntime.syncJumpButton();
           return true;
         }
 
@@ -3803,7 +3781,7 @@
             msgs.push(ev);
           }
           if (!msgs.length) return;
-          autoScroll = false;
+          transcriptScrollRuntime.disableAutoScroll();
           const frag = document.createDocumentFragment();
           for (const ev of msgs) {
             const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
@@ -3814,20 +3792,20 @@
           const firstMsg = chatInner.querySelector(".msg-row:not(.typing-row)");
           const anchor = firstMsg || (typingRow && typingRow.isConnected ? typingRow : bottomSentinel);
           chatInner.insertBefore(frag, anchor);
-          const wasAtLiveTail = renderedAtLiveTail;
-          if (!preserveViewport) chat.scrollTop = 1;
+          const wasAtLiveTail = transcriptScrollRuntime.snapshot().renderedAtLiveTail;
+          if (!preserveViewport) transcriptScrollRuntime.setScrollTop(1);
           trimRenderedRows({ fromTop: false, maxRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK });
-          if (wasAtLiveTail && renderedAtLiveTail === false) {
-            autoScroll = false;
+          if (wasAtLiveTail && transcriptScrollRuntime.snapshot().renderedAtLiveTail === false) {
+            transcriptScrollRuntime.disableAutoScroll();
           }
           rebuildDecorations({ preserveScroll: false });
           if (preserveViewport && anchorRow && anchorRow.isConnected) {
-            chat.scrollTop = Math.max(0, anchorRow.offsetTop - anchorOffset);
+            transcriptScrollRuntime.setScrollTop(Math.max(0, anchorRow.offsetTop - anchorOffset));
           } else {
-            chat.scrollTop = 1;
+            transcriptScrollRuntime.setScrollTop(1);
           }
-          lastScrollTop = chat.scrollTop;
-          syncJumpButton();
+
+          transcriptScrollRuntime.syncJumpButton();
         }
 
         async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {
@@ -3948,8 +3926,7 @@
         }
 
         function maybeAutoLoadOlder() {
-          if (chat.scrollTop > OLDER_TOP_TRIGGER_PX) return;
-          void loadOlderMessages({ auto: true });
+          transcriptScrollRuntime.maybeAutoLoadOlder();
         }
 
         function applySessionRuntimeFromTail(sessionId, data) {
@@ -3974,10 +3951,7 @@
           renderTranscript(events, { preserveScroll: false });
           renderRecoveryPanelIfNeeded(selected);
           markClickFirstPaint();
-          requestAnimationFrame(() => {
-            scrollToBottom();
-            requestAnimationFrame(() => scrollToBottom());
-          });
+          transcriptScrollRuntime.scheduleScrollToBottom({ double: true });
         }
 
         function recoverySessionInfo(sessionId) {
@@ -4252,23 +4226,23 @@
         function renderPendingTranscriptSlot(sessionId) {
           clearTranscriptDom();
           setOlderState({ hasMore: false, isLoading: false });
-          renderedAtLiveTail = true;
+          transcriptScrollRuntime.markLiveTail();
           restorePendingUserRowsForSession(sessionId);
           renderRecoveryPanelIfNeeded(sessionId);
           markClickFirstPaint();
-          syncJumpButton();
+          transcriptScrollRuntime.syncJumpButton();
         }
 
         function renderTranscriptLoading(sessionId) {
           clearTranscriptDom();
           setOlderState({ hasMore: false, isLoading: false });
-          renderedAtLiveTail = true;
+          transcriptScrollRuntime.markLiveTail();
           restorePendingUserRowsForSession(sessionId);
           const row = el("div", { class: "msg-row assistant typing-row transcript-loading-row" });
           row.dataset.role = "assistant";
           row.appendChild(el("div", { class: "msg assistant loading", role: "status", "aria-live": "polite", text: "Loading transcript…" }));
           chatInner.insertBefore(row, bottomSentinel);
-          syncJumpButton();
+          transcriptScrollRuntime.syncJumpButton();
         }
 
         function renderTranscriptLoadError(sessionId, err, { preserveTranscript = false } = {}) {
@@ -4276,7 +4250,7 @@
           if (!preserveTranscript) {
             clearTranscriptDom();
             setOlderState({ hasMore: false, isLoading: false });
-            renderedAtLiveTail = true;
+            transcriptScrollRuntime.markLiveTail();
             restorePendingUserRowsForSession(sessionId);
           }
           const reason = err && err.message ? ` ${err.message}` : "";
@@ -4304,7 +4278,7 @@
           setTyping(false);
           renderRecoveryPanelIfNeeded(sessionId);
           markClickFirstPaint();
-          syncJumpButton();
+          transcriptScrollRuntime.syncJumpButton();
         }
 
         function applyCachedTail(sessionId, cache, sessionMeta) {
@@ -4596,7 +4570,7 @@
           if (!selected) return;
           const sid = selected;
           invalidateOlderLoad();
-          autoScroll = true;
+          transcriptScrollRuntime.enableAutoScroll();
           try {
             await openSession(sid, { useCache: false, fallbackToCacheOnFailure: true });
           } catch (e) {
@@ -4604,10 +4578,7 @@
             setToast(`jump error: ${e && e.message ? e.message : "unknown error"}`);
           }
           if (selected !== sid) return;
-          requestAnimationFrame(() => {
-            scrollToBottom();
-            syncJumpButton();
-          });
+          transcriptScrollRuntime.scheduleScrollToBottom({ syncJump: true });
           kickPoll(0);
         }
 
@@ -8759,49 +8730,28 @@
         };
 	        backdrop.onclick = () => setSidebarOpen(false);
 
-	        chat.addEventListener("scroll", () => {
-	          const cur = chat.scrollTop;
-	          const d = cur - lastScrollTop;
-	          lastScrollTop = cur;
-	          if (d < 0) autoScroll = false;
-          else if (isNearBottom()) autoScroll = true;
-          if (olderLoadRuntime.shouldCancelOnScroll() && cur > OLDER_CANCEL_PX) invalidateOlderLoad();
-          if (cur <= OLDER_TOP_TRIGGER_PX && d <= 0) maybeAutoLoadOlder();
-          syncJumpButton();
+        chat.addEventListener("scroll", () => {
+          transcriptScrollRuntime.handleScroll();
         });
         chat.addEventListener(
           "wheel",
           (e) => {
-            if (e.deltaY < 0) {
-              autoScroll = false;
-              syncJumpButton();
-              maybeAutoLoadOlder();
-            }
+            transcriptScrollRuntime.handleWheel(e);
           },
           { passive: true }
         );
-        let touchY = null;
         chat.addEventListener(
           "touchstart",
           (e) => {
-            const t = e.touches && e.touches[0];
-            touchY = t ? t.clientY : null;
+            transcriptScrollRuntime.handleTouchStart(e);
           },
           { passive: true }
         );
         chat.addEventListener(
           "touchmove",
           (e) => {
-            const t = e.touches && e.touches[0];
-            if (!t || touchY === null) return;
-            const dy = t.clientY - touchY;
-            touchY = t.clientY;
             // Finger moves down -> content scrolls up.
-            if (dy > 0) {
-              autoScroll = false;
-              syncJumpButton();
-              maybeAutoLoadOlder();
-            }
+            transcriptScrollRuntime.handleTouchMove(e);
           },
           { passive: true }
         );
@@ -8858,7 +8808,7 @@
 	             }
 	             updateAppHeightVar();
 	             normalizePageScroll();
-	             if (preserveChatBottom && (autoScroll || isNearBottom())) scrollToBottom();
+	             if (preserveChatBottom && transcriptScrollRuntime.shouldAutoScrollOrNearBottom()) transcriptScrollRuntime.scrollToBottom();
 	             if (!isIOSViewportGuardActive()) {
 	               iosViewportGuardTimer = null;
 	               return;
@@ -8878,7 +8828,7 @@
 	             }
 	             if (document.activeElement === textarea || isIOSViewportGuardActive()) {
 	               normalizePageScroll();
-	               if (autoScroll || isNearBottom()) requestAnimationFrame(() => scrollToBottom());
+	               if (transcriptScrollRuntime.shouldAutoScrollOrNearBottom()) transcriptScrollRuntime.scheduleScrollToBottom();
 	             }
 	           };
 	           addAppEvent(window.visualViewport, "resize", onViewportShift);
@@ -8960,22 +8910,22 @@
 	          const next = needsMultiline ? Math.min(h, maxPx) : basePx;
 	          textarea.style.height = `${next}px`;
 	          textarea.style.overflowY = h > maxPx ? "auto" : "hidden";
-	          if (autoScroll) requestAnimationFrame(() => scrollToBottom());
+	          if (transcriptScrollRuntime.snapshot().autoScroll) transcriptScrollRuntime.scheduleScrollToBottom();
 	        }
 	        textarea.addEventListener("input", autoGrow);
 	          textarea.addEventListener(
 	            "focus",
 	            () => {
-	              const wasNear = isNearBottom();
+	              const wasNear = transcriptScrollRuntime.isNearBottom();
               if (wasNear) {
-                autoScroll = true;
-                syncJumpButton();
+                transcriptScrollRuntime.enableAutoScroll();
+                transcriptScrollRuntime.syncJumpButton();
               }
 	              if (isIOS) runIOSViewportGuard({ preserveChatBottom: wasNear, durationMs: 1800 });
 	              else {
 	                const tick = () => {
 	                  updateAppHeightVar();
-	                  if (wasNear) scrollToBottom();
+	                  if (wasNear) transcriptScrollRuntime.scrollToBottom();
 	                };
 	                requestAnimationFrame(tick);
 	                setTimeout(tick, 120);
@@ -9010,7 +8960,7 @@
           form.requestSubmit();
         });
         addAppEvent(window, "resize", () => {
-          if (autoScroll) requestAnimationFrame(() => scrollToBottom());
+          if (transcriptScrollRuntime.snapshot().autoScroll) transcriptScrollRuntime.scheduleScrollToBottom();
         });
 
 	        attachBtn.onclick = () => {
@@ -9184,7 +9134,7 @@
           const localId = ++localEchoSeq;
           const t0 = Date.now() / 1000;
           if (renderHere && !renewsTranscript) {
-            if (!renderedAtLiveTail) {
+            if (!transcriptScrollRuntime.snapshot().renderedAtLiveTail) {
               clearTranscriptDom();
               clearRenderedTranscriptRange();
               setOlderState({ hasMore: false, isLoading: false });

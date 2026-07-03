@@ -125,6 +125,215 @@
     return value;
   }
 
+  function createTranscriptScrollRuntime(options = {}) {
+    const chat = requireNode(options.chat, "chat");
+    const jumpButton = requireNode(options.jumpButton, "jumpButton");
+    const timeChip = requireNode(options.timeChip, "timeChip");
+    const requestAnimationFrameFn = requireFunction(options.requestAnimationFrame, "requestAnimationFrame");
+    const hasSelection = requireFunction(options.hasSelection, "hasSelection");
+    const isSearchOpen = requireFunction(options.isSearchOpen, "isSearchOpen");
+    const firstVisibleMessageRow = requireFunction(options.firstVisibleMessageRow, "firstVisibleMessageRow");
+    const dayLabel = requireFunction(options.dayLabel, "dayLabel");
+    const time24 = requireFunction(options.time24, "time24");
+    const shouldCancelOlderLoad = requireFunction(options.shouldCancelOlderLoad, "shouldCancelOlderLoad");
+    const cancelOlderLoad = requireFunction(options.cancelOlderLoad, "cancelOlderLoad");
+    const autoLoadOlder = requireFunction(options.autoLoadOlder, "autoLoadOlder");
+    const bottomThresholdPx = Math.max(0, Number(options.bottomThresholdPx) || 80);
+    const olderTopTriggerPx = Math.max(0, Number(options.olderTopTriggerPx) || 0);
+    const olderCancelPx = Math.max(0, Number(options.olderCancelPx) || 0);
+    let autoScroll = true;
+    let renderedAtLiveTail = true;
+    let lastScrollTop = Number(chat.scrollTop) || 0;
+    let touchY = null;
+
+    function snapshot() {
+      return Object.freeze({ autoScroll, renderedAtLiveTail, lastScrollTop });
+    }
+
+    function isNearBottom() {
+      const scrollHeight = Number(chat.scrollHeight) || 0;
+      const scrollTop = Number(chat.scrollTop) || 0;
+      const clientHeight = Number(chat.clientHeight) || 0;
+      return scrollHeight - (scrollTop + clientHeight) <= bottomThresholdPx;
+    }
+
+    function shouldStickToBottom() {
+      return Boolean(renderedAtLiveTail && (autoScroll || isNearBottom()));
+    }
+
+    function shouldAutoScrollOrNearBottom() {
+      return Boolean(autoScroll || isNearBottom());
+    }
+
+    function syncVisibleTimeIndicator() {
+      if (!hasSelection() || isSearchOpen() || shouldStickToBottom()) {
+        timeChip.style.display = "none";
+        timeChip.textContent = "";
+        return Object.freeze({ visible: false, text: "" });
+      }
+      const row = firstVisibleMessageRow();
+      const ts = row ? Number(row.dataset && row.dataset.ts ? row.dataset.ts : "0") : 0;
+      if (!Number.isFinite(ts) || ts <= 0) {
+        timeChip.style.display = "none";
+        timeChip.textContent = "";
+        return Object.freeze({ visible: false, text: "" });
+      }
+      const d = new Date(ts * 1000);
+      const text = `${dayLabel(d)} · ${time24(d)}`;
+      timeChip.textContent = text;
+      timeChip.style.display = "inline-flex";
+      return Object.freeze({ visible: true, text });
+    }
+
+    function syncJumpButton() {
+      jumpButton.style.display = shouldStickToBottom() ? "none" : "inline-flex";
+      syncVisibleTimeIndicator();
+      return snapshot();
+    }
+
+    function setAutoScroll(nextAutoScroll) {
+      autoScroll = Boolean(nextAutoScroll);
+      return snapshot();
+    }
+
+    function enableAutoScroll() {
+      return setAutoScroll(true);
+    }
+
+    function disableAutoScroll() {
+      return setAutoScroll(false);
+    }
+
+    function setRenderedAtLiveTail(nextRenderedAtLiveTail) {
+      renderedAtLiveTail = Boolean(nextRenderedAtLiveTail);
+      return snapshot();
+    }
+
+    function markLiveTail() {
+      return setRenderedAtLiveTail(true);
+    }
+
+    function markDetachedWindow() {
+      autoScroll = false;
+      renderedAtLiveTail = false;
+      return snapshot();
+    }
+
+    function setScrollTop(nextTop) {
+      const top = Math.max(0, Number(nextTop) || 0);
+      chat.scrollTop = top;
+      lastScrollTop = Number(chat.scrollTop) || 0;
+      return snapshot();
+    }
+
+    function scrollToBottom() {
+      chat.scrollTop = Number(chat.scrollHeight) || 0;
+      lastScrollTop = Number(chat.scrollTop) || 0;
+      return snapshot();
+    }
+
+    function scheduleScrollToBottom({ double = false, syncJump = false } = {}) {
+      requestAnimationFrameFn(() => {
+        scrollToBottom();
+        if (double) requestAnimationFrameFn(() => scrollToBottom());
+        if (syncJump) syncJumpButton();
+      });
+    }
+
+    function captureScrollPosition() {
+      return Object.freeze({ top: Number(chat.scrollTop) || 0, height: Number(chat.scrollHeight) || 0 });
+    }
+
+    function preserveScrollFrom(position) {
+      const top = position && Number.isFinite(Number(position.top)) ? Number(position.top) : 0;
+      const height = position && Number.isFinite(Number(position.height)) ? Number(position.height) : 0;
+      chat.scrollTop = top + ((Number(chat.scrollHeight) || 0) - height);
+      return snapshot();
+    }
+
+    function reset({ scrollTop = 0 } = {}) {
+      autoScroll = true;
+      renderedAtLiveTail = true;
+      setScrollTop(scrollTop);
+      syncVisibleTimeIndicator();
+      jumpButton.style.display = "none";
+      return snapshot();
+    }
+
+    function maybeAutoLoadOlder() {
+      if ((Number(chat.scrollTop) || 0) > olderTopTriggerPx) return false;
+      autoLoadOlder();
+      return true;
+    }
+
+    function handleScroll() {
+      const cur = Number(chat.scrollTop) || 0;
+      const delta = cur - lastScrollTop;
+      lastScrollTop = cur;
+      if (delta < 0) autoScroll = false;
+      else if (isNearBottom()) autoScroll = true;
+      if (shouldCancelOlderLoad() && cur > olderCancelPx) cancelOlderLoad();
+      if (cur <= olderTopTriggerPx && delta <= 0) maybeAutoLoadOlder();
+      syncJumpButton();
+      return Object.freeze({ delta, ...snapshot() });
+    }
+
+    function handleWheel(event) {
+      if (event && Number(event.deltaY) < 0) {
+        autoScroll = false;
+        syncJumpButton();
+        maybeAutoLoadOlder();
+      }
+      return snapshot();
+    }
+
+    function handleTouchStart(event) {
+      const touch = event && event.touches && event.touches[0];
+      touchY = touch ? Number(touch.clientY) : null;
+      return snapshot();
+    }
+
+    function handleTouchMove(event) {
+      const touch = event && event.touches && event.touches[0];
+      if (!touch || touchY === null) return snapshot();
+      const y = Number(touch.clientY);
+      const deltaY = y - touchY;
+      touchY = y;
+      if (deltaY > 0) {
+        autoScroll = false;
+        syncJumpButton();
+        maybeAutoLoadOlder();
+      }
+      return snapshot();
+    }
+
+    return Object.freeze({
+      captureScrollPosition,
+      disableAutoScroll,
+      enableAutoScroll,
+      handleScroll,
+      handleTouchMove,
+      handleTouchStart,
+      handleWheel,
+      isNearBottom,
+      markDetachedWindow,
+      markLiveTail,
+      maybeAutoLoadOlder,
+      preserveScrollFrom,
+      reset,
+      scheduleScrollToBottom,
+      scrollToBottom,
+      setAutoScroll,
+      setRenderedAtLiveTail,
+      setScrollTop,
+      shouldAutoScrollOrNearBottom,
+      shouldStickToBottom,
+      snapshot,
+      syncJumpButton,
+      syncVisibleTimeIndicator,
+    });
+  }
+
   function createOlderLoadRuntime(options = {}) {
     const wrap = requireNode(options.olderWrap, "olderWrap");
     const button = requireNode(options.olderButton, "olderButton");
@@ -439,6 +648,7 @@
     tailCacheMatchesSession,
     rememberTailSnapshot,
     appendTailSnapshotEvents,
+    createTranscriptScrollRuntime,
     createOlderLoadRuntime,
     createLoadedChatSearchRuntime,
     createChatSearchAllRuntime,

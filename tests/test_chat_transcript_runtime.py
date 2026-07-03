@@ -30,6 +30,127 @@ def _source_between(start: str, end: str) -> str:
 
 
 class TestChatTranscriptRuntime(unittest.TestCase):
+    def test_transcript_scroll_runtime_owns_bottom_lock_and_input_policy(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const ctx = {{ window: {{}} }};
+            const vm = require("vm");
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            const rafs = [];
+            const chat = {{ scrollTop: 0, scrollHeight: 500, clientHeight: 100 }};
+            const jumpButton = {{ style: {{ display: "" }} }};
+            const timeChip = {{ style: {{ display: "" }}, textContent: "" }};
+            let selected = true;
+            let searchOpen = false;
+            let cancelOlder = 0;
+            let autoLoadOlder = 0;
+            let cancelEligible = false;
+            const firstRow = {{ dataset: {{ ts: "1000" }} }};
+            const runtime = ctx.window.CodoxearTranscript.createTranscriptScrollRuntime({{
+              chat,
+              jumpButton,
+              timeChip,
+              requestAnimationFrame: (fn) => rafs.push(fn),
+              hasSelection: () => selected,
+              isSearchOpen: () => searchOpen,
+              firstVisibleMessageRow: () => firstRow,
+              dayLabel: () => "Day",
+              time24: () => "12:34",
+              shouldCancelOlderLoad: () => cancelEligible,
+              cancelOlderLoad: () => {{ cancelOlder += 1; }},
+              autoLoadOlder: () => {{ autoLoadOlder += 1; }},
+              bottomThresholdPx: 80,
+              olderTopTriggerPx: 1,
+              olderCancelPx: 48,
+            }});
+            runtime.syncJumpButton();
+            const initialProjection = {{ jump: jumpButton.style.display, time: timeChip.style.display, text: timeChip.textContent }};
+            runtime.scrollToBottom();
+            const afterBottom = {{ top: chat.scrollTop, snapshot: runtime.snapshot() }};
+            chat.scrollTop = 100;
+            const upScroll = runtime.handleScroll();
+            runtime.markDetachedWindow();
+            const detachedTime = runtime.syncVisibleTimeIndicator();
+            searchOpen = true;
+            const searchHidden = runtime.syncVisibleTimeIndicator();
+            searchOpen = false;
+            cancelEligible = true;
+            chat.scrollTop = 50;
+            runtime.handleScroll();
+            chat.scrollTop = 0;
+            runtime.handleScroll();
+            const afterThresholds = {{ cancelOlder, autoLoadOlder, snapshot: runtime.snapshot(), jump: jumpButton.style.display }};
+            chat.scrollTop = 400;
+            runtime.handleScroll();
+            const afterNearBottom = runtime.snapshot();
+            chat.scrollTop = 10;
+            runtime.handleWheel({{ deltaY: -1 }});
+            const afterWheelAwayFromTop = {{ autoLoadOlder, snapshot: runtime.snapshot() }};
+            chat.scrollTop = 0;
+            runtime.handleWheel({{ deltaY: -1 }});
+            runtime.handleTouchStart({{ touches: [{{ clientY: 10 }}] }});
+            runtime.handleTouchMove({{ touches: [{{ clientY: 20 }}] }});
+            const afterWheelTouchAtTop = {{ autoLoadOlder, snapshot: runtime.snapshot() }};
+            chat.scrollTop = 5;
+            chat.scrollHeight = 800;
+            runtime.markLiveTail();
+            runtime.enableAutoScroll();
+            runtime.scheduleScrollToBottom({{ double: true, syncJump: true }});
+            const scheduledBeforeRun = rafs.length;
+            rafs.shift()();
+            const afterFirstRaf = {{ top: chat.scrollTop, queued: rafs.length }};
+            rafs.shift()();
+            const afterSecondRaf = {{ top: chat.scrollTop, jump: jumpButton.style.display }};
+            runtime.reset({{ scrollTop: 0 }});
+            const reset = {{ snapshot: runtime.snapshot(), top: chat.scrollTop, jump: jumpButton.style.display, time: timeChip.style.display }};
+            let missingError = "";
+            try {{ ctx.window.CodoxearTranscript.createTranscriptScrollRuntime({{ chat, jumpButton, timeChip }}); }} catch (err) {{ missingError = err && err.message ? err.message : String(err); }}
+            process.stdout.write(JSON.stringify({{
+              initialProjection,
+              afterBottom,
+              upScroll,
+              detachedTime,
+              searchHidden,
+              afterThresholds,
+              afterNearBottom,
+              afterWheelAwayFromTop,
+              afterWheelTouchAtTop,
+              scheduledBeforeRun,
+              afterFirstRaf,
+              afterSecondRaf,
+              reset,
+              missingError,
+              frozen: Object.isFrozen(runtime),
+            }}));
+            """
+        )
+        out = _run_node(js)
+        self.assertEqual(out["initialProjection"], {"jump": "none", "time": "none", "text": ""})
+        self.assertEqual(out["afterBottom"]["top"], 500)
+        self.assertTrue(out["afterBottom"]["snapshot"]["autoScroll"])
+        self.assertLess(out["upScroll"]["delta"], 0)
+        self.assertFalse(out["upScroll"]["autoScroll"])
+        self.assertEqual(out["detachedTime"], {"visible": True, "text": "Day · 12:34"})
+        self.assertEqual(out["searchHidden"], {"visible": False, "text": ""})
+        self.assertEqual(out["afterThresholds"]["cancelOlder"], 1)
+        self.assertEqual(out["afterThresholds"]["autoLoadOlder"], 1)
+        self.assertEqual(out["afterThresholds"]["jump"], "inline-flex")
+        self.assertTrue(out["afterNearBottom"]["autoScroll"])
+        self.assertEqual(out["afterWheelAwayFromTop"]["autoLoadOlder"], 1)
+        self.assertFalse(out["afterWheelAwayFromTop"]["snapshot"]["autoScroll"])
+        self.assertEqual(out["afterWheelTouchAtTop"]["autoLoadOlder"], 3)
+        self.assertFalse(out["afterWheelTouchAtTop"]["snapshot"]["autoScroll"])
+        self.assertEqual(out["scheduledBeforeRun"], 1)
+        self.assertEqual(out["afterFirstRaf"], {"top": 800, "queued": 1})
+        self.assertEqual(out["afterSecondRaf"], {"top": 800, "jump": "none"})
+        self.assertEqual(out["reset"]["snapshot"], {"autoScroll": True, "renderedAtLiveTail": True, "lastScrollTop": 0})
+        self.assertEqual(out["reset"]["top"], 0)
+        self.assertEqual(out["reset"]["jump"], "none")
+        self.assertIn("transcript dependency missing: requestAnimationFrame", out["missingError"])
+        self.assertTrue(out["frozen"])
+
     def test_older_load_runtime_owns_state_currentness_and_ui_projection(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
@@ -636,8 +757,12 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         js = textwrap.dedent(
             f"""
             const ctx = {{
-              renderedAtLiveTail: false,
-              autoScroll: false,
+              transcriptScrollRuntime: {{
+                snapshot: () => ({{ renderedAtLiveTail: false }}),
+                shouldStickToBottom: () => false,
+                syncJumpButton: () => {{ ctx.jumps += 1; }},
+                scheduleScrollToBottom: () => {{ ctx.scrolled = true; }},
+              }},
               seen: 0,
               jumps: 0,
               made: 0,
@@ -693,8 +818,12 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         js = textwrap.dedent(
             f"""
             const ctx = {{
-              renderedAtLiveTail: true,
-              autoScroll: true,
+              transcriptScrollRuntime: {{
+                snapshot: () => ({{ renderedAtLiveTail: true }}),
+                shouldStickToBottom: () => true,
+                syncJumpButton: () => {{ ctx.jumped = true; }},
+                scheduleScrollToBottom: () => {{ ctx.scrolled = true; }},
+              }},
               recentEventKeys: [],
               recentEventKeySet: new Set(),
               RECENT_EVENT_KEYS_MAX: 320,
@@ -755,7 +884,9 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               selected: "sid",
               sending: false,
               localEchoSeq: 0,
-              renderedAtLiveTail: true,
+              transcriptScrollRuntime: {{
+                snapshot: () => ({{ renderedAtLiveTail: true }}),
+              }},
               pendingUser: [],
               sessionIndex: new Map([["sid", {{ agent_backend: "codex" }}]]),
               detached: 0,
