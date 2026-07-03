@@ -8285,3 +8285,14 @@
   - broker/sessiond integration: both emit structured `busy`/`queue_len` state observations accepted by `broker_runtime_state(...)`, with broker also emitting explicit `interrupted_idle` when known.
 - Item-5 validation set after route-cap cleanup: `python3 -m pytest -q tests/test_session_runtime.py tests/test_unattended_sweep.py tests/test_queue_sweep_idle_guard.py tests/test_session_manager_method_bindings.py tests/test_session_manager_factories.py tests/test_diagnostics_routes.py tests/test_diagnostics_source.py tests/test_message_route_source.py tests/test_message_transcript_state.py tests/test_session_routes.py tests/test_queue_routes.py tests/test_queue_runtime.py tests/test_queue_store.py tests/test_session_queue.py tests/test_sessions_pending_log_idle.py tests/test_broker_busy_state.py tests/test_idle_heuristics.py tests/test_server_route_deps_caps.py tests/test_route_decomposition_source.py tests/test_session_listing.py tests/test_session_discovery.py tests/test_sessiond_control_source.py tests/test_sessiond_state_source.py` returned `221 passed, 4 subtests passed`.
 - Commitment: Workbench item 5 is now supported as complete for the specified mechanism; full local, Docker, and clean-room review remain acceptance gates for all eight items, not per-item completion evidence.
+
+## 2026-07-03T11:48:00Z Moved deleted-session cleanup into store lifecycle
+- Functional commit `bc7991c Short-circuit runtime readiness for broker queue` repaired a central runtime-model invariant exposed by item-6 validation: broker queue length makes the session not ready and should not require/parse log idle evidence.
+- Functional commit `82500b7 Move deleted session cleanup into store lifecycle` moved persistent-map deletion cleanup into `SessionStore.clear_deleted_session_state(...)` plus `save_deleted_session_state_changes(...)`.
+- Mechanism: `SessionCleanupCoordinator` now removes registry/input-lock state and delegates aliases, sidebar dependencies, hidden ids, unattended config, file history including legacy cwd buckets, pending attachment ids, direct commit-unknown sends, and queue/recovery preservation to the store lifecycle; live-session deletion passes the session cwd into the same lifecycle path instead of separately invoking file-history clearing.
+- Queue recovery marking moved into `QueueStore.mark_orphan_recovery_items(...)`, so both queue operations and store deletion lifecycle share the same mutation primitive.
+- Validation under checkpoint cadence:
+  - py_compile for changed runtime/store/lifecycle/queue modules and tests passed.
+  - Focused store/queue/server-persistence/factory/binding/runtime validation returned `132 passed, 22 subtests passed`.
+  - Broader store/lifecycle/listing/queue/readiness validation returned `228 passed, 26 subtests passed`.
+  - `git diff --check` and staged `git diff --cached --check` passed before commits.
