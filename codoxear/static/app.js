@@ -8099,41 +8099,8 @@
             searchActive: filePickerMenuState.isSearchActive(),
             query,
             searchState: filePickerSearchSnapshot(),
-            draftSuppressed: () => filePickerDraftSuppressed(),
+            draftSuppressed: () => filePickerMenuState.draftSuppressed(filePickerInput.value),
           };
-        }
-
-        function normalizeSamePathFilePickerScores(entries) {
-          return codoxearFilePicker.normalizeSamePathFilePickerScores(entries);
-        }
-
-        function localFilePickerSearchEntries(query) {
-          return codoxearFilePicker.localFilePickerSearchEntries(filePickerEntryContext(query), query);
-        }
-
-        function pendingSessionPathEntry(path) {
-          return codoxearFilePicker.pendingSessionPathEntry(path);
-        }
-
-        function prependPendingSessionPathEntry(entries, query) {
-          return codoxearFilePicker.prependPendingSessionPathEntry(entries, query);
-        }
-
-        function filePickerDraftSuppressed() {
-          return filePickerMenuState.draftSuppressed(filePickerInput.value);
-        }
-
-        function filePickerAmbiguousChoiceActive() {
-          return filePickerMenuState.ambiguousChoiceActive(filePickerInput.value);
-        }
-
-        function prependDraftFileEntry(entries, query) {
-          if (filePickerDraftSuppressed()) return entries;
-          const draftPath = normalizeDraftFilePath(query);
-          if (draftPath && !entries.some((entry) => entry.path === draftPath)) {
-            return [draftFileEntry(draftPath), ...entries];
-          }
-          return entries;
         }
 
         function visibleFilePickerEntries() {

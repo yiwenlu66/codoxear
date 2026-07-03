@@ -141,7 +141,7 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
         "normalizeFileCandidateSource",
     ]
     snippet = "\n".join(js_function(source, name) for name in wrapper_names) + "\n" + source[start:end]
-    snippet_with_helpers = "const codoxearFileHelpers = window.CodoxearFileHelpers;\nconst codoxearFilePicker = window.CodoxearFilePicker;\n" + snippet + "\nglobalThis.__test_file_picker_search = { applyFileCandidateEntries, visibleFilePickerEntries, localFilePickerSearchEntries };\n"
+    snippet_with_helpers = "const codoxearFileHelpers = window.CodoxearFileHelpers;\nconst codoxearFilePicker = window.CodoxearFilePicker;\n" + snippet + "\nglobalThis.__test_file_picker_search = { applyFileCandidateEntries, visibleFilePickerEntries, localFilePickerSearchEntries: (query) => codoxearFilePicker.localFilePickerSearchEntries(filePickerEntryContext(query), query) };\n"
     display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
     file_helpers_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
     file_picker_source = APP_FILE_PICKER_JS.read_text(encoding="utf-8")
@@ -974,8 +974,10 @@ class TestFilePickerSearchSource(unittest.TestCase):
     def test_source_shows_pending_full_project_footer(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         picker_source = APP_FILE_PICKER_JS.read_text(encoding="utf-8")
-        self.assertIn("function localFilePickerSearchEntries(query)", source)
-        self.assertIn("function prependDraftFileEntry(entries, query)", source)
+        self.assertNotIn("function localFilePickerSearchEntries(query)", source)
+        self.assertNotIn("function prependDraftFileEntry(entries, query)", source)
+        self.assertIn("function localFilePickerSearchEntries(context, query)", picker_source)
+        self.assertIn("function prependDraftFileEntry(entries, query, context)", picker_source)
         self.assertNotIn('appendFilePickerStatusRow("Searching full project...");', source)
         self.assertIn('appendStatus("Searching full project...");', picker_source)
         self.assertNotIn("if (fileSearchPendingQuery === query) return null;", source)
