@@ -1,15 +1,19 @@
 import json
-import types
 import unittest
 import urllib.parse
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
+from types import SimpleNamespace
 
-from codoxear import server
+from codoxear.message_cursor import decode_message_cursor
+from codoxear.message_cursor import encode_message_cursor
+from codoxear.message_routes import MessageRouteDeps
 from codoxear.message_routes import _read_chat_export_events
+from codoxear.message_routes import handle_messages_history
+from codoxear.message_routes import handle_messages_search
+from codoxear.message_routes import handle_messages_tail
 from codoxear.rollout_log import _read_chat_history_page
-from codoxear.server import Session
+from codoxear.session_model import Session
 from codoxear.transcript_search import casefold_match_span
 from codoxear.transcript_search import clip_search_match_text
 from codoxear.transcript_search import clip_search_text_around_query
@@ -19,7 +23,6 @@ from codoxear.transcript_search import search_chat_log_bounded
 
 
 APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
-SERVER_PY = Path(__file__).resolve().parents[1] / "codoxear" / "server.py"
 
 
 def _write_assistant_rows(path: Path, count: int) -> None:
@@ -361,249 +364,282 @@ class TestTranscriptExport(unittest.TestCase):
         self.assertEqual(len(matches), 1)
         self.assertEqual(matches[0]["_before_byte"], 1)
 
-    def test_messages_search_route_applies_text_max_to_response_matches(self) -> None:
-        with TemporaryDirectory() as td:
-            log_path = Path(td) / "rollout.jsonl"
-            text = "x" * 40 + "needle" + "y" * 40
-            row = {
-                "type": "response_item",
-                "payload": {
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [{"type": "output_text", "text": text}],
-                    "phase": "final_answer",
-                },
-                "ts": 1.0,
-            }
-            second = {
-                "type": "response_item",
-                "payload": {
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [{"type": "output_text", "text": "second needle match"}],
-                    "phase": "final_answer",
-                },
-                "ts": 2.0,
-            }
-            log_path.write_text(json.dumps(row) + "\n" + json.dumps(second) + "\n", encoding="utf-8")
-            session = Session(
-                session_id="s1",
-                thread_id="thread-1",
-                broker_pid=1,
-                codex_pid=1,
-                agent_backend="codex",
-                owned=False,
-                start_ts=0.0,
-                cwd=str(Path(td)),
-                log_path=log_path,
-                sock_path=Path(td) / "s1.sock",
-            )
-            fake_manager = types.SimpleNamespace(
-                refresh_session_meta=lambda _sid: None,
-                get_session=lambda _sid: session,
-                _attach_notification_texts=lambda matches: matches,
-            )
-            responses = []
-            handler = server.Handler.__new__(server.Handler)
-            parsed = urllib.parse.urlparse("/api/sessions/s1/messages/search?q=needle&limit=1&text_max=18")
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-
-            with patch.object(server, "MANAGER", fake_manager), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server,
-                "_json_response",
-                side_effect=lambda _handler, status, obj: responses.append((status, obj)),
-            ):
-                server.Handler.do_GET(handler)
-
-            self.assertEqual(len(responses), 1)
-            status, body = responses[0]
-            self.assertEqual(status, 200)
-            self.assertEqual(body["transcript_state"], "bound")
-            self.assertEqual(body["thread_id"], "thread-1")
-            self.assertEqual(body["log_path"], str(log_path))
-            self.assertEqual(body["match_count"], 2)
-            self.assertEqual(len(body["matches"]), 1)
-            match = body["matches"][0]
-            self.assertLessEqual(len(match["text"]), 18)
-            self.assertIn("needle", match["text"])
-            self.assertTrue(match["text_truncated"])
-            self.assertIsInstance(match.get("_before_byte"), int)
-            self.assertNotIn("_after_byte", match)
-            self.assertIsInstance(match.get("history_cursor"), str)
-            self.assertIsInstance(match.get("load_cursor"), str)
-            target_pos = server._decode_message_cursor(match["history_cursor"], kind="history", session=session)
-            self.assertEqual(target_pos, match["_before_byte"])
-            load_pos = server._decode_message_cursor(match["load_cursor"], kind="history", session=session)
-            self.assertGreater(load_pos, match["_before_byte"])
-            window_events, _next_before, _has_older = _read_chat_history_page(log_path, before_byte=load_pos, limit=20)
-            self.assertEqual(window_events[-1]["text"], text)
-
-    def test_messages_search_route_marks_truncated_when_oversized_record_skipped(self) -> None:
-        with TemporaryDirectory() as td:
-            log_path = Path(td) / "rollout.jsonl"
-            oversized = {
-                "type": "response_item",
-                "payload": {
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [{"type": "output_text", "text": "x" * 200 + " needle hidden by line cap"}],
-                    "phase": "final_answer",
-                },
-                "ts": 1.0,
-            }
-            log_path.write_text(json.dumps(oversized) + "\n", encoding="utf-8")
-            session = Session(
-                session_id="s1",
-                thread_id="thread-1",
-                broker_pid=1,
-                codex_pid=1,
-                agent_backend="codex",
-                owned=False,
-                start_ts=0.0,
-                cwd=str(Path(td)),
-                log_path=log_path,
-                sock_path=Path(td) / "s1.sock",
-            )
-            fake_manager = types.SimpleNamespace(
-                refresh_session_meta=lambda _sid: None,
-                get_session=lambda _sid: session,
-                _attach_notification_texts=lambda matches: matches,
-            )
-            responses = []
-            handler = server.Handler.__new__(server.Handler)
-            parsed = urllib.parse.urlparse("/api/sessions/s1/messages/search?q=needle&limit=1")
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-
-            with patch.object(server, "TRANSCRIPT_SEARCH_MAX_LINE_BYTES", 80), patch.object(server, "MANAGER", fake_manager), patch.object(
-                server, "_require_auth", return_value=True
-            ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
-                server.Handler.do_GET(handler)
-
-            self.assertEqual(len(responses), 1)
-            status, body = responses[0]
-            self.assertEqual(status, 200)
-            self.assertEqual(body["match_count"], 0)
-            self.assertEqual(body["matches"], [])
-            self.assertTrue(body["match_count_truncated"])
-
-    def test_messages_search_route_can_bound_match_count(self) -> None:
-        with TemporaryDirectory() as td:
-            log_path = Path(td) / "rollout.jsonl"
-            _write_assistant_rows(log_path, 12)
-            session = Session(
-                session_id="s1",
-                thread_id="thread-1",
-                broker_pid=1,
-                codex_pid=1,
-                agent_backend="codex",
-                owned=False,
-                start_ts=0.0,
-                cwd=str(Path(td)),
-                log_path=log_path,
-                sock_path=Path(td) / "s1.sock",
-            )
-            fake_manager = types.SimpleNamespace(
-                refresh_session_meta=lambda _sid: None,
-                get_session=lambda _sid: session,
-                _attach_notification_texts=lambda matches: matches,
-            )
-            responses = []
-            handler = server.Handler.__new__(server.Handler)
-            parsed = urllib.parse.urlparse("/api/sessions/s1/messages/search?q=a&limit=1&count_max=5")
-            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-
-            with patch.object(server, "MANAGER", fake_manager), patch.object(server, "_require_auth", return_value=True), patch.object(
-                server,
-                "_json_response",
-                side_effect=lambda _handler, status, obj: responses.append((status, obj)),
-            ):
-                server.Handler.do_GET(handler)
-
-            self.assertEqual(len(responses), 1)
-            status, body = responses[0]
-            self.assertEqual(status, 200)
-            self.assertEqual(body["match_count"], 5)
-            self.assertTrue(body["match_count_truncated"])
-            self.assertEqual(len(body["matches"]), 1)
-
-    def test_messages_search_rejects_count_max_with_latest_order(self) -> None:
-        fake_manager = types.SimpleNamespace(
-            refresh_session_meta=lambda _sid: None,
-            get_session=lambda _sid: object(),
-        )
-        responses = []
-        handler = server.Handler.__new__(server.Handler)
-        parsed = urllib.parse.urlparse("/api/sessions/s1/messages/search?q=needle&count_max=5&order=latest")
-        handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-        handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-
-        with patch.object(server, "MANAGER", fake_manager), patch.object(server, "_require_auth", return_value=True), patch.object(
-            server,
-            "_json_response",
-            side_effect=lambda _handler, status, obj: responses.append((status, obj)),
-        ):
-            server.Handler.do_GET(handler)
-
-        self.assertEqual(responses, [(400, {"error": "count_max is only supported with order=first"})])
-
-    def test_messages_search_rejects_malformed_text_max(self) -> None:
-        fake_manager = types.SimpleNamespace(
-            refresh_session_meta=lambda _sid: None,
-            get_session=lambda _sid: object(),
-        )
-        responses = []
-        handler = server.Handler.__new__(server.Handler)
-        parsed = urllib.parse.urlparse("/api/sessions/s1/messages/search?q=needle&text_max=bad")
-        handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-        handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-
-        with patch.object(server, "MANAGER", fake_manager), patch.object(server, "_require_auth", return_value=True), patch.object(
-            server,
-            "_json_response",
-            side_effect=lambda _handler, status, obj: responses.append((status, obj)),
-        ):
-            server.Handler.do_GET(handler)
-
-        self.assertEqual(responses, [(400, {"error": "text_max must be an integer"})])
-
-    def test_message_routes_reject_malformed_limits(self) -> None:
-        fake_manager = types.SimpleNamespace(
-            refresh_session_meta=lambda _sid: None,
-            get_session=lambda _sid: object(),
-        )
-        paths = [
-            "/api/sessions/s1/messages/search?q=needle&limit=not-an-int",
-            "/api/sessions/s1/messages/search?q=needle&count_max=not-an-int",
-            "/api/sessions/s1/messages/tail?limit=not-an-int",
-            "/api/sessions/s1/messages/history?cursor=dummy&limit=not-an-int",
-        ]
-        for path in paths:
-            with self.subTest(path=path):
-                responses = []
-                handler = server.Handler.__new__(server.Handler)
-                parsed = urllib.parse.urlparse(path)
-                handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
-                handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
-
-                with patch.object(server, "MANAGER", fake_manager), patch.object(server, "_require_auth", return_value=True), patch.object(
-                    server,
-                    "_json_response",
-                    side_effect=lambda _handler, status, obj: responses.append((status, obj)),
-                ):
-                    server.Handler.do_GET(handler)
-
-                expected_error = "count_max must be an integer" if "count_max=" in path else "limit must be an integer"
-                self.assertEqual(responses, [(400, {"error": expected_error})])
-
     def test_ui_has_copy_conversation_action(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn('id: "copyConversationBtn"', source)
         self.assertIn('function formatConversationForCopy(events)', source)
         self.assertIn('api(`/api/sessions/${sid}/messages/export`)', source)
         self.assertIn('title: "Copy conversation"', source)
+
+
+# --- Route-handler tests (direct handler calls with injected dependencies) ---
+#
+# These replace the previous monkeypatch-based tests that patched server.MANAGER,
+# server._require_auth, server._json_response, and server.TRANSCRIPT_SEARCH_MAX_LINE_BYTES.
+# All four seams are now satisfied via MessageRouteDeps injection, mirroring the
+# pattern established in tests/test_message_routes.py.
+
+# Fixed HMAC secret so encode/decode are exercised against the real signing
+# implementation, preserving the signed-cursor public contract under test.
+_SECRET = b"test-transcript-route-secret"
+
+
+class _FakeHandler:
+    def __init__(self) -> None:
+        self.unauthorized = False
+
+    def _unauthorized(self) -> None:
+        self.unauthorized = True
+
+
+def _session(td: str, log_path: Path | None) -> Session:
+    return Session(
+        session_id="s1",
+        thread_id="thread-1",
+        broker_pid=1,
+        codex_pid=1,
+        agent_backend="codex",
+        owned=False,
+        start_ts=0.0,
+        cwd=td,
+        log_path=log_path,
+        sock_path=Path(td) / "s1.sock",
+    )
+
+
+def _search_manager(session: object) -> SimpleNamespace:
+    """Manager fake exposing only the methods handle_messages_search calls."""
+    return SimpleNamespace(
+        refresh_session_meta=lambda _sid: None,
+        get_session=lambda _sid: session,
+        _attach_notification_texts=lambda matches: matches,
+    )
+
+
+def _deps(**overrides):
+    responses: list[tuple[int, dict[str, object]]] = []
+    metrics: list[tuple[str, float]] = []
+
+    def json_response(_handler, status: int, payload: dict[str, object]) -> None:
+        responses.append((status, payload))
+
+    def encode_cursor(*, kind: str, session, pos: int) -> str:
+        return encode_message_cursor(kind=kind, session=session, pos=pos, secret=_SECRET)
+
+    def decode_cursor(token: str, *, kind: str, session) -> int:
+        return decode_message_cursor(token, kind=kind, session=session, secret=_SECRET)
+
+    def runtime_snapshot(_sid: str, _session, **_kw):
+        # state, busy, queue_len, token
+        return {}, False, 0, None
+
+    deps = MessageRouteDeps(
+        require_auth=lambda _handler: True,
+        json_response=json_response,
+        launch_attempt_transcript_for_session_id=lambda _sid: None,
+        transcript_export_max_bytes=50 * 1024 * 1024,
+        transcript_search_max_line_bytes=64 * 1024,
+        decode_message_cursor=decode_cursor,
+        encode_message_cursor=encode_cursor,
+        record_metric=lambda name, value: metrics.append((name, value)),
+        message_runtime_snapshot=runtime_snapshot,
+    )
+    for name, value in overrides.items():
+        object.__setattr__(deps, name, value)
+    return deps, responses, metrics
+
+
+def test_messages_search_route_applies_text_max_to_response_matches() -> None:
+    with TemporaryDirectory() as td:
+        log_path = Path(td) / "rollout.jsonl"
+        text = "x" * 40 + "needle" + "y" * 40
+        row = {
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": text}],
+                "phase": "final_answer",
+            },
+            "ts": 1.0,
+        }
+        second = {
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "second needle match"}],
+                "phase": "final_answer",
+            },
+            "ts": 2.0,
+        }
+        log_path.write_text(json.dumps(row) + "\n" + json.dumps(second) + "\n", encoding="utf-8")
+        session = _session(td, log_path)
+
+        deps, responses, _metrics = _deps()
+        handle_messages_search(
+            _FakeHandler(),
+            session_id="s1",
+            query="q=needle&limit=1&text_max=18",
+            manager=_search_manager(session),
+            deps=deps,
+        )
+
+        assert len(responses) == 1
+        status, body = responses[0]
+        assert status == 200
+        assert body["transcript_state"] == "bound"
+        assert body["thread_id"] == "thread-1"
+        assert body["log_path"] == str(log_path)
+        assert body["match_count"] == 2
+        assert len(body["matches"]) == 1
+        match = body["matches"][0]
+        assert len(match["text"]) <= 18
+        assert "needle" in match["text"]
+        assert match["text_truncated"] is True
+        assert isinstance(match.get("_before_byte"), int)
+        assert "_after_byte" not in match
+        assert isinstance(match.get("history_cursor"), str)
+        assert isinstance(match.get("load_cursor"), str)
+        target_pos = decode_message_cursor(match["history_cursor"], kind="history", session=session, secret=_SECRET)
+        assert target_pos == match["_before_byte"]
+        load_pos = decode_message_cursor(match["load_cursor"], kind="history", session=session, secret=_SECRET)
+        assert load_pos > match["_before_byte"]
+        window_events, _next_before, _has_older = _read_chat_history_page(log_path, before_byte=load_pos, limit=20)
+        assert window_events[-1]["text"] == text
+
+
+def test_messages_search_route_marks_truncated_when_oversized_record_skipped() -> None:
+    with TemporaryDirectory() as td:
+        log_path = Path(td) / "rollout.jsonl"
+        oversized = {
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "x" * 200 + " needle hidden by line cap"}],
+                "phase": "final_answer",
+            },
+            "ts": 1.0,
+        }
+        log_path.write_text(json.dumps(oversized) + "\n", encoding="utf-8")
+        session = _session(td, log_path)
+
+        # transcript_search_max_line_bytes is injected via deps (no module patch).
+        deps, responses, _metrics = _deps(transcript_search_max_line_bytes=80)
+        handle_messages_search(
+            _FakeHandler(),
+            session_id="s1",
+            query="q=needle&limit=1",
+            manager=_search_manager(session),
+            deps=deps,
+        )
+
+    assert len(responses) == 1
+    status, body = responses[0]
+    assert status == 200
+    assert body["match_count"] == 0
+    assert body["matches"] == []
+    assert body["match_count_truncated"] is True
+
+
+def test_messages_search_route_can_bound_match_count() -> None:
+    with TemporaryDirectory() as td:
+        log_path = Path(td) / "rollout.jsonl"
+        _write_assistant_rows(log_path, 12)
+        session = _session(td, log_path)
+
+        deps, responses, _metrics = _deps()
+        handle_messages_search(
+            _FakeHandler(),
+            session_id="s1",
+            query="q=a&limit=1&count_max=5",
+            manager=_search_manager(session),
+            deps=deps,
+        )
+
+    assert len(responses) == 1
+    status, body = responses[0]
+    assert status == 200
+    assert body["match_count"] == 5
+    assert body["match_count_truncated"] is True
+    assert len(body["matches"]) == 1
+
+
+def test_messages_search_rejects_count_max_with_latest_order() -> None:
+    deps, responses, _metrics = _deps()
+    handle_messages_search(
+        _FakeHandler(),
+        session_id="s1",
+        query="q=needle&count_max=5&order=latest",
+        manager=SimpleNamespace(
+            refresh_session_meta=lambda _sid: None,
+            get_session=lambda _sid: object(),
+        ),
+        deps=deps,
+    )
+
+    assert responses == [(400, {"error": "count_max is only supported with order=first"})]
+
+
+def test_messages_search_rejects_malformed_text_max() -> None:
+    deps, responses, _metrics = _deps()
+    handle_messages_search(
+        _FakeHandler(),
+        session_id="s1",
+        query="q=needle&text_max=bad",
+        manager=SimpleNamespace(
+            refresh_session_meta=lambda _sid: None,
+            get_session=lambda _sid: object(),
+        ),
+        deps=deps,
+    )
+
+    assert responses == [(400, {"error": "text_max must be an integer"})]
+
+
+def test_message_routes_reject_malformed_limits() -> None:
+    # Preserves the four-subtest coverage of the original: search limit,
+    # search count_max, tail limit, and history limit all reject non-integers.
+    cases = [
+        (
+            "search limit",
+            handle_messages_search,
+            "q=needle&limit=not-an-int",
+            "limit must be an integer",
+        ),
+        (
+            "search count_max",
+            handle_messages_search,
+            "q=needle&count_max=not-an-int",
+            "count_max must be an integer",
+        ),
+        (
+            "tail limit",
+            handle_messages_tail,
+            "limit=not-an-int",
+            "limit must be an integer",
+        ),
+        (
+            "history limit",
+            handle_messages_history,
+            "cursor=dummy&limit=not-an-int",
+            "limit must be an integer",
+        ),
+    ]
+    for label, handler, query, expected_error in cases:
+        deps, responses, _metrics = _deps()
+        handler(
+            _FakeHandler(),
+            session_id="s1",
+            query=query,
+            manager=SimpleNamespace(
+                refresh_session_meta=lambda _sid: None,
+                get_session=lambda _sid: object(),
+            ),
+            deps=deps,
+        )
+        assert responses == [(400, {"error": expected_error})], label
 
 
 if __name__ == "__main__":
