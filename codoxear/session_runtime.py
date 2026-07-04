@@ -458,11 +458,16 @@ def resolve_runtime_status(
     else:
         busy = not (bool(log_idle) or broker.allows_interrupted_idle_override)
 
+    # A real turn requires a bound transcript log. Pre-log broker busy (e.g. the
+    # Codex TUI "esc to interrupt" startup hint recorded by the turn-state
+    # reducer before any rollout log exists) is startup noise, not a real turn:
+    # it must not gate first input, and there is no log-watcher idle path to ever
+    # clear it. Broker busy therefore gates readiness only once a log is bound
+    # (handled by the log_idle branch above); the unresolved-send-boundary path
+    # still fails loud for a genuinely broken first send.
     if boundary:
         remote_ready = False
     elif log_bound and (log_idle is not True) and not broker.allows_interrupted_idle_override:
-        remote_ready = False
-    elif broker.busy and log_idle is not True:
         remote_ready = False
     else:
         remote_ready = True

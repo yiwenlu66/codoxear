@@ -168,14 +168,23 @@ def test_session_runtime_readiness_projects_send_queue_and_unattended_decisions(
     assert runtime_blocked.unattended_injection is False
 
 
-def test_runtime_status_no_log_uses_broker_for_remote_readiness_only() -> None:
+def test_runtime_status_no_log_never_blocks_first_send_on_pre_log_busy() -> None:
+    # Pre-log broker busy (e.g. the Codex TUI "esc to interrupt" startup hint
+    # recorded before any rollout log is bound) is startup noise, not a real
+    # turn, and there is no log-watcher idle path to clear it. It must not
+    # permanently block first input; only an unresolved send boundary (a
+    # genuinely broken first send) may gate readiness before a log exists.
     idle_broker = _status({"busy": False, "queue_len": 0}, log_exists=False)
     assert idle_broker.busy is False
     assert idle_broker.remote_ready is True
 
     busy_broker = _status({"busy": True, "queue_len": 0}, log_exists=False)
     assert busy_broker.busy is False
-    assert busy_broker.remote_ready is False
+    assert busy_broker.remote_ready is True
+
+    boundary_pre_log = _status({"busy": True, "queue_len": 0}, log_exists=False, boundary=True)
+    assert boundary_pre_log.busy is True
+    assert boundary_pre_log.remote_ready is False
 
 
 def test_runtime_status_requires_log_idle_when_bound_and_not_boundary_protected() -> None:

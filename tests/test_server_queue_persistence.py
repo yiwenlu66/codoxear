@@ -267,23 +267,32 @@ class TestServerQueuePersistence(unittest.TestCase):
     def test_attachment_injection_ready_requires_idle_broker_and_empty_local_queue(self) -> None:
         sid = "s1"
         mgr = self._mgr()
-        mgr._sessions[sid] = _make_session(sid)
-        states = iter([
-            {"busy": True, "queue_len": 0},
-            {"busy": False, "queue_len": 1},
-            {"busy": False, "queue_len": 0},
-        ])
-        mgr.get_state = lambda _sid: next(states)  # type: ignore[method-assign]
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            log_path.write_text("{}\n", encoding="utf-8")
+            mgr._sessions[sid] = _make_session(sid)
+            mgr._sessions[sid].log_path = log_path
+            # With a bound log, an idle broker must coincide with an idle log turn.
+            # idle_from_log is consulted only on the broker-idle and broker-busy
+            # (queue 0) cases here; the queue_len>0 case short-circuits without it.
+            idle_values = iter([False, True])
+            mgr.idle_from_log = lambda _sid: next(idle_values)  # type: ignore[method-assign]
+            states = iter([
+                {"busy": True, "queue_len": 0},
+                {"busy": False, "queue_len": 1},
+                {"busy": False, "queue_len": 0},
+            ])
+            mgr.get_state = lambda _sid: next(states)  # type: ignore[method-assign]
 
-        self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
-        self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
-        mgr._queues[sid] = [_queue_item("q1", "queued")]
-        self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
-        mgr._queues.clear()
-        mgr._sessions[sid].queue_sending_item_id = "q1"
-        self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
-        mgr._sessions[sid].queue_sending_item_id = None
-        self.assertTrue(SessionManager.attachment_injection_ready(mgr, sid))
+            self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+            self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+            mgr._queues[sid] = [_queue_item("q1", "queued")]
+            self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+            mgr._queues.clear()
+            mgr._sessions[sid].queue_sending_item_id = "q1"
+            self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+            mgr._sessions[sid].queue_sending_item_id = None
+            self.assertTrue(SessionManager.attachment_injection_ready(mgr, sid))
 
     def test_unknown_direct_send_blocks_attachment_injection(self) -> None:
         sid = "s1"
@@ -1576,13 +1585,18 @@ class TestServerQueuePersistence(unittest.TestCase):
     def test_send_rejects_remote_busy_before_socket_send(self) -> None:
         sid = "s1"
         mgr = self._mgr()
-        mgr._sessions[sid] = _make_session(sid)
-        mgr.get_state = lambda _sid: {"busy": True, "queue_len": 0}  # type: ignore[method-assign]
-        mgr._record_prelog_user_message = lambda *_args, **_kwargs: self.fail("busy send should fail before local echo record")  # type: ignore[method-assign]
-        mgr._sock_call = lambda *_args, **_kwargs: self.fail("busy send should fail before broker send")  # type: ignore[method-assign]
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            log_path.write_text("{}\n", encoding="utf-8")
+            mgr._sessions[sid] = _make_session(sid)
+            mgr._sessions[sid].log_path = log_path
+            mgr.get_state = lambda _sid: {"busy": True, "queue_len": 0}  # type: ignore[method-assign]
+            mgr.idle_from_log = lambda _sid: False  # type: ignore[method-assign]
+            mgr._record_prelog_user_message = lambda *_args, **_kwargs: self.fail("busy send should fail before local echo record")  # type: ignore[method-assign]
+            mgr._sock_call = lambda *_args, **_kwargs: self.fail("busy send should fail before broker send")  # type: ignore[method-assign]
 
-        with self.assertRaisesRegex(SessionNotReadyError, "session is busy"):
-            SessionManager.send(mgr, sid, "stale direct prompt")
+            with self.assertRaisesRegex(SessionNotReadyError, "session is busy"):
+                SessionManager.send(mgr, sid, "stale direct prompt")
 
     def test_readiness_rejects_malformed_broker_state(self) -> None:
         sid = "s1"
@@ -1798,20 +1812,25 @@ class TestServerQueuePersistence(unittest.TestCase):
     def test_enqueue_persists_when_busy(self) -> None:
         mgr = self._mgr()
         sid = "s1"
-        mgr._sessions[sid] = _make_session(sid)
-        mgr.get_state = lambda _sid: {"busy": True, "queue_len": 0}  # type: ignore[method-assign]
-        sent: list[tuple[str, str]] = []
-        mgr.send = lambda _sid, text, **_kwargs: sent.append((_sid, text)) or {"queued": False, "queue_len": 0}  # type: ignore[method-assign]
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            log_path.write_text("{}\n", encoding="utf-8")
+            mgr._sessions[sid] = _make_session(sid)
+            mgr._sessions[sid].log_path = log_path
+            mgr.get_state = lambda _sid: {"busy": True, "queue_len": 0}  # type: ignore[method-assign]
+            mgr.idle_from_log = lambda _sid: False  # active turn: direct send gated, enqueue promotes to queue
+            sent: list[tuple[str, str]] = []
+            mgr.send = lambda _sid, text, **_kwargs: sent.append((_sid, text)) or {"queued": False, "queue_len": 0}  # type: ignore[method-assign]
 
-        resp = SessionManager.enqueue(mgr, sid, "hello queued")
+            resp = SessionManager.enqueue(mgr, sid, "hello queued")
 
-        self.assertTrue(resp.get("queued"))
-        self.assertEqual(resp.get("queue_len"), 1)
-        self.assertEqual(sent, [])
-        items = mgr._queues.get(sid)
-        self.assertIsInstance(items, list)
-        self.assertEqual(len(items or []), 1)
-        self.assertEqual((items or [])[0]["text"], "hello queued")
+            self.assertTrue(resp.get("queued"))
+            self.assertEqual(resp.get("queue_len"), 1)
+            self.assertEqual(sent, [])
+            items = mgr._queues.get(sid)
+            self.assertIsInstance(items, list)
+            self.assertEqual(len(items or []), 1)
+            self.assertEqual((items or [])[0]["text"], "hello queued")
 
     def test_queue_update_delete_move_use_ids(self) -> None:
         mgr = self._mgr()

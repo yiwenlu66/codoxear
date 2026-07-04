@@ -27,6 +27,8 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from codoxear.broker_turn_state import State as BrokerTurnState
+from codoxear.broker_turn_state import _update_busy_from_pty_text
 from codoxear.server_route_deps import ServerRouteCaps
 from codoxear.server_route_deps import ServerRouteDepsFactory
 from codoxear.session_control import SessionControlCoordinator
@@ -466,6 +468,111 @@ class TestListingPendingLogIdle(unittest.TestCase):
             self.assertIs(coordinator.idle_from_log_path(s.session_id, log_path), True)
         self.assertEqual(s.idle_cache_log_off, -1)
         self.assertIsNone(s.idle_cache_value)
+
+
+# --------------------------------------------------------------------------- #
+# Pre-log TUI busy deadlock regression (Codex "esc to interrupt" startup hint)
+# --------------------------------------------------------------------------- #
+
+
+class TestPreLogTuiBusyDoesNotDeadlockFirstSend(unittest.TestCase):
+    """Regression for the browser-Codex first-send deadlock.
+
+    The Codex TUI prints ``esc to interrupt`` while MCP startup is in flight,
+    before any rollout log is bound. The turn-state reducer records that hint as
+    broker ``busy=True``; idle clearing is driven by the log watcher, which
+    requires a bound log. The readiness synthesis must therefore treat pre-log
+    broker busy as startup noise (not a real turn) so the first browser send is
+    not rejected forever as ``session is busy; wait before sending``.
+    """
+
+    def _readiness(self, *, session, state, idle):
+        lock = threading.Lock()
+        mapping = {session.session_id: session}
+        return SessionReadinessCoordinator(
+            lock=lock,
+            sessions=lambda: mapping,
+            refresh_session_meta_if_sidecar_exists=lambda _sid, **_kw: None,
+            get_state=lambda _sid: state,
+            log_size_or_none=log_path_size_or_none,
+            confirmed_send_boundary_unresolved_for_session=(
+                lambda _sid, _lp, _ls: consume_session_confirmed_send_boundary(session, _lp, _ls)
+            ),
+            idle_from_log=(lambda _sid: idle),
+            queue_len=lambda _sid: 0,
+            not_ready_error=RuntimeError,
+        )
+
+    def _broker_state_busy_from_interrupt_hint(self) -> dict:
+        # Reproduce the exact reducer path: a broker State with no log bound yet
+        # observes the Codex TUI startup spinner containing "esc to interrupt".
+        st = BrokerTurnState(
+            codex_pid=2,
+            pty_master_fd=1,
+            cwd="/tmp",
+            start_ts=0.0,
+            codex_home=Path("/tmp"),
+            sessions_dir=Path("/tmp"),
+        )
+        self.assertIsNone(st.log_path)
+        _update_busy_from_pty_text(st, "\x1b[2mWorking (1s \u2022 esc to interrupt)\x1b[0m", now_ts=10.0)
+        self.assertTrue(st.busy)  # the reducer does record the hint as busy
+        # broker_control.state_handler projects exactly this shape
+        return {"busy": st.busy, "queue_len": 0}
+
+    def test_pre_log_interrupt_hint_does_not_block_direct_send(self) -> None:
+        s = _session(busy=True, queue_len=0, log_path=None)  # no rollout log bound yet
+        state = self._broker_state_busy_from_interrupt_hint()
+        readiness = self._readiness(session=s, state=state, idle=False)
+        runtime = readiness.runtime_status_from_state_and_log(s.session_id, state, None)
+        self.assertIs(runtime.busy, False)
+        self.assertIs(runtime.remote_ready, True)
+        self.assertTrue(readiness.send_remote_ready(s.session_id))
+
+    def test_pre_log_compacting_hint_does_not_block_direct_send(self) -> None:
+        st = BrokerTurnState(
+            codex_pid=2, pty_master_fd=1, cwd="/tmp", start_ts=0.0,
+            codex_home=Path("/tmp"), sessions_dir=Path("/tmp"),
+        )
+        _update_busy_from_pty_text(st, "\x1b[2mCompacting context...\x1b[0m", now_ts=10.0)
+        self.assertTrue(st.busy)
+        s = _session(busy=True, queue_len=0, log_path=None)
+        state = {"busy": st.busy, "queue_len": 0}
+        readiness = self._readiness(session=s, state=state, idle=False)
+        runtime = readiness.runtime_status_from_state_and_log(s.session_id, state, None)
+        self.assertIs(runtime.remote_ready, True)
+        self.assertTrue(readiness.send_remote_ready(s.session_id))
+
+    def test_post_log_active_turn_still_gates_send(self) -> None:
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            log_path.write_text(
+                '{"type":"message","message":{"role":"user","content":[{"type":"text","text":"run"}]}}\n',
+                encoding="utf-8",
+            )
+            s = _session(busy=True, queue_len=0, log_path=log_path)
+            # Real turn in flight: log bound, not idle, broker busy.
+            state = {"busy": True, "queue_len": 0}
+            readiness = self._readiness(session=s, state=state, idle=False)
+            runtime = readiness.runtime_status_from_state_and_log(s.session_id, state, log_path)
+            self.assertIs(runtime.busy, True)
+            self.assertIs(runtime.remote_ready, False)
+            self.assertFalse(readiness.send_remote_ready(s.session_id))
+
+    def test_post_log_idle_turn_reopens_send_after_pre_log_hint(self) -> None:
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            log_path.write_text(
+                '{"type":"message","message":{"role":"assistant","content":[],"stopReason":"aborted"}}\n',
+                encoding="utf-8",
+            )
+            s = _session(busy=True, queue_len=0, log_path=log_path)
+            state = self._broker_state_busy_from_interrupt_hint()  # stale pre-log hint persists
+            readiness = self._readiness(session=s, state=state, idle=True)
+            runtime = readiness.runtime_status_from_state_and_log(s.session_id, state, log_path)
+            self.assertIs(runtime.busy, False)
+            self.assertIs(runtime.remote_ready, True)
+            self.assertTrue(readiness.send_remote_ready(s.session_id))
 
 
 # --------------------------------------------------------------------------- #
