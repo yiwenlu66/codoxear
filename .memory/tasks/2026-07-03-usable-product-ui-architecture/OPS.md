@@ -290,3 +290,10 @@
   - Browser auto-selected the failed launch and rendered the recovery panel: `Session launch failed before a transcript log was created.`, stage/error details, pre-log terminal tail, disabled composer `Failed launch cannot receive messages`, and actions `Dismiss launch`, `New like this`, `Copy details`.
   - Screenshot: `browser-artifacts/prelog-exit-failed-row.png`.
 - Interpretation: Side B is fixed. Side A remains a certification-environment/backend boundary: a successful real Pi continuation still requires a healthy Pi npm extension set and a provider credential available in the throwaway home, or using a provider/config that can create a real `.jsonl`.
+
+## 2026-07-04T05:25:00Z Reverted invalid no-extensions UI workaround
+- User challenged the Pi no-default-extensions checkbox as an invalid product surface: no user requested it; it existed to work around the certification sandbox's broken Pi extension set. This is the same failure mode as putting debugging logs into a paper: internal verification scaffolding leaked into the user-facing artifact.
+- Interrupted async composed-flow/review run `c017f91a-af31-4cdc-ac9b-25c7e6cc59a4`; executor child paused after writing screenshots from the invalid workaround path. Removed untracked screenshots `d62` through `d73` from the task browser-artifacts directory.
+- Reverted `d2bdac7 Record Pi no-extensions launch evidence` as `a99bd73`; reverted `a2bdcd3 Add Pi no-extensions launch option` as `df9278f`.
+- The critic for the invalid option had accepted only the poisoned contract: it was asked whether `-ne` was Pi-only, reset safely, and accurately described. It was not asked the prior product question: whether a visible option should exist. That review result is negative evidence about review framing, not support for the feature.
+- Corrected decision: keep `59f54bf` pre-log failure visibility fix; treat Pi `-ne` as an environment diagnostic. Browser Pi certification in this sandbox requires repairing the Pi extension environment or recording a backend-environment boundary, not adding UI.
