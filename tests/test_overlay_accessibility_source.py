@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_VOICE_JS = ROOT / "codoxear" / "static" / "app_voice.js"
 APP_FILE_VIEWER_JS = ROOT / "codoxear" / "static" / "app_file_viewer.js"
 APP_MODAL_JS = ROOT / "codoxear" / "static" / "app_modal.js"
 
@@ -81,25 +82,32 @@ class TestOverlayAccessibilitySource(unittest.TestCase):
         self.assertIn('return queueController.showQueueViewer(opts);', source)
         queue_source = (ROOT / "codoxear" / "static" / "app_queue.js").read_text(encoding="utf-8")
         self.assertIn('prepareModalOpen();\n      queueViewerSid = selected;', queue_source)
-        self.assertIn('prepareModalOpen();\n          voiceSettingsReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;\n          voiceSettingsBackdrop.style.display = "block";', source)
+        # Voice settings show/hide modal behavior moved into the CodoxearVoice
+        # controller; app.js keeps only the DOM nodes and the delegating wrapper.
+        voice_source = APP_VOICE_JS.read_text(encoding="utf-8")
+        self.assertIn('prepareModalOpen();\n      voiceSettingsReturnFocusEl = documentTarget.activeElement instanceof HTMLElement ? documentTarget.activeElement : null;\n      voiceSettingsBackdrop.style.display = "block";', voice_source)
 
     def test_settings_dialog_uses_modal_and_cancel_semantics(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        show_start = source.index("function showVoiceSettingsDialog()")
-        show_end = source.index("function hideVoiceSettingsDialog()", show_start)
-        show_block = source[show_start:show_end]
+        voice_source = APP_VOICE_JS.read_text(encoding="utf-8")
+        show_start = voice_source.index("function showVoiceSettingsDialog()")
+        show_end = voice_source.index("function hideVoiceSettingsDialog()", show_start)
+        show_block = voice_source[show_start:show_end]
         hide_start = show_end
-        hide_end = source.index("announceBtn.onclick", hide_start)
-        hide_block = source[hide_start:hide_end]
-        self.assertIn("voiceSettingsReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;", show_block)
-        self.assertIn("if (!voiceSettingsViewer.open) voiceSettingsViewer.showModal();", show_block)
+        hide_end = voice_source.index("announceBtn.onclick", hide_start)
+        hide_block = voice_source[hide_start:hide_end]
+        self.assertIn("voiceSettingsReturnFocusEl = documentTarget.activeElement instanceof HTMLElement ? documentTarget.activeElement : null;", show_block)
+        self.assertIn('if (typeof voiceSettingsViewer.showModal === "function" && !voiceSettingsViewer.open) voiceSettingsViewer.showModal();', show_block)
         self.assertIn("const focusTarget = voiceSettingsReturnFocusEl;", hide_block)
         self.assertIn("voiceSettingsReturnFocusEl = null;", hide_block)
-        self.assertIn("if (voiceSettingsViewer.open) voiceSettingsViewer.close();", hide_block)
-        self.assertIn('requestAnimationFrame(() => focusTarget.focus({ preventScroll: true }));', hide_block)
-        self.assertIn('voiceSettingsViewer.addEventListener("cancel", (e) => {', source)
-        self.assertIn("e.preventDefault();\n          hideVoiceSettingsDialog();", source)
-        self.assertIn('if (voiceSettingsViewer.style.display === "flex") hideVoiceSettingsDialog();', source)
+        self.assertIn('if (typeof voiceSettingsViewer.close === "function" && voiceSettingsViewer.open) voiceSettingsViewer.close();', hide_block)
+        self.assertIn("restoreModalFocus(focusTarget, restore, requestFrame);", hide_block)
+        self.assertIn('addEvent(voiceSettingsViewer, "cancel", (e) => {', voice_source)
+        self.assertIn("e.preventDefault();\n      hideVoiceSettingsDialog();", voice_source)
+        # app.js now uses the controller's canonical open-state query instead
+        # of relying on style.display alone.
+        self.assertIn("if (voiceController.isSettingsOpen()) hideVoiceSettingsDialog();", source)
+        self.assertNotIn('voiceSettingsViewer.style.display === "flex") hideVoiceSettingsDialog()', source)
 
     def test_new_session_dialog_restores_focus_and_sets_initial_focus(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

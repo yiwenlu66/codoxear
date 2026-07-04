@@ -40,13 +40,25 @@ class TestAuthCleanupSource(unittest.TestCase):
         self.assertIn("stopMessagePolling();", cleanup)
         self.assertIn("stopAllPolling();", cleanup)
         self.assertIn("if (newSessionController) newSessionController.disposeResumeLoadTimer();", cleanup)
-        for name in [
-            "voiceSaveTimer",
-            "liveAudioRetryTimer",
-            "iosViewportGuardTimer",
+        # Voice cleanup (voice save timer, live-audio retry timer, desktop
+        # notification resolve timers, announcement heartbeat, live-audio
+        # watchdog, HLS state, and all voice/notification handlers) is owned by
+        # the CodoxearVoice controller; app.js only delegates through
+        # voiceController.dispose().
+        self.assertIn("if (voiceController) voiceController.dispose();", cleanup)
+        for removed in [
+            "if (voiceSaveTimer) clearTimeout(voiceSaveTimer);",
+            "voiceSaveTimer = null;",
+            "if (liveAudioRetryTimer) clearTimeout(liveAudioRetryTimer);",
+            "liveAudioRetryTimer = null;",
+            "desktopNotificationTimers.forEach((timer) => clearTimeout(timer));",
+            "desktopNotificationTimers.clear();",
+            "stopAnnouncementHeartbeat();",
+            "stopLiveAudioWatchdog();",
+            "resetLiveAudioState();",
         ]:
-            self.assertIn(f"if ({name}) clearTimeout({name});", cleanup)
-            self.assertIn(f"{name} = null;", cleanup)
+            self.assertNotIn(removed, cleanup)
+        self.assertIn("if (iosViewportGuardTimer) clearTimeout(iosViewportGuardTimer);", cleanup)
         # Search cleanup is now owned by the CodoxearChatSearch controller;
         # app.js only delegates through chatSearchController.dispose().
         self.assertIn("if (chatSearchController) chatSearchController.dispose();", cleanup)
@@ -76,10 +88,6 @@ class TestAuthCleanupSource(unittest.TestCase):
             "queuePendingDeletes.clear();",
         ]:
             self.assertNotIn(removed, cleanup)
-        self.assertIn("desktopNotificationTimers.forEach((timer) => clearTimeout(timer));", cleanup)
-        self.assertIn("stopAnnouncementHeartbeat();", cleanup)
-        self.assertIn("stopLiveAudioWatchdog();", cleanup)
-        self.assertIn("resetLiveAudioState();", cleanup)
         self.assertIn("while (appEventCleanups.length)", cleanup)
         self.assertIn("cleanup();", cleanup)
         self.assertIn("clearApiCache();", cleanup)
@@ -142,23 +150,26 @@ class TestAuthCleanupSource(unittest.TestCase):
 
     def test_async_poll_results_stop_after_cleanup(self) -> None:
         app = render_app_block()
+        voice_source = (Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app_voice.js").read_text(encoding="utf-8")
         refresh_start = app.index("async function refreshSessions()")
         refresh_end = app.index("function appendEvent", refresh_start)
         refresh_block = app[refresh_start:refresh_end]
-        voice_start = app.index("async function pollNotificationFeed")
-        voice_end = app.index("async function enableNotificationsOnDevice", voice_start)
-        voice_block = app[voice_start:voice_end]
-
+        # Voice feed/subscription polling now lives in the CodoxearVoice
+        # controller module; assert the disposed-guards moved with it and that
+        # app.js delegates the public entry points.
         self.assertIn('const data = await api("/api/sessions");\n          if (appDisposed) return latestSessions;', refresh_block)
-        self.assertIn("if (appDisposed || !desktopNotificationsEnabled()) return;", voice_block)
-        self.assertIn("if (appDisposed) return;", voice_block)
-        self.assertIn("if (appDisposed || !desktopNotificationsEnabled()) {", voice_block)
-        self.assertIn("if (appDisposed) return data;", voice_block)
-        self.assertIn("async function syncNotificationState(serverSnapshot) {\n          if (appDisposed) return;", voice_block)
-        self.assertIn('snapshot = await api("/api/notifications/subscription");', voice_block)
-        self.assertIn("if (appDisposed) return;\n          let endpoint = \"\";", voice_block)
-        self.assertIn("const reg = await ensureVoiceServiceWorker();\n              if (appDisposed) return;", voice_block)
-        self.assertIn("const sub = await reg.pushManager.getSubscription();\n              if (appDisposed) return;", voice_block)
+        self.assertIn("if (isAppDisposed() || !desktopNotificationsEnabled()) return;", voice_source)
+        self.assertIn("if (isAppDisposed()) return;", voice_source)
+        self.assertIn("if (isAppDisposed()) return data;", voice_source)
+        self.assertIn("async function syncNotificationState(serverSnapshot) {", voice_source)
+        self.assertIn('snapshot = await api("/api/notifications/subscription");', voice_source)
+        self.assertIn('let endpoint = "";', voice_source)
+        self.assertIn("const reg = await ensureVoiceServiceWorker();", voice_source)
+        self.assertIn("const sub = await reg.pushManager.getSubscription();", voice_source)
+        self.assertIn("if (isAppDisposed()) return;", voice_source)
+        self.assertIn("return voiceController.pollNotificationFeed(opts);", app)
+        self.assertIn("return voiceController.syncNotificationState(serverSnapshot);", app)
+        self.assertIn("return voiceController.loadVoiceSettings();", app)
 
     def test_app_global_listeners_are_cleanup_tracked(self) -> None:
         app = render_app_block()

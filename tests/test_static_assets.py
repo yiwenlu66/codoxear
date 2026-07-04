@@ -45,6 +45,7 @@ APP_CONVERSATION_COPY_JS = ROOT / "codoxear" / "static" / "app_conversation_copy
 APP_MODAL_JS = ROOT / "codoxear" / "static" / "app_modal.js"
 APP_CLIPBOARD_JS = ROOT / "codoxear" / "static" / "app_clipboard.js"
 APP_VOICE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_voice_helpers.js"
+APP_VOICE_JS = ROOT / "codoxear" / "static" / "app_voice.js"
 APP_QUEUE_JS = ROOT / "codoxear" / "static" / "app_queue.js"
 APP_DIAGNOSTICS_JS = ROOT / "codoxear" / "static" / "app_diagnostics.js"
 APP_RECOVERY_JS = ROOT / "codoxear" / "static" / "app_recovery.js"
@@ -81,6 +82,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn(f"app_modal.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_clipboard.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_voice_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
+        self.assertIn(f"app_voice.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_queue.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_diagnostics.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_recovery.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
@@ -110,7 +112,8 @@ class TestStaticAssets(unittest.TestCase):
         self.assertLess(source.index(f"app_conversation_copy.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_modal.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_modal.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_clipboard.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_clipboard.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_voice_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
-        self.assertLess(source.index(f"app_voice_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_queue.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_voice_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_voice.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_voice.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_queue.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_queue.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_diagnostics.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_session_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_diagnostics.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_modal.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_diagnostics.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
@@ -150,6 +153,7 @@ class TestStaticAssets(unittest.TestCase):
         app_modal = APP_MODAL_JS.read_text(encoding="utf-8")
         app_clipboard = APP_CLIPBOARD_JS.read_text(encoding="utf-8")
         app_voice_helpers = APP_VOICE_HELPERS_JS.read_text(encoding="utf-8")
+        app_voice = APP_VOICE_JS.read_text(encoding="utf-8")
         app_queue = APP_QUEUE_JS.read_text(encoding="utf-8")
         app_diagnostics = APP_DIAGNOSTICS_JS.read_text(encoding="utf-8")
         app_recovery = APP_RECOVERY_JS.read_text(encoding="utf-8")
@@ -187,6 +191,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertNotIn(forbidden, app_modal)
             self.assertNotIn(forbidden, app_clipboard)
             self.assertNotIn(forbidden, app_voice_helpers)
+            self.assertNotIn(forbidden, app_voice)
             self.assertNotIn(forbidden, app_queue)
             self.assertNotIn(forbidden, app_diagnostics)
             self.assertNotIn(forbidden, app_recovery)
@@ -215,10 +220,16 @@ class TestStaticAssets(unittest.TestCase):
 
     def test_service_worker_registration_uses_asset_version(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        voice_source = APP_VOICE_JS.read_text(encoding="utf-8")
+        # versionedShellAssetPath stays a shell-level helper in app.js (used by
+        # the sidebar logo) and is injected into the voice controller, which is
+        # the only caller that registers the service worker for push.
         self.assertIn("function versionedShellAssetPath(path)", source)
         self.assertIn('return `${path}?v=${encodeURIComponent(version)}`;', source)
-        self.assertIn('navigator.serviceWorker.register(resolveAppUrl(versionedShellAssetPath("/service-worker.js")), { scope: resolveAppUrl("/") });', source)
-        self.assertNotIn('navigator.serviceWorker.register(resolveAppUrl("/service-worker.js")', source)
+        self.assertIn('navigatorTarget.serviceWorker.register(resolveAppUrl(versionedShellAssetPath("/service-worker.js")), {', voice_source)
+        self.assertIn('scope: resolveAppUrl("/"),', voice_source)
+        self.assertNotIn('navigator.serviceWorker.register(', voice_source)
+        self.assertNotIn('navigator.serviceWorker.register(', source)
 
     def test_static_asset_version_changes_when_frontend_assets_change(self) -> None:
         initial_content = {
@@ -245,6 +256,7 @@ class TestStaticAssets(unittest.TestCase):
             "app_modal.js": "window.CodoxearModal = {};\n",
             "app_clipboard.js": "window.CodoxearClipboard = {};\n",
             "app_voice_helpers.js": "window.CodoxearVoiceHelpers = {};\n",
+            "app_voice.js": "window.CodoxearVoice = {};\n",
             "app_queue.js": "window.CodoxearQueue = {};\n",
             "app_diagnostics.js": "window.CodoxearDiagnostics = {};\n",
             "app_recovery.js": "window.CodoxearRecovery = {};\n",
@@ -309,6 +321,7 @@ class TestStaticAssets(unittest.TestCase):
                     '<script src="app_modal.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_clipboard.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_voice_helpers.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
+                    '<script src="app_voice.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_queue.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_diagnostics.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_recovery.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
@@ -349,6 +362,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertIn(f"app_modal.js?v={version}", rendered)
             self.assertIn(f"app_clipboard.js?v={version}", rendered)
             self.assertIn(f"app_voice_helpers.js?v={version}", rendered)
+            self.assertIn(f"app_voice.js?v={version}", rendered)
             self.assertIn(f"app_queue.js?v={version}", rendered)
             self.assertIn(f"app_diagnostics.js?v={version}", rendered)
             self.assertIn(f"app_recovery.js?v={version}", rendered)
@@ -513,6 +527,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn("codoxear/static/app_modal.js", names)
         self.assertIn("codoxear/static/app_clipboard.js", names)
         self.assertIn("codoxear/static/app_voice_helpers.js", names)
+        self.assertIn("codoxear/static/app_voice.js", names)
         self.assertIn("codoxear/static/app_queue.js", names)
         self.assertIn("codoxear/static/app_diagnostics.js", names)
         self.assertIn("codoxear/static/app_recovery.js", names)
