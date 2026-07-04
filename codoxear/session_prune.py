@@ -6,6 +6,7 @@ from typing import Any, Callable, MutableMapping
 import sys
 
 from .session_model import Session
+from .session_runtime import set_session_interrupted_idle
 
 
 @dataclass(frozen=True)
@@ -43,7 +44,7 @@ class SessionPruneCoordinator:
             if session:
                 session.busy = busy_val
                 session.queue_len = queue_len
-                session.interrupted_idle = interrupted_idle
+                set_session_interrupted_idle(session, interrupted_idle)
                 if "token" in response:
                     token = response.get("token")
                     if isinstance(token, dict) or token is None:

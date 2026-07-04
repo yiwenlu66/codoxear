@@ -48,6 +48,12 @@ class Session:
     sync_send_supported: bool = False
     key_write_errors_supported: bool = False
     interrupted_idle: bool = False
+    # Log byte offset captured when ``interrupted_idle`` last became True.
+    # Content at or beyond this offset arrived after the interrupt was
+    # confirmed by the broker, so it represents post-interrupt activity that
+    # invalidates a stale interrupted-idle override. Reset to 0 when
+    # ``interrupted_idle`` is cleared.
+    interrupted_idle_log_off: int = 0
     last_send_boundary_active: bool = False
     last_send_log_path: Path | None = None
     last_send_log_size: int | None = None

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Callable, MutableMapping
 
 from .session_model import Session
+from .session_runtime import set_session_interrupted_idle
 
 
 @dataclass(frozen=True)
@@ -54,7 +55,7 @@ class SessionControlCoordinator:
                 interrupted_idle = self.broker_interrupted_idle(response)
                 current.busy = busy_val
                 current.queue_len = queue_len
-                current.interrupted_idle = interrupted_idle
+                set_session_interrupted_idle(current, interrupted_idle)
                 if "token" in response:
                     token = response.get("token")
                     if isinstance(token, dict) or token is None:

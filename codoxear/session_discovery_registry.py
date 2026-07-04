@@ -88,6 +88,7 @@ class SessionDiscoveryRegistryCoordinator:
             sync_send_supported=registration.sync_send_supported,
             key_write_errors_supported=registration.key_write_errors_supported,
             interrupted_idle=registration.interrupted_idle,
+            interrupted_idle_log_off=(registration.meta_log_off if registration.interrupted_idle else 0),
         )
         with self.lock:
             previous = self.sessions().get(registration.session_id)
@@ -111,7 +112,15 @@ class SessionDiscoveryRegistryCoordinator:
                 previous.cwd = session.cwd
                 previous.busy = session.busy
                 previous.queue_len = session.queue_len
-                previous.interrupted_idle = session.interrupted_idle
+                # Preserve the interrupted-idle log baseline when refreshing an
+                # already-tracked session; ``meta_log_off`` is the log size
+                # captured at discovery, matching the baseline semantics.
+                if registration.interrupted_idle:
+                    previous.interrupted_idle = True
+                    previous.interrupted_idle_log_off = registration.meta_log_off
+                else:
+                    previous.interrupted_idle = False
+                    previous.interrupted_idle_log_off = 0
                 previous.token = session.token
                 if previous.log_path != session.log_path:
                     previous.log_path = session.log_path

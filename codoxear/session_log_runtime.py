@@ -31,6 +31,26 @@ class SessionLogRuntimeCoordinator:
                 offset = 0
                 reset_last_chat = True
 
+            # Stale interrupted-idle guard: ``interrupted_idle_log_off`` is the
+            # log byte offset captured when the broker last confirmed an
+            # interrupt. Content at or beyond it arrived after the interrupt,
+            # so it is post-interrupt activity that proves the turn resumed and
+            # invalidates the stored interrupted-idle override. Advance the read
+            # cursor past any pre-baseline bytes so the first chunk processed is
+            # unambiguously post-interrupt; this keeps the interrupted turn's
+            # own non-final tail (which keeps the override alive) separate from
+            # genuine resumed activity. The skipped bytes only affect meta
+            # counters, which are reset to zero below whenever the session is
+            # not busy (the interrupted-idle case), so nothing is lost.
+            interrupted_idle_active = bool(session.interrupted_idle)
+            interrupted_idle_baseline = int(session.interrupted_idle_log_off) if interrupted_idle_active else 0
+            clear_interrupted_idle = False
+            post_baseline = False
+            if interrupted_idle_active and 0 < interrupted_idle_baseline <= size:
+                if offset < interrupted_idle_baseline:
+                    offset = interrupted_idle_baseline
+                post_baseline = True
+
             total_thinking = 0
             total_tools = 0
             total_system = 0
@@ -41,7 +61,7 @@ class SessionLogRuntimeCoordinator:
                 objs, new_offset = self.read_jsonl_from_offset(log_path, offset, max_bytes=256 * 1024)
                 if new_offset <= offset:
                     break
-                delta_thinking, delta_tools, delta_system, chunk_chat_ts, token_update, _chat_events = self.analyze_log_chunk(objs)
+                delta_thinking, delta_tools, delta_system, chunk_chat_ts, token_update, chat_events = self.analyze_log_chunk(objs)
                 total_thinking += delta_thinking
                 total_tools += delta_tools
                 total_system += delta_system
@@ -49,6 +69,18 @@ class SessionLogRuntimeCoordinator:
                     latest_chat_ts = chunk_chat_ts if latest_chat_ts is None else max(latest_chat_ts, chunk_chat_ts)
                 if token_update is not None:
                     latest_token = token_update
+                # Any user/assistant turn activity in a post-baseline chunk
+                # proves the turn resumed after the interrupt. Visible
+                # conversation rows surface as chat events; reasoning/tool-only
+                # rows surface as thinking/tool counter deltas. Together they
+                # cover every form of resumed turn activity (a lone
+                # token_count after interrupt does not, and must not, clear).
+                if post_baseline and (
+                    any(isinstance(e, dict) and e.get("role") in ("user", "assistant") for e in chat_events)
+                    or delta_thinking > 0
+                    or delta_tools > 0
+                ):
+                    clear_interrupted_idle = True
                 offset = new_offset
                 loops += 1
 
@@ -74,6 +106,9 @@ class SessionLogRuntimeCoordinator:
                     current.meta_thinking = 0
                     current.meta_tools = 0
                     current.meta_system = 0
+                if clear_interrupted_idle and current.interrupted_idle:
+                    current.interrupted_idle = False
+                    current.interrupted_idle_log_off = 0
                 current.meta_log_off = offset if offset >= 0 else current.meta_log_off
 
     def mark_log_delta(self, session_id: str, *, objs: list[dict[str, Any]], new_off: int) -> None:

@@ -431,6 +431,29 @@ def broker_allows_interrupted_idle_override(state: Mapping[str, Any]) -> bool:
     return broker_runtime_state(state).allows_interrupted_idle_override
 
 
+def set_session_interrupted_idle(session: Session, value: bool) -> None:
+    """Set ``interrupted_idle`` and maintain its log-offset baseline.
+
+    When ``interrupted_idle`` becomes True the current rollout-log size is
+    recorded so the log watcher can tell post-interrupt activity (which
+    invalidates the override) from the interrupted turn's own non-final tail
+    (which must keep the override alive). Clearing the flag resets the
+    baseline so a later interrupt records a fresh offset.
+    """
+    session.interrupted_idle = bool(value)
+    if not value:
+        session.interrupted_idle_log_off = 0
+        return
+    log_path = session.log_path
+    if log_path is None:
+        session.interrupted_idle_log_off = 0
+        return
+    try:
+        session.interrupted_idle_log_off = int(log_path.stat().st_size)
+    except OSError:
+        session.interrupted_idle_log_off = 0
+
+
 def resolve_runtime_status(
     *,
     broker: BrokerRuntimeState,
