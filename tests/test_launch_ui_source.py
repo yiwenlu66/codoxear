@@ -150,6 +150,25 @@ def test_launch_failure_sidebar_uses_single_visible_failure_marker() -> None:
     assert 'setToast(`launch failed:' not in source
 
 
+def test_state_dot_has_no_failed_class_or_rule() -> None:
+    """Session busy/idle is binary; failed launches surface via the
+    launch badge + recovery panel, never via a red state dot. Guard against
+    reintroducing a dead `.stateDot.failed` rule or `failed` dot class."""
+    app_css = (ROOT / "codoxear" / "static" / "app.css").read_text(encoding="utf-8")
+    app_js = APP_JS.read_text(encoding="utf-8")
+
+    # The dot ternary must stay binary (pending/suppressed/busy/idle),
+    # never emitting a `failed` state class.
+    assert '(launchPending ? " pending" : s.snoozed || s.blocked ? " suppressed" : s.busy ? " busy" : " idle")' in app_js
+    assert 'stateDot failed' not in app_js
+
+    # No CSS rule may style a `failed` state dot.
+    assert '.stateDot.failed' not in app_css
+
+    # Failed-launch surfacing must remain via the separate recovery panel.
+    assert '.msg.recovery-panel {' in app_css
+
+
 def test_launch_attempt_rows_use_dismiss_language() -> None:
     source = APP_JS.read_text(encoding="utf-8")
 
