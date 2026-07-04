@@ -215,6 +215,10 @@ Set these in `.env` (or in the process environment):
 
 Runtime state is stored under `~/.local/share/codoxear` (legacy `~/.local/share/codex-web` is no longer used).
 
+### Validation sandbox
+
+`scripts/codoxear-docker-sandbox` runs the server in an isolated Docker container with a throwaway `HOME` mounted from `CODOXEAR_DOCKER_ROOT` (default `/tmp/codoxear-docker-sandbox-<port>`), so `~/.local/share/codoxear`, sockets, and logs never reach the host live runtime. An `ensure_isolation` preflight refuses to start if `CODOXEAR_DOCKER_ROOT`/home or a host `CODEXEAR_APP_DIR` / `CODEX_WEB_APP_DIR` override would alias, sit inside, or contain the host live runtime (`~/.local/share/codoxear` or legacy `~/.local/share/codex-web`). The container never forwards either app-dir variable, so `APP_DIR` always resolves under the throwaway container `HOME`. Run `scripts/codoxear-docker-sandbox preflight` to verify isolation without starting Docker. Never run dev/certification verification directly against the host live runtime.
+
 Backend-specific session logs live under the backend home:
 
 - Codex: `~/.codex/sessions/rollout-*.jsonl`

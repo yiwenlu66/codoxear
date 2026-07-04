@@ -16,6 +16,10 @@ Use Docker as the default verification boundary for codoxear behavior that creat
 - Copy only configuration needed for backend CLIs to authenticate and select providers/models. Do not print config values in logs.
 - Run browser verification from the host with `agent-browser` against the container-exposed port.
 
+## Isolation Guard
+
+`scripts/codoxear-docker-sandbox` enforces an `ensure_isolation` preflight that refuses to start when the throwaway `CODOXEAR_DOCKER_ROOT`/home or a host `CODEXEAR_APP_DIR` / `CODEX_WEB_APP_DIR` override would alias, sit inside, or contain the host live runtime (`~/.local/share/codoxear` or legacy `~/.local/share/codex-web`). The container is launched without forwarding either app-dir variable, so `APP_DIR` always resolves under the throwaway container `HOME`. Run `scripts/codoxear-docker-sandbox preflight` to verify isolation without starting Docker. If the guard refuses, move `CODOXEAR_DOCKER_ROOT` outside the host live runtime and unset the app-dir overrides.
+
 ## Bootstrap
 
 1. Choose an isolated work directory and port:

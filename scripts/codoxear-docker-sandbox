@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: scripts/codoxear-docker-sandbox [build|smoke|start|stop|logs|test]
+Usage: scripts/codoxear-docker-sandbox [build|smoke|start|stop|logs|preflight|test]
 
 Runs Codoxear in an isolated Docker validation sandbox.
 
@@ -17,6 +17,14 @@ Defaults:
 The sandbox intentionally uses HOME inside the mounted CODOXEAR_DOCKER_ROOT so
 ~/.local/share/codoxear, backend homes, sockets, and logs stay out of the host
 live runtime. Backend credentials are not copied by this script.
+
+Isolation guard (preflight) refuses to start if CODOXEAR_DOCKER_ROOT or the
+throwaway home would alias, sit inside, or contain the host live runtime
+(~/.local/share/codoxear or legacy ~/.local/share/codex-web), or if host env
+CODEXEAR_APP_DIR / CODEX_WEB_APP_DIR points at the live runtime. The container
+is launched without forwarding either app-dir variable so APP_DIR always
+resolves under the throwaway container HOME. Run 'preflight' to check without
+starting Docker.
 USAGE
 }
 
@@ -41,6 +49,84 @@ ensure_safe_port() {
   fi
 }
 
+_realpath() {
+  # Portable absolute path without touching the target's contents. Resolves
+  # the existing ancestor via cd+pwd; never cds into the live runtime dirs.
+  local p="$1"
+  if [[ -d "$p" ]]; then
+    ( cd "$p" && pwd ) 2>/dev/null || printf '%s\n' "$p"
+  else
+    local parent child
+    parent="$(dirname "$p")"
+    child="$(basename "$p")"
+    if [[ -d "$parent" ]]; then
+      ( cd "$parent" && printf '%s/%s\n' "$(pwd)" "$child" ) 2>/dev/null || printf '%s\n' "$p"
+    else
+      printf '%s\n' "$p"
+    fi
+  fi
+}
+
+_is_within() {
+  # 0 if $1 equals $2 or is nested below $2 (string prefix on normalized paths).
+  local candidate="$1" base="$2"
+  [[ "$candidate" == "$base" || "$candidate" == "$base/"* ]]
+}
+
+ensure_isolation() {
+  # Refuse to run if the sandbox throwaway home/root could reach the host live
+  # runtime state. This is the guard that prevents dev/cert verification from
+  # contaminating ~/.local/share/codoxear (the incident root cause).
+  local live_home live_app live_legacy_app
+  live_home="$(_realpath "$HOME")"
+  live_app="$live_home/.local/share/codoxear"
+  live_legacy_app="$live_home/.local/share/codex-web"
+
+  local real_root real_home_dir
+  real_root="$(_realpath "$root")"
+  real_home_dir="$(_realpath "$home_dir")"
+
+  local offenders=""
+  local candidate live_path
+  for candidate in "$real_root" "$real_home_dir"; do
+    if [[ "$candidate" == "$live_home" ]]; then
+      offenders+="  - $candidate equals host HOME ($live_home)\n"
+    fi
+    for live_path in "$live_app" "$live_legacy_app"; do
+      if _is_within "$candidate" "$live_path"; then
+        offenders+="  - $candidate is inside live app dir ($live_path)\n"
+      elif _is_within "$live_path" "$candidate"; then
+        offenders+="  - $candidate contains live app dir ($live_path)\n"
+      fi
+    done
+  done
+
+  # Defensive: even though this script never forwards these into the container,
+  # refuse if a host environment override points at the live runtime, so a future
+  # edit adding '-e CODEX*_APP_DIR' cannot silently reintroduce contamination.
+  local env_var env_val real_env
+  for env_var in CODEXEAR_APP_DIR CODEX_WEB_APP_DIR; do
+    env_val="${!env_var:-}"
+    if [[ -n "$env_val" ]]; then
+      real_env="$(_realpath "$env_val")"
+      if _is_within "$real_env" "$live_home" || _is_within "$live_app" "$real_env" || _is_within "$live_legacy_app" "$real_env"; then
+        offenders+="  - \$$env_var=$env_val resolves at/under host live runtime\n"
+      fi
+    fi
+  done
+
+  if [[ -n "$offenders" ]]; then
+    cat >&2 <<EOF
+refusing to start sandbox: isolation guard failed:
+$(printf '%b' "$offenders")
+Host live runtime: $live_app (legacy: $live_legacy_app)
+Set CODOXEAR_DOCKER_ROOT to a throwaway path outside the host live runtime and
+unset CODEXEAR_APP_DIR / CODEX_WEB_APP_DIR (or point them at a throwaway path).
+EOF
+    exit 2
+  fi
+}
+
 build_image() {
   docker build -f "$repo_root/docker/sandbox.Dockerfile" -t "$image" "$repo_root"
 }
@@ -55,6 +141,7 @@ stop_container() {
 
 start_container() {
   ensure_safe_port
+  ensure_isolation
   prepare_root
   build_image
   stop_container
@@ -129,6 +216,7 @@ smoke() {
 
 unit_tests() {
   ensure_safe_port
+  ensure_isolation
   prepare_root
   build_image
   docker run --rm \
@@ -149,6 +237,7 @@ case "$cmd" in
   smoke) smoke ;;
   stop) stop_container ;;
   logs) docker logs "$name" ;;
+  preflight) ensure_safe_port; ensure_isolation; echo "preflight ok: root=$root home=$home_dir" ;;
   test) shift; unit_tests "$@" ;;
   *) usage >&2; exit 2 ;;
 esac
