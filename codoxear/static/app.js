@@ -812,7 +812,6 @@
         let newSessionStartBusy = false;
         let newSessionLiteralModelInputValue = "";
         let newSessionLaunchPresetProviderAbsent = false;
-        let newSessionPiNoExtensions = false;
         newSessionBackend = "codex";
         let newSessionProvider = "chatgpt";
         let newSessionFast = false;
@@ -1864,18 +1863,6 @@
           ]),
           newSessionWorktreeInput,
         ]);
-        const newSessionPiNoExtensionsToggle = el("input", {
-          id: "newSessionPiNoExtensionsToggle",
-          type: "checkbox",
-        });
-        const newSessionPiNoExtensionsField = el("div", { class: "field", id: "newSessionPiNoExtensionsField" }, [
-          el("span", { class: "fieldLabel", text: "Pi extensions" }),
-          el("label", { class: "checkField" }, [
-            newSessionPiNoExtensionsToggle,
-            el("span", { text: "Disable default Pi extensions (-ne)" }),
-          ]),
-          el("span", { class: "fieldHint", text: "Passes -ne to the Pi CLI. Codoxear's active-session bridge still loads via an explicit extension. Use this when installed Pi extensions break startup." }),
-        ]);
         const newSessionStartBtn = el("button", { class: "primary", id: "newSessionStartBtn", type: "button", text: "Start session" });
         const newSessionViewer = el("div", { class: "formViewer newSessionViewer", id: "newSessionViewer", role: "dialog", "aria-modal": "true", "aria-label": "New session" }, [
           el("div", { class: "queueHeader" }, [
@@ -1914,7 +1901,6 @@
             ]),
             newSessionLaunchRow,
             newSessionWorktreeField,
-            newSessionPiNoExtensionsField,
           ]),
           el("div", { class: "formActions" }, [
             el("button", { id: "newSessionCancelBtn", type: "button", text: "Cancel" }),
@@ -4335,9 +4321,6 @@
           newSessionModelInput.placeholder = hasProviders ? "provider/model or model" : "Model";
           newSessionFastField.style.display = supportsFast ? "" : "none";
           if (!supportsFast) setNewSessionFast(false);
-          const piNoExtensionsSupported = newSessionBackend === "pi";
-          newSessionPiNoExtensionsField.style.display = piNoExtensionsSupported ? "" : "none";
-          if (!piNoExtensionsSupported) setNewSessionPiNoExtensions(false);
         }
 
         function setNewSessionBackend(value, { resetSelections = false } = {}) {
@@ -4406,11 +4389,6 @@
         function setNewSessionFast(value) {
           newSessionFast = !!value;
           newSessionFastToggle.checked = newSessionFast;
-        }
-
-        function setNewSessionPiNoExtensions(value) {
-          newSessionPiNoExtensions = newSessionBackend === "pi" && !!value;
-          newSessionPiNoExtensionsToggle.checked = newSessionPiNoExtensions;
         }
 
         function syncNewSessionCwdHint() {
@@ -4647,8 +4625,6 @@
           newSessionWorktreeInput.disabled = true;
           newSessionWorktreeInput.style.display = "none";
           newSessionWorktreeField.style.display = "none";
-          newSessionPiNoExtensions = false;
-          newSessionPiNoExtensionsToggle.checked = false;
           newSessionCwdMenuOpen = false;
           newSessionCwdMenuFocus = -1;
           newSessionModelMenuOpen = false;
@@ -4912,7 +4888,6 @@
         };
         newSessionWorktreeInput.oninput = () => syncNewSessionWorktreeUi();
         newSessionFastToggle.onchange = () => setNewSessionFast(newSessionFastToggle.checked);
-        newSessionPiNoExtensionsToggle.onchange = () => setNewSessionPiNoExtensions(newSessionPiNoExtensionsToggle.checked);
         newSessionReasoningBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -4948,7 +4923,6 @@
           const resumeSessionId = (newSessionController.currentResumeSelection() || {}).session_id || null;
           const createInTmux = !!newSessionTmuxToggle.checked;
           const worktreeBranch = !resumeSessionId && newSessionWorktreeToggle.checked ? String(newSessionWorktreeInput.value || "").trim() : null;
-          const piNoExtensions = agentBackend === "pi" && !!newSessionPiNoExtensions;
           if (newSessionWorktreeToggle.checked && !worktreeBranch) {
             newSessionStatus.textContent = "Branch name is required.";
             return;
@@ -4968,7 +4942,7 @@
               }
               const launchId = e && e.obj && e.obj.launch_id ? String(e.obj.launch_id) : "";
               startErrorText = launchId ? `${e.message} (${launchId})` : e && e.message ? e.message : "Start failed.";
-            }, agentBackend, piNoExtensions);
+            }, agentBackend);
             if (brokerPid) hideNewSessionDialog();
             else if (!cwdStartError) newSessionStatus.textContent = startErrorText || "Start failed.";
           } finally {
@@ -6277,7 +6251,7 @@
           hideDiagViewer();
         };
         diagBackdrop.onclick = () => hideDiagViewer();
-        async function spawnSessionWithCwd(cwd, resumeSessionId = null, worktreeBranch = null, sessionName = "", providerChoice = "chatgpt", model = "default", reasoningEffort = "high", fast = false, createInTmux = false, errorHandler = null, agentBackend = "codex", piNoExtensions = false) {
+        async function spawnSessionWithCwd(cwd, resumeSessionId = null, worktreeBranch = null, sessionName = "", providerChoice = "chatgpt", model = "default", reasoningEffort = "high", fast = false, createInTmux = false, errorHandler = null, agentBackend = "codex") {
           if (!cwd || !String(cwd).trim()) {
             setToast("cwd unavailable");
             return null;
@@ -6300,7 +6274,6 @@
             if (effortName) body.reasoning_effort = effortName;
             if (backendSupportsFast(backend) && fast) body.service_tier = "fast";
             if (createInTmux) body.create_in_tmux = true;
-            if (backend === "pi" && piNoExtensions) body.args = ["-ne"];
             const res = await api("/api/sessions", { method: "POST", body });
             if (res && res.pending && res.launch_id) {
               setToast(createInTmux ? "tmux session still starting" : "session still starting");
