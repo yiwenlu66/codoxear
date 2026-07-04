@@ -422,3 +422,10 @@
 - User correction: backend error/no-response/interruption items should render as transcript messages (possibly with error styling) and are irrelevant to binary **session** state except that a session not working is idle. A user should never need a color legend or mapping table to understand session state.
 - Mechanism corrected in PROMPT.md: session state is one boolean (`busy` vs `idle`); transcript/recovery messages explain what happened; colors/animations may only reinforce busy vs idle and must not encode outcome reasons.
 - Consequence for orchestration: no audit or implementation should introduce new busy colors, states, labels, legends, or hidden mappings. The right checks are projection consistency from the one busy boolean and ordinary message rendering for backend outcomes.
+
+## 2026-07-04T18:35:00Z Binary busy/idle audit completed
+- Critic run `75495a89-94f0-4f0a-ac36-3c894f28317b` completed a no-edit audit of binary busy/idle authority.
+- Supported model: `busy` is one boolean. Server synthesis is `session_runtime.resolve_runtime_status(...)`; frontend projections (sidebar dot, spinner/typing, status chip, interrupt/composer stop, mobile status) project busy-vs-idle only. Transcript/recovery messages carry answer/error/no-response/interruption/failure meaning.
+- No blocker found. The real busy seam is stale `interrupted_idle`: stored session state can retain `interrupted_idle=True`; `/api/sessions` listing uses stored broker state plus fresh log idle, so a same-log terminal-resumed turn can be shown idle until a fresh broker `get_state` refreshes the selected session. This is a stale boolean input, not a new-state problem. Executor `5e23576c` dispatched to invalidate/refresh the override without adding states/colors.
+- Cleanup seam: `.stateDot.failed` CSS is dead because JS never emits a failed dot class; failed launches already use gray/idle dot plus failed badge/recovery panel. Executor `ccd0af61` dispatched to remove the remnant and guard against reintroducing third-state color semantics.
+- Concurrent no-response message work remains owned by executor `5021c78a`; do not edit its files in busy/idle fixes.
