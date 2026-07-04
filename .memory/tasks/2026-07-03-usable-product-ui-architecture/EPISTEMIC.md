@@ -137,3 +137,11 @@ Clean-room critic 4aad1a07 accepted the load-error/composer/queue tranche with n
 - Browser-Codex does not currently support an end-to-end claim in the certification sandbox. The browser-created Codex broker reached pending-bind but never bound a rollout log because the Codex TUI stalled on expired MCP auth; Codoxear projected this honestly (`broker_busy=true`, send gated). This is an upstream-auth boundary, not a product projection defect.
 - Codex has fresh non-browser CLI/log/parser evidence; Claude Code has real-log parser evidence but fresh CLI is blocked by gateway 503. Backend parity claim must be scoped accordingly unless browser/CLI retries later succeed.
 
+## Restart/rediscovery continuity state
+- True server restart cannot be performed safely in the current certification container because the server is PID 1 and owns the process tree containing live brokers. Killing it would destroy the sessions whose continuity is being tested.
+- This is a harness boundary, not a Codoxear product defect. The next best discriminator is a fresh second server process against the same app dir: if it independently rediscovers `broker-30465` and its transcript, the disk-source-of-truth rediscovery mechanism is supported even though destructive restart remains unproven in this harness.
+
+## Fresh-server rediscovery proof
+- The disk-source-of-truth invariant is supported by a fresh-process proof: a second independent server sharing the same app dir rediscovered `broker-30465` and reconstructed the same transcript state and `CERT-OK` content as the original server. This tests the product mechanism that matters for restart continuity: no browser/session truth is trapped only in server memory.
+- Literal restart of the PID1 server remains a harness boundary because killing it would kill brokers in this container. A production-style supervisor/host restart would be the exact final proof, but current evidence supports the Codoxear mechanism rather than exposing a product defect.
+
