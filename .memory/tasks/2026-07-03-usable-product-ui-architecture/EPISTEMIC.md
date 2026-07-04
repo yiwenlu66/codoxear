@@ -127,3 +127,8 @@ Clean-room critic 4aad1a07 accepted the load-error/composer/queue tranche with n
 - Ordinary browser-created Pi success is now proven after sandbox-only environment repair: New Session -> Pi -> `openai-codex/gpt-5.4-mini` without `-ne` created `broker-30465`, bound a real log, and rendered assistant `CERT-OK`. The Pi extension repair is an environment condition, not a Codoxear product change.
 - Remaining blocking evidence before promotion: composed-controller flows on the live Pi page and server-restart continuity; backend parity must be proven or bounded per backend.
 
+## Composed Pi certification and backend parity state
+- Pi is now certified as a composed browser product path at current HEAD after sandbox-only environment repair: ordinary New Session, real response, search/navigation, queue/drain, interrupt, live diagnostics, file viewer, unattended/voice projections, and mobile all worked on `broker-30465`. No blockers or impairing issues were found. The observed git, Monaco, and clipboard issues are environment boundaries with explicit UI behavior rather than silent product failure.
+- Backend parity: Codex has fresh real CLI -> log -> parser evidence, but browser-level Codex proof is still pending. Claude Code has real-log parser evidence and launch/log wiring, but fresh end-to-end is blocked by an external gateway 503; this is currently a release boundary rather than a Codoxear bug.
+- Remaining promotion gates are concrete: canonical Docker test/smoke at current HEAD, browser-Codex smoke or explicit boundary, server-restart continuity from the browser, then clean-room release review.
+

@@ -305,3 +305,22 @@
 - Product-valid browser proof after repair: ordinary New Session -> Pi from `/workspace`, provider `openai-codex`, model `gpt-5.4-mini`, no `-ne` in broker PID `30465` cmdline, session `broker-30465`, log `/home/tester/.pi/agent/sessions/--workspace--/2026-07-04T05-45-58-632Z_7035ad5a-aa73-4d5f-be4c-b04f611158b0.jsonl`, browser rendered assistant `CERT-OK`.
 - Boundary: the package export repair is sandbox-local and non-durable across container recreation; canonical fix belongs upstream in Pi/lsp-pi/dependency pinning, not Codoxear product UI.
 - Active after this entry: composed-flow browser certification on valid session `broker-30465` (`faae16b1`) and backend parity/release-blocker audit (`a6f71525`).
+
+## 2026-07-04T06:08:00Z Composed Pi browser certification passed; backend parity scoped
+- Composed-flow executor `1c05fc4a` certified the ordinary browser-created Pi session `broker-30465` in `codoxear-cert-19110`. Session details: backend `pi`, provider `openai-codex`, model `gpt-5.4-mini`, cwd `/workspace`, no `-ne`, real log bound under `/home/tester/.pi/agent/sessions/--workspace--/`.
+- Ranked result: **blockers none; impairing issues none**. Environment boundaries only:
+  1. Git surface: `/workspace/.git` points at an unmounted host worktree path, so git endpoints return explicit HTTP 409 and UI shows no branch rather than crashing.
+  2. File viewer: Monaco loader timed out in headless cert browser; UI showed read-only plain-text fallback with README content visible.
+  3. Clipboard: browser denied clipboard write; Diagnostics surfaced explicit `copy failed` toast.
+- Passed live browser flows:
+  - Transcript search/navigation for `CERT-OK`: loaded/all status and row highlight/next/prev worked. Screenshots d70, d71.
+  - Queue while busy and drain: two prompts queued while first prompt was busy; queue badge/modal projected; queued prompts drained in order; final `busy=false`, `queue_len=0`. Screenshots d72-d74.
+  - Interrupt: interrupt control visible/enabled during busy prompt; interrupt POST returned ok; busy ended and controls restored. Screenshots d75-d76.
+  - Diagnostics/details: live Pi rows showed session/thread/owned/busy/queue/cwd/PID/log/tmux/provider/model/reasoning/UI/context; copy denial explicit. Screenshots d77-d78.
+  - File viewer: README rendered read-only with fallback boundary. Screenshot d79.
+  - Unattended and Voice settings opened/projected without enabling paid/credentialed actions. Screenshots d80-d81.
+  - Mobile 390x844: live transcript, `CERT-OK` search, composer/send/queue controls worked without overflow. Screenshots m13-m15.
+- Backend parity scout `a6f71525`:
+  - Codex: real CLI/log/parser smoke passed on host (`codex exec` -> `CERT-OK`); rollout parser extracted user prompt/assistant final response and idle. Codex logs are date-sharded under `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`; current discovery uses recursive glob and broker `/proc` open-file scan, so this does not break Codoxear. Browser-Codex proof is still pending.
+  - Claude Code (`cc` backend): CLI `claude` present and credentials structurally present, but fresh `claude -p` is blocked by external gateway 503 (`cc.macaron.xin`). Existing real CC logs validate parser/header/run-settings/idle extraction. Release boundary: fresh CC end-to-end pending gateway recovery.
+- Release implication: Pi composed browser certification is now complete for the primary usable-product claim. Remaining before promotion proposal: canonical Docker test/smoke at current HEAD, browser-Codex proof or explicit browser boundary, CC gateway boundary, server-restart continuity, and clean-room review.
