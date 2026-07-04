@@ -37,6 +37,7 @@ from .rollout_events import _text_message_id
 from .rollout_chat_events import _cc_message_keeps_turn_busy
 from .rollout_chat_events import _chat_assistant_dedupe_key
 from .rollout_chat_events import _dedupe_assistant_chat_events
+from .rollout_chat_events import _inject_no_response_events
 from .rollout_chat_events import _pi_message_keeps_turn_busy
 from .rollout_chat_events import _sidebar_conversation_ts
 from .rollout_chat_events import _single_chat_event
@@ -129,7 +130,15 @@ def _read_chat_page_reverse(
 
     records = list(reversed(newest_first_records))
     initial_pending = _cc_pending_tool_ids_before(log_path, records[0].start) if records else set()
-    events = _extract_positioned_chat_events(records, initial_cc_pending_tool_ids=initial_pending)
+    prior_user_byte, prior_turn_has_assistant = (
+        _codex_prior_open_turn_context(log_path, records[0].start) if records else (None, False)
+    )
+    events = _extract_positioned_chat_events(
+        records,
+        initial_cc_pending_tool_ids=initial_pending,
+        prior_user_byte=prior_user_byte,
+        prior_turn_has_assistant=prior_turn_has_assistant,
+    )
     next_before = records[0].start if records else 0
     return events, next_before, has_older, size
 
@@ -138,6 +147,8 @@ def _extract_positioned_chat_events(
     records: list[JsonlRecord],
     *,
     initial_cc_pending_tool_ids: set[str] | None = None,
+    prior_user_byte: int | None = None,
+    prior_turn_has_assistant: bool = False,
 ) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     cc_pending_tool_ids = set(initial_cc_pending_tool_ids or set())
@@ -145,7 +156,14 @@ def _extract_positioned_chat_events(
         event = _single_chat_event(record.obj, cc_pending_tool_ids=cc_pending_tool_ids)
         if event is not None:
             events.append(_with_chat_position(event, before_byte=record.start))
-    return _dedupe_assistant_chat_events(events)
+    events = _dedupe_assistant_chat_events(events)
+    events = _inject_no_response_events(
+        records,
+        events,
+        prior_user_byte=prior_user_byte,
+        prior_turn_has_assistant=prior_turn_has_assistant,
+    )
+    return events
 
 
 def _read_chat_tail_page(log_path: Path, *, limit: int) -> tuple[list[dict[str, Any]], int, int, bool]:
@@ -163,6 +181,70 @@ def _read_chat_history_page(log_path: Path, *, before_byte: int, limit: int) -> 
     return events, next_before, has_older
 
 
+def _record_produces_visible_assistant(record: JsonlRecord) -> bool:
+    """True if ``_single_chat_event`` projects this row as a visible assistant
+    event. Used only to compute prior-window turn visibility so a split
+    user/close does not false-inject a no-response row when the assistant
+    answer already appeared before the live-delta / history window.
+    """
+    event = _single_chat_event(record.obj)
+    return event is not None and event.get("role") == "assistant"
+
+
+def _codex_prior_open_turn_context(
+    log_path: Path,
+    before_byte: int,
+    *,
+    max_scan_bytes: int = 2 * 1024 * 1024,
+) -> tuple[int | None, bool]:
+    """Describe the open Codex user turn at ``before_byte`` (the byte just
+    before a forward live-delta or paginated history window).
+
+    Returns ``(user_byte, has_visible_assistant)`` where ``user_byte`` is the
+    byte offset of the most recent Codex ``event_msg`` ``user_message`` before
+    ``before_byte`` that has not yet been closed by a ``task_complete`` /
+    ``turn_complete`` (or ``None`` if no user turn is open), and
+    ``has_visible_assistant`` reports whether a visible assistant event was
+    produced between that user_message and ``before_byte``.
+
+    The scan is bounded and stops at the first user_message or close
+    encountered (newest-first). Only Codex ``event_msg`` user/close rows bound
+    the scan, so Pi (``message`` rows) and Claude Code (``user`` / ``assistant``
+    rows) sessions naturally yield ``(None, False)`` and never trigger Codex
+    no-response logic.
+    """
+    if before_byte <= 0:
+        return None, False
+    lower_bound = max(0, before_byte - int(max_scan_bytes))
+    collected: list[JsonlRecord] = []
+    boundary_kind: str | None = None
+    boundary_user_byte: int | None = None
+    for record in _iter_jsonl_records_reverse(log_path, before=before_byte):
+        if record.start < lower_bound:
+            boundary_kind = None
+            break
+        obj = record.obj
+        if obj.get("type") == "event_msg":
+            payload = obj.get("payload")
+            pt = payload.get("type") if isinstance(payload, dict) else None
+            if pt == "user_message":
+                if isinstance(payload.get("message"), str) and payload["message"].strip():
+                    boundary_kind = "user"
+                    boundary_user_byte = record.start
+                else:
+                    boundary_kind = "empty_user"
+                break
+            if pt in ("task_complete", "turn_complete"):
+                boundary_kind = "close"
+                break
+        collected.append(record)
+    if boundary_kind != "user":
+        return None, False
+    assert boundary_user_byte is not None
+    has_visible = any(_record_produces_visible_assistant(r) for r in collected)
+    return boundary_user_byte, has_visible
+
+
 def _read_chat_live_delta(
     log_path: Path,
     *,
@@ -171,7 +253,15 @@ def _read_chat_live_delta(
 ) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, bool], dict[str, Any], dict[str, Any] | None]:
     records, next_after = _read_jsonl_records_from_offset(log_path, after_byte, max_bytes=max_bytes)
     initial_pending = _cc_pending_tool_ids_before(log_path, after_byte) if records and after_byte > 0 else set()
-    events = _extract_positioned_chat_events(records, initial_cc_pending_tool_ids=initial_pending)
+    prior_user_byte, prior_turn_has_assistant = (
+        _codex_prior_open_turn_context(log_path, after_byte) if after_byte > 0 else (None, False)
+    )
+    events = _extract_positioned_chat_events(
+        records,
+        initial_cc_pending_tool_ids=initial_pending,
+        prior_user_byte=prior_user_byte,
+        prior_turn_has_assistant=prior_turn_has_assistant,
+    )
     objs = [record.obj for record in records]
     _events, meta, flags, diag = _extract_chat_events(objs, initial_cc_pending_tool_ids=initial_pending)
     token_update = _extract_token_update(objs)

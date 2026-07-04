@@ -298,32 +298,72 @@ class CodexBackend(AgentBackend):
             payload = row.get("payload")
             if not isinstance(payload, dict):
                 raise ValueError("invalid event_msg payload")
-            if payload.get("type") != "user_message":
-                payload_type = payload.get("type")
-                if payload_type in ("error", "stream_error", "warning"):
-                    text = _codex_event_text(payload)
-                    if text is None:
-                        return None
-                    ts = _event_ts(row)
-                    message_class = "warning" if payload_type == "warning" else "error"
-                    event: dict[str, Any] = {
-                        "role": "assistant",
-                        "text": text,
-                        "message_class": message_class,
-                        "message_id": _text_message_id(message_class=message_class, text=text, ts=ts),
-                    }
-                    if ts is not None:
-                        event["ts"] = ts
-                    return event
-                return None
-            message = payload.get("message")
-            if not isinstance(message, str):
-                return None
-            ts = _event_ts(row)
-            event = {"role": "user", "text": message}
-            if ts is not None:
-                event["ts"] = ts
-            return event
+            payload_type = payload.get("type")
+            if payload_type == "user_message":
+                message = payload.get("message")
+                if not isinstance(message, str):
+                    return None
+                ts = _event_ts(row)
+                event = {"role": "user", "text": message}
+                if ts is not None:
+                    event["ts"] = ts
+                return event
+            if payload_type in ("error", "stream_error", "warning"):
+                text = _codex_event_text(payload)
+                if text is None:
+                    return None
+                ts = _event_ts(row)
+                message_class = "warning" if payload_type == "warning" else "error"
+                event: dict[str, Any] = {
+                    "role": "assistant",
+                    "text": text,
+                    "message_class": message_class,
+                    "message_id": _text_message_id(message_class=message_class, text=text, ts=ts),
+                }
+                if ts is not None:
+                    event["ts"] = ts
+                return event
+            if payload_type == "agent_message":
+                # Codex emits assistant text via event_msg.agent_message (the
+                # same row form idle/sidebar already treat as assistant output).
+                # Project it as a visible transcript message so it renders like
+                # any other assistant text and suppresses no-response injection
+                # through the existing source-of-truth mechanism. Final-answer
+                # phase mirrors response_item phase semantics.
+                message = payload.get("message")
+                if not isinstance(message, str) or not message.strip():
+                    return None
+                ts = _event_ts(row)
+                message_class = "final_response" if payload.get("phase") == "final_answer" else "narration"
+                event = {
+                    "role": "assistant",
+                    "text": message,
+                    "message_class": message_class,
+                    "message_id": _text_message_id(message_class=message_class, text=message, ts=ts),
+                }
+                if ts is not None:
+                    event["ts"] = ts
+                return event
+            if payload_type in ("task_complete", "turn_complete"):
+                # Codex carries the final assistant text on the turn-close row
+                # via last_agent_message. Project it as a visible final_response
+                # transcript message (mirroring how idle/sidebar treat it as
+                # assistant output) so it renders and suppresses no-response.
+                last_msg = payload.get("last_agent_message")
+                if not isinstance(last_msg, str) or not last_msg.strip():
+                    return None
+                ts = _event_ts(row)
+                message_class = "final_response"
+                event = {
+                    "role": "assistant",
+                    "text": last_msg,
+                    "message_class": message_class,
+                    "message_id": _text_message_id(message_class=message_class, text=last_msg, ts=ts),
+                }
+                if ts is not None:
+                    event["ts"] = ts
+                return event
+            return None
 
         if typ == "response_item":
             payload = row.get("payload")

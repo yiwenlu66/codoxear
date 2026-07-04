@@ -146,3 +146,171 @@ def _dedupe_assistant_chat_events(events: list[dict[str, Any]]) -> list[dict[str
             continue
         out.append(event)
     return out
+
+
+# User-facing, backend-truthful text for a Codex turn that closed (task_complete
+# / turn_complete) after a user message but produced no assistant output and no
+# explicit error. The text states the observable fact — the turn ended with no
+# answer — without inventing assistant content or leaking internal diagnostics
+# (no stack traces, API details, or credential hints). It uses message_class
+# "error" so the existing transcript renderer surfaces it with error styling.
+_NO_RESPONSE_TEXT = "The backend completed this turn without producing a response."
+
+
+def _build_no_response_event(obj: dict[str, Any]) -> dict[str, Any]:
+    ts = _event_ts(obj)
+    event: dict[str, Any] = {
+        "role": "assistant",
+        "text": _NO_RESPONSE_TEXT,
+        "message_class": "error",
+        "message_id": _text_message_id(message_class="error", text=_NO_RESPONSE_TEXT, ts=ts),
+    }
+    if ts is not None:
+        event["ts"] = ts
+    return event
+
+
+def _detect_codex_no_response_closes(records: list[Any]) -> list[tuple[int, int, dict[str, Any]]]:
+    """Locate Codex turn-close boundaries for no-response detection.
+
+    Returns ``(user_byte, close_byte, close_obj)`` triples for each Codex
+    ``event_msg`` ``task_complete`` / ``turn_complete`` record that closes a
+    turn begun by a non-empty ``user_message``. ``user_byte`` is the byte
+    offset of the most recent ``user_message`` record before the close;
+    ``close_byte`` is ``record.start`` of the closing record.
+
+    This function only identifies turn boundaries. It deliberately does **not**
+    decide whether the turn produced a response: that judgement belongs to
+    :func:`_inject_no_response_events`, which consults the already-extracted
+    chat events (the source of truth for what is visibly rendered). Only Codex
+    ``event_msg`` turn-close types trigger detection, so valid Pi and Claude
+    Code turns — which use different close mechanisms — are unaffected.
+    """
+    closes: list[tuple[int, int, dict[str, Any]]] = []
+    user_byte: int | None = None
+    for record in records:
+        obj = record.obj
+        if obj.get("type") != "event_msg":
+            continue
+        payload = obj.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        pt = payload.get("type")
+        if pt == "user_message":
+            if isinstance(payload.get("message"), str) and payload["message"].strip():
+                user_byte = record.start
+            continue
+        if pt in ("task_complete", "turn_complete"):
+            if user_byte is not None:
+                closes.append((user_byte, record.start, obj))
+            user_byte = None
+            continue
+    return closes
+
+
+def _visible_assistant_event_bytes(
+    events: list[dict[str, Any]],
+) -> tuple[set[int], bool]:
+    """Return ``(bytes, has_unpositioned)`` for positioned assistant events.
+
+    ``bytes`` holds the ``_before_byte`` of every positioned assistant event
+    (the source of truth for what the transcript renders). ``has_unpositioned``
+    is True if any assistant event lacked a byte offset — such events cannot
+    be ordered against closes and are treated as globally visible to avoid
+    false no-response injection (matches the historical behaviour for
+    synthetic test inputs).
+    """
+    bytes_set: set[int] = set()
+    has_unpositioned = False
+    for event in events:
+        if event.get("role") != "assistant":
+            continue
+        ev_byte = event.get("_before_byte")
+        if isinstance(ev_byte, int):
+            bytes_set.add(ev_byte)
+        else:
+            has_unpositioned = True
+    return bytes_set, has_unpositioned
+
+
+def _inject_no_response_events(
+    records: list[Any],
+    events: list[dict[str, Any]],
+    *,
+    prior_user_byte: int | None = None,
+    prior_turn_has_assistant: bool = False,
+) -> list[dict[str, Any]]:
+    """Inject explicit no-response events when a Codex user turn closes with
+    no visible assistant output.
+
+    Visible assistant transcript messages remain the source of truth for
+    suppressing a no-response row. In-window visibility is decided from the
+    positioned ``events`` (the normalizer's output); pre-window visibility —
+    relevant when a live delta / history page splits the user row from the
+    close row — is supplied via ``prior_user_byte`` / ``prior_turn_has_assistant``
+    (computed by the caller from the same ``_single_chat_event`` extractor, so
+    the detector cannot diverge from the extractor).
+
+    ``prior_user_byte`` seeds the open-turn state: if the window begins with an
+    open Codex user turn (user_message delivered in an earlier poll, no close
+    yet), a close arriving in this window still triggers detection.
+    ``prior_turn_has_assistant`` suppresses injection when that prior open turn
+    already produced a visible assistant event before the window. An in-window
+    ``user_message`` overrides the prior context (a newer turn supersedes it).
+
+    Only Codex ``event_msg`` ``user_message`` / ``task_complete`` /
+    ``turn_complete`` rows drive detection, so valid Pi and Claude Code turns
+    are unaffected.
+    """
+    asst_bytes, has_unpositioned_asst = _visible_assistant_event_bytes(events)
+    if has_unpositioned_asst:
+        # An assistant event that cannot be byte-ordered cannot be reliably
+        # placed relative to a close; treat the window as answered and do not
+        # inject (preserves historical behaviour for synthetic test inputs).
+        return events
+
+    result: list[dict[str, Any]] = []
+    i = 0
+    n = len(events)
+    user_byte: int | None = prior_user_byte
+    user_from_prior = prior_user_byte is not None
+
+    for record in records:
+        obj = record.obj
+        if obj.get("type") != "event_msg":
+            continue
+        payload = obj.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        pt = payload.get("type")
+        if pt == "user_message":
+            if isinstance(payload.get("message"), str) and payload["message"].strip():
+                user_byte = record.start
+                user_from_prior = False
+            continue
+        if pt in ("task_complete", "turn_complete"):
+            close_byte = record.start
+            # Drain every positioned event up to and including this close so
+            # the merge cursor stays byte-ordered regardless of injection.
+            while i < n:
+                ev_byte = events[i].get("_before_byte")
+                if isinstance(ev_byte, int) and ev_byte > close_byte:
+                    break
+                result.append(events[i])
+                i += 1
+            if user_byte is not None:
+                answered = (user_from_prior and prior_turn_has_assistant) or any(
+                    user_byte < b <= close_byte for b in asst_bytes
+                )
+                if not answered:
+                    positioned = dict(_build_no_response_event(obj))
+                    positioned["_before_byte"] = close_byte
+                    result.append(positioned)
+            user_byte = None
+            user_from_prior = False
+            continue
+
+    while i < n:
+        result.append(events[i])
+        i += 1
+    return result
