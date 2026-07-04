@@ -121,3 +121,9 @@ Clean-room critic 4aad1a07 accepted the load-error/composer/queue tranche with n
 - The review failure mechanism was contract contamination: the critic was asked whether the checkbox preserved launch semantics, reset state, and had accurate mechanism text. It was not asked whether the option should exist in the product. A review constrained to an invalid premise can only audit implementation quality inside that premise.
 - Correct boundary: if Docker certification is blocked by broken Pi extensions or missing credentials, repair the certification environment, launch a terminal/API session only as diagnostic evidence, or state a release boundary. Do not convert the workaround into UI.
 
+## Product reanchor and Pi success state
+- Product invariant: Codoxear is a faithful browser projection/control channel for local CLI-agent sessions whose truth lives on disk. The user promise is "trust the phone to be the terminal": every real session state must be visible/controllable without silent disappearance, and every visible control must map to a user workflow.
+- The invalid `-ne` UI episode is absorbed as a review-framing failure. Future reviews must ask whether a product surface should exist before auditing implementation containment.
+- Ordinary browser-created Pi success is now proven after sandbox-only environment repair: New Session -> Pi -> `openai-codex/gpt-5.4-mini` without `-ne` created `broker-30465`, bound a real log, and rendered assistant `CERT-OK`. The Pi extension repair is an environment condition, not a Codoxear product change.
+- Remaining blocking evidence before promotion: composed-controller flows on the live Pi page and server-restart continuity; backend parity must be proven or bounded per backend.
+
