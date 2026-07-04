@@ -145,3 +145,7 @@ Clean-room critic 4aad1a07 accepted the load-error/composer/queue tranche with n
 - The disk-source-of-truth invariant is supported by a fresh-process proof: a second independent server sharing the same app dir rediscovered `broker-30465` and reconstructed the same transcript state and `CERT-OK` content as the original server. This tests the product mechanism that matters for restart continuity: no browser/session truth is trapped only in server memory.
 - Literal restart of the PID1 server remains a harness boundary because killing it would kill brokers in this container. A production-style supervisor/host restart would be the exact final proof, but current evidence supports the Codoxear mechanism rather than exposing a product defect.
 
+## Codex pre-log busy deadlock
+- Browser-Codex is blocked by both an environment trigger and a Codoxear readiness bug. The environment lacks working Codex credentials, causing MCP startup failures/noise before a rollout log exists. Codoxear then interprets the pre-log `esc to interrupt` hint as busy and has no pre-log idle-clearing path, so the first browser send is rejected forever as `session is busy; wait before sending`.
+- This is a product bug because a backend that has not produced a transcript yet can become permanently unsendable based only on pre-log TUI text. The fix should preserve fail-loud backend errors while preventing pre-log startup noise from deadlocking first input. No user-facing UI or debug option belongs here.
+
