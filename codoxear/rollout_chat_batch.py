@@ -66,6 +66,8 @@ def _extract_chat_events(
                             last_tool = name
             if event is not None and event.get("message_class") == "final_response":
                 turn_end = True
+            if event is not None and event.get("message_class") == "error":
+                turn_end = True
             continue
 
         if typ == "system" and cc_is_turn_end(obj):

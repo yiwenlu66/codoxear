@@ -303,6 +303,20 @@ def cc_assistant_is_final_turn_end(obj: dict[str, Any]) -> bool:
     return msg.get("stop_reason") == "end_turn"
 
 
+def cc_assistant_is_api_error(obj: dict[str, Any]) -> bool:
+    """Detect a Claude Code API/gateway error assistant row.
+
+    Claude Code logs transport/provider failures as synthetic assistant rows
+    with ``isApiErrorMessage: true`` (and ``message.model == "<synthetic>"``).
+    These rows carry the backend error text in a normal ``text`` content block
+    but are NOT real assistant output — they must be classified as errors and
+    close the turn.
+    """
+    if obj.get("type") != "assistant":
+        return False
+    return obj.get("isApiErrorMessage") is True
+
+
 def cc_message_role(obj: dict[str, Any]) -> str | None:
     typ = obj.get("type")
     if typ == "assistant":

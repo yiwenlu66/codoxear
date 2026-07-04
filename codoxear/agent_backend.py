@@ -708,6 +708,7 @@ class ClaudeCodeBackend(AgentBackend):
 
     def chat_event_from_log_row(self, obj: Mapping[str, Any], *, cc_pending_tool_ids: set[str] | None = None) -> dict[str, Any] | None:
         from .cc_log import cc_apply_tool_result_to_pending
+        from .cc_log import cc_assistant_is_api_error
         from .cc_log import cc_assistant_is_final_turn_end
         from .cc_log import cc_assistant_pending_tool_use_ids
         from .cc_log import cc_assistant_text
@@ -739,7 +740,10 @@ class ClaudeCodeBackend(AgentBackend):
             assistant_text = cc_assistant_text(row)
             if isinstance(assistant_text, str) and assistant_text:
                 ts = _event_ts(row)
-                message_class = "final_response" if cc_assistant_is_final_turn_end(row) and not cc_pending_tool_ids else "narration"
+                if cc_assistant_is_api_error(row):
+                    message_class = "error"
+                else:
+                    message_class = "final_response" if cc_assistant_is_final_turn_end(row) and not cc_pending_tool_ids else "narration"
                 event = {
                     "role": "assistant",
                     "text": assistant_text,

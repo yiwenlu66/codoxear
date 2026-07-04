@@ -284,9 +284,13 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
         return
 
     if typ == "assistant":
+        from .cc_log import cc_assistant_is_api_error
         has_text = bool(_cc_assistant_text(obj))
         thinking_count = _cc_assistant_thinking_count(obj)
         tool_count = _cc_assistant_tool_use_count(obj)
+        if cc_assistant_is_api_error(obj):
+            _close_turn_state(st)
+            return
         if has_text and _cc_assistant_is_final_turn_end(obj):
             if st.pending_calls:
                 _reopen_turn_on_activity(st)
