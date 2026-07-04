@@ -400,3 +400,13 @@
 - Post-send evidence: broker bound a Codex rollout log under `~/.codex/sessions/2026/07/04/rollout-...jsonl`; `broker_busy=false`; `commit_unknown_sends.json == {}`; launch ledger recorded the submitted user message. Rollout tail contained the user message and `task_complete` with `last_agent_message=None`.
 - Classification: Codoxear pre-log readiness bug fixed. Remaining browser-Codex limitation is backend inference/auth in the cert environment: the configured macaron/openai-api provider path produced no assistant text. This is a credential boundary, not a readiness boundary.
 - Cleanup: second server and its throwaway Codex broker tree were stopped; PID1 server and broker-30465 remained intact.
+
+## 2026-07-04T08:18:00Z Roadmap frame corrected: continue product iteration, not promotion packaging
+- User correction: a promotion proposal is obviously the wrong deliverable. The deliverable remains continued whole-product iteration.
+- Category correction: prior final-review framing tested whether the evidence package was internally sufficient for a Pi-certified release-candidate proposal. That frame is subordinate and currently wrong: Codoxear presents multiple backend surfaces, so the next product question is whether backend truth and degradation are projected coherently to the user across Pi/Codex/Claude, not whether Pi evidence can be packaged around boundaries.
+- Immediate mechanism to investigate: post-fix Codex now accepts first input and binds a rollout log, but degraded credentials produce `task_complete` with `last_agent_message=None`. If the UI/API projects this as a quiet idle turn with no explicit failure/no-response state, the user-facing truth contract may still be wrong even though readiness is fixed.
+
+## 2026-07-04T08:24:00Z Category correction: selectable backend cannot silently no-answer
+- User correction: treating degraded non-Pi backend outcomes as acceptable as-is is a category error. A selectable backend is a product promise, not an ops boundary hidden behind evidence notes.
+- Correct invariant: if a user can choose a backend and send a prompt, Codoxear must either prevent/label unavailable backend paths before the turn or project the failed/no-answer turn explicitly after the turn. A rollout that records user input and then completes with no assistant output cannot be rendered as ordinary idle silence.
+- Consequence: post-`f7bed4b` Codex readiness is fixed, but the next product mechanism is no-response projection. Degraded credentials are the cause; silent browser state would be the Codoxear defect. Executor `71252949-93c6-4cb4-b181-80c313a7034f` was dispatched to implement explicit no-response projection at the parser/message normalization boundary.

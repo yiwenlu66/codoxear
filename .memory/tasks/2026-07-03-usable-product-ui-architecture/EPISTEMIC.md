@@ -159,3 +159,12 @@ Clean-room critic 4aad1a07 accepted the load-error/composer/queue tranche with n
 - Codex browser inference remains bounded by credentials/provider state in the certification container: the degraded backend produced `task_complete` without assistant text. The supported claim is readiness/control repair, not Codex parity.
 - Attachment injection sharing the pre-log readiness relaxation is a non-blocking edge: it uses the same bracketed-paste PTY path as first text send and enters a one-attachment pending state until explicit send. No separate code change is justified absent browser evidence of misdelivery.
 
+## Corrected organizing frame
+- The deliverable is continued whole-product iteration, not a promotion proposal. The product category is a multi-backend local-agent browser controller; certifying Pi alone does not settle the promise exposed by Codex and Claude tabs.
+- Backend boundaries are product questions when they affect what the user sees. A failed credential/gateway/empty-turn condition cannot live only in OPS notes if the browser projects it as silence or ordinary idle.
+- Next uncertainty: after Codex first-send readiness was fixed, degraded Codex produced a bound log with a user message and `task_complete` carrying no assistant text. The decisive question is whether Codoxear surfaces that backend truth as an explicit no-response/error/boundary state or leaves the user with a silent missing answer.
+
+## Selectable backend promise
+- A selectable backend is a user-facing promise. Backend availability failures are external causes, but Codoxear still owns the projection: a user prompt followed by a completed turn with no assistant/error output must become explicit no-response/failure state in the transcript/API, not quiet idle.
+- Therefore Codex credential failure cannot be accepted merely as a release boundary while the UI shows a normal empty turn. The next product fix is to normalize empty completed turns into truthful visible events without inventing assistant content.
+
