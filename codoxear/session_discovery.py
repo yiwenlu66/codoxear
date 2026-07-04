@@ -137,12 +137,12 @@ def discover_sessions(
             log_path = _metadata_log_path(meta, sock=sock)
             ignored_paths = _metadata_ignored_rollout_paths(meta, sock=sock)
             start_ts = _metadata_start_ts(meta, sock=sock)
+            agent_backend = normalize_agent_backend(meta.get("agent_backend"), default="codex")
         except ValueError as e:
             _log_invalid_sidecar_metadata("discover", sock, e)
             continue
 
         thread_id = meta.get("session_id") if isinstance(meta.get("session_id"), str) and meta.get("session_id") else session_id
-        agent_backend = normalize_agent_backend(meta.get("agent_backend"), default="codex")
         owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else False
         transport, tmux_session, tmux_window = deps.session_transport(meta)
         sync_send_supported = _metadata_sync_send_supported(meta)

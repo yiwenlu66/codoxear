@@ -152,6 +152,32 @@ def test_discover_malformed_sidecar_is_not_pruned(tmp_path: Path) -> None:
     assert result.stale_actions == []
 
 
+def test_discover_unknown_backend_sidecar_does_not_abort_startup(tmp_path: Path) -> None:
+    sock_dir = tmp_path / "socks"
+    sock_dir.mkdir()
+    bad_sock = sock_dir / "future.sock"
+    bad_sock.touch()
+    _write_sidecar(bad_sock, root=tmp_path, log_path=None, agent_backend="future-backend")
+    good_sock = sock_dir / "good.sock"
+    good_sock.touch()
+    good_log = tmp_path / "good.jsonl"
+    good_log.write_text('{"type":"session_meta","payload":{"id":"good-thread"}}\n', encoding="utf-8")
+    _write_sidecar(good_sock, root=tmp_path, log_path=good_log)
+
+    result = discover_sessions(
+        sock_dir,
+        proc_root=tmp_path / "proc",
+        hidden_sessions=set(),
+        deps=_deps(live_pids={11, 12}, meta_payload={"id": "good-thread"}),
+    )
+
+    assert result.stale_actions == []
+    assert [reg.session_id for reg in result.registrations] == ["good"]
+    assert result.registrations[0].agent_backend == "codex"
+    assert bad_sock.exists()
+    assert bad_sock.with_suffix(".json").exists()
+
+
 def test_discover_dead_owned_without_log_records_failure_without_clearing_state(tmp_path: Path) -> None:
     sock_dir = tmp_path / "socks"
     sock_dir.mkdir()
