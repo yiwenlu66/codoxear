@@ -353,3 +353,50 @@
 - Environment trigger: Codex credentials in `codoxear-cert-19110` are inert. `codex exec` with configured `macaron`/apikey path exits with missing `MAC_OAI_KEY`; other provider API env vars are unset; ChatGPT/OAuth refresh is exhausted with token-expired errors. MCP startup also prints auth/ENOENT failures.
 - Product projection/control bug: before any rollout log is bound, Codex TUI prints an MCP startup hint containing `esc to interrupt`. `broker_turn_state._update_busy_from_pty_text` marks the broker busy. Idle clearing is tied to the log-watcher loop that requires a bound log, so pre-log `busy=True` becomes sticky. `send_remote_ready()` then rejects first browser send with `session is busy; wait before sending`. This is a Codoxear pre-log readiness deadlock triggered by degraded Codex startup; healthy-Codex behavior is unproven.
 - Release impact: do not claim browser-Codex parity. Fix direction must address pre-log busy/readiness semantics without adding UI or hiding backend failures, then re-test. Separately, real inference still needs a working Codex credential in the certification environment.
+
+## 2026-07-04T07:00:00Z Codex pre-log busy deadlock fixed in readiness synthesis
+- Functional commit `f7bed4b Allow first send before log bind` fixes the Codex pre-log busy deadlock discovered by browser-Codex smoke.
+- Mechanism: `resolve_runtime_status()` no longer lets broker `busy=True` alone gate `remote_ready` before a transcript log is bound. Pre-log PTY hints such as Codex `esc to interrupt` are treated as startup noise for first input because there is no log-watcher idle path to clear them. Bound-log turns still require `log_idle=True` (or interrupted-idle override), queue length still gates, and unresolved confirmed-send boundaries still fail loud after an attempted send.
+- Tests/validation run on the uncommitted then committed diff: targeted readiness/busy suites `264 passed, 26 subtests`; full local pytest `1548 passed, 132 subtests`; Docker unit on port 19115 `1547 passed, 1 skipped, 132 subtests`; Docker smoke on port 19116 pre-login `401`, post-login `/api/sessions` `200`.
+- Independent critic `a4e2196c-26e8-43b0-b7fd-14727f409faf` accepted with notes: the first browser input is intentionally allowed despite pre-log PTY busy; confirmed-send boundary blocks subsequent input until a log advances. Attachment injection also consumes the pre-log relaxation and remains a non-blocking product-policy edge unless it becomes user-visible.
+- Residual boundary: browser-Codex end-to-end still needs working Codex/MCP credentials in the certification environment; this fix removes the Codoxear readiness deadlock, not the upstream auth failure.
+
+## 2026-07-04 Codex first-send readiness discriminator (f7bed4b) — no-edit probe
+
+- HEAD: f7bed4b "Allow first send before log bind" on recovery/product-gaps.
+- Container codoxear-cert-19110 (PID1 old server left running untouched).
+- Started SECOND independent server inside container: HOME=/home/tester,
+  CODEX_WEB_PASSWORD=<redacted test password>, HOST=127.0.0.1, PORT=19117, cwd /workspace
+  (imports mounted source at f7bed4b). PID 206781. Login HTTP 200.
+- Created fresh Codex session: POST /api/sessions {cwd:/workspace, agent_backend:codex}
+  -> 200, broker_pid 209307, session_id broker-209307, launch_id
+  launch-1783152033410-36b369f6, transport direct.
+- PRE-SEND diagnostics (broker-209307): log_path=null, broker_busy=true,
+  busy=false, queue_len=0, transcript=pending_bind (launch state broker_spawned).
+  -> This is exactly the prelog-busy condition that produced the old deadlock.
+- FIRST SEND POST /api/sessions/broker-209307/send {text:"Reply with exactly: CERT-OK"}
+  -> HTTP 200 {"queued": false, "queue_len": 0}. NOT rejected as
+  "session is busy; wait before sending" (would have been HTTP 409).
+- POST-SEND: log bound to
+  ~/.codex/sessions/2026/07/04/rollout-2026-07-04T08-00-38-...jsonl,
+  broker_busy dropped to false. commit_unknown_sends.json = {} (no recovery row).
+  Launch ledger appended submitted_user_messages[source=send] for the launch.
+- Rollout tail: user message recorded, then task_complete with
+  last_agent_message=None (no inference) — backend/auth failure on broken
+  macaron credentials. Acceptable residual; not a readiness issue.
+- Result: PASS. f7bed4b removed the Codoxear-side first-send deadlock.
+  The removed branch (broker.busy and log_idle is not True -> remote_ready=False)
+  no longer fires pre-log; remote_ready stays True so send proceeds and triggers
+  log bind.
+- Cleanup: killed throwaway tree (codex vendor 209341, codex 209326,
+  broker 209307) + second server 206781. Port 19117 closed. PID1 intact,
+  broker-30465 (Pi) intact, cert endpoint 19110 HTTP 200.
+- No source edits, nothing staged.
+
+## 2026-07-04T08:08:00Z Post-fix Codex readiness discriminator passed
+- Post-fix discriminator `c64ef7f4-2d6f-4380-8611-b13d0f684d86` started a second fixed server on internal port 19117 against current HEAD `f7bed4b`, leaving PID1 and live Pi broker `broker-30465` untouched.
+- Fresh Codex session `broker-209307` reproduced the pre-log condition before send: `log_path=null`, transcript `pending_bind`, diagnostics `broker_busy=true`, synthesized `busy=false`, `queue_len=0`, launch state `broker_spawned`.
+- First send `Reply with exactly: CERT-OK` returned HTTP 200 `{"queued": false, "queue_len": 0}` rather than the old HTTP 409 `session is busy; wait before sending`. This directly proves the Codoxear readiness deadlock was removed.
+- Post-send evidence: broker bound a Codex rollout log under `~/.codex/sessions/2026/07/04/rollout-...jsonl`; `broker_busy=false`; `commit_unknown_sends.json == {}`; launch ledger recorded the submitted user message. Rollout tail contained the user message and `task_complete` with `last_agent_message=None`.
+- Classification: Codoxear pre-log readiness bug fixed. Remaining browser-Codex limitation is backend inference/auth in the cert environment: the configured macaron/openai-api provider path produced no assistant text. This is a credential boundary, not a readiness boundary.
+- Cleanup: second server and its throwaway Codex broker tree were stopped; PID1 server and broker-30465 remained intact.

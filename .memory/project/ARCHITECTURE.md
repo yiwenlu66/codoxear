@@ -30,6 +30,8 @@ Protected checkout: `/home/yiwen/codex-web` on `main` — never edit/restart/mer
 
 ## Known failure modes
 
+
+- Runtime readiness treats a bound transcript log as the authority for real turn busy/idle. Broker PTY busy hints observed before log bind (for example Codex startup text containing `esc to interrupt`) are not sufficient to block the first browser input because no log-watcher idle path can clear them. After a confirmed send, the send-boundary mechanism blocks follow-up input until the log appears/advances or recovery is surfaced.
 - Source-text tests and internal monkeypatch seams (e.g. patching `server.MANAGER`) hide live-contract breaks; prefer executable behavior tests with injected deps.
 - Coordinator method signatures with required keyword-only args can break legacy manager call sites silently until a live route hits them.
 - Stale docs propagate: sessiond schema docs omitted `token` and masked a parity gap for one review round.

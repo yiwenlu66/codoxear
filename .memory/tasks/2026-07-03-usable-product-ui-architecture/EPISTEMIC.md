@@ -149,3 +149,13 @@ Clean-room critic 4aad1a07 accepted the load-error/composer/queue tranche with n
 - Browser-Codex is blocked by both an environment trigger and a Codoxear readiness bug. The environment lacks working Codex credentials, causing MCP startup failures/noise before a rollout log exists. Codoxear then interprets the pre-log `esc to interrupt` hint as busy and has no pre-log idle-clearing path, so the first browser send is rejected forever as `session is busy; wait before sending`.
 - This is a product bug because a backend that has not produced a transcript yet can become permanently unsendable based only on pre-log TUI text. The fix should preserve fail-loud backend errors while preventing pre-log startup noise from deadlocking first input. No user-facing UI or debug option belongs here.
 
+## Codex pre-log busy fix state
+- The Codex pre-log busy deadlock is fixed at the readiness-synthesis layer. Broker-internal PTY busy remains truthfully recorded, but pre-log broker busy no longer blocks the first browser input because no transcript/log authority exists yet and no idle-clearing path can run before log bind.
+- Safety boundary after the first input is preserved by the confirmed-send boundary: once the browser attempts a confirmed send, follow-up input is blocked until the log appears/advances or the send becomes an explicit unknown-send recovery state. Post-log busy turns still gate through `log_idle=False`.
+- Remaining Codex release boundary is environment authentication/inference, not this readiness deadlock. Attachment injection shares the pre-log readiness relaxation; keep this as a policy edge to revisit only if browser evidence shows user-visible misdelivery.
+
+## Post-fix backend boundary state
+- Codex pre-log readiness is no longer a product blocker. A fresh fixed server reproduced `broker_busy=true` before log bind and accepted the first browser/API send with HTTP 200; the broker then bound a rollout log and recorded the user message. The previous `session is busy; wait before sending` deadlock is falsified at current HEAD.
+- Codex browser inference remains bounded by credentials/provider state in the certification container: the degraded backend produced `task_complete` without assistant text. The supported claim is readiness/control repair, not Codex parity.
+- Attachment injection sharing the pre-log readiness relaxation is a non-blocking edge: it uses the same bracketed-paste PTY path as first text send and enters a one-attachment pending state until explicit send. No separate code change is justified absent browser evidence of misdelivery.
+
