@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from .cc_log import cc_apply_tool_result_to_pending
+from .cc_log import cc_assistant_is_api_error
 from .cc_log import cc_assistant_is_final_turn_end
 from .cc_log import cc_assistant_pending_tool_use_ids
 from .cc_log import cc_assistant_text
@@ -217,7 +218,13 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                 if cc_assistant_text(obj):
                     cc_seen_turn_context = True
                     saw_terminal_signal = True
-                    if cc_assistant_is_final_turn_end(obj) and not cc_pending_tool_ids:
+                    if cc_assistant_is_api_error(obj):
+                        # Backend API error closes the turn regardless of
+                        # stop_reason ("stop_sequence" on these rows); the
+                        # session is idle afterwards.
+                        cc_pending_tool_ids.clear()
+                        idle = True
+                    elif cc_assistant_is_final_turn_end(obj) and not cc_pending_tool_ids:
                         if not cc_seen_user_turn_start:
                             cc_terminal_without_context = True
                         idle = True

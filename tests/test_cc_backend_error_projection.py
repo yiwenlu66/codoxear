@@ -18,6 +18,7 @@ from tempfile import TemporaryDirectory
 from codoxear.broker_turn_state import State
 from codoxear.broker_turn_state import _apply_rollout_obj_to_state
 from codoxear.cc_log import cc_assistant_is_api_error
+from codoxear.rollout_log import _compute_idle_from_log
 from codoxear.rollout_log import _extract_chat_events
 from codoxear.rollout_log import _read_chat_events_from_tail
 from codoxear.rollout_log import _read_chat_tail_page
@@ -203,6 +204,90 @@ class TestCcApiErrorBrokerTurnState(unittest.TestCase):
         _apply_rollout_obj_to_state(st, _cc_api_error("API Error: 500"), now_ts=2.0)
         self.assertEqual(st.pending_calls, set())
         self.assertFalse(st.busy)
+
+
+class TestCcApiErrorLogIdleReducer(unittest.TestCase):
+    """The log-idle reducer drives session busy/idle from the JSONL log used
+    by queue sweeps, unattended sweeps, and readiness projection. A CC API
+    error row closes the backend turn, so the session must be idle afterwards.
+    Before the fix, ``stop_reason == "stop_sequence"`` kept the reducer
+    classifying the row as busy."""
+
+    def test_cc_api_error_is_idle_via_log_reducer(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "cc-session.jsonl"
+            _write_log(path, [_user(), _cc_api_error("API Error: 529 Overloaded")])
+            self.assertIs(_compute_idle_from_log(path), True)
+
+    def test_cc_api_error_idle_after_pending_tool_use(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "cc-session.jsonl"
+            rows = [
+                _user(),
+                {
+                    "type": "assistant",
+                    "sessionId": SESSION_ID,
+                    "timestamp": "2026-07-04T00:00:00.500Z",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}},
+                            {"type": "text", "text": "running"},
+                        ],
+                        "stop_reason": "tool_use",
+                    },
+                },
+                {
+                    "type": "user",
+                    "sessionId": SESSION_ID,
+                    "timestamp": "2026-07-04T00:00:00.750Z",
+                    "message": {
+                        "role": "user",
+                        "content": [
+                            {"type": "tool_result", "tool_use_id": "toolu_1", "content": "ok"},
+                        ],
+                    },
+                },
+                _cc_api_error("API Error: 500"),
+            ]
+            _write_log(path, rows)
+            self.assertIs(_compute_idle_from_log(path), True)
+
+    def test_normal_cc_final_response_still_idle_via_reducer(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "cc-session.jsonl"
+            _write_log(path, [
+                _user(),
+                {
+                    "type": "assistant",
+                    "sessionId": SESSION_ID,
+                    "timestamp": "2026-07-04T00:00:01.000Z",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "done"}],
+                        "stop_reason": "end_turn",
+                    },
+                },
+            ])
+            self.assertIs(_compute_idle_from_log(path), True)
+
+    def test_normal_cc_narration_still_busy_via_reducer(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "cc-session.jsonl"
+            _write_log(path, [
+                _user(),
+                {
+                    "type": "assistant",
+                    "sessionId": SESSION_ID,
+                    "timestamp": "2026-07-04T00:00:01.000Z",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "working"}],
+                        "stop_reason": "tool_use",
+                    },
+                },
+            ])
+            self.assertIs(_compute_idle_from_log(path), False)
 
 
 if __name__ == "__main__":

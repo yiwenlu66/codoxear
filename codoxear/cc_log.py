@@ -264,7 +264,13 @@ def cc_current_turn_state_before(log_path: Path, before: int) -> tuple[set[str],
             assistant_text = cc_assistant_text(obj)
             if isinstance(assistant_text, str) and assistant_text:
                 saw_signal = True
-                idle = bool(cc_assistant_is_final_turn_end(obj) and not pending)
+                if cc_assistant_is_api_error(obj):
+                    # A backend API error closes the turn regardless of
+                    # stop_reason (which is "stop_sequence" on these rows).
+                    pending.clear()
+                    idle = True
+                else:
+                    idle = bool(cc_assistant_is_final_turn_end(obj) and not pending)
                 continue
             if tool_count > 0 or cc_assistant_thinking_count(obj) > 0:
                 saw_signal = True
