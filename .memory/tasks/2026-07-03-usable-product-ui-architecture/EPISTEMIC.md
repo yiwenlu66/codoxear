@@ -132,3 +132,8 @@ Clean-room critic 4aad1a07 accepted the load-error/composer/queue tranche with n
 - Backend parity: Codex has fresh real CLI -> log -> parser evidence, but browser-level Codex proof is still pending. Claude Code has real-log parser evidence and launch/log wiring, but fresh end-to-end is blocked by an external gateway 503; this is currently a release boundary rather than a Codoxear bug.
 - Remaining promotion gates are concrete: canonical Docker test/smoke at current HEAD, browser-Codex smoke or explicit boundary, server-restart continuity from the browser, then clean-room release review.
 
+## Validation and backend-boundary state
+- Canonical validation is green for the current functional tree: full local pytest and Docker test/smoke passed after the broker pre-log fix and the no-extension UI reverts.
+- Browser-Codex does not currently support an end-to-end claim in the certification sandbox. The browser-created Codex broker reached pending-bind but never bound a rollout log because the Codex TUI stalled on expired MCP auth; Codoxear projected this honestly (`broker_busy=true`, send gated). This is an upstream-auth boundary, not a product projection defect.
+- Codex has fresh non-browser CLI/log/parser evidence; Claude Code has real-log parser evidence but fresh CLI is blocked by gateway 503. Backend parity claim must be scoped accordingly unless browser/CLI retries later succeed.
+
