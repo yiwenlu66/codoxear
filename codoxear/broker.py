@@ -868,14 +868,20 @@ class Broker:
         if AGENT_BACKEND in ("pi", "cc"):
             st.known_rollout_paths = set(prelaunch_rollout_paths)
         st.sock_path = SOCK_DIR / f"broker-{os.getpid()}.sock"
-        if declared_log_path is not None:
+        # ``st.log_path`` denotes a session log that has actually been observed on
+        # disk (i.e. bound). For Pi launches ``_ensure_pi_session_arg`` pre-declares
+        # a future ``--session`` path that does not exist yet; keep that as
+        # ``declared_log_path`` only and leave ``log_path`` unset until the log
+        # watcher binds a real file. This matches ``session_discovery.py``, which
+        # nulls a non-existent ``log_path``, and keeps the pre-log exit failure
+        # guard honest: a web-owned agent that exits before its declared log
+        # materializes must surface as ``agent_exit_before_log_bind`` rather than
+        # silently disappearing.
+        if declared_log_path is not None and declared_log_path.exists():
             st.log_path = declared_log_path
-            if declared_log_path.exists():
-                try:
-                    st.log_off = int(declared_log_path.stat().st_size)
-                except Exception:
-                    st.log_off = 0
-            else:
+            try:
+                st.log_off = int(declared_log_path.stat().st_size)
+            except Exception:
                 st.log_off = 0
         self.state = st
         if declared_log_path is not None and declared_log_path.exists():
@@ -938,7 +944,16 @@ class Broker:
                 traceback.print_exc()
         with self._lock:
             st2 = self.state
-        if st2 and OWNER_TAG == "web" and st2.log_path is None and not st2.prelog_failure_recorded:
+        # Defense-in-depth: treat a declared-but-missing log_path as unbound so a
+        # pre-log agent exit is always recorded, even if some path assigned the
+        # declared path without going through the watcher. ``log_path`` existing on
+        # disk is the bound invariant shared with ``session_discovery.py``.
+        if (
+            st2
+            and OWNER_TAG == "web"
+            and (st2.log_path is None or not st2.log_path.exists())
+            and not st2.prelog_failure_recorded
+        ):
             _record_launch_attempt(
                 {
                     **_broker_launch_record(
