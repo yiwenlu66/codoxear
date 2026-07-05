@@ -20,6 +20,7 @@ Protected checkout: `/home/yiwen/codex-web` on `main` — never edit/restart/mer
 - Product surface must be justified by user workflow, not verification convenience. Sandbox-only flags, credentials, broken local packages, and certification workarounds are environment/ops boundaries unless a real user scenario independently requires UI. Do not add visible controls merely to make an isolated test path pass.
 - Minimal UI: GTD-style flat sidebar, sparse chat rendering, mobile-first companion (phone is a view/controller of local sessions).
 - Fail loud: no silent fallbacks; contract violations return explicit errors.
+- JSON API responses must never carry raw surrogateescape path strings. Filesystem paths discovered from `os.walk` can contain lone surrogates for non-UTF-8 bytes; user-facing display fields must use `git_ops.path_json_text`, while reversible operations require an explicit token field such as `api_path`/`path_token`.
 - Deleting a session sends shutdown to the broker (terminal-owned sessions too).
 - Failed synthetic launch rows (`launch-*` ids) are not real sessions: no send/queue/attach/file-viewer; Details/Copy/New-like-this render from the session-list row locally.
 
