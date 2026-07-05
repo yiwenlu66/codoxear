@@ -49,6 +49,37 @@ class SessionStorePaths:
     unattended: Path
 
 
+def _file_entry_path(entry: Any) -> str:
+    if isinstance(entry, str):
+        return entry
+    if isinstance(entry, dict):
+        path = entry.get("path")
+        if isinstance(path, str):
+            return path
+    return ""
+
+
+def _file_entry_api_path(entry: Any) -> str:
+    if isinstance(entry, dict):
+        api_path = entry.get("api_path")
+        if isinstance(api_path, str):
+            return api_path
+    return ""
+
+
+def _file_entry_identity(entry: Any) -> tuple[str, str]:
+    return (_file_entry_path(entry), _file_entry_api_path(entry))
+
+
+def _make_file_entry(path: str, api_path: str = "") -> Any:
+    # Shape-preserving: legacy string entries (no token) stay as plain strings so
+    # on-disk state and in-memory state remain byte-identical to the pre-token
+    # era; only entries that carry a reversible api_path token use the dict form.
+    if api_path:
+        return {"path": path, "api_path": api_path}
+    return path
+
+
 class SessionStore:
     def __init__(
         self,
@@ -198,13 +229,13 @@ class SessionStore:
     def save_hidden_sessions(self, sessions: set[str]) -> None:
         atomic_write_json(self.paths.hidden_sessions, sorted(sessions), sort_keys=True)
 
-    def load_files(self) -> dict[str, list[str]]:
+    def load_files(self) -> dict[str, list[Any]]:
         obj = load_json_file(self.paths.files, default=None)
         if obj is None:
             return {}
         if not isinstance(obj, dict):
             raise ValueError("invalid session_files.json (expected object)")
-        cleaned: dict[str, list[str]] = {}
+        cleaned: dict[str, list[Any]] = {}
         for sid, arr in obj.items():
             if not isinstance(sid, str) or not sid:
                 continue
@@ -213,23 +244,30 @@ class SessionStore:
             key = sid if sid.startswith("sid:") else f"sid:{sid}"
             if not isinstance(arr, list):
                 continue
-            out: list[str] = []
+            out: list[Any] = []
+            seen: set[tuple[str, str]] = set()
             for value in arr:
-                if not isinstance(value, str):
+                path = _file_entry_path(value)
+                if path == "":
                     continue
-                if value == "" or value in out:
+                api_path = _file_entry_api_path(value)
+                identity = (path, api_path)
+                if identity in seen:
                     continue
-                out.append(value)
+                seen.add(identity)
+                out.append(_make_file_entry(path, api_path))
                 if len(out) >= self.file_history_max:
                     break
             if out:
                 cleaned[key] = out
         return cleaned
 
-    def save_files(self, obj: dict[str, list[str]]) -> None:
+    def save_files(self, obj: dict[str, list[Any]]) -> None:
+        # Entries are already in their desired on-disk shape (plain string for
+        # legacy/token-less entries, dict for tokenized ones), so write as-is.
         atomic_write_json(self.paths.files, dict(obj))
 
-    def file_history_for_keys(self, key: str, legacy_keys: list[str]) -> tuple[list[str], bool]:
+    def file_history_for_keys(self, key: str, legacy_keys: list[str]) -> tuple[list[Any], bool]:
         cur = self.files.get(key)
         if isinstance(cur, list) and cur:
             return list(cur), False
@@ -244,7 +282,7 @@ class SessionStore:
                 return out, False
         return [], False
 
-    def add_file_history_entry(self, key: str, legacy_keys: list[str], path: str) -> list[str]:
+    def add_file_history_entry(self, key: str, legacy_keys: list[str], path: str, api_path: str = "") -> list[Any]:
         cur = list(self.files.get(key, []))
         if not cur:
             for legacy_key in legacy_keys:
@@ -254,8 +292,9 @@ class SessionStore:
                     if legacy_key != key:
                         self.files.pop(legacy_key, None)
                     break
-        cur = [item for item in cur if item != path]
-        cur.insert(0, path)
+        identity = (str(path), str(api_path or ""))
+        cur = [item for item in cur if _file_entry_identity(item) != identity]
+        cur.insert(0, _make_file_entry(str(path), str(api_path or "")))
         if len(cur) > self.file_history_max:
             cur = cur[: self.file_history_max]
         self.files[key] = cur

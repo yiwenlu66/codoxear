@@ -248,6 +248,10 @@
         return codoxearFileHelpers.listFromFilesField(val);
       }
 
+      function listFromFileRecords(val) {
+        return codoxearFileHelpers.listFromFileRecords(val);
+      }
+
       function baseName(p) {
         return codoxearDisplay.baseName(p);
       }
@@ -5555,6 +5559,10 @@
             const s = sessionId ? sessionIndex.get(sessionId) : null;
             return listFromFilesField(s && s.files);
           },
+          sessionFileRecords: (sessionId) => {
+            const s = sessionId ? sessionIndex.get(sessionId) : null;
+            return listFromFileRecords(s && s.files);
+          },
           sessionRelativePath: (rawPath, sessionId) => sessionRelativePath(rawPath, sessionId),
           api: (url) => api(url),
           normalizeFileApiPath: (value) => normalizeFileApiPath(value),
@@ -5569,6 +5577,7 @@
           upsertFileEntry: (entry) => upsertFileEntry(entry),
           sessionById: (sessionId) => sessionIndex.get(sessionId) || null,
           listFromFilesField: (files) => listFromFilesField(files),
+          listFromFileRecords: (files) => listFromFileRecords(files),
           deleteCandidateCache: (sessionId) => fileViewerController.deleteFileCandidateCache(sessionId),
         });
         const fileReferenceRuntime = codoxearFileViewer.createFileReferenceRuntime({
@@ -5579,6 +5588,7 @@
           ElementCtor: Element,
           sessionRelativePath: (rawPath, sessionId) => sessionRelativePath(rawPath, sessionId),
           listFromFilesField: (files) => listFromFilesField(files),
+          listFromFileRecords: (files) => listFromFileRecords(files),
           normalizeFileApiPath: (value) => normalizeFileApiPath(value),
           normalizeLineNumber: (value) => normalizeLineNumber(value),
           parseLocalFileRef,

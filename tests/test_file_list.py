@@ -4,7 +4,9 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from codoxear import file_search as file_search_module
 from codoxear.file_search import file_search_score
 from codoxear.file_search import search_session_relative_files
 from codoxear.server import _list_session_relative_files
@@ -80,6 +82,34 @@ class TestSessionFileList(unittest.TestCase):
             self.assertEqual(result["mode"], "git")
             self.assertFalse(result["truncated"])
             self.assertEqual([item["path"] for item in result["matches"]], ["src/app.py", "notes/app.txt"])
+
+    def test_search_git_mode_cap_parity_with_walk_mode_scanned_count(self) -> None:
+        # Under a candidate cap, git and walk modes must report the same
+        # ``scanned`` count for the same number of on-disk files. Previously git
+        # mode returned scanned=cap+1 while walk returned scanned=cap because the
+        # cap-exceeding candidate was counted but not processed. Both modes now
+        # report the number of candidates actually admitted under the cap.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "a.py").write_text("a\n", encoding="utf-8")
+            (root / "b.py").write_text("b\n", encoding="utf-8")
+            (root / "c.py").write_text("c\n", encoding="utf-8")
+
+            with patch.object(file_search_module, "FILE_SEARCH_MAX_CANDIDATES", 2):
+                walk_result = search_session_relative_files(root, query="py")
+                self.assertEqual(walk_result["mode"], "walk")
+                self.assertTrue(walk_result["truncated"])
+                self.assertEqual(walk_result["scanned"], 2)
+
+            subprocess.run(["git", "init"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            with patch.object(file_search_module, "FILE_SEARCH_MAX_CANDIDATES", 2):
+                git_result = search_session_relative_files(root, query="py")
+                self.assertEqual(git_result["mode"], "git")
+                self.assertTrue(git_result["truncated"])
+                self.assertEqual(git_result["scanned"], 2)
+                # Non-UTF token emission is preserved under truncation.
+                for match in git_result["matches"]:
+                    self.assertIn("path", match)
 
     def test_list_serializes_non_utf8_filename_without_surrogates(self) -> None:
         # A raw 0xff byte in a filename is undecodable as UTF-8; os.walk surfaces

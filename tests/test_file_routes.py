@@ -385,6 +385,57 @@ def test_handle_file_write_post_route_creates_file_and_records_path() -> None:
         assert manager.recorded == [("s", str(target))]
 
 
+def test_handle_file_write_post_route_create_rejects_non_empty_path_token() -> None:
+    # Create with any non-empty path_token must fail loud (400): new files take
+    # a UTF-8 name from ``path``, so a token is meaningless and previously a
+    # bad/stale token was silently ignored. The body is validated before the
+    # session is even looked up.
+    class FailingManager:
+        def refresh_session_meta(self, _session_id: str) -> None:
+            raise AssertionError("session metadata should not be refreshed for create+token")
+
+        def get_session(self, _session_id: str) -> object:
+            raise AssertionError("session lookup should not run for create+token")
+
+    deps, responses = _file_write_deps(
+        {"path": "notes/new.md", "text": "hello\n", "create": True, "path_token": "bad-token"}
+    )
+    handled = handle_file_write_post_route(
+        _FakeHandler(),
+        path="/api/sessions/s/file/write",
+        manager=FailingManager(),
+        deps=deps,
+        match_session_route=_match_session_route,
+    )
+    assert handled is True
+    assert responses == [(400, {"error": "path_token is not supported for create"})]
+
+
+def test_handle_file_write_post_route_update_rejects_invalid_path_token() -> None:
+    # Update with an invalid path_token must remain a 400 (regression guard for
+    # the create fix staying consistent with the update path).
+    class FailingManager:
+        def refresh_session_meta(self, _session_id: str) -> None:
+            raise AssertionError("session metadata should not be refreshed for invalid token")
+
+        def get_session(self, _session_id: str) -> object:
+            raise AssertionError("session lookup should not run for invalid token")
+
+    deps, responses = _file_write_deps(
+        {"path": "notes/old.md", "text": "hello\n", "version": "v1", "path_token": "bad-token"}
+    )
+    handled = handle_file_write_post_route(
+        _FakeHandler(),
+        path="/api/sessions/s/file/write",
+        manager=FailingManager(),
+        deps=deps,
+        match_session_route=_match_session_route,
+    )
+    assert handled is True
+    assert responses[0][0] == 400
+    assert "invalid path token" in responses[0][1]["error"]
+
+
 def _global_file_deps(body, **overrides):
     responses: list[tuple[int, dict[str, object]]] = []
 

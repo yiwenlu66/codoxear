@@ -119,45 +119,78 @@ def search_git_relative_files(cwd: Path, *, query: str, limit: int) -> dict[str,
     heap: list[tuple[int, str]] = []
     scanned = 0
     truncated = False
+    # ``-z`` makes git emit raw-byte paths NUL-delimited (no per-line newline).
+    # Decoding with ``surrogateescape`` preserves undecodable bytes (e.g. a
+    # raw 0xff in a filename) instead of mangling them into U+FFFD, so the
+    # path can be serialized through ``path_response_fields`` into a JSON-safe
+    # display string plus a reversible ``api_path`` token -- matching the
+    # walk-mode contract. Reading binary chunks lets us stop early once the
+    # candidate cap or deadline is hit by killing the process.
     proc = subprocess.Popen(
-        ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
         cwd=str(cwd),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
     )
     try:
         assert proc.stdout is not None
-        for raw_line in proc.stdout:
-            path = raw_line.rstrip("\n")
-            if not path:
-                continue
-            scanned += 1
-            if scanned > FILE_SEARCH_MAX_CANDIDATES or time.monotonic() > deadline:
+        buf = b""
+        partial_at_eof = False
+        while True:
+            # Deadline guard between chunk reads, when no candidate increment
+            # is pending. The per-candidate cap/deadline check inside the NUL
+            # loop handles truncation mid-path.
+            if time.monotonic() > deadline:
                 truncated = True
                 proc.kill()
                 break
-            score = file_search_score(path, query)
-            if score < 0:
-                continue
-            # git ls-files output is decoded with errors=replace so paths are
-            # already UTF-8 safe display strings; path_response_fields is a no-op
-            # token-wise for them but keeps walk/git match shapes uniform.
-            entry = path_response_fields(path)
-            _push_file_search_match(heap, entry=entry, score=score, limit=limit)
-        stderr = proc.stderr.read() if proc.stderr is not None else ""
+            chunk = proc.stdout.read(65536)
+            if not chunk:
+                if buf:
+                    partial_at_eof = True
+                break
+            buf += chunk
+            while b"\x00" in buf:
+                raw_path, buf = buf.split(b"\x00", 1)
+                if not raw_path:
+                    continue
+                scanned += 1
+                if scanned > FILE_SEARCH_MAX_CANDIDATES or time.monotonic() > deadline:
+                    # This candidate was counted by ``scanned += 1`` above but is
+                    # NOT processed (we break before decode/score), mirroring walk
+                    # mode where the cap-exceeding file is counted then dropped.
+                    # Roll the increment back so ``scanned`` always equals the
+                    # number of candidates actually admitted/considered under the
+                    # cap, giving git and walk modes identical truncation
+                    # metadata (e.g. cap=2 with 3 files -> scanned=2, not 3).
+                    scanned -= 1
+                    truncated = True
+                    proc.kill()
+                    buf = b""
+                    break
+                path = raw_path.decode("utf-8", errors="surrogateescape")
+                score = file_search_score(path, query)
+                if score < 0:
+                    continue
+                entry = path_response_fields(path)
+                _push_file_search_match(heap, entry=entry, score=score, limit=limit)
+        stderr = proc.stderr.read() if proc.stderr is not None else b""
         return_code = proc.wait()
     finally:
         if proc.stdout is not None:
             proc.stdout.close()
         if proc.stderr is not None:
             proc.stderr.close()
+    # A trailing non-NUL-terminated fragment means git was killed mid-output;
+    # treat the already-collected matches as a truncated result rather than
+    # parsing a partial path. ``scanned`` already reflects only complete,
+    # admitted candidates, so no rollback is needed here.
+    if partial_at_eof:
+        truncated = True
     if truncated:
-        return _finish_file_search(heap, mode="git", query=query, scanned=scanned - 1, truncated=True)
+        return _finish_file_search(heap, mode="git", query=query, scanned=scanned, truncated=True)
     if return_code != 0:
-        err = stderr.strip()
+        err = stderr.decode("utf-8", errors="replace").strip() if isinstance(stderr, bytes) else str(stderr).strip()
         raise RuntimeError(err or f"git ls-files failed with code {return_code}")
     return _finish_file_search(heap, mode="git", query=query, scanned=scanned, truncated=False)
 

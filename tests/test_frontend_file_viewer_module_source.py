@@ -910,6 +910,7 @@ def run_opened_file_runtime_probe() -> dict[str, object]:
           upsertFileEntry: (entry) => events.push(["upsert", entry]),
           sessionById: (sessionId) => sessions.get(sessionId) || null,
           listFromFilesField: (files) => Array.isArray(files) ? files.slice() : [],
+          listFromFileRecords: (files) => (Array.isArray(files) ? files : []).map((v) => (typeof v === "string" ? {{ path: v, apiPath: "" }} : v && typeof v === "object" ? {{ path: v.path || "", apiPath: v.apiPath || v.api_path || "" }} : null)).filter((r) => r && r.path),
           deleteCandidateCache: (sessionId) => events.push(["deleteCache", sessionId]),
         }});
         const changedResult = runtime.remember("/repo/src/app.py");
@@ -2179,11 +2180,11 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         result = run_opened_file_runtime_probe()
         self.assertTrue(result["frozen"])
         self.assertTrue(result["changedResult"])
-        self.assertEqual(result["changedFiles"], ["/repo/src/app.py", "/repo/old.py"])
+        self.assertEqual(result["changedFiles"], [{"path": "/repo/src/app.py", "apiPath": "tok"}, "/repo/old.py"])
         self.assertTrue(result["explicitResult"])
-        self.assertEqual(result["explicitFiles"], ["/tmp/readme.md", "/repo/src/app.py", "/repo/old.py"])
+        self.assertEqual(result["explicitFiles"], [{"path": "/tmp/readme.md", "apiPath": "plain-token"}, {"path": "/repo/src/app.py", "apiPath": "tok"}, "/repo/old.py"])
         self.assertTrue(result["selectedResult"])
-        self.assertEqual(result["selectedFiles"], ["/selected/note.txt"])
+        self.assertEqual(result["selectedFiles"], [{"path": "/selected/note.txt", "apiPath": "plain-token"}])
         self.assertFalse(result["emptyResult"])
         self.assertEqual(result["events"], [
             ["entry", "src/app.py", True, "tok"],

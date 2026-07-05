@@ -41,7 +41,7 @@ class TestFileGetRoutesSource(unittest.TestCase):
         self.assertIn('path == "/api/files/blob"', get_source)
         self.assertIn('path == "/api/files/video_preview"', get_source)
         self.assertIn('manager.refresh_session_meta(session_id)', get_source)
-        self.assertIn('manager.files_add(session_id, path_json_text(path_obj))', get_source)
+        self.assertIn('manager.files_add(session_id, path_json_text(path_obj), api_path=rel_token)', get_source)
         self.assertIn('except KeyError:', get_source)
         self.assertIn('deps.json_response(handler, 400, {"error": f"{name} required"})', get_source)
         self.assertIn('deps.json_response(handler, 500, {"error": f"video preview failed: {e}"})', get_source)

@@ -34,6 +34,7 @@ class TestFileWriteRoutesSource(unittest.TestCase):
         self.assertIn("def _create_session_file(", write_source)
         self.assertIn("def _update_session_file(", write_source)
         self.assertIn('raise FileRouteError(400, {"error": "git_path is only supported for existing files"})', write_source)
+        self.assertIn('raise FileRouteError(400, {"error": "path_token is not supported for create"})', write_source)
         self.assertIn('raise FileRouteError(409, payload) from e', write_source)
         self.assertIn('raise FileRouteError(409, {"error": str(e)}) from e', write_source)
         self.assertIn("record_file(path_json_text(path_obj))", write_source)

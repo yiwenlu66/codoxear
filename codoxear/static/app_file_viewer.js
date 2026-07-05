@@ -933,6 +933,7 @@
     const isSessionCurrent = requireFunction(options.isSessionCurrent, "isSessionCurrent");
     const collectMessageFileRefs = requireFunction(options.collectMessageFileRefs, "collectMessageFileRefs");
     const sessionFiles = requireFunction(options.sessionFiles, "sessionFiles");
+    const sessionFileRecords = requireFunction(options.sessionFileRecords, "sessionFileRecords");
     const sessionRelativePath = requireFunction(options.sessionRelativePath, "sessionRelativePath");
     const api = requireFunction(options.api, "api");
     const normalizeFileApiPath = requireFunction(options.normalizeFileApiPath, "normalizeFileApiPath");
@@ -944,8 +945,8 @@
       return { path, additions: null, deletions: null, changed: false, gitPath: false, source: "mentioned" };
     }
 
-    function recentEntry(path) {
-      return { path, additions: null, deletions: null, changed: false, gitPath: false, source: "recent" };
+    function recentEntry(path, apiPath = "") {
+      return { path, additions: null, deletions: null, changed: false, gitPath: false, apiPath: normalizeFileApiPath(apiPath), source: "recent" };
     }
 
     function normalizeChangedEntry(entry) {
@@ -975,10 +976,13 @@
     }
 
     function manualEntriesForSession(sid) {
-      return sessionFiles(sid)
-        .map((abs) => sessionRelativePath(abs, sid))
-        .filter((rel) => typeof rel === "string" && rel && rel !== ".")
-        .map(recentEntry);
+      // sessionFileRecords preserves the reversible api_path token for raw-byte
+      // (non-UTF) recent files so they can be reopened from the picker instead
+      // of being reduced to an un-openable JSON-safe display string.
+      return sessionFileRecords(sid)
+        .map((record) => ({ rel: sessionRelativePath(record.path, sid), apiPath: record.apiPath || "" }))
+        .filter((item) => typeof item.rel === "string" && item.rel && item.rel !== ".")
+        .map((item) => recentEntry(item.rel, item.apiPath));
     }
 
     function candidateCacheKey(sid) {
@@ -1132,6 +1136,7 @@
     const ElementCtor = options.ElementCtor || null;
     const sessionRelativePath = requireFunction(options.sessionRelativePath, "sessionRelativePath");
     const listFromFilesField = requireFunction(options.listFromFilesField, "listFromFilesField");
+    const listFromFileRecords = requireFunction(options.listFromFileRecords, "listFromFileRecords");
     const normalizeFileApiPath = requireFunction(options.normalizeFileApiPath, "normalizeFileApiPath");
     const normalizeLineNumber = requireFunction(options.normalizeLineNumber, "normalizeLineNumber");
     const api = requireFunction(options.api, "api");
@@ -1219,9 +1224,9 @@
           const token = normalizeFileApiPath(apiPath);
           out.add(JSON.stringify({ path: rel, gitPath: Boolean(gitPath), apiPath: token }));
         };
-        for (const abs of listFromFilesField(session && session.files)) {
-          const rel = sessionRelativePath(abs);
-          if (typeof rel === "string") addCandidate(rel, false);
+        for (const record of listFromFileRecords(session && session.files)) {
+          const rel = sessionRelativePath(record.path);
+          if (typeof rel === "string") addCandidate(rel, false, record.apiPath || "");
         }
         for (const rel of collectMessageFileRefs()) addCandidate(rel, false);
         try {
@@ -1495,20 +1500,24 @@
     const upsertFileEntry = requireFunction(options.upsertFileEntry, "upsertFileEntry");
     const sessionById = requireFunction(options.sessionById, "sessionById");
     const listFromFilesField = requireFunction(options.listFromFilesField, "listFromFilesField");
+    const listFromFileRecords = requireFunction(options.listFromFileRecords, "listFromFileRecords");
     const deleteCandidateCache = requireFunction(options.deleteCandidateCache, "deleteCandidateCache");
 
     function historySelection(sessionId) {
       const sid = String(sessionId || "").trim();
-      if (!sid) return { path: "", line: null, gitPath: false };
+      if (!sid) return { path: "", line: null, gitPath: false, apiPath: "" };
       const session = sessionById(sid);
-      if (!session) return { path: "", line: null, gitPath: false };
-      for (const abs of listFromFilesField(session.files)) {
-        const rel = sessionRelativePath(abs, sid);
+      if (!session) return { path: "", line: null, gitPath: false, apiPath: "" };
+      // Rehydrate the most recent recorded file WITH its reversible token so a
+      // raw-byte (non-UTF) filename is reopened through the token channel
+      // instead of being reduced to an un-openable display string.
+      for (const record of listFromFileRecords(session.files)) {
+        const rel = sessionRelativePath(record.path, sid);
         if (typeof rel === "string" && rel && rel !== ".") {
-          return { path: rel, line: null, gitPath: false };
+          return { path: rel, line: null, gitPath: false, apiPath: record.apiPath || "" };
         }
       }
-      return { path: "", line: null, gitPath: false };
+      return { path: "", line: null, gitPath: false, apiPath: "" };
     }
 
     function remember(relPath, absPath = null) {
@@ -1531,14 +1540,24 @@
       });
       const session = sid ? sessionById(sid) : null;
       if (!session) return false;
-      const files = listFromFilesField(session.files);
+      // Preserve the reversible token when remembering a raw-byte file: write a
+      // structured { path, apiPath } record so historySelection can reopen it.
+      // Token-less entries keep the legacy plain-string shape. MRU dedup is by
+      // display path (matching the prior string-comparison behavior): opening a
+      // file evicts any prior entry with the same display path, regardless of
+      // token, so the most recent open wins.
+      const records = listFromFileRecords(session.files);
       const abs = typeof absPath === "string" && absPath !== ""
         ? absPath
         : session.cwd && rel !== "."
           ? `${String(session.cwd).replace(/\/+$/, "")}/${rel.replace(/^\.?\//, "")}`
           : "";
       if (!abs) return false;
-      const nextFiles = [abs, ...files.filter((value) => value !== abs)];
+      const nextFiles = [
+        apiPath ? { path: abs, apiPath } : abs,
+        ...records.filter((record) => record.path !== abs)
+          .map((record) => (record.apiPath ? { path: record.path, apiPath: record.apiPath } : record.path)),
+      ];
       session.files = nextFiles;
       deleteCandidateCache(sid);
       return true;

@@ -295,6 +295,7 @@ def eval_inline_file_ref_inspection_cases() -> dict:
           ElementCtor: null,
           sessionRelativePath: (rawPath) => String(rawPath || ""),
           listFromFilesField: (value) => Array.isArray(value) ? value.slice() : [],
+          listFromFileRecords: (value) => (Array.isArray(value) ? value : []).map((v) => (typeof v === "string" ? {{ path: v, apiPath: "" }} : v && typeof v === "object" ? {{ path: v.path || "", apiPath: v.apiPath || v.api_path || "" }} : null)).filter((r) => r && r.path),
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           normalizeLineNumber: (value) => Number(value) || null,
           el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children, appendChild(child) {{ this.children.push(child); return child; }} }}),
@@ -556,6 +557,7 @@ def file_candidate_refresh_runtime_prelude() -> str:
       function normalizeFileApiPath(value) { return typeof value === "string" && value !== "" ? value : ""; }
       function normalizeFileCandidateSource(source) { return codoxearFileHelpers.normalizeFileCandidateSource(source); }
       function listFromFilesField(value) { return codoxearFileHelpers.listFromFilesField(value); }
+      function listFromFileRecords(value) { return codoxearFileHelpers.listFromFileRecords(value); }
       function stripPathLocationSuffix(rawPath) { return codoxearFileHelpers.stripPathLocationSuffix(rawPath); }
       function sessionRelativePath(rawPath, sidOverride = null) {
         const sid = typeof sidOverride === "string" && sidOverride ? sidOverride : selected;
@@ -612,6 +614,7 @@ def file_candidate_refresh_runtime_prelude() -> str:
         nowMs: () => now,
         collectMessageFileRefs: () => collectMessageFileRefs(),
         sessionFiles: (sid) => listFromFilesField((sessionIndex.get(sid) || {}).files),
+        sessionFileRecords: (sid) => listFromFileRecords((sessionIndex.get(sid) || {}).files),
         sessionRelativePath: (rawPath, sid) => sessionRelativePath(rawPath, sid),
         api: (url) => api(url),
         normalizeFileApiPath: (value) => normalizeFileApiPath(value),
@@ -875,6 +878,64 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertEqual(
             [(entry["path"], entry["gitPath"], entry["apiPath"]) for entry in file_entries],
             [(r"bad\xffname.txt", False, "codoxear-git-path-bytes-v1:YmFk_25hbWUudHh0")],
+        )
+
+    def test_search_state_request_keeps_literal_and_tokenized_same_display_path(self) -> None:
+        # createSearchState.request dedupes API matches by full identity
+        # (apiPath-or-path), not display path. A literal ``bad\xffname.txt``
+        # (no token) and a raw-byte tokenized ``bad<ff>name.txt`` share the same
+        # JSON-safe display string but are distinct files; both must survive.
+        display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
+        file_helpers_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
+        file_picker_source = APP_FILE_PICKER_JS.read_text(encoding="utf-8")
+        display_path = r"bad\xffname.txt"
+        token = "codoxear-git-path-bytes-v1:YmFk_25hbWUudHh0"
+        matches_json = json.dumps(
+            [
+                {"path": display_path, "api_path": "", "score": 100},
+                {"path": display_path, "api_path": token, "score": 12000},
+            ]
+        )
+        js = textwrap.dedent(
+            f"""
+            const vm = require("vm");
+            const ctx = {{
+              window: {{}},
+            }};
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(display_source)}, ctx);
+            vm.runInContext({json.dumps(file_helpers_source)}, ctx);
+            vm.runInContext({json.dumps(file_picker_source)}, ctx);
+            const matches = {matches_json};
+            const host = {{
+              blocked: () => false,
+              currentSessionId: () => "s",
+              api: async () => ({{ matches, truncated: false }}),
+              inputValue: () => "bad",
+              isMenuOpen: () => true,
+              renderMenu: () => {{}},
+              applyMenuState: () => {{}},
+              normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+              setTimeout: () => 0,
+              clearTimeout: () => {{}},
+            }};
+            const state = ctx.window.CodoxearFilePicker.createSearchState(host);
+            state.setSessionId("s");
+            void state.request("bad").then(() => {{
+              const snap = state.snapshot();
+              process.stdout.write(JSON.stringify({{ results: snap.results }}));
+            }});
+            """
+        )
+        proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        result = json.loads(proc.stdout)
+        identities = sorted((entry["path"], entry["apiPath"]) for entry in result["results"])
+        self.assertEqual(
+            identities,
+            sorted([
+                (display_path, ""),
+                (display_path, token),
+            ]),
         )
 
     def test_exact_search_prefers_session_identity_over_git_collision(self) -> None:

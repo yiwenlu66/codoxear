@@ -8,6 +8,8 @@ import urllib.parse
 
 from .git_ops import git_path_from_token
 from .git_ops import git_path_response_fields
+from .git_ops import git_path_token
+from .git_ops import path_has_surrogate_bytes
 from .git_ops import path_json_text
 
 
@@ -313,7 +315,11 @@ def _handle_file_versions(handler: Any, *, session_id: str, query: str, manager:
                 deps.json_response(handler, 400, {"error": str(e)})
                 return
     try:
-        manager.files_add(session_id, path_json_text(p))
+        rel_token = git_path_token(rel) if path_has_surrogate_bytes(rel) else ""
+        if rel_token:
+            manager.files_add(session_id, path_json_text(p), api_path=rel_token)
+        else:
+            manager.files_add(session_id, path_json_text(p))
     except KeyError:
         pass
     base_exists = False

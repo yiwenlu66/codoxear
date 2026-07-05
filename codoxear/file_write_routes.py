@@ -11,6 +11,8 @@ from .file_route_common import SessionFileWriteRequest
 from .file_route_common import body_flag
 from .file_route_common import resolve_session_write_update_path
 from .git_ops import git_path_from_token
+from .git_ops import git_path_token
+from .git_ops import path_has_surrogate_bytes
 from .git_ops import path_json_text
 from .file_text import FILE_READ_MAX_BYTES
 from .file_text import read_text_file_for_write
@@ -21,7 +23,7 @@ from .file_text import write_text_file_atomic
 FileWriteLock = Callable[[Path], AbstractContextManager[None]]
 GitFileResolver = Callable[[str], tuple[Path, str]]
 SessionPathResolver = Callable[[Path, str], Path]
-FileRecorder = Callable[[str], None]
+FileRecorder = Callable[..., None]
 JsonResponse = Callable[[Any, int, dict[str, Any]], None]
 RouteMatcher = Callable[..., str | None]
 
@@ -76,7 +78,11 @@ def handle_file_write_post_route(
             raw_path=raw_path,
         ),
         file_write_lock=deps.file_write_lock,
-        record_file=lambda path_value: manager.files_add(session_id, path_value),
+        record_file=lambda path_value, api_path="": (
+            manager.files_add(session_id, path_value, api_path=api_path)
+            if api_path
+            else manager.files_add(session_id, path_value)
+        ),
     )
     deps.json_response(handler, response.status, response.payload)
     return True
@@ -95,8 +101,13 @@ def parse_session_file_write_request(obj: Mapping[str, Any]) -> SessionFileWrite
     git_path = body_flag(obj, "git_path")
     # path_token is accepted for plain file updates too: a non-UTF filename
     # surfaced via list/search can only be re-addressed through its reversible
-    # token. It is rejected for create (new files must take a UTF-8 name).
-    if not create and isinstance(path_token_raw, str) and path_token_raw:
+    # token. It is rejected for create (new files must take a UTF-8 name), and
+    # the rejection is fail-loud so an invalid/stale token on create cannot be
+    # silently ignored -- mirroring the 400 that an invalid token produces on
+    # update.
+    if isinstance(path_token_raw, str) and path_token_raw:
+        if create:
+            raise FileRouteError(400, {"error": "path_token is not supported for create"})
         try:
             path_raw = git_path_from_token(path_token_raw)
         except ValueError as e:
@@ -168,7 +179,11 @@ def write_session_file(
         )
     if record_file is not None:
         try:
-            record_file(path_json_text(path_obj))
+            rel_token = git_path_token(request.path) if path_has_surrogate_bytes(request.path) else ""
+            if rel_token:
+                record_file(path_json_text(path_obj), api_path=rel_token)
+            else:
+                record_file(path_json_text(path_obj))
         except KeyError:
             pass
     return {

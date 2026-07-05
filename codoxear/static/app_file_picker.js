@@ -850,10 +850,18 @@
         const seen = new Set();
         for (const item of Array.isArray(res && res.matches) ? res.matches : []) {
           const path = item && typeof item.path === "string" ? item.path : "";
-          if (path === "" || path === "." || seen.has(path)) continue;
-          seen.add(path);
-          const score = Number.isFinite(item && item.score) ? Number(item.score) : 0;
+          if (path === "" || path === ".") continue;
           const apiPath = normalizeFileApiPath(item && (item.api_path || item.apiPath));
+          // Dedupe by full identity (token-or-path), not display path: a literal
+          // ``bad\xffname.txt`` and a raw-byte tokenized ``bad<ff>name.txt`` share
+          // the same JSON-safe display string but are distinct files. Deduping on
+          // display path alone would let the literal entry silently drop the
+          // tokenized one (or vice versa). git-vs-session collisions across
+          // sources are still preserved by the picker's keyForPath-based merge.
+          const identity = apiPath || path;
+          if (seen.has(identity)) continue;
+          seen.add(identity);
+          const score = Number.isFinite(item && item.score) ? Number(item.score) : 0;
           matches.push({ path, score, apiPath });
         }
         results = matches;

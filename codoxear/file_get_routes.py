@@ -6,6 +6,8 @@ from typing import Any, Callable, Mapping
 import urllib.parse
 
 from .git_ops import git_path_from_token
+from .git_ops import git_path_token
+from .git_ops import path_has_surrogate_bytes
 from .git_ops import path_json_text
 from .git_ops import path_token_query
 from .git_ops import path_token_response_fields
@@ -267,7 +269,11 @@ def _handle_session_file_read(handler: Any, *, session_id: str, query: str, mana
         _map_resolve_error(handler, e, deps)
         return
     try:
-        manager.files_add(session_id, path_json_text(path_obj))
+        rel_token = git_path_token(rel) if path_has_surrogate_bytes(rel) else ""
+        if rel_token:
+            manager.files_add(session_id, path_json_text(path_obj), api_path=rel_token)
+        else:
+            manager.files_add(session_id, path_json_text(path_obj))
     except KeyError:
         pass
     deps.json_response(

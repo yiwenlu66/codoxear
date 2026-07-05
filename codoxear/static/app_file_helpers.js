@@ -16,6 +16,34 @@
     return out;
   }
 
+  function listFromFileRecords(val) {
+    // Structured counterpart to listFromFilesField: each entry is normalized to
+    // { path, apiPath }. Legacy string entries (no token) yield apiPath="";
+    // object entries carry the reversible api_path token so a raw-byte filename
+    // rehydrated from session.files can be reopened. Both snake_case (server
+    // wire format) and camelCase (in-memory remember()) keys are accepted.
+    if (!Array.isArray(val)) return [];
+    const out = [];
+    const seen = new Set();
+    for (const v of val) {
+      let path = "";
+      let apiPath = "";
+      if (typeof v === "string") {
+        path = v;
+      } else if (v && typeof v === "object") {
+        path = typeof v.path === "string" ? v.path : "";
+        const rawApi = v.api_path != null ? v.api_path : v.apiPath;
+        apiPath = typeof rawApi === "string" ? rawApi : "";
+      }
+      if (path === "") continue;
+      const identity = apiPath ? `${path}\u0000${apiPath}` : path;
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+      out.push({ path, apiPath });
+    }
+    return out;
+  }
+
   function stripPathLocationSuffix(rawPath) {
     const raw = String(rawPath ?? "");
     const trimmed = raw.trim();
@@ -290,6 +318,7 @@
 
   window.CodoxearFileHelpers = Object.freeze({
     listFromFilesField,
+    listFromFileRecords,
     stripPathLocationSuffix,
     isTextFileKind,
     isDiffableFileKind,

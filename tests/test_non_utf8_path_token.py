@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 import urllib.parse
@@ -20,6 +21,7 @@ from types import SimpleNamespace
 
 from codoxear import git_ops
 from codoxear import server
+from codoxear.file_search import search_session_relative_files
 from codoxear.file_routes import FileGetRouteDeps
 from codoxear.file_routes import FileWriteRouteDeps
 from codoxear.file_routes import handle_file_get_route
@@ -50,8 +52,8 @@ class _FakeManager:
     def get_session(self, _session_id: str) -> object:
         return SimpleNamespace(cwd=self.cwd)
 
-    def files_add(self, session_id: str, path: str) -> None:
-        self.recorded.append((session_id, path))
+    def files_add(self, session_id: str, path: str, api_path: str | None = None) -> None:
+        self.recorded.append((session_id, path, api_path))
 
 
 def _capture_json():
@@ -217,6 +219,64 @@ class TestNonUtf8PathTokenRoundtrip(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertIn(r"cwd\xffdir", str(payload["cwd"]))
             json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+    def test_git_mode_search_surfaces_reversible_token_for_raw_byte_name(self) -> None:
+        # git ls-files stores raw-byte filenames; the search must decode them
+        # with surrogateescape (not errors=replace) and emit path_response_fields
+        # so the raw-byte git path carries a reversible api_path token.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            subprocess.run(["git", "init"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.email", "a@b.c"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "t"], cwd=root, check=True)
+            (root / "ok.txt").write_text("ok\n", encoding="utf-8")
+            _make_bad_file(root, contents=b"raw-bytes\n")
+            subprocess.run(["git", "add", "ok.txt"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(
+                ["git", "add", "--", os.fsdecode(RAW_NAME_BYTES)],
+                cwd=root,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            result = search_session_relative_files(root, query="name")
+            self.assertEqual(result["mode"], "git")
+            match = next(m for m in result["matches"] if m.get("non_utf8_path"))
+            display_rel = str(match["path"])
+            token = str(match["api_path"])
+            # Display is JSON/UTF-8 safe (backslashreplace), not a replacement char.
+            self.assertEqual(display_rel, r"bad\xffname.txt")
+            self.assertNotIn("\ufffd", display_rel)
+            json.dumps(result, ensure_ascii=False).encode("utf-8")
+            # Token round-trips to the raw byte sequence.
+            self.assertEqual(
+                git_ops.git_path_from_token(token).encode("utf-8", errors="surrogateescape"),
+                RAW_NAME_BYTES,
+            )
+
+            # The token opens the real raw-byte file through the plain read route.
+            manager = _FakeManager(str(root))
+            deps, responses, _inline, _attachments = _file_get_deps(manager)
+            handle_file_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/file/read",
+                query=urllib.parse.urlencode({"path": display_rel, "path_token": token}),
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
+            (status, payload) = responses[0]
+            self.assertEqual(status, 200)
+            self.assertEqual(payload["text"], "raw-bytes\n")
+            self.assertEqual(payload["api_path"], token)
+
+            # The read also recorded the file in session history WITH its token,
+            # so a raw-byte git file is reopenable from recent entries.
+            recorded = manager.recorded[-1]
+            self.assertEqual(recorded[0], "s")
+            self.assertTrue(isinstance(recorded[1], str) and recorded[1].endswith(display_rel))
+            self.assertEqual(recorded[2], token)
 
     def test_plain_file_read_round_trips_token_to_open_real_file(self) -> None:
         with tempfile.TemporaryDirectory() as td:

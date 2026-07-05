@@ -58,7 +58,7 @@ class ActiveSessionRowFacts:
     unattended_cooldown_minutes: int
     unattended_remaining_injections: int
     alias: str
-    files: list[str]
+    files: list[Any]
     cwd_path: Path | None
     model_provider: str | None
     preferred_auth_method: str | None

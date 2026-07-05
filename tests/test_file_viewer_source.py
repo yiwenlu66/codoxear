@@ -795,6 +795,7 @@ def eval_open_file_reference_nonliteral() -> dict:
           ElementCtor: null,
           sessionRelativePath: (rawPath, sessionId) => ctx.sessionRelativePath(rawPath, sessionId),
           listFromFilesField: (files) => Array.isArray(files) ? files : [],
+          listFromFileRecords: (files) => (Array.isArray(files) ? files : []).map((v) => (typeof v === "string" ? {{ path: v, apiPath: "" }} : v && typeof v === "object" ? {{ path: v.path || "", apiPath: v.apiPath || v.api_path || "" }} : null)).filter((r) => r && r.path),
           normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           normalizeLineNumber: (value) => {{ const n = Number(value); return Number.isFinite(n) && n > 0 ? Math.floor(n) : null; }},
           parseLocalFileRef: (value) => ctx.window.CodoxearMarkdown.parseLocalFileRef(value),

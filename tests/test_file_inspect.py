@@ -872,7 +872,7 @@ class TestInspectOpenableFile(unittest.TestCase):
                     super().__init__(cwd)
                     self.added: list[str] = []
 
-                def files_add(self, _session_id: str, path_value: str) -> None:
+                def files_add(self, _session_id: str, path_value: str, api_path: str | None = None) -> None:
                     self.added.append(path_value)
 
             manager = _RecordingManager(str(repo))
