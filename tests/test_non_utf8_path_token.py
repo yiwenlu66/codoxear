@@ -395,5 +395,58 @@ class TestNonUtf8PathTokenRoundtrip(unittest.TestCase):
                 self.assertEqual(fh.read(), b"updated contents\n")
 
 
+    def test_git_mode_search_display_collision_keeps_both_identities(self) -> None:
+        # A raw-byte file ``bad<ff>name.txt`` and a literal-UTF-8 file named
+        # ``bad\\xffname.txt`` (real backslash characters) render to the SAME
+        # JSON-safe display string. When ``q=bad`` ties their score, the heap
+        # must not fall through to comparing the entry dicts (previously a 500:
+        # "'< not supported between instances of dict and dict'"). Both
+        # distinct identities must survive under the limit and JSON-encode
+        # safely with no U+FFFD.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            subprocess.run(["git", "init"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.email", "a@b.c"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "t"], cwd=root, check=True)
+            (root / "ok.txt").write_text("ok\n", encoding="utf-8")
+            # Raw 0xff byte filename.
+            with open(os.fsencode(root) + b"/" + RAW_NAME_BYTES, "wb") as fh:
+                fh.write(b"raw-bytes\n")
+            # Literal backslash-x-f-f filename (valid UTF-8, no surrogates).
+            literal_name = r"bad\xffname.txt"
+            (root / literal_name).write_text("literal\n", encoding="utf-8")
+            subprocess.run(["git", "add", "ok.txt"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(
+                ["git", "add", "--", os.fsdecode(RAW_NAME_BYTES)],
+                cwd=root,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            subprocess.run(["git", "add", "--", literal_name], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            result = search_session_relative_files(root, query="bad")
+            self.assertEqual(result["mode"], "git")
+
+            matches = result["matches"]
+            non_utf8 = [m for m in matches if m.get("non_utf8_path")]
+            plain = [m for m in matches if not m.get("non_utf8_path")]
+            # Both distinct identities survive under the limit.
+            self.assertEqual(len(non_utf8), 1, matches)
+            self.assertEqual(len(plain), 1, matches)
+            # Same JSON-safe display string, tied score.
+            display = r"bad\xffname.txt"
+            self.assertEqual(non_utf8[0]["path"], display)
+            self.assertEqual(plain[0]["path"], display)
+            self.assertEqual(non_utf8[0]["score"], plain[0]["score"])
+            # Raw-byte entry carries the reversible token; literal does not.
+            self.assertIn("api_path", non_utf8[0])
+            self.assertNotIn("api_path", plain[0])
+            # No replacement char anywhere in the JSON-encoded body.
+            body = json.dumps(result, ensure_ascii=False).encode("utf-8")
+            self.assertNotIn("\ufffd".encode("utf-8"), body)
+            self.assertIn(rb"bad\\xffname.txt", body)
+
+
 if __name__ == "__main__":
     unittest.main()

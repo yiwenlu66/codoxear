@@ -59,8 +59,28 @@ def file_search_score(candidate: str, query: str) -> int:
     return total
 
 
-def _push_file_search_match(heap: list[tuple[int, str, dict[str, Any]]], *, entry: dict[str, Any], score: int, limit: int) -> None:
-    item = (score, str(entry.get("path", "")), entry)
+def _entry_identity(entry: dict[str, Any]) -> str:
+    """Deterministic comparable key distinguishing same-display entries.
+
+    A raw-byte (non-UTF-8) filename and its literal UTF-8 look-alike (for
+    example ``bad\\xffname.txt`` spelled with real backslash characters) both
+    render to the same JSON-safe display string under ``path``. When such
+    entries also tie on score, the heap must not fall through to comparing the
+    entry dicts, which raises ``TypeError``. The reversible ``api_path`` token
+    encodes the raw bytes uniquely, so it breaks the tie; plain (no-surrogate)
+    entries fall back to their display path, which is unique among non-token
+    candidates emitted by git/walk enumeration.
+    """
+    api_path = entry.get("api_path")
+    if api_path:
+        return str(api_path)
+    return str(entry.get("path", ""))
+
+
+def _push_file_search_match(heap: list[tuple[int, str, str, dict[str, Any]]], *, entry: dict[str, Any], score: int, limit: int) -> None:
+    # The identity key sits between the display path and the (non-comparable)
+    # entry dict so tied score/display pairs never reach a dict-vs-dict compare.
+    item = (score, str(entry.get("path", "")), _entry_identity(entry), entry)
     if len(heap) < limit:
         heapq.heappush(heap, item)
         return
@@ -68,10 +88,10 @@ def _push_file_search_match(heap: list[tuple[int, str, dict[str, Any]]], *, entr
         heapq.heapreplace(heap, item)
 
 
-def _finish_file_search(heap: list[tuple[int, str, dict[str, Any]]], *, mode: str, query: str, scanned: int, truncated: bool) -> dict[str, Any]:
-    ordered = sorted(heap, key=lambda item: (-item[0], item[1]))
+def _finish_file_search(heap: list[tuple[int, str, str, dict[str, Any]]], *, mode: str, query: str, scanned: int, truncated: bool) -> dict[str, Any]:
+    ordered = sorted(heap, key=lambda item: (-item[0], item[1], item[2]))
     matches: list[dict[str, Any]] = []
-    for score, _display, entry in ordered:
+    for score, _display, _identity, entry in ordered:
         match = dict(entry)
         match["score"] = score
         matches.append(match)
@@ -86,7 +106,7 @@ def _finish_file_search(heap: list[tuple[int, str, dict[str, Any]]], *, mode: st
 
 def search_walk_relative_files(root: Path, *, query: str, limit: int) -> dict[str, Any]:
     deadline = time.monotonic() + FILE_SEARCH_TIMEOUT_SECONDS
-    heap: list[tuple[int, str]] = []
+    heap: list[tuple[int, str, str, dict[str, Any]]] = []
     scanned = 0
     truncated = False
 
@@ -116,7 +136,7 @@ def search_walk_relative_files(root: Path, *, query: str, limit: int) -> dict[st
 
 def search_git_relative_files(cwd: Path, *, query: str, limit: int) -> dict[str, Any]:
     deadline = time.monotonic() + FILE_SEARCH_TIMEOUT_SECONDS
-    heap: list[tuple[int, str]] = []
+    heap: list[tuple[int, str, str, dict[str, Any]]] = []
     scanned = 0
     truncated = False
     # ``-z`` makes git emit raw-byte paths NUL-delimited (no per-line newline).
