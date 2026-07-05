@@ -2719,6 +2719,16 @@ select {
         .fileViewerHeader .actions {
           gap: 6px;
         }
+        /* Ensure the file-viewer toolbar controls (diff/preview/edit/video/download/close)
+           meet the 44x44 CSS px touch-target minimum on mobile. Scoped to the viewer
+           and excludes .fileTouchBtn, whose dpad is laid out on a 34px grid. */
+        .fileViewer .icon-btn:not(.fileTouchBtn) {
+          min-width: 44px;
+          min-height: 44px;
+        }
+        .fileViewer #fileEditBtn {
+          min-width: 44px;
+        }
         .queueViewer {
           width: 100vw;
           max-height: none;
