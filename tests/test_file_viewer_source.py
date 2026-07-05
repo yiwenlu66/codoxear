@@ -1256,6 +1256,117 @@ def eval_file_editor_capability_predicates() -> dict:
     )
     return json.loads(proc.stdout)
 
+
+def eval_file_edit_button_unavailable_editor() -> dict:
+    source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}}, AbortController }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(source)}, ctx);
+        const calls = [];
+        const fileStatus = {{ textContent: "", replaceChildren() {{}} }};
+        const fileEditButton = {{
+          disabled: false,
+          innerHTML: "",
+          title: "",
+          attrs: {{}},
+          classList: {{ toggle(name, enabled) {{ calls.push(["buttonToggle", name, Boolean(enabled)]); }} }},
+          setAttribute(name, value) {{ this.attrs[name] = String(value); calls.push(["buttonAttr", name, String(value)]); }},
+          removeAttribute(name) {{ delete this.attrs[name]; calls.push(["buttonRemoveAttr", name]); }},
+        }};
+        const controller = ctx.window.CodoxearFileViewer.createFileViewerController({{
+          el: (tag, attrs = {{}}, children = []) => ({{ tag, attrs, children }}),
+          fileStatus,
+          fileEditButton,
+          iconSvg: (name) => `icon:${{name}}`,
+          currentSessionId: () => "sid-1",
+          currentFileSessionId: () => "sid-1",
+          normalizeLineNumber: (value) => value == null || value === "" ? null : Number(value),
+          normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
+          isFileViewerOpen: () => true,
+          hideFileUnsavedDialog: () => {{}},
+          resetFileSearchState: () => {{}},
+          closeFilePickerMenu: () => {{}},
+          isTextFileKind: (kind) => kind === "text" || kind === "markdown",
+          isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
+          confirmReload: () => true,
+          promptUnsavedFileChoice: async () => "cancel",
+          restoreFileEditorText: () => {{}},
+          hideFileViewer: () => {{}},
+          setFilePath: () => {{}},
+          resetFileViewerPanel: () => {{}},
+          applyFileLoadResult: async () => true,
+          normalizeDraftFilePath: (value) => String(value || "").trim(),
+          inspectSessionFilePath: async () => ({{ exists: false }}),
+          api: async () => ({{}}),
+          focusEditor: () => null,
+          disposeOpenRender: () => {{}},
+          persistFileViewMode: () => {{}},
+          persistFileNonDiffMode: () => {{}},
+          isMarkdownPreviewable: () => true,
+          updateFileTouchToolbar: () => calls.push(["touchToolbar"]),
+          useTouchFileEditorControls: () => false,
+          hasActiveFileCodeEditor: () => false,
+          hasBlockingFileEditorModal: () => false,
+          isTextEntryTarget: () => false,
+          eventTargetElement: (value) => value || null,
+          normalizeFileEditorPosition: (_editor, position) => position || null,
+          applyFileEditorSelection: () => {{}},
+          isCollapsedFileSelection: () => true,
+          positionAfterInsertedText: (start, text) => ({{ lineNumber: start.lineNumber, column: start.column + String(text || "").length }}),
+          fileEditorEditSupportAvailable: () => false,
+          updateFileDiffEditorOptions: () => {{}},
+          showFilePasteDialog: () => false,
+          hideFilePasteDialog: () => {{}},
+          clipboardReadAvailable: () => false,
+          readClipboardText: async () => "",
+          fileEditorDeleteCommandForKey: () => "",
+          isActiveFileEditorInput: () => false,
+          getActiveFileSelectionText: () => "",
+          copyToClipboard: async () => {{}},
+          focusActiveFileCodeEditor: () => null,
+          nowMs: () => 0,
+          setToast: (message) => calls.push(["toast", message]),
+          renderMonacoFile: async () => {{ calls.push(["renderMonacoFile"]); return false; }},
+          getFileEditorText: () => "body",
+          fmtBytes: (value) => `${{value}}B`,
+          applyFileMode: () => {{}},
+          rememberOpenedFile: () => {{}},
+          historyFileSelectionForSession: () => ({{ path: "", line: null, gitPath: false, apiPath: "" }}),
+          renderFilePickerMenu: () => {{}},
+        }});
+        controller.setFileViewerSessionId("sid-1");
+        controller.setActiveFileIdentity("note.txt", {{ line: null, gitPath: false, apiPath: "" }});
+        controller.applyActiveFileTextState({{ kind: "text", text: "body", editable: true, version: "v1", draft: false }});
+        controller.setFileViewMode("file");
+        controller.setFileEditorKind("plain-fallback");
+        controller.setFileEditMode(false);
+        controller.updateFileEditButton();
+        const beforePress = {{
+          disabled: fileEditButton.disabled,
+          title: fileEditButton.title,
+          ariaLabel: fileEditButton.attrs["aria-label"],
+          ariaDisabled: fileEditButton.attrs["aria-disabled"],
+        }};
+        (async () => {{
+          const ok = await controller.handleFileEditButtonPress();
+          process.stdout.write(JSON.stringify({{
+            ok,
+            beforePress,
+            status: fileStatus.textContent,
+            calls,
+            editMode: controller.currentFileEditMode(),
+            dirty: controller.currentFileDirty(),
+          }}));
+        }})().catch((err) => {{ console.error(err && err.stack ? err.stack : err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def eval_file_editor_save_shortcut() -> dict:
     viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
@@ -4283,7 +4394,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("editor.updateOptions({ readOnly: !activeFileEditorWritable() });", viewer_source)
         self.assertIn("return fileViewerController.updateFileEditButton();", source)
         self.assertIn("function updateFileEditButton()", viewer_source)
-        self.assertIn("fileEditButton.disabled = unavailable || !canEdit;", viewer_source)
+        self.assertIn("fileEditButton.disabled = unavailable || savePending || (!canEdit && !editUnavailableReason);", viewer_source)
+        self.assertIn("const FILE_EDITOR_UNAVAILABLE_MESSAGE = \"Editing is unavailable because the code editor failed to load. Read-only preview remains available.\";", viewer_source)
         self.assertIn("async function handleFileEditButtonPress()", viewer_source)
         self.assertIn("return await fileViewerController.handleFileEditButtonPress();", source)
         self.assertIn("await handleFileEditButtonPress();", source)
@@ -4334,6 +4446,17 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertFalse(result["editableText"]["state"]["unavailable"])
         self.assertTrue(result["savePending"]["state"]["savePending"])
         self.assertEqual(result["missingPath"]["state"]["path"], "")
+
+    def test_file_edit_button_fails_loud_when_code_editor_unavailable(self) -> None:
+        result = eval_file_edit_button_unavailable_editor()
+        message = "Editing is unavailable because the code editor failed to load. Read-only preview remains available."
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["beforePress"], {"disabled": False, "title": message, "ariaLabel": message, "ariaDisabled": "true"})
+        self.assertEqual(result["status"], message)
+        self.assertIn(["toast", message], result["calls"])
+        self.assertNotIn(["renderMonacoFile"], result["calls"])
+        self.assertFalse(result["editMode"])
+        self.assertFalse(result["dirty"])
 
     def test_file_editor_save_shortcut_is_scoped_to_active_edit_mode(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

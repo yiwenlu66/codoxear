@@ -19,6 +19,7 @@
   }
 
   const BROWSER_SAFE_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/ogg"]);
+  const FILE_EDITOR_UNAVAILABLE_MESSAGE = "Editing is unavailable because the code editor failed to load. Read-only preview remains available.";
 
   function bindFileTouchPress(button, handler, options = {}) {
     if (!button || typeof button.addEventListener !== "function" || typeof handler !== "function") return false;
@@ -2754,11 +2755,27 @@
       editor.updateOptions({ readOnly: !activeFileEditorWritable() });
     }
 
+    function activeFileEditorUnavailableReason() {
+      const state = currentFileEditorState();
+      if (!state.path || state.unavailable || state.savePending || state.editMode) return "";
+      if (!state.editable || !isTextFileKind(state.kind)) return "";
+      return state.editorKind === "plain-fallback" ? FILE_EDITOR_UNAVAILABLE_MESSAGE : "";
+    }
+
+    function syncFileEditButtonDisabledReason(reason) {
+      if (reason) {
+        fileEditButton.setAttribute("aria-disabled", "true");
+        return;
+      }
+      if (typeof fileEditButton.removeAttribute === "function") fileEditButton.removeAttribute("aria-disabled");
+    }
+
     function updateFileEditButton() {
       const unavailable = isUnavailable();
-      const canEdit = activeFileCanEnterEditMode();
-      fileEditButton.disabled = unavailable || !canEdit;
       const savePending = isFileSavePending();
+      const editUnavailableReason = activeFileEditorUnavailableReason();
+      const canEdit = activeFileCanEnterEditMode();
+      fileEditButton.disabled = unavailable || savePending || (!canEdit && !editUnavailableReason);
       const editMode = Boolean(currentFileEditMode());
       const dirty = Boolean(currentFileDirty());
       const saveStyle = editMode || savePending;
@@ -2768,8 +2785,16 @@
       if (savePending) fileEditButton.innerHTML = iconSvg("save");
       else if (editMode) fileEditButton.innerHTML = iconSvg("save");
       else fileEditButton.innerHTML = iconSvg("edit");
-      fileEditButton.title = unavailable ? "Session unavailable; copy edits before closing" : savePending ? "Saving file" : editMode ? "Save file" : canEdit ? "Edit file" : "File is read-only";
-      fileEditButton.setAttribute("aria-label", unavailable ? "Session unavailable; copy edits before closing" : savePending ? "Saving file" : editMode ? "Save file" : "Edit file");
+      const label = unavailable
+        ? "Session unavailable; copy edits before closing"
+        : savePending
+          ? "Saving file"
+          : editMode
+            ? "Save file"
+            : editUnavailableReason || "Edit file";
+      fileEditButton.title = label;
+      fileEditButton.setAttribute("aria-label", label);
+      syncFileEditButtonDisabledReason(editUnavailableReason);
       updateFileTouchToolbar();
     }
 
@@ -3404,6 +3429,13 @@
 
     async function handleFileEditButtonPress() {
       if (isFileSavePending()) return false;
+      const editUnavailableReason = activeFileEditorUnavailableReason();
+      if (editUnavailableReason) {
+        fileStatus.textContent = editUnavailableReason;
+        setToast(editUnavailableReason);
+        updateFileEditButton();
+        return false;
+      }
       if (currentFileEditMode()) {
         await saveActiveFileEdits({ exitEditMode: true });
         return true;
