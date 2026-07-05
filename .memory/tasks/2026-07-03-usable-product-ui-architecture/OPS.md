@@ -476,3 +476,30 @@
 - Browser proof from detached worktree at `363d232`, Docker port `19135`: at 390x844, visible file-viewer toolbar buttons measured Toggle diff 44x44, Edit file 44x44, Download file 44x44, Close 44x44; `allVisibleAtLeast44=true`; no horizontal overflow (`viewer right=390` at width 390). Screenshot: `browser-artifacts/d3-mobile-fileviewer-touch-targets.png`; report: `d3-mobile-touch-target-verification.md`.
 - Negative evidence: the first unamended measurement caught Edit file at 38x44 because ID specificity beat the broad mobile rule; the final commit includes a test for that seam.
 - Residual: `.fileTouchBtn` dpad controls remain 34px because they live in a fixed 34px grid; that is a separate touch-dpad design issue, not the D3 header-toolbar defect.
+
+## 2026-07-05T19:40:00Z Non-UTF openability reopened by identity-leak review
+- Functional checkpoint `68e5b18 Open non-UTF workbench paths via tokens` is no longer a closed File Workbench claim. It remains useful as a partial plain-file token checkpoint.
+- Independent critic run `b87c0504-c040-4de7-91b1-c4b8a5199c06` reported three remaining token-identity leaks:
+  1. Git-mode file search decodes `git ls-files` with replacement, so a raw-byte filename becomes `bad�name.txt` and no `api_path` token is emitted; the critic's repro produced `read_status_without_token=404`.
+  2. Frontend search normalization can dedupe by display `path` before considering `api_path`, so a display-only candidate can suppress a tokenized candidate.
+  3. Recent/history persistence stores string paths only, so a tokenized opened non-UTF file can later reappear as a display-only false affordance.
+- Superseded browser verifier `0f23ac43`/`a18a083b` was stopped after API evidence collection. Its useful evidence: in Docker port 19137 at commit `68e5b18`, plain walk-mode search returned `bad\\xffname.txt` with token, and API read/download/write via `path_token` addressed the raw-byte file without codec errors. It did not complete browser click/open proof and does not close the product claim.
+- New implementation executor `7868248b-f1ee-4de5-860d-ee79fe0f7bd9` dispatched to fix the three identity leaks with targeted tests. Docker/browser verification is deferred until the patch exists.
+- Roadmap guard: theorist `4dc1472c-3f9d-4d68-9b12-fb0fa3c030f4` dispatched to rank next Workbench/product targets after non-UTF openability so File Workbench detail does not displace the PROMPT roadmap.
+
+## 2026-07-05T20:05:00Z Roadmap memo after non-UTF identity item
+- Theorist run `4dc1472c-3f9d-4d68-9b12-fb0fa3c030f4` failed only the acceptance wrapper (`changed-files evidence missing`) but produced a usable roadmap memo.
+- Ranked next targets after non-UTF openability:
+  1. File-editor capability decision: Monaco is not provisioned in recovery checkout, packaging, Docker, or git history; current Edit behavior is truthfully fail-loud but the Workbench editor capability is dead unless the product chooses to vendor/provision Monaco. This requires user/product decision: provision editor or retire editor affordance/scope.
+  2. Git Workbench browser + mobile certification: server/API matrix has evidence, but browser/mobile rendering for dirty/untracked/renamed/deleted/binary/nested/non-repo/read-only integrity is not certified. This is the next fully actionable Workbench target after D4.
+  3. File upload + attachment browser certification and `tests/test_file_upload.py` seam retirement: upload/attachment is the other file mutation path; browser evidence is thin and the remaining server-global monkeypatch seam is explicitly called out in PROMPT.
+- Parked backend parity remains Codex/Claude real-inference proof, gated by healthy credentials/provider/gateway. Codoxear-owned projections (pre-log readiness, no-response/error projection, fake-CC binding) are already fixed/proven; real answer parity needs external unblock.
+
+## 2026-07-05T20:22:00Z D4 source review found two remaining contract defects
+- Source critic run `bf64da1f-9e1a-457b-9819-cc2a68dde0a0` reviewed the uncommitted non-UTF openability patch.
+- Review accepted the three main identity mechanisms: git-mode search now uses `git ls-files -z` with `surrogateescape` and emits token fields; frontend search dedupes by identity; recent/history token persistence is structurally fixed through polymorphic session file records.
+- Two blockers remain before functional commit:
+  1. Git search candidate-cap metadata: truncated git mode can report `scanned=3` for `FILE_SEARCH_MAX_CANDIDATES=2`, unlike walk mode's cap semantics (`scanned=2`). Cause: increment before cap check in `file_search.py`.
+  2. File write create path ignores invalid `path_token`; update rejects invalid token with 400, but create+bad token was accepted despite the route contract saying create tokens are rejected.
+- Local validation executor `fc7ccb41-b9fb-4016-b9eb-bc776e2f4590` ran read-only validation on the pre-review patch: JS syntax passed for four changed frontend files; focused tests `218 passed, 81 subtests`; broader sweep `133 passed`; full local `1639 passed, 132 subtests`. This supports broad regression health but does not close the two critic blockers.
+- Implementation executor resumed as `5eb55430` to fix only the two contract defects with targeted tests. No Docker/browser proof until these source-level blockers are fixed.
