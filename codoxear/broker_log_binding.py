@@ -40,6 +40,55 @@ class BrokerLogStateApplyResult:
     previous_log_path: Path | None
 
 
+@dataclass(frozen=True)
+class CcFallbackLog:
+    session_id: str
+    log_path: Path
+
+
+FindNewSessionLogFunc = Callable[..., tuple[str, Path] | None]
+
+
+def cc_fallback_session_log(
+    *,
+    sessions_dir: Path,
+    cwd: str,
+    after_ts: float,
+    preexisting: set[Path],
+    exclude_paths: set[Path],
+    find_new_session_log_func: FindNewSessionLogFunc,
+) -> CcFallbackLog | None:
+    """Discover a freshly-written CC session log when the proc-fd scan misses it.
+
+    Claude Code does not expose Pi's active-session bridge, so the broker falls
+    back to scanning ``~/.claude/projects`` for a new log. The cwd-scoped lookup
+    can miss even though the transcript exists on disk: a login shell
+    profile/rc may ``cd`` before ``exec`` so Claude records a different cwd than
+    the broker's ``--cwd``, and a third-party gateway may omit the per-row cwd
+    field entirely. The on-disk log is still the session transcript and must be
+    bound, so after the cwd-scoped lookup misses we retry without cwd. The
+    preexisting snapshot, the ``after_ts`` freshness window and the
+    single-match rule inside ``find_new_session_log`` keep disambiguation
+    honest: an ambiguous bind (two concurrent fresh logs) returns None rather
+    than guessing.
+    """
+    for query_cwd in (cwd, None):
+        found = find_new_session_log_func(
+            sessions_dir=sessions_dir,
+            agent_backend="cc",
+            cwd=query_cwd,
+            after_ts=after_ts,
+            preexisting=preexisting,
+            exclude_paths=exclude_paths,
+            timeout_s=0.0,
+        )
+        if found is None:
+            continue
+        sid, log_path = found
+        return CcFallbackLog(session_id=sid, log_path=log_path)
+    return None
+
+
 def _resolve_broker_log_binding(
     *,
     log_path: Path,

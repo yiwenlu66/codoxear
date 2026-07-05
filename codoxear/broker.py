@@ -45,6 +45,7 @@ from codoxear.broker_log_binding import _detach_trigger_seen
 from codoxear.broker_log_binding import _maybe_detach_on_session_switch_trigger
 from codoxear.broker_log_binding import _resolve_broker_log_binding
 from codoxear.broker_log_binding import _seed_broker_log_state
+from codoxear.broker_log_binding import cc_fallback_session_log
 from codoxear.broker_log_watcher import _apply_log_objects_to_state
 from codoxear.broker_log_watcher import _clear_resume_delivery_mute_if_idle
 from codoxear.broker_log_watcher import _pop_key_queue_if_idle
@@ -389,18 +390,16 @@ class Broker:
                                 time.sleep(0.25)
                                 continue
                         if AGENT_BACKEND == "cc" and current_log_path is None:
-                            found = _find_new_session_log(
+                            fallback = cc_fallback_session_log(
                                 sessions_dir=self.sessions_dir,
-                                agent_backend=AGENT_BACKEND,
                                 cwd=self.cwd,
                                 after_ts=st.start_ts,
                                 preexisting=st.known_rollout_paths,
                                 exclude_paths=ignored_paths,
-                                timeout_s=0.0,
+                                find_new_session_log_func=_find_new_session_log,
                             )
-                            if found is not None:
-                                _sid, fallback_log_path = found
-                                self._maybe_register_or_switch_rollout(log_path=fallback_log_path)
+                            if fallback is not None:
+                                self._maybe_register_or_switch_rollout(log_path=fallback.log_path)
                                 time.sleep(0.25)
                                 continue
                     # Exit early if Codex is gone.
