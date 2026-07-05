@@ -69,6 +69,8 @@ Currently supported agent backends:
 - Do not let internal pipeline stages redefine user-facing semantics. Define the semantic invariant first, then make the implementation mechanically preserve it.
 - For queueing/streaming features, write down the exact replacement/commit boundary first (for example what counts as "queued", what counts as "playing", and what is still replaceable) before writing code.
 - If the user provides a simpler design that preserves the invariant more directly, prefer that design over a more elaborate agent-invented state machine.
+- For broker/server/session/tmux verification, Docker is the isolation boundary. A host-side throwaway `HOME` only redirects files; it does not isolate the process table, tmux socket, `/tmp`, signals, or systemd. Do not use host throwaway-HOME repros for broker/server/session work.
+- Never use pattern-based process cleanup (`pkill -f`, `killall`, broad `pgrep | xargs kill`) in agent-run verification. If a host process is explicitly started for a non-session task, record its exact PID and clean up only that PID; prefer Docker container teardown for anything session-related.
 - Local dev:
   - Install: `python3 -m pip install -e .`
   - Run server: `codoxear-server` or `python3 -m codoxear.server`

@@ -111,7 +111,8 @@ The Workbench is the product map. Each item below must be certified from the bro
 
 ## Constraints
 - Do not edit, restart, merge, or promote `/home/yiwen/codex-web`; do not kill live sessions/brokers.
-- Docker sandbox only for server/session testing; never port 8743; never host live app dir.
+- Docker sandbox only for broker/server/session/tmux verification; never port 8743; never host live app dir. Host-side throwaway `HOME` is not an isolation boundary and must not be used as a substitute for Docker.
+- Do not use pattern-based host process cleanup (`pkill -f`, `killall`, broad `pgrep | xargs kill`) in agent-run verification. Cleanup must be exact PID-scoped for a process just started by the agent, or container-scoped via Docker teardown.
 - No `git add -A` / broad staging; functional commits separate from memory/docs commits; small coherent checkpoints.
 - Fail loud; no silent fallbacks; preserve public API/state-format compatibility unless a defect requires change.
 - Do not claim completion from tests alone; usability claims require browser evidence; acceptance requires Docker validation and clean-room review.
