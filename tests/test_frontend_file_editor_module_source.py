@@ -423,6 +423,64 @@ def run_file_editor_renderer_probe() -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
+def run_diff_fallback_probe() -> dict[str, object]:
+    editor_source = APP_FILE_EDITOR_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(editor_source)}, ctx);
+        const mod = ctx.window.CodoxearFileEditor;
+        const events = [];
+        let current = true;
+        const loader = {{
+          ensure() {{ events.push(["ensure"]); return Promise.reject(new Error("loader unavailable")); }},
+        }};
+        const runtime = {{
+          createFileEditor: () => ({{}}),
+          updateFileEditorText: () => true,
+          createDiffEditor: () => ({{}}),
+          positionCurrentEditorAtLine: () => null,
+          scheduleLineFocus: () => null,
+          currentFileText: () => "",
+        }};
+        const host = {{ name: "diffHost" }};
+        const renderer = mod.createFileEditorRenderer({{
+          runtime,
+          monacoLoader: loader,
+          host,
+          normalizeLineNumber: (value) => Number(value) || null,
+          requestAnimationFrame: () => null,
+          setTimeout: (callback) => callback(),
+          isCurrentFileOpenRequest: () => current,
+          renderPlainTextFallback: (rel, text, lineNumber, reason) => {{ events.push(["fallback", rel, text, lineNumber, reason]); return {{}}; }},
+          disposeFileEditor: () => events.push(["dispose"]),
+          currentEditorKind: () => "",
+          setEditorKind: (kind) => events.push(["setKind", kind]),
+          currentFileEditMode: () => false,
+          currentActiveFileEditable: () => false,
+          isUnavailable: () => false,
+          isProgrammaticChange: () => false,
+          currentTouchSelectMode: () => false,
+          resetTouchSelectionState: () => null,
+          currentActiveFileText: () => "",
+          setDirty: () => null,
+          runProgrammaticChange: (callback) => callback(),
+          syncReadOnly: () => null,
+          updateTouchToolbar: () => null,
+        }});
+        (async () => {{
+          const withDiff = await renderer.renderDiff("src/note.md", "base", "working", 1, {{ id: "req" }}, "@@ -1 +1 @@ -base +working");
+          const withoutDiff = await renderer.renderDiff("src/note2.md", "base", "working", 1, {{ id: "req" }}, "");
+          process.stdout.write(JSON.stringify({{ withDiff, withoutDiff, events }}));
+        }})().catch((err) => {{ console.error(err && err.stack ? err.stack : err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def run_monaco_loader_probe() -> dict[str, object]:
     editor_source = APP_FILE_EDITOR_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
@@ -663,6 +721,24 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
             ],
         )
 
+    def test_file_editor_diff_fallback_renders_unified_diff_when_monaco_unavailable(self) -> None:
+        result = run_diff_fallback_probe()
+        # When Monaco is unavailable and a unified diff text is available, the
+        # fallback must render the +/- repository diff (read-only), NOT the
+        # working-tree file content. No write controls are introduced by this path.
+        self.assertTrue(result["withDiff"])
+        self.assertTrue(result["withoutDiff"])
+        events = result["events"]
+        with_diff_fallback = next(e for e in events if e[0] == "fallback" and e[1] == "src/note.md")
+        self.assertEqual(with_diff_fallback[2], "@@ -1 +1 @@ -base +working")
+        self.assertIn("Rich diff unavailable", with_diff_fallback[4])
+        self.assertIn("unified diff", with_diff_fallback[4])
+        without_diff_fallback = next(e for e in events if e[0] == "fallback" and e[1] == "src/note2.md")
+        # No unified diff text -> must NOT imply a diff; degrades to file content.
+        self.assertEqual(without_diff_fallback[2], "working")
+        self.assertIn("Rich diff unavailable", without_diff_fallback[4])
+        self.assertNotIn("unified diff", without_diff_fallback[4])
+
     def test_monaco_loader_behavior(self) -> None:
         result = run_monaco_loader_probe()
         self.assertFalse(result["beforeSupport"])
@@ -726,7 +802,7 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertIn("function createFileEditorRenderer(options = {})", editor_source)
         self.assertIn("const fileEditorRenderer = codoxearFileEditor.createFileEditorRenderer({", app_source)
         self.assertIn("return await fileEditorRenderer.renderFile(rel, text, lineNumber, langOverride, request);", app_source)
-        self.assertIn("return await fileEditorRenderer.renderDiff(rel, originalText, modifiedText, lineNumber, request);", app_source)
+        self.assertIn("return await fileEditorRenderer.renderDiff(rel, originalText, modifiedText, lineNumber, request, fallbackDiffText);", app_source)
         self.assertNotIn("fileEditorRuntime.createFileEditor(monaco, fileDiff", app_source)
         self.assertNotIn("fileEditorRuntime.updateFileEditorText(monaco", app_source)
         self.assertIn("fileEditorRuntime.currentFileText(currentFileEditorKind(), currentActiveFileText())", app_source)

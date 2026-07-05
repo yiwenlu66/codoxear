@@ -19,9 +19,26 @@ class TestGitOps(unittest.TestCase):
             {
                 "a.txt": {"additions": 1, "deletions": 2},
                 "b.bin": {"additions": None, "deletions": None},
-                "new name.txt": {"additions": 4, "deletions": 5},
+                "new name.txt": {"additions": 4, "deletions": 5, "old_path": "old name.txt"},
             },
         )
+
+    def test_parse_git_numstat_preserves_rename_old_path_across_merge(self) -> None:
+        # Rename record (staged) followed by a content edit (unstaged) on the
+        # new path: the source path must survive the numstat merge.
+        staged = "\0".join(["0\t0\t", "orig.md", "moved.md", ""])
+        unstaged = "1\t0\tmoved.md\0"
+        stats = git_ops.parse_git_numstat(unstaged)
+        for path_key, vals in git_ops.parse_git_numstat(staged).items():
+            prev = stats.get(path_key)
+            if prev is None:
+                stats[path_key] = vals
+                continue
+            prev["additions"] = prev["additions"] + vals["additions"]
+            prev["deletions"] = prev["deletions"] + vals["deletions"]
+            if "old_path" not in prev:
+                prev["old_path"] = vals.get("old_path")
+        self.assertEqual(stats["moved.md"], {"additions": 1, "deletions": 0, "old_path": "orig.md"})
 
     def test_resolve_git_path_uses_injected_run_git_and_preserves_backslash_literal(self) -> None:
         with tempfile.TemporaryDirectory() as td:

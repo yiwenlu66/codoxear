@@ -1005,6 +1005,121 @@ class TestInspectOpenableFile(unittest.TestCase):
             entry = next(entry for entry in payload["entries"] if entry["path"] == "new name.md")
             self.assertEqual(entry["additions"], 0)
             self.assertEqual(entry["deletions"], 0)
+            # Rename source path must be surfaced (old -> new), not just new path +0/0.
+            self.assertTrue(entry.get("rename"), entry)
+            self.assertEqual(entry.get("old_path"), "old name.md")
+            self.assertEqual(entry.get("state"), "changed")
+
+    @unittest.skipIf(shutil.which("git") is None, "git required")
+    def test_git_changed_files_includes_untracked_with_distinct_state(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.email", "codoxear@example.invalid"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "Codoxear Test"], cwd=repo, check=True)
+            (repo / "tracked.md").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "tracked.md"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-m", "base"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            (repo / "tracked.md").write_text("base\nedit\n", encoding="utf-8")
+            (repo / "untracked.txt").write_text("new file\n", encoding="utf-8")
+            (repo / "ignored.log").write_text("ignored\n", encoding="utf-8")
+            (repo / ".gitignore").write_text("*.log\n", encoding="utf-8")
+
+            manager = _FakeManager(str(repo))
+            deps, responses = _git_deps()
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/changed_files",
+                query="",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 200)
+            self.assertIn("untracked.txt", payload["files"])
+            self.assertIn("untracked.txt", payload["untracked"])
+            untracked_entry = next(e for e in payload["entries"] if e["path"] == "untracked.txt")
+            self.assertTrue(untracked_entry.get("untracked"))
+            self.assertEqual(untracked_entry.get("state"), "untracked")
+            self.assertFalse(untracked_entry.get("changed"))
+            self.assertIsNone(untracked_entry.get("additions"))
+            self.assertIsNone(untracked_entry.get("deletions"))
+            # ignored files must not leak through as untracked
+            self.assertNotIn("ignored.log", payload["files"])
+            tracked_entry = next(e for e in payload["entries"] if e["path"] == "tracked.md")
+            self.assertTrue(tracked_entry.get("changed"))
+            self.assertEqual(tracked_entry.get("state"), "changed")
+            self.assertNotIn("untracked", tracked_entry)
+
+    @unittest.skipIf(shutil.which("git") is None, "git required")
+    def test_git_diff_head_mode_combines_staged_and_unstaged(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.email", "codoxear@example.invalid"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "Codoxear Test"], cwd=repo, check=True)
+            (repo / "note.md").write_text("line1\nline2\nline3\n", encoding="utf-8")
+            subprocess.run(["git", "add", "note.md"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-m", "base"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            # staged change + unstaged change on the same file
+            (repo / "note.md").write_text("staged\nline2\nline3\n", encoding="utf-8")
+            subprocess.run(["git", "add", "note.md"], cwd=repo, check=True)
+            (repo / "note.md").write_text("staged\nline2\nline3\nunstage\n", encoding="utf-8")
+
+            manager = _FakeManager(str(repo))
+            deps, responses = _git_deps()
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/diff",
+                query="path=note.md&head=1",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 200)
+            diff = payload["diff"]
+            # head mode must surface both the staged and the unstaged edits vs HEAD
+            self.assertIn("-line1", diff)
+            self.assertIn("+staged", diff)
+            self.assertIn("+unstage", diff)
+
+            # default (no head) must keep historical index->worktree semantics
+            deps2, responses2 = _git_deps()
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/diff",
+                query="path=note.md",
+                manager=manager,
+                deps=deps2,
+                match_session_route=_match_session_route,
+            )
+            status2, payload2 = responses2[0]
+            self.assertEqual(status2, 200)
+            self.assertIn("+unstage", payload2["diff"])
+            self.assertNotIn("-line1", payload2["diff"])
+
+    @unittest.skipIf(shutil.which("git") is None, "git required")
+    def test_git_changed_files_non_repo_returns_409_with_fatal_message(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            manager = _FakeManager(str(repo))
+            deps, responses = _git_deps()
+            handle_git_get_route(
+                _FakeHandler(),
+                path="/api/sessions/s/git/changed_files",
+                query="",
+                manager=manager,
+                deps=deps,
+                match_session_route=_match_session_route,
+            )
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 409)
+            self.assertIn("not a git repository", str(payload.get("error", "")).lower())
 
     def test_git_changed_files_late_git_failure_returns_409(self) -> None:
         with tempfile.TemporaryDirectory() as td:

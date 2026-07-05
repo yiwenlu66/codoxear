@@ -281,17 +281,20 @@ def split_git_nul_paths(text: str) -> list[str]:
     return [part for part in text.split("\0") if part]
 
 
-def parse_git_numstat(text: str) -> dict[str, dict[str, int | None]]:
-    out: dict[str, dict[str, int | None]] = {}
+def parse_git_numstat(text: str) -> dict[str, dict[str, int | None | str]]:
+    out: dict[str, dict[str, int | None | str]] = {}
 
-    def add_entry(add_raw: str, del_raw: str, path_s: str) -> None:
+    def add_entry(add_raw: str, del_raw: str, path_s: str, *, old_path: str | None = None) -> None:
         if path_s == "":
             return
         add_v = None if add_raw == "-" else int(add_raw)
         del_v = None if del_raw == "-" else int(del_raw)
         prev = out.get(path_s)
         if prev is None:
-            out[path_s] = {"additions": add_v, "deletions": del_v}
+            entry: dict[str, int | None | str] = {"additions": add_v, "deletions": del_v}
+            if old_path is not None:
+                entry["old_path"] = old_path
+            out[path_s] = entry
             return
         if add_v is None or prev["additions"] is None:
             prev["additions"] = None
@@ -301,6 +304,10 @@ def parse_git_numstat(text: str) -> dict[str, dict[str, int | None]]:
             prev["deletions"] = None
         else:
             prev["deletions"] = int(prev["deletions"]) + del_v
+        # A rename record carries the source path; preserve it across merges
+        # (e.g. a staged rename plus an unstaged content edit on the new path).
+        if old_path is not None and "old_path" not in prev:
+            prev["old_path"] = old_path
 
     if "\0" in text:
         records = text.split("\0")
@@ -319,9 +326,12 @@ def parse_git_numstat(text: str) -> dict[str, dict[str, int | None]]:
                 # add<TAB>del<TAB><NUL>old-path<NUL>new-path<NUL>.
                 if idx + 1 >= len(records):
                     continue
+                old_path = records[idx]
                 idx += 1
                 path = records[idx]
                 idx += 1
+                add_entry(add_raw, del_raw, path, old_path=old_path)
+                continue
             add_entry(add_raw, del_raw, path)
     else:
         for raw in [raw for raw in text.splitlines() if raw != ""]:

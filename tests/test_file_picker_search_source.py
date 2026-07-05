@@ -25,7 +25,10 @@ def js_candidate_controller_fixture() -> str:
             const source = normalizeFileCandidateSource(entry.source);
             const gitPath = entry.gitPath === undefined ? Boolean(entry.changed && source === "changed") : Boolean(entry.gitPath);
             const apiPath = normalizeFileApiPath(entry.apiPath || entry.api_path);
-            return { path: entry.path, apiPath, gitPath, key: __candidateKey(entry.path, gitPath, apiPath), additions: entry.additions ?? null, deletions: entry.deletions ?? null, changed: Boolean(entry.changed), source };
+            const untracked = Boolean(entry.untracked);
+            const oldPath = typeof entry.oldPath === "string" ? entry.oldPath : "";
+            const rename = Boolean(entry.rename || oldPath);
+            return { path: entry.path, apiPath, gitPath, key: __candidateKey(entry.path, gitPath, apiPath), additions: entry.additions ?? null, deletions: entry.deletions ?? null, changed: untracked ? false : Boolean(entry.changed), untracked, rename, oldPath, source };
           }
           fileViewerController = {
             beginFileCandidateRefresh() { fileCandidateRequestSeq += 1; return fileCandidateRequestSeq; },
@@ -76,13 +79,16 @@ def js_candidate_controller_fixture() -> str:
             },
             currentFileCandidateGitStateFresh() { return fileCandidateGitStateFresh; },
             setFileCandidateGitStateFresh(fresh) { fileCandidateGitStateFresh = Boolean(fresh); return fileCandidateGitStateFresh; },
+            currentFileCandidateGitStateMessage() { return fileCandidateGitStateMessage; },
+            setFileCandidateGitStateMessage(message) { fileCandidateGitStateMessage = String(message || ""); return fileCandidateGitStateMessage; },
             rememberFileCandidateCache(sid, key, now = Date.now()) { if (!sid || !key) return false; fileCandidateCache.set(sid, { key, ts: Number(now || 0), entries: this.currentFileCandidateEntries() }); return true; },
             fileCandidateCacheEntry(sid) { const cached = fileCandidateCache.get(String(sid || "")); return cached ? { key: cached.key, ts: cached.ts, entries: (cached.entries || []).map(__candidateClone).filter(Boolean) } : null; },
             deleteFileCandidateCache(sid) { return fileCandidateCache.delete(String(sid || "")); },
             fileCandidateCacheSize() { return fileCandidateCache.size; },
-            applyFileCandidateRefreshEntries(entries, { gitStateFresh = false } = {}) {
+            applyFileCandidateRefreshEntries(entries, { gitStateFresh = false, gitStateMessage = "" } = {}) {
               this.applyFileCandidateEntries(entries);
               this.setFileCandidateGitStateFresh(gitStateFresh);
+              fileCandidateGitStateMessage = gitStateFresh ? "" : String(gitStateMessage || "");
               applyFileMode();
               return true;
             },
@@ -154,6 +160,7 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
           fileCandidateList: [],
           fileEntryMap: new Map(),
           fileCandidateGitStateFresh: false,
+          fileCandidateGitStateMessage: "",
           fileCandidateCache: new Map(),
           fileCandidateRequestSeq: 0,
           activeFileDraft: Boolean(state.activeFileDraft),
@@ -633,6 +640,7 @@ def file_candidate_refresh_runtime_prelude() -> str:
           fileCandidateList: [],
           fileEntryMap: new Map(),
           fileCandidateGitStateFresh: false,
+          fileCandidateGitStateMessage: "",
           fileCandidateCache: new Map(),
           fileCandidateRequestSeq: 0,
           FILE_CANDIDATE_CACHE_TTL_MS: 15000,
@@ -718,6 +726,7 @@ def eval_file_candidates_after_changed_files_failure() -> dict:
         process.stdout.write(JSON.stringify({
           entries: currentFileCandidateEntries().map((entry) => ({ path: entry.path, gitPath: entry.gitPath, source: entry.source })),
           fresh: fileCandidateGitStateFresh,
+          gitStateMessage: fileCandidateGitStateMessage,
           cacheSize: fileCandidateCache.size,
           apiCalls,
           renderCount,
@@ -1115,6 +1124,7 @@ class TestFilePickerSearchSource(unittest.TestCase):
             ],
         )
         self.assertFalse(result["fresh"])
+        self.assertEqual(result["gitStateMessage"], "Not a git repository \u2014 no changed files")
         self.assertEqual(result["cacheSize"], 0)
         self.assertEqual(result["apiCalls"], ["/api/sessions/s1/git/changed_files"])
         self.assertEqual(result["renderCount"], 1)
@@ -1281,7 +1291,7 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertNotIn("fileViewerController.applyFreshFileCandidateCache(sid, cacheKey", source)
         self.assertIn("applyFreshCache(sid, cacheKey", viewer_source)
         self.assertNotIn("fileViewerController.applyFileCandidateRefreshEntries(merged, { gitStateFresh: changedEntriesFresh });", source)
-        self.assertIn("applyRefreshEntries(merged, { gitStateFresh: changedEntriesFresh });", viewer_source)
+        self.assertIn("applyRefreshEntries(merged, { gitStateFresh: changedEntriesFresh, gitStateMessage });", viewer_source)
         self.assertNotIn("const diffable = canToggleMode && activeFileGitPathValue() && fileCandidateGitStateFresh", source)
         self.assertIn("function currentFileModeControlState", viewer_source)
         self.assertIn("const diffable = Boolean(canToggleMode && identity.gitPath && currentFileCandidateGitStateFresh()", viewer_source)

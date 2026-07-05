@@ -248,14 +248,49 @@
     return out;
   }
 
+  function rawByteDuplicatePaths(entries) {
+    // Among duplicate display paths, identify those that have at least one
+    // tokenized (raw-byte / non-UTF) entry. A non-empty ``apiPath`` token is
+    // the reversible channel for a raw-byte filename; its absence means the
+    // entry is a literal/display-only path. A collision only needs a
+    // distinguishing hint when the two identities are actually different
+    // kinds (tokenized vs literal), so this set gates the qualifier below.
+    const counts = new Map();
+    const tokenized = new Set();
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      if (!entry || entry.createNew) continue;
+      const path = String(entry.path || "");
+      if (!path) continue;
+      counts.set(path, Number(counts.get(path) || 0) + 1);
+      if (typeof entry.apiPath === "string" && entry.apiPath !== "") tokenized.add(path);
+    }
+    const out = new Set();
+    for (const [path, count] of counts.entries()) {
+      if (count > 1 && tokenized.has(path)) out.add(path);
+    }
+    return out;
+  }
+
   function filePickerIdentityHint(entry, duplicatePaths, options) {
     const showSourceSections = Boolean(options && options.showSourceSections);
     if (!entry || entry.createNew) return "";
     const path = String(entry.path || "");
     const duplicated = duplicatePaths && duplicatePaths.has(path);
-    if (entry.pendingSessionPath) return "current folder";
-    if (entry.gitPath && (duplicated || !showSourceSections)) return entry.changed ? "git root · changed" : "git root";
-    if (!entry.gitPath && duplicated) return "current folder";
+    // A raw-byte/literal collision: only attach a distinguishing qualifier when
+    // this duplicated path actually has a tokenized sibling, so ordinary
+    // duplicates (two literal entries) stay noise-free. Duck-typed (has())
+    // rather than ``instanceof Set`` so it survives cross-realm vm harnesses.
+    const optsTok = options ? options.tokenizedDuplicatePaths : null;
+    const tokenizedCollisions = optsTok && typeof optsTok.has === "function" ? optsTok : null;
+    const hasRawByteCollision = Boolean(duplicated && tokenizedCollisions && tokenizedCollisions.has(path));
+    const isTokenized = typeof entry.apiPath === "string" && entry.apiPath !== "";
+    const byteQualifier = hasRawByteCollision ? (isTokenized ? "non-UTF bytes" : "literal name") : "";
+    if (entry.pendingSessionPath) return byteQualifier ? `current folder · ${byteQualifier}` : "current folder";
+    if (entry.gitPath && (duplicated || !showSourceSections)) {
+      const base = entry.changed ? "git root · changed" : "git root";
+      return byteQualifier ? `${base} · ${byteQualifier}` : base;
+    }
+    if (!entry.gitPath && duplicated) return byteQualifier ? `current folder · ${byteQualifier}` : "current folder";
     return "";
   }
 
@@ -336,6 +371,7 @@
     normalizeFileCandidateSource,
     filePickerSectionLabel,
     duplicateFilePickerPaths,
+    rawByteDuplicatePaths,
     filePickerIdentityHint,
     filePickerTitle,
     positionAfterInsertedText,

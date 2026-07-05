@@ -96,6 +96,24 @@ def eval_file_helpers_real_order() -> dict:
           identitySessionDuplicate: helpers.filePickerIdentityHint({{ path: "src/a.py", gitPath: false }}, new Set(["src/a.py"]), {{ showSourceSections: true }}),
           identityBlank: helpers.filePickerIdentityHint({{ path: "src/a.py", gitPath: false }}, new Set(), {{ showSourceSections: true }}),
           identityCreate: helpers.filePickerIdentityHint({{ path: "src/a.py", createNew: true }}, new Set(["src/a.py"]), {{ showSourceSections: false }}),
+          // Raw-byte / literal collision hints: a tokenized entry (apiPath set)
+          // and a literal entry (no apiPath) share a display path. Both are
+          // duplicated; the tokenized side must read "non-UTF bytes" and the
+          // literal side "literal name" so users/automation can tell them apart.
+          rawByteCollisionPaths: Array.from(helpers.rawByteDuplicatePaths([
+            {{ path: "dup-name.txt", apiPath: "tok-raw" }},
+            {{ path: "dup-name.txt", apiPath: "" }},
+            {{ path: "plain.txt", apiPath: "" }},
+            {{ path: "plain.txt", apiPath: "" }},
+          ])).sort(),
+          rawByteCollisionNonArray: Array.from(helpers.rawByteDuplicatePaths(null)),
+          identitySessionDuplicateTokenized: helpers.filePickerIdentityHint({{ path: "dup-name.txt", gitPath: false, apiPath: "tok-raw" }}, new Set(["dup-name.txt"]), {{ showSourceSections: true, tokenizedDuplicatePaths: new Set(["dup-name.txt"]) }}),
+          identitySessionDuplicateLiteral: helpers.filePickerIdentityHint({{ path: "dup-name.txt", gitPath: false, apiPath: "" }}, new Set(["dup-name.txt"]), {{ showSourceSections: true, tokenizedDuplicatePaths: new Set(["dup-name.txt"]) }}),
+          identityGitDuplicateTokenized: helpers.filePickerIdentityHint({{ path: "dup-name.txt", gitPath: true, changed: true, apiPath: "tok-raw" }}, new Set(["dup-name.txt"]), {{ showSourceSections: true, tokenizedDuplicatePaths: new Set(["dup-name.txt"]) }}),
+          identityGitDuplicateLiteral: helpers.filePickerIdentityHint({{ path: "dup-name.txt", gitPath: true, changed: false, apiPath: "" }}, new Set(["dup-name.txt"]), {{ showSourceSections: false, tokenizedDuplicatePaths: new Set(["dup-name.txt"]) }}),
+          // No tokenized sibling -> ordinary duplicate, no byte qualifier noise.
+          identitySessionDuplicateNoByte: helpers.filePickerIdentityHint({{ path: "plain.txt", gitPath: false, apiPath: "" }}, new Set(["plain.txt"]), {{ showSourceSections: true, tokenizedDuplicatePaths: new Set() }}),
+          identitySessionDuplicateMissingOption: helpers.filePickerIdentityHint({{ path: "plain.txt", gitPath: false, apiPath: "" }}, new Set(["plain.txt"]), {{ showSourceSections: true }}),
           titlePlain: helpers.filePickerTitle({{ path: "src/a.py" }}, ""),
           titleHint: helpers.filePickerTitle({{ path: "src/a.py" }}, "git root"),
           titleNull: helpers.filePickerTitle(null, "hint"),
@@ -161,6 +179,7 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
             "normalizeFileCandidateSource",
             "filePickerSectionLabel",
             "duplicateFilePickerPaths",
+            "rawByteDuplicatePaths",
             "filePickerIdentityHint",
             "filePickerTitle",
         ]:
@@ -189,6 +208,7 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertIn("return codoxearFileHelpers.normalizeFileCandidateSource(source);", source)
         self.assertIn("return codoxearFileHelpers.filePickerSectionLabel(source);", source)
         self.assertIn("return codoxearFileHelpers.duplicateFilePickerPaths(entries);", source)
+        self.assertIn("return codoxearFileHelpers.rawByteDuplicatePaths(entries);", source)
         self.assertIn("return codoxearFileHelpers.filePickerIdentityHint(entry, duplicatePaths, options);", source)
         self.assertIn("return codoxearFileHelpers.filePickerTitle(entry, hint);", source)
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
@@ -203,6 +223,7 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertIn('return ["changed", "mentioned", "recent"].includes(value) ? value : "";', helper_source)
         self.assertIn('if (source === "changed") return "Changed files";', helper_source)
         self.assertIn('function duplicateFilePickerPaths(entries) {', helper_source)
+        self.assertIn('function rawByteDuplicatePaths(entries) {', helper_source)
         self.assertIn('function filePickerIdentityHint(entry, duplicatePaths, options) {', helper_source)
         self.assertIn('function filePickerTitle(entry, hint = "") {', helper_source)
         self.assertIn('const parts = value.replace(/\\r\\n?/g, "\\n").split("\\n");', helper_source)
@@ -306,6 +327,14 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertEqual(result["identitySessionDuplicate"], "current folder")
         self.assertEqual(result["identityBlank"], "")
         self.assertEqual(result["identityCreate"], "")
+        self.assertEqual(result["rawByteCollisionPaths"], ["dup-name.txt"])
+        self.assertEqual(result["rawByteCollisionNonArray"], [])
+        self.assertEqual(result["identitySessionDuplicateTokenized"], "current folder · non-UTF bytes")
+        self.assertEqual(result["identitySessionDuplicateLiteral"], "current folder · literal name")
+        self.assertEqual(result["identityGitDuplicateTokenized"], "git root · changed · non-UTF bytes")
+        self.assertEqual(result["identityGitDuplicateLiteral"], "git root · literal name")
+        self.assertEqual(result["identitySessionDuplicateNoByte"], "current folder")
+        self.assertEqual(result["identitySessionDuplicateMissingOption"], "current folder")
         self.assertEqual(result["titlePlain"], "src/a.py")
         self.assertEqual(result["titleHint"], "src/a.py — git root")
         self.assertEqual(result["titleNull"], " — hint")

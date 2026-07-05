@@ -138,6 +138,9 @@ def run_picker_module_probe() -> dict[str, object]:
         const createEntryItem = picker.appendFilePickerEntryItem(entryParent, {{ path: "draft/new.txt", createNew: true }}, 0, false, "draft", "", "Create title", entryHost);
         const changedEntryItem = picker.appendFilePickerEntryItem(entryParent, {{ path: "src/app.py", changed: true, additions: null, deletions: 2, gitPath: true, apiPath: "tok" }}, 1, true, "app", "git version", "Changed title", entryHost);
         const regularEntryItem = picker.appendFilePickerEntryItem(entryParent, {{ path: "README.md" }}, 2, false, "", "recent file", "Regular title", entryHost);
+        const workbenchEntryParent = {{ children: [], appendChild(child) {{ this.children.push(child); return child; }} }};
+        const untrackedEntryItem = picker.appendFilePickerEntryItem(workbenchEntryParent, {{ path: "new.txt", untracked: true, gitPath: true, apiPath: "ut-tok" }}, 3, false, "", "", "Untracked title", entryHost);
+        const renameEntryItem = picker.appendFilePickerEntryItem(workbenchEntryParent, {{ path: "moved.md", changed: true, additions: 0, deletions: 0, rename: true, oldPath: "orig.md", gitPath: true, apiPath: "rn-tok" }}, 4, false, "", "", "Rename title", entryHost);
         let entryPrevented = 0;
         changedEntryItem.onmousedown({{ preventDefault() {{ entryPrevented += 1; }} }});
         createEntryItem.onclick();
@@ -145,6 +148,37 @@ def run_picker_module_probe() -> dict[str, object]:
         regularEntryItem.onclick();
         let entryHostError = "";
         try {{ picker.appendFilePickerEntryItem(entryParent, {{ path: "x" }}, 0, false, "", "", "", {{ el, createTextNode }}); }} catch (err) {{ entryHostError = err && err.message ? err.message : String(err); }}
+        // Non-repo git-state notice must render as an explicit status row in the
+        // candidate (no-query) view rather than a silently empty changed-files list.
+        const gitStatusParent = {{ children: [], appendChild(child) {{ this.children.push(child); return child; }} }};
+        const gitStatusRow = picker.appendFilePickerGitStatusRow(gitStatusParent, "Not a git repository \u2014 no changed files", {{ el }});
+        let gitStatusHostError = "";
+        try {{ picker.appendFilePickerGitStatusRow(gitStatusParent, "x", {{}}); }} catch (err) {{ gitStatusHostError = err && err.message ? err.message : String(err); }}
+        const renderMenuHost = {{ children: [], innerHTML: "", appendChild(child) {{ this.children.push(child); return child; }} }};
+        const renderRuntime = picker.createMenuRenderRuntime({{
+          menu: renderMenuHost,
+          menuState: {{ visibleQuery: () => "", focusIndex: () => -1, clampFocus: () => -1 }},
+          inputValue: () => "",
+          visibleEntries: () => [],
+          searchSnapshot: () => ({{}}),
+          normalizeDraftFilePath: () => "",
+          draftSuppressed: () => false,
+          draftEntry: () => ({{ createNew: true }}),
+          syncActiveDescendant: () => null,
+          sectionLabel: () => "",
+          duplicatePaths: () => new Set(),
+          identityHint: () => "",
+          titleForEntry: () => "",
+          normalizeFileApiPath: (v) => v || "",
+          activeIdentity: () => ({{ path: "", gitPath: false, apiPath: "" }}),
+          gitStatusMessage: () => "Not a git repository \u2014 no changed files",
+          openDraftFilePath: () => null,
+          openEntry: () => null,
+          el,
+          createTextNode: (t) => ({{ tag: "#text", text: String(t) }}),
+        }});
+        renderRuntime.render();
+        const renderedGitStatus = renderMenuHost.children.find((node) => (node.attrs && node.attrs.class || "").includes("fileMenuGitStatus"));
         function summarizeNode(node) {{
           const attrs = node.attrs || {{}};
           return {{
@@ -167,6 +201,11 @@ def run_picker_module_probe() -> dict[str, object]:
           highlightHostError,
           draftHostError,
           entryHostError,
+          gitStatusHostError,
+          untrackedEntry: summarizeNode(untrackedEntryItem),
+          renameEntry: summarizeNode(renameEntryItem),
+          gitStatusRow: summarizeNode(gitStatusRow),
+          renderedGitStatus: renderedGitStatus ? summarizeNode(renderedGitStatus) : null,
           statusHostError,
           menuState: {{
             opened,
@@ -319,6 +358,82 @@ def run_picker_render_runtime_probe() -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
+def run_picker_raw_byte_collision_render_probe() -> dict[str, object]:
+    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
+    helper_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
+    picker_source = APP_FILE_PICKER_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(display_source)}, ctx);
+        vm.runInContext({json.dumps(helper_source)}, ctx);
+        vm.runInContext({json.dumps(picker_source)}, ctx);
+        const picker = ctx.window.CodoxearFilePicker;
+        const helpers = ctx.window.CodoxearFileHelpers;
+        function el(tag, attrs = {{}}) {{
+          return {{ tag, attrs, textContent: "", children: [], onclick: null, onmousedown: null, appendChild(child) {{ this.children.push(child); return child; }} }};
+        }}
+        function createTextNode(text) {{ return {{ tag: "#text", text: String(text) }}; }}
+        const menu = {{ innerHTML: "", children: [], appendChild(child) {{ this.children.push(child); return child; }} }};
+        // Two non-git entries share the JSON-safe display path; one carries a
+        // tokenized apiPath (raw bytes), the other is a literal/display name.
+        const entries = [
+          {{ path: "bad\\xffname.txt", source: "recent", gitPath: false, apiPath: "tok-raw" }},
+          {{ path: "bad\\xffname.txt", source: "mentioned", gitPath: false, apiPath: "" }},
+        ];
+        const menuState = {{
+          visibleQuery: () => "",
+          focusIndex: () => -1,
+          clampFocus: () => -1,
+        }};
+        const runtime = picker.createMenuRenderRuntime({{
+          menu,
+          menuState,
+          inputValue: () => "",
+          visibleEntries: () => entries,
+          searchSnapshot: () => ({{}}),
+          normalizeDraftFilePath: () => "",
+          draftSuppressed: () => false,
+          draftEntry: (path) => ({{ path, createNew: true }}),
+          syncActiveDescendant: () => null,
+          sectionLabel: (source) => source === "mentioned" ? "Mentioned in chat" : source === "recent" ? "Recently opened" : "",
+          // Real helpers exercise the collision-aware hint path end to end.
+          duplicatePaths: (items) => helpers.duplicateFilePickerPaths(items),
+          rawByteDuplicatePaths: (items) => helpers.rawByteDuplicatePaths(items),
+          identityHint: (entry, duplicatePaths, options) => helpers.filePickerIdentityHint(entry, duplicatePaths, options),
+          titleForEntry: (entry, hint) => helpers.filePickerTitle(entry, hint),
+          normalizeFileApiPath: (value) => String(value || ""),
+          activeIdentity: () => ({{ path: "", gitPath: false, apiPath: "" }}),
+          openDraftFilePath: () => null,
+          openEntry: () => null,
+          el,
+          createTextNode,
+        }});
+        runtime.render();
+        function summarize(node) {{
+          return {{
+            tag: node.tag,
+            cls: (node.attrs && node.attrs.class) || "",
+            text: (node.attrs && node.attrs.text) || node.text || node.textContent || "",
+            title: (node.attrs && node.attrs.title) || "",
+            children: (node.children || []).map(summarize),
+          }};
+        }}
+        const rows = menu.children.filter((node) => (node.attrs && node.attrs.class || "").startsWith("fileMenuItem")).map(summarize);
+        const hints = rows.map((row) => row.children.find((child) => child.cls === "fileMenuHint fileMenuIdentity"));
+        process.stdout.write(JSON.stringify({{
+          rowCount: rows.length,
+          titles: rows.map((row) => row.title),
+          hints: hints.map((hint) => (hint ? hint.text : null)),
+        }}));
+        """
+    )
+    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def run_picker_input_runtime_probe() -> dict[str, object]:
     display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
     helper_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
@@ -436,6 +551,7 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
             [
                 "appendDraftFileMenuItem",
                 "appendFilePickerEntryItem",
+                "appendFilePickerGitStatusRow",
                 "appendFilePickerSection",
                 "appendFilePickerStatusRow",
                 "appendHighlightedFileMenuPath",
@@ -460,6 +576,23 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         self.assertIn("Codoxear file picker host missing openDraftFilePath", result["draftHostError"])
         self.assertIn("Codoxear file picker host missing openDraftFilePath", result["entryHostError"])
         self.assertIn("Codoxear file picker host missing el", result["statusHostError"])
+        self.assertIn("Codoxear file picker host missing el", result["gitStatusHostError"])
+        # Untracked file: distinct read-only "untracked" stat, not a +/- diff stat.
+        untracked = result["untrackedEntry"]
+        self.assertEqual(untracked["cls"], "fileMenuItem")
+        self.assertEqual([c for c in untracked["children"] if c["cls"] == "fileMenuStat untracked"], [{"tag": "span", "cls": "fileMenuStat untracked", "text": "untracked", "id": "", "title": "", "aria": "", "children": []}])
+        self.assertFalse(any(c["cls"] == "fileMenuStat changed" for c in untracked["children"]))
+        # Rename: path rendered as old -> new, +/- stat still present.
+        rename = result["renameEntry"]
+        rename_path = next(c for c in rename["children"] if c["cls"] == "fileMenuPath")
+        self.assertEqual(rename_path["text"], "orig.md \u2192 moved.md")
+        self.assertTrue(any(c["cls"] == "fileMenuStat changed" for c in rename["children"]))
+        # Non-repo notice renders as an explicit status row, both standalone and
+        # inside the menu render (no-query candidate view).
+        self.assertEqual(result["gitStatusRow"]["cls"], "fileMenuGitStatus")
+        self.assertEqual(result["gitStatusRow"]["text"], "Not a git repository \u2014 no changed files")
+        self.assertIsNotNone(result["renderedGitStatus"])
+        self.assertEqual(result["renderedGitStatus"]["text"], "Not a git repository \u2014 no changed files")
 
     def test_file_picker_menu_render_runtime_behavior(self) -> None:
         result = run_picker_render_runtime_probe()
@@ -482,6 +615,19 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
         footer = result["footer"]
         self.assertEqual(footer["rows"][-1]["text"], "Searching full project...")
         self.assertEqual(footer["syncs"], [0])
+
+    def test_file_picker_raw_byte_collision_rows_are_distinguishable(self) -> None:
+        result = run_picker_raw_byte_collision_render_probe()
+        # Two rows share the display path but must carry different visible hints
+        # and titles so browser users and automation can tell them apart before
+        # selecting. The tokenized (raw-byte) side reads "non-UTF bytes"; the
+        # literal/display side reads "literal name".
+        self.assertEqual(result["rowCount"], 2)
+        self.assertEqual(sorted(result["hints"]), ["current folder · literal name", "current folder · non-UTF bytes"])
+        titles = result["titles"]
+        self.assertTrue(any("non-UTF bytes" in title for title in titles), titles)
+        self.assertTrue(any("literal name" in title for title in titles), titles)
+        self.assertNotEqual(titles[0], titles[1])
 
     def test_file_picker_input_runtime_behavior(self) -> None:
         result = run_picker_input_runtime_probe()

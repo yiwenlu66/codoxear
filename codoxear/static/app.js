@@ -233,6 +233,7 @@
         typeof codoxearFileHelpers.normalizeFileCandidateSource !== "function" ||
         typeof codoxearFileHelpers.filePickerSectionLabel !== "function" ||
         typeof codoxearFileHelpers.duplicateFilePickerPaths !== "function" ||
+        typeof codoxearFileHelpers.rawByteDuplicatePaths !== "function" ||
         typeof codoxearFileHelpers.filePickerIdentityHint !== "function" ||
         typeof codoxearFileHelpers.filePickerTitle !== "function" ||
         typeof codoxearFileHelpers.positionAfterInsertedText !== "function" ||
@@ -526,6 +527,10 @@
 
       function duplicateFilePickerPaths(entries) {
         return codoxearFileHelpers.duplicateFilePickerPaths(entries);
+      }
+
+      function rawByteDuplicatePaths(entries) {
+        return codoxearFileHelpers.rawByteDuplicatePaths(entries);
       }
 
       function filePickerIdentityHint(entry, duplicatePaths, options) {
@@ -4999,10 +5004,12 @@
           syncActiveDescendant: (focusIndex) => filePickerDomRuntime.syncActiveDescendant(focusIndex),
           sectionLabel: (source) => filePickerSectionLabel(source),
           duplicatePaths: (entries) => duplicateFilePickerPaths(entries),
+          rawByteDuplicatePaths: (entries) => rawByteDuplicatePaths(entries),
           identityHint: (entry, duplicatePaths, options) => filePickerIdentityHint(entry, duplicatePaths, options),
           titleForEntry: (entry, hint) => filePickerTitle(entry, hint),
           normalizeFileApiPath: (value) => normalizeFileApiPath(value),
           activeIdentity: () => currentActiveFileIdentity(),
+          gitStatusMessage: () => fileViewerController.currentFileCandidateGitStateMessage(),
           openDraftFilePath: (draftPath) => openDraftFilePathWithGuard(draftPath),
           openEntry: async (selectedEntry) => {
             try {
@@ -5371,8 +5378,9 @@
           return await fileEditorRenderer.renderFile(rel, text, lineNumber, langOverride, request);
         }
 
-        async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null) {
-          return await fileEditorRenderer.renderDiff(rel, originalText, modifiedText, lineNumber, request);
+        async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null, options = {}) {
+          const fallbackDiffText = options && typeof options.fallbackDiffText === "string" ? options.fallbackDiffText : "";
+          return await fileEditorRenderer.renderDiff(rel, originalText, modifiedText, lineNumber, request, fallbackDiffText);
         }
 
         function renderMarkdownPreview(rel, text) {
@@ -5537,7 +5545,7 @@
             fileStatus.textContent = status;
           },
           disposeFileEditor: () => disposeFileEditor(),
-          renderMonacoDiff: (rel, originalText, modifiedText, lineNumber, request) => renderMonacoDiff(rel, originalText, modifiedText, lineNumber, request),
+          renderMonacoDiff: (rel, originalText, modifiedText, lineNumber, request, options) => renderMonacoDiff(rel, originalText, modifiedText, lineNumber, request, options),
           renderMonacoFile: (rel, text, lineNumber, langOverride, request) => renderMonacoFile(rel, text, lineNumber, langOverride, request),
           renderMarkdownPreview: (rel, text) => renderMarkdownPreview(rel, text),
           renderBlockedFileNotice: (rel, reason, viewerMaxBytes, size) => renderBlockedFileNotice(rel, reason, viewerMaxBytes, size),

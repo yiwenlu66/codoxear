@@ -188,7 +188,12 @@ def controller_identity_ctx_js(
               if (viewMode === "diff") {{
                 const pathTokenQuery = request.apiPath ? `&path_token=${{encodeURIComponent(request.apiPath)}}` : "";
                 const res = await ctx.api(`/api/sessions/${{request.sessionId}}/git/file_versions?path=${{encodeURIComponent(rel)}}${{pathTokenQuery}}`, {{ signal: request.signal }});
-                return {{ result: {{ kind: "diff", baseText: res && typeof res.base_text === "string" ? res.base_text : "", currentText: res && typeof res.current_text === "string" ? res.current_text : "", baseExists: res && res.base_exists, currentExists: res && res.current_exists }}, absPath: res && typeof res.abs_path === "string" ? res.abs_path : null }};
+                let diffText = "";
+                try {{
+                  const diffRes = await ctx.api(`/api/sessions/${{request.sessionId}}/git/diff?path=${{encodeURIComponent(rel)}}${{pathTokenQuery}}&head=1`, {{ signal: request.signal }});
+                  if (diffRes && typeof diffRes.diff === "string") diffText = diffRes.diff;
+                }} catch (_) {{}}
+                return {{ result: {{ kind: "diff", baseText: res && typeof res.base_text === "string" ? res.base_text : "", currentText: res && typeof res.current_text === "string" ? res.current_text : "", baseExists: res && res.base_exists, currentExists: res && res.current_exists, diffText }}, absPath: res && typeof res.abs_path === "string" ? res.abs_path : null }};
               }}
               const gitPathQuery = request.gitPath ? "&git_path=1" : "";
               const pathTokenQuery = request.apiPath ? `&path_token=${{encodeURIComponent(request.apiPath)}}` : "";
@@ -4256,7 +4261,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("return finalizeFileOpenSuccess(rel, openResult.absPath);", viewer_source)
         self.assertIn("function finalizeFileOpenSuccess(rel, absPath = null)", viewer_source)
         self.assertIn("rememberOpenedFile(rel, absPath);", viewer_source)
-        self.assertIn('absPath: res && typeof res.abs_path === "string" ? res.abs_path : null', viewer_source)
+        self.assertIn('absPath: versionsRes && typeof versionsRes.abs_path === "string" ? versionsRes.abs_path : null', viewer_source)
         self.assertIn('absPath: res && typeof res.path === "string" ? res.path : null', viewer_source)
 
     def test_file_load_result_dispatcher_preserves_branch_state_and_rendering(self) -> None:
@@ -4651,8 +4656,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertNotIn("fileStatus.textContent = `error: ${e && e.message ? e.message : \"unknown error\"}`;", source)
         self.assertIn('result: Object.freeze({', viewer_source)
         self.assertIn('kind: "diff"', viewer_source)
-        self.assertIn('baseText: res && typeof res.base_text === "string" ? res.base_text : ""', viewer_source)
-        self.assertIn('currentText: res && typeof res.current_text === "string" ? res.current_text : ""', viewer_source)
+        self.assertIn('baseText: versionsRes && typeof versionsRes.base_text === "string" ? versionsRes.base_text : ""', viewer_source)
+        self.assertIn('currentText: versionsRes && typeof versionsRes.current_text === "string" ? versionsRes.current_text : ""', viewer_source)
         self.assertNotIn('setFileRenderSurface("diff");', source)
         self.assertIn('deps.setFileRenderSurface("diff");', viewer_source)
         self.assertNotIn('fileImage.removeAttribute("src");', source)
@@ -4682,9 +4687,9 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("if (!isCurrentFileOpenRequest(request)) return false;", viewer_source)
         self.assertIn("async function openFilePathWithResolvedMode(path, { line = null, changed = null, isCurrent = null, gitPath = null, apiPath = \"\" } = {})", source)
         self.assertIn("async function renderMonacoFile(rel, text, lineNumber = null, langOverride = \"\", request = null)", source)
-        self.assertIn("async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null)", source)
+        self.assertIn("async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null, options = {})", source)
         self.assertIn("return await fileEditorRenderer.renderFile(rel, text, lineNumber, langOverride, request);", source)
-        self.assertIn("return await fileEditorRenderer.renderDiff(rel, originalText, modifiedText, lineNumber, request);", source)
+        self.assertIn("return await fileEditorRenderer.renderDiff(rel, originalText, modifiedText, lineNumber, request, fallbackDiffText);", source)
         self.assertNotIn("if (request && !isCurrentFileOpenRequest(request)) return false;", source)
         self.assertIn("function requestIsCurrent(request)", editor_source)
         self.assertIn("if (!requestIsCurrent(request)) return false;", editor_source)

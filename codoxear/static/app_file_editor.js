@@ -653,12 +653,21 @@
       return true;
     }
 
-    async function renderDiff(rel, originalText, modifiedText, lineNumber = null, request = null) {
+    async function renderDiff(rel, originalText, modifiedText, lineNumber = null, request = null, fallbackDiffText = "") {
       let monaco;
       try {
         monaco = await ensureMonaco();
       } catch (error) {
         if (!requestIsCurrent(request)) return false;
+        // Rich diff unavailable: render the unified repository diff text as a
+        // read-only plain view when we have it, instead of degrading to the
+        // working-tree file content under a diff header. No write controls are
+        // introduced: this path reuses the read-only plain-text fallback surface.
+        const diffText = typeof fallbackDiffText === "string" ? fallbackDiffText : "";
+        if (diffText.trim()) {
+          renderPlainTextFallback(rel, diffText, lineNumber, richEditorUnavailableReason(error, "Rich diff unavailable. Showing unified diff (read-only)."));
+          return true;
+        }
         renderPlainTextFallback(rel, modifiedText, lineNumber, richEditorUnavailableReason(error, "Rich diff unavailable"));
         return true;
       }

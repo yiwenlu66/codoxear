@@ -323,6 +323,14 @@
     return row;
   }
 
+  function appendFilePickerGitStatusRow(parent, text, host = {}) {
+    if (!parent || typeof parent.appendChild !== "function") throw new Error("Codoxear file picker host missing fileMenuParent");
+    const createEl = requireFunction(host, "el");
+    const row = createEl("div", { class: "fileMenuGitStatus", role: "status", text: String(text || "") });
+    parent.appendChild(row);
+    return row;
+  }
+
   function appendFilePickerEntryItem(parent, entry, idx, active, query, identityHint, title, host = {}) {
     if (!parent || typeof parent.appendChild !== "function") throw new Error("Codoxear file picker host missing fileMenuParent");
     const createEl = requireFunction(host, "el");
@@ -342,8 +350,14 @@
     if (item.createNew) {
       appendHighlightedFileMenuPath(btn, `Create new file: ${path}`, query, host);
       btn.appendChild(createEl("span", { class: "fileMenuHint", text: "Creates only when you save" }));
+    } else if (item.untracked) {
+      const labelPath = item.rename && item.oldPath ? `${item.oldPath} \u2192 ${path}` : path;
+      appendHighlightedFileMenuPath(btn, labelPath, query, host);
+      if (hint) btn.appendChild(createEl("span", { class: "fileMenuHint fileMenuIdentity", text: hint }));
+      btn.appendChild(createEl("span", { class: "fileMenuStat untracked", text: "untracked" }));
     } else if (item.changed) {
-      appendHighlightedFileMenuPath(btn, path, query, host);
+      const labelPath = item.rename && item.oldPath ? `${item.oldPath} \u2192 ${path}` : path;
+      appendHighlightedFileMenuPath(btn, labelPath, query, host);
       if (hint) btn.appendChild(createEl("span", { class: "fileMenuHint fileMenuIdentity", text: hint }));
       const stat = createEl("span", { class: "fileMenuStat changed" });
       stat.appendChild(createEl("span", { class: "fileMenuAdd", text: item.additions == null ? "+?" : `+${item.additions}` }));
@@ -381,12 +395,14 @@
     const syncActiveDescendant = requireFunction(options, "syncActiveDescendant");
     const sectionLabel = requireFunction(options, "sectionLabel");
     const duplicatePaths = requireFunction(options, "duplicatePaths");
+    const rawByteDuplicatePaths = typeof options.rawByteDuplicatePaths === "function" ? options.rawByteDuplicatePaths : () => new Set();
     const identityHint = requireFunction(options, "identityHint");
     const titleForEntry = requireFunction(options, "titleForEntry");
     const normalizeFileApiPath = requireFunction(options, "normalizeFileApiPath");
     const activeIdentity = requireFunction(options, "activeIdentity");
     const openDraftFilePath = requireFunction(options, "openDraftFilePath");
     const openEntry = requireFunction(options, "openEntry");
+    const gitStatusMessage = typeof options.gitStatusMessage === "function" ? options.gitStatusMessage : () => "";
     const host = {
       el: requireFunction(options, "el"),
       createTextNode: requireFunction(options, "createTextNode"),
@@ -402,6 +418,10 @@
       return appendFilePickerStatusRow(menu, text, host);
     }
 
+    function appendGitStatus(text) {
+      return appendFilePickerGitStatusRow(menu, text, host);
+    }
+
     function render() {
       menu.innerHTML = "";
       const entries = visibleEntries();
@@ -409,6 +429,11 @@
       let focus = focusIndex();
       const state = searchSnapshot();
       const draftPath = normalizeDraftFilePath(query);
+      const gitMessage = String(gitStatusMessage() || "");
+      // Surface an explicit git-state notice (e.g. non-repo) above the candidate
+      // list so the user understands why changed files are absent. Only shown
+      // in the candidate (no-query) view, where the changed-files section lives.
+      if (gitMessage && !query) appendGitStatus(gitMessage);
       if (entries === null) {
         const showDraft = draftPath && !draftSuppressed();
         if (showDraft) appendDraft(draftPath, 0, focus === 0);
@@ -434,6 +459,7 @@
       focus = clampFocus(entries.length);
       const showSourceSections = !query;
       const duplicatePathSet = duplicatePaths(entries);
+      const tokenizedDuplicateSet = rawByteDuplicatePaths(entries);
       let lastSourceSection = "";
       for (const [idx, entry] of entries.entries()) {
         const section = showSourceSections ? sectionLabel(entry.source) : "";
@@ -442,7 +468,7 @@
           lastSourceSection = section;
         }
         const path = entry.path;
-        const hint = identityHint(entry, duplicatePathSet, { showSourceSections });
+        const hint = identityHint(entry, duplicatePathSet, { showSourceSections, tokenizedDuplicatePaths: tokenizedDuplicateSet });
         const entryApiPath = normalizeFileApiPath(entry.apiPath);
         const active = activeIdentity();
         const rowActive = focus === idx || (focus < 0 && active.path === path && active.gitPath === Boolean(entry.gitPath) && active.apiPath === entryApiPath && !query);
@@ -939,6 +965,7 @@
   window.CodoxearFilePicker = Object.freeze({
     appendDraftFileMenuItem,
     appendFilePickerEntryItem,
+    appendFilePickerGitStatusRow,
     appendFilePickerSection,
     appendFilePickerStatusRow,
     appendHighlightedFileMenuPath,

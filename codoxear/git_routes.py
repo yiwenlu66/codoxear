@@ -149,6 +149,15 @@ def _handle_changed_files(handler: Any, *, session_id: str, manager: Any, deps: 
             max_bytes=128 * 1024,
             decode_errors="surrogateescape",
         )
+        untracked = deps.split_git_nul_paths(
+            deps.run_git(
+                cwd,
+                ["ls-files", "--others", "--exclude-standard", "-z"],
+                timeout_s=deps.git_diff_timeout_seconds,
+                max_bytes=64 * 1024,
+                decode_errors="surrogateescape",
+            )
+        )
     except ValueError as e:
         deps.json_response(handler, 400, {"error": str(e)})
         return
@@ -157,9 +166,10 @@ def _handle_changed_files(handler: Any, *, session_id: str, manager: Any, deps: 
         return
     unstaged2 = _norm_changed_list(unstaged, limit=deps.git_changed_files_max)
     staged2 = _norm_changed_list(staged, limit=deps.git_changed_files_max)
+    untracked2 = _norm_changed_list(untracked, limit=deps.git_changed_files_max)
     seen: set[str] = set()
     merged: list[str] = []
-    for path_key in [*unstaged2, *staged2]:
+    for path_key in [*unstaged2, *staged2, *untracked2]:
         if path_key in seen:
             continue
         seen.add(path_key)
@@ -176,17 +186,45 @@ def _handle_changed_files(handler: Any, *, session_id: str, manager: Any, deps: 
         del_new = vals.get("deletions")
         prev["additions"] = None if add_prev is None or add_new is None else int(add_prev) + int(add_new)
         prev["deletions"] = None if del_prev is None or del_new is None else int(del_prev) + int(del_new)
+        # Preserve rename source path across the unstaged/staged numstat merge
+        # (e.g. staged rename plus unstaged edit on the new path).
+        old_new = vals.get("old_path")
+        if isinstance(old_new, str) and old_new and "old_path" not in prev:
+            prev["old_path"] = old_new
+    untracked_set = {path for path in untracked2}
     entries: list[dict[str, Any]] = []
     for path_key in merged:
         vals = stats.get(path_key, {})
-        entries.append(
-            {
-                **git_path_response_fields(path_key),
-                "additions": vals.get("additions"),
-                "deletions": vals.get("deletions"),
-                "changed": True,
-            }
-        )
+        is_untracked = path_key in untracked_set
+        if is_untracked:
+            # Untracked files are not staged/committed and have no tracked
+            # additions/deletions; surface them as a distinct read-only state
+            # so the workbench never implies they are part of a tracked change.
+            entries.append(
+                {
+                    **git_path_response_fields(path_key),
+                    "additions": None,
+                    "deletions": None,
+                    "changed": False,
+                    "untracked": True,
+                    "state": "untracked",
+                }
+            )
+            continue
+        old_path = vals.get("old_path")
+        entry: dict[str, Any] = {
+            **git_path_response_fields(path_key),
+            "additions": vals.get("additions"),
+            "deletions": vals.get("deletions"),
+            "changed": True,
+            "state": "changed",
+        }
+        if isinstance(old_path, str) and old_path:
+            entry["rename"] = True
+            entry["old_path"] = path_json_text(old_path)
+            if path_has_surrogate_bytes(old_path):
+                entry["old_path_token"] = git_path_token(old_path)
+        entries.append(entry)
     deps.json_response(
         handler,
         200,
@@ -197,6 +235,7 @@ def _handle_changed_files(handler: Any, *, session_id: str, manager: Any, deps: 
             "entries": entries,
             "unstaged": _safe_path_list(unstaged2),
             "staged": _safe_path_list(staged2),
+            "untracked": _safe_path_list(untracked2),
         },
     )
 
@@ -216,6 +255,13 @@ def _handle_diff(handler: Any, *, session_id: str, query: str, manager: Any, dep
         return
     staged_q = qs.get("staged")
     staged = bool(staged_q and staged_q[0] == "1")
+    # head=1 diffs HEAD -> working tree (staged + unstaged combined), matching
+    # the file_versions comparison the rich diff viewer uses. This is the
+    # truthful base for a read-only repository-state surface; the default
+    # (no head) keeps the historical index -> working-tree semantics so
+    # existing callers are unaffected. head takes precedence over staged.
+    head_q = qs.get("head")
+    against_head = bool(head_q and head_q[0] == "1")
     try:
         _target, repo_root, rel = deps.resolve_git_path(cwd, rel)
     except ValueError as e:
@@ -225,7 +271,9 @@ def _handle_diff(handler: Any, *, session_id: str, query: str, manager: Any, dep
         deps.json_response(handler, 409, {"error": str(e)})
         return
     args = ["diff", "-U3"]
-    if staged:
+    if against_head:
+        args.append("HEAD")
+    elif staged:
         args.append("--cached")
     args.extend(["--", rel])
     try:

@@ -638,7 +638,7 @@
           setStatus(loadPlan.status);
           return true;
         }
-        const rendered = await renderMonacoDiff(rel, loadPlan.baseText, loadPlan.currentText, request.line, request);
+        const rendered = await renderMonacoDiff(rel, loadPlan.baseText, loadPlan.currentText, request.line, request, { fallbackDiffText: loadPlan.diffText || "" });
         if (!rendered || !isCurrentFileOpenRequest(request)) return false;
         setStatus(loadPlan.status);
         return true;
@@ -924,6 +924,7 @@
     const isCurrentRefresh = requireFunction(controller.isCurrentFileCandidateRefresh, "controller.isCurrentFileCandidateRefresh").bind(controller);
     const clearRefreshEntries = requireFunction(controller.clearFileCandidateRefreshEntries, "controller.clearFileCandidateRefreshEntries").bind(controller);
     const applyRefreshEntries = requireFunction(controller.applyFileCandidateRefreshEntries, "controller.applyFileCandidateRefreshEntries").bind(controller);
+    const setGitStateMessage = requireFunction(controller.setFileCandidateGitStateMessage, "controller.setFileCandidateGitStateMessage").bind(controller);
     const applyFreshCache = requireFunction(controller.applyFreshFileCandidateCache, "controller.applyFreshFileCandidateCache").bind(controller);
     const fileCandidateKeyForEntry = requireFunction(controller.fileCandidateKeyForEntry, "controller.fileCandidateKeyForEntry").bind(controller);
     const rememberCandidateCache = requireFunction(controller.rememberFileCandidateCache, "controller.rememberFileCandidateCache").bind(controller);
@@ -951,12 +952,18 @@
 
     function normalizeChangedEntry(entry) {
       if (!entry || typeof entry.path !== "string" || entry.path === "") return null;
+      const untracked = Boolean(entry.untracked || entry.state === "untracked");
+      const oldPath = typeof entry.old_path === "string" && entry.old_path !== "" ? entry.old_path : "";
+      const rename = Boolean(entry.rename || oldPath);
       return {
         path: entry.path,
         apiPath: normalizeFileApiPath(entry.api_path || entry.apiPath),
         additions: typeof entry.additions === "number" && Number.isFinite(entry.additions) ? entry.additions : null,
         deletions: typeof entry.deletions === "number" && Number.isFinite(entry.deletions) ? entry.deletions : null,
-        changed: true,
+        changed: untracked ? false : true,
+        untracked,
+        rename,
+        oldPath,
         gitPath: true,
         source: "changed",
       };
@@ -1021,16 +1028,30 @@
       }
       let changedEntries = [];
       let changedEntriesFresh = false;
+      let gitStateMessage = "";
       try {
         const res = await api(`/api/sessions/${sid}/git/changed_files`);
         const entriesIn = Array.isArray(res.entries) ? res.entries : [];
         changedEntries = entriesIn.map(normalizeChangedEntry).filter(Boolean);
         changedEntriesFresh = true;
-      } catch (_) {}
-      if (!changedEntriesFresh && renderedFallback) return true;
+      } catch (error) {
+        // A non-repo / git error must be surfaced explicitly instead of leaving
+        // the user with a silently empty changed-files list. Other failures
+        // (transient network, auth) still fall back silently to mentioned/recent
+        // entries below, matching the historical behaviour.
+        const message = String((error && error.message) || "");
+        // Precisely match git's non-repo fatal so a transient 409 (e.g. "git
+        // changed during refresh") is not misreported as a non-repo cwd.
+        const isNonRepo = /not a git repository/i.test(message);
+        if (isNonRepo) gitStateMessage = "Not a git repository \u2014 no changed files";
+      }
+      if (!changedEntriesFresh && renderedFallback) {
+        if (gitStateMessage) setGitStateMessage(gitStateMessage);
+        return true;
+      }
       const merged = mergeCandidateEntries(changedEntries, messageEntries, manualEntries);
       if (!current()) return false;
-      applyRefreshEntries(merged, { gitStateFresh: changedEntriesFresh });
+      applyRefreshEntries(merged, { gitStateFresh: changedEntriesFresh, gitStateMessage });
       if (changedEntriesFresh) rememberCandidateCache(sid, cacheKey, nowMs());
       if (!current()) return false;
       renderMenu();
@@ -1811,6 +1832,7 @@
     let fileCandidateList = [];
     let fileEntryMap = new Map();
     let fileCandidateGitStateFresh = false;
+    let fileCandidateGitStateMessage = "";
     let fileCandidateCache = new Map();
     let fileSaveSeq = 0;
     let activeFileSaveToken = 0;
@@ -2011,6 +2033,9 @@
       const source = normalizeFileCandidateSource(entry.source);
       const gitPath = entry.gitPath === undefined ? Boolean(entry.changed && source === "changed") : Boolean(entry.gitPath);
       const apiPath = normalizeFileApiPath(entry.apiPath || entry.api_path);
+      const untracked = Boolean(entry.untracked);
+      const oldPath = typeof entry.oldPath === "string" ? entry.oldPath : "";
+      const rename = Boolean(entry.rename || oldPath);
       return {
         path: entry.path,
         apiPath,
@@ -2018,7 +2043,10 @@
         key: fileCandidateKey(entry.path, gitPath, apiPath),
         additions: entry.additions ?? null,
         deletions: entry.deletions ?? null,
-        changed: Boolean(entry.changed),
+        changed: untracked ? false : Boolean(entry.changed),
+        untracked,
+        rename,
+        oldPath,
         source,
       };
     }
@@ -2099,6 +2127,20 @@
       return fileCandidateGitStateFresh;
     }
 
+    function currentFileCandidateGitStateMessage() {
+      return fileCandidateGitStateMessage;
+    }
+
+    function setFileCandidateGitStateMessage(message) {
+      fileCandidateGitStateMessage = String(message || "");
+      return fileCandidateGitStateMessage;
+    }
+
+    function clearFileCandidateGitStateMessage() {
+      fileCandidateGitStateMessage = "";
+      return fileCandidateGitStateMessage;
+    }
+
     function rememberFileCandidateCache(sessionId, key, now = Date.now()) {
       const sid = String(sessionId || "").trim();
       if (!sid || !key) return false;
@@ -2123,9 +2165,13 @@
       return fileCandidateCache.size;
     }
 
-    function applyFileCandidateRefreshEntries(entries, { gitStateFresh = false } = {}) {
+    function applyFileCandidateRefreshEntries(entries, { gitStateFresh = false, gitStateMessage = "" } = {}) {
       applyFileCandidateEntries(entries);
       setFileCandidateGitStateFresh(gitStateFresh);
+      // A fresh git state with changed files clears any prior non-repo notice;
+      // an explicit message (e.g. non-repo) is surfaced to the picker so the
+      // user sees why there are no changed files instead of a silent empty list.
+      fileCandidateGitStateMessage = gitStateFresh ? "" : String(gitStateMessage || "");
       applyFileMode();
       return true;
     }
@@ -2652,9 +2698,10 @@
       if (result.kind === "diff") {
         const baseText = typeof result.baseText === "string" ? result.baseText : "";
         const currentText = typeof result.currentText === "string" ? result.currentText : "";
+        const diffText = typeof result.diffText === "string" ? result.diffText : "";
         applyActiveFileDiffState({ currentText, currentExists: result.currentExists });
         if (!result.baseExists && !result.currentExists) return Object.freeze({ kind: "diff", noDiff: true, status: `${path} - no diff` });
-        return Object.freeze({ kind: "diff", noDiff: false, baseText, currentText, status: `${path} - diff` });
+        return Object.freeze({ kind: "diff", noDiff: false, baseText, currentText, diffText, status: `${path} - diff` });
       }
       if (result.kind === "image") {
         applyActiveFileNonTextState("image");
@@ -3568,18 +3615,33 @@
     async function fetchFileOpenResult(request, rel, viewMode) {
       if (viewMode === "diff") {
         const pathTokenQuery = request.apiPath ? `&path_token=${encodeURIComponent(request.apiPath)}` : "";
-        const res = await api(`/api/sessions/${request.sessionId}/git/file_versions?path=${encodeURIComponent(rel)}${pathTokenQuery}`, {
+        const versionsRes = await api(`/api/sessions/${request.sessionId}/git/file_versions?path=${encodeURIComponent(rel)}${pathTokenQuery}`, {
           signal: request.signal,
         });
+        // Fetch the unified diff (HEAD -> working tree) up front so that when
+        // the rich Monaco diff editor is unavailable the viewer can render the
+        // truthful +/- repository diff instead of degrading to the working-tree
+        // file content under a diff header. head=1 matches file_versions' base.
+        let diffText = "";
+        try {
+          const diffRes = await api(`/api/sessions/${request.sessionId}/git/diff?path=${encodeURIComponent(rel)}${pathTokenQuery}&head=1`, {
+            signal: request.signal,
+          });
+          if (diffRes && typeof diffRes.diff === "string") diffText = diffRes.diff;
+        } catch (_) {
+          // A missing unified diff must not break the rich-diff path; it only
+          // leaves the fallback without a +/- view (handled below).
+        }
         return Object.freeze({
           result: Object.freeze({
             kind: "diff",
-            baseText: res && typeof res.base_text === "string" ? res.base_text : "",
-            currentText: res && typeof res.current_text === "string" ? res.current_text : "",
-            baseExists: res && res.base_exists,
-            currentExists: res && res.current_exists,
+            baseText: versionsRes && typeof versionsRes.base_text === "string" ? versionsRes.base_text : "",
+            currentText: versionsRes && typeof versionsRes.current_text === "string" ? versionsRes.current_text : "",
+            baseExists: versionsRes && versionsRes.base_exists,
+            currentExists: versionsRes && versionsRes.current_exists,
+            diffText,
           }),
-          absPath: res && typeof res.abs_path === "string" ? res.abs_path : null,
+          absPath: versionsRes && typeof versionsRes.abs_path === "string" ? versionsRes.abs_path : null,
         });
       }
       const gitPathQuery = request.gitPath ? "&git_path=1" : "";
@@ -3705,6 +3767,9 @@
       isGitFileCandidatePath,
       currentFileCandidateGitStateFresh,
       setFileCandidateGitStateFresh,
+      currentFileCandidateGitStateMessage,
+      setFileCandidateGitStateMessage,
+      clearFileCandidateGitStateMessage,
       rememberFileCandidateCache,
       fileCandidateCacheEntry,
       deleteFileCandidateCache,
