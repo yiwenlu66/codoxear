@@ -2274,7 +2274,7 @@
 
     function normalizeFileEditorKind(kind) {
       const nextKind = String(kind || "");
-      if (nextKind !== "" && nextKind !== "file" && nextKind !== "diff" && nextKind !== "plain-fallback") throw new Error("invalid file editor kind");
+      if (nextKind !== "" && nextKind !== "file" && nextKind !== "diff" && nextKind !== "plain-fallback" && nextKind !== "plain-edit") throw new Error("invalid file editor kind");
       return nextKind;
     }
 
@@ -2529,11 +2529,12 @@
       const editorKind = String(state.editorKind || "");
       const editMode = Boolean(state.editMode);
       const savePending = Boolean(state.savePending);
-      const canEnterEditMode = Boolean(!unavailable && String(state.path || "") && !savePending && (!kind || textKind) && editorKind !== "plain-fallback" && editable);
-      const writable = Boolean(editMode && editable && viewMode === "file" && !unavailable);
+      const editorSupportsWrite = editorKind !== "plain-fallback";
+      const canEnterEditMode = Boolean(!unavailable && viewMode === "file" && String(state.path || "") && !savePending && (!kind || textKind) && editorSupportsWrite && editable);
+      const writable = Boolean(editMode && editable && viewMode === "file" && !unavailable && editorSupportsWrite);
       const idleWritable = Boolean(writable && !savePending);
       const idleTextWritable = Boolean(idleWritable && textKind);
-      const editModeAllowedInCurrentView = Boolean(viewMode === "file" && textKind && editable && !unavailable);
+      const editModeAllowedInCurrentView = Boolean(viewMode === "file" && textKind && editable && !unavailable && editorSupportsWrite);
       return Object.freeze({ canEnterEditMode, writable, idleWritable, idleTextWritable, editModeAllowedInCurrentView });
     }
 
@@ -2824,7 +2825,8 @@
     }
 
     function syncFileEditorReadOnly() {
-      if (currentFileEditorKind() !== "file") return;
+      const kind = currentFileEditorKind();
+      if (kind !== "file" && kind !== "plain-edit") return;
       const editor = focusEditor();
       if (!editor || typeof editor.updateOptions !== "function") return;
       editor.updateOptions({ readOnly: !activeFileEditorWritable() });
@@ -2832,7 +2834,7 @@
 
     function activeFileEditorUnavailableReason() {
       const state = currentFileEditorState();
-      if (!state.path || state.unavailable || state.savePending || state.editMode) return "";
+      if (!state.path || state.unavailable || state.savePending || state.editMode || state.viewMode !== "file") return "";
       if (!state.editable || !isTextFileKind(state.kind)) return "";
       return state.editorKind === "plain-fallback" ? FILE_EDITOR_UNAVAILABLE_MESSAGE : "";
     }
@@ -3001,7 +3003,8 @@
 
     function prepareFileEditorTextRestore(text) {
       const restoredText = String(text || "");
-      if (currentFileEditorKind() !== "file") {
+      const kind = currentFileEditorKind();
+      if (kind !== "file" && kind !== "plain-edit") {
         setFileDirty(false);
         return Object.freeze({ kind: "skip" });
       }
@@ -3213,6 +3216,7 @@
           isFileViewerOpen() &&
           isTextFileKind(currentActiveFileKind()) &&
           currentFileViewMode() !== "preview" &&
+          currentFileEditorKind() !== "plain-edit" &&
           hasActiveFileCodeEditor()
       );
     }
@@ -3516,11 +3520,12 @@
         return true;
       }
       if (currentFileViewMode() !== "file") {
-        const changed = await setFileViewModeWithGuard("file");
-        if (!changed) return false;
+        fileStatus.textContent = "Switch to File view before editing.";
+        return false;
       }
       if (!currentActiveFileEditable() || !isTextFileKind(currentActiveFileKind())) return false;
       setFileEditMode(true);
+      focusActiveFileCodeEditor();
       return true;
     }
 

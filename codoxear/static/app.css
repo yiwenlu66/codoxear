@@ -1796,9 +1796,14 @@ select {
         -webkit-overflow-scrolling: touch;
         background: #ffffff;
       }
-      .filePlainFallback {
+      .filePlainFallback,
+      .filePlainEdit {
         min-height: 100%;
         background: #ffffff;
+      }
+      .filePlainEdit {
+        display: flex;
+        flex-direction: column;
       }
       .fileFallbackNotice {
         padding: 12px 14px;
@@ -1819,6 +1824,29 @@ select {
         white-space: pre-wrap;
         overflow-wrap: anywhere;
         font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      }
+      .filePlainEditTextarea {
+        flex: 1 1 auto;
+        width: 100%;
+        min-height: 260px;
+        resize: none;
+        border: 0;
+        border-radius: 0 0 12px 12px;
+        padding: 14px 16px 22px 16px;
+        outline: none;
+        background: #ffffff;
+        color: var(--text);
+        font: 16px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        tab-size: 2;
+        white-space: pre;
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .filePlainEditTextarea:focus {
+        box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.18);
+      }
+      .filePlainEditTextarea.readOnly {
+        cursor: default;
       }
       .fileImage {
         display: none;

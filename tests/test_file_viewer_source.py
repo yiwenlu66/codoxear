@@ -230,11 +230,12 @@ def controller_identity_ctx_js(
               const editorKind = String(state.editorKind || "");
               const editMode = Boolean(state.editMode);
               const savePending = Boolean(state.savePending);
-              const canEnterEditMode = Boolean(!unavailable && String(state.path || "") && !savePending && (!kind || textKind) && editorKind !== "plain-fallback" && editable);
-              const writable = Boolean(editMode && editable && viewMode === "file" && !unavailable);
+              const editorSupportsWrite = editorKind !== "plain-fallback";
+              const canEnterEditMode = Boolean(!unavailable && viewMode === "file" && String(state.path || "") && !savePending && (!kind || textKind) && editorSupportsWrite && editable);
+              const writable = Boolean(editMode && editable && viewMode === "file" && !unavailable && editorSupportsWrite);
               const idleWritable = Boolean(writable && !savePending);
               const idleTextWritable = Boolean(idleWritable && textKind);
-              const editModeAllowedInCurrentView = Boolean(viewMode === "file" && textKind && editable && !unavailable);
+              const editModeAllowedInCurrentView = Boolean(viewMode === "file" && textKind && editable && !unavailable && editorSupportsWrite);
               return Object.freeze({{ canEnterEditMode, writable, idleWritable, idleTextWritable, editModeAllowedInCurrentView }});
             }},
             activeFileEditorCapabilities() {{ return this.fileEditorCapabilities(this.currentFileEditorState()); }},
@@ -4407,8 +4408,9 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("await handleFileEditButtonPress();", source)
         self.assertIn("if (isFileSavePending()) return false;", viewer_source)
         self.assertIn("await saveActiveFileEdits({ exitEditMode: true });", viewer_source)
-        self.assertIn("const changed = await setFileViewModeWithGuard(\"file\");", viewer_source)
+        self.assertIn('fileStatus.textContent = "Switch to File view before editing.";', viewer_source)
         self.assertIn("setFileEditMode(true);", viewer_source)
+        self.assertIn('currentFileEditorKind() !== "plain-edit"', viewer_source)
         self.assertIn("pasteVisible: activeFileEditorIdleTextWritable()", viewer_source)
         self.assertIn("return fileTouchToolbarRuntime.update(fileViewerController.currentFileTouchToolbarState());", source)
         self.assertIn("fileEditMode = Boolean(nextMode) && activeFileEditModeAllowedInCurrentView();", viewer_source)
@@ -4440,10 +4442,10 @@ class TestFileViewerSource(unittest.TestCase):
 
         assert_capability_case("editableText", {"canEnter": True, "writable": True, "idleWritable": True, "idleTextWritable": True, "editModeAllowed": True})
         assert_capability_case("savePending", {"canEnter": False, "writable": True, "idleWritable": False, "idleTextWritable": False, "editModeAllowed": True})
-        assert_capability_case("previewMode", {"canEnter": True, "writable": False, "idleWritable": False, "idleTextWritable": False, "editModeAllowed": False})
+        assert_capability_case("previewMode", {"canEnter": False, "writable": False, "idleWritable": False, "idleTextWritable": False, "editModeAllowed": False})
         assert_capability_case("binaryKind", {"canEnter": False, "writable": False, "idleWritable": False, "idleTextWritable": False, "editModeAllowed": False})
         assert_capability_case("unavailable", {"canEnter": False, "writable": False, "idleWritable": False, "idleTextWritable": False, "editModeAllowed": False})
-        assert_capability_case("plainFallback", {"canEnter": False, "writable": True, "idleWritable": True, "idleTextWritable": True, "editModeAllowed": True})
+        assert_capability_case("plainFallback", {"canEnter": False, "writable": False, "idleWritable": False, "idleTextWritable": False, "editModeAllowed": False})
         assert_capability_case("notEditing", {"canEnter": True, "writable": False, "idleWritable": False, "idleTextWritable": False, "editModeAllowed": True})
         assert_capability_case("missingPath", {"canEnter": False, "writable": True, "idleWritable": True, "idleTextWritable": True, "editModeAllowed": True})
         self.assertEqual(result["editableText"]["state"]["path"], "note.md")
@@ -5273,8 +5275,11 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('setStatus(loadPlan.status);', viewer_source)
         self.assertIn('status: `${path} - PDF - ${fmtBytes(size)}`', viewer_source)
         self.assertIn(".filePdfPages {", css_source)
-        self.assertIn(".filePlainFallback {", css_source)
+        self.assertIn(".filePlainFallback,", css_source)
+        self.assertIn(".filePlainEdit {", css_source)
         self.assertIn(".filePlainFallbackText {", css_source)
+        self.assertIn(".filePlainEditTextarea {", css_source)
+        self.assertIn("font: 16px/1.5 ui-monospace", css_source)
         self.assertIn(".filePdfPage {", css_source)
         self.assertIn(".fileVideo {", css_source)
         self.assertIn(".fileBlockedNotice {", css_source)
