@@ -215,3 +215,15 @@ Clean-room critic 4aad1a07 accepted the load-error/composer/queue tranche with n
 - File-editor capability is decision-gated. Current fail-loud Edit behavior is truthful, but Monaco is not provisioned anywhere, so browser editing is not a real capability. The product must either provision the editor assets and certify edit/save/conflict flows, or retire the editor affordance/scope. This is a product-scope decision, not a bug to patch silently.
 - File upload/attachment is the next file-mutation evidence target after Git Workbench: browser proof is missing and `tests/test_file_upload.py` is the remaining PROMPT-named monkeypatch seam.
 - Codex/Claude real-answer parity stays parked on credentials/gateway health; the acceptance ledger must keep it explicit rather than pretending Pi certification covers all selectable backends.
+
+## Git Workbench certification state
+- Git Workbench read-only integrity is supported by browser evidence: desktop and mobile showed no write/stage/commit/checkout controls, and the unavailable Edit path remained fail-loud. API evidence also supports tracked modified/deleted/staged-add/binary baseline behavior and explicit binary/non-repo errors.
+- The surface is not yet certified as a complete repository-state workbench. Four evidence-backed defects remain: unified diffs are not rendered in the browser when Monaco is unavailable, untracked files are invisible, rename relationships are hidden, and non-repo errors are swallowed into an empty picker. The next intervention belongs to Git Workbench rendering/API state, not broad refactor or Monaco provisioning.
+
+## D4 display-collision anomaly
+- D4 is still open despite successful single-file token roundtrip. Browser/Docker evidence found a server-side heap ordering crash when two distinct files share the same JSON-safe display path and search score: raw-byte `bad<ff>name.txt` and literal `bad\xffname.txt` both display as `bad\xffname.txt`; `/file/search?q=bad` returns HTTP 500 because the heap compares entry dictionaries after score/display ties.
+- This is a narrow search-ranking data-structure bug, not a failure of the token identity model. The next fix should add a comparable identity tie-breaker so both visible choices survive and the browser can present distinct operational identities.
+
+## D4 current state after collision rerun
+- Backend/search identity is now supported for display collisions: same-display raw-byte and literal-backslash files both survive search, remain JSON-safe, and open to distinct content through their operational identities. This closes the server-side crash mechanism.
+- D4 is not fully user-complete because the picker renders same-display identities with indistinguishable labels. The next D4 intervention is a frontend presentation fix: visible choices with different operational identities but the same display path need a disambiguating hint that preserves the minimal UI and does not invent write semantics.

@@ -503,3 +503,28 @@
   2. File write create path ignores invalid `path_token`; update rejects invalid token with 400, but create+bad token was accepted despite the route contract saying create tokens are rejected.
 - Local validation executor `fc7ccb41-b9fb-4016-b9eb-bc776e2f4590` ran read-only validation on the pre-review patch: JS syntax passed for four changed frontend files; focused tests `218 passed, 81 subtests`; broader sweep `133 passed`; full local `1639 passed, 132 subtests`. This supports broad regression health but does not close the two critic blockers.
 - Implementation executor resumed as `5eb55430` to fix only the two contract defects with targeted tests. No Docker/browser proof until these source-level blockers are fixed.
+
+## 2026-07-05T21:00:00Z Git Workbench browser certification found rendering gaps
+- Git Workbench verification run `112e1099-df5d-41ff-a733-d05f4384c58f` completed on Docker port 19139 at HEAD `f3fc1a3`; acceptance wrapper failed only because changed-files evidence was missing, but the report is usable evidence.
+- Positive evidence: API baseline for tracked modified/deleted/staged-add/binary/rename cases worked; binary diff and file_versions fail explicitly where appropriate; non-repo API returns explicit 409; browser desktop/mobile preserve read-only invariant (Edit aria-disabled; no save/stage/commit/checkout controls); mobile 390x844 had no horizontal overflow for the tested picker/diff fallback.
+- Product gaps found:
+  1. Browser diff rendering is degraded: `/git/diff` returns correct unified diff, but the UI falls back to plain working-tree file text with a Monaco-unavailable notice, so the user does not see +/- repository diff.
+  2. Untracked files are invisible in Git Workbench because the current changed_files/diff/file_versions surface follows tracked `git diff` semantics.
+  3. Renames are represented only by the new path with `+0/-0`; the old->new relationship is hidden.
+  4. Non-repo browser state swallows the API 409 and shows an empty picker instead of an explicit not-a-git-repo message.
+- Implementation executor `608fce29-e0f4-4b98-ae8d-48d67d334deb` dispatched to fix these evidence-backed Git Workbench rendering/state defects without adding write controls or provisioning Monaco.
+
+## 2026-07-05T21:05:00Z D4 browser proof found display-collision heap crash
+- Docker/browser verifier `f061109d-3966-4d12-8646-09882a536eb0` ran at product-code commit `10ba26e` / memory HEAD `f3fc1a3` on port 19138.
+- Positive evidence: single raw-byte git filename flow passed end-to-end. `file/search?q=name` returned mode `git`, display `bad\\xffname.txt`, reversible `api_path`, and no U+FFFD; read/download/write via token addressed the raw bytes; `session.files` held a structured `{path, api_path}` record; browser picker opened the tokenized file and mobile recent/open worked for non-collision flow.
+- Negative evidence: display-collision search is still broken. A raw-byte `bad<ff>name.txt` and a literal UTF-8 `bad\\xffname.txt` share the same display string. When query `bad` gave tied score and display path, `/file/search` returned HTTP 500: `'< not supported between instances of dict and dict'`.
+- Mechanism: `file_search.py` heap tuple used `(score, str(path), entry_dict)`, so equal score/display path caused Python to compare dicts. This suppresses both candidates and falsifies the full D4 invariant for display-collision search.
+- Narrow fix executor `75a7d160-6b7b-48d7-9e31-0ba8e4fcad7f` dispatched to modify only `file_search.py` and focused tests, avoiding collision with the active Git Workbench implementation.
+- Artifacts: `/tmp/codoxear-d4-nonutf-19138/artifacts/d4/` includes `EVIDENCE_SUMMARY.md`, `server_crash_trace.txt`, API JSON, DOM captures, screenshots, and download bytes.
+
+## 2026-07-05T21:25:00Z D4 collision rerun passed backend identity, found picker disambiguation gap
+- Narrow verifier `21df03dd-d83f-4c97-a1b9-0b2e93db1d3d` ran on Docker port 19140 at commit `98a2072`.
+- The previous display-collision crash is fixed: `/file/search?q=bad` returned HTTP 200 with two same-display `bad\\xffname.txt` matches, tied score 308, one tokenized raw-byte identity (`api_path`, `non_utf8_path=true`) and one literal UTF-8 identity without token. No U+FFFD; JSON encoding safe.
+- Both identities are operational: tokenized read returned `RAW COLLISION OK`; display-only literal read returned `LITERAL COLLISION OK`; browser picker opened option 2 to raw content and option 1 to literal content.
+- Remaining user-facing gap: the two picker choices render identical visible labels/titles (`bad\\xffname.txt — current folder`) with no distinguishing hint/attribute. A user can select both, but cannot know which is raw-byte vs literal-backslash from the UI. This is a frontend presentation/affordance gap, not a backend identity failure.
+- Artifacts: `/tmp/d4-collision-verify/` (`search_bad.json`, `read_raw.json`, `read_literal.json`, `picker_dom_snapshot.json`, `picker_search_bad.png`, `picker_option1_opened.png`, `picker_option2_opened.png`, logs/scripts).
