@@ -1,0 +1,1 @@
+{"ok": true, "kind": "text", "path": "/home/tester/work/collision/bad\\xffname.txt", "rel": "bad\\xffname.txt", "api_path": "codoxear-git-path-bytes-v1:YmFk_25hbWUudHh0", "non_utf8_path": true, "size": 17, "text": "RAW COLLISION OK\n", "editable": true, "version": "7c15e10b2123006b16165db04a5d24ee4d6c6024f6210020cba89c954e06c0a7"}

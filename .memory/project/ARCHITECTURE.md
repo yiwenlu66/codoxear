@@ -21,6 +21,8 @@ Protected checkout: `/home/yiwen/codex-web` on `main` — never edit/restart/mer
 - Minimal UI: GTD-style flat sidebar, sparse chat rendering, mobile-first companion (phone is a view/controller of local sessions).
 - Fail loud: no silent fallbacks; contract violations return explicit errors.
 - JSON API responses must never carry raw surrogateescape path strings. Filesystem paths discovered from `os.walk` can contain lone surrogates for non-UTF-8 bytes; user-facing display fields must use `git_ops.path_json_text`, while reversible operations require an explicit token field such as `api_path`/`path_token`.
+- File display path is not identity. Same-rendering paths (for example raw-byte `bad<ff>name.txt` and literal `bad\\xffname.txt`) must preserve token identity through picker/open/download/write/recent flows and must be visibly disambiguated before selection (`non-UTF bytes` vs `literal name` style hints are the current convention).
+- Git Workbench diff truth must not depend on Monaco. When the rich editor is unavailable, the read-only fallback must render unified repository diff text (`/git/diff?head=1`) rather than showing working-tree file content under a diff heading.
 - Deleting a session sends shutdown to the broker (terminal-owned sessions too).
 - Failed synthetic launch rows (`launch-*` ids) are not real sessions: no send/queue/attach/file-viewer; Details/Copy/New-like-this render from the session-list row locally.
 

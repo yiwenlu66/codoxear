@@ -1,0 +1,1 @@
+{"ok": true, "cwd": "/home/tester/work/collision", "query": "bad", "mode": "git", "matches": [{"path": "bad\\xffname.txt", "score": 308}, {"path": "bad\\xffname.txt", "api_path": "codoxear-git-path-bytes-v1:YmFk_25hbWUudHh0", "non_utf8_path": true, "score": 308}], "scanned": 3, "truncated": false}

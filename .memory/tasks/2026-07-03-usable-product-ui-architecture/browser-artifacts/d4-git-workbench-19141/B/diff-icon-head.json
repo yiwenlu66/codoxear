@@ -1,0 +1,1 @@
+{"ok": true, "cwd": "/home/tester/work/workbench", "path": "icon.png", "staged": false, "diff": "diff --git a/icon.png b/icon.png\nindex 653b927..d9ce834 100644\nBinary files a/icon.png and b/icon.png differ\n"}
