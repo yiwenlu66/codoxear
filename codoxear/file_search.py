@@ -7,6 +7,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from .git_ops import path_json_text
+
 FILE_SEARCH_LIMIT = int(os.environ.get("CODEX_WEB_FILE_SEARCH_LIMIT", "120"))
 FILE_SEARCH_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_FILE_SEARCH_TIMEOUT_SECONDS", "0.75"))
 FILE_SEARCH_MAX_CANDIDATES = int(os.environ.get("CODEX_WEB_FILE_SEARCH_MAX_CANDIDATES", "200000"))
@@ -98,7 +100,10 @@ def search_walk_relative_files(root: Path, *, query: str, limit: int) -> dict[st
             score = file_search_score(rel, query)
             if score < 0:
                 continue
-            _push_file_search_match(heap, path=rel, score=score, limit=limit)
+            # os.walk yields filenames decoded with surrogateescape; serialize
+            # through the surrogate-safe display path codec used by the git path
+            # layer so the JSON response body can be UTF-8 encoded.
+            _push_file_search_match(heap, path=path_json_text(rel), score=score, limit=limit)
     return _finish_file_search(heap, mode="walk", query=query, scanned=scanned, truncated=truncated)
 
 

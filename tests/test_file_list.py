@@ -1,3 +1,5 @@
+import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -78,6 +80,49 @@ class TestSessionFileList(unittest.TestCase):
             self.assertEqual(result["mode"], "git")
             self.assertFalse(result["truncated"])
             self.assertEqual([item["path"] for item in result["matches"]], ["src/app.py", "notes/app.txt"])
+
+    def test_list_serializes_non_utf8_filename_without_surrogates(self) -> None:
+        # A raw 0xff byte in a filename is undecodable as UTF-8; os.walk surfaces
+        # it as a lone surrogate (\udcff). The list must return a JSON/UTF-8 safe
+        # display string instead of crashing on response encoding.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "ok.txt").write_text("ok\n", encoding="utf-8")
+            bad_name = os.fsencode(root) + b"/bad\xffname.bin"
+            with open(bad_name, "wb") as fh:
+                fh.write(b"\x00\x01")
+
+            files = _list_session_relative_files(root)
+
+            # The lone surrogate must not be present; the path is JSON-encodable
+            # and uses the same backslashreplace display convention as git paths.
+            self.assertIn(r"bad\xffname.bin", files)
+            for value in files:
+                self.assertNotIn("\udcff", value)
+                self.assertNotIn("\udc80", value)
+            body = json.dumps({"ok": True, "files": files}, ensure_ascii=False).encode("utf-8")
+            self.assertIn(r"bad\\xffname.bin".encode("utf-8"), body)
+
+    def test_search_walk_mode_serializes_non_utf8_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "src").mkdir(parents=True, exist_ok=True)
+            (root / "src" / "app.py").write_text("print('ok')\n", encoding="utf-8")
+            bad_name = os.fsencode(root) + b"/src/bad\xffname.bin"
+            with open(bad_name, "wb") as fh:
+                fh.write(b"\x00\x01")
+
+            result = search_session_relative_files(root, query="name")
+
+            self.assertEqual(result["mode"], "walk")
+            paths = [item["path"] for item in result["matches"]]
+            # The surrogate-named file is found and its path is JSON/UTF-8 safe
+            # with the same backslashreplace display convention as git paths.
+            self.assertIn(r"src/bad\xffname.bin", paths)
+            for value in paths:
+                self.assertNotIn("\udcff", value)
+            body = json.dumps(result, ensure_ascii=False).encode("utf-8")
+            self.assertIn(r"src/bad\\xffname.bin".encode("utf-8"), body)
 
 
 if __name__ == "__main__":

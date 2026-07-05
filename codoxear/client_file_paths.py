@@ -7,6 +7,7 @@ from typing import Any, Callable, Iterable
 
 from .file_search import FILE_LIST_IGNORED_DIRS
 from .file_view import ClientFileView
+from .git_ops import path_json_text
 
 
 def path_resolves_inside(path_obj: Path, root: Path) -> bool:
@@ -95,7 +96,11 @@ def list_session_relative_files(base: Path, *, expanduser_path: Callable[[Path],
         current_path = Path(current_root)
         for name in sorted(filenames):
             rel = (current_path / name).relative_to(root)
-            out.append(rel.as_posix())
+            # os.walk yields filenames decoded with surrogateescape; a non-UTF-8
+            # name (raw byte 0xff -> lone surrogate) would make the response
+            # body fail UTF-8 encoding. Serialize through the same surrogate-safe
+            # display path codec the git path layer uses.
+            out.append(path_json_text(rel.as_posix()))
     out.sort()
     return out
 
