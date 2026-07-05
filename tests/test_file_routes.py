@@ -217,6 +217,7 @@ def _file_get_deps(**overrides):
             "truncated": False,
         },
         list_session_relative_files=lambda _base: ["note.txt"],
+        list_session_relative_file_entries=lambda _base: [{"path": "note.txt"}],
         file_kind=lambda _path, _prefix: ("text", None),
         ensure_video_preview=lambda path: path.with_suffix(".preview.mp4"),
         inspect_downloadable_file=lambda _path: 5,

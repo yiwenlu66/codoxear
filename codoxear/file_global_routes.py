@@ -6,8 +6,11 @@ from typing import Any, Callable, Mapping
 import urllib.parse
 
 from .git_ops import git_path_from_token
-from .git_ops import git_path_query
+from .git_ops import path_has_surrogate_bytes
 from .git_ops import path_json_text
+from .git_ops import path_token_query
+from .git_ops import path_token_response_fields
+from .git_ops import git_path_token
 from .file_route_common import body_flag
 from .file_view import ClientFileView
 from .video_preview import video_response_payload
@@ -78,7 +81,10 @@ def _global_file_request(handler: Any, deps: GlobalFileRouteDeps) -> GlobalFileR
         return None
     session_id = session_id_raw if isinstance(session_id_raw, str) and session_id_raw else ""
     git_path = body_flag(body, "git_path")
-    if git_path and isinstance(raw_token, str) and raw_token:
+    # path_token is accepted for plain files too: a non-UTF absolute path
+    # returned to the client as a JSON-safe display string can only be reopened
+    # via its reversible token.
+    if isinstance(raw_token, str) and raw_token:
         try:
             raw_path = git_path_from_token(raw_token)
         except ValueError as e:
@@ -132,6 +138,7 @@ def _handle_global_file_inspect(handler: Any, *, deps: GlobalFileRouteDeps) -> N
         {
             "ok": True,
             "path": path_json_text(path_obj),
+            **path_token_response_fields(str(path_obj)),
             "kind": view.kind,
             "content_type": view.content_type,
             "size": int(view.size),
@@ -141,6 +148,14 @@ def _handle_global_file_inspect(handler: Any, *, deps: GlobalFileRouteDeps) -> N
     )
 
 
+def _absolute_media_query(path_obj: Path) -> str:
+    display = path_json_text(path_obj)
+    query = f"path={urllib.parse.quote(display, safe='')}"
+    if path_has_surrogate_bytes(str(path_obj)):
+        query += f"&path_token={urllib.parse.quote(git_path_token(str(path_obj)))}"
+    return query
+
+
 def global_file_read_payload(
     *,
     request: GlobalFileRequest,
@@ -148,22 +163,21 @@ def global_file_read_payload(
     rel_for_url: str,
     view: ClientFileView,
 ) -> dict[str, Any]:
-    media_blob_url = (
-        f"/api/sessions/{request.session_id}/file/blob?{git_path_query(rel_for_url)}&git_path=1"
-        if request.git_path and request.session_id and rel_for_url
-        else f"/api/files/blob?path={urllib.parse.quote(path_json_text(path_obj), safe='')}"
-    )
-    media_preview_url = (
-        f"/api/sessions/{request.session_id}/file/video_preview?{git_path_query(rel_for_url)}&git_path=1"
-        if request.git_path and request.session_id and rel_for_url
-        else f"/api/files/video_preview?path={urllib.parse.quote(path_json_text(path_obj), safe='')}"
-    )
+    token_fields = path_token_response_fields(str(path_obj))
+    if request.git_path and request.session_id and rel_for_url:
+        media_blob_url = f"/api/sessions/{request.session_id}/file/blob?{path_token_query(rel_for_url)}&git_path=1"
+        media_preview_url = f"/api/sessions/{request.session_id}/file/video_preview?{path_token_query(rel_for_url)}&git_path=1"
+    else:
+        abs_query = _absolute_media_query(path_obj)
+        media_blob_url = f"/api/files/blob?{abs_query}"
+        media_preview_url = f"/api/files/video_preview?{abs_query}"
     if view.kind == "image":
         return {
             "ok": True,
             "kind": "image",
             "content_type": view.content_type,
             "path": path_json_text(path_obj),
+            **token_fields,
             "size": int(view.size),
             "image_url": media_blob_url,
         }
@@ -173,22 +187,26 @@ def global_file_read_payload(
             "kind": "pdf",
             "content_type": view.content_type,
             "path": path_json_text(path_obj),
+            **token_fields,
             "size": int(view.size),
             "pdf_url": media_blob_url,
         }
     if view.kind == "video":
-        return video_response_payload(
+        payload = video_response_payload(
             path_obj=path_obj,
             size=int(view.size),
             content_type=view.content_type,
             video_url=media_blob_url,
             preview_url=media_preview_url,
         )
+        payload.update(token_fields)
+        return payload
     if view.kind == "download_only":
         return {
             "ok": True,
             "kind": "download_only",
             "path": path_json_text(path_obj),
+            **token_fields,
             "size": int(view.size),
             "reason": view.blocked_reason,
             "viewer_max_bytes": view.viewer_max_bytes,
@@ -197,6 +215,7 @@ def global_file_read_payload(
         "ok": True,
         "kind": view.kind,
         "path": path_json_text(path_obj),
+        **token_fields,
         "size": int(view.size),
         "text": view.text,
         "editable": bool(view.editable),

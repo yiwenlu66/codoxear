@@ -191,7 +191,7 @@ def controller_identity_ctx_js(
                 return {{ result: {{ kind: "diff", baseText: res && typeof res.base_text === "string" ? res.base_text : "", currentText: res && typeof res.current_text === "string" ? res.current_text : "", baseExists: res && res.base_exists, currentExists: res && res.current_exists }}, absPath: res && typeof res.abs_path === "string" ? res.abs_path : null }};
               }}
               const gitPathQuery = request.gitPath ? "&git_path=1" : "";
-              const pathTokenQuery = request.gitPath && request.apiPath ? `&path_token=${{encodeURIComponent(request.apiPath)}}` : "";
+              const pathTokenQuery = request.apiPath ? `&path_token=${{encodeURIComponent(request.apiPath)}}` : "";
               const res = await ctx.api(`/api/sessions/${{request.sessionId}}/file/read?path=${{encodeURIComponent(rel)}}${{pathTokenQuery}}${{gitPathQuery}}`, {{ signal: request.signal }});
               return {{ result: res, absPath: res && typeof res.path === "string" ? res.path : null }};
             }},
@@ -4794,7 +4794,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(result["draft"], {"path": "new.py", "text": "NEW", "create": True})
         self.assertEqual(result["gitToken"], {"path": "existing.py", "text": "BODY", "version": "v2", "git_path": True, "path_token": "tok"})
         self.assertEqual(result["gitNoToken"], {"path": "existing.py", "text": "BODY", "version": "v2", "git_path": True})
-        self.assertEqual(result["plainToken"], {"path": "plain.py", "text": "TEXT", "version": "v3", "git_path": False})
+        self.assertEqual(result["plainToken"], {"path": "plain.py", "text": "TEXT", "version": "v3", "git_path": False, "path_token": "tok"})
         source = APP_JS.read_text(encoding="utf-8")
         viewer_source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
         self.assertNotIn("function buildActiveFileSaveBody(save)", source)
@@ -4802,7 +4802,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertNotIn("const saveBody = buildActiveFileSaveBody(save);", source)
         self.assertIn("const saveBody = buildActiveFileSaveBody(save);", viewer_source)
         self.assertIn("function buildActiveFileSaveBody(save)", viewer_source)
-        self.assertIn("if (!save.draft && save.gitPath && save.apiPath) body.path_token = save.apiPath;", viewer_source)
+        self.assertIn("if (!save.draft && save.apiPath) body.path_token = save.apiPath;", viewer_source)
 
     def test_active_file_save_error_renderer_preserves_conflict_and_generic_status(self) -> None:
         result = eval_active_file_save_error_renderer()
@@ -5026,7 +5026,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("fileDownloadRuntime.download(activeFileDownloadApiPath());", source)
         self.assertNotIn("const apiPath = activeFileDownloadApiPath();", source)
         self.assertNotIn('document.createElement("a")', source)
-        self.assertIn("const tokenQuery = identity.gitPath && identity.apiPath ? `&path_token=${encodeURIComponent(identity.apiPath)}` : \"\";", viewer_source)
+        self.assertIn("const tokenQuery = identity.apiPath ? `&path_token=${encodeURIComponent(identity.apiPath)}` : \"\";", viewer_source)
         self.assertIn("return `/api/sessions/${sessionId}/file/download?path=${encodeURIComponent(identity.path)}${tokenQuery}${identity.gitPath ? \"&git_path=1\" : \"\"}`;", viewer_source)
         self.assertNotIn("/file/download?path=${encodeURIComponent(identity.path)}", source)
         self.assertIn("if (currentActiveFileDraft() && next !== \"file\") return false;", viewer_source)
@@ -5042,7 +5042,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("return true;", viewer_source)
         self.assertIn("? { path: save.path, text: save.text, create: true }", viewer_source)
         self.assertIn(": { path: save.path, text: save.text, version: save.version, git_path: save.gitPath };", viewer_source)
-        self.assertIn("if (!save.draft && save.gitPath && save.apiPath) body.path_token = save.apiPath;", viewer_source)
+        self.assertIn("if (!save.draft && save.apiPath) body.path_token = save.apiPath;", viewer_source)
         self.assertIn("async function submitActiveFileSave(save, { exitEditMode = true } = {})", viewer_source)
         self.assertIn("const saveStillCurrent = () => isCurrentActiveFileSaveRequest(save);", viewer_source)
         self.assertIn("const saveBody = buildActiveFileSaveBody(save);", viewer_source)

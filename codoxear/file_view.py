@@ -108,4 +108,10 @@ def inspect_client_path(path_obj: Path) -> tuple[int, str, str | None]:
 
 
 def download_disposition(path_obj: Path) -> str:
-    return f"attachment; filename*=UTF-8''{urllib.parse.quote(path_obj.name, safe='')}"
+    from .git_ops import path_json_text
+
+    # Serialize through the surrogate-safe display codec so a raw-byte filename
+    # (lone surrogate from os.walk) does not make urllib.parse.quote fail UTF-8
+    # encoding. The suggested download name is the JSON-safe display form; the
+    # actual file is addressed through the reversible path-token channel.
+    return f"attachment; filename*=UTF-8''{urllib.parse.quote(path_json_text(path_obj.name), safe='')}"

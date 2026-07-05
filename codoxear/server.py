@@ -28,6 +28,7 @@ from .auth import sign_cookie as _sign_cookie_impl
 from .auth import verify_cookie as _verify_cookie_impl
 from .client_file_paths import describe_session_cwd as _describe_session_cwd_impl
 from .client_file_paths import list_session_relative_files as _list_session_relative_files_impl
+from .client_file_paths import list_session_relative_file_entries as _list_session_relative_file_entries_impl
 from .client_file_paths import resolve_client_file_path as _resolve_client_file_path_impl
 from .client_file_paths import resolve_git_client_file_view as _resolve_git_client_file_view_impl
 from .client_file_paths import resolve_git_existing_regular_file as _resolve_git_existing_regular_file_impl
@@ -526,6 +527,10 @@ _resolve_unique_bare_filename = _resolve_unique_bare_filename_impl
 
 def _list_session_relative_files(base: Path) -> list[str]:
     return _list_session_relative_files_impl(base, expanduser_path=_expanduser_path)
+
+
+def _list_session_relative_file_entries(base: Path) -> list[dict[str, Any]]:
+    return _list_session_relative_file_entries_impl(base, expanduser_path=_expanduser_path)
 
 
 def _run_git(

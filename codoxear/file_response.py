@@ -8,6 +8,13 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 from .file_text import open_regular_file_no_symlink
+from .git_ops import path_json_text as _path_json_text
+
+
+def _safe_name(name: str) -> str:
+    # A raw-byte filename surfaces as lone surrogates that urllib.parse.quote
+    # cannot UTF-8 encode; serialize through the surrogate-safe display codec.
+    return _path_json_text(name)
 
 
 def single_byte_range(header: str | None, size: int) -> tuple[int, int] | None:
@@ -147,7 +154,7 @@ def send_inline_file_response(handler: http.server.BaseHTTPRequestHandler, path:
         handler.send_header("Accept-Ranges", "bytes")
         if byte_range is not None:
             handler.send_header("Content-Range", f"bytes {start}-{end}/{size}")
-        handler.send_header("Content-Disposition", f"inline; filename*=UTF-8''{urllib.parse.quote(path.name, safe='')}")
+        handler.send_header("Content-Disposition", f"inline; filename*=UTF-8''{urllib.parse.quote(_safe_name(path.name), safe='')}")
         handler.send_header("Cache-Control", "no-store")
         handler.send_header("Pragma", "no-cache")
         handler.send_header("Expires", "0")

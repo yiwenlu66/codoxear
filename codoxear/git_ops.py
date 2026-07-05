@@ -69,6 +69,32 @@ def git_path_query(path: str) -> str:
     return query
 
 
+# The reversible path-token channel is not git-specific. These generic aliases
+# wrap the git-named helpers so plain (non-git) file routes can carry a raw
+# byte filename through JSON-safe display + token roundtrip without dragging
+# git semantics into plain file operations.
+def path_response_fields(path: str | Path) -> dict[str, object]:
+    return git_path_response_fields(str(path))
+
+
+def path_token_query(path: str) -> str:
+    return git_path_query(path)
+
+
+def path_token_response_fields(path: str | Path) -> dict[str, object]:
+    """Additive token fields only (no ``path`` key).
+
+    Use when a response already sets ``path``/``rel`` separately and only the
+    optional ``api_path``/``non_utf8_path`` channel needs to be attached.
+    """
+    fields: dict[str, object] = {}
+    text = str(path)
+    if path_has_surrogate_bytes(text):
+        fields["api_path"] = git_path_token(text)
+        fields["non_utf8_path"] = True
+    return fields
+
+
 def posixpath_quote(value: str) -> str:
     # Local import keeps urllib out of the git subprocess path unless URL assembly is needed.
     import urllib.parse

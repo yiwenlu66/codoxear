@@ -7,7 +7,7 @@ from typing import Any, Callable, Iterable
 
 from .file_search import FILE_LIST_IGNORED_DIRS
 from .file_view import ClientFileView
-from .git_ops import path_json_text
+from .git_ops import path_response_fields
 
 
 def path_resolves_inside(path_obj: Path, root: Path) -> bool:
@@ -78,15 +78,8 @@ def resolve_tracked_file_by_basename(
     return match
 
 
-def list_session_relative_files(base: Path, *, expanduser_path: Callable[[Path], Path]) -> list[str]:
-    root = expanduser_path(base)
-    if not root.is_absolute():
-        root = root.resolve()
-    if not root.exists():
-        raise FileNotFoundError("session cwd not found")
-    if not root.is_dir():
-        raise ValueError("session cwd is not a directory")
-    out: list[str] = []
+def _walk_session_relative_entries(root: Path) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
 
     def _onerror(err: OSError) -> None:
         raise err
@@ -98,11 +91,28 @@ def list_session_relative_files(base: Path, *, expanduser_path: Callable[[Path],
             rel = (current_path / name).relative_to(root)
             # os.walk yields filenames decoded with surrogateescape; a non-UTF-8
             # name (raw byte 0xff -> lone surrogate) would make the response
-            # body fail UTF-8 encoding. Serialize through the same surrogate-safe
-            # display path codec the git path layer uses.
-            out.append(path_json_text(rel.as_posix()))
-    out.sort()
+            # body fail UTF-8 encoding. path_response_fields serializes the
+            # surrogate through a JSON-safe display ``path`` and, when raw bytes
+            # are present, attaches a reversible ``api_path`` token so plain
+            # file routes can re-open the file despite the undecodable name.
+            out.append(path_response_fields(rel.as_posix()))
+    out.sort(key=lambda entry: str(entry.get("path", "")))
     return out
+
+
+def list_session_relative_file_entries(base: Path, *, expanduser_path: Callable[[Path], Path]) -> list[dict[str, Any]]:
+    root = expanduser_path(base)
+    if not root.is_absolute():
+        root = root.resolve()
+    if not root.exists():
+        raise FileNotFoundError("session cwd not found")
+    if not root.is_dir():
+        raise ValueError("session cwd is not a directory")
+    return _walk_session_relative_entries(root)
+
+
+def list_session_relative_files(base: Path, *, expanduser_path: Callable[[Path], Path]) -> list[str]:
+    return [str(entry.get("path", "")) for entry in list_session_relative_file_entries(base, expanduser_path=expanduser_path)]
 
 
 def resolve_git_client_file_view(

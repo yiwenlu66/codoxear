@@ -515,6 +515,7 @@
     const activeFileDraft = requireFunction(options, "activeFileDraft");
     const activeFilePath = requireFunction(options, "activeFilePath");
     const searchSnapshot = requireFunction(options, "searchSnapshot");
+    const normalizeFileApiPath = requireFunction(options, "normalizeFileApiPath");
 
     function draftEntry(path) {
       return {
@@ -535,6 +536,7 @@
         pickerEntryForKey: (key, options) => pickerEntryForKey(key, options),
         pickerEntryForPath: (path, options) => pickerEntryForPath(path, options),
         keyForPath: (path, gitPath, apiPath) => keyForPath(path, gitPath, apiPath),
+        normalizeFileApiPath: (value) => normalizeFileApiPath(value),
         draftEntry,
         activeFileDraft: activeFileDraft(),
         activeFilePath: activeFilePath(),
@@ -583,13 +585,17 @@
     }
     const out = [];
     const seen = new Set();
+    const searchResultPaths = new Set();
+    const normalizeFileApiPath = requireFunction(context, "normalizeFileApiPath");
     for (const item of Array.isArray(searchState.results) ? searchState.results : []) {
       const path = item && typeof item.path === "string" ? item.path : "";
-      const key = keyForPath(path, false);
+      const itemApiPath = normalizeFileApiPath(item && item.apiPath);
+      const key = keyForPath(path, false, itemApiPath);
       if (path === "" || path === "." || seen.has(key)) continue;
       seen.add(key);
+      searchResultPaths.add(path);
       const score = Number.isFinite(item && item.score) ? Number(item.score) : 0;
-      const pickerEntry = pickerEntryForPath(path, { score, gitPath: false });
+      const pickerEntry = pickerEntryForPath(path, { score, gitPath: false, apiPath: itemApiPath });
       if (pickerEntry) out.push(pickerEntry);
     }
     const entryForKey = requireFunction(context, "entryForKey");
@@ -597,6 +603,7 @@
       if (seen.has(key)) continue;
       const entry = entryForKey(key);
       if (!entry) continue;
+      if (searchResultPaths.has(entry.path) && !entry.gitPath && !normalizeFileApiPath(entry.apiPath)) continue;
       const score = fileHelpers.filePickerCandidateScore(entry.path, query);
       if (score < 0) continue;
       const pickerEntry = pickerEntryForKey(key, { score });
@@ -756,6 +763,7 @@
     const isMenuOpen = requireFunction(host, "isMenuOpen");
     const renderMenu = requireFunction(host, "renderMenu");
     const applyMenuState = requireFunction(host, "applyMenuState");
+    const normalizeFileApiPath = requireFunction(host, "normalizeFileApiPath");
     const timerSet = typeof host.setTimeout === "function" ? host.setTimeout : window.setTimeout.bind(window);
     const timerClear = typeof host.clearTimeout === "function" ? host.clearTimeout : window.clearTimeout.bind(window);
     const AbortCtor = host.AbortController || window.AbortController;
@@ -845,7 +853,8 @@
           if (path === "" || path === "." || seen.has(path)) continue;
           seen.add(path);
           const score = Number.isFinite(item && item.score) ? Number(item.score) : 0;
-          matches.push({ path, score });
+          const apiPath = normalizeFileApiPath(item && (item.api_path || item.apiPath));
+          matches.push({ path, score, apiPath });
         }
         results = matches;
         loadedQuery = trimmed;

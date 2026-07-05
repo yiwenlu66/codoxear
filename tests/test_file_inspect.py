@@ -185,6 +185,7 @@ def _file_get_deps(manager=None, **overrides):
         read_regular_file_prefix=server._read_regular_file_prefix_no_symlink,
         search_session_relative_files=server._search_session_relative_files,
         list_session_relative_files=server._list_session_relative_files,
+        list_session_relative_file_entries=server._list_session_relative_file_entries,
         file_kind=server._file_kind,
         ensure_video_preview=server._ensure_video_preview,
         inspect_downloadable_file=server._inspect_downloadable_file,

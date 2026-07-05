@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from .git_ops import path_json_text
+from .git_ops import path_response_fields
 
 FILE_SEARCH_LIMIT = int(os.environ.get("CODEX_WEB_FILE_SEARCH_LIMIT", "120"))
 FILE_SEARCH_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_FILE_SEARCH_TIMEOUT_SECONDS", "0.75"))
@@ -59,8 +59,8 @@ def file_search_score(candidate: str, query: str) -> int:
     return total
 
 
-def _push_file_search_match(heap: list[tuple[int, str]], *, path: str, score: int, limit: int) -> None:
-    item = (score, path)
+def _push_file_search_match(heap: list[tuple[int, str, dict[str, Any]]], *, entry: dict[str, Any], score: int, limit: int) -> None:
+    item = (score, str(entry.get("path", "")), entry)
     if len(heap) < limit:
         heapq.heappush(heap, item)
         return
@@ -68,8 +68,13 @@ def _push_file_search_match(heap: list[tuple[int, str]], *, path: str, score: in
         heapq.heapreplace(heap, item)
 
 
-def _finish_file_search(heap: list[tuple[int, str]], *, mode: str, query: str, scanned: int, truncated: bool) -> dict[str, Any]:
-    matches = [{"path": path, "score": score} for score, path in sorted(heap, key=lambda item: (-item[0], item[1]))]
+def _finish_file_search(heap: list[tuple[int, str, dict[str, Any]]], *, mode: str, query: str, scanned: int, truncated: bool) -> dict[str, Any]:
+    ordered = sorted(heap, key=lambda item: (-item[0], item[1]))
+    matches: list[dict[str, Any]] = []
+    for score, _display, entry in ordered:
+        match = dict(entry)
+        match["score"] = score
+        matches.append(match)
     return {
         "mode": mode,
         "query": query,
@@ -101,9 +106,11 @@ def search_walk_relative_files(root: Path, *, query: str, limit: int) -> dict[st
             if score < 0:
                 continue
             # os.walk yields filenames decoded with surrogateescape; serialize
-            # through the surrogate-safe display path codec used by the git path
-            # layer so the JSON response body can be UTF-8 encoded.
-            _push_file_search_match(heap, path=path_json_text(rel), score=score, limit=limit)
+            # through path_response_fields so the JSON response body is UTF-8
+            # safe and, when the raw name has undecodable bytes, attach a
+            # reversible api_path token so the picker can re-open the file.
+            entry = path_response_fields(rel)
+            _push_file_search_match(heap, entry=entry, score=score, limit=limit)
     return _finish_file_search(heap, mode="walk", query=query, scanned=scanned, truncated=truncated)
 
 
@@ -135,7 +142,11 @@ def search_git_relative_files(cwd: Path, *, query: str, limit: int) -> dict[str,
             score = file_search_score(path, query)
             if score < 0:
                 continue
-            _push_file_search_match(heap, path=path, score=score, limit=limit)
+            # git ls-files output is decoded with errors=replace so paths are
+            # already UTF-8 safe display strings; path_response_fields is a no-op
+            # token-wise for them but keeps walk/git match shapes uniform.
+            entry = path_response_fields(path)
+            _push_file_search_match(heap, entry=entry, score=score, limit=limit)
         stderr = proc.stderr.read() if proc.stderr is not None else ""
         return_code = proc.wait()
     finally:

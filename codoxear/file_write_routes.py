@@ -93,7 +93,10 @@ def parse_session_file_write_request(obj: Mapping[str, Any]) -> SessionFileWrite
     create_raw = obj.get("create")
     create = create_raw if isinstance(create_raw, bool) else False
     git_path = body_flag(obj, "git_path")
-    if git_path and isinstance(path_token_raw, str) and path_token_raw:
+    # path_token is accepted for plain file updates too: a non-UTF filename
+    # surfaced via list/search can only be re-addressed through its reversible
+    # token. It is rejected for create (new files must take a UTF-8 name).
+    if not create and isinstance(path_token_raw, str) and path_token_raw:
         try:
             path_raw = git_path_from_token(path_token_raw)
         except ValueError as e:

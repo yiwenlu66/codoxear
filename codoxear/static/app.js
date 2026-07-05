@@ -4968,6 +4968,7 @@
           isMenuOpen: () => filePickerMenuState.isOpen(),
           renderMenu: () => renderFilePickerMenu(),
           applyMenuState: () => applyFileMenuState(),
+          normalizeFileApiPath: (value) => normalizeFileApiPath(value),
         });
         const filePickerEntryRuntime = codoxearFilePicker.createEntryRuntime({
           menuState: filePickerMenuState,
@@ -4980,6 +4981,7 @@
           activeFileDraft: () => currentActiveFileDraft(),
           activeFilePath: () => activeFilePathValue(),
           searchSnapshot: () => filePickerSearchSnapshot(),
+          normalizeFileApiPath: (value) => normalizeFileApiPath(value),
         });
         const filePickerRenderRuntime = codoxearFilePicker.createMenuRenderRuntime({
           menu: filePickerMenu,

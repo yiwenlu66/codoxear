@@ -16,7 +16,8 @@ APP_FILE_VIEWER_JS = ROOT / "codoxear" / "static" / "app_file_viewer.js"
 def js_candidate_controller_fixture() -> str:
     return r'''
           function __candidateKey(path, gitPath = false, apiPath = "") {
-            const identity = gitPath && apiPath ? normalizeFileApiPath(apiPath) : String(path ?? "");
+            const token = normalizeFileApiPath(apiPath);
+            const identity = token || String(path ?? "");
             return `${gitPath ? "git" : "session"}\u0000${identity}`;
           }
           function __candidateClone(entry) {
@@ -50,7 +51,7 @@ def js_candidate_controller_fixture() -> str:
               const preferred = fileEntryMap.get(__candidateKey(path, gitPath, token));
               if (preferred) return __candidateClone(preferred);
               const fallback = fileEntryMap.get(__candidateKey(path, gitPath));
-              if (fallback && (!token || !fallback.apiPath || fallback.apiPath === token)) return __candidateClone(fallback);
+              if (fallback && (!token || normalizeFileApiPath(fallback.apiPath) === token)) return __candidateClone(fallback);
               for (const key of fileCandidateList) {
                 const entry = fileEntryMap.get(key);
                 if (!entry || entry.path !== path || Boolean(entry.gitPath) !== Boolean(gitPath)) continue;
@@ -61,7 +62,7 @@ def js_candidate_controller_fixture() -> str:
             fileApiPathForPath(path, apiPath = "") {
               const existing = normalizeFileApiPath(apiPath);
               if (existing) return existing;
-              const entry = this.fileEntryForPath(path, true);
+              const entry = this.fileEntryForPath(path, true) || this.fileEntryForPath(path, false);
               return normalizeFileApiPath(entry && entry.apiPath);
             },
             activeFileEntry() { return null; },
@@ -103,7 +104,7 @@ def js_candidate_controller_fixture() -> str:
               return true;
             },
             pickerEntryForKey(key, { score = 0 } = {}) { const entry = this.fileEntryForKey(key); return entry ? { ...entry, added: true, score } : null; },
-            pickerEntryForPath(path, { score = 0, gitPath = false } = {}) { const key = __candidateKey(path, gitPath); const entry = __candidateClone(fileEntryMap.get(key) || { path, gitPath, additions: null, deletions: null, changed: false, source: "" }); return entry ? { ...entry, added: fileEntryMap.has(key), score } : null; },
+            pickerEntryForPath(path, { score = 0, gitPath = false, apiPath = "" } = {}) { const token = normalizeFileApiPath(apiPath); const key = __candidateKey(path, gitPath, token); const existing = fileEntryMap.get(key); const entry = __candidateClone({ ...(existing || { path, gitPath, additions: null, deletions: null, changed: false, source: "" }), apiPath: token }); return entry ? { ...entry, added: Boolean(existing), score } : null; },
           };
     '''
 
@@ -201,6 +202,7 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
             activeFileDraft: () => currentActiveFileDraft(),
             activeFilePath: () => activeFilePathValue(),
             searchSnapshot: () => filePickerSearchState.snapshot(),
+            normalizeFileApiPath: (value) => typeof value === "string" && value !== "" ? value : "",
           }});
           globalThis.__test_file_picker_search = {{
             applyFileCandidateEntries: (entries) => fileViewerController.applyFileCandidateEntries(entries),
@@ -855,6 +857,24 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertEqual(
             [(entry["path"], entry["source"], entry["gitPath"], entry["changed"]) for entry in result["entries"]],
             [("foo.py", "changed", True, True), ("foo.py", "recent", False, False)],
+        )
+
+    def test_tokenized_search_result_suppresses_display_only_recent_duplicate(self) -> None:
+        result = eval_file_picker_search_helpers(
+            {
+                "fileEntries": [
+                    {"path": r"bad\xffname.txt", "changed": False, "source": "recent", "gitPath": False},
+                ],
+                "filePickerSearchActive": True,
+                "filePickerInputValue": "bad",
+                "fileSearchLoadedQuery": "bad",
+                "fileSearchResults": [{"path": r"bad\xffname.txt", "apiPath": "codoxear-git-path-bytes-v1:YmFk_25hbWUudHh0", "score": 12000}],
+            }
+        )
+        file_entries = [entry for entry in result["entries"] if not entry.get("createNew")]
+        self.assertEqual(
+            [(entry["path"], entry["gitPath"], entry["apiPath"]) for entry in file_entries],
+            [(r"bad\xffname.txt", False, "codoxear-git-path-bytes-v1:YmFk_25hbWUudHh0")],
         )
 
     def test_exact_search_prefers_session_identity_over_git_collision(self) -> None:

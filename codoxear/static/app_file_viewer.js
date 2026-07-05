@@ -1051,6 +1051,9 @@
           body.git_path = true;
           const token = normalizeFileApiPath(apiPath);
           if (token) body.path_token = token;
+        } else {
+          const token = normalizeFileApiPath(apiPath);
+          if (token) body.path_token = token;
         }
         const res = await api("/api/files/inspect", {
           method: "POST",
@@ -1256,10 +1259,10 @@
       const task = (async () => {
         try {
           const res = await api(`/api/sessions/${sid}/file/search?q=${encodeURIComponent(query)}&limit=80`);
-          const paths = Array.isArray(res && res.matches)
-            ? res.matches.map((item) => item && typeof item.path === "string" ? item.path : "")
+          const matchObjects = Array.isArray(res && res.matches)
+            ? res.matches.filter((item) => item && typeof item.path === "string")
             : [];
-          return { matches: exactBareMatches(paths, query), truncated: Boolean(res && res.truncated), failed: false };
+          return { matches: exactBareMatches(matchObjects, query), truncated: Boolean(res && res.truncated), failed: false };
         } catch {
           return { matches: [], truncated: true, failed: true };
         }
@@ -1287,6 +1290,8 @@
           const sid = selectedSessionId();
           if (sid) body.session_id = sid;
           if (candidate.gitPath) body.git_path = true;
+          const inspectToken = normalizeFileApiPath(candidate.apiPath);
+          if (inspectToken) body.path_token = inspectToken;
           const res = await api("/api/files/inspect", { method: "POST", body });
           return { ok: true, path: rawPath, inspectPath, gitPath: candidate.gitPath, kind: res.kind, resolvedPath: res.path };
         } catch {
@@ -1517,7 +1522,7 @@
       const current = fileEntryForPath(rel, gitPath, apiPath);
       upsertFileEntry({
         path: rel,
-        apiPath: gitPath ? apiPath : "",
+        apiPath,
         gitPath,
         additions: current && current.changed ? current.additions : null,
         deletions: current && current.changed ? current.deletions : null,
@@ -1928,7 +1933,7 @@
       return Object.freeze({
         path: rel,
         gitPath: useGitPath,
-        apiPath: apiPath === undefined ? (useGitPath ? fileApiPathForPath(rel, reusableApiPath) : "") : normalizeFileApiPath(apiPath),
+        apiPath: apiPath === undefined ? (useGitPath ? fileApiPathForPath(rel, reusableApiPath) : normalizeFileApiPath(reusableApiPath)) : normalizeFileApiPath(apiPath),
       });
     }
 
@@ -1971,7 +1976,8 @@
     }
 
     function fileCandidateKey(path, gitPath = false, apiPath = "") {
-      const identity = gitPath && apiPath ? normalizeFileApiPath(apiPath) : String(path ?? "");
+      const token = normalizeFileApiPath(apiPath);
+      const identity = token || String(path ?? "");
       return `${gitPath ? "git" : "session"}\u0000${identity}`;
     }
 
@@ -2034,7 +2040,7 @@
       const preferred = fileEntryMap.get(fileCandidateKey(path, gitPath, token));
       if (preferred) return cloneFileCandidateEntry(preferred);
       const fallback = fileEntryMap.get(fileCandidateKey(path, gitPath));
-      if (fallback && (!token || !fallback.apiPath || fallback.apiPath === token)) return cloneFileCandidateEntry(fallback);
+      if (fallback && (!token || normalizeFileApiPath(fallback.apiPath) === token)) return cloneFileCandidateEntry(fallback);
       for (const key of fileCandidateList) {
         const entry = fileEntryMap.get(key);
         if (!entry || entry.path !== path || Boolean(entry.gitPath) !== Boolean(gitPath)) continue;
@@ -2046,7 +2052,7 @@
     function fileApiPathForPath(path, apiPath = "") {
       const existing = normalizeFileApiPath(apiPath);
       if (existing) return existing;
-      const entry = fileEntryForPath(path, true);
+      const entry = fileEntryForPath(path, true) || fileEntryForPath(path, false);
       return normalizeFileApiPath(entry && entry.apiPath);
     }
 
@@ -2132,11 +2138,14 @@
       return entry ? { ...entry, added: true, score } : null;
     }
 
-    function pickerEntryForPath(path, { score = 0, gitPath = false } = {}) {
-      const key = fileCandidateKey(path, gitPath);
-      const entry = cloneFileCandidateEntry(fileEntryMap.get(key) || { path, gitPath, additions: null, deletions: null, changed: false, source: "" });
+    function pickerEntryForPath(path, { score = 0, gitPath = false, apiPath = "" } = {}) {
+      const token = normalizeFileApiPath(apiPath);
+      const key = fileCandidateKey(path, gitPath, token);
+      const existing = fileEntryMap.get(key);
+      const baseEntry = existing || { path, gitPath, additions: null, deletions: null, changed: false, source: "" };
+      const entry = cloneFileCandidateEntry({ ...baseEntry, apiPath: token });
       if (!entry) return null;
-      return { ...entry, added: fileEntryMap.has(key), score };
+      return { ...entry, added: Boolean(existing), score };
     }
 
     function resolveFileViewerOpenTarget({ sessionId = "", explicitPath = "", explicitLine = null } = {}) {
@@ -2862,7 +2871,7 @@
       const body = save.draft
         ? { path: save.path, text: save.text, create: true }
         : { path: save.path, text: save.text, version: save.version, git_path: save.gitPath };
-      if (!save.draft && save.gitPath && save.apiPath) body.path_token = save.apiPath;
+      if (!save.draft && save.apiPath) body.path_token = save.apiPath;
       return body;
     }
 
@@ -3475,7 +3484,7 @@
       const sessionId = normalizeSessionId(currentSessionId());
       const identity = currentActiveFileIdentity();
       if (!sessionId || !identity.path) return "";
-      const tokenQuery = identity.gitPath && identity.apiPath ? `&path_token=${encodeURIComponent(identity.apiPath)}` : "";
+      const tokenQuery = identity.apiPath ? `&path_token=${encodeURIComponent(identity.apiPath)}` : "";
       return `/api/sessions/${sessionId}/file/download?path=${encodeURIComponent(identity.path)}${tokenQuery}${identity.gitPath ? "&git_path=1" : ""}`;
     }
 
@@ -3555,7 +3564,7 @@
         });
       }
       const gitPathQuery = request.gitPath ? "&git_path=1" : "";
-      const pathTokenQuery = request.gitPath && request.apiPath ? `&path_token=${encodeURIComponent(request.apiPath)}` : "";
+      const pathTokenQuery = request.apiPath ? `&path_token=${encodeURIComponent(request.apiPath)}` : "";
       const res = await api(`/api/sessions/${request.sessionId}/file/read?path=${encodeURIComponent(rel)}${pathTokenQuery}${gitPathQuery}`, {
         signal: request.signal,
       });

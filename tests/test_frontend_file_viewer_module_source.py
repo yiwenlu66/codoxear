@@ -1809,7 +1809,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         })
         self.assertEqual(result["render"]["downloadPaths"], {
             "downloadGitToken": "/api/sessions/sid-1/file/download?path=src%2Fapp.py&path_token=tok%20space&git_path=1",
-            "downloadPlain": "/api/sessions/sid-1/file/download?path=plain.txt",
+            "downloadPlain": "/api/sessions/sid-1/file/download?path=plain.txt&path_token=plain-token",
             "downloadMissingSession": "",
             "downloadUnavailablePath": "",
             "downloadUnavailableStatus": "Session is no longer available; copy unsaved edits before closing.",
@@ -1896,7 +1896,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "draft": {"path": "new.py", "text": "NEW", "create": True},
             "gitToken": {"path": "existing.py", "text": "BODY", "version": "v2", "git_path": True, "path_token": "tok"},
             "gitNoToken": {"path": "existing.py", "text": "BODY", "version": "v2", "git_path": True},
-            "plainToken": {"path": "plain.py", "text": "TEXT", "version": "v3", "git_path": False},
+            "plainToken": {"path": "plain.py", "text": "TEXT", "version": "v3", "git_path": False, "path_token": "tok"},
         })
         self.assertEqual(result["render"]["saveErrors"], {
             "saveConflict": {"label": "src/app.py - save conflict: version mismatch", "actions": ["Reload from disk", "Keep editing"]},
@@ -2190,10 +2190,10 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             ["upsert", {"path": "src/app.py", "apiPath": "tok", "gitPath": True, "additions": 5, "deletions": 2, "changed": True, "source": "changed"}],
             ["deleteCache", "sid-1"],
             ["entry", "docs/readme.md", False, "plain-token"],
-            ["upsert", {"path": "docs/readme.md", "apiPath": "", "gitPath": False, "additions": None, "deletions": None, "changed": False, "source": "recent"}],
+            ["upsert", {"path": "docs/readme.md", "apiPath": "plain-token", "gitPath": False, "additions": None, "deletions": None, "changed": False, "source": "recent"}],
             ["deleteCache", "sid-1"],
             ["entry", "note.txt", False, "plain-token"],
-            ["upsert", {"path": "note.txt", "apiPath": "", "gitPath": False, "additions": None, "deletions": None, "changed": False, "source": "recent"}],
+            ["upsert", {"path": "note.txt", "apiPath": "plain-token", "gitPath": False, "additions": None, "deletions": None, "changed": False, "source": "recent"}],
             ["deleteCache", "sid-selected"],
         ])
         self.assertIn("file viewer dependency missing: currentSessionId", result["missingError"])

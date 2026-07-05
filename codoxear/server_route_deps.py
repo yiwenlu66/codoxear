@@ -63,6 +63,7 @@ class ServerRouteCaps:
     _launch_attempt_transcript_for_session_id: Any
     _list_resume_candidates_for_cwd: Any
     _list_session_relative_files: Any
+    _list_session_relative_file_entries: Any
     _metrics_snapshot: Any
     _parse_git_numstat: Any
     _parse_new_session_launch_request: Any
@@ -148,6 +149,7 @@ def server_route_caps(server: Any) -> ServerRouteCaps:
         _launch_attempt_transcript_for_session_id=server._launch_attempt_transcript_for_session_id,
         _list_resume_candidates_for_cwd=server._list_resume_candidates_for_cwd,
         _list_session_relative_files=server._list_session_relative_files,
+        _list_session_relative_file_entries=server._list_session_relative_file_entries,
         _metrics_snapshot=server._metrics_snapshot,
         _parse_git_numstat=server._parse_git_numstat,
         _parse_new_session_launch_request=server._parse_new_session_launch_request,
@@ -346,6 +348,7 @@ class ServerRouteDepsFactory:
             read_regular_file_prefix=caps._read_regular_file_prefix_no_symlink,
             search_session_relative_files=caps._search_session_relative_files,
             list_session_relative_files=caps._list_session_relative_files,
+            list_session_relative_file_entries=caps._list_session_relative_file_entries,
             file_kind=caps._file_kind,
             ensure_video_preview=caps._ensure_video_preview,
             inspect_downloadable_file=caps._inspect_downloadable_file,

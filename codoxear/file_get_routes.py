@@ -6,8 +6,9 @@ from typing import Any, Callable, Mapping
 import urllib.parse
 
 from .git_ops import git_path_from_token
-from .git_ops import git_path_query
 from .git_ops import path_json_text
+from .git_ops import path_token_query
+from .git_ops import path_token_response_fields
 from .file_view import ClientFileView
 from .video_preview import video_response_payload
 
@@ -21,7 +22,11 @@ def session_file_read_payload(
     git_path: bool,
 ) -> dict[str, Any]:
     git_suffix = "&git_path=1" if git_path else ""
-    rel_for_url = git_path_query(rel) if git_path else f"path={urllib.parse.quote(rel)}"
+    # path_token_query emits the JSON-safe display ``path`` plus a reversible
+    # ``path_token`` whenever the raw rel carries surrogate bytes, so non-UTF
+    # plain files (not just git paths) can be re-opened through blob/download.
+    rel_for_url = path_token_query(rel)
+    token_fields = path_token_response_fields(rel)
     path_text = path_json_text(path_obj)
     rel_text = path_json_text(rel)
     if view.kind == "image":
@@ -31,6 +36,7 @@ def session_file_read_payload(
             "content_type": view.content_type,
             "path": path_text,
             "rel": rel_text,
+            **token_fields,
             "size": int(view.size),
             "image_url": f"/api/sessions/{session_id}/file/blob?{rel_for_url}{git_suffix}",
         }
@@ -41,11 +47,12 @@ def session_file_read_payload(
             "content_type": view.content_type,
             "path": path_text,
             "rel": rel_text,
+            **token_fields,
             "size": int(view.size),
             "pdf_url": f"/api/sessions/{session_id}/file/blob?{rel_for_url}{git_suffix}",
         }
     if view.kind == "video":
-        return video_response_payload(
+        payload = video_response_payload(
             path_obj=path_obj,
             rel=rel_text,
             size=int(view.size),
@@ -53,12 +60,15 @@ def session_file_read_payload(
             video_url=f"/api/sessions/{session_id}/file/blob?{rel_for_url}{git_suffix}",
             preview_url=f"/api/sessions/{session_id}/file/video_preview?{rel_for_url}{git_suffix}",
         )
+        payload.update(token_fields)
+        return payload
     if view.kind == "download_only":
         return {
             "ok": True,
             "kind": "download_only",
             "path": path_text,
             "rel": rel_text,
+            **token_fields,
             "size": int(view.size),
             "reason": view.blocked_reason,
             "viewer_max_bytes": view.viewer_max_bytes,
@@ -68,6 +78,7 @@ def session_file_read_payload(
         "kind": view.kind,
         "path": path_text,
         "rel": rel_text,
+        **token_fields,
         "size": int(view.size),
         "text": view.text,
         "editable": bool(view.editable),
@@ -93,6 +104,7 @@ class FileGetRouteDeps:
     read_regular_file_prefix: Callable[[Path, int], tuple[bytes, int]]
     search_session_relative_files: Callable[..., dict[str, Any]]
     list_session_relative_files: Callable[[Path], list[str]]
+    list_session_relative_file_entries: Callable[[Path], list[dict[str, Any]]]
     file_kind: Callable[[Path, bytes], tuple[str, str | None]]
     ensure_video_preview: Callable[[Path], Path]
     inspect_downloadable_file: Callable[[Path], int]
@@ -205,14 +217,17 @@ def _git_or_plain_query_path(
     *,
     git_path: bool,
 ) -> str | None:
-    if git_path:
-        token = values.get("path_token")
-        if token and token[0]:
-            try:
-                return git_path_from_token(token[0])
-            except ValueError as e:
-                deps.json_response(handler, 400, {"error": str(e)})
-                return None
+    # The reversible path_token channel is accepted for plain file routes as
+    # well as git_path routes: a non-UTF filename surfaced by list/search can
+    # only be re-opened through its token, since the JSON-safe display ``path``
+    # is not byte-roundtrippable.
+    token = values.get("path_token")
+    if token and token[0]:
+        try:
+            return git_path_from_token(token[0])
+        except ValueError as e:
+            deps.json_response(handler, 400, {"error": str(e)})
+            return None
     return _required_query_value(handler, values, deps, "path")
 
 
@@ -303,7 +318,7 @@ def _handle_session_file_search(handler: Any, *, session_id: str, query: str, ma
         200,
         {
             "ok": True,
-            "cwd": str(base),
+            "cwd": path_json_text(base),
             "query": result["query"],
             "mode": result["mode"],
             "matches": result["matches"],
@@ -319,7 +334,7 @@ def _handle_session_file_list(handler: Any, *, session_id: str, manager: Any, de
         return
     try:
         base = deps.resolve_session_cwd(session.cwd)
-        files = deps.list_session_relative_files(base)
+        entries = deps.list_session_relative_file_entries(base)
     except FileNotFoundError as e:
         deps.json_response(handler, 404, {"error": str(e)})
         return
@@ -329,7 +344,11 @@ def _handle_session_file_list(handler: Any, *, session_id: str, manager: Any, de
     except ValueError as e:
         deps.json_response(handler, 400, {"error": str(e)})
         return
-    deps.json_response(handler, 200, {"ok": True, "cwd": str(base), "files": files})
+    # ``files`` keeps the legacy UTF-8-safe display-string list; ``entries`` is
+    # the additive parallel structure carrying api_path/non_utf8_path for any
+    # raw-byte filename so the picker can open it via path_token.
+    files = [str(entry.get("path", "")) for entry in entries]
+    deps.json_response(handler, 200, {"ok": True, "cwd": path_json_text(base), "files": files, "entries": entries})
 
 
 def _session_file_path_for_preview(
@@ -398,9 +417,17 @@ def _handle_absolute_file_video_preview(handler: Any, *, query: str, deps: FileG
 
 def _absolute_file_path(handler: Any, *, query: str, deps: FileGetRouteDeps) -> Path | None:
     qs = _query_values(query)
-    raw_path = _required_query_value(handler, qs, deps, "path")
-    if raw_path is None:
-        return None
+    token = qs.get("path_token")
+    if token and token[0]:
+        try:
+            raw_path = git_path_from_token(token[0])
+        except ValueError as e:
+            deps.json_response(handler, 400, {"error": str(e)})
+            return None
+    else:
+        raw_path = _required_query_value(handler, qs, deps, "path")
+        if raw_path is None:
+            return None
     try:
         return deps.resolve_existing_absolute_file(raw_path)
     except (FileNotFoundError, PermissionError, ValueError) as e:
