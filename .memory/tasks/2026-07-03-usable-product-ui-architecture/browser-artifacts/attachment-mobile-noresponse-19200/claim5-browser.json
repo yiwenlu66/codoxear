@@ -1,0 +1,28 @@
+{
+  "phase0": {
+    "found": true,
+    "dotClass": "stateDot idle",
+    "dotColor": "rgba(107, 114, 128, 0.85)",
+    "titleText": "interrupt"
+  },
+  "send": {
+    "status": 200,
+    "json": {
+      "queued": false,
+      "queue_len": 0,
+      "busy": true
+    }
+  },
+  "phase1": {
+    "found": true,
+    "dotClass": "stateDot busy",
+    "dotColor": "rgba(29, 78, 216, 0.95)",
+    "titleText": "interrupt"
+  },
+  "phase2": {
+    "found": true,
+    "dotClass": "stateDot idle",
+    "dotColor": "rgba(107, 114, 128, 0.85)",
+    "titleText": "interrupt"
+  }
+}

@@ -1,0 +1,37 @@
+/home/tester/.local/share/codoxear/uploads:
+total 24
+drwxr-xr-x 6 tester tester 4096 Jul  6 02:23 .
+drwxr-xr-x 5 tester tester 4096 Jul  6 02:24 ..
+drwxr-xr-x 2 tester tester 4096 Jul  6 02:23 cert-attach-a
+drwxr-xr-x 2 tester tester 4096 Jul  6 02:23 cert-attach-b
+drwxr-xr-x 2 tester tester 4096 Jul  6 02:23 cert-cleanup
+lrwxrwxrwx 1 tester tester   39 Jul  6 02:23 cert-outside-link -> /home/tester/secret-outside-uploads.txt
+drwxr-xr-x 2 tester tester 4096 Jul  6 01:53 cert-sibling
+
+/home/tester/.local/share/codoxear/uploads/cert-attach-a:
+total 12
+drwxr-xr-x 2 tester tester 4096 Jul  6 02:23 .
+drwxr-xr-x 6 tester tester 4096 Jul  6 02:23 ..
+-rw------- 1 tester tester   26 Jul  6 02:23 1783304623460_note.txt
+
+/home/tester/.local/share/codoxear/uploads/cert-attach-b:
+total 12
+drwxr-xr-x 2 tester tester 4096 Jul  6 02:23 .
+drwxr-xr-x 6 tester tester 4096 Jul  6 02:23 ..
+-rw------- 1 tester tester   26 Jul  6 02:23 1783304637040_note.txt
+
+/home/tester/.local/share/codoxear/uploads/cert-cleanup:
+total 12
+drwxr-xr-x 2 tester tester 4096 Jul  6 02:23 .
+drwxr-xr-x 6 tester tester 4096 Jul  6 02:23 ..
+-rw-r--r-- 1 tester tester   31 Jul  6 02:23 report.pdf
+
+/home/tester/.local/share/codoxear/uploads/cert-sibling:
+total 12
+drwxr-xr-x 2 tester tester 4096 Jul  6 01:53 .
+drwxr-xr-x 6 tester tester 4096 Jul  6 02:23 ..
+-rw-r--r-- 1 tester tester   31 Jul  6 02:23 keep.txt
+--- symlink target ---
+/home/tester/secret-outside-uploads.txt
+--- secret file exists ---
+-rw-r--r-- 1 tester tester 42 Jul  6 02:23 /home/tester/secret-outside-uploads.txt
