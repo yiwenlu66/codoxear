@@ -39,9 +39,16 @@ def stage_uploaded_file(
     safe_name = safe_filename(filename, default="file")
     subdir = (upload_dir / session_id).resolve()
     subdir.mkdir(parents=True, exist_ok=True)
-    out_path = (subdir / f"{int(now_fn() * 1000)}_{safe_name}").resolve()
+    stamp = int(now_fn() * 1000)
+    out_path = (subdir / f"{stamp}_{safe_name}").resolve()
     if not str(out_path).startswith(str(subdir) + os.sep):
         raise ValueError("bad path")
+    counter = 2
+    while out_path.exists():
+        out_path = (subdir / f"{stamp}_{counter}_{safe_name}").resolve()
+        if not str(out_path).startswith(str(subdir) + os.sep):
+            raise ValueError("bad path")
+        counter += 1
     out_path.write_bytes(data)
     os.chmod(out_path, 0o600)
     return out_path
@@ -94,6 +101,43 @@ def remove_session_uploads(upload_root: Path, session_id: str) -> bool:
         # behind or silently recursing into something unexpected.
         target.unlink()
     return True
+
+
+def remove_staged_attachment_file(upload_root: Path, session_id: str, staged_path: str | Path) -> bool:
+    """Remove one staged attachment file without following symlinks.
+
+    The stored staged path must name a direct child of ``<upload_root>/<session_id>``.
+    A symlink at that child path is unlinked as an entry; its target is never
+    followed. Returns ``True`` when a file/link was removed and ``False`` when
+    the stored entry was already absent.
+    """
+    if not isinstance(upload_root, (str, Path)):
+        raise ValueError("upload_root required")
+    if not isinstance(session_id, str) or not session_id.strip():
+        raise ValueError("session_id required")
+    sid = session_id.strip()
+    if sid in (".", "..") or "/" in sid or "\\" in sid or os.sep in sid:
+        raise ValueError("invalid session_id")
+    target = Path(staged_path)
+    if not target.is_absolute():
+        raise ValueError("staged_path must be absolute")
+    root = Path(upload_root)
+    subdir = root / sid
+    if subdir.is_symlink():
+        raise ValueError("session upload directory is a symlink")
+    subdir_resolved = subdir.resolve()
+    parent_resolved = target.parent.resolve()
+    if parent_resolved != subdir_resolved:
+        raise ValueError("staged_path outside session uploads")
+    if target.name in ("", ".", ".."):
+        raise ValueError("invalid staged_path")
+    if target.is_dir() and not target.is_symlink():
+        raise ValueError("staged_path is not a file")
+    try:
+        target.unlink()
+        return True
+    except FileNotFoundError:
+        return False
 
 
 def attachment_inject_text(attachment_index: int, path: Path) -> str:

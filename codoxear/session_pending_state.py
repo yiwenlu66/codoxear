@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+from pathlib import Path
 from typing import Any, Callable, MutableMapping
+from uuid import uuid4
 
 from .session_model import Session
 from .session_store import SessionStore
@@ -23,6 +25,8 @@ class SessionPendingStateCoordinator:
     save_queues: Callable[[], None]
     now: Callable[[], float]
     commit_unknown_orphan_prune_seconds: float
+    save_staged_attachments: Callable[[], None] = lambda: None
+    uuid_hex: Callable[[], str] = lambda: uuid4().hex
 
     def set_pending_attachment(self, session_id: str, value: bool) -> None:
         with self.lock:
@@ -39,11 +43,75 @@ class SessionPendingStateCoordinator:
                 ids.discard(session_id)
         self.save_pending_attachments()
 
+    def _sync_pending_projection_locked(self, session_id: str) -> bool:
+        has_staged = bool(self.store().staged_attachments.get(session_id))
+        ids = self.pending_attachment_ids()
+        if not isinstance(ids, set):
+            self.set_pending_attachment_ids(set())
+            ids = self.pending_attachment_ids()
+        session = self.sessions().get(session_id)
+        if session:
+            session.pending_attachment = has_staged
+        if has_staged:
+            ids.add(session_id)
+        else:
+            ids.discard(session_id)
+        return has_staged
+
+    def list_staged_attachments(self, session_id: str) -> dict[str, Any]:
+        with self.lock:
+            if session_id not in self.sessions():
+                raise KeyError("unknown session")
+            attachments = self.store().staged_attachments_for_session(session_id)
+            pending = bool(attachments)
+        return {"ok": True, "attachments": attachments, "pending_attachment": pending}
+
+    def add_staged_attachment(self, session_id: str, *, display_name: str, filename: str, path: Path, size: int, created_ts: float) -> dict[str, Any]:
+        entry = {
+            "id": self.uuid_hex(),
+            "display_name": str(display_name or filename or Path(path).name or "file"),
+            "filename": str(filename or display_name or Path(path).name or "file"),
+            "path": str(path),
+            "size": int(size),
+            "created_ts": float(created_ts),
+        }
+        with self.lock:
+            if session_id not in self.sessions():
+                raise KeyError("unknown session")
+            staged = self.store().add_staged_attachment(session_id, entry)
+            self._sync_pending_projection_locked(session_id)
+            attachments = self.store().staged_attachments_for_session(session_id)
+        self.save_staged_attachments()
+        self.save_pending_attachments()
+        return {"ok": True, "attachment": staged, "attachments": attachments, "pending_attachment": True}
+
+    def remove_staged_attachment(self, session_id: str, attachment_id: str) -> dict[str, Any]:
+        if not isinstance(attachment_id, str) or not attachment_id.strip():
+            raise ValueError("attachment id required")
+        with self.lock:
+            if session_id not in self.sessions():
+                raise KeyError("unknown session")
+            removed, attachments = self.store().remove_staged_attachment(session_id, attachment_id.strip())
+            pending = self._sync_pending_projection_locked(session_id)
+        self.save_staged_attachments()
+        self.save_pending_attachments()
+        return {"ok": True, "removed": removed, "attachments": attachments, "pending_attachment": pending}
+
+    def clear_staged_attachments(self, session_id: str) -> dict[str, Any]:
+        with self.lock:
+            if session_id not in self.sessions():
+                raise KeyError("unknown session")
+            removed = self.store().clear_staged_attachments(session_id)
+            self._sync_pending_projection_locked(session_id)
+        self.save_staged_attachments()
+        self.save_pending_attachments()
+        return {"ok": True, "removed_count": len(removed), "attachments": [], "pending_attachment": False}
+
     def clear_pending_attachment(self, session_id: str) -> dict[str, Any]:
         with self.lock:
             if session_id not in self.sessions():
                 raise KeyError("unknown session")
-        self.set_pending_attachment(session_id, False)
+        self.clear_staged_attachments(session_id)
         return {"ok": True, "pending_attachment": False}
 
     def clean_commit_unknown_send_record(self, raw: Any) -> dict[str, Any] | None:

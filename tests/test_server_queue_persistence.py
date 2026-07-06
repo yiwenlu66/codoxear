@@ -189,9 +189,11 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._sessions = {}
         mgr._queues = {}
         mgr._pending_attachment_ids = set()
+        mgr._staged_attachments = {}
         mgr._commit_unknown_sends = {}
         mgr._save_queues = lambda: None
         mgr._save_pending_attachments = lambda: None
+        mgr._save_staged_attachments = lambda: None
         mgr._save_commit_unknown_sends = lambda: None
         return mgr
 
@@ -476,6 +478,55 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(SessionManager.send(mgr, sid, "normal prompt"), {"queued": False, "queue_len": 0})
         self.assertEqual(seen, [({"cmd": "send", "text": "normal prompt", "sync": True}, 30.0)])
 
+    def test_staged_attachments_compose_at_confirmed_send_boundary_and_clear_on_success(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._sessions[sid].pending_attachment = True
+        mgr._pending_attachment_ids.add(sid)
+        mgr._staged_attachments[sid] = [
+            {"id": "a1", "display_name": "one.txt", "filename": "1_one.txt", "path": "/tmp/uploads/s1/1_one.txt", "size": 3, "created_ts": 1.0},
+            {"id": "a2", "display_name": "two.txt", "filename": "2_two.txt", "path": "/tmp/uploads/s1/2_two.txt", "size": 4, "created_ts": 2.0},
+        ]
+        recorded: list[str] = []
+        mgr._record_prelog_user_message = lambda _session, text, **_kwargs: recorded.append(text)  # type: ignore[method-assign]
+        mgr.clear_staged_attachments = lambda _sid: (mgr._staged_attachments.pop(_sid, None), setattr(mgr._sessions[_sid], "pending_attachment", False), mgr._pending_attachment_ids.discard(_sid), {"ok": True, "attachments": [], "pending_attachment": False})[-1]  # type: ignore[method-assign]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        seen: list[dict[str, object]] = []
+
+        def sock_call(_sock: Path, req: dict[str, object], timeout_s: float | None = 0, **_kwargs: object) -> dict[str, object]:
+            seen.append(req)
+            return {"queued": False, "queue_len": 0}
+
+        mgr._sock_call = sock_call  # type: ignore[method-assign]
+
+        self.assertEqual(SessionManager.send(mgr, sid, "use these", allow_pending_attachment=True), {"queued": False, "queue_len": 0})
+        committed_text = "Attachment 1: /tmp/uploads/s1/1_one.txt\nAttachment 2: /tmp/uploads/s1/2_two.txt\nuse these"
+        self.assertEqual(seen, [{"cmd": "send", "text": committed_text, "sync": True}])
+        self.assertEqual(recorded, [committed_text])
+        self.assertEqual(mgr._staged_attachments, {})
+        self.assertFalse(mgr._sessions[sid].pending_attachment)
+        self.assertNotIn(sid, mgr._pending_attachment_ids)
+
+    def test_staged_attachments_survive_commit_unknown_send(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._sessions[sid].pending_attachment = True
+        mgr._pending_attachment_ids.add(sid)
+        entry = {"id": "a1", "display_name": "one.txt", "filename": "1_one.txt", "path": "/tmp/uploads/s1/1_one.txt", "size": 3, "created_ts": 1.0}
+        mgr._staged_attachments[sid] = [dict(entry)]
+        mgr._record_prelog_user_message = lambda *_args, **_kwargs: self.fail("unknown commit should not be recorded as submitted")  # type: ignore[method-assign]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        mgr._sock_call = lambda *_args, **_kwargs: (_ for _ in ()).throw(TimeoutError("timed out"))  # type: ignore[method-assign]
+
+        with self.assertRaisesRegex(SessionCommitUnknownError, "commit status unknown"):
+            SessionManager.send(mgr, sid, "use this", allow_pending_attachment=True)
+        self.assertEqual(mgr._staged_attachments[sid], [entry])
+        self.assertTrue(mgr._sessions[sid].pending_attachment)
+        self.assertIn(sid, mgr._pending_attachment_ids)
+        self.assertEqual(mgr._commit_unknown_sends[sid]["text"], "Attachment 1: /tmp/uploads/s1/1_one.txt\nuse this")
+
     def test_send_rejects_broker_without_sync_capability(self) -> None:
         sid = "s1"
         mgr = self._mgr()
@@ -659,6 +710,15 @@ class TestServerQueuePersistence(unittest.TestCase):
 
         with self.assertRaisesRegex(SessionNotReadyError, "broker must be restarted"):
             SessionManager.attachment_injection_ready(mgr, sid)
+
+    def test_attachment_staging_does_not_require_key_write_errors(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._sessions[sid].key_write_errors_supported = False
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+
+        self.assertTrue(SessionManager.attachment_staging_ready(mgr, sid))
 
     def test_queue_send_timeout_marks_head_commit_unknown(self) -> None:
         # SessionQueueCoordinator.promote_head_if_sendable with ``now=123.0``

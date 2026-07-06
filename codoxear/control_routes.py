@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 from pathlib import Path
+import time
 from typing import Any, Callable
 
 
@@ -36,6 +37,28 @@ def _authorized(handler: Any, deps: ControlRouteDeps) -> bool:
     return False
 
 
+def handle_control_get_route(
+    handler: Any,
+    *,
+    path: str,
+    manager: Any,
+    deps: ControlRouteDeps,
+    match_session_route: RouteMatcher,
+) -> bool:
+    session_id = match_session_route(path, "attachments")
+    if session_id is None:
+        return False
+    if not _authorized(handler, deps):
+        return True
+    try:
+        res = manager.list_staged_attachments(session_id)
+    except KeyError:
+        deps.json_response(handler, 404, {"error": "unknown session"})
+        return True
+    deps.json_response(handler, 200, res)
+    return True
+
+
 def handle_control_post_route(
     handler: Any,
     *,
@@ -49,6 +72,8 @@ def handle_control_post_route(
         ("edit", None, _handle_edit),
         ("rename", None, _handle_rename),
         ("pending_attachment", "clear", _handle_pending_attachment_clear),
+        ("attachments", "delete", _handle_attachment_delete),
+        ("attachments", "clear", _handle_attachments_clear),
         ("commit_unknown_send", "clear", _handle_commit_unknown_send_clear),
         ("send", None, _handle_send),
         ("unattended", None, _handle_unattended),
@@ -125,6 +150,38 @@ def _handle_pending_attachment_clear(handler: Any, *, session_id: str, manager: 
         return
     try:
         res = manager.clear_pending_attachment(session_id)
+    except KeyError:
+        deps.json_response(handler, 404, {"error": "unknown session"})
+        return
+    deps.json_response(handler, 200, res)
+
+
+def _handle_attachment_delete(handler: Any, *, session_id: str, manager: Any, deps: ControlRouteDeps) -> None:
+    if not _authorized(handler, deps):
+        return
+    obj = deps.read_json_body(handler)
+    attachment_id = obj.get("id")
+    if not isinstance(attachment_id, str) or not attachment_id.strip():
+        deps.json_response(handler, 400, {"error": "attachment id required"})
+        return
+    try:
+        res = manager.remove_staged_attachment(session_id, attachment_id.strip())
+    except KeyError:
+        deps.json_response(handler, 404, {"error": "unknown session"})
+        return
+    except ValueError as e:
+        status = 404 if str(e) == "unknown attachment" else 400
+        deps.json_response(handler, status, {"error": str(e)})
+        return
+    deps.json_response(handler, 200, res)
+
+
+def _handle_attachments_clear(handler: Any, *, session_id: str, manager: Any, deps: ControlRouteDeps) -> None:
+    if not _authorized(handler, deps):
+        return
+    deps.read_body(handler)
+    try:
+        res = manager.clear_staged_attachments(session_id)
     except KeyError:
         deps.json_response(handler, 404, {"error": "unknown session"})
         return
@@ -249,7 +306,7 @@ def _handle_inject_attachment(handler: Any, *, session_id: str, manager: Any, de
         deps.json_response(handler, 400, {"error": "data_b64 required"})
         return
     try:
-        ready_for_attachment = manager.attachment_injection_ready(session_id)
+        ready_for_attachment = manager.attachment_staging_ready(session_id)
     except KeyError:
         deps.json_response(handler, 404, {"error": "unknown session"})
         return
@@ -274,23 +331,26 @@ def _handle_inject_attachment(handler: Any, *, session_id: str, manager: Any, de
         deps.json_response(handler, status, {"error": str(e)})
         return
     try:
-        inject_text = deps.attachment_inject_text(attachment_index, out_path)
-    except ValueError as e:
-        deps.json_response(handler, 400, {"error": str(e)})
-        return
-    seq = f"\x1b[200~{inject_text}\x1b[201~"
-    try:
-        resp = manager.inject_attachment_keys(session_id, seq)
+        res = manager.add_staged_attachment(
+            session_id,
+            display_name=filename,
+            filename=out_path.name,
+            path=out_path,
+            size=len(raw),
+            created_ts=time.time(),
+        )
     except KeyError:
+        try:
+            out_path.unlink()
+        except OSError:
+            pass
         deps.json_response(handler, 404, {"error": "unknown session"})
         return
-    except deps.session_not_ready_error as e:
-        deps.json_response(handler, 409, {"error": str(e)})
+    except ValueError as e:
+        try:
+            out_path.unlink()
+        except OSError:
+            pass
+        deps.json_response(handler, 400, {"error": str(e)})
         return
-    except deps.session_injection_error as e:
-        deps.json_response(handler, 502, {"error": str(e)})
-        return
-    except deps.session_commit_unknown_error as e:
-        deps.json_response(handler, 504, {"error": str(e), "commit_unknown": True})
-        return
-    deps.json_response(handler, 200, {"ok": True, "path": str(out_path), "inject_text": inject_text, "broker": resp})
+    deps.json_response(handler, 200, {"ok": True, "path": str(out_path), **res})

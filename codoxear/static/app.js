@@ -808,6 +808,7 @@
         let recentCwds = [];
 	        let sending = false;
 	        let attachedFiles = 0;
+        let stagedAttachments = [];
 				    let lastToken = null;
         let attachBadgeEl = null;
         let queueBadgeEl = null;
@@ -1224,10 +1225,11 @@
             html: iconSvg("paperclip"),
           }),
           el("div", { class: "inputWrap" }, [
+            el("div", { class: "stagedAttachments", id: "stagedAttachments", "aria-live": "polite" }),
             el("textarea", { id: "msg", placeholder: "", "aria-label": "Enter your instructions here" }),
             el("div", { class: "ph", id: "msgPh", text: "Enter your instructions here" }),
           ]),
-          el("input", { id: "imgInput", type: "file", style: "display:none" }),
+          el("input", { id: "imgInput", type: "file", multiple: "multiple", style: "display:none" }),
           el("button", { class: "icon-btn", id: "queueBtn", type: "button", title: "Queued messages", "aria-label": "Queued messages", html: iconSvg("queue") }),
           el("button", { class: "icon-btn composerStopBtn", id: "composerStopBtn", type: "button", title: "Stop current response", "aria-label": "Stop current response", html: iconSvg("stop") }),
           el("button", { class: "icon-btn primary", id: "sendBtn", type: "submit", title: "Send", "aria-label": "Send", html: iconSvg("send") }),
@@ -2925,7 +2927,8 @@
                 applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));
                 syncRecoveryUiForSession(selected);
               }
-              projectSelectedAttachmentIndicator();
+              if (selected) syncStagedAttachmentsFromSelectedSession();
+              else setStagedAttachments([]);
               const sidebarEntries = sidebarSessionEntries(sessions);
 		           if (swipeActions && openSwipeSessionId && sessionsWrap.childElementCount > 0) {
 		             swipeRefreshDeferred = true;
@@ -3438,7 +3441,8 @@
           setStatus({ running: false, queueLen: 0 });
           setContext(null);
           setTyping(false);
-          setAttachCount(0);
+          if (typeof setStagedAttachments === "function") setStagedAttachments([]);
+          else setAttachCount(0);
           resetChatRenderState();
           updateQueueBadge();
           if (unattendedController.isOpen()) hideUnattendedMenu();
@@ -3603,7 +3607,8 @@
           transcriptSlotRuntime.setActivePending();
           clearRenderedTranscriptRange();
           turnOpen = false;
-          setAttachCount(0);
+          if (typeof syncStagedAttachmentsFromSelectedSession === "function") syncStagedAttachmentsFromSelectedSession();
+          else setAttachCount(0);
           updateQueueBadge();
           setStatus({ running: false, queueLen: 0 });
           setContext(null);
@@ -5958,7 +5963,7 @@
         function showSendChoice(raw, { opener = null } = {}) {
           prepareModalOpen();
           sendChoiceReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;
-          sendChoicePending = { sid: selected, text: raw, attachmentCount: attachedFiles };
+          sendChoicePending = { sid: selected, text: raw, attachmentCount: stagedAttachments.length };
           syncSendChoiceAttachmentPolicy();
           sendChoiceBackdrop.style.display = "block";
           sendChoice.style.display = "flex";
@@ -6511,22 +6516,124 @@
           queueBadgeEl = el("span", { class: "attachBadge queueBadge", id: "queueBadge" });
           queueBtn.appendChild(queueBadgeEl);
         }
+        function normalizedStagedAttachments(list) {
+          if (!Array.isArray(list)) return [];
+          return list
+            .filter((item) => item && typeof item === "object" && typeof item.id === "string" && item.id)
+            .map((item) => ({
+              id: String(item.id),
+              display_name: String(item.display_name || item.filename || item.path || "file"),
+              filename: String(item.filename || item.display_name || "file"),
+              path: String(item.path || ""),
+              size: Number.isFinite(Number(item.size)) ? Number(item.size) : 0,
+              created_ts: Number.isFinite(Number(item.created_ts)) ? Number(item.created_ts) : 0,
+            }));
+        }
+        function attachmentIdentityText(item) {
+          const path = item && item.path ? String(item.path) : "";
+          const id = item && item.id ? String(item.id).slice(0, 8) : "";
+          if (path) return path;
+          return id ? `attachment ${id}` : "staged attachment";
+        }
+        function setStagedAttachments(list) {
+          stagedAttachments = normalizedStagedAttachments(list);
+          attachedFiles = stagedAttachments.length;
+          renderStagedAttachments();
+          if (textarea) autoGrow();
+          projectSelectedAttachmentIndicator();
+        }
         const setAttachCount = (n) => {
           attachedFiles = Math.max(0, Number(n) || 0);
+          if (attachedFiles === 0 && stagedAttachments.length) stagedAttachments = [];
+          renderStagedAttachments();
           projectSelectedAttachmentIndicator();
         };
-        // Single projection for the visible attachment indicator. The badge
-        // reflects the selected session's attachment state: the local
-        // just-attached counter (immediate feedback after inject_file) plus the
-        // server-authoritative pending_attachment flag for the selected
-        // session. Without this reconciliation the paperclip/count indicator is
-        // local-only and lies after reload/select/poll/clear.
+        function setSelectedSessionStagedAttachments(list) {
+          if (selected) {
+            const info = sessionIndex.get(selected);
+            if (info) {
+              info.staged_attachments = normalizedStagedAttachments(list);
+              info.pending_attachment = info.staged_attachments.length > 0;
+              sessionIndex.set(selected, info);
+            }
+          }
+          setStagedAttachments(list);
+        }
+        function syncStagedAttachmentsFromSelectedSession() {
+          const info = selected ? sessionIndex.get(selected) : null;
+          setStagedAttachments(info && Array.isArray(info.staged_attachments) ? info.staged_attachments : []);
+        }
+        function renderStagedAttachments() {
+          const tray = $("#stagedAttachments");
+          if (!tray) return;
+          tray.innerHTML = "";
+          if (!stagedAttachments.length) {
+            tray.style.display = "none";
+            return;
+          }
+          tray.style.display = "flex";
+          for (const item of stagedAttachments) {
+            const chip = el("div", { class: "stagedAttachmentChip", title: attachmentIdentityText(item) });
+            chip.appendChild(el("span", { class: "stagedAttachmentName", text: item.display_name || item.filename || "file" }));
+            chip.appendChild(el("span", { class: "stagedAttachmentMeta", text: `${fmtBytes(item.size || 0)} · ${item.id.slice(0, 8)}` }));
+            const removeBtn = el("button", { class: "stagedAttachmentRemove", type: "button", text: "×", title: `Remove ${item.display_name || "attachment"}`, "aria-label": `Remove ${item.display_name || "attachment"}` });
+            removeBtn.onclick = async () => {
+              if (!selected) return;
+              const sid = selected;
+              try {
+                const res = await api(`/api/sessions/${sid}/attachments/delete`, { method: "POST", body: { id: item.id } });
+                if (selected === sid) {
+                  setSelectedSessionStagedAttachments(res && Array.isArray(res.attachments) ? res.attachments : []);
+                  setToast("attachment removed");
+                  void refreshSessions().catch((e) => {
+                    if (e && e.status === 401) handleAppAuthLoss();
+                    else console.error("refreshSessions failed", e);
+                  });
+                }
+              } catch (err) {
+                if (err && err.status === 401) {
+                  handleAppAuthLoss();
+                  return;
+                }
+                if (selected === sid) setToast(`remove attachment error: ${err && err.message ? err.message : "unknown error"}`);
+              }
+            };
+            chip.appendChild(removeBtn);
+            tray.appendChild(chip);
+          }
+          const clearBtn = el("button", { class: "stagedAttachmentsClear", type: "button", text: "Clear", title: "Clear staged attachments", "aria-label": "Clear staged attachments" });
+          clearBtn.onclick = async () => {
+            if (!selected) return;
+            const sid = selected;
+            try {
+              const res = await api(`/api/sessions/${sid}/attachments/clear`, { method: "POST", body: {} });
+              if (selected === sid) {
+                setSelectedSessionStagedAttachments(res && Array.isArray(res.attachments) ? res.attachments : []);
+                setToast("attachments cleared");
+                void refreshSessions().catch((e) => {
+                  if (e && e.status === 401) handleAppAuthLoss();
+                  else console.error("refreshSessions failed", e);
+                });
+              }
+            } catch (err) {
+              if (err && err.status === 401) {
+                handleAppAuthLoss();
+                return;
+              }
+              if (selected === sid) setToast(`clear attachments error: ${err && err.message ? err.message : "unknown error"}`);
+            }
+          };
+          tray.appendChild(clearBtn);
+        }
+        // The visible attachment indicator is a projection of the selected
+        // session's server-owned staged attachment list; the legacy
+        // pending_attachment flag is only a compatibility fallback.
         function projectSelectedAttachmentIndicator() {
           if (!attachBadgeEl) return;
           const sessionInfo = selected ? sessionIndex.get(selected) : null;
-          const localCount = typeof attachedFiles === "number" ? attachedFiles : 0;
+          const serverListCount = sessionInfo && Array.isArray(sessionInfo.staged_attachments) ? normalizedStagedAttachments(sessionInfo.staged_attachments).length : 0;
           const serverPending = Boolean(sessionInfo && sessionInfo.pending_attachment);
-          const visible = Math.max(localCount, serverPending ? 1 : 0);
+          const visible = Math.max(stagedAttachments.length, serverListCount, serverPending ? 1 : 0);
           if (visible > 0) {
             attachBadgeEl.textContent = String(visible);
             attachBadgeEl.style.display = "inline-flex";
@@ -6547,8 +6654,10 @@
           const info = sessionIndex.get(selected);
           if (!info) return false;
           info.pending_attachment = Boolean(value);
+          if (!value) info.staged_attachments = [];
           sessionIndex.set(selected, info);
-          projectSelectedAttachmentIndicator();
+          if (!value) setStagedAttachments([]);
+          else projectSelectedAttachmentIndicator();
           return true;
         }
         function syncAttachButtonState() {
@@ -6596,7 +6705,7 @@
 	          const basePx = parseFloat(getComputedStyle(textarea).minHeight || "0") || 32;
 	          const maxPx = 180;
 	          const hasNewline = textarea.value.includes("\n");
-	          if (msgPh) msgPh.style.display = textarea.value ? "none" : "flex";
+	          if (msgPh) msgPh.style.display = textarea.value || stagedAttachments.length ? "none" : "flex";
 	          textarea.style.height = `${basePx}px`;
 	          let h = textarea.scrollHeight;
 	          const needsMultiline = hasNewline || h > basePx + 1;
@@ -6682,109 +6791,104 @@
 		            if (selected === sid) setToast("failed launch cannot receive file attachments");
 		            return;
 		          }
-		          const attachmentIndex = attachedFiles + 1;
-		          const f = imgInput.files && imgInput.files[0];
-		          if (!f) return;
+		          const files = Array.from(imgInput.files || []);
+		          imgInput.value = "";
+		          if (!files.length) return;
 		          if (currentRunning) {
 		            if (selected === sid) setToast("wait for the current response before attaching a file");
 		            return;
 		          }
 		          if (sending) return;
-		          try {
-	            async function toJpegBlob(file, { maxDim = 2048, quality = 0.86 } = {}) {
-	              const url = URL.createObjectURL(file);
-	              try {
-	                const img = new Image();
-	                img.decoding = "async";
-	                img.src = url;
-	                if (img.decode) await img.decode();
-	                else
-	                  await new Promise((resolve, reject) => {
-	                    img.onload = resolve;
-	                    img.onerror = () => reject(new Error("decode failed"));
-	                  });
-	                const w0 = img.naturalWidth || img.width || 0;
-	                const h0 = img.naturalHeight || img.height || 0;
-	                if (!w0 || !h0) throw new Error("invalid image dimensions");
-	                const scale = Math.min(1, maxDim / Math.max(w0, h0));
-	                const w = Math.max(1, Math.round(w0 * scale));
-	                const h = Math.max(1, Math.round(h0 * scale));
-	                const canvas = document.createElement("canvas");
-	                canvas.width = w;
-	                canvas.height = h;
-	                const ctx = canvas.getContext("2d", { alpha: false });
-	                if (!ctx) throw new Error("no canvas");
-	                ctx.drawImage(img, 0, 0, w, h);
-	                const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
-	                if (!blob) throw new Error("jpeg encode failed");
-	                return blob;
-	              } finally {
-	                URL.revokeObjectURL(url);
-	              }
-	            }
-
-	            setToast("uploading file...");
-	            const maxBytes = ATTACH_UPLOAD_MAX_BYTES;
-	            let uploadBlob = f;
-	            let uploadName = f.name || "file";
-	            if (looksLikeImage(f) && (f.size > maxBytes || isLikelyHeic(f))) {
-	              setToast("compressing image...");
-	              const stem = safeAttachmentStem(f.name);
-	              uploadName = `${stem}.jpg`;
-	              // Try a few (dim, quality) pairs until it fits.
-	              const tries = [
-	                { maxDim: 2048, quality: 0.86 },
-	                { maxDim: 1600, quality: 0.82 },
-	                { maxDim: 1600, quality: 0.72 },
-	                { maxDim: 1280, quality: 0.68 },
-	                { maxDim: 1280, quality: 0.58 },
-	              ];
-	              let blob = null;
-	              for (const t of tries) {
-	                blob = await toJpegBlob(f, t);
-	                if (blob.size <= maxBytes) break;
-	              }
-	              if (!blob || blob.size > maxBytes) throw new Error(`image too large (max ${fmtBytes(maxBytes)})`);
-	              uploadBlob = blob;
-	            }
-
-	            const ab = await uploadBlob.arrayBuffer();
-	            if (ab.byteLength > maxBytes) throw new Error(`file too large (max ${fmtBytes(maxBytes)})`);
-		            const b64 = b64FromBytes(new Uint8Array(ab));
-			            const res = await api(`/api/sessions/${sid}/inject_file`, {
-		              method: "POST",
-		              body: { filename: uploadName, data_b64: b64, attachment_index: attachmentIndex },
-		            });
-		            if (selected === sid) {
-		              if (res && res.ok) {
-		                setToast("file attached");
-		                setSelectedSessionPendingAttachment(true);
-		                setAttachCount(attachmentIndex);
-		              }
-		              pollFastUntilMs = Date.now() + 4000;
-		              kickPoll(0);
+		          async function toJpegBlob(file, { maxDim = 2048, quality = 0.86 } = {}) {
+		            const url = URL.createObjectURL(file);
+		            try {
+		              const img = new Image();
+		              img.decoding = "async";
+		              img.src = url;
+		              if (img.decode) await img.decode();
+		              else
+		                await new Promise((resolve, reject) => {
+		                  img.onload = resolve;
+		                  img.onerror = () => reject(new Error("decode failed"));
+		                });
+		              const w0 = img.naturalWidth || img.width || 0;
+		              const h0 = img.naturalHeight || img.height || 0;
+		              if (!w0 || !h0) throw new Error("invalid image dimensions");
+		              const scale = Math.min(1, maxDim / Math.max(w0, h0));
+		              const w = Math.max(1, Math.round(w0 * scale));
+		              const h = Math.max(1, Math.round(h0 * scale));
+		              const canvas = document.createElement("canvas");
+		              canvas.width = w;
+		              canvas.height = h;
+		              const ctx = canvas.getContext("2d", { alpha: false });
+		              if (!ctx) throw new Error("no canvas");
+		              ctx.drawImage(img, 0, 0, w, h);
+		              const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+		              if (!blob) throw new Error("jpeg encode failed");
+		              return blob;
+		            } finally {
+		              URL.revokeObjectURL(url);
 		            }
-		          } catch (e) {
-              if (e && e.status === 401) {
-                handleAppAuthLoss();
-                return;
-              }
-	            if (selected === sid) {
-	              const commitUnknown = Boolean(e && e.obj && e.obj.commit_unknown);
-	              if (commitUnknown) {
-	                setToast("attachment status unknown; check before retrying");
-	                pollFastUntilMs = Date.now() + 4000;
-	                kickPoll(0);
-	                void refreshSessions().catch((refreshErr) => {
-                  if (refreshErr && refreshErr.status === 401) handleAppAuthLoss();
-                  else console.error("refreshSessions failed", refreshErr);
-                });
-	              } else {
-	                setToast(`attach error: ${e.message}`);
-	              }
-	            }
-	          }
-	        });
+		          }
+		          let successes = 0;
+		          const failures = [];
+		          for (const f of files) {
+		            try {
+		              if (selected !== sid) break;
+		              setToast(files.length > 1 ? `uploading ${successes + failures.length + 1}/${files.length}...` : "uploading file...");
+		              const maxBytes = ATTACH_UPLOAD_MAX_BYTES;
+		              let uploadBlob = f;
+		              let uploadName = f.name || "file";
+		              if (looksLikeImage(f) && (f.size > maxBytes || isLikelyHeic(f))) {
+		                setToast("compressing image...");
+		                const stem = safeAttachmentStem(f.name);
+		                uploadName = `${stem}.jpg`;
+		                const tries = [
+		                  { maxDim: 2048, quality: 0.86 },
+		                  { maxDim: 1600, quality: 0.82 },
+		                  { maxDim: 1600, quality: 0.72 },
+		                  { maxDim: 1280, quality: 0.68 },
+		                  { maxDim: 1280, quality: 0.58 },
+		                ];
+		                let blob = null;
+		                for (const t of tries) {
+		                  blob = await toJpegBlob(f, t);
+		                  if (blob.size <= maxBytes) break;
+		                }
+		                if (!blob || blob.size > maxBytes) throw new Error(`image too large (max ${fmtBytes(maxBytes)})`);
+		                uploadBlob = blob;
+		              }
+		              const ab = await uploadBlob.arrayBuffer();
+		              if (ab.byteLength > maxBytes) throw new Error(`file too large (max ${fmtBytes(maxBytes)})`);
+		              const b64 = b64FromBytes(new Uint8Array(ab));
+		              const res = await api(`/api/sessions/${sid}/inject_file`, {
+		                method: "POST",
+		                body: { filename: uploadName, data_b64: b64, attachment_index: stagedAttachments.length + 1 },
+		              });
+		              if (selected === sid && res && res.ok) {
+		                successes += 1;
+		                setSelectedSessionStagedAttachments(Array.isArray(res.attachments) ? res.attachments : []);
+		              }
+		            } catch (e) {
+		              if (e && e.status === 401) {
+		                handleAppAuthLoss();
+		                return;
+		              }
+		              failures.push(`${f && f.name ? f.name : "file"}: ${e && e.message ? e.message : "unknown error"}`);
+		            }
+		          }
+		          if (selected === sid) {
+		            if (successes && failures.length) setToast(`attached ${successes}; ${failures.length} failed: ${failures[0]}`);
+		            else if (successes) setToast(successes === 1 ? "file staged" : `${successes} files staged`);
+		            else if (failures.length) setToast(`attach error: ${failures[0]}`);
+		            pollFastUntilMs = Date.now() + 4000;
+		            kickPoll(0);
+		            void refreshSessions().catch((refreshErr) => {
+		              if (refreshErr && refreshErr.status === 401) handleAppAuthLoss();
+		              else console.error("refreshSessions failed", refreshErr);
+		            });
+		          }
+		        });
 
         function clearComposer() {
           $("#msg").value = "";
@@ -6816,8 +6920,8 @@
             void clearCommitUnknownSend(sessionId, sessionInfo.commit_unknown_send_text || "");
             return false;
           }
-          const localAttachmentCount = typeof attachedFiles === "number" ? attachedFiles : 0;
-          let allowPendingAttachment = Boolean(renderHere && localAttachmentCount > 0);
+          const localAttachmentCount = renderHere ? stagedAttachments.length : normalizedStagedAttachments(sessionInfo && sessionInfo.staged_attachments).length;
+          let allowPendingAttachment = Boolean(localAttachmentCount > 0);
           if (!allowPendingAttachment && sessionInfo && sessionInfo.pending_attachment) {
             const confirmed = window.confirm("This session has a pending file attachment. Send it with this message?");
             if (!confirmed) return false;

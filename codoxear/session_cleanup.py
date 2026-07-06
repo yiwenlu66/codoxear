@@ -23,6 +23,7 @@ class SessionCleanupCoordinator:
     save_unattended: Callable[[], None]
     save_files: Callable[[], None]
     save_queues: Callable[[], None]
+    save_staged_attachments: Callable[[], None] = lambda: None
 
     def prune_stale_socket_without_metadata(self, session_id: str, sock: Path) -> None:
         with self.lock:
@@ -40,6 +41,7 @@ class SessionCleanupCoordinator:
         self.store().save_deleted_session_state_changes(
             changes,
             save_pending_attachments=self.save_pending_attachments,
+            save_staged_attachments=self.save_staged_attachments,
             save_commit_unknown_sends=self.save_commit_unknown_sends,
             save_aliases=self.save_aliases,
             save_sidebar_meta=self.save_sidebar_meta,

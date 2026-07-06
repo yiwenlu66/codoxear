@@ -1467,6 +1467,8 @@ class TestChatTranscriptRuntime(unittest.TestCase):
                 snapshot: () => ({{ renderedAtLiveTail: true }}),
               }},
               sessionIndex: new Map([["sid", {{ agent_backend: "codex" }}]]),
+              stagedAttachments: [],
+              normalizedStagedAttachments: (list) => Array.isArray(list) ? list : [],
               detached: 0,
               renderedPending: 0,
               sessionTailCache: {{ delete: () => {{ ctx.deletedCache = true; }} }},

@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 from codoxear.control_routes import ControlRouteDeps
+from codoxear.control_routes import handle_control_get_route
 from codoxear.control_routes import handle_control_post_route
 from codoxear.server import _match_session_route
 
@@ -67,12 +68,40 @@ class Manager:
         return {"ok": True}
 
     def attachment_injection_ready(self, session_id):
+        self.calls.append(("inject_ready", session_id))
+        return self.ready
+
+    def attachment_staging_ready(self, session_id):
         self.calls.append(("ready", session_id))
         return self.ready
 
     def inject_attachment_keys(self, session_id, seq):
         self.calls.append(("inject_attachment", session_id, seq))
         return {"ok": True}
+
+    def add_staged_attachment(self, session_id, **kwargs):
+        self.calls.append(("stage_attachment", session_id, kwargs))
+        entry = {
+            "id": "att-1",
+            "display_name": kwargs["display_name"],
+            "filename": kwargs["filename"],
+            "path": str(kwargs["path"]),
+            "size": kwargs["size"],
+            "created_ts": kwargs["created_ts"],
+        }
+        return {"ok": True, "attachment": entry, "attachments": [entry], "pending_attachment": True}
+
+    def list_staged_attachments(self, session_id):
+        self.calls.append(("list_attachments", session_id))
+        return {"ok": True, "attachments": [], "pending_attachment": False}
+
+    def remove_staged_attachment(self, session_id, attachment_id):
+        self.calls.append(("remove_attachment", session_id, attachment_id))
+        return {"ok": True, "removed": {"id": attachment_id}, "attachments": [], "pending_attachment": False}
+
+    def clear_staged_attachments(self, session_id):
+        self.calls.append(("clear_attachments", session_id))
+        return {"ok": True, "removed_count": 1, "attachments": [], "pending_attachment": False}
 
 
 def _deps(responses, *, staged=None, auth=True):
@@ -140,6 +169,66 @@ def test_send_route_preserves_allow_pending_and_commit_unknown_status() -> None:
     assert responses == [(504, {"error": "maybe sent", "commit_unknown": True})]
 
 
+def test_attachment_list_remove_clear_routes() -> None:
+    responses = []
+    manager = Manager()
+    assert handle_control_get_route(
+        Handler(),
+        path="/api/sessions/s1/attachments",
+        manager=manager,
+        deps=_deps(responses),
+        match_session_route=_match_session_route,
+    ) is True
+    assert manager.calls[-1] == ("list_attachments", "s1")
+    assert responses[-1] == (200, {"ok": True, "attachments": [], "pending_attachment": False})
+    assert handle_control_post_route(
+        Handler({"id": "att-1"}),
+        path="/api/sessions/s1/attachments/delete",
+        manager=manager,
+        deps=_deps(responses),
+        match_session_route=_match_session_route,
+    ) is True
+    assert manager.calls[-1] == ("remove_attachment", "s1", "att-1")
+    assert responses[-1][0] == 200
+    handler = Handler({})
+    assert handle_control_post_route(
+        handler,
+        path="/api/sessions/s1/attachments/clear",
+        manager=manager,
+        deps=_deps(responses),
+        match_session_route=_match_session_route,
+    ) is True
+    assert handler.read_body_count == 1
+    assert manager.calls[-1] == ("clear_attachments", "s1")
+    assert responses[-1] == (200, {"ok": True, "removed_count": 1, "attachments": [], "pending_attachment": False})
+
+
+def test_attachment_remove_requires_id_and_maps_unknown_attachment() -> None:
+    responses = []
+    assert handle_control_post_route(
+        Handler({}),
+        path="/api/sessions/s1/attachments/delete",
+        manager=Manager(),
+        deps=_deps(responses),
+        match_session_route=_match_session_route,
+    ) is True
+    assert responses == [(400, {"error": "attachment id required"})]
+
+    class MissingAttachment(Manager):
+        def remove_staged_attachment(self, session_id, attachment_id):
+            raise ValueError("unknown attachment")
+
+    responses.clear()
+    assert handle_control_post_route(
+        Handler({"id": "missing"}),
+        path="/api/sessions/s1/attachments/delete",
+        manager=MissingAttachment(),
+        deps=_deps(responses),
+        match_session_route=_match_session_route,
+    ) is True
+    assert responses == [(404, {"error": "unknown attachment"})]
+
+
 def test_unattended_route_rejects_legacy_text_field_and_validates_numbers() -> None:
     responses = []
     manager = Manager()
@@ -196,7 +285,7 @@ def test_inject_attachment_checks_readiness_before_decoding_or_staging() -> None
     assert responses == [(409, {"error": "session is busy; wait before attaching a file"})]
 
 
-def test_inject_attachment_stages_and_injects_bracketed_paste() -> None:
+def test_inject_attachment_stages_without_backend_paste() -> None:
     responses = []
     staged = []
     manager = Manager()
@@ -210,9 +299,15 @@ def test_inject_attachment_stages_and_injects_bracketed_paste() -> None:
     path = Path("/tmp") / "s1" / "note.txt"
     assert staged == [(path, b"hello")]
     assert manager.calls[0] == ("ready", "s1")
-    assert manager.calls[1][0:2] == ("inject_attachment", "s1")
-    assert "\x1b[200~Attachment 1: /tmp/s1/note.txt\n\x1b[201~" == manager.calls[1][2]
-    assert responses == [(200, {"ok": True, "path": str(path), "inject_text": f"Attachment 1: {path}\n", "broker": {"ok": True}})]
+    assert manager.calls[1][0:2] == ("stage_attachment", "s1")
+    assert not any(call[0] == "inject_attachment" for call in manager.calls)
+    status, obj = responses[-1]
+    assert status == 200
+    assert obj["ok"] is True
+    assert obj["path"] == str(path)
+    assert obj["attachment"]["path"] == str(path)
+    assert obj["attachments"][0]["id"] == "att-1"
+    assert obj["pending_attachment"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -278,7 +373,7 @@ def _post(handler_body, responses, *, manager=None, auth=True, stage=_default_st
     )
 
 
-def test_inject_attachment_happy_path_body_is_json_serializable_and_bracketed() -> None:
+def test_inject_attachment_happy_path_body_is_json_serializable_and_stage_only() -> None:
     responses = []
     manager = Manager()
     assert _post(_good_body(), responses, manager=manager) is True
@@ -288,12 +383,11 @@ def test_inject_attachment_happy_path_body_is_json_serializable_and_bracketed() 
     # the coverage the former _json_response-patching test blinded).
     json.dumps(obj)
     assert obj["ok"] is True
-    assert obj["inject_text"].endswith("\n")
-    assert obj["inject_text"].startswith("Attachment 1: ")
     assert obj["path"] == str(Path("/tmp") / "s1" / "note.txt")
-    # The injected PTY sequence is wrapped in bracketed-paste markers.
-    seq = manager.calls[1][2]
-    assert seq.startswith("\x1b[200~") and seq.endswith("\x1b[201~")
+    assert obj["attachment"]["display_name"] == "note.txt"
+    assert obj["attachment"]["size"] == 5
+    assert manager.calls[1][0] == "stage_attachment"
+    assert not any(call[0] == "inject_attachment" for call in manager.calls)
 
 
 def test_inject_attachment_rejects_unauthorized_handler() -> None:
@@ -361,18 +455,18 @@ def test_inject_attachment_stage_generic_value_error_is_400() -> None:
     assert responses == [(400, {"error": "bad path"})]
 
 
-def test_inject_attachment_inject_text_value_error_is_400() -> None:
+def test_inject_attachment_accepts_legacy_index_but_does_not_generate_text() -> None:
     responses = []
-    def _bad_index(idx, path):
-        raise ValueError("attachment_index must be >= 1")
-    assert _post(_good_body(attachment_index=0), responses, inject_text=_bad_index) is True
-    assert responses == [(400, {"error": "attachment_index must be >= 1"})]
+    manager = Manager()
+    assert _post(_good_body(attachment_index=0), responses, manager=manager) is True
+    assert responses[-1][0] == 200
+    assert not any(call[0] == "inject_attachment" for call in manager.calls)
 
 
 def test_inject_attachment_readiness_key_error_is_404() -> None:
     responses = []
     class UnknownSession(Manager):
-        def attachment_injection_ready(self, session_id):
+        def attachment_staging_ready(self, session_id):
             raise KeyError(session_id)
     assert _post(_good_body(), responses, manager=UnknownSession()) is True
     assert responses == [(404, {"error": "unknown session"})]
@@ -381,7 +475,7 @@ def test_inject_attachment_readiness_key_error_is_404() -> None:
 def test_inject_attachment_readiness_not_ready_is_409() -> None:
     responses = []
     class BusySession(Manager):
-        def attachment_injection_ready(self, session_id):
+        def attachment_staging_ready(self, session_id):
             raise NotReady("session is busy")
     assert _post(_good_body(), responses, manager=BusySession()) is True
     assert responses == [(409, {"error": "session is busy"})]
@@ -390,7 +484,7 @@ def test_inject_attachment_readiness_not_ready_is_409() -> None:
 def test_inject_attachment_readiness_generic_exception_is_409() -> None:
     responses = []
     class GlitchySession(Manager):
-        def attachment_injection_ready(self, session_id):
+        def attachment_staging_ready(self, session_id):
             raise RuntimeError("state unavailable")
     assert _post(_good_body(), responses, manager=GlitchySession()) is True
     assert responses == [(409, {"error": "session state unavailable; wait before attaching a file"})]
@@ -404,31 +498,22 @@ def test_inject_attachment_readiness_false_is_409() -> None:
     assert responses == [(409, {"error": "session is busy; wait before attaching a file"})]
 
 
-def test_inject_attachment_inject_key_error_is_404() -> None:
+def test_inject_attachment_add_staged_key_error_is_404() -> None:
     responses = []
     class VanishedSession(Manager):
-        def inject_attachment_keys(self, session_id, seq):
+        def add_staged_attachment(self, session_id, **kwargs):
             raise KeyError(session_id)
     assert _post(_good_body(), responses, manager=VanishedSession()) is True
     assert responses == [(404, {"error": "unknown session"})]
 
 
-def test_inject_attachment_injection_error_is_502() -> None:
+def test_inject_attachment_add_staged_value_error_is_400() -> None:
     responses = []
-    class BrokenBroker(Manager):
-        def inject_attachment_keys(self, session_id, seq):
-            raise InjectionError("broker write failed")
-    assert _post(_good_body(), responses, manager=BrokenBroker()) is True
-    assert responses == [(502, {"error": "broker write failed"})]
-
-
-def test_inject_attachment_commit_unknown_is_504_with_flag() -> None:
-    responses = []
-    class UncertainBroker(Manager):
-        def inject_attachment_keys(self, session_id, seq):
-            raise CommitUnknown("commit status unknown")
-    assert _post(_good_body(), responses, manager=UncertainBroker()) is True
-    assert responses == [(504, {"error": "commit status unknown", "commit_unknown": True})]
+    class BrokenStageRecord(Manager):
+        def add_staged_attachment(self, session_id, **kwargs):
+            raise ValueError("invalid staged attachment")
+    assert _post(_good_body(), responses, manager=BrokenStageRecord()) is True
+    assert responses == [(400, {"error": "invalid staged attachment"})]
 
 
 def test_inject_attachment_ready_check_precedes_base64_decode() -> None:

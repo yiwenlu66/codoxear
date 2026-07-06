@@ -8,6 +8,7 @@ import urllib.parse
 
 from .auth_routes import handle_auth_get_route
 from .auth_routes import handle_auth_post_route
+from .control_routes import handle_control_get_route
 from .control_routes import handle_control_post_route
 from .diagnostics_routes import handle_diagnostics_get_route
 from .file_routes import handle_absolute_file_preview_route
@@ -161,6 +162,14 @@ class CodoxearHandler(http.server.BaseHTTPRequestHandler):
                 query=url.query,
                 manager=manager,
                 deps=self.deps.session_route_deps(),
+                match_session_route=self.deps.match_session_route,
+            ):
+                return
+            if handle_control_get_route(
+                self,
+                path=path,
+                manager=manager,
+                deps=self.deps.control_route_deps(),
                 match_session_route=self.deps.match_session_route,
             ):
                 return

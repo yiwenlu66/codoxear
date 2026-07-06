@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from .file_upload import remove_session_uploads
+from .file_upload import remove_staged_attachment_file
 from .queue_store import QueueStore
 from .unattended import UnattendedStore
 from .util import atomic_write_json
@@ -34,6 +35,7 @@ class DeletedSessionStateChanges:
     files: bool = False
     queues: bool = False
     pending_attachments: bool = False
+    staged_attachments: bool = False
     commit_unknown_sends: bool = False
 
 
@@ -48,6 +50,7 @@ class SessionStorePaths:
     commit_unknown_sends: Path
     recent_cwds: Path
     unattended: Path
+    staged_attachments: Path | None = None
     uploads_root: Path | None = None
 
 
@@ -114,6 +117,7 @@ class SessionStore:
         self.files: dict[str, list[str]] = {}
         self.queues: dict[str, list[dict[str, Any]]] = {}
         self.pending_attachment_ids: set[str] = set()
+        self.staged_attachments: dict[str, list[dict[str, Any]]] = {}
         self.commit_unknown_sends: dict[str, dict[str, Any]] = {}
         self.recent_cwds: dict[str, float] = {}
         self.unattended_store = UnattendedStore(
@@ -131,6 +135,7 @@ class SessionStore:
         self.files = {}
         self.queues = {}
         self.pending_attachment_ids = set()
+        self.staged_attachments = {}
         self.commit_unknown_sends = {}
         self.recent_cwds = {}
 
@@ -141,7 +146,8 @@ class SessionStore:
         self.hidden_sessions = self.load_hidden_sessions()
         self.files = self.load_files()
         self.queues = self.load_queues()
-        self.pending_attachment_ids = self.load_pending_attachments()
+        self.staged_attachments = self.load_staged_attachments()
+        self.pending_attachment_ids = self.load_pending_attachments() | set(self.staged_attachments.keys())
         self.commit_unknown_sends = self.load_commit_unknown_sends()
         self.recent_cwds = self.load_recent_cwds()
 
@@ -338,6 +344,109 @@ class SessionStore:
     def save_pending_attachments(self, ids: set[str]) -> None:
         atomic_write_json(self.paths.pending_attachments, sorted(str(item) for item in ids if str(item).strip()))
 
+    def _clean_staged_attachment_entry(self, raw: Any) -> dict[str, Any] | None:
+        if not isinstance(raw, dict):
+            return None
+        entry_id = str(raw.get("id") or "").strip()
+        path = str(raw.get("path") or "").strip()
+        if not entry_id or not path:
+            return None
+        display_name = str(raw.get("display_name") or raw.get("filename") or Path(path).name or "file").strip() or "file"
+        filename = str(raw.get("filename") or display_name).strip() or display_name
+        try:
+            size = int(raw.get("size"))
+        except (TypeError, ValueError):
+            return None
+        try:
+            created_ts = float(raw.get("created_ts"))
+        except (TypeError, ValueError):
+            return None
+        if size < 0 or not math.isfinite(created_ts) or created_ts <= 0:
+            return None
+        return {
+            "id": entry_id,
+            "display_name": display_name[:256],
+            "filename": filename[:256],
+            "path": path,
+            "size": size,
+            "created_ts": created_ts,
+        }
+
+    def load_staged_attachments(self) -> dict[str, list[dict[str, Any]]]:
+        if self.paths.staged_attachments is None:
+            return {}
+        obj = load_json_file(self.paths.staged_attachments, default=None)
+        if obj is None:
+            return {}
+        if not isinstance(obj, dict):
+            raise ValueError("invalid staged_attachments.json (expected object)")
+        cleaned: dict[str, list[dict[str, Any]]] = {}
+        for sid, arr in obj.items():
+            if not isinstance(sid, str) or not sid.strip() or not isinstance(arr, list):
+                continue
+            out: list[dict[str, Any]] = []
+            seen: set[str] = set()
+            for raw in arr:
+                entry = self._clean_staged_attachment_entry(raw)
+                if entry is None or entry["id"] in seen:
+                    continue
+                seen.add(entry["id"])
+                out.append(entry)
+            if out:
+                cleaned[sid.strip()] = out
+        return cleaned
+
+    def save_staged_attachments(self, source: dict[str, list[dict[str, Any]]]) -> None:
+        obj: dict[str, list[dict[str, Any]]] = {}
+        for sid, entries in source.items():
+            if not isinstance(sid, str) or not sid.strip() or not isinstance(entries, list):
+                continue
+            cleaned = [entry for entry in (self._clean_staged_attachment_entry(raw) for raw in entries) if entry is not None]
+            if cleaned:
+                obj[sid.strip()] = cleaned
+        if self.paths.staged_attachments is None:
+            return
+        atomic_write_json(self.paths.staged_attachments, obj)
+
+    def staged_attachments_for_session(self, session_id: str) -> list[dict[str, Any]]:
+        return [dict(entry) for entry in self.staged_attachments.get(session_id, [])]
+
+    def add_staged_attachment(self, session_id: str, entry: dict[str, Any]) -> dict[str, Any]:
+        clean = self._clean_staged_attachment_entry(entry)
+        if clean is None:
+            raise ValueError("invalid staged attachment")
+        self.staged_attachments.setdefault(session_id, []).append(clean)
+        return dict(clean)
+
+    def remove_staged_attachment(self, session_id: str, attachment_id: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        entries = list(self.staged_attachments.get(session_id, []))
+        kept: list[dict[str, Any]] = []
+        removed: dict[str, Any] | None = None
+        for entry in entries:
+            if entry.get("id") == attachment_id and removed is None:
+                removed = dict(entry)
+            else:
+                kept.append(entry)
+        if removed is None:
+            raise ValueError("unknown attachment")
+        uploads_root = self.paths.uploads_root
+        if uploads_root is not None:
+            remove_staged_attachment_file(uploads_root, session_id, removed["path"])
+        if kept:
+            self.staged_attachments[session_id] = kept
+        else:
+            self.staged_attachments.pop(session_id, None)
+        return removed, [dict(entry) for entry in kept]
+
+    def clear_staged_attachments(self, session_id: str) -> list[dict[str, Any]]:
+        removed = [dict(entry) for entry in self.staged_attachments.get(session_id, [])]
+        uploads_root = self.paths.uploads_root
+        if uploads_root is not None:
+            for entry in removed:
+                remove_staged_attachment_file(uploads_root, session_id, entry["path"])
+        self.staged_attachments.pop(session_id, None)
+        return removed
+
     def load_commit_unknown_sends(self) -> dict[str, dict[str, Any]]:
         obj = load_json_file(self.paths.commit_unknown_sends, default=None)
         if obj is None:
@@ -429,6 +538,7 @@ class SessionStore:
         files_changed = False
         queues_changed = False
         pending_changed = False
+        staged_changed = False
         unknown_changed = False
 
         if session_id in self.aliases:
@@ -460,6 +570,10 @@ class SessionStore:
         if session_id in self.pending_attachment_ids:
             self.pending_attachment_ids.discard(session_id)
             pending_changed = True
+
+        if session_id in self.staged_attachments:
+            self.staged_attachments.pop(session_id, None)
+            staged_changed = True
 
         uploads_root = self.paths.uploads_root
         if uploads_root is not None:
@@ -494,6 +608,7 @@ class SessionStore:
             files=files_changed,
             queues=queues_changed,
             pending_attachments=pending_changed,
+            staged_attachments=staged_changed,
             commit_unknown_sends=unknown_changed,
         )
 
@@ -535,9 +650,12 @@ class SessionStore:
         save_queues: Callable[[], None],
         save_pending_attachments: Callable[[], None],
         save_commit_unknown_sends: Callable[[], None],
+        save_staged_attachments: Callable[[], None] = lambda: None,
     ) -> None:
         if changes.pending_attachments:
             save_pending_attachments()
+        if changes.staged_attachments:
+            save_staged_attachments()
         if changes.commit_unknown_sends:
             save_commit_unknown_sends()
         if changes.aliases:

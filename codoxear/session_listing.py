@@ -49,6 +49,7 @@ class ActiveSessionRowFacts:
     queue_len: int
     queue_recovery: bool
     pending_attachment: bool
+    staged_attachments: list[dict[str, Any]]
     commit_unknown_send: Mapping[str, Any] | None
     token: Any
     thinking: int
@@ -212,6 +213,7 @@ def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
         "queue_len": facts.queue_len,
         "queue_recovery": facts.queue_recovery,
         "pending_attachment": facts.pending_attachment,
+        "staged_attachments": list(facts.staged_attachments),
         "commit_unknown_send": bool(commit_unknown),
         "commit_unknown_send_text": _commit_unknown_text(commit_unknown),
         "commit_unknown_send_ts": _commit_unknown_created_ts(commit_unknown),
@@ -343,6 +345,7 @@ def build_active_session_rows_snapshot(
                     queue_len=int(queue_len),
                     queue_recovery=bool(queue_recovery),
                     pending_attachment=bool(s.pending_attachment),
+                    staged_attachments=store.staged_attachments_for_session(s.session_id),
                     commit_unknown_send=s.commit_unknown_send if isinstance(s.commit_unknown_send, dict) else None,
                     token=s.token,
                     thinking=int(s.meta_thinking),

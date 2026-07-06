@@ -38,20 +38,19 @@ class TestAttachButtonSource(unittest.TestCase):
         self.assertIn('if (selectedSessionLaunchFailed()) {\n\t            setToast("failed launch cannot receive file attachments");\n\t            return;\n\t          }', source)
         self.assertIn('const sessionInfo = sessionIndex.get(sid) || null;\n\t\t          if (sessionInfo && sessionLaunchFailed(sessionInfo)) {', source)
         self.assertIn('imgInput.value = "";\n\t\t            if (selected === sid) setToast("failed launch cannot receive file attachments");\n\t\t            return;', source)
-        self.assertIn('const attachmentIndex = attachedFiles + 1;', source)
+        self.assertIn('const files = Array.from(imgInput.files || []);', source)
         self.assertIn('if (currentRunning) {\n\t\t            if (selected === sid) setToast("wait for the current response before attaching a file");\n\t\t            return;\n\t\t          }', source)
         self.assertIn('api(`/api/sessions/${sid}/inject_file`', source)
-        self.assertIn('attachment_index: attachmentIndex', source)
-        self.assertIn('if (selected === sid) {', source)
-        self.assertIn('setAttachCount(attachmentIndex);', source)
-        self.assertIn('const commitUnknown = Boolean(e && e.obj && e.obj.commit_unknown);', source)
-        self.assertIn('setToast("attachment status unknown; check before retrying");', source)
-        self.assertIn('setToast(`attach error: ${e.message}`);', source)
+        self.assertIn('attachment_index: stagedAttachments.length + 1', source)
+        self.assertIn('if (selected === sid && res && res.ok) {', source)
+        self.assertIn('setSelectedSessionStagedAttachments(Array.isArray(res.attachments) ? res.attachments : []);', source)
+        self.assertIn('const failures = [];', source)
+        self.assertIn('setToast(`attach error: ${failures[0]}`);', source)
 
     def test_running_turn_cannot_split_attachments_into_queue(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
 
-        self.assertIn('sendChoicePending = { sid: selected, text: raw, attachmentCount: attachedFiles };', source)
+        self.assertIn('sendChoicePending = { sid: selected, text: raw, attachmentCount: stagedAttachments.length };', source)
         self.assertIn('const hasAttachments = Boolean(sendChoicePending && sendChoicePending.attachmentCount > 0);', source)
         self.assertIn('laterBtn.disabled = hasAttachments;', source)
         self.assertIn('"Attachments cannot be queued; send now or wait until idle"', source)
@@ -60,13 +59,12 @@ class TestAttachButtonSource(unittest.TestCase):
     def test_attach_indicator_reconciles_selected_session_pending_attachment(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
 
-        # One projection function renders the visible badge from the local
-        # just-attached counter plus the server-authoritative pending flag for
-        # the selected session. Without it the indicator is local-only.
+        # One projection function renders the visible badge from the server-owned
+        # staged attachment list, with pending_attachment as compatibility fallback.
         self.assertIn('function projectSelectedAttachmentIndicator() {', source)
         self.assertIn("const sessionInfo = selected ? sessionIndex.get(selected) : null;", source)
         self.assertIn("const serverPending = Boolean(sessionInfo && sessionInfo.pending_attachment);", source)
-        self.assertIn("const visible = Math.max(localCount, serverPending ? 1 : 0);", source)
+        self.assertIn("const visible = Math.max(stagedAttachments.length, serverListCount, serverPending ? 1 : 0);", source)
         # setAttachCount must not render the badge inline; it delegates to the
         # projection so the selected session's pending_attachment is honored.
         self.assertIn('attachedFiles = Math.max(0, Number(n) || 0);', source)
@@ -75,13 +73,13 @@ class TestAttachButtonSource(unittest.TestCase):
         # The projection is called where the selected session's sessionInfo is
         # refreshed, so server-side flips reconcile without a local counter change.
         self.assertIn(
-            'applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));\n                syncRecoveryUiForSession(selected);\n              }\n              projectSelectedAttachmentIndicator();',
+            'applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));\n                syncRecoveryUiForSession(selected);\n              }\n              if (selected) syncStagedAttachmentsFromSelectedSession();',
             source,
         )
-        # Send authority is unchanged: local counter drives allow_pending_attachment
-        # and the server pending flag still prompts explicit send.
-        self.assertIn('const localAttachmentCount = typeof attachedFiles === "number" ? attachedFiles : 0;', source)
-        self.assertIn('let allowPendingAttachment = Boolean(renderHere && localAttachmentCount > 0);', source)
+        # Send authority uses the selected staged list count and the server
+        # pending flag still prompts explicit send for legacy pending state.
+        self.assertIn('const localAttachmentCount = renderHere ? stagedAttachments.length : normalizedStagedAttachments(sessionInfo && sessionInfo.staged_attachments).length;', source)
+        self.assertIn('let allowPendingAttachment = Boolean(localAttachmentCount > 0);', source)
         self.assertIn('if (!allowPendingAttachment && sessionInfo && sessionInfo.pending_attachment) {', source)
 
     def test_selected_session_pending_attachment_cache_updates_on_direct_evidence(self) -> None:
@@ -94,12 +92,8 @@ class TestAttachButtonSource(unittest.TestCase):
         self.assertIn("info.pending_attachment = Boolean(value);", source)
         self.assertIn("sessionIndex.set(selected, info);", source)
         self.assertIn("projectSelectedAttachmentIndicator();", source)
-        # Successful attach is direct evidence the server now has a pending
-        # attachment; update before bumping the local counter.
-        self.assertIn(
-            'setToast("file attached");\n\t\t                setSelectedSessionPendingAttachment(true);',
-            source,
-        )
+        # Successful attach returns the authoritative staged list.
+        self.assertIn('setSelectedSessionStagedAttachments(Array.isArray(res.attachments) ? res.attachments : []);', source)
         # Successful send with allow_pending_attachment is direct evidence the
         # pending attachment was consumed; clear the cache before setAttachCount(0).
         self.assertIn(
@@ -114,7 +108,7 @@ class TestAttachButtonSource(unittest.TestCase):
         # The refresh path still re-projects from server truth, so a cache update
         # never shadows an authoritative refresh.
         self.assertIn(
-            'applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));\n                syncRecoveryUiForSession(selected);\n              }\n              projectSelectedAttachmentIndicator();',
+            'applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));\n                syncRecoveryUiForSession(selected);\n              }\n              if (selected) syncStagedAttachmentsFromSelectedSession();',
             source,
         )
 

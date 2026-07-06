@@ -30,6 +30,11 @@ def test_session_manager_persistent_maps_are_store_owned() -> None:
     assert mgr._session_store_for_manager().pending_attachment_ids is pending
     assert mgr._pending_attachment_ids is pending
 
+    staged = {"s1": [{"id": "a1", "display_name": "doc.txt", "filename": "1_doc.txt", "path": "/tmp/doc.txt", "size": 3, "created_ts": 1.0}]}
+    mgr._staged_attachments = staged
+    assert mgr._session_store_for_manager().staged_attachments is staged
+    assert mgr._staged_attachments is staged
+
 
 def test_session_store_file_history_migrates_legacy_session_key() -> None:
     mgr = SessionManager.__new__(SessionManager)
@@ -83,6 +88,7 @@ def test_session_store_clear_deleted_session_state_cleans_persistent_maps_and_cw
     store.unattended = {"s1": {"enabled": True}, "keep": {"enabled": True}}
     store.files = {"sid:s1": ["new.py"], "s1": ["old.py"], "cwd:/repo": ["leak.py"], "sid:keep": ["keep.py"]}
     store.pending_attachment_ids = {"s1", "keep"}
+    store.staged_attachments = {"s1": [{"id": "a1", "display_name": "doc.txt", "filename": "1_doc.txt", "path": "/tmp/doc.txt", "size": 3, "created_ts": 1.0}], "keep": []}
     store.commit_unknown_sends = {"s1": {"text": "maybe", "created_ts": 1.0}, "keep": {"text": "keep", "created_ts": 2.0}}
     store.queues = {"s1": [{"id": "q1", "text": "later"}], "keep": [{"id": "q2", "text": "keep"}]}
 
@@ -94,10 +100,12 @@ def test_session_store_clear_deleted_session_state_cleans_persistent_maps_and_cw
     assert changes.unattended is True
     assert changes.files is True
     assert changes.pending_attachments is True
+    assert changes.staged_attachments is True
     assert changes.commit_unknown_sends is True
     assert changes.queues is True
     assert store.aliases == {"keep": "beta"}
     assert store.hidden_sessions == {"keep"}
+    assert store.staged_attachments == {"keep": []}
     assert store.sidebar_meta == {"dependent": {"priority_offset": 0.0}, "keep": {"dependency_session_id": "other"}}
     assert store.unattended == {"keep": {"enabled": True}}
     assert store.files == {"sid:keep": ["keep.py"]}
@@ -248,6 +256,7 @@ def test_session_store_load_persistent_state_owns_bootstrap_order() -> None:
             files=root / "session_files.json",
             queues=root / "session_queues.json",
             pending_attachments=root / "pending_attachments.json",
+            staged_attachments=root / "staged_attachments.json",
             commit_unknown_sends=root / "commit_unknown_sends.json",
             recent_cwds=root / "recent_cwds.json",
             unattended=root / "unattended.json",
@@ -258,6 +267,10 @@ def test_session_store_load_persistent_state_owns_bootstrap_order() -> None:
         paths.files.write_text(json.dumps({"s1": ["a.py", "a.py", "b.py"], "cwd:/repo": ["leak.py"]}), encoding="utf-8")
         paths.queues.write_text(json.dumps({"s1": [{"id": "q1", "text": "queued", "created_ts": 1.0}]}), encoding="utf-8")
         paths.pending_attachments.write_text(json.dumps(["s1", "", 4]), encoding="utf-8")
+        paths.staged_attachments.write_text(
+            json.dumps({"s2": [{"id": "a1", "display_name": "doc.txt", "filename": "1_doc.txt", "path": "/tmp/doc.txt", "size": 3, "created_ts": 2.0}]}),
+            encoding="utf-8",
+        )
         paths.commit_unknown_sends.write_text(json.dumps({"s1": {"text": "maybe", "created_ts": 1.0}}), encoding="utf-8")
         paths.recent_cwds.write_text(json.dumps({"/repo": 2.0}), encoding="utf-8")
         paths.unattended.write_text(json.dumps({"s1": {"enabled": True, "request": "continue"}}), encoding="utf-8")
@@ -288,7 +301,8 @@ def test_session_store_load_persistent_state_owns_bootstrap_order() -> None:
         assert store.hidden_sessions == {"s1"}
         assert store.files == {"sid:s1": ["a.py", "b.py"]}
         assert store.queues == {"s1": [{"id": "q1", "text": "queued", "created_ts": 1.0}]}
-        assert store.pending_attachment_ids == {"s1"}
+        assert store.pending_attachment_ids == {"s1", "s2"}
+        assert store.staged_attachments == {"s2": [{"id": "a1", "display_name": "doc.txt", "filename": "1_doc.txt", "path": "/tmp/doc.txt", "size": 3, "created_ts": 2.0}]}
         assert store.commit_unknown_sends == {"s1": {"text": "maybe", "created_ts": 1.0}}
         assert store.recent_cwds == {"/repo": 2.0}
         assert store.unattended == {"s1": {"enabled": True, "request": "continue", "cooldown_minutes": 15, "remaining_injections": 7}}

@@ -137,6 +137,7 @@ def test_build_active_session_rows_snapshot_combines_session_and_store_state(tmp
 
 def test_build_active_session_row_projects_public_and_staging_fields() -> None:
     files = ["notes.md"]
+    staged_attachments = [{"id": "att-1", "display_name": "doc.txt", "filename": "1_doc.txt", "path": "/tmp/doc.txt", "size": 3, "created_ts": 4.0}]
     facts = ActiveSessionRowFacts(
         session_id="s1",
         thread_id="t1",
@@ -161,6 +162,7 @@ def test_build_active_session_row_projects_public_and_staging_fields() -> None:
         queue_len=2,
         queue_recovery=True,
         pending_attachment=True,
+        staged_attachments=staged_attachments,
         commit_unknown_send={"text": "maybe", "created_ts": 4.0},
         token={"total": 5},
         thinking=6,
@@ -217,6 +219,7 @@ def test_build_active_session_row_projects_public_and_staging_fields() -> None:
     assert row["queue_len"] == 2
     assert row["queue_recovery"] is True
     assert row["pending_attachment"] is True
+    assert row["staged_attachments"] == staged_attachments
     assert row["commit_unknown_send"] is True
     assert row["commit_unknown_send_text"] == "maybe"
     assert row["commit_unknown_send_ts"] == 4.0

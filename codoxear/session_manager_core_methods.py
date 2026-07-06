@@ -15,6 +15,7 @@ def session_store_paths_for_server(server: Any) -> Any:
         files=server.FILE_HISTORY_PATH,
         queues=server.QUEUE_PATH,
         pending_attachments=server.PENDING_ATTACHMENTS_PATH,
+        staged_attachments=server.STAGED_ATTACHMENTS_PATH,
         commit_unknown_sends=server.COMMIT_UNKNOWN_SENDS_PATH,
         recent_cwds=server.RECENT_CWD_PATH,
         unattended=server.UNATTENDED_PATH,

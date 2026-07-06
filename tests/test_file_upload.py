@@ -22,6 +22,7 @@ from codoxear import file_upload
 from codoxear import pty_util
 from codoxear.file_upload import attachment_inject_text
 from codoxear.file_upload import remove_session_uploads
+from codoxear.file_upload import remove_staged_attachment_file
 from codoxear.file_upload import safe_filename
 from codoxear.file_upload import stage_uploaded_file
 
@@ -114,6 +115,15 @@ class TestStageUploadedFile(unittest.TestCase):
             path = self._stage(td, "sess-4", "南京大学_程元_简历.pdf", b"pdf", now=3.0)
             self.assertEqual(path.name, "3000_南京大学_程元_简历.pdf")
             self.assertEqual(path.read_bytes(), b"pdf")
+
+    def test_same_millisecond_same_name_gets_unique_path(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            first = self._stage(td, "sess-4b", "same.txt", b"one", now=4.0)
+            second = self._stage(td, "sess-4b", "same.txt", b"two", now=4.0)
+            self.assertEqual(first.name, "4000_same.txt")
+            self.assertEqual(second.name, "4000_2_same.txt")
+            self.assertEqual(first.read_bytes(), b"one")
+            self.assertEqual(second.read_bytes(), b"two")
 
     def test_chmods_file_to_0600_when_observable(self) -> None:
         # On filesystems that support permission bits (the production target),
@@ -217,6 +227,23 @@ class TestRemoveSessionUploads(unittest.TestCase):
             self.assertEqual((outside / "secret.txt").read_bytes(), b"do-not-touch")
             # Sibling upload dirs are untouched.
             self.assertEqual((root / "keep" / "5678_keep.txt").read_bytes(), b"keep-bytes")
+
+    def test_remove_staged_attachment_file_unlinks_only_direct_child(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            subdir = root / "s1"
+            subdir.mkdir()
+            target = subdir / "1234_doc.txt"
+            target.write_bytes(b"data")
+            (root / "keep").mkdir()
+            (root / "keep" / "other.txt").write_bytes(b"keep")
+
+            self.assertTrue(remove_staged_attachment_file(root, "s1", target))
+            self.assertFalse(target.exists())
+            self.assertEqual((root / "keep" / "other.txt").read_bytes(), b"keep")
+            self.assertFalse(remove_staged_attachment_file(root, "s1", target))
+            with self.assertRaisesRegex(ValueError, "outside session uploads"):
+                remove_staged_attachment_file(root, "s1", root / "keep" / "other.txt")
 
     def test_broken_symlink_entry_is_unlinked(self) -> None:
         # A symlink pointing at a nonexistent destination (broken link) must

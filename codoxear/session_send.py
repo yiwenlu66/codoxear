@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, MutableMapping
 
+from .file_upload import attachment_inject_text
+
 from .session_input import apply_confirmed_send_success
 from .session_input import parse_confirmed_send_response
 from .session_input import require_send_preconditions
@@ -19,6 +21,8 @@ class SessionSendCoordinator:
     send_remote_ready: Callable[..., bool]
     log_size_or_none: Callable[[Path | None], int | None]
     call_confirmed_send: Callable[..., dict[str, Any]]
+    staged_attachments_for_session: Callable[[str], list[dict[str, Any]]]
+    clear_staged_attachments: Callable[[str], dict[str, Any]]
     set_pending_attachment: Callable[[str, bool], None]
     set_commit_unknown_send: Callable[[str, dict[str, Any] | None], None]
     record_prelog_user_message: Callable[[Session, str], None]
@@ -50,12 +54,18 @@ class SessionSendCoordinator:
                 current = self.sessions().get(session_id)
                 pre_send_log_path = current.log_path if current is not None else None
                 pre_send_log_size = self.log_size_or_none(pre_send_log_path)
+                staged_entries = self.staged_attachments_for_session(session_id) if allow_pending_attachment else []
+            attachment_prefix = "".join(
+                attachment_inject_text(idx, Path(str(entry.get("path") or "")))
+                for idx, entry in enumerate(staged_entries, start=1)
+            )
+            committed_text = f"{attachment_prefix}{text}" if attachment_prefix else text
 
             def raise_commit_unknown(message: str, cause: BaseException | None = None) -> None:
                 if queue_item_id is None:
                     self.set_commit_unknown_send(
                         session_id,
-                        {"text": text, "created_ts": self.now(), "error": message},
+                        {"text": committed_text, "created_ts": self.now(), "error": message},
                     )
                 if cause is None:
                     raise self.commit_unknown_error(message)
@@ -66,7 +76,7 @@ class SessionSendCoordinator:
                 session_id,
                 session=session,
                 sock=sock,
-                text=text,
+                text=committed_text,
                 timeout_s=timeout_s,
                 raise_commit_unknown=raise_commit_unknown,
                 not_ready_error=self.not_ready_error,
@@ -78,7 +88,7 @@ class SessionSendCoordinator:
                 injection_error=self.injection_error,
             )
             with self.lock:
-                self.record_prelog_user_message(session, text)
+                self.record_prelog_user_message(session, committed_text)
                 current = self.sessions().get(session_id)
                 if current:
                     apply_confirmed_send_success(
@@ -87,7 +97,10 @@ class SessionSendCoordinator:
                         pre_send_log_path=pre_send_log_path,
                         pre_send_log_size=pre_send_log_size,
                     )
-            self.set_pending_attachment(session_id, False)
+            if staged_entries:
+                self.clear_staged_attachments(session_id)
+            else:
+                self.set_pending_attachment(session_id, False)
             if queue_item_id is None:
                 self.set_commit_unknown_send(session_id, None)
         return response
