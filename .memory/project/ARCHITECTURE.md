@@ -48,6 +48,6 @@ Protected checkout: `/home/yiwen/codex-web` on `main` — never edit/restart/mer
 - Stale docs propagate: sessiond schema docs omitted `token` and masked a parity gap for one review round.
 
 
-## Active defect under investigation
+## Resolved interrupt readiness authority
 
-- Readiness paths must not rebuild interrupted-idle truth from raw broker state after stale-true suppression. Failing Docker evidence on port 19260 shows direct send and queue promotion can deliver while `/api/sessions` and the sidebar project busy: `SessionReadinessCoordinator` consumes the raw broker `interrupted_idle:true` response even after listing suppressed the stored override. The fix target is to make send/queue/attachment/unattended readiness consume the same suppression-aware interrupted-idle authority as listing.
+- Readiness paths must split broker-state authority at the interrupted-idle boundary. Raw broker `busy` and `queue_len` remain authoritative and validated, but the interrupted-idle override used for send/queue/attachment/unattended readiness must come from the stored suppression-aware `Session.interrupted_idle`, matching listing/sidebar. Failing evidence on port 19260 showed direct send and queue promotion delivered while `/api/sessions` and sidebar were busy; fixed evidence on port 19264 proves direct send now returns busy/not-ready, queue remains queued, attachment is disabled, and broker call logs contain zero sends while the raw broker still reports stale `interrupted_idle:true`.
