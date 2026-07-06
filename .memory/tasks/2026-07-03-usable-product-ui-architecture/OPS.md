@@ -660,3 +660,10 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
 - Critic focused validation: `PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q -p no:cacheprovider tests/test_message_routes.py tests/test_stale_interrupted_idle.py tests/test_cc_no_response_projection.py tests/test_cc_backend_error_projection.py tests/test_mobile_toast_source.py` -> 61 passed.
 - Acceptance report preserved in `browser-artifacts/final-cleanroom-pass-46181ecc/`.
 - Residual boundaries recorded by critic: final split-live proof is API-level but DOM error rendering is already covered; deterministic fake CC logs do not claim real Claude inference parity; mobile dpad proof certifies CSS/layout with force-shown toolbar, not Monaco activation.
+
+
+## 2026-07-06T05:41:40Z Transcript search synthetic outcome defect scouted
+- Read-only executor `88f4fba2-0c3a-4420-b72e-91be0897f441` reported DEFECT: `/messages/search` cannot find synthetic no-response text for Codex or Claude Code no-answer turns, while tail/history/live/re-read preserve the row.
+- Main reran `python3 /tmp/scout_transcript_outcomes.py`; observations matched the scout: Codex history no-response PASS, Codex search no-response `match_count=0`; CC tail no-response PASS, CC search no-response `match_count=0`; CC terminal `API Error: 503 Service Unavailable` search PASS.
+- Mechanism: `codoxear/transcript_search.py::iter_positioned_chat_events_forward()` calls `_single_chat_event()` only and bypasses `_inject_no_response_events()`, unlike tail/history/live.
+- Artifacts preserved in `browser-artifacts/transcript-search-synthetic-defect/`. Decision: dispatch implementation to add synthetic outcome rows to the search event stream with cursor-preserving regressions.
