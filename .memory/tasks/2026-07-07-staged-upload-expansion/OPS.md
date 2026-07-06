@@ -53,3 +53,11 @@
   - A narrow stage-during-active-send race is self-correcting and practically guarded by readiness.
   - Staging while the agent is busy remains intentionally blocked.
 - Decision: first staged-upload slice is accepted. N1 is useful defensive hardening but not a blocker for acceptance.
+
+## 2026-07-06T20:58:00Z Attachment clear guard hardening committed
+- Functional follow-up commit: `75986c1 Harden staged attachment clear failures`.
+- Mechanism: `attachments/clear` now maps staged cleanup guard `ValueError` to HTTP 400 JSON instead of uncaught 500; `SessionStore.clear_staged_attachments` preflights all staged file targets before unlinking so deterministic tamper/path guard failures leave both staged list and valid files intact.
+- Validation:
+  - `python3 -m pytest -q tests/test_control_routes.py tests/test_file_upload.py tests/test_session_store.py` → `72 passed in 1.80s`.
+  - `git diff --check` → clean.
+- Scope: no send/queue/frontend paths changed; staged-upload commit boundary remains unchanged.
