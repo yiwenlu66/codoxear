@@ -595,3 +595,9 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
 - Integrated theorist run `307ba285-2ab0-4f21-af23-bd77ae3d8bff`. The run ranked Claude Code `system`-row turn outcomes as the top next product gap because the selectable-backend no-answer/error guarantee is currently Codex-shaped while CC can close turns through `system/subtype:turn_duration` and `system/subtype:api_error` rows that transcript projection ignores.
 - Preserved the full analysis as `next-product-target-analysis.md`.
 - Decision: dispatch implementation with failing tests first for CC user→turn_duration, tools-only→turn_duration, and terminal system api_error shapes; keep transient retry rows silent; do not touch the in-flight stale-interrupted-idle verifier scope.
+
+
+## 2026-07-06T03:38:43Z Log-only stale interrupted-idle verifier found product defect
+- Verifier `83f22848-c931-4d6a-86d7-40f2e1e0e6bd` reported FAIL for the log-only stale interrupted-idle path. Artifacts copied to `browser-artifacts/stale-interrupted-idle-fail/`.
+- Observed mechanism: `/api/sessions` calls prune before `update_meta_counters`; prune re-reads a stale socket response `interrupted_idle=true` and `set_session_interrupted_idle(True)` re-baselines `interrupted_idle_log_off` to the current log size after resumed activity was already appended. The log watcher then skips all resumed content and never clears the override, so user-visible `busy` stays `false` while the log is non-idle.
+- End-to-end evidence: phase 1 interrupted turn busy=false as intended; phase 2 same-log resumed user_message produced busy=false five times despite non-idle log; phase 3 completed log busy=false as intended. Public `/api/sessions` strips `interrupted_idle`, so `busy` is the user-visible contradiction.
