@@ -28,7 +28,7 @@
           "message_class": "error",
           "role": "assistant",
           "text": "The backend process stopped before completing this turn.",
-          "ts": 1783355855.7030873
+          "ts": 1783359081.064825
         }
       ],
       "has_older": false,
@@ -49,7 +49,7 @@
       "busy": false,
       "events": [
         {
-          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1yZWNvdmVyeS1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9wb3N0LWxvZy1yZWNvdmVyeS1wcm9vZi1sb2dzL3Bvc3QtbG9nLXJlY292ZXJ5LWZpeGVkLmpzb25sIiwicG9zIjoxMTF9.PkR1LOc-goRl4PBCTp0T2Le2rh_BUFirp1Xh1-RYJWs",
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1yZWNvdmVyeS1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9wb3N0LWxvZy1yZWNvdmVyeS1wcm9vZi1sb2dzL3Bvc3QtbG9nLXJlY292ZXJ5LWZpeGVkLmpzb25sIiwicG9zIjoxMTF9.KXiCgOkSjwHurDjTApkeohrO_ORKpSOA5EJmm_K2XVs",
           "role": "user",
           "text": "POST_LOG_BOUND_DEATH_SENTINEL",
           "ts": 1.0
@@ -59,7 +59,7 @@
           "message_class": "error",
           "role": "assistant",
           "text": "The backend process stopped before completing this turn.",
-          "ts": 1783355855.7030873
+          "ts": 1783359081.064825
         }
       ],
       "has_older": false,
@@ -77,7 +77,7 @@
   },
   "initial_sessions": {
     "payload": {
-      "app_version": "b0e7e1dec4c3",
+      "app_version": "0c45256d427e",
       "new_session_defaults": {
         "backends": {
           "cc": {
@@ -201,7 +201,7 @@
           "unattended_cooldown_minutes": 5,
           "unattended_enabled": false,
           "unattended_remaining_injections": 10,
-          "updated_ts": 1783355855.7030873
+          "updated_ts": 1783359081.064825
         },
         {
           "agent_backend": "codex",
@@ -249,7 +249,7 @@
           "unattended_cooldown_minutes": 5,
           "unattended_enabled": false,
           "unattended_remaining_injections": 10,
-          "updated_ts": 1783355855.7027361
+          "updated_ts": 1783359081.0643454
         }
       ],
       "tmux_available": true,
@@ -263,7 +263,7 @@
       "busy": false,
       "events": [
         {
-          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjB9.9ml1l-9iINLT4rUvh0p8kMhJyFzZ8b4c9O_5mAh4Ixc",
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjB9.AZEt4DJ3TUdzO1-24AE8_YxVAq6a-OcqUEBDmgHQUx0",
           "role": "user",
           "text": "FIRST_EVENT_SENTINEL",
           "ts": 1.0
@@ -328,7 +328,7 @@
     "unattended_cooldown_minutes": 5,
     "unattended_enabled": false,
     "unattended_remaining_injections": 10,
-    "updated_ts": 1783355855.7027361
+    "updated_ts": 1783359081.0643454
   },
   "large_search_first": {
     "payload": {
@@ -339,17 +339,26 @@
           "message_class": "error",
           "role": "assistant",
           "text": "The backend process stopped before completing this turn.",
-          "ts": 1783355855.7027361
+          "ts": 1783359081.0643454
         }
       ],
       "has_older": true,
-      "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjgzNDl9.2bsnaGVevKHdMqw4O16965RZh5IUTkRXO977-IEdfss",
+      "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjgzNDl9.CiJXfE7hQwzMpHG6-Jj9hD79oUu3JbyZ_m25DbovYxU",
       "launch_id": "launch-post-log-large-cursor",
       "live_cursor": null,
       "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-large-cursor.jsonl",
-      "match_count": 0,
+      "match_count": 1,
       "match_count_truncated": false,
-      "matches": [],
+      "matches": [
+        {
+          "_before_byte": 0,
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjB9.AZEt4DJ3TUdzO1-24AE8_YxVAq6a-OcqUEBDmgHQUx0",
+          "load_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjk3fQ.puclv27ks_xwkn9_t-L8FZHlTXg9KUc2QMmPTTmTrOk",
+          "role": "user",
+          "text": "FIRST_EVENT_SENTINEL",
+          "ts": 1.0
+        }
+      ],
       "query": "FIRST_EVENT_SENTINEL",
       "queue_len": 0,
       "session_id": "post-log-large-cursor",
@@ -368,11 +377,11 @@
           "message_class": "error",
           "role": "assistant",
           "text": "The backend process stopped before completing this turn.",
-          "ts": 1783355855.7027361
+          "ts": 1783359081.0643454
         }
       ],
       "has_older": true,
-      "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjgzNDl9.2bsnaGVevKHdMqw4O16965RZh5IUTkRXO977-IEdfss",
+      "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjgzNDl9.CiJXfE7hQwzMpHG6-Jj9hD79oUu3JbyZ_m25DbovYxU",
       "launch_id": "launch-post-log-large-cursor",
       "live_cursor": null,
       "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-large-cursor.jsonl",
@@ -381,12 +390,12 @@
       "matches": [
         {
           "codoxear_lifecycle": "backend_stopped_after_log_bind",
-          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjgzNDl9.2bsnaGVevKHdMqw4O16965RZh5IUTkRXO977-IEdfss",
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjgzNDl9.CiJXfE7hQwzMpHG6-Jj9hD79oUu3JbyZ_m25DbovYxU",
           "message_class": "error",
           "role": "assistant",
           "text": "The backend process stopped before completing this turn.",
           "text_truncated": false,
-          "ts": 1783355855.7027361
+          "ts": 1783359081.0643454
         }
       ],
       "query": "The backend process stopped before completing this turn.",
@@ -404,15 +413,15 @@
       "events": [
         {
           "codoxear_lifecycle": "backend_stopped_after_log_bind",
-          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjgzNDl9.2bsnaGVevKHdMqw4O16965RZh5IUTkRXO977-IEdfss",
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjgzNDl9.CiJXfE7hQwzMpHG6-Jj9hD79oUu3JbyZ_m25DbovYxU",
           "message_class": "error",
           "role": "assistant",
           "text": "The backend process stopped before completing this turn.",
-          "ts": 1783355855.7027361
+          "ts": 1783359081.0643454
         }
       ],
       "has_older": true,
-      "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjgzNDl9.2bsnaGVevKHdMqw4O16965RZh5IUTkRXO977-IEdfss",
+      "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjgzNDl9.CiJXfE7hQwzMpHG6-Jj9hD79oUu3JbyZ_m25DbovYxU",
       "launch_id": "launch-post-log-large-cursor",
       "live_cursor": null,
       "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-large-cursor.jsonl",
@@ -428,12 +437,12 @@
     "payload": {
       "busy": false,
       "diag": {
-        "meta_refresh_ms": 0.061,
+        "meta_refresh_ms": 0.088,
         "post_log_recovery": true
       },
       "events": [
         {
-          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1yZWNvdmVyeS1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9wb3N0LWxvZy1yZWNvdmVyeS1wcm9vZi1sb2dzL3Bvc3QtbG9nLXJlY292ZXJ5LWZpeGVkLmpzb25sIiwicG9zIjoxMTF9.PkR1LOc-goRl4PBCTp0T2Le2rh_BUFirp1Xh1-RYJWs",
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1yZWNvdmVyeS1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9wb3N0LWxvZy1yZWNvdmVyeS1wcm9vZi1sb2dzL3Bvc3QtbG9nLXJlY292ZXJ5LWZpeGVkLmpzb25sIiwicG9zIjoxMTF9.KXiCgOkSjwHurDjTApkeohrO_ORKpSOA5EJmm_K2XVs",
           "role": "user",
           "text": "POST_LOG_BOUND_DEATH_SENTINEL",
           "ts": 1.0
@@ -443,7 +452,7 @@
           "message_class": "error",
           "role": "assistant",
           "text": "The backend process stopped before completing this turn.",
-          "ts": 1783355855.7030873
+          "ts": 1783359081.064825
         }
       ],
       "has_older": false,
@@ -519,11 +528,11 @@
     "unattended_cooldown_minutes": 5,
     "unattended_enabled": false,
     "unattended_remaining_injections": 10,
-    "updated_ts": 1783355855.7030873
+    "updated_ts": 1783359081.064825
   },
   "rediscovered_sessions": {
     "payload": {
-      "app_version": "b0e7e1dec4c3",
+      "app_version": "0c45256d427e",
       "new_session_defaults": {
         "backends": {
           "cc": {
@@ -647,7 +656,7 @@
           "unattended_cooldown_minutes": 5,
           "unattended_enabled": false,
           "unattended_remaining_injections": 10,
-          "updated_ts": 1783355855.7030873
+          "updated_ts": 1783359081.064825
         },
         {
           "agent_backend": "codex",
@@ -695,7 +704,7 @@
           "unattended_cooldown_minutes": 5,
           "unattended_enabled": false,
           "unattended_remaining_injections": 10,
-          "updated_ts": 1783355855.7027361
+          "updated_ts": 1783359081.0643454
         }
       ],
       "tmux_available": true,
@@ -708,7 +717,7 @@
       "busy": false,
       "events": [
         {
-          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1yZWNvdmVyeS1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9wb3N0LWxvZy1yZWNvdmVyeS1wcm9vZi1sb2dzL3Bvc3QtbG9nLXJlY292ZXJ5LWZpeGVkLmpzb25sIiwicG9zIjoxMTF9.PkR1LOc-goRl4PBCTp0T2Le2rh_BUFirp1Xh1-RYJWs",
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1yZWNvdmVyeS1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9wb3N0LWxvZy1yZWNvdmVyeS1wcm9vZi1sb2dzL3Bvc3QtbG9nLXJlY292ZXJ5LWZpeGVkLmpzb25sIiwicG9zIjoxMTF9.KXiCgOkSjwHurDjTApkeohrO_ORKpSOA5EJmm_K2XVs",
           "role": "user",
           "text": "POST_LOG_BOUND_DEATH_SENTINEL",
           "ts": 1.0
@@ -718,7 +727,7 @@
           "message_class": "error",
           "role": "assistant",
           "text": "The backend process stopped before completing this turn.",
-          "ts": 1783355855.7030873
+          "ts": 1783359081.064825
         }
       ],
       "has_older": false,
@@ -749,7 +758,7 @@
           "message_class": "error",
           "role": "assistant",
           "text": "The backend process stopped before completing this turn.",
-          "ts": 1783355855.7030873
+          "ts": 1783359081.064825
         }
       ],
       "has_older": false,
@@ -766,7 +775,7 @@
           "role": "assistant",
           "text": "The backend process stopped before completing this turn.",
           "text_truncated": false,
-          "ts": 1783355855.7030873
+          "ts": 1783359081.064825
         }
       ],
       "query": "The backend process stopped before completing this turn.",
@@ -793,7 +802,7 @@
           "message_class": "error",
           "role": "assistant",
           "text": "The backend process stopped before completing this turn.",
-          "ts": 1783355855.7030873
+          "ts": 1783359081.064825
         }
       ],
       "has_older": false,
@@ -805,10 +814,11 @@
       "match_count_truncated": false,
       "matches": [
         {
-          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1yZWNvdmVyeS1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9wb3N0LWxvZy1yZWNvdmVyeS1wcm9vZi1sb2dzL3Bvc3QtbG9nLXJlY292ZXJ5LWZpeGVkLmpzb25sIiwicG9zIjoxMTF9.PkR1LOc-goRl4PBCTp0T2Le2rh_BUFirp1Xh1-RYJWs",
+          "_before_byte": 111,
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1yZWNvdmVyeS1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9wb3N0LWxvZy1yZWNvdmVyeS1wcm9vZi1sb2dzL3Bvc3QtbG9nLXJlY292ZXJ5LWZpeGVkLmpzb25sIiwicG9zIjoxMTF9.KXiCgOkSjwHurDjTApkeohrO_ORKpSOA5EJmm_K2XVs",
+          "load_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1yZWNvdmVyeS1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9wb3N0LWxvZy1yZWNvdmVyeS1wcm9vZi1sb2dzL3Bvc3QtbG9nLXJlY292ZXJ5LWZpeGVkLmpzb25sIiwicG9zIjoyNjd9.U4mV1Wn0R7CfcUrxZGNto80bGlijqMLBWlJhfWuKfQk",
           "role": "user",
           "text": "POST_LOG_BOUND_DEATH_SENTINEL",
-          "text_truncated": false,
           "ts": 1.0
         }
       ],
@@ -832,7 +842,7 @@
       "busy": false,
       "events": [
         {
-          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1yZWNvdmVyeS1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9wb3N0LWxvZy1yZWNvdmVyeS1wcm9vZi1sb2dzL3Bvc3QtbG9nLXJlY292ZXJ5LWZpeGVkLmpzb25sIiwicG9zIjoxMTF9.PkR1LOc-goRl4PBCTp0T2Le2rh_BUFirp1Xh1-RYJWs",
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1yZWNvdmVyeS1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9wb3N0LWxvZy1yZWNvdmVyeS1wcm9vZi1sb2dzL3Bvc3QtbG9nLXJlY292ZXJ5LWZpeGVkLmpzb25sIiwicG9zIjoxMTF9.KXiCgOkSjwHurDjTApkeohrO_ORKpSOA5EJmm_K2XVs",
           "role": "user",
           "text": "POST_LOG_BOUND_DEATH_SENTINEL",
           "ts": 1.0
@@ -842,7 +852,7 @@
           "message_class": "error",
           "role": "assistant",
           "text": "The backend process stopped before completing this turn.",
-          "ts": 1783355855.7030873
+          "ts": 1783359081.064825
         }
       ],
       "has_older": false,
