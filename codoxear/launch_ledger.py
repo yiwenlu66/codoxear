@@ -5,9 +5,12 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from . import rollout_log as _rollout_log
 from .agent_backend import normalize_agent_backend
 from .broker_turn_state import _strip_ansi
 from .launch_config import provider_choice_for_settings
+from .post_log_recovery import POST_LOG_BOUND_BACKEND_STOPPED_TEXT
+from .post_log_recovery import record_is_post_log_bound_recovery
 from .util import append_launch_attempt
 from .util import read_launch_attempts
 from .util import redacted_launch_attempt_persist_record
@@ -15,6 +18,7 @@ from .util import redact_launch_failure_text
 
 
 ProviderChoiceFunc = Callable[[str | None, str | None], str]
+POST_LOG_RECOVERY_TRANSCRIPT_MAX_BYTES = 2 * 1024 * 1024
 
 
 def clean_optional_text(value: Any) -> str | None:
@@ -91,12 +95,32 @@ def launch_attempt_id(record: dict[str, Any]) -> str:
     return raw
 
 
+def launch_attempt_route_id(record: dict[str, Any]) -> str:
+    session_id = clean_optional_text(record.get("session_id"))
+    if session_id and record_is_post_log_bound_recovery(record):
+        return session_id
+    return launch_attempt_id(record)
+
+
 def latest_launch_attempt(launch_id: str, *, path: Path) -> dict[str, Any] | None:
     needle = str(launch_id or "").strip()
     if not needle:
         return None
     for rec in read_launch_attempts(path=path, max_records=100, max_age_s=24 * 3600):
         if launch_attempt_id(rec) == needle:
+            return rec
+    return None
+
+
+def latest_launch_attempt_for_session_id(session_id: str, *, path: Path) -> dict[str, Any] | None:
+    needle = str(session_id or "").strip()
+    if not needle:
+        return None
+    exact = latest_launch_attempt(needle, path=path)
+    if exact is not None:
+        return exact
+    for rec in read_launch_attempts(path=path, max_records=100, max_age_s=24 * 3600):
+        if launch_attempt_route_id(rec) == needle:
             return rec
     return None
 
@@ -131,10 +155,57 @@ def launch_failure_tail(record: dict[str, Any]) -> str:
     return ""
 
 
-def launch_attempt_transcript_payload(record: dict[str, Any]) -> dict[str, Any]:
+def _post_log_bound_transcript_payload(
+    record: dict[str, Any],
+    *,
+    ts_f: float,
+    max_bytes: int | None = None,
+) -> dict[str, Any]:
+    route_id = launch_attempt_route_id(record)
+    thread_id = clean_optional_text(record.get("thread_id")) or route_id or None
+    log_path_text = clean_optional_text(record.get("log_path"))
+    events: list[dict[str, Any]] = []
+    limit = max(1, int(max_bytes if isinstance(max_bytes, int) and max_bytes > 0 else POST_LOG_RECOVERY_TRANSCRIPT_MAX_BYTES))
+    if log_path_text:
+        path = Path(log_path_text)
+        if path.exists():
+            try:
+                size = int(path.stat().st_size)
+                records, _next_after = _rollout_log._read_jsonl_records_from_offset(path, 0, max_bytes=min(max(size, 1), limit))
+                events = _rollout_log._extract_positioned_chat_events(records)
+            except Exception:
+                events = []
+    events.append(
+        {
+            "role": "assistant",
+            "text": POST_LOG_BOUND_BACKEND_STOPPED_TEXT,
+            "ts": ts_f,
+            "message_class": "error",
+            "codoxear_lifecycle": "backend_stopped_after_log_bind",
+        }
+    )
+    return {
+        "transcript_state": "failed",
+        "thread_id": thread_id,
+        "log_path": log_path_text,
+        "live_cursor": None,
+        "history_cursor": None,
+        "events": events,
+        "has_older": False,
+        "busy": False,
+        "queue_len": 0,
+        "token": None,
+        "launch_id": launch_attempt_id(record),
+        "session_id": route_id,
+    }
+
+
+def launch_attempt_transcript_payload(record: dict[str, Any], *, max_bytes: int | None = None) -> dict[str, Any]:
     launch_id = launch_attempt_id(record)
     ts = record.get("updated_ts", record.get("created_ts", time.time()))
     ts_f = float(ts) if isinstance(ts, (int, float)) else time.time()
+    if record_is_post_log_bound_recovery(record):
+        return _post_log_bound_transcript_payload(record, ts_f=ts_f, max_bytes=max_bytes)
     events: list[dict[str, Any]] = []
     for msg in submitted_user_messages(record):
         events.append({"role": "user", "text": msg["text"], "ts": msg["ts"]})
@@ -176,8 +247,9 @@ def launch_attempt_transcript_for_session_id(
     default_agent_backend: str,
     unattended_default_idle_minutes: int,
     unattended_default_max_injections: int,
+    max_bytes: int | None = None,
 ) -> dict[str, Any] | None:
-    rec = latest_launch_attempt(session_id, path=path)
+    rec = latest_launch_attempt_for_session_id(session_id, path=path)
     if rec is None or rec.get("state") != "failed":
         return None
     row = launch_attempt_row(
@@ -188,7 +260,7 @@ def launch_attempt_transcript_for_session_id(
     )
     if row is None or row.get("session_id") != session_id:
         return None
-    return launch_attempt_transcript_payload(rec)
+    return launch_attempt_transcript_payload(rec, max_bytes=max_bytes)
 
 
 def launch_attempt_row(
@@ -200,6 +272,7 @@ def launch_attempt_row(
     provider_choice_func: ProviderChoiceFunc | None = None,
 ) -> dict[str, Any] | None:
     launch_id = launch_attempt_id(record)
+    route_id = launch_attempt_route_id(record)
     state = clean_optional_text(record.get("state")) or "starting"
     if state in {"live", "log_bound", "broker_spawned", "broker_meta_bound"}:
         return None
@@ -220,9 +293,9 @@ def launch_attempt_row(
     choose_provider = provider_choice_func or (lambda model_provider, preferred_auth_method: provider_choice_for_settings(model_provider=model_provider, preferred_auth_method=preferred_auth_method))
     failed = state == "failed"
     return {
-        "session_id": launch_id,
-        "thread_id": launch_id,
-        "pid": None,
+        "session_id": route_id,
+        "thread_id": clean_optional_text(record.get("thread_id")) or route_id,
+        "pid": record.get("agent_pid") if isinstance(record.get("agent_pid"), int) else None,
         "broker_pid": record.get("broker_pid") if isinstance(record.get("broker_pid"), int) else None,
         "agent_backend": backend,
         "owned": True,
@@ -230,7 +303,7 @@ def launch_attempt_row(
         "cwd": cwd,
         "start_ts": start_ts,
         "updated_ts": updated_ts,
-        "log_path": None,
+        "log_path": clean_optional_text(record.get("log_path")) if record_is_post_log_bound_recovery(record) else None,
         "state_busy": False,
         "queue_len": 0,
         "token": None,

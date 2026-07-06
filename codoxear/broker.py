@@ -47,6 +47,8 @@ from codoxear.broker_log_binding import _resolve_broker_log_binding
 from codoxear.broker_log_binding import _seed_broker_log_state
 from codoxear.broker_log_binding import cc_fallback_session_log
 from codoxear.broker_log_watcher import _apply_log_objects_to_state
+from codoxear.post_log_recovery import compose_post_log_bound_failure_record
+from codoxear.post_log_recovery import log_needs_post_log_bound_recovery
 from codoxear.broker_log_watcher import _clear_resume_delivery_mute_if_idle
 from codoxear.broker_log_watcher import _pop_key_queue_if_idle
 from codoxear.broker_metadata import _claimed_log_paths_from_sock_meta
@@ -947,28 +949,62 @@ class Broker:
         # pre-log agent exit is always recorded, even if some path assigned the
         # declared path without going through the watcher. ``log_path`` existing on
         # disk is the bound invariant shared with ``session_discovery.py``.
-        if (
-            st2
-            and OWNER_TAG == "web"
-            and (st2.log_path is None or not st2.log_path.exists())
-            and not st2.prelog_failure_recorded
-        ):
-            _record_launch_attempt(
-                {
-                    **_broker_launch_record(
-                        stage="agent_exit_before_log_bind",
-                        error=f"{AGENT_BIN} exited with status {exit_code} before a session log was bound",
+        if st2 and OWNER_TAG == "web" and not st2.prelog_failure_recorded:
+            if st2.log_path is None or not st2.log_path.exists():
+                _record_launch_attempt(
+                    {
+                        **_broker_launch_record(
+                            stage="agent_exit_before_log_bind",
+                            error=f"{AGENT_BIN} exited with status {exit_code} before a session log was bound",
+                            cwd=st2.cwd,
+                            start_ts=st2.start_ts,
+                            agent_pid=st2.codex_pid,
+                            log_path=st2.log_path,
+                            exit_code=exit_code,
+                        ),
+                        "agent_exit_status": exit_code,
+                        "broker_exit_status": exit_code,
+                        "pty_tail": st2.output_tail[-4000:],
+                    }
+                )
+            elif log_needs_post_log_bound_recovery(st2.log_path):
+                base = _broker_launch_record(
+                    stage="agent_exit_after_log_bind",
+                    error=f"{AGENT_BIN} exited with status {exit_code} before completing the bound transcript turn",
+                    cwd=st2.cwd,
+                    start_ts=st2.start_ts,
+                    agent_pid=st2.codex_pid,
+                    log_path=st2.log_path,
+                    exit_code=exit_code,
+                )
+                _record_launch_attempt(
+                    compose_post_log_bound_failure_record(
+                        session_id=st2.sock_path.stem if st2.sock_path else st2.session_id,
+                        thread_id=st2.session_id,
+                        launch_id=base.get("launch_id") if isinstance(base.get("launch_id"), str) else None,
+                        stage="agent_exit_after_log_bind",
+                        error=str(base.get("error")),
+                        agent_backend=AGENT_BACKEND,
                         cwd=st2.cwd,
-                        start_ts=st2.start_ts,
-                        agent_pid=st2.codex_pid,
                         log_path=st2.log_path,
-                        exit_code=exit_code,
-                    ),
-                    "agent_exit_status": exit_code,
-                    "broker_exit_status": exit_code,
-                    "pty_tail": st2.output_tail[-4000:],
-                }
-            )
+                        created_ts=st2.start_ts,
+                        broker_pid=os.getpid(),
+                        agent_pid=st2.codex_pid,
+                        transport=base.get("transport") if isinstance(base.get("transport"), str) else None,
+                        tmux_session=base.get("tmux_session") if isinstance(base.get("tmux_session"), str) else None,
+                        tmux_window=base.get("tmux_window") if isinstance(base.get("tmux_window"), str) else None,
+                        spawn_nonce=base.get("spawn_nonce") if isinstance(base.get("spawn_nonce"), str) else None,
+                        model_provider=MODEL_PROVIDER_OVERRIDE,
+                        preferred_auth_method=PREFERRED_AUTH_METHOD_OVERRIDE,
+                        model=MODEL_OVERRIDE,
+                        reasoning_effort=REASONING_EFFORT_OVERRIDE,
+                        service_tier=SERVICE_TIER_OVERRIDE,
+                        resume_session_id=base.get("resume_session_id") if isinstance(base.get("resume_session_id"), str) else None,
+                        agent_exit_status=exit_code,
+                        broker_exit_status=exit_code,
+                        pty_tail=st2.output_tail[-4000:],
+                    )
+                )
         if st2 and st2.sock_path:
             try:
                 st2.sock_path.unlink()

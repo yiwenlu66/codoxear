@@ -242,6 +242,7 @@ def discovery_deps_for_manager(manager: Any, caps: SessionManagerFactoryCaps) ->
         broker_interrupted_idle_from_state=caps.broker_interrupted_idle_from_state,
         sock_error_definitely_stale=caps.sock_error_definitely_stale,
         token_update_finder=caps.find_latest_token_update,
+        compute_idle_from_log=caps.compute_idle_from_log,
     )
 
 
@@ -277,6 +278,10 @@ def control_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCap
         broker_interrupted_idle=caps.broker_interrupted_idle_from_state,
         control_socket_call_error=caps.control_socket_call_error,
         commit_unknown_error=caps.commit_unknown_error,
+        latest_launch_attempt=caps.latest_launch_attempt,
+        record_launch_attempt=caps.record_launch_attempt,
+        compute_idle_from_log=caps.compute_idle_from_log,
+        stderr=caps.stderr,
     )
 
 
@@ -583,6 +588,7 @@ def prune_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps)
         record_launch_attempt=caps.record_launch_attempt,
         clear_deleted_session_state=manager._clear_deleted_session_state,
         unlink_quiet=caps.unlink_quiet,
+        compute_idle_from_log=caps.compute_idle_from_log,
         stderr=caps.stderr,
     )
 

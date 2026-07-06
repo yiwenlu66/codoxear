@@ -9,8 +9,12 @@ from codoxear.message_cursor import MessageCursorError
 from codoxear.message_cursor import decode_message_cursor
 from codoxear.message_cursor import encode_message_cursor
 from codoxear.message_routes import MessageRouteDeps
+from codoxear.message_routes import handle_messages_export
+from codoxear.message_routes import handle_messages_history
 from codoxear.message_routes import handle_messages_live
+from codoxear.message_routes import handle_messages_search
 from codoxear.message_routes import handle_messages_tail
+from codoxear.post_log_recovery import POST_LOG_BOUND_BACKEND_STOPPED_TEXT
 from codoxear.session_model import Session
 
 # Fixed HMAC secret so encode/decode are exercised against the real signing
@@ -248,6 +252,116 @@ def test_messages_tail_missing_session_returns_launch_payload_or_404() -> None:
         deps=deps,
     )
     assert responses == [(200, {"transcript_state": "pending_bind", "events": []})]
+
+
+def _post_log_recovery_payload(log_path: Path) -> dict[str, object]:
+    return {
+        "transcript_state": "failed",
+        "session_id": "broker-123",
+        "thread_id": "thread-recovered",
+        "log_path": str(log_path),
+        "live_cursor": None,
+        "history_cursor": None,
+        "events": [
+            {"role": "user", "text": "POST_LOG_BOUND_DEATH_SENTINEL", "ts": 1.0, "_before_byte": 0},
+            {
+                "role": "assistant",
+                "text": POST_LOG_BOUND_BACKEND_STOPPED_TEXT,
+                "ts": 2.0,
+                "message_class": "error",
+                "codoxear_lifecycle": "backend_stopped_after_log_bind",
+            },
+        ],
+        "has_older": False,
+        "busy": False,
+        "queue_len": 0,
+        "token": None,
+    }
+
+
+class _MissingManager:
+    def refresh_session_meta(self, _sid: str) -> None:
+        return None
+
+    def get_session(self, _sid: str):
+        return None
+
+    def _attach_notification_texts(self, events):
+        return events
+
+    def mark_log_delta(self, *args, **kwargs) -> None:
+        raise AssertionError("missing-session recovery route must not mutate live log state")
+
+
+def test_post_log_recovery_missing_session_routes_share_payload() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "post-log.jsonl"
+        log_path.write_text('{"type":"session","id":"thread-recovered"}\n', encoding="utf-8")
+        payload = _post_log_recovery_payload(log_path)
+        deps, responses, metrics = _deps(launch_attempt_transcript_for_session_id=lambda _sid: payload)
+        manager = _MissingManager()
+
+        handle_messages_tail(_FakeHandler(), session_id="broker-123", query="limit=20", manager=manager, deps=deps)
+        tail_status, tail_body = responses.pop()
+        assert tail_status == 200
+        assert [ev["role"] for ev in tail_body["events"]] == ["user", "assistant"]
+        assert tail_body["events"][0]["text"] == "POST_LOG_BOUND_DEATH_SENTINEL"
+        assert "_before_byte" not in tail_body["events"][0]
+        assert isinstance(tail_body["events"][0].get("history_cursor"), str)
+        assert tail_body["events"][1]["message_class"] == "error"
+        assert tail_body["busy"] is False
+        assert metrics and metrics[-1][0] == "api_messages_init_ms"
+
+        handle_messages_search(_FakeHandler(), session_id="broker-123", query="q=POST_LOG_BOUND_DEATH_SENTINEL&limit=20", manager=manager, deps=deps)
+        search_status, search_body = responses.pop()
+        assert search_status == 200
+        assert search_body["match_count"] == 1
+        assert search_body["matches"][0]["text"] == "POST_LOG_BOUND_DEATH_SENTINEL"
+        assert isinstance(search_body["matches"][0].get("history_cursor"), str)
+
+        handle_messages_search(_FakeHandler(), session_id="broker-123", query="q=stopped before completing&limit=20", manager=manager, deps=deps)
+        error_search_status, error_search_body = responses.pop()
+        assert error_search_status == 200
+        assert error_search_body["match_count"] == 1
+        assert error_search_body["matches"][0]["message_class"] == "error"
+
+        handle_messages_export(_FakeHandler(), session_id="broker-123", manager=manager, deps=deps)
+        export_status, export_body = responses.pop()
+        assert export_status == 200
+        assert export_body["event_count"] == 2
+        assert [ev["role"] for ev in export_body["events"]] == ["user", "assistant"]
+
+        handle_messages_history(_FakeHandler(), session_id="broker-123", query="cursor=unused", manager=manager, deps=deps)
+        history_status, history_body = responses.pop()
+        assert history_status == 200
+        assert history_body["has_older"] is False
+        assert [ev["role"] for ev in history_body["events"]] == ["user", "assistant"]
+
+        handle_messages_live(_FakeHandler(), session_id="broker-123", query="cursor=unused", manager=manager, deps=deps)
+        live_status, live_body = responses.pop()
+        assert live_status == 200
+        assert live_body["live_cursor"] is None
+        assert live_body["turn_end"] is True
+        assert live_body["busy"] is False
+        assert [ev["role"] for ev in live_body["events"]] == ["user", "assistant"]
+
+
+def test_messages_export_missing_recovery_session_retains_size_cap() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "oversize.jsonl"
+        log_path.write_text("x" * 32, encoding="utf-8")
+        payload = _post_log_recovery_payload(log_path)
+        deps, responses, _metrics = _deps(
+            launch_attempt_transcript_for_session_id=lambda _sid, **_kw: payload,
+            transcript_export_max_bytes=8,
+        )
+
+        handle_messages_export(_FakeHandler(), session_id="broker-123", manager=_MissingManager(), deps=deps)
+
+    assert responses
+    status, body = responses[-1]
+    assert status == 413
+    assert body["max_bytes"] == 8
 
 
 def test_messages_live_requires_cursor() -> None:

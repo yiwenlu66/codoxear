@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Callable, Mapping
 import time
 import urllib.parse
@@ -25,7 +26,7 @@ LIVE_POLL_READ_MAX_BYTES = 2 * 1024 * 1024
 class MessageRouteDeps:
     require_auth: Callable[[Any], bool]
     json_response: JsonResponse
-    launch_attempt_transcript_for_session_id: Callable[[str], dict[str, Any] | None]
+    launch_attempt_transcript_for_session_id: Callable[..., dict[str, Any] | None]
     transcript_export_max_bytes: int
     transcript_search_max_line_bytes: int
     decode_message_cursor: Callable[..., int]
@@ -76,6 +77,57 @@ def _read_chat_export_events(log_path: Path, *, max_bytes: int) -> list[dict[str
     return _rollout_log._extract_positioned_chat_events(records)
 
 
+def _search_launch_payload_events(payload: dict[str, Any], query: str, *, limit: int, text_max: int) -> tuple[int, list[dict[str, Any]]]:
+    needle = query.strip().casefold()
+    if not needle:
+        return 0, []
+    matches: list[dict[str, Any]] = []
+    count = 0
+    for event in payload.get("events") if isinstance(payload.get("events"), list) else []:
+        if not isinstance(event, dict):
+            continue
+        text = event.get("text")
+        if not isinstance(text, str) or needle not in text.casefold():
+            continue
+        count += 1
+        if len(matches) >= max(0, int(limit)):
+            continue
+        item = dict(event)
+        clipped = _clip_search_match_text([{"text": text}], text_max, query=query)[0]
+        item["text"] = clipped.get("text", text)
+        item["text_truncated"] = bool(clipped.get("text_truncated"))
+        matches.append(item)
+    return count, matches
+
+
+def _launch_payload_for_missing_session(
+    deps: MessageRouteDeps,
+    session_id: str,
+    *,
+    max_bytes: int | None = None,
+) -> dict[str, Any] | None:
+    if max_bytes is None:
+        return deps.launch_attempt_transcript_for_session_id(session_id)
+    try:
+        return deps.launch_attempt_transcript_for_session_id(session_id, max_bytes=max_bytes)
+    except TypeError:
+        return deps.launch_attempt_transcript_for_session_id(session_id)
+
+
+def _launch_payload_cursor_session(payload: dict[str, Any]) -> Any:
+    log_path_raw = payload.get("log_path")
+    log_path = Path(log_path_raw) if isinstance(log_path_raw, str) and log_path_raw else None
+    thread_id = payload.get("thread_id") if isinstance(payload.get("thread_id"), str) else None
+    if not thread_id:
+        thread_id = payload.get("session_id") if isinstance(payload.get("session_id"), str) else ""
+    return SimpleNamespace(thread_id=thread_id, log_path=log_path)
+
+
+def _launch_payload_events_with_cursors(payload: dict[str, Any], *, encode_cursor: Callable[..., str]) -> list[dict[str, Any]]:
+    events = payload.get("events") if isinstance(payload.get("events"), list) else []
+    return _attach_history_cursors_impl(list(events), session=_launch_payload_cursor_session(payload), encode_cursor=encode_cursor)
+
+
 def _attach_search_load_cursors(matches: list[dict[str, Any]], *, session: Any, encode_cursor: Callable[..., str]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for match in matches:
@@ -121,6 +173,31 @@ def handle_messages_export(handler: Any, *, session_id: str, query: str = "", ma
     manager.refresh_session_meta(session_id)
     s = manager.get_session(session_id)
     if not s:
+        launch_payload = _launch_payload_for_missing_session(
+            deps,
+            session_id,
+            max_bytes=deps.transcript_export_max_bytes,
+        )
+        if launch_payload is not None:
+            log_path_raw = launch_payload.get("log_path")
+            if isinstance(log_path_raw, str) and log_path_raw:
+                log_path = Path(log_path_raw)
+                if log_path.exists():
+                    size = int(log_path.stat().st_size)
+                    limit = max(1, int(deps.transcript_export_max_bytes))
+                    if size > limit:
+                        deps.json_response(
+                            handler,
+                            413,
+                            {
+                                "error": f"transcript log is too large to export ({size} bytes > {limit} bytes)",
+                                "max_bytes": limit,
+                            },
+                        )
+                        return
+            events = launch_payload.get("events") if isinstance(launch_payload.get("events"), list) else []
+            deps.json_response(handler, 200, {**launch_payload, "events": events, "event_count": len(events)})
+            return
         deps.json_response(handler, 404, {"error": "unknown session"})
         return
     transcript = _message_transcript_identity(s)
@@ -142,9 +219,6 @@ def handle_messages_search(handler: Any, *, session_id: str, query: str, manager
         return
     manager.refresh_session_meta(session_id)
     s = manager.get_session(session_id)
-    if not s:
-        deps.json_response(handler, 404, {"error": "unknown session"})
-        return
     qs = urllib.parse.parse_qs(query)
     search_query = (qs.get("q") or [""])[0]
     match_limit, limit_error = _parse_bounded_query_int(qs, "limit", default=20, min_value=0, max_value=100)
@@ -168,6 +242,40 @@ def handle_messages_search(handler: Any, *, session_id: str, query: str, manager
         return
     before_byte: int | None = None
     before_q = qs.get("before")
+
+    if not s:
+        launch_payload = _launch_payload_for_missing_session(deps, session_id)
+        if launch_payload is not None:
+            if not isinstance(search_query, str) or not search_query.strip():
+                deps.json_response(handler, 200, {**launch_payload, "query": "", "match_count": 0, "match_count_truncated": False, "matches": []})
+                return
+            payload_with_cursors = {
+                **launch_payload,
+                "events": _launch_payload_events_with_cursors(launch_payload, encode_cursor=deps.encode_message_cursor),
+            }
+            match_count, matches = _search_launch_payload_events(
+                payload_with_cursors,
+                search_query,
+                limit=match_limit,
+                text_max=text_max,
+            )
+            if order == "latest":
+                matches = list(reversed(matches))
+            deps.json_response(
+                handler,
+                200,
+                {
+                    **launch_payload,
+                    "query": search_query.strip(),
+                    "match_count": match_count,
+                    "match_count_truncated": False,
+                    "matches": matches,
+                },
+            )
+            return
+        deps.json_response(handler, 404, {"error": "unknown session"})
+        return
+
     if before_q is not None and before_q and before_q[0].strip():
         try:
             before_byte = deps.decode_message_cursor(before_q[0], kind="history", session=s)
@@ -204,9 +312,10 @@ def handle_messages_tail(handler: Any, *, session_id: str, query: str, manager: 
     manager.refresh_session_meta(session_id)
     s = manager.get_session(session_id)
     if not s:
-        launch_payload = deps.launch_attempt_transcript_for_session_id(session_id)
+        launch_payload = _launch_payload_for_missing_session(deps, session_id)
         if launch_payload is not None:
-            deps.json_response(handler, 200, launch_payload)
+            events = _launch_payload_events_with_cursors(launch_payload, encode_cursor=deps.encode_message_cursor)
+            deps.json_response(handler, 200, {**launch_payload, "events": events})
             deps.record_metric("api_messages_init_ms", (time.perf_counter() - t0_total) * 1000.0)
             return
         deps.json_response(handler, 404, {"error": "unknown session"})
@@ -266,6 +375,23 @@ def handle_messages_history(handler: Any, *, session_id: str, query: str, manage
     manager.refresh_session_meta(session_id)
     s = manager.get_session(session_id)
     if not s:
+        launch_payload = _launch_payload_for_missing_session(deps, session_id)
+        if launch_payload is not None:
+            events = _launch_payload_events_with_cursors(launch_payload, encode_cursor=deps.encode_message_cursor)
+            deps.json_response(
+                handler,
+                200,
+                {
+                    **launch_payload,
+                    "history_cursor": None,
+                    "events": events,
+                    "has_older": False,
+                    "busy": False,
+                    "queue_len": 0,
+                    "token": None,
+                },
+            )
+            return
         deps.json_response(handler, 404, {"error": "unknown session"})
         return
     qs = urllib.parse.parse_qs(query)
@@ -330,6 +456,28 @@ def handle_messages_live(handler: Any, *, session_id: str, query: str, manager: 
     dt_meta_ms = (time.perf_counter() - t0_meta) * 1000.0
     s = manager.get_session(session_id)
     if not s:
+        launch_payload = _launch_payload_for_missing_session(deps, session_id)
+        if launch_payload is not None:
+            events = _launch_payload_events_with_cursors(launch_payload, encode_cursor=deps.encode_message_cursor)
+            deps.json_response(
+                handler,
+                200,
+                {
+                    **launch_payload,
+                    "live_cursor": None,
+                    "events": events,
+                    "meta_delta": {"thinking": 0, "tool": 0, "system": 0},
+                    "turn_start": False,
+                    "turn_end": True,
+                    "turn_aborted": False,
+                    "diag": {"post_log_recovery": True, "meta_refresh_ms": round(dt_meta_ms, 3)},
+                    "busy": False,
+                    "queue_len": 0,
+                    "token": None,
+                },
+            )
+            deps.record_metric("api_messages_poll_ms", (time.perf_counter() - t0_total) * 1000.0)
+            return
         deps.json_response(handler, 404, {"error": "unknown session"})
         return
     qs = urllib.parse.parse_qs(query)

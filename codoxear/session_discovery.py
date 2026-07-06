@@ -8,6 +8,8 @@ import sys
 from .agent_backend import normalize_agent_backend
 from .launch_config import clean_optional_text
 from .launch_config import normalize_requested_service_tier
+from .post_log_recovery import compose_post_log_bound_failure_record
+from .post_log_recovery import log_needs_post_log_bound_recovery
 from .sidecar_metadata import ignored_rollout_paths as _metadata_ignored_rollout_paths
 from .sidecar_metadata import key_write_errors_supported as _metadata_key_write_errors_supported
 from .sidecar_metadata import log_invalid as _log_invalid_sidecar_metadata
@@ -85,6 +87,7 @@ BrokerInterruptedIdleFunc = Callable[[dict[str, Any]], bool]
 SockErrorStaleFunc = Callable[[BaseException], bool]
 PidAliveFunc = Callable[[int], bool]
 TokenFinderFunc = Callable[[Path], dict[str, Any] | None]
+ComputeIdleFromLogFunc = Callable[[Path], bool | None]
 
 
 @dataclass(frozen=True)
@@ -100,6 +103,55 @@ class DiscoveryDeps:
     broker_interrupted_idle_from_state: BrokerInterruptedIdleFunc
     sock_error_definitely_stale: SockErrorStaleFunc
     token_update_finder: TokenFinderFunc
+    compute_idle_from_log: ComputeIdleFromLogFunc | None = None
+
+
+def _post_log_bound_failure_record_from_meta(
+    *,
+    session_id: str,
+    thread_id: str,
+    meta: dict[str, Any],
+    log_path: Path | None,
+    owned: bool,
+    launch_id: str | None,
+    agent_backend: str,
+    broker_pid: int,
+    codex_pid: int,
+    transport: str | None,
+    tmux_session: str | None,
+    tmux_window: str | None,
+    spawn_nonce: str | None,
+    deps: DiscoveryDeps,
+    stage: str,
+    error: str,
+) -> dict[str, Any] | None:
+    if not owned or log_path is None:
+        return None
+    if not log_needs_post_log_bound_recovery(log_path, compute_idle_from_log=deps.compute_idle_from_log):
+        return None
+    return compose_post_log_bound_failure_record(
+        session_id=session_id,
+        thread_id=thread_id,
+        launch_id=launch_id,
+        stage=stage,
+        error=error,
+        agent_backend=agent_backend,
+        cwd=meta.get("cwd") if isinstance(meta.get("cwd"), str) else None,
+        log_path=log_path,
+        created_ts=meta.get("start_ts"),
+        broker_pid=broker_pid,
+        agent_pid=codex_pid,
+        transport=transport,
+        tmux_session=tmux_session,
+        tmux_window=tmux_window,
+        spawn_nonce=spawn_nonce,
+        model_provider=meta.get("model_provider") if isinstance(meta.get("model_provider"), str) else None,
+        preferred_auth_method=meta.get("preferred_auth_method") if isinstance(meta.get("preferred_auth_method"), str) else None,
+        model=meta.get("model") if isinstance(meta.get("model"), str) else None,
+        reasoning_effort=meta.get("reasoning_effort") if isinstance(meta.get("reasoning_effort"), str) else None,
+        service_tier=meta.get("service_tier") if isinstance(meta.get("service_tier"), str) else None,
+        resume_session_id=meta.get("resume_session_id") if isinstance(meta.get("resume_session_id"), str) else None,
+    )
 
 
 def discover_sessions(
@@ -211,6 +263,24 @@ def discover_sessions(
                         sock_path=sock,
                         meta_path=meta_path,
                         unhide_session=True,
+                        failure_record=_post_log_bound_failure_record_from_meta(
+                            session_id=session_id,
+                            thread_id=thread_id,
+                            meta=meta,
+                            log_path=log_path,
+                            owned=owned,
+                            launch_id=launch_id,
+                            agent_backend=agent_backend,
+                            broker_pid=broker_pid,
+                            codex_pid=codex_pid,
+                            transport=transport,
+                            tmux_session=tmux_session,
+                            tmux_window=tmux_window,
+                            spawn_nonce=spawn_nonce,
+                            deps=deps,
+                            stage="broker_exit_after_log_bind",
+                            error="broker sidecar went stale after binding a transcript log before the turn completed",
+                        ),
                     )
                 )
             continue
@@ -232,6 +302,24 @@ def discover_sessions(
                         session_id=session_id,
                         sock_path=sock,
                         meta_path=meta_path,
+                        failure_record=_post_log_bound_failure_record_from_meta(
+                            session_id=session_id,
+                            thread_id=thread_id,
+                            meta=meta,
+                            log_path=log_path,
+                            owned=owned,
+                            launch_id=launch_id,
+                            agent_backend=agent_backend,
+                            broker_pid=broker_pid,
+                            codex_pid=codex_pid,
+                            transport=transport,
+                            tmux_session=tmux_session,
+                            tmux_window=tmux_window,
+                            spawn_nonce=spawn_nonce,
+                            deps=deps,
+                            stage="broker_exit_after_log_bind",
+                            error="broker control socket went stale after binding a transcript log before the turn completed",
+                        ),
                     )
                 )
             continue

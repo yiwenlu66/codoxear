@@ -361,13 +361,14 @@ _launch_failure_tail = _launch_failure_tail_impl
 _launch_attempt_transcript_payload = _launch_attempt_transcript_payload_impl
 
 
-def _launch_attempt_transcript_for_session_id(session_id: str) -> dict[str, Any] | None:
+def _launch_attempt_transcript_for_session_id(session_id: str, *, max_bytes: int | None = None) -> dict[str, Any] | None:
     return _launch_attempt_transcript_for_session_id_impl(
         session_id,
         path=LAUNCH_ATTEMPTS_PATH,
         default_agent_backend=DEFAULT_AGENT_BACKEND,
         unattended_default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
         unattended_default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
+        max_bytes=max_bytes,
     )
 
 

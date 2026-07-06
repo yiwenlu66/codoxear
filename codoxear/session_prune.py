@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any, Callable, MutableMapping
 import sys
 
+from .post_log_recovery import compose_post_log_bound_failure_record
+from .post_log_recovery import log_needs_post_log_bound_recovery
 from .session_model import Session
 from .session_runtime import set_session_interrupted_idle
 
@@ -27,6 +29,7 @@ class SessionPruneCoordinator:
     record_launch_attempt: Callable[[dict[str, Any]], None]
     clear_deleted_session_state: Callable[[str], None]
     unlink_quiet: Callable[[Path], None]
+    compute_idle_from_log: Callable[[Path], bool | None] | None = None
     stderr: Any = sys.stderr
 
     def refresh_session_state(self, session_id: str, sock_path: Path, timeout_s: float = 0.4) -> tuple[bool, BaseException | None]:
@@ -87,7 +90,41 @@ class SessionPruneCoordinator:
         if session.launch_id:
             latest_launch_record = self.latest_launch_attempt(session.launch_id)
             existing_launch_failed = bool(latest_launch_record and latest_launch_record.get("state") == "failed")
-        if not (session.owned and session.log_path is None and not existing_launch_failed):
+        if existing_launch_failed or not session.owned:
+            return
+        if session.log_path is not None and session.log_path.exists():
+            if not log_needs_post_log_bound_recovery(session.log_path, compute_idle_from_log=self.compute_idle_from_log):
+                return
+            try:
+                self.record_launch_attempt(
+                    compose_post_log_bound_failure_record(
+                        session_id=sid,
+                        thread_id=session.thread_id,
+                        launch_id=session.launch_id,
+                        stage="session_pruned_after_log_bind",
+                        error="web-owned session process disappeared before completing the bound transcript turn",
+                        agent_backend=session.agent_backend,
+                        cwd=session.cwd,
+                        log_path=session.log_path,
+                        created_ts=session.start_ts,
+                        broker_pid=session.broker_pid,
+                        agent_pid=session.codex_pid,
+                        transport=session.transport,
+                        tmux_session=session.tmux_session,
+                        tmux_window=session.tmux_window,
+                        spawn_nonce=session.spawn_nonce,
+                        model_provider=session.model_provider,
+                        preferred_auth_method=session.preferred_auth_method,
+                        model=session.model,
+                        reasoning_effort=session.reasoning_effort,
+                        service_tier=session.service_tier,
+                    )
+                )
+            except Exception as exc:
+                self.stderr.write(f"error: failed to record post-log pruned recovery for {sid}: {type(exc).__name__}: {exc}\n")
+                self.stderr.flush()
+            return
+        if session.log_path is not None:
             return
         try:
             tmux_snapshot: dict[str, Any] = {}

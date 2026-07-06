@@ -55,6 +55,8 @@ from codoxear.launch_ledger import launch_failure_tail
 from codoxear.launch_ledger import latest_launch_attempt
 from codoxear.launch_ledger import record_launch_attempt
 from codoxear.launch_ledger import submitted_user_messages
+from codoxear.post_log_recovery import POST_LOG_BOUND_BACKEND_STOPPED_TEXT
+from codoxear.post_log_recovery import log_needs_post_log_bound_recovery
 from codoxear.session_errors import SessionLaunchError
 from codoxear.session_lifecycle import SessionLifecycleCoordinator
 from codoxear.session_list import SessionListCoordinator
@@ -328,6 +330,94 @@ class TestLaunchProvenance(unittest.TestCase):
         self.assertEqual(payload["events"][1]["message_class"], "error")
         self.assertIn("Agent exit status: 1", payload["events"][1]["text"])
         self.assertIn("fatal: provider unavailable", payload["events"][1]["text"])
+
+    def test_post_log_bound_recovery_row_uses_routing_session_id_and_preserves_thread(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            log_path = root / "post-log.jsonl"
+            log_path.write_text(
+                '{"type":"event_msg","ts":1.0,"payload":{"type":"user_message","message":"POST_LOG_BOUND_DEATH_SENTINEL"}}\n',
+                encoding="utf-8",
+            )
+            rec = {
+                "launch_id": "launch-post-log",
+                "session_id": "broker-123",
+                "thread_id": "rollout-thread-abc",
+                "state": "failed",
+                "stage": "session_pruned_after_log_bind",
+                "error": "backend stopped after binding a transcript log",
+                "agent_backend": "codex",
+                "cwd": str(root),
+                "created_ts": time.time(),
+                "updated_ts": time.time() + 1.0,
+                "broker_pid": 123,
+                "agent_pid": 124,
+                "log_path": str(log_path),
+            }
+
+            row = _launch_attempt_row_from_record(rec)
+            payload = launch_attempt_transcript_payload(rec)
+
+        assert row is not None
+        self.assertEqual(row["session_id"], "broker-123")
+        self.assertEqual(row["thread_id"], "rollout-thread-abc")
+        self.assertEqual(row["launch_id"], "launch-post-log")
+        self.assertEqual(row["log_path"], str(log_path))
+        self.assertEqual(row["busy"], False)
+        self.assertEqual(payload["session_id"], "broker-123")
+        self.assertEqual(payload["thread_id"], "rollout-thread-abc")
+        self.assertEqual([ev["role"] for ev in payload["events"]], ["user", "assistant"])
+        self.assertEqual(payload["events"][0]["text"], "POST_LOG_BOUND_DEATH_SENTINEL")
+        self.assertEqual(payload["events"][1]["message_class"], "error")
+        self.assertIn("stopped before completing", payload["events"][1]["text"])
+
+    def test_pre_log_failed_launch_row_still_uses_launch_id(self) -> None:
+        rec = {
+            "launch_id": "launch-pre-log",
+            "session_id": "broker-should-not-route",
+            "state": "failed",
+            "stage": "agent_exit_before_log_bind",
+            "error": "agent exited before log bind",
+            "agent_backend": "codex",
+            "cwd": "/tmp/work",
+            "created_ts": time.time(),
+        }
+
+        row = _launch_attempt_row_from_record(rec)
+
+        assert row is not None
+        self.assertEqual(row["session_id"], "launch-pre-log")
+        self.assertEqual(row["thread_id"], "launch-pre-log")
+        self.assertIsNone(row["log_path"])
+
+    def test_post_log_recovery_needed_only_for_non_idle_bound_logs(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            incomplete = root / "incomplete.jsonl"
+            incomplete.write_text(
+                '{"type":"event_msg","ts":1.0,"payload":{"type":"user_message","message":"unfinished"}}\n',
+                encoding="utf-8",
+            )
+            complete = root / "complete.jsonl"
+            complete.write_text(
+                "".join(
+                    [
+                        '{"type":"event_msg","ts":1.0,"payload":{"type":"user_message","message":"done"}}\n',
+                        '{"type":"event_msg","ts":2.0,"payload":{"type":"agent_message","message":"answer","phase":"final_answer"}}\n',
+                        '{"type":"event_msg","ts":3.0,"payload":{"type":"task_complete","turn_id":"done","last_agent_message":"answer"}}\n',
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertTrue(log_needs_post_log_bound_recovery(incomplete))
+            self.assertFalse(log_needs_post_log_bound_recovery(complete))
+
+    def test_broker_post_log_recovery_source_uses_socket_route_identity(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "codoxear" / "broker.py").read_text(encoding="utf-8")
+
+        self.assertIn("session_id=st2.sock_path.stem if st2.sock_path else st2.session_id", source)
+        self.assertIn("thread_id=st2.session_id", source)
 
     def test_failed_launch_transcript_strips_ansi_from_terminal_tail(self) -> None:
         now = time.time()
@@ -633,6 +723,79 @@ class TestLaunchProvenance(unittest.TestCase):
 
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["stage"], "shell_startup")
+
+    def test_prune_records_post_log_bound_recovery_for_incomplete_dead_session(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            ledger = root / "launches.jsonl"
+            lock = threading.Lock()
+            now = time.time()
+            log_path = root / "post-log.jsonl"
+            log_path.write_text(
+                '{"type":"event_msg","ts":1.0,"payload":{"type":"user_message","message":"POST_LOG_BOUND_DEATH_SENTINEL"}}\n',
+                encoding="utf-8",
+            )
+            append_launch_attempt(
+                {
+                    "launch_id": "launch-post-log-prune",
+                    "state": "log_bound",
+                    "agent_backend": "codex",
+                    "cwd": "/tmp/work",
+                    "created_ts": now,
+                    "updated_ts": now,
+                    "log_path": str(log_path),
+                },
+                path=ledger,
+            )
+            sessions = {
+                "broker-dead": Session(
+                    session_id="broker-dead",
+                    thread_id="rollout-thread",
+                    broker_pid=1234,
+                    codex_pid=1235,
+                    agent_backend="codex",
+                    owned=True,
+                    start_ts=now,
+                    cwd="/tmp/work",
+                    log_path=log_path,
+                    sock_path=root / "missing.sock",
+                    launch_id="launch-post-log-prune",
+                )
+            }
+            prune = SessionPruneCoordinator(
+                lock=lock,
+                sessions=lambda: sessions,
+                sock_call=lambda *a, **kw: {"ok": True},
+                broker_busy_queue_from_state=lambda _state: (False, 0),
+                broker_interrupted_idle_from_state=lambda _state: False,
+                sock_error_definitely_stale=lambda _exc: True,
+                pid_alive=lambda _pid: False,
+                latest_launch_attempt=lambda launch_id: latest_launch_attempt(launch_id, path=ledger),
+                submitted_user_messages=submitted_user_messages,
+                launch_failure_tail=launch_failure_tail,
+                which_tmux=lambda _name: None,
+                tmux_pane_snapshot=lambda *a, **kw: {},
+                clean_optional_text=server._clean_optional_text,
+                record_launch_attempt=lambda rec: record_launch_attempt(rec, path=ledger, stderr=io.StringIO()),
+                clear_deleted_session_state=lambda _sid: None,
+                unlink_quiet=lambda _p: None,
+            )
+
+            prune.prune_dead_sessions()
+            rows = read_launch_attempts(path=ledger, max_records=10, max_age_s=3600)
+            row = _launch_attempt_row_from_record(rows[0])
+            payload = launch_attempt_transcript_payload(rows[0])
+
+        self.assertEqual(rows[0]["state"], "failed")
+        self.assertEqual(rows[0]["stage"], "session_pruned_after_log_bind")
+        self.assertEqual(rows[0]["session_id"], "broker-dead")
+        self.assertEqual(rows[0]["thread_id"], "rollout-thread")
+        assert row is not None
+        self.assertEqual(row["session_id"], "broker-dead")
+        self.assertEqual(row["busy"], False)
+        self.assertEqual([ev["role"] for ev in payload["events"]], ["user", "assistant"])
+        self.assertEqual(payload["events"][0]["text"], "POST_LOG_BOUND_DEATH_SENTINEL")
+        self.assertEqual(payload["events"][1]["message_class"], "error")
 
     def test_prune_carries_prelog_user_message_and_tmux_tail(self) -> None:
         # The tmux binary lookup (which_tmux) and pane capture
