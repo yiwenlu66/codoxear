@@ -18,6 +18,7 @@ def session_store_paths(
     commit_unknown_sends: Path,
     recent_cwds: Path,
     unattended: Path,
+    uploads_root: Path | None = None,
 ) -> SessionStorePaths:
     return SessionStorePaths(
         aliases=aliases,
@@ -29,6 +30,7 @@ def session_store_paths(
         commit_unknown_sends=commit_unknown_sends,
         recent_cwds=recent_cwds,
         unattended=unattended,
+        uploads_root=uploads_root,
     )
 
 

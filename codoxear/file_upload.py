@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 from typing import Callable
 
@@ -44,6 +45,55 @@ def stage_uploaded_file(
     out_path.write_bytes(data)
     os.chmod(out_path, 0o600)
     return out_path
+
+
+def remove_session_uploads(upload_root: Path, session_id: str) -> bool:
+    """Remove the per-session staged-attachment entry ``<upload_root>/<session_id>``.
+
+    This is the cleanup counterpart to :func:`stage_uploaded_file`: when a session
+    is deleted, the staged attachment bytes written under its session-scoped
+    subdirectory must not outlive it. ``session_id`` is validated strictly so a
+    blank or traversal-bearing id can never widen the removal to the upload root
+    or escape it.
+
+    Only the single ``<sid>`` directory entry is removed: a symlink entry is
+    unlinked itself (never followed, so a tampered link resolving outside the
+    upload root cannot delete or damage its target); a real directory is removed
+    recursively; any other file entry is unlinked. Returns ``True`` when an entry
+    was removed and ``False`` when the session had no staged-upload entry.
+    """
+    if not isinstance(upload_root, (str, Path)):
+        raise ValueError("upload_root required")
+    if not isinstance(session_id, str) or not session_id.strip():
+        raise ValueError("session_id required")
+    sid = session_id.strip()
+    if sid in (".", "..") or "/" in sid or "\\" in sid or os.sep in sid:
+        raise ValueError("invalid session_id")
+    # Operate on the literal path; do NOT resolve() the target, because
+    # resolving would follow a symlink and either widen the removal onto the
+    # link's destination or (via the parent check below) refuse to clean up a
+    # tampered entry, leaving stale bytes behind. ``sid`` carries no path
+    # separators and is not ``.``/``..``, so ``root / sid`` is by construction a
+    # direct child entry of ``root``; the parent check is a redundant guard.
+    root = Path(upload_root)
+    target = root / sid
+    if target.parent != root:
+        raise ValueError("invalid session_id")
+    if target.is_symlink():
+        # Unlink the link itself; never follow it, even if it resolves outside
+        # the upload root.
+        target.unlink()
+        return True
+    if not target.exists():
+        return False
+    if target.is_dir():
+        shutil.rmtree(target)
+    else:
+        # A stray non-directory entry where the session dir should be is not a
+        # valid staged-upload tree; remove it loudly rather than leaving bytes
+        # behind or silently recursing into something unexpected.
+        target.unlink()
+    return True
 
 
 def attachment_inject_text(attachment_index: int, path: Path) -> str:

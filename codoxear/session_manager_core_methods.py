@@ -18,6 +18,7 @@ def session_store_paths_for_server(server: Any) -> Any:
         commit_unknown_sends=server.COMMIT_UNKNOWN_SENDS_PATH,
         recent_cwds=server.RECENT_CWD_PATH,
         unattended=server.UNATTENDED_PATH,
+        uploads_root=server.UPLOAD_DIR,
     )
 
 

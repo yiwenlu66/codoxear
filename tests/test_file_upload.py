@@ -21,8 +21,24 @@ from pathlib import Path
 from codoxear import file_upload
 from codoxear import pty_util
 from codoxear.file_upload import attachment_inject_text
+from codoxear.file_upload import remove_session_uploads
 from codoxear.file_upload import safe_filename
 from codoxear.file_upload import stage_uploaded_file
+
+
+def _symlinks_supported() -> bool:
+    """Probe whether the current platform/filesystem can create symlinks."""
+    import tempfile as _tempfile
+
+    with _tempfile.TemporaryDirectory() as td:
+        link = Path(td) / "link"
+        target = Path(td) / "target"
+        try:
+            target.mkdir()
+            link.symlink_to(target, target_is_directory=True)
+            return link.is_symlink()
+        except (OSError, NotImplementedError):
+            return False
 
 
 class TestSafeFilename(unittest.TestCase):
@@ -134,6 +150,88 @@ class TestStageUploadedFile(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = self._stage(td, "sess", "f.bin", bytearray(b"\xff\xfe"))
             self.assertEqual(path.read_bytes(), b"\xff\xfe")
+
+
+class TestRemoveSessionUploads(unittest.TestCase):
+    def test_removes_only_target_session_preserving_neighbors(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "s1").mkdir()
+            (root / "s1" / "1234_doc.txt").write_bytes(b"s1-bytes")
+            (root / "keep").mkdir()
+            (root / "keep" / "5678_keep.txt").write_bytes(b"keep-bytes")
+
+            removed = remove_session_uploads(root, "s1")
+
+            self.assertTrue(removed)
+            self.assertFalse((root / "s1").exists())
+            self.assertTrue((root / "keep").is_dir())
+            self.assertEqual((root / "keep" / "5678_keep.txt").read_bytes(), b"keep-bytes")
+
+    def test_missing_upload_dir_is_noop(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self.assertFalse(remove_session_uploads(root, "never-staged"))
+            # root never created is also a clean no-op
+            self.assertFalse(remove_session_uploads(root / "also-absent", "s1"))
+
+    def test_blank_or_invalid_id_raises_without_touching_root(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "s1").mkdir()
+            (root / "s1" / "x").write_bytes(b"x")
+            for bad in ("", "   ", ".", "..", "a/b", "a\\b"):
+                with self.assertRaisesRegex(ValueError, "session_id"):
+                    remove_session_uploads(root, bad)
+            # nothing was deleted despite invalid ids
+            self.assertTrue((root / "s1").exists())
+            self.assertTrue(root.exists())
+
+    def test_rejects_non_path_root(self) -> None:
+        with self.assertRaisesRegex(ValueError, "upload_root"):
+            remove_session_uploads(123, "s1")  # type: ignore[arg-type]
+
+    def test_symlink_entry_is_unlinked_without_following_target(self) -> None:
+        # Some platforms/filesystems cannot create symlinks; on those the
+        # documented contract (unlink the link, leave the target intact) is not
+        # observable, so skip rather than assert a weaker property.
+        if not _symlinks_supported():
+            self.skipTest("symlinks not supported on this platform")
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            outside = Path(td) / "outside-target"
+            outside.mkdir()
+            (outside / "secret.txt").write_bytes(b"do-not-touch")
+            (root / "keep").mkdir()
+            (root / "keep" / "5678_keep.txt").write_bytes(b"keep-bytes")
+            # Tampered entry: uploads/s1 is a symlink resolving OUTSIDE the root.
+            (root / "s1").symlink_to(outside, target_is_directory=True)
+
+            removed = remove_session_uploads(root, "s1")
+
+            self.assertTrue(removed)
+            self.assertFalse((root / "s1").is_symlink())
+            self.assertFalse((root / "s1").exists())
+            # The link's target contents are untouched.
+            self.assertTrue(outside.is_dir())
+            self.assertEqual((outside / "secret.txt").read_bytes(), b"do-not-touch")
+            # Sibling upload dirs are untouched.
+            self.assertEqual((root / "keep" / "5678_keep.txt").read_bytes(), b"keep-bytes")
+
+    def test_broken_symlink_entry_is_unlinked(self) -> None:
+        # A symlink pointing at a nonexistent destination (broken link) must
+        # still be removed: is_symlink() is true even when exists() is false, so
+        # ordering the symlink check before the existence check matters.
+        if not _symlinks_supported():
+            self.skipTest("symlinks not supported on this platform")
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "s1").symlink_to(Path(td) / "does-not-exist", target_is_directory=True)
+
+            removed = remove_session_uploads(root, "s1")
+
+            self.assertTrue(removed)
+            self.assertFalse((root / "s1").is_symlink())
 
 
 class TestAttachmentInjectText(unittest.TestCase):

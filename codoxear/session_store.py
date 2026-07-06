@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+from .file_upload import remove_session_uploads
 from .queue_store import QueueStore
 from .unattended import UnattendedStore
 from .util import atomic_write_json
@@ -47,6 +48,7 @@ class SessionStorePaths:
     commit_unknown_sends: Path
     recent_cwds: Path
     unattended: Path
+    uploads_root: Path | None = None
 
 
 def _file_entry_path(entry: Any) -> str:
@@ -458,6 +460,15 @@ class SessionStore:
         if session_id in self.pending_attachment_ids:
             self.pending_attachment_ids.discard(session_id)
             pending_changed = True
+
+        uploads_root = self.paths.uploads_root
+        if uploads_root is not None:
+            # Staged attachment bytes live under <uploads_root>/<session_id>/
+            # (see file_upload.stage_uploaded_file). They can outlive the pending
+            # flag, so remove the session-scoped directory unconditionally when
+            # the store knows the upload root. An invalid session id fails loud
+            # rather than widening the removal to the upload root.
+            remove_session_uploads(uploads_root, session_id)
 
         has_direct_unknown = session_id in self.commit_unknown_sends
         queue = self.queues.get(session_id)

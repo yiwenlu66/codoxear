@@ -345,3 +345,105 @@ def test_session_store_rebinds_paths_without_losing_in_memory_state() -> None:
     assert rebound_store.paths.aliases == Path("/tmp/codoxear-test-aliases.json")
     assert rebound_store.aliases == {"s1": "alpha"}
     assert mgr._aliases == {"s1": "alpha"}
+
+
+def _make_store_with_uploads_root(root: Path) -> "object":
+    paths = session_store_paths(
+        aliases=root / "session_aliases.json",
+        sidebar_meta=root / "session_sidebar.json",
+        hidden_sessions=root / "hidden_sessions.json",
+        files=root / "session_files.json",
+        queues=root / "session_queues.json",
+        pending_attachments=root / "pending_attachments.json",
+        commit_unknown_sends=root / "commit_unknown_sends.json",
+        recent_cwds=root / "recent_cwds.json",
+        unattended=root / "unattended.json",
+        uploads_root=root / "uploads",
+    )
+    return create_session_store(
+        paths=paths,
+        file_history_max=3,
+        recent_cwd_max=5,
+        unattended_default_idle_minutes=15,
+        unattended_default_max_injections=7,
+        clean_alias=server._clean_alias,
+        clean_priority_offset=server._clean_priority_offset,
+        clean_snooze_until=server._clean_snooze_until,
+        clean_dependency_session_id=server._clean_dependency_session_id,
+        clean_recent_cwd=server._clean_recent_cwd,
+        clean_commit_unknown_send_record=lambda raw: dict(raw) if isinstance(raw, dict) and isinstance(raw.get("text"), str) else None,
+    )
+
+
+def test_session_store_clear_deleted_removes_only_target_upload_dir_and_preserves_pending_flag_cleanup() -> None:
+    with TemporaryDirectory() as td:
+        root = Path(td)
+        store = _make_store_with_uploads_root(root)
+        uploads = root / "uploads"
+        (uploads / "s1").mkdir(parents=True)
+        (uploads / "s1" / "1234_doc.txt").write_bytes(b"s1-bytes")
+        (uploads / "keep").mkdir(parents=True)
+        (uploads / "keep" / "5678_keep.txt").write_bytes(b"keep-bytes")
+        store.pending_attachment_ids = {"s1", "keep"}
+        store.aliases = {"s1": "alpha", "keep": "beta"}
+
+        changes = store.clear_deleted_session_state("s1")
+
+        assert changes.pending_attachments is True
+        assert not (uploads / "s1").exists()
+        assert (uploads / "keep").is_dir()
+        assert (uploads / "keep" / "5678_keep.txt").read_bytes() == b"keep-bytes"
+        assert store.pending_attachment_ids == {"keep"}
+        assert store.aliases == {"keep": "beta"}
+
+
+def test_session_store_clear_deleted_handles_missing_upload_dir_without_error() -> None:
+    with TemporaryDirectory() as td:
+        root = Path(td)
+        store = _make_store_with_uploads_root(root)
+        # uploads root itself does not exist yet
+        assert not (root / "uploads").exists()
+
+        changes = store.clear_deleted_session_state("never-staged")
+
+        # No pending id, no upload dir -> no changes, no error.
+        assert changes.pending_attachments is False
+        assert not (root / "uploads" / "never-staged").exists()
+
+
+def test_session_store_clear_deleted_without_uploads_root_skips_upload_cleanup() -> None:
+    # Backward compatibility: a store whose paths predate uploads_root (None)
+    # must not attempt any upload cleanup and must not raise.
+    with TemporaryDirectory() as td:
+        root = Path(td)
+        paths = session_store_paths(
+            aliases=root / "session_aliases.json",
+            sidebar_meta=root / "session_sidebar.json",
+            hidden_sessions=root / "hidden_sessions.json",
+            files=root / "session_files.json",
+            queues=root / "session_queues.json",
+            pending_attachments=root / "pending_attachments.json",
+            commit_unknown_sends=root / "commit_unknown_sends.json",
+            recent_cwds=root / "recent_cwds.json",
+            unattended=root / "unattended.json",
+        )
+        assert paths.uploads_root is None
+        store = create_session_store(
+            paths=paths,
+            file_history_max=3,
+            recent_cwd_max=5,
+            unattended_default_idle_minutes=15,
+            unattended_default_max_injections=7,
+            clean_alias=server._clean_alias,
+            clean_priority_offset=server._clean_priority_offset,
+            clean_snooze_until=server._clean_snooze_until,
+            clean_dependency_session_id=server._clean_dependency_session_id,
+            clean_recent_cwd=server._clean_recent_cwd,
+            clean_commit_unknown_send_record=lambda raw: dict(raw) if isinstance(raw, dict) and isinstance(raw.get("text"), str) else None,
+        )
+        (root / "uploads" / "s1").mkdir(parents=True)
+        (root / "uploads" / "s1" / "x").write_bytes(b"x")
+
+        store.clear_deleted_session_state("s1")
+
+        assert (root / "uploads" / "s1").exists()
