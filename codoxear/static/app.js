@@ -7023,10 +7023,15 @@
               turnOpen = true;
               currentRunning = true;
             }
-            if (res.queued) setToast(`queued (queue ${res.queue_len})`);
-            else setToast("sent");
-            if (allowPendingAttachment) setSelectedSessionPendingAttachment(false);
-            setAttachCount(0);
+            const cleanupErrorRaw = res && (res.attachment_cleanup_error || res.attachments_cleanup_error);
+            const cleanupError = cleanupErrorRaw ? String(cleanupErrorRaw) : "";
+            const deliveredToast = res.queued ? `queued (queue ${res.queue_len})` : "sent";
+            if (cleanupError) setToast(`${deliveredToast}; attachment cleanup failed: ${cleanupError}`);
+            else setToast(deliveredToast);
+            if (allowPendingAttachment && !cleanupError) {
+              setSelectedSessionPendingAttachment(false);
+              setAttachCount(0);
+            }
             pollFastUntilMs = Date.now() + 5000;
             kickPoll(0);
             void refreshSessions().catch((e) => {

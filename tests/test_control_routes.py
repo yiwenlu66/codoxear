@@ -169,6 +169,25 @@ def test_send_route_preserves_allow_pending_and_commit_unknown_status() -> None:
     assert responses == [(504, {"error": "maybe sent", "commit_unknown": True})]
 
 
+def test_send_route_returns_200_when_confirmed_send_reports_attachment_cleanup_error() -> None:
+    class CleanupWarningManager(Manager):
+        def send(self, session_id, text, *, allow_pending_attachment=False):
+            self.calls.append(("send", session_id, text, allow_pending_attachment))
+            return {"queued": False, "queue_len": 0, "attachment_cleanup_error": "staged_path outside session uploads"}
+
+    responses = []
+    manager = CleanupWarningManager()
+    assert handle_control_post_route(
+        Handler({"text": "go", "allow_pending_attachment": True}),
+        path="/api/sessions/s1/send",
+        manager=manager,
+        deps=_deps(responses),
+        match_session_route=_match_session_route,
+    ) is True
+    assert manager.calls == [("send", "s1", "go", True)]
+    assert responses == [(200, {"queued": False, "queue_len": 0, "attachment_cleanup_error": "staged_path outside session uploads"})]
+
+
 def test_attachment_list_remove_clear_routes() -> None:
     responses = []
     manager = Manager()

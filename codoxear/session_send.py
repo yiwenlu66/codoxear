@@ -98,7 +98,11 @@ class SessionSendCoordinator:
                         pre_send_log_size=pre_send_log_size,
                     )
             if staged_entries:
-                self.clear_staged_attachments(session_id)
+                try:
+                    self.clear_staged_attachments(session_id)
+                except ValueError as exc:
+                    response = dict(response)
+                    response["attachment_cleanup_error"] = str(exc)
             else:
                 self.set_pending_attachment(session_id, False)
             if queue_item_id is None:

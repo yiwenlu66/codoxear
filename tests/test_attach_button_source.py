@@ -135,9 +135,13 @@ class TestAttachButtonSource(unittest.TestCase):
         # Successful attach returns the authoritative staged list.
         self.assertIn('setSelectedSessionStagedAttachments(Array.isArray(res.attachments) ? res.attachments : []);', source)
         # Successful send with allow_pending_attachment is direct evidence the
-        # pending attachment was consumed; clear the cache before setAttachCount(0).
+        # pending attachment was consumed only if post-send staged cleanup also
+        # succeeded; cleanup failure means the delivered turn must not erase the
+        # still-staged browser/server projection.
+        self.assertIn('const cleanupErrorRaw = res && (res.attachment_cleanup_error || res.attachments_cleanup_error);', source)
+        self.assertIn('if (cleanupError) setToast(`${deliveredToast}; attachment cleanup failed: ${cleanupError}`);', source)
         self.assertIn(
-            'if (allowPendingAttachment) setSelectedSessionPendingAttachment(false);\n            setAttachCount(0);',
+            'if (allowPendingAttachment && !cleanupError) {\n              setSelectedSessionPendingAttachment(false);\n              setAttachCount(0);\n            }',
             source,
         )
         # Successful pending_attachment/clear is direct evidence the flag is now false.
