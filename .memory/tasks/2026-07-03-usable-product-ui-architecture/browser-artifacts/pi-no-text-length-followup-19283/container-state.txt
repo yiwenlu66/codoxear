@@ -1,0 +1,14 @@
+{"ready": true, "sessions": ["pi-length-continuation-control", "pi-length-prefix-control", "pi-stop-empty-regression"], "app": "/home/tester/.local/share/codoxear", "logs": "/home/tester/.local/share/codoxear/pi-length-followup-logs", "pid": 23}
+/home/tester/.local/share/codoxear/audio/live.m3u8
+/home/tester/.local/share/codoxear/hmac_secret
+/home/tester/.local/share/codoxear/pi-length-followup-logs/pi-length-continuation-control.jsonl
+/home/tester/.local/share/codoxear/pi-length-followup-logs/pi-length-prefix-control.jsonl
+/home/tester/.local/share/codoxear/pi-length-followup-logs/pi-stop-empty-regression.jsonl
+/home/tester/.local/share/codoxear/recent_cwds.json
+/home/tester/.local/share/codoxear/socks/pi-length-continuation-control.json
+/home/tester/.local/share/codoxear/socks/pi-length-continuation-control.sock
+/home/tester/.local/share/codoxear/socks/pi-length-prefix-control.json
+/home/tester/.local/share/codoxear/socks/pi-length-prefix-control.sock
+/home/tester/.local/share/codoxear/socks/pi-stop-empty-regression.json
+/home/tester/.local/share/codoxear/socks/pi-stop-empty-regression.sock
+/home/tester/.local/share/codoxear/webpush_vapid_private.pem

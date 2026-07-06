@@ -1,0 +1,12 @@
+{
+  "body": {
+    "log_path": "/home/tester/.local/share/codoxear/pi-length-followup-logs/pi-length-continuation-control.jsonl",
+    "match_count": 0,
+    "match_count_truncated": false,
+    "matches": [],
+    "query": "completed this turn",
+    "thread_id": "pi-length-continuation-control",
+    "transcript_state": "bound"
+  },
+  "status": 200
+}
