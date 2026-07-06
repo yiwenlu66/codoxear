@@ -203,6 +203,27 @@ def test_attachment_list_remove_clear_routes() -> None:
     assert responses[-1] == (200, {"ok": True, "removed_count": 1, "attachments": [], "pending_attachment": False})
 
 
+def test_attachment_clear_maps_tamper_guard_failure_to_400() -> None:
+    class TamperedManager(Manager):
+        def clear_staged_attachments(self, session_id):
+            self.calls.append(("clear_attachments", session_id))
+            raise ValueError("session upload directory is a symlink")
+
+    responses = []
+    manager = TamperedManager()
+    handler = Handler({})
+    assert handle_control_post_route(
+        handler,
+        path="/api/sessions/s1/attachments/clear",
+        manager=manager,
+        deps=_deps(responses),
+        match_session_route=_match_session_route,
+    ) is True
+    assert handler.read_body_count == 1
+    assert manager.calls == [("clear_attachments", "s1")]
+    assert responses == [(400, {"error": "session upload directory is a symlink"})]
+
+
 def test_attachment_remove_requires_id_and_maps_unknown_attachment() -> None:
     responses = []
     assert handle_control_post_route(

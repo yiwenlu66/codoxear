@@ -185,6 +185,9 @@ def _handle_attachments_clear(handler: Any, *, session_id: str, manager: Any, de
     except KeyError:
         deps.json_response(handler, 404, {"error": "unknown session"})
         return
+    except ValueError as e:
+        deps.json_response(handler, 400, {"error": str(e)})
+        return
     deps.json_response(handler, 200, res)
 
 

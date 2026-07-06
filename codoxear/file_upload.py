@@ -103,13 +103,13 @@ def remove_session_uploads(upload_root: Path, session_id: str) -> bool:
     return True
 
 
-def remove_staged_attachment_file(upload_root: Path, session_id: str, staged_path: str | Path) -> bool:
-    """Remove one staged attachment file without following symlinks.
+def validate_staged_attachment_file_target(upload_root: Path, session_id: str, staged_path: str | Path) -> Path:
+    """Validate that a staged attachment path is safe to unlink.
 
     The stored staged path must name a direct child of ``<upload_root>/<session_id>``.
-    A symlink at that child path is unlinked as an entry; its target is never
-    followed. Returns ``True`` when a file/link was removed and ``False`` when
-    the stored entry was already absent.
+    A symlink at the file path is allowed because cleanup unlinks the link entry
+    itself; a symlink at the session upload directory is rejected because it
+    would make the staged tree authority ambiguous.
     """
     if not isinstance(upload_root, (str, Path)):
         raise ValueError("upload_root required")
@@ -133,6 +133,18 @@ def remove_staged_attachment_file(upload_root: Path, session_id: str, staged_pat
         raise ValueError("invalid staged_path")
     if target.is_dir() and not target.is_symlink():
         raise ValueError("staged_path is not a file")
+    return target
+
+
+def remove_staged_attachment_file(upload_root: Path, session_id: str, staged_path: str | Path) -> bool:
+    """Remove one staged attachment file without following symlinks.
+
+    The stored staged path must name a direct child of ``<upload_root>/<session_id>``.
+    A symlink at that child path is unlinked as an entry; its target is never
+    followed. Returns ``True`` when a file/link was removed and ``False`` when
+    the stored entry was already absent.
+    """
+    target = validate_staged_attachment_file_target(upload_root, session_id, staged_path)
     try:
         target.unlink()
         return True

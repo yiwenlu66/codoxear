@@ -389,6 +389,79 @@ def _make_store_with_uploads_root(root: Path) -> "object":
     )
 
 
+def test_session_store_clear_staged_attachments_rejects_symlink_session_dir_without_mutating_list() -> None:
+    with TemporaryDirectory() as td:
+        root = Path(td)
+        store = _make_store_with_uploads_root(root)
+        uploads = root / "uploads"
+        outside = root / "outside-target"
+        outside.mkdir()
+        (outside / "doc.txt").write_bytes(b"outside")
+        uploads.mkdir()
+        (uploads / "s1").symlink_to(outside, target_is_directory=True)
+        entry = {
+            "id": "a1",
+            "display_name": "doc.txt",
+            "filename": "doc.txt",
+            "path": str(uploads / "s1" / "doc.txt"),
+            "size": 7,
+            "created_ts": 1.0,
+        }
+        store.staged_attachments = {"s1": [entry]}
+
+        try:
+            store.clear_staged_attachments("s1")
+        except ValueError as exc:
+            assert str(exc) == "session upload directory is a symlink"
+        else:
+            raise AssertionError("expected symlink guard failure")
+
+        assert (uploads / "s1").is_symlink()
+        assert (outside / "doc.txt").read_bytes() == b"outside"
+        assert store.staged_attachments == {"s1": [entry]}
+
+
+def test_session_store_clear_staged_attachments_preflights_all_entries_before_unlinking() -> None:
+    with TemporaryDirectory() as td:
+        root = Path(td)
+        store = _make_store_with_uploads_root(root)
+        uploads = root / "uploads"
+        (uploads / "s1").mkdir(parents=True)
+        (uploads / "keep").mkdir(parents=True)
+        valid_path = uploads / "s1" / "first.txt"
+        outside_path = uploads / "keep" / "outside.txt"
+        valid_path.write_bytes(b"first")
+        outside_path.write_bytes(b"outside")
+        first = {
+            "id": "a1",
+            "display_name": "first.txt",
+            "filename": "first.txt",
+            "path": str(valid_path),
+            "size": 5,
+            "created_ts": 1.0,
+        }
+        bad = {
+            "id": "a2",
+            "display_name": "outside.txt",
+            "filename": "outside.txt",
+            "path": str(outside_path),
+            "size": 7,
+            "created_ts": 2.0,
+        }
+        store.staged_attachments = {"s1": [first, bad]}
+
+        try:
+            store.clear_staged_attachments("s1")
+        except ValueError as exc:
+            assert str(exc) == "staged_path outside session uploads"
+        else:
+            raise AssertionError("expected path guard failure")
+
+        assert valid_path.read_bytes() == b"first"
+        assert outside_path.read_bytes() == b"outside"
+        assert store.staged_attachments == {"s1": [first, bad]}
+
+
 def test_session_store_clear_deleted_removes_only_target_upload_dir_and_preserves_pending_flag_cleanup() -> None:
     with TemporaryDirectory() as td:
         root = Path(td)

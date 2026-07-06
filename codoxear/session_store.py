@@ -8,6 +8,7 @@ from typing import Any, Callable, Iterable
 
 from .file_upload import remove_session_uploads
 from .file_upload import remove_staged_attachment_file
+from .file_upload import validate_staged_attachment_file_target
 from .queue_store import QueueStore
 from .unattended import UnattendedStore
 from .util import atomic_write_json
@@ -442,6 +443,8 @@ class SessionStore:
         removed = [dict(entry) for entry in self.staged_attachments.get(session_id, [])]
         uploads_root = self.paths.uploads_root
         if uploads_root is not None:
+            for entry in removed:
+                validate_staged_attachment_file_target(uploads_root, session_id, entry["path"])
             for entry in removed:
                 remove_staged_attachment_file(uploads_root, session_id, entry["path"])
         self.staged_attachments.pop(session_id, None)
