@@ -21,6 +21,7 @@ from codoxear.pi_log import pi_assistant_text as _pi_assistant_text
 from codoxear.pi_log import pi_assistant_error_text as _pi_assistant_error_text
 from codoxear.pi_log import pi_assistant_is_aborted_turn as _pi_assistant_is_aborted_turn
 from codoxear.pi_log import pi_assistant_is_final_turn_end as _pi_assistant_is_final_turn_end
+from codoxear.pi_log import pi_assistant_is_terminal_no_visible_response as _pi_assistant_is_terminal_no_visible_response
 from codoxear.pi_log import pi_assistant_thinking_count as _pi_assistant_thinking_count
 from codoxear.pi_log import pi_assistant_tool_use_count as _pi_assistant_tool_use_count
 from codoxear.pi_log import pi_message_role as _pi_message_role
@@ -238,6 +239,10 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             return
 
         if has_error and role == "assistant":
+            _close_turn_state(st)
+            return
+
+        if role == "assistant" and _pi_assistant_is_terminal_no_visible_response(obj):
             _close_turn_state(st)
             return
 

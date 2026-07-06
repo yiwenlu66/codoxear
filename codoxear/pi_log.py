@@ -29,6 +29,7 @@ from .pi_message import pi_assistant_content_parts
 from .pi_message import pi_assistant_error_text
 from .pi_message import pi_assistant_is_aborted_turn
 from .pi_message import pi_assistant_is_final_turn_end
+from .pi_message import pi_assistant_is_terminal_no_visible_response
 from .pi_message import pi_assistant_pending_tool_call_ids
 from .pi_message import pi_assistant_text
 from .pi_message import pi_assistant_thinking_count
@@ -241,6 +242,11 @@ def pi_current_turn_state_before(log_path: Path, before: int) -> tuple[set[PiPen
             idle = True
             continue
         if pi_assistant_error_text(obj):
+            pending.clear()
+            saw_signal = True
+            idle = True
+            continue
+        if pi_assistant_is_terminal_no_visible_response(obj):
             pending.clear()
             saw_signal = True
             idle = True

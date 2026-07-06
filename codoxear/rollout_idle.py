@@ -17,6 +17,7 @@ from .cc_log import cc_user_text
 from .pi_log import pi_assistant_error_text
 from .pi_log import pi_assistant_is_aborted_turn
 from .pi_log import pi_assistant_is_final_turn_end
+from .pi_log import pi_assistant_is_terminal_no_visible_response
 from .pi_log import pi_assistant_text
 from .pi_log import pi_assistant_thinking_count
 from .pi_log import pi_assistant_tool_use_count
@@ -188,6 +189,10 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     saw_terminal_signal = True
                     idle = True
                     continue
+                if pi_assistant_is_terminal_no_visible_response(obj):
+                    saw_terminal_signal = True
+                    idle = True
+                    continue
                 if _pi_message_keeps_turn_busy(obj):
                     saw_terminal_signal = True
                     idle = False
@@ -350,8 +355,12 @@ def _last_chat_role_ts_from_tail(
                     continue
                 if pi_assistant_is_aborted_turn(obj):
                     continue
-                if pi_assistant_text(obj) or pi_assistant_error_text(obj) or _pi_message_keeps_turn_busy(obj):
-                    remember_assistant(i, _event_ts(obj), final=pi_assistant_is_final_turn_end(obj))
+                if pi_assistant_text(obj) or pi_assistant_error_text(obj) or pi_assistant_is_terminal_no_visible_response(obj) or _pi_message_keeps_turn_busy(obj):
+                    remember_assistant(
+                        i,
+                        _event_ts(obj),
+                        final=pi_assistant_is_final_turn_end(obj) or pi_assistant_is_terminal_no_visible_response(obj),
+                    )
                     continue
             if typ == "user":
                 if cc_user_text(obj):

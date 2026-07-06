@@ -595,6 +595,171 @@ class TestBrokerBusyState(unittest.TestCase):
         self.assertFalse(st.turn_open)
         self.assertEqual(st.pending_calls, set())
 
+    def test_pi_stop_empty_closes_busy_and_current_turn(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "run"}]}},
+            now_ts=10.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "assistant", "content": [], "stopReason": "stop"}},
+            now_ts=11.0,
+        )
+        self.assertFalse(st.busy)
+        self.assertFalse(st.turn_open)
+        self.assertEqual(st.pending_calls, set())
+
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "session.jsonl"
+            rows = [
+                {"type": "session", "id": "sid"},
+                {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "run"}]}},
+                {"type": "message", "message": {"role": "assistant", "content": [], "stopReason": "stop"}},
+            ]
+            log_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            pending, idle = pi_current_turn_state_before(log_path, log_path.stat().st_size)
+        self.assertEqual(pending, set())
+        self.assertIs(idle, True)
+
+    def test_pi_end_turn_empty_closes_busy_and_current_turn(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "run"}]}},
+            now_ts=10.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "assistant", "content": [], "stopReason": "end_turn"}},
+            now_ts=11.0,
+        )
+        self.assertFalse(st.busy)
+        self.assertFalse(st.turn_open)
+
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "session.jsonl"
+            rows = [
+                {"type": "session", "id": "sid"},
+                {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "run"}]}},
+                {"type": "message", "message": {"role": "assistant", "content": [], "stopReason": "end_turn"}},
+            ]
+            log_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            pending, idle = pi_current_turn_state_before(log_path, log_path.stat().st_size)
+        self.assertEqual(pending, set())
+        self.assertIs(idle, True)
+
+    def test_pi_stop_thinking_only_closes_busy_and_current_turn(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "run"}]}},
+            now_ts=10.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "thinking", "thinking": "internal"}],
+                    "stopReason": "stop",
+                },
+            },
+            now_ts=11.0,
+        )
+        self.assertFalse(st.busy)
+        self.assertFalse(st.turn_open)
+
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "session.jsonl"
+            rows = [
+                {"type": "session", "id": "sid"},
+                {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "run"}]}},
+                {
+                    "type": "message",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "thinking", "thinking": "internal"}],
+                        "stopReason": "stop",
+                    },
+                },
+            ]
+            log_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            pending, idle = pi_current_turn_state_before(log_path, log_path.stat().st_size)
+        self.assertEqual(pending, set())
+        self.assertIs(idle, True)
+
+    def test_pi_nonterminal_thinking_keeps_busy_and_current_turn(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "run"}]}},
+            now_ts=10.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": "internal"}]}},
+            now_ts=11.0,
+        )
+        self.assertTrue(st.busy)
+        self.assertTrue(st.turn_open)
+
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "session.jsonl"
+            rows = [
+                {"type": "session", "id": "sid"},
+                {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "run"}]}},
+                {"type": "message", "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": "internal"}]}},
+            ]
+            log_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            pending, idle = pi_current_turn_state_before(log_path, log_path.stat().st_size)
+        self.assertEqual(pending, set())
+        self.assertIs(idle, False)
+
+    def test_pi_tool_use_tool_call_keeps_busy_and_current_turn(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "run"}]}},
+            now_ts=10.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "toolCall", "id": "tool-1", "name": "bash", "arguments": {}}],
+                    "stopReason": "toolUse",
+                },
+            },
+            now_ts=11.0,
+        )
+        self.assertTrue(st.busy)
+        self.assertTrue(st.turn_open)
+        self.assertEqual(st.pending_calls, {"tool-1"})
+
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "session.jsonl"
+            rows = [
+                {"type": "session", "id": "sid"},
+                {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "run"}]}},
+                {
+                    "type": "message",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "toolCall", "id": "tool-1", "name": "bash", "arguments": {}}],
+                        "stopReason": "toolUse",
+                    },
+                },
+            ]
+            log_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            pending, idle = pi_current_turn_state_before(log_path, log_path.stat().st_size)
+        self.assertEqual(pending, {"tool-1"})
+        self.assertIs(idle, False)
+
     def test_pi_final_message_closes_stale_unknown_pending_call(self) -> None:
         st = _state()
         _apply_rollout_obj_to_state(

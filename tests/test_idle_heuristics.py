@@ -261,6 +261,85 @@ class TestIdleHeuristics(unittest.TestCase):
             )
             self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), False)
 
+    def test_pi_stop_empty_message_is_idle(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "pi.jsonl"
+            _write_jsonl(
+                p,
+                [
+                    {"type": "session", "id": "s", "cwd": "/tmp"},
+                    {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}},
+                    {"type": "message", "message": {"role": "assistant", "content": [], "stopReason": "stop"}},
+                ],
+            )
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), True)
+
+    def test_pi_end_turn_empty_message_is_idle(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "pi.jsonl"
+            _write_jsonl(
+                p,
+                [
+                    {"type": "session", "id": "s", "cwd": "/tmp"},
+                    {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}},
+                    {"type": "message", "message": {"role": "assistant", "content": [], "stopReason": "end_turn"}},
+                ],
+            )
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), True)
+
+    def test_pi_stop_thinking_only_message_is_idle(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "pi.jsonl"
+            _write_jsonl(
+                p,
+                [
+                    {"type": "session", "id": "s", "cwd": "/tmp"},
+                    {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}},
+                    {
+                        "type": "message",
+                        "message": {
+                            "role": "assistant",
+                            "content": [{"type": "thinking", "thinking": "internal"}],
+                            "stopReason": "stop",
+                        },
+                    },
+                ],
+            )
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), True)
+
+    def test_pi_nonterminal_thinking_message_remains_busy(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "pi.jsonl"
+            _write_jsonl(
+                p,
+                [
+                    {"type": "session", "id": "s", "cwd": "/tmp"},
+                    {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}},
+                    {"type": "message", "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": "internal"}]}},
+                ],
+            )
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), False)
+
+    def test_pi_tool_use_tool_call_message_remains_busy(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "pi.jsonl"
+            _write_jsonl(
+                p,
+                [
+                    {"type": "session", "id": "s", "cwd": "/tmp"},
+                    {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "run"}]}},
+                    {
+                        "type": "message",
+                        "message": {
+                            "role": "assistant",
+                            "content": [{"type": "toolCall", "id": "tool-1", "name": "bash", "arguments": {}}],
+                            "stopReason": "toolUse",
+                        },
+                    },
+                ],
+            )
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), False)
+
     def test_pi_aborted_message_is_idle(self) -> None:
         with TemporaryDirectory() as td:
             p = Path(td) / "pi.jsonl"

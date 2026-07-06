@@ -591,11 +591,14 @@ class PiBackend(AgentBackend):
         }
 
     def message_keeps_turn_busy(self, obj: Mapping[str, Any]) -> bool:
+        from .pi_log import pi_assistant_is_terminal_no_visible_response
         from .pi_log import pi_assistant_thinking_count
         from .pi_log import pi_assistant_tool_use_count
         from .pi_log import pi_message_role
 
         row = dict(obj)
+        if pi_assistant_is_terminal_no_visible_response(row):
+            return False
         role = pi_message_role(row)
         if role == "toolResult":
             return True
@@ -605,6 +608,7 @@ class PiBackend(AgentBackend):
         from .pi_log import pi_assistant_error_text
         from .pi_log import pi_assistant_is_aborted_turn
         from .pi_log import pi_assistant_is_final_turn_end
+        from .pi_log import pi_assistant_is_terminal_no_visible_response
         from .pi_log import pi_assistant_text
         from .pi_log import pi_user_text
         from .rollout_events import _event_ts
@@ -647,6 +651,10 @@ class PiBackend(AgentBackend):
                 "message_id": _text_message_id(message_class="error", text=error_text, ts=ts),
                 **({"ts": ts} if ts is not None else {}),
             }
+        if pi_assistant_is_terminal_no_visible_response(row):
+            from .rollout_chat_events import _build_no_response_event
+
+            return _build_no_response_event(row)
         return None
 
     def build_launch_args(

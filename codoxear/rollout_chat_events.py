@@ -14,6 +14,7 @@ from .cc_log import cc_system_api_error_is_terminal
 from .cc_log import cc_user_text
 from .pi_log import pi_assistant_error_text
 from .pi_log import pi_assistant_is_aborted_turn
+from .pi_log import pi_assistant_is_terminal_no_visible_response
 from .pi_log import pi_assistant_text
 from .pi_log import pi_assistant_is_final_turn_end
 from .pi_log import pi_user_text
@@ -49,7 +50,7 @@ def _sidebar_conversation_ts(obj: dict[str, Any]) -> float | None:
             return _event_ts(obj)
         if pi_assistant_is_aborted_turn(obj):
             return None
-        if pi_assistant_text(obj) or pi_assistant_error_text(obj):
+        if pi_assistant_text(obj) or pi_assistant_error_text(obj) or pi_assistant_is_terminal_no_visible_response(obj):
             return _event_ts(obj)
         return None
 

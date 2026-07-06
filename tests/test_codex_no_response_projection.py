@@ -195,6 +195,167 @@ def test_pi_final_response_turn_is_unaffected() -> None:
     assert all(ev["text"] != _NO_RESPONSE_TEXT for ev in events)
 
 
+def test_pi_stop_empty_projects_no_response_event() -> None:
+    records = [
+        _rec(
+            {
+                "type": "message",
+                "ts": 1.0,
+                "message": {"role": "user", "content": [{"type": "text", "text": "hello"}]},
+            },
+            start=0,
+        ),
+        _rec(
+            {
+                "type": "message",
+                "ts": 2.0,
+                "message": {"role": "assistant", "stopReason": "stop", "content": []},
+            },
+            start=100,
+        ),
+    ]
+    events = _extract_positioned_chat_events(records)
+    assert [ev["role"] for ev in events] == ["user", "assistant"]
+    assert events[-1]["text"] == _NO_RESPONSE_TEXT
+    assert events[-1]["message_class"] == "error"
+    assert events[-1]["ts"] == 2.0
+    assert events[-1]["_before_byte"] == 100
+
+
+def test_pi_end_turn_empty_projects_no_response_event() -> None:
+    records = [
+        _rec(
+            {
+                "type": "message",
+                "ts": 1.0,
+                "message": {"role": "user", "content": [{"type": "text", "text": "hello"}]},
+            },
+            start=0,
+        ),
+        _rec(
+            {
+                "type": "message",
+                "ts": 2.0,
+                "message": {"role": "assistant", "stopReason": "end_turn", "content": []},
+            },
+            start=100,
+        ),
+    ]
+    events = _extract_positioned_chat_events(records)
+    assert [ev["role"] for ev in events] == ["user", "assistant"]
+    assert events[-1]["text"] == _NO_RESPONSE_TEXT
+    assert events[-1]["message_class"] == "error"
+
+
+def test_pi_stop_thinking_only_projects_no_response_event() -> None:
+    records = [
+        _rec(
+            {
+                "type": "message",
+                "ts": 1.0,
+                "message": {"role": "user", "content": [{"type": "text", "text": "hello"}]},
+            },
+            start=0,
+        ),
+        _rec(
+            {
+                "type": "message",
+                "ts": 2.0,
+                "message": {
+                    "role": "assistant",
+                    "stopReason": "stop",
+                    "content": [{"type": "thinking", "thinking": "internal"}],
+                },
+            },
+            start=100,
+        ),
+    ]
+    events = _extract_positioned_chat_events(records)
+    assert [ev["role"] for ev in events] == ["user", "assistant"]
+    assert events[-1]["text"] == _NO_RESPONSE_TEXT
+    assert events[-1]["message_class"] == "error"
+
+
+def test_pi_nonterminal_thinking_does_not_project_no_response() -> None:
+    records = [
+        _rec(
+            {
+                "type": "message",
+                "ts": 1.0,
+                "message": {"role": "user", "content": [{"type": "text", "text": "hello"}]},
+            },
+            start=0,
+        ),
+        _rec(
+            {
+                "type": "message",
+                "ts": 2.0,
+                "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": "internal"}]},
+            },
+            start=100,
+        ),
+    ]
+    events = _extract_positioned_chat_events(records)
+    assert [ev["role"] for ev in events] == ["user"]
+    assert all(ev["text"] != _NO_RESPONSE_TEXT for ev in events)
+
+
+def test_pi_tool_use_message_does_not_project_no_response() -> None:
+    records = [
+        _rec(
+            {
+                "type": "message",
+                "ts": 1.0,
+                "message": {"role": "user", "content": [{"type": "text", "text": "hello"}]},
+            },
+            start=0,
+        ),
+        _rec(
+            {
+                "type": "message",
+                "ts": 2.0,
+                "message": {
+                    "role": "assistant",
+                    "stopReason": "toolUse",
+                    "content": [{"type": "toolCall", "id": "tool-1", "name": "bash", "arguments": {}}],
+                },
+            },
+            start=100,
+        ),
+    ]
+    events = _extract_positioned_chat_events(records)
+    assert [ev["role"] for ev in events] == ["user"]
+    assert all(ev["text"] != _NO_RESPONSE_TEXT for ev in events)
+
+
+def test_pi_tail_and_search_surface_no_response_event(tmp_path: Path) -> None:
+    from codoxear.transcript_search import search_chat_log_bounded
+
+    log_path = tmp_path / "pi.jsonl"
+    _write_log(
+        log_path,
+        [
+            {
+                "type": "message",
+                "ts": 1.0,
+                "message": {"role": "user", "content": [{"type": "text", "text": "hello"}]},
+            },
+            {
+                "type": "message",
+                "ts": 2.0,
+                "message": {"role": "assistant", "stopReason": "stop", "content": []},
+            },
+        ],
+    )
+    events, _before, _after, _has_older = _read_chat_tail_page(log_path, limit=20)
+    assert [ev["role"] for ev in events] == ["user", "assistant"]
+    assert events[-1]["text"] == _NO_RESPONSE_TEXT
+    count, matches, _ = search_chat_log_bounded(log_path, "completed this turn", limit=5)
+    assert count == 1
+    assert matches[0]["text"] == _NO_RESPONSE_TEXT
+    assert matches[0]["message_class"] == "error"
+
+
 def test_pi_aborted_turn_does_not_emit_no_response() -> None:
     records = [
         _rec(
