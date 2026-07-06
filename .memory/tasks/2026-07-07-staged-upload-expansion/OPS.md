@@ -142,3 +142,9 @@
   - full local suite → `1795 passed, 132 subtests passed in 28.79s`;
   - `node --check codoxear/static/app.js` and `git diff --check` → clean.
 - Follow-up review dispatched for `b0a6a09`: async id `42f4215a-c8a9-4db7-874c-4a6a5a5e873a`.
+
+## 2026-07-06T22:35:00Z Post-confirmation tail isolation fix review accepted
+- Review artifact: `.memory/tasks/2026-07-07-staged-upload-expansion/reviews/post-send-tail-isolation-fix-review.md`.
+- Review verdict: accepted, no blockers.
+- Mechanism confirmed: `b0a6a09` closes the prelog `ValueError` escape by using one post-confirmation tail error tuple for prelog projection, staged cleanup, pending clear, and commit_unknown clear. The catch sites remain after `parse_confirmed_send_response`, so pre-delivery not-ready/injection/commit_unknown behavior remains unchanged.
+- Review reproduced validation: after-confirmed-send tail matrix `6 passed`; prelog regression `1 passed`; broader focused suite `155 passed, 22 subtests passed`; `node --check codoxear/static/app.js`; `git diff --check`; clean tree.
