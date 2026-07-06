@@ -9,6 +9,8 @@ from codoxear.cc_log import cc_assistant_thinking_count
 from codoxear.cc_log import cc_assistant_tool_use_count
 from codoxear.cc_log import cc_is_turn_end
 from codoxear.cc_log import cc_message_role
+from codoxear.cc_log import cc_system_api_error_is_terminal
+from codoxear.cc_log import cc_system_api_error_text
 from codoxear.cc_log import cc_user_text
 from codoxear.cc_log import read_cc_run_settings
 from codoxear.cc_log import read_cc_session_header
@@ -69,6 +71,30 @@ class TestCcLog(unittest.TestCase):
         self.assertTrue(cc_assistant_is_final_turn_end(cc_assistant([{"type": "text", "text": "done"}], stop_reason="end_turn")))
         self.assertFalse(cc_assistant_is_final_turn_end(cc_assistant([{"type": "text", "text": "more"}], stop_reason="tool_use")))
         self.assertTrue(cc_is_turn_end({"type": "system", "subtype": "turn_duration", "durationMs": 123}))
+
+    def test_system_api_error_terminal_classification_uses_retry_counts(self) -> None:
+        terminal = {
+            "type": "system",
+            "subtype": "api_error",
+            "error": "API Error: 503 Service Unavailable",
+            "retryAttempt": 3,
+            "maxRetries": 3,
+        }
+        transient = dict(terminal, retryAttempt=1, maxRetries=3)
+        self.assertTrue(cc_system_api_error_is_terminal(terminal))
+        self.assertFalse(cc_system_api_error_is_terminal(transient))
+        self.assertEqual(cc_system_api_error_text(terminal), "API Error: 503 Service Unavailable")
+
+    def test_system_api_error_text_accepts_error_dict_message(self) -> None:
+        obj = {
+            "type": "system",
+            "subtype": "api_error",
+            "error": {"type": "overloaded_error", "message": "Overloaded"},
+            "retryAttempt": 2,
+            "maxRetries": 2,
+        }
+        self.assertTrue(cc_system_api_error_is_terminal(obj))
+        self.assertEqual(cc_system_api_error_text(obj), "Overloaded")
 
     def test_read_session_header_merges_cwd_from_later_record(self) -> None:
         with TemporaryDirectory() as td:

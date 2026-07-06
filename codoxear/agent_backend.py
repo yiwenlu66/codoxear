@@ -754,6 +754,8 @@ class ClaudeCodeBackend(AgentBackend):
         from .cc_log import cc_assistant_text
         from .cc_log import cc_assistant_tool_use_count
         from .cc_log import cc_message_role
+        from .cc_log import cc_system_api_error_is_terminal
+        from .cc_log import cc_system_api_error_text
         from .cc_log import cc_user_text
         from .rollout_events import _event_ts
         from .rollout_events import _text_message_id
@@ -789,6 +791,21 @@ class ClaudeCodeBackend(AgentBackend):
                     "text": assistant_text,
                     "message_class": message_class,
                     "message_id": _text_message_id(message_class=message_class, text=assistant_text, ts=ts),
+                }
+                if ts is not None:
+                    event["ts"] = ts
+                return event
+            return None
+
+        if typ == "system" and cc_system_api_error_is_terminal(row):
+            error_text = cc_system_api_error_text(row)
+            if isinstance(error_text, str) and error_text:
+                ts = _event_ts(row)
+                event = {
+                    "role": "assistant",
+                    "text": error_text,
+                    "message_class": "error",
+                    "message_id": _text_message_id(message_class="error", text=error_text, ts=ts),
                 }
                 if ts is not None:
                     event["ts"] = ts

@@ -12,6 +12,7 @@ from .cc_log import cc_assistant_tool_use_count
 from .cc_log import cc_current_turn_state_before
 from .cc_log import cc_is_turn_end
 from .cc_log import cc_message_role
+from .cc_log import cc_system_api_error_is_terminal
 from .cc_log import cc_user_text
 from .pi_log import pi_assistant_thinking_count
 from .pi_log import pi_assistant_tool_use_count
@@ -131,7 +132,7 @@ def _read_chat_page_reverse(
     records = list(reversed(newest_first_records))
     initial_pending = _cc_pending_tool_ids_before(log_path, records[0].start) if records else set()
     prior_user_byte, prior_turn_has_assistant = (
-        _codex_prior_open_turn_context(log_path, records[0].start) if records else (None, False)
+        _prior_open_turn_context(log_path, records[0].start) if records else (None, False)
     )
     events = _extract_positioned_chat_events(
         records,
@@ -245,6 +246,60 @@ def _codex_prior_open_turn_context(
     return boundary_user_byte, has_visible
 
 
+def _cc_prior_open_turn_context(
+    log_path: Path,
+    before_byte: int,
+    *,
+    max_scan_bytes: int = 2 * 1024 * 1024,
+) -> tuple[int | None, bool]:
+    """Describe the open Claude Code user turn at ``before_byte``.
+
+    Claude Code turns can close in a later live delta with ``system`` rows. The
+    scan mirrors the Codex prior-turn context but uses CC's user and close row
+    shapes: a human ``user`` row opens a turn, ``system/turn_duration`` and a
+    terminal ``system/api_error`` close it, and visible assistant transcript
+    events between the user and the window suppress synthetic no-response.
+    """
+    if before_byte <= 0:
+        return None, False
+    lower_bound = max(0, before_byte - int(max_scan_bytes))
+    collected: list[JsonlRecord] = []
+    boundary_kind: str | None = None
+    boundary_user_byte: int | None = None
+    for record in _iter_jsonl_records_reverse(log_path, before=before_byte):
+        if record.start < lower_bound:
+            boundary_kind = None
+            break
+        obj = record.obj
+        typ = obj.get("type")
+        if typ == "user":
+            if cc_user_text(obj):
+                boundary_kind = "user"
+                boundary_user_byte = record.start
+            elif cc_message_role(obj) == "toolResult":
+                collected.append(record)
+                continue
+            else:
+                boundary_kind = "empty_user"
+            break
+        if typ == "system" and (cc_is_turn_end(obj) or cc_system_api_error_is_terminal(obj)):
+            boundary_kind = "close"
+            break
+        collected.append(record)
+    if boundary_kind != "user":
+        return None, False
+    assert boundary_user_byte is not None
+    has_visible = any(_record_produces_visible_assistant(r) for r in collected)
+    return boundary_user_byte, has_visible
+
+
+def _prior_open_turn_context(log_path: Path, before_byte: int) -> tuple[int | None, bool]:
+    codex_context = _codex_prior_open_turn_context(log_path, before_byte)
+    if codex_context[0] is not None:
+        return codex_context
+    return _cc_prior_open_turn_context(log_path, before_byte)
+
+
 def _read_chat_live_delta(
     log_path: Path,
     *,
@@ -254,7 +309,7 @@ def _read_chat_live_delta(
     records, next_after = _read_jsonl_records_from_offset(log_path, after_byte, max_bytes=max_bytes)
     initial_pending = _cc_pending_tool_ids_before(log_path, after_byte) if records and after_byte > 0 else set()
     prior_user_byte, prior_turn_has_assistant = (
-        _codex_prior_open_turn_context(log_path, after_byte) if after_byte > 0 else (None, False)
+        _prior_open_turn_context(log_path, after_byte) if after_byte > 0 else (None, False)
     )
     events = _extract_positioned_chat_events(
         records,

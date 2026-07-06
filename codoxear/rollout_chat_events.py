@@ -8,7 +8,9 @@ from .cc_log import cc_assistant_text
 from .agent_backend import get_agent_backend
 from .cc_log import cc_apply_tool_result_to_pending
 from .cc_log import cc_assistant_tool_use_count
+from .cc_log import cc_is_turn_end
 from .cc_log import cc_message_role
+from .cc_log import cc_system_api_error_is_terminal
 from .cc_log import cc_user_text
 from .pi_log import pi_assistant_error_text
 from .pi_log import pi_assistant_is_aborted_turn
@@ -98,7 +100,7 @@ def _update_cc_pending_tool_ids(obj: dict[str, Any], pending: set[str]) -> None:
 
 def _single_chat_event(obj: dict[str, Any], *, cc_pending_tool_ids: set[str] | None = None) -> dict[str, Any] | None:
     typ = obj.get("type")
-    if typ in ("user", "assistant"):
+    if typ in ("user", "assistant", "system"):
         return get_agent_backend("cc").chat_event_from_log_row(obj, cc_pending_tool_ids=cc_pending_tool_ids)
     if typ == "message":
         return get_agent_backend("pi").chat_event_from_log_row(obj)
@@ -240,8 +242,8 @@ def _inject_no_response_events(
     prior_user_byte: int | None = None,
     prior_turn_has_assistant: bool = False,
 ) -> list[dict[str, Any]]:
-    """Inject explicit no-response events when a Codex user turn closes with
-    no visible assistant output.
+    """Inject explicit no-response events when a user turn closes with no
+    visible assistant output.
 
     Visible assistant transcript messages remain the source of truth for
     suppressing a no-response row. In-window visibility is decided from the
@@ -252,15 +254,16 @@ def _inject_no_response_events(
     the detector cannot diverge from the extractor).
 
     ``prior_user_byte`` seeds the open-turn state: if the window begins with an
-    open Codex user turn (user_message delivered in an earlier poll, no close
-    yet), a close arriving in this window still triggers detection.
-    ``prior_turn_has_assistant`` suppresses injection when that prior open turn
-    already produced a visible assistant event before the window. An in-window
-    ``user_message`` overrides the prior context (a newer turn supersedes it).
+    open user turn (delivered in an earlier poll, no close yet), a close
+    arriving in this window still triggers detection. ``prior_turn_has_assistant``
+    suppresses injection when that prior open turn already produced a visible
+    assistant event before the window. An in-window user row overrides the prior
+    context (a newer turn supersedes it).
 
-    Only Codex ``event_msg`` ``user_message`` / ``task_complete`` /
-    ``turn_complete`` rows drive detection, so valid Pi and Claude Code turns
-    are unaffected.
+    Codex closes are ``event_msg`` ``task_complete`` / ``turn_complete`` rows.
+    Claude Code closes are ``system/turn_duration`` rows. Terminal
+    ``system/api_error`` rows project their own error event and also close the
+    turn so a later close cannot add a generic no-response duplicate.
     """
     asst_bytes, has_unpositioned_asst = _visible_assistant_event_bytes(events)
     if has_unpositioned_asst:
@@ -277,18 +280,30 @@ def _inject_no_response_events(
 
     for record in records:
         obj = record.obj
-        if obj.get("type") != "event_msg":
-            continue
-        payload = obj.get("payload")
-        if not isinstance(payload, dict):
-            continue
-        pt = payload.get("type")
-        if pt == "user_message":
-            if isinstance(payload.get("message"), str) and payload["message"].strip():
+        typ = obj.get("type")
+        if typ == "event_msg":
+            payload = obj.get("payload")
+            if not isinstance(payload, dict):
+                continue
+            pt = payload.get("type")
+            if pt == "user_message":
+                if isinstance(payload.get("message"), str) and payload["message"].strip():
+                    user_byte = record.start
+                    user_from_prior = False
+                continue
+            is_close = pt in ("task_complete", "turn_complete")
+        elif typ == "user":
+            user_text = cc_user_text(obj)
+            if isinstance(user_text, str) and user_text:
                 user_byte = record.start
                 user_from_prior = False
             continue
-        if pt in ("task_complete", "turn_complete"):
+        elif typ == "system":
+            is_close = cc_is_turn_end(obj) or cc_system_api_error_is_terminal(obj)
+        else:
+            continue
+
+        if is_close:
             close_byte = record.start
             # Drain every positioned event up to and including this close so
             # the merge cursor stays byte-ordered regardless of injection.

@@ -280,6 +280,16 @@ def cc_current_turn_state_before(log_path: Path, before: int) -> tuple[set[str],
             saw_signal = True
             idle = not pending
             continue
+        if typ == "system" and cc_system_api_error_is_terminal(obj):
+            # A terminal system api_error (retries exhausted) projects a visible
+            # error transcript event, so it closes the turn the same way a
+            # turn_duration close or an assistant isApiErrorMessage does.
+            # Transient retry notices (retryAttempt < maxRetries) are ignored
+            # here so the turn stays busy while the backend retries.
+            saw_signal = True
+            pending.clear()
+            idle = True
+            continue
     return pending, (idle if saw_signal else None)
 
 
@@ -321,6 +331,49 @@ def cc_assistant_is_api_error(obj: dict[str, Any]) -> bool:
     if obj.get("type") != "assistant":
         return False
     return obj.get("isApiErrorMessage") is True
+
+
+def cc_system_api_error_text(obj: dict[str, Any]) -> str | None:
+    """Return Claude Code's own text for a ``system/api_error`` row.
+
+    Claude Code retry rows carry the provider/backend message in the row-level
+    ``error`` field. The transcript must reuse that text verbatim when retries
+    are exhausted instead of inventing a generic assistant response.
+    """
+    if obj.get("type") != "system" or obj.get("subtype") != "api_error":
+        return None
+    error = obj.get("error")
+    if isinstance(error, str) and error.strip():
+        return error.strip()
+    if isinstance(error, dict):
+        message = error.get("message")
+        if isinstance(message, str) and message.strip():
+            return message.strip()
+        error_type = error.get("type")
+        if isinstance(error_type, str) and error_type.strip():
+            return error_type.strip()
+    message = obj.get("message")
+    if isinstance(message, str) and message.strip():
+        return message.strip()
+    return None
+
+
+def cc_system_api_error_is_terminal(obj: dict[str, Any]) -> bool:
+    """True when a Claude Code ``system/api_error`` row exhausts retries.
+
+    Transient retry notices use the same subtype but have
+    ``retryAttempt < maxRetries``. They are not transcript outcomes by
+    themselves; only the terminal row closes the visible user turn.
+    """
+    if obj.get("type") != "system" or obj.get("subtype") != "api_error":
+        return False
+    retry_attempt = obj.get("retryAttempt")
+    max_retries = obj.get("maxRetries")
+    if isinstance(retry_attempt, bool) or isinstance(max_retries, bool):
+        return False
+    if not isinstance(retry_attempt, (int, float)) or not isinstance(max_retries, (int, float)):
+        return False
+    return retry_attempt >= max_retries
 
 
 def cc_message_role(obj: dict[str, Any]) -> str | None:

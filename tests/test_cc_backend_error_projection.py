@@ -18,6 +18,7 @@ from tempfile import TemporaryDirectory
 from codoxear.broker_turn_state import State
 from codoxear.broker_turn_state import _apply_rollout_obj_to_state
 from codoxear.cc_log import cc_assistant_is_api_error
+from codoxear.cc_log import cc_current_turn_state_before
 from codoxear.rollout_log import _compute_idle_from_log
 from codoxear.rollout_log import _extract_chat_events
 from codoxear.rollout_log import _read_chat_events_from_tail
@@ -53,6 +54,25 @@ def _cc_api_error(text: str = "API Error: 529 {\"type\":\"error\",\"error\":{\"t
             "type": "message",
             "content": [{"type": "text", "text": text}],
         },
+    }
+
+
+def _cc_system_api_error(
+    text: str,
+    *,
+    retry_attempt: int,
+    max_retries: int,
+    ts: str = "2026-07-04T00:00:03.000Z",
+) -> dict:
+    """A Claude Code ``system/api_error`` retry/outcome row."""
+    return {
+        "type": "system",
+        "subtype": "api_error",
+        "sessionId": SESSION_ID,
+        "timestamp": ts,
+        "error": text,
+        "retryAttempt": retry_attempt,
+        "maxRetries": max_retries,
     }
 
 
@@ -288,6 +308,87 @@ class TestCcApiErrorLogIdleReducer(unittest.TestCase):
                 },
             ])
             self.assertIs(_compute_idle_from_log(path), False)
+
+
+class TestCcSystemApiErrorIdle(unittest.TestCase):
+    """A terminal Claude Code ``system/api_error`` (retries exhausted) projects
+    a visible error transcript event. The log-idle reducer and
+    ``cc_current_turn_state_before`` must treat it as a turn-closing idle/error
+    outcome so visible outcome and busy/idle truth stay aligned. A transient
+    retry (``retryAttempt < maxRetries``) must not close idle by itself."""
+
+    def test_terminal_system_api_error_is_idle_via_current_turn_state(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "cc-session.jsonl"
+            _write_log(path, [_user(), _cc_system_api_error("API Error: 503", retry_attempt=3, max_retries=3)])
+            _pending, idle = cc_current_turn_state_before(path, path.stat().st_size)
+            self.assertEqual(_pending, set())
+            self.assertIs(idle, True)
+
+    def test_terminal_system_api_error_is_idle_via_log_reducer(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "cc-session.jsonl"
+            _write_log(path, [_user(), _cc_system_api_error("API Error: 503", retry_attempt=3, max_retries=3)])
+            self.assertIs(_compute_idle_from_log(path), True)
+
+    def test_terminal_system_api_error_idle_after_pending_tool_use(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "cc-session.jsonl"
+            rows = [
+                _user(),
+                {
+                    "type": "assistant",
+                    "sessionId": SESSION_ID,
+                    "timestamp": "2026-07-04T00:00:00.500Z",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}}],
+                        "stop_reason": "tool_use",
+                    },
+                },
+                {
+                    "type": "user",
+                    "sessionId": SESSION_ID,
+                    "timestamp": "2026-07-04T00:00:00.750Z",
+                    "message": {
+                        "role": "user",
+                        "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "ok"}],
+                    },
+                },
+                _cc_system_api_error("API Error: 500", retry_attempt=2, max_retries=2),
+            ]
+            _write_log(path, rows)
+            self.assertIs(_compute_idle_from_log(path), True)
+
+    def test_transient_system_api_error_does_not_close_idle_by_itself(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "cc-session.jsonl"
+            _write_log(path, [_user(), _cc_system_api_error("API Error: retrying", retry_attempt=1, max_retries=3)])
+            _pending, idle = cc_current_turn_state_before(path, path.stat().st_size)
+            self.assertIs(idle, False)
+            self.assertIs(_compute_idle_from_log(path), False)
+
+    def test_terminal_system_api_error_clears_pending_after_unmatched_tool_use(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "cc-session.jsonl"
+            rows = [
+                _user(),
+                {
+                    "type": "assistant",
+                    "sessionId": SESSION_ID,
+                    "timestamp": "2026-07-04T00:00:00.500Z",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}}],
+                        "stop_reason": "tool_use",
+                    },
+                },
+                _cc_system_api_error("API Error: 500", retry_attempt=2, max_retries=2),
+            ]
+            _write_log(path, rows)
+            _pending, idle = cc_current_turn_state_before(path, path.stat().st_size)
+            self.assertEqual(_pending, set())
+            self.assertIs(idle, True)
 
 
 if __name__ == "__main__":

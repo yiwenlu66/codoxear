@@ -6,6 +6,7 @@ from .cc_log import cc_assistant_thinking_count
 from .cc_log import cc_assistant_tool_use_count
 from .cc_log import cc_is_turn_end
 from .cc_log import cc_message_role
+from .cc_log import cc_system_api_error_is_terminal
 from .cc_log import cc_user_text
 from .pi_log import pi_assistant_thinking_count
 from .pi_log import pi_assistant_tool_use_count
@@ -70,10 +71,19 @@ def _extract_chat_events(
                 turn_end = True
             continue
 
-        if typ == "system" and cc_is_turn_end(obj):
-            if not cc_pending_tool_ids:
+        if typ == "system":
+            if event is not None and event.get("message_class") == "error":
                 turn_end = True
-            continue
+                cc_pending_tool_ids.clear()
+                continue
+            if cc_is_turn_end(obj):
+                if not cc_pending_tool_ids:
+                    turn_end = True
+                continue
+            if cc_system_api_error_is_terminal(obj):
+                turn_end = True
+                cc_pending_tool_ids.clear()
+                continue
 
         if typ == "message":
             user_text = pi_user_text(obj)
