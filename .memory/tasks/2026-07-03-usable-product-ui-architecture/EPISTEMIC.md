@@ -274,10 +274,10 @@ Clean-room critic 4aad1a07 accepted the load-error/composer/queue tranche with n
 - This target is disjoint from the in-flight log-only stale-`interrupted_idle` verifier: transcript projection lives in `rollout_chat_events`/`cc_log`/backend chat-event wiring, while the idle verifier owns `session_runtime`/`session_listing`/broker state.
 
 
-## Stale interrupted-idle listing defect resolved
-- Docker/API certification falsified the previous unit-only belief: the log watcher alone cleared stale `interrupted_idle`, but real `/api/sessions` called prune first. A stale socket `interrupted_idle=true` re-baselined `interrupted_idle_log_off` after resumed log activity, so the watcher skipped the activity and listing projected `busy=false` while the log was non-idle.
-- Functional fix `8e5bae8` preserves the original interrupt baseline across repeated broker-true polls and adds an internal suppression bit when log activity proves the override stale. Suppression prevents subsequent stale broker `true` polls from reactivating the override; broker `false` or log/session reset clears suppression so a later fresh interrupt can record a new baseline.
-- Post-fix Docker/API harness now supports the user-visible claim: phase 1 immediate interrupted turn remains `busy=false`, phase 2 same-log resumed activity stays `busy=true` across repeated stale socket polls, and phase 3 completed log returns `busy=false`.
+## Stale interrupted-idle listing defect remains live via discovery refresh
+- Docker/API certification falsified the previous unit-only belief: the log watcher alone cleared stale `interrupted_idle`, but real `/api/sessions` can refresh stale broker state before log-counter update. The first fix `8e5bae8` corrected broker/prune repeated-true by preserving the interrupt baseline and suppressing stale true after post-interrupt activity.
+- Clean-room review found a second authority path: `SessionDiscoveryRegistryCoordinator.upsert_registration()` directly set `previous.interrupted_idle=True` and `previous.interrupted_idle_log_off=registration.meta_log_off`. When discovery runs after resumed same-log activity but before `update_meta_counters()`, it re-baselines the offset to the current log size and hides the resumed user row from the watcher.
+- Failing evidence under `browser-artifacts/stale-interrupted-idle-discovery-race-fail/` shows phase 2 resumed activity projected `busy=false` across repeated `/api/sessions` polls after waiting past the discovery interval. The invariant is not resolved until discovery uses the same helper/suppression semantics as broker/prune refresh and a discovery-first regression passes.
 
 
 ## Claude Code terminal outcome projection state

@@ -623,3 +623,10 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
 - Docker/browser artifacts copied from `/tmp/codoxear-d5-browser-19220/artifacts/` to `browser-artifacts/file-touch-dpad-19220/`, excluding `cookies.txt`.
 - Measurement evidence: simulated pre-fix visible `.fileTouchBtn` controls were 34x34 (`meets44:false`); patched mobile controls measured 44x44 for all seven buttons, dpad grid `44px 44px 44px / 44px 44px`, toolbar 368px wide in a 390px viewport, `horizontalOverflow:false`.
 - Boundary: Monaco was unavailable in clean Docker, so the harness force-displayed the toolbar/dpad DOM and measured CSS layout directly rather than exercising Monaco-driven select-mode activation.
+
+
+## 2026-07-06T04:43:21Z Clean-room critic found stale interrupted-idle discovery race
+- Critic run `ba08fbb7-1aaa-4fda-b1bb-354573a62950` reported BLOCKER after reviewing current HEAD `711dd5f`.
+- Mechanism: `codoxear/session_discovery_registry.py` directly re-baselined `previous.interrupted_idle_log_off` to `registration.meta_log_off` on stale `interrupted_idle=true`, bypassing `set_session_interrupted_idle()` and hiding same-log resumed activity if discovery ran before `update_meta_counters()`.
+- Reproduction evidence copied to `browser-artifacts/stale-interrupted-idle-discovery-race-fail/`: with a wait past the discovery interval after appending resumed `user_message`, public `/api/sessions` phase 2 busy values stayed `[false, false, false, false, false]` while the log was non-idle.
+- Decision: treat prior stale-idle PASS as incomplete; dispatch implementation to make discovery refresh use the single helper semantics and add a discovery-first regression.
