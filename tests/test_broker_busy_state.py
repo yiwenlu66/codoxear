@@ -783,6 +783,71 @@ class TestBrokerBusyState(unittest.TestCase):
         self.assertEqual(pending, {"tool-1"})
         self.assertIs(idle, False)
 
+    def test_pi_length_visible_text_keeps_busy_through_continuation(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "run"}]}},
+            now_ts=10.0,
+        )
+        length_row = {
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "partial before compaction"}],
+                "stopReason": "length",
+            },
+        }
+        _apply_rollout_obj_to_state(st, length_row, now_ts=11.0)
+        self.assertTrue(st.busy)
+        self.assertTrue(st.turn_open)
+        self.assertEqual(st.pending_calls, set())
+
+        _apply_rollout_obj_to_state(st, {"type": "compaction", "message": "compacting context"}, now_ts=12.0)
+        _apply_rollout_obj_to_state(st, {"type": "custom_message", "message": "continuing"}, now_ts=13.0)
+        self.assertTrue(st.busy)
+        self.assertTrue(st.turn_open)
+
+        continuation_row = {
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "continuing with a tool"},
+                    {"type": "toolCall", "id": "tool-1", "name": "bash", "arguments": {"command": "pwd"}},
+                ],
+                "stopReason": "toolUse",
+            },
+        }
+        _apply_rollout_obj_to_state(st, continuation_row, now_ts=14.0)
+        self.assertTrue(st.busy)
+        self.assertTrue(st.turn_open)
+        self.assertEqual(st.pending_calls, {"tool-1"})
+
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "session.jsonl"
+            rows = [
+                {"type": "session", "id": "sid"},
+                {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "run"}]}},
+                length_row,
+            ]
+            log_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            pending, idle = pi_current_turn_state_before(log_path, log_path.stat().st_size)
+            self.assertEqual(pending, set())
+            self.assertIs(idle, False)
+
+            rows.extend(
+                [
+                    {"type": "compaction", "message": "compacting context"},
+                    {"type": "custom_message", "message": "continuing"},
+                    continuation_row,
+                ]
+            )
+            log_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            pending, idle = pi_current_turn_state_before(log_path, log_path.stat().st_size)
+        self.assertEqual(pending, {"tool-1"})
+        self.assertIs(idle, False)
+
     def test_pi_tool_use_tool_call_keeps_busy_and_current_turn(self) -> None:
         st = _state()
         _apply_rollout_obj_to_state(

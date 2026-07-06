@@ -129,6 +129,8 @@ def pi_assistant_is_final_turn_end(obj: dict[str, Any]) -> bool:
     message = obj.get("message")
     if not isinstance(message, dict) or message.get("role") != "assistant":
         return False
+    if message.get("stopReason") == "length":
+        return False
     if not pi_assistant_text(obj):
         return False
     if pi_assistant_tool_use_count(obj) > 0:

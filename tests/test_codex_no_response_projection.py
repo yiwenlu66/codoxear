@@ -184,7 +184,11 @@ def test_pi_final_response_turn_is_unaffected() -> None:
             {
                 "type": "message",
                 "ts": 2.0,
-                "message": {"role": "assistant", "content": [{"type": "text", "text": "done"}]},
+                "message": {
+                    "role": "assistant",
+                    "stopReason": "stop",
+                    "content": [{"type": "text", "text": "done"}],
+                },
             },
             start=100,
         ),
@@ -192,6 +196,7 @@ def test_pi_final_response_turn_is_unaffected() -> None:
     events = _extract_positioned_chat_events(records)
     roles = [ev["role"] for ev in events]
     assert roles == ["user", "assistant"]
+    assert events[1]["message_class"] == "final_response"
     assert all(ev["text"] != _NO_RESPONSE_TEXT for ev in events)
 
 
@@ -300,6 +305,37 @@ def test_pi_nonterminal_thinking_does_not_project_no_response() -> None:
     assert all(ev["text"] != _NO_RESPONSE_TEXT for ev in events)
 
 
+def test_pi_length_visible_text_projects_narration_not_final_response() -> None:
+    records = [
+        _rec(
+            {
+                "type": "message",
+                "ts": 1.0,
+                "message": {"role": "user", "content": [{"type": "text", "text": "hello"}]},
+            },
+            start=0,
+        ),
+        _rec(
+            {
+                "type": "message",
+                "ts": 2.0,
+                "message": {
+                    "role": "assistant",
+                    "stopReason": "length",
+                    "content": [{"type": "text", "text": "partial before compaction"}],
+                },
+            },
+            start=100,
+        ),
+    ]
+    events = _extract_positioned_chat_events(records)
+    assert [ev["role"] for ev in events] == ["user", "assistant"]
+    assert events[1]["text"] == "partial before compaction"
+    assert events[1]["message_class"] == "narration"
+    assert events[1]["message_class"] != "final_response"
+    assert all(ev["text"] != _NO_RESPONSE_TEXT for ev in events)
+
+
 def test_pi_length_thinking_only_does_not_project_no_response() -> None:
     records = [
         _rec(
@@ -328,7 +364,7 @@ def test_pi_length_thinking_only_does_not_project_no_response() -> None:
     assert all(ev["text"] != _NO_RESPONSE_TEXT for ev in events)
 
 
-def test_pi_length_compaction_continuation_does_not_insert_false_no_response() -> None:
+def test_pi_length_text_compaction_continuation_does_not_insert_false_no_response() -> None:
     records = [
         _rec(
             {
@@ -345,7 +381,7 @@ def test_pi_length_compaction_continuation_does_not_insert_false_no_response() -
                 "message": {
                     "role": "assistant",
                     "stopReason": "length",
-                    "content": [{"type": "thinking", "thinking": "internal before compaction"}],
+                    "content": [{"type": "text", "text": "partial before compaction"}],
                 },
             },
             start=100,
@@ -369,7 +405,9 @@ def test_pi_length_compaction_continuation_does_not_insert_false_no_response() -
         ),
     ]
     events = _extract_positioned_chat_events(records)
-    assert [ev["role"] for ev in events] == ["user", "assistant"]
+    assert [ev["role"] for ev in events] == ["user", "assistant", "assistant"]
+    assert events[1]["text"] == "partial before compaction"
+    assert events[1]["message_class"] == "narration"
     assert events[-1]["text"] == "continuing with a tool"
     assert events[-1]["message_class"] == "narration"
     assert all(ev["text"] != _NO_RESPONSE_TEXT for ev in events)

@@ -261,6 +261,65 @@ class TestIdleHeuristics(unittest.TestCase):
             )
             self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), False)
 
+    def test_pi_length_visible_text_message_remains_busy(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "pi.jsonl"
+            _write_jsonl(
+                p,
+                [
+                    {"type": "session", "id": "s", "cwd": "/tmp"},
+                    {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "run"}]}},
+                    {
+                        "type": "message",
+                        "message": {
+                            "role": "assistant",
+                            "content": [{"type": "text", "text": "partial before compaction"}],
+                            "stopReason": "length",
+                        },
+                    },
+                ],
+            )
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), False)
+
+    def test_pi_length_text_compaction_continuation_remains_busy_with_pending_tool(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "pi.jsonl"
+            prefix_rows = [
+                {"type": "session", "id": "s", "cwd": "/tmp"},
+                {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "run"}]}},
+                {
+                    "type": "message",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "partial before compaction"}],
+                        "stopReason": "length",
+                    },
+                },
+            ]
+            _write_jsonl(p, prefix_rows)
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), False)
+
+            _write_jsonl(
+                p,
+                prefix_rows
+                + [
+                    {"type": "compaction", "message": "compacting context"},
+                    {"type": "custom_message", "message": "continuing"},
+                    {
+                        "type": "message",
+                        "message": {
+                            "role": "assistant",
+                            "content": [
+                                {"type": "text", "text": "continuing with a tool"},
+                                {"type": "toolCall", "id": "tool-1", "name": "bash", "arguments": {"command": "pwd"}},
+                            ],
+                            "stopReason": "toolUse",
+                        },
+                    },
+                ],
+            )
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), False)
+
     def test_pi_length_thinking_only_message_remains_busy(self) -> None:
         with TemporaryDirectory() as td:
             p = Path(td) / "pi.jsonl"

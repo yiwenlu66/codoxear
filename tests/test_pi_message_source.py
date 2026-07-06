@@ -99,6 +99,35 @@ class TestPiMessageSource(unittest.TestCase):
         )
         self.assertFalse(pi_message.pi_assistant_is_terminal_no_visible_response(row("stop", role="toolResult")))
 
+    def test_pi_length_visible_text_is_not_final_turn_end(self) -> None:
+        def assistant(stop_reason: str, content: list[dict]) -> dict:
+            return {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "stopReason": stop_reason,
+                    "content": content,
+                },
+            }
+
+        visible_stop = assistant("stop", [{"type": "text", "text": "done"}])
+        self.assertTrue(pi_message.pi_assistant_is_final_turn_end(visible_stop))
+
+        visible_length = assistant("length", [{"type": "text", "text": "partial before compaction"}])
+        self.assertFalse(pi_message.pi_assistant_is_final_turn_end(visible_length))
+
+        signed_length = assistant(
+            "length",
+            [{"type": "text", "text": "signed partial", "textSignature": '{"phase":"final_answer"}'}],
+        )
+        self.assertFalse(pi_message.pi_assistant_is_final_turn_end(signed_length))
+
+        signed_tool_use_final = assistant(
+            "toolUse",
+            [{"type": "text", "text": "done", "textSignature": '{"phase":"final_answer"}'}],
+        )
+        self.assertTrue(pi_message.pi_assistant_is_final_turn_end(signed_tool_use_final))
+
     def test_pi_message_tool_call_identity_semantics(self) -> None:
         assistant = {
             "type": "message",
