@@ -90,3 +90,15 @@
   - off-composer file drop prevented navigation without staging;
   - explicit send produced exactly one broker `send`, zero `keys`, three generated `Attachment N:` lines, and cleared staged entries.
 - Clean-room review dispatched: async id `663ce592-4800-4b56-a861-19befe6f7e8d`.
+- Result later committed as `245dcb2 Record upload producer cleanroom review`; verdict accepted with no blockers and four nonblocking nits.
+
+## 2026-07-06T21:25:00Z Paste/drop producer review accepted
+- Review artifact committed: `245dcb2 Record upload producer cleanroom review`.
+- Verdict: accepted, no blockers.
+- Review independently confirmed:
+  - `27ca144` is client-only and has exactly one `/inject_file` occurrence inside shared `stageFiles()`; picker/paste/drop are the only `stageFiles()` callers.
+  - full attach blockers apply inside `stageFiles()` before upload route calls.
+  - text-only paste is not prevented; file paste/drop use the real browser listeners and real server staging route.
+  - off-composer file drop prevents navigation without staging.
+  - broker proof showed zero `send`/`keys` before explicit send and exactly one `send` at the send boundary.
+- Nonblocking nits retained for later UX polish: blocker is checked once per batch, combined text+file paste drops the text, small non-PNG clipboard images may get extensionless pasted names, and `.drop-active` may stick if a file drag leaves the window without dropping.
