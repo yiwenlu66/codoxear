@@ -1,0 +1,9 @@
+=== log size ===
+-rw-r--r-- 1 tester tester 3994 Jul  6 00:01 /home/tester/.pi/agent/sessions/--home-tester-work--/2026-07-05T23-56-37-025Z_497cb6f3-a5ac-4ee5-81c4-9e223feff5ab.jsonl
+=== rows with attachment reference / sentinel / assistant text ===
+4:Attachment 1: /home/tester/.local/share/codoxear/uploads/broker-155/1783295830759_sentinel-source.txt
+---assistant text rows---
+ROLE/TYPE: message None
+  excerpt: {"type": "message", "id": "278785ee", "parentId": "849fdb58", "timestamp": "2026-07-06T00:01:47.004Z", "message": {"role": "toolResult", "toolCallId": "call_ZaNOA6b8g1utdkAnajFi0JNO|fc_06aa7c6395a5e846016a4af06aa22481948f33aac8af24c420", "toolName": "read", "content": [{"type": "text", "text": "This
+ROLE/TYPE: message None
+  excerpt: {"type": "message", "id": "3d247168", "parentId": "278785ee", "timestamp": "2026-07-06T00:01:50.504Z", "message": {"role": "assistant", "content": [{"type": "text", "text": "This is a unique attachment marker.\nSentinel: ATTACH-SENTINEL-1783295830\nLine two has detail 7f2c.", "textSignature": "{\"v\

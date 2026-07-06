@@ -1,0 +1,2 @@
+server2 sessions rediscovered: 1
+  broker-155 backend pi pending_attachment= True busy= False log_state= None
