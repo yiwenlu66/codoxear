@@ -12,6 +12,7 @@ from codoxear.message_routes import _read_chat_export_events
 from codoxear.message_routes import handle_messages_history
 from codoxear.message_routes import handle_messages_search
 from codoxear.message_routes import handle_messages_tail
+from codoxear.rollout_chat_events import _NO_RESPONSE_TEXT
 from codoxear.rollout_log import _read_chat_history_page
 from codoxear.session_model import Session
 from codoxear.transcript_search import casefold_match_span
@@ -407,6 +408,21 @@ def _session(td: str, log_path: Path | None) -> Session:
     )
 
 
+def _session_cc(td: str, log_path: Path | None) -> Session:
+    return Session(
+        session_id="s1",
+        thread_id="thread-1",
+        broker_pid=1,
+        codex_pid=1,
+        agent_backend="cc",
+        owned=False,
+        start_ts=0.0,
+        cwd=td,
+        log_path=log_path,
+        sock_path=Path(td) / "s1.sock",
+    )
+
+
 def _search_manager(session: object) -> SimpleNamespace:
     """Manager fake exposing only the methods handle_messages_search calls."""
     return SimpleNamespace(
@@ -640,6 +656,222 @@ def test_message_routes_reject_malformed_limits() -> None:
             deps=deps,
         )
         assert responses == [(400, {"error": expected_error})], label
+
+
+# --- Synthetic no-response search parity tests ---
+#
+# Search must preserve the same synthetic no-response rows that tail/history/
+# live render, and each synthetic match must carry cursors that resolve back to
+# a history window containing the row (product invariant: transcript surface
+# truth). These are route-level tests exercising handle_messages_search plus
+# _read_chat_history_page to prove the signed history_cursor / load_cursor.
+
+def _codex_event_msg(payload: dict, ts: float) -> dict:
+    return {"type": "event_msg", "ts": ts, "payload": payload}
+
+
+def _write_codex_log(path: Path, rows: list[dict]) -> None:
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+
+
+def _codex_no_response_rows() -> list[dict]:
+    # user_message then task_complete with no assistant answer in between.
+    return [
+        _codex_event_msg({"type": "user_message", "message": "trigger silent backend"}, 1.0),
+        _codex_event_msg({"type": "task_complete", "turn_id": "silent", "last_agent_message": None}, 2.0),
+    ]
+
+
+def _codex_answered_rows() -> list[dict]:
+    return [
+        _codex_event_msg({"type": "user_message", "message": "answer me prompt"}, 1.0),
+        _codex_event_msg({"type": "agent_message", "phase": "final_answer", "message": "here is a real answer"}, 1.5),
+        _codex_event_msg({"type": "task_complete", "turn_id": "answered"}, 2.0),
+    ]
+
+
+def _cc_user_row(text: str = "cc silent backend prompt") -> dict:
+    return {
+        "type": "user",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "message": {"role": "user", "content": [{"type": "text", "text": text}]},
+    }
+
+
+def _cc_assistant_row(text: str = "cc real answer") -> dict:
+    return {
+        "type": "assistant",
+        "timestamp": "2026-01-01T00:00:01Z",
+        "message": {"role": "assistant", "content": [{"type": "text", "text": text}], "stop_reason": "end_turn"},
+    }
+
+
+def _cc_turn_duration_row() -> dict:
+    return {
+        "type": "system",
+        "timestamp": "2026-01-01T00:00:05Z",
+        "subtype": "turn_duration",
+        "durationMs": 1000,
+    }
+
+
+def _cc_terminal_api_error_row() -> dict:
+    return {
+        "type": "system",
+        "timestamp": "2026-01-01T00:00:09Z",
+        "subtype": "api_error",
+        "retryAttempt": 3,
+        "maxRetries": 3,
+        "error": "API Error: 503 Service Unavailable",
+    }
+
+
+def _run_search(session, query: str, *, text_max: int = 0):
+    deps, responses, _metrics = _deps()
+    q = f"q={query}"
+    if text_max:
+        q += f"&text_max={text_max}"
+    handle_messages_search(_FakeHandler(), session_id="s1", query=q, manager=_search_manager(session), deps=deps)
+    assert len(responses) == 1
+    return responses[0]
+
+
+def test_search_finds_codex_synthetic_no_response_with_valid_cursors() -> None:
+    with TemporaryDirectory() as td:
+        log_path = Path(td) / "codex.jsonl"
+        _write_codex_log(log_path, _codex_no_response_rows())
+        session = _session(td, log_path)
+
+        status, body = _run_search(session, "backend completed this turn without producing a response")
+
+        assert status == 200
+        assert body["match_count"] == 1
+        match = body["matches"][0]
+        assert match["text"] == _NO_RESPONSE_TEXT
+        assert match.get("message_class") == "error"
+        # history_cursor decodes to the synthetic row byte (the close record start).
+        synthetic_byte = decode_message_cursor(match["history_cursor"], kind="history", session=session, secret=_SECRET)
+        assert isinstance(match.get("_before_byte"), int)
+        assert synthetic_byte == match["_before_byte"]
+        # load_cursor resolves to a history window that re-injects the no-response row.
+        load_pos = decode_message_cursor(match["load_cursor"], kind="history", session=session, secret=_SECRET)
+        assert load_pos > match["_before_byte"]
+        window_events, _next_before, _has_older = _read_chat_history_page(log_path, before_byte=load_pos, limit=20)
+        assert window_events[-1]["text"] == _NO_RESPONSE_TEXT
+        assert window_events[-1]["message_class"] == "error"
+
+
+def test_search_finds_cc_synthetic_no_response_with_valid_cursors() -> None:
+    with TemporaryDirectory() as td:
+        log_path = Path(td) / "cc.jsonl"
+        log_path.write_text(
+            json.dumps(_cc_user_row()) + "\n" + json.dumps(_cc_turn_duration_row()) + "\n",
+            encoding="utf-8",
+        )
+        session = _session_cc(td, log_path)
+
+        status, body = _run_search(session, "backend completed this turn without producing a response")
+
+        assert status == 200
+        assert body["match_count"] == 1
+        match = body["matches"][0]
+        assert match["text"] == _NO_RESPONSE_TEXT
+        synthetic_byte = decode_message_cursor(match["history_cursor"], kind="history", session=session, secret=_SECRET)
+        assert synthetic_byte == match["_before_byte"]
+        load_pos = decode_message_cursor(match["load_cursor"], kind="history", session=session, secret=_SECRET)
+        assert load_pos > match["_before_byte"]
+        window_events, _next_before, _has_older = _read_chat_history_page(log_path, before_byte=load_pos, limit=20)
+        assert window_events[-1]["text"] == _NO_RESPONSE_TEXT
+
+
+def test_search_does_not_match_no_response_text_for_answered_codex_turn() -> None:
+    with TemporaryDirectory() as td:
+        log_path = Path(td) / "codex.jsonl"
+        _write_codex_log(log_path, _codex_answered_rows())
+        session = _session(td, log_path)
+
+        status, body = _run_search(session, "backend completed this turn without producing a response")
+
+    assert status == 200
+    assert body["match_count"] == 0
+    assert body["matches"] == []
+    # And the real answer is still searchable (ordinary behavior preserved).
+    with TemporaryDirectory() as td:
+        log_path = Path(td) / "codex.jsonl"
+        _write_codex_log(log_path, _codex_answered_rows())
+        session = _session(td, log_path)
+        status2, body2 = _run_search(session, "real answer")
+    assert status2 == 200
+    assert body2["match_count"] == 1
+    assert body2["matches"][0]["text"] == "here is a real answer"
+
+
+def test_search_does_not_match_no_response_text_for_answered_cc_turn() -> None:
+    with TemporaryDirectory() as td:
+        log_path = Path(td) / "cc.jsonl"
+        log_path.write_text(
+            json.dumps(_cc_user_row("answer me prompt")) + "\n"
+            + json.dumps(_cc_assistant_row("cc real answer")) + "\n"
+            + json.dumps(_cc_turn_duration_row()) + "\n",
+            encoding="utf-8",
+        )
+        session = _session_cc(td, log_path)
+
+        status, body = _run_search(session, "backend completed this turn without producing a response")
+
+    assert status == 200
+    assert body["match_count"] == 0
+    assert body["matches"] == []
+
+
+def test_search_finds_cc_terminal_api_error_real_text() -> None:
+    # The terminal api_error row is projected directly from a log row (not
+    # synthesized), so it must remain searchable alongside the new synthetic
+    # behavior.
+    with TemporaryDirectory() as td:
+        log_path = Path(td) / "cc_err.jsonl"
+        log_path.write_text(
+            json.dumps(_cc_user_row("cc failing backend prompt")) + "\n"
+            + json.dumps(_cc_terminal_api_error_row()) + "\n",
+            encoding="utf-8",
+        )
+        session = _session_cc(td, log_path)
+
+        status, body = _run_search(session, "503")
+
+        assert status == 200
+        assert body["match_count"] == 1
+        match = body["matches"][0]
+        assert "503" in match["text"]
+        assert match["text"] != _NO_RESPONSE_TEXT
+        load_pos = decode_message_cursor(match["load_cursor"], kind="history", session=session, secret=_SECRET)
+        window_events, _next_before, _has_older = _read_chat_history_page(log_path, before_byte=load_pos, limit=20)
+        assert window_events[-1]["text"] == match["text"]
+
+
+def test_search_chat_log_bounded_finds_codex_synthetic_no_response_and_attaches_after_byte() -> None:
+    # Narrow direct test: the bounded search stream injects the synthetic
+    # no-response row (not just the route layer) and attaches _after_byte so
+    # load_cursor can be derived without the route helper.
+    with TemporaryDirectory() as td:
+        path = Path(td) / "codex.jsonl"
+        _write_codex_log(path, _codex_no_response_rows())
+        count, matches, truncated = search_chat_log_bounded(
+            path,
+            "backend completed this turn without producing a response",
+            limit=5,
+            max_line_bytes=4096,
+        )
+
+    assert count == 1
+    assert truncated is False
+    assert len(matches) == 1
+    match = matches[0]
+    assert match["text"] == _NO_RESPONSE_TEXT
+    assert match["message_class"] == "error"
+    assert isinstance(match.get("_before_byte"), int)
+    assert isinstance(match.get("_after_byte"), int)
+    assert match["_after_byte"] > match["_before_byte"]
 
 
 if __name__ == "__main__":

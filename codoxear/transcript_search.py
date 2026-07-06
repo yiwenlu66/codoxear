@@ -137,30 +137,43 @@ def iter_positioned_chat_events_forward(
     *,
     max_line_bytes: int = TRANSCRIPT_SEARCH_MAX_LINE_BYTES,
     on_oversized_skip: Callable[[int, int], None] | None = None,
+    before_byte: int | None = None,
 ) -> Iterator[dict[str, Any]]:
+    # Search must use the same positioned event semantics as tail/history/live:
+    # assistant dedupe plus synthetic no-response injection. We collect the
+    # bounded forward records first (the injector needs the turn-close context
+    # that arrives after the user row), then reuse the shared
+    # ``_dedupe_assistant_chat_events`` + ``_inject_no_response_events`` from
+    # rollout_log so no-response logic is not duplicated. Per-record extraction
+    # keeps the historical try/except robustness against malformed payloads
+    # (which ``_extract_positioned_chat_events`` does not tolerate).
+    stop_before = None if before_byte is None else max(0, int(before_byte))
+    records: list[_rollout_log.JsonlRecord] = []
+    events: list[dict[str, Any]] = []
     cc_pending_tool_ids: set[str] = set()
-    last_assistant_key: tuple[str, str] | None = None
     for record in iter_jsonl_records_forward_bounded(log_path, max_line_bytes=max_line_bytes, on_oversized_skip=on_oversized_skip):
+        if stop_before is not None and record.start >= stop_before:
+            break
+        records.append(record)
         try:
             event = _rollout_log._single_chat_event(record.obj, cc_pending_tool_ids=cc_pending_tool_ids)
         except Exception:
             continue
         if event is None:
             continue
-        event = _rollout_log._with_chat_position(event, before_byte=record.start)
-        event["_after_byte"] = int(record.end)
-        role = event.get("role")
-        if role == "user":
-            last_assistant_key = None
-            yield event
-            continue
-        if role == "assistant":
-            key = _rollout_log._chat_assistant_dedupe_key(event)
-            if key is not None and key == last_assistant_key:
-                continue
-            last_assistant_key = key
-            yield event
-            continue
+        events.append(_rollout_log._with_chat_position(event, before_byte=record.start))
+    events = _rollout_log._dedupe_assistant_chat_events(events)
+    events = _rollout_log._inject_no_response_events(records, events)
+    # ``_attach_search_load_cursors`` derives ``history_cursor`` from
+    # ``_before_byte`` and ``load_cursor`` from ``_after_byte``. Regular events
+    # map to their own record end; injected no-response rows carry
+    # ``_before_byte = close_byte`` so they resolve to the closing record's end,
+    # which is the byte window that history pagination re-injects the row into.
+    start_to_end = {record.start: record.end for record in records}
+    for event in events:
+        event_before = event.get("_before_byte")
+        if isinstance(event_before, int) and event_before in start_to_end:
+            event["_after_byte"] = int(start_to_end[event_before])
         yield event
 
 
@@ -193,7 +206,7 @@ def search_chat_log_bounded(
         if stop_before is None or start < stop_before:
             skipped_oversized = True
 
-    for event in iter_positioned_chat_events_forward(log_path, max_line_bytes=max_line_bytes, on_oversized_skip=mark_oversized_skip):
+    for event in iter_positioned_chat_events_forward(log_path, max_line_bytes=max_line_bytes, on_oversized_skip=mark_oversized_skip, before_byte=stop_before):
         event_before = event.get("_before_byte")
         if stop_before is not None and isinstance(event_before, int) and event_before >= stop_before:
             break
