@@ -30,7 +30,7 @@ Stage first, commit later.
 
 ## Accepted post-send cleanup policy
 - Commit `4963ba6` makes deterministic post-confirmed-send staged cleanup guard failures explicit cleanup warnings (`attachment_cleanup_error`) instead of send failures. Delivery remains success, commit-unknown state is cleared, and staged/pending truth is preserved if cleanup fails. Clean-room review `09a9aa9` accepted this path with no blockers.
-- Residual under active follow-up: post-confirmation filesystem/persistence failures (`OSError`) and rare post-confirmation `KeyError` should also be isolated from the delivery response so no post-delivery tail failure becomes a resend-inviting send failure. Executor `7898908e-b067-4656-8cc4-27b50d94e254` is handling this.
+- Commit `785b3d2` extends post-confirmation tail isolation to filesystem/persistence failures (`OSError`) and rare post-confirmation `KeyError`, returning explicit warning fields instead of route errors after confirmed delivery. This remains pending clean-room review `c48a075c-24aa-43e7-8ac3-7ebd53ec5671`.
 
 ## Remaining nonblocking follow-ups
 - Consider reducing absolute-path exposure in browser tooltips once a safe backend-readable identity/display split exists.

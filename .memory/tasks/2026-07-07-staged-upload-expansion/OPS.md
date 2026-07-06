@@ -119,3 +119,13 @@
 - Verdict: accepted for deterministic `ValueError` guard path; no blockers.
 - Review confirmed: cleanup guard failure after confirmed delivery returns 200 with `attachment_cleanup_error`, preserves staged/pending truth, clears commit-unknown state, and frontend surfaces cleanup failure without implying resend.
 - Nonblocking residual: post-confirmation `OSError` from unlink/persistence and rare post-confirmation `KeyError` can still become false send failures after delivery. Follow-up executor dispatched: `7898908e-b067-4656-8cc4-27b50d94e254`.
+
+## 2026-07-06T22:01:00Z Post-confirmation tail isolation committed
+- Functional commit: `785b3d2 Isolate post-send cleanup tail failures`.
+- Mechanism: after confirmed send parse succeeds, post-confirmation tail failures in prelog projection, staged cleanup, pending projection clearing, and commit_unknown clearing are converted into explicit response warning fields (`attachment_cleanup_error` or `send_state_cleanup_error`) rather than route errors. Pre-delivery not-ready/injection/commit_unknown paths remain before this boundary.
+- Validation:
+  - targeted tail tests → `7 passed in 1.75s`;
+  - focused send/control/frontend suite → `130 passed, 22 subtests passed in 1.87s`;
+  - full local suite → `1794 passed, 132 subtests passed in 24.69s`;
+  - `node --check codoxear/static/app.js` and `git diff --check` → clean.
+- Clean-room review dispatched: async id `c48a075c-24aa-43e7-8ac3-7ebd53ec5671`.
