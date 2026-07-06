@@ -54,6 +54,36 @@ class TestMobileToastSource(unittest.TestCase):
         edit_rule_block = mobile_block[edit_rule_start:edit_rule_end]
         self.assertIn("min-width: 44px", edit_rule_block)
 
+    def test_composer_controls_meet_44px_touch_target_on_mobile(self) -> None:
+        """Main composer icon controls (paperclip/queue/stop/send) must be at
+        least 44x44 CSS px on mobile.
+
+        These are the primary send/attach controls and the most-used touch
+        targets in the app. They are .icon-btn elements inside .composer, sized
+        by --composerCtl which the later coarse-pointer media query overrides to
+        40px on phones. The mobile (max-width: 520px) block must therefore set
+        an explicit min-width/min-height: 44px floor on .composer .icon-btn so
+        the 44px target does not depend on the variable cascade. This also
+        ensures the 44px touch rule is not unique to the file viewer.
+        """
+        css = APP_CSS.read_text(encoding="utf-8")
+        mobile_start = css.index("@media (max-width: 520px)")
+        mobile_block = css[mobile_start:]
+        next_media = mobile_block.find("@media", 1)
+        mobile_block = mobile_block if next_media == -1 else mobile_block[:next_media]
+        self.assertIn(".composer .icon-btn", mobile_block)
+        rule_start = mobile_block.index(".composer .icon-btn")
+        rule_end = mobile_block.index("}", rule_start)
+        rule_block = mobile_block[rule_start:rule_end]
+        self.assertIn("min-width: 44px", rule_block)
+        self.assertIn("min-height: 44px", rule_block)
+        # The 44px touch-target floor must not be unique to the file viewer;
+        # the composer (primary send/attach path) needs its own floor.
+        self.assertIn(".fileViewer .icon-btn:not(.fileTouchBtn)", mobile_block)
+        composer_idx = mobile_block.index(".composer .icon-btn")
+        viewer_idx = mobile_block.index(".fileViewer .icon-btn:not(.fileTouchBtn)")
+        self.assertNotEqual(composer_idx, viewer_idx)
+
 
 if __name__ == "__main__":
     unittest.main()
