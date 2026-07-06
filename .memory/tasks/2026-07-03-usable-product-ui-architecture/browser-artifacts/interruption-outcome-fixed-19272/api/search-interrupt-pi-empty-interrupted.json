@@ -1,0 +1,23 @@
+{
+  "body": {
+    "log_path": "/home/tester/.local/share/codoxear/interrupt-logs/interrupt-pi-empty.jsonl",
+    "match_count": 1,
+    "match_count_truncated": false,
+    "matches": [
+      {
+        "_before_byte": 131,
+        "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImludGVycnVwdC1waS1lbXB0eSIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9pbnRlcnJ1cHQtbG9ncy9pbnRlcnJ1cHQtcGktZW1wdHkuanNvbmwiLCJwb3MiOjEzMX0.6b31LnsKczl4r1pgeLWg4ME9lFlwXWcvjZOIBdw7LAg",
+        "load_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImludGVycnVwdC1waS1lbXB0eSIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9pbnRlcnJ1cHQtbG9ncy9pbnRlcnJ1cHQtcGktZW1wdHkuanNvbmwiLCJwb3MiOjIzNn0.LWO73pV5WAnDtOgRiW5BQUFH5hmQQuPLfoLCofPDfs0",
+        "message_class": "error",
+        "message_id": "b7f600ff82c655cfa262033d91cf352bb896a490c85f640f89f7b4ba992f23ee",
+        "role": "assistant",
+        "text": "The backend turn was interrupted before completion.",
+        "ts": 2.0
+      }
+    ],
+    "query": "interrupted",
+    "thread_id": "interrupt-pi-empty",
+    "transcript_state": "bound"
+  },
+  "status": 200
+}

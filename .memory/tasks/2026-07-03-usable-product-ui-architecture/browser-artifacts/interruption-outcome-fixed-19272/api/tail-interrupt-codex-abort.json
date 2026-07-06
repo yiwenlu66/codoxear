@@ -1,0 +1,30 @@
+{
+  "body": {
+    "busy": false,
+    "events": [
+      {
+        "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImludGVycnVwdC1jb2RleC1hYm9ydCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9pbnRlcnJ1cHQtbG9ncy9pbnRlcnJ1cHQtY29kZXgtYWJvcnQuanNvbmwiLCJwb3MiOjB9.QnpmkR4Wo3lYlqyGDXLLQ6ITTsp_KOf1XQtiaXD7VUs",
+        "role": "user",
+        "text": "hello codex (turn_aborted proof)",
+        "ts": 1.0
+      },
+      {
+        "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImludGVycnVwdC1jb2RleC1hYm9ydCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9pbnRlcnJ1cHQtbG9ncy9pbnRlcnJ1cHQtY29kZXgtYWJvcnQuanNvbmwiLCJwb3MiOjExN30.mAuuI5XhaoYeOLIXGS6PWg60GedHQdl0srFGF_mi_8k",
+        "message_class": "error",
+        "message_id": "b7f600ff82c655cfa262033d91cf352bb896a490c85f640f89f7b4ba992f23ee",
+        "role": "assistant",
+        "text": "The backend turn was interrupted before completion.",
+        "ts": 2.0
+      }
+    ],
+    "has_older": false,
+    "history_cursor": null,
+    "live_cursor": "eyJ2IjoxLCJraW5kIjoibGl2ZSIsInRocmVhZF9pZCI6ImludGVycnVwdC1jb2RleC1hYm9ydCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9pbnRlcnJ1cHQtbG9ncy9pbnRlcnJ1cHQtY29kZXgtYWJvcnQuanNvbmwiLCJwb3MiOjE4N30.9_7PrCbwhCmqmORjF5hGHuBPWnPZpke-hLcnVe4VT1Y",
+    "log_path": "/home/tester/.local/share/codoxear/interrupt-logs/interrupt-codex-abort.jsonl",
+    "queue_len": 0,
+    "thread_id": "interrupt-codex-abort",
+    "token": null,
+    "transcript_state": "bound"
+  },
+  "status": 200
+}

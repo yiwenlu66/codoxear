@@ -1,0 +1,18 @@
+name=codoxear-sandbox-19272 status=Up 8 minutes ports=127.0.0.1:19272->19272/tcp image=codoxear-sandbox:latest
+=== socks ===
+total 20
+drwxr-xr-x 2 tester tester 4096 Jul  6 10:22 .
+drwxr-xr-x 6 tester tester 4096 Jul  6 10:22 ..
+-rw-r--r-- 1 tester tester  346 Jul  6 10:22 interrupt-codex-abort.json
+srwxr-xr-x 1 tester tester    0 Jul  6 10:22 interrupt-codex-abort.sock
+-rw-r--r-- 1 tester tester  334 Jul  6 10:22 interrupt-pi-empty.json
+srwxr-xr-x 1 tester tester    0 Jul  6 10:22 interrupt-pi-empty.sock
+-rw-r--r-- 1 tester tester  340 Jul  6 10:22 interrupt-pi-partial.json
+srwxr-xr-x 1 tester tester    0 Jul  6 10:22 interrupt-pi-partial.sock
+=== interrupt-logs ===
+total 20
+drwxr-xr-x 2 tester tester 4096 Jul  6 10:22 .
+drwxr-xr-x 6 tester tester 4096 Jul  6 10:22 ..
+-rw-r--r-- 1 tester tester  187 Jul  6 10:22 interrupt-codex-abort.jsonl
+-rw-r--r-- 1 tester tester  236 Jul  6 10:22 interrupt-pi-empty.jsonl
+-rw-r--r-- 1 tester tester  298 Jul  6 10:22 interrupt-pi-partial.jsonl

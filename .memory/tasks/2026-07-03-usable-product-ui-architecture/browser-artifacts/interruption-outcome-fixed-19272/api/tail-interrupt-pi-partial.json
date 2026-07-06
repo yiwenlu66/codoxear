@@ -1,0 +1,30 @@
+{
+  "body": {
+    "busy": false,
+    "events": [
+      {
+        "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImludGVycnVwdC1waS1wYXJ0aWFsIiwibG9nX3BhdGgiOiIvaG9tZS90ZXN0ZXIvLmxvY2FsL3NoYXJlL2NvZG94ZWFyL2ludGVycnVwdC1sb2dzL2ludGVycnVwdC1waS1wYXJ0aWFsLmpzb25sIiwicG9zIjowfQ.2MmKh7briB6NwCTmLuGCW7kwWC1_936zTAhym74sAqE",
+        "role": "user",
+        "text": "hello pi (partial abort proof)",
+        "ts": 1.0
+      },
+      {
+        "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImludGVycnVwdC1waS1wYXJ0aWFsIiwibG9nX3BhdGgiOiIvaG9tZS90ZXN0ZXIvLmxvY2FsL3NoYXJlL2NvZG94ZWFyL2ludGVycnVwdC1sb2dzL2ludGVycnVwdC1waS1wYXJ0aWFsLmpzb25sIiwicG9zIjoxMzN9.HHlN-dEaKIxYWjYuX1YHv3nCCtSeO1L_Kys9ljLJaec",
+        "message_class": "error",
+        "message_id": "e8762e04704f270ad70ec0ff2505ad009dc72b8556e619efc20dfc48b1ca6817",
+        "role": "assistant",
+        "text": "The backend turn was interrupted before completion.\n\nPartial output before interruption:\nI was halfway through the answer",
+        "ts": 2.0
+      }
+    ],
+    "has_older": false,
+    "history_cursor": null,
+    "live_cursor": "eyJ2IjoxLCJraW5kIjoibGl2ZSIsInRocmVhZF9pZCI6ImludGVycnVwdC1waS1wYXJ0aWFsIiwibG9nX3BhdGgiOiIvaG9tZS90ZXN0ZXIvLmxvY2FsL3NoYXJlL2NvZG94ZWFyL2ludGVycnVwdC1sb2dzL2ludGVycnVwdC1waS1wYXJ0aWFsLmpzb25sIiwicG9zIjoyOTh9.e0mxWZQZnWiVXBU2MSzThFk82o2juodHk-lylsqocXs",
+    "log_path": "/home/tester/.local/share/codoxear/interrupt-logs/interrupt-pi-partial.jsonl",
+    "queue_len": 0,
+    "thread_id": "interrupt-pi-partial",
+    "token": null,
+    "transcript_state": "bound"
+  },
+  "status": 200
+}

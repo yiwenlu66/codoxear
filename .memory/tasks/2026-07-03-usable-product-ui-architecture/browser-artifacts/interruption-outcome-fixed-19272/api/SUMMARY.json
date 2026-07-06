@@ -1,0 +1,106 @@
+{
+  "base": "http://127.0.0.1:19272",
+  "per_scenario": {
+    "interrupt-codex-abort": {
+      "backend": "codex",
+      "has_assistant_interruption_row": true,
+      "interruption_class_is_error": true,
+      "interruption_history_rehydrated": true,
+      "interruption_text_present": true,
+      "partial_history_rehydrated": null,
+      "partial_text_preserved": null,
+      "search_halfway_match_count": null,
+      "search_interrupted_match_count": 1,
+      "tail_events": [
+        {
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImludGVycnVwdC1jb2RleC1hYm9ydCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9pbnRlcnJ1cHQtbG9ncy9pbnRlcnJ1cHQtY29kZXgtYWJvcnQuanNvbmwiLCJwb3MiOjB9.QnpmkR4Wo3lYlqyGDXLLQ6ITTsp_KOf1XQtiaXD7VUs",
+          "role": "user",
+          "text": "hello codex (turn_aborted proof)",
+          "ts": 1.0
+        },
+        {
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImludGVycnVwdC1jb2RleC1hYm9ydCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9pbnRlcnJ1cHQtbG9ncy9pbnRlcnJ1cHQtY29kZXgtYWJvcnQuanNvbmwiLCJwb3MiOjExN30.mAuuI5XhaoYeOLIXGS6PWg60GedHQdl0srFGF_mi_8k",
+          "message_class": "error",
+          "message_id": "b7f600ff82c655cfa262033d91cf352bb896a490c85f640f89f7b4ba992f23ee",
+          "role": "assistant",
+          "text": "The backend turn was interrupted before completion.",
+          "ts": 2.0
+        }
+      ],
+      "tail_roles": [
+        "user",
+        "assistant"
+      ],
+      "user_prompt_in_tail": true
+    },
+    "interrupt-pi-empty": {
+      "backend": "pi",
+      "has_assistant_interruption_row": true,
+      "interruption_class_is_error": true,
+      "interruption_history_rehydrated": true,
+      "interruption_text_present": true,
+      "partial_history_rehydrated": null,
+      "partial_text_preserved": null,
+      "search_halfway_match_count": null,
+      "search_interrupted_match_count": 1,
+      "tail_events": [
+        {
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImludGVycnVwdC1waS1lbXB0eSIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9pbnRlcnJ1cHQtbG9ncy9pbnRlcnJ1cHQtcGktZW1wdHkuanNvbmwiLCJwb3MiOjB9.l-Xi9PkBsJTRvGQWLxskPw3WM27Cna975hBemyPHtx0",
+          "role": "user",
+          "text": "hello pi (empty abort proof)",
+          "ts": 1.0
+        },
+        {
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImludGVycnVwdC1waS1lbXB0eSIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9pbnRlcnJ1cHQtbG9ncy9pbnRlcnJ1cHQtcGktZW1wdHkuanNvbmwiLCJwb3MiOjEzMX0.6b31LnsKczl4r1pgeLWg4ME9lFlwXWcvjZOIBdw7LAg",
+          "message_class": "error",
+          "message_id": "b7f600ff82c655cfa262033d91cf352bb896a490c85f640f89f7b4ba992f23ee",
+          "role": "assistant",
+          "text": "The backend turn was interrupted before completion.",
+          "ts": 2.0
+        }
+      ],
+      "tail_roles": [
+        "user",
+        "assistant"
+      ],
+      "user_prompt_in_tail": true
+    },
+    "interrupt-pi-partial": {
+      "backend": "pi",
+      "has_assistant_interruption_row": true,
+      "interruption_class_is_error": true,
+      "interruption_history_rehydrated": true,
+      "interruption_text_present": true,
+      "partial_history_rehydrated": true,
+      "partial_text_preserved": true,
+      "search_halfway_match_count": 1,
+      "search_interrupted_match_count": 1,
+      "tail_events": [
+        {
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImludGVycnVwdC1waS1wYXJ0aWFsIiwibG9nX3BhdGgiOiIvaG9tZS90ZXN0ZXIvLmxvY2FsL3NoYXJlL2NvZG94ZWFyL2ludGVycnVwdC1sb2dzL2ludGVycnVwdC1waS1wYXJ0aWFsLmpzb25sIiwicG9zIjowfQ.2MmKh7briB6NwCTmLuGCW7kwWC1_936zTAhym74sAqE",
+          "role": "user",
+          "text": "hello pi (partial abort proof)",
+          "ts": 1.0
+        },
+        {
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImludGVycnVwdC1waS1wYXJ0aWFsIiwibG9nX3BhdGgiOiIvaG9tZS90ZXN0ZXIvLmxvY2FsL3NoYXJlL2NvZG94ZWFyL2ludGVycnVwdC1sb2dzL2ludGVycnVwdC1waS1wYXJ0aWFsLmpzb25sIiwicG9zIjoxMzN9.HHlN-dEaKIxYWjYuX1YHv3nCCtSeO1L_Kys9ljLJaec",
+          "message_class": "error",
+          "message_id": "e8762e04704f270ad70ec0ff2505ad009dc72b8556e619efc20dfc48b1ca6817",
+          "role": "assistant",
+          "text": "The backend turn was interrupted before completion.\n\nPartial output before interruption:\nI was halfway through the answer",
+          "ts": 2.0
+        }
+      ],
+      "tail_roles": [
+        "user",
+        "assistant"
+      ],
+      "user_prompt_in_tail": true
+    }
+  },
+  "sessions": [
+    "interrupt-codex-abort",
+    "interrupt-pi-empty",
+    "interrupt-pi-partial"
+  ]
+}
