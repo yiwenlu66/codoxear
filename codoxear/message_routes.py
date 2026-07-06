@@ -123,9 +123,59 @@ def _launch_payload_cursor_session(payload: dict[str, Any]) -> Any:
     return SimpleNamespace(thread_id=thread_id, log_path=log_path)
 
 
+def _public_launch_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in payload.items() if k != "_history_before_byte"}
+
+
+def _launch_payload_history_before_byte(payload: dict[str, Any]) -> int | None:
+    if not payload.get("has_older"):
+        return None
+    before_byte = payload.get("_history_before_byte")
+    if isinstance(before_byte, bool) or not isinstance(before_byte, int) or before_byte <= 0:
+        return None
+    return before_byte
+
+
+def _launch_payload_history_cursor(payload: dict[str, Any], *, encode_cursor: Callable[..., str]) -> str | None:
+    before_byte = _launch_payload_history_before_byte(payload)
+    if before_byte is None:
+        return None
+    return encode_cursor(kind="history", session=_launch_payload_cursor_session(payload), pos=before_byte)
+
+
+def _launch_payload_response_base(payload: dict[str, Any], *, encode_cursor: Callable[..., str]) -> dict[str, Any]:
+    out = _public_launch_payload(payload)
+    history_cursor = _launch_payload_history_cursor(payload, encode_cursor=encode_cursor)
+    if "history_cursor" in payload or history_cursor is not None:
+        out["history_cursor"] = history_cursor
+    return out
+
+
+def _event_has_history_cursor_source(event: Any) -> bool:
+    if not isinstance(event, dict):
+        return False
+    cursor = event.get("history_cursor")
+    if isinstance(cursor, str) and cursor:
+        return True
+    before_byte = event.get("_before_byte")
+    return not isinstance(before_byte, bool) and isinstance(before_byte, int) and before_byte >= 0
+
+
 def _launch_payload_events_with_cursors(payload: dict[str, Any], *, encode_cursor: Callable[..., str]) -> list[dict[str, Any]]:
     events = payload.get("events") if isinstance(payload.get("events"), list) else []
-    return _attach_history_cursors_impl(list(events), session=_launch_payload_cursor_session(payload), encode_cursor=encode_cursor)
+    events = list(events)
+    before_byte = _launch_payload_history_before_byte(payload)
+    if before_byte is not None and events and not any(_event_has_history_cursor_source(event) for event in events):
+        boundary_index = next(
+            (idx for idx, event in enumerate(events) if isinstance(event, dict) and event.get("codoxear_lifecycle")),
+            len(events) - 1,
+        )
+        event = events[boundary_index]
+        if isinstance(event, dict):
+            boundary_event = dict(event)
+            boundary_event["_before_byte"] = before_byte
+            events[boundary_index] = boundary_event
+    return _attach_history_cursors_impl(events, session=_launch_payload_cursor_session(payload), encode_cursor=encode_cursor)
 
 
 def _attach_search_load_cursors(matches: list[dict[str, Any]], *, session: Any, encode_cursor: Callable[..., str]) -> list[dict[str, Any]]:
@@ -196,7 +246,7 @@ def handle_messages_export(handler: Any, *, session_id: str, query: str = "", ma
                         )
                         return
             events = launch_payload.get("events") if isinstance(launch_payload.get("events"), list) else []
-            deps.json_response(handler, 200, {**launch_payload, "events": events, "event_count": len(events)})
+            deps.json_response(handler, 200, {**_launch_payload_response_base(launch_payload, encode_cursor=deps.encode_message_cursor), "events": events, "event_count": len(events)})
             return
         deps.json_response(handler, 404, {"error": "unknown session"})
         return
@@ -247,7 +297,7 @@ def handle_messages_search(handler: Any, *, session_id: str, query: str, manager
         launch_payload = _launch_payload_for_missing_session(deps, session_id)
         if launch_payload is not None:
             if not isinstance(search_query, str) or not search_query.strip():
-                deps.json_response(handler, 200, {**launch_payload, "query": "", "match_count": 0, "match_count_truncated": False, "matches": []})
+                deps.json_response(handler, 200, {**_launch_payload_response_base(launch_payload, encode_cursor=deps.encode_message_cursor), "query": "", "match_count": 0, "match_count_truncated": False, "matches": []})
                 return
             payload_with_cursors = {
                 **launch_payload,
@@ -265,7 +315,7 @@ def handle_messages_search(handler: Any, *, session_id: str, query: str, manager
                 handler,
                 200,
                 {
-                    **launch_payload,
+                    **_launch_payload_response_base(launch_payload, encode_cursor=deps.encode_message_cursor),
                     "query": search_query.strip(),
                     "match_count": match_count,
                     "match_count_truncated": False,
@@ -315,7 +365,7 @@ def handle_messages_tail(handler: Any, *, session_id: str, query: str, manager: 
         launch_payload = _launch_payload_for_missing_session(deps, session_id)
         if launch_payload is not None:
             events = _launch_payload_events_with_cursors(launch_payload, encode_cursor=deps.encode_message_cursor)
-            deps.json_response(handler, 200, {**launch_payload, "events": events})
+            deps.json_response(handler, 200, {**_launch_payload_response_base(launch_payload, encode_cursor=deps.encode_message_cursor), "events": events})
             deps.record_metric("api_messages_init_ms", (time.perf_counter() - t0_total) * 1000.0)
             return
         deps.json_response(handler, 404, {"error": "unknown session"})
@@ -377,12 +427,49 @@ def handle_messages_history(handler: Any, *, session_id: str, query: str, manage
     if not s:
         launch_payload = _launch_payload_for_missing_session(deps, session_id)
         if launch_payload is not None:
+            qs = urllib.parse.parse_qs(query)
+            cursor_q = qs.get("cursor")
+            if launch_payload.get("has_older") and launch_payload.get("_history_before_byte"):
+                if cursor_q is None or not cursor_q or not cursor_q[0].strip():
+                    deps.json_response(handler, 400, {"error": "cursor required"})
+                    return
+                cursor_session = _launch_payload_cursor_session(launch_payload)
+                try:
+                    before_byte = deps.decode_message_cursor(cursor_q[0], kind="history", session=cursor_session)
+                except MessageCursorError as e:
+                    deps.json_response(handler, 409, {"error": str(e)})
+                    return
+                log_path = cursor_session.log_path
+                if log_path is None or not log_path.exists():
+                    deps.json_response(handler, 404, {"error": "unknown session"})
+                    return
+                limit, limit_error = _parse_bounded_query_int(qs, "limit", default=60, min_value=20, max_value=200)
+                if limit_error is not None:
+                    deps.json_response(handler, 400, {"error": limit_error})
+                    return
+                events, next_before, has_older = _rollout_log._read_chat_history_page(log_path, before_byte=before_byte, limit=limit)
+                events = _launch_payload_events_with_cursors({**launch_payload, "events": events}, encode_cursor=deps.encode_message_cursor)
+                history_cursor = deps.encode_message_cursor(kind="history", session=cursor_session, pos=next_before) if has_older and next_before > 0 else None
+                deps.json_response(
+                    handler,
+                    200,
+                    {
+                        **_public_launch_payload(launch_payload),
+                        "history_cursor": history_cursor,
+                        "events": events,
+                        "has_older": bool(has_older),
+                        "busy": False,
+                        "queue_len": 0,
+                        "token": None,
+                    },
+                )
+                return
             events = _launch_payload_events_with_cursors(launch_payload, encode_cursor=deps.encode_message_cursor)
             deps.json_response(
                 handler,
                 200,
                 {
-                    **launch_payload,
+                    **_public_launch_payload(launch_payload),
                     "history_cursor": None,
                     "events": events,
                     "has_older": False,
@@ -463,7 +550,7 @@ def handle_messages_live(handler: Any, *, session_id: str, query: str, manager: 
                 handler,
                 200,
                 {
-                    **launch_payload,
+                    **_launch_payload_response_base(launch_payload, encode_cursor=deps.encode_message_cursor),
                     "live_cursor": None,
                     "events": events,
                     "meta_delta": {"thinking": 0, "tool": 0, "system": 0},

@@ -5,6 +5,8 @@ import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
+from codoxear.launch_ledger import POST_LOG_RECOVERY_TRANSCRIPT_MAX_BYTES
+from codoxear.launch_ledger import launch_attempt_transcript_payload
 from codoxear.message_cursor import MessageCursorError
 from codoxear.message_cursor import decode_message_cursor
 from codoxear.message_cursor import encode_message_cursor
@@ -344,6 +346,70 @@ def test_post_log_recovery_missing_session_routes_share_payload() -> None:
         assert live_body["turn_end"] is True
         assert live_body["busy"] is False
         assert [ev["role"] for ev in live_body["events"]] == ["user", "assistant"]
+
+
+def test_large_post_log_recovery_tail_exposes_usable_history_cursor() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "large-post-log.jsonl"
+        first = {"type": "event_msg", "ts": 1.0, "payload": {"type": "user_message", "message": "FIRST_EVENT_SENTINEL"}}
+        filler = {"type": "debug", "payload": "x" * 4096}
+        with log_path.open("w", encoding="utf-8") as f:
+            f.write(json.dumps(first, separators=(",", ":")) + "\n")
+            filler_line = json.dumps(filler, separators=(",", ":")) + "\n"
+            while f.tell() <= POST_LOG_RECOVERY_TRANSCRIPT_MAX_BYTES + 4096:
+                f.write(filler_line)
+
+        rec = {
+            "launch_id": "launch-large-post-log",
+            "session_id": "broker-large",
+            "thread_id": "thread-large",
+            "state": "failed",
+            "stage": "broker_exit_after_log_bind",
+            "error": "backend stopped after binding a transcript log",
+            "agent_backend": "codex",
+            "cwd": td,
+            "created_ts": 1.0,
+            "updated_ts": 3.0,
+            "log_path": str(log_path),
+        }
+        payload = launch_attempt_transcript_payload(rec)
+
+        payload_texts = [ev.get("text") for ev in payload["events"]]
+        assert payload_texts == [POST_LOG_BOUND_BACKEND_STOPPED_TEXT]
+        assert "FIRST_EVENT_SENTINEL" not in payload_texts
+        assert payload["has_older"] is True
+        assert payload["history_cursor"] is None
+        assert isinstance(payload.get("_history_before_byte"), int)
+
+        deps, responses, _metrics = _deps(launch_attempt_transcript_for_session_id=lambda _sid: payload)
+        manager = _MissingManager()
+        handle_messages_tail(_FakeHandler(), session_id="broker-large", query="limit=20", manager=manager, deps=deps)
+        tail_status, tail_body = responses.pop()
+        assert tail_status == 200
+        assert "_history_before_byte" not in tail_body
+        assert tail_body["has_older"] is True
+        assert isinstance(tail_body["history_cursor"], str) and tail_body["history_cursor"]
+        cursor_session = SimpleNamespace(thread_id="thread-large", log_path=log_path)
+        assert decode_message_cursor(tail_body["history_cursor"], kind="history", session=cursor_session, secret=_SECRET) == payload["_history_before_byte"]
+        assert [ev.get("text") for ev in tail_body["events"]] == [POST_LOG_BOUND_BACKEND_STOPPED_TEXT]
+        lifecycle_event = tail_body["events"][0]
+        assert lifecycle_event.get("codoxear_lifecycle") == "backend_stopped_after_log_bind"
+        assert isinstance(lifecycle_event.get("history_cursor"), str) and lifecycle_event["history_cursor"]
+        assert decode_message_cursor(lifecycle_event["history_cursor"], kind="history", session=cursor_session, secret=_SECRET) == payload["_history_before_byte"]
+
+        handle_messages_history(
+            _FakeHandler(),
+            session_id="broker-large",
+            query=f"cursor={lifecycle_event['history_cursor']}&limit=20",
+            manager=manager,
+            deps=deps,
+        )
+        history_status, history_body = responses.pop()
+        assert history_status == 200
+        assert "_history_before_byte" not in history_body
+        history_texts = [ev.get("text") for ev in history_body["events"]]
+        assert "FIRST_EVENT_SENTINEL" in history_texts
+        assert POST_LOG_BOUND_BACKEND_STOPPED_TEXT not in history_texts
 
 
 def test_messages_export_missing_recovery_session_retains_size_cap() -> None:

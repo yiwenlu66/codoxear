@@ -263,7 +263,47 @@ def test_discover_hidden_dead_session_emits_unhide_unlink_action(tmp_path: Path)
     assert action.meta_path == sock.with_suffix(".json")
     assert action.clear_session_state is False
     assert action.unhide_session is True
+    # NB-5: completed/idle bound log with dead pids -> no failure_record
     assert action.failure_record is None
+
+
+def test_discover_hidden_dead_bound_incomplete_log_emits_failure_record(tmp_path: Path) -> None:
+    sock_dir = tmp_path / "socks"
+    sock_dir.mkdir()
+    sock = sock_dir / "hidden-dead-inc.sock"
+    sock.touch()
+    log_path = tmp_path / "hidden-dead-inc.jsonl"
+    # Incomplete log: user message without a matching turn_complete.
+    # _compute_idle_from_log returns False for this, so
+    # log_needs_post_log_bound_recovery returns True.
+    log_path.write_text(
+        '{"type":"event_msg","ts":1.0,"payload":{"type":"user_message","message":"unfinished"}}\n',
+        encoding="utf-8",
+    )
+    _write_sidecar(sock, root=tmp_path, log_path=log_path, launch_id="launch-hidden-inc")
+
+    result = discover_sessions(
+        sock_dir,
+        proc_root=tmp_path / "proc",
+        hidden_sessions={"hidden-dead-inc"},
+        deps=_deps(live_pids=set(), meta_payload={"id": "hidden-dead-inc"}),
+    )
+
+    assert result.registrations == []
+    assert result.recent_cwds == []
+    assert len(result.stale_actions) == 1
+    action = result.stale_actions[0]
+    assert action.session_id == "hidden-dead-inc"
+    assert action.sock_path == sock
+    assert action.meta_path == sock.with_suffix(".json")
+    assert action.clear_session_state is False
+    assert action.unhide_session is True
+    # NB-5: incomplete bound log with dead pids -> failure_record is set
+    assert action.failure_record is not None
+    assert action.failure_record["launch_id"] == "launch-hidden-inc"
+    assert action.failure_record["state"] == "failed"
+    assert action.failure_record["stage"] == "broker_exit_after_log_bind"
+    assert action.failure_record["log_path"] == str(log_path)
 
 
 def test_discover_stale_dead_socket_emits_unlink_only_action(tmp_path: Path) -> None:

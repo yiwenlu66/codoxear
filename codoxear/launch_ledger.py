@@ -166,15 +166,37 @@ def _post_log_bound_transcript_payload(
     log_path_text = clean_optional_text(record.get("log_path"))
     events: list[dict[str, Any]] = []
     limit = max(1, int(max_bytes if isinstance(max_bytes, int) and max_bytes > 0 else POST_LOG_RECOVERY_TRANSCRIPT_MAX_BYTES))
+    has_older = False
+    history_before_byte: int | None = None
     if log_path_text:
         path = Path(log_path_text)
         if path.exists():
             try:
                 size = int(path.stat().st_size)
-                records, _next_after = _rollout_log._read_jsonl_records_from_offset(path, 0, max_bytes=min(max(size, 1), limit))
+                if size > limit:
+                    # Read from the tail window (last limit bytes) so recovered
+                    # transcript surfaces recent diagnostic events, not the
+                    # oldest log head. A partial-first-line JSON fragment is
+                    # naturally skipped by _parse_jsonl_line returning None.
+                    tail_offset = size - limit
+                    records, _next_after = _rollout_log._read_jsonl_records_from_offset(
+                        path, tail_offset, max_bytes=limit
+                    )
+                    has_older = True
+                    # The route layer owns cursor signing. The ledger only
+                    # exposes the byte boundary that a normal history cursor
+                    # must point at. Prefer the first complete record retained
+                    # in the tail window; that prevents losing a JSONL record
+                    # that straddled the raw byte truncation boundary.
+                    history_before_byte = records[0].start if records else tail_offset
+                else:
+                    records, _next_after = _rollout_log._read_jsonl_records_from_offset(
+                        path, 0, max_bytes=min(max(size, 1), limit)
+                    )
                 events = _rollout_log._extract_positioned_chat_events(records)
             except Exception:
                 events = []
+                history_before_byte = None
     events.append(
         {
             "role": "assistant",
@@ -184,20 +206,23 @@ def _post_log_bound_transcript_payload(
             "codoxear_lifecycle": "backend_stopped_after_log_bind",
         }
     )
-    return {
+    payload = {
         "transcript_state": "failed",
         "thread_id": thread_id,
         "log_path": log_path_text,
         "live_cursor": None,
         "history_cursor": None,
         "events": events,
-        "has_older": False,
+        "has_older": has_older,
         "busy": False,
         "queue_len": 0,
         "token": None,
         "launch_id": launch_attempt_id(record),
         "session_id": route_id,
     }
+    if has_older and history_before_byte is not None and history_before_byte > 0:
+        payload["_history_before_byte"] = int(history_before_byte)
+    return payload
 
 
 def launch_attempt_transcript_payload(record: dict[str, Any], *, max_bytes: int | None = None) -> dict[str, Any]:
