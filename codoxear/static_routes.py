@@ -56,6 +56,7 @@ UI_IMAGE_ASSET_FILES = (
     "logos/cc.svg",
 )
 STATIC_ASSET_VERSION_FILES = FRONTEND_ASSET_FILES + SHELL_ASSET_FILES + UI_IMAGE_ASSET_FILES
+MONACO_ASSET_ROOT = "monaco"
 TOP_LEVEL_STATIC_ASSETS = (
     ("/favicon.ico", "favicon.png"),
     ("/manifest.webmanifest", "manifest.webmanifest"),
@@ -88,11 +89,22 @@ def static_cache_control_headers(*, enabled: bool | None = None) -> dict[str, st
     }
 
 
+def _static_version_asset_paths(base: Path) -> list[tuple[str, Path]]:
+    assets: list[tuple[str, Path]] = []
+    for rel in STATIC_ASSET_VERSION_FILES:
+        assets.append((rel, base / rel))
+    monaco_root = base / MONACO_ASSET_ROOT
+    if monaco_root.is_dir():
+        for path in sorted((p for p in monaco_root.rglob("*") if p.is_file()), key=lambda p: p.relative_to(base).as_posix()):
+            assets.append((path.relative_to(base).as_posix(), path))
+    return assets
+
+
 def static_asset_version(static_dir: Path = STATIC_DIR) -> str:
     base = static_dir.resolve()
     digest = hashlib.sha256()
-    for rel in STATIC_ASSET_VERSION_FILES:
-        path = (base / rel).resolve()
+    for rel, raw_path in _static_version_asset_paths(base):
+        path = raw_path.resolve()
         if not str(path).startswith(str(base)):
             raise ValueError(f"static asset escaped static dir: {path}")
         if not path.is_file():
@@ -137,6 +149,12 @@ def static_content_type(path: Path) -> str:
         return "image/svg+xml; charset=utf-8"
     if path.suffix == ".ico":
         return "image/x-icon"
+    if path.suffix == ".json" or path.suffix == ".map":
+        return "application/json; charset=utf-8"
+    if path.suffix == ".ttf":
+        return "font/ttf"
+    if path.suffix == ".wasm":
+        return "application/wasm"
     return "application/octet-stream"
 
 
@@ -154,6 +172,8 @@ def static_route_asset(path: str, *, top_level_static_assets: tuple[tuple[str, s
             return asset
     if path.startswith("/static/"):
         return path[len("/static/") :]
+    if path.startswith("/monaco/"):
+        return f"monaco/{path[len('/monaco/') :]}"
     return None
 
 

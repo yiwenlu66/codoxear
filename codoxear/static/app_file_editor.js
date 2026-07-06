@@ -82,12 +82,13 @@
             return;
           }
           const base = resolveAppUrl("monaco/vs");
-          globalObject.MonacoEnvironment = {
-            getWorkerUrl(_moduleId, _label) {
-              const src = `\nself.MonacoEnvironment={baseUrl:${JSON.stringify(base + "/")}};\nimportScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});\n`;
-              return `data:text/javascript;charset=utf-8,${encodeURIComponent(src)}`;
-            },
-          };
+          // Monaco 0.55's vendored min build carries same-origin module worker
+          // asset URLs (for example vs/assets/editor.worker-*.js) and uses them
+          // when no legacy global worker URL override is installed. Do not
+          // install the old encoded worker wrapper: the page CSP permits 'self'
+          // and blob: workers, not data-scheme workers, and a global override
+          // would bypass Monaco's per-language same-origin worker URLs.
+          globalObject.MonacoEnvironment = globalObject.MonacoEnvironment || {};
           globalObject.require.config({ paths: { vs: base } });
           globalObject.require(["vs/editor/editor.main"], () => {
             monacoNs = globalObject.monaco;
@@ -259,7 +260,7 @@
     function activeCodeEditor(kind) {
       const editorKind = String(kind || "");
       if (editorKind === "diff" && editor && typeof editor.getModifiedEditor === "function") return editor.getModifiedEditor();
-      if ((editorKind === "file" || editorKind === "plain-edit") && editor) return editor;
+      if (editorKind === "file" && editor) return editor;
       return null;
     }
 
@@ -269,7 +270,6 @@
       const editorKind = String(kind || "");
       const targetEditor = activeCodeEditor(editorKind);
       const node = targetEditor && typeof targetEditor.getDomNode === "function" ? targetEditor.getDomNode() : null;
-      if (editorKind === "plain-edit") return Boolean(node && (target === node || (typeof node.contains === "function" && node.contains(target))));
       if (!target.classList || typeof target.classList.contains !== "function" || !target.classList.contains("inputarea")) return false;
       return Boolean(node && typeof node.contains === "function" && node.contains(target));
     }
@@ -296,122 +296,9 @@
       return nextEditor;
     }
 
-    function lineColumnOffset(text, lineNumber, column) {
-      const value = String(text || "");
-      const targetLine = Math.max(1, Number(lineNumber) || 1);
-      const targetColumn = Math.max(1, Number(column) || 1);
-      let offset = 0;
-      let line = 1;
-      while (line < targetLine) {
-        const nextBreak = value.indexOf("\n", offset);
-        if (nextBreak < 0) return value.length;
-        offset = nextBreak + 1;
-        line += 1;
-      }
-      const lineEnd = value.indexOf("\n", offset);
-      const maxOffset = lineEnd < 0 ? value.length : lineEnd;
-      return Math.max(offset, Math.min(maxOffset, offset + targetColumn - 1));
-    }
-
-    function createPlainTextareaAdapter(textarea, root) {
-      return {
-        kind: "plain-edit",
-        getDomNode: () => textarea,
-        getValue: () => String(textarea.value || ""),
-        setValue(value) {
-          textarea.value = String(value || "");
-        },
-        focus() {
-          if (typeof textarea.focus === "function") textarea.focus();
-        },
-        updateOptions(options = {}) {
-          const readOnly = Boolean(options && options.readOnly);
-          textarea.readOnly = readOnly;
-          textarea.setAttribute("aria-readonly", readOnly ? "true" : "false");
-          if (textarea.classList && typeof textarea.classList.toggle === "function") textarea.classList.toggle("readOnly", readOnly);
-        },
-        isReadOnly() {
-          return Boolean(textarea.readOnly);
-        },
-        updatePath(path) {
-          const value = String(path || "");
-          if (root && "dataset" in root) root.dataset.path = value;
-          if (typeof textarea.setAttribute === "function") textarea.setAttribute("aria-label", `${value || "file"} plain text editor`);
-        },
-        setScrollPosition(position = {}) {
-          if (typeof position.scrollTop === "number") textarea.scrollTop = Math.max(0, position.scrollTop);
-          if (typeof position.scrollLeft === "number") textarea.scrollLeft = Math.max(0, position.scrollLeft);
-        },
-        setPosition(position = {}) {
-          if (typeof textarea.setSelectionRange !== "function") return;
-          const offset = lineColumnOffset(textarea.value, position.lineNumber, position.column);
-          textarea.setSelectionRange(offset, offset);
-        },
-        revealPositionInCenter(position = {}) {
-          const line = Math.max(1, Number(position.lineNumber) || 1);
-          textarea.scrollTop = Math.max(0, (line - 1) * 20 - Math.floor((textarea.clientHeight || 0) / 2));
-        },
-        revealLineInCenter(lineNumber) {
-          const line = Math.max(1, Number(lineNumber) || 1);
-          textarea.scrollTop = Math.max(0, (line - 1) * 20 - Math.floor((textarea.clientHeight || 0) / 2));
-        },
-        layout() {
-          return true;
-        },
-        selectedText() {
-          const start = Math.max(0, Number(textarea.selectionStart) || 0);
-          const end = Math.max(start, Number(textarea.selectionEnd) || start);
-          return String(textarea.value || "").slice(start, end);
-        },
-        dispose() {
-          if (root && root.parentNode && typeof root.parentNode.removeChild === "function") root.parentNode.removeChild(root);
-        },
-      };
-    }
-
-    function createPlainFileEditor(host, options = {}) {
-      if (!host || typeof host.appendChild !== "function") throw new TypeError("file editor dependency missing: host.appendChild");
-      const doc = host.ownerDocument || (typeof document !== "undefined" ? document : null);
-      if (!doc || typeof doc.createElement !== "function") throw new TypeError("file editor dependency missing: document.createElement");
-      host.innerHTML = "";
-      const root = doc.createElement("div");
-      root.className = "filePlainEdit";
-      root.dataset.path = String(options.path || "");
-      const notice = doc.createElement("div");
-      notice.className = "fileFallbackNotice filePlainEditNotice";
-      const title = doc.createElement("div");
-      title.className = "title";
-      title.textContent = "Plain text editor";
-      const message = doc.createElement("p");
-      message.textContent = "Rich editor unavailable. Editing is available in plain text.";
-      notice.appendChild(title);
-      notice.appendChild(message);
-      const textarea = doc.createElement("textarea");
-      textarea.className = "filePlainEditTextarea";
-      textarea.value = String(options.text || "");
-      textarea.spellcheck = false;
-      textarea.wrap = "off";
-      root.appendChild(notice);
-      root.appendChild(textarea);
-      host.appendChild(root);
-      const adapter = createPlainTextareaAdapter(textarea, root);
-      adapter.updatePath(options.path);
-      adapter.updateOptions({ readOnly: Boolean(options.readOnly) });
-      setEditor(adapter);
-      setModels([]);
-      const onDidChangeModelContent = requireFunction(options.onDidChangeModelContent, "onDidChangeModelContent");
-      textarea.addEventListener("input", onDidChangeModelContent);
-      setChangeDisposable({ dispose: () => textarea.removeEventListener("input", onDidChangeModelContent) });
-      return adapter;
-    }
-
     function currentFileText(kind, fallbackText = "") {
       const editorKind = String(kind || "");
       const targetEditor = currentEditor();
-      if (editorKind === "plain-edit") {
-        if (!targetEditor || typeof targetEditor.getValue !== "function") return String(fallbackText || "");
-        return String(targetEditor.getValue());
-      }
       if (editorKind !== "file") return String(fallbackText || "");
       if (!targetEditor || typeof targetEditor.getModel !== "function") return String(fallbackText || "");
       const model = targetEditor.getModel();
@@ -423,13 +310,6 @@
       const editorKind = String(kind || "");
       const targetEditor = currentEditor();
       const run = requireFunction(runProgrammaticChange, "runProgrammaticChange");
-      if (editorKind === "plain-edit") {
-        if (!targetEditor || typeof targetEditor.setValue !== "function") return false;
-        run(() => {
-          targetEditor.setValue(String(text || ""));
-        });
-        return true;
-      }
       if (editorKind !== "file") return false;
       if (!targetEditor || typeof targetEditor.getModel !== "function") return false;
       const model = targetEditor.getModel();
@@ -452,18 +332,6 @@
         editorApi.setModelLanguage(model, language);
         model.setValue(String(options.text || ""));
       });
-      return true;
-    }
-
-    function updatePlainFileEditorText(options = {}) {
-      const targetEditor = currentEditor();
-      if (!targetEditor || typeof targetEditor.setValue !== "function") throw new Error("plain file editor unavailable");
-      const runProgrammaticChange = requireFunction(options.runProgrammaticChange, "runProgrammaticChange");
-      runProgrammaticChange(() => {
-        targetEditor.setValue(String(options.text || ""));
-      });
-      const path = String(options.path || "");
-      if (path) targetEditor.updatePath(path);
       return true;
     }
 
@@ -514,7 +382,7 @@
     function focusActiveCodeEditor(kind) {
       const editorKind = String(kind || "");
       const target = activeCodeEditor(editorKind);
-      if (target && typeof target.focus === "function" && !(editorKind === "plain-edit" && typeof target.isReadOnly === "function" && target.isReadOnly())) target.focus();
+      if (target && typeof target.focus === "function") target.focus();
       return target || null;
     }
 
@@ -658,7 +526,6 @@
       applySelection,
       createDiffEditor,
       createFileEditor,
-      createPlainFileEditor,
       currentEditor,
       currentFileText,
       currentModels,
@@ -680,7 +547,6 @@
       setModels,
       updateEditorOptions,
       updateFileEditorText,
-      updatePlainFileEditorText,
       withCurrentEditor,
     });
   }
@@ -721,9 +587,7 @@
     const syncReadOnly = requireFunction(options.syncReadOnly, "syncReadOnly");
     const updateTouchToolbar = requireFunction(options.updateTouchToolbar, "updateTouchToolbar");
     const createFileEditor = requireMethod(runtime, "createFileEditor", "runtime");
-    const createPlainFileEditor = requireMethod(runtime, "createPlainFileEditor", "runtime");
     const updateFileEditorText = requireMethod(runtime, "updateFileEditorText", "runtime");
-    const updatePlainFileEditorText = requireMethod(runtime, "updatePlainFileEditorText", "runtime");
     const createDiffEditor = requireMethod(runtime, "createDiffEditor", "runtime");
     const positionCurrentEditorAtLine = requireMethod(runtime, "positionCurrentEditorAtLine", "runtime");
     const scheduleLineFocus = requireMethod(runtime, "scheduleLineFocus", "runtime");
@@ -747,8 +611,7 @@
       if (isProgrammaticChange()) return;
       if (currentTouchSelectMode()) resetTouchSelectionState();
       const baselineText = String(currentActiveFileText() || "");
-      const editorKind = currentEditorKind() === "plain-edit" ? "plain-edit" : "file";
-      setDirty(currentFileText(editorKind, baselineText) !== baselineText);
+      setDirty(currentFileText("file", baselineText) !== baselineText);
     }
 
     function schedulePositionFocus(kind, lineNumber, request) {
@@ -769,30 +632,13 @@
         monaco = await ensureMonaco();
       } catch (error) {
         if (!requestIsCurrent(request)) return false;
-        if (!currentActiveFileEditable()) {
-          renderPlainTextFallback(rel, text, lineNumber, richEditorUnavailableReason(error, ""));
-          return true;
-        }
-        if (currentEditorKind() !== "plain-edit") {
-          disposeFileEditor();
-          createPlainFileEditor(host, {
-            path: rel,
-            text,
-            readOnly: activeFileReadOnly(),
-            onDidChangeModelContent: handleFileEditorContentChange,
-          });
-          setEditorKind("plain-edit");
-        } else {
-          updatePlainFileEditorText({
-            path: rel,
-            text,
-            runProgrammaticChange,
-          });
-        }
-        syncReadOnly();
-        schedulePositionFocus("plain-edit", lineNumber, request);
+        const prefix = currentActiveFileEditable()
+          ? "Code editor unavailable. Editing disabled"
+          : "Code editor unavailable";
+        const reason = richEditorUnavailableReason(error, prefix);
+        renderPlainTextFallback(rel, text, lineNumber, reason);
         updateTouchToolbar();
-        return true;
+        return Object.freeze({ ok: true, monacoUnavailable: true, status: `${rel} - editor unavailable`, reason });
       }
       if (!requestIsCurrent(request)) return false;
       if (currentEditorKind() !== "file") {
@@ -819,23 +665,16 @@
       return true;
     }
 
-    async function renderDiff(rel, originalText, modifiedText, lineNumber = null, request = null, fallbackDiffText = "") {
+    async function renderDiff(rel, originalText, modifiedText, lineNumber = null, request = null) {
       let monaco;
       try {
         monaco = await ensureMonaco();
       } catch (error) {
         if (!requestIsCurrent(request)) return false;
-        // Rich diff unavailable: render the unified repository diff text as a
-        // read-only plain view when we have it, instead of degrading to the
-        // working-tree file content under a diff header. No write controls are
-        // introduced: this path reuses the read-only plain-text fallback surface.
-        const diffText = typeof fallbackDiffText === "string" ? fallbackDiffText : "";
-        if (diffText.trim()) {
-          renderPlainTextFallback(rel, diffText, lineNumber, richEditorUnavailableReason(error, "Rich diff unavailable. Showing unified diff (read-only)."));
-          return true;
-        }
-        renderPlainTextFallback(rel, modifiedText, lineNumber, richEditorUnavailableReason(error, "Rich diff unavailable"));
-        return true;
+        const reason = richEditorUnavailableReason(error, "Diff editor unavailable because Monaco failed to load");
+        renderPlainTextFallback(rel, "", lineNumber, reason);
+        updateTouchToolbar();
+        return Object.freeze({ ok: true, monacoUnavailable: true, status: `${rel} - diff editor unavailable`, reason });
       }
       if (!requestIsCurrent(request)) return false;
       disposeFileEditor();

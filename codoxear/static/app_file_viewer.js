@@ -638,9 +638,9 @@
           setStatus(loadPlan.status);
           return true;
         }
-        const rendered = await renderMonacoDiff(rel, loadPlan.baseText, loadPlan.currentText, request.line, request, { fallbackDiffText: loadPlan.diffText || "" });
+        const rendered = await renderMonacoDiff(rel, loadPlan.baseText, loadPlan.currentText, request.line, request);
         if (!rendered || !isCurrentFileOpenRequest(request)) return false;
-        setStatus(loadPlan.status);
+        setStatus(rendered.monacoUnavailable && rendered.status ? rendered.status : loadPlan.status);
         return true;
       }
       if (loadPlan.kind === "image") {
@@ -680,6 +680,10 @@
         } else {
           const rendered = await renderMonacoFile(rel, loadPlan.text, request.line, "", request);
           if (!rendered || !isCurrentFileOpenRequest(request)) return false;
+          if (rendered.monacoUnavailable && rendered.status) {
+            setStatus(rendered.status);
+            return true;
+          }
         }
         setStatus(loadPlan.status);
         return true;
@@ -2274,7 +2278,7 @@
 
     function normalizeFileEditorKind(kind) {
       const nextKind = String(kind || "");
-      if (nextKind !== "" && nextKind !== "file" && nextKind !== "diff" && nextKind !== "plain-fallback" && nextKind !== "plain-edit") throw new Error("invalid file editor kind");
+      if (nextKind !== "" && nextKind !== "file" && nextKind !== "diff" && nextKind !== "plain-fallback") throw new Error("invalid file editor kind");
       return nextKind;
     }
 
@@ -2699,10 +2703,9 @@
       if (result.kind === "diff") {
         const baseText = typeof result.baseText === "string" ? result.baseText : "";
         const currentText = typeof result.currentText === "string" ? result.currentText : "";
-        const diffText = typeof result.diffText === "string" ? result.diffText : "";
         applyActiveFileDiffState({ currentText, currentExists: result.currentExists });
         if (!result.baseExists && !result.currentExists) return Object.freeze({ kind: "diff", noDiff: true, status: `${path} - no diff` });
-        return Object.freeze({ kind: "diff", noDiff: false, baseText, currentText, diffText, status: `${path} - diff` });
+        return Object.freeze({ kind: "diff", noDiff: false, baseText, currentText, status: `${path} - diff` });
       }
       if (result.kind === "image") {
         applyActiveFileNonTextState("image");
@@ -2826,7 +2829,7 @@
 
     function syncFileEditorReadOnly() {
       const kind = currentFileEditorKind();
-      if (kind !== "file" && kind !== "plain-edit") return;
+      if (kind !== "file") return;
       const editor = focusEditor();
       if (!editor || typeof editor.updateOptions !== "function") return;
       editor.updateOptions({ readOnly: !activeFileEditorWritable() });
@@ -3004,7 +3007,7 @@
     function prepareFileEditorTextRestore(text) {
       const restoredText = String(text || "");
       const kind = currentFileEditorKind();
-      if (kind !== "file" && kind !== "plain-edit") {
+      if (kind !== "file") {
         setFileDirty(false);
         return Object.freeze({ kind: "skip" });
       }
@@ -3216,7 +3219,6 @@
           isFileViewerOpen() &&
           isTextFileKind(currentActiveFileKind()) &&
           currentFileViewMode() !== "preview" &&
-          currentFileEditorKind() !== "plain-edit" &&
           hasActiveFileCodeEditor()
       );
     }
@@ -3594,7 +3596,7 @@
       const rendered = await renderMonacoFile(rel, "", request.line, "", request);
       if (!rendered || !isCurrentFileOpenRequest(request)) return false;
       setFileEditMode(true);
-      fileStatus.textContent = `${rel} - new file`;
+      fileStatus.textContent = rendered.monacoUnavailable && rendered.status ? rendered.status : `${rel} - new file`;
       rememberActiveFileSelection();
       renderFilePickerMenu();
       return true;
@@ -3623,20 +3625,6 @@
         const versionsRes = await api(`/api/sessions/${request.sessionId}/git/file_versions?path=${encodeURIComponent(rel)}${pathTokenQuery}`, {
           signal: request.signal,
         });
-        // Fetch the unified diff (HEAD -> working tree) up front so that when
-        // the rich Monaco diff editor is unavailable the viewer can render the
-        // truthful +/- repository diff instead of degrading to the working-tree
-        // file content under a diff header. head=1 matches file_versions' base.
-        let diffText = "";
-        try {
-          const diffRes = await api(`/api/sessions/${request.sessionId}/git/diff?path=${encodeURIComponent(rel)}${pathTokenQuery}&head=1`, {
-            signal: request.signal,
-          });
-          if (diffRes && typeof diffRes.diff === "string") diffText = diffRes.diff;
-        } catch (_) {
-          // A missing unified diff must not break the rich-diff path; it only
-          // leaves the fallback without a +/- view (handled below).
-        }
         return Object.freeze({
           result: Object.freeze({
             kind: "diff",
@@ -3644,7 +3632,6 @@
             currentText: versionsRes && typeof versionsRes.current_text === "string" ? versionsRes.current_text : "",
             baseExists: versionsRes && versionsRes.base_exists,
             currentExists: versionsRes && versionsRes.current_exists,
-            diffText,
           }),
           absPath: versionsRes && typeof versionsRes.abs_path === "string" ? versionsRes.abs_path : null,
         });

@@ -188,12 +188,7 @@ def controller_identity_ctx_js(
               if (viewMode === "diff") {{
                 const pathTokenQuery = request.apiPath ? `&path_token=${{encodeURIComponent(request.apiPath)}}` : "";
                 const res = await ctx.api(`/api/sessions/${{request.sessionId}}/git/file_versions?path=${{encodeURIComponent(rel)}}${{pathTokenQuery}}`, {{ signal: request.signal }});
-                let diffText = "";
-                try {{
-                  const diffRes = await ctx.api(`/api/sessions/${{request.sessionId}}/git/diff?path=${{encodeURIComponent(rel)}}${{pathTokenQuery}}&head=1`, {{ signal: request.signal }});
-                  if (diffRes && typeof diffRes.diff === "string") diffText = diffRes.diff;
-                }} catch (_) {{}}
-                return {{ result: {{ kind: "diff", baseText: res && typeof res.base_text === "string" ? res.base_text : "", currentText: res && typeof res.current_text === "string" ? res.current_text : "", baseExists: res && res.base_exists, currentExists: res && res.current_exists, diffText }}, absPath: res && typeof res.abs_path === "string" ? res.abs_path : null }};
+                return {{ result: {{ kind: "diff", baseText: res && typeof res.base_text === "string" ? res.base_text : "", currentText: res && typeof res.current_text === "string" ? res.current_text : "", baseExists: res && res.base_exists, currentExists: res && res.current_exists }}, absPath: res && typeof res.abs_path === "string" ? res.abs_path : null }};
               }}
               const gitPathQuery = request.gitPath ? "&git_path=1" : "";
               const pathTokenQuery = request.apiPath ? `&path_token=${{encodeURIComponent(request.apiPath)}}` : "";
@@ -4410,7 +4405,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("await saveActiveFileEdits({ exitEditMode: true });", viewer_source)
         self.assertIn('fileStatus.textContent = "Switch to File view before editing.";', viewer_source)
         self.assertIn("setFileEditMode(true);", viewer_source)
-        self.assertIn('currentFileEditorKind() !== "plain-edit"', viewer_source)
+        self.assertNotIn('"plain-edit"', viewer_source)
         self.assertIn("pasteVisible: activeFileEditorIdleTextWritable()", viewer_source)
         self.assertIn("return fileTouchToolbarRuntime.update(fileViewerController.currentFileTouchToolbarState());", source)
         self.assertIn("fileEditMode = Boolean(nextMode) && activeFileEditModeAllowedInCurrentView();", viewer_source)
@@ -4689,9 +4684,9 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("if (!isCurrentFileOpenRequest(request)) return false;", viewer_source)
         self.assertIn("async function openFilePathWithResolvedMode(path, { line = null, changed = null, isCurrent = null, gitPath = null, apiPath = \"\" } = {})", source)
         self.assertIn("async function renderMonacoFile(rel, text, lineNumber = null, langOverride = \"\", request = null)", source)
-        self.assertIn("async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null, options = {})", source)
+        self.assertIn("async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null)", source)
         self.assertIn("return await fileEditorRenderer.renderFile(rel, text, lineNumber, langOverride, request);", source)
-        self.assertIn("return await fileEditorRenderer.renderDiff(rel, originalText, modifiedText, lineNumber, request, fallbackDiffText);", source)
+        self.assertIn("return await fileEditorRenderer.renderDiff(rel, originalText, modifiedText, lineNumber, request);", source)
         self.assertNotIn("if (request && !isCurrentFileOpenRequest(request)) return false;", source)
         self.assertIn("function requestIsCurrent(request)", editor_source)
         self.assertIn("if (!requestIsCurrent(request)) return false;", editor_source)
@@ -4707,8 +4702,9 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertNotIn("applyEditorLineFocus(targetLine);", source)
         self.assertNotIn('renderPlainTextFallback(rel, text, lineNumber, e && e.message ? e.message : "Rich file viewer unavailable")', source)
         self.assertNotIn("renderPlainTextFallback(rel, modifiedText, lineNumber, e && e.message", source)
-        self.assertIn("renderPlainTextFallback(rel, text, lineNumber, richEditorUnavailableReason(error, \"\"));", editor_source)
-        self.assertIn("renderPlainTextFallback(rel, modifiedText, lineNumber, richEditorUnavailableReason(error, \"Rich diff unavailable\"));", editor_source)
+        self.assertIn("renderPlainTextFallback(rel, text, lineNumber, reason);", editor_source)
+        self.assertIn("Diff editor unavailable because Monaco failed to load", editor_source)
+        self.assertNotIn("renderPlainTextFallback(rel, modifiedText", editor_source)
         fallback_block = source[source.index("function renderPlainTextFallback("):source.index("function renderDownloadFallback", source.index("function renderPlainTextFallback("))]
         fallback_runtime_start = viewer_source.index("function createFileFallbackRuntime(options = {})")
         fallback_runtime_end = viewer_source.index("function createFilePdfRenderRuntime", fallback_runtime_start)

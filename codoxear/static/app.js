@@ -5394,9 +5394,8 @@
           return await fileEditorRenderer.renderFile(rel, text, lineNumber, langOverride, request);
         }
 
-        async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null, options = {}) {
-          const fallbackDiffText = options && typeof options.fallbackDiffText === "string" ? options.fallbackDiffText : "";
-          return await fileEditorRenderer.renderDiff(rel, originalText, modifiedText, lineNumber, request, fallbackDiffText);
+        async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null) {
+          return await fileEditorRenderer.renderDiff(rel, originalText, modifiedText, lineNumber, request);
         }
 
         function renderMarkdownPreview(rel, text) {

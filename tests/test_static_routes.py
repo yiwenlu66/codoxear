@@ -43,9 +43,10 @@ def _deps(root: Path) -> StaticRouteDeps:
     )
 
 
-def test_static_route_asset_maps_top_level_and_static_prefix() -> None:
+def test_static_route_asset_maps_top_level_static_prefix_and_monaco_prefix() -> None:
     assert static_route_asset("/app.js", top_level_static_assets=(("/app.js", "app.js"),)) == "app.js"
     assert static_route_asset("/static/logos/cc.svg", top_level_static_assets=()) == "logos/cc.svg"
+    assert static_route_asset("/monaco/vs/loader.js", top_level_static_assets=()) == "monaco/vs/loader.js"
     assert static_route_asset("/api/me", top_level_static_assets=(("/", "index.html"),)) is None
 
 
@@ -90,4 +91,8 @@ def test_static_content_type_policy() -> None:
     assert static_content_type(Path("image.webp")) == "image/webp"
     assert static_content_type(Path("logo.svg")) == "image/svg+xml; charset=utf-8"
     assert static_content_type(Path("favicon.ico")) == "image/x-icon"
+    assert static_content_type(Path("worker.json")) == "application/json; charset=utf-8"
+    assert static_content_type(Path("bundle.js.map")) == "application/json; charset=utf-8"
+    assert static_content_type(Path("font.ttf")) == "font/ttf"
+    assert static_content_type(Path("module.wasm")) == "application/wasm"
     assert static_content_type(Path("download.bin")) == "application/octet-stream"

@@ -298,19 +298,9 @@ def run_file_editor_renderer_probe() -> dict[str, object]:
             changeCallback = options.onDidChangeModelContent;
             return {{ tag: "createdFile" }};
           }},
-          createPlainFileEditor(editorHost, options) {{
-            events.push(["createPlain", editorHost.name, options.path, options.text, options.readOnly]);
-            changeCallback = options.onDidChangeModelContent;
-            return {{ tag: "createdPlain" }};
-          }},
           updateFileEditorText(monaco, options) {{
             events.push(["updateFile", monaco.name, options.path, options.text, options.languageOverride]);
             options.runProgrammaticChange(() => events.push(["updateProgrammaticBody"]));
-            return true;
-          }},
-          updatePlainFileEditorText(options) {{
-            events.push(["updatePlain", options.text]);
-            options.runProgrammaticChange(() => events.push(["updatePlainProgrammaticBody"]));
             return true;
           }},
           createDiffEditor(monaco, editorHost, options) {{
@@ -449,9 +439,7 @@ def run_diff_fallback_probe() -> dict[str, object]:
         }};
         const runtime = {{
           createFileEditor: () => ({{}}),
-          createPlainFileEditor: () => ({{}}),
           updateFileEditorText: () => true,
-          updatePlainFileEditorText: () => true,
           createDiffEditor: () => ({{}}),
           positionCurrentEditorAtLine: () => null,
           scheduleLineFocus: () => null,
@@ -487,118 +475,6 @@ def run_diff_fallback_probe() -> dict[str, object]:
           const withoutDiff = await renderer.renderDiff("src/note2.md", "base", "working", 1, {{ id: "req" }}, "");
           process.stdout.write(JSON.stringify({{ withDiff, withoutDiff, events }}));
         }})().catch((err) => {{ console.error(err && err.stack ? err.stack : err); process.exit(1); }});
-        """
-    )
-    proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    return json.loads(proc.stdout)
-
-
-def run_plain_edit_runtime_probe() -> dict[str, object]:
-    editor_source = APP_FILE_EDITOR_JS.read_text(encoding="utf-8")
-    js = textwrap.dedent(
-        f"""
-        const vm = require("vm");
-        const ctx = {{ window: {{}} }};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(editor_source)}, ctx);
-        const mod = ctx.window.CodoxearFileEditor;
-        const runtime = mod.createFileEditorRuntime();
-        // Minimal fake DOM: enough of createElement/appendChild/ownerDocument for
-        // createPlainFileEditor to build its textarea surface.
-        function makeTextarea() {{
-          return {{
-            className: "",
-            value: "",
-            spellcheck: false,
-            wrap: "",
-            readOnly: false,
-            selectionStart: 0,
-            selectionEnd: 0,
-            clientHeight: 600,
-            scrollTop: 0,
-            classList: {{ toggle: (name, on) => {{ /* no-op */ }} }},
-            setAttribute(name, value) {{ this[`attr_${{name}}`] = value; }},
-            addEventListener(event, handler) {{ this.inputHandler = handler; }},
-            removeEventListener() {{ this.inputHandler = null; }},
-            setSelectionRange(start, end) {{ this.selectionStart = start; this.selectionEnd = end; }},
-          }};
-        }}
-        function makeNode(tag) {{
-          return {{
-            tag,
-            className: "",
-            children: [],
-            dataset: {{}},
-            textContent: "",
-            appendChild(child) {{ this.children.push(child); return child; }},
-            removeChild(child) {{ const i = this.children.indexOf(child); if (i >= 0) this.children.splice(i, 1); return child; }},
-          }};
-        }}
-        const host = {{ innerHTML: "", children: [], appendChild(child) {{ this.children.push(child); return child; }}, ownerDocument: null }};
-        const fakeDoc = {{ createElement: makeNode }};
-        host.ownerDocument = fakeDoc;
-        // createPlainFileEditor pulls document from host.ownerDocument, but the
-        // textarea is created via doc.createElement('textarea') which returns a
-        // generic node. Override createElement to return a textarea-like node for
-        // textarea tags so the adapter can read .value / setSelectionRange.
-        fakeDoc.createElement = function (tag) {{
-          if (tag === "textarea") return makeTextarea();
-          return makeNode(tag);
-        }};
-        let dirtyCalls = [];
-        let activeText = "original body";
-        const adapter = runtime.createPlainFileEditor(host, {{
-          path: "a.txt",
-          text: activeText,
-          readOnly: true,
-          onDidChangeModelContent: () => {{
-            const baseline = String(activeText || "");
-            const editorKind = "plain-edit";
-            const current = runtime.currentFileText(editorKind, baseline);
-            dirtyCalls.push(current !== baseline);
-          }},
-        }});
-        // Initial path metadata
-        const rootPathAfterCreate = host.children[0] && host.children[0].dataset ? host.children[0].dataset.path : null;
-        const ariaAfterCreate = runtime.currentEditor().getDomNode()["attr_aria-label"];
-        // Simulate user editing the textarea body (marks dirty).
-        const textarea = runtime.currentEditor().getDomNode();
-        textarea.value = "edited body";
-        if (textarea.inputHandler) textarea.inputHandler();
-        const dirtyAfterEdit = dirtyCalls[dirtyCalls.length - 1];
-        // currentFileText must reflect the textarea value, not the baseline.
-        const currentTextPlain = runtime.currentFileText("plain-edit", activeText);
-        const currentTextFileFallback = runtime.currentFileText("file", activeText);
-        // Reusing the editor for a different file must update path + aria-label.
-        runtime.updatePlainFileEditorText({{
-          path: "b.md",
-          text: "new body",
-          runProgrammaticChange: (callback) => callback(),
-        }});
-        const rootPathAfterUpdate = host.children[0] && host.children[0].dataset ? host.children[0].dataset.path : null;
-        const ariaAfterUpdate = runtime.currentEditor().getDomNode()["attr_aria-label"];
-        const valueAfterUpdate = runtime.currentEditor().getDomNode().value;
-        // Restore (cancel) must reset via textarea setValue path.
-        const restored = runtime.restoreCurrentFileText("reset", {{
-          prepareFileEditorTextRestore: () => ({{ kind: "restore", text: "reset body" }}),
-          currentFileEditorKind: () => "plain-edit",
-          runFileEditorProgrammaticChange: (callback) => callback(),
-          finishFileEditorTextRestore: () => {{}},
-        }});
-        const valueAfterRestore = runtime.currentEditor().getDomNode().value;
-        process.stdout.write(JSON.stringify({{
-          rootPathAfterCreate,
-          ariaAfterCreate,
-          dirtyAfterEdit,
-          currentTextPlain,
-          currentTextFileFallback,
-          rootPathAfterUpdate,
-          ariaAfterUpdate,
-          valueAfterUpdate,
-          restored,
-          valueAfterRestore,
-          dirtyCalls,
-        }}));
         """
     )
     proc = subprocess.run(["node"], input=js, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -650,8 +526,8 @@ def run_monaco_loader_probe() -> dict[str, object]:
           const afterSupport = loader.editSupportAvailable();
           const second = await loader.ensure();
           const selection = new (loader.selectionCtor())(1, 2, 3, 4);
-          const workerUrl = fakeGlobal.MonacoEnvironment.getWorkerUrl("", "");
-          const workerScript = decodeURIComponent(workerUrl.split(",", 2)[1] || "");
+          const monacoEnvironment = fakeGlobal.MonacoEnvironment || {{}};
+          const hasWorkerOverride = typeof monacoEnvironment.getWorker === "function" || typeof monacoEnvironment.getWorkerUrl === "function";
           let missingResolveError = "";
           try {{ mod.createMonacoLoader({{}}); }} catch (err) {{ missingResolveError = err && err.message ? err.message : String(err); }}
           process.stdout.write(JSON.stringify({{
@@ -660,8 +536,8 @@ def run_monaco_loader_probe() -> dict[str, object]:
             samePromiseValue: first === second,
             currentIsMonaco: loader.currentMonaco() === monaco,
             selection,
-            workerUrl,
-            workerScript,
+            hasWorkerOverride,
+            monacoEnvironmentKeys: Object.keys(monacoEnvironment).sort(),
             events,
             missingResolveError,
           }}));
@@ -827,19 +703,11 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
                 ["updateTouchToolbar"],
                 ["ensure", "success"],
                 ["ensure", "fail"],
-                ["dispose"],
-                ["createPlain", "fileHost", "src/fallback.txt", "plain", False],
-                ["setKind", "plain-edit"],
-                ["syncReadOnly"],
-                ["position", "plain-edit", 4],
-                ["schedule", "plain-edit", 4, True],
-                ["requestFrame"],
-                ["frameCallback", "plain-edit"],
-                ["setTimeout", 60],
-                ["timerCallback", "plain-edit"],
+                ["fallback", "src/fallback.txt", "plain", 4, "Code editor unavailable. Editing disabled: loader boom"],
                 ["updateTouchToolbar"],
                 ["ensure", "fail"],
-                ["fallback", "src/fallback.diff", "new", 5, "Rich diff unavailable: loader boom"],
+                ["fallback", "src/fallback.diff", "", 5, "Diff editor unavailable because Monaco failed to load: loader boom"],
+                ["updateTouchToolbar"],
                 ["ensure", "success"],
                 ["dispose"],
                 ["createDiff", "monaco", "fileHost", "src/a.js", "old", "new"],
@@ -855,23 +723,19 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
             ],
         )
 
-    def test_file_editor_diff_fallback_renders_unified_diff_when_monaco_unavailable(self) -> None:
+    def test_file_editor_diff_requires_monaco_when_monaco_unavailable(self) -> None:
         result = run_diff_fallback_probe()
-        # When Monaco is unavailable and a unified diff text is available, the
-        # fallback must render the +/- repository diff (read-only), NOT the
-        # working-tree file content. No write controls are introduced by this path.
         self.assertTrue(result["withDiff"])
         self.assertTrue(result["withoutDiff"])
         events = result["events"]
         with_diff_fallback = next(e for e in events if e[0] == "fallback" and e[1] == "src/note.md")
-        self.assertEqual(with_diff_fallback[2], "@@ -1 +1 @@ -base +working")
-        self.assertIn("Rich diff unavailable", with_diff_fallback[4])
-        self.assertIn("unified diff", with_diff_fallback[4])
+        self.assertEqual(with_diff_fallback[2], "")
+        self.assertIn("Diff editor unavailable because Monaco failed to load", with_diff_fallback[4])
+        self.assertNotIn("unified diff", with_diff_fallback[4])
+        self.assertNotIn("@@ -1 +1 @@ -base +working", str(events))
         without_diff_fallback = next(e for e in events if e[0] == "fallback" and e[1] == "src/note2.md")
-        # No unified diff text -> must NOT imply a diff; degrades to file content.
-        self.assertEqual(without_diff_fallback[2], "working")
-        self.assertIn("Rich diff unavailable", without_diff_fallback[4])
-        self.assertNotIn("unified diff", without_diff_fallback[4])
+        self.assertEqual(without_diff_fallback[2], "")
+        self.assertIn("Diff editor unavailable because Monaco failed to load", without_diff_fallback[4])
 
     def test_monaco_loader_behavior(self) -> None:
         result = run_monaco_loader_probe()
@@ -880,7 +744,8 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertTrue(result["samePromiseValue"])
         self.assertTrue(result["currentIsMonaco"])
         self.assertEqual(result["selection"], {"startLineNumber": 1, "startColumn": 2, "endLineNumber": 3, "endColumn": 4})
-        self.assertIn("app:monaco/vs/base/worker/workerMain.js", result["workerScript"])
+        self.assertFalse(result["hasWorkerOverride"])
+        self.assertEqual(result["monacoEnvironmentKeys"], [])
         self.assertEqual(
             result["events"],
             [
@@ -927,7 +792,7 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertIn("function fileEditorCreateOptions", editor_source)
         self.assertIn("function diffEditorCreateOptions()", editor_source)
         self.assertIn("function createFileEditor(monaco, host, options = {})", editor_source)
-        self.assertIn("function createPlainFileEditor(host, options = {})", editor_source)
+        self.assertNotIn("function createPlainFileEditor(host, options = {})", editor_source)
         self.assertIn("function createDiffEditor(monaco, host, options = {})", editor_source)
         self.assertIn("function positionCurrentEditorAtLine(kind, lineNumber, normalizeLineNumber)", editor_source)
         self.assertIn("function scheduleLineFocus(kind, requestedLine, options = {})", editor_source)
@@ -937,7 +802,7 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertIn("function createFileEditorRenderer(options = {})", editor_source)
         self.assertIn("const fileEditorRenderer = codoxearFileEditor.createFileEditorRenderer({", app_source)
         self.assertIn("return await fileEditorRenderer.renderFile(rel, text, lineNumber, langOverride, request);", app_source)
-        self.assertIn("return await fileEditorRenderer.renderDiff(rel, originalText, modifiedText, lineNumber, request, fallbackDiffText);", app_source)
+        self.assertIn("return await fileEditorRenderer.renderDiff(rel, originalText, modifiedText, lineNumber, request);", app_source)
         self.assertNotIn("fileEditorRuntime.createFileEditor(monaco, fileDiff", app_source)
         self.assertNotIn("fileEditorRuntime.updateFileEditorText(monaco", app_source)
         self.assertIn("fileEditorRuntime.currentFileText(currentFileEditorKind(), currentActiveFileText())", app_source)
@@ -950,8 +815,8 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertNotIn("fileEditorRuntime.scheduleLineFocus(\"diff\", requestedLine", app_source)
         self.assertIn("createFileEditor(monaco, host", editor_source)
         self.assertIn("updateFileEditorText(monaco, {", editor_source)
-        self.assertIn("createPlainFileEditor(host, {", editor_source)
-        self.assertIn("updatePlainFileEditorText({", editor_source)
+        self.assertNotIn("createPlainFileEditor(host, {", editor_source)
+        self.assertNotIn("updatePlainFileEditorText({", editor_source)
         self.assertIn("createDiffEditor(monaco, host", editor_source)
         self.assertIn("schedulePositionFocus(\"file\", lineNumber, request);", editor_source)
         self.assertIn("schedulePositionFocus(\"diff\", lineNumber, request);", editor_source)
@@ -971,34 +836,17 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
         self.assertIn("fileEditorMonacoLoader.selectionCtor())", app_source)
         self.assertIn("fileEditorMonacoLoader.editSupportAvailable()", app_source)
 
-    def test_plain_edit_input_marks_dirty_and_update_reuses_path_metadata(self) -> None:
-        # Regression: handleFileEditorContentChange previously hardcoded
-        # currentFileText("file", ...) so a plain-edit textarea edit compared
-        # against the Monaco model path (no getModel) and returned the baseline,
-        # leaving dirty false. Also verify reusing the plain editor for a new
-        # file updates path metadata and aria-label, not just text.
-        result = run_plain_edit_runtime_probe()
-        self.assertEqual(result["rootPathAfterCreate"], "a.txt")
-        self.assertEqual(result["ariaAfterCreate"], "a.txt plain text editor")
-        self.assertTrue(result["dirtyAfterEdit"])
-        self.assertEqual(result["dirtyCalls"], [True])
-        self.assertEqual(result["currentTextPlain"], "edited body")
-        self.assertEqual(result["currentTextFileFallback"], "original body")
-        self.assertEqual(result["rootPathAfterUpdate"], "b.md")
-        self.assertEqual(result["ariaAfterUpdate"], "b.md plain text editor")
-        self.assertEqual(result["valueAfterUpdate"], "new body")
-        self.assertTrue(result["restored"])
-        self.assertEqual(result["valueAfterRestore"], "reset body")
+    def test_plain_edit_writable_runtime_removed(self) -> None:
+        editor_source = APP_FILE_EDITOR_JS.read_text(encoding="utf-8")
+        self.assertNotIn("createPlainFileEditor", editor_source)
+        self.assertNotIn("updatePlainFileEditorText", editor_source)
+        self.assertNotIn('"plain-edit"', editor_source)
 
-    def test_renderer_content_change_uses_current_editor_kind(self) -> None:
-        # Source-level guard so a future regression hardcoding "file" in the
-        # dirty comparison is caught without rebuilding the DOM fixture.
+    def test_renderer_content_change_uses_monaco_file_model(self) -> None:
         editor_source = APP_FILE_EDITOR_JS.read_text(encoding="utf-8")
         change_block = editor_source[editor_source.index("function handleFileEditorContentChange("):editor_source.index("function schedulePositionFocus(")]
-        self.assertNotIn('currentFileText("file"', change_block)
-        self.assertIn("currentFileText(editorKind, baselineText)", change_block)
-        update_block = editor_source[editor_source.index("function updatePlainFileEditorText("):editor_source.index("function createDiffEditor(")]
-        self.assertIn("targetEditor.updatePath(path)", update_block)
+        self.assertIn('currentFileText("file", baselineText)', change_block)
+        self.assertNotIn("plain-edit", change_block)
 
 
 if __name__ == "__main__":

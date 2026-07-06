@@ -125,7 +125,6 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             api: async (url, options = {{}}) => {{
               events.push(["api", url, Boolean(options.signal)]);
               if (url.includes("/git/file_versions")) return {{ base_text: "old", current_text: "new", base_exists: true, current_exists: false, abs_path: "/abs/diff" }};
-              if (url.includes("/git/diff")) return {{ diff: "@@ -old +new @@", staged: false }};
               return {{ kind: "text", text: "body", path: "/abs/read" }};
             }},
             focusEditor: () => ({{ focus: () => events.push(["focus"]), updateOptions: (opts) => events.push(["editorOptions", opts]) }}),
@@ -1802,12 +1801,11 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
         })
         self.assertEqual(result["render"]["fetchResults"], {
             "diffFetch": {
-                "result": {"kind": "diff", "baseText": "old", "currentText": "new", "baseExists": True, "currentExists": False, "diffText": "@@ -old +new @@"},
+                "result": {"kind": "diff", "baseText": "old", "currentText": "new", "baseExists": True, "currentExists": False},
                 "absPath": "/abs/diff",
             },
             "diffFetchEvents": [
                 ["api", "/api/sessions/sid-1/git/file_versions?path=src%2Fapp.py&path_token=tok", True],
-                ["api", "/api/sessions/sid-1/git/diff?path=src%2Fapp.py&path_token=tok&head=1", True],
             ],
             "readFetch": {"result": {"kind": "text", "text": "body", "path": "/abs/read"}, "absPath": "/abs/read"},
             "readFetchEvents": [["api", "/api/sessions/sid-1/file/read?path=src%2Fapp.py&path_token=tok&git_path=1", True]],
@@ -2088,7 +2086,7 @@ class TestFrontendFileViewerModuleSource(unittest.TestCase):
             "pdfDisposeEvents": [["disconnect"], ["cancel", "a"], ["cancel", "b"], ["destroy"]],
         })
         load_plans = result["render"]["loadPlans"]
-        self.assertEqual(load_plans["diff"], {"plan": {"kind": "diff", "noDiff": False, "baseText": "old", "currentText": "new", "diffText": "@@ -1 +1 @@", "status": "plan.md - diff"}, "frozen": True})
+        self.assertEqual(load_plans["diff"], {"plan": {"kind": "diff", "noDiff": False, "baseText": "old", "currentText": "new", "status": "plan.md - diff"}, "frozen": True})
         self.assertEqual(load_plans["noDiff"], {"plan": {"kind": "diff", "noDiff": True, "status": "plan.md - no diff"}, "frozen": True})
         self.assertEqual(load_plans["image"], {"plan": {"kind": "image", "imageUrl": "/img.png", "alt": "plan.md", "status": "plan.md - 4B"}, "frozen": True})
         self.assertEqual(load_plans["pdf"], {"plan": {"kind": "pdf", "pdfUrl": "/doc.pdf", "status": "plan.md - PDF - 8B"}, "frozen": True})

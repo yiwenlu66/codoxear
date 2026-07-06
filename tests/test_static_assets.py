@@ -16,6 +16,7 @@ from codoxear.server import _static_asset_version
 from codoxear.server import _static_cache_control_headers
 from codoxear.static_routes import SHELL_ASSET_FILES
 from codoxear.static_routes import UI_IMAGE_ASSET_FILES
+from codoxear.static_routes import static_route_asset
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -71,6 +72,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn(f"app_file_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_file_picker.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_file_viewer.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
+        self.assertIn(f"monaco/vs/loader.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_file_editor.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_session_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_viewport.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
@@ -101,7 +103,8 @@ class TestStaticAssets(unittest.TestCase):
         self.assertLess(source.index(f"app_dom.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_file_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_file_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_file_picker.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_file_picker.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_file_viewer.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
-        self.assertLess(source.index(f"app_file_viewer.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_file_editor.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_file_viewer.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"monaco/vs/loader.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"monaco/vs/loader.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_file_editor.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_file_editor.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_session_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_session_helpers.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_viewport.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_viewport.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_polling.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
@@ -204,6 +207,8 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn("connect-src 'self'", index)
         self.assertIn("connect-src 'self'", CONTENT_SECURITY_POLICY)
         self.assertIn('const base = resolveAppUrl("monaco/vs");', app_file_editor)
+        self.assertNotIn("data:text/javascript", app_file_editor)
+        self.assertNotIn("getWorkerUrl", app_file_editor)
         self.assertIn('importModule(resolveAppUrl("pdf.mjs"))', app_file_viewer)
 
     def test_frontend_asset_manifest_drives_version_files(self) -> None:
@@ -212,11 +217,14 @@ class TestStaticAssets(unittest.TestCase):
     def test_versioned_index_assets_exist_and_are_registered(self) -> None:
         source = INDEX_HTML.read_text(encoding="utf-8")
         versioned_refs = re.findall(r'(?:src|href)="([^"?]+)\?v=__CODOXEAR_ASSET_VERSION__"', source)
-        self.assertEqual(set(versioned_refs), set(FRONTEND_ASSET_FILES + ("favicon.png", "manifest.webmanifest")))
+        self.assertEqual(set(versioned_refs), set(FRONTEND_ASSET_FILES + ("monaco/vs/loader.js", "favicon.png", "manifest.webmanifest")))
         routes = dict(TOP_LEVEL_STATIC_ASSETS)
         for name in versioned_refs:
             self.assertTrue((ROOT / "codoxear" / "static" / name).is_file(), name)
-            self.assertEqual(routes.get(f"/{name}"), name)
+            if name.startswith("monaco/"):
+                self.assertEqual(static_route_asset(f"/{name}"), name)
+            else:
+                self.assertEqual(routes.get(f"/{name}"), name)
 
     def test_service_worker_registration_uses_asset_version(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -230,6 +238,21 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn('scope: resolveAppUrl("/"),', voice_source)
         self.assertNotIn('navigator.serviceWorker.register(', voice_source)
         self.assertNotIn('navigator.serviceWorker.register(', source)
+
+    def test_static_asset_version_changes_when_monaco_assets_change(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "app.js").write_text("console.log('x');\n", encoding="utf-8")
+            monaco_loader = root / "monaco" / "vs" / "loader.js"
+            monaco_worker = root / "monaco" / "vs" / "assets" / "editor.worker-test.js"
+            monaco_loader.parent.mkdir(parents=True, exist_ok=True)
+            monaco_worker.parent.mkdir(parents=True, exist_ok=True)
+            monaco_loader.write_text("loader one\n", encoding="utf-8")
+            monaco_worker.write_text("worker one\n", encoding="utf-8")
+            first = _static_asset_version(root)
+            monaco_worker.write_text("worker two\n", encoding="utf-8")
+            second = _static_asset_version(root)
+            self.assertNotEqual(first, second)
 
     def test_static_asset_version_changes_when_frontend_assets_change(self) -> None:
         initial_content = {
@@ -310,6 +333,7 @@ class TestStaticAssets(unittest.TestCase):
                     '<script src="app_file_helpers.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_file_picker.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_file_viewer.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
+                    '<script src="monaco/vs/loader.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_file_editor.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_session_helpers.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_viewport.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
@@ -351,6 +375,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertIn(f"app_file_helpers.js?v={version}", rendered)
             self.assertIn(f"app_file_picker.js?v={version}", rendered)
             self.assertIn(f"app_file_viewer.js?v={version}", rendered)
+            self.assertIn(f"monaco/vs/loader.js?v={version}", rendered)
             self.assertIn(f"app_file_editor.js?v={version}", rendered)
             self.assertIn(f"app_session_helpers.js?v={version}", rendered)
             self.assertIn(f"app_viewport.js?v={version}", rendered)
@@ -517,6 +542,10 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn("codoxear/static/app_file_picker.js", names)
         self.assertIn("codoxear/static/app_file_viewer.js", names)
         self.assertIn("codoxear/static/app_file_editor.js", names)
+        self.assertIn("codoxear/static/monaco/LICENSE", names)
+        self.assertIn("codoxear/static/monaco/ThirdPartyNotices.txt", names)
+        self.assertIn("codoxear/static/monaco/vs/loader.js", names)
+        self.assertTrue(any(name.startswith("codoxear/static/monaco/vs/assets/editor.worker-") and name.endswith(".js") for name in names))
         self.assertIn("codoxear/static/app_session_helpers.js", names)
         self.assertIn("codoxear/static/app_viewport.js", names)
         self.assertIn("codoxear/static/app_polling.js", names)
