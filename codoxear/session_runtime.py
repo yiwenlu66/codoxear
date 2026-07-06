@@ -421,6 +421,38 @@ def broker_runtime_state(state: Mapping[str, Any]) -> BrokerRuntimeState:
     return BrokerRuntimeState(busy=busy_raw, queue_len=int(queue_len_raw), interrupted_idle=interrupted_idle_raw)
 
 
+def broker_runtime_state_with_session_idle_authority(
+    state: Mapping[str, Any],
+    *,
+    session_interrupted_idle: bool,
+) -> BrokerRuntimeState:
+    """Build the readiness BrokerRuntimeState, splitting authority at the
+    interrupted-idle boundary.
+
+    The raw broker response is authoritative for ``busy`` and ``queue_len``:
+    both fields are validated exactly as the broker sent them (a malformed
+    response still raises, and the raw ``interrupted_idle`` is type-validated
+    too so a corrupt broker reply fails loud). The stored, suppression-aware
+    ``Session.interrupted_idle`` flag is authoritative for the interrupted-idle
+    override, because the listing / log watcher may have suppressed a stale
+    broker ``interrupted_idle:true`` (``Session.interrupted_idle`` is already
+    False in that case). Reading the override from the raw broker value would
+    let that stale value reactivate send / queue / attachment / unattended
+    readiness while the sidebar projects busy.
+
+    Every readiness consumer that drives direct send, queue promotion,
+    attachment injection, or unattended injection must build its
+    BrokerRuntimeState through this helper rather than raw
+    ``broker_runtime_state``.
+    """
+    raw = broker_runtime_state(state)
+    return BrokerRuntimeState(
+        busy=raw.busy,
+        queue_len=raw.queue_len,
+        interrupted_idle=bool(session_interrupted_idle),
+    )
+
+
 def broker_busy_queue(state: Mapping[str, Any]) -> tuple[bool, int]:
     broker = broker_runtime_state(state)
     return broker.busy, broker.queue_len

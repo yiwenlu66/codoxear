@@ -45,6 +45,8 @@ from codoxear.session_runtime import consume_session_confirmed_send_boundary
 from codoxear.session_runtime import log_path_size_or_none
 from codoxear.session_runtime import reset_session_log_caches
 from codoxear.session_runtime import select_runtime_token
+from codoxear.session_runtime import set_session_interrupted_idle
+from codoxear.session_runtime import suppress_session_interrupted_idle
 from codoxear.session_store import SessionStore
 from codoxear.session_store import SessionStorePaths
 from codoxear.sidecar_metadata import _clean_optional_text as _sidecar_clean_optional_text
@@ -594,7 +596,9 @@ class TestMessageRuntimeSnapshot(unittest.TestCase):
         with TemporaryDirectory() as td:
             log_path = Path(td) / "pi.jsonl"
             log_path.write_text('{"type":"message","message":{"role":"user","content":[{"type":"text","text":"run"}]}}\n', encoding="utf-8")
-            s = _session(agent_backend="pi", busy=True, queue_len=0, log_path=log_path)
+            # get_state would store interrupted_idle=True from the broker's True
+            # report (unsuppressed); the readiness authority is that stored flag.
+            s = _session(agent_backend="pi", busy=True, interrupted_idle=True, queue_len=0, log_path=log_path)
             _state, busy, queue_len, _token = _snapshot(s, {"busy": False, "queue_len": 0, "interrupted_idle": True}, idle=False)
         self.assertIs(busy, False)
         self.assertEqual(queue_len, 0)
@@ -603,8 +607,10 @@ class TestMessageRuntimeSnapshot(unittest.TestCase):
         with TemporaryDirectory() as td:
             log_path = Path(td) / "pi.jsonl"
             log_path.write_text('{"type":"message","message":{"role":"user","content":[{"type":"text","text":"run"}]}}\n', encoding="utf-8")
+            # Stored interrupted_idle=True mirrors what get_state records from the
+            # broker's unsuppressed True; readiness authority is the stored flag.
             s = _session(
-                agent_backend="pi", busy=True, queue_len=0, log_path=log_path,
+                agent_backend="pi", busy=True, interrupted_idle=True, queue_len=0, log_path=log_path,
                 last_send_boundary_active=True, last_send_log_path=log_path, last_send_log_size=log_path.stat().st_size,
             )
             _state, busy, queue_len, _token = _snapshot(s, {"busy": False, "queue_len": 0, "interrupted_idle": True}, idle=False)
@@ -898,6 +904,116 @@ class TestRefreshSessionMeta(unittest.TestCase):
             coordinator.refresh_session_meta(s.session_id, drain_queue=False)
         self.assertEqual(s.log_path, new_log)
         self.assertFalse(s.interrupted_idle)
+
+
+# --------------------------------------------------------------------------- #
+# DEFECT a48ca8e / memory aa32447: stale interrupted-idle override must not
+# reactivate send / queue / attachment readiness once listing has suppressed it
+# --------------------------------------------------------------------------- #
+
+
+class TestStaleInterruptedIdleReadinessAuthority(unittest.TestCase):
+    """Direct send / queue promotion / attachment readiness must derive the
+    interrupted-idle override from the stored, suppression-aware
+    ``Session.interrupted_idle`` — NOT from the raw broker response.
+
+    After the listing / log watcher proves a broker-reported
+    ``interrupted_idle:true`` is stale, ``suppress_session_interrupted_idle``
+    sets ``Session.interrupted_idle=False`` while the broker may keep returning
+    the stale ``true``. If readiness read the override from raw broker state it
+    would let that stale value reactivate send / queue / attachment eligibility
+    while the sidebar projects busy. The fix routes the override through the
+    stored flag while keeping raw broker ``busy`` / ``queue_len`` authoritative.
+    """
+
+    _STALE_STATE = {"busy": False, "queue_len": 0, "interrupted_idle": True}
+
+    def _readiness(self, *, session: Session, state: dict, idle: bool) -> SessionReadinessCoordinator:
+        lock = threading.Lock()
+        mapping = {session.session_id: session}
+        return SessionReadinessCoordinator(
+            lock=lock,
+            sessions=lambda: mapping,
+            refresh_session_meta_if_sidecar_exists=lambda _sid, **_kw: None,
+            get_state=lambda _sid: state,
+            log_size_or_none=log_path_size_or_none,
+            confirmed_send_boundary_unresolved_for_session=(
+                lambda _sid, _lp, _ls: consume_session_confirmed_send_boundary(session, _lp, _ls)
+            ),
+            idle_from_log=(lambda _sid: idle),
+            queue_len=lambda _sid: 0,
+            not_ready_error=RuntimeError,
+        )
+
+    def test_send_remote_ready_false_when_stale_interrupted_idle_suppressed(self) -> None:
+        # Raw broker still reports interrupted_idle:true after listing suppressed
+        # the override; a bound, non-idle log is active. Direct send must NOT be
+        # ready. (Fails on HEAD aa32447: raw true reactivates the override.)
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            log_path.write_text(
+                '{"type":"session_meta","payload":{"id":"broker-1","source":"cli"}}\n',
+                encoding="utf-8",
+            )
+            s = _session(log_path=log_path)
+            suppress_session_interrupted_idle(s)
+            self.assertFalse(s.interrupted_idle)
+            self.assertTrue(s.interrupted_idle_suppressed)
+            readiness = self._readiness(session=s, state=self._STALE_STATE, idle=False)
+            self.assertFalse(readiness.send_remote_ready(s.session_id))
+
+    def test_queue_remote_ready_false_when_stale_interrupted_idle_suppressed(self) -> None:
+        # Same precondition: queue promotion must not fire (the item must stay
+        # queued) while the override is suppressed and the log is non-idle.
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            log_path.write_text(
+                '{"type":"session_meta","payload":{"id":"broker-1","source":"cli"}}\n',
+                encoding="utf-8",
+            )
+            s = _session(log_path=log_path)
+            suppress_session_interrupted_idle(s)
+            readiness = self._readiness(session=s, state=self._STALE_STATE, idle=False)
+            self.assertFalse(readiness.queue_remote_ready(s.session_id, log_path=log_path))
+
+    def test_runtime_status_rejects_stale_true_via_stored_authority(self) -> None:
+        # The runtime snapshot (also used by message rendering and unattended
+        # injection eligibility) must project busy when the override is
+        # suppressed despite the raw stale true.
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            log_path.write_text(
+                '{"type":"session_meta","payload":{"id":"broker-1","source":"cli"}}\n',
+                encoding="utf-8",
+            )
+            s = _session(log_path=log_path)
+            suppress_session_interrupted_idle(s)
+            readiness = self._readiness(session=s, state=self._STALE_STATE, idle=False)
+            runtime = readiness.runtime_status_from_state_and_log(s.session_id, self._STALE_STATE, log_path)
+            self.assertIs(runtime.busy, True)
+            self.assertIs(runtime.remote_ready, False)
+
+    def test_valid_interrupted_idle_still_ready_for_immediate_interrupted_tail(self) -> None:
+        # Unsuppressed override: stored interrupted_idle=True (raw true agrees).
+        # A non-final / non-idle interrupted tail must remain idle/ready for both
+        # direct send and queue promotion. This is the legitimate case the fix
+        # must preserve.
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            log_path.write_text(
+                '{"type":"session_meta","payload":{"id":"broker-1","source":"cli"}}\n',
+                encoding="utf-8",
+            )
+            s = _session(log_path=log_path)
+            set_session_interrupted_idle(s, True)
+            self.assertTrue(s.interrupted_idle)
+            self.assertFalse(s.interrupted_idle_suppressed)
+            readiness = self._readiness(session=s, state=self._STALE_STATE, idle=False)
+            runtime = readiness.runtime_status_from_state_and_log(s.session_id, self._STALE_STATE, log_path)
+            self.assertIs(runtime.busy, False)
+            self.assertIs(runtime.remote_ready, True)
+            self.assertTrue(readiness.send_remote_ready(s.session_id))
+            self.assertTrue(readiness.queue_remote_ready(s.session_id, log_path=log_path))
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ from typing import Any, Callable, MutableMapping
 
 from .session_model import Session
 from .session_runtime import RuntimeStatus
-from .session_runtime import broker_runtime_state
+from .session_runtime import broker_runtime_state_with_session_idle_authority
 from .session_runtime import resolve_runtime_status
 from .session_runtime import session_allows_direct_send
 from .session_runtime import session_allows_queue_promotion
@@ -26,7 +26,19 @@ class SessionReadinessCoordinator:
     not_ready_error: type[BaseException]
 
     def runtime_status_from_state_and_log(self, session_id: str, state: dict[str, Any], log_path: Path | None) -> RuntimeStatus:
-        broker = broker_runtime_state(state)
+        # The interrupted-idle override is session-authoritative, not
+        # broker-authoritative: the listing / log watcher may have suppressed a
+        # stale broker ``interrupted_idle:true`` (stored Session.interrupted_idle
+        # is then False). Raw broker busy / queue_len are still validated and
+        # used as-sent. Building the BrokerRuntimeState from raw state here would
+        # let the stale value reactivate send / queue / attachment / unattended
+        # readiness while the sidebar projects busy (DEFECT a48ca8e).
+        with self.lock:
+            session = self.sessions().get(session_id)
+            session_interrupted_idle = bool(session.interrupted_idle) if session is not None else False
+        broker = broker_runtime_state_with_session_idle_authority(
+            state, session_interrupted_idle=session_interrupted_idle
+        )
         log_exists = isinstance(log_path, Path) and log_path.exists()
         if broker.queue_len > 0:
             return resolve_runtime_status(

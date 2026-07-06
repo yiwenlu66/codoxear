@@ -1235,6 +1235,9 @@ class TestServerQueuePersistence(unittest.TestCase):
             log_path.write_text('{"type":"message","message":{"role":"user","content":[{"type":"text","text":"run"}]}}\n', encoding="utf-8")
             session = _make_session(sid)
             session.log_path = log_path
+            # Stored interrupted_idle=True mirrors what get_state records from the
+            # broker's unsuppressed True; readiness authority is the stored flag.
+            session.interrupted_idle = True
             mgr._sessions[sid] = session
             mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0, "interrupted_idle": True}  # type: ignore[method-assign]
             mgr.idle_from_log = lambda _sid: False  # type: ignore[method-assign]
@@ -1249,6 +1252,9 @@ class TestServerQueuePersistence(unittest.TestCase):
             log_path.write_text('{"type":"message","message":{"role":"user","content":[{"type":"text","text":"run"}]}}\n', encoding="utf-8")
             session = _make_session(sid)
             session.log_path = log_path
+            # Stored interrupted_idle=True mirrors what get_state records from the
+            # broker's unsuppressed True; readiness authority is the stored flag.
+            session.interrupted_idle = True
             session.last_send_boundary_active = True
             session.last_send_log_path = log_path
             session.last_send_log_size = log_path.stat().st_size
