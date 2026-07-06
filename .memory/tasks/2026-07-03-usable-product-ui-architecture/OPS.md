@@ -637,3 +637,10 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
 - Main reran focused validation: `python3 -m pytest -q tests/test_stale_interrupted_idle.py tests/test_session_discovery.py tests/test_stale_sidecars.py tests/test_sessions_pending_log_idle.py tests/test_session_control.py tests/test_session_input.py tests/test_session_runtime.py` -> 108 passed, 4 subtests.
 - Main reran Docker/API discriminator with `run_cert_discovery_wait.py` on port 13790: fake socket kept reporting stale `interrupted_idle=true`, harness waited 0.35s after resumed `user_message` to force discovery before counters, and public `/api/sessions` returned phase1 busy `[false,false,false]`, phase2 busy `[true,true,true,true,true]`, phase3 busy `[false,false,false,false,false]`.
 - Artifacts preserved in `browser-artifacts/stale-interrupted-idle-discovery-race-fixed/`. Boundary: legacy `in-process-diagnostic.json` still contains an artificial manual re-baseline condition; public API arrays and regression test are decisive.
+
+
+## 2026-07-06T05:06:50Z Final clean-room review found two blockers
+- Critic run `4886b4e3-ef6a-46cc-b2d6-629d97fc326a` reported BLOCKER on HEAD `3427fef` despite full local/Docker validation passing.
+- Blocker 1: public `handle_messages_live()` used `_codex_prior_open_turn_context()` rather than the CC-aware prior context, so CC split live polling (`user` in one poll, `system/turn_duration` in a later poll) could render no visible no-response/error event.
+- Blocker 2: fresh discovery insertion cleared `registration.interrupted_idle` via `reset_log_caches()` before storing the new session, so server restart/fresh rediscovery could show an interrupted stopped turn as busy/spinning.
+- Critic report preserved in `browser-artifacts/final-cleanroom-blockers-4886b4e3/`. Decision: dispatch implementation for both route/state authority gaps and require route-level/fresh-discovery regressions.
