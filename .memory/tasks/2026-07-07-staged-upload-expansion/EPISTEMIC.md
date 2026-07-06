@@ -30,7 +30,7 @@ Stage first, commit later.
 
 ## Accepted post-send cleanup policy
 - Commit `4963ba6` makes deterministic post-confirmed-send staged cleanup guard failures explicit cleanup warnings (`attachment_cleanup_error`) instead of send failures. Delivery remains success, commit-unknown state is cleared, and staged/pending truth is preserved if cleanup fails. Clean-room review `09a9aa9` accepted this path with no blockers.
-- Commit `785b3d2` extends post-confirmation tail isolation to filesystem/persistence failures (`OSError`) and rare post-confirmation `KeyError`, returning explicit warning fields instead of route errors after confirmed delivery. Clean-room review `c48a075c-24aa-43e7-8ac3-7ebd53ec5671` accepted the mechanism and found one low-realism literal gap: post-confirmation prelog `ValueError` could still escape. Commit `b0a6a09` closes that gap and adds regression coverage; follow-up review `42f4215a-c8a9-4db7-874c-4a6a5a5e873a` is pending.
+- Commits `785b3d2` and `b0a6a09` fully isolate covered post-confirmation tail failures after backend delivery: prelog projection, staged cleanup, pending projection clearing, and commit_unknown clearing convert `ValueError`/`OSError`/`KeyError` into explicit warning fields rather than route errors. `attachment_cleanup_error` preserves staged/pending UI truth when staged cleanup failed; `send_state_cleanup_error` reports bookkeeping/projection failures without implying resend. Clean-room reviews `c48a075c-24aa-43e7-8ac3-7ebd53ec5671` and `42f4215a-c8a9-4db7-874c-4a6a5a5e873a` accepted the mechanism with no remaining blockers.
 
 ## Remaining nonblocking follow-ups
 - Consider reducing absolute-path exposure in browser tooltips once a safe backend-readable identity/display split exists.
@@ -40,4 +40,4 @@ Stage first, commit later.
 - Producer UX polish: re-check blockers per file in long batches if needed, preserve text in mixed text+file paste if a clear UI rule exists, add extensions for non-PNG pasted image names, and clear `.drop-active` when a file drag leaves the window without dropping.
 
 ## Current justified claim
-The first upload expansion slice is accepted: multi-file picker attachments are server-staged before send, visibly manageable in the browser, and committed to the backend only at confirmed send.
+The staged upload expansion slice is accepted through multi-file picker, paste/drop producers, and post-confirmed-send tail isolation: attachments are server-staged before send, visibly manageable in the browser, committed to the backend only at confirmed send, and never turned into retry-inviting send failures by covered post-delivery cleanup/projection errors.
