@@ -555,6 +555,114 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertNotIn(sid, mgr._commit_unknown_sends)
         self.assertIsNone(mgr._sessions[sid].commit_unknown_send)
 
+    def test_staged_attachment_oserror_after_confirmed_send_is_success_with_visible_error(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._sessions[sid].pending_attachment = True
+        mgr._pending_attachment_ids.add(sid)
+        entry = {"id": "a1", "display_name": "one.txt", "filename": "1_one.txt", "path": "/tmp/uploads/s1/1_one.txt", "size": 3, "created_ts": 1.0}
+        mgr._staged_attachments[sid] = [dict(entry)]
+        mgr._record_prelog_user_message = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+        cleanup_calls: list[str] = []
+
+        def fail_cleanup(cleanup_sid: str) -> dict[str, object]:
+            cleanup_calls.append(cleanup_sid)
+            raise OSError("unlink failed")
+
+        mgr.clear_staged_attachments = fail_cleanup  # type: ignore[method-assign]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        seen: list[dict[str, object]] = []
+
+        def sock_call(_sock: Path, req: dict[str, object], timeout_s: float | None = 0, **_kwargs: object) -> dict[str, object]:
+            seen.append(req)
+            return {"queued": False, "queue_len": 0}
+
+        mgr._sock_call = sock_call  # type: ignore[method-assign]
+
+        response = SessionManager.send(mgr, sid, "use this", allow_pending_attachment=True)
+
+        committed_text = "Attachment 1: /tmp/uploads/s1/1_one.txt\nuse this"
+        self.assertEqual(seen, [{"cmd": "send", "text": committed_text, "sync": True}])
+        self.assertEqual(cleanup_calls, [sid])
+        self.assertEqual(response, {"queued": False, "queue_len": 0, "attachment_cleanup_error": "unlink failed"})
+        self.assertEqual(mgr._staged_attachments[sid], [entry])
+        self.assertTrue(mgr._sessions[sid].pending_attachment)
+        self.assertIn(sid, mgr._pending_attachment_ids)
+        self.assertNotIn(sid, mgr._commit_unknown_sends)
+        self.assertIsNone(mgr._sessions[sid].commit_unknown_send)
+
+    def test_staged_attachment_keyerror_after_confirmed_send_is_success_with_visible_error(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._sessions[sid].pending_attachment = True
+        mgr._pending_attachment_ids.add(sid)
+        entry = {"id": "a1", "display_name": "one.txt", "filename": "1_one.txt", "path": "/tmp/uploads/s1/1_one.txt", "size": 3, "created_ts": 1.0}
+        mgr._staged_attachments[sid] = [dict(entry)]
+        mgr._record_prelog_user_message = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+        def fail_cleanup(_cleanup_sid: str) -> dict[str, object]:
+            raise KeyError("unknown session")
+
+        mgr.clear_staged_attachments = fail_cleanup  # type: ignore[method-assign]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        mgr._sock_call = lambda *_args, **_kwargs: {"queued": False, "queue_len": 0}  # type: ignore[method-assign]
+
+        response = SessionManager.send(mgr, sid, "use this", allow_pending_attachment=True)
+
+        self.assertEqual(response, {"queued": False, "queue_len": 0, "attachment_cleanup_error": "unknown session"})
+        self.assertEqual(mgr._staged_attachments[sid], [entry])
+        self.assertTrue(mgr._sessions[sid].pending_attachment)
+
+    def test_pending_attachment_persistence_failure_after_confirmed_send_is_success_with_visible_error(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._record_prelog_user_message = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        mgr._sock_call = lambda *_args, **_kwargs: {"queued": False, "queue_len": 0}  # type: ignore[method-assign]
+        pending_clear_calls: list[tuple[str, bool]] = []
+
+        def fail_pending_clear(clear_sid: str, value: bool) -> None:
+            pending_clear_calls.append((clear_sid, value))
+            SessionManager._set_pending_attachment(mgr, clear_sid, value)
+            raise OSError("pending.json write failed")
+
+        mgr._set_pending_attachment = fail_pending_clear  # type: ignore[method-assign]
+
+        response = SessionManager.send(mgr, sid, "normal prompt")
+
+        self.assertEqual(pending_clear_calls, [(sid, False)])
+        self.assertEqual(response, {"queued": False, "queue_len": 0, "send_state_cleanup_error": "pending_attachment: pending.json write failed"})
+        self.assertFalse(mgr._sessions[sid].pending_attachment)
+        self.assertNotIn(sid, mgr._pending_attachment_ids)
+        self.assertNotIn(sid, mgr._commit_unknown_sends)
+        self.assertIsNone(mgr._sessions[sid].commit_unknown_send)
+
+    def test_commit_unknown_clear_persistence_failure_after_confirmed_send_is_success_with_visible_error(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._record_prelog_user_message = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        mgr._sock_call = lambda *_args, **_kwargs: {"queued": False, "queue_len": 0}  # type: ignore[method-assign]
+        clear_unknown_calls: list[tuple[str, dict[str, Any] | None]] = []
+
+        def fail_commit_unknown_clear(clear_sid: str, record: dict[str, Any] | None) -> None:
+            clear_unknown_calls.append((clear_sid, record))
+            SessionManager._set_commit_unknown_send(mgr, clear_sid, record)
+            raise OSError("commit_unknown.json write failed")
+
+        mgr._set_commit_unknown_send = fail_commit_unknown_clear  # type: ignore[method-assign]
+
+        response = SessionManager.send(mgr, sid, "normal prompt")
+
+        self.assertEqual(clear_unknown_calls, [(sid, None)])
+        self.assertEqual(response, {"queued": False, "queue_len": 0, "send_state_cleanup_error": "commit_unknown_send: commit_unknown.json write failed"})
+        self.assertNotIn(sid, mgr._commit_unknown_sends)
+        self.assertIsNone(mgr._sessions[sid].commit_unknown_send)
+
     def test_staged_attachments_survive_commit_unknown_send(self) -> None:
         sid = "s1"
         mgr = self._mgr()

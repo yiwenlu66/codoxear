@@ -12,6 +12,27 @@ from .session_input import require_send_preconditions
 from .session_model import Session
 
 
+_POST_CONFIRMATION_CLEANUP_ERRORS = (ValueError, OSError, KeyError)
+_POST_CONFIRMATION_PROJECTION_ERRORS = (OSError, KeyError)
+
+
+def _tail_error_message(exc: BaseException) -> str:
+    if len(getattr(exc, "args", ())) == 1 and isinstance(exc.args[0], str):
+        return exc.args[0]
+    message = str(exc)
+    return message or exc.__class__.__name__
+
+
+def _add_send_warning(response: dict[str, Any], field: str, message: str) -> dict[str, Any]:
+    updated = dict(response)
+    existing = updated.get(field)
+    if existing:
+        updated[field] = f"{existing}; {message}"
+    else:
+        updated[field] = message
+    return updated
+
+
 @dataclass(frozen=True)
 class SessionSendCoordinator:
     lock: Any
@@ -88,7 +109,14 @@ class SessionSendCoordinator:
                 injection_error=self.injection_error,
             )
             with self.lock:
-                self.record_prelog_user_message(session, committed_text)
+                try:
+                    self.record_prelog_user_message(session, committed_text)
+                except _POST_CONFIRMATION_PROJECTION_ERRORS as exc:
+                    response = _add_send_warning(
+                        response,
+                        "send_state_cleanup_error",
+                        f"prelog_user_message: {_tail_error_message(exc)}",
+                    )
                 current = self.sessions().get(session_id)
                 if current:
                     apply_confirmed_send_success(
@@ -100,13 +128,30 @@ class SessionSendCoordinator:
             if staged_entries:
                 try:
                     self.clear_staged_attachments(session_id)
-                except ValueError as exc:
-                    response = dict(response)
-                    response["attachment_cleanup_error"] = str(exc)
+                except _POST_CONFIRMATION_CLEANUP_ERRORS as exc:
+                    response = _add_send_warning(
+                        response,
+                        "attachment_cleanup_error",
+                        _tail_error_message(exc),
+                    )
             else:
-                self.set_pending_attachment(session_id, False)
+                try:
+                    self.set_pending_attachment(session_id, False)
+                except _POST_CONFIRMATION_CLEANUP_ERRORS as exc:
+                    response = _add_send_warning(
+                        response,
+                        "send_state_cleanup_error",
+                        f"pending_attachment: {_tail_error_message(exc)}",
+                    )
             if queue_item_id is None:
-                self.set_commit_unknown_send(session_id, None)
+                try:
+                    self.set_commit_unknown_send(session_id, None)
+                except _POST_CONFIRMATION_CLEANUP_ERRORS as exc:
+                    response = _add_send_warning(
+                        response,
+                        "send_state_cleanup_error",
+                        f"commit_unknown_send: {_tail_error_message(exc)}",
+                    )
         return response
 
 

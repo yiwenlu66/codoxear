@@ -138,10 +138,11 @@ class TestAttachButtonSource(unittest.TestCase):
         # pending attachment was consumed only if post-send staged cleanup also
         # succeeded; cleanup failure means the delivered turn must not erase the
         # still-staged browser/server projection.
-        self.assertIn('const cleanupErrorRaw = res && (res.attachment_cleanup_error || res.attachments_cleanup_error);', source)
-        self.assertIn('if (cleanupError) setToast(`${deliveredToast}; attachment cleanup failed: ${cleanupError}`);', source)
+        self.assertIn('const attachmentCleanupErrorRaw = res && (res.attachment_cleanup_error || res.attachments_cleanup_error);', source)
+        self.assertIn('if (attachmentCleanupError) cleanupWarnings.push(`attachment cleanup failed: ${attachmentCleanupError}`);', source)
+        self.assertIn('if (sendStateCleanupError) cleanupWarnings.push(`send state cleanup failed: ${sendStateCleanupError}`);', source)
         self.assertIn(
-            'if (allowPendingAttachment && !cleanupError) {\n              setSelectedSessionPendingAttachment(false);\n              setAttachCount(0);\n            }',
+            'if (allowPendingAttachment && !attachmentCleanupError) {\n              setSelectedSessionPendingAttachment(false);\n              setAttachCount(0);\n            }',
             source,
         )
         # Successful pending_attachment/clear is direct evidence the flag is now false.

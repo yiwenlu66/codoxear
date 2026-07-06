@@ -7023,12 +7023,17 @@
               turnOpen = true;
               currentRunning = true;
             }
-            const cleanupErrorRaw = res && (res.attachment_cleanup_error || res.attachments_cleanup_error);
-            const cleanupError = cleanupErrorRaw ? String(cleanupErrorRaw) : "";
+            const attachmentCleanupErrorRaw = res && (res.attachment_cleanup_error || res.attachments_cleanup_error);
+            const attachmentCleanupError = attachmentCleanupErrorRaw ? String(attachmentCleanupErrorRaw) : "";
+            const sendStateCleanupErrorRaw = res && res.send_state_cleanup_error;
+            const sendStateCleanupError = sendStateCleanupErrorRaw ? String(sendStateCleanupErrorRaw) : "";
             const deliveredToast = res.queued ? `queued (queue ${res.queue_len})` : "sent";
-            if (cleanupError) setToast(`${deliveredToast}; attachment cleanup failed: ${cleanupError}`);
+            const cleanupWarnings = [];
+            if (attachmentCleanupError) cleanupWarnings.push(`attachment cleanup failed: ${attachmentCleanupError}`);
+            if (sendStateCleanupError) cleanupWarnings.push(`send state cleanup failed: ${sendStateCleanupError}`);
+            if (cleanupWarnings.length) setToast(`${deliveredToast}; ${cleanupWarnings.join("; ")}`);
             else setToast(deliveredToast);
-            if (allowPendingAttachment && !cleanupError) {
+            if (allowPendingAttachment && !attachmentCleanupError) {
               setSelectedSessionPendingAttachment(false);
               setAttachCount(0);
             }

@@ -188,6 +188,25 @@ def test_send_route_returns_200_when_confirmed_send_reports_attachment_cleanup_e
     assert responses == [(200, {"queued": False, "queue_len": 0, "attachment_cleanup_error": "staged_path outside session uploads"})]
 
 
+def test_send_route_returns_200_when_confirmed_send_reports_state_cleanup_error() -> None:
+    class CleanupWarningManager(Manager):
+        def send(self, session_id, text, *, allow_pending_attachment=False):
+            self.calls.append(("send", session_id, text, allow_pending_attachment))
+            return {"queued": False, "queue_len": 0, "send_state_cleanup_error": "commit_unknown_send: commit_unknown.json write failed"}
+
+    responses = []
+    manager = CleanupWarningManager()
+    assert handle_control_post_route(
+        Handler({"text": "go"}),
+        path="/api/sessions/s1/send",
+        manager=manager,
+        deps=_deps(responses),
+        match_session_route=_match_session_route,
+    ) is True
+    assert manager.calls == [("send", "s1", "go", False)]
+    assert responses == [(200, {"queued": False, "queue_len": 0, "send_state_cleanup_error": "commit_unknown_send: commit_unknown.json write failed"})]
+
+
 def test_attachment_list_remove_clear_routes() -> None:
     responses = []
     manager = Manager()
