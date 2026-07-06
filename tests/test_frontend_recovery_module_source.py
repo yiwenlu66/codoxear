@@ -434,6 +434,28 @@ class TestFrontendRecoveryModuleSource(unittest.TestCase):
         self.assertEqual(result["titles"]["Copy details"], "Copy recovery details")
         self.assertLess(result["rowIdx"], result["anchorIdx"])
 
+    def test_post_log_failed_launch_uses_after_log_recovery_copy(self) -> None:
+        js = harness_script(
+            """
+            const h = globalThis.__harness;
+            h.sessions.set("post-log-dead", {
+              session_id: "post-log-dead",
+              launch_state: "failed",
+              launch_stage: "broker_exit_after_log_bind",
+              launch_error: "broker control socket went stale after binding a transcript log before the turn completed",
+              cwd: "/tmp/work",
+              agent_backend: "pi",
+            });
+            const ok = h.controller.renderRecoveryPanelIfNeeded("post-log-dead");
+            globalThis.__result = { ok, list: h.listTexts() };
+            """
+        )
+        result = run_node_json(js)
+        self.assertTrue(result["ok"])
+        self.assertIn("This web-owned session stopped after binding a transcript log, before the turn completed.", result["list"])
+        self.assertIn("Stage: broker_exit_after_log_bind", result["list"])
+        self.assertNotIn("This web-owned session failed before a usable session log was bound.", result["list"])
+
     # --- 4. queue/orphan/commit-unknown renders recovery-needed list + actions ---
 
     def test_orphan_queue_commit_unknown_renders_recovery_needed(self) -> None:

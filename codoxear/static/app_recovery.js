@@ -135,8 +135,11 @@
       bubble.appendChild(el("div", { class: "recoveryPanelTitle", text: panelLabel }));
       const list = el("ul", { class: "recoveryPanelList" });
       if (launchFailed) {
-        list.appendChild(el("li", { text: "This web-owned session failed before a usable session log was bound." }));
         const launchStage = String(s.launch_stage || "").trim();
+        const launchSummary = launchStage.endsWith("_after_log_bind")
+          ? "This web-owned session stopped after binding a transcript log, before the turn completed."
+          : "This web-owned session failed before a usable session log was bound.";
+        list.appendChild(el("li", { text: launchSummary }));
         if (launchStage) list.appendChild(el("li", { text: `Stage: ${launchStage}` }));
         const launchModel = [s.model_provider, s.model].map((v) => String(v || "").trim()).filter(Boolean).join("/");
         if (launchModel) list.appendChild(el("li", { text: `Launch settings: ${launchModel}${s.reasoning_effort ? " · " + s.reasoning_effort : ""}` }));
