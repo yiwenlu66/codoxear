@@ -1,0 +1,10 @@
+{
+  "hasPlainTextarea": true,
+  "textareaReadOnly": true,
+  "textareaValue": "alpha line\nbeta line changed\nNEW worktree line\ngamma line\n",
+  "hasMonaco": false,
+  "noticeText": "Plain text editorRich editor unavailable. Editing is available in plain text.",
+  "statusText": "notes.txt - 58 B",
+  "editBtnDisabled": false,
+  "editBtnAriaDisabled": null
+}

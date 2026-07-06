@@ -1,0 +1,11 @@
+{
+  "status": 200,
+  "j": {
+    "ok": true,
+    "path": "/home/tester/work/repo/notes.txt",
+    "rel": "notes.txt",
+    "size": 79,
+    "version": "362e3192925bd75df98b4b83358aa0534ca8b3f012311d60c37aa15b64af782b",
+    "editable": true
+  }
+}

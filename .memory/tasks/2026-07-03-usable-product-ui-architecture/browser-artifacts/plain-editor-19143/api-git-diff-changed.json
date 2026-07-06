@@ -1,0 +1,1 @@
+{"ok": true, "cwd": "/home/tester/work/repo", "path": "changed.md", "staged": false, "diff": "diff --git a/changed.md b/changed.md\nindex c7163ed..218eb8e 100644\n--- a/changed.md\n+++ b/changed.md\n@@ -1,4 +1,5 @@\n # Title\n \n baseline body one\n-baseline body two\n+baseline body two changed\n+NEW markdown line\n"}

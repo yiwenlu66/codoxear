@@ -1,0 +1,12 @@
+{
+  "unavailableSeen": true,
+  "sc5": {
+    "statusText": "Session is no longer available; copy unsaved edits before closing.",
+    "hasTextarea": true,
+    "textareaValue": "alpha line\nbeta line changed\nNEW worktree line\ngamma line\n DRAFT-BEFORE-SESSION-GONE\n",
+    "textareaReadOnly": true,
+    "draftSelectable": true,
+    "editBtnDisabled": true,
+    "editBtnLabel": "Session unavailable; copy edits before closing"
+  }
+}

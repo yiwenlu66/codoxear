@@ -560,3 +560,9 @@
 - Mobile evidence: 390x844 attach/send/read-sentinel path returned `MOBILE-SENTINEL-1783296623` in the assistant transcript (`f8-mobile-*`). Desktop HEIC boundary was recorded as fail-loud decode error with no staged upload (`f9-heic-decode-failed.png`).
 - Method caveats: browser hidden-file upload/change dispatch required automation workarounds; one send was delivered by the same `/send` API path used by the browser's `sendText` because clicking `#sendChoiceNow` was unreliable under agent-browser. The decisive target remains proven because Pi read the staged file and returned the sentinel.
 - Residuals: mobile paperclip measured 34x34 (below 44px ideal); stale local attached-files badge can linger after reload when server `pending_attachment` is false; HEIC is not certified cross-platform.
+
+
+## 2026-07-06T08:56:47+08:00 — Plain editor browser proof preserved
+Observation: Artifact-preserving verifier 44556c1c completed with substantive PASS despite acceptance wrapper failure. Source artifacts copied from /tmp/codoxear-plain-editor-proof-19143/artifacts/ into browser-artifacts/plain-editor-19143/, excluding cookies.txt; report copied to plain-editor-browser-verification.md.
+Evidence: browser-result.json records Monaco loader 404; SC2 edit/save/reopen changed version to f0955552aaa9415e3dc0f08d3394fa79cfdd676a1d300c167bee804abd29369b; SC3 diskUnchanged true after Discard; SC4 save response contains 409 conflict true and Keep preserves draft; SC5 unavailable status says copy unsaved edits before closing; SC6 diff/binary/oversize/non-UTF remain read-only; SC7 mobile 390x844 has scrollWidth 390 and 16px textarea.
+Decision: Treat plain textarea editor fallback as browser-certified baseline editing capability. Native confirm-gated Reload-from-disk remains a harness boundary; Keep conflict branch and conflict row are certified.

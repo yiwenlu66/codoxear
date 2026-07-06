@@ -1,0 +1,8 @@
+{
+  "hasTextarea": false,
+  "hasPlainFallbackPre": true,
+  "fallbackNoticeText": "Plain text fallbackmonaco loader timed out. Showing a read-only plain-text view.",
+  "editBtnDisabled": true,
+  "editBtnAriaDisabled": null,
+  "statusText": "nonutf.txt - read-only - 41 B"
+}

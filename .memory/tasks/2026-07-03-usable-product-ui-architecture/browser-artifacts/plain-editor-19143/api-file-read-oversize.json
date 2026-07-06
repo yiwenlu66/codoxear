@@ -1,0 +1,1 @@
+{"ok": true, "kind": "download_only", "path": "/home/tester/work/repo/oversize.txt", "rel": "oversize.txt", "size": 3000000, "reason": "too_large", "viewer_max_bytes": 2097152}

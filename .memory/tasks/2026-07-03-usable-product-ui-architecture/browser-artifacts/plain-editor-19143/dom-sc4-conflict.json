@@ -1,0 +1,11 @@
+{
+  "statusText": "notes.txt - save conflict: file changed on diskReload from diskKeep editing",
+  "hasConflictText": true,
+  "hasReloadBtn": true,
+  "hasKeepBtn": true,
+  "textareaValue": "alpha line\nbeta line changed\nNEW worktree line\ngamma line\n EDITOR-DRAFT-CONFLICT\n",
+  "dirtyClass": true,
+  "vOpen": "8c23e9b9e67684f7a2a183714ff3e13c2f11fdd8875ba3d0449878971bf984be",
+  "vDisk": "362e3192925bd75df98b4b83358aa0534ca8b3f012311d60c37aa15b64af782b",
+  "staleAtSave": true
+}

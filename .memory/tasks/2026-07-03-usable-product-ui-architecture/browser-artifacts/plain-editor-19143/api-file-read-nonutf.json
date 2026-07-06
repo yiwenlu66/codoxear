@@ -1,0 +1,1 @@
+{"ok": true, "kind": "text", "path": "/home/tester/work/repo/nonutf.txt", "rel": "nonutf.txt", "size": 41, "text": "good ascii line\n�� bad bytes �\nmore text\n", "editable": false, "version": "b13c1e2a676a42c67e5345d6b2af02e3549a29dc049f484482c594014f6a4933"}

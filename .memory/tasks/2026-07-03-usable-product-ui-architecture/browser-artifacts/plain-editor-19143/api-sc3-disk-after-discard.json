@@ -1,0 +1,14 @@
+{
+  "status": 200,
+  "json": {
+    "ok": true,
+    "kind": "text",
+    "path": "/home/tester/work/repo/notes.txt",
+    "rel": "notes.txt",
+    "size": 75,
+    "text": "alpha line\nbeta line changed\nNEW worktree line\ngamma line\n SAVED-BY-EDITOR\n",
+    "editable": true,
+    "version": "f0955552aaa9415e3dc0f08d3394fa79cfdd676a1d300c167bee804abd29369b"
+  },
+  "text": "{\"ok\": true, \"kind\": \"text\", \"path\": \"/home/tester/work/repo/notes.txt\", \"rel\": \"notes.txt\", \"size\": 75, \"text\": \"alpha line\\nbeta line changed\\nNEW worktree line\\ngamma line\\n SAVED-BY-EDITOR\\n\", \"editable\": true, \"version\": \"f0955552aaa9415e3dc0f08d3394fa79cfdd676a1d300c167bee804abd29369b\"}"
+}
