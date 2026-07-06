@@ -1,0 +1,24 @@
+{
+  "afterRows": [
+    {
+      "cls": "msg-row user",
+      "cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjB9.9ml1l-9iINLT4rUvh0p8kMhJyFzZ8b4c9O_5mAh4Ixc",
+      "text": "FIRST_EVENT_SENTINEL\n\n08:00"
+    },
+    {
+      "cls": "msg-row assistant",
+      "cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjgzNDl9.2bsnaGVevKHdMqw4O16965RZh5IUTkRXO977-IEdfss",
+      "text": "The backend process stopped before completing this turn.\n\n00:37"
+    },
+    {
+      "cls": "msg-row assistant recovery-panel-row",
+      "cursor": "",
+      "text": "Launch failed\nThis web-owned session stopped after binding a transcript log, before the turn completed.\nStage: broker_exit_after_log_bind\nLaunch settings: proof-provider/proof-model · low\nbroker control socket went stale after binding a transcript log before the turn completed\nNew like this\nDismiss launch\nCopy details"
+    }
+  ],
+  "bodyIncludesFirst": true,
+  "bodyIncludesStopped": true,
+  "olderError": "Retry",
+  "olderText": "Load older messages",
+  "olderWrapDisplay": "none"
+}

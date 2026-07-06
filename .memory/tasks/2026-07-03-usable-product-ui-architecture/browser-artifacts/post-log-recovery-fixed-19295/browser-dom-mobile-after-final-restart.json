@@ -1,0 +1,47 @@
+{
+  "bodyTextIncludes": {
+    "postLogCopy": true,
+    "sentinel": true,
+    "stopped": true
+  },
+  "composer": {
+    "disabled": true,
+    "placeholder": "",
+    "title": "Failed launch cannot receive messages",
+    "value": ""
+  },
+  "controls": {
+    "attachDisabled": true,
+    "exportDisabled": false,
+    "queueDisabled": true,
+    "sendDisabled": true,
+    "unattendedDisabled": true
+  },
+  "href": "http://127.0.0.1:19295/#session=post-log-recovery-fixed",
+  "loadError": null,
+  "rows": [
+    {
+      "historyCursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1yZWNvdmVyeS1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9wb3N0LWxvZy1yZWNvdmVyeS1wcm9vZi1sb2dzL3Bvc3QtbG9nLXJlY292ZXJ5LWZpeGVkLmpzb25sIiwicG9zIjoxMTF9.PkR1LOc-goRl4PBCTp0T2Le2rh_BUFirp1Xh1-RYJWs",
+      "msgClass": "msg user",
+      "rowClass": "msg-row user",
+      "text": "POST_LOG_BOUND_DEATH_SENTINEL\n\n08:00"
+    },
+    {
+      "historyCursor": "",
+      "msgClass": "msg assistant error",
+      "rowClass": "msg-row assistant",
+      "text": "The backend process stopped before completing this turn.\n\n00:37"
+    },
+    {
+      "historyCursor": "",
+      "msgClass": "msg assistant recovery-panel",
+      "rowClass": "msg-row assistant recovery-panel-row",
+      "text": "Launch failed\nThis web-owned session stopped after binding a transcript log, before the turn completed.\nStage: broker_exit_after_log_bind\nLaunch settings: proof-provider/proof-model · low\nbroker control socket went stale after binding a transcript log before the turn completed\nNew like this\nDismiss launch\nCopy details"
+    }
+  ],
+  "title": "Codoxear",
+  "viewport": {
+    "h": 844,
+    "w": 390
+  }
+}

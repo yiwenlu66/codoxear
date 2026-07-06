@@ -1,0 +1,13 @@
+total 20
+drwxr-xr-x 2 tester tester 4096 Jul  6 16:37 .
+drwxr-xr-x 6 tester tester 4096 Jul  6 16:37 ..
+-rw-r--r-- 1 tester tester  616 Jul  6 16:37 post-log-completed-control.json
+srwxr-xr-x 1 tester tester    0 Jul  6 16:37 post-log-completed-control.sock
+-rw-r--r-- 1 tester tester  599 Jul  6 16:37 post-log-large-cursor.json
+srwxr-xr-x 1 tester tester    0 Jul  6 16:37 post-log-large-cursor.sock
+-rw-r--r-- 1 tester tester  604 Jul  6 16:37 post-log-recovery-fixed.json
+srwxr-xr-x 1 tester tester    0 Jul  6 16:37 post-log-recovery-fixed.sock
+---ledger---
+{"agent_backend": "pi", "agent_pid": 987654322, "broker_pid": 987654321, "created_ts": 1783312000.0, "cwd": "/workspace", "launch_id": "launch-post-log-recovery-fixed", "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-recovery-fixed.jsonl", "model": "proof-model", "model_provider": "proof-provider", "preferred_auth_method": "apikey", "reasoning_effort": "low", "session_id": "post-log-recovery-fixed", "spawn_nonce": "spawn-post-log-recovery-fixed", "state": "log_bound", "thread_id": "thread-post-log-recovery-fixed", "type": "launch_attempt", "updated_ts": 1783312001.0}
+{"agent_backend": "pi", "agent_pid": 987654322, "broker_pid": 987654321, "created_ts": 1783312000.0, "cwd": "/workspace", "launch_id": "launch-post-log-completed-control", "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-completed-control.jsonl", "model": "proof-model", "model_provider": "proof-provider", "preferred_auth_method": "apikey", "reasoning_effort": "low", "session_id": "post-log-completed-control", "spawn_nonce": "spawn-post-log-completed-control", "state": "log_bound", "thread_id": "thread-post-log-completed-control", "type": "launch_attempt", "updated_ts": 1783312001.0}
+{"agent_backend": "codex", "agent_pid": 987654322, "broker_pid": 987654321, "created_ts": 1783312000.0, "cwd": "/workspace", "launch_id": "launch-post-log-large-cursor", "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-large-cursor.jsonl", "model": "proof-model", "model_provider": "proof-provider", "preferred_auth_method": "apikey", "reasoning_effort": "low", "session_id": "post-log-large-cursor", "spawn_nonce": "spawn-post-log-large-cursor", "state": "log_bound", "thread_id": "thread-post-log-large-cursor", "type": "launch_attempt", "updated_ts": 1783312001.0}
