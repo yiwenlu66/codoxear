@@ -28,8 +28,9 @@ Stage first, commit later.
 ## Accepted producer extension
 - Paste-to-attach and drag/drop are implemented in `27ca144` as client-only producers feeding the existing staged upload route through shared `stageFiles()`. Docker/browser proof `35b13dc` shows paste/drop/off-zone-drop/text-paste semantics preserve zero pre-send backend writes and send-boundary attachment commits. Clean-room review `245dcb2` accepted the slice with no blockers.
 
-## Post-send cleanup policy under review
-- Commit `4963ba6` makes post-confirmed-send staged cleanup guard failures explicit cleanup warnings (`attachment_cleanup_error`) instead of send failures. Delivery remains success, commit-unknown state is cleared, and staged/pending truth is preserved if cleanup fails. This remains pending clean-room review `2056e07e-a15e-4afd-89b0-b65cda060475`.
+## Accepted post-send cleanup policy
+- Commit `4963ba6` makes deterministic post-confirmed-send staged cleanup guard failures explicit cleanup warnings (`attachment_cleanup_error`) instead of send failures. Delivery remains success, commit-unknown state is cleared, and staged/pending truth is preserved if cleanup fails. Clean-room review `09a9aa9` accepted this path with no blockers.
+- Residual under active follow-up: post-confirmation filesystem/persistence failures (`OSError`) and rare post-confirmation `KeyError` should also be isolated from the delivery response so no post-delivery tail failure becomes a resend-inviting send failure. Executor `7898908e-b067-4656-8cc4-27b50d94e254` is handling this.
 
 ## Remaining nonblocking follow-ups
 - Consider reducing absolute-path exposure in browser tooltips once a safe backend-readable identity/display split exists.

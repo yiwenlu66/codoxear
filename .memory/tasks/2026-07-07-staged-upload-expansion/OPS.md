@@ -113,3 +113,9 @@
   - full local suite → `1789 passed, 132 subtests passed in 24.49s`;
   - `node --check codoxear/static/app.js` and `git diff --check` → clean.
 - Clean-room review dispatched: async id `2056e07e-a15e-4afd-89b0-b65cda060475`.
+
+## 2026-07-06T21:46:00Z Post-send cleanup policy review accepted with residual
+- Review artifact committed: `09a9aa9 Record post-send cleanup policy review`.
+- Verdict: accepted for deterministic `ValueError` guard path; no blockers.
+- Review confirmed: cleanup guard failure after confirmed delivery returns 200 with `attachment_cleanup_error`, preserves staged/pending truth, clears commit-unknown state, and frontend surfaces cleanup failure without implying resend.
+- Nonblocking residual: post-confirmation `OSError` from unlink/persistence and rare post-confirmation `KeyError` can still become false send failures after delivery. Follow-up executor dispatched: `7898908e-b067-4656-8cc4-27b50d94e254`.
