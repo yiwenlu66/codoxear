@@ -878,3 +878,15 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
   - Docker unit on port 19296: `1773 passed, 1 skipped, 132 subtests passed`.
   - Docker smoke on port 19297: pre-login `/api/me` 401, post-login `/api/sessions` 200, app dir `/home/tester/.local/share/codoxear`.
 - Boundary: the certification uses deterministic stale sidecars and synthetic logs in Docker; it proves Codoxear lifecycle recovery/projection semantics, not live provider inference health.
+
+## 2026-07-06T17:49:00Z Large recovered-log search gap fixed and proof refreshed
+- Clean-room critic `1cc1d96e-4c9b-4f6b-a9bb-e0dee91b3292` found one IMPAIRING post-log recovery gap: large recovered logs were honest for history/export but `/messages/search` searched only the 2 MiB recovered tail payload. Evidence in the prior proof showed `large_search_first` returned `match_count:0`, `match_count_truncated:false`, `has_older:true` for `FIRST_EVENT_SENTINEL`, a silent false-negative.
+- Functional fix committed as `92947c3` (`Search recovered transcripts from bound logs`). For missing recovered sessions with an existing `log_path`, `handle_messages_search` now searches the real bound log via `_search_chat_log_bounded`, decodes `before` against the recovered payload cursor identity, attaches search history/load cursors, clips text, attaches notifications, and merges lifecycle recovery matches from the payload. Pre-log failed-launch search remains payload-only. `_post_log_bound_transcript_payload` now clears `has_older` if tail extraction throws after detecting truncation.
+- Validation after the fix:
+  - Focused route/search: `python3 -m pytest -q tests/test_message_routes.py tests/test_transcript_export.py` -> `45 passed`.
+  - Full local pytest -> `1775 passed, 132 subtests passed`.
+- Proof refresh committed as `02aa8ac` (`Record recovered transcript search proof`) under `browser-artifacts/post-log-recovery-fixed-19295/`.
+  - API proof on port 19295, including after container restart, shows `large_search_first` status `200`, `match_count:1`, `match_count_truncated:false`, text `FIRST_EVENT_SENTINEL`, and a usable `load_cursor`; `large_search_stopped` remains `match_count:1`; history still loads `FIRST_EVENT_SENTINEL`; completed-control remains `control_row:null`; recovered send remains blocked.
+  - Browser proof from a fresh browser session shows the large recovered log initially renders no `FIRST_EVENT_SENTINEL` and a visible `Load older messages`; clicking it renders `FIRST_EVENT_SENTINEL`, hides the older affordance for the now-complete window, and keeps exactly one lifecycle error row.
+  - Docker unit on port 19296 -> `1774 passed, 1 skipped, 132 subtests passed`; Docker smoke on port 19297 -> pre-login `/api/me` 401 and post-login `/api/sessions` 200 with app dir `/home/tester/.local/share/codoxear`.
+- Final corrected-state clean-room review launched as `688c6a6d-30db-4378-a701-ebe183ac55e6` and is still running at this entry. Epistemic/project memory should be updated after that verdict so acceptance claims reflect any remaining findings.
