@@ -57,6 +57,67 @@ class TestAttachButtonSource(unittest.TestCase):
         self.assertIn('"Attachments cannot be queued; send now or wait until idle"', source)
         self.assertIn('setToast("attachments can only be sent now; wait until idle to queue text with files");', source)
 
+    def test_attach_indicator_reconciles_selected_session_pending_attachment(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+
+        # One projection function renders the visible badge from the local
+        # just-attached counter plus the server-authoritative pending flag for
+        # the selected session. Without it the indicator is local-only.
+        self.assertIn('function projectSelectedAttachmentIndicator() {', source)
+        self.assertIn("const sessionInfo = selected ? sessionIndex.get(selected) : null;", source)
+        self.assertIn("const serverPending = Boolean(sessionInfo && sessionInfo.pending_attachment);", source)
+        self.assertIn("const visible = Math.max(localCount, serverPending ? 1 : 0);", source)
+        # setAttachCount must not render the badge inline; it delegates to the
+        # projection so the selected session's pending_attachment is honored.
+        self.assertIn('attachedFiles = Math.max(0, Number(n) || 0);', source)
+        self.assertIn('projectSelectedAttachmentIndicator();\n        };', source)
+        self.assertNotIn('attachBadgeEl.textContent = String(next);', source)
+        # The projection is called where the selected session's sessionInfo is
+        # refreshed, so server-side flips reconcile without a local counter change.
+        self.assertIn(
+            'applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));\n                syncRecoveryUiForSession(selected);\n              }\n              projectSelectedAttachmentIndicator();',
+            source,
+        )
+        # Send authority is unchanged: local counter drives allow_pending_attachment
+        # and the server pending flag still prompts explicit send.
+        self.assertIn('const localAttachmentCount = typeof attachedFiles === "number" ? attachedFiles : 0;', source)
+        self.assertIn('let allowPendingAttachment = Boolean(renderHere && localAttachmentCount > 0);', source)
+        self.assertIn('if (!allowPendingAttachment && sessionInfo && sessionInfo.pending_attachment) {', source)
+
+    def test_selected_session_pending_attachment_cache_updates_on_direct_evidence(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+
+        # Helper mutates the cached pending_attachment only for the selected
+        # session, then re-projects. Without it, setAttachCount(0) after a send
+        # or clear re-renders against stale pending_attachment=true.
+        self.assertIn('function setSelectedSessionPendingAttachment(value) {', source)
+        self.assertIn("info.pending_attachment = Boolean(value);", source)
+        self.assertIn("sessionIndex.set(selected, info);", source)
+        self.assertIn("projectSelectedAttachmentIndicator();", source)
+        # Successful attach is direct evidence the server now has a pending
+        # attachment; update before bumping the local counter.
+        self.assertIn(
+            'setToast("file attached");\n\t\t                setSelectedSessionPendingAttachment(true);',
+            source,
+        )
+        # Successful send with allow_pending_attachment is direct evidence the
+        # pending attachment was consumed; clear the cache before setAttachCount(0).
+        self.assertIn(
+            'if (allowPendingAttachment) setSelectedSessionPendingAttachment(false);\n            setAttachCount(0);',
+            source,
+        )
+        # Successful pending_attachment/clear is direct evidence the flag is now false.
+        self.assertIn(
+            'if (selected === sessionId) setSelectedSessionPendingAttachment(false);',
+            source,
+        )
+        # The refresh path still re-projects from server truth, so a cache update
+        # never shadows an authoritative refresh.
+        self.assertIn(
+            'applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));\n                syncRecoveryUiForSession(selected);\n              }\n              projectSelectedAttachmentIndicator();',
+            source,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

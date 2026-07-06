@@ -2916,6 +2916,7 @@
                 applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));
                 syncRecoveryUiForSession(selected);
               }
+              projectSelectedAttachmentIndicator();
               const sidebarEntries = sidebarSessionEntries(sessions);
 		           if (swipeActions && openSwipeSessionId && sessionsWrap.childElementCount > 0) {
 		             swipeRefreshDeferred = true;
@@ -6497,17 +6498,45 @@
           queueBtn.appendChild(queueBadgeEl);
         }
         const setAttachCount = (n) => {
-          const next = Math.max(0, Number(n) || 0);
-          attachedFiles = next;
+          attachedFiles = Math.max(0, Number(n) || 0);
+          projectSelectedAttachmentIndicator();
+        };
+        // Single projection for the visible attachment indicator. The badge
+        // reflects the selected session's attachment state: the local
+        // just-attached counter (immediate feedback after inject_file) plus the
+        // server-authoritative pending_attachment flag for the selected
+        // session. Without this reconciliation the paperclip/count indicator is
+        // local-only and lies after reload/select/poll/clear.
+        function projectSelectedAttachmentIndicator() {
           if (!attachBadgeEl) return;
-          if (next > 0) {
-            attachBadgeEl.textContent = String(next);
+          const sessionInfo = selected ? sessionIndex.get(selected) : null;
+          const localCount = typeof attachedFiles === "number" ? attachedFiles : 0;
+          const serverPending = Boolean(sessionInfo && sessionInfo.pending_attachment);
+          const visible = Math.max(localCount, serverPending ? 1 : 0);
+          if (visible > 0) {
+            attachBadgeEl.textContent = String(visible);
             attachBadgeEl.style.display = "inline-flex";
           } else {
             attachBadgeEl.textContent = "";
             attachBadgeEl.style.display = "none";
           }
         };
+        // Mutate the selected session's cached pending_attachment only when the
+        // frontend has direct evidence it changed (successful attach -> true;
+        // successful send with allow_pending_attachment -> false; successful
+        // pending_attachment/clear -> false). This keeps the cached value in
+        // step with what the server now knows until the next refreshSessions()
+        // returns the authoritative value, so the indicator does not re-render
+        // against stale pending_attachment=true right after a send/clear.
+        function setSelectedSessionPendingAttachment(value) {
+          if (!selected) return false;
+          const info = sessionIndex.get(selected);
+          if (!info) return false;
+          info.pending_attachment = Boolean(value);
+          sessionIndex.set(selected, info);
+          projectSelectedAttachmentIndicator();
+          return true;
+        }
         function syncAttachButtonState() {
           const attachControl = $("#attachBtn");
           if (!attachControl) return;
@@ -6715,6 +6744,7 @@
 		            if (selected === sid) {
 		              if (res && res.ok) {
 		                setToast("file attached");
+		                setSelectedSessionPendingAttachment(true);
 		                setAttachCount(attachmentIndex);
 		              }
 		              pollFastUntilMs = Date.now() + 4000;
@@ -6812,6 +6842,7 @@
             }
             if (res.queued) setToast(`queued (queue ${res.queue_len})`);
             else setToast("sent");
+            if (allowPendingAttachment) setSelectedSessionPendingAttachment(false);
             setAttachCount(0);
             pollFastUntilMs = Date.now() + 5000;
             kickPoll(0);
@@ -6851,6 +6882,7 @@
                 try {
                   await api(`/api/sessions/${sessionId}/pending_attachment/clear`, { method: "POST", body: {} });
                   setToast("pending attachment state cleared");
+                  if (selected === sessionId) setSelectedSessionPendingAttachment(false);
                   void refreshSessions().catch((e) => {
                     if (e && e.status === 401) handleAppAuthLoss();
                     else console.error("refreshSessions failed", e);
