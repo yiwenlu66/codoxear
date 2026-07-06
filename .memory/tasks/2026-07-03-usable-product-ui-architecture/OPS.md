@@ -561,8 +561,12 @@
 - Method caveats: browser hidden-file upload/change dispatch required automation workarounds; one send was delivered by the same `/send` API path used by the browser's `sendText` because clicking `#sendChoiceNow` was unreliable under agent-browser. The decisive target remains proven because Pi read the staged file and returned the sentinel.
 - Residuals: mobile paperclip measured 34x34 (below 44px ideal); stale local attached-files badge can linger after reload when server `pending_attachment` is false; HEIC is not certified cross-platform.
 
-
 ## 2026-07-06T08:56:47+08:00 — Plain editor browser proof preserved
 Observation: Artifact-preserving verifier 44556c1c completed with substantive PASS despite acceptance wrapper failure. Source artifacts copied from /tmp/codoxear-plain-editor-proof-19143/artifacts/ into browser-artifacts/plain-editor-19143/, excluding cookies.txt; report copied to plain-editor-browser-verification.md.
 Evidence: browser-result.json records Monaco loader 404; SC2 edit/save/reopen changed version to f0955552aaa9415e3dc0f08d3394fa79cfdd676a1d300c167bee804abd29369b; SC3 diskUnchanged true after Discard; SC4 save response contains 409 conflict true and Keep preserves draft; SC5 unavailable status says copy unsaved edits before closing; SC6 diff/binary/oversize/non-UTF remain read-only; SC7 mobile 390x844 has scrollWidth 390 and 16px textarea.
 Decision: Treat plain textarea editor fallback as browser-certified baseline editing capability. Native confirm-gated Reload-from-disk remains a harness boundary; Keep conflict branch and conflict row are certified.
+
+## 2026-07-06T08:56:47+08:00 — Upload route monkeypatch seam retired
+Observation: Commit 163320c rewrote tests/test_file_upload.py to direct file_upload module tests and expanded tests/test_control_routes.py through ControlRouteDeps injection. Targeted validation passed: python3 -m pytest -q tests/test_file_upload.py tests/test_control_routes.py tests/test_file_upload_module_source.py -> 46 passed.
+Review: Critic ea863301 PASS/no blockers; it confirmed the old codoxear.server/do_POST monkeypatch seam is removed and coverage moved to direct module plus injected route tests. Residual branch: NotReady during inject_attachment_keys is not separately tested, but readiness 409 projection is covered.
+Decision: Seam retirement is accepted subject to final full local + Docker validation for the current HEAD.
