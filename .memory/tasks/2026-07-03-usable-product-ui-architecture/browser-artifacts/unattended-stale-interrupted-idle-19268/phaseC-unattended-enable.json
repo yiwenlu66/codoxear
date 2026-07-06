@@ -1,0 +1,1 @@
+{"http_code":"200","response_body":{"ok": true, "enabled": true, "request": "unattended stale busy probe", "cooldown_minutes": 1, "remaining_injections": 1}}
