@@ -6,5 +6,7 @@ Boundary rule: broker/server/session/tmux verification is Docker-only. Host thro
 - Docker unit: `CODOXEAR_DOCKER_PORT=190NN scripts/codoxear-docker-sandbox test`
 - Docker server smoke: `CODOXEAR_DOCKER_PORT=190NN scripts/codoxear-docker-sandbox smoke` (401 pre-login, 200 post-login).
 - Browser: `AGENT_BROWSER_SESSION=<name> agent-browser open http://127.0.0.1:190NN/`, login `test-password`, snapshot/eval. Mobile viewport: agent-browser supports viewport sizing; verify both desktop and ~390x844.
+
+- Staged-upload acceptance requires evidence at the commit-boundary, not just route success: multi-file upload creates server staged entries and browser chips; remove-one/clear-all do not call backend `send` or `keys`; confirmed send produces exactly one backend send payload containing generated `Attachment N: <path>` lines and clears staged entries; commit-unknown/send failure preserves staged entries. A useful Docker proof uses a fake broker that supports confirmed send but not key-write errors to distinguish the new stage-only path from old pre-send key injection.
 - Monaco vendor caveat: range-level `git diff --check` over the Monaco introduction reports whitespace in vendored `codoxear/static/monaco/**` / third-party notice files. Treat that as third-party asset hygiene unless the touched diff changes non-vendor code or proof artifacts; do not rewrite vendored Monaco bytes casually after browser proof.
 - Stop sandboxes after use: `CODOXEAR_DOCKER_PORT=190NN scripts/codoxear-docker-sandbox stop`.
