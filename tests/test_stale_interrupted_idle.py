@@ -718,5 +718,118 @@ class TestDiscoveryRefreshPreservesInterruptBaseline(unittest.TestCase):
             self.assertTrue(s.interrupted_idle_suppressed)
 
 
+class TestFreshDiscoveryPreservesInterruptBaseline(unittest.TestCase):
+    """Fresh server discovery / empty registry: a brand-new registration that
+    reports ``busy=False, interrupted_idle=True`` over a non-final log must store
+    an active interrupted-idle baseline and list as idle. Before the fix the
+    new-registration branch constructed the Session with the override, then
+    called ``reset_log_caches`` which cleared it, so the listing projected
+    ``busy=True`` against the broker's idle-interrupted report.
+    """
+
+    def _interrupted_turn_log(self, log_path: Path) -> None:
+        log_path.write_text(
+            "".join(
+                json.dumps(o) + "\n"
+                for o in [
+                    {"type": "session_meta", "payload": {"id": "broker-1", "source": "cli"}},
+                    {"type": "event_msg", "payload": {"type": "user_message", "message": "first"}, "ts": 10.0},
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "working"}],
+                        },
+                        "ts": 11.0,
+                    },
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+    def test_fresh_discovery_interrupted_idle_over_busy_log_stores_baseline_and_lists_idle(self) -> None:
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            self._interrupted_turn_log(log_path)
+            size = int(log_path.stat().st_size)
+            self.assertGreater(size, 0)
+            # Empty registry: this is a fresh server restart / first discovery.
+            sessions: dict[str, Session] = {}
+            lock = threading.Lock()
+            log_runtime = _log_runtime(sessions)
+            registry = _discovery_registry(sessions=sessions, lock=lock)
+
+            template = _make_session(log_path, interrupted_idle=False)
+            reg = _discovery_registration(
+                session=template,
+                log_path=log_path,
+                interrupted_idle=True,
+                meta_log_off=size,
+            )
+            registry.upsert_registration(reg)
+
+            stored = sessions.get("broker-1")
+            self.assertIsNotNone(stored)
+            self.assertTrue(stored.interrupted_idle)
+            # Active baseline recorded at current log size (not lost to reset).
+            self.assertEqual(stored.interrupted_idle_log_off, size)
+            self.assertFalse(stored.interrupted_idle_suppressed)
+
+            # Listing must project busy=False despite a non-idle/non-final log,
+            # because the override is alive.
+            coordinator = _list_coordinator(
+                sessions=sessions,
+                tmp_path=Path(td),
+                log_runtime=log_runtime,
+                idle_from_log_path=lambda _sid, _path: False,
+            )
+            out = coordinator.list_sessions()
+            self.assertEqual(len(out), 1)
+            self.assertIs(out[0]["busy"], False)
+            self.assertTrue(stored.interrupted_idle)
+
+    def test_fresh_discovery_false_interrupted_idle_keeps_clearing_semantics(self) -> None:
+        # The false path must be unchanged: a fresh registration with
+        # interrupted_idle=False stores no override and clears log caches.
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            self._interrupted_turn_log(log_path)
+            size = int(log_path.stat().st_size)
+            sessions: dict[str, Session] = {}
+            lock = threading.Lock()
+            log_runtime = _log_runtime(sessions)
+            registry = _discovery_registry(sessions=sessions, lock=lock)
+
+            template = _make_session(log_path, interrupted_idle=False)
+            reg = _discovery_registration(
+                session=template,
+                log_path=log_path,
+                interrupted_idle=False,
+                meta_log_off=size,
+            )
+            registry.upsert_registration(reg)
+
+            stored = sessions.get("broker-1")
+            self.assertIsNotNone(stored)
+            self.assertFalse(stored.interrupted_idle)
+            self.assertEqual(stored.interrupted_idle_log_off, 0)
+            self.assertFalse(stored.interrupted_idle_suppressed)
+            # New-session clearing / log-cache semantics preserved.
+            self.assertEqual(stored.meta_log_off, size)
+            self.assertEqual(stored.idle_cache_log_off, -1)
+            self.assertIsNone(stored.idle_cache_value)
+
+            coordinator = _list_coordinator(
+                sessions=sessions,
+                tmp_path=Path(td),
+                log_runtime=log_runtime,
+                idle_from_log_path=lambda _sid, _path: False,
+            )
+            out = coordinator.list_sessions()
+            self.assertEqual(len(out), 1)
+            self.assertIs(out[0]["busy"], True)
+
+
 if __name__ == "__main__":
     unittest.main()

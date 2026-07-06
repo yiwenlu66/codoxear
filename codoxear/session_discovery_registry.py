@@ -95,6 +95,16 @@ class SessionDiscoveryRegistryCoordinator:
             previous = self.sessions().get(registration.session_id)
             if not previous:
                 self.reset_log_caches(session, registration.meta_log_off)
+                # reset_log_caches() clears interrupted_idle/log_off/suppression.
+                # Route the broker's interrupted-idle truth through the same
+                # helper the broker, refresh, and prune paths use so a fresh
+                # discovery of an interrupted stopped turn records an active
+                # baseline (current log size) instead of being lost to the
+                # reset. One helper owns semantics for new and existing
+                # sessions alike; only re-establish when the broker reports
+                # true so the false/clearing path stays untouched.
+                if registration.interrupted_idle:
+                    set_session_interrupted_idle(session, registration.interrupted_idle)
                 session.model_provider = registration.model_provider
                 session.preferred_auth_method = registration.preferred_auth_method
                 session.model = registration.model
