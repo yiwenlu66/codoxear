@@ -1,0 +1,94 @@
+{
+  "loginResult": {
+    "status": 200,
+    "text": "{\"ok\":true}"
+  },
+  "sessionOrder": [
+    "cc-normal",
+    "cc-apierr",
+    "cc-noresp"
+  ],
+  "noresp": {
+    "sid": "cc-noresp",
+    "expected": "The backend completed this turn without producing a response.",
+    "hasExpected": true,
+    "rows": [
+      {
+        "cls": "msg-row assistant",
+        "text": "The backend completed this turn without producing a response.08:00"
+      },
+      {
+        "cls": "msg-shell assistant",
+        "text": "The backend completed this turn without producing a response.08:00"
+      },
+      {
+        "cls": "msg assistant error",
+        "text": "The backend completed this turn without producing a response.08:00"
+      }
+    ],
+    "errorRows": [
+      {
+        "cls": "msg-row assistant",
+        "text": "The backend completed this turn without producing a response.08:00"
+      },
+      {
+        "cls": "msg assistant error",
+        "text": "The backend completed this turn without producing a response.08:00"
+      }
+    ]
+  },
+  "apierr": {
+    "sid": "cc-apierr",
+    "expected": "API Error: 503 Service Unavailable",
+    "hasExpected": true,
+    "rows": [
+      {
+        "cls": "msg-row assistant",
+        "text": "API Error: 503 Service Unavailable08:00"
+      },
+      {
+        "cls": "msg-shell assistant",
+        "text": "API Error: 503 Service Unavailable08:00"
+      },
+      {
+        "cls": "msg assistant error",
+        "text": "API Error: 503 Service Unavailable08:00"
+      }
+    ],
+    "errorRows": [
+      {
+        "cls": "msg-row assistant",
+        "text": "API Error: 503 Service Unavailable08:00"
+      },
+      {
+        "cls": "msg assistant error",
+        "text": "API Error: 503 Service Unavailable08:00"
+      }
+    ]
+  },
+  "normal": {
+    "sid": "cc-normal",
+    "expected": "CC-ANSWER-OK",
+    "hasExpected": true,
+    "rows": [
+      {
+        "cls": "msg-row assistant",
+        "text": "CC-ANSWER-OK08:00"
+      },
+      {
+        "cls": "msg-shell assistant",
+        "text": "CC-ANSWER-OK08:00"
+      },
+      {
+        "cls": "msg assistant",
+        "text": "CC-ANSWER-OK08:00"
+      }
+    ],
+    "errorRows": [
+      {
+        "cls": "msg-row assistant",
+        "text": "CC-ANSWER-OK08:00"
+      }
+    ]
+  }
+}

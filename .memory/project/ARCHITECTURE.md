@@ -16,7 +16,7 @@ Protected checkout: `/home/yiwen/codex-web` on `main` — never edit/restart/mer
 ## Product model invariants
 
 
-- Selectable backend tabs are product promises. If a turn records user input and then terminates without assistant output or explicit backend error, normalization must emit a truthful visible no-response/failure event; ordinary idle silence violates the projection contract.
+- Selectable backend tabs are product promises. If a turn records user input and then terminates without assistant output or explicit backend error, normalization must emit a truthful visible no-response/failure event; ordinary idle silence violates the projection contract. Claude Code terminal `system/api_error` rows are visible error outcomes only when retries are exhausted; transient retry notices stay out of the transcript by themselves.
 - Product surface must be justified by user workflow, not verification convenience. Sandbox-only flags, credentials, broken local packages, and certification workarounds are environment/ops boundaries unless a real user scenario independently requires UI. Do not add visible controls merely to make an isolated test path pass.
 - Minimal UI: GTD-style flat sidebar, sparse chat rendering, mobile-first companion (phone is a view/controller of local sessions).
 - Fail loud: no silent fallbacks; contract violations return explicit errors.
