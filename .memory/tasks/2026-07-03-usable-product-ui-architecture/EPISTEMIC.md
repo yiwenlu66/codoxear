@@ -285,3 +285,9 @@ Clean-room critic 4aad1a07 accepted the load-error/composer/queue tranche with n
 - The fix also aligns CC visible error outcomes with busy/idle reduction: terminal `system/api_error` closes the current turn in `cc_current_turn_state_before`, so a visible error transcript row does not leave the log reducer thinking the turn is still busy.
 - Docker/browser certification on port 19210 supports the user-visible claim through real server routes and DOM rows: `cc-noresp` rendered the no-response error, `cc-apierr` rendered `API Error: 503 Service Unavailable` as `.msg assistant error`, and `cc-normal` rendered `CC-ANSWER-OK` as a normal assistant message.
 - Boundary: this is deterministic CC log projection proof, not real Claude inference parity. Credentials/gateway health remains parked separately.
+
+
+## Mobile file touch dpad resolved
+- Functional commit `ff9962f` raises the file viewer touch dpad controls (`.fileTouchBtn`) from the desktop/base 34px grid to a mobile-only 44px grid under the file viewer. The desktop compact dpad remains 34px; the mobile override owns grid tracks, spacers, button width/height, and min size together so buttons fill cells instead of overflowing a smaller grid.
+- Browser evidence on port 19220 supports the mobile ergonomics claim: before simulation measured all seven dpad/action controls at 34x34; after the fix, up/left/down/right/select/copy/paste measured 44x44, the dpad grid computed to 44px tracks, the toolbar stayed 368px wide inside a 390px viewport, and body scroll width equaled viewport width.
+- Boundary: clean Docker lacks Monaco activation for the touch toolbar, so the certification force-displayed the toolbar DOM and measured CSS layout. Existing file viewer/editor behavior tests continue to cover activation/update behavior.

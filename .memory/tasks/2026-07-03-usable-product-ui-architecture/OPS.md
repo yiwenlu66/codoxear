@@ -615,3 +615,11 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
 - Docker/browser certification ran on port 19210 with fake CC sockets/logs and real `codoxear.server`; artifacts preserved in `browser-artifacts/cc-outcomes-19210/`.
 - API evidence: `cc-noresp-tail.json` projects assistant error no-response; `cc-apierr-tail.json` projects assistant error `API Error: 503 Service Unavailable`; `cc-normal-tail.json` projects assistant `final_response` `CC-ANSWER-OK`.
 - Browser evidence: `browser-result.json` shows no-response and API error texts in `.msg assistant error` rows, and normal answer in `.msg assistant` without error class.
+
+
+## 2026-07-06T04:28:25Z Mobile file touch dpad certified
+- Executor `fd2e5965-efd8-4ec0-b07a-e574ecfad8f8` implemented the dpad target-size fix and reported PASS with no staged files. Changed files were `codoxear/static/app.css` and `tests/test_mobile_toast_source.py`; functional commit recorded as `ff9962f Raise file touch dpad targets`.
+- Focused validation rerun by main before commit: `python3 -m pytest -q tests/test_mobile_toast_source.py tests/test_file_viewer_source.py tests/test_frontend_file_viewer_module_source.py tests/test_static_assets.py` -> 81 passed, 25 subtests; `node --check codoxear/static/app.js` -> OK (silent successful parse).
+- Docker/browser artifacts copied from `/tmp/codoxear-d5-browser-19220/artifacts/` to `browser-artifacts/file-touch-dpad-19220/`, excluding `cookies.txt`.
+- Measurement evidence: simulated pre-fix visible `.fileTouchBtn` controls were 34x34 (`meets44:false`); patched mobile controls measured 44x44 for all seven buttons, dpad grid `44px 44px 44px / 44px 44px`, toolbar 368px wide in a 390px viewport, `horizontalOverflow:false`.
+- Boundary: Monaco was unavailable in clean Docker, so the harness force-displayed the toolbar/dpad DOM and measured CSS layout directly rather than exercising Monaco-driven select-mode activation.
