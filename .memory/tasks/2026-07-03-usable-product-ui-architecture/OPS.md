@@ -797,3 +797,9 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
   - Docker unit on port 19281: `1752 passed, 1 skipped, 132 subtests passed in 47.89s`.
   - Docker smoke on port 19282: pre-login `/api/me` 401, post-login `/api/sessions` 200, app dir `/home/tester/.local/share/codoxear`.
 - Boundary: proof uses deterministic synthetic Pi logs because the defect is a normalizer/reducer defect and the rare live model outcome is already structurally proven. No host live runtime, host Pi logs, host sockets, or protected checkout were touched.
+
+## 2026-07-06T20:05:00Z Clean-room review found Pi length overreach
+- Clean-room critic `7dfda53d-8855-4da5-8f2d-b6ea500432da` returned **CONCERNS**, saved at `.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/pi-no-text-outcome-review/cleanroom-review-concerns.md`.
+- Accepted parts: `stop`/`end_turn` no-text rows are genuinely terminal in real logs; projecting no-response from `PiBackend.chat_event_from_log_row` preserves cursor/search/export surfaces; predicate reached transcript projection, log idle/current-turn, broker/sessiond reducer, sidebar timestamp, and Pi busy guard without adding a busy-state category; import cycle is avoided via lazy import.
+- Required correction: the predicate in `32d914b` is a denylist and incorrectly treats `stopReason:"length"` as terminal. Review found real Pi logs where `length`+thinking-only is followed by compaction/custom rows and a continuing assistant tool-use row with no intervening user. Current code would emit a false no-response row and transient false idle during the compaction window.
+- Decision: follow-up implementation must switch the predicate to an allowlist (`stop`, `end_turn`) and add `length`+compaction continuation negative tests before acceptance/review can pass.
