@@ -17,13 +17,16 @@ Stage first, commit later.
 - Local validation before proof: JS syntax check, focused pytest (`233 passed, 22 subtests passed`), `git diff --check`, and full pytest (`1782 passed, 132 subtests passed`). See OPS.md 2026-07-06T20:33:37Z.
 - Docker/browser proof commit `b1e6bc2` exercised the user-visible path against a fake broker with `sync_send:true` and `key_write_errors:false`, which would expose any dependence on old immediate key writes. Multi-file staging, remove-one, clear-all, confirmed-send clearing, and commit-unknown preservation matched the target mechanism. See OPS.md 2026-07-06T20:33:37Z and `browser-artifacts/staged-upload-19331/VERIFICATION-REPORT.md`.
 - Clean-room review commit `b2da8a8` independently accepted the slice with no blockers and reproduced focused validation (`240 passed, 22 subtests passed`). See OPS.md 2026-07-06T20:40:00Z and `reviews/cleanroom-review.md`.
-- Follow-up commit `75986c1` hardens the review's only cleanup-failure concern: deterministic `attachments/clear` guard failures now return visible 400 JSON and preflight all staged paths before unlink, avoiding a false clear success or partial deterministic cleanup. See OPS.md 2026-07-06T20:58:00Z.
+- Follow-up commit `75986c1` hardens deterministic `attachments/clear` guard failures; commit `b7148bb` applies the same visible 400 mapping to the legacy `pending_attachment/clear` route. Fix review `1950474` accepted the route/coordinator/store behavior. See OPS.md 2026-07-06T20:58:00Z and 2026-07-06T21:19:00Z.
 
 ## Ruled out
 - Immediate PTY paste as a hidden compatibility layer: source inspection and Docker broker call summaries showed no `send`/`keys` before explicit send.
 - Filename-only identity as sufficient: same-name collision risk was fixed with unique staged destination naming and list entries carry stable ids/paths.
 - Key-write-error support as a staging precondition: proof used a broker without key-write-error capability and still staged/removed/cleared truthfully.
 - Clearing on uncertain backend receipt: forced commit-unknown preserved the staged entry.
+
+## Producer extension under review
+- Paste-to-attach and drag/drop are implemented in `27ca144` as client-only producers feeding the existing staged upload route through shared `stageFiles()`. Docker/browser proof `35b13dc` shows paste/drop/off-zone-drop/text-paste semantics preserve zero pre-send backend writes and send-boundary attachment commits. This extension remains pending clean-room review `663ce592-4800-4b56-a861-19befe6f7e8d`.
 
 ## Remaining nonblocking follow-ups
 - Consider reducing absolute-path exposure in browser tooltips once a safe backend-readable identity/display split exists.

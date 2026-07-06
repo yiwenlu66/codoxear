@@ -61,3 +61,32 @@
   - `python3 -m pytest -q tests/test_control_routes.py tests/test_file_upload.py tests/test_session_store.py` → `72 passed in 1.80s`.
   - `git diff --check` → clean.
 - Scope: no send/queue/frontend paths changed; staged-upload commit boundary remains unchanged.
+
+## 2026-07-06T21:19:00Z Legacy clear guard fix and review accepted
+- Review artifact committed: `731da2c Record attachment clear hardening review`.
+- Blocker found: legacy `pending_attachment/clear` invoked the same staged cleanup guard but still mapped `ValueError` to uncaught HTTP 500.
+- Functional fix committed: `b7148bb Map legacy attachment clear guard failures`.
+- Validation for fix:
+  - `python3 -m pytest -q tests/test_control_routes.py::test_attachment_clear_maps_tamper_guard_failure_to_400 tests/test_control_routes.py::test_pending_attachment_clear_maps_tamper_guard_failure_to_400 tests/test_control_routes.py tests/test_file_upload.py tests/test_session_store.py` → `73 passed in 1.86s`.
+  - `git diff --check` → clean.
+- Fix review committed: `1950474 Record attachment clear fix review`.
+- Fix review verdict: accepted. End-to-end repro through real route/coordinator/store proved tamper → 400 with list/symlink/target preserved, unknown session → 404, happy path → 200. Residual send-path post-commit cleanup failure remains pre-existing/out of scope.
+
+## 2026-07-06T21:19:00Z Paste/drop producer implementation and proof committed
+- Functional commit: `27ca144 Add paste and drop attachment producers`.
+- Mechanism: picker, paste, and drop now feed a shared client `stageFiles()` path that posts only to existing `/inject_file`; `attachmentBlockerForSession()` centralizes full attach blockers across paperclip and producers. Text-only paste returns before `preventDefault`; file paste/drop use real event listeners and server-staged list truth.
+- Local validation before proof:
+  - `node --check codoxear/static/app.js`
+  - `node --check codoxear/static/app_file_helpers.js`
+  - focused frontend/upload suite → `183 passed, 22 subtests passed`
+  - full local suite → `1787 passed, 132 subtests passed`
+  - `git diff --check` → clean.
+- Browser proof commit: `35b13dc Record paste drop attachment browser proof`.
+- Artifact root: `.memory/tasks/2026-07-07-staged-upload-expansion/browser-artifacts/upload-producers-19343/`.
+- Docker proof observations:
+  - file-bearing paste on `#msg` prevented default, staged one file, and broker command summary had zero `send`/`keys`;
+  - text-only paste was not prevented and did not stage;
+  - composer drag/drop prevented default, toggled/cleared drop highlight, staged two files, and broker command summary had zero `send`/`keys`;
+  - off-composer file drop prevented navigation without staging;
+  - explicit send produced exactly one broker `send`, zero `keys`, three generated `Attachment N:` lines, and cleared staged entries.
+- Clean-room review dispatched: async id `663ce592-4800-4b56-a861-19befe6f7e8d`.
