@@ -1,0 +1,23 @@
+{
+  "body": {
+    "log_path": "/home/tester/.local/share/codoxear/search-logs/search-codex-answered.jsonl",
+    "match_count": 1,
+    "match_count_truncated": false,
+    "matches": [
+      {
+        "_before_byte": 106,
+        "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InNlYXJjaC1jb2RleC1hbnN3ZXJlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9zZWFyY2gtbG9ncy9zZWFyY2gtY29kZXgtYW5zd2VyZWQuanNvbmwiLCJwb3MiOjEwNn0.vdULhJ9HM0kdwf4G341im3I-SlT9X4UtAjSn1CYcyXc",
+        "load_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InNlYXJjaC1jb2RleC1hbnN3ZXJlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9zZWFyY2gtbG9ncy9zZWFyY2gtY29kZXgtYW5zd2VyZWQuanNvbmwiLCJwb3MiOjIzNn0.fdYEKeEbX3n2I-CAENgtsNO72kYWAA7PKEOfrD9OngA",
+        "message_class": "final_response",
+        "message_id": "bf00718c458b5bbbb753a3e3652b6af6e6596d75f886599708524ec44311007d",
+        "role": "assistant",
+        "text": "CODEX-ANSWER-SEARCH",
+        "ts": 4.0
+      }
+    ],
+    "query": "CODEX-ANSWER-SEARCH",
+    "thread_id": "search-codex-answered",
+    "transcript_state": "bound"
+  },
+  "status": 200
+}

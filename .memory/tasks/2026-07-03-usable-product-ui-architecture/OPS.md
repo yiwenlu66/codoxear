@@ -667,3 +667,13 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
 - Main reran `python3 /tmp/scout_transcript_outcomes.py`; observations matched the scout: Codex history no-response PASS, Codex search no-response `match_count=0`; CC tail no-response PASS, CC search no-response `match_count=0`; CC terminal `API Error: 503 Service Unavailable` search PASS.
 - Mechanism: `codoxear/transcript_search.py::iter_positioned_chat_events_forward()` calls `_single_chat_event()` only and bypasses `_inject_no_response_events()`, unlike tail/history/live.
 - Artifacts preserved in `browser-artifacts/transcript-search-synthetic-defect/`. Decision: dispatch implementation to add synthetic outcome rows to the search event stream with cursor-preserving regressions.
+
+
+## 2026-07-06T06:25:15Z Transcript search synthetic no-response fix verified
+- Functional commit: `06930c9 Search synthetic no-response outcomes`.
+- Main validation: `python3 -m pytest -q tests/test_transcript_export.py tests/test_codex_no_response_projection.py tests/test_cc_no_response_projection.py tests/test_message_routes.py` -> `84 passed`; `python3 -m pytest -q tests/` -> `1725 passed, 132 subtests passed`; `python3 /tmp/scout_transcript_outcomes.py` -> all PASS, no DEFECT lines.
+- Independent critic `3cfb3527-ffae-4da7-9aff-c9a26b11a957` returned PASS/no blockers. It noted a non-blocking resource regression: `count_limit` no longer bounds record consumption because search buffers the bounded window before count application; result semantics and cursor behavior remain correct.
+- Docker/API/browser proof on isolated port 19242: started `codoxear-sandbox-19242` after preflight; created fake Codex/Claude-Code logs and sockets under `/home/tester/.local/share/codoxear`; `/api/sessions` discovered four fake sessions; HTTP search found synthetic no-response rows for Codex and CC with `match_count=1`, valid load cursors, and history windows containing the same rows; answered Codex no-response search returned zero; CC API error search returned real `API Error: 503 Search Proof` text.
+- Browser proof on the same sandbox: `#session=search-codex-noresp` and `#session=search-cc-noresp` rendered the no-response transcript row; searching the no-response phrase showed `1/1 loaded · 1 all` and highlighted the row in both sessions. Screenshots and JSON preserved.
+- Docker validation: focused suite `84 passed`; full suite on separate port 19244 `1724 passed, 1 skipped, 132 subtests passed`.
+- Cleanup: stopped only `codoxear-sandbox-19242`; artifact `cleanup.txt` confirms the named container was removed. Evidence directory: `browser-artifacts/transcript-search-synthetic-fixed-19242/`.

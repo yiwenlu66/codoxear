@@ -1,0 +1,29 @@
+{
+  "body": {
+    "busy": false,
+    "events": [
+      {
+        "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InNlYXJjaC1jb2RleC1ub3Jlc3AiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvc2VhcmNoLWxvZ3Mvc2VhcmNoLWNvZGV4LW5vcmVzcC5qc29ubCIsInBvcyI6MH0.dbJxu2UPD2CbxUT6I4YQrsAajfvsVpJZh-y3-yqcfsk",
+        "role": "user",
+        "text": "codex silent search prompt",
+        "ts": 1.0
+      },
+      {
+        "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InNlYXJjaC1jb2RleC1ub3Jlc3AiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvc2VhcmNoLWxvZ3Mvc2VhcmNoLWNvZGV4LW5vcmVzcC5qc29ubCIsInBvcyI6MTExfQ.oR-aA8qH3P20F1dCdvt8M6gn6lUX0jMX-VRvzKPwmq4",
+        "message_class": "error",
+        "message_id": "087494d134e5cff586b33ebfb3858f0e994dd9030bcad7f4dab8001ca5f793f3",
+        "role": "assistant",
+        "text": "The backend completed this turn without producing a response.",
+        "ts": 2.0
+      }
+    ],
+    "has_older": false,
+    "history_cursor": null,
+    "log_path": "/home/tester/.local/share/codoxear/search-logs/search-codex-noresp.jsonl",
+    "queue_len": 0,
+    "thread_id": "search-codex-noresp",
+    "token": null,
+    "transcript_state": "bound"
+  },
+  "status": 200
+}

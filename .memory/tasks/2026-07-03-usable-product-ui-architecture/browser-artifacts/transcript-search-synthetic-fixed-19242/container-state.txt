@@ -1,0 +1,40 @@
+--- container app dir ---
+--- home/app-dir listing ---
+HOME=/home/tester
+total 12
+drwxr-xr-x 3 tester tester 4096 Jul  6 06:12 .
+drwxr-xr-x 3 tester tester 4096 Jul  6 06:12 ..
+drwxr-xr-x 6 tester tester 4096 Jul  6 06:15 codoxear
+total 36
+drwxr-xr-x 6 tester tester 4096 Jul  6 06:15 .
+drwxr-xr-x 3 tester tester 4096 Jul  6 06:12 ..
+drwxr-xr-x 3 tester tester 4096 Jul  6 06:12 audio
+-rw------- 1 tester tester   64 Jul  6 06:12 hmac_secret
+-rw-r--r-- 1 tester tester   33 Jul  6 06:15 recent_cwds.json
+drwxr-xr-x 2 tester tester 4096 Jul  6 06:13 search-logs
+drwxr-xr-x 2 tester tester 4096 Jul  6 06:15 socks
+drwxr-xr-x 2 tester tester 4096 Jul  6 06:12 uploads
+-rw------- 1 tester tester  241 Jul  6 06:12 webpush_vapid_private.pem
+total 24
+drwxr-xr-x 2 tester tester 4096 Jul  6 06:15 .
+drwxr-xr-x 6 tester tester 4096 Jul  6 06:15 ..
+-rw-r--r-- 1 tester tester  319 Jul  6 06:15 search-cc-apierr.json
+srwxr-xr-x 1 tester tester    0 Jul  6 06:15 search-cc-apierr.sock
+-rw-r--r-- 1 tester tester  319 Jul  6 06:15 search-cc-noresp.json
+srwxr-xr-x 1 tester tester    0 Jul  6 06:15 search-cc-noresp.sock
+-rw-r--r-- 1 tester tester  337 Jul  6 06:15 search-codex-answered.json
+srwxr-xr-x 1 tester tester    0 Jul  6 06:15 search-codex-answered.sock
+-rw-r--r-- 1 tester tester  331 Jul  6 06:15 search-codex-noresp.json
+srwxr-xr-x 1 tester tester    0 Jul  6 06:15 search-codex-noresp.sock
+total 24
+drwxr-xr-x 2 tester tester 4096 Jul  6 06:13 .
+drwxr-xr-x 6 tester tester 4096 Jul  6 06:15 ..
+-rw-r--r-- 1 tester tester  403 Jul  6 06:15 search-cc-apierr.jsonl
+-rw-r--r-- 1 tester tester  350 Jul  6 06:15 search-cc-noresp.jsonl
+-rw-r--r-- 1 tester tester  330 Jul  6 06:15 search-codex-answered.jsonl
+-rw-r--r-- 1 tester tester  231 Jul  6 06:15 search-codex-noresp.jsonl
+--- helper processes ---
+     23       0 sh -lc python3 '/workspace/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/transcript-search-synthetic-fixed-19242/fake_search_sessions.py' >/tmp/fake_search_sessions.log 2>&1
+     32      23 python3 /workspace/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/transcript-search-synthetic-fixed-19242/fake_search_sessions.py
+   1422       0 sh -lc python3 '/workspace/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/transcript-search-synthetic-fixed-19242/fake_search_sessions.py' >/tmp/fake_search_sessions_livepid.log 2>&1
+   1431    1422 python3 /workspace/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/transcript-search-synthetic-fixed-19242/fake_search_sessions.py

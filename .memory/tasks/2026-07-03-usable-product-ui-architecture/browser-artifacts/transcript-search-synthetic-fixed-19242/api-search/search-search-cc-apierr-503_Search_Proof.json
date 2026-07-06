@@ -1,0 +1,23 @@
+{
+  "body": {
+    "log_path": "/home/tester/.local/share/codoxear/search-logs/search-cc-apierr.jsonl",
+    "match_count": 1,
+    "match_count_truncated": false,
+    "matches": [
+      {
+        "_before_byte": 209,
+        "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InNlYXJjaC1jYy1hcGllcnIiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvc2VhcmNoLWxvZ3Mvc2VhcmNoLWNjLWFwaWVyci5qc29ubCIsInBvcyI6MjA5fQ.ED7P8cgtoMC9zlDcWYJmbq-vaB4tQH3UuwxQt_7urcc",
+        "load_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InNlYXJjaC1jYy1hcGllcnIiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvc2VhcmNoLWxvZ3Mvc2VhcmNoLWNjLWFwaWVyci5qc29ubCIsInBvcyI6NDAzfQ.Kt30u11swIhFs0zaeK-8o4y9ZHOB6RClH4ggNSU4URY",
+        "message_class": "error",
+        "message_id": "49c8700b2b86a3789d23a0e6b8f72057c5b8e0c7f5515913876f7592559e45e1",
+        "role": "assistant",
+        "text": "API Error: 503 Search Proof",
+        "ts": 1783296005.0
+      }
+    ],
+    "query": "503 Search Proof",
+    "thread_id": "search-cc-apierr",
+    "transcript_state": "bound"
+  },
+  "status": 200
+}
