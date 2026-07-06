@@ -24,10 +24,10 @@ Protected checkout: `/home/yiwen/codex-web` on `main` — never edit/restart/mer
 - Fail loud: no silent fallbacks; contract violations return explicit errors.
 - JSON API responses must never carry raw surrogateescape path strings. Filesystem paths discovered from `os.walk` can contain lone surrogates for non-UTF-8 bytes; user-facing display fields must use `git_ops.path_json_text`, while reversible operations require an explicit token field such as `api_path`/`path_token`.
 - File display path is not identity. Same-rendering paths (for example raw-byte `bad<ff>name.txt` and literal `bad\\xffname.txt`) must preserve token identity through picker/open/download/write/recent flows and must be visibly disambiguated before selection (`non-UTF bytes` vs `literal name` style hints are the current convention).
-- Repository diff truth must not depend on Monaco. When the rich editor is unavailable, the read-only fallback must render unified repository diff text (`/git/diff?head=1`) rather than showing working-tree file content under a diff heading.
-- File editing must not depend on Monaco. Monaco is an optional rich editor path; the certified baseline editor is `plain-edit`, a textarea surface for editable text files that saves through `/file/write`. `plain-fallback`, Git diff, preview, binary/download-only, oversize, and unavailable-session paths stay read-only.
+- Monaco is the required code editor/diff substrate, not an optional enhancement. A clean deployment where Monaco assets do not load is a broken product state to fix, not a supported textarea baseline. Do not certify plain textarea editing as the final editing capability; remove or bypass fallback editing paths as Monaco becomes available.
+- Repository diff truth belongs in the Monaco-backed viewer/diff surface. If Monaco cannot render, fail loud as a deployment/capability defect instead of silently substituting a second editing model.
 - Mobile file/editor controls must preserve the companion-device contract. The file viewer header actions and touch dpad have separate 44px mobile target-size rules; the dpad grid tracks/spacers/buttons must move together so touch targets do not overflow smaller cells.
-- Attachment upload is a staged-reference workflow, not cwd import. The browser supports a single-file paperclip flow: server stages bytes under app-dir `uploads/<session>/` with mode 0600 and injects `Attachment N: <absolute_path>` into the backend. Docker/Pi certification proved Pi can read that app-dir absolute path and return sentinel content; do not move staging into cwd or add drag/drop/multi-file/paste/capture surfaces without a product decision.
+- Attachment upload is a staged-reference workflow, not cwd import. Server stages bytes under app-dir `uploads/<session>/` with mode 0600 and injects attachment path references into the backend. Upload expansion is allowed product work: multi-file selection, drag/drop, paste-to-attach, and capture flows are no longer decision-gated; preserve staged-file identity, explicit pending state, and backend-readable paths across the expanded surfaces.
 - Attachment badge authority is selected-session pending truth plus immediate local attach feedback. Server session-list refresh overwrites cached `pending_attachment`; direct successful attach/send/clear responses may update the selected cached value for immediate UI projection. Do not add independent badge state that can diverge from this contract.
 - Deleting a session sends shutdown to the broker (terminal-owned sessions too) and removes only that session's staged-upload entry under `uploads/<session_id>`. Cleanup must treat symlink entries as links to unlink, never directories to follow, and must preserve sibling session uploads.
 - Failed synthetic launch rows (`launch-*` ids) are not real sessions: no send/queue/attach/file-viewer; Details/Copy/New-like-this render from the session-list row locally.
@@ -37,7 +37,7 @@ Protected checkout: `/home/yiwen/codex-web` on `main` — never edit/restart/mer
 - `pytest` green is NOT acceptance. A live-route 500 (`/api/sessions` recent_cwds limit) shipped past 1344 passing tests because route tests used fake managers.
 - Acceptance = full local pytest + `scripts/codoxear-docker-sandbox test` + `scripts/codoxear-docker-sandbox smoke` (real server, real login, real route) + browser evidence via agent-browser for UX claims.
 - Docker sandbox: never port 8743; use `CODOXEAR_DOCKER_PORT=18790..19999`. See `.codex/skills/codoxear-docker-test/SKILL.md`.
-- Browser automation cannot accept native `confirm()` dialogs — dismiss flows need API-level verification too.
+- Browser automation limitations are not product boundaries. If a native dialog blocks verification, redesign or instrument the product path so the user-visible branch can be exercised; do not park correctness behind a tooling limitation.
 
 ## Known failure modes
 
@@ -47,6 +47,7 @@ Protected checkout: `/home/yiwen/codex-web` on `main` — never edit/restart/mer
 - Source-text tests and internal monkeypatch seams (e.g. patching `server.MANAGER`) hide live-contract breaks; prefer executable behavior tests with injected deps.
 - Coordinator method signatures with required keyword-only args can break legacy manager call sites silently until a live route hits them.
 - Stale docs propagate: sessiond schema docs omitted `token` and masked a parity gap for one review round.
+- Provider/credential/gateway failures that affect what the browser renders are product states to handle and verify. Do not park live-backend parity as a generic credential/gateway boundary; use deterministic fixtures, available credentials, or explicit product error projection to close the user-visible behavior.
 
 
 ## Resolved interrupt readiness authority
