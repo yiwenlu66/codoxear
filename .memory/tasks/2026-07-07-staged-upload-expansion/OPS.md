@@ -102,3 +102,14 @@
   - off-composer file drop prevents navigation without staging.
   - broker proof showed zero `send`/`keys` before explicit send and exactly one `send` at the send boundary.
 - Nonblocking nits retained for later UX polish: blocker is checked once per batch, combined text+file paste drops the text, small non-PNG clipboard images may get extensionless pasted names, and `.drop-active` may stick if a file drag leaves the window without dropping.
+
+## 2026-07-06T21:31:00Z Post-send cleanup failure policy committed
+- Functional commit: `4963ba6 Report post-send attachment cleanup failures`.
+- Mechanism: after confirmed send success and prelog/state application, a staged cleanup guard `ValueError` no longer propagates as send failure. `SessionSendCoordinator.send()` returns the normal send response augmented with `attachment_cleanup_error`; it clears `commit_unknown_send` because backend delivery was confirmed, and leaves staged/pending truth intact because cleanup failed.
+- Frontend behavior: send success with `attachment_cleanup_error` shows `sent; attachment cleanup failed: ...` (or queued equivalent) and does not clear staged browser/server projection, so the delivered turn is not treated as retryable failure.
+- Validation:
+  - targeted cleanup policy tests → `6 passed in 1.75s`;
+  - focused send/control/frontend suite → `125 passed, 22 subtests passed in 1.85s`;
+  - full local suite → `1789 passed, 132 subtests passed in 24.49s`;
+  - `node --check codoxear/static/app.js` and `git diff --check` → clean.
+- Clean-room review dispatched: async id `2056e07e-a15e-4afd-89b0-b65cda060475`.

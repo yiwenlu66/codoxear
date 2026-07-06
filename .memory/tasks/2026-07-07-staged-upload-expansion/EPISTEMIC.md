@@ -28,13 +28,15 @@ Stage first, commit later.
 ## Accepted producer extension
 - Paste-to-attach and drag/drop are implemented in `27ca144` as client-only producers feeding the existing staged upload route through shared `stageFiles()`. Docker/browser proof `35b13dc` shows paste/drop/off-zone-drop/text-paste semantics preserve zero pre-send backend writes and send-boundary attachment commits. Clean-room review `245dcb2` accepted the slice with no blockers.
 
+## Post-send cleanup policy under review
+- Commit `4963ba6` makes post-confirmed-send staged cleanup guard failures explicit cleanup warnings (`attachment_cleanup_error`) instead of send failures. Delivery remains success, commit-unknown state is cleared, and staged/pending truth is preserved if cleanup fails. This remains pending clean-room review `2056e07e-a15e-4afd-89b0-b65cda060475`.
+
 ## Remaining nonblocking follow-ups
 - Consider reducing absolute-path exposure in browser tooltips once a safe backend-readable identity/display split exists.
 - Remove dead immediate-PTY attachment injection methods if no non-HTTP consumer remains.
 - Remove vestigial `attachment_index` after compatibility impact is checked.
 - Later upload producer remaining: capture/camera.
 - Producer UX polish: re-check blockers per file in long batches if needed, preserve text in mixed text+file paste if a clear UI rule exists, add extensions for non-PNG pasted image names, and clear `.drop-active` when a file drag leaves the window without dropping.
-- Define send-path post-commit cleanup failure policy: currently a staged cleanup guard failure after confirmed send can return 500 after backend delivery; should not mislead users into duplicate resend.
 
 ## Current justified claim
 The first upload expansion slice is accepted: multi-file picker attachments are server-staged before send, visibly manageable in the browser, and committed to the backend only at confirmed send.
