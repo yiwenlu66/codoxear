@@ -196,6 +196,7 @@ def _post_log_bound_transcript_payload(
                 events = _rollout_log._extract_positioned_chat_events(records)
             except Exception:
                 events = []
+                has_older = False
                 history_before_byte = None
     events.append(
         {

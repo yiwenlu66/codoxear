@@ -298,7 +298,11 @@ class _MissingManager:
 def test_post_log_recovery_missing_session_routes_share_payload() -> None:
     with tempfile.TemporaryDirectory() as td:
         log_path = Path(td) / "post-log.jsonl"
-        log_path.write_text('{"type":"session","id":"thread-recovered"}\n', encoding="utf-8")
+        rows = [
+            {"type": "session", "id": "thread-recovered"},
+            {"type": "event_msg", "payload": {"type": "user_message", "message": "POST_LOG_BOUND_DEATH_SENTINEL"}, "ts": 1.0},
+        ]
+        log_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
         payload = _post_log_recovery_payload(log_path)
         deps, responses, metrics = _deps(launch_attempt_transcript_for_session_id=lambda _sid: payload)
         manager = _MissingManager()
@@ -320,6 +324,7 @@ def test_post_log_recovery_missing_session_routes_share_payload() -> None:
         assert search_body["match_count"] == 1
         assert search_body["matches"][0]["text"] == "POST_LOG_BOUND_DEATH_SENTINEL"
         assert isinstance(search_body["matches"][0].get("history_cursor"), str)
+        assert isinstance(search_body["matches"][0].get("load_cursor"), str)
 
         handle_messages_search(_FakeHandler(), session_id="broker-123", query="q=stopped before completing&limit=20", manager=manager, deps=deps)
         error_search_status, error_search_body = responses.pop()
@@ -346,6 +351,41 @@ def test_post_log_recovery_missing_session_routes_share_payload() -> None:
         assert live_body["turn_end"] is True
         assert live_body["busy"] is False
         assert [ev["role"] for ev in live_body["events"]] == ["user", "assistant"]
+
+
+def test_pre_log_failed_launch_missing_session_search_remains_payload_only() -> None:
+    payload = {
+        "transcript_state": "failed",
+        "thread_id": "launch-pre-log",
+        "log_path": None,
+        "live_cursor": None,
+        "history_cursor": None,
+        "events": [
+            {"role": "user", "text": "submitted before launch", "ts": 1.0},
+            {"role": "assistant", "text": "Session launch failed before a transcript log was created. PRE_LOG_ERROR_SENTINEL", "ts": 2.0, "message_class": "error"},
+        ],
+        "has_older": False,
+        "busy": False,
+        "queue_len": 0,
+        "token": None,
+    }
+    deps, responses, _metrics = _deps(launch_attempt_transcript_for_session_id=lambda _sid: payload)
+
+    handle_messages_search(
+        _FakeHandler(),
+        session_id="launch-pre-log",
+        query="q=PRE_LOG_ERROR_SENTINEL&limit=20",
+        manager=_MissingManager(),
+        deps=deps,
+    )
+
+    assert responses
+    status, body = responses[-1]
+    assert status == 200
+    assert body["match_count"] == 1
+    assert body["match_count_truncated"] is False
+    assert body["matches"][0]["message_class"] == "error"
+    assert body["matches"][0]["text"].endswith("PRE_LOG_ERROR_SENTINEL")
 
 
 def test_large_post_log_recovery_tail_exposes_usable_history_cursor() -> None:
@@ -396,6 +436,50 @@ def test_large_post_log_recovery_tail_exposes_usable_history_cursor() -> None:
         assert lifecycle_event.get("codoxear_lifecycle") == "backend_stopped_after_log_bind"
         assert isinstance(lifecycle_event.get("history_cursor"), str) and lifecycle_event["history_cursor"]
         assert decode_message_cursor(lifecycle_event["history_cursor"], kind="history", session=cursor_session, secret=_SECRET) == payload["_history_before_byte"]
+
+        handle_messages_search(
+            _FakeHandler(),
+            session_id="broker-large",
+            query="q=FIRST_EVENT_SENTINEL&limit=20",
+            manager=manager,
+            deps=deps,
+        )
+        search_status, search_body = responses.pop()
+        assert search_status == 200
+        assert search_body["match_count"] == 1
+        assert search_body["match_count_truncated"] is False
+        assert [match.get("text") for match in search_body["matches"]] == ["FIRST_EVENT_SENTINEL"]
+        head_match = search_body["matches"][0]
+        assert isinstance(head_match.get("history_cursor"), str) and head_match["history_cursor"]
+        assert decode_message_cursor(head_match["history_cursor"], kind="history", session=cursor_session, secret=_SECRET) == 0
+        assert isinstance(head_match.get("load_cursor"), str) and head_match["load_cursor"]
+        assert decode_message_cursor(head_match["load_cursor"], kind="history", session=cursor_session, secret=_SECRET) > 0
+
+        handle_messages_search(
+            _FakeHandler(),
+            session_id="broker-large",
+            query=f"q=FIRST_EVENT_SENTINEL&limit=20&before={tail_body['history_cursor']}",
+            manager=manager,
+            deps=deps,
+        )
+        before_search_status, before_search_body = responses.pop()
+        assert before_search_status == 200
+        assert before_search_body["match_count"] == 1
+        assert [match.get("text") for match in before_search_body["matches"]] == ["FIRST_EVENT_SENTINEL"]
+        assert isinstance(before_search_body["matches"][0].get("load_cursor"), str)
+
+        handle_messages_search(
+            _FakeHandler(),
+            session_id="broker-large",
+            query="q=stopped before completing&limit=20",
+            manager=manager,
+            deps=deps,
+        )
+        lifecycle_search_status, lifecycle_search_body = responses.pop()
+        assert lifecycle_search_status == 200
+        assert lifecycle_search_body["match_count"] == 1
+        assert [match.get("text") for match in lifecycle_search_body["matches"]] == [POST_LOG_BOUND_BACKEND_STOPPED_TEXT]
+        assert lifecycle_search_body["matches"][0]["message_class"] == "error"
 
         handle_messages_history(
             _FakeHandler(),

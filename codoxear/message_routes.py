@@ -83,7 +83,9 @@ def _search_launch_payload_events(payload: dict[str, Any], query: str, *, limit:
         return 0, []
     matches: list[dict[str, Any]] = []
     count = 0
-    for event in payload.get("events") if isinstance(payload.get("events"), list) else []:
+    raw_events = payload.get("events")
+    events = raw_events if isinstance(raw_events, list) else []
+    for event in events:
         if not isinstance(event, dict):
             continue
         text = event.get("text")
@@ -162,8 +164,8 @@ def _event_has_history_cursor_source(event: Any) -> bool:
 
 
 def _launch_payload_events_with_cursors(payload: dict[str, Any], *, encode_cursor: Callable[..., str]) -> list[dict[str, Any]]:
-    events = payload.get("events") if isinstance(payload.get("events"), list) else []
-    events = list(events)
+    raw_events = payload.get("events")
+    events = list(raw_events) if isinstance(raw_events, list) else []
     before_byte = _launch_payload_history_before_byte(payload)
     if before_byte is not None and events and not any(_event_has_history_cursor_source(event) for event in events):
         boundary_index = next(
@@ -196,6 +198,77 @@ def _attach_search_load_cursors(matches: list[dict[str, Any]], *, session: Any, 
             item["load_cursor"] = encode_cursor(kind="history", session=session, pos=after_byte)
         out.append(item)
     return out
+
+
+def _launch_payload_existing_log_path(payload: dict[str, Any]) -> Path | None:
+    raw = payload.get("log_path")
+    if not isinstance(raw, str) or not raw:
+        return None
+    path = Path(raw)
+    return path if path.exists() else None
+
+
+def _search_launch_payload_lifecycle_events(
+    payload: dict[str, Any],
+    query: str,
+    *,
+    limit: int,
+    text_max: int,
+    encode_cursor: Callable[..., str],
+) -> tuple[int, list[dict[str, Any]]]:
+    raw_events = payload.get("events")
+    events = raw_events if isinstance(raw_events, list) else []
+    lifecycle_events = [
+        event
+        for event in events
+        if isinstance(event, dict) and isinstance(event.get("codoxear_lifecycle"), str)
+    ]
+    if not lifecycle_events:
+        return 0, []
+    payload_with_cursors = {
+        **payload,
+        "events": _launch_payload_events_with_cursors({**payload, "events": lifecycle_events}, encode_cursor=encode_cursor),
+    }
+    return _search_launch_payload_events(payload_with_cursors, query, limit=limit, text_max=text_max)
+
+
+def _merge_log_and_lifecycle_search_matches(
+    *,
+    log_match_count: int,
+    log_matches: list[dict[str, Any]],
+    log_match_count_truncated: bool,
+    lifecycle_match_count: int,
+    lifecycle_matches: list[dict[str, Any]],
+    limit: int,
+    order: str,
+    count_max: int | None,
+) -> tuple[int, list[dict[str, Any]], bool]:
+    max_matches = max(0, int(limit))
+    match_count = int(log_match_count)
+    match_count_truncated = bool(log_match_count_truncated)
+    matches = list(log_matches)
+    if lifecycle_match_count <= 0:
+        return match_count, matches, match_count_truncated
+
+    lifecycle_count_to_add = int(lifecycle_match_count)
+    if count_max is not None:
+        remaining_count = max(0, int(count_max) - match_count)
+        if remaining_count <= 0:
+            return match_count, matches, True
+        if lifecycle_count_to_add > remaining_count:
+            lifecycle_count_to_add = remaining_count
+            match_count_truncated = True
+    match_count += lifecycle_count_to_add
+
+    if max_matches <= 0:
+        return match_count, [], match_count_truncated
+    lifecycle_matches = lifecycle_matches[:lifecycle_count_to_add]
+    if order == "latest":
+        return match_count, (matches + lifecycle_matches)[-max_matches:], match_count_truncated
+    remaining_slots = max(0, max_matches - len(matches))
+    if remaining_slots > 0:
+        matches.extend(lifecycle_matches[:remaining_slots])
+    return match_count, matches, match_count_truncated
 
 
 def handle_messages_get_route(
@@ -245,7 +318,8 @@ def handle_messages_export(handler: Any, *, session_id: str, query: str = "", ma
                             },
                         )
                         return
-            events = launch_payload.get("events") if isinstance(launch_payload.get("events"), list) else []
+            raw_events = launch_payload.get("events")
+            events = raw_events if isinstance(raw_events, list) else []
             deps.json_response(handler, 200, {**_launch_payload_response_base(launch_payload, encode_cursor=deps.encode_message_cursor), "events": events, "event_count": len(events)})
             return
         deps.json_response(handler, 404, {"error": "unknown session"})
@@ -298,6 +372,57 @@ def handle_messages_search(handler: Any, *, session_id: str, query: str, manager
         if launch_payload is not None:
             if not isinstance(search_query, str) or not search_query.strip():
                 deps.json_response(handler, 200, {**_launch_payload_response_base(launch_payload, encode_cursor=deps.encode_message_cursor), "query": "", "match_count": 0, "match_count_truncated": False, "matches": []})
+                return
+            log_path = _launch_payload_existing_log_path(launch_payload)
+            if log_path is not None:
+                cursor_session = _launch_payload_cursor_session(launch_payload)
+                if before_q is not None and before_q and before_q[0].strip():
+                    try:
+                        before_byte = deps.decode_message_cursor(before_q[0], kind="history", session=cursor_session)
+                    except MessageCursorError as e:
+                        deps.json_response(handler, 409, {"error": str(e)})
+                        return
+                match_count, matches, match_count_truncated = _search_chat_log_bounded(
+                    log_path,
+                    search_query,
+                    limit=match_limit,
+                    max_line_bytes=deps.transcript_search_max_line_bytes,
+                    before_byte=before_byte,
+                    order=order,
+                    count_limit=count_max if count_max > 0 else None,
+                )
+                matches = _attach_search_load_cursors(matches, session=cursor_session, encode_cursor=deps.encode_message_cursor)
+                if before_byte is None:
+                    lifecycle_count, lifecycle_matches = _search_launch_payload_lifecycle_events(
+                        launch_payload,
+                        search_query,
+                        limit=match_limit,
+                        text_max=0,
+                        encode_cursor=deps.encode_message_cursor,
+                    )
+                    match_count, matches, match_count_truncated = _merge_log_and_lifecycle_search_matches(
+                        log_match_count=match_count,
+                        log_matches=matches,
+                        log_match_count_truncated=match_count_truncated,
+                        lifecycle_match_count=lifecycle_count,
+                        lifecycle_matches=lifecycle_matches,
+                        limit=match_limit,
+                        order=order,
+                        count_max=count_max if count_max > 0 else None,
+                    )
+                matches = manager._attach_notification_texts(matches)
+                matches = _clip_search_match_text(matches, text_max, query=search_query)
+                deps.json_response(
+                    handler,
+                    200,
+                    {
+                        **_launch_payload_response_base(launch_payload, encode_cursor=deps.encode_message_cursor),
+                        "query": search_query.strip(),
+                        "match_count": match_count,
+                        "match_count_truncated": bool(match_count_truncated),
+                        "matches": matches,
+                    },
+                )
                 return
             payload_with_cursors = {
                 **launch_payload,
