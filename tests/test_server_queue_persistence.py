@@ -508,6 +508,53 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertFalse(mgr._sessions[sid].pending_attachment)
         self.assertNotIn(sid, mgr._pending_attachment_ids)
 
+    def test_prelog_valueerror_after_confirmed_send_is_success_with_visible_error(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._sessions[sid].pending_attachment = True
+        mgr._pending_attachment_ids.add(sid)
+        entry = {"id": "a1", "display_name": "one.txt", "filename": "1_one.txt", "path": "/tmp/uploads/s1/1_one.txt", "size": 3, "created_ts": 1.0}
+        mgr._staged_attachments[sid] = [dict(entry)]
+        recorded: list[str] = []
+
+        def fail_prelog(_session: Session, text: str, **_kwargs: object) -> None:
+            recorded.append(text)
+            raise ValueError("launch ledger invalid")
+
+        mgr._record_prelog_user_message = fail_prelog  # type: ignore[method-assign]
+        cleanup_calls: list[str] = []
+
+        def clear_staged(clear_sid: str) -> dict[str, object]:
+            cleanup_calls.append(clear_sid)
+            mgr._staged_attachments.pop(clear_sid, None)
+            mgr._sessions[clear_sid].pending_attachment = False
+            mgr._pending_attachment_ids.discard(clear_sid)
+            return {"ok": True, "removed_count": 1, "attachments": [], "pending_attachment": False}
+
+        mgr.clear_staged_attachments = clear_staged  # type: ignore[method-assign]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        seen: list[dict[str, object]] = []
+
+        def sock_call(_sock: Path, req: dict[str, object], timeout_s: float | None = 0, **_kwargs: object) -> dict[str, object]:
+            seen.append(req)
+            return {"queued": False, "queue_len": 0, "busy": True}
+
+        mgr._sock_call = sock_call  # type: ignore[method-assign]
+
+        response = SessionManager.send(mgr, sid, "use this", allow_pending_attachment=True)
+
+        committed_text = "Attachment 1: /tmp/uploads/s1/1_one.txt\nuse this"
+        self.assertEqual(seen, [{"cmd": "send", "text": committed_text, "sync": True}])
+        self.assertEqual(recorded, [committed_text])
+        self.assertEqual(cleanup_calls, [sid])
+        self.assertEqual(response, {"queued": False, "queue_len": 0, "busy": True, "send_state_cleanup_error": "prelog_user_message: launch ledger invalid"})
+        self.assertEqual(mgr._staged_attachments, {})
+        self.assertFalse(mgr._sessions[sid].pending_attachment)
+        self.assertNotIn(sid, mgr._pending_attachment_ids)
+        self.assertTrue(mgr._sessions[sid].busy)
+        self.assertTrue(mgr._sessions[sid].last_send_boundary_active)
+
     def test_staged_attachment_cleanup_failure_after_confirmed_send_is_success_with_visible_error(self) -> None:
         sid = "s1"
         mgr = self._mgr()

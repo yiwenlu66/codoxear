@@ -12,8 +12,7 @@ from .session_input import require_send_preconditions
 from .session_model import Session
 
 
-_POST_CONFIRMATION_CLEANUP_ERRORS = (ValueError, OSError, KeyError)
-_POST_CONFIRMATION_PROJECTION_ERRORS = (OSError, KeyError)
+_POST_CONFIRMATION_TAIL_ERRORS = (ValueError, OSError, KeyError)
 
 
 def _tail_error_message(exc: BaseException) -> str:
@@ -111,7 +110,7 @@ class SessionSendCoordinator:
             with self.lock:
                 try:
                     self.record_prelog_user_message(session, committed_text)
-                except _POST_CONFIRMATION_PROJECTION_ERRORS as exc:
+                except _POST_CONFIRMATION_TAIL_ERRORS as exc:
                     response = _add_send_warning(
                         response,
                         "send_state_cleanup_error",
@@ -128,7 +127,7 @@ class SessionSendCoordinator:
             if staged_entries:
                 try:
                     self.clear_staged_attachments(session_id)
-                except _POST_CONFIRMATION_CLEANUP_ERRORS as exc:
+                except _POST_CONFIRMATION_TAIL_ERRORS as exc:
                     response = _add_send_warning(
                         response,
                         "attachment_cleanup_error",
@@ -137,7 +136,7 @@ class SessionSendCoordinator:
             else:
                 try:
                     self.set_pending_attachment(session_id, False)
-                except _POST_CONFIRMATION_CLEANUP_ERRORS as exc:
+                except _POST_CONFIRMATION_TAIL_ERRORS as exc:
                     response = _add_send_warning(
                         response,
                         "send_state_cleanup_error",
@@ -146,7 +145,7 @@ class SessionSendCoordinator:
             if queue_item_id is None:
                 try:
                     self.set_commit_unknown_send(session_id, None)
-                except _POST_CONFIRMATION_CLEANUP_ERRORS as exc:
+                except _POST_CONFIRMATION_TAIL_ERRORS as exc:
                     response = _add_send_warning(
                         response,
                         "send_state_cleanup_error",
