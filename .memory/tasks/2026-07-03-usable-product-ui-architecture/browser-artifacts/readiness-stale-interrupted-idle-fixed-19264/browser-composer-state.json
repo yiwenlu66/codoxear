@@ -1,0 +1,1 @@
+{"success":true,"data":{"origin":"http://127.0.0.1:19264/#session=cert-stale-interrupt","result":{"attachBtn":{"disabled":true,"title":"Wait for the current response to finish before attaching a file"},"queueBtn":{"text":"1","title":"Queued messages"},"selectedHash":"#session=cert-stale-interrupt","sendBtn":{}}},"error":null}

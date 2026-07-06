@@ -1,0 +1,4 @@
+HEAD: 206fb6c78063be7e07a7a215da3b781f969332ce
+Subject: Use session interrupt authority for readiness
+--- git status --short ---
+?? .memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/readiness-stale-interrupted-idle-fixed-19264/
