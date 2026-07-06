@@ -701,3 +701,11 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
 - Accepted artifact handling: raw `.raw.txt` poll captures were invalid JSON because embedded broker JSON was unescaped, but normalized `.json` files preserve the same values and are machine-checkable.
 - Boundaries: proof closes `/api/sessions` + sidebar busy projection for this stale-true mechanism; it does not claim every downstream busy-derived affordance or real-provider interrupt path.
 - Acceptance artifact preserved as `browser-artifacts/log-only-stale-interrupted-idle-19250/cleanroom-acceptance.md`.
+
+
+## 2026-07-06T07:45:09Z Readiness stale interrupted-idle divergence defect
+- Executor `d1e5fcd2-d333-44e5-b809-9c81823fe250` produced DEFECT evidence under `browser-artifacts/readiness-stale-interrupted-idle-19260/`; no code edits/staging/commit by executor.
+- Harness: real Docker Codoxear server on port 19260; fake live-PID brokers under container app dir always returned `busy:false, queue_len:0, interrupted_idle:true`; listing phase reproduced accepted suppression (`/api/sessions` busy true after same-log post-interrupt user row).
+- Direct send discriminator: while listing/sidebar were busy and broker raw state remained stale true, POST `/api/sessions/cert-stale-interrupt/send` returned HTTP 200 and fake broker call log recorded one `cmd:send` with text `probe direct send while sidebar busy`.
+- Queue discriminator: on a fresh session before any direct send boundary, POST `/api/sessions/cert-stale-q/enqueue` returned HTTP 200 with `queued:false, queue_len:0`; queue GET was empty; fake broker call log recorded one `cmd:send` with text `queue probe on fresh busy session`.
+- Validation reported by executor: `python3 -m pytest -q tests/test_stale_interrupted_idle.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py` -> `135 passed, 26 subtests passed`; suite does not cover this readiness divergence. Decision: preserve failing evidence, then fix readiness authority.

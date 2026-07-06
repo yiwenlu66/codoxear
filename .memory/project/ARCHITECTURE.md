@@ -46,3 +46,8 @@ Protected checkout: `/home/yiwen/codex-web` on `main` — never edit/restart/mer
 - Source-text tests and internal monkeypatch seams (e.g. patching `server.MANAGER`) hide live-contract breaks; prefer executable behavior tests with injected deps.
 - Coordinator method signatures with required keyword-only args can break legacy manager call sites silently until a live route hits them.
 - Stale docs propagate: sessiond schema docs omitted `token` and masked a parity gap for one review round.
+
+
+## Active defect under investigation
+
+- Readiness paths must not rebuild interrupted-idle truth from raw broker state after stale-true suppression. Failing Docker evidence on port 19260 shows direct send and queue promotion can deliver while `/api/sessions` and the sidebar project busy: `SessionReadinessCoordinator` consumes the raw broker `interrupted_idle:true` response even after listing suppressed the stored override. The fix target is to make send/queue/attachment/unattended readiness consume the same suppression-aware interrupted-idle authority as listing.
