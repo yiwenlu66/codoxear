@@ -141,6 +141,16 @@ def eval_file_helpers_real_order() -> dict:
           attachmentImageExt: helpers.attachmentLooksLikeImage({{ type: "", name: "x.webp" }}),
           attachmentImageNo: helpers.attachmentLooksLikeImage({{ type: "application/pdf", name: "x.pdf" }}),
           attachmentBytesB64: helpers.bytesToBase64(new Uint8Array([104, 101, 108, 108, 111]), (bin) => Buffer.from(bin, "binary").toString("base64")),
+          clipboardItemFiles: helpers.extractFilesFromClipboardData({{ items: [{{ kind: "string", getAsFile: () => ({{ name: "bad.txt" }}) }}, {{ kind: "file", getAsFile: () => ({{ name: "clip.png" }}) }}], files: [{{ name: "fallback.bin" }}] }}).map((f) => f.name),
+          clipboardFileFallback: helpers.extractFilesFromClipboardData({{ items: [{{ kind: "file", getAsFile: () => null }}], files: [{{ name: "clip-fallback.txt" }}] }}).map((f) => f.name),
+          clipboardTextOnly: helpers.extractFilesFromClipboardData({{ items: [{{ kind: "string", getAsFile: () => null }}], files: [] }}).length,
+          dropPrefersFiles: helpers.extractFilesFromDropData({{ files: [{{ name: "drop-a.txt" }}], items: [{{ kind: "file", getAsFile: () => ({{ name: "drop-b.txt" }}) }}] }}).map((f) => f.name),
+          dropItemFallback: helpers.extractFilesFromDropData({{ files: [], items: [{{ kind: "file", getAsFile: () => ({{ name: "drop-item.txt" }}) }}] }}).map((f) => f.name),
+          hasFileList: helpers.dataTransferHasFiles({{ files: [{{ name: "x" }}] }}),
+          hasFileItem: helpers.dataTransferHasFiles({{ items: [{{ kind: "file" }}] }}),
+          hasFileTypesArray: helpers.dataTransferHasFiles({{ types: ["text/plain", "Files"] }}),
+          hasFileTypesContains: helpers.dataTransferHasFiles({{ types: {{ length: 0, contains: (value) => value === "Files" }} }}),
+          hasNoFiles: helpers.dataTransferHasFiles({{ items: [{{ kind: "string" }}], types: ["text/plain"], files: [] }}),
           frozen: Object.isFrozen(helpers),
         }}));
         """
@@ -192,6 +202,9 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertNotIn("function fileEditorDeleteCommandForKey", source)
         self.assertNotIn("function fileVideoPreviewErrorText", source)
         for helper in [
+            "dataTransferHasFiles",
+            "extractFilesFromClipboardData",
+            "extractFilesFromDropData",
             "attachmentSafeStem",
             "attachmentExtensionLower",
             "attachmentIsLikelyHeic",
@@ -233,11 +246,14 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertIn('function attachmentExtensionLower(name) {', helper_source)
         self.assertIn('function attachmentIsLikelyHeic(file) {', helper_source)
         self.assertIn('function attachmentLooksLikeImage(file) {', helper_source)
+        self.assertIn('function dataTransferHasFiles(data) {', helper_source)
+        self.assertIn('function extractFilesFromClipboardData(data) {', helper_source)
+        self.assertIn('function extractFilesFromDropData(data) {', helper_source)
         self.assertIn('function bytesToBase64(bytes, btoaFunc) {', helper_source)
         file_search_region_start = source.index("function collectMessageFileRefs()")
         file_search_region_end = source.index("function resetFileSearchState()", file_search_region_start)
         file_search_region = source[file_search_region_start:file_search_region_end]
-        attachment_upload_start = source.index('imgInput.addEventListener("change", async () => {')
+        attachment_upload_start = source.index('async function stageFiles(files, { sid = selected, source = "picker" } = {}) {')
         attachment_upload_end = source.index("function clearComposer()", attachment_upload_start)
         attachment_upload_block = source[attachment_upload_start:attachment_upload_end]
         self.assertNotIn("const raw = String(rawPath ?? \"\");", source)
@@ -259,7 +275,7 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertNotIn("function isLikelyHeic(file)", attachment_upload_block)
         self.assertNotIn("function looksLikeImage(file)", attachment_upload_block)
         self.assertNotIn("String.fromCharCode.apply(null, bytes.subarray", attachment_upload_block)
-        self.assertIn("const stem = safeAttachmentStem(f.name);", attachment_upload_block)
+        self.assertIn("const stem = safeAttachmentStem(uploadName);", attachment_upload_block)
         self.assertIn("const b64 = b64FromBytes(new Uint8Array(ab));", attachment_upload_block)
 
     def test_file_helpers_preserve_literal_and_formatting_contracts(self) -> None:
@@ -362,6 +378,16 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertTrue(result["attachmentImageExt"])
         self.assertFalse(result["attachmentImageNo"])
         self.assertEqual(result["attachmentBytesB64"], "aGVsbG8=")
+        self.assertEqual(result["clipboardItemFiles"], ["clip.png"])
+        self.assertEqual(result["clipboardFileFallback"], ["clip-fallback.txt"])
+        self.assertEqual(result["clipboardTextOnly"], 0)
+        self.assertEqual(result["dropPrefersFiles"], ["drop-a.txt"])
+        self.assertEqual(result["dropItemFallback"], ["drop-item.txt"])
+        self.assertTrue(result["hasFileList"])
+        self.assertTrue(result["hasFileItem"])
+        self.assertTrue(result["hasFileTypesArray"])
+        self.assertTrue(result["hasFileTypesContains"])
+        self.assertFalse(result["hasNoFiles"])
         self.assertTrue(result["frozen"])
 
 

@@ -238,6 +238,9 @@
         typeof codoxearFileHelpers.filePickerTitle !== "function" ||
         typeof codoxearFileHelpers.positionAfterInsertedText !== "function" ||
         typeof codoxearFileHelpers.fileEditorDeleteCommandForKey !== "function" ||
+        typeof codoxearFileHelpers.dataTransferHasFiles !== "function" ||
+        typeof codoxearFileHelpers.extractFilesFromClipboardData !== "function" ||
+        typeof codoxearFileHelpers.extractFilesFromDropData !== "function" ||
         typeof codoxearFileHelpers.attachmentSafeStem !== "function" ||
         typeof codoxearFileHelpers.attachmentExtensionLower !== "function" ||
         typeof codoxearFileHelpers.attachmentIsLikelyHeic !== "function" ||
@@ -539,6 +542,18 @@
 
       function filePickerTitle(entry, hint = "") {
         return codoxearFileHelpers.filePickerTitle(entry, hint);
+      }
+
+      function dataTransferHasFiles(data) {
+        return codoxearFileHelpers.dataTransferHasFiles(data);
+      }
+
+      function extractFilesFromClipboardData(data) {
+        return codoxearFileHelpers.extractFilesFromClipboardData(data);
+      }
+
+      function extractFilesFromDropData(data) {
+        return codoxearFileHelpers.extractFilesFromDropData(data);
       }
 
       function safeAttachmentStem(name) {
@@ -6660,34 +6675,24 @@
           else projectSelectedAttachmentIndicator();
           return true;
         }
+        function attachmentBlockerForSession(sessionId, sessionInfo = null) {
+          if (!sessionId) return "Select a session to attach a file";
+          const info = sessionInfo || sessionIndex.get(sessionId) || null;
+          if (info && sessionLaunchFailed(info)) return "Failed launch cannot receive file attachments";
+          if (info && sessionHasUnknownSend(info)) return "Resolve the unknown send before attaching a file";
+          if (info && sessionIsOrphanRecovery(info)) return "Missing session can only be reviewed";
+          if (info && sessionHasOrphanQueueRecovery(info)) return "Review preserved queued recovery items before attaching a file";
+          if (currentRunning) return "Wait for the current response to finish before attaching a file";
+          if (sending) return "Wait for the current send to finish before attaching a file";
+          return "";
+        }
         function syncAttachButtonState() {
           const attachControl = $("#attachBtn");
           if (!attachControl) return;
-          let attachLabel = `Attach file (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})`;
-          let disabled = false;
-          if (!selected) {
-            attachLabel = "Select a session to attach a file";
-            disabled = true;
-          } else if (selectedSessionLaunchFailed()) {
-            attachLabel = "Failed launch cannot receive file attachments";
-            disabled = true;
-          } else if (selectedSessionHasUnknownSend()) {
-            attachLabel = "Resolve the unknown send before attaching a file";
-            disabled = true;
-          } else if (selectedSessionIsOrphanRecovery()) {
-            attachLabel = "Missing session can only be reviewed";
-            disabled = true;
-          } else if (selectedSessionHasOrphanQueueRecovery()) {
-            attachLabel = "Review preserved queued recovery items before attaching a file";
-            disabled = true;
-          } else if (currentRunning) {
-            attachLabel = "Wait for the current response to finish before attaching a file";
-            disabled = true;
-          } else if (sending) {
-            attachLabel = "Wait for the current send to finish before attaching a file";
-            disabled = true;
-          }
-          attachControl.disabled = disabled;
+          const selectedInfo = selected ? sessionIndex.get(selected) || null : null;
+          const attachBlocker = attachmentBlockerForSession(selected, selectedInfo);
+          const attachLabel = attachBlocker || `Attach file (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})`;
+          attachControl.disabled = Boolean(attachBlocker);
           attachControl.title = attachLabel;
           attachControl.setAttribute("aria-label", attachLabel);
         }
@@ -6768,127 +6773,187 @@
           if (transcriptScrollRuntime.snapshot().autoScroll) transcriptScrollRuntime.scheduleScrollToBottom();
         });
 
-	        attachBtn.onclick = () => {
-	          if (!selected) return;
-	          if (selectedSessionLaunchFailed()) {
-	            setToast("failed launch cannot receive file attachments");
-	            return;
-	          }
-	          if (currentRunning) {
-	            setToast("wait for the current response before attaching a file");
-	            return;
-	          }
-	          if (sending) return;
-	          imgInput.value = "";
-	          imgInput.click();
-	        };
-		        imgInput.addEventListener("change", async () => {
-		          const sid = selected;
-		          if (!sid) return;
-		          const sessionInfo = sessionIndex.get(sid) || null;
-		          if (sessionInfo && sessionLaunchFailed(sessionInfo)) {
-		            imgInput.value = "";
-		            if (selected === sid) setToast("failed launch cannot receive file attachments");
-		            return;
-		          }
-		          const files = Array.from(imgInput.files || []);
-		          imgInput.value = "";
-		          if (!files.length) return;
-		          if (currentRunning) {
-		            if (selected === sid) setToast("wait for the current response before attaching a file");
-		            return;
-		          }
-		          if (sending) return;
-		          async function toJpegBlob(file, { maxDim = 2048, quality = 0.86 } = {}) {
-		            const url = URL.createObjectURL(file);
-		            try {
-		              const img = new Image();
-		              img.decoding = "async";
-		              img.src = url;
-		              if (img.decode) await img.decode();
-		              else
-		                await new Promise((resolve, reject) => {
-		                  img.onload = resolve;
-		                  img.onerror = () => reject(new Error("decode failed"));
-		                });
-		              const w0 = img.naturalWidth || img.width || 0;
-		              const h0 = img.naturalHeight || img.height || 0;
-		              if (!w0 || !h0) throw new Error("invalid image dimensions");
-		              const scale = Math.min(1, maxDim / Math.max(w0, h0));
-		              const w = Math.max(1, Math.round(w0 * scale));
-		              const h = Math.max(1, Math.round(h0 * scale));
-		              const canvas = document.createElement("canvas");
-		              canvas.width = w;
-		              canvas.height = h;
-		              const ctx = canvas.getContext("2d", { alpha: false });
-		              if (!ctx) throw new Error("no canvas");
-		              ctx.drawImage(img, 0, 0, w, h);
-		              const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
-		              if (!blob) throw new Error("jpeg encode failed");
-		              return blob;
-		            } finally {
-		              URL.revokeObjectURL(url);
-		            }
-		          }
-		          let successes = 0;
-		          const failures = [];
-		          for (const f of files) {
-		            try {
-		              if (selected !== sid) break;
-		              setToast(files.length > 1 ? `uploading ${successes + failures.length + 1}/${files.length}...` : "uploading file...");
-		              const maxBytes = ATTACH_UPLOAD_MAX_BYTES;
-		              let uploadBlob = f;
-		              let uploadName = f.name || "file";
-		              if (looksLikeImage(f) && (f.size > maxBytes || isLikelyHeic(f))) {
-		                setToast("compressing image...");
-		                const stem = safeAttachmentStem(f.name);
-		                uploadName = `${stem}.jpg`;
-		                const tries = [
-		                  { maxDim: 2048, quality: 0.86 },
-		                  { maxDim: 1600, quality: 0.82 },
-		                  { maxDim: 1600, quality: 0.72 },
-		                  { maxDim: 1280, quality: 0.68 },
-		                  { maxDim: 1280, quality: 0.58 },
-		                ];
-		                let blob = null;
-		                for (const t of tries) {
-		                  blob = await toJpegBlob(f, t);
-		                  if (blob.size <= maxBytes) break;
-		                }
-		                if (!blob || blob.size > maxBytes) throw new Error(`image too large (max ${fmtBytes(maxBytes)})`);
-		                uploadBlob = blob;
-		              }
-		              const ab = await uploadBlob.arrayBuffer();
-		              if (ab.byteLength > maxBytes) throw new Error(`file too large (max ${fmtBytes(maxBytes)})`);
-		              const b64 = b64FromBytes(new Uint8Array(ab));
-		              const res = await api(`/api/sessions/${sid}/inject_file`, {
-		                method: "POST",
-		                body: { filename: uploadName, data_b64: b64, attachment_index: stagedAttachments.length + 1 },
-		              });
-		              if (selected === sid && res && res.ok) {
-		                successes += 1;
-		                setSelectedSessionStagedAttachments(Array.isArray(res.attachments) ? res.attachments : []);
-		              }
-		            } catch (e) {
-		              if (e && e.status === 401) {
-		                handleAppAuthLoss();
-		                return;
-		              }
-		              failures.push(`${f && f.name ? f.name : "file"}: ${e && e.message ? e.message : "unknown error"}`);
-		            }
-		          }
-		          if (selected === sid) {
-		            if (successes && failures.length) setToast(`attached ${successes}; ${failures.length} failed: ${failures[0]}`);
-		            else if (successes) setToast(successes === 1 ? "file staged" : `${successes} files staged`);
-		            else if (failures.length) setToast(`attach error: ${failures[0]}`);
-		            pollFastUntilMs = Date.now() + 4000;
-		            kickPoll(0);
-		            void refreshSessions().catch((refreshErr) => {
-		              if (refreshErr && refreshErr.status === 401) handleAppAuthLoss();
-		              else console.error("refreshSessions failed", refreshErr);
-		            });
-		          }
-		        });
+        async function toJpegBlob(file, { maxDim = 2048, quality = 0.86 } = {}) {
+          const url = URL.createObjectURL(file);
+          try {
+            const img = new Image();
+            img.decoding = "async";
+            img.src = url;
+            if (img.decode) await img.decode();
+            else
+              await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = () => reject(new Error("decode failed"));
+              });
+            const w0 = img.naturalWidth || img.width || 0;
+            const h0 = img.naturalHeight || img.height || 0;
+            if (!w0 || !h0) throw new Error("invalid image dimensions");
+            const scale = Math.min(1, maxDim / Math.max(w0, h0));
+            const w = Math.max(1, Math.round(w0 * scale));
+            const h = Math.max(1, Math.round(h0 * scale));
+            const canvas = document.createElement("canvas");
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext("2d", { alpha: false });
+            if (!ctx) throw new Error("no canvas");
+            ctx.drawImage(img, 0, 0, w, h);
+            const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+            if (!blob) throw new Error("jpeg encode failed");
+            return blob;
+          } finally {
+            URL.revokeObjectURL(url);
+          }
+        }
+
+        function pastedFileName(file, index, seed) {
+          const suffix = index > 0 ? `-${index + 1}` : "";
+          const base = `pasted-${seed}${suffix}`;
+          const type = String(file && file.type ? file.type : "").toLowerCase();
+          return type === "image/png" ? `${base}.png` : base;
+        }
+
+        async function stageFiles(files, { sid = selected, source = "picker" } = {}) {
+          const sessionId = sid || selected;
+          const uploadFiles = Array.from(files || []).filter(Boolean);
+          if (!uploadFiles.length) return false;
+          const sessionInfo = sessionId ? sessionIndex.get(sessionId) || null : null;
+          const attachBlocker = attachmentBlockerForSession(sessionId, sessionInfo);
+          if (attachBlocker) {
+            if (!sessionId || selected === sessionId) setToast(attachBlocker);
+            return false;
+          }
+
+          const producer = String(source || "picker");
+          const progressVerb = producer === "paste" ? "pasting" : producer === "drop" ? "dropping" : "uploading";
+          const pasteNameSeed = Date.now();
+          let successes = 0;
+          const failures = [];
+          for (let fileIndex = 0; fileIndex < uploadFiles.length; fileIndex += 1) {
+            const f = uploadFiles[fileIndex];
+            try {
+              if (selected !== sessionId) break;
+              setToast(uploadFiles.length > 1 ? `${progressVerb} ${fileIndex + 1}/${uploadFiles.length}...` : "uploading file...");
+              const maxBytes = ATTACH_UPLOAD_MAX_BYTES;
+              let uploadBlob = f;
+              let uploadName = f.name || (producer === "paste" ? pastedFileName(f, fileIndex, pasteNameSeed) : "file");
+              if (looksLikeImage(f) && (f.size > maxBytes || isLikelyHeic(f))) {
+                setToast("compressing image...");
+                const stem = safeAttachmentStem(uploadName);
+                uploadName = `${stem}.jpg`;
+                const tries = [
+                  { maxDim: 2048, quality: 0.86 },
+                  { maxDim: 1600, quality: 0.82 },
+                  { maxDim: 1600, quality: 0.72 },
+                  { maxDim: 1280, quality: 0.68 },
+                  { maxDim: 1280, quality: 0.58 },
+                ];
+                let blob = null;
+                for (const t of tries) {
+                  blob = await toJpegBlob(f, t);
+                  if (blob.size <= maxBytes) break;
+                }
+                if (!blob || blob.size > maxBytes) throw new Error(`image too large (max ${fmtBytes(maxBytes)})`);
+                uploadBlob = blob;
+              }
+              const ab = await uploadBlob.arrayBuffer();
+              if (ab.byteLength > maxBytes) throw new Error(`file too large (max ${fmtBytes(maxBytes)})`);
+              const b64 = b64FromBytes(new Uint8Array(ab));
+              const res = await api(`/api/sessions/${sessionId}/inject_file`, {
+                method: "POST",
+                body: { filename: uploadName, data_b64: b64, attachment_index: stagedAttachments.length + 1 },
+              });
+              if (selected === sessionId && res && res.ok) {
+                successes += 1;
+                setSelectedSessionStagedAttachments(Array.isArray(res.attachments) ? res.attachments : []);
+              }
+            } catch (e) {
+              if (e && e.status === 401) {
+                handleAppAuthLoss();
+                return false;
+              }
+              failures.push(`${f && f.name ? f.name : "file"}: ${e && e.message ? e.message : "unknown error"}`);
+            }
+          }
+          if (selected === sessionId) {
+            if (successes && failures.length) setToast(`attached ${successes}; ${failures.length} failed: ${failures[0]}`);
+            else if (successes) setToast(successes === 1 ? "file staged" : `${successes} files staged`);
+            else if (failures.length) setToast(`attach error: ${failures[0]}`);
+            pollFastUntilMs = Date.now() + 4000;
+            kickPoll(0);
+            void refreshSessions().catch((refreshErr) => {
+              if (refreshErr && refreshErr.status === 401) handleAppAuthLoss();
+              else console.error("refreshSessions failed", refreshErr);
+            });
+          }
+          return successes > 0;
+        }
+
+        attachBtn.onclick = () => {
+          const sid = selected;
+          const sessionInfo = sid ? sessionIndex.get(sid) || null : null;
+          const attachBlocker = attachmentBlockerForSession(sid, sessionInfo);
+          if (attachBlocker) {
+            setToast(attachBlocker);
+            return;
+          }
+          imgInput.value = "";
+          imgInput.click();
+        };
+        imgInput.addEventListener("change", async () => {
+          const sid = selected;
+          if (!sid) return;
+          const files = Array.from(imgInput.files || []);
+          imgInput.value = "";
+          await stageFiles(files, { sid, source: "picker" });
+        });
+
+        textarea.addEventListener("paste", (e) => {
+          const files = extractFilesFromClipboardData(e.clipboardData);
+          if (!files.length) return;
+          e.preventDefault();
+          void stageFiles(files, { sid: selected, source: "paste" });
+        });
+
+        let composerDragDepth = 0;
+        function setComposerDropActive(active) {
+          composer.classList.toggle("drop-active", Boolean(active));
+        }
+        addAppEvent(composer, "dragenter", (e) => {
+          if (!dataTransferHasFiles(e.dataTransfer)) return;
+          e.preventDefault();
+          composerDragDepth += 1;
+          setComposerDropActive(true);
+        }, { passive: false });
+        addAppEvent(composer, "dragover", (e) => {
+          if (!dataTransferHasFiles(e.dataTransfer)) return;
+          e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+          setComposerDropActive(true);
+        }, { passive: false });
+        addAppEvent(composer, "dragleave", (e) => {
+          if (!dataTransferHasFiles(e.dataTransfer)) return;
+          composerDragDepth = Math.max(0, composerDragDepth - 1);
+          if (composerDragDepth === 0) setComposerDropActive(false);
+        }, { passive: false });
+        addAppEvent(composer, "drop", (e) => {
+          if (!dataTransferHasFiles(e.dataTransfer)) return;
+          e.preventDefault();
+          composerDragDepth = 0;
+          setComposerDropActive(false);
+          const files = extractFilesFromDropData(e.dataTransfer);
+          if (!files.length) return;
+          void stageFiles(files, { sid: selected, source: "drop" });
+        }, { passive: false });
+        addAppEvent(window, "dragover", (e) => {
+          if (!dataTransferHasFiles(e.dataTransfer)) return;
+          e.preventDefault();
+        }, { passive: false });
+        addAppEvent(window, "drop", (e) => {
+          if (!dataTransferHasFiles(e.dataTransfer)) return;
+          e.preventDefault();
+          composerDragDepth = 0;
+          setComposerDropActive(false);
+        }, { passive: false });
 
         function clearComposer() {
           $("#msg").value = "";

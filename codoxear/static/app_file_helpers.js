@@ -316,6 +316,74 @@
     return "";
   }
 
+
+  function arrayFromFileList(fileList) {
+    if (!fileList || typeof fileList === "string") return [];
+    const length = Number(fileList.length);
+    if (!Number.isFinite(length) || length <= 0) return [];
+    const out = [];
+    for (let i = 0; i < length; i += 1) {
+      const file = fileList[i];
+      if (file) out.push(file);
+    }
+    return out;
+  }
+
+  function arrayFromDataTransferItems(items) {
+    if (!items || typeof items === "string") return [];
+    const length = Number(items.length);
+    if (!Number.isFinite(length) || length <= 0) return [];
+    const out = [];
+    for (let i = 0; i < length; i += 1) {
+      const item = items[i];
+      if (!item || item.kind !== "file" || typeof item.getAsFile !== "function") continue;
+      const file = item.getAsFile();
+      if (file) out.push(file);
+    }
+    return out;
+  }
+
+  function dataTransferTypesIncludeFiles(types) {
+    if (!types || typeof types === "string") return false;
+    if (typeof types.contains === "function" && types.contains("Files")) return true;
+    const length = Number(types.length);
+    if (!Number.isFinite(length) || length <= 0) return false;
+    for (let i = 0; i < length; i += 1) {
+      if (types[i] === "Files") return true;
+    }
+    return false;
+  }
+
+  function dataTransferHasFiles(data) {
+    if (!data) return false;
+    if (arrayFromFileList(data.files).length > 0) return true;
+    const items = data.items;
+    if (items && typeof items !== "string") {
+      const length = Number(items.length);
+      if (Number.isFinite(length) && length > 0) {
+        for (let i = 0; i < length; i += 1) {
+          const item = items[i];
+          if (item && item.kind === "file") return true;
+        }
+      }
+    }
+    return dataTransferTypesIncludeFiles(data.types);
+  }
+
+  function extractFilesFromClipboardData(data) {
+    if (!data) return [];
+    const itemFiles = arrayFromDataTransferItems(data.items);
+    if (itemFiles.length) return itemFiles;
+    return arrayFromFileList(data.files);
+  }
+
+  function extractFilesFromDropData(data) {
+    if (!data) return [];
+    const fileList = arrayFromFileList(data.files);
+    if (fileList.length) return fileList;
+    return arrayFromDataTransferItems(data.items);
+  }
+
   function attachmentSafeStem(name) {
     const s = String(name || "file");
     const base = s.split("/").pop() || s;
@@ -376,6 +444,9 @@
     filePickerTitle,
     positionAfterInsertedText,
     fileEditorDeleteCommandForKey,
+    dataTransferHasFiles,
+    extractFilesFromClipboardData,
+    extractFilesFromDropData,
     attachmentSafeStem,
     attachmentExtensionLower,
     attachmentIsLikelyHeic,

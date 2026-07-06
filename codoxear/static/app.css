@@ -1336,7 +1336,11 @@
         border-radius: 999px;
         padding: 6px 8px;
         box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
-        transition: border-radius 120ms ease-out;
+        transition: border-color 120ms ease-out, border-radius 120ms ease-out, box-shadow 120ms ease-out;
+      }
+      .composer.drop-active form {
+        border-color: rgba(37, 99, 235, 0.78);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16), 0 8px 22px rgba(15, 23, 42, 0.08);
       }
       .composer form.multiline {
         border-radius: 18px;

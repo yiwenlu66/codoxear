@@ -126,7 +126,8 @@ class TestAuthCleanupSource(unittest.TestCase):
         self.assertIn("if (refreshErr && refreshErr.status === 401) handleAppAuthLoss();", app)
         attachment_catch_start = app.index("} catch (e) {", app.index("/inject_file"))
         attachment_catch = app[attachment_catch_start : app.index("function clearComposer", attachment_catch_start)]
-        self.assertLess(attachment_catch.index("if (e && e.status === 401)"), attachment_catch.index("if (selected === sid)"))
+        self.assertLess(attachment_catch.index("if (e && e.status === 401)"), attachment_catch.index("failures.push("))
+        self.assertIn("handleAppAuthLoss();\n                return false;", attachment_catch)
 
         clear_start = app.index("async function clearCommitUnknownSend(")
         clear_end = app.index("async function refreshSessions", clear_start)
