@@ -570,3 +570,7 @@ Decision: Treat plain textarea editor fallback as browser-certified baseline edi
 Observation: Commit 163320c rewrote tests/test_file_upload.py to direct file_upload module tests and expanded tests/test_control_routes.py through ControlRouteDeps injection. Targeted validation passed: python3 -m pytest -q tests/test_file_upload.py tests/test_control_routes.py tests/test_file_upload_module_source.py -> 46 passed.
 Review: Critic ea863301 PASS/no blockers; it confirmed the old codoxear.server/do_POST monkeypatch seam is removed and coverage moved to direct module plus injected route tests. Residual branch: NotReady during inject_attachment_keys is not separately tested, but readiness 409 projection is covered.
 Decision: Seam retirement is accepted subject to final full local + Docker validation for the current HEAD.
+
+## 2026-07-06T09:11:35+08:00 — Final validation passed at 9e73f01
+Observation: Validation executor df4d9465 reported PASS with no repository edits. Full local pytest passed: 1679 tests and 132 subtests. Docker test on port 19150 passed: 1678 passed, 1 skipped, 132 subtests. Docker smoke on port 19151 returned 401 before login and 200 after login on /api/sessions.
+Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after editor proof, upload certification, and upload test-seam retirement. Next product work should target concrete user-facing surfaces: attachment indicator truth, upload cleanup on session deletion, mobile composer tap size, and browser proof for no-answer/idle projection.
