@@ -28,8 +28,8 @@ class TestMobileToastSource(unittest.TestCase):
         The header actions (diff/preview/edit/video/download/close) are .icon-btn
         elements inside .fileViewer. The mobile block must raise them to the WCAG
         touch-target minimum without depending on the coarse-pointer override
-        (which only reaches 40px) and without enlarging the .fileTouchBtn dpad
-        that is laid out on a 34px grid.
+        (which only reaches 40px). The .fileTouchBtn dpad is covered by its own
+        44px rule (see test_file_touch_dpad_meets_44px_touch_target_on_mobile).
         """
         css = APP_CSS.read_text(encoding="utf-8")
         mobile_start = css.index("@media (max-width: 520px)")
@@ -38,8 +38,8 @@ class TestMobileToastSource(unittest.TestCase):
         next_media = mobile_block.find("@media", 1)
         mobile_block = mobile_block if next_media == -1 else mobile_block[:next_media]
         self.assertIn(".fileViewer .icon-btn", mobile_block)
-        # Touch controls share the .fileTouchBtn class and sit on a fixed grid;
-        # they must be excluded so the rule does not blow up the dpad layout.
+        # The header actions rule is scoped to exclude .fileTouchBtn because the
+        # dpad has its own dedicated 44px rule (validated separately below).
         self.assertIn(".fileViewer .icon-btn:not(.fileTouchBtn)", mobile_block)
         rule_start = mobile_block.index(".fileViewer .icon-btn:not(.fileTouchBtn)")
         rule_end = mobile_block.index("}", rule_start)
@@ -53,6 +53,59 @@ class TestMobileToastSource(unittest.TestCase):
         edit_rule_end = mobile_block.index("}", edit_rule_start)
         edit_rule_block = mobile_block[edit_rule_start:edit_rule_end]
         self.assertIn("min-width: 44px", edit_rule_block)
+
+    def test_file_touch_dpad_meets_44px_touch_target_on_mobile(self) -> None:
+        """D5: the file-viewer touch dpad (.fileTouchBtn) controls must be at
+        least 44x44 CSS px on mobile.
+
+        The dpad (up/left/down/right) and the actions row (select/copy/paste)
+        share the .fileTouchBtn class and were previously laid out on a 34px
+        grid. The mobile block must now raise every visible .fileTouchBtn to
+        the 44x44 WCAG minimum. The dpad grid tracks and spacers must also be
+        44px so the buttons fill their cells without overflow. The total dpad
+        width (3x44 + 2x6 gap = 144px) plus the actions row width (3x44 +
+        2x6 = 144px) fit within the 370px mobile toolbar channel (390px
+        viewport - 2x10px inset), so no horizontal overflow is introduced.
+        """
+        css = APP_CSS.read_text(encoding="utf-8")
+        mobile_start = css.index("@media (max-width: 520px)")
+        mobile_block = css[mobile_start:]
+        next_media = mobile_block.find("@media", 1)
+        mobile_block = mobile_block if next_media == -1 else mobile_block[:next_media]
+        # Dpad grid tracks must be 44px (not the base 34px) so the buttons fill
+        # their cells.
+        dpad_start = mobile_block.index(".fileViewer .fileTouchDpad")
+        dpad_end = mobile_block.index("}", dpad_start)
+        dpad_block = mobile_block[dpad_start:dpad_end]
+        self.assertIn("grid-template-columns: repeat(3, 44px)", dpad_block)
+        self.assertIn("grid-template-rows: repeat(2, 44px)", dpad_block)
+        # Spacers must match so the grid is not misaligned.
+        spacer_start = mobile_block.index(".fileViewer .fileTouchSpacer")
+        spacer_end = mobile_block.index("}", spacer_start)
+        spacer_block = mobile_block[spacer_start:spacer_end]
+        self.assertIn("width: 44px", spacer_block)
+        self.assertIn("height: 44px", spacer_block)
+        # Every .fileTouchBtn must be at least 44x44.
+        btn_start = mobile_block.index(".fileViewer .fileTouchBtn")
+        btn_end = mobile_block.index("}", btn_start)
+        btn_block = mobile_block[btn_start:btn_end]
+        self.assertIn("width: 44px", btn_block)
+        self.assertIn("height: 44px", btn_block)
+        self.assertIn("min-width: 44px", btn_block)
+        self.assertIn("min-height: 44px", btn_block)
+        # No-overflow intent: the dpad is a 3x2 grid of 44px tracks with 6px
+        # gaps. 3*44 + 2*6 = 144px for the dpad and 144px for the actions row,
+        # totaling 288px — well within the 370px mobile toolbar channel. The
+        # rule must remain scoped under .fileViewer so the base .fileTouchBtn
+        # 34px rule (outside any media query) is not altered for desktop.
+        self.assertIn(".fileViewer .fileTouchBtn", mobile_block)
+        # The base (non-mobile) .fileTouchBtn rule must still exist at 34px so
+        # desktop layout is unchanged.
+        base_idx = css.index("      .fileTouchBtn {")
+        base_end = css.index("}", base_idx)
+        base_block = css[base_idx:base_end]
+        self.assertIn("width: 34px", base_block)
+        self.assertIn("height: 34px", base_block)
 
     def test_composer_controls_meet_44px_touch_target_on_mobile(self) -> None:
         """Main composer icon controls (paperclip/queue/stop/send) must be at

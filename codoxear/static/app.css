@@ -2760,13 +2760,35 @@ select {
         }
         /* Ensure the file-viewer toolbar controls (diff/preview/edit/video/download/close)
            meet the 44x44 CSS px touch-target minimum on mobile. Scoped to the viewer
-           and excludes .fileTouchBtn, whose dpad is laid out on a 34px grid. */
+           header actions; the .fileTouchBtn dpad has its own 44px rule below. */
         .fileViewer .icon-btn:not(.fileTouchBtn) {
           min-width: 44px;
           min-height: 44px;
         }
         .fileViewer #fileEditBtn {
           min-width: 44px;
+        }
+        /* Touch dpad (.fileTouchBtn) controls: meet the 44x44 CSS px touch-target
+           minimum on mobile. The dpad is a 3x2 grid (up/left/down/right + 2
+           spacers); tracks, spacers, and buttons are all bumped to 44px. The
+           compact cluster stays 144px wide for the dpad and 144px for the
+           actions row (select/copy/paste), fitting within the 370px mobile
+           toolbar channel (390px viewport - 2x10px inset) with no horizontal
+           overflow. Scoped under .fileViewer (specificity 0,2,0) so it wins
+           over the coarse-pointer .icon-btn 40px rule below. */
+        .fileViewer .fileTouchDpad {
+          grid-template-columns: repeat(3, 44px);
+          grid-template-rows: repeat(2, 44px);
+        }
+        .fileViewer .fileTouchSpacer {
+          width: 44px;
+          height: 44px;
+        }
+        .fileViewer .fileTouchBtn {
+          width: 44px;
+          height: 44px;
+          min-width: 44px;
+          min-height: 44px;
         }
         .queueViewer {
           width: 100vw;
