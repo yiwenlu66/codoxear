@@ -677,3 +677,10 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
 - Browser proof on the same sandbox: `#session=search-codex-noresp` and `#session=search-cc-noresp` rendered the no-response transcript row; searching the no-response phrase showed `1/1 loaded · 1 all` and highlighted the row in both sessions. Screenshots and JSON preserved.
 - Docker validation: focused suite `84 passed`; full suite on separate port 19244 `1724 passed, 1 skipped, 132 subtests passed`.
 - Cleanup: stopped only `codoxear-sandbox-19242`; artifact `cleanup.txt` confirms the named container was removed. Evidence directory: `browser-artifacts/transcript-search-synthetic-fixed-19242/`.
+
+
+## 2026-07-06T06:38:44Z Clean-room acceptance for transcript search tranche
+- Fresh critic `0818468c-6038-40a8-a751-6a4b6a53ac20` reviewed committed HEAD `bb7d38d` and returned ACCEPT/no blockers.
+- Review finding: `codoxear/transcript_search.py` now shares normalized transcript semantics with tail/history/live, tests prove Codex and Claude Code synthetic no-response search+history cursor behavior, answered turns suppress generic no-response, and CC terminal `api_error` remains real-text searchable.
+- Non-blocking residuals: `count_limit` no longer bounds record consumption, and deterministic fake logs certify parser/search behavior rather than provider inference parity.
+- Acceptance artifact preserved as `browser-artifacts/transcript-search-synthetic-fixed-19242/cleanroom-acceptance.md`.

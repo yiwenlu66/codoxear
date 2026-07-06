@@ -42,3 +42,10 @@ Independent audit:
 - `fake_search_sessions.py`: deterministic container fake-session generator.
 - `container-state.txt`, `server-log-excerpt.txt`, `cleanup.txt`: isolation and teardown evidence.
 - `local-full-pytest.out`, `docker-focused-tests.out`, `docker-full-tests.out`, `scout_transcript_outcomes.fixed.out`: validation output.
+
+
+## Clean-room acceptance
+
+Fresh critic `0818468c-6038-40a8-a751-6a4b6a53ac20` returned ACCEPT with no blockers. The critic confirmed that the tranche fixes the user-facing defect, that search now shares normalized transcript semantics with tail/history/live, and that cursors rehydrate the same row through history.
+
+Non-blocking residuals remain: `count_limit` no longer bounds record consumption, and deterministic fake logs prove parser/search invariants rather than real provider inference parity.
