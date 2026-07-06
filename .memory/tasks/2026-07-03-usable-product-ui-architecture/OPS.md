@@ -816,3 +816,9 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
   - Full local pytest: `1757 passed, 132 subtests passed in 23.61s`.
   - Docker unit on port 19284: `1756 passed, 1 skipped, 132 subtests passed in 45.26s`.
   - Docker smoke on port 19285: pre-login `/api/me` 401, post-login `/api/sessions` 200, app dir `/home/tester/.local/share/codoxear`.
+
+## 2026-07-06T20:45:00Z Clean-room re-review accepted no-visible-text Pi outcome fix
+- Clean-room critic `154e5925-735e-4a54-b8ee-bb48518a3bc6` returned **PASS**, saved at `.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/pi-no-text-outcome-review/cleanroom-review-pass-after-length-followup.md`.
+- Accepted claim: Pi no-visible-text terminal outcomes are now correctly scoped. `stop`/`end_turn` no-text rows project no-response + idle; `length`, `toolUse`, error, aborted, missing/empty stopReason, and unknown future stopReasons remain nonterminal/no no-response. The predicate reaches transcript projection, search/history/live/export, log idle/current-turn/readiness, broker/sessiond reducer, sidebar timestamp, and Pi busy guard without adding any busy-state category.
+- Evidence accepted: initial fixed proof on port 19280, length follow-up proof on port 19283, focused tests, full local pytest, Docker unit, Docker smoke, and browser DOM/screenshots.
+- New residual found and not part of the accepted claim: text-bearing `length` rows still pass through `pi_assistant_is_final_turn_end()` and can transiently classify idle during Pi compaction/continuation. Real-log scan in the review found all text-bearing `length` examples auto-continue. This is a separate busy/idle defect candidate, not a no-visible-text outcome defect.
