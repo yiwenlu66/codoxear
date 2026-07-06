@@ -370,7 +370,7 @@ def handle_messages_live(handler: Any, *, session_id: str, query: str, manager: 
     events, meta_delta, flags, diag = _rollout_log._extract_chat_events(objs, initial_cc_pending_tool_ids=initial_cc_pending)
     token_update = _rollout_log._extract_token_update(objs)
     prior_user_byte, prior_turn_has_assistant = (
-        _rollout_log._codex_prior_open_turn_context(s.log_path, after_byte) if after_byte > 0 else (None, False)
+        _rollout_log._prior_open_turn_context(s.log_path, after_byte) if after_byte > 0 else (None, False)
     )
     events = _rollout_log._extract_positioned_chat_events(
         records,

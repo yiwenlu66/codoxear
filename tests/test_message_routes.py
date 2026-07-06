@@ -271,6 +271,140 @@ def test_messages_live_requires_cursor() -> None:
     assert manager.marked == []
 
 
+def _cc_user_row(text: str = "silent", *, ts: str = "2026-07-04T00:00:00.000Z") -> dict:
+    return {
+        "type": "user",
+        "sessionId": "s1",
+        "timestamp": ts,
+        "cwd": "/repo",
+        "message": {"role": "user", "content": [{"type": "text", "text": text}]},
+    }
+
+
+def _cc_turn_duration_row(*, ts: str = "2026-07-04T00:00:03.000Z") -> dict:
+    return {
+        "type": "system",
+        "subtype": "turn_duration",
+        "sessionId": "s1",
+        "timestamp": ts,
+        "durationMs": 1234,
+    }
+
+
+def test_messages_live_cc_split_turn_duration_emits_no_response() -> None:
+    # Route-level regression for the live polling split close that previously
+    # left Claude Code turns with no visible result. The user row is delivered
+    # in one poll; the system/turn_duration close arrives in the next poll.
+    # Before the fix the public live route used the Codex-only prior-turn
+    # context helper, which yields (None, False) for CC user rows, so the
+    # close-only delta injected no no-response assistant error and the browser
+    # went idle with no result. The route must use the CC-aware prior-turn
+    # context and emit the no-response event on the second poll.
+    from codoxear.rollout_chat_events import _NO_RESPONSE_TEXT
+
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "cc-session.jsonl"
+        log_path.write_text(json.dumps(_cc_user_row("silent")) + "\n", encoding="utf-8")
+        session = _session(td, log_path)
+        session.agent_backend = "cc"
+
+        deps, responses, _metrics = _deps()
+        manager = _LiveManager(session)
+        cursor0 = encode_message_cursor(kind="live", session=session, pos=0, secret=_SECRET)
+        handle_messages_live(
+            _FakeHandler(),
+            session_id="s1",
+            query=f"cursor={cursor0}",
+            manager=manager,
+            deps=deps,
+        )
+        assert len(responses) == 1
+        _status1, body1 = responses[0]
+        assert [ev["role"] for ev in body1["events"]] == ["user"]
+        cursor1 = body1["live_cursor"]
+        assert isinstance(cursor1, str)
+        responses.clear()
+
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(_cc_turn_duration_row()) + "\n")
+
+        handle_messages_live(
+            _FakeHandler(),
+            session_id="s1",
+            query=f"cursor={cursor1}",
+            manager=manager,
+            deps=deps,
+        )
+        assert len(responses) == 1
+        status2, body2 = responses[0]
+        assert status2 == 200
+        roles = [ev["role"] for ev in body2["events"]]
+        assert roles == ["assistant"], roles
+        assert body2["events"][0]["text"] == _NO_RESPONSE_TEXT
+        assert body2["events"][0]["message_class"] == "error"
+
+
+def test_messages_live_cc_split_prior_answer_suppresses_no_response() -> None:
+    # Same split, but the assistant answered in the first poll. The CC-aware
+    # prior-turn context must record the visible assistant event so the later
+    # close does not false-inject a no-response row. Preserves existing
+    # answered-turn behavior.
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "cc-session.jsonl"
+        rows = [
+            {
+                "type": "user",
+                "sessionId": "s1",
+                "timestamp": "2026-07-04T00:00:00.000Z",
+                "cwd": td,
+                "message": {"role": "user", "content": [{"type": "text", "text": "answer"}]},
+            },
+            {
+                "type": "assistant",
+                "sessionId": "s1",
+                "timestamp": "2026-07-04T00:00:01.000Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "answered"}],
+                    "stop_reason": "end_turn",
+                },
+            },
+        ]
+        log_path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+        session = _session(td, log_path)
+        session.agent_backend = "cc"
+
+        deps, responses, _metrics = _deps()
+        manager = _LiveManager(session)
+        cursor0 = encode_message_cursor(kind="live", session=session, pos=0, secret=_SECRET)
+        handle_messages_live(
+            _FakeHandler(),
+            session_id="s1",
+            query=f"cursor={cursor0}",
+            manager=manager,
+            deps=deps,
+        )
+        assert len(responses) == 1
+        _status1, body1 = responses[0]
+        assert [ev["role"] for ev in body1["events"]] == ["user", "assistant"]
+        cursor1 = body1["live_cursor"]
+        responses.clear()
+
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(_cc_turn_duration_row()) + "\n")
+
+        handle_messages_live(
+            _FakeHandler(),
+            session_id="s1",
+            query=f"cursor={cursor1}",
+            manager=manager,
+            deps=deps,
+        )
+        assert len(responses) == 1
+        _status2, body2 = responses[0]
+        assert body2["events"] == []
+
+
 def test_messages_unauthorized_short_circuits() -> None:
     # Strengthens coverage: auth gate precedes all manager work.
     deps, responses, _metrics = _deps(require_auth=lambda _handler: False)
