@@ -116,3 +116,6 @@ This map is an internal planning and acceptance tool, not product terminology. U
 - No `git add -A` / broad staging; functional commits separate from memory/docs commits; small coherent checkpoints.
 - Fail loud; no silent fallbacks; preserve public API/state-format compatibility unless a defect requires change.
 - Do not claim completion from tests alone; usability claims require browser evidence; acceptance requires Docker validation and clean-room review.
+
+## User operating instruction update (2026-07-06)
+The user wants continued product improvement with the big-picture roadmap kept active. Work should proceed for long stretches without unnecessary turns, using internal Deliverables / Completed / Next actions / Parked user decisions sections. Yield only when work is finished, blocked on a true user decision, or a high-risk irreversible step needs confirmation. Before yielding, run a clean-room adversarial review and apply its findings or surface the exact remaining decision/risk. Concrete implementation and validation work should be delegated to subagents; the main agent owns product framing, mechanism, integration, commits, and acceptance judgment.
