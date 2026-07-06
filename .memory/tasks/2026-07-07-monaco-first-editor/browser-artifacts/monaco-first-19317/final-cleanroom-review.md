@@ -1,0 +1,10 @@
+Verdict: **nonblocker — no Monaco substrate blocker found.** Current HEAD makes Monaco the required editor/diff path in clean deployment: assets are vendored/packaged/routed, editor and diff creation require Monaco, and failure paths do not expose a writable plain editor or plain unified diff substitute.
+
+Findings:
+- **No blocker:** `/monaco/...` routes to packaged static assets (`static_routes.py:169-177`), package data includes `static/monaco/vs/**` (`pyproject.toml:26-27`), and wheel inspection found required Monaco loader/editor/worker files.
+- **No blocker:** CSP allows same-origin/blob workers (`index.html:7`, `static_routes.py:68`); loader config uses same-origin `monaco/vs` and does not install the old `data:` worker override (`app_file_editor.js:84-92`).
+- **No blocker:** editable file rendering calls Monaco before creating an editor; Monaco load failure renders read-only fallback (`app_file_editor.js:629-641`) and fallback state prevents writable capability (`app_file_viewer.js:2526-2542`).
+- **No blocker:** repository diff uses Monaco diff editor (`app_file_editor.js:668-685`) from `/git/file_versions` data (`app_file_viewer.js:3622-3637`); no `/git/diff` or `plain-edit` usage remains in static JS.
+- **Nonblocking observation:** Monaco-unavailable proof shows the edit button is not HTML-disabled (`browser-monaco-unavailable.json:1`, `editDisabled:false`), but it is `aria-disabled`, labeled with the unavailable reason, and click handling returns before enabling edit (`app_file_viewer.js:3511-3519`). I do not classify this as writable fallback.
+- **Nonblocking validation hygiene:** `git diff --check d61ffae..HEAD` fails on vendored Monaco whitespace and raw HTTP-header proof artifact CRLF/trailing whitespace. This does not affect Monaco substrate behavior.
+- **Nonblocking artifact typo:** `VERIFICATION-REPORT.md:34` lists `docker-server.log`, but committed artifact is `docker-server.txt`.

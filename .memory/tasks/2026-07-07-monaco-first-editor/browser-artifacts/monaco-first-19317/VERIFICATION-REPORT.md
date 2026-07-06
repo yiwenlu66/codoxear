@@ -31,4 +31,4 @@ Docker sandbox: `codoxear-monaco-19317` on `http://127.0.0.1:19317/` with contai
 - `api-summary.json`, `api-sessions.json`, `api-file-notes.json`, `api-git-diff-changed.json`.
 - `browser-open-editor-result.json`, `browser-save-result.json`, `browser-diff-result.json`, `browser-diff-models.json`, `browser-monaco-unavailable.json`, `browser-diff-unavailable.json`, `browser-conflict-result.json`.
 - `browser-monaco-diff.png`, `browser-monaco-unavailable.png`.
-- `docker-isolation.txt`, `docker-fixture-state.txt`, `docker-server.log`.
+- `docker-isolation.txt`, `docker-fixture-state.txt`, `docker-server.txt`.
