@@ -323,6 +323,10 @@ class CodexBackend(AgentBackend):
                 if ts is not None:
                     event["ts"] = ts
                 return event
+            if payload_type == "turn_aborted":
+                from .rollout_events import _build_interrupted_event
+
+                return _build_interrupted_event(row)
             if payload_type == "agent_message":
                 # Codex emits assistant text via event_msg.agent_message (the
                 # same row form idle/sidebar already treat as assistant output).
@@ -617,7 +621,9 @@ class PiBackend(AgentBackend):
                 event["ts"] = ts
             return event
         if pi_assistant_is_aborted_turn(row):
-            return None
+            from .rollout_events import _build_interrupted_event
+
+            return _build_interrupted_event(row, partial_text=pi_assistant_text(row))
         assistant_text = pi_assistant_text(row)
         if isinstance(assistant_text, str) and assistant_text:
             ts = _event_ts(row)

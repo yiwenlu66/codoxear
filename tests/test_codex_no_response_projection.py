@@ -17,6 +17,7 @@ from codoxear.rollout_chat_events import _NO_RESPONSE_TEXT
 from codoxear.rollout_chat_events import _build_no_response_event
 from codoxear.rollout_chat_events import _detect_codex_no_response_closes
 from codoxear.rollout_chat_events import _inject_no_response_events
+from codoxear.rollout_events import _INTERRUPTED_TEXT
 from codoxear.rollout_jsonl import JsonlRecord
 from codoxear.rollout_log import _extract_positioned_chat_events
 from codoxear.rollout_log import _codex_prior_open_turn_context
@@ -214,8 +215,123 @@ def test_pi_aborted_turn_does_not_emit_no_response() -> None:
         ),
     ]
     events = _extract_positioned_chat_events(records)
-    # Only the user event; no phantom no-response.
-    assert [ev["role"] for ev in events] == ["user"]
+    # An aborted Pi turn now renders a persistent assistant interruption
+    # outcome row (distinct from a generic no-response completion), so the
+    # user turn is never left dangling as user-only.
+    assert [ev["role"] for ev in events] == ["user", "assistant"]
+    interruption = events[-1]
+    assert interruption["message_class"] == "error"
+    assert interruption["text"] == _INTERRUPTED_TEXT
+    assert "interrupted" in interruption["text"]
+    assert interruption["text"] != _NO_RESPONSE_TEXT
+    assert isinstance(interruption["message_id"], str)
+    assert interruption["ts"] == 2.0
+
+
+def test_pi_aborted_partial_turn_preserves_partial_text() -> None:
+    """A Pi aborted turn that already streamed partial text must render the
+    interruption outcome AND keep the partial text visible/searchable in a
+    single assistant row (partial output is not discarded)."""
+    records = [
+        _rec(
+            {
+                "type": "message",
+                "ts": 1.0,
+                "message": {"role": "user", "content": [{"type": "text", "text": "hello partial"}]},
+            },
+            start=0,
+        ),
+        _rec(
+            {
+                "type": "message",
+                "ts": 2.0,
+                "message": {
+                    "role": "assistant",
+                    "stopReason": "aborted",
+                    "content": [{"type": "text", "text": "I was halfway through"}],
+                },
+            },
+            start=100,
+        ),
+    ]
+    events = _extract_positioned_chat_events(records)
+    assert [ev["role"] for ev in events] == ["user", "assistant"]
+    interruption = events[-1]
+    assert interruption["message_class"] == "error"
+    assert "interrupted" in interruption["text"]
+    assert "Partial output before interruption:" in interruption["text"]
+    assert "I was halfway through" in interruption["text"]
+    assert interruption["text"] != _NO_RESPONSE_TEXT
+
+
+def test_pi_aborted_partial_text_is_searchable(tmp_path: Path) -> None:
+    """The partial text must be findable via the disk-backed search path."""
+    from codoxear.transcript_search import search_chat_log_bounded
+
+    log_path = tmp_path / "pi.jsonl"
+    _write_log(
+        log_path,
+        [
+            {
+                "type": "message",
+                "ts": 1.0,
+                "message": {"role": "user", "content": [{"type": "text", "text": "hello partial"}]},
+            },
+            {
+                "type": "message",
+                "ts": 2.0,
+                "message": {
+                    "role": "assistant",
+                    "stopReason": "aborted",
+                    "content": [{"type": "text", "text": "I was halfway through"}],
+                },
+            },
+        ],
+    )
+    # The partial text itself is searchable.
+    count_partial, matches_partial, _ = search_chat_log_bounded(
+        log_path, "I was halfway through", limit=5, max_line_bytes=4096
+    )
+    assert count_partial == 1
+    assert matches_partial[0]["message_class"] == "error"
+    assert "I was halfway through" in matches_partial[0]["text"]
+    # The interruption-word is also searchable and resolves to the same row.
+    count_intr, _matches_intr, _ = search_chat_log_bounded(
+        log_path, "interrupted", limit=5, max_line_bytes=4096
+    )
+    assert count_intr == 1
+
+
+def test_codex_turn_aborted_emits_interruption_event() -> None:
+    """A Codex event_msg turn_aborted renders a persistent assistant
+    interruption outcome row, not a generic no-response row."""
+    records = [
+        _rec({"type": "event_msg", "ts": 1.0, "payload": {"type": "user_message", "message": "hello"}}, start=0),
+        _rec({"type": "event_msg", "ts": 2.0, "payload": {"type": "turn_aborted"}}, start=100),
+    ]
+    events = _extract_positioned_chat_events(records)
+    assert [ev["role"] for ev in events] == ["user", "assistant"]
+    interruption = events[-1]
+    assert interruption["message_class"] == "error"
+    assert interruption["text"] == _INTERRUPTED_TEXT
+    assert "interrupted" in interruption["text"]
+    assert interruption["text"] != _NO_RESPONSE_TEXT
+    assert isinstance(interruption["message_id"], str)
+    assert interruption["ts"] == 2.0
+
+
+def test_codex_turn_aborted_does_not_trigger_no_response_injection() -> None:
+    """A turn_aborted row produces its own interruption event, so a following
+    task_complete must NOT additionally inject a generic no-response row."""
+    records = [
+        _rec({"type": "event_msg", "ts": 1.0, "payload": {"type": "user_message", "message": "hello"}}, start=0),
+        _rec({"type": "event_msg", "ts": 2.0, "payload": {"type": "turn_aborted"}}, start=100),
+        _rec({"type": "event_msg", "ts": 3.0, "payload": {"type": "task_complete", "turn_id": "t1"}}, start=200),
+    ]
+    events = _extract_positioned_chat_events(records)
+    assert [ev["role"] for ev in events] == ["user", "assistant"]
+    assert events[-1]["text"] == _INTERRUPTED_TEXT
+    assert all(ev["text"] != _NO_RESPONSE_TEXT for ev in events)
 
 
 # ---------------------------------------------------------------------------

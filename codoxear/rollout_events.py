@@ -60,3 +60,36 @@ def _text_message_id(*, message_class: str, text: str, ts: float | None) -> str:
     ts_ms = int(round(ts * 1000.0)) if isinstance(ts, (int, float)) else None
     payload = json.dumps({"class": message_class, "text": " ".join(text.split()), "ts_ms": ts_ms}, ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+# User-facing text for a backend turn that was explicitly interrupted/aborted
+# before completion. This is distinct from _NO_RESPONSE_TEXT (a turn that
+# closed with no answer): an interruption means the turn was actively stopped.
+# The word "interrupted" makes interruption rows searchable and keeps them
+# distinct from generic no-response completions.
+_INTERRUPTED_TEXT = "The backend turn was interrupted before completion."
+
+
+def _build_interrupted_event(obj: dict[str, Any], *, partial_text: str | None = None) -> dict[str, Any]:
+    """Build a persistent assistant transcript event for an interrupted turn.
+
+    Used by both the Pi and Codex backend adapters so aborted/interrupted
+    turns render the same normalized outcome across tail/history/live/search/
+    export. ``message_class`` is "error" so the renderer surfaces it with error
+    styling. When ``partial_text`` is present (a Pi aborted turn that already
+    streamed some content) it is appended under a clear label so the partial
+    output stays visible and searchable instead of being discarded.
+    """
+    ts = _event_ts(obj)
+    text = _INTERRUPTED_TEXT
+    if isinstance(partial_text, str) and partial_text.strip():
+        text = f"{_INTERRUPTED_TEXT}\n\nPartial output before interruption:\n{partial_text.strip()}"
+    event: dict[str, Any] = {
+        "role": "assistant",
+        "text": text,
+        "message_class": "error",
+        "message_id": _text_message_id(message_class="error", text=text, ts=ts),
+    }
+    if ts is not None:
+        event["ts"] = ts
+    return event

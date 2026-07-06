@@ -13,6 +13,7 @@ from codoxear.message_routes import handle_messages_history
 from codoxear.message_routes import handle_messages_search
 from codoxear.message_routes import handle_messages_tail
 from codoxear.rollout_chat_events import _NO_RESPONSE_TEXT
+from codoxear.rollout_events import _INTERRUPTED_TEXT
 from codoxear.rollout_log import _read_chat_history_page
 from codoxear.session_model import Session
 from codoxear.transcript_search import casefold_match_span
@@ -868,6 +869,134 @@ def test_search_chat_log_bounded_finds_codex_synthetic_no_response_and_attaches_
     assert len(matches) == 1
     match = matches[0]
     assert match["text"] == _NO_RESPONSE_TEXT
+    assert match["message_class"] == "error"
+    assert isinstance(match.get("_before_byte"), int)
+    assert isinstance(match.get("_after_byte"), int)
+    assert match["_after_byte"] > match["_before_byte"]
+
+
+# --- Interruption outcome row search/cursor parity tests ---
+#
+# Mirrors the no-response search parity block above: an interrupted backend
+# turn must render a persistent interruption outcome row that is searchable,
+# carries message_class error, and resolves via cursors to a history window
+# that re-hydrates the same row (product invariant: every sent turn renders a
+# persistent outcome; interruption is distinct from generic no-response).
+
+def _codex_turn_aborted_rows() -> list[dict]:
+    # user_message then event_msg turn_aborted (no assistant answer in between).
+    return [
+        _codex_event_msg({"type": "user_message", "message": "trigger an interruption"}, 1.0),
+        _codex_event_msg({"type": "turn_aborted"}, 2.0),
+    ]
+
+
+def _pi_partial_aborted_rows() -> list[dict]:
+    return [
+        {
+            "type": "message",
+            "ts": 1.0,
+            "message": {"role": "user", "content": [{"type": "text", "text": "trigger a pi interruption"}]},
+        },
+        {
+            "type": "message",
+            "ts": 2.0,
+            "message": {
+                "role": "assistant",
+                "stopReason": "aborted",
+                "content": [{"type": "text", "text": "I was halfway through the answer"}],
+            },
+        },
+    ]
+
+
+def _session_pi(td: str, log_path: Path | None) -> Session:
+    return Session(
+        session_id="s1",
+        thread_id="thread-1",
+        broker_pid=1,
+        codex_pid=1,
+        agent_backend="pi",
+        owned=False,
+        start_ts=0.0,
+        cwd=td,
+        log_path=log_path,
+        sock_path=Path(td) / "s1.sock",
+    )
+
+
+def test_search_finds_codex_turn_aborted_interruption_with_valid_cursors() -> None:
+    with TemporaryDirectory() as td:
+        log_path = Path(td) / "codex.jsonl"
+        _write_codex_log(log_path, _codex_turn_aborted_rows())
+        session = _session(td, log_path)
+
+        status, body = _run_search(session, "interrupted")
+
+        assert status == 200
+        assert body["match_count"] == 1
+        match = body["matches"][0]
+        assert match["text"] == _INTERRUPTED_TEXT
+        assert match.get("message_class") == "error"
+        assert match["text"] != _NO_RESPONSE_TEXT
+        # history_cursor decodes to the interruption row byte (turn_aborted start).
+        synthetic_byte = decode_message_cursor(match["history_cursor"], kind="history", session=session, secret=_SECRET)
+        assert isinstance(match.get("_before_byte"), int)
+        assert synthetic_byte == match["_before_byte"]
+        # load_cursor resolves to a history window that re-projects the
+        # interruption row (cursor rehydration).
+        load_pos = decode_message_cursor(match["load_cursor"], kind="history", session=session, secret=_SECRET)
+        assert load_pos > match["_before_byte"]
+        window_events, _next_before, _has_older = _read_chat_history_page(log_path, before_byte=load_pos, limit=20)
+        assert window_events[-1]["text"] == _INTERRUPTED_TEXT
+        assert window_events[-1]["message_class"] == "error"
+
+
+def test_search_finds_pi_partial_aborted_interruption_and_partial_text() -> None:
+    with TemporaryDirectory() as td:
+        log_path = Path(td) / "pi.jsonl"
+        _write_codex_log(log_path, _pi_partial_aborted_rows())
+        session = _session_pi(td, log_path)
+
+        # The interruption-word resolves to the interruption row.
+        status, body = _run_search(session, "interrupted")
+        assert status == 200
+        assert body["match_count"] == 1
+        match = body["matches"][0]
+        assert match.get("message_class") == "error"
+        assert match["text"] != _NO_RESPONSE_TEXT
+        assert "Partial output before interruption:" in match["text"]
+        # The streamed partial text is itself searchable and lands on the same row.
+        status2, body2 = _run_search(session, "halfway through the answer")
+        assert status2 == 200
+        assert body2["match_count"] == 1
+        assert body2["matches"][0].get("message_class") == "error"
+        # load_cursor rehydrates the same interruption row from history.
+        load_pos = decode_message_cursor(body["matches"][0]["load_cursor"], kind="history", session=session, secret=_SECRET)
+        window_events, _next_before, _has_older = _read_chat_history_page(log_path, before_byte=load_pos, limit=20)
+        assert window_events[-1]["message_class"] == "error"
+        assert "I was halfway through the answer" in window_events[-1]["text"]
+
+
+def test_search_chat_log_bounded_finds_interruption_and_attaches_after_byte() -> None:
+    # Direct bounded-search test: the interruption row is produced by the
+    # search stream (not just the route layer) and carries _after_byte so the
+    # load_cursor can be derived without the route helper.
+    with TemporaryDirectory() as td:
+        path = Path(td) / "codex.jsonl"
+        _write_codex_log(path, _codex_turn_aborted_rows())
+        count, matches, truncated = search_chat_log_bounded(
+            path,
+            "interrupted",
+            limit=5,
+            max_line_bytes=4096,
+        )
+
+    assert count == 1
+    assert truncated is False
+    assert len(matches) == 1
+    match = matches[0]
+    assert match["text"] == _INTERRUPTED_TEXT
     assert match["message_class"] == "error"
     assert isinstance(match.get("_before_byte"), int)
     assert isinstance(match.get("_after_byte"), int)

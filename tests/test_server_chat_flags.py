@@ -228,21 +228,35 @@ class TestServerChatFlags(unittest.TestCase):
         self.assertTrue(flags["turn_start"])
         self.assertTrue(flags["turn_aborted"])
         self.assertFalse(flags["turn_end"])
-        self.assertEqual([event["role"] for event in events], ["user"])
+        # The aborted turn now renders a persistent interruption outcome row
+        # (message_class error), but it must still NOT be treated as a normal
+        # turn_end: the abort flag, not turn_end, governs interrupted idle.
+        self.assertEqual([event["role"] for event in events], ["user", "assistant"])
+        self.assertEqual(events[-1]["message_class"], "error")
+        self.assertIn("interrupted", events[-1]["text"])
 
     def test_pi_aborted_text_is_not_history_final_response(self) -> None:
-        self.assertIsNone(
-            _single_chat_event(
-                {
-                    "type": "message",
-                    "message": {
-                        "role": "assistant",
-                        "content": [{"type": "text", "text": "partial"}],
-                        "stopReason": "aborted",
-                    },
-                }
-            )
+        # An aborted Pi turn with partial text now renders a persistent
+        # interruption outcome row (message_class error), NOT a final_response.
+        # The partial text is preserved under a label but never masquerades as
+        # a completed answer in the history projection.
+        event = _single_chat_event(
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "partial"}],
+                    "stopReason": "aborted",
+                },
+            }
         )
+        self.assertIsNotNone(event)
+        assert event is not None
+        self.assertEqual(event["role"], "assistant")
+        self.assertEqual(event["message_class"], "error")
+        self.assertNotEqual(event["message_class"], "final_response")
+        self.assertIn("interrupted", event["text"])
+        self.assertIn("partial", event["text"])
 
     def test_final_assistant_only_rejects_newer_narration(self) -> None:
         with TemporaryDirectory() as td:
