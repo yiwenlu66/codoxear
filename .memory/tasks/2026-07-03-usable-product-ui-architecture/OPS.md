@@ -601,3 +601,10 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
 - Verifier `83f22848-c931-4d6a-86d7-40f2e1e0e6bd` reported FAIL for the log-only stale interrupted-idle path. Artifacts copied to `browser-artifacts/stale-interrupted-idle-fail/`.
 - Observed mechanism: `/api/sessions` calls prune before `update_meta_counters`; prune re-reads a stale socket response `interrupted_idle=true` and `set_session_interrupted_idle(True)` re-baselines `interrupted_idle_log_off` to the current log size after resumed activity was already appended. The log watcher then skips all resumed content and never clears the override, so user-visible `busy` stays `false` while the log is non-idle.
 - End-to-end evidence: phase 1 interrupted turn busy=false as intended; phase 2 same-log resumed user_message produced busy=false five times despite non-idle log; phase 3 completed log busy=false as intended. Public `/api/sessions` strips `interrupted_idle`, so `busy` is the user-visible contradiction.
+
+
+## 2026-07-06T03:57:23Z Stale interrupted-idle fix validated
+- Committed functional fix `8e5bae8 Preserve interrupted idle clear across stale polls`.
+- Focused local validation: `python3 -m pytest -q tests/test_stale_interrupted_idle.py tests/test_sessions_pending_log_idle.py tests/test_session_control.py tests/test_session_input.py tests/test_session_runtime.py` -> 76 passed, 4 subtests. Full local validation after CC + stale-idle changes -> 1711 passed, 132 subtests.
+- Re-ran the Docker/API stale-interrupted-idle harness in container `codoxear-stale-cert-fixed2` using existing image `codoxear-sandbox:latest` and artifacts copied to `browser-artifacts/stale-interrupted-idle-fixed/`. Verdict PASS; phase 1 busy=[False, False, False]; phase 2 busy=[True, True, True, True, True]; phase 3 busy=[False, False, False, False, False].
+- Boundary: the harness report's in-process diagnostic still includes the old artificial prune re-baseline condition because that diagnostic manually clears then sets the flag; the public API discriminator is decisive and now passes across repeated stale socket polls.
