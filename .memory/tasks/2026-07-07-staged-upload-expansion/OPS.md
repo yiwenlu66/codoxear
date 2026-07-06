@@ -129,3 +129,16 @@
   - full local suite → `1794 passed, 132 subtests passed in 24.69s`;
   - `node --check codoxear/static/app.js` and `git diff --check` → clean.
 - Clean-room review dispatched: async id `c48a075c-24aa-43e7-8ac3-7ebd53ec5671`.
+
+## 2026-07-06T22:18:00Z Post-confirmation tail isolation review and fix
+- Review artifact: `.memory/tasks/2026-07-07-staged-upload-expansion/reviews/post-send-tail-isolation-review.md`.
+- Review verdict: accepted with two nonblocking findings.
+- Finding NB1: post-confirmation prelog projection caught `OSError`/`KeyError` but not `ValueError`; a corrupted launch ledger could still produce a false post-delivery 500 and skip cleanup/state application. Although low-realism, this contradicted the tail-failure invariant.
+- Finding NB2: prelog catch branch lacked direct regression coverage.
+- Functional fix committed separately as `b0a6a09 Isolate prelog tail value errors`: shared post-confirmation tail error tuple now includes `ValueError` for prelog projection, and regression coverage proves delivered send + prelog `ValueError` returns `send_state_cleanup_error`, applies send-boundary busy state, and continues through staged cleanup.
+- Validation after fix:
+  - targeted regression/focused tails → `4 passed in 1.87s`;
+  - focused send/control/frontend suite → `131 passed, 22 subtests passed in 2.00s`;
+  - full local suite → `1795 passed, 132 subtests passed in 28.79s`;
+  - `node --check codoxear/static/app.js` and `git diff --check` → clean.
+- Follow-up review dispatched for `b0a6a09`: async id `42f4215a-c8a9-4db7-874c-4a6a5a5e873a`.
