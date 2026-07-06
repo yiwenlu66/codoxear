@@ -644,3 +644,11 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
 - Blocker 1: public `handle_messages_live()` used `_codex_prior_open_turn_context()` rather than the CC-aware prior context, so CC split live polling (`user` in one poll, `system/turn_duration` in a later poll) could render no visible no-response/error event.
 - Blocker 2: fresh discovery insertion cleared `registration.interrupted_idle` via `reset_log_caches()` before storing the new session, so server restart/fresh rediscovery could show an interrupted stopped turn as busy/spinning.
 - Critic report preserved in `browser-artifacts/final-cleanroom-blockers-4886b4e3/`. Decision: dispatch implementation for both route/state authority gaps and require route-level/fresh-discovery regressions.
+
+
+## 2026-07-06T05:22:11Z Final clean-room blockers fixed and API-certified
+- Functional commits landed: `2506938 Use Claude Code context for live messages` and `b858bfd Preserve interrupted idle on fresh discovery`.
+- Main reran focused validation before commit: CC route suite -> 107 passed; stale-idle/discovery suite -> 110 passed, 4 subtests.
+- Docker/API proof ran on port 19234 with real `codoxear.server`, fake sockets, and real JSONL logs; artifacts preserved in `browser-artifacts/final-blockers-fixed-19234/`.
+- Proof details: `/api/sessions` listed `fresh-interrupt` with `busy:false` on fresh discovery while fake broker reported `interrupted_idle:true`; `/messages/tail` for `cc-live` returned a user row and live cursor, and `/messages/live` after appending CC `system/turn_duration` returned assistant `message_class:error` no-response text.
+- Boundary: this final proof is API-level route evidence; DOM rendering of assistant error rows was already proven in `cc-outcomes-19210`.

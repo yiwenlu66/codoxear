@@ -1,0 +1,19 @@
+{
+  "transcript_state": "bound",
+  "thread_id": "cc-live",
+  "log_path": "/home/tester/.local/share/codoxear/logs/cc-live.jsonl",
+  "live_cursor": "eyJ2IjoxLCJraW5kIjoibGl2ZSIsInRocmVhZF9pZCI6ImNjLWxpdmUiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvbG9ncy9jYy1saXZlLmpzb25sIiwicG9zIjoxOTJ9.bQHQOBNLPX-sE92DqO0N-vbD9tLlqdi-jezkyVmbdMc",
+  "history_cursor": null,
+  "events": [
+    {
+      "role": "user",
+      "text": "silent live split",
+      "ts": 1783123200.0,
+      "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImNjLWxpdmUiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvbG9ncy9jYy1saXZlLmpzb25sIiwicG9zIjowfQ.83lyBbYeCica4jRByFkqtfjuW9qbbY1js2PjT-BYpPs"
+    }
+  ],
+  "has_older": false,
+  "busy": true,
+  "queue_len": 0,
+  "token": null
+}
