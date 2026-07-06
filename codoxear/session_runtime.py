@@ -202,6 +202,9 @@ def session_allows_queue_promotion(session: Session) -> bool:
 
 
 def reset_session_log_caches(session: Session, *, meta_log_off: int) -> None:
+    session.interrupted_idle = False
+    session.interrupted_idle_log_off = 0
+    session.interrupted_idle_suppressed = False
     session.meta_thinking = 0
     session.meta_tools = 0
     session.meta_system = 0
@@ -434,16 +437,28 @@ def broker_allows_interrupted_idle_override(state: Mapping[str, Any]) -> bool:
 def set_session_interrupted_idle(session: Session, value: bool) -> None:
     """Set ``interrupted_idle`` and maintain its log-offset baseline.
 
-    When ``interrupted_idle`` becomes True the current rollout-log size is
+    When ``interrupted_idle`` first becomes True the current rollout-log size is
     recorded so the log watcher can tell post-interrupt activity (which
     invalidates the override) from the interrupted turn's own non-final tail
-    (which must keep the override alive). Clearing the flag resets the
-    baseline so a later interrupt records a fresh offset.
+    (which must keep the override alive). Repeated broker polls that report the
+    same interrupted-idle state must not move an existing baseline forward: the
+    listing path polls broker state before reading log deltas, so re-baselining
+    would hide exactly the post-interrupt activity the watcher needs to clear.
+    Clearing the flag resets the baseline and any stale-true suppression so a
+    later interrupt can record a fresh offset.
     """
-    session.interrupted_idle = bool(value)
     if not value:
+        session.interrupted_idle = False
+        session.interrupted_idle_log_off = 0
+        session.interrupted_idle_suppressed = False
+        return
+    if session.interrupted_idle_suppressed:
+        session.interrupted_idle = False
         session.interrupted_idle_log_off = 0
         return
+    if session.interrupted_idle and int(session.interrupted_idle_log_off) > 0:
+        return
+    session.interrupted_idle = True
     log_path = session.log_path
     if log_path is None:
         session.interrupted_idle_log_off = 0
@@ -452,6 +467,19 @@ def set_session_interrupted_idle(session: Session, value: bool) -> None:
         session.interrupted_idle_log_off = int(log_path.stat().st_size)
     except OSError:
         session.interrupted_idle_log_off = 0
+
+
+def suppress_session_interrupted_idle(session: Session) -> None:
+    """Clear a proven-stale interrupted-idle override.
+
+    This differs from a broker ``false`` update: the broker may keep returning
+    the old ``true`` value. Suppression prevents that stale value from
+    reactivating the override until the broker reports false or the session/log
+    is reset.
+    """
+    session.interrupted_idle = False
+    session.interrupted_idle_log_off = 0
+    session.interrupted_idle_suppressed = True
 
 
 def resolve_runtime_status(

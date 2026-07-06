@@ -76,6 +76,7 @@ def apply_confirmed_send_success(
     session.busy = result.busy if result.busy is not None else True
     session.interrupted_idle = False
     session.interrupted_idle_log_off = 0
+    session.interrupted_idle_suppressed = False
     session.queue_len = result.queue_len
     session.last_send_boundary_active = True
     session.last_send_log_path = pre_send_log_path

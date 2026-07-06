@@ -121,6 +121,7 @@ class SessionDiscoveryRegistryCoordinator:
                 else:
                     previous.interrupted_idle = False
                     previous.interrupted_idle_log_off = 0
+                    previous.interrupted_idle_suppressed = False
                 previous.token = session.token
                 if previous.log_path != session.log_path:
                     previous.log_path = session.log_path

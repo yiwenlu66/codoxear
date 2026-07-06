@@ -125,6 +125,7 @@ class SessionRefreshCoordinator:
                 current.log_path = log_path
                 current.interrupted_idle = False
                 current.interrupted_idle_log_off = 0
+                current.interrupted_idle_suppressed = False
                 if log_path is not None:
                     log_off = int(log_path.stat().st_size)
                 else:

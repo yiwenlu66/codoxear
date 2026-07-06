@@ -30,6 +30,7 @@ from codoxear.session_model import Session
 from codoxear.session_runtime import ListingRuntimeProbes
 from codoxear.session_runtime import log_path_size_or_none
 from codoxear.session_runtime import set_session_interrupted_idle
+from codoxear.session_runtime import suppress_session_interrupted_idle
 from codoxear.session_store import SessionStore
 from codoxear.session_store import SessionStorePaths
 
@@ -100,6 +101,22 @@ class TestSetSessionInterruptedIdle(unittest.TestCase):
             self.assertTrue(s.interrupted_idle)
             self.assertEqual(s.interrupted_idle_log_off, size)
 
+    def test_repeated_true_preserves_existing_baseline(self) -> None:
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            log_path.write_text('{"x":1}\n', encoding="utf-8")
+            s = Session(
+                session_id="s", thread_id="s", broker_pid=1, codex_pid=2,
+                agent_backend="codex", owned=False, start_ts=1.0, cwd="/tmp",
+                log_path=log_path, sock_path=Path("/tmp/s.sock"),
+            )
+            set_session_interrupted_idle(s, True)
+            baseline = s.interrupted_idle_log_off
+            with log_path.open("a", encoding="utf-8") as f:
+                f.write('{"x":2}\n')
+            set_session_interrupted_idle(s, True)
+            self.assertEqual(s.interrupted_idle_log_off, baseline)
+
     def test_resets_baseline_when_cleared(self) -> None:
         with TemporaryDirectory() as td:
             log_path = Path(td) / "rollout.jsonl"
@@ -110,10 +127,36 @@ class TestSetSessionInterruptedIdle(unittest.TestCase):
                 log_path=log_path, sock_path=Path("/tmp/s.sock"),
             )
             set_session_interrupted_idle(s, True)
-            self.assertGreater(s.interrupted_idle_log_off, 0)
+            first_baseline = s.interrupted_idle_log_off
+            self.assertGreater(first_baseline, 0)
             set_session_interrupted_idle(s, False)
             self.assertFalse(s.interrupted_idle)
             self.assertEqual(s.interrupted_idle_log_off, 0)
+            with log_path.open("a", encoding="utf-8") as f:
+                f.write('{"x":2}\n')
+            set_session_interrupted_idle(s, True)
+            self.assertGreater(s.interrupted_idle_log_off, first_baseline)
+
+    def test_suppressed_stale_true_stays_cleared_until_broker_false(self) -> None:
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            log_path.write_text('{"x":1}\n', encoding="utf-8")
+            s = Session(
+                session_id="s", thread_id="s", broker_pid=1, codex_pid=2,
+                agent_backend="codex", owned=False, start_ts=1.0, cwd="/tmp",
+                log_path=log_path, sock_path=Path("/tmp/s.sock"),
+            )
+            set_session_interrupted_idle(s, True)
+            suppress_session_interrupted_idle(s)
+            set_session_interrupted_idle(s, True)
+            self.assertFalse(s.interrupted_idle)
+            self.assertEqual(s.interrupted_idle_log_off, 0)
+            self.assertTrue(s.interrupted_idle_suppressed)
+            set_session_interrupted_idle(s, False)
+            set_session_interrupted_idle(s, True)
+            self.assertTrue(s.interrupted_idle)
+            self.assertGreater(s.interrupted_idle_log_off, 0)
+            self.assertFalse(s.interrupted_idle_suppressed)
 
     def test_missing_log_path_records_zero_baseline(self) -> None:
         s = Session(
@@ -251,6 +294,7 @@ def _list_coordinator(
     tmp_path: Path,
     log_runtime: SessionLogRuntimeCoordinator,
     idle_from_log_path,
+    prune_dead_sessions=None,
 ) -> SessionListCoordinator:
     probes = ListingRuntimeProbes(
         last_conversation_ts_from_tail=lambda _path: None,
@@ -270,7 +314,7 @@ def _list_coordinator(
         commit_unknown_sends=lambda: {},
         store=_store(tmp_path),
         discover_existing_if_stale=lambda: None,
-        prune_dead_sessions=lambda: None,
+        prune_dead_sessions=prune_dead_sessions or (lambda: None),
         update_meta_counters=log_runtime.update_meta_counters,
         save_files=lambda: None,
         save_sidebar_meta=lambda: None,
@@ -336,6 +380,105 @@ class TestListingProjectionAfterInvalidation(unittest.TestCase):
             # Non-idle log + stale override invalidated -> busy must be True.
             self.assertIs(out[0]["busy"], True)
             self.assertFalse(s.interrupted_idle)
+
+    def test_real_listing_order_clears_stale_override_after_prune_refresh(self) -> None:
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            log_path.write_text(
+                "".join(
+                    json.dumps(o) + "\n"
+                    for o in [
+                        {"type": "session_meta", "payload": {"id": "broker-1", "source": "cli"}},
+                        {"type": "event_msg", "payload": {"type": "user_message", "message": "first"}, "ts": 10.0},
+                        {
+                            "type": "response_item",
+                            "payload": {
+                                "type": "message",
+                                "role": "assistant",
+                                "content": [{"type": "output_text", "text": "working"}],
+                            },
+                            "ts": 11.0,
+                        },
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            s = _make_session(log_path, interrupted_idle=True)
+            sessions = {"broker-1": s}
+            log_runtime = _log_runtime(sessions)
+
+            _append_jsonl(
+                log_path,
+                [{"type": "event_msg", "payload": {"type": "user_message", "message": "second"}, "ts": 20.0}],
+            )
+
+            def stale_prune_refresh() -> None:
+                # Real listing order refreshes broker state before log counters.
+                # The stale socket still reports interrupted_idle=True. The
+                # baseline must not move forward past the newly appended row.
+                set_session_interrupted_idle(s, True)
+
+            coordinator = _list_coordinator(
+                sessions=sessions,
+                tmp_path=Path(td),
+                log_runtime=log_runtime,
+                idle_from_log_path=lambda _sid, _path: False,
+                prune_dead_sessions=stale_prune_refresh,
+            )
+            out = coordinator.list_sessions()
+
+            self.assertEqual(len(out), 1)
+            self.assertIs(out[0]["busy"], True)
+            self.assertFalse(s.interrupted_idle)
+            self.assertEqual(s.interrupted_idle_log_off, 0)
+            self.assertTrue(s.interrupted_idle_suppressed)
+
+            out_again = coordinator.list_sessions()
+            self.assertEqual(len(out_again), 1)
+            self.assertIs(out_again[0]["busy"], True)
+            self.assertFalse(s.interrupted_idle)
+            self.assertTrue(s.interrupted_idle_suppressed)
+
+    def test_real_listing_order_keeps_immediate_interrupt_idle_after_prune_refresh(self) -> None:
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            log_path.write_text(
+                "".join(
+                    json.dumps(o) + "\n"
+                    for o in [
+                        {"type": "session_meta", "payload": {"id": "broker-1", "source": "cli"}},
+                        {"type": "event_msg", "payload": {"type": "user_message", "message": "first"}, "ts": 10.0},
+                        {
+                            "type": "response_item",
+                            "payload": {
+                                "type": "message",
+                                "role": "assistant",
+                                "content": [{"type": "output_text", "text": "working"}],
+                            },
+                            "ts": 11.0,
+                        },
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            s = _make_session(log_path, interrupted_idle=True)
+            sessions = {"broker-1": s}
+            log_runtime = _log_runtime(sessions)
+            baseline = s.interrupted_idle_log_off
+
+            coordinator = _list_coordinator(
+                sessions=sessions,
+                tmp_path=Path(td),
+                log_runtime=log_runtime,
+                idle_from_log_path=lambda _sid, _path: False,
+                prune_dead_sessions=lambda: set_session_interrupted_idle(s, True),
+            )
+            out = coordinator.list_sessions()
+
+            self.assertEqual(len(out), 1)
+            self.assertIs(out[0]["busy"], False)
+            self.assertTrue(s.interrupted_idle)
+            self.assertEqual(s.interrupted_idle_log_off, baseline)
 
     def test_listing_keeps_idle_projection_for_immediate_interrupt(self) -> None:
         with TemporaryDirectory() as td:

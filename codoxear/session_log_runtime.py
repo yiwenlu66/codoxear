@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Callable, MutableMapping
 
 from .session_model import Session
+from .session_runtime import suppress_session_interrupted_idle
 
 
 @dataclass(frozen=True)
@@ -107,8 +108,7 @@ class SessionLogRuntimeCoordinator:
                     current.meta_tools = 0
                     current.meta_system = 0
                 if clear_interrupted_idle and current.interrupted_idle:
-                    current.interrupted_idle = False
-                    current.interrupted_idle_log_off = 0
+                    suppress_session_interrupted_idle(current)
                 current.meta_log_off = offset if offset >= 0 else current.meta_log_off
 
     def mark_log_delta(self, session_id: str, *, objs: list[dict[str, Any]], new_off: int) -> None:

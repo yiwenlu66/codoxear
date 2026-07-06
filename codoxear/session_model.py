@@ -54,6 +54,12 @@ class Session:
     # invalidates a stale interrupted-idle override. Reset to 0 when
     # ``interrupted_idle`` is cleared.
     interrupted_idle_log_off: int = 0
+    # True after the log watcher proves a broker-reported interrupted-idle
+    # state is stale. While this is set, repeated stale broker ``true`` polls
+    # must not reactivate the override; a broker ``false`` or log/session reset
+    # clears the suppression so a later fresh interrupt can record a new
+    # baseline.
+    interrupted_idle_suppressed: bool = False
     last_send_boundary_active: bool = False
     last_send_log_path: Path | None = None
     last_send_log_size: int | None = None
