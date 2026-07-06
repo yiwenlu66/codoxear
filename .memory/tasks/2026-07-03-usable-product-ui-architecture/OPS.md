@@ -589,3 +589,9 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
 ## 2026-07-06T03:14:07Z Follow-up verification and next-target analysis dispatched
 - Dispatched async executor `83f22848-c931-4d6a-86d7-40f2e1e0e6bd` to drive the remaining log-only stale-interrupted-idle mechanism through Docker/server API/browser evidence. Contract forbids code edits, host runtime access, port 8743, broad cleanup, and commits.
 - Dispatched async theorist `307ba285-2ab0-4f21-af23-bd77ae3d8bff` to rank the next user-facing product target after the current tranche, explicitly excluding the in-flight idle variant and parked backend/Monaco/upload-scope decisions.
+
+
+## 2026-07-06T03:26:41Z Next product target selected: Claude Code transcript outcomes
+- Integrated theorist run `307ba285-2ab0-4f21-af23-bd77ae3d8bff`. The run ranked Claude Code `system`-row turn outcomes as the top next product gap because the selectable-backend no-answer/error guarantee is currently Codex-shaped while CC can close turns through `system/subtype:turn_duration` and `system/subtype:api_error` rows that transcript projection ignores.
+- Preserved the full analysis as `next-product-target-analysis.md`.
+- Decision: dispatch implementation with failing tests first for CC user→turn_duration, tools-only→turn_duration, and terminal system api_error shapes; keep transient retry rows silent; do not touch the in-flight stale-interrupted-idle verifier scope.
