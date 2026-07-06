@@ -300,6 +300,81 @@ def test_pi_nonterminal_thinking_does_not_project_no_response() -> None:
     assert all(ev["text"] != _NO_RESPONSE_TEXT for ev in events)
 
 
+def test_pi_length_thinking_only_does_not_project_no_response() -> None:
+    records = [
+        _rec(
+            {
+                "type": "message",
+                "ts": 1.0,
+                "message": {"role": "user", "content": [{"type": "text", "text": "hello"}]},
+            },
+            start=0,
+        ),
+        _rec(
+            {
+                "type": "message",
+                "ts": 2.0,
+                "message": {
+                    "role": "assistant",
+                    "stopReason": "length",
+                    "content": [{"type": "thinking", "thinking": "internal"}],
+                },
+            },
+            start=100,
+        ),
+    ]
+    events = _extract_positioned_chat_events(records)
+    assert [ev["role"] for ev in events] == ["user"]
+    assert all(ev["text"] != _NO_RESPONSE_TEXT for ev in events)
+
+
+def test_pi_length_compaction_continuation_does_not_insert_false_no_response() -> None:
+    records = [
+        _rec(
+            {
+                "type": "message",
+                "ts": 1.0,
+                "message": {"role": "user", "content": [{"type": "text", "text": "hello"}]},
+            },
+            start=0,
+        ),
+        _rec(
+            {
+                "type": "message",
+                "ts": 2.0,
+                "message": {
+                    "role": "assistant",
+                    "stopReason": "length",
+                    "content": [{"type": "thinking", "thinking": "internal before compaction"}],
+                },
+            },
+            start=100,
+        ),
+        _rec({"type": "compaction", "ts": 3.0, "message": "compacting context"}, start=200),
+        _rec({"type": "custom_message", "ts": 4.0, "message": "continuing after compaction"}, start=300),
+        _rec(
+            {
+                "type": "message",
+                "ts": 5.0,
+                "message": {
+                    "role": "assistant",
+                    "stopReason": "toolUse",
+                    "content": [
+                        {"type": "text", "text": "continuing with a tool"},
+                        {"type": "toolCall", "id": "tool-1", "name": "bash", "arguments": {"command": "pwd"}},
+                    ],
+                },
+            },
+            start=400,
+        ),
+    ]
+    events = _extract_positioned_chat_events(records)
+    assert [ev["role"] for ev in events] == ["user", "assistant"]
+    assert events[-1]["text"] == "continuing with a tool"
+    assert events[-1]["message_class"] == "narration"
+    assert all(ev["text"] != _NO_RESPONSE_TEXT for ev in events)
+
+
 def test_pi_tool_use_message_does_not_project_no_response() -> None:
     records = [
         _rec(

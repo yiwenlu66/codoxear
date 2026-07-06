@@ -106,10 +106,7 @@ def pi_assistant_is_terminal_no_visible_response(obj: dict[str, Any]) -> bool:
     message = obj.get("message")
     if not isinstance(message, dict) or message.get("role") != "assistant":
         return False
-    stop_reason = message.get("stopReason")
-    if not isinstance(stop_reason, str) or not stop_reason:
-        return False
-    if stop_reason in {"toolUse", "error", "aborted"}:
+    if message.get("stopReason") not in {"stop", "end_turn"}:
         return False
     error_message = message.get("errorMessage")
     if isinstance(error_message, str) and error_message.strip():
@@ -117,8 +114,6 @@ def pi_assistant_is_terminal_no_visible_response(obj: dict[str, Any]) -> bool:
     if message.get("isError") is True:
         return False
     if pi_assistant_text(obj):
-        return False
-    if pi_assistant_error_text(obj) or pi_assistant_is_aborted_turn(obj):
         return False
     if pi_assistant_tool_use_count(obj) > 0:
         return False

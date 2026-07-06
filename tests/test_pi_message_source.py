@@ -73,7 +73,6 @@ class TestPiMessageSource(unittest.TestCase):
 
         self.assertTrue(pi_message.pi_assistant_is_terminal_no_visible_response(row("stop")))
         self.assertTrue(pi_message.pi_assistant_is_terminal_no_visible_response(row("end_turn")))
-        self.assertTrue(pi_message.pi_assistant_is_terminal_no_visible_response(row("length")))
         self.assertTrue(
             pi_message.pi_assistant_is_terminal_no_visible_response(
                 row("stop", [{"type": "thinking", "thinking": "internal"}])
@@ -81,6 +80,8 @@ class TestPiMessageSource(unittest.TestCase):
         )
         self.assertFalse(pi_message.pi_assistant_is_terminal_no_visible_response(row(None)))
         self.assertFalse(pi_message.pi_assistant_is_terminal_no_visible_response(row("")))
+        self.assertFalse(pi_message.pi_assistant_is_terminal_no_visible_response(row("length")))
+        self.assertFalse(pi_message.pi_assistant_is_terminal_no_visible_response(row("unknown_future_reason")))
         self.assertFalse(pi_message.pi_assistant_is_terminal_no_visible_response(row("toolUse")))
         self.assertFalse(pi_message.pi_assistant_is_terminal_no_visible_response(row("error")))
         self.assertFalse(pi_message.pi_assistant_is_terminal_no_visible_response(row("aborted")))
