@@ -730,3 +730,11 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
 - User instructed the agent to continue improving the product with the big-picture roadmap active, minimize turns/repetition, keep internal Deliverables/Completed/Next actions/Parked user decisions, yield only on completion/user decision/high-risk confirmation, and run clean-room adversarial review before yielding.
 - User also reiterated: follow current task PROMPT/product workbench and delegate concrete implementation/validation work to subagents.
 - Decision: next known product boundary is unattended execution under the same stale-interrupt busy authority. Direct send, queue, listing/sidebar, and attachment affordance are closed; unattended shares the fixed readiness path but lacks a separate live stale-interrupt proof.
+
+
+## 2026-07-06T09:29:35Z Unattended stale-interrupt busy proof
+- Executor `0faffdf4-8a06-4ec8-abc2-517532a9ac17` produced PASS evidence under `browser-artifacts/unattended-stale-interrupted-idle-19268/`; committed as `0a30376`.
+- Harness: real Docker server on port 19268; fake broker inside container always returned raw `busy:false, queue_len:0, interrupted_idle:true` and logged every command; no host runtime or port 8743 touched.
+- Discriminator design: post-interrupt append used `task_complete(last_agent_message="done")` followed by `agent_reasoning`. This makes `_compute_idle_from_log` busy while `_last_chat_role_ts_from_tail(final_assistant_only=True)` still returns the old final assistant, so unattended tail/cooldown gates are eligible and readiness is the decisive gate.
+- Evidence: `/api/sessions` projected busy while raw broker remained stale true; unattended enabled via real API with `remaining_injections:1`; across a 12s real sweep window broker calls grew 208->254, all `cmd:state`, with zero `cmd:send`/`cmd:keys`; final unattended GET remained `enabled:true, remaining_injections:1`; browser showed busy state dot, unattended badge, and disabled attachment button.
+- Focused validation: `python3 -m pytest -q tests/test_unattended_sweep.py tests/test_sessions_pending_log_idle.py tests/test_stale_interrupted_idle.py` -> 66 passed, 4 subtests. One malformed raw poll capture was preserved as `phaseB-polls.raw.txt`; normalized `phaseB-polls.json` is machine-checkable.
