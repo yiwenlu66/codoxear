@@ -1,0 +1,23 @@
+{
+  "broker_state": {
+    "busy": false,
+    "interrupted_idle": true,
+    "queue_len": 0,
+    "token": null
+  },
+  "log_size": 855,
+  "post_arm_polls": [
+    {
+      "busy": true,
+      "missing": false
+    },
+    {
+      "busy": true,
+      "missing": false
+    }
+  ],
+  "rearm_busy": {
+    "busy": false,
+    "missing": false
+  }
+}

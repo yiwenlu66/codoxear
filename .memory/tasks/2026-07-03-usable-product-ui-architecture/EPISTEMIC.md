@@ -321,3 +321,9 @@ Clean-room critic 4aad1a07 accepted the load-error/composer/queue tranche with n
 ## Transcript search accepted checkpoint
 - Clean-room critic `0818468c` accepted the committed transcript-search tranche (`bb7d38d`) with no blockers. The accepted claim is now: rendered synthetic no-response rows for Codex and Claude Code are searchable, carry cursors, and rehydrate through history as the same row.
 - The critic preserved the same two boundaries as the main evidence: `count_limit` record-consumption is now a resource risk rather than a semantic failure, and deterministic fake logs prove parser/search projection rather than live provider parity.
+
+
+## Log-only stale interrupted-idle boundary closed
+- Docker/API/browser verification on port 19250 closes the prior residual boundary: a broker socket kept returning `busy:false, interrupted_idle:true` while post-interrupt activity was appended to the same log. The first listing projected the immediate interrupted non-final tail as idle (`busy:false`), then after a post-baseline `event_msg/user_message`, five repeated `/api/sessions` polls projected `busy:true` while direct broker socket probes still returned `interrupted_idle:true`.
+- Browser evidence matched the API mechanism: the sidebar state dot changed from idle gray to busy blue and stayed busy on repoll while the fake broker remained stale-true. Optional phase 3 proved clearing broker false resets suppression, and a later genuine interrupt can re-arm the override before being suppressed again by later post-baseline activity.
+- Accepted mechanism: `set_session_interrupted_idle(true)` preserves the original interrupt log baseline; listing refresh may see stale true, but `SessionLogRuntimeCoordinator.update_meta_counters()` reads from the baseline, observes post-interrupt user/assistant activity, calls `suppress_session_interrupted_idle()`, and future stale true reports cannot re-enable the override until broker false or log/session reset.

@@ -1,0 +1,3 @@
+[br] phase1 dom: {"found":true,"cardClass":"session","dotClass":"stateDot idle","dotBg":"rgba(107, 114, 128, 0.85)","dotIsBusy":false,"dotIsIdle":true,"sendDisabled":false,"titleText":"tester"} api: {"busy":false,"missing":false}
+[br] phase2 dom: {"found":true,"cardClass":"session active","dotClass":"stateDot busy","dotBg":"rgba(29, 78, 216, 0.95)","dotIsBusy":true,"dotIsIdle":false,"sendDisabled":false,"titleText":"tester"} api: {"busy":true,"missing":false}
+[br] done

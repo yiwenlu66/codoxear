@@ -684,3 +684,12 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
 - Review finding: `codoxear/transcript_search.py` now shares normalized transcript semantics with tail/history/live, tests prove Codex and Claude Code synthetic no-response search+history cursor behavior, answered turns suppress generic no-response, and CC terminal `api_error` remains real-text searchable.
 - Non-blocking residuals: `count_limit` no longer bounds record consumption, and deterministic fake logs certify parser/search behavior rather than provider inference parity.
 - Acceptance artifact preserved as `browser-artifacts/transcript-search-synthetic-fixed-19242/cleanroom-acceptance.md`.
+
+
+## 2026-07-06T07:07:43Z Log-only stale interrupted-idle Docker/browser proof
+- Executor `a3191b78` produced PASS evidence under `browser-artifacts/log-only-stale-interrupted-idle-19250/`. No source/test code changed; no staging/commit by executor.
+- Harness: `scripts/codoxear-docker-sandbox smoke` on port 19250; fake live-PID broker/socket/session inside `/home/tester/.local/share/codoxear`; broker state command returned `busy:false, queue_len:0, interrupted_idle:true` through phases 1 and 2.
+- Phase 1: initial interrupted non-final log plus broker `interrupted_idle:true` listed `busy:false`; browser sidebar showed `stateDot idle` / gray.
+- Phase 2 core discriminator: appended post-interrupt `event_msg/user_message` to the same log (log size 351 -> 465). Five repeated `/api/sessions` polls all listed `busy:true` while direct broker socket state still returned `interrupted_idle:true`; browser sidebar showed `stateDot busy` / blue and remained busy on repoll.
+- Optional phase 3: broker false cleared suppression; a later fresh interrupt re-armed idle override, and later post-baseline activity suppressed it again.
+- Validation reported by executor: targeted tests `python3 -m pytest -q tests/test_stale_interrupted_idle.py tests/test_sessions_pending_log_idle.py tests/test_session_discovery.py` -> `58 passed, 4 subtests passed`; container stopped via exact sandbox stop. Raw poll captures were normalized into valid JSON with `.raw.txt` originals preserved because the harness embedded broker JSON strings without escaping.
