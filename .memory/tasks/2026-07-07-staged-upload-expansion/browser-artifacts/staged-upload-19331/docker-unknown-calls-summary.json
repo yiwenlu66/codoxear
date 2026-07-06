@@ -1,0 +1,21 @@
+{
+  "total_calls": 87,
+  "command_counts": {
+    "send": 1,
+    "state": 86
+  },
+  "send_calls": [
+    {
+      "req": {
+        "cmd": "send",
+        "text": "Attachment 1: /home/tester/.local/share/codoxear/uploads/upload-unknown/1783366238980_unknown.txt\nFORCE_COMMIT_UNKNOWN please keep staged",
+        "sync": true
+      },
+      "resp": {
+        "commit_unknown": true,
+        "error": "forced unknown"
+      }
+    }
+  ],
+  "key_calls": []
+}

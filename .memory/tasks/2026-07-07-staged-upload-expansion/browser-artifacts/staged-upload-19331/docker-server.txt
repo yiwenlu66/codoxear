@@ -1,0 +1,8 @@
+warning: session discovery: ignoring invalid session metadata in /home/tester/upload-proof-logs/upload-proof.jsonl: ValueError: missing session metadata in /home/tester/upload-proof-logs/upload-proof.jsonl
+warning: main-thread coercion: ignoring invalid session metadata in /home/tester/upload-proof-logs/upload-proof.jsonl: ValueError: missing session metadata in /home/tester/upload-proof-logs/upload-proof.jsonl
+warning: run settings: ignoring invalid session metadata in /home/tester/upload-proof-logs/upload-proof.jsonl: ValueError: missing session metadata in /home/tester/upload-proof-logs/upload-proof.jsonl
+warning: session refresh: ignoring invalid session metadata in /home/tester/upload-proof-logs/upload-proof.jsonl: ValueError: missing session metadata in /home/tester/upload-proof-logs/upload-proof.jsonl
+warning: session discovery: ignoring invalid session metadata in /home/tester/upload-unknown-logs/upload-unknown.jsonl: ValueError: missing session metadata in /home/tester/upload-unknown-logs/upload-unknown.jsonl
+warning: main-thread coercion: ignoring invalid session metadata in /home/tester/upload-unknown-logs/upload-unknown.jsonl: ValueError: missing session metadata in /home/tester/upload-unknown-logs/upload-unknown.jsonl
+warning: run settings: ignoring invalid session metadata in /home/tester/upload-unknown-logs/upload-unknown.jsonl: ValueError: missing session metadata in /home/tester/upload-unknown-logs/upload-unknown.jsonl
+warning: session refresh: ignoring invalid session metadata in /home/tester/upload-unknown-logs/upload-unknown.jsonl: ValueError: missing session metadata in /home/tester/upload-unknown-logs/upload-unknown.jsonl

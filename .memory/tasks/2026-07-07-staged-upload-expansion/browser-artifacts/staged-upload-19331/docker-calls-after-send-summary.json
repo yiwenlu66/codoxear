@@ -1,0 +1,22 @@
+{
+  "total_calls": 771,
+  "command_counts": {
+    "send": 1,
+    "state": 770
+  },
+  "send_calls": [
+    {
+      "req": {
+        "cmd": "send",
+        "text": "Attachment 1: /home/tester/.local/share/codoxear/uploads/upload-proof/1783366193849_beta.txt\nAttachment 2: /home/tester/.local/share/codoxear/uploads/upload-proof/1783366193856_gamma.txt\nplease use staged uploads",
+        "sync": true
+      },
+      "resp": {
+        "queued": false,
+        "queue_len": 0,
+        "busy": true
+      }
+    }
+  ],
+  "key_calls": []
+}
