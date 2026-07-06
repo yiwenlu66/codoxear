@@ -1,0 +1,22 @@
+{
+  "body": {
+    "busy": true,
+    "events": [
+      {
+        "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InBpLW5vbnRlcm1pbmFsLXRoaW5raW5nLWNvbnRyb2wiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcGktbm8tdGV4dC1sb2dzL3BpLW5vbnRlcm1pbmFsLXRoaW5raW5nLWNvbnRyb2wuanNvbmwiLCJwb3MiOjExOX0.WIVmdjdsdFuUNl3JmknGwAPDdpKEZ40bAEsjU6ZkeKg",
+        "role": "user",
+        "text": "hello pi nonterminal thinking control",
+        "ts": 1.0
+      }
+    ],
+    "has_older": false,
+    "history_cursor": null,
+    "live_cursor": "eyJ2IjoxLCJraW5kIjoibGl2ZSIsInRocmVhZF9pZCI6InBpLW5vbnRlcm1pbmFsLXRoaW5raW5nLWNvbnRyb2wiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcGktbm8tdGV4dC1sb2dzL3BpLW5vbnRlcm1pbmFsLXRoaW5raW5nLWNvbnRyb2wuanNvbmwiLCJwb3MiOjQ0OX0.MkpXeNZxN1W7-BG69r9Va9fFcTkM-OX95d7D9HkNr-E",
+    "log_path": "/home/tester/.local/share/codoxear/pi-no-text-logs/pi-nonterminal-thinking-control.jsonl",
+    "queue_len": 0,
+    "thread_id": "pi-nonterminal-thinking-control",
+    "token": null,
+    "transcript_state": "bound"
+  },
+  "status": 200
+}

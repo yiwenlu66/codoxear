@@ -1,0 +1,27 @@
+HOME=/home/tester
+APP_DIR=/home/tester/.local/share/codoxear
+d /home/tester/.local/share/codoxear
+d /home/tester/.local/share/codoxear/audio
+d /home/tester/.local/share/codoxear/audio/segments
+d /home/tester/.local/share/codoxear/pi-no-text-logs
+d /home/tester/.local/share/codoxear/socks
+d /home/tester/.local/share/codoxear/uploads
+f /home/tester/.local/share/codoxear/audio/live.m3u8
+f /home/tester/.local/share/codoxear/hmac_secret
+f /home/tester/.local/share/codoxear/pi-no-text-logs/pi-no-text-end-turn-empty.jsonl
+f /home/tester/.local/share/codoxear/pi-no-text-logs/pi-no-text-stop-empty.jsonl
+f /home/tester/.local/share/codoxear/pi-no-text-logs/pi-no-text-stop-thinking.jsonl
+f /home/tester/.local/share/codoxear/pi-no-text-logs/pi-nonterminal-thinking-control.jsonl
+f /home/tester/.local/share/codoxear/pi-no-text-logs/pi-tool-use-control.jsonl
+f /home/tester/.local/share/codoxear/recent_cwds.json
+f /home/tester/.local/share/codoxear/socks/pi-no-text-end-turn-empty.json
+f /home/tester/.local/share/codoxear/socks/pi-no-text-stop-empty.json
+f /home/tester/.local/share/codoxear/socks/pi-no-text-stop-thinking.json
+f /home/tester/.local/share/codoxear/socks/pi-nonterminal-thinking-control.json
+f /home/tester/.local/share/codoxear/socks/pi-tool-use-control.json
+f /home/tester/.local/share/codoxear/webpush_vapid_private.pem
+s /home/tester/.local/share/codoxear/socks/pi-no-text-end-turn-empty.sock
+s /home/tester/.local/share/codoxear/socks/pi-no-text-stop-empty.sock
+s /home/tester/.local/share/codoxear/socks/pi-no-text-stop-thinking.sock
+s /home/tester/.local/share/codoxear/socks/pi-nonterminal-thinking-control.sock
+s /home/tester/.local/share/codoxear/socks/pi-tool-use-control.sock

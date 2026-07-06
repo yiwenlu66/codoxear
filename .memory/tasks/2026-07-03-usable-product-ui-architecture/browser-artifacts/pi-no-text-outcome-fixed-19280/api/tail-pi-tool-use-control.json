@@ -1,0 +1,22 @@
+{
+  "body": {
+    "busy": true,
+    "events": [
+      {
+        "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InBpLXRvb2wtdXNlLWNvbnRyb2wiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcGktbm8tdGV4dC1sb2dzL3BpLXRvb2wtdXNlLWNvbnRyb2wuanNvbmwiLCJwb3MiOjEwN30.tXTo9NbhwqrKzRQcAB5Nbu68pSS9OLw3Uo6jYpamMw4",
+        "role": "user",
+        "text": "hello pi tool use control",
+        "ts": 1.0
+      }
+    ],
+    "has_older": false,
+    "history_cursor": null,
+    "live_cursor": "eyJ2IjoxLCJraW5kIjoibGl2ZSIsInRocmVhZF9pZCI6InBpLXRvb2wtdXNlLWNvbnRyb2wiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcGktbm8tdGV4dC1sb2dzL3BpLXRvb2wtdXNlLWNvbnRyb2wuanNvbmwiLCJwb3MiOjQ4M30.elkH24nZs_f_z68SWwVszUf1Xk_WGDAxmpgLbqujnBc",
+    "log_path": "/home/tester/.local/share/codoxear/pi-no-text-logs/pi-tool-use-control.jsonl",
+    "queue_len": 0,
+    "thread_id": "pi-tool-use-control",
+    "token": null,
+    "transcript_state": "bound"
+  },
+  "status": 200
+}
