@@ -652,3 +652,11 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
 - Docker/API proof ran on port 19234 with real `codoxear.server`, fake sockets, and real JSONL logs; artifacts preserved in `browser-artifacts/final-blockers-fixed-19234/`.
 - Proof details: `/api/sessions` listed `fresh-interrupt` with `busy:false` on fresh discovery while fake broker reported `interrupted_idle:true`; `/messages/tail` for `cc-live` returned a user row and live cursor, and `/messages/live` after appending CC `system/turn_duration` returned assistant `message_class:error` no-response text.
 - Boundary: this final proof is API-level route evidence; DOM rendering of assistant error rows was already proven in `cc-outcomes-19210`.
+
+
+## 2026-07-06T05:34:03Z Final clean-room acceptance for HEAD 415e46f
+- Clean-room critic `46181ecc-1b89-42eb-94d4-3cea3ce52c2c` returned PASS on HEAD `415e46f`, with no blocker-grade contradiction.
+- Main validation immediately before review: full local `python3 -m pytest -q` -> 1719 passed, 132 subtests; Docker sandbox test on port 19235 -> 1718 passed, 1 skipped, 132 subtests; Docker smoke on port 19235 -> `/api/me` 401 before login, `/api/sessions` 200 after login, app dir `/home/tester/.local/share/codoxear`.
+- Critic focused validation: `PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q -p no:cacheprovider tests/test_message_routes.py tests/test_stale_interrupted_idle.py tests/test_cc_no_response_projection.py tests/test_cc_backend_error_projection.py tests/test_mobile_toast_source.py` -> 61 passed.
+- Acceptance report preserved in `browser-artifacts/final-cleanroom-pass-46181ecc/`.
+- Residual boundaries recorded by critic: final split-live proof is API-level but DOM error rendering is already covered; deterministic fake CC logs do not claim real Claude inference parity; mobile dpad proof certifies CSS/layout with force-shown toolbar, not Monaco activation.
