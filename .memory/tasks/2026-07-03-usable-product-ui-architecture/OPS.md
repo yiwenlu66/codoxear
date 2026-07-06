@@ -693,3 +693,11 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
 - Phase 2 core discriminator: appended post-interrupt `event_msg/user_message` to the same log (log size 351 -> 465). Five repeated `/api/sessions` polls all listed `busy:true` while direct broker socket state still returned `interrupted_idle:true`; browser sidebar showed `stateDot busy` / blue and remained busy on repoll.
 - Optional phase 3: broker false cleared suppression; a later fresh interrupt re-armed idle override, and later post-baseline activity suppressed it again.
 - Validation reported by executor: targeted tests `python3 -m pytest -q tests/test_stale_interrupted_idle.py tests/test_sessions_pending_log_idle.py tests/test_session_discovery.py` -> `58 passed, 4 subtests passed`; container stopped via exact sandbox stop. Raw poll captures were normalized into valid JSON with `.raw.txt` originals preserved because the harness embedded broker JSON strings without escaping.
+
+
+## 2026-07-06T07:16:59Z Clean-room acceptance for log-only stale interrupted-idle proof
+- Fresh critic `ce77e902-0e96-4364-a21c-3699e45b8ace` reviewed committed proof `3f0a886` and returned ACCEPT/no blockers.
+- Review finding: `drive.sh` and `unified_stale_broker.py` exercise a real Docker Codoxear server and real `/api/sessions`; phase 2 establishes log growth 351 -> 465, broker stale `interrupted_idle:true`, five listing polls `busy:true`, and browser sidebar idle->busy with stable repoll.
+- Accepted artifact handling: raw `.raw.txt` poll captures were invalid JSON because embedded broker JSON was unescaped, but normalized `.json` files preserve the same values and are machine-checkable.
+- Boundaries: proof closes `/api/sessions` + sidebar busy projection for this stale-true mechanism; it does not claim every downstream busy-derived affordance or real-provider interrupt path.
+- Acceptance artifact preserved as `browser-artifacts/log-only-stale-interrupted-idle-19250/cleanroom-acceptance.md`.

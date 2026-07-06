@@ -82,3 +82,10 @@ Targeted tests: **58 passed, 4 subtests passed** (0.60 s).
 ## Artifact normalization note
 
 `phase2-polls.raw.txt`, `phase3a-polls.raw.txt`, and `phase3b-polls.raw.txt` preserve the original shell-produced one-line captures. Those captures embedded broker JSON strings without escaping, so the committed `*.json` files were normalized to equivalent valid JSON objects for machine readability. The normalized values match the raw captures and the report: phase 2 has five `busy:true` polls while broker state remains `interrupted_idle:true`; phase 3a has broker `interrupted_idle:false`; phase 3b has re-arm `busy:false` then two post-arm `busy:true` polls while broker returns stale true.
+
+
+## Clean-room acceptance
+
+Fresh critic `ce77e902-0e96-4364-a21c-3699e45b8ace` returned ACCEPT with no blockers. The critic confirmed the evidence proves the named log-only stale `interrupted_idle` boundary through a real Docker Codoxear server and real `/api/sessions`, with the fake broker limited to the necessary experimental condition. It also accepted the raw-to-normalized JSON artifact handling.
+
+Boundaries preserved by the critic: browser replay is less self-contained than the API proof, but the API phase contains the decisive broker/log/poll evidence; the proof closes `/api/sessions` plus sidebar busy projection for this boundary, not every busy-derived affordance or provider-real interrupt behavior.
