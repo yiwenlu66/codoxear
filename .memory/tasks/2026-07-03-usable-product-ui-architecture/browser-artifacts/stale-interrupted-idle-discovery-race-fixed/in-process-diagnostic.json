@@ -1,0 +1,18 @@
+{
+  "compute_idle_pre_append": {
+    "log_size": 476,
+    "idle": true
+  },
+  "condition_A_update_only": {
+    "scenario": "update_meta_counters ALONE (baseline captured before append, no prune re-baseline)",
+    "interrupted_idle_after": false,
+    "log_idle_after": false
+  },
+  "condition_B_prune_then_update": {
+    "scenario": "real listing order: prune re-baselines to CURRENT log size, THEN update_meta_counters",
+    "interrupted_idle_after": true,
+    "log_idle_after": false,
+    "meta_log_off_after": 568,
+    "interrupted_idle_log_off": 568
+  }
+}
