@@ -487,11 +487,54 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["afterAppend"]["logPath"], "/session.jsonl")
         self.assertEqual([ev["text"] for ev in out["afterAppend"]["events"]], ["three", "four"])
         self.assertEqual(out["afterAppend"]["queueLen"], 2)
+        self.assertEqual(out["afterAppend"]["historyCursor"], "h1")
+        self.assertTrue(out["afterAppend"]["hasOlder"])
         self.assertTrue(out["afterAppend"]["busy"])
         self.assertTrue(out["deleted"])
         self.assertEqual(out["key"], "thread\n/log")
         self.assertEqual(out["failedState"], "failed")
         self.assertTrue(out["frozen"])
+
+    def test_recovered_failed_tail_can_page_when_history_cursor_exists(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const ctx = {{ window: {{}} }};
+            const vm = require("vm");
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            const tx = ctx.window.CodoxearTranscript;
+            const recoveredTopLevel = {{ transcript_state: "failed", has_older: true, history_cursor: "top-cursor", events: [] }};
+            const recoveredEventCursor = {{ transcript_state: "failed", has_older: true, events: [{{ role: "assistant", text: "backend stopped", history_cursor: "row-cursor" }}] }};
+            const preLogFailed = {{ transcript_state: "failed", has_older: true, events: [{{ role: "assistant", text: "launch failed" }}] }};
+            const noOlder = {{ transcript_state: "failed", has_older: false, history_cursor: "top-cursor", events: [] }};
+            process.stdout.write(JSON.stringify({{
+              topCursor: tx.historyCursorFromPayload(recoveredTopLevel),
+              eventCursor: tx.historyCursorFromPayload(recoveredEventCursor),
+              topUsable: tx.hasUsableOlderHistory(recoveredTopLevel),
+              eventUsable: tx.hasUsableOlderHistory(recoveredEventCursor),
+              preLogUsable: tx.hasUsableOlderHistory(preLogFailed),
+              noOlderUsable: tx.hasUsableOlderHistory(noOlder),
+              frozen: Object.isFrozen(tx),
+            }}));
+            """
+        )
+        out = _run_node(js)
+
+        self.assertEqual(out["topCursor"], "top-cursor")
+        self.assertEqual(out["eventCursor"], "row-cursor")
+        self.assertTrue(out["topUsable"])
+        self.assertTrue(out["eventUsable"])
+        self.assertFalse(out["preLogUsable"])
+        self.assertFalse(out["noOlderUsable"])
+        self.assertTrue(out["frozen"])
+
+    def test_app_runtime_uses_cursor_not_bound_state_for_older_affordance(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        block = _source_between("function applySessionRuntimeFromTail(sessionId, data) {", "function renderSessionTail(events)")
+        self.assertIn("activeTailHistoryCursor = usableOlderHistoryCursor(data);", block)
+        self.assertIn("setOlderState({ hasMore: Boolean(activeTailHistoryCursor), isLoading: false });", block)
+        self.assertNotIn("slot.state === \"bound\" && Boolean(data && data.has_older)", block)
 
     def test_transcript_renewal_ignores_old_bound_identity_until_new_log_arrives(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
@@ -1025,6 +1068,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               encodeURIComponent,
               olderPageLimit: () => 60,
               oldestRenderedHistoryCursor: () => "cursor-oldest-row",
+              usableOlderHistoryCursor: (data) => (data && data.has_older ? (data.history_cursor || (Array.isArray(data.events) && data.events.find((ev) => ev && ev.history_cursor)?.history_cursor) || null) : null),
               setOlderState: (state) => {{ ctx.lastOlderState = state; ctx.hasOlder = Boolean(state.hasMore); ctx.loadingOlder = Boolean(state.isLoading); }},
               clearOlderLoadError: () => {{ ctx.clearedOlderError = true; }},
               showOlderLoadError: () => {{ ctx.showedOlderError = true; }},
@@ -1094,6 +1138,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               encodeURIComponent,
               olderPageLimit: () => 60,
               oldestRenderedHistoryCursor: () => "cursor-oldest-row",
+              usableOlderHistoryCursor: (data) => (data && data.has_older ? (data.history_cursor || (Array.isArray(data.events) && data.events.find((ev) => ev && ev.history_cursor)?.history_cursor) || null) : null),
               setOlderState: (state) => {{ ctx.lastOlderState = state; ctx.hasOlder = Boolean(state.hasMore); ctx.loadingOlder = Boolean(state.isLoading); }},
               clearOlderLoadError: () => {{ ctx.clearedOlderError = true; }},
               showOlderLoadError: () => {{ ctx.showedOlderError = true; }},
@@ -1160,6 +1205,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               encodeURIComponent,
               olderPageLimit: () => 60,
               oldestRenderedHistoryCursor: () => "cursor-oldest-row",
+              usableOlderHistoryCursor: (data) => (data && data.has_older ? (data.history_cursor || (Array.isArray(data.events) && data.events.find((ev) => ev && ev.history_cursor)?.history_cursor) || null) : null),
               setOlderState: (state) => {{ ctx.lastOlderState = state; ctx.hasOlder = Boolean(state.hasMore); ctx.loadingOlder = Boolean(state.isLoading); }},
               clearOlderLoadError: () => {{ ctx.clearedOlderError = true; }},
               showOlderLoadError: () => {{ ctx.showedOlderError = true; }},
@@ -1227,6 +1273,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               encodeURIComponent,
               olderPageLimit: () => 60,
               oldestRenderedHistoryCursor: () => "cursor-oldest-row",
+              usableOlderHistoryCursor: (data) => (data && data.has_older ? (data.history_cursor || (Array.isArray(data.events) && data.events.find((ev) => ev && ev.history_cursor)?.history_cursor) || null) : null),
               setOlderState: (state) => {{ ctx.lastOlderState = state; ctx.hasOlder = Boolean(state.hasMore); ctx.loadingOlder = Boolean(state.isLoading); }},
               clearOlderLoadError: () => {{ ctx.clearedOlderError = true; }},
               showOlderLoadError: () => {{ ctx.showedOlderError = true; }},

@@ -245,7 +245,7 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
         self.assertIn("return messageCopyNavigationRuntime.jumpTarget(rows, direction, threshold);", source)
         self.assertIn("codoxearMessageRows.clearChatSearchMarks(renderedMessageRows());", source)
         self.assertIn("codoxearMessageRows.applyChatSearchMarks(matches, currentRow);", source)
-        self.assertIn("return codoxearMessageRows.oldestRenderedHistoryCursor(renderedMessageRows());", source)
+        self.assertIn("return codoxearMessageRows.oldestRenderedHistoryCursor(renderedMessageRows()) || activeTailHistoryCursor;", source)
         self.assertIn("return codoxearMessageRows.firstVisibleMessageRow(renderedMessageRows(), chat.scrollTop + 1);", source)
         self.assertIn("trimRenderedRowTargets: codoxearMessageRows.trimRenderedRowTargets,", source)
         self.assertIn("trimRowsBeforeViewportTargets: codoxearMessageRows.trimRowsBeforeViewportTargets,", source)

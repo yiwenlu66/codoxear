@@ -25,6 +25,19 @@
     return `${threadId}\n${logPath}`;
   }
 
+  function historyCursorFromPayload(data) {
+    if (!data || typeof data !== "object") return null;
+    if (typeof data.history_cursor === "string" && data.history_cursor) return data.history_cursor;
+    for (const ev of Array.isArray(data.events) ? data.events : []) {
+      if (typeof ev?.history_cursor === "string" && ev.history_cursor) return ev.history_cursor;
+    }
+    return null;
+  }
+
+  function hasUsableOlderHistory(data) {
+    return Boolean(data && data.has_older && historyCursorFromPayload(data));
+  }
+
   function transcriptSnapshotFromData(data) {
     const state = normalizeTranscriptState(data);
     const threadId = state === "bound" && typeof data?.thread_id === "string" && data.thread_id ? data.thread_id : null;
@@ -82,7 +95,8 @@
       threadId: identity.threadId,
       logPath: identity.logPath,
       liveCursor: typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null,
-      hasOlder: Boolean(data.has_older),
+      historyCursor: historyCursorFromPayload(data),
+      hasOlder: hasUsableOlderHistory(data),
       busy: Boolean(data.busy),
       queueLen: Number.isFinite(Number(data.queue_len)) ? Number(data.queue_len) : 0,
       token: data.token || null,
@@ -107,7 +121,8 @@
       threadId: identity.threadId,
       logPath: identity.logPath,
       liveCursor: typeof nextLiveCursor === "string" && nextLiveCursor ? nextLiveCursor : current ? current.liveCursor : null,
-      hasOlder: current ? Boolean(current.hasOlder) : false,
+      historyCursor: current ? current.historyCursor || null : null,
+      hasOlder: current ? Boolean(current.hasOlder && current.historyCursor) : false,
       busy: typeof busy === "boolean" ? busy : current ? Boolean(current.busy) : false,
       queueLen: Number.isFinite(Number(queueLen)) ? Number(queueLen) : current ? Number(current.queueLen || 0) : 0,
       token: token !== undefined ? token : current ? current.token : null,
@@ -1244,6 +1259,8 @@
     normalizeTailEvent,
     normalizeTranscriptState,
     transcriptKey,
+    historyCursorFromPayload,
+    hasUsableOlderHistory,
     transcriptSnapshotFromData,
     transcriptIdentityFromData,
     tailCacheMatchesSession,

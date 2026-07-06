@@ -2327,11 +2327,18 @@
         // controller (codoxear/static/app_chat_navigation.js), wired via
         // chatNavigationController above.
 
+        let activeTailHistoryCursor = null;
+
+        function usableOlderHistoryCursor(data) {
+          return codoxearTranscript.hasUsableOlderHistory(data) ? codoxearTranscript.historyCursorFromPayload(data) : null;
+        }
+
         function oldestRenderedHistoryCursor() {
-          return codoxearMessageRows.oldestRenderedHistoryCursor(renderedMessageRows());
+          return codoxearMessageRows.oldestRenderedHistoryCursor(renderedMessageRows()) || activeTailHistoryCursor;
         }
 
         function clearRenderedTranscriptRange() {
+          activeTailHistoryCursor = null;
           setOlderState({ hasMore: false, isLoading: false });
           transcriptScrollRuntime.markLiveTail();
         }
@@ -2351,6 +2358,8 @@
           typeof codoxearTranscript.normalizeTranscriptState !== "function" ||
           typeof codoxearTranscript.normalizedTranscriptEvents !== "function" ||
           typeof codoxearTranscript.transcriptKey !== "function" ||
+          typeof codoxearTranscript.historyCursorFromPayload !== "function" ||
+          typeof codoxearTranscript.hasUsableOlderHistory !== "function" ||
           typeof codoxearTranscript.transcriptSnapshotFromData !== "function" ||
           typeof codoxearTranscript.transcriptIdentityFromData !== "function" ||
           typeof codoxearTranscript.tailCacheMatchesSession !== "function" ||
@@ -3285,7 +3294,8 @@
             });
             if (selected !== sid || pollGen !== gen || !olderLoadRuntime.isCurrent(load)) return false;
             const evs = Array.isArray(data.events) ? data.events : [];
-            const nextHasOlder = Boolean(data.has_older);
+            activeTailHistoryCursor = usableOlderHistoryCursor(data);
+            const nextHasOlder = Boolean(activeTailHistoryCursor);
             clearOlderLoadError();
             setOlderState({ hasMore: nextHasOlder, isLoading: false });
             if (evs.length) {
@@ -3326,7 +3336,8 @@
         function applySessionRuntimeFromTail(sessionId, data) {
           const slot = syncActiveTranscriptSlot(sessionId);
           transcriptSlotRuntime.setLiveCursor(slot.state === "bound" && typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null);
-          setOlderState({ hasMore: slot.state === "bound" && Boolean(data && data.has_older), isLoading: false });
+          activeTailHistoryCursor = usableOlderHistoryCursor(data);
+          setOlderState({ hasMore: Boolean(activeTailHistoryCursor), isLoading: false });
           const nowBusy = Boolean(data && data.busy);
           turnOpen = nowBusy;
           const queueLen = data && Number.isFinite(Number(data.queue_len)) ? Number(data.queue_len) : 0;
@@ -3489,6 +3500,7 @@
 
         function renderPendingTranscriptSlot(sessionId) {
           clearTranscriptDom();
+          activeTailHistoryCursor = null;
           setOlderState({ hasMore: false, isLoading: false });
           transcriptScrollRuntime.markLiveTail();
           restorePendingUserRowsForSession(sessionId);
@@ -3499,6 +3511,7 @@
 
         function renderTranscriptLoading(sessionId) {
           clearTranscriptDom();
+          activeTailHistoryCursor = null;
           setOlderState({ hasMore: false, isLoading: false });
           transcriptScrollRuntime.markLiveTail();
           restorePendingUserRowsForSession(sessionId);
@@ -3513,6 +3526,7 @@
           for (const row of Array.from(chatInner.querySelectorAll(".transcript-error-row"))) row.remove();
           if (!preserveTranscript) {
             clearTranscriptDom();
+            activeTailHistoryCursor = null;
             setOlderState({ hasMore: false, isLoading: false });
             transcriptScrollRuntime.markLiveTail();
             restorePendingUserRowsForSession(sessionId);
@@ -3553,7 +3567,8 @@
           });
           syncActiveTranscriptSlot(sessionId);
           transcriptSlotRuntime.setLiveCursor(cache.liveCursor || null);
-          setOlderState({ hasMore: Boolean(cache.hasOlder), isLoading: false });
+          activeTailHistoryCursor = typeof cache.historyCursor === "string" && cache.historyCursor ? cache.historyCursor : null;
+          setOlderState({ hasMore: Boolean(cache.hasOlder && activeTailHistoryCursor), isLoading: false });
           renderSessionTail(cache.events);
           const metaBusy = Boolean(sessionMeta && sessionMeta.busy);
           const cachedBusy = Boolean(cache.busy) || metaBusy;

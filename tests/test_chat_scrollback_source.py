@@ -620,7 +620,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         start = source.index("function oldestRenderedHistoryCursor() {")
         end = source.index("function clearRenderedTranscriptRange()", start)
         block = source[start:end]
-        self.assertIn("return codoxearMessageRows.oldestRenderedHistoryCursor(renderedMessageRows());", block)
+        self.assertIn("return codoxearMessageRows.oldestRenderedHistoryCursor(renderedMessageRows()) || activeTailHistoryCursor;", block)
         self.assertIn("function oldestRenderedHistoryCursor(rows)", row_source)
         self.assertIn("row.dataset.historyCursor", row_source)
         self.assertIn("return cursor;", row_source)
