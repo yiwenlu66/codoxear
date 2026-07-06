@@ -1,0 +1,76 @@
+{
+  "port": 19357,
+  "container": "codoxear-capture-19357",
+  "ready": {
+    "attachTitle": "Attach file (max 16.0 MB)",
+    "captureAccept": "image/*",
+    "captureAttr": "environment",
+    "captureDisabled": false,
+    "captureTitle": "Capture photo (max 16.0 MB)",
+    "hasCaptureBtn": true,
+    "href": "http://127.0.0.1:19357/#session=capture-proof",
+    "selectedText": "",
+    "title": "Codoxear"
+  },
+  "after_capture": {
+    "afterText": "",
+    "api": {
+      "attachments": [
+        {
+          "created_ts": 1783381957.8949804,
+          "display_name": "captured-1783381957888.jpg",
+          "filename": "1783381957894_captured-1783381957888.jpg",
+          "id": "0d261ce515a54fec91092774fd8f333a",
+          "path": "/home/tester/.local/share/codoxear/uploads/capture-proof/1783381957894_captured-1783381957888.jpg",
+          "size": 14
+        }
+      ],
+      "ok": true,
+      "pending_attachment": true
+    },
+    "badge": "1",
+    "beforeText": "",
+    "chipTexts": [
+      "captured-1783381957888.jpg14 B \u00b7 0d261ce5\u00d7"
+    ],
+    "toast": "file staged"
+  },
+  "calls_after_capture": {
+    "count": 891,
+    "commands": {
+      "state": 891
+    },
+    "send_count": 0,
+    "keys_count": 0,
+    "sends": [],
+    "keys": []
+  },
+  "after_send": {
+    "api": {
+      "attachments": [],
+      "ok": true,
+      "pending_attachment": false
+    },
+    "badge": "",
+    "chips": [],
+    "textarea": "",
+    "toast": "sent"
+  },
+  "calls_after_send": {
+    "count": 1015,
+    "commands": {
+      "state": 1014,
+      "send": 1
+    },
+    "send_count": 1,
+    "keys_count": 0,
+    "sends": [
+      {
+        "cmd": "send",
+        "text": "Attachment 1: /home/tester/.local/share/codoxear/uploads/capture-proof/1783381957894_captured-1783381957888.jpg\nplease process captured photo",
+        "sync": true
+      }
+    ],
+    "keys": []
+  }
+}

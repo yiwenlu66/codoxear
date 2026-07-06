@@ -1,0 +1,4 @@
+warning: session discovery: ignoring invalid session metadata in /home/tester/capture-proof-logs/capture-proof.jsonl: ValueError: missing session metadata in /home/tester/capture-proof-logs/capture-proof.jsonl
+warning: main-thread coercion: ignoring invalid session metadata in /home/tester/capture-proof-logs/capture-proof.jsonl: ValueError: missing session metadata in /home/tester/capture-proof-logs/capture-proof.jsonl
+warning: run settings: ignoring invalid session metadata in /home/tester/capture-proof-logs/capture-proof.jsonl: ValueError: missing session metadata in /home/tester/capture-proof-logs/capture-proof.jsonl
+warning: session refresh: ignoring invalid session metadata in /home/tester/capture-proof-logs/capture-proof.jsonl: ValueError: missing session metadata in /home/tester/capture-proof-logs/capture-proof.jsonl
