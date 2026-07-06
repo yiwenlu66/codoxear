@@ -1,0 +1,30 @@
+{
+  "body": {
+    "busy": false,
+    "events": [
+      {
+        "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InBpLXN0b3AtdGV4dC1jb250cm9sIiwibG9nX3BhdGgiOiIvaG9tZS90ZXN0ZXIvLmxvY2FsL3NoYXJlL2NvZG94ZWFyL3BpLWxlbmd0aC10ZXh0LWZpeGVkLWxvZ3MvcGktc3RvcC10ZXh0LWNvbnRyb2wuanNvbmwiLCJwb3MiOjEwOH0.aAnA0PUyTGzqoJcLBchuXbh-wZMnRqijHBrKB0hPF6I",
+        "role": "user",
+        "text": "hello pi stop text control",
+        "ts": 1.0
+      },
+      {
+        "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InBpLXN0b3AtdGV4dC1jb250cm9sIiwibG9nX3BhdGgiOiIvaG9tZS90ZXN0ZXIvLmxvY2FsL3NoYXJlL2NvZG94ZWFyL3BpLWxlbmd0aC10ZXh0LWZpeGVkLWxvZ3MvcGktc3RvcC10ZXh0LWNvbnRyb2wuanNvbmwiLCJwb3MiOjI3NH0.9cidkeg9HWsAAT1l44RX5Rl8E4nI4q7OEU88r-0cLno",
+        "message_class": "final_response",
+        "message_id": "51ea856edf34d87ff10c27e616f01ef46a9be8aaccd579ad9f1c70dd1c863efd",
+        "role": "assistant",
+        "text": "final answer",
+        "ts": 2.0
+      }
+    ],
+    "has_older": false,
+    "history_cursor": null,
+    "live_cursor": "eyJ2IjoxLCJraW5kIjoibGl2ZSIsInRocmVhZF9pZCI6InBpLXN0b3AtdGV4dC1jb250cm9sIiwibG9nX3BhdGgiOiIvaG9tZS90ZXN0ZXIvLmxvY2FsL3NoYXJlL2NvZG94ZWFyL3BpLWxlbmd0aC10ZXh0LWZpeGVkLWxvZ3MvcGktc3RvcC10ZXh0LWNvbnRyb2wuanNvbmwiLCJwb3MiOjQ1M30.uwXlTmY4Bn1rzcv5AkvA56POiZqssNVR4oQZaSvJqTU",
+    "log_path": "/home/tester/.local/share/codoxear/pi-length-text-fixed-logs/pi-stop-text-control.jsonl",
+    "queue_len": 0,
+    "thread_id": "pi-stop-text-control",
+    "token": null,
+    "transcript_state": "bound"
+  },
+  "status": 200
+}

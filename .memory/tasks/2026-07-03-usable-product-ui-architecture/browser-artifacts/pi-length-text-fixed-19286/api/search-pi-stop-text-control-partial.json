@@ -1,0 +1,12 @@
+{
+  "body": {
+    "log_path": "/home/tester/.local/share/codoxear/pi-length-text-fixed-logs/pi-stop-text-control.jsonl",
+    "match_count": 0,
+    "match_count_truncated": false,
+    "matches": [],
+    "query": "partial before compaction",
+    "thread_id": "pi-stop-text-control",
+    "transcript_state": "bound"
+  },
+  "status": 200
+}

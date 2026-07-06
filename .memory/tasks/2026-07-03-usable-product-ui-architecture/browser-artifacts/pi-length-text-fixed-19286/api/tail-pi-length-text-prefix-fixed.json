@@ -1,0 +1,30 @@
+{
+  "body": {
+    "busy": true,
+    "events": [
+      {
+        "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InBpLWxlbmd0aC10ZXh0LXByZWZpeC1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9waS1sZW5ndGgtdGV4dC1maXhlZC1sb2dzL3BpLWxlbmd0aC10ZXh0LXByZWZpeC1maXhlZC5qc29ubCIsInBvcyI6MTE1fQ.E6p9IlIW39UsFhNBJIg8srda09y7uD20FcAaPjdmyF8",
+        "role": "user",
+        "text": "hello pi length text prefix",
+        "ts": 1.0
+      },
+      {
+        "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InBpLWxlbmd0aC10ZXh0LXByZWZpeC1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9waS1sZW5ndGgtdGV4dC1maXhlZC1sb2dzL3BpLWxlbmd0aC10ZXh0LXByZWZpeC1maXhlZC5qc29ubCIsInBvcyI6MjgyfQ.mMWusD98CDslDfqPq4Wx5VJXJFTPA2U3kFbiND9OgfQ",
+        "message_class": "narration",
+        "message_id": "f7d0ead7511691253c0a729c5e357b89b3977ff01033f2cc37fa6bf5b1e0ebb5",
+        "role": "assistant",
+        "text": "partial before compaction",
+        "ts": 2.0
+      }
+    ],
+    "has_older": false,
+    "history_cursor": null,
+    "live_cursor": "eyJ2IjoxLCJraW5kIjoibGl2ZSIsInRocmVhZF9pZCI6InBpLWxlbmd0aC10ZXh0LXByZWZpeC1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9waS1sZW5ndGgtdGV4dC1maXhlZC1sb2dzL3BpLWxlbmd0aC10ZXh0LXByZWZpeC1maXhlZC5qc29ubCIsInBvcyI6NDc2fQ.tEHkLB1AWDpRAN4z9SS66LE36vuW3Y4lzGrzpEpphPA",
+    "log_path": "/home/tester/.local/share/codoxear/pi-length-text-fixed-logs/pi-length-text-prefix-fixed.jsonl",
+    "queue_len": 0,
+    "thread_id": "pi-length-text-prefix-fixed",
+    "token": null,
+    "transcript_state": "bound"
+  },
+  "status": 200
+}

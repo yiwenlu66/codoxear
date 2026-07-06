@@ -1,0 +1,21 @@
+HOME=/home/tester
+APP_DIR=/home/tester/.local/share/codoxear
+d /home/tester/.local/share/codoxear
+d /home/tester/.local/share/codoxear/audio
+d /home/tester/.local/share/codoxear/audio/segments
+d /home/tester/.local/share/codoxear/pi-length-text-fixed-logs
+d /home/tester/.local/share/codoxear/socks
+d /home/tester/.local/share/codoxear/uploads
+f /home/tester/.local/share/codoxear/audio/live.m3u8
+f /home/tester/.local/share/codoxear/hmac_secret
+f /home/tester/.local/share/codoxear/pi-length-text-fixed-logs/pi-length-text-continuation-fixed.jsonl
+f /home/tester/.local/share/codoxear/pi-length-text-fixed-logs/pi-length-text-prefix-fixed.jsonl
+f /home/tester/.local/share/codoxear/pi-length-text-fixed-logs/pi-stop-text-control.jsonl
+f /home/tester/.local/share/codoxear/recent_cwds.json
+f /home/tester/.local/share/codoxear/socks/pi-length-text-continuation-fixed.json
+f /home/tester/.local/share/codoxear/socks/pi-length-text-prefix-fixed.json
+f /home/tester/.local/share/codoxear/socks/pi-stop-text-control.json
+f /home/tester/.local/share/codoxear/webpush_vapid_private.pem
+s /home/tester/.local/share/codoxear/socks/pi-length-text-continuation-fixed.sock
+s /home/tester/.local/share/codoxear/socks/pi-length-text-prefix-fixed.sock
+s /home/tester/.local/share/codoxear/socks/pi-stop-text-control.sock

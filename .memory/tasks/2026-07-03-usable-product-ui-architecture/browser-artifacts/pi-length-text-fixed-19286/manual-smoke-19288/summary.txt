@@ -1,0 +1,4 @@
+pre_login_api_me_status=401
+post_login_sessions_status=200
+container_app_dir=/home/tester/.local/share/codoxear
+manual_smoke_passed
