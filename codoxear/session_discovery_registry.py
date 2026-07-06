@@ -7,6 +7,7 @@ import sys
 
 from .session_discovery import DiscoveryRegistration, DiscoveryResult
 from .session_model import Session
+from .session_runtime import set_session_interrupted_idle
 
 
 @dataclass(frozen=True)
@@ -112,16 +113,18 @@ class SessionDiscoveryRegistryCoordinator:
                 previous.cwd = session.cwd
                 previous.busy = session.busy
                 previous.queue_len = session.queue_len
-                # Preserve the interrupted-idle log baseline when refreshing an
-                # already-tracked session; ``meta_log_off`` is the log size
-                # captured at discovery, matching the baseline semantics.
-                if registration.interrupted_idle:
-                    previous.interrupted_idle = True
-                    previous.interrupted_idle_log_off = registration.meta_log_off
-                else:
-                    previous.interrupted_idle = False
-                    previous.interrupted_idle_log_off = 0
-                    previous.interrupted_idle_suppressed = False
+                # Route the interrupted-idle flag through the same
+                # baseline/suppression helper the broker and prune paths use.
+                # Direct assignment of ``interrupted_idle_log_off`` to
+                # ``registration.meta_log_off`` would re-baseline the override
+                # to the current log size, moving it past any post-interrupt
+                # resumed activity that arrived before this discovery refresh;
+                # the log watcher would then skip that activity as pre-baseline
+                # and never clear the stale override. The helper preserves an
+                # existing baseline, records a fresh one only for a genuinely
+                # new interrupt, respects stale-true suppression, and clears
+                # suppression when the broker reports false.
+                set_session_interrupted_idle(previous, registration.interrupted_idle)
                 previous.token = session.token
                 if previous.log_path != session.log_path:
                     previous.log_path = session.log_path

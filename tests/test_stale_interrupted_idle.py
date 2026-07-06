@@ -24,11 +24,14 @@ from tempfile import TemporaryDirectory
 
 from codoxear.rollout_idle import _analyze_log_chunk
 from codoxear.rollout_jsonl import _read_jsonl_records_from_offset
+from codoxear.session_discovery import DiscoveryRegistration
+from codoxear.session_discovery_registry import SessionDiscoveryRegistryCoordinator
 from codoxear.session_list import SessionListCoordinator
 from codoxear.session_log_runtime import SessionLogRuntimeCoordinator
 from codoxear.session_model import Session
 from codoxear.session_runtime import ListingRuntimeProbes
 from codoxear.session_runtime import log_path_size_or_none
+from codoxear.session_runtime import reset_session_log_caches
 from codoxear.session_runtime import set_session_interrupted_idle
 from codoxear.session_runtime import suppress_session_interrupted_idle
 from codoxear.session_store import SessionStore
@@ -520,6 +523,199 @@ class TestListingProjectionAfterInvalidation(unittest.TestCase):
             # Immediate interrupt: override preserved -> busy False.
             self.assertIs(out[0]["busy"], False)
             self.assertTrue(s.interrupted_idle)
+
+
+def _discovery_registration(
+    *,
+    session: Session,
+    log_path: Path,
+    interrupted_idle: bool,
+    meta_log_off: int,
+) -> DiscoveryRegistration:
+    """Build a registration that mirrors what discovery captures from a socket."""
+    return DiscoveryRegistration(
+        session_id=session.session_id,
+        thread_id=session.thread_id,
+        broker_pid=session.broker_pid,
+        codex_pid=session.codex_pid,
+        agent_backend=session.agent_backend,
+        owned=session.owned,
+        transport=session.transport,
+        start_ts=session.start_ts,
+        cwd=session.cwd,
+        log_path=log_path,
+        sock_path=session.sock_path,
+        busy=session.busy,
+        queue_len=session.queue_len,
+        token=session.token,
+        meta_log_off=meta_log_off,
+        model_provider=session.model_provider,
+        preferred_auth_method=session.preferred_auth_method,
+        model=session.model,
+        reasoning_effort=session.reasoning_effort,
+        service_tier=session.service_tier,
+        tmux_session=session.tmux_session,
+        tmux_window=session.tmux_window,
+        launch_id=session.launch_id,
+        spawn_nonce=session.spawn_nonce,
+        resume_session_id=session.resume_session_id,
+        sync_send_supported=session.sync_send_supported,
+        key_write_errors_supported=session.key_write_errors_supported,
+        interrupted_idle=interrupted_idle,
+    )
+
+
+def _discovery_registry(
+    *, sessions: dict[str, Session], lock: threading.Lock
+) -> SessionDiscoveryRegistryCoordinator:
+    return SessionDiscoveryRegistryCoordinator(
+        lock=lock,
+        sessions=lambda: sessions,
+        pending_attachment_ids=lambda: set(),
+        commit_unknown_sends=lambda: {},
+        reset_log_caches=lambda session, log_off: reset_session_log_caches(session, meta_log_off=log_off),
+        record_launch_attempt=lambda _record: None,
+        prune_stale_socket_without_metadata=lambda _sid, _sock: None,
+        unhide_session=lambda _sid: None,
+        unlink_quiet=lambda _path: None,
+        remember_recent_cwd=lambda *_a, **_k: False,
+        save_recent_cwds=lambda: None,
+    )
+
+
+class TestDiscoveryRefreshPreservesInterruptBaseline(unittest.TestCase):
+    """Discovery refresh must not re-baseline a stale interrupted-idle override
+    past post-interrupt resumed activity. This is the discovery-first timing the
+    broker/prune fix (R1) did not cover: discovery runs before
+    ``update_meta_counters`` and the broker still reports the old
+    ``interrupted_idle=True``.
+    """
+
+    def _interrupted_turn_log(self, log_path: Path) -> None:
+        log_path.write_text(
+            "".join(
+                json.dumps(o) + "\n"
+                for o in [
+                    {"type": "session_meta", "payload": {"id": "broker-1", "source": "cli"}},
+                    {"type": "event_msg", "payload": {"type": "user_message", "message": "first"}, "ts": 10.0},
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "working"}],
+                        },
+                        "ts": 11.0,
+                    },
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+    def test_discovery_refresh_before_counters_does_not_rebaseline_past_resumed_activity(self) -> None:
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            self._interrupted_turn_log(log_path)
+            s = _make_session(log_path, interrupted_idle=True)
+            baseline_at_interrupt = s.interrupted_idle_log_off
+            self.assertGreater(baseline_at_interrupt, 0)
+            sessions = {"broker-1": s}
+            lock = threading.Lock()
+            log_runtime = _log_runtime(sessions)
+            registry = _discovery_registry(sessions=sessions, lock=lock)
+
+            # Resumed turn starts on the same log while deselected.
+            _append_jsonl(
+                log_path,
+                [{"type": "event_msg", "payload": {"type": "user_message", "message": "second"}, "ts": 20.0}],
+            )
+            size_after_resume = int(log_path.stat().st_size)
+            self.assertGreater(size_after_resume, baseline_at_interrupt)
+
+            # Discovery runs FIRST: broker still reports the stale
+            # interrupted_idle=True, and meta_log_off is the current log size
+            # (past the resumed user_message). upsert_registration must not move
+            # the baseline forward.
+            reg = _discovery_registration(
+                session=s,
+                log_path=log_path,
+                interrupted_idle=True,
+                meta_log_off=size_after_resume,
+            )
+            registry.upsert_registration(reg)
+            self.assertTrue(s.interrupted_idle)
+            # Baseline preserved at the interrupt point, not re-baselined to the
+            # current log size.
+            self.assertEqual(s.interrupted_idle_log_off, baseline_at_interrupt)
+
+            # Now the watcher runs and must observe the post-interrupt activity.
+            log_runtime.update_meta_counters()
+            self.assertFalse(s.interrupted_idle)
+            self.assertEqual(s.interrupted_idle_log_off, 0)
+            self.assertTrue(s.interrupted_idle_suppressed)
+
+            # Listing projection: non-idle log + cleared override -> busy True.
+            coordinator = _list_coordinator(
+                sessions=sessions,
+                tmp_path=Path(td),
+                log_runtime=log_runtime,
+                idle_from_log_path=lambda _sid, _path: False,
+            )
+            out = coordinator.list_sessions()
+            self.assertEqual(len(out), 1)
+            self.assertIs(out[0]["busy"], True)
+
+    def test_discovery_refresh_broker_false_clears_suppression(self) -> None:
+        # When discovery observes the broker has cleared interrupted_idle, the
+        # refresh must clear the stored override AND its suppression so a later
+        # interrupt can record a fresh baseline.
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            self._interrupted_turn_log(log_path)
+            s = _make_session(log_path, interrupted_idle=True)
+            sessions = {"broker-1": s}
+            lock = threading.Lock()
+            registry = _discovery_registry(sessions=sessions, lock=lock)
+
+            # Stale override was already suppressed by the watcher.
+            suppress_session_interrupted_idle(s)
+            self.assertTrue(s.interrupted_idle_suppressed)
+
+            size = int(log_path.stat().st_size)
+            reg = _discovery_registration(
+                session=s,
+                log_path=log_path,
+                interrupted_idle=False,
+                meta_log_off=size,
+            )
+            registry.upsert_registration(reg)
+            self.assertFalse(s.interrupted_idle)
+            self.assertEqual(s.interrupted_idle_log_off, 0)
+            self.assertFalse(s.interrupted_idle_suppressed)
+
+    def test_discovery_refresh_suppressed_stale_true_stays_cleared(self) -> None:
+        # After suppression, a discovery refresh still seeing the stale broker
+        # True must not reactivate the override.
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            self._interrupted_turn_log(log_path)
+            s = _make_session(log_path, interrupted_idle=True)
+            sessions = {"broker-1": s}
+            lock = threading.Lock()
+            registry = _discovery_registry(sessions=sessions, lock=lock)
+
+            suppress_session_interrupted_idle(s)
+            size = int(log_path.stat().st_size)
+            reg = _discovery_registration(
+                session=s,
+                log_path=log_path,
+                interrupted_idle=True,
+                meta_log_off=size,
+            )
+            registry.upsert_registration(reg)
+            self.assertFalse(s.interrupted_idle)
+            self.assertEqual(s.interrupted_idle_log_off, 0)
+            self.assertTrue(s.interrupted_idle_suppressed)
 
 
 if __name__ == "__main__":
