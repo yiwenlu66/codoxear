@@ -1,0 +1,1 @@
+{"success":true,"data":{"origin":"http://127.0.0.1:19317/#session=monaco-proof","result":{"diffEditors":1,"editors":2,"modified":"# Title\nbaseline body one\nbaseline body two changed\nNEW monaco diff line\n","modifiedHasMarker":true,"original":"# Title\nbaseline body one\nbaseline body two\n","originalHasOldLine":true}},"error":null}

@@ -1,0 +1,1 @@
+{"ok": true, "cwd": "/home/tester/monaco-proof-repo", "path": "changed.md", "staged": false, "diff": "diff --git a/changed.md b/changed.md\nindex b09a85e..888e762 100644\n--- a/changed.md\n+++ b/changed.md\n@@ -1,3 +1,4 @@\n # Title\n baseline body one\n-baseline body two\n+baseline body two changed\n+NEW monaco diff line\n"}

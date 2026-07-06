@@ -1,0 +1,11 @@
+{
+  "me_status": "401",
+  "loader_status": "200",
+  "sessions": [
+    "monaco-proof"
+  ],
+  "file_kind": "text",
+  "file_editable": true,
+  "file_text_has_alpha": true,
+  "diff_has_marker": true
+}
