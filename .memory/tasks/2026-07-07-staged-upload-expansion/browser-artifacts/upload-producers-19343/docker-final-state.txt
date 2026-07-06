@@ -1,0 +1,29 @@
+HOME=/home/tester
+APP_DIR=/home/tester/.local/share/codoxear
+total 44
+drwxr-xr-x 5 tester tester 4096 Jul  6 21:19 .
+drwxr-xr-x 3 tester tester 4096 Jul  6 21:16 ..
+drwxr-xr-x 3 tester tester 4096 Jul  6 21:16 audio
+-rw-r--r-- 1 tester tester    3 Jul  6 21:19 commit_unknown_sends.json
+-rw------- 1 tester tester   64 Jul  6 21:16 hmac_secret
+-rw-r--r-- 1 tester tester    3 Jul  6 21:19 pending_attachments.json
+-rw-r--r-- 1 tester tester   59 Jul  6 21:17 recent_cwds.json
+drwxr-xr-x 2 tester tester 4096 Jul  6 21:17 socks
+-rw-r--r-- 1 tester tester    3 Jul  6 21:19 staged_attachments.json
+drwxr-xr-x 3 tester tester 4096 Jul  6 21:17 uploads
+-rw------- 1 tester tester  241 Jul  6 21:16 webpush_vapid_private.pem
+total 12
+drwxr-xr-x 2 tester tester 4096 Jul  6 21:17 .
+drwxr-xr-x 5 tester tester 4096 Jul  6 21:19 ..
+-rw-r--r-- 1 tester tester  428 Jul  6 21:17 upload-proof.json
+srwxr-xr-x 1 tester tester    0 Jul  6 21:17 upload-proof.sock
+
+--- staged json ---
+{}
+
+--- pending json ---
+[]
+
+--- uploads ---
+drwxr-xr-x /home/tester/.local/share/codoxear/uploads 4096 bytes
+drwxr-xr-x /home/tester/.local/share/codoxear/uploads/upload-proof 4096 bytes

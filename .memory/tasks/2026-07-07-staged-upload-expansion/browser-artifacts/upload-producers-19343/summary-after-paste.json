@@ -1,0 +1,21 @@
+{
+  "browser": {
+    "badge": "1",
+    "chips": [
+      {
+        "text": "paste-alpha.txt\n11 B \u00b7 c8c11208\n\u00d7",
+        "title": "/home/tester/.local/share/codoxear/uploads/upload-proof/1783372660381_paste-alpha.txt"
+      }
+    ],
+    "defaultPrevented": true,
+    "dispatchReturned": false,
+    "toast": "file staged",
+    "value": ""
+  },
+  "api_count": 1,
+  "api_pending": true,
+  "broker_counts": {
+    "state": 171
+  },
+  "send_or_keys": 0
+}
