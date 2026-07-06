@@ -1,0 +1,216 @@
+{
+  "generated_at": "2026-07-06T11:14:45.000Z",
+  "repo": "/home/yiwen/codex-web-product-recovery",
+  "cases": {
+    "C1: stopReason=stop, content=[]": {
+      "label": "C1: stopReason=stop, content=[]",
+      "assistant_msg": {
+        "role": "assistant",
+        "stopReason": "stop",
+        "content": []
+      },
+      "raw_probes": {
+        "pi_assistant_text": null,
+        "pi_assistant_is_final_turn_end": false,
+        "pi_assistant_thinking_count": 0,
+        "pi_assistant_tool_use_count": 0,
+        "pi_assistant_is_aborted_turn": false,
+        "pi_assistant_error_text": null,
+        "pi_message_role": "assistant",
+        "_pi_message_keeps_turn_busy": false,
+        "pi_assistant_content_parts": [],
+        "_single_chat_event": null
+      },
+      "positioned_chat_events": {
+        "count": 1,
+        "events": [
+          {
+            "role": "user",
+            "text": "Hello, what is 2+2?",
+            "message_class": null
+          }
+        ]
+      },
+      "tail_page": {
+        "event_count": 1,
+        "events": [
+          {
+            "role": "user",
+            "text": "Hello, what is 2+2?",
+            "message_class": null
+          }
+        ],
+        "before_byte": 0,
+        "after_byte": 512,
+        "has_older": false
+      },
+      "search_backend_completed": {
+        "count": 0,
+        "match_count_truncated": false,
+        "match_roles": []
+      },
+      "search_interrupted": {
+        "count": 0,
+        "match_count_truncated": false,
+        "match_roles": []
+      },
+      "compute_idle_from_log": {
+        "value": false,
+        "classification": "BUSY"
+      },
+      "pi_current_turn_state_before": {
+        "pending_count": 0,
+        "idle": false,
+        "classification": "BUSY"
+      }
+    },
+    "C2: stopReason=end_turn, content=[]": {
+      "label": "C2: stopReason=end_turn, content=[]",
+      "assistant_msg": {
+        "role": "assistant",
+        "stopReason": "end_turn",
+        "content": []
+      },
+      "raw_probes": {
+        "pi_assistant_text": null,
+        "pi_assistant_is_final_turn_end": false,
+        "pi_assistant_thinking_count": 0,
+        "pi_assistant_tool_use_count": 0,
+        "pi_assistant_is_aborted_turn": false,
+        "pi_assistant_error_text": null,
+        "pi_message_role": "assistant",
+        "_pi_message_keeps_turn_busy": false,
+        "pi_assistant_content_parts": [],
+        "_single_chat_event": null
+      },
+      "positioned_chat_events": {
+        "count": 1,
+        "events": [
+          {
+            "role": "user",
+            "text": "Hello, what is 2+2?",
+            "message_class": null
+          }
+        ]
+      },
+      "tail_page": {
+        "event_count": 1,
+        "events": [
+          {
+            "role": "user",
+            "text": "Hello, what is 2+2?",
+            "message_class": null
+          }
+        ],
+        "before_byte": 0,
+        "after_byte": 516,
+        "has_older": false
+      },
+      "search_backend_completed": {
+        "count": 0,
+        "match_count_truncated": false,
+        "match_roles": []
+      },
+      "search_interrupted": {
+        "count": 0,
+        "match_count_truncated": false,
+        "match_roles": []
+      },
+      "compute_idle_from_log": {
+        "value": false,
+        "classification": "BUSY"
+      },
+      "pi_current_turn_state_before": {
+        "pending_count": 0,
+        "idle": false,
+        "classification": "BUSY"
+      }
+    },
+    "C3: stopReason=stop, content=[{type:'thinking', thinking:''}]": {
+      "label": "C3: stopReason=stop, content=[{type:'thinking', thinking:''}]",
+      "assistant_msg": {
+        "role": "assistant",
+        "stopReason": "stop",
+        "content": [
+          {
+            "type": "thinking",
+            "thinking": ""
+          }
+        ]
+      },
+      "raw_probes": {
+        "pi_assistant_text": null,
+        "pi_assistant_is_final_turn_end": false,
+        "pi_assistant_thinking_count": 1,
+        "pi_assistant_tool_use_count": 0,
+        "pi_assistant_is_aborted_turn": false,
+        "pi_assistant_error_text": null,
+        "pi_message_role": "assistant",
+        "_pi_message_keeps_turn_busy": true,
+        "pi_assistant_content_parts": [
+          {
+            "type": "thinking",
+            "has_text": false
+          }
+        ],
+        "_single_chat_event": null
+      },
+      "positioned_chat_events": {
+        "count": 1,
+        "events": [
+          {
+            "role": "user",
+            "text": "Hello, what is 2+2?",
+            "message_class": null
+          }
+        ]
+      },
+      "tail_page": {
+        "event_count": 1,
+        "events": [
+          {
+            "role": "user",
+            "text": "Hello, what is 2+2?",
+            "message_class": null
+          }
+        ],
+        "before_byte": 0,
+        "after_byte": 548,
+        "has_older": false
+      },
+      "search_backend_completed": {
+        "count": 0,
+        "match_count_truncated": false,
+        "match_roles": []
+      },
+      "search_interrupted": {
+        "count": 0,
+        "match_count_truncated": false,
+        "match_roles": []
+      },
+      "compute_idle_from_log": {
+        "value": false,
+        "classification": "BUSY"
+      },
+      "pi_current_turn_state_before": {
+        "pending_count": 0,
+        "idle": false,
+        "classification": "BUSY"
+      }
+    }
+  },
+  "task_b": {
+    "classification": "SCOUT",
+    "rationale": "No deterministic transcript event (no close/turn_end/delivery row) exists in Pi logs when the backend dies after a no-text assistant row. session_prune.py drops dead sessions via socket/pid checks without inspecting log for terminal events. message_routes.py returns empty responses for unbound logs. The log-driven _compute_idle_from_log returns BUSY for these rows (DEFECT), but the prune path handles cleanup normally. SCOUT because the final outcome cannot be determined from log evidence alone.",
+    "files_inspected": [
+      "codoxear/session_prune.py",
+      "codoxear/session_control.py",
+      "codoxear/message_routes.py"
+    ],
+    "key_observations": {
+      "session_prune": "prune_dead_sessions removes sessions via sock_path existence, control socket errors, and pid checks. Does not inspect log for a terminal event.",
+      "session_control": "_dead_processes checks broker_pid and codex_pid. Drops session when both are dead and a socket call fails.",
+      "message_routes": "handle_messages_tail/live return empty responses for unbound logs. No special dead-backend transcript handling."
+    }
+  }
+}

@@ -1,0 +1,75 @@
+PROOF SUMMARY — next-outcome-defect-scout
+========================================
+
+Run time: 2026-07-06T11:14:45.000Z
+Repo:     /home/yiwen/codex-web-product-recovery
+Branch:   recovery/product-gaps
+Artifact: .memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/next-outcome-defect-scout/
+
+RESULTS BY CANDIDATE
+--------------------
+
+C1: assistant {role:'assistant', stopReason:'stop', content:[]}
+    Verdict: DEFECT
+    ─────────────────────────────────────────────────────────
+    _single_chat_event:         None (no visible transcript event)
+    positioned_chat_events:     1 event  (user-only; no assistant)
+    tail_page:                  1 event  (user-only)
+    search "backend completed": 0 matches
+    search "interrupted":       0 matches
+    _compute_idle_from_log:     BUSY (expected IDLE)
+    pi_current_turn_state:      BUSY (expected IDLE)
+    Mechanism: pi_assistant_text returns None → row falls through all
+    idle checks in _compute_idle_from_log. The user row sets idle=False;
+    the assistant row never updates it. Session appears busy forever.
+    No no-response injection (Codex/CC only).
+
+C2: assistant {role:'assistant', stopReason:'end_turn', content:[]}
+    Verdict: DEFECT
+    ─────────────────────────────────────────────────────────
+    _single_chat_event:         None
+    positioned_chat_events:     1 event  (user-only)
+    tail_page:                  1 event  (user-only)
+    search "backend completed": 0 matches
+    search "interrupted":       0 matches
+    _compute_idle_from_log:     BUSY (expected IDLE)
+    pi_current_turn_state:      BUSY (expected IDLE)
+    Mechanism: Identical to C1. stopReason='end_turn' is not checked
+    in _compute_idle_from_log, pi_current_turn_state_before, or
+    pi_assistant_is_final_turn_end (which requires text content first).
+
+C3: assistant {role:'assistant', stopReason:'stop',
+     content:[{type:'thinking', thinking:''}]}
+    Verdict: DEFECT
+    ─────────────────────────────────────────────────────────
+    _single_chat_event:         None
+    positioned_chat_events:     1 event  (user-only)
+    tail_page:                  1 event  (user-only)
+    search "backend completed": 0 matches
+    search "interrupted":       0 matches
+    _compute_idle_from_log:     BUSY (expected IDLE)
+    pi_current_turn_state:      BUSY (expected IDLE)
+    Mechanism: pi_assistant_thinking_count=1 → _pi_message_keeps_turn_busy=True.
+    But thinking with empty text neither produces a chat event nor a final
+    turn end. Session stays busy forever.
+
+CROSS-CUTTING OBSERVATIONS
+--------------------------
+- _inject_no_response_events only triggers for Codex event_msg closes
+  and Claude Code system turn-end rows. Pi has no injector path.
+- handle_messages_tail derives busy from resolve_runtime_status →
+  idle_from_log → _compute_idle_from_log. False idle → BUSY in API response.
+- For all three cases, the transcript shows user-only with no visible
+  answer. The UI projects "session is busy" while nothing is happening.
+
+TASK B: post-log backend death
+------------------------------
+    Verdict: SCOUT
+    ─────────────────────────────────────────────────────────
+    session_prune.py drops dead sessions via socket/pid checks.
+    Does not inspect log for terminal events.
+    session_control.py drops sessions when both processes are dead.
+    message_routes.py returns empty response for unbound logs.
+    No deterministic transcript event exists to confirm the outcome.
+    The prune path handles cleanup normally, but the final state
+    cannot be determined from log evidence alone.

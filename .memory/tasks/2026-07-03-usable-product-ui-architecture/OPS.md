@@ -768,3 +768,18 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
 - User provided explicit unattended-mode rules: maintain internal Deliverables / Completed / Next actions / Parked user decisions; surface them only on necessary yield; default to continuing; reason before actions; avoid trial-and-error and repetition; use strongest verification; resolve issues without user interruption unless a true user decision or high-risk irreversible action is present.
 - End-of-turn gate: before any necessary yield, run dedicated clean-room adversarial review with intent, deliverables, evidence, remaining actions, parked decisions, constraints, and changed artifacts; apply findings or surface exact residual decision/risk.
 - Additional request reiterated: continue improving product with big-picture roadmap, follow current PROMPT workbench, and delegate concrete implementation/validation to subagents.
+
+## 2026-07-06T11:18:27Z Pi no-text terminal outcome defect proof
+- Fresh target scout `ddc034c6-05a0-4a76-ba51-06b7c65bb6af` completed with Pi no-visible-text terminal turns as the top product defect. Mechanism: Pi has no explicit close row, and the existing final-turn predicate requires assistant text; empty or thinking-only terminal assistant rows therefore neither render a transcript outcome nor clear busy.
+- Bounded proof executor `687f44d2-b23c-48c7-a67d-55933868d2ef` wrote artifacts under `.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/next-outcome-defect-scout/`:
+  - `prove_next_outcome_defect.py`
+  - `proof-output.json`
+  - `proof-summary.txt`
+  - `VERIFICATION-REPORT.md`
+- Deterministic observations from current code:
+  - Pi `stopReason:"stop", content:[]` projects only the user message across positioned events/tail/search and `_compute_idle_from_log` plus `pi_current_turn_state_before` classify the log as busy.
+  - Pi `stopReason:"end_turn", content:[]` has the same user-only transcript and busy classification.
+  - Pi `stopReason:"stop", content:[{type:"thinking", thinking:""}]` has the same user-only transcript; the thinking part additionally keeps the turn busy.
+  - Searches for `backend completed` and `interrupted` return zero matches for the synthetic cases, proving the user-visible outcome row is absent rather than merely hard to find.
+- Current conclusion: this is a compound transcript-truthfulness and binary busy/idle defect. The next implementation must introduce a single Pi terminal-no-visible-response predicate and consume it in transcript projection, log idle/readiness, and broker turn-state reduction so the authorities do not diverge.
+- Backup candidate post-log backend death remains SCOUT: no deterministic log event exists after post-bind process death, so it belongs to a later runtime/recovery design rather than this log-projection fix.
