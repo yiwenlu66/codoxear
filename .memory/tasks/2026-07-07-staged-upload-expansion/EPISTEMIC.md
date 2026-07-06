@@ -36,7 +36,7 @@ Stage first, commit later.
 - Consider reducing absolute-path exposure in browser tooltips once a safe backend-readable identity/display split exists.
 - Remove dead immediate-PTY attachment injection methods if no non-HTTP consumer remains.
 - Remove vestigial `attachment_index` after compatibility impact is checked.
-- Later upload producer remaining: capture/camera.
+- Capture/camera producer is implemented and browser-proved in `98880bc`/`c7fd396`, pending clean-room review `768d89ba-ff5e-4087-be32-d60b75c654ae`.
 - Producer UX polish: re-check blockers per file in long batches if needed, preserve text in mixed text+file paste if a clear UI rule exists, add extensions for non-PNG pasted image names, and clear `.drop-active` when a file drag leaves the window without dropping.
 
 ## Current justified claim

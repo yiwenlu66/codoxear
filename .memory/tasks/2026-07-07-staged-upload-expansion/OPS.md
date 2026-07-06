@@ -148,3 +148,19 @@
 - Review verdict: accepted, no blockers.
 - Mechanism confirmed: `b0a6a09` closes the prelog `ValueError` escape by using one post-confirmation tail error tuple for prelog projection, staged cleanup, pending clear, and commit_unknown clear. The catch sites remain after `parse_confirmed_send_response`, so pre-delivery not-ready/injection/commit_unknown behavior remains unchanged.
 - Review reproduced validation: after-confirmed-send tail matrix `6 passed`; prelog regression `1 passed`; broader focused suite `155 passed, 22 subtests passed`; `node --check codoxear/static/app.js`; `git diff --check`; clean tree.
+
+## 2026-07-06T23:56:00Z Capture producer implemented and browser-proved pending review
+- Delegation note: executor `cd6271bb-3b47-41fb-8789-a0a2eb9c7a2f` failed before work due provider 429; executor `fdbfb7ba-52d3-459d-b0bf-fc4dd95eb6d0` completed without edits. The main agent implemented the small frontend seam directly after confirming no active subagent owned the task.
+- Functional commit: `98880bc Add capture attachment producer`.
+- Mechanism: added visible `#captureBtn`, hidden `#captureInput` with `accept="image/*"` and `capture="environment"`, and routed captured/selected files through existing `stageFiles(files, {source:"capture"})`. Capture shares `attachmentBlockerForSession()` before opening the input and inside `stageFiles()` before `/inject_file`; no backend route or new commit boundary was added.
+- Local validation:
+  - `node --check codoxear/static/app.js`;
+  - `node --check codoxear/static/app_display.js`;
+  - `python3 -m pytest -q tests/test_attach_button_source.py tests/test_frontend_display_module_source.py` → `13 passed`;
+  - focused upload/control/frontend suite → `184 passed, 22 subtests passed`;
+  - full local suite → `1796 passed, 132 subtests passed`;
+  - `git diff --check` → clean.
+- Browser proof commit: `c7fd396 Record capture producer browser proof`.
+- Artifact root: `.memory/tasks/2026-07-07-staged-upload-expansion/browser-artifacts/capture-producer-19357/`.
+- Docker/browser observations: fake broker advertised `sync_send:true` and `key_write_errors:false`; browser DOM exposed enabled capture button and capture input; synthetic no-name JPEG was installed on `#captureInput.files` and the real `change` listener staged one server entry named `captured-...jpg`; broker calls before send had zero `send` and zero `keys`; visible send button produced exactly one `send`, zero `keys`, payload began with generated `Attachment 1: <path>`, and staged list cleared.
+- Clean-room review dispatched: async id `768d89ba-ff5e-4087-be32-d60b75c654ae`.
