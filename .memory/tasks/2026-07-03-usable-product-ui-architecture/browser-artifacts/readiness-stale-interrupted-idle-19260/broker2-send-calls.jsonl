@@ -1,0 +1,1 @@
+{"ts": 1783323483.3144681, "cmd": "send", "req": {"cmd": "send", "text": "queue probe on fresh busy session", "queue_item_id": null}, "resp": {"queued": false, "queue_len": 0, "busy": true}}

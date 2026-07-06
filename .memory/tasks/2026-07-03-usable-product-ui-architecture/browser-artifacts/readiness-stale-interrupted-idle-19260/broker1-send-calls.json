@@ -1,0 +1,17 @@
+[
+  {
+    "ts": 1783323316.1535254,
+    "cmd": "send",
+    "req": {
+      "cmd": "send",
+      "text": "probe direct send while sidebar busy",
+      "sync": true,
+      "queue_item_id": null
+    },
+    "resp": {
+      "queued": false,
+      "queue_len": 0,
+      "busy": true
+    }
+  }
+]

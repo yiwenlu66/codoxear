@@ -1,0 +1,1 @@
+{"http_code":"200","before":{"total": 128, "sends": 0, "send_details": []},"after":{"total": 135, "sends": 1, "send_details": [{"ts": 1783323483.3144681, "cmd": "send", "req": {"cmd": "send", "text": "queue probe on fresh busy session", "queue_item_id": null}, "resp": {"queued": false, "queue_len": 0, "busy": true}}]},"body":{"queued": false, "queue_len": 0, "busy": true}}
