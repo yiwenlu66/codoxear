@@ -745,3 +745,12 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
 - Target: interrupting a turn can leave no persistent browser-visible outcome after the 2.2s toast clears. Pi `stopReason:"aborted"` assistant rows are dropped by normalization; a Pi aborted message carrying partial text is also ignored. Codex `turn_aborted` is not treated as a chat event or no-response close.
 - Existing tests currently encode the silent behavior: `tests/test_codex_no_response_projection.py::test_pi_aborted_turn_does_not_emit_no_response` expects only the user row; `tests/test_server_chat_flags.py` shows partial-text aborted Pi rows are not counted as assistant chat.
 - Decision: preserve a deterministic failing proof for persistent interruption outcome before implementing. Proof should cover Pi aborted empty/partial, Codex `turn_aborted`, and API/search projection where practical.
+
+
+## 2026-07-06T10:00:21Z Interruption outcome defect proof
+- Executor `396605fc` completed deterministic read-only proof at HEAD `55896d5`; artifacts preserved under `browser-artifacts/interruption-outcome-defect/`.
+- Commanded proof surfaces: `_extract_positioned_chat_events`, `_read_chat_tail_page`, `search_chat_log_bounded`, `handle_messages_tail`, and `handle_messages_search`.
+- Scenarios: Pi user + assistant `stopReason:"aborted"` empty content; Pi user + assistant `stopReason:"aborted"` with partial text `I was halfway through`; Codex `event_msg user_message` + `event_msg turn_aborted`.
+- Observation: every scenario on every surface produced exactly the user row and no persistent assistant outcome. Search control for user prompt returned `match_count=1`, while search for `interrupt` returned `0`; Pi partial text search returned `0`.
+- Interpretation: transcript surfaces share the same suppression mechanism. Pi abort returns `None` before text extraction in the adapter; Codex `turn_aborted` has no adapter branch; no-response injection intentionally excludes abort closes. Fix must project a distinct interruption row, not generic `_NO_RESPONSE_TEXT`, and preserve partial Pi text.
+- No source/test files were modified by the proof; only artifact scripts/results/reports were added.

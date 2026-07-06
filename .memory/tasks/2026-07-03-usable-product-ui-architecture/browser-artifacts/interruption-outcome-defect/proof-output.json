@@ -1,0 +1,289 @@
+{
+  "head": "55896d5fd253f9bcf98e61127dff71303e128950",
+  "no_response_text_reference": "The backend completed this turn without producing a response.",
+  "results": [
+    {
+      "scenario": "A-pi-empty-abort",
+      "backend": "pi",
+      "input_rows": [
+        {
+          "type": "message",
+          "ts": 1.0,
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "hello pi"
+              }
+            ]
+          }
+        },
+        {
+          "type": "message",
+          "ts": 2.0,
+          "message": {
+            "role": "assistant",
+            "stopReason": "aborted",
+            "content": []
+          }
+        }
+      ],
+      "unit_extract_events": [
+        {
+          "text": "hello pi",
+          "ts": 1.0,
+          "message_id": null,
+          "role": "user",
+          "message_class": null
+        }
+      ],
+      "unit_tail_events": [
+        {
+          "text": "hello pi",
+          "ts": 1.0,
+          "message_id": null,
+          "role": "user",
+          "message_class": null
+        }
+      ],
+      "search_user_prompt": {
+        "query": "hello pi",
+        "match_count": 1,
+        "matches": [
+          {
+            "text": "hello pi",
+            "ts": 1.0,
+            "message_id": null,
+            "role": "user",
+            "message_class": null
+          }
+        ]
+      },
+      "search_interrupt_phrase": {
+        "query": "interrupt",
+        "match_count": 0
+      },
+      "search_partial_text": null,
+      "api_tail_events": [
+        {
+          "text": "hello pi",
+          "ts": 1.0,
+          "message_id": null,
+          "role": "user",
+          "message_class": null
+        }
+      ],
+      "api_search_user_prompt": {
+        "match_count": 1,
+        "matches": [
+          {
+            "text": "hello pi",
+            "ts": 1.0,
+            "message_id": null,
+            "role": "user",
+            "message_class": null
+          }
+        ]
+      },
+      "api_search_interrupt_phrase": {
+        "match_count": 0
+      },
+      "verdicts": {
+        "unit_extract": "DEFECT (user-only; no interruption outcome row)",
+        "unit_tail_page": "DEFECT (user-only; no interruption outcome row)",
+        "api_tail": "DEFECT (user-only; no interruption outcome row)",
+        "search": "DEFECT (no interruption row produced -> nothing to find)"
+      }
+    },
+    {
+      "scenario": "B-pi-partial-abort",
+      "backend": "pi",
+      "input_rows": [
+        {
+          "type": "message",
+          "ts": 1.0,
+          "message": {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "hello pi partial"
+              }
+            ]
+          }
+        },
+        {
+          "type": "message",
+          "ts": 2.0,
+          "message": {
+            "role": "assistant",
+            "stopReason": "aborted",
+            "content": [
+              {
+                "type": "text",
+                "text": "I was halfway through"
+              }
+            ]
+          }
+        }
+      ],
+      "unit_extract_events": [
+        {
+          "text": "hello pi partial",
+          "ts": 1.0,
+          "message_id": null,
+          "role": "user",
+          "message_class": null
+        }
+      ],
+      "unit_tail_events": [
+        {
+          "text": "hello pi partial",
+          "ts": 1.0,
+          "message_id": null,
+          "role": "user",
+          "message_class": null
+        }
+      ],
+      "search_user_prompt": {
+        "query": "hello pi partial",
+        "match_count": 1,
+        "matches": [
+          {
+            "text": "hello pi partial",
+            "ts": 1.0,
+            "message_id": null,
+            "role": "user",
+            "message_class": null
+          }
+        ]
+      },
+      "search_interrupt_phrase": {
+        "query": "interrupt",
+        "match_count": 0
+      },
+      "search_partial_text": {
+        "query": "I was halfway through",
+        "match_count": 0
+      },
+      "api_tail_events": [
+        {
+          "text": "hello pi partial",
+          "ts": 1.0,
+          "message_id": null,
+          "role": "user",
+          "message_class": null
+        }
+      ],
+      "api_search_user_prompt": {
+        "match_count": 1,
+        "matches": [
+          {
+            "text": "hello pi partial",
+            "ts": 1.0,
+            "message_id": null,
+            "role": "user",
+            "message_class": null
+          }
+        ]
+      },
+      "api_search_interrupt_phrase": {
+        "match_count": 0
+      },
+      "verdicts": {
+        "unit_extract": "DEFECT (user-only; no interruption outcome row)",
+        "unit_tail_page": "DEFECT (user-only; no interruption outcome row)",
+        "api_tail": "DEFECT (user-only; no interruption outcome row)",
+        "search": "DEFECT (no interruption row produced -> nothing to find)"
+      }
+    },
+    {
+      "scenario": "C-codex-turn-aborted",
+      "backend": "codex",
+      "input_rows": [
+        {
+          "type": "event_msg",
+          "ts": 1.0,
+          "payload": {
+            "type": "user_message",
+            "message": "hello codex"
+          }
+        },
+        {
+          "type": "event_msg",
+          "ts": 2.0,
+          "payload": {
+            "type": "turn_aborted"
+          }
+        }
+      ],
+      "unit_extract_events": [
+        {
+          "text": "hello codex",
+          "ts": 1.0,
+          "message_id": null,
+          "role": "user",
+          "message_class": null
+        }
+      ],
+      "unit_tail_events": [
+        {
+          "text": "hello codex",
+          "ts": 1.0,
+          "message_id": null,
+          "role": "user",
+          "message_class": null
+        }
+      ],
+      "search_user_prompt": {
+        "query": "hello codex",
+        "match_count": 1,
+        "matches": [
+          {
+            "text": "hello codex",
+            "ts": 1.0,
+            "message_id": null,
+            "role": "user",
+            "message_class": null
+          }
+        ]
+      },
+      "search_interrupt_phrase": {
+        "query": "interrupt",
+        "match_count": 0
+      },
+      "search_partial_text": null,
+      "api_tail_events": [
+        {
+          "text": "hello codex",
+          "ts": 1.0,
+          "message_id": null,
+          "role": "user",
+          "message_class": null
+        }
+      ],
+      "api_search_user_prompt": {
+        "match_count": 1,
+        "matches": [
+          {
+            "text": "hello codex",
+            "ts": 1.0,
+            "message_id": null,
+            "role": "user",
+            "message_class": null
+          }
+        ]
+      },
+      "api_search_interrupt_phrase": {
+        "match_count": 0
+      },
+      "verdicts": {
+        "unit_extract": "DEFECT (user-only; no interruption outcome row)",
+        "unit_tail_page": "DEFECT (user-only; no interruption outcome row)",
+        "api_tail": "DEFECT (user-only; no interruption outcome row)",
+        "search": "DEFECT (no interruption row produced -> nothing to find)"
+      }
+    }
+  ]
+}
