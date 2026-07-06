@@ -1,0 +1,128 @@
+{
+  "head": "ce401c313c103491738d2f433c9ad0adbe59407d",
+  "initial_discovery": {
+    "registrations": [
+      {
+        "agent_backend": "pi",
+        "broker_pid": 111111,
+        "busy": true,
+        "codex_pid": 222222,
+        "cwd": "/home/yiwen/codex-web-product-recovery/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/post-log-backend-death-scout/workdir",
+        "interrupted_idle": false,
+        "key_write_errors_supported": true,
+        "launch_id": "launch-post-log-bound",
+        "log_path": "/home/yiwen/codex-web-product-recovery/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/post-log-backend-death-scout/workdir/pi-sessions/post-log-bound.jsonl",
+        "meta_log_off": 357,
+        "model": "proof-model",
+        "model_provider": "proof-provider",
+        "owned": true,
+        "preferred_auth_method": "apikey",
+        "queue_len": 0,
+        "reasoning_effort": "low",
+        "resume_session_id": null,
+        "service_tier": null,
+        "session_id": "post-log-death",
+        "sock_path": "/home/yiwen/codex-web-product-recovery/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/post-log-backend-death-scout/workdir/socks/post-log-death.sock",
+        "spawn_nonce": "spawn-post-log-bound",
+        "start_ts": 1783200000.0,
+        "sync_send_supported": true,
+        "thread_id": "post-log-bound-thread",
+        "tmux_session": null,
+        "tmux_window": null,
+        "token": null,
+        "transport": null
+      }
+    ],
+    "stale_actions": []
+  },
+  "isolation": "in-process only; no Codoxear server/broker/session/backend/tmux process started; proof-owned temp files under artifact dir",
+  "observations": {
+    "after_search_error": "unknown session",
+    "after_search_status": 404,
+    "after_session_listed": false,
+    "after_tail_error": "unknown session",
+    "after_tail_status": 404,
+    "before_search_match_count": 1,
+    "before_search_status": 200,
+    "before_session_listed": true,
+    "before_tail_roles": [
+      "user"
+    ],
+    "before_tail_status": 200,
+    "before_tail_texts": [
+      "POST_LOG_BOUND_DEATH_SENTINEL"
+    ],
+    "deleted_state_calls": [
+      "post-log-death"
+    ],
+    "failure_records_written_by_prune": [],
+    "launch_ledger_states_after": [
+      "log_bound"
+    ],
+    "orphan_log_path": "/home/yiwen/codex-web-product-recovery/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/post-log-backend-death-scout/workdir/pi-sessions/post-log-bound.jsonl",
+    "orphan_log_still_exists": true,
+    "visible_launch_attempt_rows_after": []
+  },
+  "raw_files": {
+    "after_search": "/home/yiwen/codex-web-product-recovery/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/post-log-backend-death-scout/raw-api/after-search.json",
+    "after_sessions": "/home/yiwen/codex-web-product-recovery/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/post-log-backend-death-scout/raw-api/after-sessions.json",
+    "after_tail": "/home/yiwen/codex-web-product-recovery/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/post-log-backend-death-scout/raw-api/after-tail.json",
+    "before_search": "/home/yiwen/codex-web-product-recovery/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/post-log-backend-death-scout/raw-api/before-search.json",
+    "before_sessions": "/home/yiwen/codex-web-product-recovery/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/post-log-backend-death-scout/raw-api/before-sessions.json",
+    "before_tail": "/home/yiwen/codex-web-product-recovery/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/post-log-backend-death-scout/raw-api/before-tail.json",
+    "launch_ledger_after": "/home/yiwen/codex-web-product-recovery/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/post-log-backend-death-scout/raw-api/launch-ledger-after.json"
+  },
+  "scenario": {
+    "backend": "pi",
+    "launch_id": "launch-post-log-bound",
+    "log_shape": "session header + user message only; no terminal assistant/error/no-response/interruption row",
+    "session_id": "post-log-death",
+    "simulated_death": "socket and sidecar removed, pids reported dead, real SessionPruneCoordinator invoked"
+  },
+  "source_evidence": [
+    {
+      "file": "codoxear/broker.py",
+      "line": 959,
+      "needle": "stage=\"agent_exit_before_log_bind\"",
+      "text": "stage=\"agent_exit_before_log_bind\","
+    },
+    {
+      "file": "codoxear/broker.py",
+      "line": 953,
+      "needle": "and (st2.log_path is None or not st2.log_path.exists())",
+      "text": "and (st2.log_path is None or not st2.log_path.exists())"
+    },
+    {
+      "file": "codoxear/session_prune.py",
+      "line": 90,
+      "needle": "session.owned and session.log_path is None",
+      "text": "if not (session.owned and session.log_path is None and not existing_launch_failed):"
+    },
+    {
+      "file": "codoxear/session_discovery.py",
+      "line": 178,
+      "needle": "broker_exit_before_log_bind",
+      "text": "\"stage\": \"broker_exit_before_log_bind\","
+    },
+    {
+      "file": "codoxear/session_discovery.py",
+      "line": 172,
+      "needle": "if (log_path is None) and (not deps.pid_alive(codex_pid))",
+      "text": "if (log_path is None) and (not deps.pid_alive(codex_pid)) and (not deps.pid_alive(broker_pid)):"
+    },
+    {
+      "file": "codoxear/session_control.py",
+      "line": 48,
+      "needle": "self._drop_dead_session(session_id, sock, clear_deleted_state=True)",
+      "text": "self._drop_dead_session(session_id, sock, clear_deleted_state=True)"
+    },
+    {
+      "file": "codoxear/message_routes.py",
+      "line": 207,
+      "needle": "launch_attempt_transcript_for_session_id(session_id)",
+      "text": "launch_payload = deps.launch_attempt_transcript_for_session_id(session_id)"
+    }
+  ],
+  "timestamp": "2026-07-06T13:37:34Z",
+  "verdict": "DEFECT"
+}

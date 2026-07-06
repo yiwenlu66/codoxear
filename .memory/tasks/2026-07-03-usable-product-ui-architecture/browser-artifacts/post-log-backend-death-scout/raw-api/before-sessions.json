@@ -1,0 +1,36 @@
+{
+  "active_rows": [
+    {
+      "agent_backend": "pi",
+      "busy": true,
+      "cwd": "/home/yiwen/codex-web-product-recovery/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/post-log-backend-death-scout/workdir",
+      "launch_id": "launch-post-log-bound",
+      "log_exists": true,
+      "log_path": "/home/yiwen/codex-web-product-recovery/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/post-log-backend-death-scout/workdir/pi-sessions/post-log-bound.jsonl",
+      "owned": true,
+      "queue_len": 0,
+      "session_id": "post-log-death",
+      "thread_id": "post-log-bound-thread"
+    }
+  ],
+  "combined_session_ids": [
+    "post-log-death"
+  ],
+  "launch_attempt_rows": [],
+  "launch_records": [
+    {
+      "agent_backend": "pi",
+      "agent_pid": 222222,
+      "broker_pid": 111111,
+      "created_ts": 1783200000.0,
+      "cwd": "/home/yiwen/codex-web-product-recovery/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/post-log-backend-death-scout/workdir",
+      "launch_id": "launch-post-log-bound",
+      "log_path": "/home/yiwen/codex-web-product-recovery/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/post-log-backend-death-scout/workdir/pi-sessions/post-log-bound.jsonl",
+      "spawn_nonce": "spawn-post-log-bound",
+      "stage": "log_bound",
+      "state": "log_bound",
+      "type": "launch_attempt",
+      "updated_ts": 1783200010.0
+    }
+  ]
+}

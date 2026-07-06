@@ -1,0 +1,20 @@
+{
+  "payload": {
+    "log_path": "/home/yiwen/codex-web-product-recovery/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/post-log-backend-death-scout/workdir/pi-sessions/post-log-bound.jsonl",
+    "match_count": 1,
+    "match_count_truncated": false,
+    "matches": [
+      {
+        "_before_byte": 206,
+        "history_cursor": "history:206",
+        "load_cursor": "history:357",
+        "role": "user",
+        "text": "POST_LOG_BOUND_DEATH_SENTINEL"
+      }
+    ],
+    "query": "POST_LOG_BOUND_DEATH_SENTINEL",
+    "thread_id": "post-log-bound-thread",
+    "transcript_state": "bound"
+  },
+  "status": 200
+}
