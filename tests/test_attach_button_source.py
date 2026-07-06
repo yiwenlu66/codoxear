@@ -10,6 +10,7 @@ class TestAttachButtonSource(unittest.TestCase):
         source = APP_JS.read_text(encoding="utf-8")
 
         self.assertIn('attachBtn.disabled = true;', source)
+        self.assertIn('if (captureBtn) {\n            captureBtn.disabled = true;\n            captureBtn.title = "Select a session to attach a file";\n            captureBtn.setAttribute("aria-label", "Select a session to attach a file");\n          }', source)
         self.assertIn('function attachmentBlockerForSession(sessionId, sessionInfo = null) {', source)
         self.assertIn('if (!sessionId) return "Select a session to attach a file";', source)
         self.assertIn('if (info && sessionLaunchFailed(info)) return "Failed launch cannot receive file attachments";', source)
@@ -22,8 +23,11 @@ class TestAttachButtonSource(unittest.TestCase):
         self.assertIn('const selectedInfo = selected ? sessionIndex.get(selected) || null : null;', source)
         self.assertIn('const attachBlocker = attachmentBlockerForSession(selected, selectedInfo);', source)
         self.assertIn('const attachLabel = attachBlocker || `Attach file (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})`;', source)
+        self.assertIn('const captureLabel = attachBlocker || `Capture photo (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})`;', source)
         self.assertIn('attachControl.disabled = Boolean(attachBlocker);', source)
         self.assertIn('attachControl.setAttribute("aria-label", attachLabel);', source)
+        self.assertIn('captureControl.disabled = Boolean(attachBlocker);', source)
+        self.assertIn('captureControl.setAttribute("aria-label", captureLabel);', source)
         self.assertIn('syncAttachButtonState();\n          updateQueueBadge();', source)
 
     def test_file_view_button_blocks_failed_launches(self) -> None:
@@ -44,7 +48,7 @@ class TestAttachButtonSource(unittest.TestCase):
         self.assertIn('const sessionInfo = sessionId ? sessionIndex.get(sessionId) || null : null;', source)
         self.assertIn('const attachBlocker = attachmentBlockerForSession(sessionId, sessionInfo);', source)
         self.assertIn('if (attachBlocker) {\n            if (!sessionId || selected === sessionId) setToast(attachBlocker);\n            return false;\n          }', source)
-        self.assertIn('let uploadName = f.name || (producer === "paste" ? pastedFileName(f, fileIndex, pasteNameSeed) : "file");', source)
+        self.assertIn('let uploadName = f.name || (producer === "paste" ? pastedFileName(f, fileIndex, producerNameSeed) : producer === "capture" ? capturedFileName(f, fileIndex, producerNameSeed) : "file");', source)
         self.assertIn('const stem = safeAttachmentStem(uploadName);', source)
         self.assertIn('api(`/api/sessions/${sessionId}/inject_file`', source)
         self.assertIn('attachment_index: stagedAttachments.length + 1', source)
@@ -59,12 +63,35 @@ class TestAttachButtonSource(unittest.TestCase):
         self.assertIn('imgInput.addEventListener("change", async () => {', source)
         self.assertIn('const sid = selected;\n          if (!sid) return;\n          const files = Array.from(imgInput.files || []);\n          imgInput.value = "";\n          await stageFiles(files, { sid, source: "picker" });', source)
         picker_start = source.index('imgInput.addEventListener("change", async () => {')
-        picker_end = source.index('textarea.addEventListener("paste"', picker_start)
+        picker_end = source.index('captureBtn.onclick = () => {', picker_start)
         picker_block = source[picker_start:picker_end]
         self.assertNotIn('api(`/api/sessions/${sid}/inject_file`', picker_block)
         self.assertNotIn('sessionHasUnknownSend', picker_block)
         self.assertNotIn('sessionIsOrphanRecovery', picker_block)
         self.assertNotIn('sessionHasOrphanQueueRecovery', picker_block)
+
+    def test_capture_producer_routes_through_stage_files(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+
+        self.assertIn('id: "captureBtn",', source)
+        self.assertIn('title: "Capture photo",', source)
+        self.assertIn('"aria-label": "Capture photo",', source)
+        self.assertIn('html: iconSvg("camera"),', source)
+        self.assertIn('el("input", { id: "captureInput", type: "file", accept: "image/*", capture: "environment", style: "display:none" })', source)
+        self.assertIn('function capturedFileName(file, index, seed) {', source)
+        self.assertIn('return `captured-${seed}${suffix}.${ext}`;', source)
+        self.assertIn('producer === "capture" ? capturedFileName(f, fileIndex, producerNameSeed) : "file"', source)
+        self.assertIn('captureBtn.onclick = () => {\n          const sid = selected;\n          const sessionInfo = sid ? sessionIndex.get(sid) || null : null;\n          const attachBlocker = attachmentBlockerForSession(sid, sessionInfo);', source)
+        self.assertIn('captureInput.value = "";\n          captureInput.click();', source)
+        self.assertIn('captureInput.addEventListener("change", async () => {\n          const sid = selected;\n          if (!sid) return;\n          const files = Array.from(captureInput.files || []);\n          captureInput.value = "";\n          await stageFiles(files, { sid, source: "capture" });\n        });', source)
+        self.assertEqual(source.count('/inject_file'), 1)
+        capture_start = source.index('captureBtn.onclick = () => {')
+        capture_end = source.index('textarea.addEventListener("paste"', capture_start)
+        capture_block = source[capture_start:capture_end]
+        self.assertNotIn('api(`/api/sessions/${sid}/inject_file`', capture_block)
+        self.assertNotIn('sessionHasUnknownSend', capture_block)
+        self.assertNotIn('sessionIsOrphanRecovery', capture_block)
+        self.assertNotIn('sessionHasOrphanQueueRecovery', capture_block)
 
     def test_paste_and_drop_producers_route_through_stage_files(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

@@ -1239,12 +1239,21 @@
             "aria-label": "Attach file",
             html: iconSvg("paperclip"),
           }),
+          el("button", {
+            class: "icon-btn",
+            id: "captureBtn",
+            type: "button",
+            title: "Capture photo",
+            "aria-label": "Capture photo",
+            html: iconSvg("camera"),
+          }),
           el("div", { class: "inputWrap" }, [
             el("div", { class: "stagedAttachments", id: "stagedAttachments", "aria-live": "polite" }),
             el("textarea", { id: "msg", placeholder: "", "aria-label": "Enter your instructions here" }),
             el("div", { class: "ph", id: "msgPh", text: "Enter your instructions here" }),
           ]),
           el("input", { id: "imgInput", type: "file", multiple: "multiple", style: "display:none" }),
+          el("input", { id: "captureInput", type: "file", accept: "image/*", capture: "environment", style: "display:none" }),
           el("button", { class: "icon-btn", id: "queueBtn", type: "button", title: "Queued messages", "aria-label": "Queued messages", html: iconSvg("queue") }),
           el("button", { class: "icon-btn composerStopBtn", id: "composerStopBtn", type: "button", title: "Stop current response", "aria-label": "Stop current response", html: iconSvg("stop") }),
           el("button", { class: "icon-btn primary", id: "sendBtn", type: "submit", title: "Send", "aria-label": "Send", html: iconSvg("send") }),
@@ -6457,6 +6466,7 @@
          const textarea = $("#msg");
          const msgPh = $("#msgPh");
          const imgInput = $("#imgInput");
+         const captureInput = $("#captureInput");
          const isIOS =
            /iP(hone|od|ad)/.test(navigator.userAgent || "") ||
            (navigator.platform === "MacIntel" && navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
@@ -6523,6 +6533,7 @@
 	           addAppEvent(window.visualViewport, "scroll", onViewportShift);
 	         }
          const attachBtn = $("#attachBtn");
+        const captureBtn = $("#captureBtn");
          if (!attachBadgeEl) {
            attachBadgeEl = el("span", { class: "attachBadge", id: "attachBadge" });
            attachBtn.appendChild(attachBadgeEl);
@@ -6688,13 +6699,22 @@
         }
         function syncAttachButtonState() {
           const attachControl = $("#attachBtn");
-          if (!attachControl) return;
+          const captureControl = $("#captureBtn");
+          if (!attachControl && !captureControl) return;
           const selectedInfo = selected ? sessionIndex.get(selected) || null : null;
           const attachBlocker = attachmentBlockerForSession(selected, selectedInfo);
           const attachLabel = attachBlocker || `Attach file (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})`;
-          attachControl.disabled = Boolean(attachBlocker);
-          attachControl.title = attachLabel;
-          attachControl.setAttribute("aria-label", attachLabel);
+          const captureLabel = attachBlocker || `Capture photo (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})`;
+          if (attachControl) {
+            attachControl.disabled = Boolean(attachBlocker);
+            attachControl.title = attachLabel;
+            attachControl.setAttribute("aria-label", attachLabel);
+          }
+          if (captureControl) {
+            captureControl.disabled = Boolean(attachBlocker);
+            captureControl.title = captureLabel;
+            captureControl.setAttribute("aria-label", captureLabel);
+          }
         }
         setAttachCount(0);
         syncAttachButtonState();
@@ -6702,6 +6722,11 @@
           attachBtn.disabled = true;
           attachBtn.title = "Select a session to attach a file";
           attachBtn.setAttribute("aria-label", "Select a session to attach a file");
+          if (captureBtn) {
+            captureBtn.disabled = true;
+            captureBtn.title = "Select a session to attach a file";
+            captureBtn.setAttribute("aria-label", "Select a session to attach a file");
+          }
         }
         updateQueueBadge();
         syncQueueSubmitState();
@@ -6812,6 +6837,19 @@
           return type === "image/png" ? `${base}.png` : base;
         }
 
+        function capturedFileName(file, index, seed) {
+          const suffix = index > 0 ? `-${index + 1}` : "";
+          const type = String(file && file.type ? file.type : "").toLowerCase();
+          let ext = "jpg";
+          if (type === "image/png") ext = "png";
+          else if (type === "image/webp") ext = "webp";
+          else if (type === "image/gif") ext = "gif";
+          else if (type === "image/heic") ext = "heic";
+          else if (type === "image/heif") ext = "heif";
+          else if (type === "image/avif") ext = "avif";
+          return `captured-${seed}${suffix}.${ext}`;
+        }
+
         async function stageFiles(files, { sid = selected, source = "picker" } = {}) {
           const sessionId = sid || selected;
           const uploadFiles = Array.from(files || []).filter(Boolean);
@@ -6824,18 +6862,18 @@
           }
 
           const producer = String(source || "picker");
-          const progressVerb = producer === "paste" ? "pasting" : producer === "drop" ? "dropping" : "uploading";
-          const pasteNameSeed = Date.now();
+          const progressVerb = producer === "paste" ? "pasting" : producer === "drop" ? "dropping" : producer === "capture" ? "staging captured photo" : "uploading";
+          const producerNameSeed = Date.now();
           let successes = 0;
           const failures = [];
           for (let fileIndex = 0; fileIndex < uploadFiles.length; fileIndex += 1) {
             const f = uploadFiles[fileIndex];
             try {
               if (selected !== sessionId) break;
-              setToast(uploadFiles.length > 1 ? `${progressVerb} ${fileIndex + 1}/${uploadFiles.length}...` : "uploading file...");
+              setToast(uploadFiles.length > 1 ? `${progressVerb} ${fileIndex + 1}/${uploadFiles.length}...` : producer === "capture" ? "staging captured photo..." : "uploading file...");
               const maxBytes = ATTACH_UPLOAD_MAX_BYTES;
               let uploadBlob = f;
-              let uploadName = f.name || (producer === "paste" ? pastedFileName(f, fileIndex, pasteNameSeed) : "file");
+              let uploadName = f.name || (producer === "paste" ? pastedFileName(f, fileIndex, producerNameSeed) : producer === "capture" ? capturedFileName(f, fileIndex, producerNameSeed) : "file");
               if (looksLikeImage(f) && (f.size > maxBytes || isLikelyHeic(f))) {
                 setToast("compressing image...");
                 const stem = safeAttachmentStem(uploadName);
@@ -6905,6 +6943,25 @@
           const files = Array.from(imgInput.files || []);
           imgInput.value = "";
           await stageFiles(files, { sid, source: "picker" });
+        });
+
+        captureBtn.onclick = () => {
+          const sid = selected;
+          const sessionInfo = sid ? sessionIndex.get(sid) || null : null;
+          const attachBlocker = attachmentBlockerForSession(sid, sessionInfo);
+          if (attachBlocker) {
+            setToast(attachBlocker);
+            return;
+          }
+          captureInput.value = "";
+          captureInput.click();
+        };
+        captureInput.addEventListener("change", async () => {
+          const sid = selected;
+          if (!sid) return;
+          const files = Array.from(captureInput.files || []);
+          captureInput.value = "";
+          await stageFiles(files, { sid, source: "capture" });
         });
 
         textarea.addEventListener("paste", (e) => {
