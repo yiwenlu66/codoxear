@@ -584,3 +584,8 @@ Decision: Current HEAD 9e73f01 is accepted as the validated checkpoint after edi
 - Claim 3 evidence: `browser-results.json` measured `attachBtn`, `queueBtn`, `composerStopBtn`, and `sendBtn` at 44x44 CSS px at 390x844 with `horizontalOverflow=false`; screenshot `claim3-mobile-composer.png` preserves the mobile layout.
 - Claim 4 evidence: `noresp-tail.json` contains assistant `message_class: error` with text `The backend completed this turn without producing a response.` for a completed user turn with no assistant output; `normal-tail.json` is the control answered turn; `browser-results.json` and `claim4-browser-noresp.png` show the no-response text in the browser transcript DOM.
 - Claim 5 evidence: `claim5-api-timeline.json` shows busy `false -> true -> false` across post-interrupt idle, resumed `/send`, and completion; `claim5-browser.json` shows sidebar state dot `idle -> busy -> idle`. Boundary: the log-only stale-interrupted-idle variant was not separately re-driven end-to-end in this harness.
+
+
+## 2026-07-06T03:14:07Z Follow-up verification and next-target analysis dispatched
+- Dispatched async executor `83f22848-c931-4d6a-86d7-40f2e1e0e6bd` to drive the remaining log-only stale-interrupted-idle mechanism through Docker/server API/browser evidence. Contract forbids code edits, host runtime access, port 8743, broad cleanup, and commits.
+- Dispatched async theorist `307ba285-2ab0-4f21-af23-bd77ae3d8bff` to rank the next user-facing product target after the current tranche, explicitly excluding the in-flight idle variant and parked backend/Monaco/upload-scope decisions.
