@@ -173,3 +173,13 @@
 - Nonblocker 3 closed in `0c61bb6 Record capture proof driver`: browser proof now includes `capture-input-change-driver.js`, the exact script used to set `#captureInput.files` and dispatch the real `change` listener.
 - Retained nonblocking product observation: on desktop/no-camera devices the capture button degrades to a single-image picker, which is acceptable graceful degradation for a client-only File producer.
 - Docker gates after proof: `93a7a45 Record capture producer docker gates` records `DOCKER_BUILDKIT=0` sandbox test (`1795 passed, 1 skipped, 132 subtests passed`) and smoke (`/api/me` 401 before login, `/api/sessions` 200 after login, app dir under `/home/tester/.local/share/codoxear`).
+
+## 2026-07-07T00:20:00Z Upload attachment_index contract removed pending review
+- Functional commit: `fa74c6a Remove upload attachment index contract`.
+- Mechanism: `/inject_file` and `/inject_image` no longer require or validate `attachment_index`; the frontend no longer sends it; legacy clients that still send any `attachment_index` value are ignored and remain compatible. The route-layer `attachment_inject_text` dependency was removed; send-boundary numbering still uses `file_upload.attachment_inject_text` from `session_send.py`.
+- Validation:
+  - `node --check codoxear/static/app.js`;
+  - focused route/upload/source suite → `68 passed in 1.87s`;
+  - full local suite → `1795 passed, 132 subtests passed in 24.77s`;
+  - `git diff --check` → clean.
+- Clean-room review dispatched: async id `91409321-c108-47de-9175-7dc9f3e20f46`.

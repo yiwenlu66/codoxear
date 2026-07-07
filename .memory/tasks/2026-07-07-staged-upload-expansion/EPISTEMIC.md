@@ -35,7 +35,7 @@ Stage first, commit later.
 ## Remaining nonblocking follow-ups
 - Consider reducing absolute-path exposure in browser tooltips once a safe backend-readable identity/display split exists.
 - Remove dead immediate-PTY attachment injection methods if no non-HTTP consumer remains.
-- Remove vestigial `attachment_index` after compatibility impact is checked.
+- Vestigial `attachment_index` route contract was removed in `fa74c6a` while preserving legacy-client compatibility by ignoring supplied values; clean-room review `91409321-c108-47de-9175-7dc9f3e20f46` is pending.
 - Producer UX polish: re-check blockers per file in long batches if needed, preserve text in mixed text+file paste if a clear UI rule exists, add extensions for non-PNG pasted image names, clear `.drop-active` when a file drag leaves the window without dropping, and decide whether the desktop/no-camera capture button should remain a single-image picker.
 
 ## Current justified claim
