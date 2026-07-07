@@ -1,0 +1,6 @@
+{"sid": "photo-proof", "cwd": "/home/tester/photo-proof-repo", "calls": "/home/tester/photo-proof-calls.jsonl", "sock": "/home/tester/.local/share/codoxear/socks/photo-proof.sock"}
+total 12
+drwxr-xr-x 2 tester tester 4096 Jul  7 04:42 .
+drwxr-xr-x 5 tester tester 4096 Jul  7 04:42 ..
+-rw-r--r-- 1 tester tester  423 Jul  7 04:42 photo-proof.json
+srwxr-xr-x 1 tester tester    0 Jul  7 04:42 photo-proof.sock

@@ -1,0 +1,12 @@
+{
+  "total": 33,
+  "cmd_counts": {
+    "state": 32,
+    "send": 1
+  },
+  "send_texts": [
+    "Attachment 1: /home/tester/.local/share/codoxear/uploads/photo-proof/1783399337329_photo-1783399337321.jpg\nplease process added photo"
+  ],
+  "key_count": 0,
+  "send_count": 1
+}
