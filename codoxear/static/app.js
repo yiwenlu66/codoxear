@@ -286,6 +286,11 @@
         return REASONING_EFFORT_MARKERS[effortTxt] || "";
       }
 
+      function sidebarModelText(s) {
+        const model = s && typeof s.model === "string" ? s.model.trim() : "";
+        return model && model.toLowerCase() !== "default" ? model : "";
+      }
+
       function sessionIdFromHash() {
         return codoxearUrls.sessionIdFromHash();
       }
@@ -3023,6 +3028,7 @@
 	             const effortTxt = String(s.reasoning_effort || "").trim().toLowerCase();
 	             const effortMark = reasoningEffortMarker(effortTxt);
 	             const stateTxt = launchPending ? "starting" : fmtRelativeAge(ageS);
+	             const modelTxt = sidebarModelText(s);
 	             const cwdBase = baseName(s.cwd);
 	             const branchTxt = typeof s.git_branch === "string" ? s.git_branch.trim() : "";
 
@@ -3150,7 +3156,7 @@
 	                 })
 	               );
 	             }
-	             metaItems.push(el("span", { class: "metaText", text: `${stateTxt}${cwdBase ? ` | ${cwdBase}` : ""}${branchTxt ? ` | ${branchTxt}` : ""}` }));
+	             metaItems.push(el("span", { class: "metaText", text: [stateTxt, modelTxt, cwdBase, branchTxt].filter(Boolean).join(" | ") }));
 	             const meta = el("div", { class: "muted subLine sessionMetaLine" }, metaItems);
              if (launchFailed) meta.title = redactedLaunchErrorText(s.launch_error) || "Session launch failed";
              if (launchPending) meta.title = "Session is still starting";
