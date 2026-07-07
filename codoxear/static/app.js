@@ -1243,8 +1243,8 @@
             class: "icon-btn",
             id: "captureBtn",
             type: "button",
-            title: "Capture photo",
-            "aria-label": "Capture photo",
+            title: "Add photo",
+            "aria-label": "Add photo",
             html: iconSvg("camera"),
           }),
           el("div", { class: "inputWrap" }, [
@@ -6707,7 +6707,7 @@
           const selectedInfo = selected ? sessionIndex.get(selected) || null : null;
           const attachBlocker = attachmentBlockerForSession(selected, selectedInfo);
           const attachLabel = attachBlocker || `Attach file (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})`;
-          const captureLabel = attachBlocker || `Capture photo (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})`;
+          const captureLabel = attachBlocker || `Add photo (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})`;
           if (attachControl) {
             attachControl.disabled = Boolean(attachBlocker);
             attachControl.title = attachLabel;
@@ -6852,10 +6852,10 @@
           return ext ? `${base}.${ext}` : base;
         }
 
-        function capturedFileName(file, index, seed) {
+        function photoFileName(file, index, seed) {
           const suffix = index > 0 ? `-${index + 1}` : "";
           const ext = imageExtensionFromMimeType(file && file.type, "jpg") || "jpg";
-          return `captured-${seed}${suffix}.${ext}`;
+          return `photo-${seed}${suffix}.${ext}`;
         }
 
         async function stageFiles(files, { sid = selected, source = "picker" } = {}) {
@@ -6864,7 +6864,7 @@
           if (!uploadFiles.length) return false;
 
           const producer = String(source || "picker");
-          const progressVerb = producer === "paste" ? "pasting" : producer === "drop" ? "dropping" : producer === "capture" ? "staging captured photo" : "uploading";
+          const progressVerb = producer === "paste" ? "pasting" : producer === "drop" ? "dropping" : producer === "capture" ? "staging photo" : "uploading";
           const producerNameSeed = Date.now();
           let successes = 0;
           let stoppedByBlocker = "";
@@ -6878,10 +6878,10 @@
                 stoppedByBlocker = attachBlocker;
                 break;
               }
-              setToast(uploadFiles.length > 1 ? `${progressVerb} ${fileIndex + 1}/${uploadFiles.length}...` : producer === "capture" ? "staging captured photo..." : "uploading file...");
+              setToast(uploadFiles.length > 1 ? `${progressVerb} ${fileIndex + 1}/${uploadFiles.length}...` : producer === "capture" ? "staging photo..." : "uploading file...");
               const maxBytes = ATTACH_UPLOAD_MAX_BYTES;
               let uploadBlob = f;
-              let uploadName = f.name || (producer === "paste" ? pastedFileName(f, fileIndex, producerNameSeed) : producer === "capture" ? capturedFileName(f, fileIndex, producerNameSeed) : "file");
+              let uploadName = f.name || (producer === "paste" ? pastedFileName(f, fileIndex, producerNameSeed) : producer === "capture" ? photoFileName(f, fileIndex, producerNameSeed) : "file");
               if (looksLikeImage(f) && (f.size > maxBytes || isLikelyHeic(f))) {
                 setToast("compressing image...");
                 const stem = safeAttachmentStem(uploadName);
