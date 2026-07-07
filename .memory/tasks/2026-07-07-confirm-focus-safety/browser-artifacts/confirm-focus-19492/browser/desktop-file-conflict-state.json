@@ -1,0 +1,1 @@
+{"success":true,"data":{"origin":"http://127.0.0.1:19492/#session=confirm-focus-session","result":{"editTitle":"Save file","hasConflictReload":true,"keepText":"Keep editing","modelValue":"draft unsaved text\n","reloadText":"Reload from disk","status":"proof.txt - save conflict: file changed on disk\nReload from disk\nKeep editing"}},"error":null}

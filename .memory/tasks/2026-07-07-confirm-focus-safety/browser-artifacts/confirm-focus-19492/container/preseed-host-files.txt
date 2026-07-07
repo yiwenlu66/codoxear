@@ -1,0 +1,3 @@
+confirm-focus-proof/workspace/proof.txt 19
+.local/share/codoxear/pending_attachments.json 25
+.local/share/codoxear/session_files.json 87
