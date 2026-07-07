@@ -1,0 +1,159 @@
+{
+  "api_models": {
+    "model-empty-omitted": {
+      "backend": "pi",
+      "model": null,
+      "reasoning_effort": "off"
+    },
+    "model-default-omitted": {
+      "backend": "codex",
+      "model": "default",
+      "reasoning_effort": "medium"
+    },
+    "model-pi-long": {
+      "backend": "pi",
+      "model": "provider/very-long-model-name-for-mobile-ellipsis-proof-claude-sonnet-4-5-extra-suffix",
+      "reasoning_effort": "minimal"
+    },
+    "model-cc-sonnet": {
+      "backend": "cc",
+      "model": "claude-sonnet-4-5",
+      "reasoning_effort": "max"
+    },
+    "model-codex-gpt": {
+      "backend": "codex",
+      "model": "gpt-5.4",
+      "reasoning_effort": "high"
+    }
+  },
+  "desktop": {
+    "viewport": {
+      "h": 720,
+      "w": 1280
+    },
+    "bodyOverflow": false,
+    "rows": {
+      "model-empty-omitted": {
+        "metaText": "3h ago | model-empty-omitted",
+        "markerText": "–",
+        "metaBox": {
+          "clientWidth": 175,
+          "height": 17,
+          "scrollWidth": 175,
+          "width": 175.296875
+        }
+      },
+      "model-default-omitted": {
+        "metaText": "3h ago | model-default-omitted",
+        "markerText": "M",
+        "metaBox": {
+          "clientWidth": 179,
+          "height": 17,
+          "scrollWidth": 179,
+          "width": 179.328125
+        }
+      },
+      "model-pi-long": {
+        "metaText": "3h ago | provider/very-long-model-name-for-mobile-ellipsis-proof-claude-sonnet-4-5-extra-suffix | model-pi-long",
+        "markerText": "m",
+        "metaBox": {
+          "clientWidth": 293,
+          "height": 17,
+          "scrollWidth": 636,
+          "width": 293
+        }
+      },
+      "model-cc-sonnet": {
+        "metaText": "3h ago | claude-sonnet-4-5 | model-cc-sonnet",
+        "markerText": "M+",
+        "metaBox": {
+          "clientWidth": 260,
+          "height": 17,
+          "scrollWidth": 260,
+          "width": 259.8125
+        }
+      },
+      "model-codex-gpt": {
+        "metaText": "3h ago | gpt-5.4 | model-codex-gpt",
+        "markerText": "H",
+        "metaBox": {
+          "clientWidth": 200,
+          "height": 17,
+          "scrollWidth": 200,
+          "width": 200.203125
+        }
+      }
+    }
+  },
+  "mobile": {
+    "viewport": {
+      "h": 844,
+      "w": 390
+    },
+    "bodyOverflow": false,
+    "rows": {
+      "model-empty-omitted": {
+        "metaText": "3h ago | model-empty-omitted",
+        "markerText": "–",
+        "metaBox": {
+          "clientWidth": 175,
+          "height": 17,
+          "scrollWidth": 175,
+          "truncated": false,
+          "width": 175.296875
+        }
+      },
+      "model-default-omitted": {
+        "metaText": "3h ago | model-default-omitted",
+        "markerText": "M",
+        "metaBox": {
+          "clientWidth": 179,
+          "height": 17,
+          "scrollWidth": 179,
+          "truncated": false,
+          "width": 179.328125
+        }
+      },
+      "model-pi-long": {
+        "metaText": "3h ago | provider/very-long-model-name-for-mobile-ellipsis-proof-claude-sonnet-4-5-extra-suffix | model-pi-long",
+        "markerText": "m",
+        "metaBox": {
+          "clientWidth": 280,
+          "height": 17,
+          "scrollWidth": 636,
+          "truncated": true,
+          "width": 279.796875
+        }
+      },
+      "model-cc-sonnet": {
+        "metaText": "3h ago | claude-sonnet-4-5 | model-cc-sonnet",
+        "markerText": "M+",
+        "metaBox": {
+          "clientWidth": 260,
+          "height": 17,
+          "scrollWidth": 260,
+          "truncated": false,
+          "width": 259.8125
+        }
+      },
+      "model-codex-gpt": {
+        "metaText": "3h ago | gpt-5.4 | model-codex-gpt",
+        "markerText": "H",
+        "metaBox": {
+          "clientWidth": 200,
+          "height": 17,
+          "scrollWidth": 200,
+          "truncated": false,
+          "width": 200.203125
+        }
+      }
+    }
+  },
+  "assertions": {
+    "gpt_model_visible": true,
+    "claude_model_visible": true,
+    "default_model_omitted": true,
+    "empty_model_omitted": true,
+    "long_mobile_truncated_without_body_overflow": true
+  }
+}

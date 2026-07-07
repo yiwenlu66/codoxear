@@ -1,0 +1,70 @@
+{
+  "bodyOverflow": false,
+  "rows": [
+    {
+      "markerText": "–",
+      "markerTitle": "reasoning effort off",
+      "metaBox": {
+        "clientWidth": 175,
+        "height": 17,
+        "scrollWidth": 175,
+        "width": 175.296875
+      },
+      "metaText": "3h ago | model-empty-omitted",
+      "title": "model-empty-omitted"
+    },
+    {
+      "markerText": "M",
+      "markerTitle": "reasoning effort medium",
+      "metaBox": {
+        "clientWidth": 179,
+        "height": 17,
+        "scrollWidth": 179,
+        "width": 179.328125
+      },
+      "metaText": "3h ago | model-default-omitted",
+      "title": "model-default-omitted"
+    },
+    {
+      "markerText": "m",
+      "markerTitle": "reasoning effort minimal",
+      "metaBox": {
+        "clientWidth": 293,
+        "height": 17,
+        "scrollWidth": 636,
+        "width": 293
+      },
+      "metaText": "3h ago | provider/very-long-model-name-for-mobile-ellipsis-proof-claude-sonnet-4-5-extra-suffix | model-pi-long",
+      "title": "model-pi-long"
+    },
+    {
+      "markerText": "M+",
+      "markerTitle": "reasoning effort max",
+      "metaBox": {
+        "clientWidth": 260,
+        "height": 17,
+        "scrollWidth": 260,
+        "width": 259.8125
+      },
+      "metaText": "3h ago | claude-sonnet-4-5 | model-cc-sonnet",
+      "title": "model-cc-sonnet"
+    },
+    {
+      "markerText": "H",
+      "markerTitle": "reasoning effort high",
+      "metaBox": {
+        "clientWidth": 200,
+        "height": 17,
+        "scrollWidth": 200,
+        "width": 200.203125
+      },
+      "metaText": "3h ago | gpt-5.4 | model-codex-gpt",
+      "title": "model-codex-gpt"
+    }
+  ],
+  "url": "http://127.0.0.1:19431/#session=model-empty-omitted",
+  "viewport": {
+    "h": 720,
+    "w": 1280
+  }
+}

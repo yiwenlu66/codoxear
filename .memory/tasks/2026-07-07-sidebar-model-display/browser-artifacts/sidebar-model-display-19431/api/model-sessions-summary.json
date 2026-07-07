@@ -1,0 +1,47 @@
+[
+  {
+    "session_id": "model-empty-omitted",
+    "agent_backend": "pi",
+    "model": null,
+    "reasoning_effort": "off",
+    "cwd": "/home/tester/sidebar-model-proof/empty-model-project/model-empty-omitted",
+    "busy": false,
+    "token": null
+  },
+  {
+    "session_id": "model-default-omitted",
+    "agent_backend": "codex",
+    "model": "default",
+    "reasoning_effort": "medium",
+    "cwd": "/home/tester/sidebar-model-proof/default-model-project/model-default-omitted",
+    "busy": false,
+    "token": null
+  },
+  {
+    "session_id": "model-pi-long",
+    "agent_backend": "pi",
+    "model": "provider/very-long-model-name-for-mobile-ellipsis-proof-claude-sonnet-4-5-extra-suffix",
+    "reasoning_effort": "minimal",
+    "cwd": "/home/tester/sidebar-model-proof/same-project/model-pi-long",
+    "busy": false,
+    "token": null
+  },
+  {
+    "session_id": "model-cc-sonnet",
+    "agent_backend": "cc",
+    "model": "claude-sonnet-4-5",
+    "reasoning_effort": "max",
+    "cwd": "/home/tester/sidebar-model-proof/same-project/model-cc-sonnet",
+    "busy": false,
+    "token": null
+  },
+  {
+    "session_id": "model-codex-gpt",
+    "agent_backend": "codex",
+    "model": "gpt-5.4",
+    "reasoning_effort": "high",
+    "cwd": "/home/tester/sidebar-model-proof/same-project/model-codex-gpt",
+    "busy": false,
+    "token": null
+  }
+]
