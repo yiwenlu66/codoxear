@@ -262,3 +262,18 @@
 - Verdict: accepted current staged attachment path redaction with no blockers.
 - Review confirmed: public staged attachment payloads omit upload paths; confirmed send and private commit-unknown state preserve backend-readable paths; commit-unknown public recovery preview uses `display_text` or legacy generated-prefix redaction; immediate key injection remains retired; proof/test coverage is adequate.
 - Nonblocking boundaries: legacy commit-unknown fallback redacts only generated leading `Attachment N: /...` lines, not arbitrary user-authored absolute paths; public `display_name` remains the client-provided filename while generated internal paths are omitted.
+
+## 2026-07-07T02:52:00Z Upload producer polish accepted
+- Functional commit: `b4b018b Polish staged attachment producers`.
+- Mechanism: mixed file+text paste now prevents default for the file-bearing paste but explicitly inserts real clipboard text into the composer before staging files; no-name pasted/captured image filenames derive extensions from MIME type; composer `.drop-active` is cleared on composer drop, window leave, dragend, and any window drop. All producers still call shared `stageFiles()`, which checks `attachmentBlockerForSession()` before the only `/inject_file` call.
+- Local validation before functional commit:
+  - `node --check codoxear/static/app.js`;
+  - focused source tests → `11 passed`;
+  - full local suite → `1793 passed, 128 subtests passed`;
+  - `git diff --check` → clean.
+- Proof commit: `54a66d1 Record upload producer polish proof`.
+- Artifact root: `.memory/tasks/2026-07-07-staged-upload-expansion/browser-artifacts/upload-producer-polish-19377/`.
+- Docker/browser observations: browser dispatched a file-bearing paste with two no-name image files plus `text/plain`; textarea became `prefix-MIXED-TEXTsuffix`; upload names ended `.jpg` and `.webp`; public staged entries had no `path`; dragenter set `.drop-active`; window-leave dragleave and off-composer drop cleared it; off-composer drop was prevented and did not stage; confirmed send cleared staged entries. Fake broker summary had exactly one `send`, zero `keys`, and the send payload contained absolute private `.jpg`/`.webp` attachment paths plus prompt text.
+- Docker gates: sandbox test on port `19378` passed (`1792 passed, 1 skipped, 128 subtests passed`) and smoke passed (`/api/me` 401 before login, `/api/sessions` 200 after login, app dir `/home/tester/.local/share/codoxear`).
+- Clean-room review commit: `447a124 Record upload producer polish review`.
+- Review verdict: accepted with no blockers. Residual proof boundaries: the browser proof samples jpeg/webp but source helper/tests cover png/gif; text-only/file-only paste were not separately browser-reproved in this polish artifact but remain covered by source structure and prior producer proof.
