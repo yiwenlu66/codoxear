@@ -51,7 +51,7 @@ class TestAttachButtonSource(unittest.TestCase):
         self.assertIn('let uploadName = f.name || (producer === "paste" ? pastedFileName(f, fileIndex, producerNameSeed) : producer === "capture" ? capturedFileName(f, fileIndex, producerNameSeed) : "file");', source)
         self.assertIn('const stem = safeAttachmentStem(uploadName);', source)
         self.assertIn('api(`/api/sessions/${sessionId}/inject_file`', source)
-        self.assertIn('attachment_index: stagedAttachments.length + 1', source)
+        self.assertNotIn('attachment_index:', source)
         self.assertIn('if (selected === sessionId && res && res.ok) {', source)
         self.assertIn('setSelectedSessionStagedAttachments(Array.isArray(res.attachments) ? res.attachments : []);', source)
         self.assertIn('const failures = [];', source)

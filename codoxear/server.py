@@ -48,7 +48,6 @@ from .file_text import FILE_READ_MAX_BYTES
 from .file_text import read_regular_file_prefix_no_symlink as _read_regular_file_prefix_no_symlink
 from .file_text import read_text_file_strict as _read_text_file_strict
 from .file_types import file_kind as _file_kind
-from .file_upload import attachment_inject_text as _attachment_inject_text
 from .file_upload import stage_uploaded_file as _stage_uploaded_file_impl
 from . import git_ops as _git_ops
 from .launch_config import LaunchConfigPaths

@@ -120,7 +120,6 @@ def _deps(responses, *, staged=None, auth=True):
         attach_upload_body_max_bytes=1024,
         attach_upload_max_bytes=512,
         stage_uploaded_file=stage,
-        attachment_inject_text=lambda idx, path: f"Attachment {idx}: {path}\n" if idx > 0 else (_ for _ in ()).throw(ValueError("attachment_index must be >= 1")),
         clean_unattended_cooldown_minutes=lambda value: int(value),
         clean_unattended_remaining_injections=lambda value, **_kwargs: int(value),
         session_not_ready_error=NotReady,
@@ -354,7 +353,7 @@ def test_inject_attachment_checks_readiness_before_decoding_or_staging() -> None
     manager = Manager()
     manager.ready = False
     assert handle_control_post_route(
-        Handler({"filename": "note.txt", "attachment_index": 1, "data_b64": base64.b64encode(b"hello").decode("ascii")}),
+        Handler({"filename": "note.txt", "data_b64": base64.b64encode(b"hello").decode("ascii")}),
         path="/api/sessions/s1/inject_file",
         manager=manager,
         deps=_deps(responses, staged=staged),
@@ -370,7 +369,7 @@ def test_inject_attachment_stages_without_backend_paste() -> None:
     staged = []
     manager = Manager()
     assert handle_control_post_route(
-        Handler({"filename": "note.txt", "attachment_index": 1, "data_b64": base64.b64encode(b"hello").decode("ascii")}),
+        Handler({"filename": "note.txt", "data_b64": base64.b64encode(b"hello").decode("ascii")}),
         path="/api/sessions/s1/inject_image",
         manager=manager,
         deps=_deps(responses, staged=staged),
@@ -401,25 +400,18 @@ def _default_stage(session_id, filename, raw):
     return Path("/tmp") / session_id / filename
 
 
-def _default_inject_text(idx, path):
-    if idx <= 0:
-        raise ValueError("attachment_index must be >= 1")
-    return f"Attachment {idx}: {path}\n"
-
-
 def _inject_deps(
     responses,
     *,
     auth=True,
     stage=_default_stage,
-    inject_text=_default_inject_text,
     body_max=1024,
     upload_max=512,
 ):
     """Build ControlRouteDeps for inject-attachment matrix tests.
 
-    `stage`/`inject_text` are overridable so each matrix case can force the
-    exact failure mode without touching server globals."""
+    `stage` is overridable so each matrix case can force the exact failure
+    mode without touching server globals."""
     return ControlRouteDeps(
         require_auth=lambda _handler: auth,
         json_response=lambda _handler, status, obj: responses.append((status, obj)),
@@ -428,7 +420,6 @@ def _inject_deps(
         attach_upload_body_max_bytes=body_max,
         attach_upload_max_bytes=upload_max,
         stage_uploaded_file=stage,
-        attachment_inject_text=inject_text,
         clean_unattended_cooldown_minutes=lambda value: int(value),
         clean_unattended_remaining_injections=lambda value, **_kwargs: int(value),
         session_not_ready_error=NotReady,
@@ -438,17 +429,17 @@ def _inject_deps(
 
 
 def _good_body(**overrides):
-    body = {"filename": "note.txt", "attachment_index": 1, "data_b64": base64.b64encode(b"hello").decode("ascii")}
+    body = {"filename": "note.txt", "data_b64": base64.b64encode(b"hello").decode("ascii")}
     body.update(overrides)
     return body
 
 
-def _post(handler_body, responses, *, manager=None, auth=True, stage=_default_stage, inject_text=_default_inject_text):
+def _post(handler_body, responses, *, manager=None, auth=True, stage=_default_stage):
     return handle_control_post_route(
         Handler(handler_body),
         path="/api/sessions/s1/inject_file",
         manager=manager or Manager(),
-        deps=_inject_deps(responses, auth=auth, stage=stage, inject_text=inject_text),
+        deps=_inject_deps(responses, auth=auth, stage=stage),
         match_session_route=_match_session_route,
     )
 
@@ -490,18 +481,19 @@ def test_inject_attachment_missing_filename_is_400() -> None:
     assert _post(_good_body(filename="   "), responses) is True
     assert responses == [(400, {"error": "filename required"})]
     responses.clear()
-    assert _post({"attachment_index": 1, "data_b64": "AAA"}, responses) is True
+    assert _post({"data_b64": "AAA"}, responses) is True
     assert responses == [(400, {"error": "filename required"})]
 
 
-def test_inject_attachment_non_integer_index_is_400() -> None:
+def test_inject_attachment_ignores_legacy_attachment_index() -> None:
     responses = []
-    # bool is rejected even though bool is a subclass of int.
-    assert _post(_good_body(attachment_index=True), responses) is True
-    assert responses == [(400, {"error": "attachment_index must be an integer"})]
-    responses.clear()
-    assert _post(_good_body(attachment_index="1"), responses) is True
-    assert responses == [(400, {"error": "attachment_index must be an integer"})]
+    manager = Manager()
+    for legacy_value in (0, 1, True, "1"):
+        responses.clear()
+        manager.calls.clear()
+        assert _post(_good_body(attachment_index=legacy_value), responses, manager=manager) is True
+        assert responses[-1][0] == 200
+        assert not any(call[0] == "inject_attachment" for call in manager.calls)
 
 
 def test_inject_attachment_missing_data_b64_is_400() -> None:
@@ -509,7 +501,7 @@ def test_inject_attachment_missing_data_b64_is_400() -> None:
     assert _post(_good_body(data_b64=""), responses) is True
     assert responses == [(400, {"error": "data_b64 required"})]
     responses.clear()
-    assert _post({"filename": "note.txt", "attachment_index": 1}, responses) is True
+    assert _post({"filename": "note.txt"}, responses) is True
     assert responses == [(400, {"error": "data_b64 required"})]
 
 
@@ -533,14 +525,6 @@ def test_inject_attachment_stage_generic_value_error_is_400() -> None:
         raise ValueError("bad path")
     assert _post(_good_body(), responses, stage=_bad_path) is True
     assert responses == [(400, {"error": "bad path"})]
-
-
-def test_inject_attachment_accepts_legacy_index_but_does_not_generate_text() -> None:
-    responses = []
-    manager = Manager()
-    assert _post(_good_body(attachment_index=0), responses, manager=manager) is True
-    assert responses[-1][0] == 200
-    assert not any(call[0] == "inject_attachment" for call in manager.calls)
 
 
 def test_inject_attachment_readiness_key_error_is_404() -> None:

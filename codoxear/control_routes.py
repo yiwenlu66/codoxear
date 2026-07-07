@@ -22,7 +22,6 @@ class ControlRouteDeps:
     attach_upload_body_max_bytes: int
     attach_upload_max_bytes: int
     stage_uploaded_file: Callable[[str, str, bytes], Path]
-    attachment_inject_text: Callable[[int, Path], str]
     clean_unattended_cooldown_minutes: Callable[[Any], int]
     clean_unattended_remaining_injections: Callable[..., int]
     session_not_ready_error: type[BaseException]
@@ -301,12 +300,8 @@ def _handle_inject_attachment(handler: Any, *, session_id: str, manager: Any, de
     )
     data_b64 = obj.get("data_b64")
     filename = obj.get("filename")
-    attachment_index = obj.get("attachment_index")
     if not isinstance(filename, str) or (not filename.strip()):
         deps.json_response(handler, 400, {"error": "filename required"})
-        return
-    if isinstance(attachment_index, bool) or not isinstance(attachment_index, int):
-        deps.json_response(handler, 400, {"error": "attachment_index must be an integer"})
         return
     if not isinstance(data_b64, str) or not data_b64:
         deps.json_response(handler, 400, {"error": "data_b64 required"})

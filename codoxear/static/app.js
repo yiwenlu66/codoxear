@@ -6898,7 +6898,7 @@
               const b64 = b64FromBytes(new Uint8Array(ab));
               const res = await api(`/api/sessions/${sessionId}/inject_file`, {
                 method: "POST",
-                body: { filename: uploadName, data_b64: b64, attachment_index: stagedAttachments.length + 1 },
+                body: { filename: uploadName, data_b64: b64 },
               });
               if (selected === sessionId && res && res.ok) {
                 successes += 1;

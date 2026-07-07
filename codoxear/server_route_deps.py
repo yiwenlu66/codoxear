@@ -42,7 +42,6 @@ class ServerRouteCaps:
     TOP_LEVEL_STATIC_ASSETS: Any
     TRANSCRIPT_EXPORT_MAX_BYTES: Any
     TRANSCRIPT_SEARCH_MAX_LINE_BYTES: Any
-    _attachment_inject_text: Any
     _clean_unattended_cooldown_minutes: Any
     _clean_unattended_remaining_injections: Any
     _clip01: Any
@@ -128,7 +127,6 @@ def server_route_caps(server: Any) -> ServerRouteCaps:
         TOP_LEVEL_STATIC_ASSETS=server.TOP_LEVEL_STATIC_ASSETS,
         TRANSCRIPT_EXPORT_MAX_BYTES=server.TRANSCRIPT_EXPORT_MAX_BYTES,
         TRANSCRIPT_SEARCH_MAX_LINE_BYTES=server.TRANSCRIPT_SEARCH_MAX_LINE_BYTES,
-        _attachment_inject_text=server._attachment_inject_text,
         _clean_unattended_cooldown_minutes=server._clean_unattended_cooldown_minutes,
         _clean_unattended_remaining_injections=server._clean_unattended_remaining_injections,
         _clip01=server._clip01,
@@ -266,7 +264,6 @@ class ServerRouteDepsFactory:
             attach_upload_body_max_bytes=caps.ATTACH_UPLOAD_BODY_MAX_BYTES,
             attach_upload_max_bytes=caps.ATTACH_UPLOAD_MAX_BYTES,
             stage_uploaded_file=caps._stage_uploaded_file,
-            attachment_inject_text=caps._attachment_inject_text,
             clean_unattended_cooldown_minutes=caps._clean_unattended_cooldown_minutes,
             clean_unattended_remaining_injections=caps._clean_unattended_remaining_injections,
             session_not_ready_error=caps.SessionNotReadyError,

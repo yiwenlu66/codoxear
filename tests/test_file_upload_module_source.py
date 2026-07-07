@@ -29,7 +29,6 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertNotIn("safe_filename as _safe_filename", server_source)
         self.assertIn("from .file_upload import safe_filename", launcher_source)
         self.assertIn("from .file_upload import stage_uploaded_file as _stage_uploaded_file_impl", server_source)
-        self.assertIn("from .file_upload import attachment_inject_text as _attachment_inject_text", server_source)
         self.assertIn("upload_dir=UPLOAD_DIR", server_source)
         self.assertIn("now_fn=_now", server_source)
         self.assertNotIn("def _safe_filename(", server_source)
@@ -56,7 +55,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         block = route_source[start:]
         self.assertIn("if handle_control_post_route(", (ROOT / "codoxear" / "server_handler.py").read_text(encoding="utf-8"))
         self.assertIn("stage_uploaded_file=server._stage_uploaded_file", route_deps_source)
-        self.assertIn("attachment_inject_text=server._attachment_inject_text", route_deps_source)
+        self.assertNotIn("attachment_inject_text=server._attachment_inject_text", route_deps_source)
         self.assertIn("ready_for_attachment = manager.attachment_staging_ready(session_id)", block)
         self.assertIn("res = manager.add_staged_attachment(", block)
         self.assertNotIn("manager.inject_attachment_keys(session_id, seq)", block)
