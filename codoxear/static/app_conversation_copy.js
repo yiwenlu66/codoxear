@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  function formatConversationForCopy(events) {
+  function conversationCopyParts(events) {
     const parts = [];
     for (const ev of Array.isArray(events) ? events : []) {
       if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
@@ -12,7 +12,19 @@
       const when = Number.isFinite(ts) ? ` (${new Date(ts * 1000).toLocaleString()})` : "";
       parts.push(`## ${role}${when}\n\n${text}`);
     }
-    return parts.join("\n\n---\n\n").trim();
+    return parts;
+  }
+
+  function formatConversationForCopyResult(events) {
+    const parts = conversationCopyParts(events);
+    return {
+      text: parts.join("\n\n---\n\n").trim(),
+      messageCount: parts.length,
+    };
+  }
+
+  function formatConversationForCopy(events) {
+    return formatConversationForCopyResult(events).text;
   }
 
   function formatCopyLimitBytes(value) {
@@ -47,6 +59,7 @@
 
   window.CodoxearConversationCopy = Object.freeze({
     formatConversationForCopy,
+    formatConversationForCopyResult,
     transcriptExportTooLargeCopyMessage,
   });
 })();

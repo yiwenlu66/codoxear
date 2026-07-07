@@ -414,6 +414,7 @@
       if (
         !codoxearConversationCopy ||
         typeof codoxearConversationCopy.formatConversationForCopy !== "function" ||
+        typeof codoxearConversationCopy.formatConversationForCopyResult !== "function" ||
         typeof codoxearConversationCopy.transcriptExportTooLargeCopyMessage !== "function"
       )
         throw new Error("Codoxear conversation-copy helpers failed to load");
@@ -2169,6 +2170,14 @@
           return codoxearConversationCopy.formatConversationForCopy(events);
         }
 
+        function formatConversationForCopyResult(events) {
+          return codoxearConversationCopy.formatConversationForCopyResult(events);
+        }
+
+        function copiedConversationToast(messageCount) {
+          return messageCount === 1 ? "Copied 1 message" : `Copied ${messageCount} messages`;
+        }
+
         async function copyConversation() {
           if (!selected) return;
           const sid = selected;
@@ -2177,13 +2186,13 @@
             const data = await api(`/api/sessions/${sid}/messages/export`);
             if (selected !== sid) return;
             const events = Array.isArray(data && data.events) ? data.events : [];
-            const text = formatConversationForCopy(events);
-            if (!text) {
+            const formatted = formatConversationForCopyResult(events);
+            if (!formatted.text) {
               setToast("No conversation to copy");
               return;
             }
-            await copyToClipboard(text);
-            setToast(`Copied ${events.length} messages`);
+            await copyToClipboard(formatted.text);
+            setToast(copiedConversationToast(formatted.messageCount));
           } catch (err) {
             setToast(copyConversationFailureToast(err));
           } finally {

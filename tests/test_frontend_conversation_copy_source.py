@@ -21,8 +21,11 @@ def eval_conversation_copy(events) -> dict:
         vm.createContext(ctx);
         vm.runInContext({json.dumps(source)}, ctx);
         const helpers = ctx.window.CodoxearConversationCopy;
+        const result = helpers.formatConversationForCopyResult({json.dumps(events)});
         process.stdout.write(JSON.stringify({{
           text: helpers.formatConversationForCopy({json.dumps(events)}),
+          resultText: result.text,
+          messageCount: result.messageCount,
           frozen: Object.isFrozen(helpers),
         }}));
         """
@@ -77,6 +80,7 @@ def eval_app_copy_failure_toasts() -> dict:
     setup = """
     window.CodoxearConversationCopy = {
       formatConversationForCopy() {},
+      formatConversationForCopyResult() {},
       transcriptExportTooLargeCopyMessage(err) {
         if (err && err.status === 413 && err.obj && err.obj.max_bytes === 52428800) return "Conversation too large to copy (max 50 MiB). Use search or copy a smaller range.";
         return "";
@@ -102,6 +106,48 @@ def eval_app_copy_failure_toasts() -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_app_copy_conversation_success(events) -> dict:
+    app_source = APP_JS.read_text(encoding="utf-8")
+    helper_source = APP_CONVERSATION_COPY_JS.read_text(encoding="utf-8")
+    start = app_source.index("function formatConversationForCopy(events)")
+    end = app_source.index("copyConversationBtn.onclick", start)
+    copy_source = app_source[start:end]
+    runtime_source = "const codoxearConversationCopy = window.CodoxearConversationCopy;\n" + copy_source + "\nthis.__copyConversation = copyConversation;"
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{
+          window: {{}},
+          selected: "session-1",
+          copyConversationBtn: {{ disabled: false }},
+          toastText: "",
+          clipboardText: "",
+        }};
+        ctx.api = async (url) => {{
+          if (url !== "/api/sessions/session-1/messages/export") throw new Error(`unexpected api url: ${{url}}`);
+          return {{ events: {json.dumps(events)} }};
+        }};
+        ctx.copyToClipboard = async (text) => {{ ctx.clipboardText = text; }};
+        ctx.setToast = (text) => {{ ctx.toastText = text; }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(helper_source)}, ctx);
+        vm.runInContext({json.dumps(runtime_source)}, ctx);
+        vm.runInContext("__copyConversation()", ctx).then(() => {{
+          process.stdout.write(JSON.stringify({{
+            toast: ctx.toastText,
+            clipboardText: ctx.clipboardText,
+            disabled: ctx.copyConversationBtn.disabled,
+          }}));
+        }}).catch((err) => {{
+          console.error(err && err.stack || err);
+          process.exit(1);
+        }});
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 class TestFrontendConversationCopySource(unittest.TestCase):
     def test_index_loads_conversation_copy_before_app(self) -> None:
         source = INDEX_HTML.read_text(encoding="utf-8")
@@ -115,12 +161,16 @@ class TestFrontendConversationCopySource(unittest.TestCase):
         self.assertIn("const codoxearConversationCopy = window.CodoxearConversationCopy;", source)
         self.assertIn('throw new Error("Codoxear conversation-copy helpers failed to load")', source)
         self.assertIn('typeof codoxearConversationCopy.formatConversationForCopy !== "function"', source)
+        self.assertIn('typeof codoxearConversationCopy.formatConversationForCopyResult !== "function"', source)
         self.assertIn('typeof codoxearConversationCopy.transcriptExportTooLargeCopyMessage !== "function"', source)
         self.assertIn("function formatConversationForCopy(events)", source)
         self.assertIn("return codoxearConversationCopy.formatConversationForCopy(events);", source)
+        self.assertIn("function formatConversationForCopyResult(events)", source)
+        self.assertIn("return codoxearConversationCopy.formatConversationForCopyResult(events);", source)
         self.assertIn("function copyConversationFailureToast(err)", source)
         self.assertIn("setToast(copyConversationFailureToast(err));", source)
         self.assertIn("window.CodoxearConversationCopy = Object.freeze({", helper_source)
+        self.assertIn("formatConversationForCopyResult,", helper_source)
         self.assertIn("transcriptExportTooLargeCopyMessage,", helper_source)
         self.assertIn('parts.push(`## ${role}${when}\\n\\n${text}`);', helper_source)
         self.assertNotIn('parts.push(`## ${role}${when}\\n\\n${text}`);', source)
@@ -132,7 +182,9 @@ class TestFrontendConversationCopySource(unittest.TestCase):
         self.assertEqual(partial, {"ok": False, "message": "Codoxear conversation-copy helpers failed to load"})
         formatting_only = run_app_conversation_copy_guard("window.CodoxearConversationCopy = { formatConversationForCopy() {} };")
         self.assertEqual(formatting_only, {"ok": False, "message": "Codoxear conversation-copy helpers failed to load"})
-        complete = run_app_conversation_copy_guard("window.CodoxearConversationCopy = { formatConversationForCopy() {}, transcriptExportTooLargeCopyMessage() {} };")
+        missing_result = run_app_conversation_copy_guard("window.CodoxearConversationCopy = { formatConversationForCopy() {}, transcriptExportTooLargeCopyMessage() {} };")
+        self.assertEqual(missing_result, {"ok": False, "message": "Codoxear conversation-copy helpers failed to load"})
+        complete = run_app_conversation_copy_guard("window.CodoxearConversationCopy = { formatConversationForCopy() {}, formatConversationForCopyResult() {}, transcriptExportTooLargeCopyMessage() {} };")
         self.assertEqual(complete, {"ok": True, "message": ""})
 
     def test_transcript_export_too_large_helper_recognizes_api_error_shape(self) -> None:
@@ -161,6 +213,27 @@ class TestFrontendConversationCopySource(unittest.TestCase):
         self.assertEqual(result["missingLimit"], "")
         self.assertEqual(result["network"], "")
 
+    def test_app_copy_conversation_success_toast_counts_copied_messages_not_raw_events(self) -> None:
+        result = eval_app_copy_conversation_success(
+            [
+                {"role": "system", "text": "ignored system", "ts": 1},
+                {"role": "user", "text": "first user", "ts": 2},
+                {"role": "assistant", "text": "   ", "ts": 3},
+                {"role": "tool", "text": "ignored tool", "ts": 4},
+                {"role": "assistant", "text": "assistant answer", "ts": 5},
+                {"role": "user", "text": "\n\t", "ts": 6},
+            ]
+        )
+        self.assertEqual(result["toast"], "Copied 2 messages")
+        self.assertEqual(result["clipboardText"].count("## User"), 1)
+        self.assertEqual(result["clipboardText"].count("## Assistant"), 1)
+        self.assertNotIn("ignored system", result["clipboardText"])
+        self.assertNotIn("ignored tool", result["clipboardText"])
+
+    def test_app_copy_conversation_success_toast_uses_singular_message_grammar(self) -> None:
+        result = eval_app_copy_conversation_success([{"role": "assistant", "text": "one answer"}])
+        self.assertEqual(result["toast"], "Copied 1 message")
+
     def test_app_copy_conversation_failure_toast_preserves_generic_failures(self) -> None:
         result = eval_app_copy_failure_toasts()
         self.assertRegex(result["specific"], r"Conversation.*too large.*copy")
@@ -180,6 +253,8 @@ class TestFrontendConversationCopySource(unittest.TestCase):
             ]
         )
         self.assertTrue(result["frozen"])
+        self.assertEqual(result["resultText"], result["text"])
+        self.assertEqual(result["messageCount"], 2)
         self.assertRegex(
             result["text"],
             re.compile(r"^## User \(.+\)\n\n  hello user\n\n---\n\n## Assistant\n\nassistant answer$", re.DOTALL),
@@ -196,6 +271,13 @@ class TestFrontendConversationCopySource(unittest.TestCase):
                 {"role": "user", "text": False},
             ])["text"],
             "",
+        )
+        self.assertEqual(
+            eval_conversation_copy([
+                {"role": "system", "text": "ignored"},
+                {"role": "assistant", "text": "\n\t  "},
+            ])["messageCount"],
+            0,
         )
 
 
