@@ -498,7 +498,8 @@
 
     const renderCodeBlock = (value, lang) => {
       const langAttr = lang ? ` data-lang="${escapeHtml(lang)}"` : "";
-      return `<pre><code${langAttr}>${escapeHtml(value)}</code></pre>`;
+      const copyButton = '<button class="code-copy-btn" type="button" aria-label="Copy code" title="Copy code"></button>';
+      return `<pre>${copyButton}<code${langAttr}>${escapeHtml(value)}</code></pre>`;
     };
 
     const parseList = (lines, start) => {

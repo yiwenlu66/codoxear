@@ -75,8 +75,8 @@ class TestMarkdownRendererSource(unittest.TestCase):
             )
         )
 
-        self.assertIn('<pre><code data-lang="text">fwdbwd(1), optim(1), fwdbwd(2), optim(2), ...</code></pre>', html)
-        self.assertIn("Submit requests in exact semantic order:<pre>", html)
+        self.assertIn('<pre><button class="code-copy-btn" type="button" aria-label="Copy code" title="Copy code"></button><code data-lang="text">fwdbwd(1), optim(1), fwdbwd(2), optim(2), ...</code></pre>', html)
+        self.assertIn("Submit requests in exact semantic order:<pre><button", html)
         self.assertIn("Do not submit all <code>fwdbwd</code> first.", html)
         self.assertNotIn("```", html)
 
@@ -95,7 +95,7 @@ class TestMarkdownRendererSource(unittest.TestCase):
             )
         )
 
-        self.assertIn('<pre><code data-lang="text">one\n\ntwo</code></pre>', html)
+        self.assertIn('<pre><button class="code-copy-btn" type="button" aria-label="Copy code" title="Copy code"></button><code data-lang="text">one\n\ntwo</code></pre>', html)
         self.assertIn("<li>after</li>", html)
         self.assertNotIn("```", html)
 
@@ -120,15 +120,15 @@ class TestMarkdownRendererSource(unittest.TestCase):
         )
 
         self.assertIn(
-            '<pre><code data-lang="bash">pi --no-session --print &#39;Use native provider web_search ...&#39;</code></pre>',
+            '<pre><button class="code-copy-btn" type="button" aria-label="Copy code" title="Copy code"></button><code data-lang="bash">pi --no-session --print &#39;Use native provider web_search ...&#39;</code></pre>',
             html,
         )
         self.assertIn(
-            '<pre><code data-lang="text">https://platform.openai.com/docs/guides/tools-web-search?api-mode=responses</code></pre>',
+            '<pre><button class="code-copy-btn" type="button" aria-label="Copy code" title="Copy code"></button><code data-lang="text">https://platform.openai.com/docs/guides/tools-web-search?api-mode=responses</code></pre>',
             html,
         )
-        self.assertIn("<li>OpenAI native web search:<ul><li>Command:<pre>", html)
-        self.assertIn("</pre></li><li>Output:<pre>", html)
+        self.assertIn("<li>OpenAI native web search:<ul><li>Command:<pre><button", html)
+        self.assertIn("</pre></li><li>Output:<pre><button", html)
         self.assertNotIn("```", html)
 
     def test_blockquote_renders_as_blockquote(self) -> None:

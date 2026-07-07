@@ -2131,6 +2131,9 @@
         const codoxearClipboard = window.CodoxearClipboard;
         if (!codoxearClipboard || typeof codoxearClipboard.copyTextViaSelection !== "function" || typeof codoxearClipboard.copyToClipboard !== "function")
           throw new Error("Codoxear clipboard helpers failed to load");
+        const codoxearCodeCopy = window.CodoxearCodeCopy;
+        if (!codoxearCodeCopy || typeof codoxearCodeCopy.createCodeBlockCopyRuntime !== "function")
+          throw new Error("Codoxear code copy helpers failed to load");
 
         function setToast(text) {
           toast.textContent = text || "";
@@ -2147,6 +2150,13 @@
         async function copyToClipboard(text) {
           return codoxearClipboard.copyToClipboard(text);
         }
+
+        const codeBlockCopyRuntime = codoxearCodeCopy.createCodeBlockCopyRuntime({
+          copyToClipboard,
+          setToast,
+          setTimeout,
+          clearTimeout,
+        });
 
         function formatConversationForCopy(events) {
           return codoxearConversationCopy.formatConversationForCopy(events);
@@ -6010,6 +6020,7 @@
         $("#filePasteCancelBtn").onclick = () => hideFilePasteDialog({ restoreFocus: true });
         filePasteBackdrop.onclick = () => hideFilePasteDialog({ restoreFocus: true });
         chatInner.addEventListener("click", (e) => {
+          if (codeBlockCopyRuntime.handleClick(e)) return;
           void fileReferenceRuntime.handleClick(e);
         });
         fileDiff.addEventListener("click", (e) => {

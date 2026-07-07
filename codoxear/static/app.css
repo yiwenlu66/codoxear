@@ -1220,8 +1220,9 @@
         word-break: break-word;
       }
       .md pre {
+        position: relative;
         margin: 10px 0 12px 0;
-        padding: 12px;
+        padding: 12px 46px 12px 12px;
         border-radius: 12px;
         overflow: auto;
         max-width: 100%;
@@ -1240,6 +1241,43 @@
         background: transparent;
         color: inherit;
         white-space: inherit;
+      }
+      .code-copy-btn {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        z-index: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        min-width: 30px;
+        min-height: 30px;
+        padding: 0;
+        border: 1px solid rgba(15, 23, 42, 0.14);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.92);
+        color: rgba(17, 24, 39, 0.68);
+        box-shadow: var(--shadow-sm);
+        opacity: 0.72;
+      }
+      .code-copy-btn::before {
+        content: "⧉";
+        font-size: 15px;
+        line-height: 1;
+      }
+      .md pre:hover .code-copy-btn,
+      .code-copy-btn:focus-visible {
+        opacity: 1;
+        border-color: rgba(37, 99, 235, 0.4);
+        color: var(--accent);
+      }
+      .code-copy-btn.copied {
+        opacity: 1;
+        border-color: rgba(37, 99, 235, 0.45);
+        background: rgba(29, 78, 216, 0.08);
+        color: var(--accent);
       }
       .md ul,
       .md ol {
@@ -2802,6 +2840,16 @@ select {
         }
         .msg {
           max-width: 88%;
+        }
+        .md pre {
+          padding-right: 58px;
+        }
+        .code-copy-btn {
+          width: 44px;
+          height: 44px;
+          min-width: 44px;
+          min-height: 44px;
+          opacity: 1;
         }
         .topActions {
           display: flex;
