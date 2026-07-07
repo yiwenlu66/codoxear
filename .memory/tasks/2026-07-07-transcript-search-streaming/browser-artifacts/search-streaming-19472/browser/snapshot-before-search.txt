@@ -1,0 +1,23 @@
+- button "New session" [ref=e1]
+- button "Notifications off" [ref=e2]
+- button "Announcements off" [ref=e3]
+- button "Help" [ref=e4]
+- button "Voice settings" [ref=e5]
+- button "Log out" [ref=e6]
+- button "Toggle sidebar" [ref=e7]
+- button "Edit conversation" [ref=e8]
+- button "Interrupt (Esc)" [ref=e9]
+- button "View file" [ref=e10]
+- button "Copy conversation" [ref=e11]
+- button "Details" [ref=e12]
+- button "Unattended mode" [ref=e13]
+- button "Load older messages" [ref=e14]
+- button "Copy raw markdown" [ref=e15]
+- button "Search loaded messages" [ref=e16]
+- button "Previous user message" [ref=e17] [disabled]:
+- button "Next user message" [ref=e18] [disabled]:
+- button "Wait for the current response to finish before attaching a file" [ref=e19] [disabled]:
+- button "Wait for the current response to finish before attaching a file" [ref=e20] [nth=1] [disabled]:
+- textbox "Enter your instructions here" [ref=e21]
+- button "Queued messages" [ref=e22]
+- button "Send" [ref=e23]
