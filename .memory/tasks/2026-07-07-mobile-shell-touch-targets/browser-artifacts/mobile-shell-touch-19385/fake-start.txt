@@ -1,0 +1,7 @@
+{"sid": "mobile-shell-touch", "thread": "22222222-3333-4444-8555-666666666666", "cwd": "/home/tester/mobile-shell-touch-repo", "log": "/home/tester/.claude/projects/-home-tester-mobile-shell-touch-repo/22222222-3333-4444-8555-666666666666.jsonl", "calls": "/home/tester/mobile-shell-touch-calls.jsonl", "sock": "/home/tester/.local/share/codoxear/socks/mobile-shell-touch.sock"}
+total 12
+drwxr-xr-x 2 tester tester 4096 Jul  7 06:35 .
+drwxr-xr-x 5 tester tester 4096 Jul  7 06:35 ..
+-rw-r--r-- 1 tester tester  573 Jul  7 06:35 mobile-shell-touch.json
+srwxr-xr-x 1 tester tester    0 Jul  7 06:35 mobile-shell-touch.sock
+/home/tester/.claude/projects/-home-tester-mobile-shell-touch-repo/22222222-3333-4444-8555-666666666666.jsonl

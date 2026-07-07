@@ -1,0 +1,10 @@
+HOME=/home/tester
+/home/tester/.local/share/codoxear/audio/live.m3u8
+/home/tester/.local/share/codoxear/hmac_secret
+/home/tester/.local/share/codoxear/recent_cwds.json
+/home/tester/.local/share/codoxear/socks/mobile-shell-touch.json
+/home/tester/.local/share/codoxear/socks/mobile-shell-touch.sock
+/home/tester/.local/share/codoxear/webpush_vapid_private.pem
+
+CC_LOGS
+/home/tester/.claude/projects/-home-tester-mobile-shell-touch-repo/22222222-3333-4444-8555-666666666666.jsonl
