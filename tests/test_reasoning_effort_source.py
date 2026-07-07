@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 
@@ -6,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_LAUNCH_JS = ROOT / "codoxear" / "static" / "app_launch.js"
 APP_NEW_SESSION_JS = ROOT / "codoxear" / "static" / "app_new_session.js"
+APP_CSS = ROOT / "codoxear" / "static" / "app.css"
 SERVER_PY = ROOT / "codoxear" / "server.py"
 LAUNCH_CONFIG_PY = ROOT / "codoxear" / "launch_config.py"
 AGENT_BACKEND_PY = ROOT / "codoxear" / "agent_backend.py"
@@ -31,6 +33,38 @@ class TestReasoningEffortSource(unittest.TestCase):
         self.assertIn("setNewSessionReasoningEffort(reasoningEffort());\n      renderReasoningMenu();\n      applyDialogMenus();\n      modelInput.focus();", module_source)
         self.assertIn("newSessionModelInput.oninput = () =>", source)
         self.assertIn("renderNewSessionModelMenu();\n          setNewSessionReasoningEffort(newSessionReasoningEffort);\n          renderNewSessionReasoningMenu();", source)
+
+    def test_sidebar_reasoning_effort_markers_cover_supported_values(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        match = re.search(
+            r"const REASONING_EFFORT_MARKERS = Object\.freeze\(\{(?P<body>.*?)\n      \}\);",
+            source,
+            re.S,
+        )
+        self.assertIsNotNone(match)
+        body = match.group("body") if match else ""
+        markers = dict(re.findall(r'\n\s+([a-z]+): "([^"]*)",', body))
+        self.assertEqual(
+            markers,
+            {
+                "xhigh": "X",
+                "high": "H",
+                "medium": "M",
+                "low": "L",
+                "max": "M+",
+                "minimal": "m",
+                "off": "–",
+            },
+        )
+        self.assertIn('return REASONING_EFFORT_MARKERS[effortTxt] || "";', source)
+        self.assertIn("const effortMark = reasoningEffortMarker(effortTxt);", source)
+        self.assertIn("class: `effortMark effort-${effortTxt}`", source)
+        self.assertIn("title: `reasoning effort ${effortTxt}`", source)
+
+    def test_sidebar_reasoning_effort_css_covers_new_values(self) -> None:
+        css = APP_CSS.read_text(encoding="utf-8")
+        for effort in ("max", "minimal", "off"):
+            self.assertRegex(css, rf"\.effortMark\.effort-{effort}\s*\{{\s*color: #[0-9a-fA-F]{{6}};\s*\}}")
 
     def test_server_validates_pi_reasoning_against_model_capabilities(self) -> None:
         server_source = SERVER_PY.read_text(encoding="utf-8")

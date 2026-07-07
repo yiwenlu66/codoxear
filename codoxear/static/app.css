@@ -327,6 +327,15 @@
 	      .effortMark.effort-low {
 	        color: #668466;
 	      }
+	      .effortMark.effort-max {
+	        color: #a9536c;
+	      }
+	      .effortMark.effort-minimal {
+	        color: #6f8374;
+	      }
+	      .effortMark.effort-off {
+	        color: #777777;
+	      }
 	      .metaText {
 	        min-width: 0;
 	        overflow: hidden;

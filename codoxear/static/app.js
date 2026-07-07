@@ -272,6 +272,20 @@
         return codoxearDisplay.sessionDisplayName(s);
       }
 
+      const REASONING_EFFORT_MARKERS = Object.freeze({
+        xhigh: "X",
+        high: "H",
+        medium: "M",
+        low: "L",
+        max: "M+",
+        minimal: "m",
+        off: "–",
+      });
+
+      function reasoningEffortMarker(effortTxt) {
+        return REASONING_EFFORT_MARKERS[effortTxt] || "";
+      }
+
       function sessionIdFromHash() {
         return codoxearUrls.sessionIdFromHash();
       }
@@ -3007,7 +3021,7 @@
 	             const updatedTs = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts) ? s.updated_ts : s.start_ts;
 	             const ageS = updatedTs ? Math.max(0, Date.now() / 1000 - updatedTs) : 0;
 	             const effortTxt = String(s.reasoning_effort || "").trim().toLowerCase();
-	             const effortMark = effortTxt === "xhigh" ? "X" : effortTxt === "high" ? "H" : effortTxt === "medium" ? "M" : effortTxt === "low" ? "L" : "";
+	             const effortMark = reasoningEffortMarker(effortTxt);
 	             const stateTxt = launchPending ? "starting" : fmtRelativeAge(ageS);
 	             const cwdBase = baseName(s.cwd);
 	             const branchTxt = typeof s.git_branch === "string" ? s.git_branch.trim() : "";
