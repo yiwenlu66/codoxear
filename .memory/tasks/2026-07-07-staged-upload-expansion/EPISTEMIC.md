@@ -6,7 +6,7 @@ Upload expansion moved attachment truth from the backend PTY stream into server-
 ## Accepted mechanism
 Stage first, commit later.
 - `SessionStore` owns staged attachment lifecycle as per-session entries with stable ids, display names, backend-readable staged paths, byte sizes, and creation timestamps.
-- Upload routes stage bytes under app-dir `uploads/<session>/` with unique destination paths and update the staged list; they accept `filename` + `data_b64`, ignore any legacy `attachment_index`, and do not call `inject_attachment_keys`, `inject_keys`, or bracketed paste writes.
+- Upload routes stage bytes under app-dir `uploads/<session>/` with unique destination paths and update the staged list; they accept `filename` + `data_b64`, ignore any legacy `attachment_index`, and do not call `inject_keys` or bracketed paste writes. Functional commit `18cd64c` removes the old `inject_attachment_keys` API entirely; clean-room review is pending.
 - The selected-session attachment API exposes the server list plus compatibility `pending_attachment` projection derived from list non-emptiness.
 - Browser composer renders chips from server state, displays identity beyond filename through server path/id-derived detail, supports multi-file picker selection, per-entry remove, and clear-all.
 - Send is the commit boundary: when staged attachments exist and the user explicitly sends, the server prepends generated `Attachment N: <path>` lines to the confirmed-send text. Confirmed send success clears staged entries; commit-unknown or send failure preserves them.
@@ -37,7 +37,7 @@ Stage first, commit later.
 
 ## Remaining nonblocking follow-ups
 - Consider reducing absolute-path exposure in browser tooltips once a safe backend-readable identity/display split exists.
-- Remove dead immediate-PTY attachment injection methods if no non-HTTP consumer remains.
+- Functional commit `18cd64c` removed the dead immediate-PTY/key attachment coordinator/API after tracing no active HTTP route or staged-upload dependency; clean-room review `a8f88f05-999c-4922-b917-7d823b69c4b6` is pending.
 - Producer UX polish: re-check blockers per file in long batches if needed, preserve text in mixed text+file paste if a clear UI rule exists, add extensions for non-PNG pasted image names, clear `.drop-active` when a file drag leaves the window without dropping, and decide whether the desktop/no-camera capture button should remain a single-image picker.
 
 ## Current justified claim

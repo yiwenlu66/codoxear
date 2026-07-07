@@ -191,3 +191,13 @@
 - Review confirmed: frontend sends only `filename` and `data_b64`; `/inject_file` and `/inject_image` ignore any legacy `attachment_index`; all other validation/order and readiness-before-decode/stage remain intact; route-layer `attachment_inject_text` dependency is gone while `file_upload.attachment_inject_text` remains available to `session_send.py` for send-boundary numbering; no immediate backend key/PTY write or new commit boundary was introduced.
 - Review evidence: focused checks `38 passed` and broadened upload/send checks `84 passed`; full suite reproduced `1795 passed, 132 subtests passed`; `node --check codoxear/static/app.js`; `git diff --check`.
 - Nonblocker: older `.memory/tasks/2026-07-03-usable-product-ui-architecture/upload-attachment-scout.md` still describes historical `attachment_index` scouting; active task/project memory now supersede it.
+
+## 2026-07-07T00:45:00Z Immediate attachment key injection removed pending review
+- Functional commit: `18cd64c Remove immediate attachment key injection`.
+- Mechanism: deleted `codoxear/session_attachment.py` and removed the `SessionAttachmentCoordinator` factory/binding, `SessionManager.inject_attachment_keys`, and `attachment_injection_ready`. The remaining active upload path is staged upload through `/inject_file`/`/inject_image`, `attachment_staging_ready`, staged-list state, and confirmed-send composition in `session_send.py` using `file_upload.attachment_inject_text`.
+- Readiness effect: staging still requires an active known session, no commit-unknown send, sync-send capability, no queue-sending item, no local queue, and idle broker/log runtime. It no longer has any route to require `key_write_errors_supported`, matching accepted stage-only browser proofs with `key_write_errors:false`.
+- Validation:
+  - targeted retirement suite → `163 passed, 18 subtests passed`;
+  - full local suite → `1788 passed, 128 subtests passed`;
+  - `git diff --check` → clean.
+- Clean-room review dispatched: async id `a8f88f05-999c-4922-b917-7d823b69c4b6`. A needs-attention nudge could not be delivered because the child was live but its intercom target was not registered; review remains pending.
