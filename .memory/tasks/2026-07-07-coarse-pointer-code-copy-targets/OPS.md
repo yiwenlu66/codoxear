@@ -1,0 +1,3 @@
+# OPS
+
+2026-07-07T18:49:00Z Initialized coarse-pointer code-copy touch-target slice from fresh next-slice scout `37dd1569-6a12-420c-ab26-f5fb67fa8ea1` (`/tmp/codoxear-next-slice-after-copy-count.md`). Observation: accepted code-block copy invariant requires mobile code-copy controls at least 44x44 CSS px, but current CSS only applies the 44px `.code-copy-btn` rule at `max-width: 520px`; the existing coarse-pointer query does not target `.code-copy-btn`. Prediction: a 521–880px coarse-pointer browser will render `.code-copy-btn` below 44x44 unless CSS gives the class an explicit coarse-pointer override.
