@@ -1,0 +1,2 @@
+- textbox "Password" [ref=e1]
+- button "Login" [ref=e2]

@@ -1,0 +1,6 @@
+{"sid": "redaction-proof", "cwd": "/home/tester/redaction-proof-repo", "calls": "/home/tester/redaction-proof-calls.jsonl", "sock": "/home/tester/.local/share/codoxear/socks/redaction-proof.sock"}
+total 12
+drwxr-xr-x 2 tester tester 4096 Jul  7 00:57 .
+drwxr-xr-x 5 tester tester 4096 Jul  7 00:57 ..
+-rw-r--r-- 1 tester tester  443 Jul  7 00:57 redaction-proof.json
+srwxr-xr-x 1 tester tester    0 Jul  7 00:57 redaction-proof.sock
