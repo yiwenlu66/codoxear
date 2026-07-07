@@ -711,6 +711,7 @@ class TestFrontendQueueModuleSource(unittest.TestCase):
         # Confirmation copy and async options present.
         self.assertEqual(result["commitConfirm"][0]["title"], "Delete recovery item?")
         self.assertEqual(result["commitConfirm"][0]["confirmText"], "Delete")
+        self.assertEqual(result["commitConfirm"][0]["destructive"], True)
         self.assertIn("checking the transcript or terminal", result["commitConfirm"][0]["message"])
         self.assertIn("may allow later queued prompts", result["commitConfirm"][0]["message"])
         # Delete body carries allow_commit_unknown: true.

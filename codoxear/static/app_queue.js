@@ -212,6 +212,7 @@
           message: `Delete this recovery item only after checking the transcript or terminal.${commitUnknown ? " This may allow later queued prompts to send." : ""}${suffix}`,
           confirmText: "Delete",
           cancelText: "Cancel",
+          destructive: true,
         });
         if (!confirmed) return;
       }

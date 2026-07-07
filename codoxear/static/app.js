@@ -2070,20 +2070,27 @@
         let appConfirmReturnFocusEl = null;
 
         function normalizeAppConfirmOptions(options = {}) {
-          if (typeof options === "string") return { title: "Confirm action", message: options, confirmText: "Confirm", cancelText: "Cancel" };
+          if (typeof options === "string") return { title: "Confirm action", message: options, confirmText: "Confirm", cancelText: "Cancel", destructive: false };
           const raw = options && typeof options === "object" ? options : {};
           return {
             title: String(raw.title || "Confirm action"),
             message: String(raw.message || ""),
             confirmText: String(raw.confirmText || "Confirm"),
             cancelText: String(raw.cancelText || "Cancel"),
+            destructive: Boolean(raw.destructive),
           };
         }
 
-        function focusAppConfirmInitial() {
+        function appConfirmFocusableControls() {
+          return [appConfirmCancelBtn, appConfirmConfirmBtn].filter((control) => control && !control.disabled && typeof control.focus === "function");
+        }
+
+        function focusAppConfirmInitial({ destructive = false } = {}) {
           requestAnimationFrame(() => {
             if (appConfirm.style.display !== "flex") return;
-            const target = appConfirmConfirmBtn && !appConfirmConfirmBtn.disabled ? appConfirmConfirmBtn : appConfirmCancelBtn;
+            const preferred = destructive ? appConfirmCancelBtn : appConfirmConfirmBtn;
+            const fallback = destructive ? appConfirmConfirmBtn : appConfirmCancelBtn;
+            const target = preferred && !preferred.disabled ? preferred : fallback && !fallback.disabled ? fallback : null;
             if (!target || typeof target.focus !== "function") return;
             try {
               target.focus({ preventScroll: true });
@@ -2118,7 +2125,7 @@
           appConfirmBackdrop.style.display = "block";
           appConfirm.style.display = "flex";
           afterModalVisibilityChanged();
-          focusAppConfirmInitial();
+          focusAppConfirmInitial(normalized);
           return new Promise((resolve) => {
             appConfirmPending = { resolve, settled: false };
           });
@@ -2992,6 +2999,7 @@
             message: `Clear the unknown-send marker only after checking the transcript or terminal. This does not undo a prompt that may already have been sent.${suffix}`,
             confirmText: "Clear marker",
             cancelText: "Cancel",
+            destructive: true,
           });
           if (!confirmed) return false;
           try {
@@ -3164,6 +3172,7 @@
                 message: launchRow ? "Dismiss this launch record?" : "Delete this session?",
                 confirmText: launchRow ? "Dismiss" : "Delete",
                 cancelText: "Cancel",
+                destructive: true,
               });
               if (!confirmed) return;
               try {
@@ -3634,6 +3643,7 @@
             message: "Dismiss this launch record?",
             confirmText: "Dismiss",
             cancelText: "Cancel",
+            destructive: true,
           });
           if (!confirmed) return;
           try {
@@ -5622,7 +5632,7 @@
           closeFilePickerMenu: (options) => closeFilePickerMenu(options),
           isTextFileKind: (kind) => isTextFileKind(kind),
           isDiffableFileKind: (kind) => isDiffableFileKind(kind),
-          confirmReload: (message) => confirmApp({ title: "Reload file from disk?", message, confirmText: "Reload", cancelText: "Cancel" }),
+          confirmReload: (message) => confirmApp({ title: "Reload file from disk?", message, confirmText: "Reload", cancelText: "Cancel", destructive: true }),
           promptUnsavedFileChoice: () => promptFileUnsavedChoice(),
           restoreFileEditorText: (text) => restoreFileEditorText(text),
           hideFileViewer: () => hideFileViewer(),
@@ -6078,6 +6088,19 @@
           true
         );
         addAppEvent(document, "keydown", (e) => {
+          if (e.key === "Tab" && appConfirm.style.display === "flex") {
+            const focusable = appConfirmFocusableControls();
+            e.preventDefault();
+            e.stopPropagation();
+            if (!focusable.length) return;
+            const currentIndex = focusable.indexOf(document.activeElement);
+            const offset = e.shiftKey ? -1 : 1;
+            const nextIndex = currentIndex < 0 ? (e.shiftKey ? focusable.length - 1 : 0) : (currentIndex + offset + focusable.length) % focusable.length;
+            try {
+              focusable[nextIndex].focus({ preventScroll: true });
+            } catch {}
+            return;
+          }
           if (e.key !== "Escape") return;
           if (appConfirm.style.display === "flex") {
             e.preventDefault();
@@ -7340,6 +7363,7 @@
                 message: "This session has a pending attachment but the current broker cannot confirm sends. Clear the browser pending-attachment state only if you already handled it in the terminal?",
                 confirmText: "Clear state",
                 cancelText: "Cancel",
+                destructive: true,
               });
               if (clearPending) {
                 try {
