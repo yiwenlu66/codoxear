@@ -6829,23 +6829,28 @@
           }
         }
 
+        function imageExtensionFromMimeType(type, fallback = "") {
+          const normalized = String(type || "").toLowerCase();
+          if (normalized === "image/jpeg" || normalized === "image/jpg") return "jpg";
+          if (normalized === "image/png") return "png";
+          if (normalized === "image/gif") return "gif";
+          if (normalized === "image/webp") return "webp";
+          if (normalized === "image/heic") return "heic";
+          if (normalized === "image/heif") return "heif";
+          if (normalized === "image/avif") return "avif";
+          return normalized.startsWith("image/") ? fallback : "";
+        }
+
         function pastedFileName(file, index, seed) {
           const suffix = index > 0 ? `-${index + 1}` : "";
           const base = `pasted-${seed}${suffix}`;
-          const type = String(file && file.type ? file.type : "").toLowerCase();
-          return type === "image/png" ? `${base}.png` : base;
+          const ext = imageExtensionFromMimeType(file && file.type, "png");
+          return ext ? `${base}.${ext}` : base;
         }
 
         function capturedFileName(file, index, seed) {
           const suffix = index > 0 ? `-${index + 1}` : "";
-          const type = String(file && file.type ? file.type : "").toLowerCase();
-          let ext = "jpg";
-          if (type === "image/png") ext = "png";
-          else if (type === "image/webp") ext = "webp";
-          else if (type === "image/gif") ext = "gif";
-          else if (type === "image/heic") ext = "heic";
-          else if (type === "image/heif") ext = "heif";
-          else if (type === "image/avif") ext = "avif";
+          const ext = imageExtensionFromMimeType(file && file.type, "jpg") || "jpg";
           return `captured-${seed}${suffix}.${ext}`;
         }
 
@@ -6963,16 +6968,47 @@
           await stageFiles(files, { sid, source: "capture" });
         });
 
+        function clipboardPlainText(data) {
+          if (!data || typeof data.getData !== "function") return "";
+          try {
+            return data.getData("text/plain") || data.getData("text") || "";
+          } catch (_) {
+            return "";
+          }
+        }
+
+        function insertComposerPastedText(text) {
+          const value = String(text || "");
+          if (!value) return false;
+          const start = Number.isFinite(textarea.selectionStart) ? textarea.selectionStart : textarea.value.length;
+          const end = Number.isFinite(textarea.selectionEnd) ? textarea.selectionEnd : start;
+          if (typeof textarea.setRangeText === "function") {
+            textarea.setRangeText(value, start, end, "end");
+          } else {
+            textarea.value = `${textarea.value.slice(0, start)}${value}${textarea.value.slice(end)}`;
+            textarea.selectionStart = start + value.length;
+            textarea.selectionEnd = start + value.length;
+          }
+          textarea.dispatchEvent(new Event("input", { bubbles: true }));
+          return true;
+        }
+
         textarea.addEventListener("paste", (e) => {
           const files = extractFilesFromClipboardData(e.clipboardData);
           if (!files.length) return;
+          const pastedText = clipboardPlainText(e.clipboardData);
           e.preventDefault();
+          if (pastedText) insertComposerPastedText(pastedText);
           void stageFiles(files, { sid: selected, source: "paste" });
         });
 
         let composerDragDepth = 0;
         function setComposerDropActive(active) {
           composer.classList.toggle("drop-active", Boolean(active));
+        }
+        function clearComposerDropActive() {
+          composerDragDepth = 0;
+          setComposerDropActive(false);
         }
         addAppEvent(composer, "dragenter", (e) => {
           if (!dataTransferHasFiles(e.dataTransfer)) return;
@@ -6994,8 +7030,7 @@
         addAppEvent(composer, "drop", (e) => {
           if (!dataTransferHasFiles(e.dataTransfer)) return;
           e.preventDefault();
-          composerDragDepth = 0;
-          setComposerDropActive(false);
+          clearComposerDropActive();
           const files = extractFilesFromDropData(e.dataTransfer);
           if (!files.length) return;
           void stageFiles(files, { sid: selected, source: "drop" });
@@ -7004,11 +7039,21 @@
           if (!dataTransferHasFiles(e.dataTransfer)) return;
           e.preventDefault();
         }, { passive: false });
+        addAppEvent(window, "dragleave", (e) => {
+          const outsideWindow =
+            e.clientX <= 0 ||
+            e.clientY <= 0 ||
+            e.clientX >= window.innerWidth ||
+            e.clientY >= window.innerHeight ||
+            (!e.relatedTarget && (e.target === document || e.target === document.documentElement || e.target === document.body));
+          if (outsideWindow) clearComposerDropActive();
+        }, { passive: false });
+        addAppEvent(window, "dragend", () => {
+          clearComposerDropActive();
+        }, { passive: false });
         addAppEvent(window, "drop", (e) => {
-          if (!dataTransferHasFiles(e.dataTransfer)) return;
-          e.preventDefault();
-          composerDragDepth = 0;
-          setComposerDropActive(false);
+          if (dataTransferHasFiles(e.dataTransfer)) e.preventDefault();
+          clearComposerDropActive();
         }, { passive: false });
 
         function clearComposer() {
