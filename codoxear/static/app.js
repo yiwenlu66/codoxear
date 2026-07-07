@@ -6692,9 +6692,13 @@
           if (info && sessionHasUnknownSend(info)) return "Resolve the unknown send before attaching a file";
           if (info && sessionIsOrphanRecovery(info)) return "Missing session can only be reviewed";
           if (info && sessionHasOrphanQueueRecovery(info)) return "Review preserved queued recovery items before attaching a file";
+          if (info && info.busy) return "Wait for the current response to finish before attaching a file";
           if (currentRunning) return "Wait for the current response to finish before attaching a file";
           if (sending) return "Wait for the current send to finish before attaching a file";
           return "";
+        }
+        function latestAttachmentBlockerForSession(sessionId) {
+          return attachmentBlockerForSession(sessionId, sessionId ? sessionIndex.get(sessionId) || null : null);
         }
         function syncAttachButtonState() {
           const attachControl = $("#attachBtn");
@@ -6858,22 +6862,22 @@
           const sessionId = sid || selected;
           const uploadFiles = Array.from(files || []).filter(Boolean);
           if (!uploadFiles.length) return false;
-          const sessionInfo = sessionId ? sessionIndex.get(sessionId) || null : null;
-          const attachBlocker = attachmentBlockerForSession(sessionId, sessionInfo);
-          if (attachBlocker) {
-            if (!sessionId || selected === sessionId) setToast(attachBlocker);
-            return false;
-          }
 
           const producer = String(source || "picker");
           const progressVerb = producer === "paste" ? "pasting" : producer === "drop" ? "dropping" : producer === "capture" ? "staging captured photo" : "uploading";
           const producerNameSeed = Date.now();
           let successes = 0;
+          let stoppedByBlocker = "";
           const failures = [];
           for (let fileIndex = 0; fileIndex < uploadFiles.length; fileIndex += 1) {
             const f = uploadFiles[fileIndex];
             try {
               if (selected !== sessionId) break;
+              const attachBlocker = latestAttachmentBlockerForSession(sessionId);
+              if (attachBlocker) {
+                stoppedByBlocker = attachBlocker;
+                break;
+              }
               setToast(uploadFiles.length > 1 ? `${progressVerb} ${fileIndex + 1}/${uploadFiles.length}...` : producer === "capture" ? "staging captured photo..." : "uploading file...");
               const maxBytes = ATTACH_UPLOAD_MAX_BYTES;
               let uploadBlob = f;
@@ -6918,8 +6922,10 @@
           }
           if (selected === sessionId) {
             if (successes && failures.length) setToast(`attached ${successes}; ${failures.length} failed: ${failures[0]}`);
+            else if (successes && stoppedByBlocker) setToast(`attached ${successes}; stopped: ${stoppedByBlocker}`);
             else if (successes) setToast(successes === 1 ? "file staged" : `${successes} files staged`);
             else if (failures.length) setToast(`attach error: ${failures[0]}`);
+            else if (stoppedByBlocker) setToast(stoppedByBlocker);
             pollFastUntilMs = Date.now() + 4000;
             kickPoll(0);
             void refreshSessions().catch((refreshErr) => {
