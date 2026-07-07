@@ -1,0 +1,3 @@
+# OPS
+
+2026-07-07T17:05:00Z Initialized per-code-block copy button slice. Evidence from theorist scout `8ee46a64-a6e2-4202-aeb5-eb486c46a1a7`: markdown code blocks currently render as bare `<pre><code>...</code></pre>` in `app_markdown.js`, and transcript rows only offer message-level raw-markdown copy. Prediction: this is a high-leverage companion-device usability gap because users often need one command/snippet from a long agent answer, especially on mobile where manual text selection in `<pre>` is poor. Risk areas: markdown HTML escaping/caching, click delegation interaction with file-reference handlers, exact copied text, per-message copy preservation, and mobile touch target/no-overflow behavior.
