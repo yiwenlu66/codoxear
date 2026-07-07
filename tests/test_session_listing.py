@@ -219,7 +219,8 @@ def test_build_active_session_row_projects_public_and_staging_fields() -> None:
     assert row["queue_len"] == 2
     assert row["queue_recovery"] is True
     assert row["pending_attachment"] is True
-    assert row["staged_attachments"] == staged_attachments
+    assert row["staged_attachments"] == [{"id": "att-1", "display_name": "doc.txt", "filename": "1_doc.txt", "size": 3, "created_ts": 4.0}]
+    assert "path" not in row["staged_attachments"][0]
     assert row["commit_unknown_send"] is True
     assert row["commit_unknown_send_text"] == "maybe"
     assert row["commit_unknown_send_ts"] == 4.0
@@ -268,6 +269,7 @@ def test_build_public_session_row_removes_staging_fields_and_adds_runtime_fields
         "last_send_boundary_active": True,
         "last_send_log_path": Path("/tmp/log"),
         "last_send_log_size": 1,
+        "staged_attachments": [{"id": "att-1", "display_name": "doc.txt", "filename": "1_doc.txt", "path": "/tmp/uploads/s1/1_doc.txt", "size": 3, "created_ts": 4.0}],
     }
 
     row = build_public_session_row(staged, git_branch="main", busy=True)
@@ -286,6 +288,8 @@ def test_build_public_session_row_removes_staging_fields_and_adds_runtime_fields
     assert "last_send_boundary_active" not in row
     assert "last_send_log_path" not in row
     assert "last_send_log_size" not in row
+    assert row["staged_attachments"] == [{"id": "att-1", "display_name": "doc.txt", "filename": "1_doc.txt", "size": 3, "created_ts": 4.0}]
+    assert "path" not in row["staged_attachments"][0]
     assert staged["_log_path_obj"] == Path("/tmp/log")
 
 

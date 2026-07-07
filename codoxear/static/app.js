@@ -6548,18 +6548,17 @@
             .filter((item) => item && typeof item === "object" && typeof item.id === "string" && item.id)
             .map((item) => ({
               id: String(item.id),
-              display_name: String(item.display_name || item.filename || item.path || "file"),
+              display_name: String(item.display_name || item.filename || "file"),
               filename: String(item.filename || item.display_name || "file"),
-              path: String(item.path || ""),
               size: Number.isFinite(Number(item.size)) ? Number(item.size) : 0,
               created_ts: Number.isFinite(Number(item.created_ts)) ? Number(item.created_ts) : 0,
             }));
         }
         function attachmentIdentityText(item) {
-          const path = item && item.path ? String(item.path) : "";
+          const name = item && (item.display_name || item.filename) ? String(item.display_name || item.filename) : "staged attachment";
           const id = item && item.id ? String(item.id).slice(0, 8) : "";
-          if (path) return path;
-          return id ? `attachment ${id}` : "staged attachment";
+          const size = item && Number.isFinite(Number(item.size)) ? fmtBytes(Number(item.size)) : "0 B";
+          return id ? `${name} · ${size} · attachment ${id}` : `${name} · ${size}`;
         }
         function setStagedAttachments(list) {
           stagedAttachments = normalizedStagedAttachments(list);

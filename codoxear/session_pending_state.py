@@ -8,6 +8,8 @@ from uuid import uuid4
 
 from .session_model import Session
 from .session_store import SessionStore
+from .session_store import public_staged_attachment
+from .session_store import public_staged_attachments
 
 
 @dataclass(frozen=True)
@@ -64,7 +66,7 @@ class SessionPendingStateCoordinator:
                 raise KeyError("unknown session")
             attachments = self.store().staged_attachments_for_session(session_id)
             pending = bool(attachments)
-        return {"ok": True, "attachments": attachments, "pending_attachment": pending}
+        return {"ok": True, "attachments": public_staged_attachments(attachments), "pending_attachment": pending}
 
     def add_staged_attachment(self, session_id: str, *, display_name: str, filename: str, path: Path, size: int, created_ts: float) -> dict[str, Any]:
         entry = {
@@ -83,7 +85,10 @@ class SessionPendingStateCoordinator:
             attachments = self.store().staged_attachments_for_session(session_id)
         self.save_staged_attachments()
         self.save_pending_attachments()
-        return {"ok": True, "attachment": staged, "attachments": attachments, "pending_attachment": True}
+        projected = public_staged_attachment(staged)
+        if projected is None:
+            raise ValueError("invalid staged attachment")
+        return {"ok": True, "attachment": projected, "attachments": public_staged_attachments(attachments), "pending_attachment": True}
 
     def remove_staged_attachment(self, session_id: str, attachment_id: str) -> dict[str, Any]:
         if not isinstance(attachment_id, str) or not attachment_id.strip():
@@ -95,7 +100,10 @@ class SessionPendingStateCoordinator:
             pending = self._sync_pending_projection_locked(session_id)
         self.save_staged_attachments()
         self.save_pending_attachments()
-        return {"ok": True, "removed": removed, "attachments": attachments, "pending_attachment": pending}
+        projected_removed = public_staged_attachment(removed)
+        if projected_removed is None:
+            raise ValueError("invalid staged attachment")
+        return {"ok": True, "removed": projected_removed, "attachments": public_staged_attachments(attachments), "pending_attachment": pending}
 
     def clear_staged_attachments(self, session_id: str) -> dict[str, Any]:
         with self.lock:

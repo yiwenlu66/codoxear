@@ -339,6 +339,42 @@ def test_interrupt_route_sends_escaped_esc_sequence() -> None:
     assert responses == [(200, {"ok": True, "broker": {"ok": True}})]
 
 
+def test_attachment_list_projects_internal_paths_from_route_response() -> None:
+    responses = []
+    path = "/home/tester/.local/share/codoxear/uploads/s1/1000_doc.txt"
+
+    class PathyManager(Manager):
+        def list_staged_attachments(self, session_id):
+            return {
+                "ok": True,
+                "attachments": [
+                    {
+                        "id": "att-1",
+                        "display_name": "doc.txt",
+                        "filename": "1000_doc.txt",
+                        "path": path,
+                        "size": 3,
+                        "created_ts": 10.0,
+                    }
+                ],
+                "pending_attachment": True,
+            }
+
+    assert handle_control_get_route(
+        Handler(),
+        path="/api/sessions/s1/attachments",
+        manager=PathyManager(),
+        deps=_deps(responses),
+        match_session_route=_match_session_route,
+    ) is True
+
+    status, obj = responses[-1]
+    assert status == 200
+    assert obj["attachments"] == [{"id": "att-1", "display_name": "doc.txt", "filename": "1000_doc.txt", "size": 3, "created_ts": 10.0}]
+    assert "path" not in obj["attachments"][0]
+    assert path not in json.dumps(obj)
+
+
 def test_inject_attachment_checks_readiness_before_decoding_or_staging() -> None:
     responses = []
     staged = []
@@ -375,9 +411,12 @@ def test_inject_attachment_stages_without_backend_paste() -> None:
     status, obj = responses[-1]
     assert status == 200
     assert obj["ok"] is True
-    assert obj["path"] == str(path)
-    assert obj["attachment"]["path"] == str(path)
+    assert "path" not in obj
+    assert "path" not in obj["attachment"]
+    assert "path" not in obj["attachments"][0]
+    assert obj["attachment"]["id"] == "att-1"
     assert obj["attachments"][0]["id"] == "att-1"
+    assert str(path) not in str(obj)
     assert obj["pending_attachment"] is True
 
 
@@ -446,7 +485,10 @@ def test_inject_attachment_happy_path_body_is_json_serializable_and_stage_only()
     # the coverage the former _json_response-patching test blinded).
     json.dumps(obj)
     assert obj["ok"] is True
-    assert obj["path"] == str(Path("/tmp") / "s1" / "note.txt")
+    assert "path" not in obj
+    assert "path" not in obj["attachment"]
+    assert "path" not in obj["attachments"][0]
+    assert str(Path("/tmp") / "s1" / "note.txt") not in json.dumps(obj)
     assert obj["attachment"]["display_name"] == "note.txt"
     assert obj["attachment"]["size"] == 5
     assert manager.calls[1][0] == "stage_attachment"

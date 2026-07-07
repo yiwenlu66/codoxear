@@ -36,6 +36,29 @@ def test_session_manager_persistent_maps_are_store_owned() -> None:
     assert mgr._staged_attachments is staged
 
 
+def test_session_store_public_staged_attachments_omit_backend_path() -> None:
+    mgr = SessionManager.__new__(SessionManager)
+    mgr._lock = threading.Lock()
+    mgr._staged_attachments = {
+        "s1": [
+            {
+                "id": "a1",
+                "display_name": "secret.txt",
+                "filename": "123_secret.txt",
+                "path": "/home/tester/.local/share/codoxear/uploads/s1/123_secret.txt",
+                "size": 6,
+                "created_ts": 2.0,
+            }
+        ]
+    }
+
+    store = mgr._session_store_for_manager()
+    assert store.staged_attachments_for_session("s1")[0]["path"].startswith("/home/tester")
+    assert store.public_staged_attachments_for_session("s1") == [
+        {"id": "a1", "display_name": "secret.txt", "filename": "123_secret.txt", "size": 6, "created_ts": 2.0}
+    ]
+
+
 def test_session_store_file_history_migrates_legacy_session_key() -> None:
     mgr = SessionManager.__new__(SessionManager)
     mgr._lock = threading.Lock()

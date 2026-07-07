@@ -19,6 +19,43 @@ Cleaner1 = Callable[[Any], Any]
 CommitUnknownCleaner = Callable[[Any], dict[str, Any] | None]
 
 
+def public_staged_attachment(entry: Any) -> dict[str, Any] | None:
+    """Project an internal staged attachment entry for browser/API payloads.
+
+    The stored ``path`` is intentionally omitted: it is a backend-readable
+    internal value used for cleanup and confirmed-send attachment references,
+    not browser display identity.
+    """
+    if not isinstance(entry, dict):
+        return None
+    entry_id = str(entry.get("id") or "").strip()
+    if not entry_id:
+        return None
+    display_name = str(entry.get("display_name") or entry.get("filename") or "file").strip() or "file"
+    filename = str(entry.get("filename") or display_name).strip() or display_name
+    try:
+        size = int(entry.get("size"))
+    except (TypeError, ValueError):
+        return None
+    try:
+        created_ts = float(entry.get("created_ts"))
+    except (TypeError, ValueError):
+        return None
+    if size < 0 or not math.isfinite(created_ts) or created_ts <= 0:
+        return None
+    return {
+        "id": entry_id,
+        "display_name": display_name[:256],
+        "filename": filename[:256],
+        "size": size,
+        "created_ts": created_ts,
+    }
+
+
+def public_staged_attachments(entries: Iterable[Any]) -> list[dict[str, Any]]:
+    return [projected for entry in entries if (projected := public_staged_attachment(entry)) is not None]
+
+
 @dataclass(frozen=True)
 class SidebarSessionState:
     priority_offset: float
@@ -411,6 +448,9 @@ class SessionStore:
 
     def staged_attachments_for_session(self, session_id: str) -> list[dict[str, Any]]:
         return [dict(entry) for entry in self.staged_attachments.get(session_id, [])]
+
+    def public_staged_attachments_for_session(self, session_id: str) -> list[dict[str, Any]]:
+        return public_staged_attachments(self.staged_attachments.get(session_id, []))
 
     def add_staged_attachment(self, session_id: str, entry: dict[str, Any]) -> dict[str, Any]:
         clean = self._clean_staged_attachment_entry(entry)

@@ -197,6 +197,38 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._save_commit_unknown_sends = lambda: None
         return mgr
 
+    def test_pending_state_public_payloads_omit_internal_staged_paths(self) -> None:
+        sid = "s1"
+        with TemporaryDirectory() as td:
+            store = _session_store(Path(td))
+            sessions = {sid: _make_session(sid)}
+            coord = _pending_state_coordinator(store=store, sessions=sessions, now=10.0)
+            internal_path = Path("/home/tester/.local/share/codoxear/uploads/s1/1000_doc.txt")
+
+            added = coord.add_staged_attachment(
+                sid,
+                display_name="doc.txt",
+                filename="1000_doc.txt",
+                path=internal_path,
+                size=3,
+                created_ts=10.0,
+            )
+
+            public_entry = {"id": added["attachment"]["id"], "display_name": "doc.txt", "filename": "1000_doc.txt", "size": 3, "created_ts": 10.0}
+            self.assertEqual(added["attachment"], public_entry)
+            self.assertEqual(added["attachments"], [public_entry])
+            self.assertNotIn("path", added["attachment"])
+            self.assertEqual(store.staged_attachments[sid][0]["path"], str(internal_path))
+
+            listed = coord.list_staged_attachments(sid)
+            self.assertEqual(listed["attachments"], [public_entry])
+            self.assertNotIn(str(internal_path), str(listed))
+
+            removed = coord.remove_staged_attachment(sid, public_entry["id"])
+            self.assertEqual(removed["removed"], public_entry)
+            self.assertNotIn("path", removed["removed"])
+
+
     def test_deleted_state_cleanup_preserves_recovery_markers_unless_explicit(self) -> None:
         sid = "s1"
         mgr = self._mgr()

@@ -7,6 +7,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from .session_model import Session
 from .session_store import SessionStore
+from .session_store import public_staged_attachments
 
 
 @dataclass(frozen=True)
@@ -213,7 +214,7 @@ def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
         "queue_len": facts.queue_len,
         "queue_recovery": facts.queue_recovery,
         "pending_attachment": facts.pending_attachment,
-        "staged_attachments": list(facts.staged_attachments),
+        "staged_attachments": public_staged_attachments(facts.staged_attachments),
         "commit_unknown_send": bool(commit_unknown),
         "commit_unknown_send_text": _commit_unknown_text(commit_unknown),
         "commit_unknown_send_ts": _commit_unknown_created_ts(commit_unknown),
@@ -496,6 +497,7 @@ def build_public_session_row(staged_row: Mapping[str, Any], *, git_branch: str |
     row = dict(staged_row)
     for key in _PRIVATE_LISTING_KEYS:
         row.pop(key, None)
+    row["staged_attachments"] = public_staged_attachments(row.get("staged_attachments") or [])
     row["git_branch"] = git_branch
     row["busy"] = bool(busy)
     return row

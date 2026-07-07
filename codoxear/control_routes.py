@@ -6,6 +6,8 @@ from pathlib import Path
 import time
 from typing import Any, Callable
 
+from .session_store import public_staged_attachment
+
 
 JsonResponse = Callable[[Any, int, dict[str, Any]], None]
 RouteMatcher = Callable[..., str | None]
@@ -36,6 +38,29 @@ def _authorized(handler: Any, deps: ControlRouteDeps) -> bool:
     return False
 
 
+def _project_attachment_value(value: Any) -> Any:
+    if isinstance(value, dict) and "path" in value:
+        projected = public_staged_attachment(value)
+        if projected is not None:
+            return projected
+        redacted = dict(value)
+        redacted.pop("path", None)
+        return redacted
+    return value
+
+
+def _project_attachment_response(res: dict[str, Any]) -> dict[str, Any]:
+    projected = dict(res)
+    if isinstance(projected.get("attachments"), list):
+        projected["attachments"] = [_project_attachment_value(item) for item in projected["attachments"]]
+    if "attachment" in projected:
+        projected["attachment"] = _project_attachment_value(projected["attachment"])
+    if "removed" in projected:
+        projected["removed"] = _project_attachment_value(projected["removed"])
+    projected.pop("path", None)
+    return projected
+
+
 def handle_control_get_route(
     handler: Any,
     *,
@@ -54,7 +79,7 @@ def handle_control_get_route(
     except KeyError:
         deps.json_response(handler, 404, {"error": "unknown session"})
         return True
-    deps.json_response(handler, 200, res)
+    deps.json_response(handler, 200, _project_attachment_response(res))
     return True
 
 
@@ -155,7 +180,7 @@ def _handle_pending_attachment_clear(handler: Any, *, session_id: str, manager: 
     except ValueError as e:
         deps.json_response(handler, 400, {"error": str(e)})
         return
-    deps.json_response(handler, 200, res)
+    deps.json_response(handler, 200, _project_attachment_response(res))
 
 
 def _handle_attachment_delete(handler: Any, *, session_id: str, manager: Any, deps: ControlRouteDeps) -> None:
@@ -175,7 +200,7 @@ def _handle_attachment_delete(handler: Any, *, session_id: str, manager: Any, de
         status = 404 if str(e) == "unknown attachment" else 400
         deps.json_response(handler, status, {"error": str(e)})
         return
-    deps.json_response(handler, 200, res)
+    deps.json_response(handler, 200, _project_attachment_response(res))
 
 
 def _handle_attachments_clear(handler: Any, *, session_id: str, manager: Any, deps: ControlRouteDeps) -> None:
@@ -190,7 +215,7 @@ def _handle_attachments_clear(handler: Any, *, session_id: str, manager: Any, de
     except ValueError as e:
         deps.json_response(handler, 400, {"error": str(e)})
         return
-    deps.json_response(handler, 200, res)
+    deps.json_response(handler, 200, _project_attachment_response(res))
 
 
 def _handle_commit_unknown_send_clear(handler: Any, *, session_id: str, manager: Any, deps: ControlRouteDeps) -> None:
@@ -354,4 +379,4 @@ def _handle_inject_attachment(handler: Any, *, session_id: str, manager: Any, de
             pass
         deps.json_response(handler, 400, {"error": str(e)})
         return
-    deps.json_response(handler, 200, {"ok": True, "path": str(out_path), **res})
+    deps.json_response(handler, 200, _project_attachment_response({"ok": True, **res}))

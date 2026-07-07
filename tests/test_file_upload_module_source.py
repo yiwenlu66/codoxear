@@ -97,6 +97,8 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn("if session.pending_attachment:\n                    raise self.not_ready_error(\"send the pending attachment before queueing another prompt\")", queue_source)
         self.assertIn('pending_attachment=bool(s.pending_attachment)', listing_source)
         self.assertIn('staged_attachments=store.staged_attachments_for_session(s.session_id)', listing_source)
+        self.assertIn('"staged_attachments": public_staged_attachments(facts.staged_attachments)', listing_source)
+        self.assertIn('projected.pop("path", None)', route_source)
         self.assertIn('commit_unknown_send=s.commit_unknown_send if isinstance(s.commit_unknown_send, dict) else None', listing_source)
         self.assertIn('(\"commit_unknown_send\", \"clear\", _handle_commit_unknown_send_clear)', route_source)
         self.assertIn("res = manager.clear_commit_unknown_send(session_id)", route_source)
