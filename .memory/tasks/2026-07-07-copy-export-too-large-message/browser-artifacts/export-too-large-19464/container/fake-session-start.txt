@@ -1,0 +1,4 @@
+{"sid":"export-too-large-session","sock":"/home/tester/.local/share/codoxear/socks/export-too-large-session.sock","log":"/home/tester/oversized-export-proof/oversized-session.jsonl","log_size":2285,"calls":"/home/tester/oversized-export-proof/broker-calls.jsonl"}
+log_size=2285 blocks=8 path=/home/tester/oversized-export-proof/oversized-session.jsonl
+container_app_dir= /home/tester/.local/share/codoxear
+export_cap= 1024

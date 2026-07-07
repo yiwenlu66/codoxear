@@ -1,0 +1,2 @@
+COMMAND: docker run --name codoxear-export-too-large-19464 with CODEX_WEB_TRANSCRIPT_EXPORT_MAX_BYTES=1024 on port 19464
+29c04ebbf13b7880babaef9d455d7b35a7b59cf0540b972f21dcd5bd1a3f550f
