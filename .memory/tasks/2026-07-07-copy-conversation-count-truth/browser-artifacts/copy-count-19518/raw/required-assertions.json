@@ -1,0 +1,29 @@
+{
+  "all_required_assertions_pass": true,
+  "api_auth_ok": true,
+  "api_post_login_sessions_status": "200",
+  "api_pre_login_status": "401",
+  "broker_mutations_zero": true,
+  "desktop": {
+    "clipboard_exact_expected": true,
+    "clipboard_excludes_blank_rows": true,
+    "copied_section_count": 2,
+    "export_event_count": 4,
+    "no_horizontal_overflow": true,
+    "ok": true,
+    "raw_count_exceeds_copied_count": true,
+    "toast": "Copied 2 messages",
+    "toast_truthful_two": true
+  },
+  "mobile": {
+    "clipboard_exact_expected": true,
+    "clipboard_excludes_blank_rows": true,
+    "copied_section_count": 2,
+    "export_event_count": 4,
+    "no_horizontal_overflow": true,
+    "ok": true,
+    "raw_count_exceeds_copied_count": true,
+    "toast": "Copied 2 messages",
+    "toast_truthful_two": true
+  }
+}

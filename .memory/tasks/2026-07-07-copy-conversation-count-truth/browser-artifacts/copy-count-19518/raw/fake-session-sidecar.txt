@@ -1,0 +1,6 @@
+total 12
+drwxr-xr-x 2 tester tester 4096 Jul  7 18:34 .
+drwxr-xr-x 6 tester tester 4096 Jul  7 18:33 ..
+-rw-r--r-- 1 tester tester  623 Jul  7 18:34 copy-count-session.json
+srwxr-xr-x 1 tester tester    0 Jul  7 18:34 copy-count-session.sock
+{"agent_backend":"codex","session_id":"copy-count-session","thread_id":"copy-count-session","broker_pid":52,"codex_pid":52,"pid":52,"cwd":"/home/tester/copy-count-proof/workspace","log_path":"/home/tester/copy-count-proof/copy-count-session.jsonl","start_ts":1783449245.8676221,"updated_ts":1783449245.867624,"owner":"terminal","sock_path":"/home/tester/.local/share/codoxear/socks/copy-count-session.sock","model":"gpt-copy-count-proof","reasoning_effort":"high","control_protocol_version":2,"control_capabilities":{"sync_send":true,"key_write_errors":false},"fake_notice":"FAKE_COPY_CONVERSATION_COUNT_PROOF_DOCKER_ONLY"}
