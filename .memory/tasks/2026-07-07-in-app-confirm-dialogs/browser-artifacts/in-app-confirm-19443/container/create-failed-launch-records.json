@@ -1,0 +1,43 @@
+{
+  "path": "/home/tester/.local/share/codoxear/session_launches.jsonl",
+  "records": [
+    {
+      "type": "launch_attempt",
+      "launch_id": "launch-confirm-cancel",
+      "state": "failed",
+      "stage": "in_app_confirm_browser_proof",
+      "error": "Synthetic failed launch for in-app confirm browser proof: launch-confirm-cancel",
+      "agent_backend": "codex",
+      "broker_pid": 999999,
+      "created_ts": 1783436730.6642609,
+      "updated_ts": 1783436730.6642609,
+      "cwd": "/workspace/confirm-cancel-project",
+      "requested_cwd": "/workspace/confirm-cancel-project",
+      "model": "gpt-confirm-proof",
+      "model_provider": "openai-api",
+      "provider_choice": "openai-api",
+      "reasoning_effort": "high",
+      "transport": "direct",
+      "spawn_nonce": "confirm-proof-0"
+    },
+    {
+      "type": "launch_attempt",
+      "launch_id": "launch-confirm-delete",
+      "state": "failed",
+      "stage": "in_app_confirm_browser_proof",
+      "error": "Synthetic failed launch for in-app confirm browser proof: launch-confirm-delete",
+      "agent_backend": "codex",
+      "broker_pid": 999999,
+      "created_ts": 1783436731.6642609,
+      "updated_ts": 1783436731.6642609,
+      "cwd": "/workspace/confirm-delete-project",
+      "requested_cwd": "/workspace/confirm-delete-project",
+      "model": "gpt-confirm-proof",
+      "model_provider": "openai-api",
+      "provider_choice": "openai-api",
+      "reasoning_effort": "high",
+      "transport": "direct",
+      "spawn_nonce": "confirm-proof-1"
+    }
+  ]
+}

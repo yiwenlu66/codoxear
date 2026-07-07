@@ -1,0 +1,19 @@
+HOME=/home/tester
+total 12
+drwxr-xr-x 3 tester tester 4096 Jul  7 15:05 .
+drwxr-xr-x 3 tester tester 4096 Jul  7 15:05 ..
+drwxr-xr-x 5 tester tester 4096 Jul  7 15:06 codoxear
+total 36
+drwxr-xr-x 5 tester tester 4096 Jul  7 15:06 .
+drwxr-xr-x 3 tester tester 4096 Jul  7 15:05 ..
+drwxr-xr-x 3 tester tester 4096 Jul  7 15:05 audio
+-rw-r--r-- 1 tester tester   30 Jul  7 15:06 hidden_sessions.json
+-rw------- 1 tester tester   64 Jul  7 15:05 hmac_secret
+-rw-r--r-- 1 tester tester 1222 Jul  7 15:05 session_launches.jsonl
+drwxr-xr-x 2 tester tester 4096 Jul  7 15:05 socks
+drwxr-xr-x 2 tester tester 4096 Jul  7 15:05 uploads
+-rw------- 1 tester tester  241 Jul  7 15:05 webpush_vapid_private.pem
+
+launches:
+{"agent_backend": "codex", "broker_pid": 999999, "created_ts": 1783436730.6642609, "cwd": "/workspace/confirm-cancel-project", "error": "Synthetic failed launch for in-app confirm browser proof: launch-confirm-cancel", "launch_id": "launch-confirm-cancel", "model": "gpt-confirm-proof", "model_provider": "openai-api", "provider_choice": "openai-api", "reasoning_effort": "high", "requested_cwd": "/workspace/confirm-cancel-project", "spawn_nonce": "confirm-proof-0", "stage": "in_app_confirm_browser_proof", "state": "failed", "transport": "direct", "type": "launch_attempt", "updated_ts": 1783436730.6642609}
+{"agent_backend": "codex", "broker_pid": 999999, "created_ts": 1783436731.6642609, "cwd": "/workspace/confirm-delete-project", "error": "Synthetic failed launch for in-app confirm browser proof: launch-confirm-delete", "launch_id": "launch-confirm-delete", "model": "gpt-confirm-proof", "model_provider": "openai-api", "provider_choice": "openai-api", "reasoning_effort": "high", "requested_cwd": "/workspace/confirm-delete-project", "spawn_nonce": "confirm-proof-1", "stage": "in_app_confirm_browser_proof", "state": "failed", "transport": "direct", "type": "launch_attempt", "updated_ts": 1783436731.6642609}

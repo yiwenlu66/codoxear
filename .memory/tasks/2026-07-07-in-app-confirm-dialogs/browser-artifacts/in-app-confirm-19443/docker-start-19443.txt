@@ -1,0 +1,4 @@
+COMMAND: CODOXEAR_DOCKER_PORT=19443 scripts/codoxear-docker-sandbox start
+container=codoxear-sandbox-19443
+url=http://127.0.0.1:19443/
+root=/tmp/codoxear-docker-sandbox-19443

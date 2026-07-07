@@ -1,0 +1,8 @@
+COMMAND: CODOXEAR_DOCKER_PORT=19442 scripts/codoxear-docker-sandbox smoke
+container=codoxear-sandbox-19442
+url=http://127.0.0.1:19442/
+root=/tmp/codoxear-docker-sandbox-19442
+pre_login_api_me_status=401
+post_login_sessions_status=200
+container_app_dir=/home/tester/.local/share/codoxear
+artifacts=/tmp/codoxear-docker-sandbox-19442/artifacts
