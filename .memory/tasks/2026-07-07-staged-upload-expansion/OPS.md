@@ -209,3 +209,7 @@
 ## 2026-07-07T00:58:00Z Immediate key injection review rerouted after second empty paused run
 - Replacement review async id `62eb6953-a691-425e-91d3-f14055ffa102` also paused unrecoverably and produced `/tmp/immediate-attachment-key-removal-review.md` as a 0-byte artifact; status reported acceptance rejected and resume unavailable.
 - Third clean-room review dispatched from product checkout `/home/yiwen/codex-web-product-recovery` using `zai/glm-5.2` with no injected acceptance wrapper: async id `f7c960a3-0848-4329-a573-f89fe57dc35b`, output target `/tmp/immediate-attachment-key-removal-review.md`.
+
+## 2026-07-07T01:05:00Z Immediate key injection review rerouted after GLM quota failure
+- Third review async id `f7c960a3-0848-4329-a573-f89fe57dc35b` failed before review with provider quota: `429 You have reached the 7-day usage limit... after 2026-07-10 16:11:14`.
+- Fourth clean-room review dispatched from product checkout `/home/yiwen/codex-web-product-recovery` using `openai-codex/gpt-5.5` with no injected acceptance wrapper: async id `d203bdc3-9780-4c68-a46d-cea2520bafd3`, output target `/tmp/immediate-attachment-key-removal-review.md`.
