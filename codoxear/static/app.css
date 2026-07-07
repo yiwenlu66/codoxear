@@ -2762,13 +2762,14 @@ select {
         .composer textarea {
           font-size: 16px;
         }
-        /* Composer icon controls (paperclip/queue/stop/send) must meet the 44x44
-           CSS px touch-target minimum on mobile. A min-width/min-height floor is
-           used instead of --composerCtl because the later coarse-pointer media
-           query overrides --composerCtl to 40px on phones; the floor holds
+        /* Composer icon controls (paperclip/capture/queue/stop/send) must meet
+           the 44x44 CSS px touch-target minimum on mobile. A min-width/min-height
+           floor is used instead of --composerCtl because the later coarse-pointer
+           media query overrides --composerCtl to 40px on phones; the floor holds
            regardless, while desktop (38px) and the textarea/pill height are
-           untouched. inputWrap is flex:1 1 auto with min-width:0 so the four
-           44px controls cannot force horizontal overflow at 390px. */
+           untouched. inputWrap is flex:1 1 auto with min-width:0, so the five
+           44px controls plus gaps/padding shrink the textarea rather than forcing
+           horizontal overflow at 390px. */
         .composer .icon-btn {
           min-width: 44px;
           min-height: 44px;
