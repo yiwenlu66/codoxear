@@ -86,6 +86,7 @@
     const el = requireFunction(options.el, "el");
     const iconSvg = requireFunction(options.iconSvg, "iconSvg");
     const recoveryPanelFocusFallback = requireFunction(options.recoveryPanelFocusFallback, "recoveryPanelFocusFallback");
+    const confirmAction = requireFunction(options.confirmAction, "confirmAction");
 
     const requestFrame = typeof options.requestFrame === "function" ? options.requestFrame : requestAnimationFrame;
     const setTimeoutFn = typeof options.setTimeout === "function" ? options.setTimeout : setTimeout;
@@ -206,9 +207,12 @@
       if (commitUnknown || orphanRecovery) {
         const text = String((item && item.text) || "").trim();
         const suffix = text ? `\n\nQueued prompt: ${text.slice(0, 240)}${text.length > 240 ? "..." : ""}` : "";
-        const confirmed = window.confirm(
-          `Delete this recovery item only after checking the transcript or terminal.${commitUnknown ? " This may allow later queued prompts to send." : ""}${suffix}`
-        );
+        const confirmed = await confirmAction({
+          title: "Delete recovery item?",
+          message: `Delete this recovery item only after checking the transcript or terminal.${commitUnknown ? " This may allow later queued prompts to send." : ""}${suffix}`,
+          confirmText: "Delete",
+          cancelText: "Cancel",
+        });
         if (!confirmed) return;
       }
       const timerKey = `${sid}:${key}`;

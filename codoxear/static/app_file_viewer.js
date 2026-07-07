@@ -3654,7 +3654,7 @@
     async function reloadSaveConflict(conflict) {
       if (!isSaveConflictCurrent(conflict)) return;
       const savePath = conflict.path;
-      const ok = confirmReload(`Reload ${savePath} from disk and discard your unsaved editor draft?`);
+      const ok = await confirmReload(`Reload ${savePath} from disk and discard your unsaved editor draft?`);
       if (!ok) return;
       fileStatus.textContent = `Reloading ${savePath}...`;
       const reloaded = await openFilePath(savePath, { line: activeFileLine, gitPath: activeFileGitPath, apiPath: activeFileApiPath });

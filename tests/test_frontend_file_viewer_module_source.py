@@ -104,7 +104,7 @@ def run_file_viewer_controller_probe() -> dict[str, object]:
             closeFilePickerMenu: (options) => events.push(["closeFilePickerMenu", options]),
             isTextFileKind: (kind) => kind === "text" || kind === "markdown",
             isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
-            confirmReload: (message) => {{ events.push(["confirm", message]); return state.confirmResult !== false; }},
+            confirmReload: async (message) => {{ events.push(["confirm", message]); return state.confirmResult !== false; }},
             promptUnsavedFileChoice: async () => {{ events.push(["promptUnsaved", state.unsavedChoice || "cancel"]); return state.unsavedChoice || "cancel"; }},
             restoreFileEditorText: (text) => events.push(["restoreFileEditorText", text]),
             hideFileViewer: () => events.push(["hideFileViewer"]),
@@ -1772,6 +1772,10 @@ def run_file_inspect_runtime_probe() -> dict[str, object]:
 
 
 class TestFrontendFileViewerModuleSource(unittest.TestCase):
+    def test_reload_save_conflict_awaits_confirm_reload(self) -> None:
+        source = APP_FILE_VIEWER_JS.read_text(encoding="utf-8")
+        self.assertIn("const ok = await confirmReload(`Reload ${savePath} from disk and discard your unsaved editor draft?`);", source)
+
     def test_file_inspect_runtime_owns_request_body_and_404_policy(self) -> None:
         result = run_file_inspect_runtime_probe()
         self.assertEqual(result["selectedResult"], {"exists": True, "kind": "text", "path": "/abs/src/app.py"})

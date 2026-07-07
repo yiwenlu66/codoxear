@@ -2648,6 +2648,15 @@ select {
       .fileUnsavedDialog {
         z-index: 90;
       }
+      .appConfirmBackdrop {
+        z-index: 110;
+      }
+      .appConfirm {
+        z-index: 120;
+      }
+      .appConfirmMessage {
+        white-space: pre-wrap;
+      }
 		      .backdrop {
 		        display: none;
 		        position: absolute;

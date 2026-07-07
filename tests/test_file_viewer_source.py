@@ -5097,7 +5097,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function setFileDirty(nextDirty)", viewer_source)
         self.assertIn("return fileViewerController.currentFileDirty();", source)
         self.assertIn("return fileViewerController.setFileDirty(nextDirty);", source)
-        self.assertIn("confirmReload: (message) => window.confirm(message)", controller_block)
+        self.assertIn("confirmReload: (message) => confirmApp({ title: \"Reload file from disk?\", message, confirmText: \"Reload\", cancelText: \"Cancel\" })", controller_block)
         self.assertIn("promptUnsavedFileChoice: () => promptFileUnsavedChoice()", controller_block)
         self.assertIn("restoreFileEditorText: (text) => restoreFileEditorText(text)", controller_block)
         self.assertNotIn("discardActiveFileEdits: () => discardActiveFileEdits()", controller_block)

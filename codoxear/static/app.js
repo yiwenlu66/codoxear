@@ -1511,6 +1511,26 @@
         root.appendChild(sendChoiceBackdrop);
         root.appendChild(sendChoice);
 
+        const appConfirmBackdrop = el("div", { class: "modalBackdrop appConfirmBackdrop", id: "appConfirmBackdrop" });
+        const appConfirmTitle = el("div", { class: "title", id: "appConfirmTitle", text: "Confirm action" });
+        const appConfirmMessage = el("div", { class: "muted appConfirmMessage", id: "appConfirmMessage", text: "" });
+        const appConfirmConfirmBtn = el("button", { class: "primary", id: "appConfirmConfirmBtn", type: "button", text: "Confirm" });
+        const appConfirmCancelBtn = el("button", { id: "appConfirmCancelBtn", type: "button", text: "Cancel" });
+        const appConfirm = el("div", {
+          class: "sendChoice appConfirm",
+          id: "appConfirm",
+          role: "dialog",
+          "aria-modal": "true",
+          "aria-labelledby": "appConfirmTitle",
+          "aria-describedby": "appConfirmMessage",
+        }, [
+          appConfirmTitle,
+          appConfirmMessage,
+          el("div", { class: "sendChoiceActions appConfirmActions" }, [appConfirmConfirmBtn, appConfirmCancelBtn]),
+        ]);
+        root.appendChild(appConfirmBackdrop);
+        root.appendChild(appConfirm);
+
         const queueBackdrop = el("div", { class: "modalBackdrop", id: "queueBackdrop" });
         const queueCloseBtn = el("button", {
           id: "queueCloseBtn",
@@ -1983,6 +2003,7 @@
           fileUnsavedDialog,
           filePasteDialog,
           sendChoice,
+          appConfirm,
           queueViewer,
           helpViewer,
           diagViewer,
@@ -2031,6 +2052,68 @@
         function focusModalCloseButton(viewer, closeBtn) {
           return codoxearModal.focusModalCloseButton(viewer, closeBtn);
         }
+
+        let appConfirmPending = null;
+        let appConfirmReturnFocusEl = null;
+
+        function normalizeAppConfirmOptions(options = {}) {
+          if (typeof options === "string") return { title: "Confirm action", message: options, confirmText: "Confirm", cancelText: "Cancel" };
+          const raw = options && typeof options === "object" ? options : {};
+          return {
+            title: String(raw.title || "Confirm action"),
+            message: String(raw.message || ""),
+            confirmText: String(raw.confirmText || "Confirm"),
+            cancelText: String(raw.cancelText || "Cancel"),
+          };
+        }
+
+        function focusAppConfirmInitial() {
+          requestAnimationFrame(() => {
+            if (appConfirm.style.display !== "flex") return;
+            const target = appConfirmConfirmBtn && !appConfirmConfirmBtn.disabled ? appConfirmConfirmBtn : appConfirmCancelBtn;
+            if (!target || typeof target.focus !== "function") return;
+            try {
+              target.focus({ preventScroll: true });
+            } catch {}
+          });
+        }
+
+        function resolveAppConfirm(result, { restoreFocus = true } = {}) {
+          const pending = appConfirmPending;
+          const target = appConfirmReturnFocusEl;
+          appConfirmPending = null;
+          appConfirmReturnFocusEl = null;
+          appConfirmBackdrop.style.display = "none";
+          appConfirm.style.display = "none";
+          afterModalVisibilityChanged();
+          if (restoreFocus) restoreModalFocus(target, () => appConfirm.style.display === "flex");
+          if (pending && !pending.settled) {
+            pending.settled = true;
+            pending.resolve(Boolean(result));
+          }
+        }
+
+        function confirmApp(options = {}) {
+          if (appConfirmPending) resolveAppConfirm(false, { restoreFocus: false });
+          const normalized = normalizeAppConfirmOptions(options);
+          prepareModalOpen();
+          appConfirmTitle.textContent = normalized.title;
+          appConfirmMessage.textContent = normalized.message;
+          appConfirmConfirmBtn.textContent = normalized.confirmText;
+          appConfirmCancelBtn.textContent = normalized.cancelText;
+          appConfirmReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          appConfirmBackdrop.style.display = "block";
+          appConfirm.style.display = "flex";
+          afterModalVisibilityChanged();
+          focusAppConfirmInitial();
+          return new Promise((resolve) => {
+            appConfirmPending = { resolve, settled: false };
+          });
+        }
+
+        appConfirmConfirmBtn.onclick = () => resolveAppConfirm(true);
+        appConfirmCancelBtn.onclick = () => resolveAppConfirm(false);
+        appConfirmBackdrop.onclick = () => resolveAppConfirm(false);
 
         const codoxearClipboard = window.CodoxearClipboard;
         if (!codoxearClipboard || typeof codoxearClipboard.copyTextViaSelection !== "function" || typeof codoxearClipboard.copyToClipboard !== "function")
@@ -2881,9 +2964,12 @@
           if (!sessionId) return false;
           const preview = String(previewText || "").trim();
           const suffix = preview ? `\n\nPrompt: ${preview.slice(0, 240)}${preview.length > 240 ? "..." : ""}` : "";
-          const confirmed = window.confirm(
-            `Clear the unknown-send marker only after checking the transcript or terminal. This does not undo a prompt that may already have been sent.${suffix}`
-          );
+          const confirmed = await confirmApp({
+            title: "Clear unknown-send marker?",
+            message: `Clear the unknown-send marker only after checking the transcript or terminal. This does not undo a prompt that may already have been sent.${suffix}`,
+            confirmText: "Clear marker",
+            cancelText: "Cancel",
+          });
           if (!confirmed) return false;
           try {
             await api(`/api/sessions/${sessionId}/commit_unknown_send/clear`, { method: "POST", body: {} });
@@ -3050,7 +3136,13 @@
                  e.stopPropagation();
                }
               closeOpenSwipe();
-              if (!confirm(launchRow ? "Dismiss this launch record?" : "Delete this session?")) return;
+              const confirmed = await confirmApp({
+                title: launchRow ? "Dismiss launch record?" : "Delete session?",
+                message: launchRow ? "Dismiss this launch record?" : "Delete this session?",
+                confirmText: launchRow ? "Dismiss" : "Delete",
+                cancelText: "Cancel",
+              });
+              if (!confirmed) return;
               try {
                 await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
                 clearDeletedSessionClientState(s.session_id);
@@ -3514,7 +3606,13 @@
             setToast("launch record is not failed");
             return;
           }
-          if (!confirm("Dismiss this launch record?")) return;
+          const confirmed = await confirmApp({
+            title: "Dismiss launch record?",
+            message: "Dismiss this launch record?",
+            confirmText: "Dismiss",
+            cancelText: "Cancel",
+          });
+          if (!confirmed) return;
           try {
             await api(`/api/sessions/${sessionId}/delete`, { method: "POST", body: {} });
             clearDeletedSessionClientState(sessionId);
@@ -5501,7 +5599,7 @@
           closeFilePickerMenu: (options) => closeFilePickerMenu(options),
           isTextFileKind: (kind) => isTextFileKind(kind),
           isDiffableFileKind: (kind) => isDiffableFileKind(kind),
-          confirmReload: (message) => window.confirm(message),
+          confirmReload: (message) => confirmApp({ title: "Reload file from disk?", message, confirmText: "Reload", cancelText: "Cancel" }),
           promptUnsavedFileChoice: () => promptFileUnsavedChoice(),
           restoreFileEditorText: (text) => restoreFileEditorText(text),
           hideFileViewer: () => hideFileViewer(),
@@ -5957,6 +6055,12 @@
         );
         addAppEvent(document, "keydown", (e) => {
           if (e.key !== "Escape") return;
+          if (appConfirm.style.display === "flex") {
+            e.preventDefault();
+            e.stopPropagation();
+            resolveAppConfirm(false);
+            return;
+          }
           if (filePasteDialogRuntime.isOpen()) {
             hideFilePasteDialog({ restoreFocus: true });
             return;
@@ -6119,6 +6223,7 @@
             afterModalVisibilityChanged,
             el,
             iconSvg,
+            confirmAction: (options) => confirmApp(options),
             recoveryPanelFocusFallback: () => recoveryController.focusFallbackCandidate(),
           });
         })();
@@ -7119,7 +7224,12 @@
           const localAttachmentCount = renderHere ? stagedAttachments.length : normalizedStagedAttachments(sessionInfo && sessionInfo.staged_attachments).length;
           let allowPendingAttachment = Boolean(localAttachmentCount > 0);
           if (!allowPendingAttachment && sessionInfo && sessionInfo.pending_attachment) {
-            const confirmed = window.confirm("This session has a pending file attachment. Send it with this message?");
+            const confirmed = await confirmApp({
+              title: "Send pending attachment?",
+              message: "This session has a pending file attachment. Send it with this message?",
+              confirmText: "Send with attachment",
+              cancelText: "Cancel",
+            });
             if (!confirmed) return false;
             allowPendingAttachment = true;
           }
@@ -7201,7 +7311,12 @@
               });
             } else setToast(`send error: ${e2.message}`);
             if (!commitUnknown && sessionInfo && sessionInfo.pending_attachment && /broker must be restarted/i.test(String(e2 && e2.message ? e2.message : ""))) {
-              const clearPending = window.confirm("This session has a pending attachment but the current broker cannot confirm sends. Clear the browser pending-attachment state only if you already handled it in the terminal?");
+              const clearPending = await confirmApp({
+                title: "Clear pending attachment state?",
+                message: "This session has a pending attachment but the current broker cannot confirm sends. Clear the browser pending-attachment state only if you already handled it in the terminal?",
+                confirmText: "Clear state",
+                cancelText: "Cancel",
+              });
               if (clearPending) {
                 try {
                   await api(`/api/sessions/${sessionId}/pending_attachment/clear`, { method: "POST", body: {} });

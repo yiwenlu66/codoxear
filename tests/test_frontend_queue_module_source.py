@@ -140,6 +140,7 @@ const deps = {
   el: makeEl,
   iconSvg: (name) => `<svg>${name}</svg>`,
   recoveryPanelFocusFallback: () => null,
+  confirmAction: async (options) => { confirmCalls.push(JSON.parse(JSON.stringify(options))); return confirmValue; },
   requestFrame: (fn) => fn(),
   setTimeout: fakeSetTimeout,
   clearTimeout: fakeClearTimeout,
@@ -149,7 +150,7 @@ const deps = {
 const ctx = {
   HTMLElement: function HTMLElement() {},
   document: { activeElement: null, querySelector: () => null },
-  window: { confirm: (msg) => { confirmCalls.push(String(msg)); return confirmValue; } },
+  window: {},
   console,
 };
 vm.createContext(ctx);
@@ -238,6 +239,12 @@ def harness_script(epilogue: str) -> str:
 
 
 class TestFrontendQueueModuleSource(unittest.TestCase):
+    def test_queue_delete_confirmation_is_injected_async_dependency(self) -> None:
+        source = APP_QUEUE_JS.read_text(encoding="utf-8")
+        self.assertIn('const confirmAction = requireFunction(options.confirmAction, "confirmAction");', source)
+        self.assertIn("const confirmed = await confirmAction({", source)
+        self.assertNotIn("window.confirm", source)
+
     # --- 1. dependency failures + frozen export ---
 
     def test_module_export_is_frozen_createQueue_controller(self) -> None:
@@ -701,9 +708,11 @@ class TestFrontendQueueModuleSource(unittest.TestCase):
             """
         )
         result = run_node_json(js)
-        # Confirmation copy present.
-        self.assertTrue(any("checking the transcript or terminal" in m for m in result["commitConfirm"]))
-        self.assertTrue(any("may allow later queued prompts" in m for m in result["commitConfirm"]))
+        # Confirmation copy and async options present.
+        self.assertEqual(result["commitConfirm"][0]["title"], "Delete recovery item?")
+        self.assertEqual(result["commitConfirm"][0]["confirmText"], "Delete")
+        self.assertIn("checking the transcript or terminal", result["commitConfirm"][0]["message"])
+        self.assertIn("may allow later queued prompts", result["commitConfirm"][0]["message"])
         # Delete body carries allow_commit_unknown: true.
         self.assertEqual(result["commitDeleteBody"], {"id": "commit", "allow_commit_unknown": True, "allow_orphan_recovery": False})
         # Canceled orphan delete did not issue another delete call.

@@ -173,9 +173,13 @@ def test_launch_attempt_rows_use_dismiss_language() -> None:
     source = APP_JS.read_text(encoding="utf-8")
 
     assert 'const launchRow = launchFailed || launchPending;' in source
-    assert 'confirm(launchRow ? "Dismiss this launch record?" : "Delete this session?")' in source
-    assert 'title: launchRow ? "Dismiss launch record" : "Delete session"' in source
-    assert 'if (launchRow && card && card.parentNode) card.remove();' in source
+    start = source.index("async function doDelete(e)")
+    end = source.index("const renameBtn = el", start)
+    block = source[start:end]
+    assert 'const confirmed = await confirmApp({' in block
+    assert 'title: launchRow ? "Dismiss launch record?" : "Delete session?"' in block
+    assert 'message: launchRow ? "Dismiss this launch record?" : "Delete this session?"' in block
+    assert 'if (launchRow && card && card.parentNode) card.remove();' in block
 
 
 def test_failed_launch_rows_are_clickable_transcripts() -> None:

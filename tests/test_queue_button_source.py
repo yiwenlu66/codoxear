@@ -102,6 +102,7 @@ def _bootstrap_controller(controller_options_overrides: str = "") -> str:
           }},
           iconSvg: (name) => `<svg>${{name}}</svg>`,
           recoveryPanelFocusFallback: () => null,
+          confirmAction: async () => true,
           requestFrame: (fn) => fn(),
           setTimeout: (fn, ms) => {{ calls.push(["setTimeout", ms]); const handle = ++timerHandle; pendingTimers.set(handle, {{ fn, ms }}); return handle; }},
           clearTimeout: (handle) => {{ pendingTimers.delete(handle); }},
