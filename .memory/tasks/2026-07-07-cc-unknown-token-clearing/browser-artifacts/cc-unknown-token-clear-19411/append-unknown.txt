@@ -1,0 +1,1 @@
+{"appended":true,"log_path":"/home/tester/.claude/projects/-home-tester-cc-unknown-token-proof-repo/22222222-3333-4444-8555-666666666666.jsonl","size":1334}

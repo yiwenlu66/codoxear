@@ -1,0 +1,35 @@
+{
+    "transcript_state": "bound",
+    "thread_id": "cc-unknown-token-proof",
+    "log_path": "/home/tester/.claude/projects/-home-tester-cc-unknown-token-proof-repo/22222222-3333-4444-8555-666666666666.jsonl",
+    "live_cursor": "eyJ2IjoxLCJraW5kIjoibGl2ZSIsInRocmVhZF9pZCI6ImNjLXVua25vd24tdG9rZW4tcHJvb2YiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8uY2xhdWRlL3Byb2plY3RzLy1ob21lLXRlc3Rlci1jYy11bmtub3duLXRva2VuLXByb29mLXJlcG8vMjIyMjIyMjItMzMzMy00NDQ0LTg1NTUtNjY2NjY2NjY2NjY2Lmpzb25sIiwicG9zIjoxMzM0fQ.egkkkU3fIGL80lkYBnFSC_DyEhZUNgSNpLh_XOTBTrA",
+    "history_cursor": null,
+    "events": [
+        {
+            "role": "user",
+            "text": "cc unknown token clearing fixture",
+            "ts": 1783414800.0,
+            "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImNjLXVua25vd24tdG9rZW4tcHJvb2YiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8uY2xhdWRlL3Byb2plY3RzLy1ob21lLXRlc3Rlci1jYy11bmtub3duLXRva2VuLXByb29mLXJlcG8vMjIyMjIyMjItMzMzMy00NDQ0LTg1NTUtNjY2NjY2NjY2NjY2Lmpzb25sIiwicG9zIjowfQ.r_AWIHidiXdGSpkVfKWdXMLepglpfEDKYgHSEQ1gCJ0"
+        },
+        {
+            "role": "assistant",
+            "text": "KNOWN_MODEL_TOKEN_SENTINEL visible before unknown",
+            "message_class": "final_response",
+            "message_id": "d49a116e4953876a75e1f2a15437aed3d2a8d2fd71cae0d570d04f2d63e500d4",
+            "ts": 1783414810.0,
+            "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImNjLXVua25vd24tdG9rZW4tcHJvb2YiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8uY2xhdWRlL3Byb2plY3RzLy1ob21lLXRlc3Rlci1jYy11bmtub3duLXRva2VuLXByb29mLXJlcG8vMjIyMjIyMjItMzMzMy00NDQ0LTg1NTUtNjY2NjY2NjY2NjY2Lmpzb25sIiwicG9zIjoyOTZ9.ABkOz4_wldKo-MhHfh3dSkhxHsLkDoTURwP_AbfFg-c"
+        },
+        {
+            "role": "assistant",
+            "text": "UNKNOWN_MODEL_CLEAR_SENTINEL should hide context chip",
+            "message_class": "final_response",
+            "message_id": "fd46e2450dc6fd340ca601bb573e740e9e890c57afb4c542bcdc479f0e1cfe7e",
+            "ts": 1783414860.0,
+            "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImNjLXVua25vd24tdG9rZW4tcHJvb2YiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8uY2xhdWRlL3Byb2plY3RzLy1ob21lLXRlc3Rlci1jYy11bmtub3duLXRva2VuLXByb29mLXJlcG8vMjIyMjIyMjItMzMzMy00NDQ0LTg1NTUtNjY2NjY2NjY2NjY2Lmpzb25sIiwicG9zIjo4MTB9.MfTih-AF_qtDk2R2mAQSMcMoqwMR2CTPkPnTkG5Qfrw"
+        }
+    ],
+    "has_older": false,
+    "busy": false,
+    "queue_len": 0,
+    "token": null
+}

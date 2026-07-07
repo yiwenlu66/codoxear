@@ -1,0 +1,3 @@
+container=codoxear-sandbox-19411
+url=http://127.0.0.1:19411/
+root=/tmp/codoxear-docker-sandbox-19411
