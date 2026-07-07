@@ -1,0 +1,12 @@
+Docker gate summary for capture producer (port 19358, container codoxear-capture-gate-19358)
+
+Initial `scripts/codoxear-docker-sandbox test` attempt failed before Codoxear code ran because BuildKit could not resolve docker.io/library/python:3.13-slim metadata (registry EOF). A cached sandbox image existed from the browser proof run, so the gates were rerun with `DOCKER_BUILDKIT=0` to use the local cache rather than the unavailable metadata endpoint.
+
+Commands/results:
+- `DOCKER_BUILDKIT=0 CODOXEAR_DOCKER_PORT=19358 CODOXEAR_DOCKER_NAME=codoxear-capture-gate-19358 scripts/codoxear-docker-sandbox test`
+  - `1795 passed, 1 skipped, 132 subtests passed in 45.53s`
+- `DOCKER_BUILDKIT=0 CODOXEAR_DOCKER_PORT=19358 CODOXEAR_DOCKER_NAME=codoxear-capture-gate-19358 scripts/codoxear-docker-sandbox smoke`
+  - `pre_login_api_me_status=401`
+  - `post_login_sessions_status=200`
+  - `container_app_dir=/home/tester/.local/share/codoxear`
+  - `artifacts=/tmp/codoxear-docker-sandbox-19358/artifacts`
