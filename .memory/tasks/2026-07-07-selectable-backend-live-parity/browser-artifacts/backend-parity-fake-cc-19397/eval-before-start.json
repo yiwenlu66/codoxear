@@ -1,0 +1,1 @@
+{"success":true,"data":{"origin":"http://127.0.0.1:19397/","result":{"backend":[{"active":false,"label":"Codex"},{"active":false,"label":"Pi"},{"active":true,"label":"Claude"}],"cwd":"/workspace","model":"sonnet","name":"fake claude usable proof","reasoning":"max","tmux":false}},"error":null}

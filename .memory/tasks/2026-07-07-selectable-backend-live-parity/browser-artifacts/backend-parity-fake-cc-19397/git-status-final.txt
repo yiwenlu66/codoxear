@@ -1,0 +1,4 @@
+## recovery/product-gaps
+ M .memory/tasks/2026-07-07-selectable-backend-live-parity/EPISTEMIC.md
+ M .memory/tasks/2026-07-07-selectable-backend-live-parity/OPS.md
+?? .memory/tasks/2026-07-07-selectable-backend-live-parity/browser-artifacts/backend-parity-fake-cc-19397/

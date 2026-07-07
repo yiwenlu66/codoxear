@@ -1,0 +1,3 @@
+2026-07-07T08:11:53.853Z FAKE_CLAUDE_CODE_FOR_CODOXEAR_DOCKER_ONLY argv=["/usr/local/bin/claude", "--dangerously-skip-permissions", "--model", "sonnet", "--effort", "max"] cwd=/workspace log_path=/home/tester/.claude/projects/-workspace/69121efb-477b-47da-a1e2-bd10cb85aafd.jsonl session_id=69121efb-477b-47da-a1e2-bd10cb85aafd env_model=sonnet env_effort=max
+---COMMANDS---
+{"ts":"2026-07-07T08:14:13.374Z","prompt":"USER_SENTINEL_FAKE_CC_PROMPT_19397 please answer through fake claude","fake_notice":"FAKE_CLAUDE_CODE_FOR_CODOXEAR_DOCKER_ONLY","session_id":"69121efb-477b-47da-a1e2-bd10cb85aafd","log_path":"/home/tester/.claude/projects/-workspace/69121efb-477b-47da-a1e2-bd10cb85aafd.jsonl"}

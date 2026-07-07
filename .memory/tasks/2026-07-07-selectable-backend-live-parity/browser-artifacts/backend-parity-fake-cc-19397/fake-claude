@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""Deterministic fake Claude Code executable for Codoxear Docker-only mechanics proof.
+
+This is intentionally fake. It writes Claude Code-shaped JSONL under the
+container's CLAUDE_CONFIG_DIR/~.claude and responds to PTY stdin with a sentinel.
+It must never be installed on the host or used as real Claude Code.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import select
+import sys
+import time
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+FAKE_LABEL = "FAKE_CLAUDE_CODE_FOR_CODOXEAR_DOCKER_ONLY"
+ASSISTANT_SENTINEL = "FAKE_CLAUDE_ASSISTANT_SENTINEL_usable_branch_19397"
+BOOT_USER = "FAKE_CLAUDE_BOOTSTRAP_USER_ROW_not_real_provider"
+BOOT_ASSISTANT = "FAKE_CLAUDE_BOOTSTRAP_ASSISTANT_READY_not_real_provider"
+MODEL_FOR_USAGE = "claude-sonnet-4-5"
+
+
+def ts() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def project_dir_name(cwd: str) -> str:
+    cleaned = cwd.strip() or "/workspace"
+    return cleaned.replace("/", "-").replace("\\", "-").replace(":", "-") or "-workspace"
+
+
+def append_jsonl(handle, obj: dict) -> None:
+    handle.write(json.dumps(obj, separators=(",", ":")) + "\n")
+    handle.flush()
+    try:
+        os.fsync(handle.fileno())
+    except OSError:
+        pass
+
+
+def clean_prompt(raw: str) -> str:
+    s = raw.replace("\x1b[200~", "").replace("\x1b[201~", "")
+    s = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", s)
+    s = s.replace("\r", "\n")
+    lines = [line.strip() for line in s.split("\n")]
+    text = "\n".join(line for line in lines if line)
+    return text.strip()
+
+
+def main() -> int:
+    cwd = os.getcwd()
+    claude_home = Path(os.environ.get("CLAUDE_CONFIG_DIR") or (Path.home() / ".claude"))
+    log_dir = claude_home / "projects" / project_dir_name(cwd)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    session_id = str(uuid.uuid4())
+    log_path = log_dir / f"{session_id}.jsonl"
+    command_log = Path("/tmp/fake-claude-commands.jsonl")
+    invocation_log = Path("/tmp/fake-claude-invocations.log")
+    invocation_log.write_text(
+        f"{ts()} {FAKE_LABEL} argv={json.dumps(sys.argv)} cwd={cwd} log_path={log_path} session_id={session_id} "
+        f"env_model={os.environ.get('CODEX_WEB_MODEL','')} env_effort={os.environ.get('CODEX_WEB_REASONING_EFFORT','')}\n",
+        encoding="utf-8",
+    )
+    with log_path.open("a", encoding="utf-8", buffering=1) as log:
+        append_jsonl(log, {
+            "type": "user",
+            "sessionId": session_id,
+            "timestamp": ts(),
+            "cwd": cwd,
+            "isMeta": True,
+            "message": {"role": "user", "content": BOOT_USER},
+            "fake_notice": FAKE_LABEL,
+        })
+        append_jsonl(log, {
+            "type": "assistant",
+            "sessionId": session_id,
+            "timestamp": ts(),
+            "cwd": cwd,
+            "message": {
+                "role": "assistant",
+                "model": MODEL_FOR_USAGE,
+                "content": [{"type": "text", "text": BOOT_ASSISTANT}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1200, "cache_read_input_tokens": 34, "cache_creation_input_tokens": 56, "output_tokens": 78},
+            },
+            "fake_notice": FAKE_LABEL,
+        })
+        print(f"{FAKE_LABEL} ready session_id={session_id} log_path={log_path}", flush=True)
+        # Stay alive and respond to broker PTY sends. select avoids a busy loop and
+        # lets container teardown terminate the process cleanly.
+        while True:
+            ready, _, _ = select.select([sys.stdin], [], [], 1.0)
+            if not ready:
+                continue
+            raw = sys.stdin.readline()
+            if raw == "":
+                time.sleep(0.1)
+                continue
+            prompt = clean_prompt(raw)
+            if not prompt:
+                continue
+            with command_log.open("a", encoding="utf-8") as cmd:
+                cmd.write(json.dumps({"ts": ts(), "prompt": prompt, "fake_notice": FAKE_LABEL, "session_id": session_id, "log_path": str(log_path)}, separators=(",", ":")) + "\n")
+            append_jsonl(log, {
+                "type": "user",
+                "sessionId": session_id,
+                "timestamp": ts(),
+                "cwd": cwd,
+                "message": {"role": "user", "content": prompt},
+                "fake_notice": FAKE_LABEL,
+            })
+            time.sleep(0.2)
+            response = f"{ASSISTANT_SENTINEL} received: {prompt}"
+            append_jsonl(log, {
+                "type": "assistant",
+                "sessionId": session_id,
+                "timestamp": ts(),
+                "cwd": cwd,
+                "message": {
+                    "role": "assistant",
+                    "model": MODEL_FOR_USAGE,
+                    "content": [{"type": "text", "text": response}],
+                    "stop_reason": "end_turn",
+                    "usage": {"input_tokens": 4321, "cache_read_input_tokens": 100, "cache_creation_input_tokens": 79, "output_tokens": 42},
+                },
+                "fake_notice": FAKE_LABEL,
+            })
+            print(response, flush=True)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
