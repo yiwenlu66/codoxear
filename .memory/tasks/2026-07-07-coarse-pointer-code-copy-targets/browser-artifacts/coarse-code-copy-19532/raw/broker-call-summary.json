@@ -1,0 +1,11 @@
+{
+  "counts": {
+    "state": 685
+  },
+  "mutation_counts": {
+    "keys": 0,
+    "send": 0,
+    "shutdown": 0
+  },
+  "non_state_tail_calls": []
+}
