@@ -1,0 +1,65 @@
+[
+  {
+    "session_id": "effort-codex-low",
+    "agent_backend": "codex",
+    "model": "gpt-low",
+    "reasoning_effort": "low",
+    "cwd": "/home/tester/reasoning-effort-proof/effort-codex-low",
+    "busy": false,
+    "token": null
+  },
+  {
+    "session_id": "effort-codex-medium",
+    "agent_backend": "codex",
+    "model": "gpt-medium",
+    "reasoning_effort": "medium",
+    "cwd": "/home/tester/reasoning-effort-proof/effort-codex-medium",
+    "busy": false,
+    "token": null
+  },
+  {
+    "session_id": "effort-codex-high",
+    "agent_backend": "codex",
+    "model": "gpt-high",
+    "reasoning_effort": "high",
+    "cwd": "/home/tester/reasoning-effort-proof/effort-codex-high",
+    "busy": false,
+    "token": null
+  },
+  {
+    "session_id": "effort-codex-xhigh",
+    "agent_backend": "codex",
+    "model": "gpt-xhigh",
+    "reasoning_effort": "xhigh",
+    "cwd": "/home/tester/reasoning-effort-proof/effort-codex-xhigh",
+    "busy": false,
+    "token": null
+  },
+  {
+    "session_id": "effort-pi-off",
+    "agent_backend": "pi",
+    "model": "pi-off",
+    "reasoning_effort": "off",
+    "cwd": "/home/tester/reasoning-effort-proof/effort-pi-off",
+    "busy": false,
+    "token": null
+  },
+  {
+    "session_id": "effort-pi-minimal",
+    "agent_backend": "pi",
+    "model": "pi-minimal",
+    "reasoning_effort": "minimal",
+    "cwd": "/home/tester/reasoning-effort-proof/effort-pi-minimal",
+    "busy": false,
+    "token": null
+  },
+  {
+    "session_id": "effort-cc-max",
+    "agent_backend": "cc",
+    "model": "sonnet",
+    "reasoning_effort": "max",
+    "cwd": "/home/tester/reasoning-effort-proof/effort-cc-max",
+    "busy": false,
+    "token": null
+  }
+]

@@ -1,0 +1,148 @@
+{
+  "api_efforts": {
+    "effort-codex-low": {
+      "backend": "codex",
+      "model": "gpt-low",
+      "reasoning_effort": "low"
+    },
+    "effort-codex-medium": {
+      "backend": "codex",
+      "model": "gpt-medium",
+      "reasoning_effort": "medium"
+    },
+    "effort-codex-high": {
+      "backend": "codex",
+      "model": "gpt-high",
+      "reasoning_effort": "high"
+    },
+    "effort-codex-xhigh": {
+      "backend": "codex",
+      "model": "gpt-xhigh",
+      "reasoning_effort": "xhigh"
+    },
+    "effort-pi-off": {
+      "backend": "pi",
+      "model": "pi-off",
+      "reasoning_effort": "off"
+    },
+    "effort-pi-minimal": {
+      "backend": "pi",
+      "model": "pi-minimal",
+      "reasoning_effort": "minimal"
+    },
+    "effort-cc-max": {
+      "backend": "cc",
+      "model": "sonnet",
+      "reasoning_effort": "max"
+    }
+  },
+  "desktop": {
+    "viewport": {
+      "h": 720,
+      "w": 1280
+    },
+    "bodyOverflow": false,
+    "markers": {
+      "effort-codex-low": {
+        "text": "L",
+        "title": "reasoning effort low",
+        "class": "effortMark effort-low",
+        "ok": true
+      },
+      "effort-codex-medium": {
+        "text": "M",
+        "title": "reasoning effort medium",
+        "class": "effortMark effort-medium",
+        "ok": true
+      },
+      "effort-codex-high": {
+        "text": "H",
+        "title": "reasoning effort high",
+        "class": "effortMark effort-high",
+        "ok": true
+      },
+      "effort-codex-xhigh": {
+        "text": "X",
+        "title": "reasoning effort xhigh",
+        "class": "effortMark effort-xhigh",
+        "ok": true
+      },
+      "effort-pi-off": {
+        "text": "–",
+        "title": "reasoning effort off",
+        "class": "effortMark effort-off",
+        "ok": true
+      },
+      "effort-pi-minimal": {
+        "text": "m",
+        "title": "reasoning effort minimal",
+        "class": "effortMark effort-minimal",
+        "ok": true
+      },
+      "effort-cc-max": {
+        "text": "M+",
+        "title": "reasoning effort max",
+        "class": "effortMark effort-max",
+        "ok": true
+      }
+    }
+  },
+  "mobile": {
+    "viewport": {
+      "h": 844,
+      "w": 390
+    },
+    "bodyOverflow": false,
+    "markers": {
+      "effort-codex-low": {
+        "text": "L",
+        "title": "reasoning effort low",
+        "class": "effortMark effort-low",
+        "ok": true,
+        "rowVisible": true
+      },
+      "effort-codex-medium": {
+        "text": "M",
+        "title": "reasoning effort medium",
+        "class": "effortMark effort-medium",
+        "ok": true,
+        "rowVisible": true
+      },
+      "effort-codex-high": {
+        "text": "H",
+        "title": "reasoning effort high",
+        "class": "effortMark effort-high",
+        "ok": true,
+        "rowVisible": true
+      },
+      "effort-codex-xhigh": {
+        "text": "X",
+        "title": "reasoning effort xhigh",
+        "class": "effortMark effort-xhigh",
+        "ok": true,
+        "rowVisible": true
+      },
+      "effort-pi-off": {
+        "text": "–",
+        "title": "reasoning effort off",
+        "class": "effortMark effort-off",
+        "ok": true,
+        "rowVisible": true
+      },
+      "effort-pi-minimal": {
+        "text": "m",
+        "title": "reasoning effort minimal",
+        "class": "effortMark effort-minimal",
+        "ok": true,
+        "rowVisible": true
+      },
+      "effort-cc-max": {
+        "text": "M+",
+        "title": "reasoning effort max",
+        "class": "effortMark effort-max",
+        "ok": true,
+        "rowVisible": true
+      }
+    }
+  }
+}

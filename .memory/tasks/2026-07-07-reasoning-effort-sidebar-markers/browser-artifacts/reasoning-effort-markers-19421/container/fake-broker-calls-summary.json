@@ -1,0 +1,115 @@
+{
+  "counts": {
+    "effort-cc-max:state": 525,
+    "effort-codex-high:state": 525,
+    "effort-codex-low:state": 655,
+    "effort-codex-medium:state": 525,
+    "effort-codex-xhigh:state": 525,
+    "effort-pi-minimal:state": 525,
+    "effort-pi-off:state": 525
+  },
+  "first": [
+    {
+      "sid": "effort-cc-max",
+      "cmd": "state",
+      "resp_keys": [
+        "busy",
+        "interrupted_idle",
+        "queue_len",
+        "token"
+      ]
+    },
+    {
+      "sid": "effort-codex-high",
+      "cmd": "state",
+      "resp_keys": [
+        "busy",
+        "interrupted_idle",
+        "queue_len",
+        "token"
+      ]
+    },
+    {
+      "sid": "effort-codex-low",
+      "cmd": "state",
+      "resp_keys": [
+        "busy",
+        "interrupted_idle",
+        "queue_len",
+        "token"
+      ]
+    },
+    {
+      "sid": "effort-codex-medium",
+      "cmd": "state",
+      "resp_keys": [
+        "busy",
+        "interrupted_idle",
+        "queue_len",
+        "token"
+      ]
+    },
+    {
+      "sid": "effort-codex-xhigh",
+      "cmd": "state",
+      "resp_keys": [
+        "busy",
+        "interrupted_idle",
+        "queue_len",
+        "token"
+      ]
+    }
+  ],
+  "last": [
+    {
+      "sid": "effort-codex-low",
+      "cmd": "state",
+      "resp_keys": [
+        "busy",
+        "interrupted_idle",
+        "queue_len",
+        "token"
+      ]
+    },
+    {
+      "sid": "effort-codex-medium",
+      "cmd": "state",
+      "resp_keys": [
+        "busy",
+        "interrupted_idle",
+        "queue_len",
+        "token"
+      ]
+    },
+    {
+      "sid": "effort-codex-xhigh",
+      "cmd": "state",
+      "resp_keys": [
+        "busy",
+        "interrupted_idle",
+        "queue_len",
+        "token"
+      ]
+    },
+    {
+      "sid": "effort-pi-minimal",
+      "cmd": "state",
+      "resp_keys": [
+        "busy",
+        "interrupted_idle",
+        "queue_len",
+        "token"
+      ]
+    },
+    {
+      "sid": "effort-pi-off",
+      "cmd": "state",
+      "resp_keys": [
+        "busy",
+        "interrupted_idle",
+        "queue_len",
+        "token"
+      ]
+    }
+  ]
+}

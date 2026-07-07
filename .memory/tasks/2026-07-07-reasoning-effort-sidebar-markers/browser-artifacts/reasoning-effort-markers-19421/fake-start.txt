@@ -1,0 +1,18 @@
+{"sessions":[{"sid":"effort-cc-max","backend":"cc","effort":"max","model":"sonnet","label":"cc max marker repo"},{"sid":"effort-pi-minimal","backend":"pi","effort":"minimal","model":"pi-minimal","label":"pi minimal marker repo"},{"sid":"effort-pi-off","backend":"pi","effort":"off","model":"pi-off","label":"pi off marker repo"},{"sid":"effort-codex-xhigh","backend":"codex","effort":"xhigh","model":"gpt-xhigh","label":"codex xhigh marker repo"},{"sid":"effort-codex-high","backend":"codex","effort":"high","model":"gpt-high","label":"codex high marker repo"},{"sid":"effort-codex-medium","backend":"codex","effort":"medium","model":"gpt-medium","label":"codex medium marker repo"},{"sid":"effort-codex-low","backend":"codex","effort":"low","model":"gpt-low","label":"codex low marker repo"}],"calls":"/home/tester/reasoning-effort-proof-calls.jsonl","socks":"/home/tester/.local/share/codoxear/socks","fake_notice":"FAKE_REASONING_EFFORT_MARKER_PROOF_FOR_CODOXEAR_DOCKER_ONLY"}
+total 36
+drwxr-xr-x 2 tester tester 4096 Jul  7 13:54 .
+drwxr-xr-x 5 tester tester 4096 Jul  7 13:54 ..
+-rw-r--r-- 1 tester tester  550 Jul  7 13:54 effort-cc-max.json
+srwxr-xr-x 1 tester tester    0 Jul  7 13:54 effort-cc-max.sock
+-rw-r--r-- 1 tester tester  572 Jul  7 13:54 effort-codex-high.json
+srwxr-xr-x 1 tester tester    0 Jul  7 13:54 effort-codex-high.sock
+-rw-r--r-- 1 tester tester  566 Jul  7 13:54 effort-codex-low.json
+srwxr-xr-x 1 tester tester    0 Jul  7 13:54 effort-codex-low.sock
+-rw-r--r-- 1 tester tester  584 Jul  7 13:54 effort-codex-medium.json
+srwxr-xr-x 1 tester tester    0 Jul  7 13:54 effort-codex-medium.sock
+-rw-r--r-- 1 tester tester  578 Jul  7 13:54 effort-codex-xhigh.json
+srwxr-xr-x 1 tester tester    0 Jul  7 13:54 effort-codex-xhigh.sock
+-rw-r--r-- 1 tester tester  574 Jul  7 13:54 effort-pi-minimal.json
+srwxr-xr-x 1 tester tester    0 Jul  7 13:54 effort-pi-minimal.sock
+-rw-r--r-- 1 tester tester  550 Jul  7 13:54 effort-pi-off.json
+srwxr-xr-x 1 tester tester    0 Jul  7 13:54 effort-pi-off.sock
