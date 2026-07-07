@@ -1,0 +1,35 @@
+{
+    "transcript_state": "bound",
+    "thread_id": "cc-context-chip-visible",
+    "log_path": "/home/tester/.claude/projects/-home-tester-cc-context-chip-accessible-proof-cc-context-chip-visible/22222222-3333-4444-8555-666666666666.jsonl",
+    "live_cursor": "eyJ2IjoxLCJraW5kIjoibGl2ZSIsInRocmVhZF9pZCI6ImNjLWNvbnRleHQtY2hpcC12aXNpYmxlIiwibG9nX3BhdGgiOiIvaG9tZS90ZXN0ZXIvLmNsYXVkZS9wcm9qZWN0cy8taG9tZS10ZXN0ZXItY2MtY29udGV4dC1jaGlwLWFjY2Vzc2libGUtcHJvb2YtY2MtY29udGV4dC1jaGlwLXZpc2libGUvMjIyMjIyMjItMzMzMy00NDQ0LTg1NTUtNjY2NjY2NjY2NjY2Lmpzb25sIiwicG9zIjo3OTF9.ouJUASdBPcW5Iwkxaa0Ddln4TQ7pmYKPCpPsY0rpezA",
+    "history_cursor": null,
+    "events": [
+        {
+            "role": "user",
+            "text": "fixture cc-context-chip-visible",
+            "ts": 1783404600.0,
+            "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImNjLWNvbnRleHQtY2hpcC12aXNpYmxlIiwibG9nX3BhdGgiOiIvaG9tZS90ZXN0ZXIvLmNsYXVkZS9wcm9qZWN0cy8taG9tZS10ZXN0ZXItY2MtY29udGV4dC1jaGlwLWFjY2Vzc2libGUtcHJvb2YtY2MtY29udGV4dC1jaGlwLXZpc2libGUvMjIyMjIyMjItMzMzMy00NDQ0LTg1NTUtNjY2NjY2NjY2NjY2Lmpzb25sIiwicG9zIjowfQ.P2-m5D0zD0dVRhgb6j-cgOlkhlOD8g4FTXGD9XPMXBg"
+        },
+        {
+            "role": "assistant",
+            "text": "ready",
+            "message_class": "final_response",
+            "message_id": "bfd383eff68d90a9b2cd436d5b3f50fe5a88f242e16ffe0852a8005458e838e7",
+            "ts": 1783404605.0,
+            "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImNjLWNvbnRleHQtY2hpcC12aXNpYmxlIiwibG9nX3BhdGgiOiIvaG9tZS90ZXN0ZXIvLmNsYXVkZS9wcm9qZWN0cy8taG9tZS10ZXN0ZXItY2MtY29udGV4dC1jaGlwLWFjY2Vzc2libGUtcHJvb2YtY2MtY29udGV4dC1jaGlwLXZpc2libGUvMjIyMjIyMjItMzMzMy00NDQ0LTg1NTUtNjY2NjY2NjY2NjY2Lmpzb25sIiwicG9zIjoyNTR9.0E6SWd-ks_zjdjXJYY9G0fRXGPyl6TUKI0InGsrzD0Y"
+        }
+    ],
+    "has_older": false,
+    "busy": false,
+    "queue_len": 0,
+    "token": {
+        "context_window": 200000,
+        "tokens_in_context": 150000,
+        "tokens_remaining": 33616,
+        "percent_remaining": 18,
+        "reserved_tokens": 16384,
+        "max_input_tokens": 183616,
+        "as_of": "2026-07-07T06:10:05.000Z"
+    }
+}

@@ -1,0 +1,30 @@
+
+browser-visible-desktop.json
+chip= {"accessibleNameFromAriaLabel": "Context usage details", "ariaLabel": "Context usage details", "disabled": false, "display": "flex", "exists": true, "focusAfterProgrammatic": true, "focusBefore": false, "pointerEvents": "auto", "rect": {"height": 24, "width": 67, "x": 909, "y": 15}, "tabIndex": 0, "tagName": "BUTTON", "text": "Ctx 18%", "title": "Context input: 150000/183616 tokens (16384 reserved; window 200000).", "type": "button", "typeProperty": "button", "visibility": "visible", "visibleByLayout": true}
+toast= {"ariaLive": "polite", "role": "status", "text": ""}
+overflow= {"bodyClientWidth": 1280, "bodyScrollWidth": 1280, "docClientWidth": 1280, "docScrollWidth": 1280, "horizontalOverflow": false, "windowInnerWidth": 1280}
+
+browser-after-pointer-click.json
+chip= {"accessibleNameFromAriaLabel": "Context usage details", "ariaLabel": "Context usage details", "disabled": false, "display": "flex", "exists": true, "focusAfterProgrammatic": true, "focusBefore": true, "pointerEvents": "auto", "rect": {"height": 24, "width": 67, "x": 909, "y": 15}, "tabIndex": 0, "tagName": "BUTTON", "text": "Ctx 18%", "title": "Context input: 150000/183616 tokens (16384 reserved; window 200000).", "type": "button", "typeProperty": "button", "visibility": "visible", "visibleByLayout": true}
+toast= {"ariaLive": "polite", "role": "status", "text": "ctx 150000/200000 (18% left)"}
+overflow= {"bodyClientWidth": 1280, "bodyScrollWidth": 1280, "docClientWidth": 1280, "docScrollWidth": 1280, "horizontalOverflow": false, "windowInnerWidth": 1280}
+
+browser-after-key-enter.json
+chip= {"accessibleNameFromAriaLabel": "Context usage details", "ariaLabel": "Context usage details", "disabled": false, "display": "flex", "exists": true, "focusAfterProgrammatic": true, "focusBefore": true, "pointerEvents": "auto", "rect": {"height": 24, "width": 67, "x": 909, "y": 15}, "tabIndex": 0, "tagName": "BUTTON", "text": "Ctx 18%", "title": "Context input: 150000/183616 tokens (16384 reserved; window 200000).", "type": "button", "typeProperty": "button", "visibility": "visible", "visibleByLayout": true}
+toast= {"ariaLive": "polite", "role": "status", "text": "ctx 150000/200000 (18% left)"}
+overflow= {"bodyClientWidth": 1280, "bodyScrollWidth": 1280, "docClientWidth": 1280, "docScrollWidth": 1280, "horizontalOverflow": false, "windowInnerWidth": 1280}
+
+browser-after-key-space.json
+chip= {"accessibleNameFromAriaLabel": "Context usage details", "ariaLabel": "Context usage details", "disabled": false, "display": "flex", "exists": true, "focusAfterProgrammatic": true, "focusBefore": true, "pointerEvents": "auto", "rect": {"height": 24, "width": 67, "x": 909, "y": 15}, "tabIndex": 0, "tagName": "BUTTON", "text": "Ctx 18%", "title": "Context input: 150000/183616 tokens (16384 reserved; window 200000).", "type": "button", "typeProperty": "button", "visibility": "visible", "visibleByLayout": true}
+toast= {"ariaLive": "polite", "role": "status", "text": "ctx 150000/200000 (18% left)"}
+overflow= {"bodyClientWidth": 1280, "bodyScrollWidth": 1280, "docClientWidth": 1280, "docScrollWidth": 1280, "horizontalOverflow": false, "windowInnerWidth": 1280}
+
+browser-visible-mobile.json
+chip= {"accessibleNameFromAriaLabel": "Context usage details", "ariaLabel": "Context usage details", "disabled": false, "display": "flex", "exists": true, "focusAfterProgrammatic": true, "focusBefore": true, "pointerEvents": "auto", "rect": {"height": 21, "width": 59, "x": 274, "y": 19}, "tabIndex": 0, "tagName": "BUTTON", "text": "Ctx 18%", "title": "Context input: 150000/183616 tokens (16384 reserved; window 200000).", "type": "button", "typeProperty": "button", "visibility": "visible", "visibleByLayout": true}
+toast= {"ariaLive": "polite", "role": "status", "text": ""}
+overflow= {"bodyClientWidth": 390, "bodyScrollWidth": 390, "docClientWidth": 390, "docScrollWidth": 390, "horizontalOverflow": false, "windowInnerWidth": 390}
+
+browser-no-token-desktop.json
+chip= {"accessibleNameFromAriaLabel": "Context usage details", "ariaLabel": "Context usage details", "disabled": true, "display": "none", "exists": true, "focusAfterProgrammatic": false, "focusBefore": false, "pointerEvents": "auto", "rect": {"height": 0, "width": 0, "x": 0, "y": 0}, "tabIndex": 0, "tagName": "BUTTON", "text": "", "title": "", "type": "button", "typeProperty": "button", "visibility": "visible", "visibleByLayout": false}
+toast= {"ariaLive": "polite", "role": "status", "text": ""}
+overflow= {"bodyClientWidth": 1280, "bodyScrollWidth": 1280, "docClientWidth": 1280, "docScrollWidth": 1280, "horizontalOverflow": false, "windowInnerWidth": 1280}
