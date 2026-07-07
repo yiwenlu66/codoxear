@@ -183,3 +183,11 @@
   - full local suite → `1795 passed, 132 subtests passed in 24.77s`;
   - `git diff --check` → clean.
 - Clean-room review dispatched: async id `91409321-c108-47de-9175-7dc9f3e20f46`.
+
+
+## 2026-07-07T00:34:00Z Upload attachment_index cleanup review accepted
+- Review artifact: `.memory/tasks/2026-07-07-staged-upload-expansion/reviews/attachment-index-cleanup-review.md`.
+- Review verdict: accepted, no blockers or required fixes.
+- Review confirmed: frontend sends only `filename` and `data_b64`; `/inject_file` and `/inject_image` ignore any legacy `attachment_index`; all other validation/order and readiness-before-decode/stage remain intact; route-layer `attachment_inject_text` dependency is gone while `file_upload.attachment_inject_text` remains available to `session_send.py` for send-boundary numbering; no immediate backend key/PTY write or new commit boundary was introduced.
+- Review evidence: focused checks `38 passed` and broadened upload/send checks `84 passed`; full suite reproduced `1795 passed, 132 subtests passed`; `node --check codoxear/static/app.js`; `git diff --check`.
+- Nonblocker: older `.memory/tasks/2026-07-03-usable-product-ui-architecture/upload-attachment-scout.md` still describes historical `attachment_index` scouting; active task/project memory now supersede it.
