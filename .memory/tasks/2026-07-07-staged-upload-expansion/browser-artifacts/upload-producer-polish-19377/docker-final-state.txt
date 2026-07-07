@@ -1,0 +1,15 @@
+HOME=/home/tester
+/home/tester/.local/share/codoxear/audio/live.m3u8
+/home/tester/.local/share/codoxear/commit_unknown_sends.json
+/home/tester/.local/share/codoxear/hmac_secret
+/home/tester/.local/share/codoxear/pending_attachments.json
+/home/tester/.local/share/codoxear/recent_cwds.json
+/home/tester/.local/share/codoxear/socks/upload-proof.json
+/home/tester/.local/share/codoxear/socks/upload-proof.sock
+/home/tester/.local/share/codoxear/staged_attachments.json
+/home/tester/.local/share/codoxear/webpush_vapid_private.pem
+
+APP_DIR=warning: session discovery: ignoring invalid session metadata in /home/tester/upload-proof-logs/upload-proof.jsonl: ValueError: missing session metadata in /home/tester/upload-proof-logs/upload-proof.jsonl
+warning: main-thread coercion: ignoring invalid session metadata in /home/tester/upload-proof-logs/upload-proof.jsonl: ValueError: missing session metadata in /home/tester/upload-proof-logs/upload-proof.jsonl
+warning: run settings: ignoring invalid session metadata in /home/tester/upload-proof-logs/upload-proof.jsonl: ValueError: missing session metadata in /home/tester/upload-proof-logs/upload-proof.jsonl
+/home/tester/.local/share/codoxear
