@@ -2790,6 +2790,22 @@ select {
           width: 34px;
           height: 34px;
         }
+        /* Phone shell command surfaces are the session controller, not dense
+           editor chrome. Keep the generic mobile .icon-btn compact above, then
+           raise only the always-used shell targets to the 44x44 CSS px floor.
+           Width/height plus min-width/min-height preserve the floor even where
+           these flex items sit in horizontally scrolling or shrinking rails. */
+        .pill > .icon-btn,
+        .topActions .icon-btn,
+        .sidebar header .icon-btn,
+        .sessionContextBar .icon-btn,
+        .chatNavRail .icon-btn,
+        .agentBackendTab {
+          width: 44px;
+          height: 44px;
+          min-width: 44px;
+          min-height: 44px;
+        }
         .fileViewer {
           width: 100vw;
           max-height: none;
