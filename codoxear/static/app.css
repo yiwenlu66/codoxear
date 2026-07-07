@@ -3017,6 +3017,15 @@ select {
           width: 40px;
           height: 40px;
         }
+        .md pre {
+          padding-right: 58px;
+        }
+        .code-copy-btn {
+          width: 44px;
+          height: 44px;
+          min-width: 44px;
+          min-height: 44px;
+        }
         .composer {
           --composerCtl: 40px;
         }

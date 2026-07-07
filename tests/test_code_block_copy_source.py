@@ -37,6 +37,20 @@ def render_markdown(markdown: str) -> str:
     return proc.stdout
 
 
+def css_media_block(css: str, marker: str) -> str:
+    start = css.index(marker)
+    open_brace = css.index("{", start)
+    depth = 1
+    pos = open_brace + 1
+    while pos < len(css) and depth:
+        if css[pos] == "{":
+            depth += 1
+        elif css[pos] == "}":
+            depth -= 1
+        pos += 1
+    return css[open_brace + 1 : pos - 1]
+
+
 def eval_code_copy_runtime() -> dict:
     source = APP_CODE_COPY_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
@@ -175,6 +189,25 @@ class TestCodeBlockCopySource(unittest.TestCase):
         mobile_pre_end = mobile_block.index("}", mobile_pre_start)
         mobile_pre = mobile_block[mobile_pre_start:mobile_pre_end]
         self.assertIn("padding-right: 58px", mobile_pre)
+
+    def test_code_copy_css_coarse_pointer_tablet_touch_target(self) -> None:
+        css = APP_CSS.read_text(encoding="utf-8")
+        coarse_block = css_media_block(css, "@media (hover: none) and (pointer: coarse)")
+
+        self.assertIn(".code-copy-btn", coarse_block)
+        coarse_button_start = coarse_block.index(".code-copy-btn")
+        coarse_button_end = coarse_block.index("}", coarse_button_start)
+        coarse_button = coarse_block[coarse_button_start:coarse_button_end]
+        self.assertIn("width: 44px", coarse_button)
+        self.assertIn("height: 44px", coarse_button)
+        self.assertIn("min-width: 44px", coarse_button)
+        self.assertIn("min-height: 44px", coarse_button)
+
+        self.assertIn(".md pre", coarse_block)
+        coarse_pre_start = coarse_block.index(".md pre")
+        coarse_pre_end = coarse_block.index("}", coarse_pre_start)
+        coarse_pre = coarse_block[coarse_pre_start:coarse_pre_end]
+        self.assertIn("padding-right: 58px", coarse_pre)
 
     def test_code_copy_asset_loads_before_app_js(self) -> None:
         source = INDEX_HTML.read_text(encoding="utf-8")
