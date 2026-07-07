@@ -32,6 +32,7 @@ Docker sandbox: `codoxear-capture-19357` on `http://127.0.0.1:19357/` with conta
 
 - `browser-ready.json`
 - `browser-after-capture.json`
+- `capture-input-change-driver.js`
 - `docker-calls-after-capture-compact.json`
 - `browser-after-send.json`
 - `docker-calls-after-send-compact.json`
