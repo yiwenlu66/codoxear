@@ -1,0 +1,17 @@
+{
+  "total": 340,
+  "cmd_counts": {
+    "state": 339,
+    "send": 1
+  },
+  "send_texts": [
+    "Attachment 1: /home/tester/.local/share/codoxear/uploads/commit-unknown-redaction/1783387355511_commit-secret.txt\ncommit unknown redaction prompt"
+  ],
+  "key_count": 0,
+  "send_count": 1,
+  "send_contains_attachment_absolute": true,
+  "send_contains_user_text": true,
+  "private_record_text_contains_upload_root": true,
+  "private_record_display_text": "commit unknown redaction prompt",
+  "private_record_display_text_contains_upload_root": false
+}
