@@ -2,7 +2,7 @@
 
 Boundary rule: broker/server/session/tmux verification is Docker-only. Host throwaway `HOME` is not isolation; it cannot protect live brokers, tmux, `/tmp`, signals, or systemd. Agent-run validation must not use `pkill -f`, `killall`, or broad `pgrep | xargs kill`; container teardown is the cleanup boundary.
 
-- Full local: `python3 -m pytest -q` (expect ~1349 passed, 136 subtests).
+- Full local: `python3 -m pytest -q` (expect ~1812 passed, 134 subtests as of 2026-07-07).
 - Docker unit: `CODOXEAR_DOCKER_PORT=190NN scripts/codoxear-docker-sandbox test`
 - Docker server smoke: `CODOXEAR_DOCKER_PORT=190NN scripts/codoxear-docker-sandbox smoke` (401 pre-login, 200 post-login).
 - Browser: `AGENT_BROWSER_SESSION=<name> agent-browser open http://127.0.0.1:190NN/`, login `test-password`, snapshot/eval. Mobile viewport: agent-browser supports viewport sizing; verify both desktop and ~390x844.
@@ -13,5 +13,6 @@ Boundary rule: broker/server/session/tmux verification is Docker-only. Host thro
 - Stop sandboxes after use: `CODOXEAR_DOCKER_PORT=190NN scripts/codoxear-docker-sandbox stop`.
 
 - Context-chip accessibility acceptance requires both semantic and browser evidence: source tests for native/equivalent `#ctxChip` control construction and hidden/no-token boundaries, plus Docker/browser proof that visible chip text/title match API token projection, pointer/Enter/Space trigger the same context-detail action, no-token state is hidden and non-focusable, no backend `send`/`keys` occur, and desktop/mobile layouts do not gain horizontal overflow.
+- CC unknown-model token clearing acceptance requires a known→unknown log sequence, not only unknown-only parsing: prove the mapped row first projects a valid token through `/api/sessions`, `/messages/tail`, and browser `#ctxChip`, then append a newer unmapped `message.usage` row and prove token becomes `null` and `#ctxChip` hides while transcript content remains visible. No-usage assistant rows must be covered separately as neutral/preserve-token cases.
 
 - Selectable-backend launch parity acceptance must exercise the actual browser New Session tab path, not sidecar injection. If the backend is unavailable in Docker, acceptance for that branch requires launch-ledger/argv evidence for backend/model/effort, visible failed-launch row and failed transcript payload, browser Details/Copy/New-like-this availability, browser controls disabled for send/queue/attach/file/unattended, API rejection of real-session routes for the launch id, sanitized artifacts, and exact sandbox cleanup. A deterministic container-only fake Claude executable can prove Codoxear mechanics for the usable branch only if the browser path creates a real CC row bound to a live Claude-shaped JSONL, broker PTY send reaches the fake, transcript/tail render the assistant outcome, tokens agree across `/api/sessions`/tail/`#ctxChip`, idle real-session controls are enabled, artifacts are sanitized, and the proof explicitly excludes real Claude credentials/auth/schema/tool/provider behavior. Real-provider claims still require a configured Claude Code environment.
