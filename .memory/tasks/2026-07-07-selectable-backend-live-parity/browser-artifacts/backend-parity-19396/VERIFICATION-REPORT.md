@@ -21,8 +21,8 @@ Browser artifacts:
 - `browser/snapshot-new-session-modal.txt`
 - `browser/snapshot-reasoning-menu.txt` shows options `low`, `medium`, `high`, `xhigh`, `max`.
 - `browser/snapshot-claude-sonnet-max-direct-ready.txt` shows Claude tab ready with model `sonnet`.
-- `browser/snapshot-after-start-3s.txt` shows the launch failure surfaced after the start attempt.
-- `browser/snapshot-failed-row-selected.txt` and `browser/eval-failed-selected-controls.json` show selected failed row and blocked controls.
+- `browser/snapshot-after-start-3s.txt` is an intermediate/ambiguous post-start capture and is not used as proof of the failed state.
+- `browser/snapshot-failed-row-selected.txt` and `browser/eval-failed-selected-controls.json` prove the selected failed row and blocked controls.
 - `browser/eval-details-modal-open.json` shows Details modal values.
 - `browser/eval-new-like-this-modal.json` shows New-like-this reopens the New Session dialog with Claude, `sonnet`, and `max`.
 

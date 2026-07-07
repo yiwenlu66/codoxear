@@ -10,7 +10,7 @@ Committed artifacts are reduced to evidence needed for the failed-launch parity 
 - `api/sessions-after-failure.json.pretty` — `/api/sessions` failed row and launch defaults.
 - `api/failed-launch-tail.json.pretty` — failed transcript projection.
 - `api/*failed-row.status` and selected `api/*failed-row*.json` — failed-row API action blocking.
-- `browser/snapshot-*.txt` — accessibility snapshots from the actual New Session and failed-row UI flow.
+- `browser/snapshot-*.txt` — accessibility snapshots from the actual New Session and failed-row UI flow. `snapshot-after-start-3s.txt` is retained as an intermediate capture only; failed-state proof comes from `snapshot-failed-row-selected.txt`, browser evals, API snapshots, and runtime evidence.
 - `browser/eval-*.json` — browser state probes for failed-row controls, details, copy-details, and sanitized New-like-this state.
 - `browser/probe-*.js` — JS probes used for browser state extraction.
 - `container/runtime-evidence.txt` — Claude executable absence, launch ledger, socks/process/tmux state, with generated secret filenames omitted.

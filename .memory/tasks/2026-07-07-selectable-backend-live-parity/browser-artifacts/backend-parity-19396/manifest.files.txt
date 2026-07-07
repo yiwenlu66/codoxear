@@ -1,5 +1,5 @@
-MANIFEST.md 1602
-VERIFICATION-REPORT.md 6083
+MANIFEST.md 1795
+VERIFICATION-REPORT.md 6123
 api/attachments-failed-row.json 28
 api/attachments-failed-row.status 4
 api/enqueue-to-failed-row.json.pretty 32
