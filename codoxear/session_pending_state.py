@@ -136,7 +136,10 @@ class SessionPendingStateCoordinator:
         if not math.isfinite(created_ts) or created_ts <= 0:
             created_ts = self.now()
         error = raw.get("error")
+        display_text = raw.get("display_text")
         record: dict[str, Any] = {"text": text, "created_ts": created_ts}
+        if isinstance(display_text, str):
+            record["display_text"] = display_text
         if isinstance(error, str) and error.strip():
             record["error"] = error.strip()
         return record

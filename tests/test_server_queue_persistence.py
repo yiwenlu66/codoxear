@@ -750,6 +750,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertTrue(mgr._sessions[sid].pending_attachment)
         self.assertIn(sid, mgr._pending_attachment_ids)
         self.assertEqual(mgr._commit_unknown_sends[sid]["text"], "Attachment 1: /tmp/uploads/s1/1_one.txt\nuse this")
+        self.assertEqual(mgr._commit_unknown_sends[sid]["display_text"], "use this")
 
     def test_send_rejects_broker_without_sync_capability(self) -> None:
         sid = "s1"
@@ -856,7 +857,9 @@ class TestServerQueuePersistence(unittest.TestCase):
         with self.assertRaisesRegex(SessionCommitUnknownError, "marked commit unknown"):
             SessionManager.send(mgr, sid, "normal prompt")
         self.assertEqual(mgr._commit_unknown_sends[sid]["text"], "normal prompt")
+        self.assertEqual(mgr._commit_unknown_sends[sid]["display_text"], "normal prompt")
         self.assertEqual(mgr._sessions[sid].commit_unknown_send["text"], "normal prompt")
+        self.assertEqual(mgr._sessions[sid].commit_unknown_send["display_text"], "normal prompt")
 
     def test_commit_unknown_send_blocks_retry_queue_and_sweep_until_cleared(self) -> None:
         sid = "s1"

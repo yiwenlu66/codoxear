@@ -371,6 +371,36 @@ def test_build_orphan_recovery_rows_projects_direct_unknown_row() -> None:
     assert row["busy"] is False
 
 
+def test_build_orphan_recovery_rows_uses_commit_unknown_display_text_without_backend_paths() -> None:
+    rows = _rows(
+        commit_unknown_sends={
+            "direct": {
+                "text": "Attachment 1: /home/tester/.local/share/codoxear/uploads/direct/1_secret.txt\nuse this",
+                "display_text": "use this",
+                "created_ts": 10.0,
+            }
+        }
+    )
+
+    assert rows[0]["commit_unknown_send_text"] == "use this"
+    assert "/home/tester/.local/share/codoxear/uploads" not in rows[0]["commit_unknown_send_text"]
+
+
+def test_build_orphan_recovery_rows_redacts_legacy_commit_unknown_attachment_paths() -> None:
+    rows = _rows(
+        commit_unknown_sends={
+            "direct": {
+                "text": "Attachment 1: /home/tester/.local/share/codoxear/uploads/direct/1_secret.txt\nAttachment 2: /tmp/uploads/direct/2_other.txt\nuse these",
+                "created_ts": 10.0,
+            }
+        }
+    )
+
+    assert rows[0]["commit_unknown_send_text"] == "Attachment 1: <path redacted>\nAttachment 2: <path redacted>\nuse these"
+    assert "/home/tester/.local/share/codoxear/uploads" not in rows[0]["commit_unknown_send_text"]
+    assert "/tmp/uploads" not in rows[0]["commit_unknown_send_text"]
+
+
 def test_build_orphan_recovery_rows_projects_queue_recovery_row_and_timestamp() -> None:
     rows = _rows(
         queues={

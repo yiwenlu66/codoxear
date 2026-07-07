@@ -142,11 +142,33 @@ def _float_from_number(value: Any) -> float | None:
     return None
 
 
+def _redact_generated_attachment_prefix_paths(text: str) -> str:
+    lines = text.splitlines()
+    if not lines:
+        return text
+    redacted: list[str] = []
+    idx = 0
+    while idx < len(lines):
+        line = lines[idx]
+        prefix, sep, path = line.partition(": ")
+        if not sep or not prefix.startswith("Attachment ") or not prefix[len("Attachment ") :].isdigit() or not path.startswith("/"):
+            break
+        redacted.append(f"{prefix}: <path redacted>")
+        idx += 1
+    if idx == 0:
+        return text
+    redacted.extend(lines[idx:])
+    return "\n".join(redacted)
+
+
 def _commit_unknown_text(record: Mapping[str, Any] | None) -> str | None:
     if not isinstance(record, Mapping):
         return None
+    display_text = record.get("display_text")
+    if isinstance(display_text, str) and display_text.strip():
+        return display_text
     text = record.get("text")
-    return str(text) if isinstance(text, str) else None
+    return _redact_generated_attachment_prefix_paths(text) if isinstance(text, str) else None
 
 
 def _commit_unknown_created_ts(record: Mapping[str, Any] | None) -> float | None:

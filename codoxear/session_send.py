@@ -85,7 +85,7 @@ class SessionSendCoordinator:
                 if queue_item_id is None:
                     self.set_commit_unknown_send(
                         session_id,
-                        {"text": committed_text, "created_ts": self.now(), "error": message},
+                        {"text": committed_text, "display_text": text, "created_ts": self.now(), "error": message},
                     )
                 if cause is None:
                     raise self.commit_unknown_error(message)
