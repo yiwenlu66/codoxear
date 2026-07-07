@@ -1,19 +1,22 @@
 # Destructive confirm focus safety epistemic model
 
 ## Phenomenon
-Codoxear uses app-owned confirmation dialogs for destructive/data-affecting actions. Keyboard users can activate the initially focused button with Enter or Space. If destructive dialogs initially focus Confirm, the dialog makes the destructive action the default keyboard outcome.
+Codoxear uses app-owned confirmation dialogs for destructive/data-affecting actions. Keyboard activation follows focus: Enter/Space activates the initially focused button. Before this slice, destructive dialogs made the destructive action the default keyboard outcome because Confirm received initial focus.
 
-## Current mechanism
-`confirmApp()` opens `#appConfirm` and calls `focusAppConfirmInitial()`. The focus helper targets `appConfirmConfirmBtn` whenever it is enabled, regardless of action type. The global keydown handler cancels on Escape, but there is no active Tab/Shift-Tab cycle for the confirmation dialog.
+## Accepted mechanism
+`confirmApp()` options now include `destructive` with default `false`. Destructive confirmations focus `appConfirmCancelBtn`; constructive confirmations keep `appConfirmConfirmBtn` as the initial focus target. While `#appConfirm` is visible, Tab/Shift-Tab is trapped inside enabled dialog controls and cycles Cancel ↔ Confirm. The mechanism is scoped to the app-owned confirmation dialog; other modals/dialogs are unchanged.
 
-## Target mechanism
-Confirmation options classify destructive actions. Destructive confirmations focus Cancel initially; constructive confirmations preserve Confirm initial focus. While the app confirmation dialog is visible, Tab/Shift-Tab cycles through enabled dialog controls and cannot escape the dialog. Existing cancel paths, confirm route payloads, focus restoration, and native-confirm exclusion remain unchanged.
+Destructive call sites are marked for clear unknown-send marker, delete/dismiss session, dismiss launch record, reload file from disk/discard draft, queue recovery-item delete, and clear pending attachment state. The constructive `Send pending attachment?` path remains confirm-focused.
 
-## Live risks
-- Misclassifying constructive confirmation as destructive could add friction to the "Send pending attachment?" path.
-- Missing a destructive call site would leave an inconsistent keyboard hazard.
-- A broad modal focus framework could accidentally interfere with file viewer, send-choice, or unsaved-file dialogs; the intervention should stay scoped to `#appConfirm`.
-- Browser proof must distinguish cancel-before-mutation from merely hiding the dialog; backend call logs or state probes are needed.
+## Evidence
+- Discriminator and functional implementation: OPS entries for executor output and main validation; functional commit `15b80cf`.
+- Docker/browser proof: OPS entry for `1d46919`; desktop/mobile proof shows destructive Delete/Reload dialogs focus Cancel, Enter cancels without mutation, Tab cycles inside the dialog, constructive pending-attachment send remains confirm-focused, and broker logs contain zero send/keys/shutdown calls.
+- Clean-room review: OPS entry for `5cec1c0`; critic accepted the slice and found no blockers.
+
+## Ruled out mechanisms
+- Native browser confirmation: already prohibited by the product confirmation invariant and source tests; not reintroduced.
+- Broad modal focus framework: unnecessary and higher-risk because the defect is confined to `#appConfirm`. A local Tab trap is sufficient.
+- Destructive-by-title inference: rejected because call sites know action semantics; explicit `destructive: true` keeps the contract visible at mutation boundaries.
 
 ## Current claim
-This is a bounded accessibility/product-safety slice: a single dialog focus mechanism currently chooses the destructive action by default, and product-owned confirmation semantics make the safe default enforceable without changing backend workflows.
+The destructive-confirm focus safety slice is accepted. Future app-confirm call sites must classify data-affecting/destructive actions with `destructive: true`; destructive dialogs must default to Cancel, constructive confirmations may default to Confirm, and Tab/Shift-Tab must remain trapped inside `#appConfirm` while preserving Escape/backdrop cancel and return-focus behavior.
