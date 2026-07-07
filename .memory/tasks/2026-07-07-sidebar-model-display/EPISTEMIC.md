@@ -1,13 +1,27 @@
 # EPISTEMIC
 
 ## Phenomenon
-The sidebar is the primary session navigation surface. Backend and reasoning effort are visible there, but model identity is absent even though it is available in the session-list payload and matters for distinguishing same-project sessions.
+The sidebar is the primary session navigation surface. Backend, launch ownership, and reasoning effort are visible there; model identity must also be visible because it distinguishes same-project sessions that use different backends/models.
 
-## Current mechanism
-`codoxear/static/app.js` builds `.sessionMetaLine` with backend logo, owner icon, optional effort marker, and `.metaText`. The `.metaText` string currently concatenates age, cwd base name, and git branch; it does not read `s.model`. Server/session listing already includes `model`, and Details/diagnostics can show it.
+## Accepted mechanism
+The sidebar row builder now computes `modelTxt = sidebarModelText(s)` and builds `.metaText` from `[stateTxt, modelTxt, cwdBase, branchTxt].filter(Boolean).join(" | ")`.
 
-## Current claim
-This is a display-projection gap, not a backend or API gap. The fix should project meaningful `s.model` values into the existing `.metaText` sequence and rely on existing ellipsis behavior for tight/mobile layouts.
+`sidebarModelText(s)`:
+- reads only `s.model` from the existing session-list row;
+- trims whitespace;
+- returns an empty string for absent, empty, whitespace-only, or case-insensitive `default`;
+- returns the trimmed non-default model string otherwise.
 
-## Key uncertainty
-The only design boundary is noise suppression: omit absent/empty/`default` model values, but show explicit non-default model strings, including provider/model literals.
+Rendering still uses the `text:` property, so model strings are assigned as text content rather than HTML. Existing backend logo, owner icon, effort marker, fast-session icon, title row, swipe actions, Details/diagnostics, and API/backend semantics are unchanged.
+
+## Accepted claim
+The sidebar model-display gap is fixed in commits `373b39f` (implementation), `b419699` (proof), and `69f736f` (review). Meaningful model names now appear between age and cwd in actual sidebar rows; null/empty/default values are omitted; long provider/model strings truncate through existing `.metaText` ellipsis without body overflow.
+
+## Evidence basis
+- Source/runtime tests cover `sidebarModelText` for null/missing/empty/whitespace/default/gpt/claude/long provider-model cases, verify `stateTxt | model | cwdBase | branchTxt` ordering, and check effort/fast markers remain separate.
+- Local focused pytest passed (`40 passed`), full local pytest passed (`1817 passed, 134 subtests`), Docker focused pytest passed (`40 passed`), and Docker smoke passed.
+- Docker/browser proof in `browser-artifacts/sidebar-model-display-19431/` created five fake sidecar/socket sessions and verified desktop plus mobile sidebar metadata: `gpt-5.4` and `claude-sonnet-4-5` appear, `default` and empty models are omitted, and the long provider/model row is truncated on mobile with `bodyOverflow=false`.
+- Clean-room review in `reviews/sidebar-model-display-cleanroom-review.md` accepted the result with no blockers.
+
+## Boundary
+This proves sidebar projection of already-available model metadata. It does not change model selection, backend launch behavior, provider choice semantics, Details/diagnostics, or API schema.
