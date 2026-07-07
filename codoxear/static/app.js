@@ -1083,8 +1083,9 @@
             }
             syncTitleEditState();
 				        const statusChip = el("span", { class: "status-chip", id: "statusChip", text: "Idle" });
-				        const ctxChip = el("span", { class: "status-chip", id: "ctxChip", text: "" });
+				        const ctxChip = el("button", { class: "status-chip", id: "ctxChip", text: "", type: "button", "aria-label": "Context usage details" });
 		        ctxChip.style.display = "none";
+		        ctxChip.disabled = true;
         const interruptBtn = el("button", {
           id: "interruptBtn",
           class: "icon-btn",
@@ -2098,6 +2099,7 @@
 	          if (!tok || typeof tok !== "object") {
 	            lastToken = null;
 	            ctxChip.style.display = "none";
+	            ctxChip.disabled = true;
 	            ctxChip.textContent = "";
 	            ctxChip.title = "";
 	            return;
@@ -2108,6 +2110,7 @@
 	          if (!Number.isFinite(ctx) || !Number.isFinite(used) || ctx <= 0 || used < 0) {
 	            lastToken = null;
 	            ctxChip.style.display = "none";
+	            ctxChip.disabled = true;
 	            return;
 	          }
 	          const p = Number.isFinite(pct) ? Math.max(0, Math.min(100, Math.round(pct))) : null;
@@ -2117,6 +2120,7 @@
 	          const effectiveReserved = Number.isFinite(reserved) && reserved >= 0 ? reserved : Math.max(ctx - effectiveMaxInput, 0);
 	          lastToken = { ctx, used, pct: p, remaining: Math.max(effectiveMaxInput - used, 0), maxInput: effectiveMaxInput, reserved: effectiveReserved, asOf: tok.as_of || "" };
 	          ctxChip.style.display = "inline-flex";
+	          ctxChip.disabled = false;
 	          ctxChip.textContent = p === null ? "Ctx" : `Ctx ${p}%`;
 	          ctxChip.title = `Context input: ${used}/${lastToken.maxInput} tokens (${lastToken.reserved} reserved; window ${ctx}).`;
 	        }

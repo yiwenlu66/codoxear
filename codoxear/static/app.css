@@ -785,6 +785,14 @@
         line-height: 1.2;
         white-space: nowrap;
       }
+      button.status-chip {
+        appearance: none;
+        -webkit-appearance: none;
+        margin: 0;
+        font-family: inherit;
+        font-weight: inherit;
+        cursor: pointer;
+      }
       .status-chip.running {
         color: rgba(29, 78, 216, 0.9);
         border-color: rgba(29, 78, 216, 0.25);
