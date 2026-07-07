@@ -236,3 +236,29 @@
 - Docker/browser observations: browser staged two files through the real `#imgInput` change listener; captured `/inject_file`, `/attachments`, and `/api/sessions` staged entries had no `path` key and did not contain `/home/tester/.local/share/codoxear/uploads`; chip titles/text contained no slash; after explicit send the fake broker recorded exactly one `send`, zero `keys`, and the send payload contained absolute internal `Attachment 1:`/`Attachment 2:` upload paths plus user text; confirmed send cleared browser chips and server attachments.
 - Docker gates: separate sandbox on port `19372` passed unit gate (`1790 passed, 1 skipped, 128 subtests passed`) and smoke (`/api/me` 401 before login, `/api/sessions` 200 after login, app dir `/home/tester/.local/share/codoxear`).
 - Clean-room review pending.
+
+## 2026-07-07T01:38:00Z Staged attachment path review found commit-unknown preview boundary
+- GLM critic `1e0e84e3-e648-4256-98bb-b032a9fa2427` failed before review because of provider quota/connection and produced a 0-byte artifact; it was ignored as evidence.
+- Codex critic `977008c0-78e2-4fab-909b-6010d8c1a05d` produced a usable clean-room report at `/tmp/staged-attachment-path-redaction-review.md`; wrapper acceptance rejected it only because the report did not satisfy the wrapper's changed-files bookkeeping field.
+- Review artifact committed as `39d3efa Record staged attachment path redaction review`.
+- Verdict: accepted scoped staged-list/browser redaction with no blockers. Nonblocking boundary: `commit_unknown_send_text` projected already-composed `Attachment N: <absolute path>` text after an explicit send attempt whose receipt was unknown. This was outside pre-send staged-list projection but still browser/API-visible.
+
+## 2026-07-07T01:55:00Z Commit-unknown preview path redaction implemented and proved
+- Functional commit: `9074d4e Redact commit unknown attachment previews`.
+- Mechanism: direct unknown-send records now store private committed `text` plus public `display_text`. Session listing prefers `display_text` for `commit_unknown_send_text`; legacy records without `display_text` redact only leading generated `Attachment N: /...` prefix lines. Private `text` remains full for audit/recovery and broker send semantics.
+- Validation before commit:
+  - focused regression set → `4 passed`;
+  - broader focused suite → `160 passed, 18 subtests passed`;
+  - full local suite → `1793 passed, 128 subtests passed`;
+  - `node --check codoxear/static/app.js`, `node --check codoxear/static/app_display.js`, and `git diff --check` → clean.
+- Proof commit: `447750f Record commit unknown preview redaction proof`.
+- Artifact root: `.memory/tasks/2026-07-07-staged-upload-expansion/browser-artifacts/commit-unknown-redaction-19373/`.
+- Docker/browser observations: fake broker returned `commit_unknown:true`; browser staged one file through real `#imgInput`, sent via visible `#sendBtn`, and `/api/sessions` projected `commit_unknown_send_text` equal to the user prompt with no `Attachment 1:` line and no upload root in row/body/public payload. `/attachments` preserved the staged entry without `path`. Fake broker recorded exactly one `send`, zero `keys`, and absolute `Attachment 1: /home/tester/.local/share/codoxear/uploads/...` in the send payload. Container `commit_unknown_sends.json` kept private `text` with the upload root and `display_text` without it.
+- Docker gates: first full gate on port `19374` had one transient packaging test failure; isolated rerun of that test on port `19375` passed. Fresh full Docker gate on port `19376` passed (`1792 passed, 1 skipped, 128 subtests passed`) and smoke passed (`/api/me` 401 before login, `/api/sessions` 200 after login, app dir `/home/tester/.local/share/codoxear`).
+
+## 2026-07-07T02:05:00Z Final staged attachment path redaction review accepted
+- Final critic `41be91fd-25e9-413c-a223-181bc1a212d1` produced a usable report at `/tmp/staged-attachment-path-redaction-final-review.md`; wrapper acceptance rejected it only because of changed-files bookkeeping.
+- Review artifact committed as `7d76aca Record final staged attachment path redaction review`.
+- Verdict: accepted current staged attachment path redaction with no blockers.
+- Review confirmed: public staged attachment payloads omit upload paths; confirmed send and private commit-unknown state preserve backend-readable paths; commit-unknown public recovery preview uses `display_text` or legacy generated-prefix redaction; immediate key injection remains retired; proof/test coverage is adequate.
+- Nonblocking boundaries: legacy commit-unknown fallback redacts only generated leading `Attachment N: /...` lines, not arbitrary user-authored absolute paths; public `display_name` remains the client-provided filename while generated internal paths are omitted.
