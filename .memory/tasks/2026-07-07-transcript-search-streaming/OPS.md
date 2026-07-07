@@ -1,0 +1,3 @@
+# OPS
+
+2026-07-07T16:00:00Z Initialized transcript-search streaming/large-log slice. Evidence from roadmap and code: remaining open product candidate is transcript search full-file scan; `iter_positioned_chat_events_forward()` materializes all bounded JSONL records and all chat events before yielding because dedupe/no-response injection was previously batch-oriented. Prediction: assistant dedupe and synthetic no-response injection can be implemented incrementally with constant turn state, preserving `_before_byte`/`_after_byte` cursor semantics while allowing `count_max` search requests to stop without consuming the whole log. A low file-size guard is disfavored because copy-too-large now tells users to use search.
