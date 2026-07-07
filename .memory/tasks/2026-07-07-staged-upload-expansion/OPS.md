@@ -222,3 +222,17 @@
 - Review confirmed staging readiness still blocks unknown session, commit-unknown send, missing sync-send capability, queue sending item, local queue, and broker/log busy runtime; dropping key-write-error support as a staging precondition matches accepted stage-only proof with `key_write_errors:false`.
 - Residual risk characterized as deliberate: old non-HTTP/in-process callers of `SessionManager.inject_attachment_keys` would break, but no tracked caller remains, it was not a declared package API, and preserving it would keep the forbidden pre-send key-write mechanism.
 - Review evidence reproduced: targeted suite `163 passed, 18 subtests passed`; full suite `1788 passed, 128 subtests passed`; `git diff --check`; removed-symbol grep over tracked `codoxear`/`tests` found only negative/source assertions; no staged files.
+
+## 2026-07-07T01:35:00Z Staged attachment public path redaction implemented and proved pending review
+- Functional commit: `f4f38dc Redact staged attachment paths from public UI`.
+- Mechanism: server/public staged attachment projection now omits backend-readable `path` from `/inject_file`, `/inject_image`, `/attachments`, attachment delete/clear, and `/api/sessions` staged entries; frontend normalization no longer stores `item.path` or uses it for chip titles/fallback labels. Internal `SessionStore.staged_attachments[*].path` remains intact for cleanup and `SessionSendCoordinator` confirmed-send `Attachment N: <path>` composition.
+- Local validation:
+  - `node --check codoxear/static/app.js`;
+  - focused redaction/upload suite → `200 passed, 18 subtests passed`;
+  - full local suite → `1791 passed, 128 subtests passed`;
+  - `git diff --check` → clean.
+- Proof commit: `e7a02cb Record staged attachment path redaction proof`.
+- Artifact root: `.memory/tasks/2026-07-07-staged-upload-expansion/browser-artifacts/path-redaction-19371/`.
+- Docker/browser observations: browser staged two files through the real `#imgInput` change listener; captured `/inject_file`, `/attachments`, and `/api/sessions` staged entries had no `path` key and did not contain `/home/tester/.local/share/codoxear/uploads`; chip titles/text contained no slash; after explicit send the fake broker recorded exactly one `send`, zero `keys`, and the send payload contained absolute internal `Attachment 1:`/`Attachment 2:` upload paths plus user text; confirmed send cleared browser chips and server attachments.
+- Docker gates: separate sandbox on port `19372` passed unit gate (`1790 passed, 1 skipped, 128 subtests passed`) and smoke (`/api/me` 401 before login, `/api/sessions` 200 after login, app dir `/home/tester/.local/share/codoxear`).
+- Clean-room review pending.

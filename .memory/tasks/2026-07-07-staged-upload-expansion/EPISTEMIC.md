@@ -7,7 +7,7 @@ Upload expansion moved attachment truth from the backend PTY stream into server-
 Stage first, commit later.
 - `SessionStore` owns staged attachment lifecycle as per-session entries with stable ids, display names, backend-readable staged paths, byte sizes, and creation timestamps.
 - Upload routes stage bytes under app-dir `uploads/<session>/` with unique destination paths and update the staged list; they accept `filename` + `data_b64`, ignore any legacy `attachment_index`, and do not call `inject_keys` or bracketed paste writes. Commit `18cd64c` removes the old `inject_attachment_keys` API entirely; clean-room review `d203bdc3-9780-4c68-a46d-cea2520bafd3` accepted the removal.
-- The selected-session attachment API exposes the server list plus compatibility `pending_attachment` projection derived from list non-emptiness.
+- The selected-session attachment API exposes a public server list plus compatibility `pending_attachment` projection derived from list non-emptiness; public entries omit internal backend-readable `path`.
 - Browser composer renders chips from server state, displays identity beyond filename through server path/id-derived detail, supports multi-file picker selection, per-entry remove, and clear-all.
 - Send is the commit boundary: when staged attachments exist and the user explicitly sends, the server prepends generated `Attachment N: <path>` lines to the confirmed-send text. Confirmed send success clears staged entries; commit-unknown or send failure preserves them.
 - Stage-only attach readiness requires confirmed-send capability but not the old key-write-error capability, because pre-send staging no longer writes keys.
@@ -39,7 +39,7 @@ Stage first, commit later.
 - Commits `785b3d2` and `b0a6a09` fully isolate covered post-confirmation tail failures after backend delivery: prelog projection, staged cleanup, pending projection clearing, and commit_unknown clearing convert `ValueError`/`OSError`/`KeyError` into explicit warning fields rather than route errors. `attachment_cleanup_error` preserves staged/pending UI truth when staged cleanup failed; `send_state_cleanup_error` reports bookkeeping/projection failures without implying resend. Clean-room reviews `c48a075c-24aa-43e7-8ac3-7ebd53ec5671` and `42f4215a-c8a9-4db7-874c-4a6a5a5e873a` accepted the mechanism with no remaining blockers.
 
 ## Remaining nonblocking follow-ups
-- Consider reducing absolute-path exposure in browser tooltips once a safe backend-readable identity/display split exists.
+- Public staged attachment path redaction is implemented/proved in `f4f38dc`/`e7a02cb`; clean-room review is pending.
 - Producer UX polish: re-check blockers per file in long batches if needed, preserve text in mixed text+file paste if a clear UI rule exists, add extensions for non-PNG pasted image names, clear `.drop-active` when a file drag leaves the window without dropping, and decide whether the desktop/no-camera capture button should remain a single-image picker.
 
 ## Current justified claim
