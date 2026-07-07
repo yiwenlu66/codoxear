@@ -277,3 +277,40 @@
 - Docker gates: sandbox test on port `19378` passed (`1792 passed, 1 skipped, 128 subtests passed`) and smoke passed (`/api/me` 401 before login, `/api/sessions` 200 after login, app dir `/home/tester/.local/share/codoxear`).
 - Clean-room review commit: `447a124 Record upload producer polish review`.
 - Review verdict: accepted with no blockers. Residual proof boundaries: the browser proof samples jpeg/webp but source helper/tests cover png/gif; text-only/file-only paste were not separately browser-reproved in this polish artifact but remain covered by source structure and prior producer proof.
+
+## 2026-07-07T03:24:00Z — Batch upload blocker recheck functional/proof
+
+Prediction: if `stageFiles()` rechecks the latest attachment blocker before each file, then a blocker that appears after one file is staged stops the remaining batch before additional `/inject_file` calls, while preserving already-staged attachments.
+
+Intervention:
+- Accepted executor patch and amended it after proof exposed a missing mechanism: `attachmentBlockerForSession()` now treats `sessionInfo.busy` as a blocker in addition to `currentRunning`.
+- Functional commit: `ec37237 Recheck attachment blockers during upload batches`.
+- Browser/Docker proof commit: `1a986a9 Record upload batch blocker proof`.
+
+Validation:
+- `node --check codoxear/static/app.js`
+- `python3 -m pytest -q tests/test_attach_button_source.py tests/test_frontend_file_helpers_source.py` → `11 passed`
+- `python3 -m pytest -q` → `1793 passed, 128 subtests passed`
+- `git diff --check`
+- Docker gate on port `19380` → `1792 passed, 1 skipped, 128 subtests passed`
+- Docker smoke on port `19380` → pre-login `/api/me` 401, post-login `/api/sessions` 200.
+
+Browser proof details:
+- Artifact dir: `.memory/tasks/2026-07-07-staged-upload-expansion/browser-artifacts/upload-batch-blocker-19379/`.
+- Fake broker/driver staged two files but delayed the first `/inject_file` response. During the delay, the driver deliberately created a public commit-unknown marker via `/send` with `allow_pending_attachment:true` and a fake broker `commit_unknown:true` response to simulate an external blocker appearing between batch items.
+- Observed `injectRequestCount: 1` and `injectFilenames: ["first.txt"]`; `second.txt` never reached `/inject_file`.
+- Toast was `attached 1; stopped: Resolve the unknown send before attaching a file`.
+- One staged entry remained visible; public staged entry had no `path`; chip titles contained no slash.
+- Broker summary had zero `keys` calls; the single `send` was the deliberate proof marker, not an upload producer action.
+
+Evidence status: implementation and proof committed; clean-room review `cc391669-d3cf-4ef5-8ae7-f2a28a80eddf` launched and pending.
+
+## 2026-07-07T03:34:00Z — Batch upload blocker clean-room review accepted
+
+- Review artifact committed: `c94bca0 Record upload batch blocker review`.
+- Verdict: accepted, no blockers.
+- Review evidence: `stageFiles()` re-confirms the selected session and re-reads `latestAttachmentBlockerForSession()` before progress/compression/`arrayBuffer()`/`/inject_file`; picker, capture, paste, and drop all route through `stageFiles()`; source contains exactly one `/inject_file` occurrence; successful partial responses update staged-list UI before later blockers stop the batch.
+- Review validation: `node --check codoxear/static/app.js`; focused `tests/test_attach_button_source.py` → `8 passed`; `git diff --check ec37237^..1a986a9`; browser proof and Docker summary confirmed one staged file, no second `/inject_file`, zero `keys`, and one deliberate proof marker `send`.
+- Residual nonblockers: the proof uses a commit-unknown marker rather than a busy-only browser scenario; a server-readiness flip after the client check remains server-authoritatively rejected and would surface as an upload failure, not a hidden backend write.
+
+Decision: batch-level blocker recheck is accepted and the remaining upload follow-up is the capture affordance decision, not blocker rechecking.
