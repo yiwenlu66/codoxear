@@ -15,6 +15,7 @@ from .message_routes import MessageRouteDeps
 from .queue_routes import QueueRouteDeps
 from .session_routes import SessionRouteDeps
 from .static_routes import StaticRouteDeps
+from .token_signal import TokenObservation
 from .voice_routes import VoiceRouteDeps
 
 
@@ -198,7 +199,7 @@ class ServerRouteDepsFactory:
         session_id: str,
         session: Any,
         *,
-        token_update: dict[str, Any] | None = None,
+        token_update: TokenObservation | dict[str, Any] | None = None,
     ) -> tuple[dict[str, Any], bool, int, dict[str, Any] | None]:
         caps = self.caps
         manager = caps.MANAGER

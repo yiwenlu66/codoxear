@@ -9,6 +9,10 @@ from typing import Iterator
 
 from .pi_context import PI_DEFAULT_RESERVED_TOKENS
 from .pi_context import _context_token_update
+from .token_signal import TOKEN_CLEAR
+from .token_signal import TOKEN_NONE
+from .token_signal import TokenObservation
+from .token_signal import token_update_observation
 
 
 CC_SUPPORTED_REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
@@ -108,30 +112,36 @@ def _cc_usage_int(usage: dict[str, Any], key: str, *, required: bool = False) ->
     return None
 
 
-def cc_token_update(obj: dict[str, Any]) -> dict[str, Any] | None:
+def cc_token_observation(obj: dict[str, Any]) -> TokenObservation:
     if obj.get("type") != "assistant":
-        return None
+        return TOKEN_NONE
     msg = _message(obj, role="assistant")
     if msg is None:
-        return None
+        return TOKEN_NONE
     usage = msg.get("usage")
     if not isinstance(usage, dict):
-        return None
+        return TOKEN_NONE
     context_window = cc_model_context_window(msg.get("model") if isinstance(msg.get("model"), str) else None)
     if context_window is None:
-        return None
+        return TOKEN_CLEAR
     input_tokens = _cc_usage_int(usage, "input_tokens", required=True)
     cache_read_tokens = _cc_usage_int(usage, "cache_read_input_tokens")
     cache_creation_tokens = _cc_usage_int(usage, "cache_creation_input_tokens")
     if input_tokens is None or cache_read_tokens is None or cache_creation_tokens is None:
-        return None
+        return TOKEN_CLEAR
     as_of = obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None
-    return _context_token_update(
-        context_window=context_window,
-        tokens_in_context=input_tokens + cache_read_tokens + cache_creation_tokens,
-        reserved_tokens=PI_DEFAULT_RESERVED_TOKENS,
-        as_of=as_of,
+    return token_update_observation(
+        _context_token_update(
+            context_window=context_window,
+            tokens_in_context=input_tokens + cache_read_tokens + cache_creation_tokens,
+            reserved_tokens=PI_DEFAULT_RESERVED_TOKENS,
+            as_of=as_of,
+        )
     )
+
+
+def cc_token_update(obj: dict[str, Any]) -> dict[str, Any] | None:
+    return cc_token_observation(obj).public_token
 
 
 def _text_parts(content: Any) -> list[str]:

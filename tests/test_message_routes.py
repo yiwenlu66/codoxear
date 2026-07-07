@@ -18,6 +18,7 @@ from codoxear.message_routes import handle_messages_search
 from codoxear.message_routes import handle_messages_tail
 from codoxear.post_log_recovery import POST_LOG_BOUND_BACKEND_STOPPED_TEXT
 from codoxear.session_model import Session
+from codoxear.token_signal import TOKEN_CLEAR
 
 # Fixed HMAC secret so encode/decode are exercised against the real signing
 # implementation, preserving the signed-cursor public contract under test.
@@ -231,6 +232,65 @@ def test_messages_live_streams_new_events_after_valid_cursor() -> None:
     # The consumed delta must be marked so busy/idle caches advance.
     assert manager.marked and manager.marked[0][1]["new_off"] > 0
     assert metrics and metrics[0][0] == "api_messages_poll_ms"
+
+
+def test_messages_live_unknown_cc_usage_clears_stale_session_token() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "cc.jsonl"
+        known = {
+            "type": "assistant",
+            "sessionId": "thread-1",
+            "timestamp": "2026-07-07T00:00:00.000Z",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "older"}],
+                "stop_reason": "end_turn",
+                "model": "claude-sonnet-4-5",
+                "usage": {"input_tokens": 512},
+            },
+        }
+        unknown = {
+            "type": "assistant",
+            "sessionId": "thread-1",
+            "timestamp": "2026-07-07T00:01:00.000Z",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "newer"}],
+                "stop_reason": "end_turn",
+                "model": "claude-unmapped-9",
+                "usage": {"input_tokens": 12000},
+            },
+        }
+        log_path.write_text(json.dumps(known) + "\n", encoding="utf-8")
+        cursor_pos = log_path.stat().st_size
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(unknown) + "\n")
+        session = _session(td, log_path)
+        session.agent_backend = "cc"
+        session.token = {"tokens_in_context": 512}
+        seen_token_updates = []
+
+        def runtime_snapshot(_sid: str, live_session, **kw):
+            seen_token_updates.append(kw.get("token_update"))
+            return {}, False, 0, live_session.token
+
+        deps, responses, _metrics = _deps(message_runtime_snapshot=runtime_snapshot)
+        manager = _LiveManager(session)
+        cursor = encode_message_cursor(kind="live", session=session, pos=cursor_pos, secret=_SECRET)
+        handle_messages_live(
+            _FakeHandler(),
+            session_id="s1",
+            query=f"cursor={cursor}",
+            manager=manager,
+            deps=deps,
+        )
+
+    assert len(responses) == 1
+    status, body = responses[0]
+    assert status == 200
+    assert seen_token_updates == [TOKEN_CLEAR]
+    assert session.token is None
+    assert body["token"] is None
 
 
 def test_messages_tail_missing_session_returns_launch_payload_or_404() -> None:

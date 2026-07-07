@@ -18,6 +18,7 @@ from codoxear.cc_log import read_cc_run_settings
 from codoxear.cc_log import read_cc_session_header
 from codoxear.cc_log import read_cc_session_id
 from codoxear.rollout_tokens import _extract_token_update
+from codoxear.rollout_tokens import _find_latest_token_update
 
 
 SESSION_ID = "11111111-2222-3333-4444-555555555555"
@@ -156,6 +157,42 @@ class TestCcLog(unittest.TestCase):
             self.fail("missing token update")
         self.assertEqual(token["context_window"], 1_000_000)
         self.assertEqual(token["tokens_in_context"], 512)
+
+    def test_extract_token_update_known_then_unknown_cc_usage_clears(self) -> None:
+        token = _extract_token_update(
+            [
+                cc_assistant([{"type": "text", "text": "older"}], model="claude-sonnet-4-6", usage={"input_tokens": 512}),
+                cc_assistant([{"type": "text", "text": "newer"}], model="claude-unmapped-9", usage={"input_tokens": 12_000}),
+            ]
+        )
+        self.assertIsNone(token)
+
+    def test_extract_token_update_unknown_only_cc_usage_has_no_public_token(self) -> None:
+        token = _extract_token_update(
+            [cc_assistant([{"type": "text", "text": "newer"}], model="claude-unmapped-9", usage={"input_tokens": 12_000})]
+        )
+        self.assertIsNone(token)
+
+    def test_extract_token_update_assistant_without_usage_preserves_prior_cc_token(self) -> None:
+        token = _extract_token_update(
+            [
+                cc_assistant([{"type": "text", "text": "older"}], model="claude-sonnet-4-6", usage={"input_tokens": 512}),
+                cc_assistant([{"type": "text", "text": "newer"}], model="claude-unmapped-9"),
+            ]
+        )
+        if token is None:
+            self.fail("missing preserved token update")
+        self.assertEqual(token["tokens_in_context"], 512)
+
+    def test_latest_token_finder_stops_at_unknown_cc_usage(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "cc.jsonl"
+            rows = [
+                cc_assistant([{"type": "text", "text": "older"}], model="claude-sonnet-4-6", usage={"input_tokens": 512}),
+                cc_assistant([{"type": "text", "text": "newer"}], model="claude-unmapped-9", usage={"input_tokens": 12_000}),
+            ]
+            path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            self.assertIsNone(_find_latest_token_update(path))
 
     def test_read_session_header_merges_cwd_from_later_record(self) -> None:
         with TemporaryDirectory() as td:

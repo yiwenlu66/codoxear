@@ -6,6 +6,9 @@ from typing import Any, Callable, MutableMapping
 
 from .session_model import Session
 from .session_runtime import suppress_session_interrupted_idle
+from .token_signal import TOKEN_NONE
+from .token_signal import TokenObservation
+from .token_signal import coerce_token_observation
 
 
 @dataclass(frozen=True)
@@ -56,20 +59,21 @@ class SessionLogRuntimeCoordinator:
             total_tools = 0
             total_system = 0
             latest_chat_ts: float | None = None
-            latest_token: dict[str, Any] | None = None
+            latest_token_observation: TokenObservation = TOKEN_NONE
             loops = 0
             while offset < size and loops < 16:
                 objs, new_offset = self.read_jsonl_from_offset(log_path, offset, max_bytes=256 * 1024)
                 if new_offset <= offset:
                     break
                 delta_thinking, delta_tools, delta_system, chunk_chat_ts, token_update, chat_events = self.analyze_log_chunk(objs)
+                token_observation = coerce_token_observation(token_update)
                 total_thinking += delta_thinking
                 total_tools += delta_tools
                 total_system += delta_system
                 if chunk_chat_ts is not None:
                     latest_chat_ts = chunk_chat_ts if latest_chat_ts is None else max(latest_chat_ts, chunk_chat_ts)
-                if token_update is not None:
-                    latest_token = token_update
+                if token_observation.observed:
+                    latest_token_observation = token_observation
                 # Any user/assistant turn activity in a post-baseline chunk
                 # proves the turn resumed after the interrupt. Visible
                 # conversation rows surface as chat events; reasoning/tool-only
@@ -85,8 +89,9 @@ class SessionLogRuntimeCoordinator:
                 offset = new_offset
                 loops += 1
 
-            if latest_token is None and session.token is None:
-                latest_token = self.find_latest_token_update(log_path)
+            fallback_token: dict[str, Any] | None = None
+            if not latest_token_observation.observed and session.token is None:
+                fallback_token = self.find_latest_token_update(log_path)
 
             with self.lock:
                 current = self.sessions().get(sid)
@@ -97,8 +102,10 @@ class SessionLogRuntimeCoordinator:
                     current.last_chat_history_scanned = False
                 if latest_chat_ts is not None:
                     current.last_chat_ts = latest_chat_ts if current.last_chat_ts is None else max(current.last_chat_ts, latest_chat_ts)
-                if latest_token is not None:
-                    current.token = latest_token
+                if latest_token_observation.observed:
+                    current.token = latest_token_observation.public_token
+                elif fallback_token is not None:
+                    current.token = fallback_token
                 if current.busy:
                     current.meta_thinking += total_thinking
                     current.meta_tools += total_tools

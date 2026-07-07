@@ -30,7 +30,7 @@ from .rollout_events import _codex_error_affects_turn_status
 from .rollout_events import _event_ts
 from .rollout_jsonl import _iter_jsonl_objects_reverse
 from .rollout_jsonl import _read_jsonl_tail
-from .rollout_tokens import _extract_token_update
+from .rollout_tokens import _extract_token_observation
 
 
 def _has_assistant_output_text(obj: dict[str, Any]) -> bool:
@@ -54,12 +54,12 @@ def _has_assistant_output_text(obj: dict[str, Any]) -> bool:
 
 def _analyze_log_chunk(
     objs: list[dict[str, Any]],
-) -> tuple[int, int, int, float | None, dict[str, Any] | None, list[dict[str, Any]]]:
+) -> tuple[int, int, int, float | None, Any, list[dict[str, Any]]]:
     d_th = 0
     d_tools = 0
     d_sys = 0
     last_chat_ts: float | None = None
-    token_update = _extract_token_update(objs)
+    token_update = _extract_token_observation(objs)
     chat_events, _meta, _flags, _diag = _extract_chat_events(objs)
 
     for obj in objs:

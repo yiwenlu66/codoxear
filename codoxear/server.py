@@ -1005,7 +1005,7 @@ def _message_runtime_snapshot(
     session_id: str,
     s: Session,
     *,
-    token_update: dict[str, Any] | None = None,
+    token_update: Any = None,
 ) -> tuple[dict[str, Any], bool, int, dict[str, Any] | None]:
     return _route_deps_factory().message_runtime_snapshot(session_id, s, token_update=token_update)
 

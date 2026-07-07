@@ -29,6 +29,7 @@ from tempfile import TemporaryDirectory
 
 from codoxear.broker_turn_state import State as BrokerTurnState
 from codoxear.broker_turn_state import _update_busy_from_pty_text
+from codoxear.rollout_idle import _analyze_log_chunk
 from codoxear.server_route_deps import ServerRouteCaps
 from codoxear.server_route_deps import ServerRouteDepsFactory
 from codoxear.session_control import SessionControlCoordinator
@@ -49,6 +50,8 @@ from codoxear.session_runtime import set_session_interrupted_idle
 from codoxear.session_runtime import suppress_session_interrupted_idle
 from codoxear.session_store import SessionStore
 from codoxear.session_store import SessionStorePaths
+from codoxear.token_signal import TOKEN_CLEAR
+from codoxear.util import read_jsonl_from_offset
 from codoxear.sidecar_metadata import _clean_optional_text as _sidecar_clean_optional_text
 
 
@@ -472,6 +475,55 @@ class TestListingPendingLogIdle(unittest.TestCase):
         self.assertIsNone(s.idle_cache_value)
 
 
+class TestSessionLogRuntimeTokenClearing(unittest.TestCase):
+    def test_update_meta_counters_clears_existing_token_on_newer_unknown_cc_usage(self) -> None:
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "cc.jsonl"
+            known = {
+                "type": "assistant",
+                "sessionId": "cc-session",
+                "timestamp": "2026-07-07T00:00:00.000Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "older"}],
+                    "stop_reason": "end_turn",
+                    "model": "claude-sonnet-4-6",
+                    "usage": {"input_tokens": 512},
+                },
+            }
+            unknown = {
+                "type": "assistant",
+                "sessionId": "cc-session",
+                "timestamp": "2026-07-07T00:01:00.000Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "newer"}],
+                    "stop_reason": "end_turn",
+                    "model": "claude-unmapped-9",
+                    "usage": {"input_tokens": 12000},
+                },
+            }
+            log_path.write_text(json.dumps(known) + "\n", encoding="utf-8")
+            meta_offset = log_path.stat().st_size
+            with log_path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(unknown) + "\n")
+            s = _session(agent_backend="cc", log_path=log_path, token={"tokens_in_context": 512})
+            s.meta_log_off = meta_offset
+            coordinator = SessionLogRuntimeCoordinator(
+                lock=threading.Lock(),
+                sessions=lambda: {s.session_id: s},
+                analyze_log_chunk=_analyze_log_chunk,
+                turn_context_run_settings=lambda _payload: (None, None),
+                compute_idle_from_log=lambda _path: True,
+                read_jsonl_from_offset=read_jsonl_from_offset,
+                find_latest_token_update=lambda _path: self.fail("new chunk clear must not fall back to older tokens"),
+            )
+            expected_log_size = log_path.stat().st_size
+            coordinator.update_meta_counters()
+            self.assertIsNone(s.token)
+            self.assertEqual(s.meta_log_off, expected_log_size)
+
+
 # --------------------------------------------------------------------------- #
 # Pre-log TUI busy deadlock regression (Codex "esc to interrupt" startup hint)
 # --------------------------------------------------------------------------- #
@@ -730,6 +782,19 @@ class TestMessageRuntimeSnapshot(unittest.TestCase):
             log_path.write_text('{"type":"session_meta","payload":{"id":"broker-1","source":"cli"}}\n', encoding="utf-8")
             s = _session(busy=False, queue_len=0, log_path=log_path, token=None)
             _state, _busy, _queue_len, token = _snapshot(s, {"busy": False, "queue_len": 0, "token": {"tokens_in_context": 0}}, idle=True)
+        self.assertIsNone(token)
+
+    def test_message_snapshot_clear_signal_beats_stored_session_token(self) -> None:
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            log_path.write_text('{"type":"session_meta","payload":{"id":"broker-1","source":"cli"}}\n', encoding="utf-8")
+            s = _session(busy=False, queue_len=0, log_path=log_path, token={"tokens_in_context": 185136})
+            _state, _busy, _queue_len, token = _snapshot(
+                s,
+                {"busy": False, "queue_len": 0, "token": {"tokens_in_context": 0}},
+                idle=True,
+                token_update=TOKEN_CLEAR,
+            )
         self.assertIsNone(token)
 
 

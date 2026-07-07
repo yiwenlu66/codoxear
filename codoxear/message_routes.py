@@ -728,7 +728,7 @@ def handle_messages_live(handler: Any, *, session_id: str, query: str, manager: 
     objs = [record.obj for record in records]
     initial_cc_pending = _rollout_log._cc_pending_tool_ids_before(s.log_path, after_byte) if records and after_byte > 0 else set()
     events, meta_delta, flags, diag = _rollout_log._extract_chat_events(objs, initial_cc_pending_tool_ids=initial_cc_pending)
-    token_update = _rollout_log._extract_token_update(objs)
+    token_update = _rollout_log._extract_token_observation(objs)
     prior_user_byte, prior_turn_has_assistant = (
         _rollout_log._prior_open_turn_context(s.log_path, after_byte) if after_byte > 0 else (None, False)
     )
@@ -741,8 +741,8 @@ def handle_messages_live(handler: Any, *, session_id: str, query: str, manager: 
     if objs:
         manager.mark_log_delta(session_id, objs=objs, new_off=next_after)
     s2 = manager.get_session(session_id)
-    if token_update is not None and s2 is not None:
-        s2.token = token_update
+    if token_update.observed and s2 is not None:
+        s2.token = token_update.public_token
     events = manager._attach_notification_texts(events)
     events = _attach_history_cursors_impl(events, session=s, encode_cursor=deps.encode_message_cursor)
     live_cursor = deps.encode_message_cursor(kind="live", session=s, pos=next_after)

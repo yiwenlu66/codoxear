@@ -11,6 +11,8 @@ from .session_listing import build_public_session_row
 from .session_listing import listing_priority
 from .session_model import Session
 from .session_store import SessionStore
+from .token_signal import TokenObservation
+from .token_signal import coerce_token_observation
 
 
 @dataclass(frozen=True)
@@ -589,15 +591,16 @@ def select_runtime_token(
     *,
     broker_state: Mapping[str, Any],
     session_token: dict[str, Any] | None,
-    token_update: dict[str, Any] | None,
+    token_update: TokenObservation | dict[str, Any] | None,
     log_available: bool,
 ) -> dict[str, Any] | None:
     if "token" in broker_state:
         broker_token = broker_state.get("token")
         if not (isinstance(broker_token, dict) or broker_token is None):
             raise ValueError("invalid token from broker state response")
-    if isinstance(token_update, dict):
-        return token_update
+    token_observation = coerce_token_observation(token_update)
+    if token_observation.observed:
+        return token_observation.public_token
     if isinstance(session_token, dict):
         return session_token
     if (not log_available) and "token" in broker_state and isinstance(broker_state.get("token"), dict):

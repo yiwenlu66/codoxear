@@ -43,6 +43,7 @@ from .rollout_chat_events import _pi_message_keeps_turn_busy
 from .rollout_chat_events import _sidebar_conversation_ts
 from .rollout_chat_events import _single_chat_event
 from .rollout_chat_events import _update_cc_pending_tool_ids
+from .rollout_tokens import _extract_token_observation
 from .rollout_tokens import _extract_token_update
 from .rollout_tokens import _find_latest_token_update
 from .rollout_tokens import _find_latest_turn_context
