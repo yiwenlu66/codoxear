@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .cc_log import cc_token_update
 from .pi_log import pi_context_token_update
 from .pi_log import pi_token_update
 from .rollout_jsonl import _read_jsonl_tail
@@ -14,6 +15,9 @@ def _extract_token_update(objs: list[dict[str, Any]]) -> dict[str, Any] | None:
         pi_token = pi_token_update(obj)
         if pi_token is not None:
             return pi_token
+        cc_token = cc_token_update(obj)
+        if cc_token is not None:
+            return cc_token
         if obj.get("type") != "event_msg":
             continue
         p = obj.get("payload")

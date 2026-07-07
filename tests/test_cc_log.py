@@ -9,12 +9,15 @@ from codoxear.cc_log import cc_assistant_thinking_count
 from codoxear.cc_log import cc_assistant_tool_use_count
 from codoxear.cc_log import cc_is_turn_end
 from codoxear.cc_log import cc_message_role
+from codoxear.cc_log import cc_model_context_window
 from codoxear.cc_log import cc_system_api_error_is_terminal
 from codoxear.cc_log import cc_system_api_error_text
+from codoxear.cc_log import cc_token_update
 from codoxear.cc_log import cc_user_text
 from codoxear.cc_log import read_cc_run_settings
 from codoxear.cc_log import read_cc_session_header
 from codoxear.cc_log import read_cc_session_id
+from codoxear.rollout_tokens import _extract_token_update
 
 
 SESSION_ID = "11111111-2222-3333-4444-555555555555"
@@ -32,12 +35,15 @@ def cc_user(content, **extra):
     return out
 
 
-def cc_assistant(content, stop_reason="end_turn", model="claude-haiku-4-5"):
+def cc_assistant(content, stop_reason="end_turn", model="claude-haiku-4-5", usage=None):
+    message = {"role": "assistant", "content": content, "stop_reason": stop_reason, "model": model}
+    if usage is not None:
+        message["usage"] = usage
     return {
         "type": "assistant",
         "sessionId": SESSION_ID,
         "timestamp": "2026-06-11T00:01:00.000Z",
-        "message": {"role": "assistant", "content": content, "stop_reason": stop_reason, "model": model},
+        "message": message,
     }
 
 
@@ -95,6 +101,61 @@ class TestCcLog(unittest.TestCase):
         }
         self.assertTrue(cc_system_api_error_is_terminal(obj))
         self.assertEqual(cc_system_api_error_text(obj), "Overloaded")
+
+    def test_model_context_window_mapping_is_conservative(self) -> None:
+        self.assertEqual(cc_model_context_window("claude-sonnet-4-6"), 1_000_000)
+        self.assertEqual(cc_model_context_window("claude-sonnet-5-20260707"), 1_000_000)
+        self.assertEqual(cc_model_context_window("claude-opus-4-8"), 1_000_000)
+        self.assertEqual(cc_model_context_window("claude-sonnet-4-5"), 200_000)
+        self.assertEqual(cc_model_context_window("claude-haiku-4-5"), 200_000)
+        self.assertIsNone(cc_model_context_window("claude-sonnet-4-7"))
+        self.assertIsNone(cc_model_context_window("claude-unmapped-9"))
+
+    def test_cc_token_update_projects_known_assistant_usage_shape(self) -> None:
+        token = cc_token_update(cc_assistant([{"type": "text", "text": "done"}], model="claude-sonnet-4-6", usage={"input_tokens": 12_000}))
+        if token is None:
+            self.fail("missing token update")
+        self.assertEqual(token["context_window"], 1_000_000)
+        self.assertEqual(token["tokens_in_context"], 12_000)
+        self.assertEqual(token["reserved_tokens"], 16_384)
+        self.assertEqual(token["max_input_tokens"], 983_616)
+        self.assertEqual(token["tokens_remaining"], 971_616)
+        self.assertEqual(token["percent_remaining"], 99)
+        self.assertEqual(token["as_of"], "2026-06-11T00:01:00.000Z")
+
+    def test_cc_token_update_sums_cache_input_and_excludes_output_tokens(self) -> None:
+        token = cc_token_update(
+            cc_assistant(
+                [{"type": "text", "text": "done"}],
+                model="claude-haiku-4-5",
+                usage={
+                    "input_tokens": 100,
+                    "cache_read_input_tokens": 20,
+                    "cache_creation_input_tokens": 30,
+                    "output_tokens": 10_000,
+                },
+            )
+        )
+        if token is None:
+            self.fail("missing token update")
+        self.assertEqual(token["context_window"], 200_000)
+        self.assertEqual(token["tokens_in_context"], 150)
+
+    def test_cc_token_update_unknown_model_returns_none(self) -> None:
+        obj = cc_assistant([{"type": "text", "text": "done"}], model="claude-unmapped-9", usage={"input_tokens": 12_000})
+        self.assertIsNone(cc_token_update(obj))
+
+    def test_extract_token_update_returns_cc_token(self) -> None:
+        token = _extract_token_update(
+            [
+                cc_user("hello"),
+                cc_assistant([{"type": "text", "text": "done"}], model="claude-sonnet-4-6", usage={"input_tokens": 512}),
+            ]
+        )
+        if token is None:
+            self.fail("missing token update")
+        self.assertEqual(token["context_window"], 1_000_000)
+        self.assertEqual(token["tokens_in_context"], 512)
 
     def test_read_session_header_merges_cwd_from_later_record(self) -> None:
         with TemporaryDirectory() as td:

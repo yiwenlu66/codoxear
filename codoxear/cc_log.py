@@ -7,8 +7,13 @@ from pathlib import Path
 from typing import Any
 from typing import Iterator
 
+from .pi_context import PI_DEFAULT_RESERVED_TOKENS
+from .pi_context import _context_token_update
+
 
 CC_SUPPORTED_REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+CC_CONTEXT_WINDOW_200K = 200_000
+CC_CONTEXT_WINDOW_1M = 1_000_000
 CC_UNKNOWN_TOOL_USE_ID_PREFIX = "__codoxear_cc_unknown_tool_use__:"
 CC_UNKNOWN_TOOL_USE_ID = f"{CC_UNKNOWN_TOOL_USE_ID_PREFIX}0"
 
@@ -37,6 +42,96 @@ def _message(obj: dict[str, Any], *, role: str | None = None) -> dict[str, Any] 
     if role is not None and msg.get("role") != role:
         return None
     return msg
+
+
+def _cc_model_stem(model: str) -> str:
+    stem = model.strip().lower().replace(".", "-").replace("_", "-")
+    while "--" in stem:
+        stem = stem.replace("--", "-")
+    return stem
+
+
+def _cc_model_matches(stem: str, prefixes: tuple[str, ...]) -> bool:
+    for prefix in prefixes:
+        if stem == prefix or stem.startswith(f"{prefix}-"):
+            return True
+    return False
+
+
+CC_CONTEXT_WINDOW_1M_MODEL_PREFIXES = (
+    "claude-sonnet-4-6",
+    "claude-sonnet-5",
+    "claude-opus-4-6",
+    "claude-opus-4-7",
+    "claude-opus-4-8",
+    "claude-fable-5",
+    "claude-mythos-5",
+    "claude-mythos-5-preview",
+)
+
+CC_CONTEXT_WINDOW_200K_MODEL_PREFIXES = (
+    "claude-3-haiku",
+    "claude-3-sonnet",
+    "claude-3-opus",
+    "claude-3-5-haiku",
+    "claude-3-5-sonnet",
+    "claude-3-7-sonnet",
+    "claude-haiku-4-5",
+    "claude-sonnet-4-0",
+    "claude-sonnet-4-5",
+    "claude-opus-4-0",
+    "claude-opus-4-1",
+    "claude-opus-4-5",
+)
+CC_CONTEXT_WINDOW_200K_MODEL_EXACT = ("claude-sonnet-4", "claude-opus-4")
+
+
+def cc_model_context_window(model: str | None) -> int | None:
+    if not isinstance(model, str) or not model.strip():
+        return None
+    stem = _cc_model_stem(model)
+    if _cc_model_matches(stem, CC_CONTEXT_WINDOW_1M_MODEL_PREFIXES):
+        return CC_CONTEXT_WINDOW_1M
+    if stem in CC_CONTEXT_WINDOW_200K_MODEL_EXACT or _cc_model_matches(stem, CC_CONTEXT_WINDOW_200K_MODEL_PREFIXES):
+        return CC_CONTEXT_WINDOW_200K
+    return None
+
+
+def _cc_usage_int(usage: dict[str, Any], key: str, *, required: bool = False) -> int | None:
+    value = usage.get(key)
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value >= 0:
+        return int(value)
+    if value is None and not required:
+        return 0
+    return None
+
+
+def cc_token_update(obj: dict[str, Any]) -> dict[str, Any] | None:
+    if obj.get("type") != "assistant":
+        return None
+    msg = _message(obj, role="assistant")
+    if msg is None:
+        return None
+    usage = msg.get("usage")
+    if not isinstance(usage, dict):
+        return None
+    context_window = cc_model_context_window(msg.get("model") if isinstance(msg.get("model"), str) else None)
+    if context_window is None:
+        return None
+    input_tokens = _cc_usage_int(usage, "input_tokens", required=True)
+    cache_read_tokens = _cc_usage_int(usage, "cache_read_input_tokens")
+    cache_creation_tokens = _cc_usage_int(usage, "cache_creation_input_tokens")
+    if input_tokens is None or cache_read_tokens is None or cache_creation_tokens is None:
+        return None
+    as_of = obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None
+    return _context_token_update(
+        context_window=context_window,
+        tokens_in_context=input_tokens + cache_read_tokens + cache_creation_tokens,
+        reserved_tokens=PI_DEFAULT_RESERVED_TOKENS,
+        as_of=as_of,
+    )
 
 
 def _text_parts(content: Any) -> list[str]:
