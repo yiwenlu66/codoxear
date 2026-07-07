@@ -213,3 +213,12 @@
 ## 2026-07-07T01:05:00Z Immediate key injection review rerouted after GLM quota failure
 - Third review async id `f7c960a3-0848-4329-a573-f89fe57dc35b` failed before review with provider quota: `429 You have reached the 7-day usage limit... after 2026-07-10 16:11:14`.
 - Fourth clean-room review dispatched from product checkout `/home/yiwen/codex-web-product-recovery` using `openai-codex/gpt-5.5` with no injected acceptance wrapper: async id `d203bdc3-9780-4c68-a46d-cea2520bafd3`, output target `/tmp/immediate-attachment-key-removal-review.md`.
+
+
+## 2026-07-07T01:12:00Z Immediate attachment key removal review accepted
+- Review artifact: `.memory/tasks/2026-07-07-staged-upload-expansion/reviews/immediate-attachment-key-removal-review.md`.
+- Review verdict: accepted, no blockers or required fixes.
+- Review confirmed: `SessionAttachmentCoordinator`, its factory/binding, `attachment_injection_ready`, and `SessionManager.inject_attachment_keys` were removed; `/inject_file` and `/inject_image` still stage bytes through `attachment_staging_ready`, `stage_uploaded_file`, and `add_staged_attachment`; frontend producers still post to the shared staged route; send-boundary numbering remains in `session_send.py` via `file_upload.attachment_inject_text`.
+- Review confirmed staging readiness still blocks unknown session, commit-unknown send, missing sync-send capability, queue sending item, local queue, and broker/log busy runtime; dropping key-write-error support as a staging precondition matches accepted stage-only proof with `key_write_errors:false`.
+- Residual risk characterized as deliberate: old non-HTTP/in-process callers of `SessionManager.inject_attachment_keys` would break, but no tracked caller remains, it was not a declared package API, and preserving it would keep the forbidden pre-send key-write mechanism.
+- Review evidence reproduced: targeted suite `163 passed, 18 subtests passed`; full suite `1788 passed, 128 subtests passed`; `git diff --check`; removed-symbol grep over tracked `codoxear`/`tests` found only negative/source assertions; no staged files.
