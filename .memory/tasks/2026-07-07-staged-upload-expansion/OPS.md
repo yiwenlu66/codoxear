@@ -164,3 +164,12 @@
 - Artifact root: `.memory/tasks/2026-07-07-staged-upload-expansion/browser-artifacts/capture-producer-19357/`.
 - Docker/browser observations: fake broker advertised `sync_send:true` and `key_write_errors:false`; browser DOM exposed enabled capture button and capture input; synthetic no-name JPEG was installed on `#captureInput.files` and the real `change` listener staged one server entry named `captured-...jpg`; broker calls before send had zero `send` and zero `keys`; visible send button produced exactly one `send`, zero `keys`, payload began with generated `Attachment 1: <path>`, and staged list cleared.
 - Clean-room review dispatched: async id `768d89ba-ff5e-4087-be32-d60b75c654ae`.
+
+## 2026-07-07T00:12:00Z Capture producer review accepted and nonblockers closed
+- Review artifact: `.memory/tasks/2026-07-07-staged-upload-expansion/reviews/capture-producer-cleanroom-review.md`.
+- Review verdict: accepted, no blockers.
+- Review confirmed: capture is a client-only `File` producer feeding `stageFiles(source:"capture")` and the single existing `/inject_file` route; no backend route/state/PTY/key/send write was added; full attach blockers apply before opening the capture input and inside `stageFiles`; no-name captured images get `captured-<seed>.<ext>` fallback names; proof distinguishes zero pre-send backend `send`/`keys` from one send-boundary `send`.
+- Nonblocker 1 closed in `ef42bb8 Clarify capture composer mobile comment`: stale mobile CSS comment now accounts for five composer icon controls.
+- Nonblocker 3 closed in `0c61bb6 Record capture proof driver`: browser proof now includes `capture-input-change-driver.js`, the exact script used to set `#captureInput.files` and dispatch the real `change` listener.
+- Retained nonblocking product observation: on desktop/no-camera devices the capture button degrades to a single-image picker, which is acceptable graceful degradation for a client-only File producer.
+- Docker gates after proof: `93a7a45 Record capture producer docker gates` records `DOCKER_BUILDKIT=0` sandbox test (`1795 passed, 1 skipped, 132 subtests passed`) and smoke (`/api/me` 401 before login, `/api/sessions` 200 after login, app dir under `/home/tester/.local/share/codoxear`).
