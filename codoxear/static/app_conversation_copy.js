@@ -15,7 +15,38 @@
     return parts.join("\n\n---\n\n").trim();
   }
 
+  function formatCopyLimitBytes(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return "";
+    const mib = n / (1024 * 1024);
+    if (mib >= 1) {
+      const rounded = Number.isInteger(mib) ? String(mib) : mib.toFixed(1).replace(/\.0$/, "");
+      return `${rounded} MiB`;
+    }
+    const kib = n / 1024;
+    if (kib >= 1) {
+      const rounded = Number.isInteger(kib) ? String(kib) : kib.toFixed(1).replace(/\.0$/, "");
+      return `${rounded} KiB`;
+    }
+    return `${Math.round(n)} bytes`;
+  }
+
+  function transcriptExportTooLargeCopyMessage(err) {
+    if (!err || Number(err.status) !== 413) return "";
+    const obj = err.obj && typeof err.obj === "object" ? err.obj : null;
+    if (!obj || !Object.prototype.hasOwnProperty.call(obj, "max_bytes")) return "";
+    const text = String(obj.error || err.message || "").toLowerCase();
+    const knownExportGuard =
+      text.includes("transcript-export-too-large") ||
+      text.includes("too large to export") ||
+      (text.includes("transcript") && text.includes("too large") && text.includes("export"));
+    if (!knownExportGuard) return "";
+    const limit = formatCopyLimitBytes(obj.max_bytes);
+    return `Conversation too large to copy${limit ? ` (max ${limit})` : ""}. Use search or copy a smaller range.`;
+  }
+
   window.CodoxearConversationCopy = Object.freeze({
     formatConversationForCopy,
+    transcriptExportTooLargeCopyMessage,
   });
 })();

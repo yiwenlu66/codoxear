@@ -556,6 +556,23 @@ def test_large_post_log_recovery_tail_exposes_usable_history_cursor() -> None:
         assert POST_LOG_BOUND_BACKEND_STOPPED_TEXT not in history_texts
 
 
+def test_messages_export_active_session_retains_size_cap() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "oversize.jsonl"
+        log_path.write_text("x" * 32, encoding="utf-8")
+        session = _session(td, log_path)
+        deps, responses, _metrics = _deps(transcript_export_max_bytes=8)
+        manager = _TailManager(session)
+
+        handle_messages_export(_FakeHandler(), session_id="s1", manager=manager, deps=deps)
+
+    assert responses
+    status, body = responses[-1]
+    assert status == 413
+    assert body["max_bytes"] == 8
+    assert "too large to export" in str(body["error"])
+
+
 def test_messages_export_missing_recovery_session_retains_size_cap() -> None:
     with tempfile.TemporaryDirectory() as td:
         log_path = Path(td) / "oversize.jsonl"

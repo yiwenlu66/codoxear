@@ -411,7 +411,20 @@
         throw new Error("Codoxear polling helpers failed to load");
 
       const codoxearConversationCopy = window.CodoxearConversationCopy;
-      if (!codoxearConversationCopy || typeof codoxearConversationCopy.formatConversationForCopy !== "function") throw new Error("Codoxear conversation-copy helpers failed to load");
+      if (
+        !codoxearConversationCopy ||
+        typeof codoxearConversationCopy.formatConversationForCopy !== "function" ||
+        typeof codoxearConversationCopy.transcriptExportTooLargeCopyMessage !== "function"
+      )
+        throw new Error("Codoxear conversation-copy helpers failed to load");
+
+      function transcriptExportTooLargeCopyMessage(err) {
+        return codoxearConversationCopy.transcriptExportTooLargeCopyMessage(err);
+      }
+
+      function copyConversationFailureToast(err) {
+        return transcriptExportTooLargeCopyMessage(err) || `copy failed: ${err && err.message ? err.message : "unknown error"}`;
+      }
 
       function normalizeAgentBackendName(value) {
         return codoxearLaunch.normalizeAgentBackendName(value);
@@ -2155,7 +2168,7 @@
             await copyToClipboard(text);
             setToast(`Copied ${events.length} messages`);
           } catch (err) {
-            setToast(`copy failed: ${err && err.message ? err.message : "unknown error"}`);
+            setToast(copyConversationFailureToast(err));
           } finally {
             copyConversationBtn.disabled = !selected;
           }
