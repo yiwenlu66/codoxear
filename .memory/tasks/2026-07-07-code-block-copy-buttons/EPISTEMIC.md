@@ -1,19 +1,20 @@
 # Code block copy buttons epistemic model
 
 ## Phenomenon
-Assistant transcript messages frequently contain code fences and command snippets. Codoxear renders those snippets as static code blocks without a block-local copy affordance, so users must either copy the entire message or manually select text inside the code block.
+Assistant transcript messages often contain multiple commands or snippets. The user task is copying one snippet from the message, not the whole raw answer. Before this slice, code blocks had no block-local copy control, forcing manual selection or message-level copy.
 
-## Current mechanism
-`app_markdown.js` renders code blocks as `<pre><code data-lang="...">escaped code</code></pre>`. `app_message_rows.js` adds a per-message `.msg-copy-btn` that copies the whole raw markdown message. `app.js` delegates file-reference clicks from `chatInner`, but there is no code-block copy delegation.
+## Accepted mechanism
+Rendered markdown code blocks now include a hardcoded `.code-copy-btn` inside each `<pre>` before the `<code>` element. `app_code_copy.js` handles delegated clicks by resolving the nearest `<pre>`, querying its contained `<code>`, and copying `code.textContent` through the existing clipboard helper. Because the copied value is read from DOM text content, escaped entities in rendered HTML decode back to the original code, and no code text is embedded in button attributes. `app.js` invokes the code-copy handler before file-reference delegation and stops propagation on handled clicks. The existing message-level copy button remains an independent direct row control that copies the raw markdown message.
 
-## Target mechanism
-Each rendered code block has an accessible copy control. The control copies only its sibling/contained `<code>.textContent` through the existing clipboard helper and gives feedback without affecting message-level raw copy or file-reference clicks. CSS keeps the control usable on desktop and at least 44x44 on mobile without widening the transcript.
+## Evidence
+- Implementation and local validation: OPS entries for executor output and main validation; functional commit `1702f63`.
+- Docker/browser proof: OPS entry for `75585b9`; desktop and mobile proof artifacts show two independent code buttons, exact copied payloads, no prose leakage, message-level full markdown copy preserved, mobile 44x44 controls, and no page overflow.
+- Clean-room review: OPS entry for `4b0707f`; critic accepted the slice and found no blockers.
 
-## Live risks
-- HTML-string markdown rendering can duplicate SVG/icon concerns or break escaping if code text is embedded in attributes.
-- Click delegation must stop propagation before file-reference handling or row interactions see the button click.
-- Existing markdown renderer tests assert exact `<pre><code>` output and must be updated without weakening code content assertions.
-- Clipboard proof needs real browser evidence; if clipboard write is blocked, instrumentation should prove the attempted payload.
+## Ruled out mechanisms
+- Attribute/data-payload copy: rejected because embedding code in attributes would create escaping and payload-size concerns. DOM `textContent` is the correct source of truth.
+- Message-level copy reuse: rejected because it copies surrounding prose and all blocks, which is the user pain point.
+- File-reference click fallthrough: ruled out by delegated click ordering and proof; `.code-copy-btn` clicks are handled before file-reference handling.
 
 ## Current claim
-This is a bounded product usability slice: a missing local affordance on a high-frequency artifact type, not a broad markdown redesign.
+The per-code-block copy slice is accepted. Future transcript markdown changes must preserve block-local copy semantics: each code block copies exactly its own `<code>.textContent`, message-level raw markdown copy remains intact, and mobile copy controls stay at least 44x44 without creating horizontal page overflow.
