@@ -1,0 +1,3 @@
+# OPS
+
+- 2026-07-07T08:49:00Z — Selected next bounded product slice from current residuals after selectable-backend parity. Mechanism: `_extract_token_update()` scans newest-to-oldest for any parseable token; for a CC unknown-model assistant usage row `cc_token_update()` returns `None`, so extraction falls through to an older known-model token. Direct discriminator on a temp known→unknown CC log returned the older t1 token for both `_extract_token_update([known, unknown])` and `_find_latest_token_update(log)`. This can keep `/api/sessions`, `/messages/tail`, and `#ctxChip` showing stale known-model pressure after a newer unsupported usage row. No repository edits yet.
