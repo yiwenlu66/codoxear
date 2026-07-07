@@ -26,7 +26,7 @@ Stage first, commit later.
 - Clearing on uncertain backend receipt: forced commit-unknown preserved the staged entry.
 
 ## Accepted producer extension
-- Paste-to-attach and drag/drop are implemented in `27ca144` as client-only producers feeding the existing staged upload route through shared `stageFiles()`. Docker/browser proof `35b13dc` shows paste/drop/off-zone-drop/text-paste semantics preserve zero pre-send backend writes and send-boundary attachment commits. Clean-room review `245dcb2` accepted the slice with no blockers.
+- Paste-to-attach, drag/drop, and capture/camera are implemented as client-only producers feeding the existing staged upload route through shared `stageFiles()`. Docker/browser proofs `35b13dc` and `c7fd396` show producer events preserve zero pre-send backend writes and send-boundary attachment commits. Clean-room reviews `245dcb2` and `fb0334a` accepted these producer slices with no blockers.
 
 ## Accepted post-send cleanup policy
 - Commit `4963ba6` makes deterministic post-confirmed-send staged cleanup guard failures explicit cleanup warnings (`attachment_cleanup_error`) instead of send failures. Delivery remains success, commit-unknown state is cleared, and staged/pending truth is preserved if cleanup fails. Clean-room review `09a9aa9` accepted this path with no blockers.
@@ -36,8 +36,7 @@ Stage first, commit later.
 - Consider reducing absolute-path exposure in browser tooltips once a safe backend-readable identity/display split exists.
 - Remove dead immediate-PTY attachment injection methods if no non-HTTP consumer remains.
 - Remove vestigial `attachment_index` after compatibility impact is checked.
-- Capture/camera producer is implemented and browser-proved in `98880bc`/`c7fd396`, pending clean-room review `768d89ba-ff5e-4087-be32-d60b75c654ae`.
-- Producer UX polish: re-check blockers per file in long batches if needed, preserve text in mixed text+file paste if a clear UI rule exists, add extensions for non-PNG pasted image names, and clear `.drop-active` when a file drag leaves the window without dropping.
+- Producer UX polish: re-check blockers per file in long batches if needed, preserve text in mixed text+file paste if a clear UI rule exists, add extensions for non-PNG pasted image names, clear `.drop-active` when a file drag leaves the window without dropping, and decide whether the desktop/no-camera capture button should remain a single-image picker.
 
 ## Current justified claim
-The staged upload expansion slice is accepted through multi-file picker, paste/drop producers, and post-confirmed-send tail isolation: attachments are server-staged before send, visibly manageable in the browser, committed to the backend only at confirmed send, and never turned into retry-inviting send failures by covered post-delivery cleanup/projection errors.
+The staged upload expansion slice is accepted through multi-file picker, paste/drop, capture/camera, and post-confirmed-send tail isolation: attachments are server-staged before send, visibly manageable in the browser, committed to the backend only at confirmed send, and never turned into retry-inviting send failures by covered post-delivery cleanup/projection errors.
