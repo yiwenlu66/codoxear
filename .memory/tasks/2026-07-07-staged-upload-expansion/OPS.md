@@ -201,3 +201,7 @@
   - full local suite → `1788 passed, 128 subtests passed`;
   - `git diff --check` → clean.
 - Clean-room review dispatched: async id `a8f88f05-999c-4922-b917-7d823b69c4b6`. A needs-attention nudge could not be delivered because the child was live but its intercom target was not registered; review remains pending.
+
+## 2026-07-07T00:50:00Z Immediate key injection review relaunched after empty paused run
+- Prior clean-room review async id `a8f88f05-999c-4922-b917-7d823b69c4b6` paused after interrupt and produced `/tmp/immediate-attachment-key-removal-review.md` as a 0-byte artifact; status reported acceptance rejected and resume unavailable.
+- Replacement clean-room review dispatched from product checkout `/home/yiwen/codex-web-product-recovery`: async id `62eb6953-a691-425e-91d3-f14055ffa102`, output target `/tmp/immediate-attachment-key-removal-review.md`.
