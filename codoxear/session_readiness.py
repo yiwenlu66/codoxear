@@ -111,7 +111,7 @@ class SessionReadinessCoordinator:
             queue_promotion_precondition=session_allows_queue_promotion(current),
         ).queue_promotion
 
-    def _attachment_ready(self, session_id: str, *, allow_existing_pending: bool, require_key_write_errors: bool) -> bool:
+    def _attachment_ready(self, session_id: str, *, allow_existing_pending: bool) -> bool:
         self.refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
         with self.lock:
             session = self.sessions().get(session_id)
@@ -119,7 +119,7 @@ class SessionReadinessCoordinator:
                 raise KeyError("unknown session")
             if session.commit_unknown_send:
                 raise self.not_ready_error("resolve the unknown send before attaching a file")
-            if (not session.sync_send_supported) or (require_key_write_errors and not session.key_write_errors_supported):
+            if not session.sync_send_supported:
                 raise self.not_ready_error("broker must be restarted before file attachments are available")
             if session.pending_attachment and not allow_existing_pending:
                 return False
@@ -145,8 +145,5 @@ class SessionReadinessCoordinator:
         runtime = self.runtime_status_from_state_and_log(session_id, state, log_path)
         return session_runtime_readiness(runtime, local_queue_len=local_queue_len).direct_send
 
-    def attachment_injection_ready(self, session_id: str) -> bool:
-        return self._attachment_ready(session_id, allow_existing_pending=False, require_key_write_errors=True)
-
     def attachment_staging_ready(self, session_id: str) -> bool:
-        return self._attachment_ready(session_id, allow_existing_pending=True, require_key_write_errors=False)
+        return self._attachment_ready(session_id, allow_existing_pending=True)

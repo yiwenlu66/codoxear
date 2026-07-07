@@ -5,7 +5,6 @@ from typing import Any
 
 from .queue_sweep import QueueSweepCoordinator
 from .session_discovery import DiscoveryDeps
-from .session_attachment import SessionAttachmentCoordinator
 from .session_cleanup import SessionCleanupCoordinator
 from .session_control import SessionControlCoordinator
 from .session_discovery_registry import SessionDiscoveryRegistryCoordinator
@@ -284,17 +283,6 @@ def control_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCap
         stderr=caps.stderr,
     )
 
-
-def attachment_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
-    return SessionAttachmentCoordinator(
-        input_lock_for_session=manager._input_lock_for_session,
-        attachment_injection_ready=manager.attachment_injection_ready,
-        inject_keys=manager.inject_keys,
-        set_pending_attachment=manager._set_pending_attachment,
-        not_ready_error=caps.not_ready_error,
-        injection_error=caps.injection_error,
-        commit_unknown_error=caps.commit_unknown_error,
-    )
 
 
 def list_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:

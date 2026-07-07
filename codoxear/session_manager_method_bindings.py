@@ -35,7 +35,6 @@ SESSION_MANAGER_SERVER_FACTORY_METHODS: tuple[tuple[str, str], ...] = (
     ("_discovery_deps", "_discovery_deps_for_manager_impl"),
     ("_queue_coordinator_for_manager", "_queue_coordinator_for_manager_impl"),
     ("_control_coordinator_for_manager", "_control_coordinator_for_manager_impl"),
-    ("_attachment_coordinator_for_manager", "_attachment_coordinator_for_manager_impl"),
     ("_list_coordinator_for_manager", "_list_coordinator_for_manager_impl"),
     ("_refresh_coordinator_for_manager", "_refresh_coordinator_for_manager_impl"),
     ("_readiness_coordinator_for_manager", "_readiness_coordinator_for_manager_impl"),
@@ -98,7 +97,6 @@ SESSION_MANAGER_FORWARD_METHODS: tuple[tuple[str, str, str], ...] = (
     ("_remote_state_after_metadata_probe", "_readiness_coordinator_for_manager", "remote_state_after_metadata_probe"),
     ("_send_remote_ready", "_readiness_coordinator_for_manager", "send_remote_ready"),
     ("_queue_remote_ready", "_readiness_coordinator_for_manager", "queue_remote_ready"),
-    ("attachment_injection_ready", "_readiness_coordinator_for_manager", "attachment_injection_ready"),
     ("attachment_staging_ready", "_readiness_coordinator_for_manager", "attachment_staging_ready"),
     ("_files_key_for_session", "_files_coordinator_for_manager", "files_key_for_session"),
     ("files_get", "_files_coordinator_for_manager", "get"),
@@ -133,7 +131,6 @@ SESSION_MANAGER_FORWARD_METHODS: tuple[tuple[str, str, str], ...] = (
     ("queue_move", "_queue_coordinator_for_manager", "move_local"),
     ("get_state", "_control_coordinator_for_manager", "get_state"),
     ("get_tail", "_control_coordinator_for_manager", "get_tail"),
-    ("inject_attachment_keys", "_attachment_coordinator_for_manager", "inject_attachment_keys"),
 )
 
 

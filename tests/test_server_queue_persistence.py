@@ -266,7 +266,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(_match_session_route("/api/sessions/s1/inject_file", "inject_file"), "s1")
         self.assertEqual(_match_session_route("/api/sessions/s1/commit_unknown_send/clear", "commit_unknown_send", "clear"), "s1")
 
-    def test_attachment_injection_ready_requires_idle_broker_and_empty_local_queue(self) -> None:
+    def test_attachment_staging_ready_requires_idle_broker_and_empty_local_queue(self) -> None:
         sid = "s1"
         mgr = self._mgr()
         with TemporaryDirectory() as td:
@@ -286,31 +286,28 @@ class TestServerQueuePersistence(unittest.TestCase):
             ])
             mgr.get_state = lambda _sid: next(states)  # type: ignore[method-assign]
 
-            self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
-            self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+            self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
+            self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
             mgr._queues[sid] = [_queue_item("q1", "queued")]
-            self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+            self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
             mgr._queues.clear()
             mgr._sessions[sid].queue_sending_item_id = "q1"
-            self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+            self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
             mgr._sessions[sid].queue_sending_item_id = None
-            self.assertTrue(SessionManager.attachment_injection_ready(mgr, sid))
+            self.assertTrue(SessionManager.attachment_staging_ready(mgr, sid))
 
-    def test_unknown_direct_send_blocks_attachment_injection(self) -> None:
+    def test_unknown_direct_send_blocks_attachment_staging(self) -> None:
         sid = "s1"
         mgr = self._mgr()
         mgr._sessions[sid] = _make_session(sid)
         mgr._sessions[sid].commit_unknown_send = {"text": "maybe sent", "created_ts": 1.0}
         mgr._commit_unknown_sends[sid] = {"text": "maybe sent", "created_ts": 1.0}
         mgr.get_state = lambda _sid: self.fail("unknown send should fail before broker readiness")  # type: ignore[method-assign]
-        mgr.inject_keys = lambda *_args, **_kwargs: self.fail("unknown send should not inject attachment keys")  # type: ignore[method-assign]
 
         with self.assertRaisesRegex(SessionNotReadyError, "unknown send"):
-            SessionManager.attachment_injection_ready(mgr, sid)
-        with self.assertRaisesRegex(SessionNotReadyError, "unknown send"):
-            SessionManager.inject_attachment_keys(mgr, sid, "ATTACH")
+            SessionManager.attachment_staging_ready(mgr, sid)
 
-    def test_attachment_injection_ready_rejects_log_busy_session(self) -> None:
+    def test_attachment_staging_ready_rejects_log_busy_session(self) -> None:
         sid = "s1"
         mgr = self._mgr()
         with TemporaryDirectory() as td:
@@ -321,7 +318,7 @@ class TestServerQueuePersistence(unittest.TestCase):
             mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
             mgr.idle_from_log = lambda _sid: False  # type: ignore[method-assign]
 
-            self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+            self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
 
     def test_attachment_readiness_rechecks_local_queue_after_broker_state(self) -> None:
         sid = "s1"
@@ -334,7 +331,7 @@ class TestServerQueuePersistence(unittest.TestCase):
 
         mgr.get_state = get_state  # type: ignore[method-assign]
 
-        self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+        self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
 
     def test_attachment_readiness_uses_log_path_bound_during_state_refresh(self) -> None:
         sid = "s1"
@@ -351,7 +348,7 @@ class TestServerQueuePersistence(unittest.TestCase):
             mgr.get_state = get_state  # type: ignore[method-assign]
             mgr.idle_from_log = lambda _sid: False  # type: ignore[method-assign]
 
-            self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+            self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
 
     def test_attachment_readiness_refreshes_sidecar_before_log_idle_check(self) -> None:
         sid = "s1"
@@ -378,7 +375,7 @@ class TestServerQueuePersistence(unittest.TestCase):
 
             mgr.refresh_session_meta = refresh  # type: ignore[method-assign]
 
-            self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+            self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
             self.assertEqual(mgr._sessions[sid].log_path, new_busy_log)
             self.assertEqual(drain_flags, [False, False])
 
@@ -401,39 +398,32 @@ class TestServerQueuePersistence(unittest.TestCase):
 
             mgr.refresh_session_meta = refresh  # type: ignore[method-assign]
 
-            self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
-
-    def test_inject_attachment_keys_rechecks_readiness_under_input_lock(self) -> None:
-        sid = "s1"
-        mgr = self._mgr()
-        mgr._sessions[sid] = _make_session(sid)
-        mgr.attachment_injection_ready = lambda _sid: False  # type: ignore[method-assign]
-        mgr.inject_keys = lambda _sid, _seq: self.fail("inject_keys should not be called")  # type: ignore[method-assign]
-
-        with self.assertRaisesRegex(SessionNotReadyError, "session is busy"):
-            SessionManager.inject_attachment_keys(mgr, sid, "abc")
+            self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
 
     def test_pending_attachment_blocks_queue_until_explicit_send(self) -> None:
         sid = "s1"
         mgr = self._mgr()
         mgr._sessions[sid] = _make_session(sid)
-        mgr.attachment_injection_ready = lambda _sid: True  # type: ignore[method-assign]
-        mgr.inject_keys = lambda _sid, _seq, **_kwargs: {"ok": True}  # type: ignore[method-assign]
+        mgr._sessions[sid].pending_attachment = True
+        mgr._pending_attachment_ids.add(sid)
+        mgr._staged_attachments[sid] = [
+            {"id": "a1", "display_name": "one.txt", "filename": "1_one.txt", "path": "/tmp/uploads/s1/1_one.txt", "size": 3, "created_ts": 1.0},
+        ]
+        mgr.clear_staged_attachments = lambda _sid: (mgr._staged_attachments.pop(_sid, None), setattr(mgr._sessions[_sid], "pending_attachment", False), mgr._pending_attachment_ids.discard(_sid), {"ok": True, "attachments": [], "pending_attachment": False})[-1]  # type: ignore[method-assign]
 
-        self.assertEqual(SessionManager.inject_attachment_keys(mgr, sid, "ATTACH"), {"ok": True})
-        self.assertTrue(mgr._sessions[sid].pending_attachment)
-        self.assertIn(sid, mgr._pending_attachment_ids)
         with self.assertRaisesRegex(SessionNotReadyError, "pending attachment"):
             SessionManager.enqueue(mgr, sid, "queued prompt")
 
         mgr._record_prelog_user_message = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
         mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
-        mgr._sock_call = lambda *_args, **_kwargs: {"queued": False, "queue_len": 0}  # type: ignore[method-assign]
+        seen: list[dict[str, object]] = []
+        mgr._sock_call = lambda _sock, req, **_kwargs: seen.append(req) or {"queued": False, "queue_len": 0}  # type: ignore[method-assign]
         with self.assertRaisesRegex(SessionNotReadyError, "pending attachment"):
             SessionManager.send(mgr, sid, "stale direct prompt")
         self.assertTrue(mgr._sessions[sid].pending_attachment)
 
         self.assertEqual(SessionManager.send(mgr, sid, "intended prompt", allow_pending_attachment=True), {"queued": False, "queue_len": 0})
+        self.assertEqual(seen, [{"cmd": "send", "text": "Attachment 1: /tmp/uploads/s1/1_one.txt\nintended prompt", "sync": True}])
         self.assertFalse(mgr._sessions[sid].pending_attachment)
         self.assertNotIn(sid, mgr._pending_attachment_ids)
 
@@ -895,23 +885,9 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._sessions[sid] = _make_session(sid)
         mgr._sessions[sid].sync_send_supported = False
         mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
-        mgr.inject_keys = lambda *_args, **_kwargs: self.fail("unsupported broker should not receive attachment keys")  # type: ignore[method-assign]
 
         with self.assertRaisesRegex(SessionNotReadyError, "broker must be restarted"):
-            SessionManager.attachment_injection_ready(mgr, sid)
-        with self.assertRaisesRegex(SessionNotReadyError, "broker must be restarted"):
-            SessionManager.inject_attachment_keys(mgr, sid, "ATTACH")
-
-    def test_attachment_rejects_broker_without_key_error_capability(self) -> None:
-        sid = "s1"
-        mgr = self._mgr()
-        mgr._sessions[sid] = _make_session(sid)
-        mgr._sessions[sid].key_write_errors_supported = False
-        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
-        mgr.inject_keys = lambda *_args, **_kwargs: self.fail("unsupported broker should not receive attachment keys")  # type: ignore[method-assign]
-
-        with self.assertRaisesRegex(SessionNotReadyError, "broker must be restarted"):
-            SessionManager.attachment_injection_ready(mgr, sid)
+            SessionManager.attachment_staging_ready(mgr, sid)
 
     def test_attachment_staging_does_not_require_key_write_errors(self) -> None:
         sid = "s1"
@@ -1692,7 +1668,7 @@ class TestServerQueuePersistence(unittest.TestCase):
             mgr._refresh_session_meta_if_sidecar_exists = lambda _sid, drain_queue=False: refresh(_sid, drain_queue=drain_queue)  # type: ignore[method-assign]
             mgr.idle_from_log = lambda _sid: False  # type: ignore[method-assign]
 
-            self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+            self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
             self.assertEqual(len(state_calls), 2)
 
     def test_send_readiness_requeries_state_when_refresh_rebinds_log(self) -> None:
@@ -1895,16 +1871,7 @@ class TestServerQueuePersistence(unittest.TestCase):
             mgr.get_state = lambda _sid: {"busy": True, "queue_len": 0}  # type: ignore[method-assign]
             mgr.idle_from_log = lambda _sid: True  # type: ignore[method-assign]
 
-            self.assertTrue(SessionManager.attachment_injection_ready(mgr, sid))
-
-    def test_attachment_readiness_rejects_pending_attachment(self) -> None:
-        sid = "s1"
-        mgr = self._mgr()
-        mgr._sessions[sid] = _make_session(sid)
-        mgr._sessions[sid].pending_attachment = True
-        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
-
-        self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+            self.assertTrue(SessionManager.attachment_staging_ready(mgr, sid))
 
     def test_direct_send_rejects_when_local_queue_exists(self) -> None:
         sid = "s1"
@@ -1943,58 +1910,6 @@ class TestServerQueuePersistence(unittest.TestCase):
 
             with self.assertRaisesRegex(SessionNotReadyError, "session is busy"):
                 SessionManager.send(mgr, sid, "stale log send")
-
-    def test_attachment_injection_error_does_not_set_pending(self) -> None:
-        sid = "s1"
-        mgr = self._mgr()
-        mgr._sessions[sid] = _make_session(sid)
-        mgr.attachment_injection_ready = lambda _sid: True  # type: ignore[method-assign]
-        mgr.inject_keys = lambda _sid, _seq, **_kwargs: {"error": "write failed"}  # type: ignore[method-assign]
-
-        from codoxear.server import SessionInjectionError
-
-        with self.assertRaisesRegex(SessionInjectionError, "write failed"):
-            SessionManager.inject_attachment_keys(mgr, sid, "ATTACH")
-        self.assertFalse(mgr._sessions[sid].pending_attachment)
-        self.assertNotIn(sid, mgr._pending_attachment_ids)
-
-    def test_attachment_explicit_commit_unknown_overrides_success_fields(self) -> None:
-        sid = "s1"
-        mgr = self._mgr()
-        mgr._sessions[sid] = _make_session(sid)
-        mgr.attachment_injection_ready = lambda _sid: True  # type: ignore[method-assign]
-        mgr.inject_keys = lambda _sid, _seq, **_kwargs: {"ok": True, "commit_unknown": True}  # type: ignore[method-assign]
-
-        with self.assertRaisesRegex(SessionCommitUnknownError, "marked commit unknown"):
-            SessionManager.inject_attachment_keys(mgr, sid, "ATTACH")
-        self.assertTrue(mgr._sessions[sid].pending_attachment)
-        self.assertIn(sid, mgr._pending_attachment_ids)
-
-    def test_attachment_empty_response_sets_pending_and_reports_unknown(self) -> None:
-        sid = "s1"
-        mgr = self._mgr()
-        mgr._sessions[sid] = _make_session(sid)
-        mgr.attachment_injection_ready = lambda _sid: True  # type: ignore[method-assign]
-        mgr.inject_keys = lambda _sid, _seq, **_kwargs: {"error": "empty response"}  # type: ignore[method-assign]
-
-        with self.assertRaisesRegex(SessionCommitUnknownError, "attachment commit status unknown"):
-            SessionManager.inject_attachment_keys(mgr, sid, "ATTACH")
-        self.assertTrue(mgr._sessions[sid].pending_attachment)
-        self.assertIn(sid, mgr._pending_attachment_ids)
-
-    def test_attachment_malformed_response_sets_pending_and_reports_unknown(self) -> None:
-        for response in [None, {"ok": "false"}, {"ok": 1}, {"ok": {"x": 1}}]:
-            with self.subTest(response=response):
-                sid = "s1"
-                mgr = self._mgr()
-                mgr._sessions[sid] = _make_session(sid)
-                mgr.attachment_injection_ready = lambda _sid: True  # type: ignore[method-assign]
-                mgr.inject_keys = lambda _sid, _seq, _response=response, **_kwargs: _response  # type: ignore[method-assign]
-
-                with self.assertRaisesRegex(SessionCommitUnknownError, "attachment commit status unknown"):
-                    SessionManager.inject_attachment_keys(mgr, sid, "ATTACH")
-                self.assertTrue(mgr._sessions[sid].pending_attachment)
-                self.assertIn(sid, mgr._pending_attachment_ids)
 
     def test_pending_attachment_stops_queue_promotion(self) -> None:
         sid = "s1"

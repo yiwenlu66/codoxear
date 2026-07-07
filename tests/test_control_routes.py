@@ -67,17 +67,9 @@ class Manager:
         self.calls.append(("inject_keys", session_id, seq, interrupt))
         return {"ok": True}
 
-    def attachment_injection_ready(self, session_id):
-        self.calls.append(("inject_ready", session_id))
-        return self.ready
-
     def attachment_staging_ready(self, session_id):
         self.calls.append(("ready", session_id))
         return self.ready
-
-    def inject_attachment_keys(self, session_id, seq):
-        self.calls.append(("inject_attachment", session_id, seq))
-        return {"ok": True}
 
     def add_staged_attachment(self, session_id, **kwargs):
         self.calls.append(("stage_attachment", session_id, kwargs))

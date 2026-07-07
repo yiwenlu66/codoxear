@@ -142,7 +142,8 @@ def test_session_manager_compatibility_forwards_live_outside_server() -> None:
     assert "def _queue_coordinator_for_manager(" not in server_source
     assert '("alias_set", "_ui_state_coordinator_for_manager", "alias_set")' in binding_source
     assert '("queue_delete", "_queue_coordinator_for_manager", "delete_local")' in binding_source
-    assert '("inject_attachment_keys", "_attachment_coordinator_for_manager", "inject_attachment_keys")' in binding_source
+    assert "inject_attachment_keys" not in binding_source
+    assert "_attachment_coordinator_for_manager" not in binding_source
     assert '("__init__", "init_for_manager")' in binding_source
     assert '("_sock_call", "sock_call_for_manager")' in binding_source
     assert '("_queue_coordinator_for_manager", "_queue_coordinator_for_manager_impl")' in binding_source
