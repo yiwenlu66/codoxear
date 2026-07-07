@@ -314,3 +314,33 @@ Evidence status: implementation and proof committed; clean-room review `cc391669
 - Residual nonblockers: the proof uses a commit-unknown marker rather than a busy-only browser scenario; a server-readiness flip after the client check remains server-authoritatively rejected and would surface as an upload failure, not a hidden backend write.
 
 Decision: batch-level blocker recheck is accepted and the remaining upload follow-up is the capture affordance decision, not blocker rechecking.
+
+## 2026-07-07T04:43:00Z — Photo attachment affordance functional/proof
+
+Prediction: if the visible capture producer is reframed as adding a photo rather than guaranteed camera capture, then desktop/no-camera browsers no longer receive a false promise while mobile camera support and staged-upload semantics remain intact.
+
+Intervention:
+- Functional commit: `537fd18 Make photo attachment affordance truthful`.
+- Mechanism: `#captureBtn` title/aria and dynamic label now say `Add photo`; no-name capture-source files use `photo-<seed>.ext`; progress toast says `staging photo...`. Hidden input remains `id="captureInput" type="file" accept="image/*" capture="environment"`; listener still calls `stageFiles(files, { sid, source: "capture" })`.
+- Local validation before commit: `node --check codoxear/static/app.js`; focused `tests/test_attach_button_source.py tests/test_frontend_file_helpers_source.py` → `11 passed`; full `python3 -m pytest -q` → `1793 passed, 128 subtests passed`; `git diff --check`.
+
+Proof:
+- Proof commit: `107af43 Record photo affordance proof`.
+- Artifact dir: `.memory/tasks/2026-07-07-staged-upload-expansion/browser-artifacts/photo-affordance-19381/`.
+- Docker/browser proof used fake broker with `sync_send:true` and `key_write_errors:false` in container `codoxear-photo-affordance-19381` on port `19381`.
+- Browser observed `#captureBtn` title/aria `Add photo (max 16.0 MB)` and hidden input `accept='image/*'`, `capture='environment'`.
+- Real `#captureInput` change listener staged a no-name JPEG; delayed `/inject_file` wrapper observed transient toast `staging photo...`; final staged display name was `photo-1783399337321.jpg`.
+- Public `/attachments` and `/api/sessions` payloads had no staged `path` key and did not contain the upload root.
+- Broker calls after staging were only `state`: `send_count=0`, `key_count=0`.
+- Explicit send produced exactly one broker `send`, zero `keys`, payload beginning `Attachment 1: /home/tester/.local/share/codoxear/uploads/photo-proof/...photo-...jpg`, then user text; confirmed send cleared staged entries.
+- Docker gate on port `19382` passed (`1792 passed, 1 skipped, 128 subtests passed`) and smoke passed (`/api/me` 401 before login, `/api/sessions` 200 after login).
+
+Evidence status: implementation and proof committed; clean-room review `be32a80f-a8f3-4026-bc87-0a2f5247ce41` launched and pending.
+
+## 2026-07-07T04:49:00Z — Photo attachment affordance clean-room review accepted
+
+- Review artifact committed: `a6498bb Record photo affordance review`.
+- Verdict: accepted, no blockers.
+- Review confirmed: visible `#captureBtn` title/aria now says `Add photo`; dynamic enabled label says `Add photo (max ...)`; hidden `#captureInput` keeps `type="file" accept="image/*" capture="environment"`; no-name capture-source fallback returns `photo-*`; real listener still calls `stageFiles(files, { sid, source: "capture" })`; shared `stageFiles()` still owns blockers and the sole `/inject_file` call.
+- Proof credibility: browser/Docker evidence used synthetic file selection rather than a physical camera, which is adequate because the accepted product invariant is truthful add-photo staging while preserving the mobile capture hint, not hardware-camera invocation.
+- Decision: the staged-upload workbench has no known remaining follow-ups. Future product work should pivot off upload unless new evidence exposes a concrete upload defect.
