@@ -1,0 +1,5 @@
+backend= cc
+argv= ['/usr/local/bin/python3', '-m', 'codoxear.broker', '--cwd', '/workspace', '--', '--dangerously-skip-permissions', '--model', 'sonnet', '--effort', 'max']
+env CLAUDE_CONFIG_DIR= /home/tester/.claude
+model= sonnet
+reasoning_effort= max

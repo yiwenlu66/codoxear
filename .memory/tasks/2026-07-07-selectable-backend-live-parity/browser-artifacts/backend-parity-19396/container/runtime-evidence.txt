@@ -1,0 +1,18 @@
+HOME=/home/tester
+APPDIR=/home/tester/.local/share/codoxear
+--- claude executable ---
+sh: 1: claude: not found
+--- app dir tree ---
+[omitted: app-dir inventory included generated runtime secret filenames; contents were never captured]
+--- socks dir ---
+total 8
+drwxr-xr-x 2 tester tester 4096 Jul  7 07:41 .
+drwxr-xr-x 5 tester tester 4096 Jul  7 07:41 ..
+--- launch ledger ---
+{"agent_backend": "cc", "created_ts": 1783410079.933994, "cwd": "/workspace", "launch_id": "launch-1783410079933-781f85a0", "model": "sonnet", "model_provider": null, "preferred_auth_method": null, "reasoning_effort": "max", "requested_cwd": "/workspace", "resume_session_id": null, "service_tier": null, "spawn_nonce": "c8adc1e172fe6adc", "state": "starting", "transport": "direct", "type": "launch_attempt", "updated_ts": 1783410079.9340355, "worktree_branch": null}
+{"agent_backend": "cc", "agent_exit_status": 1, "agent_pid": 129, "broker_exit_status": 1, "broker_pid": 128, "created_ts": 1783410080.1953843, "cwd": "/workspace", "error": "claude exited with status 1 before a session log was bound", "exit_code": 1, "launch_id": "launch-1783410079933-781f85a0", "log_path": null, "model": "sonnet", "model_provider": null, "preferred_auth_method": null, "pty_tail": "bash: cannot set terminal process group (-1): Inappropriate ioctl for device\nbash: no job control in this shell\nTraceback (most recent call last):\r\n  File \u001b[35m\"<string>\"\u001b[0m, line \u001b[35m11\u001b[0m, in \u001b[35m<module>\u001b[0m\r\n    \u001b[31mos.execvpe\u001b[0m\u001b[1;31m(argv[0], argv, os.environ)\u001b[0m\r\n    \u001b[31m~~~~~~~~~~\u001b[0m\u001b[1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^\u001b[0m\r\n  File \u001b[35m\"<frozen os>\"\u001b[0m, line \u001b[35m621\u001b[0m, in \u001b[35mexecvpe\u001b[0m\r\n  File \u001b[35m\"<frozen os>\"\u001b[0m, line \u001b[35m654\u001b[0m, in \u001b[35m_execvpe\u001b[0m\r\n  File \u001b[35m\"<frozen os>\"\u001b[0m, line \u001b[35m645\u001b[0m, in \u001b[35m_execvpe\u001b[0m\r\n\u001b[1;35mFileNotFoundError\u001b[0m: \u001b[35m[Errno 2] No such file or directory: b'/usr/games/claude'\u001b[0m\r\n", "reasoning_effort": "max", "resume_session_id": null, "service_tier": null, "spawn_nonce": "c8adc1e172fe6adc", "stage": "agent_exit_before_log_bind", "state": "failed", "tmux_session": null, "tmux_window": null, "transport": null, "type": "launch_attempt", "updated_ts": 1783410080.3979015}
+{"agent_backend": "cc", "broker_pid": 128, "created_ts": 1783410079.933994, "cwd": "/workspace", "error": "broker exited early (rc=1): error: session launch failed: launch-1783410079933-781f85a0: agent_exit_before_log_bind: claude exited with status 1 before a session log was bound", "launch_id": "launch-1783410079933-781f85a0", "model": "sonnet", "model_provider": null, "preferred_auth_method": null, "reasoning_effort": "max", "requested_cwd": "/workspace", "resume_session_id": null, "service_tier": null, "spawn_nonce": "c8adc1e172fe6adc", "stage": "broker_early_exit", "state": "failed", "transport": "direct", "type": "launch_attempt", "updated_ts": 1783410080.4377143, "worktree_branch": null}
+--- processes ---
+      1       0 Ssl  python3         python3 -m codoxear.server
+--- tmux ---
+error connecting to /tmp/tmux-1000/default (No such file or directory)

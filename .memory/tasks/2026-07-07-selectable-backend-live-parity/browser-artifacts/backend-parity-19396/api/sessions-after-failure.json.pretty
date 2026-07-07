@@ -1,0 +1,129 @@
+{
+  "app_version": "4e302091f233",
+  "new_session_defaults": {
+    "backends": {
+      "cc": {
+        "agent_backend": "cc",
+        "model": null,
+        "model_provider": null,
+        "models": [
+          "sonnet",
+          "opus",
+          "fable"
+        ],
+        "preferred_auth_method": null,
+        "provider_choice": null,
+        "provider_choices": [],
+        "reasoning_effort": "medium",
+        "reasoning_efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "service_tier": null,
+        "supports_fast": false
+      },
+      "codex": {
+        "agent_backend": "codex",
+        "model": null,
+        "model_provider": "openai",
+        "model_providers": [
+          "chatgpt",
+          "openai-api"
+        ],
+        "preferred_auth_method": "apikey",
+        "provider_choice": "openai-api",
+        "provider_choices": [
+          "chatgpt",
+          "openai-api"
+        ],
+        "reasoning_effort": null,
+        "reasoning_efforts": [
+          "xhigh",
+          "high",
+          "medium",
+          "low"
+        ],
+        "service_tier": "flex",
+        "supports_fast": true
+      },
+      "pi": {
+        "agent_backend": "pi",
+        "model": null,
+        "model_provider": null,
+        "models": [],
+        "preferred_auth_method": null,
+        "provider_choice": null,
+        "provider_choices": [],
+        "reasoning_effort": "high",
+        "reasoning_efforts": [
+          "off",
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "reasoning_efforts_by_model": {},
+        "service_tier": null,
+        "supports_fast": false
+      }
+    },
+    "default_backend": "codex"
+  },
+  "recent_cwds": [],
+  "sessions": [
+    {
+      "agent_backend": "cc",
+      "alias": "",
+      "base_priority": 1.0,
+      "blocked": false,
+      "broker_pid": 128,
+      "busy": false,
+      "cwd": "/workspace",
+      "dependency_session_id": null,
+      "files": [],
+      "final_priority": 1.0,
+      "git_branch": "",
+      "launch_error": "broker exited early (rc=1): error: session launch failed: launch-1783410079933-781f85a0: agent_exit_before_log_bind: claude exited with status 1 before a session log was bound",
+      "launch_id": "launch-1783410079933-781f85a0",
+      "launch_stage": "broker_early_exit",
+      "launch_state": "failed",
+      "log_path": null,
+      "model": "sonnet",
+      "model_provider": null,
+      "owned": true,
+      "pid": null,
+      "preferred_auth_method": null,
+      "priority_offset": 0.0,
+      "provider_choice": "openai-api",
+      "queue_len": 0,
+      "reasoning_effort": "max",
+      "service_tier": null,
+      "session_id": "launch-1783410079933-781f85a0",
+      "snooze_until": null,
+      "snoozed": false,
+      "spawn_nonce": "c8adc1e172fe6adc",
+      "start_ts": 1783410079.933994,
+      "state_busy": false,
+      "submitted_user_message_count": 0,
+      "system": 0,
+      "thinking": 0,
+      "thread_id": "launch-1783410079933-781f85a0",
+      "time_priority": 1.0,
+      "tmux_session": null,
+      "tmux_window": null,
+      "token": null,
+      "tools": 0,
+      "transport": "direct",
+      "unattended_cooldown_minutes": 5,
+      "unattended_enabled": false,
+      "unattended_remaining_injections": 10,
+      "updated_ts": 1783410080.4377143
+    }
+  ],
+  "tmux_available": true,
+  "tmux_session_name": "codoxear"
+}
