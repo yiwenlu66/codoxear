@@ -1,0 +1,41 @@
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            BuildKit is currently disabled; enable it by removing the DOCKER_BUILDKIT=0
+            environment-variable.
+
+Sending build context to Docker daemon  48.42MB
+
+Step 1/9 : FROM python:3.13-slim
+ ---> 57552c7b38ce
+Step 2/9 : ENV DEBIAN_FRONTEND=noninteractive     PYTHONDONTWRITEBYTECODE=1     PYTHONUNBUFFERED=1     PIP_DISABLE_PIP_VERSION_CHECK=1
+ ---> Using cache
+ ---> 25b6f7411ca7
+Step 3/9 : RUN apt-get update     && apt-get install -y --no-install-recommends         bash         ca-certificates         curl         ffmpeg         git         lsof         nodejs         npm         procps         tmux     && rm -rf /var/lib/apt/lists/*
+ ---> Using cache
+ ---> e97de0441092
+Step 4/9 : RUN python3 -m pip install --no-cache-dir         Pillow>=9.0         py-vapid>=1.9.2         pywebpush>=2.3.0         pytest
+ ---> Using cache
+ ---> 38ffa6bd91e6
+Step 5/9 : RUN useradd -ms /bin/bash tester
+ ---> Using cache
+ ---> 9a859ed954be
+Step 6/9 : WORKDIR /workspace
+ ---> Using cache
+ ---> 443f60f948e5
+Step 7/9 : USER tester
+ ---> Using cache
+ ---> 1163593c5c9f
+Step 8/9 : ENV HOME=/home/tester     PYTHONPATH=/workspace
+ ---> Using cache
+ ---> a70379462886
+Step 9/9 : CMD ["python3", "-m", "codoxear.server"]
+ ---> Using cache
+ ---> ede17d0acfe5
+Successfully built ede17d0acfe5
+Successfully tagged codoxear-sandbox:latest
+container=codoxear-batch-blocker-gate-19380
+url=http://127.0.0.1:19380/
+root=/tmp/codoxear-batch-blocker-gate-19380
+pre_login_api_me_status=401
+post_login_sessions_status=200
+container_app_dir=/home/tester/.local/share/codoxear
+artifacts=/tmp/codoxear-batch-blocker-gate-19380/artifacts
