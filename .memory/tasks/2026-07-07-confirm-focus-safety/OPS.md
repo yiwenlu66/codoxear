@@ -1,0 +1,3 @@
+# OPS
+
+2026-07-07T17:46:00Z Initialized destructive-confirm focus safety slice from fresh theorist scout `ec79d9f9-168f-4b39-a004-cf34b2f91b85`. Observation: `focusAppConfirmInitial()` currently focuses the confirm button whenever enabled, and the document Escape handler has no Tab/Shift-Tab cycle for `#appConfirm`. Prediction: destructive flows such as reload/discard draft, delete session, queue delete, and recovery-state clear can be triggered by habitual Enter/Space immediately after the dialog opens; safe default focus and a local Tab trap are a bounded intervention that should preserve the accepted in-app confirmation invariant while strengthening keyboard behavior.
