@@ -2,6 +2,7 @@ import json
 import unittest
 import urllib.parse
 from pathlib import Path
+from unittest import mock
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 
@@ -16,6 +17,8 @@ from codoxear.rollout_chat_events import _NO_RESPONSE_TEXT
 from codoxear.rollout_events import _INTERRUPTED_TEXT
 from codoxear.rollout_log import _read_chat_history_page
 from codoxear.session_model import Session
+from codoxear import transcript_search as transcript_search_module
+from codoxear.rollout_jsonl import JsonlRecord
 from codoxear.transcript_search import casefold_match_span
 from codoxear.transcript_search import clip_search_match_text
 from codoxear.transcript_search import clip_search_text_around_query
@@ -81,6 +84,44 @@ class TestTranscriptExport(unittest.TestCase):
         self.assertTrue(truncated)
         with self.assertRaisesRegex(ValueError, "count_limit is only supported"):
             search_chat_log_bounded(path, "a", limit=1, max_line_bytes=4096, count_limit=5, order="latest")
+
+    def test_count_limited_first_order_search_stops_record_stream(self) -> None:
+        consumed = 0
+        count_limit = 5
+
+        def fake_records(_log_path, **_kwargs):
+            nonlocal consumed
+            for idx in range(1000):
+                consumed += 1
+                yield JsonlRecord(
+                    start=idx * 10,
+                    end=idx * 10 + 9,
+                    obj={
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": f"needle match {idx}"}],
+                            "phase": "final_answer",
+                        },
+                        "ts": float(idx),
+                    },
+                )
+
+        with mock.patch.object(transcript_search_module, "iter_jsonl_records_forward_bounded", fake_records):
+            count, matches, truncated = search_chat_log_bounded(
+                Path("unused.jsonl"),
+                "needle",
+                limit=2,
+                max_line_bytes=4096,
+                count_limit=count_limit,
+                order="first",
+            )
+
+        self.assertEqual(count, count_limit)
+        self.assertEqual([match.get("text") for match in matches], ["needle match 0", "needle match 1"])
+        self.assertTrue(truncated)
+        self.assertLessEqual(consumed, count_limit + 1)
 
     def test_streaming_search_marks_count_truncated_when_oversized_record_skipped(self) -> None:
         with TemporaryDirectory() as td:

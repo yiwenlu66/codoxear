@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from . import rollout_log as _rollout_log
+from .rollout_chat_events import _build_no_response_event
 
 
 TRANSCRIPT_SEARCH_MAX_LINE_BYTES = int(os.environ.get("CODEX_WEB_TRANSCRIPT_SEARCH_MAX_LINE_BYTES", str(4 * 1024 * 1024)))
@@ -99,12 +100,16 @@ def iter_jsonl_records_forward_bounded(
     *,
     max_line_bytes: int = TRANSCRIPT_SEARCH_MAX_LINE_BYTES,
     on_oversized_skip: Callable[[int, int], None] | None = None,
+    before_byte: int | None = None,
 ) -> Iterator[_rollout_log.JsonlRecord]:
     limit = max(1, int(max_line_bytes))
+    stop_before = None if before_byte is None else max(0, int(before_byte))
     with log_path.open("rb") as f:
         offset = 0
         while True:
             start = offset
+            if stop_before is not None and start >= stop_before:
+                break
             raw = f.readline(limit + 1)
             if not raw:
                 break
@@ -132,6 +137,38 @@ def iter_jsonl_records_forward_bounded(
             yield _rollout_log.JsonlRecord(start=start, end=offset, obj=obj)
 
 
+def _search_record_user_byte(obj: dict[str, Any], record_start: int) -> int | None:
+    typ = obj.get("type")
+    if typ == "event_msg":
+        payload = obj.get("payload")
+        if not isinstance(payload, dict):
+            return None
+        if payload.get("type") == "user_message" and isinstance(payload.get("message"), str) and payload["message"].strip():
+            return int(record_start)
+        return None
+    if typ == "user":
+        user_text = _rollout_log.cc_user_text(obj)
+        if isinstance(user_text, str) and user_text:
+            return int(record_start)
+    return None
+
+
+def _search_record_closes_turn(obj: dict[str, Any]) -> bool:
+    typ = obj.get("type")
+    if typ == "event_msg":
+        payload = obj.get("payload")
+        return isinstance(payload, dict) and payload.get("type") in {"task_complete", "turn_complete"}
+    if typ == "system":
+        return _rollout_log.cc_is_turn_end(obj) or _rollout_log.cc_system_api_error_is_terminal(obj)
+    return False
+
+
+def _position_search_event(event: dict[str, Any], *, record_start: int, record_end: int) -> dict[str, Any]:
+    positioned = _rollout_log._with_chat_position(event, before_byte=record_start)
+    positioned["_after_byte"] = int(record_end)
+    return positioned
+
+
 def iter_positioned_chat_events_forward(
     log_path: Path,
     *,
@@ -139,42 +176,64 @@ def iter_positioned_chat_events_forward(
     on_oversized_skip: Callable[[int, int], None] | None = None,
     before_byte: int | None = None,
 ) -> Iterator[dict[str, Any]]:
-    # Search must use the same positioned event semantics as tail/history/live:
-    # assistant dedupe plus synthetic no-response injection. We collect the
-    # bounded forward records first (the injector needs the turn-close context
-    # that arrives after the user row), then reuse the shared
-    # ``_dedupe_assistant_chat_events`` + ``_inject_no_response_events`` from
-    # rollout_log so no-response logic is not duplicated. Per-record extraction
-    # keeps the historical try/except robustness against malformed payloads
-    # (which ``_extract_positioned_chat_events`` does not tolerate).
+    # Search must project the same visible rows as tail/history/live without
+    # first building whole-log record and event lists. The two batch transforms
+    # used historically are stream-local: adjacent assistant dedupe is one
+    # previous assistant key (reset on user), and no-response injection is the
+    # currently open user turn plus whether a deduped assistant row has been
+    # emitted since that user. Close records are processed after their own
+    # visible event is emitted so terminal error rows suppress generic
+    # no-response injection exactly as the batch injector did.
     stop_before = None if before_byte is None else max(0, int(before_byte))
-    records: list[_rollout_log.JsonlRecord] = []
-    events: list[dict[str, Any]] = []
     cc_pending_tool_ids: set[str] = set()
-    for record in iter_jsonl_records_forward_bounded(log_path, max_line_bytes=max_line_bytes, on_oversized_skip=on_oversized_skip):
+    last_assistant_key: tuple[str, str] | None = None
+    open_user_byte: int | None = None
+    open_turn_has_assistant = False
+
+    for record in iter_jsonl_records_forward_bounded(
+        log_path,
+        max_line_bytes=max_line_bytes,
+        on_oversized_skip=on_oversized_skip,
+        before_byte=stop_before,
+    ):
         if stop_before is not None and record.start >= stop_before:
             break
-        records.append(record)
+        emitted_assistant = False
         try:
-            event = _rollout_log._single_chat_event(record.obj, cc_pending_tool_ids=cc_pending_tool_ids)
+            raw_event = _rollout_log._single_chat_event(record.obj, cc_pending_tool_ids=cc_pending_tool_ids)
         except Exception:
-            continue
-        if event is None:
-            continue
-        events.append(_rollout_log._with_chat_position(event, before_byte=record.start))
-    events = _rollout_log._dedupe_assistant_chat_events(events)
-    events = _rollout_log._inject_no_response_events(records, events)
-    # ``_attach_search_load_cursors`` derives ``history_cursor`` from
-    # ``_before_byte`` and ``load_cursor`` from ``_after_byte``. Regular events
-    # map to their own record end; injected no-response rows carry
-    # ``_before_byte = close_byte`` so they resolve to the closing record's end,
-    # which is the byte window that history pagination re-injects the row into.
-    start_to_end = {record.start: record.end for record in records}
-    for event in events:
-        event_before = event.get("_before_byte")
-        if isinstance(event_before, int) and event_before in start_to_end:
-            event["_after_byte"] = int(start_to_end[event_before])
-        yield event
+            raw_event = None
+        if raw_event is not None:
+            role = raw_event.get("role")
+            if role == "user":
+                last_assistant_key = None
+                yield _position_search_event(raw_event, record_start=record.start, record_end=record.end)
+            elif role == "assistant":
+                key = _rollout_log._chat_assistant_dedupe_key(raw_event)
+                if key is None or key != last_assistant_key:
+                    last_assistant_key = key
+                    emitted_assistant = True
+                    yield _position_search_event(raw_event, record_start=record.start, record_end=record.end)
+            else:
+                yield _position_search_event(raw_event, record_start=record.start, record_end=record.end)
+
+        user_byte = _search_record_user_byte(record.obj, record.start)
+        if user_byte is not None:
+            open_user_byte = user_byte
+            open_turn_has_assistant = False
+        elif emitted_assistant and open_user_byte is not None:
+            open_turn_has_assistant = True
+
+        if _search_record_closes_turn(record.obj):
+            if open_user_byte is not None and not open_turn_has_assistant:
+                no_response = _position_search_event(
+                    _build_no_response_event(record.obj),
+                    record_start=record.start,
+                    record_end=record.end,
+                )
+                yield no_response
+            open_user_byte = None
+            open_turn_has_assistant = False
 
 
 def search_chat_log_bounded(
