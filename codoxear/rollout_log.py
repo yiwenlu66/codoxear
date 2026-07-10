@@ -540,6 +540,8 @@ def _extract_chat_events(
     turn_aborted = False
     tool_names: set[str] = set()
     last_tool: str | None = None
+    rejected_ask_users: dict[str, dict[str, Any]] = {}
+    emitted_rejected_ask_users: set[str] = set()
     def event_ts(o: dict[str, Any]) -> float | None:
         ts = o.get("ts")
         if isinstance(ts, (int, float)):
@@ -558,6 +560,17 @@ def _extract_chat_events(
         payload = json.dumps({"class": message_class, "text": " ".join(text.split()), "ts_ms": ts_ms}, ensure_ascii=False, sort_keys=True)
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
+    # Triage rule for a missing AskUserQuestion card: first match the tool_use
+    # id against a Claude tool_result InputValidationError. A malformed prompt
+    # is rejected by Claude before it becomes answerable; it is not a dropped
+    # codoxear event. Pre-scanning lets a batch replace that prompt with one
+    # explicit, non-interactive rejection event.
+    for obj in objs:
+        for rejected in _claude_rejected_ask_user_events(obj, event_ts(obj)):
+            tool_id = rejected.get("tool_use_id")
+            if isinstance(tool_id, str):
+                rejected_ask_users[tool_id] = rejected
+
     for obj in objs:
         typ = obj.get("type")
         # Claude user records
@@ -569,6 +582,11 @@ def _extract_chat_events(
                 ev_u = {"role": "user", "text": user_text}
                 if ets is not None: ev_u["ts"] = ets
                 events.append(ev_u)
+            for rejected in _claude_rejected_ask_user_events(obj, event_ts(obj)):
+                tool_id = rejected.get("tool_use_id")
+                if isinstance(tool_id, str) and tool_id not in emitted_rejected_ask_users:
+                    events.append(rejected)
+                    emitted_rejected_ask_users.add(tool_id)
             continue
 
         # Claude assistant records
@@ -591,9 +609,18 @@ def _extract_chat_events(
                     tool_input = part.get("input", {})
                     if tool_name == "AskUserQuestion" and isinstance(tool_input.get("questions"), list):
                         ets2 = event_ts(obj)
-                        ev_q = {"role": "assistant", "interactive": "ask_user_question", "tool_use_id": tool_id, "questions": _claude_ask_user_questions(tool_input["questions"])}
-                        if ets2 is not None: ev_q["ts"] = ets2
-                        events.append(ev_q)
+                        if isinstance(tool_id, str) and tool_id in rejected_ask_users:
+                            rejected = dict(rejected_ask_users[tool_id])
+                            if ets2 is not None:
+                                rejected["ts"] = ets2
+                            events.append(rejected)
+                            emitted_rejected_ask_users.add(tool_id)
+                        else:
+                            questions = _claude_ask_user_questions(tool_input["questions"])
+                            if questions:
+                                ev_q = {"role": "assistant", "interactive": "ask_user_question", "tool_use_id": tool_id, "questions": questions}
+                                if ets2 is not None: ev_q["ts"] = ets2
+                                events.append(ev_q)
                     elif tool_name == "ExitPlanMode":
                         ets2 = event_ts(obj)
                         ev_p = {"role": "assistant", "interactive": "exit_plan_mode", "tool_use_id": tool_id}
@@ -1162,6 +1189,50 @@ def _pi_ask_user_event_from_tool_call(part: dict[str, Any], ts: float | None) ->
     return ev
 
 
+def _claude_tool_result_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if not isinstance(value, list):
+        return ""
+    parts: list[str] = []
+    for item in value:
+        if isinstance(item, dict) and item.get("type") == "text" and isinstance(item.get("text"), str):
+            parts.append(item["text"])
+    return "\n".join(parts)
+
+
+def _claude_rejected_ask_user_events(obj: dict[str, Any], ts: float | None) -> list[dict[str, Any]]:
+    if obj.get("type") != "user":
+        return []
+    message = obj.get("message")
+    if not isinstance(message, dict) or not isinstance(message.get("content"), list):
+        return []
+    out: list[dict[str, Any]] = []
+    for part in message["content"]:
+        if not isinstance(part, dict) or part.get("type") != "tool_result":
+            continue
+        tool_id = _clean_text(part.get("tool_use_id"))
+        text = _claude_tool_result_text(part.get("content"))
+        if not tool_id or "InputValidationError" not in text or "AskUserQuestion" not in text:
+            continue
+        if re.search(r"questions\[\d+\]\.question", text) is None:
+            continue
+        lowered = text.lower()
+        if "missing" not in lowered and "received undefined" not in lowered:
+            continue
+        ev: dict[str, Any] = {
+            "role": "assistant",
+            "interactive": "ask_user_rejected",
+            "tool_use_id": tool_id,
+            "reason": "missing_question",
+            "message": "Prompt rejected by the agent — missing question text.",
+        }
+        if ts is not None:
+            ev["ts"] = ts
+        out.append(ev)
+    return out
+
+
 def _claude_ask_user_questions(questions: Any) -> list[dict[str, Any]]:
     if not isinstance(questions, list):
         return []
@@ -1169,16 +1240,20 @@ def _claude_ask_user_questions(questions: Any) -> list[dict[str, Any]]:
     for raw in questions:
         if not isinstance(raw, dict):
             continue
-        question = _clean_text(raw.get("question"))
+        header = _clean_text(raw.get("header"))
+        options = _normalize_ask_user_options(raw.get("options"))
+        # Claude's schema requires `question`. Keep a header fallback only when
+        # the object still has answer choices; a matching validation-error
+        # tool_result is separately surfaced as a rejected prompt.
+        question = _clean_text(raw.get("question")) or (header if options else None)
         if not question:
             continue
         q: dict[str, Any] = {
             "question": question,
-            "options": _normalize_ask_user_options(raw.get("options")),
+            "options": options,
             "backend": "claude",
             "allowMultiple": _clean_bool(raw.get("multiSelect"), False),
         }
-        header = _clean_text(raw.get("header"))
         if header:
             q["header"] = header
         out.append(q)

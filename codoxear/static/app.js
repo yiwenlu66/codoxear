@@ -2364,6 +2364,15 @@
             if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) out.ts = ev.ts;
             return out;
           }
+          if (ev && ev.role === "assistant" && (ev.interactive === "ask_user_question" || ev.interactive === "ask_user_rejected")) {
+            const out = { role: "assistant", interactive: ev.interactive };
+            if (typeof ev.tool_use_id === "string") out.tool_use_id = ev.tool_use_id;
+            if (Array.isArray(ev.questions)) out.questions = ev.questions;
+            if (typeof ev.reason === "string") out.reason = ev.reason;
+            if (typeof ev.message === "string") out.message = ev.message;
+            if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) out.ts = ev.ts;
+            return out;
+          }
           if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return null;
           if (typeof ev.text !== "string" || !ev.text.trim()) return null;
           const out = { role: ev.role, text: ev.text };
@@ -2618,6 +2627,29 @@
         }
 
         function makeRow(ev, { ts, pending, live }) {
+          if (ev && ev.interactive === "ask_user_rejected") {
+            const row = el("div", { class: "msg-row agent-error ask-user-rejected" });
+            row.dataset.role = "assistant";
+            if (typeof ev.tool_use_id === "string") row.dataset.toolUseId = ev.tool_use_id;
+            row.dataset.interactive = "ask_user_rejected";
+            if (typeof ts === "number" && Number.isFinite(ts)) row.dataset.ts = String(ts);
+            const card = el("div", { class: "event-card event-error ask-user-rejected-notice" });
+            const headerLine = el("div", { class: "event-error-header" });
+            headerLine.appendChild(el("span", { class: "event-error-source", text: "Claude" }));
+            headerLine.appendChild(el("span", { class: "event-error-type", text: "ask_user_rejected" }));
+            if (typeof ts === "number" && Number.isFinite(ts)) {
+              const dt = new Date(ts * 1000);
+              const tsText = Number.isFinite(dt.getTime()) ? dt.toLocaleString() : "";
+              if (tsText) headerLine.appendChild(el("span", { class: "event-error-ts", text: tsText }));
+            }
+            card.appendChild(headerLine);
+            card.appendChild(el("div", {
+              class: "event-error-body",
+              text: ev.message || "Prompt rejected by the agent — missing question text.",
+            }));
+            row.appendChild(card);
+            return { row, bubble: card };
+          }
           if (ev && ev.class === "agent_error") {
             const row = el("div", { class: "msg-row agent-error" });
             row.dataset.role = "system";
@@ -2650,13 +2682,15 @@
           const role = ev.role === "user" ? "user" : "assistant";
           const row = el("div", { class: `msg-row ${role}` });
           row.dataset.role = role;
+          if (typeof ev.tool_use_id === "string") row.dataset.toolUseId = ev.tool_use_id;
+          if (typeof ev.interactive === "string") row.dataset.interactive = ev.interactive;
           if (typeof ts === "number" && Number.isFinite(ts)) row.dataset.ts = String(ts);
 
           const bubble = el("div", { class: role === "user" ? "msg user" : "msg assistant" });
           // Interactive prompts (AskUserQuestion / ExitPlanMode)
           if (ev.interactive === "ask_user_question" && Array.isArray(ev.questions)) {
             const card = el("div", { class: "interactive-prompt" });
-            const questions = ev.questions.filter((q) => q && q.question);
+            const questions = ev.questions.filter((q) => q && (q.question || q.header || (Array.isArray(q.options) && q.options.length)));
             let answeredCount = 0;
             const questionGroups = [];
             // Prompt-level cursor model. The Claude TUI tracks one (qIdx, optIdx)
@@ -2681,8 +2715,9 @@
             questions.forEach((q, qIdx) => {
               const group = el("div", { class: "interactive-question-group" + (qIdx > 0 ? " pending" : "") });
               const qHeaderLabel = typeof q.header === "string" ? q.header.trim() : "";
-              if (qHeaderLabel) group.appendChild(el("div", { class: "interactive-prompt-tag", text: qHeaderLabel }));
-              const qHeader = el("div", { class: "interactive-prompt-header", text: q.question });
+              const qDisplayText = q.question || qHeaderLabel || "(no question text)";
+              if (qHeaderLabel && qHeaderLabel !== qDisplayText) group.appendChild(el("div", { class: "interactive-prompt-tag", text: qHeaderLabel }));
+              const qHeader = el("div", { class: "interactive-prompt-header", text: qDisplayText });
               group.appendChild(qHeader);
               const qContext = typeof q.context === "string" ? q.context.trim() : "";
               if (qContext) group.appendChild(el("div", { class: "interactive-prompt-context", text: qContext }));
@@ -3434,10 +3469,42 @@
           return sessions;
         }
 
+        function askUserToolId(ev) {
+          return ev && typeof ev.tool_use_id === "string" ? ev.tool_use_id : "";
+        }
+
+        function hasAskUserRejectedRow(toolUseId) {
+          if (!toolUseId) return false;
+          return Array.from(chatInner.querySelectorAll('.msg-row[data-interactive="ask_user_rejected"]'))
+            .some((row) => row.dataset.toolUseId === toolUseId);
+        }
+
+        function removeSupersededAskUserPrompt(toolUseId) {
+          if (!toolUseId) return;
+          for (const row of Array.from(chatInner.querySelectorAll('.msg-row[data-interactive="ask_user_question"]'))) {
+            if (row.dataset.toolUseId === toolUseId) row.remove();
+          }
+        }
+
+        function collapseRejectedAskUserEvents(events) {
+          const rejectedIds = new Set();
+          for (const ev of events || []) {
+            if (ev && ev.interactive === "ask_user_rejected") {
+              const toolUseId = askUserToolId(ev);
+              if (toolUseId) rejectedIds.add(toolUseId);
+            }
+          }
+          return (events || []).filter((ev) => {
+            return !(ev && ev.interactive === "ask_user_question" && rejectedIds.has(askUserToolId(ev)));
+          });
+        }
+
         function appendEvent(ev) {
           if (!ev) return;
           const isAgentError = ev.class === "agent_error";
           if (!isAgentError && ev.role !== "user" && ev.role !== "assistant") return;
+          if (ev.interactive === "ask_user_rejected") removeSupersededAskUserPrompt(askUserToolId(ev));
+          if (ev.interactive === "ask_user_question" && hasAskUserRejectedRow(askUserToolId(ev))) return;
           if (!isAgentError && consumePendingUserIfMatches(ev)) return;
           if (isDuplicateEvent(ev)) return;
 
@@ -3460,7 +3527,7 @@
         function renderTranscript(events, { preserveScroll = false } = {}) {
           const msgs = [];
           const seen = new Set();
-          for (const ev of events || []) {
+          for (const ev of collapseRejectedAskUserEvents(events || [])) {
             if (!ev) continue;
             const isAgentError = ev.class === "agent_error";
             if (!isAgentError && ev.role !== "user" && ev.role !== "assistant") continue;
@@ -3490,9 +3557,11 @@
 
         function prependOlderEvents(allEvents, { preserveViewport = false } = {}) {
           const msgs = [];
-          for (const ev of allEvents) {
+          for (const ev of collapseRejectedAskUserEvents(allEvents)) {
             if (!ev) continue;
             if (ev.class !== "agent_error" && ev.role !== "user" && ev.role !== "assistant") continue;
+            if (ev.interactive === "ask_user_rejected") removeSupersededAskUserPrompt(askUserToolId(ev));
+            if (ev.interactive === "ask_user_question" && hasAskUserRejectedRow(askUserToolId(ev))) continue;
             msgs.push(ev);
           }
           if (!msgs.length) return;
