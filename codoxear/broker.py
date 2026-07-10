@@ -38,6 +38,10 @@ from codoxear.claude_log import claude_assistant_tool_use_count
 from codoxear.claude_log import claude_is_final_answer
 from codoxear.claude_log import claude_is_turn_end
 from codoxear.claude_log import claude_user_text
+from codoxear.claude_log import claude_agent_error
+from codoxear.claude_log import claude_agent_error_is_terminal
+from codoxear.pi_log import pi_agent_error
+from codoxear.rollout_log import _codex_agent_error as _codex_agent_error
 from codoxear import pty_util as _pty_util
 from codoxear.util import default_app_dir as _default_app_dir
 from codoxear.util import find_new_session_log as _find_new_session_log
@@ -550,6 +554,26 @@ def _close_turn_state(st: "State") -> None:
 
 def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float) -> None:
     typ = obj.get("type")
+
+    # Cross-backend agent error handling.
+    # Claude auto-retries transient upstream errors (api_error with retryInMs);
+    # those are NOT turn-terminal — clearing busy on them makes the UI flap.
+    # Only a terminal Claude error (no scheduled retry / retries exhausted)
+    # closes the turn. Pi/Codex error records have no retry semantics here and
+    # remain turn-terminal as before.
+    claude_err = claude_agent_error(obj)
+    if claude_err is not None:
+        if claude_agent_error_is_terminal(obj):
+            _close_turn_state(st)
+        else:
+            # Recoverable retry: keep the turn open, count it as activity so the
+            # idle fallback does not prematurely clear busy mid-retry.
+            st.busy = True
+            st.last_turn_activity_ts = now_ts
+        return
+    if pi_agent_error(obj) is not None or _codex_agent_error(obj) is not None:
+        _close_turn_state(st)
+        return
 
     # Claude: type="user"
     if typ == "user" and normalize_agent_backend(AGENT_BACKEND) == "claude":

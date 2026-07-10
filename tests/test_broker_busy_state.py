@@ -445,5 +445,148 @@ class TestBrokerBusyState(unittest.TestCase):
         self.assertEqual(st.last_interrupt_hint_ts, 10.0)
 
 
+class ClaudeAskUserBusyStateTests(unittest.TestCase):
+    """An AskUserQuestion tool_use must keep busy=True until the matching
+    tool_result arrives, regardless of how many questions are in the prompt
+    or whether the broker-169813-shape "skipped" wording appears in the
+    tool_result content. Coverage matters because the codoxear frontend submit
+    fix on the JS side has no way to clear busy on its own; the broker is the
+    single authority for that flag, and the JS fix only matters if the broker
+    correctly transitions on the resulting Claude records.
+    """
+
+    def _claude_state(self) -> State:
+        st = _state()
+        st.busy = True
+        st.turn_open = True
+        st.last_turn_activity_ts = 100.0
+        return st
+
+    def _ask_user_tool_use(self, n_questions: int, tool_use_id: str = "tu-x") -> dict:
+        questions = [
+            {
+                "header": f"H{i}",
+                "question": f"Q{i}",
+                "options": [{"label": "a"}, {"label": "b"}, {"label": "c"}],
+                "multiSelect": False,
+            }
+            for i in range(n_questions)
+        ]
+        return {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": tool_use_id,
+                        "name": "AskUserQuestion",
+                        "input": {"questions": questions},
+                    }
+                ],
+                "stop_reason": "tool_use",
+            },
+        }
+
+    def _tool_result_user(self, tool_use_id: str, content_text: str) -> dict:
+        return {
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_id,
+                        "content": content_text,
+                    }
+                ],
+            },
+        }
+
+    def _final_assistant_text(self, text: str) -> dict:
+        return {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": text}],
+                "stop_reason": "end_turn",
+            },
+        }
+
+    def test_ask_user_tool_result_clears_busy_for_multi_question_prompt(self) -> None:
+        from unittest.mock import patch
+
+        st = self._claude_state()
+        tu_id = "tu-multi"
+        with patch("codoxear.broker.AGENT_BACKEND", "claude"):
+            # Step 1: assistant emits AskUserQuestion tool_use with 3 questions.
+            # Busy must stay true (a tool_use does not close a turn).
+            _apply_rollout_obj_to_state(st, self._ask_user_tool_use(3, tu_id), now_ts=110.0)
+            self.assertTrue(st.busy)
+            self.assertTrue(st.turn_open)
+            self.assertFalse(st.turn_has_completion_candidate)
+
+            # Step 2: tool_result lands. By itself it does not clear busy
+            # (the agent will follow up); but it must not corrupt state.
+            _apply_rollout_obj_to_state(
+                st,
+                self._tool_result_user(
+                    tu_id,
+                    'Your questions have been answered: "Q0"="a", "Q1"="b", "Q2"="c". '
+                    "You can now continue with these answers in mind.",
+                ),
+                now_ts=111.0,
+            )
+            self.assertTrue(st.busy)
+            self.assertTrue(st.turn_open)
+
+            # Step 3: assistant final text + end_turn closes the turn cleanly.
+            _apply_rollout_obj_to_state(
+                st,
+                self._final_assistant_text("Got it - a, b, c."),
+                now_ts=112.0,
+            )
+            self.assertFalse(st.busy)
+            self.assertFalse(st.turn_open)
+            self.assertFalse(st.turn_has_completion_candidate)
+
+    def test_ask_user_tool_result_clears_busy_with_skipped_answers(self) -> None:
+        """The broker-169813 failure shape: the user answered only one of N
+        questions, so the tool_result text contains "skipped". This is the
+        exact pathology the codoxear frontend was producing before the cursor
+        fix; the broker must still transition cleanly so the UI is at least
+        not stuck on "working" after such a partial answer.
+        """
+        from unittest.mock import patch
+
+        st = self._claude_state()
+        tu_id = "tu-skipped"
+        with patch("codoxear.broker.AGENT_BACKEND", "claude"):
+            _apply_rollout_obj_to_state(st, self._ask_user_tool_use(4, tu_id), now_ts=200.0)
+            self.assertTrue(st.busy)
+
+            # Real broker-169813 wording (truncated): partial answer + skipped notice.
+            partial_content = (
+                'Only the deployment question was answered. The other three were skipped.'
+            )
+            _apply_rollout_obj_to_state(
+                st,
+                self._tool_result_user(tu_id, partial_content),
+                now_ts=201.0,
+            )
+            # tool_result alone keeps the turn open (agent will follow up).
+            self.assertTrue(st.busy)
+            self.assertTrue(st.turn_open)
+
+            # The agent then either re-asks or ends. Closing path:
+            _apply_rollout_obj_to_state(
+                st,
+                self._final_assistant_text("Recorded what you answered."),
+                now_ts=202.0,
+            )
+            self.assertFalse(st.busy)
+            self.assertFalse(st.turn_open)
+
+
 if __name__ == "__main__":
     unittest.main()

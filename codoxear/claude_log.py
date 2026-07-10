@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -233,6 +234,74 @@ def claude_is_final_answer(obj: dict[str, Any]) -> bool:
     if claude_assistant_tool_use_count(obj) > 0:
         return False
     return True
+
+
+def claude_agent_error(obj: dict[str, Any]) -> dict[str, Any] | None:
+    if obj.get("type") != "system" or obj.get("subtype") != "api_error":
+        return None
+    err = obj.get("error")
+    if not isinstance(err, dict):
+        return None
+    status = err.get("status")
+    inner = err.get("error")
+    message_text: str | None = None
+    type_text: str | None = None
+    while isinstance(inner, dict):
+        msg = inner.get("message")
+        if isinstance(msg, str) and msg.strip():
+            message_text = msg.strip()
+        t = inner.get("type")
+        if isinstance(t, str) and t.strip():
+            type_text = t.strip()
+        nxt = inner.get("error")
+        if not isinstance(nxt, dict):
+            break
+        inner = nxt
+    if not message_text:
+        message_text = str(err.get("message") or "").strip() or "Claude API error"
+    if not type_text:
+        outer_t = err.get("type")
+        type_text = str(outer_t).strip() if isinstance(outer_t, str) and outer_t.strip() else "api_error"
+    label = f"api_error_{int(status)}" if isinstance(status, int) else type_text
+    return {"type": label, "message": message_text}
+
+
+def claude_agent_error_is_terminal(obj: dict[str, Any]) -> bool:
+    """True when a Claude api_error record represents a turn-terminal failure.
+
+    The Claude CLI auto-retries transient upstream errors and records each
+    attempt as an api_error with `retryInMs` set and `retryAttempt < maxRetries`.
+    Those are NOT terminal: the CLI keeps working, so clearing busy on them makes
+    the UI flap between "working" and idle.
+
+    Treat an error as non-terminal ONLY when there is positive evidence that a
+    retry is genuinely pending: a valid scheduled `retryInMs > 0` AND integer
+    `retryAttempt < maxRetries`. Any other shape (no retry scheduled, retries
+    exhausted, or malformed/missing counters) is terminal. Defaulting malformed
+    records to terminal avoids a stuck-busy UI when a retry cannot be confirmed.
+    """
+    if claude_agent_error(obj) is None:
+        return False
+    retry_in_ms = obj.get("retryInMs")
+    if (
+        isinstance(retry_in_ms, bool)
+        or not isinstance(retry_in_ms, (int, float))
+        or not math.isfinite(retry_in_ms)
+        or retry_in_ms <= 0
+    ):
+        return True
+    attempt = obj.get("retryAttempt")
+    max_retries = obj.get("maxRetries")
+    if (
+        not isinstance(attempt, bool)
+        and not isinstance(max_retries, bool)
+        and isinstance(attempt, int)
+        and isinstance(max_retries, int)
+        and attempt < max_retries
+    ):
+        return False
+    return True
+
 
 
 def claude_token_update(obj: dict[str, Any]) -> dict[str, Any] | None:

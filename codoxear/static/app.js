@@ -1337,6 +1337,10 @@
           tts_enabled_for_final_response: true,
           tts_base_url: "https://api.openai.com/v1",
           tts_api_key: "",
+          bark_enabled: false,
+          bark_endpoint: "https://api.day.app",
+          bark_token: "",
+          bark_base_url: "",
           audio: { queue_depth: 0, segment_count: 0, last_error: "", stream_url: "/api/audio/live.m3u8" },
           notifications: { enabled_devices: 0, total_devices: 0, vapid_public_key: "" },
         };
@@ -1948,6 +1952,10 @@
         const voiceBaseUrlInput = el("input", { id: "voiceBaseUrlInput", type: "text", autocomplete: "off", spellcheck: "false" });
         const voiceApiKeyInput = el("input", { id: "voiceApiKeyInput", type: "password", autocomplete: "off", spellcheck: "false" });
         const narrationSettingToggle = el("input", { id: "narrationSettingToggle", type: "checkbox" });
+        const barkEnabledToggle = el("input", { id: "barkEnabledToggle", type: "checkbox" });
+        const barkEndpointInput = el("input", { id: "barkEndpointInput", type: "text", autocomplete: "off", spellcheck: "false", placeholder: "https://api.day.app" });
+        const barkTokenInput = el("input", { id: "barkTokenInput", type: "password", autocomplete: "off", spellcheck: "false" });
+        const barkBaseUrlInput = el("input", { id: "barkBaseUrlInput", type: "text", autocomplete: "off", spellcheck: "false", placeholder: "http://192.168.1.10:13780" });
         const voiceSettingsViewer = el("dialog", { class: "formViewer formDialog", id: "voiceSettingsViewer", "aria-label": "Settings" }, [
           el("div", { class: "queueHeader" }, [
             el("div", { class: "title", text: "Settings" }),
@@ -1969,6 +1977,27 @@
                 narrationSettingToggle,
                 el("span", { text: "Announce narration messages" }),
               ]),
+            ]),
+            el("div", { class: "field" }, [
+              el("label", { class: "voiceToggleRow" }, [
+                barkEnabledToggle,
+                el("span", { text: "Send Bark mobile notifications (HTTP-friendly)" }),
+              ]),
+            ]),
+            el("label", { class: "field" }, [
+              el("span", { class: "fieldLabel", text: "Bark endpoint" }),
+              barkEndpointInput,
+              el("span", { class: "fieldHint", text: "Default https://api.day.app. Use a self-hosted Bark server if you have one." }),
+            ]),
+            el("label", { class: "field" }, [
+              el("span", { class: "fieldLabel", text: "Bark device token" }),
+              barkTokenInput,
+              el("span", { class: "fieldHint", text: "From the Bark iOS app. Required to deliver notifications." }),
+            ]),
+            el("label", { class: "field" }, [
+              el("span", { class: "fieldLabel", text: "Bark deep-link base URL" }),
+              barkBaseUrlInput,
+              el("span", { class: "fieldHint", text: "Phone-reachable Codoxear URL (e.g. http://192.168.1.10:13780). Tapping a Bark notification opens the right session. Leave empty to open Bark only." }),
             ]),
           ]),
           el("div", { class: "formActions" }, [
@@ -2327,6 +2356,23 @@
         }
 
         function normalizeTailEvent(ev) {
+          if (ev && ev.class === "agent_error") {
+            const out = { role: "system", class: "agent_error" };
+            if (typeof ev.source === "string") out.source = ev.source;
+            if (typeof ev.type === "string") out.type = ev.type;
+            if (typeof ev.message === "string") out.message = ev.message;
+            if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) out.ts = ev.ts;
+            return out;
+          }
+          if (ev && ev.role === "assistant" && (ev.interactive === "ask_user_question" || ev.interactive === "ask_user_rejected")) {
+            const out = { role: "assistant", interactive: ev.interactive };
+            if (typeof ev.tool_use_id === "string") out.tool_use_id = ev.tool_use_id;
+            if (Array.isArray(ev.questions)) out.questions = ev.questions;
+            if (typeof ev.reason === "string") out.reason = ev.reason;
+            if (typeof ev.message === "string") out.message = ev.message;
+            if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) out.ts = ev.ts;
+            return out;
+          }
           if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return null;
           if (typeof ev.text !== "string" || !ev.text.trim()) return null;
           const out = { role: ev.role, text: ev.text };
@@ -2580,22 +2626,98 @@
           for (const row of rows.slice(0, removable)) row.remove();
         }
 
-        function makeRow(ev, { ts, pending }) {
+        function makeRow(ev, { ts, pending, live }) {
+          if (ev && ev.interactive === "ask_user_rejected") {
+            const row = el("div", { class: "msg-row agent-error ask-user-rejected" });
+            row.dataset.role = "assistant";
+            if (typeof ev.tool_use_id === "string") row.dataset.toolUseId = ev.tool_use_id;
+            row.dataset.interactive = "ask_user_rejected";
+            if (typeof ts === "number" && Number.isFinite(ts)) row.dataset.ts = String(ts);
+            const card = el("div", { class: "event-card event-error ask-user-rejected-notice" });
+            const headerLine = el("div", { class: "event-error-header" });
+            headerLine.appendChild(el("span", { class: "event-error-source", text: "Claude" }));
+            headerLine.appendChild(el("span", { class: "event-error-type", text: "ask_user_rejected" }));
+            if (typeof ts === "number" && Number.isFinite(ts)) {
+              const dt = new Date(ts * 1000);
+              const tsText = Number.isFinite(dt.getTime()) ? dt.toLocaleString() : "";
+              if (tsText) headerLine.appendChild(el("span", { class: "event-error-ts", text: tsText }));
+            }
+            card.appendChild(headerLine);
+            card.appendChild(el("div", {
+              class: "event-error-body",
+              text: ev.message || "Prompt rejected by the agent — missing question text.",
+            }));
+            row.appendChild(card);
+            return { row, bubble: card };
+          }
+          if (ev && ev.class === "agent_error") {
+            const row = el("div", { class: "msg-row agent-error" });
+            row.dataset.role = "system";
+            if (typeof ts === "number" && Number.isFinite(ts)) row.dataset.ts = String(ts);
+            // role="alert" is an assertive live region: announce ONLY a freshly
+            // appended error. Historical cards (session load / scrollback) must
+            // not be assertive, or a screen reader fires a burst of stale errors
+            // at once. They still read in normal document order and carry the
+            // red border + source/type text, so the error is not color-only.
+            const cardAttrs = { class: "event-card event-error" };
+            if (live) cardAttrs.role = "alert";
+            const card = el("div", cardAttrs);
+            const headerLine = el("div", { class: "event-error-header" });
+            const sourceText = ev.source ? String(ev.source) : "agent";
+            const typeText = ev.type ? String(ev.type) : "error";
+            headerLine.appendChild(el("span", { class: "event-error-source", text: sourceText }));
+            headerLine.appendChild(el("span", { class: "event-error-type", text: typeText }));
+            if (typeof ts === "number" && Number.isFinite(ts)) {
+              const dt = new Date(ts * 1000);
+              const tsText = Number.isFinite(dt.getTime()) ? dt.toLocaleString() : "";
+              if (tsText) headerLine.appendChild(el("span", { class: "event-error-ts", text: tsText }));
+            }
+            card.appendChild(headerLine);
+            const body = el("div", { class: "event-error-body" });
+            body.textContent = ev.message ? String(ev.message) : "";
+            card.appendChild(body);
+            row.appendChild(card);
+            return { row, bubble: card };
+          }
           const role = ev.role === "user" ? "user" : "assistant";
           const row = el("div", { class: `msg-row ${role}` });
           row.dataset.role = role;
+          if (typeof ev.tool_use_id === "string") row.dataset.toolUseId = ev.tool_use_id;
+          if (typeof ev.interactive === "string") row.dataset.interactive = ev.interactive;
           if (typeof ts === "number" && Number.isFinite(ts)) row.dataset.ts = String(ts);
 
           const bubble = el("div", { class: role === "user" ? "msg user" : "msg assistant" });
           // Interactive prompts (AskUserQuestion / ExitPlanMode)
           if (ev.interactive === "ask_user_question" && Array.isArray(ev.questions)) {
             const card = el("div", { class: "interactive-prompt" });
-            const questions = ev.questions.filter((q) => q && q.question);
+            const questions = ev.questions.filter((q) => q && (q.question || q.header || (Array.isArray(q.options) && q.options.length)));
             let answeredCount = 0;
             const questionGroups = [];
+            // Prompt-level cursor model. The Claude TUI tracks one (qIdx, optIdx)
+            // pair across the whole AskUserQuestion event. Per-click handlers
+            // compute their move as a delta against this shared state, persist
+            // the new position on the DOM card so a transcript re-render does
+            // not desync the model, and reset opt to 0 after a non-final answer
+            // because Claude auto-advances to the next question's option 0.
+            // See design.md "Confirmed TUI Protocol" F3-F8 for the full protocol.
+            const readPromptCursorOpt = () => {
+              const v = parseInt(card.dataset.cursorOpt || "0", 10);
+              return Number.isFinite(v) ? v : 0;
+            };
+            const writePromptCursorOpt = (v) => { card.dataset.cursorOpt = String(v | 0); };
+            writePromptCursorOpt(0);
+            const markPromptSubmitted = () => {
+              card.classList.add("submitted");
+              for (const b of card.querySelectorAll(".interactive-option-btn")) b.disabled = true;
+              for (const b of card.querySelectorAll(".interactive-confirm-btn")) b.disabled = true;
+              for (const g of card.querySelectorAll(".interactive-question-group.pending")) g.classList.remove("pending");
+            };
             questions.forEach((q, qIdx) => {
               const group = el("div", { class: "interactive-question-group" + (qIdx > 0 ? " pending" : "") });
-              const qHeader = el("div", { class: "interactive-prompt-header", text: q.question });
+              const qHeaderLabel = typeof q.header === "string" ? q.header.trim() : "";
+              const qDisplayText = q.question || qHeaderLabel || "(no question text)";
+              if (qHeaderLabel && qHeaderLabel !== qDisplayText) group.appendChild(el("div", { class: "interactive-prompt-tag", text: qHeaderLabel }));
+              const qHeader = el("div", { class: "interactive-prompt-header", text: qDisplayText });
               group.appendChild(qHeader);
               const qContext = typeof q.context === "string" ? q.context.trim() : "";
               if (qContext) group.appendChild(el("div", { class: "interactive-prompt-context", text: qContext }));
@@ -2613,6 +2735,110 @@
               if (isPiAsk && options.length && allowFreeform) noteParts.push("Custom freeform answers are not supported here; choose a listed option or answer in the terminal.");
               if (isPiAsk && options.length && allowComment && !allowMultiple) noteParts.push("Optional comments are not supported here; choosing an option submits it without a comment.");
               if (noteParts.length) group.appendChild(el("div", { class: "interactive-prompt-note", text: noteParts.join(" ") }));
+              const isClaudeMulti = allowMultiple && !isPiAsk && options.length > 0;
+              const sendSeq = (seq) => api("/api/sessions/" + selected + "/keys", { method: "POST", body: { seq } });
+              const enableGroupControls = (g, on) => {
+                for (const b of g.querySelectorAll(".interactive-option-btn")) b.disabled = !on;
+              };
+              const advanceAfterSubmit = () => {
+                answeredCount++;
+                // Claude advances cursor to q[i+1] option 0 after a non-final
+                // answer; reset the shared prompt cursor model to match.
+                writePromptCursorOpt(0);
+                if (answeredCount < questions.length) {
+                  const nextGroup = questionGroups[answeredCount];
+                  if (nextGroup) {
+                    nextGroup.classList.remove("pending");
+                    enableGroupControls(nextGroup, nextGroup.dataset.canAnswerOptions === "1");
+                  }
+                }
+              };
+              if (isClaudeMulti) {
+                // Claude multi-select: confirmed TUI protocol (see design.md
+                // F3-F8). Cursor opens at option 0; Down/Up move one option;
+                // Space toggles the current option without advancing. Tab on
+                // a non-final question advances directly to q[i+1] option 0;
+                // Tab on the FINAL question opens the "Review your answers"
+                // screen, and a subsequent Enter submits. Move and action keys
+                // are sent as separate awaited /keys calls (Decision 2) to
+                // avoid the merged-keys race that bit task 12.1.
+                const picked = new Set();
+                const optBtns = [];
+                options.forEach((opt, optIdx) => {
+                  const label = opt && (opt.label || opt.title) ? String(opt.label || opt.title) : "Option " + (optIdx + 1);
+                  const description = opt && typeof opt.description === "string" ? opt.description : "";
+                  const btn = el("button", { class: "interactive-option-btn multi", type: "button", title: description, "aria-label": label });
+                  btn.textContent = label;
+                  if (qIdx > 0) btn.disabled = true;
+                  btn.onclick = async () => {
+                    if (btn.disabled) return;
+                    const cursorOpt = readPromptCursorOpt();
+                    const delta = optIdx - cursorOpt;
+                    const move = delta >= 0 ? "\x1b[B".repeat(delta) : "\x1b[A".repeat(-delta);
+                    btn.disabled = true;
+                    try {
+                      if (move) {
+                        await sendSeq(move);
+                        // Commit the new cursor position the moment the move
+                        // resolves, before the toggle send can fail. Otherwise
+                        // a failed toggle would leave the model believing the
+                        // cursor was still at the old option, and the next
+                        // click would send a wrong delta (Decision 3).
+                        writePromptCursorOpt(optIdx);
+                      }
+                      await sendSeq(" ");
+                    }
+                    catch (err) { btn.disabled = false; setToast("send error: " + err.message); return; }
+                    writePromptCursorOpt(optIdx);
+                    if (picked.has(optIdx)) { picked.delete(optIdx); btn.classList.remove("selected"); }
+                    else { picked.add(optIdx); btn.classList.add("selected"); }
+                    btn.disabled = false;
+                  };
+                  optBtns.push(btn);
+                  optionsWrap.appendChild(btn);
+                });
+                group.appendChild(optionsWrap);
+                const confirmBtn = el("button", { class: "interactive-option-btn interactive-confirm-btn primary", type: "button", text: "Confirm selection" });
+                if (qIdx > 0) confirmBtn.disabled = true;
+                confirmBtn.onclick = async () => {
+                  if (confirmBtn.disabled) return;
+                  const isFinal = qIdx === questions.length - 1;
+                  for (const b of optBtns) b.disabled = true;
+                  confirmBtn.disabled = true;
+                  group.classList.add("answered");
+                  group.classList.remove("pending");
+                  try {
+                    // Multi-select submit protocol (design.md F8):
+                    //   non-final: Tab advances directly to q[i+1] option 0
+                    //              with NO auto-select. Sending a trailing
+                    //              \r after the Tab is HARMFUL — Enter at
+                    //              q[i+1] opt 0 toggles that option ON, then
+                    //              the user's first Space click would toggle
+                    //              it back OFF, silently dropping the user's
+                    //              first multi-select pick on every non-first
+                    //              question. Live-verified on broker-169813
+                    //              2026-06-01: with trailing \r, q[1] opt 0
+                    //              and opt 2 each lost their first selection.
+                    //   final:     Tab opens the "Review your answers" screen
+                    //              with cursor pre-positioned on "Submit
+                    //              answers"; Enter dismisses the review and
+                    //              submits.
+                    // Both paths use Tab; only the final path sends an Enter.
+                    await sendSeq("\t");
+                    if (isFinal) await sendSeq("\r");
+                  }
+                  catch (err) {
+                    for (const b of optBtns) b.disabled = false;
+                    confirmBtn.disabled = false;
+                    group.classList.remove("answered");
+                    setToast(isFinal ? "Submit failed; press ✔ Submit in the terminal" : "submit error: " + err.message);
+                    return;
+                  }
+                  if (isFinal) markPromptSubmitted();
+                  else advanceAfterSubmit();
+                };
+                group.appendChild(confirmBtn);
+              } else {
               options.forEach((opt, optIdx) => {
                 const label = opt && (opt.label || opt.title) ? String(opt.label || opt.title) : "Option " + (optIdx + 1);
                 const description = opt && typeof opt.description === "string" ? opt.description : "";
@@ -2621,39 +2847,54 @@
                 if (qIdx > 0 || !canAnswerOptions) btn.disabled = true;
                 btn.onclick = async () => {
                   if (btn.disabled) return;
+                  // Compute isFinal BEFORE any await (Decision 4): a click on
+                  // the last question of an n>=2 prompt needs an extra Enter
+                  // to dismiss the "Review your answers" screen Claude opens
+                  // after option-Enter. n=1 prompts skip the review screen
+                  // entirely, so they use the bare-Enter path. See design.md F7.
+                  const isFinal = qIdx === questions.length - 1;
+                  const isSingleQuestion = questions.length === 1;
                   const buttons = Array.from(optionsWrap.querySelectorAll(".interactive-option-btn"));
                   for (const b of buttons) { b.disabled = true; b.classList.remove("selected"); }
                   btn.classList.add("selected");
                   group.classList.add("answered");
                   group.classList.remove("pending");
-                  const seq = "\x1b[B".repeat(optIdx) + "\r";
-                  try { await api("/api/sessions/" + selected + "/keys", { method: "POST", body: { seq } }); }
+                  // Single-select submit protocol (design.md F7):
+                  //   non-final           : move + "\r"          (Enter selects + auto-advances)
+                  //   final, n=1          : move + "\r"          (Enter submits directly, no review)
+                  //   final, n>=2         : move + "\r" + "\r"   (1st Enter selects + opens review,
+                  //                                                2nd Enter on pre-positioned
+                  //                                                "Submit answers" submits)
+                  // Move and action keys are SEPARATE awaited sends (Decision 2).
+                  const cursorOpt = readPromptCursorOpt();
+                  const delta = optIdx - cursorOpt;
+                  const move = delta >= 0 ? "\x1b[B".repeat(delta) : "\x1b[A".repeat(-delta);
+                  try {
+                    if (move) {
+                      await api("/api/sessions/" + selected + "/keys", { method: "POST", body: { seq: move } });
+                      writePromptCursorOpt(optIdx);
+                    }
+                    await api("/api/sessions/" + selected + "/keys", { method: "POST", body: { seq: "\r" } });
+                    if (isFinal && !isSingleQuestion) {
+                      // Dismiss the "Review your answers" screen.
+                      await api("/api/sessions/" + selected + "/keys", { method: "POST", body: { seq: "\r" } });
+                    }
+                  }
                   catch (err) {
                     for (const b of buttons) b.disabled = qIdx > 0 || !canAnswerOptions;
                     btn.classList.remove("selected");
                     group.classList.remove("answered");
                     if (qIdx > 0) group.classList.add("pending");
-                    setToast("send error: " + err.message);
+                    setToast(isFinal ? "Submit failed; press ✔ Submit in the terminal" : "send error: " + err.message);
                     return;
                   }
-                  answeredCount++;
-                  if (answeredCount < questions.length) {
-                    const nextGroup = questionGroups[answeredCount];
-                    if (nextGroup) {
-                      nextGroup.classList.remove("pending");
-                      const nextCanAnswer = nextGroup.dataset.canAnswerOptions === "1";
-                      for (const b of nextGroup.querySelectorAll(".interactive-option-btn")) b.disabled = !nextCanAnswer;
-                    }
-                  } else if (!isPiAsk) {
-                    setTimeout(async () => {
-                      try { await api("/api/sessions/" + selected + "/keys", { method: "POST", body: { seq: "\r" } }); }
-                      catch (err) { setToast("submit error: " + err.message); }
-                    }, 300);
-                  }
+                  if (isFinal) markPromptSubmitted();
+                  else advanceAfterSubmit();
                 };
                 optionsWrap.appendChild(btn);
               });
               if (options.length) group.appendChild(optionsWrap);
+              }
               card.appendChild(group);
               questionGroups.push(group);
             });
@@ -2746,7 +2987,22 @@
       }
 
       function eventKey(ev) {
-        if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return "";
+        if (!ev) return "";
+        if (ev.class === "agent_error") {
+          // agent_error events carry role "system", so they fall outside the
+          // user/assistant dedup path below. Key them on ts+source+type+message
+          // so the same error arriving via both the tail page and a live append
+          // does not render twice. With no timestamp we cannot tell two distinct
+          // same-text errors apart, so we decline to dedup (return "") rather
+          // than risk collapsing two real errors into one card.
+          const ets = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? Math.round(ev.ts * 1000) : null;
+          if (ets === null) return "";
+          const src = typeof ev.source === "string" ? ev.source : "";
+          const etype = typeof ev.type === "string" ? ev.type : "";
+          const emsg = typeof ev.message === "string" ? ev.message : "";
+          return `agent_error|${ets}|${src}|${etype}|${emsg}`;
+        }
+        if (ev.role !== "user" && ev.role !== "assistant") return "";
         const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
         if (ts === null) return "";
         const tsMs = Math.round(ts * 1000);
@@ -3066,11 +3322,33 @@
 	             metaItems.push(el("span", { class: "metaText", text: `${stateTxt}${cwdBase ? ` | ${cwdBase}` : ""}${branchTxt ? ` | ${branchTxt}` : ""}` }));
 	             const meta = el("div", { class: "muted subLine sessionMetaLine" }, metaItems);
 
+             // Make a non-button element keyboard-activatable as the "open
+             // session" target. Kept OFF the .session container because that
+             // wraps the rename/dup/delete <button>s — a role=button ancestor of
+             // real buttons is a nested-interactive ARIA violation and makes
+             // child-button key events bubble into this handler. The open-target
+             // is instead a sibling of the action buttons (mobile: .sessionInner;
+             // desktop: .sessionMain).
+             const makeOpenTarget = (node) => {
+               node.setAttribute("role", "button");
+               node.setAttribute("tabindex", "0");
+               node.setAttribute("aria-label", "Open session " + title);
+               node.addEventListener("keydown", (e) => {
+                 if (e.target !== node) return;
+                 if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+                   e.preventDefault();
+                   setSidebarOpen(false);
+                   selectSession(s.session_id);
+                 }
+               });
+             };
+
              if (swipeActions) {
                const leftActions = el("div", { class: "sessionActions left" }, [delBtn]);
                const rightActions = el("div", { class: "sessionActions right" }, [renameBtn, dupBtn]);
                const top = el("div", { class: "row" }, [titleRow, badgesWrap]);
                const inner = el("div", { class: "sessionInner" }, [top, meta]);
+               makeOpenTarget(inner);
 	               const content = el("div", { class: "sessionContent" }, [inner]);
 	               content.dataset.swipeX = "0";
 	               const swipe = el("div", { class: "sessionSwipe" }, [leftActions, rightActions, content]);
@@ -3169,6 +3447,7 @@
 	               const actions = el("div", { class: "sessionActionsInline" }, [renameBtn, dupBtn, delBtn]);
 	               const titleWithBadges = el("div", { class: "sessionTitleWithBadges" }, [titleRow, badgesWrap]);
 	               const main = el("div", { class: "sessionMain" }, [titleWithBadges, meta]);
+	               makeOpenTarget(main);
 	               const inner = el("div", { class: "sessionInner sessionDesktopLayout" }, [main, actions]);
 	               card.appendChild(inner);
 	               card.onclick = () => selectSession(s.session_id);
@@ -3190,14 +3469,48 @@
           return sessions;
         }
 
+        function askUserToolId(ev) {
+          return ev && typeof ev.tool_use_id === "string" ? ev.tool_use_id : "";
+        }
+
+        function hasAskUserRejectedRow(toolUseId) {
+          if (!toolUseId) return false;
+          return Array.from(chatInner.querySelectorAll('.msg-row[data-interactive="ask_user_rejected"]'))
+            .some((row) => row.dataset.toolUseId === toolUseId);
+        }
+
+        function removeSupersededAskUserPrompt(toolUseId) {
+          if (!toolUseId) return;
+          for (const row of Array.from(chatInner.querySelectorAll('.msg-row[data-interactive="ask_user_question"]'))) {
+            if (row.dataset.toolUseId === toolUseId) row.remove();
+          }
+        }
+
+        function collapseRejectedAskUserEvents(events) {
+          const rejectedIds = new Set();
+          for (const ev of events || []) {
+            if (ev && ev.interactive === "ask_user_rejected") {
+              const toolUseId = askUserToolId(ev);
+              if (toolUseId) rejectedIds.add(toolUseId);
+            }
+          }
+          return (events || []).filter((ev) => {
+            return !(ev && ev.interactive === "ask_user_question" && rejectedIds.has(askUserToolId(ev)));
+          });
+        }
+
         function appendEvent(ev) {
-          if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return;
-          if (consumePendingUserIfMatches(ev)) return;
+          if (!ev) return;
+          const isAgentError = ev.class === "agent_error";
+          if (!isAgentError && ev.role !== "user" && ev.role !== "assistant") return;
+          if (ev.interactive === "ask_user_rejected") removeSupersededAskUserPrompt(askUserToolId(ev));
+          if (ev.interactive === "ask_user_question" && hasAskUserRejectedRow(askUserToolId(ev))) return;
+          if (!isAgentError && consumePendingUserIfMatches(ev)) return;
           if (isDuplicateEvent(ev)) return;
 
           const stick = autoScroll || isNearBottom();
           const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : ev.pending ? Date.now() / 1000 : null;
-           const { row } = safeMakeRow(ev, { ts, pending: Boolean(ev.pending) });
+           const { row } = safeMakeRow(ev, { ts, pending: Boolean(ev.pending), live: true });
 	          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
 	          chatInner.insertBefore(row, anchor);
             trimRenderedRows({ fromTop: true });
@@ -3214,9 +3527,11 @@
         function renderTranscript(events, { preserveScroll = false } = {}) {
           const msgs = [];
           const seen = new Set();
-          for (const ev of events || []) {
-            if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
-            if (consumePendingUserIfMatches(ev)) continue;
+          for (const ev of collapseRejectedAskUserEvents(events || [])) {
+            if (!ev) continue;
+            const isAgentError = ev.class === "agent_error";
+            if (!isAgentError && ev.role !== "user" && ev.role !== "assistant") continue;
+            if (!isAgentError && consumePendingUserIfMatches(ev)) continue;
             const k = eventKey(ev);
             if (k && seen.has(k)) continue;
             if (k) seen.add(k);
@@ -3242,8 +3557,11 @@
 
         function prependOlderEvents(allEvents, { preserveViewport = false } = {}) {
           const msgs = [];
-          for (const ev of allEvents) {
-            if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
+          for (const ev of collapseRejectedAskUserEvents(allEvents)) {
+            if (!ev) continue;
+            if (ev.class !== "agent_error" && ev.role !== "user" && ev.role !== "assistant") continue;
+            if (ev.interactive === "ask_user_rejected") removeSupersededAskUserPrompt(askUserToolId(ev));
+            if (ev.interactive === "ask_user_question" && hasAskUserRejectedRow(askUserToolId(ev))) continue;
             msgs.push(ev);
           }
           if (!msgs.length) return;
@@ -4275,6 +4593,10 @@
           if (voiceBaseUrlInput) voiceBaseUrlInput.value = String(voiceSettings.tts_base_url || "");
           if (voiceApiKeyInput && !voiceApiKeyInput.matches(":focus")) voiceApiKeyInput.value = String(voiceSettings.tts_api_key || "");
           if (narrationSettingToggle) narrationSettingToggle.checked = !!voiceSettings.tts_enabled_for_narration;
+          if (barkEnabledToggle) barkEnabledToggle.checked = !!voiceSettings.bark_enabled;
+          if (barkEndpointInput && !barkEndpointInput.matches(":focus")) barkEndpointInput.value = String(voiceSettings.bark_endpoint || "https://api.day.app");
+          if (barkTokenInput && !barkTokenInput.matches(":focus")) barkTokenInput.value = String(voiceSettings.bark_token || "");
+          if (barkBaseUrlInput && !barkBaseUrlInput.matches(":focus")) barkBaseUrlInput.value = String(voiceSettings.bark_base_url || "");
           notificationState.permission = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
         }
 
@@ -4305,6 +4627,10 @@
             tts_enabled_for_final_response: true,
             tts_base_url: String(voiceBaseUrlInput.value || voiceSettings.tts_base_url || "").trim(),
             tts_api_key: String(voiceApiKeyInput.value || "").trim(),
+            bark_enabled: !!(barkEnabledToggle && barkEnabledToggle.checked),
+            bark_endpoint: String((barkEndpointInput && barkEndpointInput.value) || voiceSettings.bark_endpoint || "https://api.day.app").trim(),
+            bark_token: String((barkTokenInput && barkTokenInput.value) || "").trim(),
+            bark_base_url: String((barkBaseUrlInput && barkBaseUrlInput.value) || "").trim(),
           };
           const data = await api("/api/settings/voice", { method: "POST", body: payload });
           if (!data || typeof data !== "object") throw new Error("invalid voice settings response");
@@ -4562,6 +4888,30 @@
           voiceSettings.tts_enabled_for_narration = Boolean(e.target.checked);
           scheduleVoiceSave();
         };
+        if (barkEnabledToggle) {
+          barkEnabledToggle.onchange = (e) => {
+            voiceSettings.bark_enabled = Boolean(e.target.checked);
+            scheduleVoiceSave();
+          };
+        }
+        if (barkEndpointInput) {
+          barkEndpointInput.onchange = (e) => {
+            voiceSettings.bark_endpoint = String(e.target.value || "").trim() || "https://api.day.app";
+            scheduleVoiceSave();
+          };
+        }
+        if (barkTokenInput) {
+          barkTokenInput.onchange = (e) => {
+            voiceSettings.bark_token = String(e.target.value || "").trim();
+            scheduleVoiceSave();
+          };
+        }
+        if (barkBaseUrlInput) {
+          barkBaseUrlInput.onchange = (e) => {
+            voiceSettings.bark_base_url = String(e.target.value || "").trim();
+            scheduleVoiceSave();
+          };
+        }
         voiceSettingsCloseBtn.onclick = hideVoiceSettingsDialog;
         $("#voiceSettingsCancelBtn").onclick = hideVoiceSettingsDialog;
         voiceSettingsBackdrop.onclick = hideVoiceSettingsDialog;
@@ -6639,14 +6989,34 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             });
             return { exists: true, ...res };
           } catch (e) {
-            if (e && e.status === 404) return { exists: false };
+            const data = e && e.obj && typeof e.obj === "object" ? e.obj : {};
+            const reason = typeof data.reason === "string" ? data.reason : "";
+            const target = typeof data.target === "string" ? data.target : "";
+            const detail = typeof data.detail === "string" ? data.detail : "";
+            if (e && (e.status === 404 || e.status === 403 || e.status === 400)) {
+              return { exists: false, reason, target, detail, status: e.status };
+            }
             throw e;
           }
         }
 
         async function resolveFileOpenMode(path, { changed = null } = {}) {
           const inspect = await inspectSessionFilePath(path);
-          if (!inspect || !inspect.exists) throw new Error("file not found");
+          if (!inspect || !inspect.exists) {
+            const reason = inspect && inspect.reason ? inspect.reason : "";
+            let msg = "File not found";
+            if (reason === "dead_symlink") {
+              const tgt = inspect && inspect.target ? inspect.target : "";
+              msg = tgt ? `Symlink target does not exist (-> ${tgt})` : "Symlink target does not exist";
+            } else if (reason === "permission_denied") {
+              msg = "Server cannot read this file (permission denied)";
+            } else if (reason === "outside_allowed_root") {
+              msg = "Path is outside this session's working directory";
+            }
+            const err = new Error(msg);
+            err.reason = reason;
+            throw err;
+          }
           const kind = String(inspect.kind || "").trim();
           const isChanged = changed == null ? Boolean(fileEntryMap.get(String(path || "").trim())?.changed) : Boolean(changed);
           if (isChanged && isDiffableFileKind(kind)) return "diff";

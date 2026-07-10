@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from cryptography.hazmat.primitives import serialization
 from py_vapid import Vapid
@@ -100,6 +100,17 @@ def _clean_voice_settings(raw: Any) -> dict[str, Any]:
     api_key = str(obj.get("tts_api_key") or "").strip()
     summarization_model = str(obj.get("summarization_model") or DEFAULT_SUMMARIZATION_MODEL).strip() or DEFAULT_SUMMARIZATION_MODEL
     tts_model = str(obj.get("tts_model") or DEFAULT_TTS_MODEL).strip() or DEFAULT_TTS_MODEL
+    bark_enabled = bool(obj.get("bark_enabled"))
+    bark_endpoint_raw = str(obj.get("bark_endpoint") or "").strip()
+    bark_endpoint = bark_endpoint_raw or "https://api.day.app"
+    if not (bark_endpoint.startswith("http://") or bark_endpoint.startswith("https://")):
+        bark_endpoint = "https://api.day.app"
+    bark_endpoint = bark_endpoint.rstrip("/")
+    bark_token = str(obj.get("bark_token") or "").strip()
+    bark_base_url_raw = str(obj.get("bark_base_url") or "").strip()
+    if bark_base_url_raw and not (bark_base_url_raw.startswith("http://") or bark_base_url_raw.startswith("https://")):
+        bark_base_url_raw = ""
+    bark_base_url = bark_base_url_raw.rstrip("/")
     return {
         "tts_enabled_for_narration": narration,
         "tts_enabled_for_final_response": final_response,
@@ -107,6 +118,10 @@ def _clean_voice_settings(raw: Any) -> dict[str, Any]:
         "tts_api_key": api_key,
         "summarization_model": summarization_model,
         "tts_model": tts_model,
+        "bark_enabled": bark_enabled,
+        "bark_endpoint": bark_endpoint,
+        "bark_token": bark_token,
+        "bark_base_url": bark_base_url,
     }
 
 
@@ -241,6 +256,60 @@ class AnnouncementTask:
 class GeneratedAnnouncement:
     task: AnnouncementTask
     audio_bytes: bytes
+
+
+class BarkChannel:
+    """Out-of-band push channel that delivers notifications via the Bark
+    iOS push relay (https://github.com/Finb/Bark). Unlike Web Push, this
+    channel does not require the Codoxear UI itself to be served over
+    HTTPS, because the request is server-to-Bark.
+    """
+
+    kind = "bark"
+
+    def __init__(self, *, endpoint: str, token: str, base_url: str = "", timeout_seconds: float = 10.0) -> None:
+        self._endpoint = (endpoint or "").rstrip("/")
+        self._token = (token or "").strip()
+        self._base_url = (base_url or "").rstrip("/")
+        self._timeout = float(timeout_seconds)
+
+    def is_enabled(self) -> bool:
+        return bool(self._endpoint) and bool(self._token)
+
+    def send(
+        self,
+        *,
+        session_id: str,
+        session_display_name: str,
+        message_id: str,
+        notification_text: str,
+        timestamp: float | None,
+    ) -> dict[str, Any]:
+        del message_id, timestamp  # not used by Bark itself
+        if not self.is_enabled():
+            return {"status": "skipped", "reason": "bark_disabled"}
+        url = f"{self._endpoint}/{self._token}"
+        body: dict[str, Any] = {
+            "title": session_display_name or "Codoxear",
+            "body": notification_text or "New final response",
+            "group": "codoxear",
+        }
+        if self._base_url:
+            deep_link = f"{self._base_url}/#session={session_id}" if session_id else self._base_url
+            body["url"] = deep_link
+        data = json.dumps(body).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+                resp_text = resp.read().decode("utf-8", errors="replace")
+                return {"status": "sent", "http_status": getattr(resp, "status", 200), "response": resp_text[:512]}
+        except Exception as e:
+            return {"status": "error", "error": str(e)[:512]}
 
 
 class OpenAICompatibleClient:
@@ -606,6 +675,99 @@ class MergedHLSStream:
         self._playlist_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+class NotificationChannel(Protocol):
+    """Out-of-band delivery target for a final-response notification.
+
+    Each channel reports a stable `kind` and delivers one notification per
+    call. `send` must not raise: it returns a small status dict the
+    coordinator records in the delivery ledger.
+    """
+
+    kind: str
+
+    def send(
+        self,
+        *,
+        session_id: str,
+        session_display_name: str,
+        message_id: str,
+        notification_text: str,
+        timestamp: float | None,
+    ) -> dict[str, Any]: ...
+
+
+class WebPushChannel:
+    """Browser Web Push delivery. Wraps the VAPID + pywebpush flow.
+
+    Subscription records, the VAPID key, and per-subscription success/failure
+    bookkeeping all live on the coordinator, so this channel holds a reference
+    back to it and reuses the coordinator's lock-safe helpers rather than
+    duplicating that state. `kind="webpush"`.
+    """
+
+    kind = "webpush"
+
+    def __init__(self, coordinator: "VoicePushCoordinator") -> None:
+        self._co = coordinator
+
+    def send(
+        self,
+        *,
+        session_id: str,
+        session_display_name: str,
+        message_id: str,
+        notification_text: str,
+        timestamp: float | None,
+    ) -> dict[str, Any]:
+        co = self._co
+        with co._lock:
+            subscriptions = [
+                dict(item)
+                for item in co._subscriptions.values()
+                if item.get("notifications_enabled") and item.get("device_class") == "mobile"
+            ]
+        if not subscriptions:
+            return {"status": "skipped"}
+        vapid = Vapid.from_file(str(co._vapid_private_key_path))
+        payload = json.dumps(
+            {
+                "session_id": session_id,
+                "session_display_name": session_display_name,
+                "message_id": message_id,
+                "notification_text": notification_text,
+                "timestamp": timestamp or time.time(),
+            }
+        )
+        any_success = False
+        for record in subscriptions:
+            try:
+                response = webpush(
+                    subscription_info=record["subscription"],
+                    data=payload,
+                    vapid_private_key=vapid,
+                    vapid_claims={"sub": co._vapid_subject},
+                    ttl=300,
+                    timeout=10.0,
+                )
+                now_ts = float(time.time())
+                with co._lock:
+                    current = co._subscriptions.get(record["id"])
+                    if isinstance(current, dict):
+                        current["last_success_ts"] = now_ts
+                        current["last_error"] = ""
+                        current["updated_ts"] = now_ts
+                        co._subscriptions[record["id"]] = current
+                any_success = True
+                _ = response
+            except WebPushException as e:
+                status = getattr(getattr(e, "response", None), "status_code", None)
+                co._mark_subscription_failure(record_id=record["id"], error=str(e))
+                if status in {404, 410}:
+                    co._drop_subscription(record["id"])
+        co._save_subscriptions()
+        return {"status": "sent" if any_success else "error"}
+
+
 class VoicePushCoordinator:
     def __init__(
         self,
@@ -641,10 +803,12 @@ class VoicePushCoordinator:
         self._delivery_ledger: dict[str, dict[str, Any]] = {}
         self._vapid_public_key = ""
         self._vapid_subject = _default_vapid_subject()
+        self._channels: list[NotificationChannel] = []
         self._load_settings()
         self._load_subscriptions()
         self._load_delivery_ledger()
         self._ensure_vapid_keys()
+        self._rebuild_channels()
         self._worker = threading.Thread(target=self._worker_loop, name="voice-push", daemon=True)
         self._worker.start()
         self._keepalive = threading.Thread(target=self._keepalive_loop, name="voice-push-keepalive", daemon=True)
@@ -718,7 +882,22 @@ class VoicePushCoordinator:
             self._voice_settings = settings
             self._queue_ready.notify_all()
         self._save_settings()
+        self._rebuild_channels()
         return self.settings_snapshot()
+
+    def _rebuild_channels(self) -> None:
+        with self._lock:
+            settings = dict(self._voice_settings)
+        channels: list[NotificationChannel] = [WebPushChannel(self)]
+        if settings.get("bark_enabled") and settings.get("bark_token"):
+            channels.append(
+                BarkChannel(
+                    endpoint=str(settings.get("bark_endpoint") or "https://api.day.app"),
+                    token=str(settings.get("bark_token") or ""),
+                    base_url=str(settings.get("bark_base_url") or ""),
+                )
+            )
+        self._channels = channels
 
     def subscriptions_snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -1168,53 +1347,22 @@ class VoicePushCoordinator:
         )
 
     def _send_push_notifications(self, *, session_id: str, session_display_name: str, message_id: str, notification_text: str, timestamp: float | None) -> None:
-        with self._lock:
-            subscriptions = [
-                dict(item)
-                for item in self._subscriptions.values()
-                if item.get("notifications_enabled") and item.get("device_class") == "mobile"
-            ]
-        if not subscriptions:
-            self._set_ledger_field(message_id, "push_status", "skipped")
-            return
-        vapid = Vapid.from_file(str(self._vapid_private_key_path))
-        payload = json.dumps(
-            {
-                "session_id": session_id,
-                "session_display_name": session_display_name,
-                "message_id": message_id,
-                "notification_text": notification_text,
-                "timestamp": timestamp or time.time(),
-            }
-        )
-        any_success = False
-        for record in subscriptions:
-            try:
-                response = webpush(
-                    subscription_info=record["subscription"],
-                    data=payload,
-                    vapid_private_key=vapid,
-                    vapid_claims={"sub": self._vapid_subject},
-                    ttl=300,
-                    timeout=10.0,
-                )
-                now_ts = float(time.time())
-                with self._lock:
-                    current = self._subscriptions.get(record["id"])
-                    if isinstance(current, dict):
-                        current["last_success_ts"] = now_ts
-                        current["last_error"] = ""
-                        current["updated_ts"] = now_ts
-                        self._subscriptions[record["id"]] = current
-                any_success = True
-                _ = response
-            except WebPushException as e:
-                status = getattr(getattr(e, "response", None), "status_code", None)
-                self._mark_subscription_failure(record_id=record["id"], error=str(e))
-                if status in {404, 410}:
-                    self._drop_subscription(record["id"])
-        self._save_subscriptions()
-        self._set_ledger_field(message_id, "push_status", "sent" if any_success else "error")
+        for channel in list(self._channels):
+            result = channel.send(
+                session_id=session_id,
+                session_display_name=session_display_name,
+                message_id=message_id,
+                notification_text=notification_text,
+                timestamp=timestamp,
+            )
+            status = str(result.get("status") or "")
+            if channel.kind == "webpush":
+                self._set_ledger_field(message_id, "push_status", status)
+            else:
+                self._set_ledger_field(message_id, f"{channel.kind}_status", status)
+            error_text = result.get("error")
+            if error_text:
+                self._set_ledger_field(message_id, f"{channel.kind}_error", str(error_text))
 
     def _voice_for_session(self, session_id: str, session_name: str) -> str:
         token = _sha256_hex(session_id)

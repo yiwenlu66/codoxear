@@ -1554,38 +1554,202 @@ def _current_git_branch(cwd: Path) -> str | None:
     return branch
 
 
-def _resolve_client_file_path(*, session_id: str, raw_path: str) -> Path:
-    path_obj = Path(raw_path).expanduser()
-    if not path_obj.is_absolute():
+@dataclass
+class FileResolution:
+    status: str  # "ok" | "not_found" | "dead_symlink" | "permission_denied" | "outside_allowed_root"
+    path: Path | None
+    detail: str = ""
+    target: str = ""  # populated for dead_symlink with the link target text
+
+
+def _resolve_client_file_path_typed(*, session_id: str, raw_path: str) -> FileResolution:
+    raw = Path(raw_path).expanduser()
+    allowed_root = _session_allowed_root(session_id)
+    if not raw.is_absolute():
         if session_id:
-            MANAGER.refresh_session_meta(session_id)
+            try:
+                MANAGER.refresh_session_meta(session_id)
+            except Exception:
+                pass
             s = MANAGER.get_session(session_id)
             if s:
                 base = Path(s.cwd).expanduser()
                 if not base.is_absolute():
-                    base = base.resolve()
-                direct = (base / path_obj).resolve()
-                if direct.exists():
-                    path_obj = direct
-                else:
-                    tracked = _resolve_tracked_file_by_basename(session_id, raw_path)
-                    if tracked is not None:
-                        path_obj = tracked
-                        return path_obj
+                    try:
+                        base = base.resolve()
+                    except OSError:
+                        return FileResolution(status="not_found", path=None, detail="session cwd not resolvable")
+                root = allowed_root if allowed_root is not None else _safe_resolve(base)
+                candidate = base / raw
+                tracked = _resolve_tracked_file_by_basename(session_id, raw_path)
+                if tracked is not None and not candidate.exists():
+                    violation = _containment_violation(tracked, root)
+                    if violation is not None:
+                        return violation
+                    return _classify_existing(tracked)
+                target = candidate
+                if not target.exists() and not target.is_symlink():
                     try:
                         repo_root = Path(
                             _run_git(base, ["rev-parse", "--show-toplevel"], timeout_s=GIT_DIFF_TIMEOUT_SECONDS, max_bytes=64 * 1024).strip()
                         ).resolve()
-                    except RuntimeError:
-                        repo_root = base.resolve()
-                    path_obj = _resolve_unique_bare_filename(repo_root, raw_path) or direct
-            else:
-                path_obj = (Path.cwd() / path_obj).resolve()
-        else:
-            path_obj = (Path.cwd() / path_obj).resolve()
-    else:
-        path_obj = path_obj.resolve()
-    return path_obj
+                    except Exception:
+                        repo_root = base
+                    bare = _resolve_unique_bare_filename(repo_root, raw_path)
+                    if bare is not None:
+                        target = bare
+                violation = _containment_violation(target, root)
+                if violation is not None:
+                    return violation
+                return _classify_path(target)
+            # A session was named but did not resolve (unknown id, or an eviction
+            # race between the handler's lookup and this one). Fail closed: do NOT
+            # fall through to resolving `raw` against the server process cwd, or a
+            # relative `../../etc/passwd` would escape with no containment. This
+            # mirrors the absolute-path guard below.
+            return FileResolution(status="not_found", path=None, detail="session working directory not resolvable")
+        return _classify_path(Path.cwd() / raw)
+    # Absolute path: enforce that it stays within the session's working directory
+    # tree, otherwise report outside_allowed_root instead of silently serving
+    # arbitrary files (e.g. /etc/hostname).
+    #
+    # Fail closed if a session was named but its root could not be resolved
+    # (eviction race between the handler's get_session and _session_allowed_root,
+    # or a transient MANAGER error). Without this, allowed_root=None would make
+    # _containment_violation a no-op and serve any absolute path. A bare
+    # session-less request (no session_id) keeps the historical global behavior.
+    if session_id and allowed_root is None:
+        return FileResolution(status="not_found", path=None, detail="session working directory not resolvable")
+    violation = _containment_violation(raw, allowed_root)
+    if violation is not None:
+        return violation
+    return _classify_path(raw)
+
+
+def _safe_resolve(path: Path) -> Path:
+    try:
+        return path.resolve()
+    except OSError:
+        return Path(os.path.normpath(str(path)))
+
+
+def _containment_violation(raw: Path, allowed_root: Path | None) -> FileResolution | None:
+    """Return an outside_allowed_root FileResolution if `raw` escapes
+    `allowed_root`, else None. `allowed_root` is expected already resolved.
+
+    Two checks:
+      1. Where the path *lives*: resolve the parent directory (so a symlinked
+         component of the session cwd is spelled the same way as `allowed_root`,
+         and `..` is normalized against the real tree), then append the final
+         name. Catches `..` traversal and absolute paths that live elsewhere.
+      2. Where the path *points*: if it resolves (live file or live symlink), the
+         fully resolved target must also live inside the root. Catches an in-cwd
+         symlink whose target points outside.
+
+    A path that fails to resolve (missing file / dead symlink) but whose location
+    is inside the root falls through (returns None) so the classifier can report
+    not_found or dead_symlink rather than outside_allowed_root.
+
+    Resolving the parent rather than `raw` itself is what preserves the
+    dead-symlink-inside-cwd case: the symlink's own location is inside, so a dead
+    symlink is reported as dead_symlink even when its target text points outside.
+    """
+    if allowed_root is None:
+        return None
+
+    def _outside(detail: str) -> FileResolution:
+        return FileResolution(status="outside_allowed_root", path=None, detail=detail)
+
+    try:
+        resolved_parent = raw.parent.resolve(strict=True)
+    except (OSError, RuntimeError):
+        resolved_parent = Path(os.path.normpath(str(raw.parent)))
+    located = Path(os.path.normpath(str(resolved_parent / raw.name)))
+    if not _path_within_root(located, allowed_root):
+        return _outside(f"{raw} is outside the session working directory {allowed_root}")
+    try:
+        resolved = raw.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return None
+    if not _path_within_root(resolved, allowed_root):
+        return _outside(f"{raw} resolves outside the session working directory {allowed_root}")
+    return None
+
+
+def _session_allowed_root(session_id: str) -> Path | None:
+    if not session_id:
+        return None
+    try:
+        s = MANAGER.get_session(session_id)
+    except Exception:
+        return None
+    if not s:
+        return None
+    base = Path(s.cwd).expanduser()
+    try:
+        return base.resolve()
+    except OSError:
+        return base
+
+
+def _path_within_root(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _classify_path(path: Path) -> FileResolution:
+    try:
+        resolved = path.resolve(strict=True)
+    except FileNotFoundError as e:
+        if path.is_symlink():
+            try:
+                target_text = os.readlink(path)
+            except OSError:
+                target_text = ""
+            return FileResolution(status="dead_symlink", path=None, detail=str(e), target=target_text)
+        return FileResolution(status="not_found", path=None, detail=str(e))
+    except PermissionError as e:
+        return FileResolution(status="permission_denied", path=path, detail=str(e))
+    except OSError as e:
+        return FileResolution(status="not_found", path=None, detail=str(e))
+    return _classify_existing(resolved)
+
+
+def _classify_existing(path: Path) -> FileResolution:
+    try:
+        if not path.exists():
+            return FileResolution(status="not_found", path=None, detail=f"{path} does not exist")
+    except PermissionError as e:
+        return FileResolution(status="permission_denied", path=path, detail=str(e))
+    except OSError as e:
+        return FileResolution(status="not_found", path=None, detail=str(e))
+    return FileResolution(status="ok", path=path)
+
+
+def _file_resolution_http_response(handler: http.server.BaseHTTPRequestHandler, res: FileResolution) -> bool:
+    """If `res` is a non-ok outcome, write the appropriate JSON error and
+    return True. Caller must short-circuit on True."""
+    if res.status == "ok":
+        return False
+    if res.status == "dead_symlink":
+        body: dict[str, Any] = {"error": "Symlink target does not exist", "reason": "dead_symlink"}
+        if res.target:
+            body["target"] = res.target
+        if res.detail:
+            body["detail"] = res.detail
+        _json_response(handler, 404, body)
+        return True
+    if res.status == "permission_denied":
+        _json_response(handler, 403, {"error": "Permission denied", "reason": "permission_denied", "detail": res.detail})
+        return True
+    if res.status == "outside_allowed_root":
+        _json_response(handler, 400, {"error": "Path is outside the session working directory", "reason": "outside_allowed_root", "detail": res.detail})
+        return True
+    _json_response(handler, 404, {"error": "File not found", "reason": "not_found", "detail": res.detail})
+    return True
 
 
 def _inspect_openable_file(path_obj: Path) -> tuple[bytes, int, str, str | None]:
@@ -4849,13 +5013,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "path required"})
                     return
                 rel = path_q[0]
-                base = Path(s.cwd).expanduser()
-                if not base.is_absolute():
-                    base = base.resolve()
-                p = _resolve_session_path(base, rel)
-                if not p.exists():
-                    _json_response(self, 404, {"error": "file not found"})
+                res = _resolve_client_file_path_typed(session_id=session_id, raw_path=rel)
+                if _file_resolution_http_response(self, res):
                     return
+                assert res.path is not None
+                p = res.path
                 if not p.is_file():
                     _json_response(self, 400, {"error": "path is not a file"})
                     return
@@ -5040,13 +5202,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "path required"})
                     return
                 rel = path_q[0]
-                base = Path(s.cwd).expanduser()
-                if not base.is_absolute():
-                    base = base.resolve()
-                p = _resolve_session_path(base, rel)
-                if not p.exists():
-                    _json_response(self, 404, {"error": "file not found"})
+                res = _resolve_client_file_path_typed(session_id=session_id, raw_path=rel)
+                if _file_resolution_http_response(self, res):
                     return
+                assert res.path is not None
+                p = res.path
                 if not p.is_file():
                     _json_response(self, 400, {"error": "path is not a file"})
                     return
@@ -5118,10 +5278,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "path required"})
                     return
                 rel = path_q[0]
-                base = Path(s.cwd).expanduser()
-                if not base.is_absolute():
-                    base = base.resolve()
-                p = _resolve_session_path(base, rel)
+                res = _resolve_client_file_path_typed(session_id=session_id, raw_path=rel)
+                if _file_resolution_http_response(self, res):
+                    return
+                p = res.path
+                if p is None:
+                    _json_response(self, 404, {"error": "File not found", "reason": "not_found"})
+                    return
                 try:
                     raw, size = _read_downloadable_file(p)
                 except FileNotFoundError as e:
@@ -5921,13 +6084,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 session_id_raw = obj.get("session_id")
                 session_id = session_id_raw if isinstance(session_id_raw, str) and session_id_raw else ""
                 try:
-                    path_obj = _resolve_client_file_path(session_id=session_id, raw_path=path_raw)
+                    res = _resolve_client_file_path_typed(session_id=session_id, raw_path=path_raw)
+                    if _file_resolution_http_response(self, res):
+                        return
+                    assert res.path is not None
+                    path_obj = res.path
                     view = _read_client_file_view(path_obj)
                 except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
+                    _json_response(self, 404, {"error": str(e), "reason": "not_found"})
                     return
                 except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
+                    _json_response(self, 403, {"error": str(e), "reason": "permission_denied"})
                     return
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
@@ -6012,13 +6179,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 session_id_raw = obj.get("session_id")
                 session_id = session_id_raw if isinstance(session_id_raw, str) and session_id_raw else ""
                 try:
-                    path_obj = _resolve_client_file_path(session_id=session_id, raw_path=path_raw)
+                    res = _resolve_client_file_path_typed(session_id=session_id, raw_path=path_raw)
+                    if _file_resolution_http_response(self, res):
+                        return
+                    assert res.path is not None
+                    path_obj = res.path
                     view = _read_client_file_view(path_obj)
                 except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
+                    _json_response(self, 404, {"error": str(e), "reason": "not_found"})
                     return
                 except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
+                    _json_response(self, 403, {"error": str(e), "reason": "permission_denied"})
                     return
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
@@ -6132,7 +6303,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         _json_response(self, 400, {"error": str(e)})
                         return
                 else:
-                    p = _resolve_session_path(base, path_raw)
+                    res = _resolve_client_file_path_typed(session_id=session_id, raw_path=path_raw)
+                    # Reject EVERY non-ok status, not just outside_allowed_root.
+                    # An overwrite targets an existing, contained file, so `ok` is
+                    # the only valid outcome. Falling back to a weaker resolver
+                    # (_resolve_session_path, non-strict) on a not_found/dead
+                    # status would re-resolve through an in-cwd symlinked dir and
+                    # escape the cwd (arbitrary overwrite). _file_resolution_http_
+                    # response emits the right 400/403/404 for each status.
+                    if _file_resolution_http_response(self, res):
+                        return
+                    p = res.path
+                    if p is None:
+                        _json_response(self, 404, {"error": "File not found", "reason": "not_found"})
+                        return
                     try:
                         _current_text, _current_size, current_version = _read_text_file_for_write(p, max_bytes=FILE_READ_MAX_BYTES)
                     except FileNotFoundError as e:

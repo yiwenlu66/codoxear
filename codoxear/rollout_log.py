@@ -19,6 +19,7 @@ from .pi_log import pi_assistant_is_final_turn_end
 from .pi_log import pi_message_role
 from .pi_log import pi_token_update
 from .pi_log import pi_user_text
+from .pi_log import pi_agent_error
 from .claude_log import claude_assistant_text
 from .claude_log import claude_assistant_thinking_count
 from .claude_log import claude_assistant_tool_use_count
@@ -26,6 +27,7 @@ from .claude_log import claude_is_final_answer
 from .claude_log import claude_is_turn_end
 from .claude_log import claude_token_update
 from .claude_log import claude_user_text
+from .claude_log import claude_agent_error
 from .voice_push import ClassifiedAssistantMessage
 
 
@@ -538,6 +540,8 @@ def _extract_chat_events(
     turn_aborted = False
     tool_names: set[str] = set()
     last_tool: str | None = None
+    rejected_ask_users: dict[str, dict[str, Any]] = {}
+    emitted_rejected_ask_users: set[str] = set()
     def event_ts(o: dict[str, Any]) -> float | None:
         ts = o.get("ts")
         if isinstance(ts, (int, float)):
@@ -556,6 +560,17 @@ def _extract_chat_events(
         payload = json.dumps({"class": message_class, "text": " ".join(text.split()), "ts_ms": ts_ms}, ensure_ascii=False, sort_keys=True)
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
+    # Triage rule for a missing AskUserQuestion card: first match the tool_use
+    # id against a Claude tool_result InputValidationError. A malformed prompt
+    # is rejected by Claude before it becomes answerable; it is not a dropped
+    # codoxear event. Pre-scanning lets a batch replace that prompt with one
+    # explicit, non-interactive rejection event.
+    for obj in objs:
+        for rejected in _claude_rejected_ask_user_events(obj, event_ts(obj)):
+            tool_id = rejected.get("tool_use_id")
+            if isinstance(tool_id, str):
+                rejected_ask_users[tool_id] = rejected
+
     for obj in objs:
         typ = obj.get("type")
         # Claude user records
@@ -567,6 +582,11 @@ def _extract_chat_events(
                 ev_u = {"role": "user", "text": user_text}
                 if ets is not None: ev_u["ts"] = ets
                 events.append(ev_u)
+            for rejected in _claude_rejected_ask_user_events(obj, event_ts(obj)):
+                tool_id = rejected.get("tool_use_id")
+                if isinstance(tool_id, str) and tool_id not in emitted_rejected_ask_users:
+                    events.append(rejected)
+                    emitted_rejected_ask_users.add(tool_id)
             continue
 
         # Claude assistant records
@@ -589,9 +609,18 @@ def _extract_chat_events(
                     tool_input = part.get("input", {})
                     if tool_name == "AskUserQuestion" and isinstance(tool_input.get("questions"), list):
                         ets2 = event_ts(obj)
-                        ev_q = {"role": "assistant", "interactive": "ask_user_question", "tool_use_id": tool_id, "questions": tool_input["questions"]}
-                        if ets2 is not None: ev_q["ts"] = ets2
-                        events.append(ev_q)
+                        if isinstance(tool_id, str) and tool_id in rejected_ask_users:
+                            rejected = dict(rejected_ask_users[tool_id])
+                            if ets2 is not None:
+                                rejected["ts"] = ets2
+                            events.append(rejected)
+                            emitted_rejected_ask_users.add(tool_id)
+                        else:
+                            questions = _claude_ask_user_questions(tool_input["questions"])
+                            if questions:
+                                ev_q = {"role": "assistant", "interactive": "ask_user_question", "tool_use_id": tool_id, "questions": questions}
+                                if ets2 is not None: ev_q["ts"] = ets2
+                                events.append(ev_q)
                     elif tool_name == "ExitPlanMode":
                         ets2 = event_ts(obj)
                         ev_p = {"role": "assistant", "interactive": "exit_plan_mode", "tool_use_id": tool_id}
@@ -610,6 +639,14 @@ def _extract_chat_events(
             turn_end = True
             continue
 
+        if typ == "system" and obj.get("subtype") == "api_error":
+            err_info = claude_agent_error(obj)
+            if err_info is not None:
+                ets = event_ts(obj)
+                events.append(_agent_error_event(obj, source="claude", info=err_info, ts=ets))
+                turn_end = True
+            continue
+
         if typ == "message":
             user_text = pi_user_text(obj)
             if isinstance(user_text, str) and user_text:
@@ -619,6 +656,13 @@ def _extract_chat_events(
                 if ets is not None:
                     evp["ts"] = ets
                 events.append(evp)
+                continue
+
+            pi_err = pi_agent_error(obj)
+            if pi_err is not None:
+                ets = event_ts(obj)
+                events.append(_agent_error_event(obj, source="pi", info=pi_err, ts=ets))
+                turn_end = True
                 continue
 
             assistant_text = pi_assistant_text(obj)
@@ -657,6 +701,12 @@ def _extract_chat_events(
             if not isinstance(p, dict):
                 raise ValueError("invalid event_msg payload")
             pt = p.get("type")
+            codex_err = _codex_agent_error(obj)
+            if codex_err is not None:
+                ets = event_ts(obj)
+                events.append(_agent_error_event(obj, source="codex", info=codex_err, ts=ets))
+                turn_end = True
+                continue
             if pt == "user_message":
                 msg = p.get("message")
                 if isinstance(msg, str):
@@ -1137,6 +1187,115 @@ def _pi_ask_user_event_from_tool_call(part: dict[str, Any], ts: float | None) ->
     if ts is not None:
         ev["ts"] = ts
     return ev
+
+
+def _claude_tool_result_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if not isinstance(value, list):
+        return ""
+    parts: list[str] = []
+    for item in value:
+        if isinstance(item, dict) and item.get("type") == "text" and isinstance(item.get("text"), str):
+            parts.append(item["text"])
+    return "\n".join(parts)
+
+
+def _claude_rejected_ask_user_events(obj: dict[str, Any], ts: float | None) -> list[dict[str, Any]]:
+    if obj.get("type") != "user":
+        return []
+    message = obj.get("message")
+    if not isinstance(message, dict) or not isinstance(message.get("content"), list):
+        return []
+    out: list[dict[str, Any]] = []
+    for part in message["content"]:
+        if not isinstance(part, dict) or part.get("type") != "tool_result":
+            continue
+        tool_id = _clean_text(part.get("tool_use_id"))
+        text = _claude_tool_result_text(part.get("content"))
+        if not tool_id or "InputValidationError" not in text or "AskUserQuestion" not in text:
+            continue
+        if re.search(r"questions\[\d+\]\.question", text) is None:
+            continue
+        lowered = text.lower()
+        if "missing" not in lowered and "received undefined" not in lowered:
+            continue
+        ev: dict[str, Any] = {
+            "role": "assistant",
+            "interactive": "ask_user_rejected",
+            "tool_use_id": tool_id,
+            "reason": "missing_question",
+            "message": "Prompt rejected by the agent — missing question text.",
+        }
+        if ts is not None:
+            ev["ts"] = ts
+        out.append(ev)
+    return out
+
+
+def _claude_ask_user_questions(questions: Any) -> list[dict[str, Any]]:
+    if not isinstance(questions, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for raw in questions:
+        if not isinstance(raw, dict):
+            continue
+        header = _clean_text(raw.get("header"))
+        options = _normalize_ask_user_options(raw.get("options"))
+        # Claude's schema requires `question`. Keep a header fallback only when
+        # the object still has answer choices; a matching validation-error
+        # tool_result is separately surfaced as a rejected prompt.
+        question = _clean_text(raw.get("question")) or (header if options else None)
+        if not question:
+            continue
+        q: dict[str, Any] = {
+            "question": question,
+            "options": options,
+            "backend": "claude",
+            "allowMultiple": _clean_bool(raw.get("multiSelect"), False),
+        }
+        if header:
+            q["header"] = header
+        out.append(q)
+    return out
+
+
+def _codex_agent_error(obj: dict[str, Any]) -> dict[str, Any] | None:
+    if obj.get("type") != "event_msg":
+        return None
+    payload = obj.get("payload")
+    if not isinstance(payload, dict):
+        return None
+    pt = payload.get("type")
+    if not isinstance(pt, str) or not pt:
+        return None
+    is_error = pt == "error" or pt.endswith("_error")
+    if not is_error:
+        return None
+    msg = payload.get("message")
+    if not isinstance(msg, str) or not msg.strip():
+        inner = payload.get("error")
+        if isinstance(inner, dict):
+            inner_msg = inner.get("message")
+            if isinstance(inner_msg, str) and inner_msg.strip():
+                msg = inner_msg
+    if not isinstance(msg, str) or not msg.strip():
+        msg = pt
+    return {"type": pt, "message": msg.strip()[:2000]}
+
+
+def _agent_error_event(obj: dict[str, Any], *, source: str, info: dict[str, Any], ts: float | None) -> dict[str, Any]:
+    ev: dict[str, Any] = {
+        "role": "system",
+        "class": "agent_error",
+        "source": source,
+        "type": str(info.get("type") or "error"),
+        "message": str(info.get("message") or ""),
+    }
+    if ts is not None:
+        ev["ts"] = ts
+    return ev
+
 
 
 def _last_chat_role_ts_from_tail(
