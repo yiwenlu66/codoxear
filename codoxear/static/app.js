@@ -864,12 +864,13 @@
         // Display: $$ ... $$
         text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_m, body) => push(body, true));
         // Inline: \( ... \)
+        //
+        // Single-$ inline math is intentionally NOT supported: in general prose
+        // a lone "$" is far more likely to be currency/shell/code than math,
+        // and a greedy match across two distant dollars silently swallows whole
+        // sentences (observed in practice). The explicit \(...\) delimiter is
+        // unambiguous and is what well-formed math output uses.
         text = text.replace(/\\\(([\s\S]+?)\\\)/g, (_m, body) => push(body, false));
-        // Inline: $ ... $ (conservative — guarded against currency/shell usage)
-        text = text.replace(/(^|[^\\$])\$([^\n$]+?)\$(?!\d)(?!\$)/g, (m, pre, body) => {
-          if (!body || /^\s|\s$/.test(body)) return m;
-          return `${pre}${push(body, false)}`;
-        });
         return text;
       }
 

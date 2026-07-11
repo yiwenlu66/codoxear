@@ -188,12 +188,22 @@ class TestMarkdownRendererSource(unittest.TestCase):
         self.assertNotIn("@@MATH", html)
         self.assertNotIn("<p>@@MATH", html)
 
-    def test_dollar_dollar_display_and_dollar_inline(self) -> None:
-        html = render_markdown("The value of $$x^2 + y^2$$ is $z$ units.")
+    def test_dollar_dollar_display_math(self) -> None:
+        html = render_markdown("The value of $$x^2 + y^2$$ is large.")
         self.assertIn('<span class="md-math-fallback md-math-display">\\[x^2 + y^2\\]</span>', html)
-        self.assertIn('<span class="md-math-fallback md-math-inline">\\(z\\)</span>', html)
         self.assertNotIn("@@MATH", html)
         self.assertNotIn("$$", html)
+
+    def test_single_dollar_inline_is_not_treated_as_math(self) -> None:
+        # Single-$ inline math is intentionally unsupported: a lone "$" in
+        # prose is usually currency/shell/code, and matching across two distant
+        # dollars silently swallows whole sentences. Two backtick-wrapped "$"
+        # must not cross-match into one giant span.
+        html = render_markdown("The single-`$` rule is guarded, so `$VAR` is safe.")
+        self.assertNotIn("md-math-fallback", html)
+        self.assertIn("$", html)
+        self.assertIn("rule is guarded", html)
+        self.assertIn("is safe", html)
 
     def test_currency_dollars_not_treated_as_math(self) -> None:
         # No closing paired dollar -> nothing should be extracted.
