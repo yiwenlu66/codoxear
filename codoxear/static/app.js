@@ -809,6 +809,80 @@
         return out;
       }
 
+      // --- Math (KaTeX) support --------------------------------------------------
+      //
+      // Math is extracted from non-code text *before* the rest of the markdown
+      // pipeline runs and replaced with opaque placeholder tokens of the form
+      // "@@MATH<n>@@". Those tokens are plain ASCII (no regex/HTML-significant
+      // characters), so they survive escapeHtml, renderInlineText (which would
+      // otherwise mangle paths/underscores inside math), and nested re-renders
+      // (e.g. blockquotes re-run mdToHtml). After the HTML is assembled, each
+      // placeholder is substituted with the KaTeX output (or a styled fallback
+      // when KaTeX failed to load).
+      const MATH_TOKEN_PREFIX = "@@MATH";
+      const MATH_TOKEN_SUFFIX = "@@";
+
+      function mathToken(id) {
+        return `${MATH_TOKEN_PREFIX}${id}${MATH_TOKEN_SUFFIX}`;
+      }
+
+      function renderMath(latex, displayMode) {
+        const src = String(latex ?? "");
+        if (typeof katex !== "undefined" && katex && typeof katex.renderToString === "function") {
+          try {
+            return String(
+              katex.renderToString(src, {
+                displayMode: !!displayMode,
+                throwOnError: false,
+                strict: "ignore",
+              })
+            );
+          } catch (e) {
+            // fall through to the fallback below
+          }
+        }
+        const cls = displayMode ? "md-math-fallback md-math-display" : "md-math-fallback md-math-inline";
+        const open = displayMode ? "\\[" : "\\(";
+        const close = displayMode ? "\\]" : "\\)";
+        return `<span class="${cls}">${open}${escapeHtml(src)}${close}</span>`;
+      }
+
+      // Extract display and inline math from a non-code text region, replacing
+      // each occurrence with an opaque placeholder. Stores every match in
+      // `store` so the caller can substitute KaTeX output afterwards. Display
+      // math is matched before inline math so that $$/$$ and \[/\] never get
+      // consumed by the single-$ / \( rules.
+      function extractMathFromText(input, store) {
+        let text = String(input ?? "");
+        const push = (latex, display) => {
+          const id = store.length;
+          store.push({ latex: String(latex).trim(), display: !!display });
+          return mathToken(id);
+        };
+        // Display: \[ ... \]
+        text = text.replace(/\\\[([\s\S]+?)\\\]/g, (_m, body) => push(body, true));
+        // Display: $$ ... $$
+        text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_m, body) => push(body, true));
+        // Inline: \( ... \)
+        text = text.replace(/\\\(([\s\S]+?)\\\)/g, (_m, body) => push(body, false));
+        // Inline: $ ... $ (conservative — guarded against currency/shell usage)
+        text = text.replace(/(^|[^\\$])\$([^\n$]+?)\$(?!\d)(?!\$)/g, (m, pre, body) => {
+          if (!body || /^\s|\s$/.test(body)) return m;
+          return `${pre}${push(body, false)}`;
+        });
+        return text;
+      }
+
+      function substituteMath(html, store) {
+        if (!store.length) return html;
+        let out = html;
+        for (let i = 0; i < store.length; i++) {
+          const entry = store[i];
+          out = out.split(mathToken(i)).join(renderMath(entry.latex, entry.display));
+        }
+        return out;
+      }
+
       function mdToHtml(src, options = null) {
         const s = rewriteOaiMemCitations(String(src ?? "").replaceAll("\r\n", "\n"));
         const listItemInfo = (line) => {
@@ -1217,6 +1291,10 @@
         };
 
         const chunks = splitByFences(s);
+        const mathStore = [];
+        for (const c of chunks) {
+          if (c.type === "text") c.value = extractMathFromText(c.value, mathStore);
+        }
 
         const out = [];
         for (const c of chunks) {
@@ -1285,7 +1363,7 @@
             flushPara();
           }
         }
-        return out.join("");
+        return substituteMath(out.join(""), mathStore);
       }
 
       const mdCache = new Map();

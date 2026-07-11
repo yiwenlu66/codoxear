@@ -1012,6 +1012,40 @@
         background: #ffffff;
       }
 
+      /* Math (KaTeX) rendering */
+      .md .katex {
+        font-size: 1.04em;
+      }
+      .md .katex-display {
+        margin: 12px 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        padding: 2px 0;
+      }
+      .md .katex-display > .katex {
+        white-space: nowrap;
+      }
+      .md p > .katex-display {
+        margin: 10px 0;
+      }
+      .md-math-fallback {
+        font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 0.9em;
+        background: rgba(15, 23, 42, 0.06);
+        border-radius: 4px;
+        padding: 0 4px;
+        white-space: nowrap;
+      }
+      .md-math-fallback-display {
+        display: block;
+        margin: 10px 0 12px 0;
+        padding: 8px 10px;
+        text-align: center;
+        white-space: pre-wrap;
+        overflow-x: auto;
+      }
+
       .composer {
         --composerCtl: 38px;
         border-top: 1px solid var(--border);

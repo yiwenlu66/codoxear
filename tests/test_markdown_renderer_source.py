@@ -9,11 +9,12 @@ from pathlib import Path
 APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
 
 
-def render_markdown(markdown: str) -> str:
+def render_markdown(markdown: str, katex_expr: str | None = None) -> str:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function escapeHtml(s) {")
     end = source.index("function isMarkdownPreviewable(path) {", start)
     snippet = source[start:end]
+    katex_stmt = f"katex = {katex_expr};" if katex_expr else ""
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -23,6 +24,7 @@ def render_markdown(markdown: str) -> str:
         }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_mdToHtml = mdToHtml;\n")}, ctx);
+        {f"vm.runInContext({json.dumps(katex_stmt)}, ctx);" if katex_stmt else ""}
         process.stdout.write(ctx.__test_mdToHtml({json.dumps(markdown)}));
         """
     )
@@ -168,6 +170,65 @@ class TestMarkdownRendererSource(unittest.TestCase):
 
         markers = re.findall(r'<span class="md-list-marker">([^<]+)</span>', html)
         self.assertEqual(markers, ["1.", "3.", "5."])
+
+    def test_inline_paren_math_renders_as_inline_math(self) -> None:
+        html = render_markdown("For a residual stream vector \\(h_{\\ell,t}\\) at layer \\(\\ell\\), the J-lens asks.")
+        # No katex in the node VM -> fallback span carries the escaped source.
+        self.assertIn('<span class="md-math-fallback md-math-inline">\\(h_{\\ell,t}\\)</span>', html)
+        self.assertIn('<span class="md-math-fallback md-math-inline">\\(\\ell\\)</span>', html)
+        self.assertNotIn("@@MATH", html)
+        self.assertIn("the J-lens asks.", html)
+
+    def test_display_bracket_math_renders_as_block(self) -> None:
+        md = "It computes an average Jacobian:\n\n\\[\nJ_\\ell\n=\n\\mathbb{E}\\left[\\frac{\\partial h}{\\partial h_\\ell}\\right]\n\\]\n\nThen it decodes."
+        html = render_markdown(md)
+        self.assertIn('<span class="md-math-fallback md-math-display">\\[', html)
+        self.assertIn("\\mathbb{E}", html)
+        self.assertIn("Then it decodes.", html)
+        self.assertNotIn("@@MATH", html)
+        self.assertNotIn("<p>@@MATH", html)
+
+    def test_dollar_dollar_display_and_dollar_inline(self) -> None:
+        html = render_markdown("The value of $$x^2 + y^2$$ is $z$ units.")
+        self.assertIn('<span class="md-math-fallback md-math-display">\\[x^2 + y^2\\]</span>', html)
+        self.assertIn('<span class="md-math-fallback md-math-inline">\\(z\\)</span>', html)
+        self.assertNotIn("@@MATH", html)
+        self.assertNotIn("$$", html)
+
+    def test_currency_dollars_not_treated_as_math(self) -> None:
+        # No closing paired dollar -> nothing should be extracted.
+        html = render_markdown("That costs $5 and $10 more.")
+        self.assertNotIn("md-math-fallback", html)
+        self.assertIn("$5", html)
+        self.assertIn("$10", html)
+
+    def test_math_inside_fenced_code_block_is_not_rendered(self) -> None:
+        html = render_markdown(
+            "\n".join(
+                [
+                    "\\text{outside}",
+                    "",
+                    "```text",
+                    "\\(not math\\)",
+                    "```",
+                    "",
+                    "After.",
+                ]
+            )
+        )
+        self.assertIn("outside", html)
+        # The code block keeps the literal delimiters untouched.
+        self.assertIn('<pre><code data-lang="text">\\(not math\\)</code></pre>', html)
+        self.assertNotIn("md-math-fallback", html)
+        self.assertNotIn("@@MATH", html)
+
+    def test_katex_render_path_is_invoked_with_display_mode(self) -> None:
+        katex_expr = "{ renderToString: function(src, opts){ return '<kmx>' + src + ':' + (opts.displayMode ? 'D' : 'I') + '</kmx>'; } }"
+        html = render_markdown("Inline \\(x\\) and block:\n\n\\[y\\]", katex_expr=katex_expr)
+        self.assertIn("<kmx>x:I</kmx>", html)
+        self.assertIn("<kmx>y:D</kmx>", html)
+        self.assertNotIn("md-math-fallback", html)
+        self.assertNotIn("@@MATH", html)
 
 
 if __name__ == "__main__":
