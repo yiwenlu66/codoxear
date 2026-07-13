@@ -649,5 +649,61 @@ class TestSpawnWebSessionResume(unittest.TestCase):
             self.assertEqual(messages[0].text, "fresh reply after resume")
 
 
+class TestRefreshSessionMeta(unittest.TestCase):
+    def test_missing_sidecar_log_becomes_pending_without_raising(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock_path = root / "broker-1.sock"
+            meta_path = sock_path.with_suffix(".json")
+            old_log_path = root / "old.jsonl"
+            missing_log_path = root / "missing.jsonl"
+            old_log_path.write_text("{}\n", encoding="utf-8")
+            meta_path.write_text(
+                json.dumps(
+                    {
+                        "session_id": None,
+                        "owner": "web",
+                        "broker_pid": 1,
+                        "codex_pid": 2,
+                        "agent_backend": "pi",
+                        "cwd": str(root),
+                        "start_ts": 100.0,
+                        "log_path": str(missing_log_path),
+                        "sock_path": str(sock_path),
+                        "model_provider": "openai",
+                        "model": "gpt-test",
+                        "reasoning_effort": "high",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            manager = SessionManager.__new__(SessionManager)
+            manager._lock = threading.Lock()
+            manager._sessions = {}
+            session = Session(
+                session_id="broker-1",
+                thread_id=None,
+                broker_pid=1,
+                codex_pid=2,
+                agent_backend="pi",
+                owned=True,
+                start_ts=100.0,
+                cwd=str(root),
+                log_path=old_log_path,
+                sock_path=sock_path,
+                meta_log_off=3,
+            )
+            manager._sessions[session.session_id] = session
+
+            manager.refresh_session_meta(session.session_id)
+
+            self.assertIsNone(session.log_path)
+            self.assertEqual(session.meta_log_off, 0)
+            self.assertEqual(session.delivery_log_off, 0)
+            self.assertEqual(session.model, "gpt-test")
+            self.assertEqual(session.reasoning_effort, "high")
+
+
 if __name__ == "__main__":
     unittest.main()
