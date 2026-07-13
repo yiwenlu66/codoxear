@@ -756,24 +756,112 @@ class TestRefreshSessionMeta(unittest.TestCase):
             self.assertEqual(session.meta_log_off, 0)
             self.assertEqual(session.delivery_log_off, 0)
 
-    def test_codex_log_disappearing_during_run_settings_uses_sidecar_values(self) -> None:
+    def test_codex_log_disappearing_during_run_settings_resets_session(self) -> None:
         with TemporaryDirectory() as td:
-            log_path = Path(td) / "rollout.jsonl"
+            root = Path(td)
+            sock_path = root / "broker-1.sock"
+            log_path = root / "rollout.jsonl"
             log_path.write_text("{}\n", encoding="utf-8")
+            sock_path.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": "thread-1",
+                        "owner": "web",
+                        "broker_pid": 1,
+                        "codex_pid": 2,
+                        "agent_backend": "codex",
+                        "cwd": str(root),
+                        "start_ts": 100.0,
+                        "log_path": str(log_path),
+                        "sock_path": str(sock_path),
+                        "model_provider": "openai",
+                        "model": "gpt-test",
+                        "reasoning_effort": "high",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
             manager = SessionManager.__new__(SessionManager)
+            manager._lock = threading.Lock()
+            manager._sessions = {}
+            session = Session(
+                session_id="broker-1",
+                thread_id="thread-1",
+                broker_pid=1,
+                codex_pid=2,
+                agent_backend="codex",
+                owned=True,
+                start_ts=100.0,
+                cwd=str(root),
+                log_path=log_path,
+                sock_path=sock_path,
+                meta_log_off=5,
+                delivery_log_off=5,
+            )
+            manager._sessions[session.session_id] = session
 
             def disappear_during_read(*_args: object, **_kwargs: object) -> tuple[None, None, None]:
                 log_path.unlink()
                 raise ValueError("missing session metadata")
 
-            with patch("codoxear.server._read_run_settings_from_log", side_effect=disappear_during_read):
-                settings = manager._session_run_settings(
-                    meta={"model_provider": "openai", "model": "gpt-test", "reasoning_effort": "high"},
-                    log_path=log_path,
-                    agent_backend="codex",
-                )
+            with patch("codoxear.server._coerce_main_thread_log", return_value=("thread-1", log_path)), patch(
+                "codoxear.server._read_run_settings_from_log", side_effect=disappear_during_read
+            ):
+                manager.refresh_session_meta(session.session_id)
 
-            self.assertEqual(settings, ("openai", None, "gpt-test", "high"))
+            self.assertIsNone(session.log_path)
+            self.assertEqual(session.meta_log_off, 0)
+            self.assertEqual(session.delivery_log_off, 0)
+            self.assertEqual(session.model, "gpt-test")
+            self.assertEqual(session.reasoning_effort, "high")
+
+    def test_discovery_handles_codex_log_disappearing_during_thread_coercion(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock_path = root / "broker-1.sock"
+            log_path = root / "rollout.jsonl"
+            sock_path.touch()
+            log_path.write_text("{}\n", encoding="utf-8")
+            sock_path.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": "thread-1",
+                        "owner": "web",
+                        "broker_pid": 1,
+                        "codex_pid": 2,
+                        "agent_backend": "codex",
+                        "cwd": str(root),
+                        "start_ts": 100.0,
+                        "log_path": str(log_path),
+                        "sock_path": str(sock_path),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            manager = SessionManager.__new__(SessionManager)
+            manager._lock = threading.Lock()
+            manager._sessions = {}
+            manager._hidden_sessions = set()
+            manager._recent_cwds = {}
+            manager._last_discover_ts = 0.0
+            manager._sock_call = lambda *_args, **_kwargs: {"busy": False, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+            manager._save_recent_cwds = lambda: None  # type: ignore[method-assign]
+
+            def disappear_during_coercion(**_kwargs: object) -> tuple[str, Path]:
+                log_path.unlink()
+                raise ValueError("missing session metadata")
+
+            with patch("codoxear.server.SOCK_DIR", root), patch("codoxear.server._pid_alive", return_value=True), patch(
+                "codoxear.server._coerce_main_thread_log", side_effect=disappear_during_coercion
+            ):
+                manager._discover_existing(force=True)
+
+            session = manager._sessions["broker-1"]
+            self.assertIsNone(session.log_path)
+            self.assertEqual(session.meta_log_off, 0)
+            self.assertEqual(session.delivery_log_off, 0)
 
 
 if __name__ == "__main__":

@@ -3596,7 +3596,12 @@ class SessionManager:
                 log_path = Path(log_path_raw)
             if log_path is not None and log_path.exists():
                 if agent_backend == "codex":
-                    thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
+                    try:
+                        thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
+                    except (FileNotFoundError, ValueError):
+                        if log_path.exists():
+                            raise
+                        log_path = None
             else:
                 log_path = None
 
@@ -3647,10 +3652,12 @@ class SessionManager:
                     _unlink_quiet(meta_path)
                 continue
 
+            meta_log_off = 0
             if log_path is not None:
-                meta_log_off = int(log_path.stat().st_size)
-            else:
-                meta_log_off = 0
+                try:
+                    meta_log_off = int(log_path.stat().st_size)
+                except FileNotFoundError:
+                    log_path = None
 
             s = Session(
                 session_id=session_id,
@@ -4072,6 +4079,12 @@ class SessionManager:
             agent_backend=agent_backend,
         )
         service_tier = _normalize_requested_service_tier(meta.get("service_tier")) if agent_backend == "codex" else None
+        log_off = 0
+        if log_path is not None:
+            try:
+                log_off = int(log_path.stat().st_size)
+            except FileNotFoundError:
+                log_path = None
 
         with self._lock:
             s2 = self._sessions.get(session_id)
@@ -4083,14 +4096,6 @@ class SessionManager:
             s2.owned = bool(owned)
             s2.transport = transport
             if s2.log_path != log_path:
-                log_off = 0
-                if log_path is not None:
-                    try:
-                        log_off = int(log_path.stat().st_size)
-                    except FileNotFoundError:
-                        # The file can disappear between the exists() check
-                        # above and this update. Preserve the pending-log state.
-                        log_path = None
                 s2.log_path = log_path
                 self._reset_log_caches(s2, meta_log_off=log_off)
             s2.model_provider = model_provider
