@@ -2517,13 +2517,18 @@ class SessionManager:
         model = _clean_optional_text(meta.get("model"))
         reasoning_effort = _display_reasoning_effort(meta.get("reasoning_effort")) if backend_name == "codex" else _display_pi_reasoning_effort(meta.get("reasoning_effort"))
         if log_path is not None and log_path.exists():
-            log_provider, log_model, log_effort = _read_run_settings_from_log(log_path, agent_backend=backend_name)
-            if log_provider is not None:
-                model_provider = log_provider
-            if log_model is not None:
-                model = log_model
-            if log_effort is not None:
-                reasoning_effort = log_effort
+            try:
+                log_provider, log_model, log_effort = _read_run_settings_from_log(log_path, agent_backend=backend_name)
+            except (FileNotFoundError, ValueError):
+                if log_path.exists():
+                    raise
+            else:
+                if log_provider is not None:
+                    model_provider = log_provider
+                if log_model is not None:
+                    model = log_model
+                if log_effort is not None:
+                    reasoning_effort = log_effort
         return model_provider, preferred_auth_method, model, reasoning_effort
 
     def _session_transport(self, *, meta: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
@@ -3591,7 +3596,12 @@ class SessionManager:
                 log_path = Path(log_path_raw)
             if log_path is not None and log_path.exists():
                 if agent_backend == "codex":
-                    thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
+                    try:
+                        thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
+                    except (FileNotFoundError, ValueError):
+                        if log_path.exists():
+                            raise
+                        log_path = None
             else:
                 log_path = None
 
@@ -3642,10 +3652,12 @@ class SessionManager:
                     _unlink_quiet(meta_path)
                 continue
 
+            meta_log_off = 0
             if log_path is not None:
-                meta_log_off = int(log_path.stat().st_size)
-            else:
-                meta_log_off = 0
+                try:
+                    meta_log_off = int(log_path.stat().st_size)
+                except FileNotFoundError:
+                    log_path = None
 
             s = Session(
                 session_id=session_id,
@@ -4044,7 +4056,17 @@ class SessionManager:
             log_path = Path(log_path_raw)
         if log_path is not None and log_path.exists():
             if agent_backend == "codex":
-                thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
+                try:
+                    thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
+                except (FileNotFoundError, ValueError):
+                    if log_path.exists():
+                        raise
+                    log_path = None
+        else:
+            # A broker sidecar can temporarily retain a log path after that
+            # file has disappeared. Treat it like a pending log instead of
+            # letting unrelated session APIs (including file save) fail.
+            log_path = None
 
         cwd_raw = meta.get("cwd")
         if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
@@ -4057,6 +4079,12 @@ class SessionManager:
             agent_backend=agent_backend,
         )
         service_tier = _normalize_requested_service_tier(meta.get("service_tier")) if agent_backend == "codex" else None
+        log_off = 0
+        if log_path is not None:
+            try:
+                log_off = int(log_path.stat().st_size)
+            except FileNotFoundError:
+                log_path = None
 
         with self._lock:
             s2 = self._sessions.get(session_id)
@@ -4069,10 +4097,6 @@ class SessionManager:
             s2.transport = transport
             if s2.log_path != log_path:
                 s2.log_path = log_path
-                if log_path is not None:
-                    log_off = int(log_path.stat().st_size)
-                else:
-                    log_off = 0
                 self._reset_log_caches(s2, meta_log_off=log_off)
             s2.model_provider = model_provider
             s2.preferred_auth_method = preferred_auth_method
