@@ -2517,13 +2517,18 @@ class SessionManager:
         model = _clean_optional_text(meta.get("model"))
         reasoning_effort = _display_reasoning_effort(meta.get("reasoning_effort")) if backend_name == "codex" else _display_pi_reasoning_effort(meta.get("reasoning_effort"))
         if log_path is not None and log_path.exists():
-            log_provider, log_model, log_effort = _read_run_settings_from_log(log_path, agent_backend=backend_name)
-            if log_provider is not None:
-                model_provider = log_provider
-            if log_model is not None:
-                model = log_model
-            if log_effort is not None:
-                reasoning_effort = log_effort
+            try:
+                log_provider, log_model, log_effort = _read_run_settings_from_log(log_path, agent_backend=backend_name)
+            except (FileNotFoundError, ValueError):
+                if log_path.exists():
+                    raise
+            else:
+                if log_provider is not None:
+                    model_provider = log_provider
+                if log_model is not None:
+                    model = log_model
+                if log_effort is not None:
+                    reasoning_effort = log_effort
         return model_provider, preferred_auth_method, model, reasoning_effort
 
     def _session_transport(self, *, meta: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
@@ -4044,11 +4049,16 @@ class SessionManager:
             log_path = Path(log_path_raw)
         if log_path is not None and log_path.exists():
             if agent_backend == "codex":
-                thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
+                try:
+                    thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
+                except (FileNotFoundError, ValueError):
+                    if log_path.exists():
+                        raise
+                    log_path = None
         else:
-            # A broker sidecar can temporarily retain a Pi log path after that
+            # A broker sidecar can temporarily retain a log path after that
             # file has disappeared. Treat it like a pending log instead of
-            # letting unrelated session APIs (including file save) fail on stat.
+            # letting unrelated session APIs (including file save) fail.
             log_path = None
 
         cwd_raw = meta.get("cwd")
