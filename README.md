@@ -196,6 +196,7 @@ Set these in `.env` (or in the process environment):
 - `PI_BIN` (default `pi`)
 - `CLAUDE_CONFIG_DIR` (default `~/.claude`)
 - `CLAUDE_BIN` (default `claude`)
+- `CODEX_WEB_COOKIE_NAME` (default `codoxear_auth`; use a distinct valid cookie-token name when multiple Codoxear services share one hostname)
 - `CODEX_WEB_COOKIE_SECURE` (default `0`; set to `1` behind HTTPS)
 - `CODEX_WEB_STATIC_CACHE` (default `0`; set to `1` to serve static assets with long-lived immutable cache headers)
 - `CODEX_WEB_TRANSCRIPT_EXPORT_MAX_BYTES` (default `52428800`; maximum backend log size eligible for full-conversation copy/export)
