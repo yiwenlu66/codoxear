@@ -191,6 +191,24 @@ def _env_int(environ: MutableMapping[str, str], name: str, default: str) -> int:
 def _env_bool_1(environ: MutableMapping[str, str], name: str, default: str = "0") -> bool:
     return environ.get(name, default) == "1"
 
+# RFC 6265 §4.1.1: cookie-name = token
+# token = 1*<any CHAR except CTLs or separators>
+# CTLs = %x00-1F / %x7F
+# separators = ( ) < > @ , ; : \ " / [ ] ? = { } SP HT
+# SP is 0x20; HT (0x09) is already covered by CTL.
+_COOKIE_NAME_SEPARATORS = frozenset('()<>@,;:\\"/[]?={} ')
+
+
+def _validate_cookie_name(name: str) -> str:
+    """Return *name* if it is a valid RFC 6265 cookie-name, otherwise raise ValueError."""
+    if not name:
+        raise ValueError("CODEX_WEB_COOKIE_NAME must not be empty")
+    for offset, ch in enumerate(name):
+        cp = ord(ch)
+        if cp <= 0x1F or cp == 0x7F or ch in _COOKIE_NAME_SEPARATORS:
+            raise ValueError(f"CODEX_WEB_COOKIE_NAME contains invalid character U+{cp:04X} at offset {offset}")
+    return name
+
 
 def build_server_config(
     *,
@@ -202,7 +220,8 @@ def build_server_config(
     dotenv_path = ((Path.cwd() if cwd is None else cwd) / ".env").resolve()
     apply_dotenv(dotenv_path, environ=env)
 
-    cookie_name = "codoxear_auth"
+    cookie_name_raw = env.get("CODEX_WEB_COOKIE_NAME", "")
+    cookie_name = "codoxear_auth" if cookie_name_raw == "" else _validate_cookie_name(cookie_name_raw)
     url_prefix = normalize_url_prefix(env.get("CODEX_WEB_URL_PREFIX"))
     cookie_path = (url_prefix + "/") if url_prefix else "/"
     tmux_session_name = (env.get("CODEX_WEB_TMUX_SESSION") or "codoxear").strip() or "codoxear"

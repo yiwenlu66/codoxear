@@ -3,7 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from codoxear.server_config import SERVER_CONFIG_EXPORT_NAMES, build_server_config, export_server_config
+import pytest
+
+from codoxear.server_config import (
+    SERVER_CONFIG_EXPORT_NAMES,
+    _validate_cookie_name,
+    build_server_config,
+    export_server_config,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -80,6 +87,45 @@ def test_queue_sweep_attempts_are_clamped_to_success_budget() -> None:
 
     assert config.QUEUE_SWEEP_MAX_DRAINS == 5
     assert config.QUEUE_SWEEP_MAX_ATTEMPTS == 5
+
+
+def test_cookie_name_default() -> None:
+    config = build_server_config(environ={})
+    assert config.COOKIE_NAME == "codoxear_auth"
+
+    config = build_server_config(environ={"CODEX_WEB_COOKIE_NAME": ""})
+    assert config.COOKIE_NAME == "codoxear_auth"
+
+
+def test_cookie_name_custom() -> None:
+    config = build_server_config(environ={"CODEX_WEB_COOKIE_NAME": "codoxear_preview_auth"})
+    assert config.COOKIE_NAME == "codoxear_preview_auth"
+
+    config = build_server_config(environ={"CODEX_WEB_COOKIE_NAME": "my_session"})
+    assert config.COOKIE_NAME == "my_session"
+
+    config = build_server_config(environ={"CODEX_WEB_COOKIE_NAME": "X"})
+    assert config.COOKIE_NAME == "X"
+
+
+def test_cookie_name_rejects_empty() -> None:
+    with pytest.raises(ValueError, match="must not be empty"):
+        _validate_cookie_name("")
+
+
+def test_cookie_name_rejects_separators() -> None:
+    for bad in (";", " ", "(", ")", "<", ">", "@", ",", ":", "\\", '"', "/", "[", "]", "?", "=", "{", "}"):
+        with pytest.raises(ValueError, match="invalid character"):
+            _validate_cookie_name(f"codoxear{bad}auth")
+    for bad in (" ", " codoxear", "codoxear ", "codoxear auth"):
+        with pytest.raises(ValueError, match="invalid character"):
+            build_server_config(environ={"CODEX_WEB_COOKIE_NAME": bad})
+
+
+def test_cookie_name_rejects_control_chars() -> None:
+    for cp in (0x00, 0x09, 0x0A, 0x1F, 0x7F):
+        with pytest.raises(ValueError, match="invalid character"):
+            _validate_cookie_name(f"bad{chr(cp)}cookie")
 
 
 def test_queue_sweep_max_drains_config_is_documented() -> None:

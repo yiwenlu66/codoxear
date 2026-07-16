@@ -241,6 +241,7 @@ start_container() {
     -e HOME=/home/tester \
     -e CODEX_WEB_HOST=0.0.0.0 \
     -e CODEX_WEB_PORT="$port" \
+    -e CODEX_WEB_COOKIE_NAME=codoxear_preview_auth \
     -e PYTHONPATH=/workspace \
     -e PYTHONDONTWRITEBYTECODE=1 \
     -e PATH=/home/tester/.npm-global/bin:/opt/codoxear-host-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
