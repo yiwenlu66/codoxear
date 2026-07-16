@@ -1,0 +1,324 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: scripts/codoxear-docker-preview [preflight|build|start|restart|stop|status|logs|shell]
+
+Runs the persistent, isolated Codoxear recovery preview.
+
+Fixed preview identity:
+  image:     codoxear-preview:recovery-15cccc8
+  container: codoxear-preview-19580
+  runtime:   /home/yiwen/.local/share/codoxear-preview-19580
+  URL:       http://127.0.0.1:19580/
+
+The host port is deliberately loopback-only. Remote access is supplied by the
+separate Tailscale Serve HTTPS endpoint, not by a plaintext LAN/public bind.
+USAGE
+}
+
+cmd="${1:-status}"
+case "$cmd" in
+  -h|--help|help) usage; exit 0 ;;
+esac
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+image="codoxear-preview:recovery-15cccc8"
+name="codoxear-preview-19580"
+port="19580"
+runtime_root="/home/yiwen/.local/share/codoxear-preview-19580"
+home_dir="$runtime_root/home"
+workspace="/home/yiwen/codex_ws"
+env_file="/home/yiwen/codex-web/.env"
+zshrc="/home/yiwen/.zshrc"
+npm_global="/home/yiwen/.npm-global"
+claude_binary="$(readlink -f "$(command -v claude 2>/dev/null || true)")"
+
+pi_models="/home/yiwen/.pi/agent/models.json"
+pi_auth="/home/yiwen/.pi/agent/auth.json"
+pi_settings="/home/yiwen/.pi/agent/settings.json"
+pi_npm="/home/yiwen/.pi/agent/npm"
+codex_auth="/home/yiwen/.codex/auth.json"
+codex_config="/home/yiwen/.codex/config.toml"
+claude_settings="/home/yiwen/.claude/settings.json"
+claude_settings_local="/home/yiwen/.claude/settings.local.json"
+
+_realpath() {
+  realpath -m "$1"
+}
+
+_is_within() {
+  local candidate="$1" base="$2"
+  [[ "$candidate" == "$base" || "$candidate" == "$base/"* ]]
+}
+
+require_file() {
+  local path="$1"
+  [[ -f "$path" && -r "$path" ]] || {
+    echo "required readable file is missing: $path" >&2
+    exit 2
+  }
+}
+
+require_dir() {
+  local path="$1"
+  [[ -d "$path" && -r "$path" ]] || {
+    echo "required readable directory is missing: $path" >&2
+    exit 2
+  }
+}
+
+ensure_isolation() {
+  local live_app live_legacy root home
+  live_app="$(_realpath "/home/yiwen/.local/share/codoxear")"
+  live_legacy="$(_realpath "/home/yiwen/.local/share/codex-web")"
+  root="$(_realpath "$runtime_root")"
+  home="$(_realpath "$home_dir")"
+
+  for candidate in "$root" "$home"; do
+    if _is_within "$candidate" "$live_app" || _is_within "$live_app" "$candidate" \
+      || _is_within "$candidate" "$live_legacy" || _is_within "$live_legacy" "$candidate"; then
+      echo "refusing preview runtime that aliases host live Codoxear state: $candidate" >&2
+      exit 2
+    fi
+  done
+
+  for env_var in CODEXEAR_APP_DIR CODEX_WEB_APP_DIR; do
+    if [[ -n "${!env_var:-}" ]]; then
+      echo "refusing host app-dir override: unset \$$env_var before running the preview" >&2
+      exit 2
+    fi
+  done
+}
+
+preflight() {
+  [[ "$repo_root" == "/home/yiwen/codex-web-product-recovery" ]] || {
+    echo "preview script must run from the recovery checkout" >&2
+    exit 2
+  }
+  [[ "$port" == "19580" ]] || {
+    echo "preview port must remain 19580" >&2
+    exit 2
+  }
+  require_file "$repo_root/docker/preview.Dockerfile"
+  require_file "$env_file"
+  require_file "$zshrc"
+  require_file "$pi_models"
+  require_file "$pi_auth"
+  require_file "$pi_settings"
+  require_file "$pi_npm/package-lock.json"
+  require_dir "$pi_npm/node_modules"
+  require_file "$codex_auth"
+  require_file "$codex_config"
+  require_file "$claude_settings"
+  require_file "$claude_settings_local"
+  require_file "$claude_binary"
+  require_dir "$npm_global"
+  require_dir "$workspace"
+  [[ -w "$workspace" ]] || {
+    echo "required preview workspace is not writable: $workspace" >&2
+    exit 2
+  }
+  grep -q '^CODEX_WEB_PASSWORD=' "$env_file" || {
+    echo "required CODEX_WEB_PASSWORD is absent from $env_file" >&2
+    exit 2
+  }
+  command -v docker >/dev/null || {
+    echo "docker is required but was not found on PATH" >&2
+    exit 2
+  }
+  docker info >/dev/null
+  ensure_isolation
+  printf 'preflight ok: image=%s container=%s runtime=%s bind=127.0.0.1:%s\n' \
+    "$image" "$name" "$runtime_root" "$port"
+}
+
+prepare_runtime() {
+  umask 077
+  mkdir -p \
+    "$home_dir/.local/share" \
+    "$home_dir/.pi/agent" \
+    "$home_dir/.codex" \
+    "$home_dir/.claude"
+
+  # Backend configuration is copied into the isolated persistent HOME from
+  # read-only source mounts. No host config is active at its host path.
+  install -m 600 "$pi_models" "$home_dir/.pi/agent/models.json"
+  install -m 600 "$pi_auth" "$home_dir/.pi/agent/auth.json"
+  install -m 600 "$pi_settings" "$home_dir/.pi/agent/settings.json"
+
+  # Pi lazily installs extensions into ~/.pi/agent/npm. Re-resolving the host
+  # package manifest in a clean home can select incompatible transitive patch
+  # releases (observed: lsp-pi 1.0.5 with protocol 3.18.2). Seed an isolated,
+  # writable copy of the known-working locked tree and refresh it only when the
+  # host lock changes. The host npm tree is never mounted into the container.
+  local preview_pi_npm="$home_dir/.pi/agent/npm"
+  if [[ ! -f "$preview_pi_npm/package-lock.json" ]] \
+    || ! cmp -s "$pi_npm/package-lock.json" "$preview_pi_npm/package-lock.json"; then
+    local tmp_pi_npm="$home_dir/.pi/agent/npm.preview.$$"
+    rm -rf "$tmp_pi_npm"
+    cp -a "$pi_npm" "$tmp_pi_npm"
+    rm -rf "$preview_pi_npm"
+    mv "$tmp_pi_npm" "$preview_pi_npm"
+  fi
+
+  install -m 600 "$codex_auth" "$home_dir/.codex/auth.json"
+  install -m 600 "$claude_settings" "$home_dir/.claude/settings.json"
+  install -m 600 "$claude_settings_local" "$home_dir/.claude/settings.local.json"
+
+  # The host Codex config contains host-specific absolute paths. Keep it only
+  # as a read-only input mount; the isolated CLI uses a clean config file.
+  printf '# Host-specific Codex config is intentionally not active in preview.\n' \
+    > "$home_dir/.codex/config.toml"
+  chmod 600 "$home_dir/.codex/config.toml"
+
+  # Keep only direct backend credential exports from the host .zshrc. This
+  # deliberately excludes aliases (notably tmux), interactive frameworks, and
+  # host-only PATH/conda/plugin setup while retaining provider configuration.
+  local tmp
+  tmp="$(mktemp "$runtime_root/.zshrc.XXXXXX")"
+  {
+    printf '%s\n' '# Generated by codoxear-docker-preview; do not edit.'
+    while IFS= read -r line; do
+      case "$line" in
+        export\ ANTHROPIC_*|export\ CLAUDE_CODE_SIMPLE=*|export\ CRS_OAI_KEY=*|export\ MAC_OAI_KEY=*|export\ RIGHT_OAI_KEY=*|export\ BLT_OAI_KEY=*|export\ BYTE_OAI_KEY=*|export\ CFM_OAI_KEY=*|export\ GOOGLE_GEMINI_BASE_URL=*|export\ GEMINI_API_KEY=*|export\ GEMINI_MODEL=*|export\ APIROUTER_API_KEY=*|export\ OCC_API_KEY=*)
+          printf '%s\n' "$line"
+          ;;
+      esac
+    done < "$zshrc"
+    cat <<'ZSHRC'
+if [[ -r "$HOME/.env" ]]; then
+  set -a
+  source "$HOME/.env"
+  set +a
+fi
+unalias tmux 2>/dev/null || true
+export PATH=/home/tester/.npm-global/bin:/opt/codoxear-host-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ZSHRC
+  } > "$tmp"
+  chmod 600 "$tmp"
+  mv "$tmp" "$home_dir/.zshrc"
+}
+
+build_image() {
+  docker build \
+    --build-arg "HOST_UID=$(id -u)" \
+    --build-arg "HOST_GID=$(id -g)" \
+    --file "$repo_root/docker/preview.Dockerfile" \
+    --tag "$image" \
+    "$repo_root"
+}
+
+container_exists() {
+  docker container inspect "$name" >/dev/null 2>&1
+}
+
+wait_for_ready() {
+  local health code
+  for _ in $(seq 1 80); do
+    health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$name" 2>/dev/null || true)"
+    code="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/api/me" 2>/dev/null || true)"
+    if [[ "$health" == "healthy" && "$code" == "401" ]]; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  echo "preview did not become healthy at http://127.0.0.1:${port}/api/me" >&2
+  docker logs "$name" >&2 || true
+  return 1
+}
+
+start_container() {
+  if container_exists; then
+    docker rm -f "$name" >/dev/null
+  fi
+  prepare_runtime
+  docker run -d \
+    --name "$name" \
+    --restart unless-stopped \
+    --env-file "$env_file" \
+    -e HOME=/home/tester \
+    -e CODEX_WEB_HOST=0.0.0.0 \
+    -e CODEX_WEB_PORT="$port" \
+    -e PYTHONPATH=/workspace \
+    -e PYTHONDONTWRITEBYTECODE=1 \
+    -e PATH=/home/tester/.npm-global/bin:/opt/codoxear-host-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    --publish "127.0.0.1:${port}:${port}" \
+    --mount "type=bind,src=$repo_root,dst=/workspace,readonly" \
+    --mount "type=bind,src=$workspace,dst=/home/tester/codex_ws" \
+    --mount "type=bind,src=$home_dir,dst=/home/tester" \
+    --mount "type=bind,src=$zshrc,dst=/run/host-config/zshrc,readonly" \
+    --mount "type=bind,src=$env_file,dst=/home/tester/.env,readonly" \
+    --mount "type=bind,src=$npm_global,dst=/home/tester/.npm-global,readonly" \
+    --mount "type=bind,src=$claude_binary,dst=/opt/codoxear-host-bin/claude,readonly" \
+    --mount "type=bind,src=$pi_models,dst=/run/host-config/pi-models.json,readonly" \
+    --mount "type=bind,src=$pi_auth,dst=/run/host-config/pi-auth.json,readonly" \
+    --mount "type=bind,src=$pi_settings,dst=/run/host-config/pi-settings.json,readonly" \
+    --mount "type=bind,src=$codex_auth,dst=/run/host-config/codex-auth.json,readonly" \
+    --mount "type=bind,src=$codex_config,dst=/run/host-config/codex-config.toml,readonly" \
+    --mount "type=bind,src=$claude_settings,dst=/run/host-config/claude-settings.json,readonly" \
+    --mount "type=bind,src=$claude_settings_local,dst=/run/host-config/claude-settings-local.json,readonly" \
+    --workdir /workspace \
+    "$image" \
+    zsh -fc 'source "$HOME/.zshrc" || { print -u2 -- "failed to source generated /home/tester/.zshrc"; exit 1; }; exec python3 -m codoxear.server' \
+    >/dev/null
+  wait_for_ready
+  printf 'started: container=%s url=http://127.0.0.1:%s/\n' "$name" "$port"
+}
+
+status() {
+  if ! container_exists; then
+    echo "container=$name status=absent"
+    return 0
+  fi
+  docker inspect --format 'container={{.Name}} status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} restart={{.HostConfig.RestartPolicy.Name}}' "$name"
+  docker port "$name" "$port/tcp"
+}
+
+shell() {
+  container_exists || {
+    echo "preview container is not present; run start first" >&2
+    exit 2
+  }
+  docker exec -it --user tester --workdir /workspace "$name" /usr/bin/zsh -l
+}
+
+case "$cmd" in
+  preflight) preflight ;;
+  build) preflight; build_image ;;
+  start)
+    preflight
+    docker image inspect "$image" >/dev/null 2>&1 || build_image
+    start_container
+    ;;
+  restart)
+    preflight
+    if container_exists; then
+      docker restart "$name" >/dev/null
+      wait_for_ready
+      echo "restarted: container=$name"
+    else
+      docker image inspect "$image" >/dev/null 2>&1 || build_image
+      start_container
+    fi
+    ;;
+  stop)
+    if container_exists; then
+      docker stop "$name" >/dev/null
+      echo "stopped: container=$name"
+    else
+      echo "container=$name status=absent"
+    fi
+    ;;
+  status) status ;;
+  logs)
+    container_exists || {
+      echo "preview container is not present" >&2
+      exit 2
+    }
+    docker logs "$name"
+    ;;
+  shell) shell ;;
+  *) usage >&2; exit 2 ;;
+esac
