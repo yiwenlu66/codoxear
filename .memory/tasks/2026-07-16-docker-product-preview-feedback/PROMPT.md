@@ -15,8 +15,9 @@ Done means the exact recovery release is running in Docker; server, app dir, bro
 - Host live runtime: `/home/yiwen/.local/share/codoxear`; never mount or copy it.
 - Preview project source: `/home/yiwen/codex_ws`, mounted read-write at `/home/tester/codex_ws` by explicit user request.
 - Preview state root: `/home/yiwen/.local/share/codoxear-preview-19580`; container HOME is its `home/` subdirectory.
-- Preview container/image/port: `codoxear-preview-19580`, `codoxear-preview:recovery-15cccc8`, host port `19580` to container port `19580`.
-- Host reachability: Tailscale `100.76.186.22`, LAN `192.168.1.8`.
+- Preview container/image/port: `codoxear-preview-19580`, `codoxear-preview:recovery-15cccc8`, loopback host port `19580` to container port `19580`.
+- Remote endpoint: Tailscale Serve HTTPS port `19581` proxying `127.0.0.1:19580`; preferred URL `https://yiwen-workstation.tail0de6f7.ts.net:19581/`.
+- Host addresses observed: Tailscale `100.76.186.22`, LAN `192.168.1.8`; raw LAN exposure is deliberately not used.
 - Canonical Docker isolation rules: `.codex/skills/codoxear-docker-test/SKILL.md`.
 - Project architecture/validation: `.memory/project/ARCHITECTURE.md`, `.memory/project/VALIDATION.md`.
 
@@ -25,13 +26,13 @@ Done means the exact recovery release is running in Docker; server, app dir, bro
 - Run as non-root user `tester` with `/usr/bin/zsh` as its login shell.
 - Make `pi`, `codex`, and `claude` executable inside the container and verify their versions.
 - Mount only configuration/auth material needed for backend operation. Host Pi/Codex/Claude session logs, histories, runtime sockets, app state, and live Codoxear files must not enter the preview.
-- Mount host `.zshrc` and Codoxear `.env` read-only. The preview uses the password from that env; never print it into task memory, logs, commands shown to the user, or committed artifacts.
-- Because host `.zshrc` contains credential environment variables, keep remote access password-gated and prefer the encrypted Tailscale address in user instructions. Do not expose an unauthenticated endpoint.
+- Mount host `.zshrc` as a read-only configuration source, not as the active shell file. Generate a container-tailored active `.zshrc` that carries the required credential exports/PATH but removes the host `systemd-run` tmux alias and does not require host-only shell services. Mount Codoxear `.env` read-only. The preview uses the password from that env; never print it into task memory, logs, commands shown to the user, or committed artifacts.
+- Because host shell/config sources contain credential material, keep remote access password-gated and expose the preview through encrypted, tailnet-only Tailscale Serve HTTPS. Do not expose raw HTTP to LAN or the public internet.
 - Mount `/home/yiwen/codex_ws` read-write at `/home/tester/codex_ws`. This intentionally permits preview agents to modify host project files; no other host project root is writable.
 - Do not mount the Docker socket, host process namespace, host tmux socket, or host `/tmp`.
 - Container-generated `~/.local/share/codoxear`, backend sessions, sockets, logs, and tmux state must resolve below the preview HOME.
 - Use a restartable named container with a persistent preview HOME. Rebuild/restart must preserve preview state unless a defect experiment explicitly requires a clean home.
-- Bind a non-8743 port so another device can access the host. Verify unauthenticated `/api/me` returns 401 from localhost and the machine address, then verify authenticated `/api/sessions` returns 200 without retaining cookies in git artifacts.
+- Bind Docker only to `127.0.0.1:19580`; expose remote access through Tailscale Serve HTTPS `19581`. Verify unauthenticated `/api/me` returns 401 through loopback and the HTTPS endpoint, then verify authenticated `/api/sessions` returns 200 without retaining cookies in git artifacts.
 - Verify through a real browser: login, New Session choices, project cwd, one backend launch, one confirmed prompt/response, transcript, and file access inside the mounted workspace. All resulting brokers/sockets/logs must be inside Docker.
 - Provide user instructions for URL, password source, selecting `/home/tester/codex_ws`, creating a backend session, testing files/git/attachments/mobile controls, reporting feedback, checking logs, restarting, and stopping the preview.
 - Every feedback item must record observation, mechanism, prediction, intervention, and user-facing verification. Do not call an issue fixed from tests alone.

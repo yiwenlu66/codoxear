@@ -1,31 +1,37 @@
 # Epistemic model — Docker product preview and feedback campaign
 
 ## Phenomenon
-The refactored product is strongly validated in isolated certification runs but cannot yet replace the live service because current brokers and runtime state are legacy. A persistent Docker preview is the shortest path to direct user experience without risking live sessions.
+The refactored product cannot yet replace the live service because current host brokers/runtime state are legacy, but it now runs as a persistent Docker preview against a real host workspace. This task owns continuous user feedback and iteration without risking the live service.
 
-## Current mechanism
-A named container with a dedicated persistent HOME can reproduce the complete Codoxear control plane: server, app state, backend brokers, Unix control sockets, logs, tmux sessions, and backend session files. A read-only source mount fixes the product revision; selective read-only config mounts provide real backend authentication; a single read-write project mount provides realistic work. Publishing only the HTTP port crosses the container boundary while leaving host process/runtime state isolated.
+## Accepted mechanism
+A named container with dedicated persistent HOME owns the complete preview control plane: Codoxear server/app state, protocol-v2 brokers, Unix sockets, backend logs/sessions, and tmux. Product source is read-only `/workspace`. Selective host config/auth sources are mounted read-only or copied/sanitized into preview HOME; host backend histories, Codoxear runtime, sockets, process namespace, tmux socket, Docker socket, and `/tmp` are absent.
+
+The only intentional write boundary is `/home/yiwen/codex_ws` -> `/home/tester/codex_ws`. Docker HTTP binds to `127.0.0.1:19580`; Tailscale Serve terminates tailnet-only HTTPS at `https://yiwen-workstation.tail0de6f7.ts.net:19581/`. Password authentication uses the existing Codoxear env without recording its value.
+
+The active container zsh configuration is generated from selected credential exports and container paths; the host systemd-backed tmux alias is excluded. Pi/Codex/Claude binaries are available, and tester's login shell is `/usr/bin/zsh`.
 
 ## Supported claims
-- The recovery branch is a product-scale refactor with prior full-suite, Docker, desktop, and mobile browser evidence.
-- Host port 19580 is currently free and distinct from live port 8743.
-- `/home/yiwen/codex_ws` is a real 3.0 GiB workspace suitable for file/git/agent testing, but it also contains sensitive documents; access control and network path matter.
-- Host Pi/Codex/Claude credentials and settings exist. Their runtime/session directories must remain outside the preview to preserve isolation.
+- Container `codoxear-preview-19580` is healthy with restart policy `unless-stopped`; image is `codoxear-preview:recovery-15cccc8`; persistent state root is `/home/yiwen/.local/share/codoxear-preview-19580`.
+- Tailscale HTTPS certificate/routing and unauthenticated 401 are proven. Real browser login and authenticated product bootstrap passed.
+- Browser New Session -> Pi `occ/gpt-5.6-sol` -> `/home/tester/codex_ws` -> tmux -> confirmed prompt produced exact visible response `DOCKER-PREVIEW-READY`.
+- Resulting `broker-514` advertises control protocol 2 and confirmed-send/key-error capabilities. Socket, Pi JSONL log, and tmux window exist only inside preview HOME/container. Host live broker sidecars remain the same four pre-existing files.
+- Browser file picker opened a real mounted-workspace file; Monaco loaded. Desktop and 390x844 mobile had no horizontal overflow.
+- The known clean-home Pi extension failure is resolved by copying the host working locked npm tree into preview HOME. This is an isolated writable copy, refreshed only when package lock differs, never a host bind.
 
-## Live uncertainties
-- Whether host CLI installations run correctly in the Debian preview image when mounted rather than freshly installed.
-- Which minimal Pi/Codex/Claude config files are sufficient for authenticated real sessions without importing histories.
-- Whether the host `.zshrc` initializes cleanly when optional host-only tooling is absent.
-- Whether binding host port 19580 is reachable from the user's actual device through Tailscale/LAN and whether browser secure-context-dependent features need a later HTTPS proxy.
-- Whether a real backend round trip succeeds with the selectively mounted config and container network.
+## Anomaly absorbed
+The first Pi launch exited before log bind because clean npm resolution paired `lsp-pi` 1.0.5 with `vscode-languageserver-protocol` 3.18.2/jsonrpc 9.0.1. The working host lock pins protocol 3.18.1/jsonrpc 9.0.0. Seeding the exact locked tree changed the same browser discriminator from durable failed-launch recovery to a bound protocol-v2 response. This localizes the problem to preview dependency resolution, not Codoxear launch/projection semantics.
 
-## Ruled out
-- Running the recovery server against host `~/.local/share/codoxear`: it would violate isolation and race the live service.
-- Reusing live broker sockets or logs: recovery would reject legacy send capability and the test would contaminate production evidence.
-- Mounting entire backend homes: this would expose/couple host session history and generated runtime state rather than emulate configuration.
+## Boundaries
+- Pi with configured `occ` provider is accepted. Codex and Claude binaries/config sources are present, but end-to-end inference is not yet accepted; host Codex ChatGPT OAuth is stale and host-only config paths are deliberately not active.
+- The writable workspace contains sensitive documents. Anyone authenticated to the preview can direct agents or file views at that workspace; tailnet membership plus the password are the access boundary.
+- `restart` restarts the container and therefore terminates active backend processes/tmux. Backend logs and Codoxear state persist, but active turns should be allowed to finish before restart.
+- The source checkout is a read-only bind, not an immutable image copy. Product fixes become visible after a preview restart; the image tag names the initial product checkpoint rather than cryptographically pinning later task iterations.
 
 ## Current claim
-The preview architecture is feasible and isolates the stateful Codoxear/backend control plane. It is not accepted until a real container browser session proves login, mounted-project launch, confirmed send/response, and container-local socket/log ownership.
+The preview is ready for direct user experience and ongoing feedback. Remote access, authentication, real mounted-project Pi work, protocol-v2 send/response, files/Monaco, mobile layout, and host-runtime isolation are all supported by direct evidence.
+
+## Feedback protocol
+Each reported issue becomes: user observation -> direct reproduction in this preview -> causal mechanism -> predicted fix -> isolated implementation/validation -> preview restart when active turns permit -> browser/user confirmation. OPS.md remains the append-only evidence trail; this file is rewritten as the model changes.
 
 ## Highest-value next question
-Can one selectively configured container launch a protocol-v2 backend session in `/home/tester/codex_ws`, receive a visible response, and leave every resulting socket/log/session artifact below the preview HOME?
+What is the first mismatch the user observes between intended phone/laptop workflow and the running preview? That observation, not further speculative surface mining, determines the next intervention.
