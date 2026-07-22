@@ -10,7 +10,7 @@ from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
 from .cc_log import CC_SUPPORTED_REASONING_EFFORTS
 
-SUPPORTED_REASONING_EFFORTS = ("xhigh", "high", "medium", "low")
+SUPPORTED_REASONING_EFFORTS = ("minimal", "low", "medium", "high", "xhigh")
 SUPPORTED_PI_REASONING_EFFORTS = ("off", "minimal", "low", "medium", "high", "xhigh")
 SUPPORTED_CC_REASONING_EFFORTS = CC_SUPPORTED_REASONING_EFFORTS
 
@@ -258,7 +258,7 @@ def configured_model_providers(data: dict[str, Any]) -> list[str]:
     raw = data.get("model_providers")
     if not isinstance(raw, dict):
         return providers
-    for key in raw.keys():
+    for key, value in raw.items():
         if not isinstance(key, str):
             continue
         name = key.strip()
@@ -267,6 +267,24 @@ def configured_model_providers(data: dict[str, Any]) -> list[str]:
         seen.add(name)
         providers.append(name)
     return providers
+
+
+def provider_models_from_config(data: dict[str, Any]) -> list[str]:
+    """Extract per-provider model lists declared in config.toml model_providers."""
+    raw = data.get("model_providers")
+    if not isinstance(raw, dict):
+        return []
+    models: list[str] = []
+    seen: set[str] = set()
+    for value in raw.values():
+        if not isinstance(value, dict):
+            continue
+        for model in value.get("models", []):
+            name = clean_optional_text(model)
+            if name and name not in seen:
+                seen.add(name)
+                models.append(name)
+    return models
 
 
 def provider_choice_for_settings(*, model_provider: str | None, preferred_auth_method: str | None) -> str:
@@ -328,6 +346,7 @@ def read_codex_launch_defaults(paths: LaunchConfigPaths) -> dict[str, Any]:
     configured_auth_method = "apikey"
     configured_service_tier = "flex"
     configured_providers = ["chatgpt", "openai-api"]
+    provider_models: list[str] = []
     if paths.codex_config_path.exists():
         data = tomllib.loads(paths.codex_config_path.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
@@ -341,6 +360,7 @@ def read_codex_launch_defaults(paths: LaunchConfigPaths) -> dict[str, Any]:
             allowed=set(["openai", *[p for p in configured_providers if p not in {"chatgpt", "openai-api"}]]),
         ) or configured_provider
         configured_service_tier = normalize_requested_service_tier(data.get("service_tier")) or configured_service_tier
+        provider_models = provider_models_from_config(data)
     defaults: dict[str, Any] = {
         "model_provider": configured_provider,
         "preferred_auth_method": configured_auth_method,
@@ -349,6 +369,8 @@ def read_codex_launch_defaults(paths: LaunchConfigPaths) -> dict[str, Any]:
         "model_providers": configured_providers,
         "service_tier": configured_service_tier,
     }
+    if provider_models:
+        defaults["models"] = provider_models
     if configured_effort is not None:
         defaults["reasoning_effort"] = configured_effort
         return defaults

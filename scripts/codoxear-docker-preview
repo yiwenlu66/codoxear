@@ -42,6 +42,7 @@ pi_npm="/home/yiwen/.pi/agent/npm"
 dexgem_key="/home/yiwen/.pi/agent/.memory/local/dexgem-api-key"
 codex_auth="/home/yiwen/.codex/auth.json"
 codex_config="/home/yiwen/.codex/config.toml"
+codex_models_cache="/home/yiwen/.codex/models_cache.json"
 claude_settings="/home/yiwen/.claude/settings.json"
 claude_settings_local="/home/yiwen/.claude/settings.local.json"
 
@@ -113,6 +114,7 @@ preflight() {
   require_file "$dexgem_key"
   require_file "$codex_auth"
   require_file "$codex_config"
+  require_file "$codex_models_cache"
   require_file "$claude_settings"
   require_file "$claude_settings_local"
   require_file "$claude_binary"
@@ -171,6 +173,7 @@ prepare_runtime() {
   fi
 
   install -m 600 "$codex_auth" "$home_dir/.codex/auth.json"
+  install -m 600 "$codex_models_cache" "$home_dir/.codex/models_cache.json"
   install -m 600 "$claude_settings" "$home_dir/.claude/settings.json"
   install -m 600 "$claude_settings_local" "$home_dir/.claude/settings.local.json"
 
@@ -186,12 +189,14 @@ name = "DexGem Responses"
 base_url = "https://litellm.dex-gem.ai/v1"
 env_key = "DEXGEM_API_KEY"
 wire_api = "responses"
+models = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"]
 
 [model_providers.dexgem-completions]
 name = "DexGem Completions"
 base_url = "https://litellm.dex-gem.ai/v1"
 env_key = "DEXGEM_API_KEY"
 wire_api = "chat"
+models = ["glm-5.2", "deepseek-v4-pro", "deepseek-v4-flash"]
 CODEX_CONFIG
   chmod 600 "$home_dir/.codex/config.toml"
 
