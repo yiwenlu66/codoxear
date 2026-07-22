@@ -27,7 +27,10 @@ For each incoming user comment:
 3. Every closed issue must record: observation → mechanism → intervention → verification (browser/user-facing, not tests alone).
 
 ### Issues
-_(none yet)_
+
+1. **[open] Codex reasoning effort list incomplete + sidebar markers** — Codex shows only `xhigh/high/medium/low`; Pi has `off/minimal/low/medium/high/xhigh`. Latest gpt-series models support `max` too. Sidebar reasoning markers exist but may need updating for new levels. Requires verifying actual CLI-accepted values before changing the supported set.
+
+2. **[open] CWD combobox: combine recent + filesystem listing** — Current logic: recent-cwd fuzzy filter only. User wants historical cwds merged with live filesystem directory listing, non-blocking. Design needed for async filesystem enumeration without UI lag.
 
 ## Constraints
 - Do not touch host `codoxear-server.service`, port `8743`, or host `~/.local/share/codoxear`.
