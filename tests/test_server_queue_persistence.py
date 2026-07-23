@@ -298,35 +298,21 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(_match_session_route("/api/sessions/s1/inject_file", "inject_file"), "s1")
         self.assertEqual(_match_session_route("/api/sessions/s1/commit_unknown_send/clear", "commit_unknown_send", "clear"), "s1")
 
-    def test_attachment_staging_ready_requires_idle_broker_and_empty_local_queue(self) -> None:
+    def test_attachment_staging_ready_allows_busy_broker_and_queued_work(self) -> None:
         sid = "s1"
         mgr = self._mgr()
-        with TemporaryDirectory() as td:
-            log_path = Path(td) / "rollout.jsonl"
-            log_path.write_text("{}\n", encoding="utf-8")
-            mgr._sessions[sid] = _make_session(sid)
-            mgr._sessions[sid].log_path = log_path
-            # With a bound log, an idle broker must coincide with an idle log turn.
-            # idle_from_log is consulted only on the broker-idle and broker-busy
-            # (queue 0) cases here; the queue_len>0 case short-circuits without it.
-            idle_values = iter([False, True])
-            mgr.idle_from_log = lambda _sid: next(idle_values)  # type: ignore[method-assign]
-            states = iter([
-                {"busy": True, "queue_len": 0},
-                {"busy": False, "queue_len": 1},
-                {"busy": False, "queue_len": 0},
-            ])
-            mgr.get_state = lambda _sid: next(states)  # type: ignore[method-assign]
+        mgr._sessions[sid] = _make_session(sid)
+        # Staging writes only to disk, so it must not query broker or log idleness.
+        mgr.get_state = lambda _sid: self.fail("staging should not query broker state")  # type: ignore[method-assign]
+        mgr.idle_from_log = lambda _sid: self.fail("staging should not query log idleness")  # type: ignore[method-assign]
 
-            self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
-            self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
-            mgr._queues[sid] = [_queue_item("q1", "queued")]
-            self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
-            mgr._queues.clear()
-            mgr._sessions[sid].queue_sending_item_id = "q1"
-            self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
-            mgr._sessions[sid].queue_sending_item_id = None
-            self.assertTrue(SessionManager.attachment_staging_ready(mgr, sid))
+        self.assertTrue(SessionManager.attachment_staging_ready(mgr, sid))
+        mgr._queues[sid] = [_queue_item("q1", "queued")]
+        self.assertTrue(SessionManager.attachment_staging_ready(mgr, sid))
+        mgr._sessions[sid].queue_sending_item_id = "q1"
+        self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
+        mgr._sessions[sid].queue_sending_item_id = None
+        self.assertTrue(SessionManager.attachment_staging_ready(mgr, sid))
 
     def test_unknown_direct_send_blocks_attachment_staging(self) -> None:
         sid = "s1"
@@ -339,7 +325,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         with self.assertRaisesRegex(SessionNotReadyError, "unknown send"):
             SessionManager.attachment_staging_ready(mgr, sid)
 
-    def test_attachment_staging_ready_rejects_log_busy_session(self) -> None:
+    def test_attachment_staging_ready_allows_log_busy_session(self) -> None:
         sid = "s1"
         mgr = self._mgr()
         with TemporaryDirectory() as td:
@@ -350,39 +336,27 @@ class TestServerQueuePersistence(unittest.TestCase):
             mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
             mgr.idle_from_log = lambda _sid: False  # type: ignore[method-assign]
 
-            self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
+            self.assertTrue(SessionManager.attachment_staging_ready(mgr, sid))
 
-    def test_attachment_readiness_rechecks_local_queue_after_broker_state(self) -> None:
+    def test_attachment_staging_ready_allows_local_queue(self) -> None:
         sid = "s1"
         mgr = self._mgr()
         mgr._sessions[sid] = _make_session(sid)
+        mgr._queues[sid] = [_queue_item("q1", "queued")]
+        mgr.get_state = lambda _sid: self.fail("staging should not query broker state")  # type: ignore[method-assign]
 
-        def get_state(_sid: str) -> dict[str, int | bool]:
-            mgr._queues[sid] = [_queue_item("q1", "queued")]
-            return {"busy": False, "queue_len": 0}
+        self.assertTrue(SessionManager.attachment_staging_ready(mgr, sid))
 
-        mgr.get_state = get_state  # type: ignore[method-assign]
-
-        self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
-
-    def test_attachment_readiness_uses_log_path_bound_during_state_refresh(self) -> None:
+    def test_attachment_staging_does_not_query_state_for_log_path(self) -> None:
         sid = "s1"
         mgr = self._mgr()
         mgr._sessions[sid] = _make_session(sid)
-        with TemporaryDirectory() as td:
-            log_path = Path(td) / "rollout.jsonl"
-            log_path.write_text("{}\n", encoding="utf-8")
+        mgr.get_state = lambda _sid: self.fail("staging should not query broker state")  # type: ignore[method-assign]
+        mgr.idle_from_log = lambda _sid: self.fail("staging should not query log idleness")  # type: ignore[method-assign]
 
-            def get_state(_sid: str) -> dict[str, int | bool]:
-                mgr._sessions[sid].log_path = log_path
-                return {"busy": False, "queue_len": 0}
+        self.assertTrue(SessionManager.attachment_staging_ready(mgr, sid))
 
-            mgr.get_state = get_state  # type: ignore[method-assign]
-            mgr.idle_from_log = lambda _sid: False  # type: ignore[method-assign]
-
-            self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
-
-    def test_attachment_readiness_refreshes_sidecar_before_log_idle_check(self) -> None:
+    def test_attachment_staging_refreshes_sidecar_without_log_idle_check(self) -> None:
         sid = "s1"
         mgr = self._mgr()
         with TemporaryDirectory() as td:
@@ -407,9 +381,9 @@ class TestServerQueuePersistence(unittest.TestCase):
 
             mgr.refresh_session_meta = refresh  # type: ignore[method-assign]
 
-            self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
+            self.assertTrue(SessionManager.attachment_staging_ready(mgr, sid))
             self.assertEqual(mgr._sessions[sid].log_path, new_busy_log)
-            self.assertEqual(drain_flags, [False, False])
+            self.assertEqual(drain_flags, [False])
 
     def test_attachment_readiness_refresh_does_not_drain_queue(self) -> None:
         sid = "s1"
@@ -430,7 +404,7 @@ class TestServerQueuePersistence(unittest.TestCase):
 
             mgr.refresh_session_meta = refresh  # type: ignore[method-assign]
 
-            self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
+            self.assertTrue(SessionManager.attachment_staging_ready(mgr, sid))
 
     def test_pending_attachment_blocks_queue_until_explicit_send(self) -> None:
         sid = "s1"
@@ -1671,7 +1645,7 @@ class TestServerQueuePersistence(unittest.TestCase):
 
             self.assertFalse(SessionManager._send_remote_ready(mgr, sid))
 
-    def test_attachment_readiness_requeries_state_when_refresh_rebinds_log(self) -> None:
+    def test_attachment_staging_does_not_query_state_when_refresh_rebinds_log(self) -> None:
         sid = "s1"
         mgr = self._mgr()
         with TemporaryDirectory() as td:
@@ -1687,24 +1661,22 @@ class TestServerQueuePersistence(unittest.TestCase):
 
             def get_state(_sid: str) -> dict[str, object]:
                 state_calls.append(_sid)
-                if len(state_calls) == 1:
-                    return {"busy": False, "queue_len": 0, "interrupted_idle": True}
                 return {"busy": True, "queue_len": 0, "interrupted_idle": False}
 
             refresh_calls = []
 
             def refresh(_sid: str, *, drain_queue: bool = False) -> None:
                 refresh_calls.append(_sid)
-                if len(refresh_calls) == 2:
-                    mgr._sessions[sid].log_path = new_log
-                    mgr._sessions[sid].interrupted_idle = False
+                mgr._sessions[sid].log_path = new_log
+                mgr._sessions[sid].interrupted_idle = False
 
             mgr.get_state = get_state  # type: ignore[method-assign]
             mgr._refresh_session_meta_if_sidecar_exists = lambda _sid, drain_queue=False: refresh(_sid, drain_queue=drain_queue)  # type: ignore[method-assign]
             mgr.idle_from_log = lambda _sid: False  # type: ignore[method-assign]
 
-            self.assertFalse(SessionManager.attachment_staging_ready(mgr, sid))
-            self.assertEqual(len(state_calls), 2)
+            self.assertTrue(SessionManager.attachment_staging_ready(mgr, sid))
+            self.assertEqual(state_calls, [])
+            self.assertEqual(refresh_calls, [sid])
 
     def test_send_readiness_requeries_state_when_refresh_rebinds_log(self) -> None:
         sid = "s1"
