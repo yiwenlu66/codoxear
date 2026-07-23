@@ -847,31 +847,41 @@
         return `<span class="${cls}">${open}${escapeHtml(src)}${close}</span>`;
       }
 
-      // Extract display and inline math from a non-code text region, replacing
-      // each occurrence with an opaque placeholder. Stores every match in
-      // `store` so the caller can substitute KaTeX output afterwards. Display
-      // math is matched before inline math so that $$/$$ and \[/\] never get
-      // consumed by the single-$ / \( rules.
+      // Apply a transform only outside matched Markdown code spans and links.
+      // Math extraction runs before inline Markdown rendering, so these regions
+      // must be protected here rather than relying on renderInlineMd later.
+      function transformOutsideInlineSyntax(input, transform) {
+        return String(input ?? "")
+          .split(/(`[^`]+`|!?\[[^\]]*\]\([^)]+\))/g)
+          .map((part, index) => (index % 2 ? part : transform(part)))
+          .join("");
+      }
+
+      // Extract display and inline math, replacing each occurrence with an
+      // opaque placeholder. Single-dollar pairs cannot cross a newline or code
+      // span, and currency/shell-shaped openers stay literal.
       function extractMathFromText(input, store) {
-        let text = String(input ?? "");
         const push = (latex, display) => {
           const id = store.length;
           store.push({ latex: String(latex).trim(), display: !!display });
           return mathToken(id);
         };
-        // Display: \[ ... \]
-        text = text.replace(/\\\[([\s\S]+?)\\\]/g, (_m, body) => push(body, true));
-        // Display: $$ ... $$
-        text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_m, body) => push(body, true));
-        // Inline: \( ... \)
-        //
-        // Single-$ inline math is intentionally NOT supported: in general prose
-        // a lone "$" is far more likely to be currency/shell/code than math,
-        // and a greedy match across two distant dollars silently swallows whole
-        // sentences (observed in practice). The explicit \(...\) delimiter is
-        // unambiguous and is what well-formed math output uses.
-        text = text.replace(/\\\(([\s\S]+?)\\\)/g, (_m, body) => push(body, false));
-        return text;
+        // A digit immediately after the opener remains literal to avoid
+        // treating currency as math; \(...\) handles numeric-leading TeX.
+        const extractSingleDollar = (text) =>
+          String(text ?? "").replace(
+            /(^|[^\\$])\$(?![\s$\d])([^\s$\n](?:[^\n$]*?[^\s$])?)(?<!\\)\$(?![\w$])/g,
+            (match, prefix, body) => (body.includes(MATH_TOKEN_PREFIX) ? match : `${prefix}${push(body, false)}`)
+          );
+
+        return transformOutsideInlineSyntax(input, (plainText) => {
+          let text = plainText;
+          // Display delimiters are consumed before their inline prefixes.
+          text = text.replace(/\\\[([\s\S]+?)\\\]/g, (_m, body) => push(body, true));
+          text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_m, body) => push(body, true));
+          text = text.replace(/\\\(([\s\S]+?)\\\)/g, (_m, body) => push(body, false));
+          return extractSingleDollar(text);
+        });
       }
 
       function substituteMath(html, store) {

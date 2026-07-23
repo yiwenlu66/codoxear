@@ -194,23 +194,53 @@ class TestMarkdownRendererSource(unittest.TestCase):
         self.assertNotIn("@@MATH", html)
         self.assertNotIn("$$", html)
 
-    def test_single_dollar_inline_is_not_treated_as_math(self) -> None:
-        # Single-$ inline math is intentionally unsupported: a lone "$" in
-        # prose is usually currency/shell/code, and matching across two distant
-        # dollars silently swallows whole sentences. Two backtick-wrapped "$"
-        # must not cross-match into one giant span.
-        html = render_markdown("The single-`$` rule is guarded, so `$VAR` is safe.")
+    def test_single_dollar_inline_renders_as_math(self) -> None:
+        html = render_markdown(r"At time $t$, image $I_t$ satisfies $H\delta = b$.")
+        self.assertIn('<span class="md-math-fallback md-math-inline">\\(t\\)</span>', html)
+        self.assertIn('<span class="md-math-fallback md-math-inline">\\(I_t\\)</span>', html)
+        self.assertIn('<span class="md-math-fallback md-math-inline">\\(H\\delta = b\\)</span>', html)
+        self.assertNotIn("@@MATH", html)
+
+    def test_inline_math_does_not_cross_or_render_inside_code_spans(self) -> None:
+        html = render_markdown(r"The single-`$` rule is guarded, so `$VAR` and `\(x\)` stay code.")
         self.assertNotIn("md-math-fallback", html)
-        self.assertIn("$", html)
+        self.assertIn("<code>$</code>", html)
+        self.assertIn("<code>$VAR</code>", html)
+        self.assertIn(r"<code>\(x\)</code>", html)
         self.assertIn("rule is guarded", html)
-        self.assertIn("is safe", html)
+
+    def test_single_dollar_math_does_not_cross_a_newline(self) -> None:
+        html = render_markdown("Before $x\nstill literal$ after.")
+        self.assertNotIn("md-math-fallback", html)
+        self.assertIn("$x<br />still literal$", html)
 
     def test_currency_dollars_not_treated_as_math(self) -> None:
-        # No closing paired dollar -> nothing should be extracted.
-        html = render_markdown("That costs $5 and $10 more.")
-        self.assertNotIn("md-math-fallback", html)
+        html = render_markdown("That costs $5 and $10 more; call the variable $x$.")
         self.assertIn("$5", html)
         self.assertIn("$10", html)
+        self.assertEqual(html.count("md-math-fallback md-math-inline"), 1)
+        self.assertIn('<span class="md-math-fallback md-math-inline">\\(x\\)</span>', html)
+
+    def test_escaped_and_unclosed_dollars_do_not_consume_later_math(self) -> None:
+        html = render_markdown(r"Shell $HOME/$USER, escaped \$cost\$, then variable $x$.")
+        self.assertIn("$HOME/$USER", html)
+        self.assertIn(r"\$cost\$", html)
+        self.assertEqual(html.count("md-math-fallback md-math-inline"), 1)
+        self.assertIn('<span class="md-math-fallback md-math-inline">\\(x\\)</span>', html)
+
+    def test_single_dollar_math_does_not_wrap_existing_math_tokens(self) -> None:
+        html = render_markdown(r"Mixed $a$$b$$c$ and $x$.")
+        self.assertNotIn("@@MATH", html)
+        self.assertIn("$a", html)
+        self.assertIn('<span class="md-math-fallback md-math-display">\\[b\\]</span>', html)
+        self.assertIn("c$", html)
+        self.assertIn('<span class="md-math-fallback md-math-inline">\\(x\\)</span>', html)
+
+    def test_math_is_not_extracted_from_link_destinations(self) -> None:
+        html = render_markdown("[docs](https://example.com/$path$) and $x$.")
+        self.assertIn("docs (https://example.com/$path$)", html)
+        self.assertEqual(html.count("md-math-fallback md-math-inline"), 1)
+        self.assertIn('<span class="md-math-fallback md-math-inline">\\(x\\)</span>', html)
 
     def test_math_inside_fenced_code_block_is_not_rendered(self) -> None:
         html = render_markdown(
@@ -234,8 +264,9 @@ class TestMarkdownRendererSource(unittest.TestCase):
 
     def test_katex_render_path_is_invoked_with_display_mode(self) -> None:
         katex_expr = "{ renderToString: function(src, opts){ return '<kmx>' + src + ':' + (opts.displayMode ? 'D' : 'I') + '</kmx>'; } }"
-        html = render_markdown("Inline \\(x\\) and block:\n\n\\[y\\]", katex_expr=katex_expr)
+        html = render_markdown("Inline \\(x\\), dollar $z$, and block:\n\n\\[y\\]", katex_expr=katex_expr)
         self.assertIn("<kmx>x:I</kmx>", html)
+        self.assertIn("<kmx>z:I</kmx>", html)
         self.assertIn("<kmx>y:D</kmx>", html)
         self.assertNotIn("md-math-fallback", html)
         self.assertNotIn("@@MATH", html)
