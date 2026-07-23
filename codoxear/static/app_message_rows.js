@@ -155,14 +155,20 @@
 
   function loadedUserJumpTarget(rows, direction, threshold) {
     if (!rows.length) return { reason: "none", target: null };
+    // Use getBoundingClientRect for coordinate-system-independent comparison.
+    // offsetTop is relative to offsetParent, which may not match the scroll
+    // container's coordinate space, causing repeated clicks to land on the
+    // same message instead of advancing.
+    const chatEl = (rows[0].closest("#chat") || rows[0].closest(".chatWrap") || null);
+    const chatTop = chatEl ? chatEl.getBoundingClientRect().top + 1 : threshold;
     if (direction < 0) {
       for (let i = rows.length - 1; i >= 0; i -= 1) {
-        if (rows[i].offsetTop < threshold) return { reason: "target", target: rows[i] };
+        if (rows[i].getBoundingClientRect().top < chatTop) return { reason: "target", target: rows[i] };
       }
       return { reason: "first", target: null };
     }
     for (const row of rows) {
-      if (row.offsetTop > threshold) return { reason: "target", target: row };
+      if (row.getBoundingClientRect().top > chatTop + 2) return { reason: "target", target: row };
     }
     return { reason: "last", target: null };
   }
