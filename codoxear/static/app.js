@@ -752,7 +752,7 @@
         const sidebarEmptyHint = el("div", { class: "sidebarEmptyHint muted", text: "No sessions yet" });
          const sidebarFooter = el("footer", {}, [
           el("button", { id: "helpBtnSide", type: "button", title: "Help", "aria-label": "Help", html: iconSvg("help") + "Help" }),
-          el("button", { id: "settingsBtnSide", type: "button", title: "Voice settings", "aria-label": "Voice settings", html: iconSvg("settings") + "Voice settings" }),
+          el("button", { id: "settingsBtnSide", type: "button", title: "Settings", "aria-label": "Settings", html: iconSvg("settings") + "Settings" }),
           el("button", { id: "logoutBtnSide", type: "button", title: "Log out", "aria-label": "Log out", html: iconSvg("logout") + "Log out" }),
         ]);
         const main = el("div", { class: "main" });
@@ -782,8 +782,8 @@
         const jumpBtn = el("button", {
           class: "jumpBtn",
           id: "jumpBtn",
-          title: "Jump to latest",
-          "aria-label": "Jump to latest",
+          title: "Jump to latest message",
+          "aria-label": "Jump to latest message",
           html: iconSvg("down"),
         });
         const chatTimeChip = el("div", { id: "chatTimeChip", class: "chatTimeChip", "aria-hidden": "true" });
@@ -1186,8 +1186,8 @@
         const prevUserBtn = el("button", {
           id: "prevUserBtn",
           class: "icon-btn",
-          title: "Previous user message",
-          "aria-label": "Previous user message",
+          title: "Previous user message (Alt+↑)",
+          "aria-label": "Previous user message (Alt+↑)",
           type: "button",
           html: iconSvg("up"),
         });
@@ -1195,8 +1195,8 @@
         const nextUserBtn = el("button", {
           id: "nextUserBtn",
           class: "icon-btn",
-          title: "Next user message",
-          "aria-label": "Next user message",
+          title: "Next user message (Alt+↓)",
+          "aria-label": "Next user message (Alt+↓)",
           type: "button",
           html: iconSvg("down"),
         });
@@ -1245,21 +1245,22 @@
         const topMeta = el("div", { class: "topMeta" }, [ctxChip]);
         const titleRow = el("div", { class: "titleRow" }, [titleLabel, topMeta]);
         const titleWrap = el("div", { class: "titleWrap" }, [titleRow]);
-        const sessionContextBar = el("div", { class: "sessionContextBar", id: "sessionContextBar", "aria-label": "Session utilities" }, [
-          fileBtn,
-          copyConversationBtn,
-          diagBtn,
-          unattendedBtn,
+        const chatMessageNavControls = el("div", { class: "chatMessageNavControls", role: "group", "aria-label": "User message navigation" }, [
+          prevUserBtn,
+          nextUserBtn,
         ]);
         const chatNavRail = el("div", { class: "chatNavRail", id: "chatNavRail", "aria-label": "Loaded chat navigation" }, [
           chatSearchBtn,
-          prevUserBtn,
-          nextUserBtn,
+          chatMessageNavControls,
         ]);
         chatWrap.appendChild(chatNavRail);
         const topbar = el("div", { class: "topbar" }, [
           el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap]),
           el("div", { class: "actions topActions" }, [
+            fileBtn,
+            copyConversationBtn,
+            diagBtn,
+            unattendedBtn,
             interruptBtn,
           ]),
         ]);
@@ -1273,21 +1274,12 @@
             "aria-label": "Attach file",
             html: iconSvg("paperclip"),
           }),
-          el("button", {
-            class: "icon-btn",
-            id: "captureBtn",
-            type: "button",
-            title: "Add photo",
-            "aria-label": "Add photo",
-            html: iconSvg("camera"),
-          }),
           el("div", { class: "inputWrap" }, [
             el("div", { class: "stagedAttachments", id: "stagedAttachments", "aria-live": "polite" }),
             el("textarea", { id: "msg", placeholder: "", "aria-label": "Enter your instructions here" }),
             el("div", { class: "ph", id: "msgPh", text: "Enter your instructions here" }),
           ]),
-          el("input", { id: "imgInput", type: "file", multiple: "multiple", style: "display:none" }),
-          el("input", { id: "captureInput", type: "file", accept: "image/*", capture: "environment", style: "display:none" }),
+          el("input", { id: "imgInput", type: "file", accept: "image/*,video/*,*/*", multiple: "multiple", style: "display:none" }),
           el("button", { class: "icon-btn", id: "queueBtn", type: "button", title: "Queued messages", "aria-label": "Queued messages", html: iconSvg("queue") }),
           el("button", { class: "icon-btn composerStopBtn", id: "composerStopBtn", type: "button", title: "Stop current response", "aria-label": "Stop current response", html: iconSvg("stop") }),
           el("button", { class: "icon-btn primary", id: "sendBtn", type: "submit", title: "Send", "aria-label": "Send", html: iconSvg("send") }),
@@ -1307,7 +1299,6 @@
         sidebar.appendChild(sessionsWrap);
         sidebar.appendChild(sidebarFooter);
         main.appendChild(topbar);
-        main.appendChild(sessionContextBar);
         main.appendChild(toast);
         main.appendChild(chatWrap);
         main.appendChild(composer);
@@ -1782,9 +1773,9 @@
         const voiceApiKeyInput = el("input", { id: "voiceApiKeyInput", type: "password", autocomplete: "off", spellcheck: "false" });
         const voiceClearApiKeyToggle = el("input", { id: "voiceClearApiKeyToggle", type: "checkbox" });
         const narrationSettingToggle = el("input", { id: "narrationSettingToggle", type: "checkbox" });
-        const voiceSettingsViewer = el("dialog", { class: "formViewer formDialog", id: "voiceSettingsViewer", "aria-label": "Voice settings" }, [
+        const voiceSettingsViewer = el("dialog", { class: "formViewer formDialog", id: "voiceSettingsViewer", "aria-label": "Settings" }, [
           el("div", { class: "queueHeader" }, [
-            el("div", { class: "title", text: "Voice settings" }),
+            el("div", { class: "title", text: "Settings" }),
             el("div", { class: "actions" }, [voiceSettingsCloseBtn]),
           ]),
           voiceSettingsStatus,
@@ -3120,7 +3111,7 @@
                       continue;
                     }
                     const s = entry.session;
-			            const card = el("div", { class: "session" + (selected === s.session_id ? " active" : "") });
+			            const card = el("div", { class: "session" + (selected === s.session_id ? " active" : ""), "data-session-id": s.session_id });
 
              const title = sessionDisplayName(s);
              const badges = [];
@@ -3789,6 +3780,12 @@
           pollKickDelayMs = null;
 
           selected = sessionId;
+          // Optimistically update sidebar active state for immediate visual feedback.
+          // The next poll cycle re-renders the full sidebar, but this avoids the
+          // perceived lag where the transcript switches before the highlight moves.
+          sessionsWrap.querySelectorAll(".session.active").forEach((el) => el.classList.remove("active"));
+          const optimisticActive = sessionsWrap.querySelector(`.session[data-session-id="${sessionId}"]`);
+          if (optimisticActive) optimisticActive.classList.add("active");
           if (unattendedController.isOpen() && unattendedController.menuSessionId() !== sessionId) hideUnattendedMenu();
           storageSetItem("codexweb.selected", sessionId);
           setSessionHash(sessionId);
@@ -4167,7 +4164,6 @@
           fileBtn.setAttribute("aria-label", fileViewerLabel);
           copyConversationBtn.disabled = !selected;
           chatSearchBtn.disabled = !selected;
-          sessionContextBar.style.display = selected ? "flex" : "none";
           chatNavRail.style.display = selected ? "flex" : "none";
           chatEmptyState.style.display = selected ? "none" : "flex";
           if (!selected && chatSearchController.isOpen()) closeChatSearch();
@@ -6651,7 +6647,6 @@
          const textarea = $("#msg");
          const msgPh = $("#msgPh");
          const imgInput = $("#imgInput");
-         const captureInput = $("#captureInput");
          const isIOS =
            /iP(hone|od|ad)/.test(navigator.userAgent || "") ||
            (navigator.platform === "MacIntel" && navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
@@ -6718,7 +6713,6 @@
 	           addAppEvent(window.visualViewport, "scroll", onViewportShift);
 	         }
          const attachBtn = $("#attachBtn");
-        const captureBtn = $("#captureBtn");
          if (!attachBadgeEl) {
            attachBadgeEl = el("span", { class: "attachBadge", id: "attachBadge" });
            attachBtn.appendChild(attachBadgeEl);
@@ -6887,22 +6881,13 @@
         }
         function syncAttachButtonState() {
           const attachControl = $("#attachBtn");
-          const captureControl = $("#captureBtn");
-          if (!attachControl && !captureControl) return;
+          if (!attachControl) return;
           const selectedInfo = selected ? sessionIndex.get(selected) || null : null;
           const attachBlocker = attachmentBlockerForSession(selected, selectedInfo);
           const attachLabel = attachBlocker || `Attach file (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})`;
-          const captureLabel = attachBlocker || `Add photo (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})`;
-          if (attachControl) {
-            attachControl.disabled = Boolean(attachBlocker);
-            attachControl.title = attachLabel;
-            attachControl.setAttribute("aria-label", attachLabel);
-          }
-          if (captureControl) {
-            captureControl.disabled = Boolean(attachBlocker);
-            captureControl.title = captureLabel;
-            captureControl.setAttribute("aria-label", captureLabel);
-          }
+          attachControl.disabled = Boolean(attachBlocker);
+          attachControl.title = attachLabel;
+          attachControl.setAttribute("aria-label", attachLabel);
         }
         setAttachCount(0);
         syncAttachButtonState();
@@ -6910,11 +6895,6 @@
           attachBtn.disabled = true;
           attachBtn.title = "Select a session to attach a file";
           attachBtn.setAttribute("aria-label", "Select a session to attach a file");
-          if (captureBtn) {
-            captureBtn.disabled = true;
-            captureBtn.title = "Select a session to attach a file";
-            captureBtn.setAttribute("aria-label", "Select a session to attach a file");
-          }
         }
         updateQueueBadge();
         syncQueueSubmitState();
@@ -7037,19 +7017,13 @@
           return ext ? `${base}.${ext}` : base;
         }
 
-        function photoFileName(file, index, seed) {
-          const suffix = index > 0 ? `-${index + 1}` : "";
-          const ext = imageExtensionFromMimeType(file && file.type, "jpg") || "jpg";
-          return `photo-${seed}${suffix}.${ext}`;
-        }
-
         async function stageFiles(files, { sid = selected, source = "picker" } = {}) {
           const sessionId = sid || selected;
           const uploadFiles = Array.from(files || []).filter(Boolean);
           if (!uploadFiles.length) return false;
 
           const producer = String(source || "picker");
-          const progressVerb = producer === "paste" ? "pasting" : producer === "drop" ? "dropping" : producer === "capture" ? "staging photo" : "uploading";
+          const progressVerb = producer === "paste" ? "pasting" : producer === "drop" ? "dropping" : "uploading";
           const producerNameSeed = Date.now();
           let successes = 0;
           let stoppedByBlocker = "";
@@ -7063,10 +7037,10 @@
                 stoppedByBlocker = attachBlocker;
                 break;
               }
-              setToast(uploadFiles.length > 1 ? `${progressVerb} ${fileIndex + 1}/${uploadFiles.length}...` : producer === "capture" ? "staging photo..." : "uploading file...");
+              setToast(uploadFiles.length > 1 ? `${progressVerb} ${fileIndex + 1}/${uploadFiles.length}...` : "uploading file...");
               const maxBytes = ATTACH_UPLOAD_MAX_BYTES;
               let uploadBlob = f;
-              let uploadName = f.name || (producer === "paste" ? pastedFileName(f, fileIndex, producerNameSeed) : producer === "capture" ? photoFileName(f, fileIndex, producerNameSeed) : "file");
+              let uploadName = f.name || (producer === "paste" ? pastedFileName(f, fileIndex, producerNameSeed) : "file");
               if (looksLikeImage(f) && (f.size > maxBytes || isLikelyHeic(f))) {
                 setToast("compressing image...");
                 const stem = safeAttachmentStem(uploadName);
@@ -7140,24 +7114,6 @@
           await stageFiles(files, { sid, source: "picker" });
         });
 
-        captureBtn.onclick = () => {
-          const sid = selected;
-          const sessionInfo = sid ? sessionIndex.get(sid) || null : null;
-          const attachBlocker = attachmentBlockerForSession(sid, sessionInfo);
-          if (attachBlocker) {
-            setToast(attachBlocker);
-            return;
-          }
-          captureInput.value = "";
-          captureInput.click();
-        };
-        captureInput.addEventListener("change", async () => {
-          const sid = selected;
-          if (!sid) return;
-          const files = Array.from(captureInput.files || []);
-          captureInput.value = "";
-          await stageFiles(files, { sid, source: "capture" });
-        });
 
         function clipboardPlainText(data) {
           if (!data || typeof data.getData !== "function") return "";
