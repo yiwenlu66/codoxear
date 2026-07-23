@@ -666,21 +666,6 @@
         align-items: center;
         gap: 6px;
       }
-      .sessionContextBar {
-        display: none;
-        align-items: center;
-        justify-content: flex-end;
-        gap: 6px;
-        padding: 6px 12px;
-        border-bottom: 1px solid var(--border);
-        background: rgba(255, 255, 255, 0.72);
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-      }
-      .sessionContextBar::-webkit-scrollbar {
-        display: none;
-      }
-      .sessionContextBar .icon-btn,
       .chatNavRail .icon-btn {
         width: 34px;
         height: 34px;
@@ -701,6 +686,14 @@
         background: rgba(255, 255, 255, 0.88);
         box-shadow: var(--shadow-sm);
         backdrop-filter: blur(10px);
+      }
+      .chatMessageNavControls {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-left: 2px;
+        padding-left: 4px;
+        border-left: 1px solid rgba(15, 23, 42, 0.12);
       }
       button {
         border: 1px solid var(--border);
@@ -2369,10 +2362,6 @@ select {
         width: 100%;
       }
       @media (max-width: 700px) {
-        .sessionContextBar {
-          justify-content: flex-start;
-          padding: 5px 10px;
-        }
         .chatNavRail {
           align-self: flex-end;
           margin: 6px 10px 0 10px;
@@ -2826,12 +2815,12 @@ select {
         .composer textarea {
           font-size: 16px;
         }
-        /* Composer icon controls (paperclip/capture/queue/stop/send) must meet
-           the 44x44 CSS px touch-target minimum on mobile. A min-width/min-height
+        /* Composer icon controls (paperclip/queue/stop/send) must meet the
+           44x44 CSS px touch-target minimum on mobile. A min-width/min-height
            floor is used instead of --composerCtl because the later coarse-pointer
            media query overrides --composerCtl to 40px on phones; the floor holds
            regardless, while desktop (38px) and the textarea/pill height are
-           untouched. inputWrap is flex:1 1 auto with min-width:0, so the five
+           untouched. inputWrap is flex:1 1 auto with min-width:0, so the four
            44px controls plus gaps/padding shrink the textarea rather than forcing
            horizontal overflow at 390px. */
         .composer .icon-btn {
@@ -2872,7 +2861,6 @@ select {
         .pill > .icon-btn,
         .topActions .icon-btn,
         .sidebar header .icon-btn,
-        .sessionContextBar .icon-btn,
         .chatNavRail .icon-btn,
         .agentBackendTab {
           width: 44px;

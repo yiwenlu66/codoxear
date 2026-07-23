@@ -40,9 +40,9 @@ For each incoming user comment:
 
 6. **[open] Confusing "down" button near jump-to-last and search** — The `nextUserBtn` (next user message) sits beside search and jump-to-last with only a down-arrow icon. Its affordance is unclear. Needs better icon/tooltip or grouping with prev-user.
 
-7. **[open] Sidebar highlight sluggish on session switch** — Pre-refactor bug: conversation content switches immediately but sidebar active-highlight lags. Needs investigation of the sidebar re-render timing path.
+7. **[resolved] Sidebar highlight sluggish on session switch** — Added `data-session-id` to sidebar cards and optimistic DOM class toggle in `openSession()` immediately after `selected = sessionId`. Commit `b007911`.
 
-8. **[open] Redundant camera icon** — Separate `captureBtn` clutters the composer. Old version absorbed camera into the attachment button on mobile (via `accept="image/*" capture`). Remove the standalone camera button; merge into attach on mobile.
+8. **[in progress] Redundant camera icon** — Separate `captureBtn` removed; camera merged into attach button via `accept="image/*,video/*,*/*"`. Tests being updated.
 
 ## Constraints
 - Do not touch host `codoxear-server.service`, port `8743`, or host `~/.local/share/codoxear`.

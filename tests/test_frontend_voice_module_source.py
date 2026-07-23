@@ -377,7 +377,7 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
         result = run_node_json(js)
         self.assertTrue(result["reused"])
 
-    # --- 3. settings dialog show/hide/focus + Voice settings label ---
+    # --- 3. settings dialog show/hide/focus + Settings label ---
 
     def test_settings_dialog_show_hide_uses_canonical_open_state(self) -> None:
         js = harness_script(
@@ -419,12 +419,11 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
         self.assertEqual(hide["viewer"], "none")
         self.assertTrue(hide["closeCalled"])
 
-    def test_voice_settings_label_renamed_in_app_shell(self) -> None:
+    def test_settings_label_is_used_in_app_shell(self) -> None:
         app_source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('"aria-label": "Voice settings"', app_source)
-        self.assertIn('text: "Voice settings"', app_source)
-        # The stale generic "Settings" label for the voice dialog is gone.
-        self.assertNotIn('"aria-label": "Settings"', app_source)
+        self.assertIn('"aria-label": "Settings"', app_source)
+        self.assertIn('text: "Settings"', app_source)
+        self.assertNotIn('"Voice settings"', app_source)
 
     # --- 4. form sync + API-key placeholder / clear payload ---
 
