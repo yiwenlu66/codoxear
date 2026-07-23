@@ -117,6 +117,7 @@ def eval_open_session_tail_request_abort() -> dict:
           pollKickPending: false,
           pollKickDelayMs: null,
           selected: null,
+          sessionsWrap: {{ querySelectorAll: () => [], querySelector: () => null }},
           unattendedController: {{ isOpen: () => false, menuSessionId: () => null }},
           activeTranscriptState: "pending_bind",
           activeLogPath: null,

@@ -15,11 +15,13 @@ class TestChatNavigationSource(unittest.TestCase):
     def test_loaded_user_message_jump_buttons_live_in_chat_nav_rail(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn('id: "prevUserBtn"', source)
-        self.assertIn('title: "Previous user message"', source)
+        self.assertIn('title: "Previous user message (Alt+↑)"', source)
         self.assertIn('id: "nextUserBtn"', source)
-        self.assertIn('title: "Next user message"', source)
-        self.assertIn('const chatNavRail = el("div", { class: "chatNavRail"', source)
-        self.assertIn("chatSearchBtn,\n          prevUserBtn,\n          nextUserBtn", source)
+        self.assertIn('title: "Next user message (Alt+↓)"', source)
+        self.assertIn('const chatMessageNavControls = el("div", { class: "chatMessageNavControls", role: "group", "aria-label": "User message navigation" }', source)
+        self.assertIn("prevUserBtn,\n          nextUserBtn", source)
+        self.assertIn("chatSearchBtn,\n          chatMessageNavControls", source)
+        self.assertIn('title: "Jump to latest message"', source)
         topbar_start = source.index('const topbar = el("div", { class: "topbar" }')
         topbar_end = source.index('const form = el("form"', topbar_start)
         topbar_block = source[topbar_start:topbar_end]
@@ -27,16 +29,17 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertNotIn("nextUserBtn", topbar_block)
         self.assertNotIn("chatSearchBtn", topbar_block)
 
-    def test_session_utilities_are_outside_topbar(self) -> None:
+    def test_session_utilities_are_in_topbar(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('const sessionContextBar = el("div", { class: "sessionContextBar"', source)
-        self.assertIn("fileBtn,\n          copyConversationBtn,\n          diagBtn,\n          unattendedBtn", source)
+        self.assertNotIn("sessionContextBar", source)
         topbar_start = source.index('const topbar = el("div", { class: "topbar" }')
         topbar_end = source.index('const form = el("form"', topbar_start)
         topbar_block = source[topbar_start:topbar_end]
-        for name in ["fileBtn", "copyConversationBtn", "diagBtn", "unattendedBtn"]:
-            self.assertNotIn(name, topbar_block)
-        self.assertIn("interruptBtn", topbar_block)
+        expected_order = ["fileBtn", "copyConversationBtn", "diagBtn", "unattendedBtn", "interruptBtn"]
+        for name in expected_order:
+            self.assertIn(name, topbar_block)
+        positions = [topbar_block.index(name) for name in expected_order]
+        self.assertEqual(positions, sorted(positions))
 
     def test_loaded_user_message_rows_helper_remains_in_app_js(self) -> None:
         # The message-row helpers (loadedUserMessageRows / loadedUserJumpTarget)

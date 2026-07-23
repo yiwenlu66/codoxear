@@ -9,7 +9,6 @@ SHELL_TARGET_SELECTORS = [
     ".pill > .icon-btn",
     ".topActions .icon-btn",
     ".sidebar header .icon-btn",
-    ".sessionContextBar .icon-btn",
     ".chatNavRail .icon-btn",
     ".agentBackendTab",
 ]
@@ -72,8 +71,8 @@ class TestMobileShellTouchTargetsSource(unittest.TestCase):
     def test_phone_floor_overrides_existing_compact_shell_selectors(self) -> None:
         """The 44px phone floor must beat the compact 34px rules it fixes.
 
-        sessionContextBar/chatNavRail and agentBackendTab have base 34px rules;
-        topActions has a phone 34px compact rule. The phone floor appears in
+        chatNavRail and agentBackendTab have base 34px rules; topActions has a
+        phone 34px compact rule. The phone floor appears in
         the max-width:520px block after the generic and topActions compact rules,
         and uses equal-or-higher specificity than the later coarse-pointer
         .icon-btn 40px rule.
@@ -98,11 +97,11 @@ class TestMobileShellTouchTargetsSource(unittest.TestCase):
         )
 
         before_phone = css[: css.index("@media (max-width: 520px)")]
-        rail_body = last_selector_body(before_phone, ".sessionContextBar .icon-btn")
+        rail_body = last_selector_body(before_phone, ".chatNavRail .icon-btn")
         self.assertIn("width: 34px", rail_body)
         self.assertIn("height: 34px", rail_body)
-        self.assertIn("width: 44px", last_selector_body(phone_block, ".sessionContextBar .icon-btn"))
         self.assertIn("width: 44px", last_selector_body(phone_block, ".chatNavRail .icon-btn"))
+        self.assertNotIn("sessionContextBar", css)
 
         backend_base = last_selector_body(before_phone, ".agentBackendTab")
         self.assertIn("width: 34px", backend_base)
