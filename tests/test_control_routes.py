@@ -389,7 +389,7 @@ def test_inject_attachment_checks_readiness_before_decoding_or_staging() -> None
     ) is True
     assert manager.calls == [("ready", "s1")]
     assert staged == []
-    assert responses == [(409, {"error": "session is busy; wait before attaching a file"})]
+    assert responses == [(409, {"error": "wait for the current queue drain before attaching a file"})]
 
 
 def test_inject_attachment_stages_without_backend_paste() -> None:
@@ -593,7 +593,7 @@ def test_inject_attachment_readiness_false_is_409() -> None:
     manager = Manager()
     manager.ready = False
     assert _post(_good_body(), responses, manager=manager) is True
-    assert responses == [(409, {"error": "session is busy; wait before attaching a file"})]
+    assert responses == [(409, {"error": "wait for the current queue drain before attaching a file"})]
 
 
 def test_inject_attachment_add_staged_key_error_is_404() -> None:
@@ -621,4 +621,4 @@ def test_inject_attachment_ready_check_precedes_base64_decode() -> None:
     manager = Manager()
     manager.ready = False
     assert _post(_good_body(data_b64="!!!invalid!!!"), responses, manager=manager) is True
-    assert responses == [(409, {"error": "session is busy; wait before attaching a file"})]
+    assert responses == [(409, {"error": "wait for the current queue drain before attaching a file"})]

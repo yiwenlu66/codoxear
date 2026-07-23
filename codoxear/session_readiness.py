@@ -146,4 +146,21 @@ class SessionReadinessCoordinator:
         return session_runtime_readiness(runtime, local_queue_len=local_queue_len).direct_send
 
     def attachment_staging_ready(self, session_id: str) -> bool:
-        return self._attachment_ready(session_id, allow_existing_pending=True)
+        """Allow staging files even when the agent is busy.
+
+        Staging is a server-side file write that does not touch the agent.
+        Only structural blockers (unknown session, commit-unknown send,
+        missing sync_send, active queue drain) prevent staging.
+        """
+        self.refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
+        with self.lock:
+            session = self.sessions().get(session_id)
+            if not session:
+                raise KeyError("unknown session")
+            if session.commit_unknown_send:
+                raise self.not_ready_error("resolve the unknown send before attaching a file")
+            if not session.sync_send_supported:
+                raise self.not_ready_error("broker must be restarted before file attachments are available")
+            if session.queue_sending_item_id is not None:
+                return False
+            return True

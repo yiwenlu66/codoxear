@@ -6779,7 +6779,7 @@
           for (const item of stagedAttachments) {
             const chip = el("div", { class: "stagedAttachmentChip", title: attachmentIdentityText(item) });
             chip.appendChild(el("span", { class: "stagedAttachmentName", text: item.display_name || item.filename || "file" }));
-            chip.appendChild(el("span", { class: "stagedAttachmentMeta", text: `${fmtBytes(item.size || 0)} · ${item.id.slice(0, 8)}` }));
+            chip.appendChild(el("span", { class: "stagedAttachmentMeta", text: fmtBytes(item.size || 0) }));
             const removeBtn = el("button", { class: "stagedAttachmentRemove", type: "button", text: "×", title: `Remove ${item.display_name || "attachment"}`, "aria-label": `Remove ${item.display_name || "attachment"}` });
             removeBtn.onclick = async () => {
               if (!selected) return;

@@ -42,7 +42,17 @@ For each incoming user comment:
 
 7. **[resolved] Sidebar highlight sluggish on session switch** — Added `data-session-id` to sidebar cards and optimistic DOM class toggle in `openSession()` immediately after `selected = sessionId`. Commit `b007911`.
 
-8. **[in progress] Redundant camera icon** — Separate `captureBtn` removed; camera merged into attach button via `accept="image/*,video/*,*/*"`. Tests being updated.
+8. **[resolved] Redundant camera icon** — Separate `captureBtn` removed; camera merged into attach button via `accept="image/*,video/*,*/*"`.
+
+9. **[open] File upload broken: agent can't see file at path** — Staged attachment path race: user uploaded a file, it was sent with one timestamped path, then the file was cleaned up / re-uploaded with a new timestamp. The already-delivered message references the old path which no longer exists. The staged-attachment lifecycle must not remove files that have already been injected into a sent message.
+
+10. **[open] Staged attachment chip shows hash/id — bad UI** — Chip meta shows `item.id.slice(0, 8)` (a hash prefix). Remove it; show only filename + size.
+
+11. **[open] Input box corner radius grows when taller** — When the composer textarea grows (e.g. from file upload), the border-radius scales up visually. CSS needs a fixed small radius regardless of height.
+
+12. **[open] Forbid file upload when agent is busy — wrong design** — Staging a file (writing bytes to disk) should be allowed even when the agent is busy. Only the actual send (PTY injection) should be blocked. The `attachment_staging_ready` check currently includes `direct_send` readiness.
+
+13. **[info] Delete/clear attachment mechanism** — User asked how it works. Answer: staged-reference model. Uploads are stored under app-dir `uploads/<session>/` with mode 0600. Remove clears one entry + deletes its file. Clear removes all. The old pre-refactor PTY-paste model was replaced because it was not reversible. This is the correct design; delete/clear work by unlinking staged files and removing entries from the staged_attachments store.
 
 ## Constraints
 - Do not touch host `codoxear-server.service`, port `8743`, or host `~/.local/share/codoxear`.

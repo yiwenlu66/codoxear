@@ -343,7 +343,7 @@ def _handle_inject_attachment(handler: Any, *, session_id: str, manager: Any, de
         deps.json_response(handler, 409, {"error": "session state unavailable; wait before attaching a file"})
         return
     if not ready_for_attachment:
-        deps.json_response(handler, 409, {"error": "session is busy; wait before attaching a file"})
+        deps.json_response(handler, 409, {"error": "wait for the current queue drain before attaching a file"})
         return
     try:
         raw = base64.b64decode(data_b64.encode("ascii"), validate=True)

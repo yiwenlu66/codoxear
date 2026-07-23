@@ -1391,7 +1391,7 @@
         box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16), 0 8px 22px rgba(15, 23, 42, 0.08);
       }
       .composer form.multiline {
-        border-radius: 18px;
+        border-radius: 14px;
       }
       .composer .icon-btn {
         width: var(--composerCtl);
