@@ -28,11 +28,21 @@ For each incoming user comment:
 
 ### Issues
 
-1. **[resolved] Codex reasoning effort list incomplete** — Added `minimal` to Codex SUPPORTED_REASONING_EFFORTS; sidebar markers already had `minimal:m` and `off:–`. Codex has no `off` or `max` (those are Pi/Anthropic concepts). Commit `9fa7805`.
+1. **[resolved] Codex reasoning effort list incomplete** — Commit `9fa7805`.
 
-2. **[open] CWD combobox: combine recent + filesystem listing** — Current logic: recent-cwd fuzzy filter only. User wants historical cwds merged with live filesystem directory listing, non-blocking. Design needed for async filesystem enumeration without UI lag.
+2. **[open] CWD combobox: combine recent + filesystem listing** — Current logic: recent-cwd fuzzy filter only. User wants historical cwds merged with live filesystem directory listing, non-blocking.
 
-3. **[resolved] Codex provider/model dropdown only showed openai-api/default** — Root cause: `read_codex_launch_defaults` returned no model list for custom providers, and preview lacked models_cache.json. Fixed by adding `provider_models_from_config()` to extract per-provider `models` arrays from config.toml, and updated preview to declare dexgem models + copy models_cache.json. Commit `9fa7805`.
+3. **[resolved] Codex provider/model dropdown only showed openai-api/default** — Commit `9fa7805`.
+
+4. **[open] Session utility buttons cluttering layout** — file/copy/details/unattended buttons are in a separate `sessionContextBar` below the topbar, creating visual clutter. User wants them back in the topbar (pre-refactor position). Interacts with #5/#6/#8.
+
+5. **[open] "Voice settings" should be "Settings"** — The sidebar button and dialog say "Voice settings" but should be the general "Settings" entry point to allow future settings items.
+
+6. **[open] Confusing "down" button near jump-to-last and search** — The `nextUserBtn` (next user message) sits beside search and jump-to-last with only a down-arrow icon. Its affordance is unclear. Needs better icon/tooltip or grouping with prev-user.
+
+7. **[open] Sidebar highlight sluggish on session switch** — Pre-refactor bug: conversation content switches immediately but sidebar active-highlight lags. Needs investigation of the sidebar re-render timing path.
+
+8. **[open] Redundant camera icon** — Separate `captureBtn` clutters the composer. Old version absorbed camera into the attachment button on mobile (via `accept="image/*" capture`). Remove the standalone camera button; merge into attach on mobile.
 
 ## Constraints
 - Do not touch host `codoxear-server.service`, port `8743`, or host `~/.local/share/codoxear`.
