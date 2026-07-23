@@ -195,7 +195,7 @@ models = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"]
 name = "DexGem Completions"
 base_url = "https://litellm.dex-gem.ai/v1"
 env_key = "DEXGEM_API_KEY"
-wire_api = "chat"
+wire_api = "responses"
 models = ["glm-5.2", "deepseek-v4-pro", "deepseek-v4-flash"]
 CODEX_CONFIG
   chmod 600 "$home_dir/.codex/config.toml"
