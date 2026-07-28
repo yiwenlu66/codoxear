@@ -2055,6 +2055,20 @@
         root.appendChild(sendChoiceBackdrop);
         root.appendChild(sendChoice);
 
+        const confirmAppBackdrop = el("div", { class: "modalBackdrop", id: "confirmAppBackdrop" });
+        const confirmAppMessage = el("div", { class: "muted", id: "confirmAppMessage" });
+        const confirmAppAcceptBtn = el("button", { class: "primary", id: "confirmAppAcceptBtn", type: "button", text: "Confirm" });
+        const confirmAppDialog = el("div", { class: "sendChoice", id: "confirmAppDialog", role: "alertdialog", "aria-modal": "true", "aria-label": "Confirm action" }, [
+          el("div", { class: "title", text: "Confirm action" }),
+          confirmAppMessage,
+          el("div", { class: "sendChoiceActions" }, [
+            el("button", { id: "confirmAppCancelBtn", type: "button", text: "Cancel" }),
+            confirmAppAcceptBtn,
+          ]),
+        ]);
+        root.appendChild(confirmAppBackdrop);
+        root.appendChild(confirmAppDialog);
+
         const queueBackdrop = el("div", { class: "modalBackdrop", id: "queueBackdrop" });
         const queueCloseBtn = el("button", {
           id: "queueCloseBtn",
@@ -3380,7 +3394,7 @@
                  e.stopPropagation();
                }
               closeOpenSwipe();
-              if (!confirm(launchRow ? "Dismiss this launch record?" : "Delete this session?")) return;
+              if (!(await confirmApp(launchRow ? "Dismiss this launch record?" : "Delete this session?"))) return;
               try {
                 await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
                 if (selected === s.session_id) {
@@ -8425,6 +8439,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         );
         document.addEventListener("keydown", (e) => {
           if (e.key !== "Escape") return;
+          if (confirmAppDialog.style.display === "flex") {
+            e.preventDefault();
+            resolveAppConfirmation(false);
+            return;
+          }
           if (filePasteDialog.style.display === "flex") {
             hideFilePasteDialog();
             return;
@@ -8445,6 +8464,34 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (editViewer.style.display === "flex") hideEditSession();
           if (newSessionViewer.style.display === "flex") hideNewSessionDialog();
         });
+
+        let confirmAppPending = null;
+        async function confirmApp(message, { confirmText = "Confirm" } = {}) {
+          if (confirmAppPending) return Promise.resolve(false);
+          return new Promise((resolve) => {
+            confirmAppPending = {
+              resolve,
+              returnFocus: document.activeElement instanceof HTMLElement ? document.activeElement : null,
+            };
+            confirmAppMessage.textContent = String(message || "");
+            confirmAppAcceptBtn.textContent = confirmText;
+            confirmAppBackdrop.style.display = "block";
+            confirmAppDialog.style.display = "flex";
+            requestAnimationFrame(() => confirmAppAcceptBtn.focus());
+          });
+        }
+        function resolveAppConfirmation(confirmed) {
+          const pending = confirmAppPending;
+          if (!pending) return;
+          confirmAppPending = null;
+          confirmAppBackdrop.style.display = "none";
+          confirmAppDialog.style.display = "none";
+          pending.resolve(!!confirmed);
+          if (pending.returnFocus && pending.returnFocus.isConnected) pending.returnFocus.focus();
+        }
+        confirmAppAcceptBtn.onclick = () => resolveAppConfirmation(true);
+        $("#confirmAppCancelBtn").onclick = () => resolveAppConfirmation(false);
+        confirmAppBackdrop.onclick = () => resolveAppConfirmation(false);
 
         let sendChoicePending = null;
         function showSendChoice(raw) {

@@ -18,9 +18,24 @@ def test_launch_attempt_rows_use_dismiss_language() -> None:
     source = APP_JS.read_text(encoding="utf-8")
 
     assert 'const launchRow = launchFailed || launchPending;' in source
-    assert 'confirm(launchRow ? "Dismiss this launch record?" : "Delete this session?")' in source
+    assert 'await confirmApp(launchRow ? "Dismiss this launch record?" : "Delete this session?")' in source
     assert 'title: launchRow ? "Dismiss launch record" : "Delete session"' in source
     assert 'if (launchRow && card && card.parentNode) card.remove();' in source
+
+
+def test_sidebar_delete_uses_app_confirmation_before_post() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+
+    assert "async function confirmApp(" in source
+    assert "window.confirm" not in source
+    assert "if (!confirm(" not in source
+    assert "confirmAppAcceptBtn.onclick = () => resolveAppConfirmation(true);" in source
+    assert "pending.resolve(!!confirmed);" in source
+    confirmation = 'if (!(await confirmApp(launchRow ? "Dismiss this launch record?" : "Delete this session?"))) return;'
+    delete_request = 'await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });'
+    assert confirmation in source
+    assert delete_request in source
+    assert source.index(confirmation) < source.index(delete_request)
 
 
 def test_failed_launch_rows_are_clickable_transcripts() -> None:
