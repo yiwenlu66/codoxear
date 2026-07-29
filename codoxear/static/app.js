@@ -6193,6 +6193,13 @@
             const sid = sendChoicePending && sendChoicePending.sid;
             hideSendChoice({ restoreFocus: true });
             if (!raw || !sid) return;
+            // "Send now" while busy: interrupt the current turn first, then send.
+            try {
+              await api(`/api/sessions/${sid}/interrupt`, { method: "POST" });
+            } catch (_) {
+              // Interrupt failure is non-fatal; the send may still succeed if
+              // the turn completes on its own between interrupt and send.
+            }
             const ok = await sendText(raw, { sid });
             if (ok && sid === selected && $("#msg").value === raw) clearComposer();
           };
