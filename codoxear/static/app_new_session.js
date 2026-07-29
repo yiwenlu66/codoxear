@@ -282,9 +282,22 @@
         addNewSessionModelOption(out, seen, model, { providerChoice, providerAbsent, recent: true });
       }
       const configuredModels = Array.isArray(defaults.models) ? defaults.models : [];
+      const providerModelMap = defaults.provider_models && typeof defaults.provider_models === "object" ? defaults.provider_models : null;
       if (providerChoices.length) {
-        for (const providerChoice of providerChoices) {
-          for (const value of configuredModels) addNewSessionModelOption(out, seen, value, { providerChoice, configured: true });
+        if (providerModelMap) {
+          // Pi: each model belongs to a specific provider — no cross-product.
+          for (const providerChoice of providerChoices) {
+            const models = providerModelMap[providerChoice];
+            if (Array.isArray(models)) {
+              for (const value of models) addNewSessionModelOption(out, seen, value, { providerChoice, configured: true });
+            }
+          }
+          // Fallback: bare model names for any models not in the provider map.
+          for (const value of configuredModels) addNewSessionModelOption(out, seen, value, { configured: true });
+        } else {
+          for (const providerChoice of providerChoices) {
+            for (const value of configuredModels) addNewSessionModelOption(out, seen, value, { providerChoice, configured: true });
+          }
         }
       } else {
         for (const value of configuredModels) addNewSessionModelOption(out, seen, value, { configured: true });

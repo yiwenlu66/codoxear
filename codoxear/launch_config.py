@@ -408,6 +408,7 @@ def read_pi_launch_defaults(paths: LaunchConfigPaths) -> dict[str, Any]:
     configured_effort: str | None = "high"
     provider_choices: list[str] = []
     model_choices: list[str] = []
+    provider_models: dict[str, list[str]] = {}
     reasoning_efforts_by_model = read_pi_reasoning_efforts_by_model(paths)
 
     if paths.pi_settings_path.exists():
@@ -430,6 +431,7 @@ def read_pi_launch_defaults(paths: LaunchConfigPaths) -> dict[str, Any]:
                 if not name or name in provider_choices:
                     continue
                 provider_choices.append(name)
+                provider_models[name] = []
                 if configured_provider is not None and name != configured_provider:
                     continue
                 if not isinstance(value, dict):
@@ -444,6 +446,7 @@ def read_pi_launch_defaults(paths: LaunchConfigPaths) -> dict[str, Any]:
                     if model_id is None or model_id in model_choices:
                         continue
                     model_choices.append(model_id)
+                    provider_models[name].append(model_id)
 
     if paths.pi_auth_path.exists():
         data = json.loads(paths.pi_auth_path.read_text(encoding="utf-8"))
@@ -487,6 +490,7 @@ def read_pi_launch_defaults(paths: LaunchConfigPaths) -> dict[str, Any]:
         "provider_choices": provider_choices,
         "model": configured_model,
         "models": model_choices,
+        "provider_models": provider_models,
         "reasoning_effort": configured_effort,
         "reasoning_efforts": configured_efforts,
         "reasoning_efforts_by_model": reasoning_efforts_by_model,
