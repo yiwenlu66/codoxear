@@ -1840,6 +1840,16 @@ select {
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+      .cwdSuggestionSource {
+        flex: 0 0 auto;
+        border-radius: 999px;
+        padding: 2px 6px;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1.2;
+        color: rgba(17, 24, 39, 0.62);
+        background: rgba(15, 23, 42, 0.07);
+      }
       .fileMenuMatch {
         padding: 0 1px;
         border-radius: 3px;

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+import tempfile
+import urllib.parse
 
 from codoxear.session_routes import SessionRouteDeps
 from codoxear.session_routes import handle_session_get_route
@@ -172,6 +174,42 @@ def test_handle_session_get_route_resume_candidates_adds_alias_and_preview() -> 
             },
         )
     ]
+
+
+def test_handle_session_get_route_cwd_suggest_lists_immediate_directories() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+        (root / "project").mkdir()
+        (root / ".hidden").mkdir()
+        (root / "notes.txt").write_text("not a directory", encoding="utf-8")
+        deps, responses, _etag_payloads, _metrics = _deps()
+        query = urllib.parse.urlencode({"path": str(root)})
+        assert handle_session_get_route(
+            _FakeHandler(),
+            path="/api/cwd-suggest",
+            query=query,
+            manager=_FakeManager(),
+            deps=deps,
+            match_session_route=_match_session_route,
+        ) is True
+        assert responses == [(200, {"directories": [{"name": "project", "path": str(root / "project")}]})]
+
+        responses.clear()
+        assert handle_session_get_route(
+            _FakeHandler(),
+            path="/api/cwd-suggest",
+            query=urllib.parse.urlencode({"path": str(root), "prefix": "."}),
+            manager=_FakeManager(),
+            deps=deps,
+            match_session_route=_match_session_route,
+        ) is True
+        assert responses[0][0] == 200
+        directories = responses[0][1]["directories"]
+        assert isinstance(directories, list)
+        assert {(item["name"], item["path"]) for item in directories if isinstance(item, dict)} == {
+            ("project", str(root / "project")),
+            (".hidden", str(root / ".hidden")),
+        }
 
 
 def test_handle_session_get_route_tail_and_unattended_map_unknown_session() -> None:

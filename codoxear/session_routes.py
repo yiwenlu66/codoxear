@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any, Callable
 import urllib.parse
 
+from .cwd_suggest import cwd_suggestions
+
 
 JsonResponse = Callable[[Any, int, dict[str, Any]], None]
 JsonResponseWithEtag = Callable[[Any, dict[str, Any]], None]
@@ -50,6 +52,9 @@ def handle_session_get_route(
         return True
     if path == "/api/session_resume_candidates":
         _handle_session_resume_candidates(handler, query=query, manager=manager, deps=deps)
+        return True
+    if path == "/api/cwd-suggest":
+        _handle_cwd_suggest(handler, query=query, deps=deps)
         return True
     if path == "/api/metrics":
         _handle_metrics(handler, deps=deps)
@@ -137,6 +142,15 @@ def _handle_session_resume_candidates(handler: Any, *, query: str, manager: Any,
         row["alias"] = alias
         row["first_user_message"] = preview
     deps.json_response(handler, 200, {"ok": True, **info, "sessions": rows})
+
+
+def _handle_cwd_suggest(handler: Any, *, query: str, deps: SessionRouteDeps) -> None:
+    if not _authorized(handler, deps):
+        return
+    qs = urllib.parse.parse_qs(query)
+    path = qs.get("path", [""])[0]
+    prefix = qs.get("prefix", [""])[0]
+    deps.json_response(handler, 200, {"directories": cwd_suggestions(path, prefix=prefix)})
 
 
 def _handle_metrics(handler: Any, *, deps: SessionRouteDeps) -> None:

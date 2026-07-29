@@ -127,6 +127,10 @@
     let resumeCandidates = [];
     let resumeLoadSeq = 0;
     let resumeLoadTimer = null;
+    let filesystemCwdOptions = [];
+    let cwdSuggestInput = null;
+    let cwdSuggestLoadSeq = 0;
+    let cwdSuggestTimer = null;
 
     function newSessionProviderChoices() {
       return codoxearLaunch.providerChoicesForBackend(backend(), defaultsSource());
@@ -473,17 +477,75 @@
       } catch (_) {}
     }
 
+    function cwdSuggestionQuery(raw) {
+      const value = String(raw || "").trim();
+      const slash = value.lastIndexOf("/");
+      if (slash < 0) return { path: "/", prefix: value };
+      if (slash === 0) return { path: "/", prefix: value.slice(1) };
+      return { path: value.slice(0, slash) || "/", prefix: value.slice(slash + 1) };
+    }
+
+    async function loadFilesystemCwdOptions(raw, seq) {
+      const query = cwdSuggestionQuery(raw);
+      try {
+        const response = await fetch(`/api/cwd-suggest?path=${encodeURIComponent(query.path)}&prefix=${encodeURIComponent(query.prefix)}`, {
+          credentials: "same-origin",
+        });
+        if (!response.ok) throw new Error(`cwd suggestions failed: ${response.status}`);
+        const result = await response.json();
+        if (seq !== cwdSuggestLoadSeq) return;
+        filesystemCwdOptions = Array.isArray(result && result.directories)
+          ? result.directories.filter((item) => item && typeof item.name === "string" && typeof item.path === "string")
+          : [];
+        renderRecentCwdMenu();
+        applyDialogMenus();
+      } catch (_) {
+        if (seq !== cwdSuggestLoadSeq) return;
+        filesystemCwdOptions = [];
+        renderRecentCwdMenu();
+        applyDialogMenus();
+      }
+    }
+
+    function scheduleFilesystemCwdLoad() {
+      const raw = String(cwdInput.value || "").trim();
+      if (raw === cwdSuggestInput) return;
+      cwdSuggestInput = raw;
+      filesystemCwdOptions = [];
+      const seq = ++cwdSuggestLoadSeq;
+      if (cwdSuggestTimer) clearTimeout(cwdSuggestTimer);
+      cwdSuggestTimer = setTimeout(() => {
+        cwdSuggestTimer = null;
+        void loadFilesystemCwdOptions(raw, seq);
+      }, 250);
+    }
+
+    function cwdMenuOptions(raw) {
+      const recent = filteredRecentCwdOptions().map((item) => ({ cwd: item.cwd, source: "recent" }));
+      const seen = new Set(recent.map((item) => item.cwd));
+      const prefix = cwdSuggestionQuery(raw).prefix.toLocaleLowerCase();
+      for (const item of filesystemCwdOptions) {
+        const cwd = String(item.path || "").trim();
+        const name = String(item.name || "").trim();
+        if (!cwd || !name || seen.has(cwd) || (prefix && !name.toLocaleLowerCase().startsWith(prefix))) continue;
+        seen.add(cwd);
+        recent.push({ cwd, source: "filesystem" });
+      }
+      return recent;
+    }
+
     function renderRecentCwdMenu() {
       cwdMenu.innerHTML = "";
       const raw = String(cwdInput.value || "").trim();
-      const items = filteredRecentCwdOptions();
+      scheduleFilesystemCwdLoad();
+      const items = cwdMenuOptions(raw);
       let focus = cwdMenuFocus();
       if (focus >= items.length) {
         focus = items.length ? items.length - 1 : -1;
         assignCwdMenuFocus(focus);
       }
       if (!items.length) {
-        const emptyText = raw ? "No matching recent directories. Start still uses the typed path." : "No recent directories";
+        const emptyText = raw ? "No matching directories. Start still uses the typed path." : "No recent directories";
         cwdMenu.appendChild(el("div", { class: "pickerEmpty", text: emptyText }));
         cwdInput.removeAttribute("aria-activedescendant");
         return items;
@@ -500,6 +562,7 @@
           title: cwd,
         });
         btn.appendChild(el("span", { class: "fileMenuPath", text: cwd }));
+        if (item.source === "recent") btn.appendChild(el("span", { class: "cwdSuggestionSource", text: "Recent" }));
         btn.onmousedown = (e) => e.preventDefault();
         btn.onclick = () => applyNewSessionCwdSuggestion(cwd);
         cwdMenu.appendChild(btn);
@@ -628,6 +691,11 @@
     function disposeResumeLoadTimer() {
       if (resumeLoadTimer) clearTimeout(resumeLoadTimer);
       resumeLoadTimer = null;
+      if (cwdSuggestTimer) clearTimeout(cwdSuggestTimer);
+      cwdSuggestTimer = null;
+      cwdSuggestInput = null;
+      filesystemCwdOptions = [];
+      cwdSuggestLoadSeq += 1;
     }
 
     // ---- Worktree / tmux UI sync ----
