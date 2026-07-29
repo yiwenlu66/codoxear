@@ -83,7 +83,7 @@ class TestDiagnosticsSource(unittest.TestCase):
         self.assertIn('id: "diagCopyBtn"', source)
         self.assertIn('title: "Copy details"', source)
         self.assertIn('"aria-label": "Copy details"', source)
-        self.assertIn('el("div", { class: "actions" }, [diagNewLikeBtn, diagCopyBtn, diagCloseBtn])', source)
+        self.assertIn('el("div", { class: "actions" }, [diagNewLikeBtn, diagCopyConversationBtn, diagCopyBtn, diagCloseBtn])', source)
         self.assertIn('typeof codoxearSessionHelpers.diagnosticsProviderDisplay !== "function"', source)
         self.assertIn('typeof codoxearSessionHelpers.diagnosticsCopyText !== "function"', source)
         self.assertIn('function diagnosticsProviderDisplay(d) {\n        return codoxearSessionHelpers.diagnosticsProviderDisplay(d, sessionAgentBackend(d));\n      }', source)

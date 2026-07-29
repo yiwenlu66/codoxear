@@ -3,7 +3,8 @@
 
   // Details/diagnostics modal authority. Owns every piece of Details/diagnostics
   // state that used to live as app.js locals (return-focus element, copy text,
-  // new-like preset) plus the diag New-like-this / Copy details click behavior,
+  // new-like preset) plus the diag New-like-this / Copy conversation / Copy
+  // details click behavior,
   // show/hide modal behavior, and the rendering decisions for failed-launch
   // (local recovery rows, no API), live sessions (fetch /diagnostics, ignore
   // stale responses), and the error path.
@@ -62,6 +63,7 @@
     const diagStatus = requireNode(options.diagStatus, "diagStatus");
     const diagCloseBtn = requireNode(options.diagCloseBtn, "diagCloseBtn");
     const diagNewLikeBtn = requireNode(options.diagNewLikeBtn, "diagNewLikeBtn");
+    const diagCopyConversationBtn = requireNode(options.diagCopyConversationBtn, "diagCopyConversationBtn");
     const diagCopyBtn = requireNode(options.diagCopyBtn, "diagCopyBtn");
 
     // App-level runtime state accessors and effects.
@@ -70,6 +72,7 @@
     const api = requireFunction(options.api, "api");
     const setToast = requireFunction(options.setToast, "setToast");
     const copyToClipboard = requireFunction(options.copyToClipboard, "copyToClipboard");
+    const copyConversation = requireFunction(options.copyConversation, "copyConversation");
     const openNewSessionDialog = requireFunction(options.openNewSessionDialog, "openNewSessionDialog");
     const recoveryDetailsText = requireFunction(options.recoveryDetailsText, "recoveryDetailsText");
     const launchPresetFromSessionInfo = requireFunction(options.launchPresetFromSessionInfo, "launchPresetFromSessionInfo");
@@ -92,14 +95,17 @@
     let diagReturnFocusEl = null;
     let diagCopyText = "";
     let diagNewLikeSession = null;
+    let diagConversationCopyReady = false;
 
     function resetActionButtonState() {
       diagNewLikeBtn.disabled = true;
+      diagCopyConversationBtn.disabled = true;
       diagCopyBtn.disabled = true;
     }
 
     function applyActionButtonState() {
       diagNewLikeBtn.disabled = !diagNewLikeSession;
+      diagCopyConversationBtn.disabled = !diagConversationCopyReady;
       diagCopyBtn.disabled = !diagCopyText;
     }
 
@@ -133,6 +139,7 @@
       );
       diagCopyText = recoveryDetailsText(sid, selectedInfo);
       diagNewLikeSession = launchPresetFromSessionInfo(selectedInfo);
+      diagConversationCopyReady = true;
       applyActionButtonState();
     }
 
@@ -189,6 +196,7 @@
         }
       }
       diagCopyText = diagnosticsCopyText(sid, diagRows);
+      diagConversationCopyReady = true;
       diagNewLikeSession =
         d && typeof d === "object"
           ? {
@@ -212,6 +220,7 @@
     function showErrorState(e) {
       diagCopyText = "";
       diagNewLikeSession = null;
+      diagConversationCopyReady = false;
       resetActionButtonState();
       diagStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
     }
@@ -224,6 +233,7 @@
       diagContent.innerHTML = "";
       diagCopyText = "";
       diagNewLikeSession = null;
+      diagConversationCopyReady = false;
       resetActionButtonState();
       diagStatus.textContent = "Loading...";
       diagBackdrop.style.display = "block";
@@ -270,6 +280,23 @@
       openNewSessionDialog({ likeSession: preset, statusText: "Review copied launch settings before starting.", returnFocusEl });
     }
 
+    async function onCopyConversationClick(e) {
+      if (e && typeof e.preventDefault === "function") {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      if (!diagConversationCopyReady) {
+        setToast("details not loaded");
+        return;
+      }
+      diagCopyConversationBtn.disabled = true;
+      try {
+        await copyConversation();
+      } finally {
+        applyActionButtonState();
+      }
+    }
+
     async function onCopyClick(e) {
       if (e && typeof e.preventDefault === "function") {
         e.preventDefault();
@@ -291,6 +318,7 @@
       diagReturnFocusEl = null;
       diagCopyText = "";
       diagNewLikeSession = null;
+      diagConversationCopyReady = false;
       resetActionButtonState();
     }
 
@@ -298,6 +326,7 @@
       show,
       hide,
       onNewLikeClick,
+      onCopyConversationClick,
       onCopyClick,
       dispose,
     });

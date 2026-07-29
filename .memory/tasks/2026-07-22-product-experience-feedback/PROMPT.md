@@ -58,6 +58,8 @@ For each incoming user comment:
 
 15. **[open] Move Copy Conversation into Details view** — Remove copyConversationBtn from topbar topActions. Add a "Copy conversation" action inside the diagnostics/details modal instead.
 
+16. **[open] Rewrite unattended mode prompt to constitution style + make customizable** — Current prompt emphasizes internal todo lists and nonstop work. Rewrite to: recall objective/goal → understand current status → replan toward objective → continue execution with delegation. Use claude-opus-4-6 for the writing. Also make the full prompt template customizable via Settings menu (stored server-side, per deployment).
+
 ## Constraints
 - Do not touch host `codoxear-server.service`, port `8743`, or host `~/.local/share/codoxear`.
 - Fix against `/home/yiwen/codex-web-product-recovery`; deploy only to the preview container.

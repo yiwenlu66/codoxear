@@ -36,6 +36,7 @@ let selected = null;
 let apiResponse = null;
 let apiError = null;
 let copyError = null;
+let conversationCopyError = null;
 
 function fakeNode(extra = {}) {
   return {
@@ -70,10 +71,11 @@ const diagContent = fakeNode();
 const diagStatus = fakeNode();
 const diagCloseBtn = fakeNode();
 const diagNewLikeBtn = fakeNode();
+const diagCopyConversationBtn = fakeNode();
 const diagCopyBtn = fakeNode();
 
 const deps = {
-  diagBackdrop, diagViewer, diagContent, diagStatus, diagCloseBtn, diagNewLikeBtn, diagCopyBtn,
+  diagBackdrop, diagViewer, diagContent, diagStatus, diagCloseBtn, diagNewLikeBtn, diagCopyConversationBtn, diagCopyBtn,
   getSelected: () => selected,
   getSessionInfo: (sid) => sessions.get(sid) || null,
   api: (url) => {
@@ -86,6 +88,11 @@ const deps = {
     calls.push(["copyToClipboard", text]);
     if (copyError) return Promise.reject(copyError);
     return Promise.resolve(true);
+  },
+  copyConversation: () => {
+    calls.push(["copyConversation"]);
+    if (conversationCopyError) return Promise.reject(conversationCopyError);
+    return Promise.resolve();
   },
   openNewSessionDialog: (opts) => { opens.push(opts); calls.push(["openNewSessionDialog", opts]); },
   recoveryDetailsText: (sid, s) => `RECOVERY:${sid}:${s && s.session_id}`,
@@ -130,13 +137,14 @@ globalThis.__harness = {
   calls,
   toasts,
   opens,
-  dom: { diagBackdrop, diagViewer, diagContent, diagStatus, diagCloseBtn, diagNewLikeBtn, diagCopyBtn },
+  dom: { diagBackdrop, diagViewer, diagContent, diagStatus, diagCloseBtn, diagNewLikeBtn, diagCopyConversationBtn, diagCopyBtn },
   HTMLElementCtor: ctx.HTMLElement,
   sessions,
   select: (sid) => { selected = sid; },
   setApiResponse: (v) => { apiResponse = v; },
   setApiError: (e) => { apiError = e; },
   setCopyError: (e) => { copyError = e; },
+  setConversationCopyError: (e) => { conversationCopyError = e; },
   labelValues,
 };
 """
@@ -224,10 +232,10 @@ class TestFrontendDiagnosticsModuleSource(unittest.TestCase):
             const node = { style: {}, setAttribute() {}, appendChild() {} };
             const wiredExceptApi = {
               diagBackdrop: node, diagViewer: node, diagContent: node, diagStatus: node,
-              diagCloseBtn: node, diagNewLikeBtn: node, diagCopyBtn: node,
+              diagCloseBtn: node, diagNewLikeBtn: node, diagCopyConversationBtn: node, diagCopyBtn: node,
               getSelected: () => null, getSessionInfo: () => null,
               api: null,
-              setToast: () => {}, copyToClipboard: () => {}, openNewSessionDialog: () => {},
+              setToast: () => {}, copyToClipboard: () => {}, copyConversation: () => {}, openNewSessionDialog: () => {},
               recoveryDetailsText: () => "", launchPresetFromSessionInfo: () => null,
               redactedLaunchErrorText: () => "", sessionLaunchLabel: () => "",
               agentBackendDisplayName: () => "", diagnosticsProviderDisplay: () => "",
@@ -427,6 +435,50 @@ class TestFrontendDiagnosticsModuleSource(unittest.TestCase):
         self.assertIn("Provider=PROV:chatgpt", result["copyText"])
         self.assertFalse(result["copyDisabled"])
         self.assertFalse(result["newLikeDisabled"])
+
+    def test_copy_conversation_action_delegates_after_details_load(self) -> None:
+        js = harness_script(
+            """
+            const h = globalThis.__harness;
+            h.sessions.set("sid-1", { session_id: "sid-1", launch_state: "ready", agent_backend: "codex" });
+            h.select("sid-1");
+            h.setApiResponse({ session_id: "sid-1", agent_backend: "codex" });
+            await h.controller.show({ opener: null });
+            const enabledBefore = !h.dom.diagCopyConversationBtn.disabled;
+            await h.controller.onCopyConversationClick({ preventDefault() {}, stopPropagation() {} });
+            const calls = h.calls.filter((c) => c[0] === "copyConversation").length;
+            const enabledAfter = !h.dom.diagCopyConversationBtn.disabled;
+            globalThis.__result = { enabledBefore, calls, enabledAfter };
+            """
+        )
+        result = run_node_json(js)
+        self.assertTrue(result["enabledBefore"])
+        self.assertEqual(result["calls"], 1)
+        self.assertTrue(result["enabledAfter"])
+
+    def test_copy_conversation_action_stays_disabled_after_details_error(self) -> None:
+        js = harness_script(
+            """
+            const h = globalThis.__harness;
+            h.sessions.set("sid-1", { session_id: "sid-1", launch_state: "ready", agent_backend: "codex" });
+            h.select("sid-1");
+            h.setApiError(new Error("kaboom"));
+            await h.controller.show({ opener: null });
+            const callsBefore = h.calls.filter((c) => c[0] === "copyConversation").length;
+            await h.controller.onCopyConversationClick({});
+            const callsAfter = h.calls.filter((c) => c[0] === "copyConversation").length;
+            globalThis.__result = {
+              disabled: h.dom.diagCopyConversationBtn.disabled,
+              callsBefore,
+              callsAfter,
+              toast: h.toasts[h.toasts.length - 1],
+            };
+            """
+        )
+        result = run_node_json(js)
+        self.assertTrue(result["disabled"])
+        self.assertEqual(result["callsAfter"], result["callsBefore"])
+        self.assertEqual(result["toast"], "details not loaded")
 
     def test_live_path_creates_new_like_preset_from_diagnostics_response(self) -> None:
         js = harness_script(
@@ -769,10 +821,12 @@ class TestFrontendDiagnosticsModuleSource(unittest.TestCase):
         self.assertIn("return diagController.hide(opts);", source)
         # Button handlers delegate to the controller.
         self.assertIn("diagNewLikeBtn.onclick = (e) => diagController.onNewLikeClick(e);", source)
+        self.assertIn("diagCopyConversationBtn.onclick = (e) => void diagController.onCopyConversationClick(e);", source)
         self.assertIn("diagCopyBtn.onclick = (e) => diagController.onCopyClick(e);", source)
         # DOM construction stays in app.js.
         self.assertIn('id: "diagBackdrop"', source)
         self.assertIn('id: "diagNewLikeBtn"', source)
+        self.assertIn('id: "diagCopyConversationBtn"', source)
         self.assertIn('id: "diagCopyBtn"', source)
         self.assertIn('id: "diagCloseBtn"', source)
         self.assertIn('id: "diagStatus"', source)

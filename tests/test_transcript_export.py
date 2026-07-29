@@ -407,9 +407,12 @@ class TestTranscriptExport(unittest.TestCase):
         self.assertEqual(len(matches), 1)
         self.assertEqual(matches[0]["_before_byte"], 1)
 
-    def test_ui_has_copy_conversation_action(self) -> None:
+    def test_ui_has_copy_conversation_action_in_details(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('id: "copyConversationBtn"', source)
+        topbar_start = source.index('const topbar = el("div", { class: "topbar" }')
+        topbar_end = source.index('const form = el("form"', topbar_start)
+        self.assertNotIn("copyConversation", source[topbar_start:topbar_end])
+        self.assertIn('id: "diagCopyConversationBtn"', source)
         self.assertIn('function formatConversationForCopy(events)', source)
         self.assertIn('api(`/api/sessions/${sid}/messages/export`)', source)
         self.assertIn('title: "Copy conversation"', source)

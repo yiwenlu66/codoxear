@@ -11,8 +11,9 @@ APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
 
 
-def render_markdown(markdown: str) -> str:
+def render_markdown(markdown: str, katex_expr: str | None = None) -> str:
     source = APP_MARKDOWN_JS.read_text(encoding="utf-8")
+    katex_stmt = f"katex = {katex_expr};" if katex_expr else ""
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -28,6 +29,7 @@ def render_markdown(markdown: str) -> str:
         }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(source)}, ctx);
+        {f"vm.runInContext({json.dumps(katex_stmt)}, ctx);" if katex_stmt else ""}
         process.stdout.write(ctx.window.CodoxearMarkdown.mdToHtml({json.dumps(markdown)}));
         """
     )
@@ -189,6 +191,69 @@ class TestMarkdownRendererSource(unittest.TestCase):
 
         markers = re.findall(r'<span class="md-list-marker">([^<]+)</span>', html)
         self.assertEqual(markers, ["1.", "3.", "5."])
+
+    def test_inline_paren_math_renders_as_inline_math(self) -> None:
+        html = render_markdown("For a residual stream vector \\(h_{\\ell,t}\\) at layer \\(\\ell\\), the J-lens asks.")
+        # No KaTeX in the Node VM: the fallback retains escaped source delimiters.
+        self.assertIn('<span class="md-math-fallback md-math-inline">\\(h_{\\ell,t}\\)</span>', html)
+        self.assertIn('<span class="md-math-fallback md-math-inline">\\(\\ell\\)</span>', html)
+        self.assertNotIn("@@MATH", html)
+        self.assertIn("the J-lens asks.", html)
+
+    def test_display_bracket_math_renders_as_block(self) -> None:
+        markdown = "It computes an average Jacobian:\n\n\\[\nJ_\\ell\n=\n\\mathbb{E}\\left[\\frac{\\partial h}{\\partial h_\\ell}\\right]\n\\]\n\nThen it decodes."
+        html = render_markdown(markdown)
+        self.assertIn('<span class="md-math-fallback md-math-display">\\[', html)
+        self.assertIn("\\mathbb{E}", html)
+        self.assertIn("Then it decodes.", html)
+        self.assertNotIn("@@MATH", html)
+        self.assertNotIn("<p>@@MATH", html)
+
+    def test_dollar_dollar_display_math(self) -> None:
+        html = render_markdown("The value of $$x^2 + y^2$$ is large.")
+        self.assertIn('<span class="md-math-fallback md-math-display">\\[x^2 + y^2\\]</span>', html)
+        self.assertNotIn("@@MATH", html)
+        self.assertNotIn("$$", html)
+
+    def test_single_dollar_inline_is_not_treated_as_math(self) -> None:
+        html = render_markdown("The single-`$` rule is guarded, so `$VAR` is safe.")
+        self.assertNotIn("md-math-fallback", html)
+        self.assertIn("$", html)
+        self.assertIn("rule is guarded", html)
+        self.assertIn("is safe", html)
+
+    def test_currency_dollars_not_treated_as_math(self) -> None:
+        html = render_markdown("That costs $5 and $10 more.")
+        self.assertNotIn("md-math-fallback", html)
+        self.assertIn("$5", html)
+        self.assertIn("$10", html)
+
+    def test_math_inside_fenced_code_block_is_not_rendered(self) -> None:
+        html = render_markdown(
+            "\n".join(
+                [
+                    "\\text{outside}",
+                    "",
+                    "```text",
+                    "\\(not math\\)",
+                    "```",
+                    "",
+                    "After.",
+                ]
+            )
+        )
+        self.assertIn("outside", html)
+        self.assertIn('<code data-lang="text">\\(not math\\)</code>', html)
+        self.assertNotIn("md-math-fallback", html)
+        self.assertNotIn("@@MATH", html)
+
+    def test_katex_render_path_is_invoked_with_display_mode(self) -> None:
+        katex_expr = "{ renderToString: function(src, opts){ return '<kmx>' + src + ':' + (opts.displayMode ? 'D' : 'I') + '</kmx>'; } }"
+        html = render_markdown("Inline \\(x\\) and block:\n\n\\[y\\]", katex_expr=katex_expr)
+        self.assertIn("<kmx>x:I</kmx>", html)
+        self.assertIn("<kmx>y:D</kmx>", html)
+        self.assertNotIn("md-math-fallback", html)
+        self.assertNotIn("@@MATH", html)
 
 
 if __name__ == "__main__":

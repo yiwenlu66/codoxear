@@ -1,6 +1,24 @@
 (function () {
   "use strict";
 
+  // Dynamically load KaTeX from CDN for math rendering. The script/style are
+  // injected at runtime so index.html stays CDN-free and CSP loads are explicit.
+  (function loadKatex() {
+    if (window.__codoxearKatexLoading) return;
+    window.__codoxearKatexLoading = true;
+    if (typeof document === "undefined" || !document.createElement) return;
+    const base = "https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/";
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = base + "katex.min.css";
+    link.crossOrigin = "anonymous";
+    document.head.appendChild(link);
+    const script = document.createElement("script");
+    script.src = base + "katex.min.js";
+    script.defer = true;
+    document.head.appendChild(script);
+  })();
+
   const codoxearUrls = window.CodoxearUrls;
   if (!codoxearUrls || typeof codoxearUrls.resolveAppUrl !== "function") throw new Error("Codoxear URL helpers failed to load");
   function resolveAppUrl(path) {
@@ -336,6 +354,64 @@
       last = m.index + m[0].length;
     }
     out += renderInlineText(raw.slice(last), options);
+    return out;
+  }
+
+  // Math is extracted from non-code text before markdown rendering and replaced
+  // with opaque tokens. The ASCII tokens survive escaping and nested mdToHtml
+  // calls; KaTeX output is substituted only after the HTML is assembled.
+  const MATH_TOKEN_PREFIX = "@@MATH";
+  const MATH_TOKEN_SUFFIX = "@@";
+
+  function mathToken(id) {
+    return `${MATH_TOKEN_PREFIX}${id}${MATH_TOKEN_SUFFIX}`;
+  }
+
+  function renderMath(latex, displayMode) {
+    const src = String(latex ?? "");
+    if (typeof katex !== "undefined" && katex && typeof katex.renderToString === "function") {
+      try {
+        return String(
+          katex.renderToString(src, {
+            displayMode: !!displayMode,
+            throwOnError: false,
+            strict: "ignore",
+          })
+        );
+      } catch (e) {
+        // Fall through to the readable source fallback when KaTeX rejects input.
+      }
+    }
+    const cls = displayMode ? "md-math-fallback md-math-display" : "md-math-fallback md-math-inline";
+    const open = displayMode ? "\\[" : "\\(";
+    const close = displayMode ? "\\]" : "\\)";
+    return `<span class="${cls}">${open}${escapeHtml(src)}${close}</span>`;
+  }
+
+  function extractMathFromText(input, store) {
+    let text = String(input ?? "");
+    const push = (latex, display) => {
+      const id = store.length;
+      store.push({ latex: String(latex).trim(), display: !!display });
+      return mathToken(id);
+    };
+    // Match displays first so their delimiters cannot be consumed by inline rules.
+    text = text.replace(/\\\[([\s\S]+?)\\\]/g, (_m, body) => push(body, true));
+    text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_m, body) => push(body, true));
+    // Single-$ inline math remains deliberately unsupported: in prose it is
+    // ambiguous with currency, shell variables, and code. Explicit \(...\) is
+    // unambiguous and is the form emitted by well-formed math output.
+    text = text.replace(/\\\(([\s\S]+?)\\\)/g, (_m, body) => push(body, false));
+    return text;
+  }
+
+  function substituteMath(html, store) {
+    if (!store.length) return html;
+    let out = html;
+    for (let i = 0; i < store.length; i++) {
+      const entry = store[i];
+      out = out.split(mathToken(i)).join(renderMath(entry.latex, entry.display));
+    }
     return out;
   }
 
@@ -748,6 +824,10 @@
     };
 
     const chunks = splitByFences(s);
+    const mathStore = [];
+    for (const chunk of chunks) {
+      if (chunk.type === "text") chunk.value = extractMathFromText(chunk.value, mathStore);
+    }
 
     const out = [];
     for (const c of chunks) {
@@ -816,7 +896,7 @@
         flushPara();
       }
     }
-    return out.join("");
+    return substituteMath(out.join(""), mathStore);
   }
 
   const mdCache = new Map();

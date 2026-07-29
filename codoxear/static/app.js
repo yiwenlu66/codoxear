@@ -1174,15 +1174,6 @@
           html: iconSvg("info"),
         });
         diagBtn.disabled = true;
-        const copyConversationBtn = el("button", {
-          id: "copyConversationBtn",
-          class: "icon-btn",
-          title: "Copy conversation",
-          "aria-label": "Copy conversation",
-          type: "button",
-          html: iconSvg("copy"),
-        });
-        copyConversationBtn.disabled = true;
         const prevUserBtn = el("button", {
           id: "prevUserBtn",
           class: "icon-btn",
@@ -1258,7 +1249,6 @@
           el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap]),
           el("div", { class: "actions topActions" }, [
             fileBtn,
-            copyConversationBtn,
             diagBtn,
             unattendedBtn,
             interruptBtn,
@@ -1630,6 +1620,14 @@
           type: "button",
           text: "New like this",
         });
+        const diagCopyConversationBtn = el("button", {
+          id: "diagCopyConversationBtn",
+          class: "icon-btn text-btn",
+          title: "Copy conversation",
+          "aria-label": "Copy conversation",
+          type: "button",
+          text: "Copy conversation",
+        });
         const diagCopyBtn = el("button", {
           id: "diagCopyBtn",
           class: "icon-btn text-btn",
@@ -1646,16 +1644,17 @@
           type: "button",
           html: iconSvg("x"),
         });
-        // diagNewLikeBtn/diagCopyBtn start disabled until the controller loads
-        // copy text / a new-like preset during show().
+        // Detail actions start disabled until the controller loads the selected
+        // session's details and enables their corresponding payloads.
         diagNewLikeBtn.disabled = true;
+        diagCopyConversationBtn.disabled = true;
         diagCopyBtn.disabled = true;
         const diagStatus = el("div", { class: "muted", id: "diagStatus", text: "" });
         const diagContent = el("div", { class: "detailsGrid", id: "diagContent" });
         const diagViewer = el("div", { class: "diagViewer", id: "diagViewer", role: "dialog", "aria-modal": "true", "aria-label": "Details" }, [
           el("div", { class: "queueHeader" }, [
             el("div", { class: "title", text: "Details" }),
-            el("div", { class: "actions" }, [diagNewLikeBtn, diagCopyBtn, diagCloseBtn]),
+            el("div", { class: "actions" }, [diagNewLikeBtn, diagCopyConversationBtn, diagCopyBtn, diagCloseBtn]),
           ]),
           diagStatus,
           diagContent,
@@ -2147,7 +2146,14 @@
         }
 
         async function copyToClipboard(text) {
-          return codoxearClipboard.copyToClipboard(text);
+          try {
+            return await codoxearClipboard.copyToClipboard(text);
+          } catch (clipboardError) {
+            // Clipboard.writeText() can reject after an async export loses the
+            // browser's transient user activation. The selection path remains
+            // available in insecure contexts and browsers that deny that API.
+            return copyTextViaSelection(text);
+          }
         }
 
         const codeBlockCopyRuntime = codoxearCodeCopy.createCodeBlockCopyRuntime({
@@ -2172,7 +2178,6 @@
         async function copyConversation() {
           if (!selected) return;
           const sid = selected;
-          copyConversationBtn.disabled = true;
           try {
             const data = await api(`/api/sessions/${sid}/messages/export`);
             if (selected !== sid) return;
@@ -2186,16 +2191,8 @@
             setToast(copiedConversationToast(formatted.messageCount));
           } catch (err) {
             setToast(copyConversationFailureToast(err));
-          } finally {
-            copyConversationBtn.disabled = !selected;
           }
         }
-
-        copyConversationBtn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          void copyConversation();
-        };
 
         let currentQueueLen = 0;
         function setStatus({ running, queueLen }) {
@@ -4166,7 +4163,6 @@
           fileBtn.disabled = !selected || fileViewerBlocked;
           fileBtn.title = fileViewerLabel;
           fileBtn.setAttribute("aria-label", fileViewerLabel);
-          copyConversationBtn.disabled = !selected;
           chatSearchBtn.disabled = !selected;
           chatNavRail.style.display = selected ? "flex" : "none";
           chatEmptyState.style.display = selected ? "none" : "flex";
@@ -6420,8 +6416,9 @@
         }
 
         // Details/diagnostics modal state, rendering decisions, and the
-        // New-like-this / Copy details / show / hide behavior live in the
-        // CodoxearDiagnostics controller (codoxear/static/app_diagnostics.js).
+        // New-like-this / Copy conversation / Copy details / show / hide
+        // behavior live in the CodoxearDiagnostics controller
+        // (codoxear/static/app_diagnostics.js).
         // app.js owns DOM construction for the diag nodes and the thin
         // delegating wrappers below; all diag rendering authority is delegated.
         const diagController = (function instantiateDiagnosticsController() {
@@ -6435,12 +6432,14 @@
             diagStatus,
             diagCloseBtn,
             diagNewLikeBtn,
+            diagCopyConversationBtn,
             diagCopyBtn,
             getSelected: () => selected,
             getSessionInfo: (sid) => sessionIndex.get(sid),
             api,
             setToast,
             copyToClipboard,
+            copyConversation,
             openNewSessionDialog,
             recoveryDetailsText,
             launchPresetFromSessionInfo,
@@ -6460,6 +6459,7 @@
         })();
 
         diagNewLikeBtn.onclick = (e) => diagController.onNewLikeClick(e);
+        diagCopyConversationBtn.onclick = (e) => void diagController.onCopyConversationClick(e);
         diagCopyBtn.onclick = (e) => diagController.onCopyClick(e);
 
         async function showDiagViewer(opts) {

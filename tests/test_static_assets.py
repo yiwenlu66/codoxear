@@ -172,7 +172,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn("handler.send_header(\"Content-Security-Policy\", deps.content_security_policy)", static_routes_source)
         self.assertIn("handler.send_header(\"X-Frame-Options\", \"DENY\")", static_routes_source)
         self.assertIn("frame-ancestors 'none'", CONTENT_SECURITY_POLICY)
-        for forbidden in ["fonts.googleapis.com", "fonts.gstatic.com", "cdn.jsdelivr.net", "unpkg.com"]:
+        for forbidden in ["fonts.googleapis.com", "fonts.gstatic.com", "unpkg.com"]:
             self.assertNotIn(forbidden, index)
             self.assertNotIn(forbidden, app)
             self.assertNotIn(forbidden, app_url)

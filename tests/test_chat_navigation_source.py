@@ -35,11 +35,12 @@ class TestChatNavigationSource(unittest.TestCase):
         topbar_start = source.index('const topbar = el("div", { class: "topbar" }')
         topbar_end = source.index('const form = el("form"', topbar_start)
         topbar_block = source[topbar_start:topbar_end]
-        expected_order = ["fileBtn", "copyConversationBtn", "diagBtn", "unattendedBtn", "interruptBtn"]
+        expected_order = ["fileBtn", "diagBtn", "unattendedBtn", "interruptBtn"]
         for name in expected_order:
             self.assertIn(name, topbar_block)
         positions = [topbar_block.index(name) for name in expected_order]
         self.assertEqual(positions, sorted(positions))
+        self.assertNotIn("copyConversation", topbar_block)
 
     def test_loaded_user_message_rows_helper_remains_in_app_js(self) -> None:
         # The message-row helpers (loadedUserMessageRows / loadedUserJumpTarget)

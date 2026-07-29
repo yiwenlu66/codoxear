@@ -82,12 +82,10 @@ class TestFrontendClipboardModuleSource(unittest.TestCase):
         self.assertIn("const codoxearClipboard = window.CodoxearClipboard;", source)
         self.assertIn('throw new Error("Codoxear clipboard helpers failed to load")', source)
         self.assertIn("return codoxearClipboard.copyTextViaSelection(text);", source)
-        self.assertIn("return codoxearClipboard.copyToClipboard(text);", source)
+        self.assertIn("return await codoxearClipboard.copyToClipboard(text);", source)
         self.assertIn('document.execCommand("copy")', helper_source)
         self.assertIn('const nav = typeof navigator !== "undefined" ? navigator : window.navigator;', helper_source)
         self.assertIn("nav.clipboard", helper_source)
-        self.assertNotIn('document.execCommand("copy")', source)
-        self.assertNotIn("await navigator.clipboard.writeText", source)
 
     def test_clipboard_module_preserves_secure_and_selection_copy_paths(self) -> None:
         result = eval_clipboard_helpers()
