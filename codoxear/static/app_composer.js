@@ -97,7 +97,7 @@
       const sessionId = getSelected();
       const launchFailed = selectedSessionLaunchFailed();
       const blocked = !sessionId || launchFailed;
-      const label = !sessionId ? "Select a session to send" : launchFailed ? "Failed launch cannot receive messages" : "Enter your instructions here";
+      const label = !sessionId ? "Select a session to send" : launchFailed ? "Failed launch cannot receive messages" : "Message";
       textarea.disabled = blocked;
       textarea.setAttribute("aria-label", label);
       textarea.title = blocked ? label : "";

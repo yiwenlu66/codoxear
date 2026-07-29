@@ -100,8 +100,8 @@
     const topbar = el("div", { class: "topbar" }, [el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap]), el("div", { class: "actions topActions" }, [fileBtn, diagBtn, unattendedBtn, interruptBtn])]);
     const composer = el("div", { class: "composer" });
     const stagedTray = el("div", { class: "stagedAttachments", id: "stagedAttachments", "aria-live": "polite" });
-    const textarea = el("textarea", { id: "msg", placeholder: "", "aria-label": "Enter your instructions here" });
-    const msgPh = el("div", { class: "ph", id: "msgPh", text: "Enter your instructions here" });
+    const textarea = el("textarea", { id: "msg", placeholder: "", "aria-label": "Message" });
+    const msgPh = el("div", { class: "ph", id: "msgPh", text: "Message" });
     const imgInput = el("input", { id: "imgInput", type: "file", accept: "image/*,video/*,*/*", multiple: "multiple", style: "display:none" });
     const attachBtn = el("button", { class: "icon-btn", id: "attachBtn", type: "button", title: "Attach file", "aria-label": "Attach file", html: iconSvg("paperclip") });
     const queueBtn = el("button", { class: "icon-btn", id: "queueBtn", type: "button", title: "Queued messages", "aria-label": "Queued messages", html: iconSvg("queue") });
