@@ -286,7 +286,7 @@ class TestFrontendUnattendedModuleBehavior(unittest.TestCase):
         self.assertTrue(by_label["missing DOM node"]["type"])
         self.assertTrue(by_label["missing api"]["threw"])
         self.assertTrue(by_label["missing api"]["type"])
-        self.assertIn("api", by_label["missing api"]["msg"])
+        self.assertContains("api", by_label["missing api"]["msg"])
 
     def test_module_load_fails_loud_without_helpers_or_modal(self) -> None:
         unattended_source = APP_UNATTENDED_JS.read_text(encoding="utf-8")
@@ -304,7 +304,7 @@ class TestFrontendUnattendedModuleBehavior(unittest.TestCase):
         )
         result = run_node_json(js_only_unattended)
         self.assertTrue(result["threw"])
-        self.assertIn("failed to load", result["msg"])
+        self.assertContains("failed to load", result["msg"])
 
     # --- 2. button projection: no selected / failed launch / active session ---
 
@@ -660,8 +660,8 @@ class TestFrontendUnattendedModuleBehavior(unittest.TestCase):
         result = run_node_json(js)
         self.assertGreaterEqual(result["timers"], 2)
         self.assertEqual(len(result["saveUrls"]), 2)
-        self.assertIn("/api/sessions/sid-1/unattended", result["saveUrls"])
-        self.assertIn("/api/sessions/sid-2/unattended", result["saveUrls"])
+        self.assertContains("/api/sessions/sid-1/unattended", result["saveUrls"])
+        self.assertContains("/api/sessions/sid-2/unattended", result["saveUrls"])
 
     def test_in_flight_blocks_duplicate_flush_and_pending_drains(self) -> None:
         js = harness_script(

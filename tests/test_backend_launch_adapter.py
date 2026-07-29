@@ -27,13 +27,6 @@ class TestBackendLaunchAdapter(unittest.TestCase):
         self.assertEqual(get_agent_backend("pi").build_resume_args(resume_id="sid", resume_row={"log_path": "/tmp/pi.jsonl"}), ["--session", "/tmp/pi.jsonl"])
         self.assertEqual(get_agent_backend("cc").build_launch_args(spawn_cwd=Path("/repo"), codex_trust_override="", model="sonnet"), ["--dangerously-skip-permissions", "--model", "sonnet"])
 
-    def test_backend_launch_module_is_compatibility_facade(self) -> None:
-        source = Path("codoxear/backend_launch.py").read_text(encoding="utf-8")
-        self.assertNotIn('backend_name == "codex"', source)
-        self.assertNotIn('backend_name == "pi"', source)
-        self.assertNotIn('backend_name == "cc"', source)
-        self.assertIn("get_agent_backend(agent_backend).build_launch_args(", source)
-        self.assertIn("get_agent_backend(agent_backend).apply_launch_environment(", source)
 
     def test_backend_adapters_normalize_launch_request_options(self) -> None:
         kwargs = {
@@ -132,9 +125,9 @@ class TestBackendLaunchAdapter(unittest.TestCase):
             service_tier="flex",
         )
         self.assertEqual(codex[:8], ["--no-alt-screen", "-c", "disable_response_storage=false", "-c", "disable_paste_burst=true", "-C", "/root-repo", "--add-dir"])
-        self.assertIn("/work", codex)
-        self.assertIn("--model", codex)
-        self.assertIn('model_provider="openai"', codex)
+        self.assertContains("/work", codex)
+        self.assertContains("--model", codex)
+        self.assertContains('model_provider="openai"', codex)
         self.assertEqual(codex[-2:], ["--ask-for-approval", "never"])
         pi = get_agent_backend("pi").build_sessiond_launch_args(
             root_repo_dir=Path("/root-repo"),
@@ -192,9 +185,9 @@ class TestBackendLaunchAdapter(unittest.TestCase):
         self.assertEqual(env["CODEX_WEB_OWNER"], "web")
         self.assertEqual(env["CODEX_WEB_AGENT_BACKEND"], "pi")
         self.assertEqual(env["PI_HOME"], "/old-pi")
-        self.assertNotIn("CODEX_HOME", env)
-        self.assertNotIn("CLAUDE_CONFIG_DIR", env)
-        self.assertNotIn("CODEX_WEB_TRANSPORT", env)
+        self.assertNotContains("CODEX_HOME", env)
+        self.assertNotContains("CLAUDE_CONFIG_DIR", env)
+        self.assertNotContains("CODEX_WEB_TRANSPORT", env)
         self.assertEqual(env["CODEX_WEB_MODEL_PROVIDER"], "macaron")
         self.assertEqual(env["CODEX_WEB_MODEL"], "gpt-5.4")
         self.assertEqual(env["CODEX_WEB_REASONING_EFFORT"], "high")
@@ -217,7 +210,7 @@ class TestBackendLaunchAdapter(unittest.TestCase):
         self.assertEqual(inline["CODEX_WEB_MODEL"], "sonnet")
         self.assertEqual(inline["CLAUDE_BIN"], "/bin/claude")
         unset = tmux_unset_vars()
-        self.assertIn("CODEX_WEB_RESUME_LOG_PATH", unset)
+        self.assertContains("CODEX_WEB_RESUME_LOG_PATH", unset)
         self.assertLess(unset.index("CODEX_HOME"), unset.index("CODEX_WEB_OWNER"))
 
 

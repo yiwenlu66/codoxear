@@ -51,10 +51,10 @@ class TestOverlayAccessibilityBehavior(unittest.TestCase):
         self.assertEqual(result["attrs"], {"inert": "", "aria-hidden": "true"})
         self.assertEqual(result["shown"], {"open": True, "display": "flex", "backdrop": "block", "nativeOpen": True})
         self.assertEqual(result["hidden"], {"open": False, "display": "none", "backdrop": "none", "nativeOpen": False})
-        self.assertIn("prepare", result["calls"])
-        self.assertIn("showModal", result["calls"])
-        self.assertIn("close", result["calls"])
-        self.assertIn("restore-focus", result["calls"])
+        self.assertContains("prepare", result["calls"])
+        self.assertContains("showModal", result["calls"])
+        self.assertContains("close", result["calls"])
+        self.assertContains("restore-focus", result["calls"])
 
 
 if __name__ == "__main__":

@@ -41,7 +41,7 @@ class TestVoicePushBehavior(unittest.TestCase):
         client._request_json = lambda **kwargs: captured.update(kwargs) or {"choices": [{"message": {"content": "done"}}]}  # type: ignore[method-assign]
         self.assertEqual(client.summarize(base_url="https://api.openai.com/v1", api_key="key", model="gpt", session_name="repo", source_label="Final response", text="long response", target_words=30), "done")
         self.assertEqual(captured["payload"]["max_completion_tokens"], 72)
-        self.assertIn("Aim for about 30 words", captured["payload"]["messages"][0]["content"])
+        self.assertContains("Aim for about 30 words", captured["payload"]["messages"][0]["content"])
 
     def test_browser_settings_projection_redacts_persisted_api_key(self) -> None:
         with TemporaryDirectory() as directory:

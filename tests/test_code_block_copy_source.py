@@ -123,12 +123,12 @@ def eval_code_copy_runtime() -> dict:
 class TestCodeBlockCopySource(unittest.TestCase):
     def test_markdown_code_blocks_render_accessible_button_without_code_attributes(self) -> None:
         html = render_markdown("before\n\n```sh-script\nalpha <tag> & \"quote\"\n```\n\nafter")
-        self.assertIn('<pre><button class="code-copy-btn" type="button" aria-label="Copy code" title="Copy code"></button><code data-lang="sh-script">alpha &lt;tag&gt; &amp; &quot;quote&quot;</code></pre>', html)
+        self.assertContains('<pre><button class="code-copy-btn" type="button" aria-label="Copy code" title="Copy code"></button><code data-lang="sh-script">alpha &lt;tag&gt; &amp; &quot;quote&quot;</code></pre>', html)
         button_start = html.index('<button class="code-copy-btn"')
         button_end = html.index("</button>", button_start)
         button_html = html[button_start:button_end]
-        self.assertNotIn("alpha", button_html)
-        self.assertNotIn("sh-script", button_html)
+        self.assertNotContains("alpha", button_html)
+        self.assertNotContains("sh-script", button_html)
 
     def test_code_copy_runtime_copies_only_nearest_code_text(self) -> None:
         result = eval_code_copy_runtime()
@@ -139,8 +139,8 @@ class TestCodeBlockCopySource(unittest.TestCase):
         self.assertEqual(result["stopped"], 1)
         self.assertEqual(result["fileRefCalls"], 0)
         self.assertFalse(result["miss"])
-        self.assertIn(["toast", "Copied code"], result["calls"])
-        self.assertIn(["timeout", 1200], result["calls"])
+        self.assertContains(["toast", "Copied code"], result["calls"])
+        self.assertContains(["timeout", 1200], result["calls"])
         self.assertEqual(result["ariaLabel"], "Copy code")
         self.assertEqual(result["title"], "Copy code")
 
@@ -149,8 +149,8 @@ class TestCodeBlockCopySource(unittest.TestCase):
         self.assertFalse(result["copiedClassAfterReset"])
         self.assertEqual(result["ariaLabel"], "Copy code")
         self.assertEqual(result["title"], "Copy code")
-        self.assertIn(["class-add", "copied"], result["calls"])
-        self.assertIn(["class-remove", "copied"], result["calls"])
+        self.assertContains(["class-add", "copied"], result["calls"])
+        self.assertContains(["class-remove", "copied"], result["calls"])
 
     def test_code_copy_runtime_ignores_non_copy_clicks(self) -> None:
         result = eval_code_copy_runtime()

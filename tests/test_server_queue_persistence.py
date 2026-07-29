@@ -217,16 +217,16 @@ class TestServerQueuePersistence(unittest.TestCase):
             public_entry = {"id": added["attachment"]["id"], "display_name": "doc.txt", "filename": "1000_doc.txt", "size": 3, "created_ts": 10.0}
             self.assertEqual(added["attachment"], public_entry)
             self.assertEqual(added["attachments"], [public_entry])
-            self.assertNotIn("path", added["attachment"])
+            self.assertNotContains("path", added["attachment"])
             self.assertEqual(store.staged_attachments[sid][0]["path"], str(internal_path))
 
             listed = coord.list_staged_attachments(sid)
             self.assertEqual(listed["attachments"], [public_entry])
-            self.assertNotIn(str(internal_path), str(listed))
+            self.assertNotContains(str(internal_path), str(listed))
 
             removed = coord.remove_staged_attachment(sid, public_entry["id"])
             self.assertEqual(removed["removed"], public_entry)
-            self.assertNotIn("path", removed["removed"])
+            self.assertNotContains("path", removed["removed"])
 
 
     def test_deleted_state_cleanup_preserves_recovery_markers_unless_explicit(self) -> None:
@@ -247,13 +247,13 @@ class TestServerQueuePersistence(unittest.TestCase):
 
         SessionManager._clear_deleted_session_state(mgr, sid)
 
-        self.assertIn(sid, mgr._queues)
-        self.assertIn(sid, mgr._commit_unknown_sends)
+        self.assertContains(sid, mgr._queues)
+        self.assertContains(sid, mgr._commit_unknown_sends)
 
         SessionManager._clear_deleted_session_state(mgr, sid, clear_recovery=True)
 
-        self.assertNotIn(sid, mgr._queues)
-        self.assertNotIn(sid, mgr._commit_unknown_sends)
+        self.assertNotContains(sid, mgr._queues)
+        self.assertNotContains(sid, mgr._commit_unknown_sends)
 
     def test_prune_missing_commit_unknown_sends_keeps_recent_orphans(self) -> None:
         # SessionPendingCoordinator.prune_missing_commit_unknown_sends with
@@ -431,7 +431,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(SessionManager.send(mgr, sid, "intended prompt", allow_pending_attachment=True), {"queued": False, "queue_len": 0})
         self.assertEqual(seen, [{"cmd": "send", "text": "Attachment 1: /tmp/uploads/s1/1_one.txt\nintended prompt", "sync": True}])
         self.assertFalse(mgr._sessions[sid].pending_attachment)
-        self.assertNotIn(sid, mgr._pending_attachment_ids)
+        self.assertNotContains(sid, mgr._pending_attachment_ids)
 
     def test_pending_send_commit_error_preserves_pending_attachment(self) -> None:
         sid = "s1"
@@ -455,7 +455,7 @@ class TestServerQueuePersistence(unittest.TestCase):
             SessionManager.send(mgr, sid, "intended prompt", allow_pending_attachment=True)
         self.assertEqual(seen, [{"cmd": "send", "text": "intended prompt", "sync": True}])
         self.assertTrue(mgr._sessions[sid].pending_attachment)
-        self.assertIn(sid, mgr._pending_attachment_ids)
+        self.assertContains(sid, mgr._pending_attachment_ids)
 
     def test_normal_server_send_uses_sync_commit(self) -> None:
         sid = "s1"
@@ -512,7 +512,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(cleanup_calls, [(sid, False)])
         self.assertEqual(mgr._staged_attachments, {})
         self.assertFalse(mgr._sessions[sid].pending_attachment)
-        self.assertNotIn(sid, mgr._pending_attachment_ids)
+        self.assertNotContains(sid, mgr._pending_attachment_ids)
 
     def test_prelog_valueerror_after_confirmed_send_is_success_with_visible_error(self) -> None:
         sid = "s1"
@@ -557,7 +557,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(response, {"queued": False, "queue_len": 0, "busy": True, "send_state_cleanup_error": "prelog_user_message: launch ledger invalid"})
         self.assertEqual(mgr._staged_attachments, {})
         self.assertFalse(mgr._sessions[sid].pending_attachment)
-        self.assertNotIn(sid, mgr._pending_attachment_ids)
+        self.assertNotContains(sid, mgr._pending_attachment_ids)
         self.assertTrue(mgr._sessions[sid].busy)
         self.assertTrue(mgr._sessions[sid].last_send_boundary_active)
 
@@ -603,9 +603,9 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(response, {"queued": False, "queue_len": 0, "attachment_cleanup_error": "staged_path outside session uploads"})
         self.assertEqual(mgr._staged_attachments[sid], [entry])
         self.assertTrue(mgr._sessions[sid].pending_attachment)
-        self.assertIn(sid, mgr._pending_attachment_ids)
+        self.assertContains(sid, mgr._pending_attachment_ids)
         self.assertEqual(clear_unknown_calls, [(sid, None)])
-        self.assertNotIn(sid, mgr._commit_unknown_sends)
+        self.assertNotContains(sid, mgr._commit_unknown_sends)
         self.assertIsNone(mgr._sessions[sid].commit_unknown_send)
 
     def test_staged_attachment_oserror_after_confirmed_send_is_success_with_visible_error(self) -> None:
@@ -641,8 +641,8 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(response, {"queued": False, "queue_len": 0, "attachment_cleanup_error": "unlink failed"})
         self.assertEqual(mgr._staged_attachments[sid], [entry])
         self.assertTrue(mgr._sessions[sid].pending_attachment)
-        self.assertIn(sid, mgr._pending_attachment_ids)
-        self.assertNotIn(sid, mgr._commit_unknown_sends)
+        self.assertContains(sid, mgr._pending_attachment_ids)
+        self.assertNotContains(sid, mgr._commit_unknown_sends)
         self.assertIsNone(mgr._sessions[sid].commit_unknown_send)
 
     def test_staged_attachment_keyerror_after_confirmed_send_is_success_with_visible_error(self) -> None:
@@ -689,8 +689,8 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(pending_clear_calls, [(sid, False)])
         self.assertEqual(response, {"queued": False, "queue_len": 0, "send_state_cleanup_error": "pending_attachment: pending.json write failed"})
         self.assertFalse(mgr._sessions[sid].pending_attachment)
-        self.assertNotIn(sid, mgr._pending_attachment_ids)
-        self.assertNotIn(sid, mgr._commit_unknown_sends)
+        self.assertNotContains(sid, mgr._pending_attachment_ids)
+        self.assertNotContains(sid, mgr._commit_unknown_sends)
         self.assertIsNone(mgr._sessions[sid].commit_unknown_send)
 
     def test_commit_unknown_clear_persistence_failure_after_confirmed_send_is_success_with_visible_error(self) -> None:
@@ -713,7 +713,7 @@ class TestServerQueuePersistence(unittest.TestCase):
 
         self.assertEqual(clear_unknown_calls, [(sid, None)])
         self.assertEqual(response, {"queued": False, "queue_len": 0, "send_state_cleanup_error": "commit_unknown_send: commit_unknown.json write failed"})
-        self.assertNotIn(sid, mgr._commit_unknown_sends)
+        self.assertNotContains(sid, mgr._commit_unknown_sends)
         self.assertIsNone(mgr._sessions[sid].commit_unknown_send)
 
     def test_staged_attachments_survive_commit_unknown_send(self) -> None:
@@ -732,7 +732,7 @@ class TestServerQueuePersistence(unittest.TestCase):
             SessionManager.send(mgr, sid, "use this", allow_pending_attachment=True)
         self.assertEqual(mgr._staged_attachments[sid], [entry])
         self.assertTrue(mgr._sessions[sid].pending_attachment)
-        self.assertIn(sid, mgr._pending_attachment_ids)
+        self.assertContains(sid, mgr._pending_attachment_ids)
         self.assertEqual(mgr._commit_unknown_sends[sid]["text"], "Attachment 1: /tmp/uploads/s1/1_one.txt\nuse this")
         self.assertEqual(mgr._commit_unknown_sends[sid]["display_text"], "use this")
 
@@ -760,7 +760,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         with self.assertRaisesRegex(SessionCommitUnknownError, "commit status unknown"):
             SessionManager.send(mgr, sid, "intended prompt", allow_pending_attachment=True)
         self.assertTrue(mgr._sessions[sid].pending_attachment)
-        self.assertIn(sid, mgr._pending_attachment_ids)
+        self.assertContains(sid, mgr._pending_attachment_ids)
 
     def test_post_request_socket_failure_is_commit_unknown_even_if_pids_dead(self) -> None:
         # SessionControlCoordinator.call_confirmed_send with the OS process
@@ -793,7 +793,7 @@ class TestServerQueuePersistence(unittest.TestCase):
                 not_ready_error=SessionNotReadyError,
                 timeout_errors=(TimeoutError,),
             )
-        self.assertIn(sid, sessions)
+        self.assertContains(sid, sessions)
 
     def test_pre_request_socket_failure_can_prune_dead_session(self) -> None:
         # SessionControlCoordinator.call_confirmed_send with ``pid_alive``
@@ -828,7 +828,7 @@ class TestServerQueuePersistence(unittest.TestCase):
                 not_ready_error=SessionNotReadyError,
                 timeout_errors=(TimeoutError,),
             )
-        self.assertNotIn(sid, sessions)
+        self.assertNotContains(sid, sessions)
 
     def test_send_explicit_commit_unknown_overrides_success_fields(self) -> None:
         sid = "s1"
@@ -862,7 +862,7 @@ class TestServerQueuePersistence(unittest.TestCase):
 
         self.assertEqual(SessionManager.clear_commit_unknown_send(mgr, sid), {"ok": True, "commit_unknown_send": False})
         self.assertIsNone(mgr._sessions[sid].commit_unknown_send)
-        self.assertNotIn(sid, mgr._commit_unknown_sends)
+        self.assertNotContains(sid, mgr._commit_unknown_sends)
 
     def test_send_empty_response_is_commit_unknown(self) -> None:
         sid = "s1"
@@ -1009,7 +1009,7 @@ class TestServerQueuePersistence(unittest.TestCase):
 
         self.assertEqual(SessionManager.clear_pending_attachment(mgr, sid), {"ok": True, "pending_attachment": False})
         self.assertFalse(mgr._sessions[sid].pending_attachment)
-        self.assertNotIn(sid, mgr._pending_attachment_ids)
+        self.assertNotContains(sid, mgr._pending_attachment_ids)
 
     def test_queue_head_is_durably_unknown_before_dispatch(self) -> None:
         # SessionQueueCoordinator.promote_head_if_sendable with ``now=456.0``
@@ -1035,7 +1035,7 @@ class TestServerQueuePersistence(unittest.TestCase):
             )
             self.assertEqual(coord.promote_head_if_sendable(sid, require_idle_grace=False, expected_item_id="q1"), {"queued": False, "queue_len": 0})
         self.assertEqual(observed, [True])
-        self.assertNotIn(sid, queues)
+        self.assertNotContains(sid, queues)
 
     def test_commit_unknown_queue_head_does_not_auto_promote(self) -> None:
         sid = "s1"
@@ -1119,12 +1119,12 @@ class TestServerQueuePersistence(unittest.TestCase):
         SessionManager._queue_sweep(mgr)
 
         self.assertEqual(called, ["live"])
-        self.assertIn("orphan", mgr._queues)
+        self.assertContains("orphan", mgr._queues)
         self.assertTrue(SessionManager.queue_list(mgr, "orphan")[0]["commit_unknown"])
         with self.assertRaisesRegex(ValueError, "explicit confirmation"):
             SessionManager.queue_delete(mgr, "orphan", "u")
         self.assertEqual(SessionManager.queue_delete(mgr, "orphan", "u", allow_commit_unknown=True), {"ok": True, "queue_len": 0})
-        self.assertNotIn("orphan", mgr._queues)
+        self.assertNotContains("orphan", mgr._queues)
 
     def test_orphan_recovery_queue_head_does_not_auto_promote(self) -> None:
         sid = "s1"
@@ -1153,8 +1153,8 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertTrue(SessionManager.delete_session(mgr, "direct"))
         self.assertTrue(SessionManager.delete_session(mgr, "queue"))
 
-        self.assertNotIn("direct", mgr._commit_unknown_sends)
-        self.assertNotIn("queue", mgr._queues)
+        self.assertNotContains("direct", mgr._commit_unknown_sends)
+        self.assertNotContains("queue", mgr._queues)
 
     def test_orphan_queue_remains_reviewable_after_unknown_item_delete(self) -> None:
         mgr = self._mgr()
@@ -1193,7 +1193,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertTrue(by_id["orphan"]["orphan_recovery"])
         self.assertEqual(by_id["orphan"]["queue_len"], 1)
         self.assertEqual(SessionManager.queue_delete(mgr, "orphan", "n", allow_orphan_recovery=True), {"ok": True, "queue_len": 0})
-        self.assertNotIn("orphan", mgr._queues)
+        self.assertNotContains("orphan", mgr._queues)
 
     def test_active_orphan_recovery_queue_item_blocks_update_and_move(self) -> None:
         sid = "s1"
@@ -1336,7 +1336,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertTrue(mgr._queues[sid][0]["orphan_recovery"])
 
         SessionManager._clear_deleted_session_state(mgr, sid)
-        self.assertIn(sid, mgr._queues)
+        self.assertContains(sid, mgr._queues)
         self.assertTrue(mgr._queues[sid][0]["orphan_recovery"])
 
     def test_direct_unknown_preserves_plain_orphan_queue_tail(self) -> None:
@@ -1351,7 +1351,7 @@ class TestServerQueuePersistence(unittest.TestCase):
 
         listed = SessionManager.queue_list(mgr, "orphan")
         self.assertTrue(listed[0]["orphan_recovery"])
-        self.assertIn("orphan", mgr._queues)
+        self.assertContains("orphan", mgr._queues)
 
     def test_orphan_queue_remains_reviewable_after_recovery_item_delete(self) -> None:
         mgr = self._mgr()
@@ -1374,7 +1374,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         dropped = mgr._queue_store_for_manager().drop_missing_sessions(mgr._queues, set())
 
         self.assertFalse(dropped)
-        self.assertIn("orphan", mgr._queues)
+        self.assertContains("orphan", mgr._queues)
         self.assertTrue(mgr._queues["orphan"][0]["orphan_recovery"])
         self.assertEqual(saved_queues[-1][0]["orphan_recovery"], True)
 
@@ -1401,8 +1401,8 @@ class TestServerQueuePersistence(unittest.TestCase):
             dropped = store.queue_store.drop_missing_sessions(queues, set())
 
         self.assertFalse(dropped)
-        self.assertNotIn("orphan", commit_unknown_sends)
-        self.assertIn("orphan", queues)
+        self.assertNotContains("orphan", commit_unknown_sends)
+        self.assertContains("orphan", queues)
         self.assertTrue(queues["orphan"][0]["orphan_recovery"])
         self.assertEqual(saved_queues[-1][0]["orphan_recovery"], True)
 
@@ -1411,7 +1411,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._commit_unknown_sends["orphan"] = {"text": "maybe direct", "created_ts": 1.0}
 
         self.assertEqual(SessionManager.clear_commit_unknown_send(mgr, "orphan"), {"ok": True, "commit_unknown_send": False})
-        self.assertNotIn("orphan", mgr._commit_unknown_sends)
+        self.assertNotContains("orphan", mgr._commit_unknown_sends)
 
     def test_list_sessions_exposes_orphan_unknown_recovery_rows(self) -> None:
         mgr = self._mgr()
@@ -1996,7 +1996,7 @@ class TestServerQueuePersistence(unittest.TestCase):
             resp = coord.enqueue(sid, "maybe sent")
 
         self.assertTrue(resp.get("commit_unknown"))
-        self.assertIn(sid, queues)
+        self.assertContains(sid, queues)
         self.assertTrue(queues[sid][0].get("commit_unknown"))
 
     def test_enqueue_rejects_broker_without_sync_capability_before_append(self) -> None:
@@ -2007,7 +2007,7 @@ class TestServerQueuePersistence(unittest.TestCase):
 
         with self.assertRaisesRegex(SessionNotReadyError, "broker must be restarted"):
             SessionManager.enqueue(mgr, sid, "cannot drain")
-        self.assertNotIn(sid, mgr._queues)
+        self.assertNotContains(sid, mgr._queues)
 
     def test_enqueue_persists_when_busy(self) -> None:
         mgr = self._mgr()

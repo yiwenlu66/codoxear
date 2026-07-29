@@ -212,10 +212,10 @@ class TestFrontendConversationCopySource(unittest.TestCase):
             })()
             """
         )
-        self.assertRegex(result["known"], r"Conversation.*too large.*copy")
-        self.assertIn("50 MiB", result["known"])
-        self.assertNotIn("copy failed", result["known"].lower())
-        self.assertRegex(result["tagged"], r"Conversation.*too large.*copy")
+        self.assertMatches(result["known"], r"Conversation.*too large.*copy")
+        self.assertContains("50 MiB", result["known"])
+        self.assertNotContains("copy failed", result["known"].lower())
+        self.assertMatches(result["tagged"], r"Conversation.*too large.*copy")
         self.assertEqual(result["unrelated413"], "")
         self.assertEqual(result["missingLimit"], "")
         self.assertEqual(result["network"], "")
@@ -239,8 +239,8 @@ class TestFrontendConversationCopySource(unittest.TestCase):
         self.assertEqual(result["toast"], "Copied 2 messages")
         self.assertEqual(result["clipboardText"].count("## User"), 1)
         self.assertEqual(result["clipboardText"].count("## Assistant"), 1)
-        self.assertNotIn("ignored system", result["clipboardText"])
-        self.assertNotIn("ignored tool", result["clipboardText"])
+        self.assertNotContains("ignored system", result["clipboardText"])
+        self.assertNotContains("ignored tool", result["clipboardText"])
 
     def test_app_copy_conversation_success_toast_uses_singular_message_grammar(self) -> None:
         result = eval_app_copy_conversation_success([{"role": "assistant", "text": "one answer"}])
@@ -248,8 +248,8 @@ class TestFrontendConversationCopySource(unittest.TestCase):
 
     def test_app_copy_conversation_failure_toast_preserves_generic_failures(self) -> None:
         result = eval_app_copy_failure_toasts()
-        self.assertRegex(result["specific"], r"Conversation.*too large.*copy")
-        self.assertNotIn("copy failed", result["specific"].lower())
+        self.assertMatches(result["specific"], r"Conversation.*too large.*copy")
+        self.assertNotContains("copy failed", result["specific"].lower())
         self.assertEqual(result["generic"], "copy failed: denied")
         self.assertEqual(result["unknown"], "copy failed: unknown error")
 
@@ -267,7 +267,7 @@ class TestFrontendConversationCopySource(unittest.TestCase):
         self.assertTrue(result["frozen"])
         self.assertEqual(result["resultText"], result["text"])
         self.assertEqual(result["messageCount"], 2)
-        self.assertRegex(
+        self.assertMatches(
             result["text"],
             re.compile(r"^## User \(.+\)\n\n  hello user\n\n---\n\n## Assistant\n\nassistant answer$", re.DOTALL),
         )

@@ -472,10 +472,10 @@ class TestInspectOpenableFile(unittest.TestCase):
                     ],
                     text=True,
                 )
-                self.assertIn("codec_name=h264", info)
-                self.assertIn("pix_fmt=yuv420p", info)
-                self.assertIn("width=162", info)
-                self.assertIn("height=92", info)
+                self.assertContains("codec_name=h264", info)
+                self.assertContains("pix_fmt=yuv420p", info)
+                self.assertContains("width=162", info)
+                self.assertContains("height=92", info)
             finally:
                 server.VIDEO_PREVIEW_DIR = old_dir
 
@@ -528,8 +528,8 @@ class TestInspectOpenableFile(unittest.TestCase):
                     ],
                     text=True,
                 )
-                self.assertIn("codec_name=h264", info)
-                self.assertIn("pix_fmt=yuv420p", info)
+                self.assertContains("codec_name=h264", info)
+                self.assertContains("pix_fmt=yuv420p", info)
             finally:
                 server.VIDEO_PREVIEW_DIR = old_dir
 
@@ -756,7 +756,7 @@ class TestInspectOpenableFile(unittest.TestCase):
                         self.assertEqual(len(responses), 1)
                         status, payload = responses[0]
                         self.assertEqual(status, expected_status)
-                        self.assertIn(str(exc), str(payload.get("error", "")))
+                        self.assertContains(str(exc), str(payload.get("error", "")))
                 for route in absolute_routes:
                     with self.subTest(route=route, exc=type(exc).__name__):
                         deps, responses, _inline, _attachments = _file_get_deps(
@@ -772,7 +772,7 @@ class TestInspectOpenableFile(unittest.TestCase):
                         self.assertEqual(len(responses), 1)
                         status, payload = responses[0]
                         self.assertEqual(status, expected_status)
-                        self.assertIn(str(exc), str(payload.get("error", "")))
+                        self.assertContains(str(exc), str(payload.get("error", "")))
 
     def test_video_preview_generation_file_errors_are_route_local(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -804,7 +804,7 @@ class TestInspectOpenableFile(unittest.TestCase):
                         self.assertEqual(len(responses), 1)
                         status, payload = responses[0]
                         self.assertEqual(status, expected_status)
-                        self.assertIn(str(exc), str(payload.get("error", "")))
+                        self.assertContains(str(exc), str(payload.get("error", "")))
                 for route in absolute_routes:
                     with self.subTest(route=route, exc=type(exc).__name__):
                         deps, responses, _inline, _attachments = _file_get_deps(
@@ -820,7 +820,7 @@ class TestInspectOpenableFile(unittest.TestCase):
                         self.assertEqual(len(responses), 1)
                         status, payload = responses[0]
                         self.assertEqual(status, expected_status)
-                        self.assertIn(str(exc), str(payload.get("error", "")))
+                        self.assertContains(str(exc), str(payload.get("error", "")))
 
     @unittest.skipIf(shutil.which("git") is None, "git required")
     def test_git_changed_files_preserves_whitespace_paths(self) -> None:
@@ -1001,7 +1001,7 @@ class TestInspectOpenableFile(unittest.TestCase):
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 200)
-            self.assertIn("new name.md", payload["files"])
+            self.assertContains("new name.md", payload["files"])
             entry = next(entry for entry in payload["entries"] if entry["path"] == "new name.md")
             self.assertEqual(entry["additions"], 0)
             self.assertEqual(entry["deletions"], 0)
@@ -1038,8 +1038,8 @@ class TestInspectOpenableFile(unittest.TestCase):
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 200)
-            self.assertIn("untracked.txt", payload["files"])
-            self.assertIn("untracked.txt", payload["untracked"])
+            self.assertContains("untracked.txt", payload["files"])
+            self.assertContains("untracked.txt", payload["untracked"])
             untracked_entry = next(e for e in payload["entries"] if e["path"] == "untracked.txt")
             self.assertTrue(untracked_entry.get("untracked"))
             self.assertEqual(untracked_entry.get("state"), "untracked")
@@ -1047,11 +1047,11 @@ class TestInspectOpenableFile(unittest.TestCase):
             self.assertIsNone(untracked_entry.get("additions"))
             self.assertIsNone(untracked_entry.get("deletions"))
             # ignored files must not leak through as untracked
-            self.assertNotIn("ignored.log", payload["files"])
+            self.assertNotContains("ignored.log", payload["files"])
             tracked_entry = next(e for e in payload["entries"] if e["path"] == "tracked.md")
             self.assertTrue(tracked_entry.get("changed"))
             self.assertEqual(tracked_entry.get("state"), "changed")
-            self.assertNotIn("untracked", tracked_entry)
+            self.assertNotContains("untracked", tracked_entry)
 
     @unittest.skipIf(shutil.which("git") is None, "git required")
     def test_git_diff_head_mode_combines_staged_and_unstaged(self) -> None:
@@ -1083,9 +1083,9 @@ class TestInspectOpenableFile(unittest.TestCase):
             self.assertEqual(status, 200)
             diff = payload["diff"]
             # head mode must surface both the staged and the unstaged edits vs HEAD
-            self.assertIn("-line1", diff)
-            self.assertIn("+staged", diff)
-            self.assertIn("+unstage", diff)
+            self.assertContains("-line1", diff)
+            self.assertContains("+staged", diff)
+            self.assertContains("+unstage", diff)
 
             # default (no head) must keep historical index->worktree semantics
             deps2, responses2 = _git_deps()
@@ -1099,8 +1099,8 @@ class TestInspectOpenableFile(unittest.TestCase):
             )
             status2, payload2 = responses2[0]
             self.assertEqual(status2, 200)
-            self.assertIn("+unstage", payload2["diff"])
-            self.assertNotIn("-line1", payload2["diff"])
+            self.assertContains("+unstage", payload2["diff"])
+            self.assertNotContains("-line1", payload2["diff"])
 
     @unittest.skipIf(shutil.which("git") is None, "git required")
     def test_git_changed_files_non_repo_returns_409_with_fatal_message(self) -> None:
@@ -1119,7 +1119,7 @@ class TestInspectOpenableFile(unittest.TestCase):
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 409)
-            self.assertIn("not a git repository", str(payload.get("error", "")).lower())
+            self.assertContains("not a git repository", str(payload.get("error", "")).lower())
 
     def test_git_changed_files_late_git_failure_returns_409(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -1408,8 +1408,8 @@ class TestInspectOpenableFile(unittest.TestCase):
             status, payload = responses[0]
             self.assertEqual(status, 200)
             self.assertEqual(payload["path"], "root.md")
-            self.assertIn("+++ b/root.md", payload["diff"])
-            self.assertNotIn("+++ b/sub/root.md", payload["diff"])
+            self.assertContains("+++ b/root.md", payload["diff"])
+            self.assertNotContains("+++ b/sub/root.md", payload["diff"])
 
     @unittest.skipIf(shutil.which("git") is None, "git required")
     def test_git_file_versions_unborn_repo_has_no_base(self) -> None:
@@ -1585,7 +1585,7 @@ class TestInspectOpenableFile(unittest.TestCase):
             self.assertFalse(payload["current_exists"])
             self.assertTrue(payload["base_exists"])
             self.assertEqual(payload["base_text"], "base\n")
-            self.assertNotIn("secret-target", str(payload))
+            self.assertNotContains("secret-target", str(payload))
 
     @unittest.skipIf(not hasattr(os, "symlink") or shutil.which("git") is None, "symlink and git required")
     def test_git_file_versions_symlink_path_reads_link_payload(self) -> None:
@@ -1722,7 +1722,7 @@ class TestInspectOpenableFile(unittest.TestCase):
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 409)
-            self.assertIn("HEAD path is not a file", str(payload.get("error", "")))
+            self.assertContains("HEAD path is not a file", str(payload.get("error", "")))
 
     @unittest.skipIf(shutil.which("git") is None, "git required")
     def test_git_file_versions_base_lookup_is_repo_root_anchored_from_subdir_cwd(self) -> None:
@@ -1928,7 +1928,7 @@ class TestInspectOpenableFile(unittest.TestCase):
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 400)
-            self.assertIn("escapes session cwd", str(payload.get("error", "")))
+            self.assertContains("escapes session cwd", str(payload.get("error", "")))
             self.assertEqual(target.read_text(encoding="utf-8"), "old outside\n")
             self.assertEqual(manager.added, [])
 
@@ -2052,7 +2052,7 @@ class TestInspectOpenableFile(unittest.TestCase):
             self.assertEqual(len(responses), 1)
             status, payload = responses[0]
             self.assertEqual(status, 404)
-            self.assertNotIn("secret-target", str(payload))
+            self.assertNotContains("secret-target", str(payload))
 
     def test_global_file_routes_allow_whitespace_only_filename(self) -> None:
         for route in ("/api/files/read", "/api/files/inspect"):
@@ -2099,8 +2099,8 @@ class TestInspectOpenableFile(unittest.TestCase):
             text, size, editable, version = _read_text_file_for_client(path, max_bytes=1024)
             self.assertEqual(size, len(raw))
             self.assertFalse(editable)
-            self.assertIn("broken:", text)
-            self.assertIn("\ufffd", text)
+            self.assertContains("broken:", text)
+            self.assertContains("\ufffd", text)
             self.assertEqual(version, hashlib.sha256(raw).hexdigest())
 
     def test_text_file_for_write_rejects_invalid_utf8(self) -> None:

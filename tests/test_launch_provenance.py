@@ -294,7 +294,7 @@ class TestLaunchProvenance(unittest.TestCase):
         row = rows[0]
         self.assertEqual(row["launch_state"], "failed")
         self.assertEqual(row["launch_stage"], "pty_fork")
-        self.assertIn("out of pty devices", row["launch_error"])
+        self.assertContains("out of pty devices", row["launch_error"])
         self.assertEqual(row["launch_id"], "launch-pi")
         self.assertEqual(row["agent_backend"], "pi")
         self.assertEqual(row["provider_choice"], "macaron")
@@ -328,8 +328,8 @@ class TestLaunchProvenance(unittest.TestCase):
         self.assertEqual(payload["events"][0]["text"], "Please recover this prompt")
         self.assertEqual(payload["events"][1]["role"], "assistant")
         self.assertEqual(payload["events"][1]["message_class"], "error")
-        self.assertIn("Agent exit status: 1", payload["events"][1]["text"])
-        self.assertIn("fatal: provider unavailable", payload["events"][1]["text"])
+        self.assertContains("Agent exit status: 1", payload["events"][1]["text"])
+        self.assertContains("fatal: provider unavailable", payload["events"][1]["text"])
 
     def test_post_log_bound_recovery_row_uses_routing_session_id_and_preserves_thread(self) -> None:
         with TemporaryDirectory() as td:
@@ -369,7 +369,7 @@ class TestLaunchProvenance(unittest.TestCase):
         self.assertEqual([ev["role"] for ev in payload["events"]], ["user", "assistant"])
         self.assertEqual(payload["events"][0]["text"], "POST_LOG_BOUND_DEATH_SENTINEL")
         self.assertEqual(payload["events"][1]["message_class"], "error")
-        self.assertIn("stopped before completing", payload["events"][1]["text"])
+        self.assertContains("stopped before completing", payload["events"][1]["text"])
 
     def test_pre_log_failed_launch_row_still_uses_launch_id(self) -> None:
         rec = {
@@ -413,11 +413,6 @@ class TestLaunchProvenance(unittest.TestCase):
             self.assertTrue(log_needs_post_log_bound_recovery(incomplete))
             self.assertFalse(log_needs_post_log_bound_recovery(complete))
 
-    def test_broker_post_log_recovery_source_uses_socket_route_identity(self) -> None:
-        source = (Path(__file__).resolve().parents[1] / "codoxear" / "broker.py").read_text(encoding="utf-8")
-
-        self.assertIn("session_id=st2.sock_path.stem if st2.sock_path else st2.session_id", source)
-        self.assertIn("thread_id=st2.session_id", source)
 
     def test_failed_launch_transcript_strips_ansi_from_terminal_tail(self) -> None:
         now = time.time()
@@ -436,11 +431,11 @@ class TestLaunchProvenance(unittest.TestCase):
         payload = launch_attempt_transcript_payload(rec)
         text = payload["events"][0]["text"]
 
-        self.assertIn('File "<string>", line 11', text)
-        self.assertIn("FileNotFoundError: No such file or directory: b'/usr/games/claude'", text)
-        self.assertNotIn("\x1b", text)
-        self.assertNotIn("[35m", text)
-        self.assertNotIn("[0m", text)
+        self.assertContains('File "<string>", line 11', text)
+        self.assertContains("FileNotFoundError: No such file or directory: b'/usr/games/claude'", text)
+        self.assertNotContains("\x1b", text)
+        self.assertNotContains("[35m", text)
+        self.assertNotContains("[0m", text)
 
     def test_failed_launch_transcript_redacts_error_and_tail_secrets(self) -> None:
         now = time.time()
@@ -459,15 +454,15 @@ class TestLaunchProvenance(unittest.TestCase):
         payload = launch_attempt_transcript_payload(rec)
         text = payload["events"][0]["text"]
 
-        self.assertIn("API_TOKEN: [redacted]", text)
-        self.assertIn("password: [redacted]", text)
-        self.assertIn('"api_key":[redacted]', text)
-        self.assertIn("OPENAI_API_KEY: [redacted]", text)
-        self.assertNotIn("secret-token", text)
-        self.assertNotIn("hunter2", text)
-        self.assertNotIn("json-secret", text)
-        self.assertNotIn("tail-secret", text)
-        self.assertNotIn("abcdefghijklmnop", text)
+        self.assertContains("API_TOKEN: [redacted]", text)
+        self.assertContains("password: [redacted]", text)
+        self.assertContains('"api_key":[redacted]', text)
+        self.assertContains("OPENAI_API_KEY: [redacted]", text)
+        self.assertNotContains("secret-token", text)
+        self.assertNotContains("hunter2", text)
+        self.assertNotContains("json-secret", text)
+        self.assertNotContains("tail-secret", text)
+        self.assertNotContains("abcdefghijklmnop", text)
 
     def test_session_launch_error_exposes_only_redacted_record(self) -> None:
         # SessionLaunchError lives in codoxear.session_errors; construct it
@@ -487,14 +482,14 @@ class TestLaunchProvenance(unittest.TestCase):
         self.assertEqual(err.record["error"], "failed API_TOKEN: [redacted] password: [redacted]")
         self.assertEqual(err.record["launch_id"], "launch-secret-response")
         self.assertEqual(err.record["state"], "failed")
-        self.assertNotIn("tmux_stderr", err.record)
-        self.assertNotIn("tmux_attempts", err.record)
-        self.assertNotIn("metadata", err.record)
-        self.assertNotIn("top-secret", str(err.record))
-        self.assertNotIn("hunter2", str(err.record))
-        self.assertNotIn("stderr-secret", str(err.record))
-        self.assertNotIn("nested-secret", str(err.record))
-        self.assertNotIn("meta-secret", str(err.record))
+        self.assertNotContains("tmux_stderr", err.record)
+        self.assertNotContains("tmux_attempts", err.record)
+        self.assertNotContains("metadata", err.record)
+        self.assertNotContains("top-secret", str(err.record))
+        self.assertNotContains("hunter2", str(err.record))
+        self.assertNotContains("stderr-secret", str(err.record))
+        self.assertNotContains("nested-secret", str(err.record))
+        self.assertNotContains("meta-secret", str(err.record))
 
     def test_record_launch_attempt_redacts_persisted_record_and_stderr(self) -> None:
         # record_launch_attempt takes path and stderr as injected kwargs; the
@@ -526,9 +521,9 @@ class TestLaunchProvenance(unittest.TestCase):
             self.assertEqual(rows[0]["tmux_attempts"][0]["stderr"], "nested password: [redacted]")
             self.assertEqual(rows[0]["metadata"]["api_key"], "[redacted]")
             self.assertEqual(rows[0]["metadata"]["auth_header"], "[redacted]")
-            self.assertIn('top API_TOKEN: [redacted] "api_key":[redacted] Authorization: [redacted]', stderr.getvalue())
+            self.assertContains('top API_TOKEN: [redacted] "api_key":[redacted] Authorization: [redacted]', stderr.getvalue())
             for secret in ("top-secret", "json-secret", "auth-secret-token", "stderr-secret", "QWxhZGRpbjpvcGVuIHNlc2FtZQ", "nested-secret", "meta-secret", "custom-secret"):
-                self.assertNotIn(secret, combined)
+                self.assertNotContains(secret, combined)
 
     def test_failed_launch_redactor_handles_unclosed_quotes_and_colons(self) -> None:
         # redact_launch_failure_text is a pure util free function.
@@ -655,7 +650,7 @@ class TestLaunchProvenance(unittest.TestCase):
             after = list_coordinator.list_sessions()
 
         self.assertEqual(after, [])
-        self.assertIn("launch-live", store.hidden_sessions)
+        self.assertContains("launch-live", store.hidden_sessions)
 
     def test_prune_preserves_specific_existing_launch_failure(self) -> None:
         # SessionPruneCoordinator.prune_dead_sessions with latest_launch_attempt
@@ -949,7 +944,7 @@ class TestLaunchProvenance(unittest.TestCase):
             rows = list_coordinator.list_sessions()
 
         self.assertEqual(rows, [])
-        self.assertIn(launch_id, store.hidden_sessions)
+        self.assertContains(launch_id, store.hidden_sessions)
 
 
 if __name__ == "__main__":

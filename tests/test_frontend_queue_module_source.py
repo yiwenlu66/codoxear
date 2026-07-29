@@ -322,7 +322,7 @@ class TestFrontendQueueModuleBehavior(unittest.TestCase):
         self.assertTrue(by_label["missing DOM node"]["type"])
         self.assertTrue(by_label["missing api"]["threw"])
         self.assertTrue(by_label["missing api"]["type"])
-        self.assertIn("api", by_label["missing api"]["msg"])
+        self.assertContains("api", by_label["missing api"]["msg"])
 
     # --- 2. queue button projections (covered in detail in test_queue_button_source
     #     and exercised here against the live controller) ---
@@ -377,9 +377,9 @@ class TestFrontendQueueModuleBehavior(unittest.TestCase):
         gates = {g["name"]: g["ok"] for g in result["gates"]}
         self.assertFalse(any(gates.values()))
         self.assertEqual(result["toasts"][0], "failed launch cannot receive queued messages")
-        self.assertIn("missing session can only be reviewed", result["toasts"])
-        self.assertIn("review preserved queue before queueing", result["toasts"])
-        self.assertIn("resolve the unknown send before queueing", result["toasts"])
+        self.assertContains("missing session can only be reviewed", result["toasts"])
+        self.assertContains("review preserved queue before queueing", result["toasts"])
+        self.assertContains("resolve the unknown send before queueing", result["toasts"])
         self.assertFalse(result["apiCalled"])
         self.assertEqual(result["clearCalls"], [["clearCommitUnknownSend", "sid-1", "abc"]])
 
@@ -440,7 +440,7 @@ class TestFrontendQueueModuleBehavior(unittest.TestCase):
         ]
         for label, op in cases:
             result = run_node_json(self._enqueue_401_script(op, label))
-            self.assertIn(result["authIdx"] >= 0 and "handleAppAuthLoss" or "NO_AUTH", ["handleAppAuthLoss"])
+            self.assertContains(result["authIdx"] >= 0 and "handleAppAuthLoss" or "NO_AUTH", ["handleAppAuthLoss"])
             self.assertGreaterEqual(result["authIdx"], 0, label)
             # No queue error toast should fire for a 401 (auth loss returns early).
             self.assertEqual(result["queueErrorToasts"], [], f"{label}: {result['queueErrorToasts']}")
@@ -614,7 +614,7 @@ class TestFrontendQueueModuleBehavior(unittest.TestCase):
         result = run_node_json(js)
         rows = result["rows"]
         self.assertEqual(len(rows), 4)
-        self.assertIn("queueItem", rows[0]["class"])
+        self.assertContains("queueItem", rows[0]["class"])
         # normal: editable, no tag, del enabled
         self.assertFalse(rows[0]["taDisabled"])
         self.assertEqual(rows[0]["tagTexts"], [])
@@ -705,8 +705,8 @@ class TestFrontendQueueModuleBehavior(unittest.TestCase):
         self.assertEqual(result["commitConfirm"][0]["title"], "Delete recovery item?")
         self.assertEqual(result["commitConfirm"][0]["confirmText"], "Delete")
         self.assertEqual(result["commitConfirm"][0]["destructive"], True)
-        self.assertIn("checking the transcript or terminal", result["commitConfirm"][0]["message"])
-        self.assertIn("may allow later queued prompts", result["commitConfirm"][0]["message"])
+        self.assertContains("checking the transcript or terminal", result["commitConfirm"][0]["message"])
+        self.assertContains("may allow later queued prompts", result["commitConfirm"][0]["message"])
         # Delete body carries allow_commit_unknown: true.
         self.assertEqual(result["commitDeleteBody"], {"id": "commit", "allow_commit_unknown": True, "allow_orphan_recovery": False})
         # Canceled orphan delete did not issue another delete call.

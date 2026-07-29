@@ -49,7 +49,7 @@ nodes.chatSearchInput.value = 'needle'; controller.open(); const opened = { open
         self.assertEqual(result["opened"], {"open": True, "display": "flex", "status": "1/2 loaded", "matches": 2})
         self.assertEqual(result["stepped"]["index"], 1)
         self.assertEqual(result["closed"], {"open": False, "display": "none"})
-        self.assertIn("pulse:1", result["events"])
+        self.assertContains("pulse:1", result["events"])
 
 
 if __name__ == "__main__":

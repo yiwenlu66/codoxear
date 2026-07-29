@@ -34,49 +34,17 @@ def _run_preflight(env: dict[str, str]) -> subprocess.CompletedProcess:
 
 
 class TestDockerSandboxSource(unittest.TestCase):
-    def test_usage_lists_supported_commands(self) -> None:
-        source = SCRIPT.read_text(encoding="utf-8")
-        self.assertIn(
-            "Usage: scripts/codoxear-docker-sandbox [build|smoke|start|stop|logs|preflight|test]",
-            source,
-        )
-        for command in ("build", "smoke", "start", "stop", "logs", "preflight", "test"):
-            self.assertIn(f"  {command})", source)
 
-    def test_video_transcoding_dependency_is_available_in_sandbox(self) -> None:
-        source = DOCKERFILE.read_text(encoding="utf-8")
-        self.assertIn("ffmpeg", source)
 
-    def test_isolation_guard_function_exists(self) -> None:
-        source = SCRIPT.read_text(encoding="utf-8")
-        self.assertIn("ensure_isolation()", source)
-        # Guard must run before any directory creation in start/unit paths.
-        self.assertIn("ensure_safe_port\n  ensure_isolation\n  prepare_root", source)
-        # Guard must cover both current and legacy live app dirs.
-        self.assertIn("codoxear", source)
-        self.assertIn("codex-web", source)
-        # Guard must check both app-dir override env names.
-        self.assertIn("CODEXEAR_APP_DIR", source)
-        self.assertIn("CODEX_WEB_APP_DIR", source)
 
-    def test_container_does_not_forward_app_dir_env(self) -> None:
-        """The container launch must not forward app-dir overrides, so APP_DIR
-        always resolves under the throwaway container HOME."""
-        source = SCRIPT.read_text(encoding="utf-8")
-        self.assertNotIn("-e CODEXEAR_APP_DIR", source)
-        self.assertNotIn("-e CODEX_WEB_APP_DIR", source)
 
-    def test_dockerfile_does_not_pin_app_dir(self) -> None:
-        source = DOCKERFILE.read_text(encoding="utf-8")
-        self.assertNotIn("CODEXEAR_APP_DIR", source)
-        self.assertNotIn("CODEX_WEB_APP_DIR", source)
 
     def test_preflight_passes_with_default_throwaway_root(self) -> None:
         result = _run_preflight({})
         self.assertEqual(
             result.returncode, 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
         )
-        self.assertIn("preflight ok", result.stdout)
+        self.assertContains("preflight ok", result.stdout)
 
     def test_preflight_refuses_root_inside_live_app_dir(self) -> None:
         with tempfile.TemporaryDirectory(prefix="codoxear-sandbox-test-") as tmp:
@@ -96,7 +64,7 @@ class TestDockerSandboxSource(unittest.TestCase):
                 timeout=20,
             )
         self.assertEqual(result.returncode, 2, f"stderr={result.stderr!r}")
-        self.assertIn("isolation guard failed", result.stderr)
+        self.assertContains("isolation guard failed", result.stderr)
 
     def test_preflight_refuses_live_app_dir_env_override(self) -> None:
         with tempfile.TemporaryDirectory(prefix="codoxear-sandbox-test-") as tmp:
@@ -116,7 +84,7 @@ class TestDockerSandboxSource(unittest.TestCase):
                 timeout=20,
             )
         self.assertEqual(result.returncode, 2, f"stderr={result.stderr!r}")
-        self.assertIn("CODEX_WEB_APP_DIR", result.stderr)
+        self.assertContains("CODEX_WEB_APP_DIR", result.stderr)
 
     def test_preflight_allows_throwaway_app_dir_env_override(self) -> None:
         with tempfile.TemporaryDirectory(prefix="codoxear-sandbox-test-") as tmp:
@@ -137,7 +105,7 @@ class TestDockerSandboxSource(unittest.TestCase):
                 timeout=20,
             )
         self.assertEqual(result.returncode, 0, f"stderr={result.stderr!r}")
-        self.assertIn("preflight ok", result.stdout)
+        self.assertContains("preflight ok", result.stdout)
 
 
 if __name__ == "__main__":

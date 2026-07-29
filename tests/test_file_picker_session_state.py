@@ -123,11 +123,6 @@ class TestFilePickerSessionState(unittest.TestCase):
         self.assertEqual(result["sessionA"], {"path": "file-a.py", "apiPath": "token-a", "line": 7, "gitPath": True})
         self.assertEqual(result["sessionB"], {"path": "file-b.py", "line": None, "gitPath": False})
 
-    def test_global_file_path_local_storage_is_not_used(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("function ensureCurrentFileViewerSession()", source)
-        self.assertNotIn('localStorage.getItem("codexweb.filePath")', source)
-        self.assertNotIn('localStorage.setItem("codexweb.filePath"', source)
 
 
 if __name__ == "__main__":

@@ -41,9 +41,9 @@ class TestNewSessionModelOptionsBehavior(unittest.TestCase):
     def test_options_merge_defaults_and_backend_matched_recent_models(self) -> None:
         result = eval_model_options("")
         pairs = {(item["providerChoice"], item["model"]) for item in result["options"]}
-        self.assertIn(("chatgpt", "gpt-5.4"), pairs)
-        self.assertIn(("crs", "gpt-5.4"), pairs)
-        self.assertNotIn(("anthropic", "other"), pairs)
+        self.assertContains(("chatgpt", "gpt-5.4"), pairs)
+        self.assertContains(("crs", "gpt-5.4"), pairs)
+        self.assertNotContains(("anthropic", "other"), pairs)
         self.assertEqual(result["options"][0]["displayText"], "chatgpt/gpt-5.4-mini")
 
     def test_provider_model_filter_and_selection_render_a_single_input_value(self) -> None:

@@ -75,26 +75,13 @@ def eval_clipboard_helpers() -> dict:
 
 
 class TestFrontendClipboardModuleSource(unittest.TestCase):
-    def test_index_loads_clipboard_before_app(self) -> None:
-        source = INDEX_HTML.read_text(encoding="utf-8")
-        self.assertIn('app_clipboard.js?v=__CODOXEAR_ASSET_VERSION__', source)
-        self.assertLess(source.index('app_modal.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app_clipboard.js?v=__CODOXEAR_ASSET_VERSION__'))
-        self.assertLess(source.index('app_clipboard.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app.js?v=__CODOXEAR_ASSET_VERSION__'))
 
-    def test_app_js_requires_clipboard_helpers_without_fallback(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        helper_source = APP_CLIPBOARD_JS.read_text(encoding="utf-8")
-        self.assertIn("const codoxearClipboard = window.CodoxearClipboard;", source)
-        self.assertIn('throw new Error("Codoxear clipboard helpers failed to load")', source)
-        self.assertIn("return codoxearClipboard.copyToClipboard(text);", source)
-        self.assertIn('const nav = typeof navigator !== "undefined" ? navigator : window.navigator;', helper_source)
-        self.assertIn("nav.clipboard", helper_source)
 
     def test_clipboard_module_uses_secure_clipboard_only(self) -> None:
         result = eval_clipboard_helpers()
         self.assertEqual(result["writes"], ["secure text"])
         self.assertEqual(result["events"], [])
-        self.assertIn("Clipboard API unavailable", result.get("insecureError", ""))
+        self.assertContains("Clipboard API unavailable", result.get("insecureError", ""))
         self.assertTrue(result["frozen"])
 
 

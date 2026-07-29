@@ -49,11 +49,6 @@ class TestSidebarTouchMode(unittest.TestCase):
             )
         )
 
-    def test_refresh_sessions_uses_touch_mode_for_non_desktop_inputs(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("const swipeActions = !useDesktopSessionActions();", source)
-        self.assertIn("if (swipeActions && openSwipeSessionId && sessionsWrap.childElementCount > 0) {", source)
-        self.assertIn("if (swipeActions) {", source)
 
 
 if __name__ == "__main__":

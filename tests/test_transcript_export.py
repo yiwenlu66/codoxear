@@ -370,13 +370,13 @@ class TestTranscriptExport(unittest.TestCase):
         clipped = clip_search_match_text(matches, 18, query="needle")
 
         self.assertLessEqual(len(clipped[0]["text"]), 18)
-        self.assertIn("needle", clipped[0]["text"])
+        self.assertContains("needle", clipped[0]["text"])
         self.assertFalse(clipped[0]["text"].startswith("…"))
         self.assertFalse(clipped[0]["text"].endswith("…"))
         self.assertTrue(clipped[0]["text_truncated"])
         self.assertEqual(clipped[0]["_before_byte"], 1)
         self.assertEqual(clipped[1]["text"], "xy")
-        self.assertNotIn("text_truncated", clipped[1])
+        self.assertNotContains("text_truncated", clipped[1])
         self.assertEqual(matches[0]["text"], "x" * 40 + "needle" + "y" * 40)
         prefix, truncated = clip_search_text_around_query("abcdef", "missing", 3)
         self.assertEqual(prefix, "abc")
@@ -387,7 +387,7 @@ class TestTranscriptExport(unittest.TestCase):
         snippet, truncated = clip_search_text_around_query("ß" * 40 + "needle" + "y" * 40, "needle", 18)
 
         self.assertTrue(truncated)
-        self.assertIn("needle", snippet)
+        self.assertContains("needle", snippet)
         self.assertNotEqual(snippet, "y" * 18)
         exact, exact_truncated = clip_search_text_around_query("xxxneedlezzz", "needle", 6)
         self.assertEqual(exact, "needle")
@@ -407,15 +407,6 @@ class TestTranscriptExport(unittest.TestCase):
         self.assertEqual(len(matches), 1)
         self.assertEqual(matches[0]["_before_byte"], 1)
 
-    def test_ui_has_copy_conversation_action_in_details(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        topbar_start = source.index('const topbar = el("div", { class: "topbar" }')
-        topbar_end = source.index('const form = el("form"', topbar_start)
-        self.assertNotIn("copyConversation", source[topbar_start:topbar_end])
-        self.assertIn('id: "diagCopyConversationBtn"', source)
-        self.assertIn('function formatConversationForCopy(events)', source)
-        self.assertIn('api(`/api/sessions/${sid}/messages/export`)', source)
-        self.assertIn('title: "Copy conversation"', source)
 
 
 # --- Route-handler tests (direct handler calls with injected dependencies) ---

@@ -47,13 +47,13 @@ downloadRuntime.download('app:/download');
 process.stdout.write(JSON.stringify({ exports: Object.keys(viewer).sort(), diff, imageState, videoState, download, plain, blocked }));
 '''
         )
-        self.assertIn("createFileViewerController", result["exports"])
+        self.assertContains("createFileViewerController", result["exports"])
         self.assertEqual(result["diff"], {"display": "block", "image": "none", "video": "none"})
         self.assertEqual(result["imageState"], {"display": "block", "diff": "none", "video": "none"})
         self.assertEqual(result["videoState"], {"display": "block", "diff": "none", "image": "none"})
         self.assertEqual(result["download"], ["app:/download"])
         self.assertEqual(result["plain"], {"targetLine": 3})
-        self.assertIn("not renderable", result["blocked"])
+        self.assertContains("not renderable", result["blocked"])
 
     def test_modal_and_touch_dpad_behave_as_interaction_boundaries(self) -> None:
         result = run_viewer(

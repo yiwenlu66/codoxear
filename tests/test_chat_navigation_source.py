@@ -59,17 +59,17 @@ class TestChatNavigationSource(unittest.TestCase):
 
     def test_navigation_jumps_are_delegated_to_controller(self) -> None:
         calls = eval_navigation()["calls"]
-        self.assertIn(["scroll", "u1", {"block": "start", "behavior": "smooth"}], calls)
-        self.assertIn(["pulse", "u1"], calls)
-        self.assertIn(["search"], calls)
-        self.assertIn(["key-prevent-user"], calls)
-        self.assertNotIn(["blocked-prevent"], calls)
+        self.assertContains(["scroll", "u1", {"block": "start", "behavior": "smooth"}], calls)
+        self.assertContains(["pulse", "u1"], calls)
+        self.assertContains(["search"], calls)
+        self.assertContains(["key-prevent-user"], calls)
+        self.assertNotContains(["blocked-prevent"], calls)
 
     def test_navigation_boundary_reports_loaded_message_limit(self) -> None:
         calls = eval_navigation()["calls"]
-        self.assertIn(["prevent"], calls)
-        self.assertIn(["stop"], calls)
-        self.assertIn(["toast", "At first loaded user message"], calls)
+        self.assertContains(["prevent"], calls)
+        self.assertContains(["stop"], calls)
+        self.assertContains(["toast", "At first loaded user message"], calls)
 
 
 if __name__ == "__main__":

@@ -434,7 +434,7 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
         self.assertFalse(result["wasOpen"])
         self.assertTrue(result["opened"])
         self.assertTrue(result["notEnabled"])
-        self.assertIn("API base URL", result["status"])
+        self.assertContains("API base URL", result["status"])
 
     # --- 6. notification transport projection (desktop vs mobile) ---
 
@@ -513,11 +513,11 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
         )
         result = run_node_json(js)
         self.assertTrue(result["withError"]["hasErrorClass"])
-        self.assertIn("Announcements on", result["withError"]["title"])
-        self.assertIn("audio error", result["withError"]["title"])
-        self.assertIn("audio error", result["withError"]["aria"])
+        self.assertContains("Announcements on", result["withError"]["title"])
+        self.assertContains("audio error", result["withError"]["title"])
+        self.assertContains("audio error", result["withError"]["aria"])
         self.assertFalse(result["cleared"]["hasErrorClass"])
-        self.assertNotIn("audio error", result["cleared"]["title"])
+        self.assertNotContains("audio error", result["cleared"]["title"])
 
     # --- 8. dispose clears timers, handlers, HLS ---
 

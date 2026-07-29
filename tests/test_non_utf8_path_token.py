@@ -170,10 +170,10 @@ class TestNonUtf8PathTokenRoundtrip(unittest.TestCase):
             token = str(entry["api_path"])
             # Display is the backslashreplace form, JSON/UTF-8 safe.
             self.assertEqual(display_rel, r"bad\xffname.txt")
-            self.assertIn(display_rel, payload["files"])
+            self.assertContains(display_rel, payload["files"])
             # The whole response body is JSON/UTF-8 encodable.
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-            self.assertIn(rb"bad\\xffname.txt", body)
+            self.assertContains(rb"bad\\xffname.txt", body)
             # Token decodes back to the raw byte sequence.
             self.assertEqual(
                 git_ops.git_path_from_token(token).encode("utf-8", errors="surrogateescape"),
@@ -217,7 +217,7 @@ class TestNonUtf8PathTokenRoundtrip(unittest.TestCase):
             )
             (status, payload) = responses[0]
             self.assertEqual(status, 200)
-            self.assertIn(r"cwd\xffdir", str(payload["cwd"]))
+            self.assertContains(r"cwd\xffdir", str(payload["cwd"]))
             json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
     def test_git_mode_search_surfaces_reversible_token_for_raw_byte_name(self) -> None:
@@ -247,7 +247,7 @@ class TestNonUtf8PathTokenRoundtrip(unittest.TestCase):
             token = str(match["api_path"])
             # Display is JSON/UTF-8 safe (backslashreplace), not a replacement char.
             self.assertEqual(display_rel, r"bad\xffname.txt")
-            self.assertNotIn("\ufffd", display_rel)
+            self.assertNotContains("\ufffd", display_rel)
             json.dumps(result, ensure_ascii=False).encode("utf-8")
             # Token round-trips to the raw byte sequence.
             self.assertEqual(
@@ -440,12 +440,12 @@ class TestNonUtf8PathTokenRoundtrip(unittest.TestCase):
             self.assertEqual(plain[0]["path"], display)
             self.assertEqual(non_utf8[0]["score"], plain[0]["score"])
             # Raw-byte entry carries the reversible token; literal does not.
-            self.assertIn("api_path", non_utf8[0])
-            self.assertNotIn("api_path", plain[0])
+            self.assertContains("api_path", non_utf8[0])
+            self.assertNotContains("api_path", plain[0])
             # No replacement char anywhere in the JSON-encoded body.
             body = json.dumps(result, ensure_ascii=False).encode("utf-8")
-            self.assertNotIn("\ufffd".encode("utf-8"), body)
-            self.assertIn(rb"bad\\xffname.txt", body)
+            self.assertNotContains("\ufffd".encode("utf-8"), body)
+            self.assertContains(rb"bad\\xffname.txt", body)
 
 
 if __name__ == "__main__":

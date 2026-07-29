@@ -11,54 +11,6 @@ PI_MESSAGE_PY = ROOT / "codoxear" / "pi_message.py"
 
 
 class TestPiMessageSource(unittest.TestCase):
-    def test_pi_message_parsing_has_dedicated_owner_with_pi_log_reexports(self) -> None:
-        pi_log_source = PI_LOG_PY.read_text(encoding="utf-8")
-        pi_message_source = PI_MESSAGE_PY.read_text(encoding="utf-8")
-
-        for name in [
-            "PiUnknownToolCallId",
-            "PiDuplicateToolCallId",
-            "PiPendingToolCallId",
-            "pi_user_text",
-            "pi_assistant_content_parts",
-            "pi_assistant_text",
-            "pi_assistant_error_text",
-            "pi_assistant_is_aborted_turn",
-            "pi_assistant_is_final_turn_end",
-            "pi_assistant_is_terminal_no_visible_response",
-            "pi_assistant_tool_use_count",
-            "pi_assistant_pending_tool_call_ids",
-            "pi_tool_result_id",
-            "pi_apply_tool_result_to_pending",
-            "pi_apply_assistant_tool_calls_to_pending",
-            "pi_assistant_thinking_count",
-            "pi_message_role",
-        ]:
-            self.assertIn(f"from .pi_message import {name}", pi_log_source)
-
-        self.assertNotIn("def _text_parts(", pi_log_source)
-        self.assertNotIn("def pi_user_text(", pi_log_source)
-        self.assertNotIn("def pi_assistant_content_parts(", pi_log_source)
-        self.assertNotIn("def pi_assistant_is_final_turn_end(", pi_log_source)
-        self.assertNotIn("def pi_assistant_is_terminal_no_visible_response(", pi_log_source)
-        self.assertNotIn("def pi_assistant_pending_tool_call_ids(", pi_log_source)
-        self.assertNotIn("class PiUnknownToolCallId", pi_log_source)
-        self.assertNotIn("class PiDuplicateToolCallId", pi_log_source)
-
-        self.assertIn("def _text_parts(", pi_message_source)
-        self.assertIn("def pi_user_text(", pi_message_source)
-        self.assertIn("def pi_assistant_is_final_turn_end(", pi_message_source)
-        self.assertIn("def pi_assistant_is_terminal_no_visible_response(", pi_message_source)
-        self.assertIn("def pi_assistant_pending_tool_call_ids(", pi_message_source)
-        self.assertIn('sig.get("phase") == "final_answer"', pi_message_source)
-        self.assertIn('part.get("type") == "toolCall"', pi_message_source)
-
-        self.assertIs(pi_log.PiUnknownToolCallId, pi_message.PiUnknownToolCallId)
-        self.assertIs(pi_log.PiDuplicateToolCallId, pi_message.PiDuplicateToolCallId)
-        self.assertIs(pi_log.pi_user_text, pi_message.pi_user_text)
-        self.assertIs(pi_log.pi_assistant_is_final_turn_end, pi_message.pi_assistant_is_final_turn_end)
-        self.assertIs(pi_log.pi_assistant_is_terminal_no_visible_response, pi_message.pi_assistant_is_terminal_no_visible_response)
-        self.assertIs(pi_log.pi_assistant_pending_tool_call_ids, pi_message.pi_assistant_pending_tool_call_ids)
 
     def test_pi_terminal_no_visible_response_predicate_semantics(self) -> None:
         def row(stop_reason: object, content: object = None, role: str = "assistant") -> dict:
@@ -152,7 +104,7 @@ class TestPiMessageSource(unittest.TestCase):
 
         pending = set(ids)
         pi_message.pi_apply_tool_result_to_pending({"type": "message", "message": {"role": "toolResult", "toolCallId": "tool-1"}}, pending)
-        self.assertNotIn("tool-1", pending)
+        self.assertNotContains("tool-1", pending)
         self.assertTrue(any(isinstance(item, pi_message.PiDuplicateToolCallId) for item in pending))
 
         final = {

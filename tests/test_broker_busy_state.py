@@ -274,7 +274,7 @@ class TestBrokerBusyState(unittest.TestCase):
             },
             now_ts=10.0,
         )
-        self.assertIn("tool-1", st.pending_calls)
+        self.assertContains("tool-1", st.pending_calls)
         self.assertEqual(len(st.pending_calls), 2)
         self.assertTrue(any(pi_pending_tool_call_is_duplicate(item) for item in st.pending_calls))
         result = {
@@ -312,7 +312,7 @@ class TestBrokerBusyState(unittest.TestCase):
                 },
                 now_ts=ts,
             )
-        self.assertIn("tool-1", st.pending_calls)
+        self.assertContains("tool-1", st.pending_calls)
         self.assertEqual(len(st.pending_calls), 2)
         self.assertTrue(any(pi_pending_tool_call_is_duplicate(item) for item in st.pending_calls))
         result = {

@@ -588,7 +588,7 @@ class TestFrontendFileEditorModuleBehavior(unittest.TestCase):
             ["setKind", ""],
             ["clearTouchSelection"],
         ])
-        self.assertIn("file editor dependency missing: finishProgrammaticChange", result["disposeCurrentMissingError"])
+        self.assertContains("file editor dependency missing: finishProgrammaticChange", result["disposeCurrentMissingError"])
         self.assertTrue(result["restoreCurrentFileResult"])
         self.assertFalse(result["restoreCurrentNoop"])
         self.assertEqual(result["restoreLifecycleEvents"], [
@@ -598,7 +598,7 @@ class TestFrontendFileEditorModuleBehavior(unittest.TestCase):
             ["programmaticEnd"],
             ["finish"],
         ])
-        self.assertIn("file editor dependency missing: prepareFileEditorTextRestore", result["restoreCurrentMissingError"])
+        self.assertContains("file editor dependency missing: prepareFileEditorTextRestore", result["restoreCurrentMissingError"])
         creation = result["creation"]
         self.assertEqual(creation["createFileEditorResult"], "createdFile")
         self.assertTrue(creation["updateFileTextResult"])
@@ -615,18 +615,18 @@ class TestFrontendFileEditorModuleBehavior(unittest.TestCase):
         self.assertEqual(creation_events[0][2]["value"], "print(1)")
         self.assertTrue(creation_events[0][2]["readOnly"])
         self.assertEqual(creation_events[0][2]["theme"], "codoxear-github-light")
-        self.assertIn(["bindChange"], creation_events)
-        self.assertIn(["filePosition", {"lineNumber": 3, "column": 1}], creation_events)
-        self.assertIn(["setLanguage", True, "markdown"], creation_events)
-        self.assertIn(["setValue", "# title"], creation_events)
-        self.assertIn(["setValue", "restored"], creation_events)
+        self.assertContains(["bindChange"], creation_events)
+        self.assertContains(["filePosition", {"lineNumber": 3, "column": 1}], creation_events)
+        self.assertContains(["setLanguage", True, "markdown"], creation_events)
+        self.assertContains(["setValue", "# title"], creation_events)
+        self.assertContains(["setValue", "restored"], creation_events)
         diff_create = next(event for event in creation_events if event[0] == "createDiff")
         self.assertEqual(diff_create[1], "diffHost")
         self.assertTrue(diff_create[2]["readOnly"])
         self.assertEqual(diff_create[2]["hideUnchangedRegions"], {"enabled": True, "contextLineCount": 4, "minimumLineCount": 1, "revealLineCount": 2})
-        self.assertIn(["originalOptions", {"wordWrap": "on", "lineNumbers": "off", "glyphMargin": False, "lineDecorationsWidth": 0, "lineNumbersMinChars": 0}], creation_events)
-        self.assertIn(["modifiedOptions", {"wordWrap": "on", "lineNumbers": "on", "glyphMargin": False, "lineDecorationsWidth": 0, "lineNumbersMinChars": 3}], creation_events)
-        self.assertIn(["modifiedReveal", {"lineNumber": 1, "column": 1}], creation_events)
+        self.assertContains(["originalOptions", {"wordWrap": "on", "lineNumbers": "off", "glyphMargin": False, "lineDecorationsWidth": 0, "lineNumbersMinChars": 0}], creation_events)
+        self.assertContains(["modifiedOptions", {"wordWrap": "on", "lineNumbers": "on", "glyphMargin": False, "lineDecorationsWidth": 0, "lineNumbersMinChars": 3}], creation_events)
+        self.assertContains(["modifiedReveal", {"lineNumber": 1, "column": 1}], creation_events)
         self.assertEqual(
             result["events"],
             [
@@ -658,7 +658,7 @@ class TestFrontendFileEditorModuleBehavior(unittest.TestCase):
                 ["afterDispose"],
             ],
         )
-        self.assertIn("file editor dependency missing: withCurrentEditor", result["missingCallbackError"])
+        self.assertContains("file editor dependency missing: withCurrentEditor", result["missingCallbackError"])
 
     def test_file_editor_renderer_behavior(self) -> None:
         result = run_file_editor_renderer_probe()
@@ -671,7 +671,7 @@ class TestFrontendFileEditorModuleBehavior(unittest.TestCase):
         self.assertTrue(result["diffRendered"])
         self.assertEqual(result["ensuredName"], "monaco")
         self.assertEqual(result["currentKind"], "diff")
-        self.assertIn("file editor dependency missing: host", result["missingHostError"])
+        self.assertContains("file editor dependency missing: host", result["missingHostError"])
         self.assertEqual(
             result["events"],
             [
@@ -727,12 +727,12 @@ class TestFrontendFileEditorModuleBehavior(unittest.TestCase):
         events = result["events"]
         with_diff_fallback = next(e for e in events if e[0] == "fallback" and e[1] == "src/note.md")
         self.assertEqual(with_diff_fallback[2], "")
-        self.assertIn("Diff editor unavailable because Monaco failed to load", with_diff_fallback[4])
-        self.assertNotIn("unified diff", with_diff_fallback[4])
-        self.assertNotIn("@@ -1 +1 @@ -base +working", str(events))
+        self.assertContains("Diff editor unavailable because Monaco failed to load", with_diff_fallback[4])
+        self.assertNotContains("unified diff", with_diff_fallback[4])
+        self.assertNotContains("@@ -1 +1 @@ -base +working", str(events))
         without_diff_fallback = next(e for e in events if e[0] == "fallback" and e[1] == "src/note2.md")
         self.assertEqual(without_diff_fallback[2], "")
-        self.assertIn("Diff editor unavailable because Monaco failed to load", without_diff_fallback[4])
+        self.assertContains("Diff editor unavailable because Monaco failed to load", without_diff_fallback[4])
 
     def test_monaco_loader_behavior(self) -> None:
         result = run_monaco_loader_probe()
@@ -751,7 +751,7 @@ class TestFrontendFileEditorModuleBehavior(unittest.TestCase):
                 ["defineTheme", "codoxear-github-light", "#ffffff"],
             ],
         )
-        self.assertIn("file editor dependency missing: resolveAppUrl", result["missingResolveError"])
+        self.assertContains("file editor dependency missing: resolveAppUrl", result["missingResolveError"])
 
 if __name__ == "__main__":
     unittest.main()

@@ -266,10 +266,10 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
         self.assertTrue(by_label["missing DOM node"]["type"])
         self.assertTrue(by_label["missing api"]["threw"])
         self.assertTrue(by_label["missing api"]["type"])
-        self.assertIn("api", by_label["missing api"]["msg"])
+        self.assertContains("api", by_label["missing api"]["msg"])
         self.assertTrue(by_label["missing uiVersion"]["threw"])
         self.assertTrue(by_label["missing uiVersion"]["type"])
-        self.assertIn("uiVersion", by_label["missing uiVersion"]["msg"])
+        self.assertContains("uiVersion", by_label["missing uiVersion"]["msg"])
 
     def test_module_load_fails_loud_without_helpers_or_modal(self) -> None:
         diag_source = APP_DIAGNOSTICS_JS.read_text(encoding="utf-8")
@@ -285,7 +285,7 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
             """
         )
         result = run_node_json(js_only_diag)
-        self.assertIn("failed to load", result["err"])
+        self.assertContains("failed to load", result["err"])
 
     # --- 2. failed-launch / local path: no API, recovery rows, copy/new-like enabled ---
 
@@ -323,7 +323,7 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
         result = run_node_json(js)
         self.assertFalse(result["apiCalled"])
         for label in ["Session", "State", "Stage", "Error", "CWD", "Agent", "Provider", "Model", "Reasoning", "tmux"]:
-            self.assertIn(label, result["labels"], label)
+            self.assertContains(label, result["labels"], label)
         # State row says "launch failed".
         state_row = next(r for r in result["labels"] if True)  # placeholder; check below
         rows_map = dict(zip(result["labels"], [None] * len(result["labels"])))
@@ -422,15 +422,15 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
         self.assertEqual(result["apiCalls"], ["/api/sessions/sid-1/diagnostics"])
         rows = result["rows"]
         for label in ["Session", "Thread", "Owned", "Busy", "Queue", "CWD", "Started", "Updated", "Broker PID", "Agent", "Agent PID", "Log", "tmux", "Branch", "Provider", "Model", "Reasoning", "Service tier", "Priority", "Priority offset", "Snooze", "Depends on", "UI", "Context"]:
-            self.assertIn(label, rows, label)
+            self.assertContains(label, rows, label)
         self.assertEqual(rows["Provider"], "PROV:chatgpt")
         self.assertEqual(rows["Model"], "gpt-5.4")
         self.assertEqual(rows["Reasoning"], "high")
         self.assertEqual(rows["UI"], "test-ver")
-        self.assertIn("Context", rows)
+        self.assertContains("Context", rows)
         # Copy text includes the Session row via diagnosticsCopyText semantics.
-        self.assertIn("Session=sid-1", result["copyText"])
-        self.assertIn("Provider=PROV:chatgpt", result["copyText"])
+        self.assertContains("Session=sid-1", result["copyText"])
+        self.assertContains("Provider=PROV:chatgpt", result["copyText"])
         self.assertFalse(result["copyDisabled"])
         self.assertFalse(result["newLikeDisabled"])
 
@@ -625,7 +625,7 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
         )
         result = run_node_json(js)
         self.assertEqual(result["copyCallsBefore"], 0)
-        self.assertIn("Session=sid-1", result["copiedText"])
+        self.assertContains("Session=sid-1", result["copiedText"])
         self.assertEqual(result["lastToast"], "Copied details")
 
     def test_copy_button_toasts_copy_failed_on_error(self) -> None:

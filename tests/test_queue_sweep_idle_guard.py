@@ -269,7 +269,7 @@ class TestQueueSweepIdleGuard(unittest.TestCase):
 
             resp2 = coord.promote_head_if_sendable("s1", require_idle_grace=True, now_ts=100.0 + QUEUE_IDLE_GRACE_SECONDS + 0.1)
             self.assertEqual(sent, [("s1", "queued")])
-            self.assertNotIn("s1", h.queues)
+            self.assertNotContains("s1", h.queues)
 
     def test_queue_sweep_keeps_idle_window_when_log_idle_overrides_stale_broker_busy(self) -> None:
         # Formerly: log-idle=True keeps remote_ready True even when a stale
@@ -481,8 +481,8 @@ class TestQueueSweepOrchestration(unittest.TestCase):
             sweep_coord.sweep()
 
             self.assertEqual(sent, [("s1", "queued-1"), ("s2", "queued-2")])
-            self.assertNotIn("s1", h.queues)
-            self.assertNotIn("s2", h.queues)
+            self.assertNotContains("s1", h.queues)
+            self.assertNotContains("s2", h.queues)
             self.assertEqual(cursor_box[0], 2)
             self.assertEqual([item["text"] for item in h.queues["s3"]], ["queued-3"])
 

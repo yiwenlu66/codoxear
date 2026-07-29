@@ -377,7 +377,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertFalse(state["turnOpen"])
         self.assertEqual(state["title"], "No session selected")
         self.assertEqual(state["calls"][0], ["handleFileViewerSessionUnavailable", "sid-1", "sid-1"])
-        self.assertIn(["abortMessagePollRequest"], state["calls"])
+        self.assertContains(["abortMessagePollRequest"], state["calls"])
         for expected in [
             ["clearTimeout", 123],
             ["storageRemoveItem", "codexweb.selected"],
@@ -394,7 +394,7 @@ class TestChatScrollbackSource(unittest.TestCase):
             ["syncQueueSubmitState"],
             ["syncAttachButtonState"],
         ]:
-            self.assertIn(expected, state["calls"])
+            self.assertContains(expected, state["calls"])
 
     def test_open_session_tail_request_aborts_superseded_open(self) -> None:
         result = eval_open_session_tail_request_abort()
@@ -416,18 +416,18 @@ class TestChatScrollbackSource(unittest.TestCase):
     def test_launch_recovery_helpers_are_allowlisted(self) -> None:
         result = eval_launch_recovery_helpers()
         details = result["details"]
-        self.assertIn("state: launch failed", details)
-        self.assertIn("launch stage: pty_fork", details)
-        self.assertIn('launch error: pty fork failed before agent start API_TOKEN: [redacted] password: [redacted] "api_key":[redacted] Authorization: [redacted]', details)
-        self.assertNotIn("secret-token", details)
-        self.assertNotIn("hunter2", details)
-        self.assertNotIn("json-secret", details)
-        self.assertNotIn("abcdefghijklmnop", details)
-        self.assertIn("model provider: macaron", details)
-        self.assertIn("model: gpt-5.4", details)
-        self.assertIn("reasoning: medium", details)
-        self.assertIn("tmux: codoxear:work-abc123", details)
-        self.assertIn("submitted prompts: 2", details)
+        self.assertContains("state: launch failed", details)
+        self.assertContains("launch stage: pty_fork", details)
+        self.assertContains('launch error: pty fork failed before agent start API_TOKEN: [redacted] password: [redacted] "api_key":[redacted] Authorization: [redacted]', details)
+        self.assertNotContains("secret-token", details)
+        self.assertNotContains("hunter2", details)
+        self.assertNotContains("json-secret", details)
+        self.assertNotContains("abcdefghijklmnop", details)
+        self.assertContains("model provider: macaron", details)
+        self.assertContains("model: gpt-5.4", details)
+        self.assertContains("reasoning: medium", details)
+        self.assertContains("tmux: codoxear:work-abc123", details)
+        self.assertContains("submitted prompts: 2", details)
         self.assertEqual(
             result["preset"],
             {
@@ -445,8 +445,8 @@ class TestChatScrollbackSource(unittest.TestCase):
                 "tmux_window": "work-abc123",
             },
         )
-        self.assertNotIn("launch_state", result["preset"])
-        self.assertNotIn("launch_error", result["preset"])
+        self.assertNotContains("launch_state", result["preset"])
+        self.assertNotContains("launch_error", result["preset"])
 
         # orphan_recovery no longer short-circuits openSession
         # orphan_recovery early return was removed; openSession now fetches tail normally

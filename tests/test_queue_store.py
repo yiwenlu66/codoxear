@@ -54,8 +54,8 @@ class TestQueueStore(unittest.TestCase):
 
         store.clear_commit_unknown_marker(queues, "s1", "a")
         self.assertFalse(store.has_recovery_items(queues, "s1"))
-        self.assertNotIn("commit_unknown", queues["s1"][0])
-        self.assertNotIn("commit_unknown_ts", queues["s1"][0])
+        self.assertNotContains("commit_unknown", queues["s1"][0])
+        self.assertNotContains("commit_unknown_ts", queues["s1"][0])
 
     def test_commit_unknown_state_survives_load_list_and_save(self) -> None:
         with TemporaryDirectory() as td:

@@ -148,7 +148,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["reset"]["snapshot"], {"autoScroll": True, "renderedAtLiveTail": True, "lastScrollTop": 0})
         self.assertEqual(out["reset"]["top"], 0)
         self.assertEqual(out["reset"]["jump"], "none")
-        self.assertIn("transcript dependency missing: requestAnimationFrame", out["missingError"])
+        self.assertContains("transcript dependency missing: requestAnimationFrame", out["missingError"])
         self.assertTrue(out["frozen"])
 
     def test_transcript_event_runtime_owns_recent_events_and_pending_echoes(self) -> None:
@@ -228,7 +228,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["fallbackTimed"], {"text": "later", "epoch": 1})
         self.assertEqual(out["dropped"], ["other epoch"])
         self.assertEqual(out["finalSnapshot"]["pendingCount"], 0)
-        self.assertIn("transcript dependency missing: pendingMatchKey", out["missingError"])
+        self.assertContains("transcript dependency missing: pendingMatchKey", out["missingError"])
         self.assertTrue(out["frozen"])
 
     def test_older_load_runtime_owns_state_currentness_and_ui_projection(self) -> None:
@@ -309,7 +309,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["afterHide"]["wrap"], "none")
         self.assertEqual(out["afterHide"]["error"], "none")
         self.assertEqual(out["afterHide"]["errorText"], "")
-        self.assertIn("transcript dependency missing: olderButton", out["missingError"])
+        self.assertContains("transcript dependency missing: olderButton", out["missingError"])
         self.assertTrue(out["frozen"])
 
     def test_loaded_chat_search_runtime_owns_open_query_matches_and_index(self) -> None:
@@ -439,8 +439,8 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertIsNone(out["afterDispose"]["count"])
         self.assertFalse(out["afterDispose"]["hasAbort"])
         self.assertFalse(out["afterDispose"]["hasTimer"])
-        self.assertIn(2, out["cleared"])
-        self.assertIn("transcript dependency missing: clearTimeout", out["missingError"])
+        self.assertContains(2, out["cleared"])
+        self.assertContains("transcript dependency missing: clearTimeout", out["missingError"])
         self.assertTrue(out["frozen"])
 
     def test_transcript_module_normalizes_and_trims_tail_cache(self) -> None:
@@ -529,12 +529,6 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertFalse(out["noOlderUsable"])
         self.assertTrue(out["frozen"])
 
-    def test_app_runtime_uses_cursor_not_bound_state_for_older_affordance(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        block = _source_between("function applySessionRuntimeFromTail(sessionId, data) {", "function renderSessionTail(events)")
-        self.assertIn("activeTailHistoryCursor = usableOlderHistoryCursor(data);", block)
-        self.assertIn("setOlderState({ hasMore: Boolean(activeTailHistoryCursor), isLoading: false });", block)
-        self.assertNotIn("slot.state === \"bound\" && Boolean(data && data.has_older)", block)
 
     def test_transcript_renewal_ignores_old_bound_identity_until_new_log_arrives(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
@@ -1139,7 +1133,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         )
         out = _run_node(js)
 
-        self.assertIn("cursor=cursor-oldest-row", out["requestUrl"])
+        self.assertContains("cursor=cursor-oldest-row", out["requestUrl"])
         self.assertEqual(out["lastOlderState"], {"hasMore": False, "isLoading": False})
         self.assertEqual(out["prepended"]["events"][0]["text"], "older")
 

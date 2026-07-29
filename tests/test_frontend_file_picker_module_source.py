@@ -565,15 +565,15 @@ class TestFrontendFilePickerModuleBehavior(unittest.TestCase):
                 "visibleFilePickerEntries",
             ],
         )
-        self.assertIn("Codoxear file picker helpers failed to load", result["missingError"])
-        self.assertIn("Codoxear file picker host missing blocked", result["hostError"])
-        self.assertIn("Codoxear file picker host missing normalizeLineNumber", result["menuHostError"])
-        self.assertIn("Codoxear file picker host missing snapshot", result["domHostError"])
-        self.assertIn("Codoxear file picker host missing createTextNode", result["highlightHostError"])
-        self.assertIn("Codoxear file picker host missing openDraftFilePath", result["draftHostError"])
-        self.assertIn("Codoxear file picker host missing openDraftFilePath", result["entryHostError"])
-        self.assertIn("Codoxear file picker host missing el", result["statusHostError"])
-        self.assertIn("Codoxear file picker host missing el", result["gitStatusHostError"])
+        self.assertContains("Codoxear file picker helpers failed to load", result["missingError"])
+        self.assertContains("Codoxear file picker host missing blocked", result["hostError"])
+        self.assertContains("Codoxear file picker host missing normalizeLineNumber", result["menuHostError"])
+        self.assertContains("Codoxear file picker host missing snapshot", result["domHostError"])
+        self.assertContains("Codoxear file picker host missing createTextNode", result["highlightHostError"])
+        self.assertContains("Codoxear file picker host missing openDraftFilePath", result["draftHostError"])
+        self.assertContains("Codoxear file picker host missing openDraftFilePath", result["entryHostError"])
+        self.assertContains("Codoxear file picker host missing el", result["statusHostError"])
+        self.assertContains("Codoxear file picker host missing el", result["gitStatusHostError"])
         # Untracked file: distinct read-only "untracked" stat, not a +/- diff stat.
         untracked = result["untrackedEntry"]
         self.assertEqual(untracked["cls"], "fileMenuItem")
@@ -655,7 +655,7 @@ class TestFrontendFilePickerModuleBehavior(unittest.TestCase):
         self.assertTrue(result["blurResult"])
         self.assertEqual(result["blurScheduledEvents"], [["raf"]])
         self.assertEqual(result["blurEvents"], [["close", {"restoreInput": True}]])
-        self.assertIn("Codoxear file picker host missing ensureCurrentSession", result["missingError"])
+        self.assertContains("Codoxear file picker host missing ensureCurrentSession", result["missingError"])
 
     def test_file_picker_menu_state_behavior(self) -> None:
         result = run_picker_module_probe()["menuState"]

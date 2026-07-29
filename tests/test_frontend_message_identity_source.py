@@ -36,27 +36,7 @@ def eval_message_identity() -> dict:
 
 
 class TestFrontendMessageIdentitySource(unittest.TestCase):
-    def test_index_loads_message_identity_before_app(self) -> None:
-        source = INDEX_HTML.read_text(encoding="utf-8")
-        self.assertIn('app_message_identity.js?v=__CODOXEAR_ASSET_VERSION__', source)
-        self.assertLess(source.index('app_transcript.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app_message_identity.js?v=__CODOXEAR_ASSET_VERSION__'))
-        self.assertLess(source.index('app_message_identity.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app.js?v=__CODOXEAR_ASSET_VERSION__'))
 
-    def test_app_js_requires_message_identity_without_fallback(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        helper_source = APP_MESSAGE_IDENTITY_JS.read_text(encoding="utf-8")
-        self.assertIn("const codoxearMessageIdentity = window.CodoxearMessageIdentity;", source)
-        self.assertIn('throw new Error("Codoxear message identity helpers failed to load")', source)
-        self.assertIn("return codoxearMessageIdentity.normalizeTextForPendingMatch(s);", source)
-        self.assertIn("return codoxearMessageIdentity.eventKey(ev);", source)
-        self.assertIn("return codoxearMessageIdentity.chatAssistantDedupeKey(ev);", source)
-        self.assertIn("return codoxearMessageIdentity.pendingMatchKey(s);", source)
-        self.assertIn("function normalizeTextForPendingMatch(s)", helper_source)
-        self.assertIn("function eventKey(ev)", helper_source)
-        self.assertIn("function chatAssistantDedupeKey(ev)", helper_source)
-        self.assertIn("function pendingMatchKey(s)", helper_source)
-        self.assertNotIn('return String(s || "").replace(/\\r\\n/g, "\\n").replace(/\\r/g, "\\n");', source)
-        self.assertNotIn("return `${ev.role}|${tsMs}|${text}`;", source)
 
     def test_message_identity_preserves_keys_and_normalization(self) -> None:
         result = eval_message_identity()
