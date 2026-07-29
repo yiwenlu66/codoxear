@@ -3111,7 +3111,7 @@
                       continue;
                     }
                     const s = entry.session;
-			            const card = el("div", { class: "session" + (selected === s.session_id ? " active" : ""), "data-session-id": s.session_id });
+			            const card = el("div", { class: "session" + (selected === s.session_id ? " active" : ""), "data-session-id": s.session_id, role: "link", tabindex: "0" });
 
              const title = sessionDisplayName(s);
              const badges = [];
@@ -3779,6 +3779,7 @@
           pollKickPending = false;
           pollKickDelayMs = null;
 
+          const oldSelected = selected;
           selected = sessionId;
           // Optimistically update sidebar active state for immediate visual feedback.
           // The next poll cycle re-renders the full sidebar, but this avoids the
@@ -3786,6 +3787,9 @@
           sessionsWrap.querySelectorAll(".session.active").forEach((el) => el.classList.remove("active"));
           const optimisticActive = sessionsWrap.querySelector(`.session[data-session-id="${sessionId}"]`);
           if (optimisticActive) optimisticActive.classList.add("active");
+          // Save the outgoing session's draft, load the incoming session's draft.
+          if (oldSelected && oldSelected !== sessionId) saveSessionDraft(oldSelected);
+          loadSessionDraft(sessionId);
           if (unattendedController.isOpen() && unattendedController.menuSessionId() !== sessionId) hideUnattendedMenu();
           storageSetItem("codexweb.selected", sessionId);
           setSessionHash(sessionId);
@@ -6922,7 +6926,7 @@
 	          textarea.style.overflowY = h > maxPx ? "auto" : "hidden";
 	          if (transcriptScrollRuntime.snapshot().autoScroll) transcriptScrollRuntime.scheduleScrollToBottom();
 	        }
-	        textarea.addEventListener("input", autoGrow);
+	        textarea.addEventListener("input", () => { autoGrow(); if (selected) saveSessionDraft(selected); });
 	          textarea.addEventListener(
 	            "focus",
 	            () => {
@@ -7212,7 +7216,28 @@
 
         function clearComposer() {
           $("#msg").value = "";
+          if (selected) clearSessionDraft(selected);
           autoGrow();
+        }
+
+        function sessionDraftKey(sid) {
+          return `codexweb.draft.${sid}`;
+        }
+        function saveSessionDraft(sid) {
+          if (!sid) return;
+          const val = $("#msg") ? String($("#msg").value || "") : "";
+          if (val) storageSetItem(sessionDraftKey(sid), val);
+          else storageRemoveItem(sessionDraftKey(sid));
+        }
+        function loadSessionDraft(sid) {
+          if (!sid || !$("#msg")) return;
+          $("#msg").value = storageGetItem(sessionDraftKey(sid)) || "";
+          autoGrow();
+          if (msgPh) msgPh.style.display = textarea.value ? "none" : "flex";
+        }
+        function clearSessionDraft(sid) {
+          if (!sid) return;
+          storageRemoveItem(sessionDraftKey(sid));
         }
 
         async function sendText(raw, { sid = null } = {}) {

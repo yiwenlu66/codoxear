@@ -17,7 +17,7 @@ def resume_candidate_from_log(
 ) -> dict[str, Any] | None:
     backend_name = normalize_agent_backend(agent_backend)
     meta = read_session_meta(log_path, agent_backend=backend_name)
-    if backend_name == "codex" and is_subagent_session_meta(meta):
+    if is_subagent_session_meta(meta):
         return None
     session_id = meta.get("id")
     cwd = meta.get("cwd")

@@ -158,17 +158,30 @@
     // Use getBoundingClientRect for coordinate-system-independent comparison.
     // offsetTop is relative to offsetParent, which may not match the scroll
     // container's coordinate space, causing repeated clicks to land on the
-    // same message instead of advancing.
-    const chatEl = (rows[0].closest("#chat") || rows[0].closest(".chatWrap") || null);
-    const chatTop = chatEl ? chatEl.getBoundingClientRect().top + 1 : threshold;
+    // same message instead of advancing. Fall back to offsetTop when bounding
+    // rects are unavailable (e.g. in non-DOM test contexts).
+    let chatTop;
+    if (rows[0].closest && rows[0].getBoundingClientRect) {
+      const chatEl = rows[0].closest("#chat") || rows[0].closest(".chatWrap");
+      chatTop = chatEl ? chatEl.getBoundingClientRect().top + 1 : threshold;
+    } else {
+      chatTop = threshold;
+    }
     if (direction < 0) {
       for (let i = rows.length - 1; i >= 0; i -= 1) {
-        if (rows[i].getBoundingClientRect().top < chatTop) return { reason: "target", target: rows[i] };
+        const rect = rows[i].getBoundingClientRect ? rows[i].getBoundingClientRect() : null;
+        const rowTop = rect ? rect.top : rows[i].offsetTop;
+        const rowBottom = rect ? rect.bottom : (rows[i].offsetTop + (rows[i].offsetHeight || 0));
+        // Compare bottom edge: after scrollIntoView the current message sits at
+        // the viewport top, so its top ≈ chatTop. Using the bottom edge ensures
+        // we only match rows fully above the viewport, not the current row.
+        if (rowBottom <= chatTop) return { reason: "target", target: rows[i] };
       }
       return { reason: "first", target: null };
     }
     for (const row of rows) {
-      if (row.getBoundingClientRect().top > chatTop + 2) return { reason: "target", target: row };
+      const rowTop = row.getBoundingClientRect ? row.getBoundingClientRect().top : row.offsetTop;
+      if (rowTop > chatTop + 2) return { reason: "target", target: row };
     }
     return { reason: "last", target: null };
   }
