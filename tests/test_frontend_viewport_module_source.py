@@ -76,33 +76,6 @@ def run_app_viewport_guard(setup_js: str = "") -> dict:
 
 
 class TestFrontendViewportModuleSource(unittest.TestCase):
-    def test_index_loads_viewport_before_app(self) -> None:
-        source = INDEX_HTML.read_text(encoding="utf-8")
-        self.assertIn('app_viewport.js?v=__CODOXEAR_ASSET_VERSION__', source)
-        self.assertLess(source.index('app_session_helpers.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app_viewport.js?v=__CODOXEAR_ASSET_VERSION__'))
-        self.assertLess(source.index('app_viewport.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app.js?v=__CODOXEAR_ASSET_VERSION__'))
-
-    def test_app_js_requires_viewport_helpers_without_fallback(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        helper_source = APP_VIEWPORT_JS.read_text(encoding="utf-8")
-        self.assertIn("const codoxearViewport = window.CodoxearViewport;", source)
-        self.assertIn('throw new Error("Codoxear viewport helpers failed to load")', source)
-        for helper in ["isMobile", "prefersReducedMotion", "useDesktopSessionActions", "useTouchFileEditorControls", "isTextEntryElement", "updateAppHeightVar"]:
-            self.assertIn(f"typeof codoxearViewport.{helper} !== \"function\"", source)
-            self.assertIn(f"function {helper}", source)
-        self.assertIn("window.CodoxearViewport = Object.freeze({", helper_source)
-        self.assertIn('window.matchMedia && window.matchMedia("(max-width: 880px)").matches', helper_source)
-        self.assertIn('mediaQueryMatches("(prefers-reduced-motion: reduce)")', helper_source)
-        self.assertIn('mediaQueryMatches("(hover: hover) and (pointer: fine) and (min-width: 881px)")', helper_source)
-        self.assertIn('mediaQueryMatches("(pointer: coarse)") || mediaQueryMatches("(hover: none)")', helper_source)
-        self.assertIn('target instanceof Element ? target.closest("textarea, input, [contenteditable], [contenteditable=\'\'], [contenteditable=\'true\']") : null', helper_source)
-        self.assertIn('document.documentElement.style.setProperty("--appH", `${visualH}px`);', helper_source)
-        self.assertIn("return codoxearViewport.isTextEntryElement(target);", source)
-        self.assertIn("return codoxearViewport.updateAppHeightVar();", source)
-        self.assertNotIn('window.matchMedia && window.matchMedia("(max-width: 880px)").matches', source)
-        self.assertNotIn('window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(hover: none)").matches', source)
-        self.assertNotIn('document.documentElement.style.setProperty("--appH", `${visualH}px`);', source)
-
     def test_app_viewport_guard_throws_for_missing_or_partial_helper(self) -> None:
         missing = run_app_viewport_guard()
         self.assertEqual(missing, {"ok": False, "message": "Codoxear viewport helpers failed to load"})

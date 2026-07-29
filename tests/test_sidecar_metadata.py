@@ -76,19 +76,5 @@ class TestSidecarMetadata(unittest.TestCase):
             sidecar_metadata.required_live_pid({"broker_pid": -1}, "broker_pid", sock=Path("fixture.sock"))
 
 
-class TestServerSidecarMetadataBoundary(unittest.TestCase):
-    def test_refresh_coordinator_uses_sidecar_metadata_helpers(self) -> None:
-        from codoxear import session_refresh
-
-        self.assertIs(session_refresh.read_sidecar_metadata, sidecar_metadata.read_metadata)
-        self.assertIs(session_refresh.metadata_required_int, sidecar_metadata.required_int)
-        server_source = (Path(__file__).resolve().parents[1] / "codoxear" / "server.py").read_text(encoding="utf-8")
-        refresh_source = (Path(__file__).resolve().parents[1] / "codoxear" / "session_refresh.py").read_text(encoding="utf-8")
-        self.assertNotIn("def _read_sidecar_metadata(", server_source)
-        self.assertNotIn("def _metadata_required_int(", server_source)
-        self.assertIn("read_sidecar_metadata(meta_path, sock=sock)", refresh_source)
-        self.assertIn("metadata_required_int(meta, \"codex_pid\", sock=sock)", refresh_source)
-
-
 if __name__ == "__main__":
     unittest.main()

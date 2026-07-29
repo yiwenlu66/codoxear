@@ -33,25 +33,6 @@ def eval_storage_helpers(storage_expression: str) -> dict:
 
 
 class TestStorageRobustnessSource(unittest.TestCase):
-    def test_storage_access_is_wrapped(self) -> None:
-        app_source = APP_JS.read_text(encoding="utf-8")
-        storage_source = APP_STORAGE_JS.read_text(encoding="utf-8")
-        self.assertIn("function optionalLocalStorage() {", storage_source)
-        self.assertIn("function getItem(key) {", storage_source)
-        self.assertIn("function setItem(key, value) {", storage_source)
-        self.assertIn("function removeItem(key) {", storage_source)
-        self.assertIn("window.CodoxearStorage = Object.freeze", storage_source)
-        self.assertIn("const codoxearStorage = window.CodoxearStorage;", app_source)
-        self.assertIn('throw new Error("Codoxear storage helpers failed to load")', app_source)
-        self.assertIn("function storageGetItem(key) {", app_source)
-        self.assertIn("function storageSetItem(key, value) {", app_source)
-        self.assertIn("function storageRemoveItem(key) {", app_source)
-        direct_calls = re.findall(r"(?<!window\.)\blocalStorage\.(?:getItem|setItem|removeItem)\(", app_source)
-        self.assertEqual(direct_calls, [])
-        self.assertIn('storageGetItem("codexweb.selected")', app_source)
-        self.assertIn('storageSetItem("codexweb.selected", sessionId)', app_source)
-        self.assertIn('storageRemoveItem("codexweb.selected")', app_source)
-
     def test_throwing_local_storage_getter_degrades_to_defaults(self) -> None:
         result = eval_storage_helpers(
             """

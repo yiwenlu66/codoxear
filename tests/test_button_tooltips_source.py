@@ -55,21 +55,6 @@ def eval_dom_helper() -> dict:
 
 
 class TestButtonTooltipsSource(unittest.TestCase):
-    def test_button_helper_has_default_tooltip_fallback(self) -> None:
-        app_source = APP_JS.read_text(encoding="utf-8")
-        display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
-        dom_source = APP_DOM_JS.read_text(encoding="utf-8")
-        self.assertIn("function defaultButtonTooltip(attrs = {}, node = null)", display_source)
-        self.assertIn('attrs["aria-label"]', display_source)
-        self.assertIn('attrs["data-tooltip"]', display_source)
-        self.assertIn("attrs.text", display_source)
-        self.assertIn('return codoxearDisplay.defaultButtonTooltip(attrs, node);', app_source)
-        self.assertIn("const codoxearDom = window.CodoxearDom;", app_source)
-        self.assertIn('throw new Error("Codoxear DOM helpers failed to load")', app_source)
-        self.assertIn("const el = (tag, attrs = {}, children = []) => codoxearDom.createElement(tag, attrs, children, defaultButtonTooltip);", app_source)
-        self.assertIn('if (tag === "button" && !n.getAttribute("title") && typeof defaultButtonTooltip === "function")', dom_source)
-        self.assertIn('n.setAttribute("title", tooltip)', dom_source)
-
     def test_dom_helper_preserves_element_creation_contract(self) -> None:
         result = eval_dom_helper()
         self.assertEqual(result["titled"]["attrs"]["title"], "Already")

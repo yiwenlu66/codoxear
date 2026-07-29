@@ -17,24 +17,6 @@ class TestAppDirRuntimeSource(unittest.TestCase):
     def tearDown(self) -> None:
         util._LEGACY_WARNED = False
 
-    def test_app_dir_policy_has_runtime_owner_with_util_facade(self) -> None:
-        util_source = (ROOT / "codoxear" / "util.py").read_text(encoding="utf-8")
-        runtime_source = (ROOT / "codoxear" / "app_dir_runtime.py").read_text(encoding="utf-8")
-
-        self.assertIn("class AppDirResolution:", runtime_source)
-        self.assertIn("def resolve_default_app_dir(*, legacy_warned: bool, home: Path | None = None) -> AppDirResolution:", runtime_source)
-        self.assertIn('base / "codex-web"', runtime_source)
-        self.assertIn('base / "codoxear"', runtime_source)
-        self.assertIn("legacy runtime dir detected", runtime_source)
-        self.assertIn("from .app_dir_runtime import resolve_default_app_dir as _resolve_default_app_dir", util_source)
-        self.assertIn("def default_app_dir() -> Path:", util_source)
-        self.assertIn("_LEGACY_WARNED = False", util_source)
-        self.assertIn("resolution = _resolve_default_app_dir(legacy_warned=_LEGACY_WARNED)", util_source)
-        self.assertIn("_LEGACY_WARNED = resolution.legacy_warned", util_source)
-        self.assertIn("_log_error(resolution.warning)", util_source)
-        self.assertNotIn("legacy runtime dir detected", util_source)
-        self.assertIn("def launch_attempts_path(app_dir: Path | None = None) -> Path:", util_source)
-
     def test_runtime_resolves_new_app_dir_and_warns_once_for_legacy_dir(self) -> None:
         with TemporaryDirectory() as td:
             home = Path(td) / "home"

@@ -25,9 +25,10 @@ def test_factories_use_explicit_caps_after_construction() -> None:
             ), node.name
 
 
-def test_server_exports_factory_caps_for_late_binding() -> None:
+def test_server_composes_factory_caps_in_explicit_manager_methods() -> None:
     server_source = SERVER_PY.read_text(encoding="utf-8")
-    binding_source = (ROOT / "codoxear" / "session_manager_method_bindings.py").read_text(encoding="utf-8")
 
+    assert "from . import session_manager_factories as _factories" in server_source
     assert "from .session_manager_factories import session_manager_factory_caps as _session_manager_factory_caps_impl" in server_source
-    assert "factory_caps = server_module._session_manager_factory_caps_impl(server_module)" in binding_source
+    assert "_factories.queue_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))" in server_source
+    assert not (ROOT / "codoxear" / "session_manager_method_bindings.py").exists()

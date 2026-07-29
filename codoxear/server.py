@@ -151,30 +151,9 @@ from .session_manager_bootstrap import unattended_loop as _unattended_loop_impl
 from .session_manager_bootstrap import voice_push_scan_loop as _voice_push_scan_loop_impl
 from .session_manager_discovery import discover_existing_for_manager as _discover_existing_for_manager_impl
 from .session_manager_discovery import discover_existing_if_stale_for_manager as _discover_existing_if_stale_for_manager_impl
+from . import session_manager_core_methods as _core_methods
+from . import session_manager_factories as _factories
 from .session_manager_factories import session_manager_factory_caps as _session_manager_factory_caps_impl
-from .session_manager_factories import cleanup_coordinator_for_manager as _cleanup_coordinator_for_manager_impl
-from .session_manager_factories import control_coordinator_for_manager as _control_coordinator_for_manager_impl
-from .session_manager_factories import discovery_deps_for_manager as _discovery_deps_for_manager_impl
-from .session_manager_factories import discovery_registry_for_manager as _discovery_registry_for_manager_impl
-from .session_manager_factories import files_coordinator_for_manager as _files_coordinator_for_manager_impl
-from .session_manager_factories import lifecycle_coordinator_for_manager as _lifecycle_coordinator_for_manager_impl
-from .session_manager_factories import list_coordinator_for_manager as _list_coordinator_for_manager_impl
-from .session_manager_factories import log_runtime_for_manager as _log_runtime_for_manager_impl
-from .session_manager_factories import pending_state_coordinator_for_manager as _pending_state_coordinator_for_manager_impl
-from .session_manager_factories import prelog_user_message_recorder_for_manager as _prelog_user_message_recorder_for_manager_impl
-from .session_manager_factories import prune_coordinator_for_manager as _prune_coordinator_for_manager_impl
-from .session_manager_factories import queue_coordinator_for_manager as _queue_coordinator_for_manager_impl
-from .session_manager_factories import queue_sweep_coordinator_for_manager as _queue_sweep_coordinator_for_manager_impl
-from .session_manager_factories import readiness_coordinator_for_manager as _readiness_coordinator_for_manager_impl
-from .session_manager_factories import recent_cwd_coordinator_for_manager as _recent_cwd_coordinator_for_manager_impl
-from .session_manager_factories import refresh_coordinator_for_manager as _refresh_coordinator_for_manager_impl
-from .session_manager_factories import send_coordinator_for_manager as _send_coordinator_for_manager_impl
-from .session_manager_factories import unattended_config_coordinator_for_manager as _unattended_config_coordinator_for_manager_impl
-from .session_manager_factories import unattended_sweep_coordinator_for_manager as _unattended_sweep_coordinator_for_manager_impl
-from .session_manager_factories import ui_state_coordinator_for_manager as _ui_state_coordinator_for_manager_impl
-from .session_manager_factories import voice_runtime_for_manager as _voice_runtime_for_manager_impl
-from .session_manager_factories import web_launch_coordinator_for_manager as _web_launch_coordinator_for_manager_impl
-from .session_manager_method_bindings import bind_session_manager_methods as _bind_session_manager_methods
 from .session_manager_store import create_session_store as _create_session_store_impl
 from .session_manager_store_attrs import load_store_attr as _load_store_attr
 from .session_manager_store_attrs import save_dict_store_attr as _save_dict_store_attr
@@ -894,7 +873,6 @@ _broker_interrupted_idle_from_state = _runtime_broker_interrupted_idle
 
 
 
-@_bind_session_manager_methods(__name__)
 class SessionManager:
     _lock = _registry_backed_attr("lock")
     _sessions = _registry_backed_attr("sessions")
@@ -932,6 +910,357 @@ class SessionManager:
     _save_commit_unknown_sends = _save_dict_store_attr("_commit_unknown_sends", "save_commit_unknown_sends")
     _load_recent_cwds = _load_store_attr("_recent_cwds", "load_recent_cwds")
     _save_recent_cwds = _save_dict_store_attr("_recent_cwds", "save_recent_cwds")
+
+    # These explicit composition methods keep SessionManager's public API visible to readers and tooling.
+    # Implementations live in focused modules; this class owns their dependency wiring.
+
+    def __init__(self, *args: Any, **kwargs: Any):
+        return _core_methods.init_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def stop(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.stop_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def _reset_log_caches(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.reset_log_caches_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def _session_run_settings(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.session_run_settings_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def _session_transport(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.session_transport_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def _discover_existing_if_stale(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.discover_existing_if_stale_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def _new_session_store_for_manager(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.new_session_store_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def _session_store_for_manager(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.session_store_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def _queue_store_for_manager(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.queue_store_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def _input_lock_for_session(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.input_lock_for_session(self, sys.modules[__name__], *args, **kwargs)
+
+    def _broker_busy_queue_from_state(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.broker_busy_queue_from_state_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def _log_size_or_none(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.log_size_or_none_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def _clear_confirmed_send_boundary_locked(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.clear_confirmed_send_boundary_locked_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def _confirmed_send_boundary_unresolved_for_session(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.confirmed_send_boundary_unresolved_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def _voice_push_scan_loop(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.voice_push_scan_loop_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def _unattended_loop(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.unattended_loop_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def _queue_loop(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.queue_loop_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def _maybe_drain_session_queue(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.maybe_drain_session_queue_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def _discover_existing(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.discover_existing_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def get_session(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.get_session_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def _sock_call(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.sock_call_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def _discovery_deps(self) -> Any:
+        return _factories.discovery_deps_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _queue_coordinator_for_manager(self) -> Any:
+        return _factories.queue_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _control_coordinator_for_manager(self) -> Any:
+        return _factories.control_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _list_coordinator_for_manager(self) -> Any:
+        return _factories.list_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _refresh_coordinator_for_manager(self) -> Any:
+        return _factories.refresh_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _readiness_coordinator_for_manager(self) -> Any:
+        return _factories.readiness_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _unattended_sweep_coordinator_for_manager(self) -> Any:
+        return _factories.unattended_sweep_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _queue_sweep_coordinator_for_manager(self) -> Any:
+        return _factories.queue_sweep_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _voice_runtime_for_manager(self) -> Any:
+        return _factories.voice_runtime_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _log_runtime_for_manager(self) -> Any:
+        return _factories.log_runtime_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _files_coordinator_for_manager(self) -> Any:
+        return _factories.files_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _ui_state_coordinator_for_manager(self) -> Any:
+        return _factories.ui_state_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _unattended_config_coordinator_for_manager(self) -> Any:
+        return _factories.unattended_config_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _cleanup_coordinator_for_manager(self) -> Any:
+        return _factories.cleanup_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _pending_state_coordinator_for_manager(self) -> Any:
+        return _factories.pending_state_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _recent_cwd_coordinator_for_manager(self) -> Any:
+        return _factories.recent_cwd_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _lifecycle_coordinator_for_manager(self) -> Any:
+        return _factories.lifecycle_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _discovery_registry_for_manager(self) -> Any:
+        return _factories.discovery_registry_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _prune_coordinator_for_manager(self) -> Any:
+        return _factories.prune_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _send_coordinator_for_manager(self) -> Any:
+        return _factories.send_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _prelog_user_message_recorder_for_manager(self) -> Any:
+        return _factories.prelog_user_message_recorder_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _web_launch_coordinator_for_manager(self) -> Any:
+        return _factories.web_launch_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _hide_session(self, *args: Any, **kwargs: Any) -> Any:
+        return self._ui_state_coordinator_for_manager().hide_session(*args, **kwargs)
+
+    def _unhide_session(self, *args: Any, **kwargs: Any) -> Any:
+        return self._ui_state_coordinator_for_manager().unhide_session(*args, **kwargs)
+
+    def alias_set(self, *args: Any, **kwargs: Any) -> Any:
+        return self._ui_state_coordinator_for_manager().alias_set(*args, **kwargs)
+
+    def alias_get(self, *args: Any, **kwargs: Any) -> Any:
+        return self._ui_state_coordinator_for_manager().alias_get(*args, **kwargs)
+
+    def alias_clear(self, *args: Any, **kwargs: Any) -> Any:
+        return self._ui_state_coordinator_for_manager().alias_clear(*args, **kwargs)
+
+    def sidebar_meta_get(self, *args: Any, **kwargs: Any) -> Any:
+        return self._ui_state_coordinator_for_manager().sidebar_meta_get(*args, **kwargs)
+
+    def sidebar_meta_set(self, *args: Any, **kwargs: Any) -> Any:
+        return self._ui_state_coordinator_for_manager().sidebar_meta_set(*args, **kwargs)
+
+    def edit_session(self, *args: Any, **kwargs: Any) -> Any:
+        return self._ui_state_coordinator_for_manager().edit_session(*args, **kwargs)
+
+    def _prune_stale_socket_without_metadata(self, *args: Any, **kwargs: Any) -> Any:
+        return self._cleanup_coordinator_for_manager().prune_stale_socket_without_metadata(*args, **kwargs)
+
+    def _clear_deleted_session_state(self, *args: Any, **kwargs: Any) -> Any:
+        return self._cleanup_coordinator_for_manager().clear_deleted_session_state(*args, **kwargs)
+
+    def _set_pending_attachment(self, *args: Any, **kwargs: Any) -> Any:
+        return self._pending_state_coordinator_for_manager().set_pending_attachment(*args, **kwargs)
+
+    def list_staged_attachments(self, *args: Any, **kwargs: Any) -> Any:
+        return self._pending_state_coordinator_for_manager().list_staged_attachments(*args, **kwargs)
+
+    def add_staged_attachment(self, *args: Any, **kwargs: Any) -> Any:
+        return self._pending_state_coordinator_for_manager().add_staged_attachment(*args, **kwargs)
+
+    def remove_staged_attachment(self, *args: Any, **kwargs: Any) -> Any:
+        return self._pending_state_coordinator_for_manager().remove_staged_attachment(*args, **kwargs)
+
+    def clear_staged_attachments(self, *args: Any, **kwargs: Any) -> Any:
+        return self._pending_state_coordinator_for_manager().clear_staged_attachments(*args, **kwargs)
+
+    def clear_pending_attachment(self, *args: Any, **kwargs: Any) -> Any:
+        return self._pending_state_coordinator_for_manager().clear_pending_attachment(*args, **kwargs)
+
+    def _clean_commit_unknown_send_record(self, *args: Any, **kwargs: Any) -> Any:
+        return self._pending_state_coordinator_for_manager().clean_commit_unknown_send_record(*args, **kwargs)
+
+    def _set_commit_unknown_send(self, *args: Any, **kwargs: Any) -> Any:
+        return self._pending_state_coordinator_for_manager().set_commit_unknown_send(*args, **kwargs)
+
+    def clear_commit_unknown_send(self, *args: Any, **kwargs: Any) -> Any:
+        return self._pending_state_coordinator_for_manager().clear_commit_unknown_send(*args, **kwargs)
+
+    def _prune_missing_commit_unknown_sends(self, *args: Any, **kwargs: Any) -> Any:
+        return self._pending_state_coordinator_for_manager().prune_missing_commit_unknown_sends(*args, **kwargs)
+
+    def _remember_recent_cwd(self, *args: Any, **kwargs: Any) -> Any:
+        return self._recent_cwd_coordinator_for_manager().remember(*args, **kwargs)
+
+    def _backfill_recent_cwds_from_logs(self, *args: Any, **kwargs: Any) -> Any:
+        return self._recent_cwd_coordinator_for_manager().backfill_from_logs(*args, **kwargs)
+
+    def recent_cwds(self, *args: Any, **kwargs: Any) -> Any:
+        return self._recent_cwd_coordinator_for_manager().list_recent(*args, **kwargs)
+
+    def _queue_len(self, *args: Any, **kwargs: Any) -> Any:
+        return self._queue_coordinator_for_manager().queue_len(*args, **kwargs)
+
+    def _mark_queue_orphan_recovery_locked(self, *args: Any, **kwargs: Any) -> Any:
+        return self._queue_coordinator_for_manager().mark_orphan_recovery_locked(*args, **kwargs)
+
+    def _queue_has_recovery_items_locked(self, *args: Any, **kwargs: Any) -> Any:
+        return self._queue_coordinator_for_manager().has_recovery_items_locked(*args, **kwargs)
+
+    def _queue_list_local(self, *args: Any, **kwargs: Any) -> Any:
+        return self._queue_coordinator_for_manager().list_local(*args, **kwargs)
+
+    def _queue_append_item_local(self, *args: Any, **kwargs: Any) -> Any:
+        return self._queue_coordinator_for_manager().append_item_local(*args, **kwargs)
+
+    def _queue_enqueue_local(self, *args: Any, **kwargs: Any) -> Any:
+        return self._queue_coordinator_for_manager().enqueue_local(*args, **kwargs)
+
+    def _queue_delete_local(self, *args: Any, **kwargs: Any) -> Any:
+        return self._queue_coordinator_for_manager().delete_local(*args, **kwargs)
+
+    def _queue_update_local(self, *args: Any, **kwargs: Any) -> Any:
+        return self._queue_coordinator_for_manager().update_local(*args, **kwargs)
+
+    def _queue_move_local(self, *args: Any, **kwargs: Any) -> Any:
+        return self._queue_coordinator_for_manager().move_local(*args, **kwargs)
+
+    def _queue_session_state(self, *args: Any, **kwargs: Any) -> Any:
+        return self._queue_coordinator_for_manager().session_state(*args, **kwargs)
+
+    def _promote_queue_head_if_sendable(self, *args: Any, **kwargs: Any) -> Any:
+        return self._queue_coordinator_for_manager().promote_head_if_sendable(*args, **kwargs)
+
+    def _runtime_status_from_state_and_log(self, *args: Any, **kwargs: Any) -> Any:
+        return self._readiness_coordinator_for_manager().runtime_status_from_state_and_log(*args, **kwargs)
+
+    def _remote_ready_from_state_and_log(self, *args: Any, **kwargs: Any) -> Any:
+        return self._readiness_coordinator_for_manager().remote_ready_from_state_and_log(*args, **kwargs)
+
+    def _remote_state_after_metadata_probe(self, *args: Any, **kwargs: Any) -> Any:
+        return self._readiness_coordinator_for_manager().remote_state_after_metadata_probe(*args, **kwargs)
+
+    def _send_remote_ready(self, *args: Any, **kwargs: Any) -> Any:
+        return self._readiness_coordinator_for_manager().send_remote_ready(*args, **kwargs)
+
+    def _queue_remote_ready(self, *args: Any, **kwargs: Any) -> Any:
+        return self._readiness_coordinator_for_manager().queue_remote_ready(*args, **kwargs)
+
+    def attachment_staging_ready(self, *args: Any, **kwargs: Any) -> Any:
+        return self._readiness_coordinator_for_manager().attachment_staging_ready(*args, **kwargs)
+
+    def _files_key_for_session(self, *args: Any, **kwargs: Any) -> Any:
+        return self._files_coordinator_for_manager().files_key_for_session(*args, **kwargs)
+
+    def files_get(self, *args: Any, **kwargs: Any) -> Any:
+        return self._files_coordinator_for_manager().get(*args, **kwargs)
+
+    def files_add(self, *args: Any, **kwargs: Any) -> Any:
+        return self._files_coordinator_for_manager().add(*args, **kwargs)
+
+    def files_clear(self, *args: Any, **kwargs: Any) -> Any:
+        return self._files_coordinator_for_manager().clear(*args, **kwargs)
+
+    def unattended_get(self, *args: Any, **kwargs: Any) -> Any:
+        return self._unattended_config_coordinator_for_manager().get(*args, **kwargs)
+
+    def unattended_set(self, *args: Any, **kwargs: Any) -> Any:
+        return self._unattended_config_coordinator_for_manager().set(*args, **kwargs)
+
+    def _session_display_name(self, *args: Any, **kwargs: Any) -> Any:
+        return self._voice_runtime_for_manager().session_display_name(*args, **kwargs)
+
+    def _observe_rollout_delta(self, *args: Any, **kwargs: Any) -> Any:
+        return self._voice_runtime_for_manager().observe_rollout_delta(*args, **kwargs)
+
+    def _voice_push_scan_sweep(self, *args: Any, **kwargs: Any) -> Any:
+        return self._voice_runtime_for_manager().scan_sweep(*args, **kwargs)
+
+    def _unattended_sweep(self, *args: Any, **kwargs: Any) -> Any:
+        return self._unattended_sweep_coordinator_for_manager().sweep(*args, **kwargs)
+
+    def _queue_sweep(self, *args: Any, **kwargs: Any) -> Any:
+        return self._queue_sweep_coordinator_for_manager().sweep(*args, **kwargs)
+
+    def _apply_discovery_result(self, *args: Any, **kwargs: Any) -> Any:
+        return self._discovery_registry_for_manager().apply_result(*args, **kwargs)
+
+    def _upsert_discovery_registration(self, *args: Any, **kwargs: Any) -> Any:
+        return self._discovery_registry_for_manager().upsert_registration(*args, **kwargs)
+
+    def _refresh_session_state(self, *args: Any, **kwargs: Any) -> Any:
+        return self._prune_coordinator_for_manager().refresh_session_state(*args, **kwargs)
+
+    def _prune_dead_sessions(self, *args: Any, **kwargs: Any) -> Any:
+        return self._prune_coordinator_for_manager().prune_dead_sessions(*args, **kwargs)
+
+    def _update_meta_counters(self, *args: Any, **kwargs: Any) -> Any:
+        return self._log_runtime_for_manager().update_meta_counters(*args, **kwargs)
+
+    def list_sessions(self, *args: Any, **kwargs: Any) -> Any:
+        return self._list_coordinator_for_manager().list_sessions(*args, **kwargs)
+
+    def _attach_notification_texts(self, *args: Any, **kwargs: Any) -> Any:
+        return self._voice_runtime_for_manager().attach_notification_texts(*args, **kwargs)
+
+    def mark_log_delta(self, *args: Any, **kwargs: Any) -> Any:
+        return self._log_runtime_for_manager().mark_log_delta(*args, **kwargs)
+
+    def idle_from_log(self, *args: Any, **kwargs: Any) -> Any:
+        return self._log_runtime_for_manager().idle_from_log(*args, **kwargs)
+
+    def idle_from_log_path(self, *args: Any, **kwargs: Any) -> Any:
+        return self._log_runtime_for_manager().idle_from_log_path(*args, **kwargs)
+
+    def _kill_session_via_pids(self, *args: Any, **kwargs: Any) -> Any:
+        return self._lifecycle_coordinator_for_manager().kill_session_via_pids(*args, **kwargs)
+
+    def kill_session(self, *args: Any, **kwargs: Any) -> Any:
+        return self._lifecycle_coordinator_for_manager().kill_session(*args, **kwargs)
+
+    def _live_session_for_resume_target(self, *args: Any, **kwargs: Any) -> Any:
+        return self._lifecycle_coordinator_for_manager().live_session_for_resume_target(*args, **kwargs)
+
+    def delete_session(self, *args: Any, **kwargs: Any) -> Any:
+        return self._lifecycle_coordinator_for_manager().delete_session(*args, **kwargs)
+
+    def _record_prelog_user_message(self, *args: Any, **kwargs: Any) -> Any:
+        return self._prelog_user_message_recorder_for_manager().record(*args, **kwargs)
+
+    def enqueue(self, *args: Any, **kwargs: Any) -> Any:
+        return self._queue_coordinator_for_manager().enqueue(*args, **kwargs)
+
+    def queue_list(self, *args: Any, **kwargs: Any) -> Any:
+        return self._queue_coordinator_for_manager().list_local(*args, **kwargs)
+
+    def queue_delete(self, *args: Any, **kwargs: Any) -> Any:
+        return self._queue_coordinator_for_manager().delete_local(*args, **kwargs)
+
+    def queue_update(self, *args: Any, **kwargs: Any) -> Any:
+        return self._queue_coordinator_for_manager().update_local(*args, **kwargs)
+
+    def queue_move(self, *args: Any, **kwargs: Any) -> Any:
+        return self._queue_coordinator_for_manager().move_local(*args, **kwargs)
+
+    def get_state(self, *args: Any, **kwargs: Any) -> Any:
+        return self._control_coordinator_for_manager().get_state(*args, **kwargs)
+
+    def get_tail(self, *args: Any, **kwargs: Any) -> Any:
+        return self._control_coordinator_for_manager().get_tail(*args, **kwargs)
 
     def refresh_session_meta(self, session_id: str, *, drain_queue: bool = False) -> None:
         return self._refresh_coordinator_for_manager().refresh_session_meta(session_id, drain_queue=drain_queue)

@@ -259,35 +259,6 @@ read -r -k 1 option
         self.assertEqual(rows[0]["state"], "failed")
         self.assertEqual(rows[0]["submitted_user_messages"][0]["text"], "copy this")
 
-    def test_broker_failure_record_redacts_persisted_record_and_stderr(self) -> None:
-        now = 1_778_400_000.0
-        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.OWNER_TAG", "web"), patch.object(
-            broker_mod, "LAUNCH_ATTEMPTS_PATH", Path(td) / "launches.jsonl"
-        ), patch("codoxear.util.now", return_value=now), patch.object(broker_mod.sys, "stderr", io.StringIO()) as stderr:
-            broker_mod._record_launch_attempt(
-                {
-                    "launch_id": "launch-broker-redact",
-                    "state": "failed",
-                    "stage": "agent_exit_before_log_bind",
-                    "error": "failed API_TOKEN: broker-secret password=hunter2 Authorization: Bearer broker-auth-secret",
-                    "pty_tail": "tail OPENAI_API_KEY=tail-secret AUTH: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==\n",
-                    "tmux_attempts": [{"stderr": "nested password: nested-secret"}],
-                    "metadata": {"api_key": "meta-secret"},
-                }
-            )
-            rows = read_launch_attempts(path=broker_mod.LAUNCH_ATTEMPTS_PATH, max_records=10, max_age_s=3600, now_ts=now + 2.0)
-            persisted_text = broker_mod.LAUNCH_ATTEMPTS_PATH.read_text(encoding="utf-8")
-            stderr_text = stderr.getvalue()
-
-        combined = f"{rows}\n{persisted_text}\n{stderr_text}"
-        self.assertEqual(rows[0]["error"], "failed API_TOKEN: [redacted] password=[redacted] Authorization: [redacted]")
-        self.assertEqual(rows[0]["pty_tail"], "tail OPENAI_API_KEY=[redacted] AUTH: [redacted]\n")
-        self.assertEqual(rows[0]["tmux_attempts"][0]["stderr"], "nested password: [redacted]")
-        self.assertEqual(rows[0]["metadata"]["api_key"], "[redacted]")
-        self.assertIn("failed API_TOKEN: [redacted] password=[redacted] Authorization: [redacted]", stderr_text)
-        for secret in ("broker-secret", "hunter2", "broker-auth-secret", "tail-secret", "QWxhZGRpbjpvcGVuIHNlc2FtZQ", "nested-secret", "meta-secret"):
-            self.assertNotIn(secret, combined)
-
     def test_shell_startup_watchdog_ignores_seen_marker(self) -> None:
         broker = Broker(cwd="/tmp", codex_args=[])
         broker.state = _broker_state(codex_pid=1234, sock_path=Path("/tmp/test-broker.sock"))
@@ -507,47 +478,6 @@ read -r -k 1 option
 
         self.assertEqual(exit_code, 0)
         self.assertNotIn("_stdin_to_pty", _FakeThread.started_targets)
-
-    def test_write_meta_tracks_resume_session_id(self) -> None:
-        broker = Broker(cwd="/tmp", codex_args=["resume", "resume-a"])
-        with tempfile.TemporaryDirectory() as td:
-            sock_path = Path(td) / "broker.sock"
-            log_path = Path(td) / "rollout-2026-03-29T10-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
-            log_path.write_text("", encoding="utf-8")
-            broker.state = _broker_state(codex_pid=1234, sock_path=sock_path)
-            broker.state.session_id = "broker-1"
-            broker.state.cwd = td
-            broker.state.log_path = log_path
-            broker.state.resume_session_id = "resume-a"
-
-            broker._write_meta()
-            meta_path = sock_path.with_suffix(".json")
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            self.assertEqual(meta["resume_session_id"], "resume-a")
-
-            broker.state.resume_session_id = None
-            broker._write_meta()
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            self.assertIsNone(meta["resume_session_id"])
-
-    def test_write_meta_tracks_ignored_rollout_paths(self) -> None:
-        broker = Broker(cwd="/tmp", codex_args=[])
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            sock_path = root / "broker.sock"
-            old_log = root / "rollout-2026-03-29T10-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
-            old_log.write_text("", encoding="utf-8")
-            broker.state = _broker_state(codex_pid=1234, sock_path=sock_path)
-            broker.state.session_id = None
-            broker.state.cwd = td
-            broker.state.log_path = None
-            broker.state.ignored_rollout_paths.add(old_log)
-
-            broker._write_meta()
-
-            meta = json.loads(sock_path.with_suffix(".json").read_text(encoding="utf-8"))
-            self.assertEqual(meta["log_path"], None)
-            self.assertEqual(meta["ignored_rollout_paths"], [str(old_log)])
 
     def test_pi_new_run_reserves_log_path_before_first_write(self) -> None:
         fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)

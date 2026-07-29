@@ -10,7 +10,6 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_QUEUE_JS = ROOT / "codoxear" / "static" / "app_queue.js"
 APP_SESSION_HELPERS_JS = ROOT / "codoxear" / "static" / "app_session_helpers.js"
 APP_MODAL_JS = ROOT / "codoxear" / "static" / "app_modal.js"
-INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 
 
 def run_node_json(js: str) -> dict:
@@ -238,13 +237,7 @@ def harness_script(epilogue: str) -> str:
     return js
 
 
-class TestFrontendQueueModuleSource(unittest.TestCase):
-    def test_queue_delete_confirmation_is_injected_async_dependency(self) -> None:
-        source = APP_QUEUE_JS.read_text(encoding="utf-8")
-        self.assertIn('const confirmAction = requireFunction(options.confirmAction, "confirmAction");', source)
-        self.assertIn("const confirmed = await confirmAction({", source)
-        self.assertNotIn("window.confirm", source)
-
+class TestFrontendQueueModuleBehavior(unittest.TestCase):
     # --- 1. dependency failures + frozen export ---
 
     def test_module_export_is_frozen_createQueue_controller(self) -> None:
@@ -814,14 +807,6 @@ class TestFrontendQueueModuleSource(unittest.TestCase):
         result = run_node_json(js)
         self.assertGreater(result["timersBefore"], 0)
         self.assertEqual(result["timersAfter"], 0)
-
-    # --- module loading order in index.html ---
-
-    def test_index_loads_queue_module_before_app(self) -> None:
-        source = INDEX_HTML.read_text(encoding="utf-8")
-        self.assertIn("app_queue.js?v=__CODOXEAR_ASSET_VERSION__", source)
-        self.assertLess(source.index("app_queue.js?v=__CODOXEAR_ASSET_VERSION__"), source.index("app.js?v=__CODOXEAR_ASSET_VERSION__"))
-
 
 if __name__ == "__main__":
     unittest.main()

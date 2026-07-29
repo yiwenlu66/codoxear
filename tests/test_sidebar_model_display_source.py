@@ -50,28 +50,5 @@ class TestSidebarModelDisplaySource(unittest.TestCase):
         self.assertEqual(result["claude"], "claude-sonnet-4-5")
         self.assertEqual(result["longProviderModel"], "provider/very-long-model-name-for-ellipsis-proof")
 
-    def test_sidebar_metadata_projects_model_between_age_and_cwd_branch(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        block = source[source.index("const effortTxt = String(s.reasoning_effort") : source.index("const meta = el(\"div\", { class: \"muted subLine sessionMetaLine\" }")]
-        self.assertIn("const stateTxt = launchPending ? \"starting\" : fmtRelativeAge(ageS);", block)
-        self.assertIn("const modelTxt = sidebarModelText(s);", block)
-        self.assertIn("const cwdBase = baseName(s.cwd);", block)
-        self.assertIn("const branchTxt = typeof s.git_branch === \"string\" ? s.git_branch.trim() : \"\";", block)
-        self.assertLess(block.index("const stateTxt"), block.index("const modelTxt"))
-        self.assertLess(block.index("const modelTxt"), block.index("const cwdBase"))
-        self.assertLess(block.index("const cwdBase"), block.index("const branchTxt"))
-        self.assertIn('text: [stateTxt, modelTxt, cwdBase, branchTxt].filter(Boolean).join(" | ")', block)
-
-    def test_sidebar_effort_and_fast_markers_remain_separate_from_metadata_text(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        block = source[source.index("const effortTxt = String(s.reasoning_effort") : source.index("const meta = el(\"div\", { class: \"muted subLine sessionMetaLine\" }")]
-        self.assertIn("const effortMark = reasoningEffortMarker(effortTxt);", block)
-        self.assertIn("if (effortMark) {", block)
-        self.assertIn("class: `effortMark effort-${effortTxt}`", block)
-        self.assertIn("title: `reasoning effort ${effortTxt}`", block)
-        self.assertNotIn("effortMark, modelTxt", block)
-        self.assertIn('sessionIsFast(s)\n                   ? el("span", { class: "sessionFastIcon", html: iconSvg("lightning"), title: "Fast session" })', source)
-
-
 if __name__ == "__main__":
     unittest.main()

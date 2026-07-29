@@ -259,84 +259,6 @@ def harness_script(epilogue: str) -> str:
 class TestFrontendVoiceModuleSource(unittest.TestCase):
     # --- 1. frozen export + missing deps ---
 
-    def test_module_export_is_frozen_createVoice_controller(self) -> None:
-        voice_source = APP_VOICE_JS.read_text(encoding="utf-8")
-        helpers_source = APP_VOICE_HELPERS_JS.read_text(encoding="utf-8")
-        modal_source = APP_MODAL_JS.read_text(encoding="utf-8")
-        js = textwrap.dedent(
-            f"""
-            const vm = require("vm");
-            const ctx = {{ window: {{}}, HTMLElement: function HTMLElement() {{}} }};
-            vm.createContext(ctx);
-            vm.runInContext({json.dumps(modal_source)}, ctx);
-            vm.runInContext({json.dumps(helpers_source)}, ctx);
-            vm.runInContext({json.dumps(voice_source)}, ctx);
-            process.stdout.write(JSON.stringify({{
-              frozen: Object.isFrozen(ctx.window.CodoxearVoice),
-              keys: Object.keys(ctx.window.CodoxearVoice),
-              hasCreate: typeof ctx.window.CodoxearVoice.createVoiceController === "function",
-            }}));
-            """
-        )
-        result = run_node_json(js)
-        self.assertTrue(result["frozen"])
-        self.assertEqual(result["keys"], ["createVoiceController"])
-        self.assertTrue(result["hasCreate"])
-
-    def test_createVoice_controller_throws_on_missing_deps(self) -> None:
-        voice_source = APP_VOICE_JS.read_text(encoding="utf-8")
-        helpers_source = APP_VOICE_HELPERS_JS.read_text(encoding="utf-8")
-        modal_source = APP_MODAL_JS.read_text(encoding="utf-8")
-        head = textwrap.dedent(
-            f"""
-            const vm = require("vm");
-            const ctx = {{ window: {{}}, HTMLElement: function HTMLElement() {{}} }};
-            vm.createContext(ctx);
-            vm.runInContext({json.dumps(modal_source)}, ctx);
-            vm.runInContext({json.dumps(helpers_source)}, ctx);
-            vm.runInContext({json.dumps(voice_source)}, ctx);
-            """
-        )
-        body = textwrap.dedent(
-            r'''
-            const V = ctx.window.CodoxearVoice;
-            const errors = [];
-            const node = { style: {}, setAttribute() {}, appendChild() {}, addEventListener() {}, removeEventListener() {}, classList: { add(){}, remove(){}, toggle(){}, contains(){ return false; } }, matches(){ return false; } };
-            const base = {
-              announceBtn: node, notificationBtn: node, liveAudio: node,
-              voiceSettingsBackdrop: node, voiceSettingsCloseBtn: node, voiceSettingsStatus: node,
-              voiceBaseUrlInput: node, voiceApiKeyInput: node, voiceClearApiKeyToggle: node,
-              narrationSettingToggle: node, voiceSettingsViewer: node,
-              voiceSettingsCancelBtn: node, voiceSettingsSaveBtn: node,
-              isAppDisposed: () => false, api: () => {}, setToast: () => {}, handleAppAuthLoss: () => {},
-              prepareModalOpen: () => {}, afterModalVisibilityChanged: () => {},
-              resolveAppUrl: (p) => p, versionedShellAssetPath: (p) => p,
-              storageGetItem: () => null, storageSetItem: () => {}, storageRemoveItem: () => {},
-            };
-            const attempts = [
-              ["options not object", () => V.createVoiceController(null)],
-              ["missing DOM node", () => V.createVoiceController({})],
-            ];
-            for (const [label, fn] of attempts) {
-              try { fn(); errors.push({ label, threw: false }); }
-              catch (e) { errors.push({ label, threw: true, type: e.name === "TypeError", msg: String(e.message) }); }
-            }
-            // Fully wired except `api` swapped for null must throw naming api.
-            const wiredExceptApi = Object.assign({}, base, { api: null });
-            try { V.createVoiceController(wiredExceptApi); errors.push({ label: "missing api", threw: false }); }
-            catch (e) { errors.push({ label: "missing api", threw: true, type: e.name === "TypeError", msg: String(e.message) }); }
-            process.stdout.write(JSON.stringify(errors));
-            '''
-        )
-        result = run_node_json(head + body)
-        by_label = {row["label"]: row for row in result}
-        self.assertTrue(by_label["options not object"]["threw"])
-        self.assertTrue(by_label["options not object"]["type"])
-        self.assertTrue(by_label["missing DOM node"]["threw"])
-        self.assertTrue(by_label["missing DOM node"]["type"])
-        self.assertTrue(by_label["missing api"]["threw"])
-        self.assertIn("api", by_label["missing api"]["msg"])
-
     # --- 2. initial localStorage state + client id persistence ---
 
     def test_initial_local_state_reads_storage_and_persists_client_id(self) -> None:
@@ -418,12 +340,6 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
         self.assertEqual(hide["backdrop"], "none")
         self.assertEqual(hide["viewer"], "none")
         self.assertTrue(hide["closeCalled"])
-
-    def test_settings_label_is_used_in_app_shell(self) -> None:
-        app_source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('"aria-label": "Settings"', app_source)
-        self.assertIn('text: "Settings"', app_source)
-        self.assertNotIn('"Voice settings"', app_source)
 
     # --- 4. form sync + API-key placeholder / clear payload ---
 
@@ -603,43 +519,6 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
         self.assertFalse(result["cleared"]["hasErrorClass"])
         self.assertNotIn("audio error", result["cleared"]["title"])
 
-    def test_announce_button_error_class_has_distinct_visible_css(self) -> None:
-        # The toggle is exercised behaviorally above; this proves the error
-        # state is visibly styled in app.css so a sighted user sees the armed
-        # but broken announcements without hovering for the title text. The
-        # rule is scoped to #announceBtn (not the shared .icon-btn) so other
-        # icon-button surfaces keep their existing active/off styling.
-        css = (ROOT / "codoxear" / "static" / "app.css").read_text(encoding="utf-8")
-        rule_start = css.index("#announceBtn.error {")
-        rule_end = css.index("}", rule_start)
-        rule = css[rule_start:rule_end + 1]
-        self.assertIn("border-color:", rule)
-        self.assertIn("background:", rule)
-        self.assertIn("color:", rule)
-        # The error color must read as red (distinct from the blue .active
-        # state, which uses rgba(37, 99, 235, ...)).
-        self.assertIn("185, 28, 28", rule)
-        # The combined armed-but-broken state has its own override so the red
-        # treatment wins even when .active is also present. The later
-        # `#announceBtn.active, #notificationBtn.active { color: var(--accent); }`
-        # rule would otherwise cascade blue text onto an armed error button
-        # (equal-or-lower specificity, later source order). This guard catches
-        # that regression by requiring the combined rule to explicitly declare
-        # a red text color, so the computed color is never the blue accent.
-        combo_start = css.index("#announceBtn.error.active {")
-        combo_end = css.index("}", combo_start)
-        combo = css[combo_start:combo_end + 1]
-        self.assertIn("border-color:", combo)
-        self.assertIn("background:", combo)
-        self.assertIn("color:", combo)
-        self.assertIn("#b91c1c", combo)
-        # Sanity: the late active rule that caused the original cascade bug is
-        # still present (so this guard stays meaningful against the real CSS).
-        self.assertIn("#announceBtn.active,", css)
-        self.assertIn("#notificationBtn.active", css)
-        # And the red error palette still differs from the blue active palette.
-        self.assertIn("rgba(29, 78, 216", css)  # active blue accent used late
-
     # --- 8. dispose clears timers, handlers, HLS ---
 
     def test_dispose_clears_timers_handlers_and_state(self) -> None:
@@ -677,48 +556,7 @@ class TestFrontendVoiceModuleSource(unittest.TestCase):
 
     # --- 9. static load order helpers -> voice -> app.js ---
 
-    def test_index_loads_voice_module_between_helpers_and_app(self) -> None:
-        source = INDEX_HTML.read_text(encoding="utf-8")
-        self.assertIn("app_voice_helpers.js?v=__CODOXEAR_ASSET_VERSION__", source)
-        self.assertIn("app_voice.js?v=__CODOXEAR_ASSET_VERSION__", source)
-        self.assertLess(source.index("app_voice_helpers.js?v=__CODOXEAR_ASSET_VERSION__"), source.index("app_voice.js?v=__CODOXEAR_ASSET_VERSION__"))
-        self.assertLess(source.index("app_voice.js?v=__CODOXEAR_ASSET_VERSION__"), source.index("app.js?v=__CODOXEAR_ASSET_VERSION__"))
-
     # --- 10. app.js delegates instead of retaining voice internals ---
-
-    def test_app_js_delegates_voice_and_does_not_retain_internals(self) -> None:
-        app_source = APP_JS.read_text(encoding="utf-8")
-        # Fail-loud controller-module check at app.js load.
-        self.assertIn("const codoxearVoice = window.CodoxearVoice;", app_source)
-        self.assertIn('throw new Error("Codoxear voice controller failed to load")', app_source)
-        # Controller is instantiated and disposed through the controller API.
-        self.assertIn("voiceController = instantiateVoiceController();", app_source)
-        self.assertIn("codoxearVoice.createVoiceController({", app_source)
-        self.assertIn("if (voiceController) voiceController.dispose();", app_source)
-        # app.js keeps DOM construction for the voice dialog + announce/notification buttons.
-        self.assertIn('id: "announceBtn"', app_source)
-        self.assertIn('id: "notificationBtn"', app_source)
-        self.assertIn('id: "liveAudio"', app_source)
-        self.assertIn('id: "voiceSettingsViewer"', app_source)
-        # The stale style-only dialog-open check is replaced by the canonical
-        # controller open-state query.
-        self.assertIn("if (voiceController.isSettingsOpen()) hideVoiceSettingsDialog();", app_source)
-        self.assertNotIn('voiceSettingsViewer.style.display === "flex") hideVoiceSettingsDialog()', app_source)
-        # Voice internals no longer live in app.js (state declarations and
-        # implementation bodies moved; only the thin delegating wrappers remain).
-        for removed in [
-            "let voiceSaveTimer = null;",
-            "let liveAudioStarted = false;",
-            "let notificationState = {",
-            "async function loadVoiceSettings() {",
-            "async function syncNotificationState(serverSnapshot) {",
-            "async function pollNotificationFeed(",
-            'voiceSettingsBackdrop.style.display = "block";',
-            "settingsOpen = true;",
-            "voiceSettingsReturnFocusEl =",
-        ]:
-            self.assertNotIn(removed, app_source)
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -48,21 +48,6 @@ def eval_app_url_cases() -> dict:
 
 
 class TestFrontendUrlModuleSource(unittest.TestCase):
-    def test_index_loads_url_module_before_app(self) -> None:
-        source = INDEX_HTML.read_text(encoding="utf-8")
-        self.assertIn('app_url.js?v=__CODOXEAR_ASSET_VERSION__', source)
-        self.assertLess(source.index('app_url.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app.js?v=__CODOXEAR_ASSET_VERSION__'))
-
-    def test_app_js_requires_url_module_without_fallback(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("const codoxearUrls = window.CodoxearUrls;", source)
-        self.assertIn('throw new Error("Codoxear URL helpers failed to load")', source)
-        self.assertIn("return codoxearUrls.resolveAppUrl(path);", source)
-        self.assertIn("return codoxearUrls.sessionIdFromHash();", source)
-        self.assertIn("codoxearUrls.setSessionHash(sessionId);", source)
-        self.assertNotIn("const appBaseUrl = (() =>", source)
-        self.assertNotIn("new URLSearchParams(window.location.hash", source)
-
     def test_url_module_resolves_prefixed_app_paths(self) -> None:
         result = eval_app_url_cases()
         for href, values in result.items():

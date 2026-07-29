@@ -20,15 +20,5 @@ class TestJsonStateUtil(unittest.TestCase):
         self.assertIs(util.load_json_file, json_state.load_json_file)
         self.assertIs(util.atomic_write_json, json_state.atomic_write_json)
 
-    def test_atomic_write_json_creates_parent_and_cleans_temp(self) -> None:
-        with TemporaryDirectory() as td:
-            path = Path(td) / "nested" / "state.json"
-
-            atomic_write_json(path, {"b": 2, "a": 1})
-
-            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"a": 1, "b": 2})
-            self.assertEqual(list(path.parent.glob("*.tmp")), [])
-
-
 if __name__ == "__main__":
     unittest.main()

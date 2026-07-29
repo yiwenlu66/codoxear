@@ -86,32 +86,6 @@ def run_app_polling_guard(setup_js: str = "") -> dict:
 
 
 class TestFrontendPollingModuleSource(unittest.TestCase):
-    def test_index_loads_polling_before_app(self) -> None:
-        source = INDEX_HTML.read_text(encoding="utf-8")
-        self.assertIn('app_polling.js?v=__CODOXEAR_ASSET_VERSION__', source)
-        self.assertLess(source.index('app_viewport.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app_polling.js?v=__CODOXEAR_ASSET_VERSION__'))
-        self.assertLess(source.index('app_polling.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app.js?v=__CODOXEAR_ASSET_VERSION__'))
-
-    def test_app_js_requires_polling_helpers_without_fallback(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        helper_source = APP_POLLING_JS.read_text(encoding="utf-8")
-        self.assertIn("const codoxearPolling = window.CodoxearPolling;", source)
-        self.assertIn('throw new Error("Codoxear polling helpers failed to load")', source)
-        for helper in [
-            "sessionsPollDelayMs",
-            "secondaryPollDelayMs",
-            "browserOffline",
-            "messagePollErrorDelayMs",
-            "messagePollDelayMs",
-            "normalizeMessagePollKickDelay",
-        ]:
-            self.assertIn(f"typeof codoxearPolling.{helper} !== \"function\"", source)
-            self.assertIn(f"function {helper}", helper_source)
-        self.assertIn("window.CodoxearPolling = Object.freeze({", helper_source)
-        self.assertIn("const POLLING_INTERVALS = Object.freeze({", helper_source)
-        self.assertNotIn("const MESSAGE_POLL_FAST_MS = 200;", source)
-        self.assertNotIn("const SESSION_POLL_VISIBLE_MS = 2500;", source)
-
     def test_app_polling_guard_throws_for_missing_or_partial_helper(self) -> None:
         missing = run_app_polling_guard()
         self.assertEqual(missing, {"ok": False, "message": "Codoxear polling helpers failed to load"})

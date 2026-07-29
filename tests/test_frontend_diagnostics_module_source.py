@@ -10,8 +10,6 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_DIAGNOSTICS_JS = ROOT / "codoxear" / "static" / "app_diagnostics.js"
 APP_SESSION_HELPERS_JS = ROOT / "codoxear" / "static" / "app_session_helpers.js"
 APP_MODAL_JS = ROOT / "codoxear" / "static" / "app_modal.js"
-INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
-APP_JS = ROOT / "codoxear" / "static" / "app.js"
 
 
 def run_node_json(js: str) -> dict:
@@ -175,7 +173,7 @@ def harness_script(epilogue: str) -> str:
     return js
 
 
-class TestFrontendDiagnosticsModuleSource(unittest.TestCase):
+class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
     # --- 1. frozen export + missing dep failures ---
 
     def test_module_export_is_frozen_createDiagnostics_controller(self) -> None:
@@ -798,54 +796,6 @@ class TestFrontendDiagnosticsModuleSource(unittest.TestCase):
         self.assertTrue(result["newLikeDisabledAfter"])
         self.assertEqual(result["toast"], "details not loaded")
         self.assertEqual(result["copyCallsAfter"], result["copyCallsBefore"])
-
-    # --- index.html load order ---
-
-    def test_index_loads_diagnostics_module_after_deps_before_app(self) -> None:
-        source = INDEX_HTML.read_text(encoding="utf-8")
-        self.assertIn("app_diagnostics.js?v=__CODOXEAR_ASSET_VERSION__", source)
-        self.assertLess(source.index("app_session_helpers.js?v=__CODOXEAR_ASSET_VERSION__"), source.index("app_diagnostics.js?v=__CODOXEAR_ASSET_VERSION__"))
-        self.assertLess(source.index("app_modal.js?v=__CODOXEAR_ASSET_VERSION__"), source.index("app_diagnostics.js?v=__CODOXEAR_ASSET_VERSION__"))
-        self.assertLess(source.index("app_diagnostics.js?v=__CODOXEAR_ASSET_VERSION__"), source.index("app.js?v=__CODOXEAR_ASSET_VERSION__"))
-
-    # --- app.js integration: app.js delegates and keeps DOM construction ---
-
-    def test_app_js_delegates_diag_behavior_to_controller(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        # Controller instantiation with fail-loud guard.
-        self.assertIn("const codoxearDiagnostics = window.CodoxearDiagnostics;", source)
-        self.assertIn('throw new Error("Codoxear diagnostics controller failed to load")', source)
-        self.assertIn("codoxearDiagnostics.createDiagnosticsController({", source)
-        # Thin delegating wrappers.
-        self.assertIn("return diagController.show(opts);", source)
-        self.assertIn("return diagController.hide(opts);", source)
-        # Button handlers delegate to the controller.
-        self.assertIn("diagNewLikeBtn.onclick = (e) => diagController.onNewLikeClick(e);", source)
-        self.assertIn("diagCopyConversationBtn.onclick = (e) => void diagController.onCopyConversationClick(e);", source)
-        self.assertIn("diagCopyBtn.onclick = (e) => diagController.onCopyClick(e);", source)
-        # DOM construction stays in app.js.
-        self.assertIn('id: "diagBackdrop"', source)
-        self.assertIn('id: "diagNewLikeBtn"', source)
-        self.assertIn('id: "diagCopyConversationBtn"', source)
-        self.assertIn('id: "diagCopyBtn"', source)
-        self.assertIn('id: "diagCloseBtn"', source)
-        self.assertIn('id: "diagStatus"', source)
-        self.assertIn('id: "diagContent"', source)
-        self.assertIn('id: "diagViewer", role: "dialog", "aria-modal": "true", "aria-label": "Details"', source)
-        # app.js keeps the diagBtn (Details opener) and disables it when no selection.
-        self.assertIn("diagBtn.disabled = !selected;", source)
-        self.assertIn("void showDiagViewer({ opener: e.currentTarget });", source)
-        # Dispose hook.
-        self.assertIn("if (diagController) diagController.dispose();", source)
-        # The old diag state locals moved out of app.js into the controller.
-        self.assertNotIn("let diagReturnFocusEl = null;", source)
-        self.assertNotIn("let diagCopyText = \"\";", source)
-        self.assertNotIn("let diagNewLikeSession = null;", source)
-        # The old inline rendering authority moved out of app.js.
-        self.assertNotIn("async function showDiagViewer({ opener = null } = {}) {", source)
-        self.assertNotIn("diagCopyText = recoveryDetailsText(sid, selectedInfo);", source)
-        self.assertNotIn("const d = await api(`/api/sessions/${sid}/diagnostics`);", source)
-
 
 if __name__ == "__main__":
     unittest.main()

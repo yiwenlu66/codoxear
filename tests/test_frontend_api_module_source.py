@@ -138,34 +138,6 @@ def eval_api_error_contract() -> dict:
 
 
 class TestFrontendApiModuleSource(unittest.TestCase):
-    def test_index_loads_api_module_after_url_and_perf_before_app(self) -> None:
-        source = INDEX_HTML.read_text(encoding="utf-8")
-        self.assertIn('app_api.js?v=__CODOXEAR_ASSET_VERSION__', source)
-        self.assertLess(source.index('app_url.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app_api.js?v=__CODOXEAR_ASSET_VERSION__'))
-        self.assertLess(source.index('app_perf.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app_api.js?v=__CODOXEAR_ASSET_VERSION__'))
-        self.assertLess(source.index('app_api.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app.js?v=__CODOXEAR_ASSET_VERSION__'))
-
-    def test_app_js_requires_api_module_without_fallback(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        api_source = APP_API_JS.read_text(encoding="utf-8")
-        self.assertIn("const codoxearApi = window.CodoxearApi;", source)
-        self.assertIn('throw new Error("Codoxear API helpers failed to load")', source)
-        self.assertIn("typeof codoxearApi.clearApiCache !== \"function\"", source)
-        self.assertIn("function apiResponseNotModified(obj) {", source)
-        self.assertIn("return codoxearApi.apiResponseNotModified(obj);", source)
-        self.assertIn("function clearApiCache() {", source)
-        self.assertIn("return codoxearApi.clearApiCache();", source)
-        self.assertIn("async function api(path, options = {}) {", source)
-        self.assertIn("return codoxearApi.api(path, options);", source)
-        self.assertNotIn("const apiEtags = new Map();", source)
-        self.assertNotIn("const API_NOT_MODIFIED = Symbol(\"api.notModified\");", source)
-        self.assertIn("const apiEtags = new Map();", api_source)
-        self.assertIn("function clearApiCache() {", api_source)
-        self.assertIn("apiEtags.clear();", api_source)
-        self.assertIn("window.CodoxearApi = Object.freeze({", api_source)
-        self.assertIn('throw new Error("Codoxear URL helpers failed to load")', api_source)
-        self.assertIn('throw new Error("Codoxear performance helpers failed to load")', api_source)
-
     def test_api_module_preserves_etag_perf_and_url_prefix_behavior(self) -> None:
         result = eval_api_module_real_order()
         self.assertEqual(result["first"], {"sessions": [{"session_id": "s1"}]})

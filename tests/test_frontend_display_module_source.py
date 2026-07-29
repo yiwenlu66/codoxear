@@ -207,65 +207,6 @@ def eval_new_session_cwd_filter(query: str, recent_cwds: list[str]) -> dict:
 
 
 class TestFrontendDisplayModuleSource(unittest.TestCase):
-    def test_index_loads_display_module_before_app(self) -> None:
-        source = INDEX_HTML.read_text(encoding="utf-8")
-        self.assertIn('app_display.js?v=__CODOXEAR_ASSET_VERSION__', source)
-        self.assertLess(source.index('app_launch.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app_display.js?v=__CODOXEAR_ASSET_VERSION__'))
-        self.assertLess(source.index('app_display.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app.js?v=__CODOXEAR_ASSET_VERSION__'))
-
-    def test_app_js_requires_display_module_without_fallback(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
-        self.assertIn("const codoxearDisplay = window.CodoxearDisplay;", source)
-        self.assertIn('throw new Error("Codoxear display helpers failed to load")', source)
-        self.assertIn('typeof codoxearDisplay.ymd !== "function"', source)
-        self.assertIn('typeof codoxearDisplay.dayLabel !== "function"', source)
-        self.assertIn('typeof codoxearDisplay.time24 !== "function"', source)
-        self.assertIn("function fmtBytes(n) {", source)
-        self.assertIn("return codoxearDisplay.fmtBytes(n);", source)
-        self.assertIn("function iconSvg(name) {", source)
-        self.assertIn("return codoxearDisplay.iconSvg(name);", source)
-        self.assertIn('typeof codoxearDisplay.recoveryPromptPreview !== "function"', source)
-        self.assertIn("function recoveryPromptPreview(text, maxLen = 320)", source)
-        self.assertIn("return codoxearDisplay.recoveryPromptPreview(text, maxLen);", source)
-        self.assertIn('typeof codoxearDisplay.fuzzyRecentCwdScore !== "function"', source)
-        self.assertIn("function fuzzyRecentCwdScore(candidate, query)", source)
-        self.assertIn("return codoxearDisplay.fuzzyRecentCwdScore(candidate, query);", source)
-        self.assertIn('typeof codoxearDisplay.compactChatSearchSnippet !== "function"', source)
-        self.assertIn('typeof codoxearDisplay.chatSearchTranscriptHint !== "function"', source)
-        self.assertIn("function compactChatSearchSnippet(text, query, limit = 96)", source)
-        self.assertIn("return codoxearDisplay.compactChatSearchSnippet(text, query, limit);", source)
-        self.assertIn("function chatSearchTranscriptHint(match, query)", source)
-        self.assertIn("return codoxearDisplay.chatSearchTranscriptHint(match, query);", source)
-        self.assertIn("function ymd(d)", source)
-        self.assertIn("return codoxearDisplay.ymd(d);", source)
-        self.assertIn("function dayLabel(d)", source)
-        self.assertIn("return codoxearDisplay.dayLabel(d);", source)
-        self.assertIn("function time24(d)", source)
-        self.assertIn("return codoxearDisplay.time24(d);", source)
-        self.assertIn("function ymd(d)", display_source)
-        self.assertIn("function dayLabel(d)", display_source)
-        self.assertIn("function time24(d)", display_source)
-        self.assertIn("function compactChatSearchSnippet(text, query, limit = 96)", display_source)
-        self.assertIn("function chatSearchTranscriptHint(match, query)", display_source)
-        self.assertIn("window.CodoxearDisplay = Object.freeze({", display_source)
-        # Recent-cwd suggestion filtering (renderRecentCwdOptions / filteredRecentCwdOptions)
-        # moved into the new-session controller module; app.js keeps only thin
-        # wrappers and the fuzzyRecentCwdScore delegation. The controller must
-        # delegate fuzzy scoring to CodoxearDisplay rather than inlining it.
-        new_session_source = APP_NEW_SESSION_JS.read_text(encoding="utf-8")
-        self.assertIn("function renderRecentCwdOptions()", new_session_source)
-        self.assertIn("function filteredRecentCwdOptions()", new_session_source)
-        self.assertIn("codoxearDisplay.fuzzyRecentCwdScore(cwd, query)", new_session_source)
-        self.assertNotIn('const raw = String(query || "").trim().toLowerCase();', new_session_source)
-        self.assertIn("return newSessionController.renderRecentCwdOptions();", source)
-        self.assertIn("return newSessionController.filteredRecentCwdOptions();", source)
-        self.assertNotIn("function fmtBytes(n) {\n        const v = Number(n);", source)
-        self.assertNotIn('const raw = String(text || "").replace(/\\s+/g, " ").trim();', source)
-        self.assertNotIn('const raw = String(query || "").trim().toLowerCase();', source)
-        self.assertNotIn("function iconSvg(name) {\n    if (name ===", source)
-        self.assertNotIn("const diffDays = Math.round((a - b) / 86400000);", source)
-
     def test_display_module_preserves_presentation_helpers(self) -> None:
         result = eval_display_module()
         self.assertEqual(result["tooltipAria"], "Send")
@@ -327,19 +268,6 @@ class TestFrontendDisplayModuleSource(unittest.TestCase):
         self.assertTrue(result["iconKnown"])
         self.assertEqual(result["iconUnknown"], "")
         self.assertTrue(result["frozen"])
-
-    def test_icon_svg_covers_all_literal_and_dynamic_app_uses(self) -> None:
-        app_source = APP_JS.read_text(encoding="utf-8")
-        display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
-        literal_names = set(re.findall(r'iconSvg\("([A-Za-z0-9]+)"\)', app_source))
-        dynamic_session_launch_names = {"info", "tmux", "web", "terminal"}
-        required_names = literal_names | dynamic_session_launch_names
-        defined_names = set(re.findall(r'if \(name === "([^"]+)"\)', display_source))
-        self.assertFalse(required_names - defined_names)
-        outputs = eval_icon_outputs(required_names)
-        for name in sorted(required_names):
-            self.assertIn("<svg", outputs[name], name)
-            self.assertIn("</svg>", outputs[name], name)
 
     def test_recent_cwd_filter_lives_in_new_session_controller(self) -> None:
         # No-query path preserves recent-cwd ordering and caps at 10.

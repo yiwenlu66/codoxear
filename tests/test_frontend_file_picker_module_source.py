@@ -9,9 +9,6 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
 APP_FILE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_file_helpers.js"
 APP_FILE_PICKER_JS = ROOT / "codoxear" / "static" / "app_file_picker.js"
-APP_JS = ROOT / "codoxear" / "static" / "app.js"
-INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
-STATIC_ROUTES = ROOT / "codoxear" / "static_routes.py"
 
 
 def run_picker_module_probe() -> dict[str, object]:
@@ -542,7 +539,7 @@ def run_picker_input_runtime_probe() -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
-class TestFrontendFilePickerModuleSource(unittest.TestCase):
+class TestFrontendFilePickerModuleBehavior(unittest.TestCase):
     def test_file_picker_module_exports_and_fails_closed(self) -> None:
         result = run_picker_module_probe()
         self.assertTrue(result["frozen"])
@@ -745,49 +742,6 @@ class TestFrontendFilePickerModuleSource(unittest.TestCase):
             ["setAttr", "aria-activedescendant", "filePickerOption-3"],
             ["removeAttr", "aria-activedescendant"],
         ])
-
-    def test_file_picker_module_registered_before_app_js(self) -> None:
-        index_source = INDEX_HTML.read_text(encoding="utf-8")
-        routes_source = STATIC_ROUTES.read_text(encoding="utf-8")
-        app_source = APP_JS.read_text(encoding="utf-8")
-
-        self.assertLess(index_source.index("app_file_helpers.js?v=__CODOXEAR_ASSET_VERSION__"), index_source.index("app_file_picker.js?v=__CODOXEAR_ASSET_VERSION__"))
-        self.assertLess(index_source.index("app_file_picker.js?v=__CODOXEAR_ASSET_VERSION__"), index_source.index("app.js?v=__CODOXEAR_ASSET_VERSION__"))
-        self.assertIn('"app_file_picker.js"', routes_source)
-        self.assertIn("const codoxearFilePicker = window.CodoxearFilePicker;", app_source)
-        self.assertIn('typeof codoxearFilePicker.appendDraftFileMenuItem !== "function"', app_source)
-        self.assertIn('typeof codoxearFilePicker.appendFilePickerEntryItem !== "function"', app_source)
-        self.assertIn('typeof codoxearFilePicker.appendFilePickerSection !== "function"', app_source)
-        self.assertIn('typeof codoxearFilePicker.appendFilePickerStatusRow !== "function"', app_source)
-        self.assertIn('typeof codoxearFilePicker.appendHighlightedFileMenuPath !== "function"', app_source)
-        self.assertIn('typeof codoxearFilePicker.createEntryRuntime !== "function"', app_source)
-        self.assertIn('typeof codoxearFilePicker.createMenuDomRuntime !== "function"', app_source)
-        self.assertIn('typeof codoxearFilePicker.createMenuRenderRuntime !== "function"', app_source)
-        self.assertIn("const filePickerDomRuntime = codoxearFilePicker.createMenuDomRuntime", app_source)
-        self.assertIn("const filePickerRenderRuntime = codoxearFilePicker.createMenuRenderRuntime", app_source)
-        self.assertIn("return filePickerDomRuntime.apply();", app_source)
-        self.assertIn("return filePickerDomRuntime.resetInput(activeFilePathValue() || \"\");", app_source)
-        self.assertIn("return filePickerDomRuntime.close({ restoreInput, inputValue: activeFilePathValue() || \"\" });", app_source)
-        self.assertNotIn("filePickerField.classList.toggle(\"active\", state.open);", app_source)
-        self.assertNotIn("function appendHighlightedFileMenuPath(parent, text, query)", app_source)
-        self.assertNotIn("function appendFilePickerSection(label)", app_source)
-        self.assertNotIn("function appendDraftFileMenuItem(path, idx, active)", app_source)
-        self.assertNotIn("function appendFilePickerStatusRow(text)", app_source)
-        self.assertNotIn("function syncFilePickerActiveDescendant(focusIndex)", app_source)
-        self.assertNotIn("codoxearFilePicker.appendFilePickerEntryItem(filePickerMenu, entry, idx, active, query, identityHint, filePickerTitle(entry, identityHint), {", app_source)
-        self.assertNotIn('filePickerMenu.appendChild(el("div", { class: "fileMenuSection"', app_source)
-        render_start = app_source.index("function renderFilePickerMenu()")
-        render_end = app_source.index("function sessionRelativePath", render_start)
-        render_block = app_source[render_start:render_end]
-        self.assertIn("return filePickerRenderRuntime.render();", render_block)
-        self.assertNotIn('const stat = el("span", { class: "fileMenuStat changed" });', render_block)
-        self.assertNotIn('btn.appendChild(el("span", { class: "fileMenuHint fileMenuIdentity"', render_block)
-        self.assertNotIn('filePickerMenu.appendChild(el("div", { class: "pickerEmpty"', render_block)
-        self.assertNotIn('filePickerInput.setAttribute("aria-activedescendant"', render_block)
-        self.assertNotIn("filePickerMenuState.resetInputState();\n          filePickerInput.value = activeFilePathValue() || \"\";", app_source)
-        self.assertNotIn("document.createTextNode(value.slice(cursor", app_source)
-        self.assertIn('throw new Error("Codoxear file picker helpers failed to load")', app_source)
-
 
 if __name__ == "__main__":
     unittest.main()

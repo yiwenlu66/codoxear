@@ -182,32 +182,6 @@ def eval_app_copy_conversation_success(events) -> dict:
 
 
 class TestFrontendConversationCopySource(unittest.TestCase):
-    def test_index_loads_conversation_copy_before_app(self) -> None:
-        source = INDEX_HTML.read_text(encoding="utf-8")
-        self.assertIn('app_conversation_copy.js?v=__CODOXEAR_ASSET_VERSION__', source)
-        self.assertLess(source.index('app_polling.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app_conversation_copy.js?v=__CODOXEAR_ASSET_VERSION__'))
-        self.assertLess(source.index('app_conversation_copy.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app.js?v=__CODOXEAR_ASSET_VERSION__'))
-
-    def test_app_js_requires_conversation_copy_helper_without_fallback(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        helper_source = APP_CONVERSATION_COPY_JS.read_text(encoding="utf-8")
-        self.assertIn("const codoxearConversationCopy = window.CodoxearConversationCopy;", source)
-        self.assertIn('throw new Error("Codoxear conversation-copy helpers failed to load")', source)
-        self.assertIn('typeof codoxearConversationCopy.formatConversationForCopy !== "function"', source)
-        self.assertIn('typeof codoxearConversationCopy.formatConversationForCopyResult !== "function"', source)
-        self.assertIn('typeof codoxearConversationCopy.transcriptExportTooLargeCopyMessage !== "function"', source)
-        self.assertIn("function formatConversationForCopy(events)", source)
-        self.assertIn("return codoxearConversationCopy.formatConversationForCopy(events);", source)
-        self.assertIn("function formatConversationForCopyResult(events)", source)
-        self.assertIn("return codoxearConversationCopy.formatConversationForCopyResult(events);", source)
-        self.assertIn("function copyConversationFailureToast(err)", source)
-        self.assertIn("setToast(copyConversationFailureToast(err));", source)
-        self.assertIn("window.CodoxearConversationCopy = Object.freeze({", helper_source)
-        self.assertIn("formatConversationForCopyResult,", helper_source)
-        self.assertIn("transcriptExportTooLargeCopyMessage,", helper_source)
-        self.assertIn('parts.push(`## ${role}${when}\\n\\n${text}`);', helper_source)
-        self.assertNotIn('parts.push(`## ${role}${when}\\n\\n${text}`);', source)
-
     def test_app_conversation_copy_guard_throws_for_missing_or_partial_helper(self) -> None:
         missing = run_app_conversation_copy_guard()
         self.assertEqual(missing, {"ok": False, "message": "Codoxear conversation-copy helpers failed to load"})

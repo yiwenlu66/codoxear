@@ -81,55 +81,6 @@ def eval_session_helpers() -> dict:
 
 
 class TestFrontendSessionHelpersSource(unittest.TestCase):
-    def test_index_loads_session_helpers_before_app(self) -> None:
-        source = INDEX_HTML.read_text(encoding="utf-8")
-        self.assertIn('app_session_helpers.js?v=__CODOXEAR_ASSET_VERSION__', source)
-        self.assertLess(source.index('app_file_helpers.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app_session_helpers.js?v=__CODOXEAR_ASSET_VERSION__'))
-        self.assertLess(source.index('app_session_helpers.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app.js?v=__CODOXEAR_ASSET_VERSION__'))
-
-    def test_app_js_requires_session_helpers_without_fallback(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        helper_source = APP_SESSION_HELPERS_JS.read_text(encoding="utf-8")
-        self.assertIn("const codoxearSessionHelpers = window.CodoxearSessionHelpers;", source)
-        self.assertIn('throw new Error("Codoxear session helpers failed to load")', source)
-        self.assertIn("const SESSION_SIDEBAR_GROUPS = codoxearSessionHelpers.SESSION_SIDEBAR_GROUPS;", source)
-        for helper in [
-            "sessionLaunchFailed",
-            "sessionLaunchPending",
-            "sessionLaunchKind",
-            "sessionLaunchIcon",
-            "sessionHasUnknownSend",
-            "sessionIsOrphanRecovery",
-            "sessionHasOrphanQueueRecovery",
-            "sessionSidebarGroupKey",
-            "sidebarSessionEntries",
-            "sidebarRenderSignature",
-            "sessionSelectable",
-            "sessionIsFast",
-            "diagnosticsProviderDisplay",
-            "diagnosticsCopyText",
-            "normalizeQueueItems",
-        ]:
-            self.assertIn(f"typeof codoxearSessionHelpers.{helper} !== \"function\"", source)
-            self.assertIn(f"function {helper}", source)
-        self.assertIn("window.CodoxearSessionHelpers = Object.freeze({", helper_source)
-        self.assertIn("const SESSION_SIDEBAR_GROUPS = Object.freeze([", helper_source)
-        self.assertIn("return codoxearSessionHelpers.sessionHasUnknownSend(s);", source)
-        self.assertIn("return codoxearSessionHelpers.sessionIsOrphanRecovery(s);", source)
-        self.assertIn("return codoxearSessionHelpers.sessionHasOrphanQueueRecovery(s);", source)
-        self.assertIn("function sessionHasUnknownSend(s) {", helper_source)
-        self.assertIn("function sessionIsOrphanRecovery(s) {", helper_source)
-        self.assertIn("function sessionHasOrphanQueueRecovery(s) {", helper_source)
-        self.assertNotIn("sessionNeedsReview", helper_source)
-        self.assertNotIn("Needs review", helper_source)
-        self.assertNotIn("redactedLaunchErrorText", helper_source)
-        self.assertNotIn("sessionLaunchLabel", helper_source)
-        self.assertNotIn("function sidebarSessionEntries(sessions) {\n        const buckets", source)
-        self.assertNotIn("function sessionIsFast(s) {\n        return !!(s && typeof s.service_tier", source)
-        self.assertNotIn("return Boolean(s && s.commit_unknown_send);", source)
-        self.assertNotIn("return Boolean(s && s.orphan_recovery);", source)
-        self.assertNotIn("return Boolean(s && (s.queue_recovery || s.orphan_recovery) && Number(s.queue_len || 0) > 0);", source)
-
     def test_session_helpers_preserve_grouping_and_launch_contracts(self) -> None:
         result = eval_session_helpers()
         self.assertEqual([group["key"] for group in result["groups"]], ["now", "waiting", "later"])

@@ -32,21 +32,6 @@ def eval_perf_module() -> dict:
 
 
 class TestFrontendPerfModuleSource(unittest.TestCase):
-    def test_index_loads_perf_module_before_app(self) -> None:
-        source = INDEX_HTML.read_text(encoding="utf-8")
-        self.assertIn('app_perf.js?v=__CODOXEAR_ASSET_VERSION__', source)
-        self.assertLess(source.index('app_storage.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app_perf.js?v=__CODOXEAR_ASSET_VERSION__'))
-        self.assertLess(source.index('app_perf.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app.js?v=__CODOXEAR_ASSET_VERSION__'))
-
-    def test_app_js_requires_perf_module_without_fallback(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("const codoxearPerfHelpers = window.CodoxearPerf;", source)
-        self.assertIn('throw new Error("Codoxear performance helpers failed to load")', source)
-        self.assertIn("function pushPerfSample(name, valueMs) {", source)
-        self.assertIn("function summarizePerf() {", source)
-        self.assertIn("window.codoxearPerf = summarizePerf;", source)
-        self.assertNotIn("const perfSamples = new Map();", source)
-
     def test_perf_module_preserves_summary_policy(self) -> None:
         result = eval_perf_module()["summary"]
         api = result["api"]

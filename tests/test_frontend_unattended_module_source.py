@@ -10,8 +10,6 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_UNATTENDED_JS = ROOT / "codoxear" / "static" / "app_unattended.js"
 APP_SESSION_HELPERS_JS = ROOT / "codoxear" / "static" / "app_session_helpers.js"
 APP_MODAL_JS = ROOT / "codoxear" / "static" / "app_modal.js"
-INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
-APP_JS = ROOT / "codoxear" / "static" / "app.js"
 
 
 def run_node_json(js: str) -> dict:
@@ -207,7 +205,7 @@ def harness_script(epilogue: str) -> str:
     return js
 
 
-class TestFrontendUnattendedModuleSource(unittest.TestCase):
+class TestFrontendUnattendedModuleBehavior(unittest.TestCase):
     # --- 1. frozen export + missing dep failures ---
 
     def test_module_export_is_frozen_createUnattended_controller(self) -> None:
@@ -888,26 +886,6 @@ class TestFrontendUnattendedModuleSource(unittest.TestCase):
         self.assertEqual(result["display"], "none")
         self.assertEqual(result["ariaExpanded"], "false")
         self.assertFalse(result["apiAfterDispose"])
-
-    # --- module loading order in index.html ---
-
-    def test_index_loads_unattended_module_before_app_after_recovery(self) -> None:
-        source = INDEX_HTML.read_text(encoding="utf-8")
-        self.assertIn("app_unattended.js?v=__CODOXEAR_ASSET_VERSION__", source)
-        self.assertGreater(source.index("app_unattended.js?v=__CODOXEAR_ASSET_VERSION__"), source.index("app_recovery.js?v=__CODOXEAR_ASSET_VERSION__"))
-        self.assertLess(source.index("app_unattended.js?v=__CODOXEAR_ASSET_VERSION__"), source.index("app.js?v=__CODOXEAR_ASSET_VERSION__"))
-
-    def test_app_js_delegates_to_module(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("createUnattendedController", source)
-        self.assertIn("unattendedController.syncButtonState()", source)
-        self.assertIn("unattendedController.dispose()", source)
-        # app.js keeps DOM construction for the unattended controls.
-        self.assertIn('id: "unattendedEnabled"', source)
-        self.assertIn('id: "unattendedCooldownMinutes"', source)
-        self.assertIn('id: "unattendedRemainingInjections"', source)
-        self.assertIn('id: "unattendedRequest"', source)
-
 
 if __name__ == "__main__":
     unittest.main()

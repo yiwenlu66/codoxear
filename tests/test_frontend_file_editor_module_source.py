@@ -7,9 +7,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_FILE_EDITOR_JS = ROOT / "codoxear" / "static" / "app_file_editor.js"
-APP_JS = ROOT / "codoxear" / "static" / "app.js"
-INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
-STATIC_ROUTES = ROOT / "codoxear" / "static_routes.py"
 
 
 def run_file_editor_runtime_probe() -> dict[str, object]:
@@ -548,7 +545,7 @@ def run_monaco_loader_probe() -> dict[str, object]:
     return json.loads(proc.stdout)
 
 
-class TestFrontendFileEditorModuleSource(unittest.TestCase):
+class TestFrontendFileEditorModuleBehavior(unittest.TestCase):
     def test_file_editor_runtime_lifecycle_behavior(self) -> None:
         result = run_file_editor_runtime_probe()
         self.assertTrue(result["frozen"])
@@ -755,99 +752,6 @@ class TestFrontendFileEditorModuleSource(unittest.TestCase):
             ],
         )
         self.assertIn("file editor dependency missing: resolveAppUrl", result["missingResolveError"])
-
-    def test_file_editor_module_registered_before_app_js(self) -> None:
-        index_source = INDEX_HTML.read_text(encoding="utf-8")
-        routes_source = STATIC_ROUTES.read_text(encoding="utf-8")
-        app_source = APP_JS.read_text(encoding="utf-8")
-        self.assertLess(index_source.index("app_file_viewer.js?v=__CODOXEAR_ASSET_VERSION__"), index_source.index("app_file_editor.js?v=__CODOXEAR_ASSET_VERSION__"))
-        self.assertLess(index_source.index("app_file_editor.js?v=__CODOXEAR_ASSET_VERSION__"), index_source.index("app_session_helpers.js?v=__CODOXEAR_ASSET_VERSION__"))
-        self.assertLess(index_source.index("app_file_editor.js?v=__CODOXEAR_ASSET_VERSION__"), index_source.index("app.js?v=__CODOXEAR_ASSET_VERSION__"))
-        self.assertIn('"app_file_editor.js"', routes_source)
-        self.assertIn("const codoxearFileEditor = window.CodoxearFileEditor;", app_source)
-        self.assertIn('throw new Error("Codoxear file editor runtime failed to load")', app_source)
-
-    def test_app_js_no_longer_owns_raw_editor_lifecycle_lists(self) -> None:
-        app_source = APP_JS.read_text(encoding="utf-8")
-        editor_source = APP_FILE_EDITOR_JS.read_text(encoding="utf-8")
-        self.assertNotIn("let fileEditor = null;", app_source)
-        self.assertNotIn("let fileEditorModels = [];", app_source)
-        self.assertNotIn("let fileEditorChangeDisposable = null;", app_source)
-        self.assertIn("let editor = null;", editor_source)
-        self.assertIn("let models = [];", editor_source)
-        self.assertIn("let changeDisposable = null;", editor_source)
-        self.assertIn("fileEditorRuntime.disposeCurrentFile({", app_source)
-        self.assertIn("fileEditorRuntime.restoreCurrentFileText(text, {", app_source)
-        self.assertNotIn("fileEditorRuntime.focusLine(currentFileEditorKind(), lineNumber, normalizeLineNumber);", app_source)
-        self.assertIn("function focusLine(kind, lineNumber, normalizeLineNumber)", editor_source)
-        self.assertIn("fileEditorRuntime.focusActiveCodeEditor(currentFileEditorKind())", app_source)
-        self.assertIn("fileEditorRuntime.isActiveInput(currentFileEditorKind(), target, HTMLElement)", app_source)
-        self.assertIn("fileEditorRuntime.normalizePosition(editor, position)", app_source)
-        self.assertIn("fileEditorRuntime.applySelection(editor, cursor, anchor, fileEditorMonacoLoader.selectionCtor())", app_source)
-        self.assertIn("fileEditorRuntime.isCollapsedSelection(selection)", app_source)
-        self.assertIn("fileEditorRuntime.activeSelectionText(currentFileEditorKind())", app_source)
-        self.assertNotIn("fileEditorRuntime.layoutCurrent()", app_source)
-        self.assertNotIn("function extToEditorLang", app_source)
-        self.assertIn("function editorLanguageForPath(path)", editor_source)
-        self.assertIn("function fileEditorCreateOptions", editor_source)
-        self.assertIn("function diffEditorCreateOptions()", editor_source)
-        self.assertIn("function createFileEditor(monaco, host, options = {})", editor_source)
-        self.assertNotIn("function createPlainFileEditor(host, options = {})", editor_source)
-        self.assertIn("function createDiffEditor(monaco, host, options = {})", editor_source)
-        self.assertIn("function positionCurrentEditorAtLine(kind, lineNumber, normalizeLineNumber)", editor_source)
-        self.assertIn("function scheduleLineFocus(kind, requestedLine, options = {})", editor_source)
-        self.assertIn("function currentFileText(kind, fallbackText = \"\")", editor_source)
-        self.assertIn("function restoreCurrentFileText(text, options = {})", editor_source)
-        self.assertIn("function restoreFileText(kind, text, runProgrammaticChange)", editor_source)
-        self.assertIn("function createFileEditorRenderer(options = {})", editor_source)
-        self.assertIn("const fileEditorRenderer = codoxearFileEditor.createFileEditorRenderer({", app_source)
-        self.assertIn("return await fileEditorRenderer.renderFile(rel, text, lineNumber, langOverride, request);", app_source)
-        self.assertIn("return await fileEditorRenderer.renderDiff(rel, originalText, modifiedText, lineNumber, request);", app_source)
-        self.assertNotIn("fileEditorRuntime.createFileEditor(monaco, fileDiff", app_source)
-        self.assertNotIn("fileEditorRuntime.updateFileEditorText(monaco", app_source)
-        self.assertIn("fileEditorRuntime.currentFileText(currentFileEditorKind(), currentActiveFileText())", app_source)
-        self.assertIn("fileEditorRuntime.restoreCurrentFileText(text, {", app_source)
-        self.assertNotIn("fileEditorRuntime.restoreFileText(currentFileEditorKind(), restorePlan.text", app_source)
-        self.assertNotIn("fileEditorRuntime.createDiffEditor(monaco, fileDiff", app_source)
-        self.assertNotIn("fileEditorRuntime.positionCurrentEditorAtLine(\"file\", lineNumber, normalizeLineNumber)", app_source)
-        self.assertNotIn("fileEditorRuntime.positionCurrentEditorAtLine(\"diff\", lineNumber, normalizeLineNumber)", app_source)
-        self.assertNotIn("fileEditorRuntime.scheduleLineFocus(\"file\", requestedLine", app_source)
-        self.assertNotIn("fileEditorRuntime.scheduleLineFocus(\"diff\", requestedLine", app_source)
-        self.assertIn("createFileEditor(monaco, host", editor_source)
-        self.assertIn("updateFileEditorText(monaco, {", editor_source)
-        self.assertNotIn("createPlainFileEditor(host, {", editor_source)
-        self.assertNotIn("updatePlainFileEditorText({", editor_source)
-        self.assertIn("createDiffEditor(monaco, host", editor_source)
-        self.assertIn("schedulePositionFocus(\"file\", lineNumber, request);", editor_source)
-        self.assertIn("schedulePositionFocus(\"diff\", lineNumber, request);", editor_source)
-        self.assertNotIn("fileEditorRuntime.setEditor(editor);", app_source)
-        self.assertNotIn("fileEditorRuntime.setModels([editor.getModel()].filter(Boolean));", app_source)
-        self.assertNotIn("fileEditorRuntime.setChangeDisposable(editor.onDidChangeModelContent", app_source)
-        self.assertNotIn("monaco.editor.create(fileDiff", app_source)
-        self.assertNotIn("monaco.editor.createDiffEditor(fileDiff", app_source)
-        self.assertNotIn("applyEditorLineFocus(requestedLine);", app_source)
-        self.assertNotIn("model.setValue(restorePlan.text);", app_source)
-        self.assertNotIn("let monacoReadyPromise = null;", app_source)
-        self.assertNotIn("let monacoNs = null;", app_source)
-        self.assertNotIn("let monacoThemeReady = false;", app_source)
-        self.assertIn("function createMonacoLoader(options = {})", editor_source)
-        self.assertIn("const ensureMonaco = requireMethod(options.monacoLoader, \"ensure\", \"monacoLoader\");", editor_source)
-        self.assertNotIn("fileEditorMonacoLoader.ensure();", app_source)
-        self.assertIn("fileEditorMonacoLoader.selectionCtor())", app_source)
-        self.assertIn("fileEditorMonacoLoader.editSupportAvailable()", app_source)
-
-    def test_plain_edit_writable_runtime_removed(self) -> None:
-        editor_source = APP_FILE_EDITOR_JS.read_text(encoding="utf-8")
-        self.assertNotIn("createPlainFileEditor", editor_source)
-        self.assertNotIn("updatePlainFileEditorText", editor_source)
-        self.assertNotIn('"plain-edit"', editor_source)
-
-    def test_renderer_content_change_uses_monaco_file_model(self) -> None:
-        editor_source = APP_FILE_EDITOR_JS.read_text(encoding="utf-8")
-        change_block = editor_source[editor_source.index("function handleFileEditorContentChange("):editor_source.index("function schedulePositionFocus(")]
-        self.assertIn('currentFileText("file", baselineText)', change_block)
-        self.assertNotIn("plain-edit", change_block)
-
 
 if __name__ == "__main__":
     unittest.main()

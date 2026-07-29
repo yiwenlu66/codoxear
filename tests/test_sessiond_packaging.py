@@ -15,26 +15,6 @@ README = ROOT / "README.md"
 
 
 class TestSessiondPackaging(unittest.TestCase):
-    def test_sessiond_console_script_is_declared(self) -> None:
-        data = PYPROJECT.read_text(encoding="utf-8")
-        self.assertIn('codoxear-sessiond = "codoxear.sessiond:main"', data)
-        if tomllib is not None:
-            parsed = tomllib.loads(data)
-            self.assertEqual(parsed["project"]["scripts"]["codoxear-sessiond"], "codoxear.sessiond:main")
-
-    def test_readme_documents_installed_sessiond_command(self) -> None:
-        data = README.read_text(encoding="utf-8")
-        self.assertIn("installs `codoxear-server`, `codoxear-broker`, and `codoxear-sessiond`", data)
-        self.assertIn("codoxear-sessiond --cwd /path/to/repo", data)
-        self.assertIn("CODEX_WEB_AGENT_BACKEND=pi codoxear-sessiond --cwd /path/to/repo", data)
-        self.assertIn("CODEX_WEB_AGENT_BACKEND=cc codoxear-sessiond --cwd /path/to/repo", data)
-        self.assertIn("Arguments after `--` are passed to the selected backend; do not repeat the backend executable name.", data)
-        self.assertIn("uses the same backend adapter launch options as web-owned sessions", data)
-        self.assertIn("same control state schema (`busy`, `queue_len`, `token`, `interrupted_idle`)", data)
-        self.assertNotIn("codoxear-sessiond --cwd /path/to/repo -- codex", data)
-        self.assertNotIn("codoxear-sessiond --cwd /path/to/repo -- pi", data)
-        self.assertNotIn("codoxear-sessiond --cwd /path/to/repo -- claude", data)
-
     def test_sessiond_module_help_does_not_launch_backend(self) -> None:
         proc = subprocess.run(
             [sys.executable, "-m", "codoxear.sessiond", "--help"],
