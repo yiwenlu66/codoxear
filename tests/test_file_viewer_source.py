@@ -17,7 +17,7 @@ vm.createContext(ctx);
 vm.runInContext({source}, ctx);
 {js}
 """
-    proc = subprocess.run(["node", "-e", textwrap.dedent(program)], check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = subprocess.run(["node"], input=textwrap.dedent(program), check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return json.loads(proc.stdout)
 
 
@@ -30,18 +30,19 @@ const makeSurface = () => ({ style: {} });
 const surfaces = { diff: makeSurface(), image: makeSurface(), video: makeSurface() };
 const image = { style: {}, removeAttribute() {}, src: '', alt: '' };
 const video = { style: {}, removeAttribute() {}, load() {}, pause() {}, src: '' };
-const surface = viewer.createFileRenderSurfaceRuntime({ fileDiff: surfaces.diff, fileImage: image, fileVideo: video });
-surface.setSurface('diff'); const diff = { ...surfaces.diff.style, image: surfaces.image.style.display, video: surfaces.video.style.display };
-surface.setSurface('image'); const imageState = { ...surfaces.image.style, diff: surfaces.diff.style.display, video: surfaces.video.style.display };
-surface.setSurface('video'); const videoState = { ...surfaces.video.style, diff: surfaces.diff.style.display, image: surfaces.image.style.display };
+const surface = viewer.createFileRenderSurfaceRuntime({ diff: surfaces.diff, image, video, videoPreviewButton: { style: {}, disabled: false }, clearActiveVideoFallback() {} });
+surface.setSurface('diff'); const diff = { ...surfaces.diff.style, image: image.style.display, video: video.style.display };
+surface.setSurface('image'); const imageState = { ...image.style, diff: surfaces.diff.style.display, video: video.style.display };
+surface.setSurface('video'); const videoState = { ...video.style, diff: surfaces.diff.style.display, image: image.style.display };
 let download = [];
 const document = { createElement() { return { style: {}, set href(v) { this._href = v; }, get href() { return this._href; }, click() { download.push(this._href); }, remove() {} }; }, body: { appendChild() {} } };
-const downloadRuntime = viewer.createFileDownloadRuntime({ document });
+const downloadRuntime = viewer.createFileDownloadRuntime({ document, resolveAppUrl: (path) => path });
 const host = { innerHTML: 'old', scrollTop: 22, appendChild(node) { this.node = node; } };
-const fallback = viewer.createFileFallbackRuntime({ host, document: { createElement(tag) { return { tagName: tag, className: '', textContent: '', appendChild(child) { this.child = child; } }; }, createTextNode(text) { return { textContent: text }; } }, requestAnimationFrame(fn) { fn(); }, disposeFileEditor() {}, disposePdfRender() {}, clearFileVideo() {}, setFileRenderSurface() {}, setFileEditorKind() {}, applyActiveFileTextState() {}, updateFileTouchToolbar() {}, markdownPreviewHtml() { return '<p>x</p>'; }, renderMarkdownPreview() {} });
+const el = (tag, attrs = {}, children = []) => ({ tag, ...attrs, children });
+const fallback = viewer.createFileFallbackRuntime({ host, el, normalizeLineNumber: (value) => Number(value) || null, requestAnimationFrame(fn) { fn(); }, disposeFileEditor() {}, disposePdfRender() {}, clearFileVideo() {}, setFileRenderSurface() {}, setFileEditorKind() {}, applyPlainTextFallbackState() {}, updateFileTouchToolbar() {}, currentSessionId() { return 'sid'; }, markdownPreviewHtml() { return '<p>x</p>'; }, upgradeCandidateFileRefs() {}, blockedFileMessage() { return 'blob.bin is not renderable'; } });
 const plain = fallback.applyPlainText('notes.txt', 'hello', 3);
 fallback.applyBlocked('blob.bin', 'binary', 0, 3);
-const blocked = host.node.textContent;
+const blocked = host.node.children[1].text;
 downloadRuntime.download('app:/download');
 process.stdout.write(JSON.stringify({ exports: Object.keys(viewer).sort(), diff, imageState, videoState, download, plain, blocked }));
 '''

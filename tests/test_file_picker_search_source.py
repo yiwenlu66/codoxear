@@ -11,13 +11,13 @@ PICKER = ROOT / "codoxear" / "static" / "app_file_picker.js"
 
 
 def run_picker(body: str) -> dict:
-    modules = "\n".join(json.dumps(path.read_text(encoding="utf-8")) for path in (DISPLAY, HELPERS, PICKER))
+    modules = ",\n".join(json.dumps(path.read_text(encoding="utf-8")) for path in (DISPLAY, HELPERS, PICKER))
     script = f"""
 const vm = require('vm'); const ctx = {{ window: {{}} }}; vm.createContext(ctx);
 for (const source of [{modules}]) vm.runInContext(source, ctx);
 {body}
 """
-    proc = subprocess.run(["node", "-e", textwrap.dedent(script)], check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = subprocess.run(["node"], input=textwrap.dedent(script), check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return json.loads(proc.stdout)
 
 
@@ -65,13 +65,13 @@ process.stdout.write(JSON.stringify({ found, pending }));
         result = run_picker(
             r'''
 const picker = ctx.window.CodoxearFilePicker; const callbacks = [];
-const search = picker.createSearchState({ setTimeout(fn) { callbacks.push(fn); return callbacks.length; }, clearTimeout() {}, isMenuOpen: () => true, inputValue: () => 'needle', renderMenu() {}, applyMenuState() {} });
-search.setSessionId('sid-1'); search.schedule('needle', async () => [{ path: 'needle.py' }]); const before = search.snapshot(); callbacks[0](); Promise.resolve().then(() => process.stdout.write(JSON.stringify({ before, after: search.snapshot() })));
+const search = picker.createSearchState({ blocked: () => false, currentSessionId: () => 'sid-1', api: async () => ({ matches: [{ path: 'needle.py' }] }), setTimeout(fn) { callbacks.push(fn); return callbacks.length; }, clearTimeout() {}, isMenuOpen: () => true, inputValue: () => 'needle', renderMenu() {}, applyMenuState() {}, normalizeFileApiPath: (value) => String(value || '') });
+search.setSessionId('sid-1'); const pending = search.request('needle'); const before = search.snapshot(); pending.then(() => process.stdout.write(JSON.stringify({ before, after: search.snapshot() })));
 '''
         )
         self.assertEqual(result["before"]["pendingQuery"], "needle")
         self.assertEqual(result["after"]["loadedQuery"], "needle")
-        self.assertEqual(result["after"]["results"], [{"path": "needle.py"}])
+        self.assertEqual(result["after"]["results"], [{"path": "needle.py", "score": 0, "apiPath": ""}])
 
 
 if __name__ == "__main__":
