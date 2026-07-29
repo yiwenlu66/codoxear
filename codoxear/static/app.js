@@ -748,7 +748,7 @@
 	        const backdrop = el("div", { class: "backdrop", id: "backdrop" });
 	        const app = el("div", { class: "app" });
         const sidebar = el("div", { class: "sidebar" });
-        const sessionsWrap = el("div", { class: "sessions" });
+        const sessionsWrap = el("div", { class: "sessions", id: "sessions" });
         const sidebarEmptyHint = el("div", { class: "sidebarEmptyHint muted", text: "No sessions yet" });
          const sidebarFooter = el("footer", {}, [
           el("button", { id: "helpBtnSide", type: "button", title: "Help", "aria-label": "Help", html: iconSvg("help") + "Help" }),
@@ -6143,6 +6143,31 @@
           if (editViewer.style.display === "flex") hideEditSession();
           if (newSessionViewer.style.display === "flex") hideNewSessionDialog();
         });
+
+        const handleSessionNavigationKeydown = (e) => {
+          if (e.defaultPrevented || !e.altKey || e.shiftKey || e.ctrlKey || e.metaKey) return;
+          if (isTextEntryElement(document.activeElement)) return;
+
+          const sessionCards = Array.from(document.querySelectorAll("#sessions .session[data-session-id]"));
+          let targetCard = null;
+          if (/^[1-9]$/.test(e.key)) {
+            targetCard = sessionCards[Number(e.key) - 1];
+          } else if (e.key === "j" || e.key === "ArrowDown" || e.key === "k" || e.key === "ArrowUp") {
+            const currentIndex = sessionCards.findIndex((card) => card.dataset.sessionId === selected);
+            if (currentIndex < 0) return;
+            const direction = e.key === "j" || e.key === "ArrowDown" ? 1 : -1;
+            targetCard = sessionCards[currentIndex + direction];
+          } else {
+            return;
+          }
+
+          const sessionId = targetCard && targetCard.dataset.sessionId;
+          if (!sessionId) return;
+          e.preventDefault();
+          void selectSession(sessionId);
+        };
+        addAppEvent(document, "keydown", handleSessionNavigationKeydown);
+        appEventCleanups.push(() => document.removeEventListener("keydown", handleSessionNavigationKeydown));
 
         let sendChoicePending = null;
         let sendChoiceReturnFocusEl = null;

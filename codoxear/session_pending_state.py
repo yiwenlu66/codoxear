@@ -105,11 +105,11 @@ class SessionPendingStateCoordinator:
             raise ValueError("invalid staged attachment")
         return {"ok": True, "removed": projected_removed, "attachments": public_staged_attachments(attachments), "pending_attachment": pending}
 
-    def clear_staged_attachments(self, session_id: str) -> dict[str, Any]:
+    def clear_staged_attachments(self, session_id: str, *, delete_files: bool = True) -> dict[str, Any]:
         with self.lock:
             if session_id not in self.sessions():
                 raise KeyError("unknown session")
-            removed = self.store().clear_staged_attachments(session_id)
+            removed = self.store().clear_staged_attachments(session_id, delete_files=delete_files)
             self._sync_pending_projection_locked(session_id)
         self.save_staged_attachments()
         self.save_pending_attachments()

@@ -415,7 +415,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._staged_attachments[sid] = [
             {"id": "a1", "display_name": "one.txt", "filename": "1_one.txt", "path": "/tmp/uploads/s1/1_one.txt", "size": 3, "created_ts": 1.0},
         ]
-        mgr.clear_staged_attachments = lambda _sid: (mgr._staged_attachments.pop(_sid, None), setattr(mgr._sessions[_sid], "pending_attachment", False), mgr._pending_attachment_ids.discard(_sid), {"ok": True, "attachments": [], "pending_attachment": False})[-1]  # type: ignore[method-assign]
+        mgr.clear_staged_attachments = lambda _sid, **_kwargs: (mgr._staged_attachments.pop(_sid, None), setattr(mgr._sessions[_sid], "pending_attachment", False), mgr._pending_attachment_ids.discard(_sid), {"ok": True, "attachments": [], "pending_attachment": False})[-1]  # type: ignore[method-assign]
 
         with self.assertRaisesRegex(SessionNotReadyError, "pending attachment"):
             SessionManager.enqueue(mgr, sid, "queued prompt")
@@ -486,7 +486,16 @@ class TestServerQueuePersistence(unittest.TestCase):
         ]
         recorded: list[str] = []
         mgr._record_prelog_user_message = lambda _session, text, **_kwargs: recorded.append(text)  # type: ignore[method-assign]
-        mgr.clear_staged_attachments = lambda _sid: (mgr._staged_attachments.pop(_sid, None), setattr(mgr._sessions[_sid], "pending_attachment", False), mgr._pending_attachment_ids.discard(_sid), {"ok": True, "attachments": [], "pending_attachment": False})[-1]  # type: ignore[method-assign]
+        cleanup_calls: list[tuple[str, bool]] = []
+
+        def clear_staged(clear_sid: str, *, delete_files: bool = True) -> dict[str, object]:
+            cleanup_calls.append((clear_sid, delete_files))
+            mgr._staged_attachments.pop(clear_sid, None)
+            mgr._sessions[clear_sid].pending_attachment = False
+            mgr._pending_attachment_ids.discard(clear_sid)
+            return {"ok": True, "attachments": [], "pending_attachment": False}
+
+        mgr.clear_staged_attachments = clear_staged  # type: ignore[method-assign]
         mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
         seen: list[dict[str, object]] = []
 
@@ -500,6 +509,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         committed_text = "Attachment 1: /tmp/uploads/s1/1_one.txt\nAttachment 2: /tmp/uploads/s1/2_two.txt\nuse these"
         self.assertEqual(seen, [{"cmd": "send", "text": committed_text, "sync": True}])
         self.assertEqual(recorded, [committed_text])
+        self.assertEqual(cleanup_calls, [(sid, False)])
         self.assertEqual(mgr._staged_attachments, {})
         self.assertFalse(mgr._sessions[sid].pending_attachment)
         self.assertNotIn(sid, mgr._pending_attachment_ids)
@@ -521,7 +531,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._record_prelog_user_message = fail_prelog  # type: ignore[method-assign]
         cleanup_calls: list[str] = []
 
-        def clear_staged(clear_sid: str) -> dict[str, object]:
+        def clear_staged(clear_sid: str, *, delete_files: bool = True) -> dict[str, object]:
             cleanup_calls.append(clear_sid)
             mgr._staged_attachments.pop(clear_sid, None)
             mgr._sessions[clear_sid].pending_attachment = False
@@ -563,7 +573,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._record_prelog_user_message = lambda _session, text, **_kwargs: recorded.append(text)  # type: ignore[method-assign]
         cleanup_calls: list[str] = []
 
-        def fail_cleanup(cleanup_sid: str) -> dict[str, object]:
+        def fail_cleanup(cleanup_sid: str, *, delete_files: bool = True) -> dict[str, object]:
             cleanup_calls.append(cleanup_sid)
             raise ValueError("staged_path outside session uploads")
 
@@ -609,7 +619,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._record_prelog_user_message = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
         cleanup_calls: list[str] = []
 
-        def fail_cleanup(cleanup_sid: str) -> dict[str, object]:
+        def fail_cleanup(cleanup_sid: str, *, delete_files: bool = True) -> dict[str, object]:
             cleanup_calls.append(cleanup_sid)
             raise OSError("unlink failed")
 
@@ -645,7 +655,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._staged_attachments[sid] = [dict(entry)]
         mgr._record_prelog_user_message = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
 
-        def fail_cleanup(_cleanup_sid: str) -> dict[str, object]:
+        def fail_cleanup(_cleanup_sid: str, *, delete_files: bool = True) -> dict[str, object]:
             raise KeyError("unknown session")
 
         mgr.clear_staged_attachments = fail_cleanup  # type: ignore[method-assign]

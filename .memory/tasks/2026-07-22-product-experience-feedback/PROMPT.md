@@ -52,7 +52,11 @@ For each incoming user comment:
 
 12. **[open] Forbid file upload when agent is busy — wrong design** — Staging a file (writing bytes to disk) should be allowed even when the agent is busy. Only the actual send (PTY injection) should be blocked. The `attachment_staging_ready` check currently includes `direct_send` readiness.
 
-13. **[info] Delete/clear attachment mechanism** — User asked how it works. Answer: staged-reference model. Uploads are stored under app-dir `uploads/<session>/` with mode 0600. Remove clears one entry + deletes its file. Clear removes all. The old pre-refactor PTY-paste model was replaced because it was not reversible. This is the correct design; delete/clear work by unlinking staged files and removing entries from the staged_attachments store.
+13. **[info] Delete/clear attachment mechanism** — Answered: staged-reference model.
+
+14. **[open] Copy chat button never works ("permission issue")** — The Copy Conversation button fails with a clipboard permission error. Likely a browser clipboard API issue (navigator.clipboard requires secure context + user gesture, or the fallback execCommand path is broken). Additionally, the feature is not commonly used and should be moved out of the topbar into the Details view.
+
+15. **[open] Move Copy Conversation into Details view** — Remove copyConversationBtn from topbar topActions. Add a "Copy conversation" action inside the diagnostics/details modal instead.
 
 ## Constraints
 - Do not touch host `codoxear-server.service`, port `8743`, or host `~/.local/share/codoxear`.

@@ -459,7 +459,13 @@ class SessionStore:
         self.staged_attachments.setdefault(session_id, []).append(clean)
         return dict(clean)
 
-    def remove_staged_attachment(self, session_id: str, attachment_id: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    def remove_staged_attachment(
+        self,
+        session_id: str,
+        attachment_id: str,
+        *,
+        delete_files: bool = True,
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         entries = list(self.staged_attachments.get(session_id, []))
         kept: list[dict[str, Any]] = []
         removed: dict[str, Any] | None = None
@@ -471,7 +477,7 @@ class SessionStore:
         if removed is None:
             raise ValueError("unknown attachment")
         uploads_root = self.paths.uploads_root
-        if uploads_root is not None:
+        if delete_files and uploads_root is not None:
             remove_staged_attachment_file(uploads_root, session_id, removed["path"])
         if kept:
             self.staged_attachments[session_id] = kept
@@ -479,10 +485,11 @@ class SessionStore:
             self.staged_attachments.pop(session_id, None)
         return removed, [dict(entry) for entry in kept]
 
-    def clear_staged_attachments(self, session_id: str) -> list[dict[str, Any]]:
+    def clear_staged_attachments(self, session_id: str, *, delete_files: bool = True) -> list[dict[str, Any]]:
+        """Clear attachment metadata, optionally retaining files already sent to the agent."""
         removed = [dict(entry) for entry in self.staged_attachments.get(session_id, [])]
         uploads_root = self.paths.uploads_root
-        if uploads_root is not None:
+        if delete_files and uploads_root is not None:
             for entry in removed:
                 validate_staged_attachment_file_target(uploads_root, session_id, entry["path"])
             for entry in removed:

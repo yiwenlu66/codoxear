@@ -208,7 +208,10 @@
         if (prev.state === "bound") {
           epoch += 1;
           resetPending = true;
-          ignoredKey = prev.key;
+          // A pending snapshot from the server has no proof that the old log is
+          // stale. Only beginRenewal() is a client-confirmed new-transcript
+          // boundary, so only it may retain an ignored prior key.
+          ignoredKey = null;
         } else {
           ignoredKey = prev.ignoredKey || null;
         }

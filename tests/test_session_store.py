@@ -444,6 +444,55 @@ def test_session_store_clear_staged_attachments_rejects_symlink_session_dir_with
         assert store.staged_attachments == {"s1": [entry]}
 
 
+def test_session_store_clear_staged_attachments_can_retain_sent_files() -> None:
+    with TemporaryDirectory() as td:
+        root = Path(td)
+        store = _make_store_with_uploads_root(root)
+        path = root / "uploads" / "s1" / "1234_doc.txt"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"sent attachment")
+        entry = {
+            "id": "a1",
+            "display_name": "doc.txt",
+            "filename": "1234_doc.txt",
+            "path": str(path),
+            "size": len(b"sent attachment"),
+            "created_ts": 1.0,
+        }
+        store.staged_attachments = {"s1": [entry]}
+
+        removed = store.clear_staged_attachments("s1", delete_files=False)
+
+        assert removed == [entry]
+        assert store.staged_attachments == {}
+        assert path.read_bytes() == b"sent attachment"
+
+
+def test_session_store_remove_staged_attachment_deletes_unsent_file_by_default() -> None:
+    with TemporaryDirectory() as td:
+        root = Path(td)
+        store = _make_store_with_uploads_root(root)
+        path = root / "uploads" / "s1" / "1234_doc.txt"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"unsent attachment")
+        entry = {
+            "id": "a1",
+            "display_name": "doc.txt",
+            "filename": "1234_doc.txt",
+            "path": str(path),
+            "size": len(b"unsent attachment"),
+            "created_ts": 1.0,
+        }
+        store.staged_attachments = {"s1": [entry]}
+
+        removed, remaining = store.remove_staged_attachment("s1", "a1")
+
+        assert removed == entry
+        assert remaining == []
+        assert store.staged_attachments == {}
+        assert not path.exists()
+
+
 def test_session_store_clear_staged_attachments_preflights_all_entries_before_unlinking() -> None:
     with TemporaryDirectory() as td:
         root = Path(td)

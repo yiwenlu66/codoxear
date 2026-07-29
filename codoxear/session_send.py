@@ -42,7 +42,7 @@ class SessionSendCoordinator:
     log_size_or_none: Callable[[Path | None], int | None]
     call_confirmed_send: Callable[..., dict[str, Any]]
     staged_attachments_for_session: Callable[[str], list[dict[str, Any]]]
-    clear_staged_attachments: Callable[[str], dict[str, Any]]
+    clear_staged_attachments: Callable[..., dict[str, Any]]
     set_pending_attachment: Callable[[str, bool], None]
     set_commit_unknown_send: Callable[[str, dict[str, Any] | None], None]
     record_prelog_user_message: Callable[[Session, str], None]
@@ -126,7 +126,8 @@ class SessionSendCoordinator:
                     )
             if staged_entries:
                 try:
-                    self.clear_staged_attachments(session_id)
+                    # The confirmed message now owns these paths; session deletion reclaims their files.
+                    self.clear_staged_attachments(session_id, delete_files=False)
                 except _POST_CONFIRMATION_TAIL_ERRORS as exc:
                     response = _add_send_warning(
                         response,

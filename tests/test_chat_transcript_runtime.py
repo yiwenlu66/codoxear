@@ -629,6 +629,29 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["failed"]["state"], "failed")
         self.assertTrue(out["frozen"])
 
+    def test_transient_pending_snapshot_can_rebind_current_log(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const ctx = {{ window: {{}} }};
+            const vm = require("vm");
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            const runtime = ctx.window.CodoxearTranscript.createTranscriptSlotRuntime();
+            runtime.updateSlot("sid", {{ transcript_state: "bound", thread_id: "thread-a", log_path: "/log-a.jsonl" }});
+            const pending = runtime.updateSlot("sid", {{ transcript_state: "pending_bind" }});
+            const rebound = runtime.updateSlot("sid", {{ transcript_state: "bound", thread_id: "thread-a", log_path: "/log-a.jsonl" }});
+            process.stdout.write(JSON.stringify({{ pending, rebound, slot: runtime.getSlot("sid") }}));
+            """
+        )
+        out = _run_node(js)
+
+        self.assertTrue(out["pending"]["resetPending"])
+        self.assertIsNone(out["pending"]["current"]["ignoredKey"])
+        self.assertFalse(out["rebound"]["ignoredStaleBound"])
+        self.assertEqual(out["slot"]["state"], "bound")
+        self.assertEqual(out["slot"]["key"], "thread-a\n/log-a.jsonl")
+
     def test_normalized_transcript_events_filters_dedupes_and_consumes_pending(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
