@@ -594,6 +594,7 @@ def send_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) 
         call_confirmed_send=lambda session_id, **kwargs: manager._control_coordinator_for_manager().call_confirmed_send(session_id, **kwargs),
         staged_attachments_for_session=lambda session_id: manager._session_store_for_manager().staged_attachments_for_session(session_id),
         clear_staged_attachments=manager.clear_staged_attachments,
+        enqueue=manager.enqueue,
         set_pending_attachment=manager._set_pending_attachment,
         set_commit_unknown_send=manager._set_commit_unknown_send,
         record_prelog_user_message=lambda session, text: manager._record_prelog_user_message(session, text, source="send"),

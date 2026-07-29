@@ -52,14 +52,19 @@ def eval_clipboard_helpers() -> dict:
         vm.createContext(ctx);
         vm.runInContext({json.dumps(source)}, ctx);
         const helpers = ctx.window.CodoxearClipboard;
+        let insecureError = null;
         (async () => {{
           await helpers.copyToClipboard("secure text");
           ctx.window.isSecureContext = false;
-          await helpers.copyToClipboard("fallback text");
+          try {{
+            await helpers.copyToClipboard("fallback text");
+          }} catch (e) {{
+            insecureError = e.message || String(e);
+          }}
           process.stdout.write(JSON.stringify({{
             writes,
             events,
-            textarea: textareas[0],
+            insecureError,
             frozen: Object.isFrozen(helpers),
           }}));
         }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
@@ -81,30 +86,15 @@ class TestFrontendClipboardModuleSource(unittest.TestCase):
         helper_source = APP_CLIPBOARD_JS.read_text(encoding="utf-8")
         self.assertIn("const codoxearClipboard = window.CodoxearClipboard;", source)
         self.assertIn('throw new Error("Codoxear clipboard helpers failed to load")', source)
-        self.assertIn("return codoxearClipboard.copyTextViaSelection(text);", source)
-        self.assertIn("return await codoxearClipboard.copyToClipboard(text);", source)
-        self.assertIn('document.execCommand("copy")', helper_source)
+        self.assertIn("return codoxearClipboard.copyToClipboard(text);", source)
         self.assertIn('const nav = typeof navigator !== "undefined" ? navigator : window.navigator;', helper_source)
         self.assertIn("nav.clipboard", helper_source)
 
-    def test_clipboard_module_preserves_secure_and_selection_copy_paths(self) -> None:
+    def test_clipboard_module_uses_secure_clipboard_only(self) -> None:
         result = eval_clipboard_helpers()
         self.assertEqual(result["writes"], ["secure text"])
-        self.assertEqual(
-            result["events"],
-            [
-                ["append", "textarea"],
-                ["textarea-focus", True],
-                ["select"],
-                ["range", 0, 13],
-                ["exec", "copy"],
-                ["remove"],
-                ["active-focus", True],
-            ],
-        )
-        self.assertEqual(result["textarea"]["value"], "fallback text")
-        self.assertEqual(result["textarea"]["attrs"], {"aria-hidden": "true", "readonly": ""})
-        self.assertEqual(result["textarea"]["style"]["position"], "fixed")
+        self.assertEqual(result["events"], [])
+        self.assertIn("Clipboard API unavailable", result.get("insecureError", ""))
         self.assertTrue(result["frozen"])
 
 

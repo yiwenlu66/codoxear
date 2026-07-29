@@ -66,7 +66,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertLess(block.index("ready_for_attachment = manager.attachment_staging_ready(session_id)"), block.index("out_path = deps.stage_uploaded_file"))
         self.assertIn("with input_lock:\n            with self.lock:\n                session = self.sessions().get(session_id)", send_source)
         self.assertIn("if session.pending_attachment and not allow_pending_attachment:\n        raise not_ready_error", input_source)
-        self.assertIn("if not self.send_remote_ready(session_id, allow_pending_attachment=allow_pending_attachment):\n                raise self.not_ready_error(\"session is busy; wait before sending\")", send_source)
+        # send queues when busy instead of raising
         self.assertIn("timeout_s = self.send_commit_timeout_seconds if self.send_commit_timeout_seconds > 0 else None", send_source)
         self.assertIn("response = self.call_confirmed_send", send_source)
         self.assertIn("{\"cmd\": \"send\", \"text\": text, \"sync\": True}", control_runtime_source)

@@ -108,7 +108,7 @@ def eval_app_copy_failure_toasts() -> dict:
 
 def eval_app_clipboard_fallback() -> dict:
     app_source = APP_JS.read_text(encoding="utf-8")
-    start = app_source.index("function copyTextViaSelection(text)")
+    start = app_source.index("const codoxearClipboard = window.CodoxearClipboard;")
     end = app_source.index("const codeBlockCopyRuntime", start)
     clipboard_source = app_source[start:end]
     js = textwrap.dedent(
@@ -118,25 +118,23 @@ def eval_app_clipboard_fallback() -> dict:
           window: {{}},
           fallbackText: "",
           primaryCalls: 0,
+          toast: {{ textContent: "" }},
+          setTimeout: (fn) => fn(),
+          process: {{ stdout: {{ write: (s) => {{ ctx.__output = s; }} }} }},
+          console: {{ error: () => {{}} }},
         }};
         ctx.codoxearClipboard = {{
-          copyTextViaSelection(text) {{ ctx.fallbackText = text; }},
           async copyToClipboard() {{
             ctx.primaryCalls += 1;
             throw new Error("permission denied");
           }},
         }};
+        ctx.window.CodoxearClipboard = ctx.codoxearClipboard;
+        ctx.window.CodoxearCodeCopy = {{ createCodeBlockCopyRuntime: () => ({{}}) }};
         vm.createContext(ctx);
+        ctx.process = process;
         vm.runInContext({json.dumps(clipboard_source + "\nthis.__copyToClipboard = copyToClipboard;")}, ctx);
-        vm.runInContext('__copyToClipboard("conversation text")', ctx).then(() => {{
-          process.stdout.write(JSON.stringify({{
-            primaryCalls: ctx.primaryCalls,
-            fallbackText: ctx.fallbackText,
-          }}));
-        }}).catch((err) => {{
-          console.error(err && err.stack || err);
-          process.exit(1);
-        }});
+        vm.runInContext('__copyToClipboard("conversation text").then(() => {{ process.stdout.write(JSON.stringify({{ primaryCalls: primaryCalls, threw: false }})); }}).catch((err) => {{ process.stdout.write(JSON.stringify({{ primaryCalls: primaryCalls, threw: true, message: err.message || String(err) }})); }})', ctx)
         """
     )
     proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -204,8 +202,6 @@ class TestFrontendConversationCopySource(unittest.TestCase):
         self.assertIn("return codoxearConversationCopy.formatConversationForCopyResult(events);", source)
         self.assertIn("function copyConversationFailureToast(err)", source)
         self.assertIn("setToast(copyConversationFailureToast(err));", source)
-        self.assertIn("catch (clipboardError)", source)
-        self.assertIn("return copyTextViaSelection(text);", source)
         self.assertIn("window.CodoxearConversationCopy = Object.freeze({", helper_source)
         self.assertIn("formatConversationForCopyResult,", helper_source)
         self.assertIn("transcriptExportTooLargeCopyMessage,", helper_source)
@@ -250,10 +246,10 @@ class TestFrontendConversationCopySource(unittest.TestCase):
         self.assertEqual(result["missingLimit"], "")
         self.assertEqual(result["network"], "")
 
-    def test_app_copy_falls_back_to_selection_after_clipboard_permission_denial(self) -> None:
+    def test_app_copy_uses_secure_clipboard_only(self) -> None:
         result = eval_app_clipboard_fallback()
         self.assertEqual(result["primaryCalls"], 1)
-        self.assertEqual(result["fallbackText"], "conversation text")
+        self.assertTrue(result.get("threw"))
 
     def test_app_copy_conversation_success_toast_counts_copied_messages_not_raw_events(self) -> None:
         result = eval_app_copy_conversation_success(

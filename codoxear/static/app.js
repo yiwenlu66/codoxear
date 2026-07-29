@@ -1596,6 +1596,7 @@
   <li><b>Load older messages</b> fetches more scrollback. <b>Jump to latest</b> returns to the newest turn when you are reading history.</li>
   <li>Use <b>/</b> to search the loaded chat; Previous/Next can load an older matching window when the transcript count shows more matches.</li>
   <li>Use <b>Alt+↑</b>/<b>Alt+↓</b> to jump between loaded user messages. Use <b>Alt+Shift+↑</b>/<b>Alt+Shift+↓</b> to move the active per-message copy control across all loaded messages.</li>
+  <li>Use <b>Alt+1</b>–<b>Alt+9</b> to switch sessions by sidebar position. Use <b>Alt+J</b>/<b>Alt+K</b> for next/previous session.</li>
 </ul>
 <div class="muted">Unattended mode</div>
 <ul class="md">
@@ -2150,7 +2151,7 @@
         appConfirmBackdrop.onclick = () => resolveAppConfirm(false);
 
         const codoxearClipboard = window.CodoxearClipboard;
-        if (!codoxearClipboard || typeof codoxearClipboard.copyTextViaSelection !== "function" || typeof codoxearClipboard.copyToClipboard !== "function")
+        if (!codoxearClipboard || typeof codoxearClipboard.copyToClipboard !== "function")
           throw new Error("Codoxear clipboard helpers failed to load");
         const codoxearCodeCopy = window.CodoxearCodeCopy;
         if (!codoxearCodeCopy || typeof codoxearCodeCopy.createCodeBlockCopyRuntime !== "function")
@@ -2164,19 +2165,8 @@
           }, 2200);
         }
 
-        function copyTextViaSelection(text) {
-          return codoxearClipboard.copyTextViaSelection(text);
-        }
-
         async function copyToClipboard(text) {
-          try {
-            return await codoxearClipboard.copyToClipboard(text);
-          } catch (clipboardError) {
-            // Clipboard.writeText() can reject after an async export loses the
-            // browser's transient user activation. The selection path remains
-            // available in insecure contexts and browsers that deny that API.
-            return copyTextViaSelection(text);
-          }
+          return codoxearClipboard.copyToClipboard(text);
         }
 
         const codeBlockCopyRuntime = codoxearCodeCopy.createCodeBlockCopyRuntime({
@@ -6191,13 +6181,6 @@
             const sid = sendChoicePending && sendChoicePending.sid;
             hideSendChoice({ restoreFocus: true });
             if (!raw || !sid) return;
-            // "Send now" while busy: interrupt the current turn first, then send.
-            try {
-              await api(`/api/sessions/${sid}/interrupt`, { method: "POST" });
-            } catch (_) {
-              // Interrupt failure is non-fatal; the send may still succeed if
-              // the turn completes on its own between interrupt and send.
-            }
             const ok = await sendText(raw, { sid });
             if (ok && sid === selected && $("#msg").value === raw) clearComposer();
           };

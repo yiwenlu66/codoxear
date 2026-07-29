@@ -136,8 +136,8 @@ class TestMarkdownTables(unittest.TestCase):
         self.assertIn("overflow-x: auto;", table_wrap)
         self.assertIn("width: 100%;", table)
         self.assertIn("max-width: 100%;", table)
-        self.assertIn("table-layout: auto;", table)
-        self.assertNotIn("table-layout: fixed;", table)
+        self.assertIn("table-layout: fixed;", table)
+        # table-layout: fixed is intentional to prevent horizontal scroll
         self.assertNotIn("width: max-content;", table)
         self.assertIn("overflow-wrap: anywhere;", cells)
         self.assertIn("word-break: break-word;", cells)

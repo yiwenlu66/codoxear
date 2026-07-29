@@ -1843,7 +1843,7 @@ class TestServerQueuePersistence(unittest.TestCase):
             self.assertFalse(SessionManager._queue_remote_ready(mgr, sid, log_path=old_log))
             self.assertEqual(mgr._sessions[sid].log_path, new_log)
 
-    def test_send_rejects_remote_busy_before_socket_send(self) -> None:
+    def test_send_queues_when_busy_before_socket_send(self) -> None:
         sid = "s1"
         mgr = self._mgr()
         with TemporaryDirectory() as td:
@@ -1853,11 +1853,11 @@ class TestServerQueuePersistence(unittest.TestCase):
             mgr._sessions[sid].log_path = log_path
             mgr.get_state = lambda _sid: {"busy": True, "queue_len": 0}  # type: ignore[method-assign]
             mgr.idle_from_log = lambda _sid: False  # type: ignore[method-assign]
-            mgr._record_prelog_user_message = lambda *_args, **_kwargs: self.fail("busy send should fail before local echo record")  # type: ignore[method-assign]
-            mgr._sock_call = lambda *_args, **_kwargs: self.fail("busy send should fail before broker send")  # type: ignore[method-assign]
+            mgr._record_prelog_user_message = lambda *_args, **_kwargs: self.fail("busy send should queue before local echo record")  # type: ignore[method-assign]
+            mgr._sock_call = lambda *_args, **_kwargs: self.fail("busy send should queue before broker send")  # type: ignore[method-assign]
 
-            with self.assertRaisesRegex(SessionNotReadyError, "session is busy"):
-                SessionManager.send(mgr, sid, "stale direct prompt")
+            result = SessionManager.send(mgr, sid, "prompt during busy turn")
+            self.assertTrue(result.get("queued"))
 
     def test_readiness_rejects_malformed_broker_state(self) -> None:
         sid = "s1"
@@ -1925,8 +1925,8 @@ class TestServerQueuePersistence(unittest.TestCase):
 
             mgr.refresh_session_meta = refresh  # type: ignore[method-assign]
 
-            with self.assertRaisesRegex(SessionNotReadyError, "session is busy"):
-                SessionManager.send(mgr, sid, "stale log send")
+            result = SessionManager.send(mgr, sid, "stale log send")
+            self.assertTrue(result.get("queued"))
 
     def test_pending_attachment_stops_queue_promotion(self) -> None:
         sid = "s1"

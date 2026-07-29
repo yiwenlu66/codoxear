@@ -43,6 +43,7 @@ class SessionSendCoordinator:
     call_confirmed_send: Callable[..., dict[str, Any]]
     staged_attachments_for_session: Callable[[str], list[dict[str, Any]]]
     clear_staged_attachments: Callable[..., dict[str, Any]]
+    enqueue: Callable[[str, str], dict[str, Any]]
     set_pending_attachment: Callable[[str, bool], None]
     set_commit_unknown_send: Callable[[str, dict[str, Any] | None], None]
     record_prelog_user_message: Callable[[Session, str], None]
@@ -69,7 +70,8 @@ class SessionSendCoordinator:
                     not_ready_error=self.not_ready_error,
                 )
             if not self.send_remote_ready(session_id, allow_pending_attachment=allow_pending_attachment):
-                raise self.not_ready_error("session is busy; wait before sending")
+                # Session is busy; queue the prompt for later delivery.
+                return self.enqueue(session_id, text)
             with self.lock:
                 current = self.sessions().get(session_id)
                 pre_send_log_path = current.log_path if current is not None else None
