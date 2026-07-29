@@ -137,46 +137,25 @@ def _bootstrap_controller(controller_options_overrides: str = "") -> str:
 
 
 class TestQueueButtonSource(unittest.TestCase):
-    def test_app_js_requires_queue_module_and_delegates(self) -> None:
-        """Integration: app.js fails loud without CodoxearQueue and routes
-        queue authority through queueController, not local queue state."""
-        source = APP_JS.read_text(encoding="utf-8")
-
-        # Fail-loud module dependency, mirroring the other frontend modules.
-        self.assertIn('const codoxearQueue = window.CodoxearQueue;', source)
-        self.assertIn('throw new Error("Codoxear queue controller failed to load")', source)
-        # app.js must not own queue state/decision internals anymore.
-        for removed in [
-            "const queueUpdateTimers = new Map();",
-            "const queueMutationLocks = new Set();",
-            "const queuePendingDeletes = new Set();",
-            "const queueDraftTexts = new Map();",
-            "let queueSubmitBusy = false;",
-            "let queueViewerSid = null;",
-            "let queueViewerItems = [];",
-            "async function deleteQueueItem(sid, itemId) {",
-            "async function moveQueueItem(sid, itemId, toIndex) {",
-            "function scheduleQueueUpdate(sid, itemId, text) {",
-            "function renderQueueList() {",
-            "let queueReturnFocusEl = null;",
-        ]:
-            self.assertNotIn(removed, source, removed)
-        # app.js keeps thin delegating wrappers and the dispose hook.
-        self.assertIn("queueController.syncQueueSubmitState();", source)
-        self.assertIn("return queueController.enqueueComposerText(raw, opts);", source)
-        self.assertIn("return queueController.refreshQueueViewer();", source)
-        self.assertIn("return queueController.showQueueViewer(opts);", source)
-        self.assertIn("return queueController.hideQueueViewer();", source)
-        self.assertIn("if (queueController) queueController.dispose();", source)
-        # The session predicates that feed both queue + send/composer projection
-        # stay in app.js (send/composer projection is not part of this contract).
-        for helper in [
-            "function selectedSessionHasUnknownSend() {",
-            "function selectedSessionIsOrphanRecovery() {",
-            "function selectedSessionHasOrphanQueueRecovery() {",
-            "function selectedSessionLaunchFailed() {",
-        ]:
-            self.assertIn(helper, source)
+    def test_queue_button_sync_restores_enabled_state_after_recovery_review(self) -> None:
+        js = _bootstrap_controller(
+            """
+            const h = globalThis.__harness;
+            h.selectedRef.set("sid-1");
+            h.sessions.set("sid-1", { launch_state: "ready", commit_unknown_send: true, queue_recovery: true, queue_len: 2 });
+            h.controller.syncQueueSubmitState();
+            const recovery = { disabled: h.queueBtn.disabled, title: h.queueBtn.title, aria: h.queueBtn.getAttribute("aria-label") };
+            h.sessions.set("sid-1", { launch_state: "ready" });
+            h.controller.syncQueueSubmitState();
+            globalThis.__result = { recovery, idle: { disabled: h.queueBtn.disabled, title: h.queueBtn.title, aria: h.queueBtn.getAttribute("aria-label") } };
+            """
+        )
+        result = run_node_json(js)
+        self.assertFalse(result["recovery"]["disabled"])
+        self.assertEqual(result["recovery"]["title"], "Review preserved queued recovery items")
+        self.assertEqual(result["recovery"]["aria"], result["recovery"]["title"])
+        self.assertFalse(result["idle"]["disabled"])
+        self.assertEqual(result["idle"]["title"], "Queued messages")
 
     def test_queue_button_disabled_title_aria_projections(self) -> None:
         js = _bootstrap_controller(

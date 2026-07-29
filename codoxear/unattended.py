@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 from typing import Any
+import uuid
 
 from .util import atomic_write_json
 from .util import load_json_file
@@ -54,6 +56,36 @@ class UnattendedSuccessUpdate:
     config: dict[str, Any]
     remaining_injections: int
     enabled: bool
+
+
+def load_unattended_prompt(path: Path) -> str:
+    try:
+        prompt = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return UNATTENDED_PROMPT_PREFIX
+    return prompt if prompt.strip() else UNATTENDED_PROMPT_PREFIX
+
+
+def save_unattended_prompt(path: Path, prompt: str) -> str:
+    if not isinstance(prompt, str):
+        raise ValueError("unattended prompt must be a string")
+    if not prompt.strip():
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        return UNATTENDED_PROMPT_PREFIX
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")
+    try:
+        tmp.write_text(prompt, encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+    return prompt
 
 
 class UnattendedStore:
@@ -215,8 +247,8 @@ def record_unattended_success(
     return UnattendedSuccessUpdate(config=cur, remaining_injections=next_remaining, enabled=bool(cur.get("enabled")))
 
 
-def render_unattended_prompt(request: str | None, *, prompt_prefix: str) -> str:
-    base = prompt_prefix.rstrip()
+def render_unattended_prompt(request: str | None, *, prompt_prefix: str | None = None) -> str:
+    base = (prompt_prefix if isinstance(prompt_prefix, str) and prompt_prefix.strip() else UNATTENDED_PROMPT_PREFIX).rstrip()
     r = (request or "").strip()
     if not r:
         return base + "\n"

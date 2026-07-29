@@ -15,6 +15,9 @@ class VoiceRouteDeps:
     require_auth: Callable[[Any], bool]
     json_response: JsonResponse
     read_json_body: ReadJsonBody
+    load_unattended_prompt: Callable[[], str]
+    save_unattended_prompt: Callable[[str], str]
+    default_unattended_prompt: str
 
 
 def handle_voice_get_route(
@@ -29,6 +32,16 @@ def handle_voice_get_route(
         if not _authorized(handler, deps):
             return True
         deps.json_response(handler, 200, {"ok": True, **voice_push.settings_snapshot(redact_secrets=True)})
+        return True
+
+    if path == "/api/settings/unattended-prompt":
+        if not _authorized(handler, deps):
+            return True
+        deps.json_response(
+            handler,
+            200,
+            {"ok": True, "prompt": deps.load_unattended_prompt(), "default_prompt": deps.default_unattended_prompt},
+        )
         return True
 
     if path == "/api/notifications/subscription":
@@ -105,6 +118,22 @@ def handle_voice_post_route(
             deps.json_response(handler, 400, {"error": str(e)})
             return True
         deps.json_response(handler, 200, {"ok": True, **payload})
+        return True
+
+    if path == "/api/settings/unattended-prompt":
+        if not _authorized(handler, deps):
+            return True
+        obj = deps.read_json_body(handler)
+        prompt = obj.get("prompt")
+        if not isinstance(prompt, str):
+            deps.json_response(handler, 400, {"error": "prompt must be a string"})
+            return True
+        try:
+            saved = deps.save_unattended_prompt(prompt)
+        except ValueError as e:
+            deps.json_response(handler, 400, {"error": str(e)})
+            return True
+        deps.json_response(handler, 200, {"ok": True, "prompt": saved, "default_prompt": deps.default_unattended_prompt})
         return True
 
     if path == "/api/notifications/subscription":

@@ -7,7 +7,7 @@ They now exercise the true seams directly:
 * listing ``busy``/idle/send-boundary resolution -> ``SessionListCoordinator``
   (via ``ListingRuntimeProbes`` injection), matching ``tests/test_session_list.py``.
 * the per-message runtime snapshot -> ``ServerRouteDepsFactory.message_runtime_snapshot``
-  with a fake ``MANAGER`` injected through ``ServerRouteCaps`` (no module-global
+  with a fake server runtime and direct ``ServerConfig`` (no module-global
   patch), backed by the real ``SessionReadinessCoordinator``.
 * ``idle_from_log_path`` cache behavior -> ``SessionLogRuntimeCoordinator``.
 * ``refresh_session_meta`` -> ``SessionRefreshCoordinator``.
@@ -20,17 +20,17 @@ remain. No file under ``codoxear/`` is modified.
 
 from __future__ import annotations
 
-import dataclasses
 import json
 import threading
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from codoxear.broker_turn_state import State as BrokerTurnState
 from codoxear.broker_turn_state import _update_busy_from_pty_text
 from codoxear.rollout_idle import _analyze_log_chunk
-from codoxear.server_route_deps import ServerRouteCaps
+from codoxear.server_config import build_server_config
 from codoxear.server_route_deps import ServerRouteDepsFactory
 from codoxear.session_control import SessionControlCoordinator
 from codoxear.session_list import SessionListCoordinator
@@ -181,15 +181,14 @@ def _list_coordinator(
     )
 
 
-def _caps(manager: object, *, select_runtime_token=select_runtime_token, **overrides) -> ServerRouteCaps:
-    """Build a ServerRouteCaps with all fields defaulted to None except the two
-    that ``message_runtime_snapshot`` reads (``MANAGER`` and
-    ``_select_runtime_token``), plus any explicit overrides."""
-    field_defaults = {f.name: None for f in dataclasses.fields(ServerRouteCaps)}
-    field_defaults["MANAGER"] = manager
-    field_defaults["_select_runtime_token"] = select_runtime_token
-    field_defaults.update(overrides)
-    return ServerRouteCaps(**field_defaults)
+def _snapshot_factory_server(manager: object, *, select_runtime_token=select_runtime_token, **overrides) -> SimpleNamespace:
+    """Build the live runtime surface read by ``message_runtime_snapshot``."""
+    fields = {
+        "MANAGER": manager,
+        "_select_runtime_token": select_runtime_token,
+        **overrides,
+    }
+    return SimpleNamespace(**fields)
 
 
 class _SnapshotManager:
@@ -245,11 +244,14 @@ class _SnapshotManager:
 
 
 def _snapshot(session, state, *, idle=False, queue_len=0, sessions_mapping=None, token_update=None):
-    """Call the real ``message_runtime_snapshot`` with an injected fake manager."""
+    """Call the real ``message_runtime_snapshot`` with an injected fake runtime."""
     manager = _SnapshotManager(
         session=session, state=state, idle=idle, queue_len=queue_len, sessions_mapping=sessions_mapping
     )
-    factory = ServerRouteDepsFactory(caps=_caps(manager))
+    factory = ServerRouteDepsFactory(
+        server=_snapshot_factory_server(manager),
+        config=build_server_config(environ={}),
+    )
     sid = session.session_id if session is not None else "broker-1"
     return factory.message_runtime_snapshot(sid, session, token_update=token_update)
 

@@ -2,7 +2,6 @@
   "use strict";
 
   const SESSION_SIDEBAR_GROUPS = Object.freeze([
-    Object.freeze({ key: "review", label: "Needs review" }),
     Object.freeze({ key: "now", label: "Now" }),
     Object.freeze({ key: "waiting", label: "Waiting" }),
     Object.freeze({ key: "later", label: "Later" }),
@@ -43,12 +42,7 @@
     return !!(s && (s.queue_recovery || s.orphan_recovery) && Number(s.queue_len || 0) > 0);
   }
 
-  function sessionNeedsReview(s) {
-    return !!(s && (sessionLaunchFailed(s) || s.orphan_recovery || s.queue_recovery || s.commit_unknown_send));
-  }
-
   function sessionSidebarGroupKey(s) {
-    if (sessionNeedsReview(s)) return "review";
     if (s && s.blocked) return "waiting";
     if (s && s.snoozed) return "later";
     return "now";
@@ -146,7 +140,6 @@
     sessionHasUnknownSend,
     sessionIsOrphanRecovery,
     sessionHasOrphanQueueRecovery,
-    sessionNeedsReview,
     sessionSidebarGroupKey,
     sidebarSessionEntries,
     sidebarRenderSignature,

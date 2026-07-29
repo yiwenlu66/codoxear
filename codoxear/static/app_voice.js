@@ -89,6 +89,8 @@
     const voiceApiKeyInput = requireNode(options.voiceApiKeyInput, "voiceApiKeyInput");
     const voiceClearApiKeyToggle = requireNode(options.voiceClearApiKeyToggle, "voiceClearApiKeyToggle");
     const narrationSettingToggle = requireNode(options.narrationSettingToggle, "narrationSettingToggle");
+    const unattendedPromptInput = options.unattendedPromptInput ? requireNode(options.unattendedPromptInput, "unattendedPromptInput") : null;
+    const unattendedPromptResetBtn = options.unattendedPromptResetBtn ? requireNode(options.unattendedPromptResetBtn, "unattendedPromptResetBtn") : null;
     const voiceSettingsViewer = requireNode(options.voiceSettingsViewer, "voiceSettingsViewer");
     const voiceSettingsCancelBtn = requireNode(options.voiceSettingsCancelBtn, "voiceSettingsCancelBtn");
     const voiceSettingsSaveBtn = requireNode(options.voiceSettingsSaveBtn, "voiceSettingsSaveBtn");
@@ -164,6 +166,7 @@
       notifications_enabled: false,
       subscriptions: [],
     };
+    let unattendedPrompt = { prompt: "", default_prompt: "" };
     let liveAudioStarted = false;
     let liveAudioErrorState = false;
     let liveAudioSourceUrl = "";
@@ -590,6 +593,30 @@
       }
       if (voiceClearApiKeyToggle) voiceClearApiKeyToggle.checked = false;
       if (narrationSettingToggle) narrationSettingToggle.checked = !!voiceSettings.tts_enabled_for_narration;
+      if (unattendedPromptInput && !unattendedPromptInput.matches(":focus")) {
+        unattendedPromptInput.value = String(unattendedPrompt.prompt || unattendedPrompt.default_prompt || "");
+      }
+    }
+
+    async function loadUnattendedPrompt() {
+      const data = await api("/api/settings/unattended-prompt");
+      if (isAppDisposed()) return data;
+      if (!data || typeof data !== "object" || typeof data.prompt !== "string" || typeof data.default_prompt !== "string") {
+        throw new Error("invalid unattended prompt response");
+      }
+      unattendedPrompt = { prompt: data.prompt, default_prompt: data.default_prompt };
+      if (!isSettingsOpen()) syncVoiceSettingsFormFromState();
+      return data;
+    }
+
+    async function saveUnattendedPrompt() {
+      if (!unattendedPromptInput) return null;
+      const data = await api("/api/settings/unattended-prompt", { method: "POST", body: { prompt: unattendedPromptInput.value } });
+      if (!data || typeof data !== "object" || typeof data.prompt !== "string" || typeof data.default_prompt !== "string") {
+        throw new Error("invalid unattended prompt response");
+      }
+      unattendedPrompt = { prompt: data.prompt, default_prompt: data.default_prompt };
+      return data;
     }
 
     function updateVoiceUi() {
@@ -827,6 +854,12 @@
       settingsOpen = true;
       updateVoiceUi();
       syncVoiceSettingsFormFromState();
+      void loadUnattendedPrompt().then(() => {
+        if (isSettingsOpen()) syncVoiceSettingsFormFromState();
+      }).catch((e) => {
+        console.error("load unattended prompt failed", e);
+        voiceSettingsStatus.textContent = `unattended prompt error: ${e && e.message ? e.message : "unknown error"}`;
+      });
       if (typeof voiceSettingsViewer.showModal === "function" && !voiceSettingsViewer.open) voiceSettingsViewer.showModal();
       afterModalVisibilityChanged();
     }
@@ -929,6 +962,11 @@
       voiceSettings.tts_enabled_for_narration = Boolean(e.target.checked);
       scheduleVoiceSave();
     };
+    if (unattendedPromptResetBtn) {
+      unattendedPromptResetBtn.onclick = () => {
+        if (unattendedPromptInput) unattendedPromptInput.value = unattendedPrompt.default_prompt;
+      };
+    }
     voiceSettingsCloseBtn.onclick = hideVoiceSettingsDialog;
     voiceSettingsCancelBtn.onclick = hideVoiceSettingsDialog;
     voiceSettingsBackdrop.onclick = hideVoiceSettingsDialog;
@@ -940,6 +978,7 @@
       try {
         voiceSettingsStatus.textContent = "Saving...";
         await saveVoiceSettings();
+        await saveUnattendedPrompt();
         await syncNotificationState();
         voiceSettingsStatus.textContent = "";
         hideVoiceSettingsDialog();
@@ -971,6 +1010,7 @@
       announceBtn.onclick = null;
       notificationBtn.onclick = null;
       narrationSettingToggle.onchange = null;
+      if (unattendedPromptResetBtn) unattendedPromptResetBtn.onclick = null;
       voiceSettingsCloseBtn.onclick = null;
       voiceSettingsCancelBtn.onclick = null;
       voiceSettingsBackdrop.onclick = null;

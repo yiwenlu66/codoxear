@@ -32,6 +32,7 @@ SERVER_CONFIG_EXPORT_NAMES = (
     "COMMIT_UNKNOWN_SENDS_PATH",
     "RECENT_CWD_PATH",
     "VOICE_SETTINGS_PATH",
+    "UNATTENDED_PROMPT_PATH",
     "PUSH_SUBSCRIPTIONS_PATH",
     "DELIVERY_LEDGER_PATH",
     "VAPID_PRIVATE_KEY_PATH",
@@ -107,6 +108,7 @@ class ServerConfig:
     COMMIT_UNKNOWN_SENDS_PATH: Path
     RECENT_CWD_PATH: Path
     VOICE_SETTINGS_PATH: Path
+    UNATTENDED_PROMPT_PATH: Path
     PUSH_SUBSCRIPTIONS_PATH: Path
     DELIVERY_LEDGER_PATH: Path
     VAPID_PRIVATE_KEY_PATH: Path
@@ -263,6 +265,7 @@ def build_server_config(
         COMMIT_UNKNOWN_SENDS_PATH=app_dir / "commit_unknown_sends.json",
         RECENT_CWD_PATH=app_dir / "recent_cwds.json",
         VOICE_SETTINGS_PATH=app_dir / "voice_settings.json",
+        UNATTENDED_PROMPT_PATH=app_dir / "unattended_prompt.txt",
         PUSH_SUBSCRIPTIONS_PATH=app_dir / "push_subscriptions.json",
         DELIVERY_LEDGER_PATH=app_dir / "voice_delivery_ledger.json",
         VAPID_PRIVATE_KEY_PATH=app_dir / "webpush_vapid_private.pem",

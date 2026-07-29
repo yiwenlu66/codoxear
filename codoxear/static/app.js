@@ -74,6 +74,12 @@
       const codoxearDom = window.CodoxearDom;
       if (!codoxearDom || typeof codoxearDom.createElement !== "function") throw new Error("Codoxear DOM helpers failed to load");
       const el = (tag, attrs = {}, children = []) => codoxearDom.createElement(tag, attrs, children, defaultButtonTooltip);
+      const codoxearShell = window.CodoxearShell;
+      if (!codoxearShell || typeof codoxearShell.createShellDOM !== "function")
+        throw new Error("Codoxear shell module failed to load");
+      const codoxearComposer = window.CodoxearComposer;
+      if (!codoxearComposer || typeof codoxearComposer.createComposerController !== "function")
+        throw new Error("Codoxear composer module failed to load");
 
       const codoxearPerfHelpers = window.CodoxearPerf;
       if (!codoxearPerfHelpers || typeof codoxearPerfHelpers.pushSample !== "function" || typeof codoxearPerfHelpers.summarize !== "function") throw new Error("Codoxear performance helpers failed to load");
@@ -310,7 +316,6 @@
         typeof codoxearSessionHelpers.sessionHasUnknownSend !== "function" ||
         typeof codoxearSessionHelpers.sessionIsOrphanRecovery !== "function" ||
         typeof codoxearSessionHelpers.sessionHasOrphanQueueRecovery !== "function" ||
-        typeof codoxearSessionHelpers.sessionNeedsReview !== "function" ||
         typeof codoxearSessionHelpers.sessionSidebarGroupKey !== "function" ||
         typeof codoxearSessionHelpers.sidebarSessionEntries !== "function" ||
         typeof codoxearSessionHelpers.sidebarRenderSignature !== "function" ||
@@ -349,10 +354,6 @@
 
       function sessionHasOrphanQueueRecovery(s) {
         return codoxearSessionHelpers.sessionHasOrphanQueueRecovery(s);
-      }
-
-      function sessionNeedsReview(s) {
-        return codoxearSessionHelpers.sessionNeedsReview(s);
       }
 
       function sessionSidebarGroupKey(s) {
@@ -969,7 +970,6 @@
           if (chatSearchController) chatSearchController.dispose();
           if (queueController) queueController.dispose();
           if (diagController) diagController.dispose();
-          if (recoveryController) recoveryController.dispose();
           if (chatNavigationController) chatNavigationController.dispose();
           olderLoadRuntime.invalidate();
           fileViewerController.abortPendingFileOpenTransport();
@@ -1298,6 +1298,16 @@
         root.appendChild(app);
         root.appendChild(unattendedMenu);
         root.appendChild(liveAudio);
+        // Own the mounted primary chrome through the shell contract while the
+        // remaining modal DOM is migrated in subsequent slices.
+        const shellDOM = codoxearShell.createShellDOM({
+          root,
+          el,
+          iconSvg,
+          resolveAppUrl,
+          versionedShellAssetPath,
+          reuseExisting: true,
+        });
 
         const fileBackdrop = el("div", { class: "modalBackdrop", id: "fileBackdrop" });
         const fileCloseBtn = el("button", {
@@ -1772,6 +1782,13 @@
         const voiceApiKeyInput = el("input", { id: "voiceApiKeyInput", type: "password", autocomplete: "off", spellcheck: "false" });
         const voiceClearApiKeyToggle = el("input", { id: "voiceClearApiKeyToggle", type: "checkbox" });
         const narrationSettingToggle = el("input", { id: "narrationSettingToggle", type: "checkbox" });
+        const unattendedPromptInput = el("textarea", {
+          id: "unattendedPromptInput",
+          rows: "14",
+          spellcheck: "true",
+          "aria-describedby": "unattendedPromptHint",
+        });
+        const unattendedPromptResetBtn = el("button", { id: "unattendedPromptResetBtn", class: "text-btn", type: "button", text: "Reset to default" });
         const voiceSettingsViewer = el("dialog", { class: "formViewer formDialog", id: "voiceSettingsViewer", "aria-label": "Settings" }, [
           el("div", { class: "queueHeader" }, [
             el("div", { class: "title", text: "Settings" }),
@@ -1800,6 +1817,12 @@
                 narrationSettingToggle,
                 el("span", { text: "Announce narration messages" }),
               ]),
+            ]),
+            el("div", { class: "field" }, [
+              el("span", { class: "fieldLabel", text: "Unattended mode prompt" }),
+              unattendedPromptInput,
+              el("span", { class: "fieldHint", id: "unattendedPromptHint", text: "Sent when unattended mode resumes an idle session. Reset then Save to restore the built-in constitution." }),
+              unattendedPromptResetBtn,
             ]),
           ]),
           el("div", { class: "formActions" }, [
@@ -2941,7 +2964,6 @@
           isAdjacentAssistantDuplicateEvent,
           markEventSeen,
           markFirstPaint: markClickFirstPaint,
-          renderRecoveryPanel: renderRecoveryPanelIfNeeded,
           restorePendingRows: restorePendingUserRowsForSession,
           resetRecentEvents: () => transcriptEventRuntime.resetRecentEvents(),
           setOlderState,
@@ -3119,23 +3141,6 @@
              if (launchPending) badges.push(el("span", { class: "badge launchPending", text: "starting", title: "Session is still starting" }));
              if (s.unattended_enabled) badges.push(el("span", { class: "badge unattended", text: "unattended", title: "Unattended mode enabled" }));
              if (s.queue_len) badges.push(el("span", { class: "badge queue", text: `queue ${s.queue_len}` }));
-             if (s.queue_recovery) badges.push(el("span", { class: "badge commitUnknown", text: "recovery", title: "Queued item is preserved for recovery; open the queue to resolve it" }));
-             if (s.commit_unknown_send) {
-               const unknownBadge = el("button", {
-                 class: "badge commitUnknown",
-                 type: "button",
-                 text: "unknown",
-                 title: "Previous send status is unknown; check transcript, then click to clear",
-                 "aria-label": "Previous send status is unknown; check transcript, then clear marker",
-               });
-               unknownBadge.onclick = (e) => {
-                 e.preventDefault();
-                 e.stopPropagation();
-                 closeOpenSwipe();
-                 void clearCommitUnknownSend(s.session_id, s.commit_unknown_send_text || "");
-               };
-               badges.push(unknownBadge);
-             }
 
 	             const updatedTs = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts) ? s.updated_ts : s.start_ts;
 	             const ageS = updatedTs ? Math.max(0, Date.now() / 1000 - updatedTs) : 0;
@@ -3526,17 +3531,10 @@
 
         function renderSessionTail(events) {
           renderTranscript(events, { preserveScroll: false });
-          renderRecoveryPanelIfNeeded(selected);
           markClickFirstPaint();
           transcriptScrollRuntime.scheduleScrollToBottom({ double: true });
         }
 
-        // recoverySessionInfo, focusedRecoveryActionDescriptor, focusRecoveryAction,
-        // focusRecoveryFallback, and renderRecoveryPanelIfNeeded plus the
-        // pendingRecoveryFocusDescriptor state live in the CodoxearRecovery
-        // controller (codoxear/static/app_recovery.js). app.js keeps the pure
-        // recovery helpers below and delegates panel rendering through the
-        // recovery controller wrapper.
 
         function recoveryPromptPreview(text, maxLen = 320) {
           return codoxearDisplay.recoveryPromptPreview(text, maxLen);
@@ -3653,16 +3651,6 @@
           }
         }
 
-        // focusedRecoveryActionDescriptor / focusRecoveryAction /
-        // focusRecoveryFallback / recoverySessionInfo plus the recovery-panel
-        // rendering body moved into the CodoxearRecovery controller. app.js
-        // keeps a thin wrapper that delegates panel rendering to the controller
-        // so callers (transcript tail render, pending-slot render, load-error
-        // render, syncRecoveryUiForSession) keep the same name and behavior.
-        function renderRecoveryPanelIfNeeded(sessionId) {
-          return recoveryController.renderRecoveryPanelIfNeeded(sessionId);
-        }
-
         function syncRecoveryUiForSession(sessionId) {
           if (selected !== sessionId) return;
           const s = sessionIndex.get(sessionId) || null;
@@ -3670,7 +3658,6 @@
             const queueLen = Number.isFinite(Number(s.queue_len)) ? Number(s.queue_len) : 0;
             setStatus({ running: currentRunning, queueLen });
           }
-          renderRecoveryPanelIfNeeded(sessionId);
           syncAttachButtonState();
           syncQueueSubmitState();
           syncSendButtonState();
@@ -3684,7 +3671,6 @@
           setOlderState({ hasMore: false, isLoading: false });
           transcriptScrollRuntime.markLiveTail();
           restorePendingUserRowsForSession(sessionId);
-          renderRecoveryPanelIfNeeded(sessionId);
           markClickFirstPaint();
           transcriptScrollRuntime.syncJumpButton();
         }
@@ -3734,7 +3720,6 @@
           chatInner.insertBefore(row, bottomSentinel);
           turnOpen = false;
           setTyping(false);
-          renderRecoveryPanelIfNeeded(sessionId);
           markClickFirstPaint();
           transcriptScrollRuntime.syncJumpButton();
         }
@@ -3814,20 +3799,6 @@
           const fileViewerSyncStarted = Boolean(isFileViewerOpen() && !currentFileDirty());
           if (fileViewerSyncStarted) {
             void ensureCurrentFileViewerSession().catch((e) => console.error("file viewer session sync failed after selection", e));
-          }
-
-          if (s && s.orphan_recovery) {
-            renderPendingTranscriptSlot(sessionId);
-            transcriptSlotRuntime.setActiveFailed();
-            setStatus({ running: false, queueLen: optimisticQueueLen });
-            setContext(null);
-            setTyping(false);
-            syncAttachButtonState();
-            syncQueueSubmitState();
-            syncSendButtonState();
-            updateUnattendedBtnState();
-            if (isMobile()) setSidebarOpen(false);
-            return { events: [], busy: false, queue_len: optimisticQueueLen, token: null, transcript_state: "failed" };
           }
 
           const cachedTail = s ? transcriptSlotRuntime.getTailCache(sessionId) : null;
@@ -4205,6 +4176,8 @@
             voiceApiKeyInput,
             voiceClearApiKeyToggle,
             narrationSettingToggle,
+            unattendedPromptInput,
+            unattendedPromptResetBtn,
             voiceSettingsViewer,
             voiceSettingsCancelBtn: $("#voiceSettingsCancelBtn"),
             voiceSettingsSaveBtn: $("#voiceSettingsSaveBtn"),
@@ -6248,38 +6221,6 @@
           };
         sendChoiceBackdrop.onclick = () => hideSendChoice({ restoreFocus: true });
 
-        // Recovery panel rendering/actions/focus authority. The controller owns
-        // pendingRecoveryFocusDescriptor, recoverySessionInfo, the focus helpers,
-        // and the full Launch failed / Recovery needed panel render. app.js keeps
-        // the pure recovery helpers (recoveryPromptPreview / launchPresetFromSessionInfo /
-        // recoveryDetailsText / redactedLaunchErrorText / dismissFailedLaunchRecord /
-        // clearCommitUnknownSend) and injects them so diagnostics and tests keep a
-        // single source of truth. It is instantiated before the queue controller so
-        // the queue controller's recovery-panel focus fallback routes through it.
-        const recoveryController = (function instantiateRecoveryController() {
-          const codoxearRecovery = window.CodoxearRecovery;
-          if (!codoxearRecovery || typeof codoxearRecovery.createRecoveryPanelController !== "function")
-            throw new Error("Codoxear recovery controller failed to load");
-          return codoxearRecovery.createRecoveryPanelController({
-            chatInner,
-            queueBtn: $("#queueBtn"),
-            typingRowAnchor: () => typingRowRuntime.anchor(),
-            getSessionInfo: (sid) => sessionIndex.get(sid),
-            el,
-            recoveryPromptPreview,
-            redactedLaunchErrorText,
-            recoveryDetailsText,
-            launchPresetFromSessionInfo,
-            showQueueViewer,
-            clearCommitUnknownSend,
-            openNewSessionDialog,
-            dismissFailedLaunchRecord,
-            copyToClipboard,
-            setToast,
-            requestFrame: requestAnimationFrame,
-          });
-        })();
-
         const queueController = (function instantiateQueueController() {
           const codoxearQueue = window.CodoxearQueue;
           if (!codoxearQueue || typeof codoxearQueue.createQueueController !== "function")
@@ -6308,21 +6249,9 @@
             el,
             iconSvg,
             confirmAction: (options) => confirmApp(options),
-            recoveryPanelFocusFallback: () => recoveryController.focusFallbackCandidate(),
+            recoveryPanelFocusFallback: () => null,
           });
         })();
-
-        function selectedSessionHasUnknownSend() {
-          return sessionHasUnknownSend(selected ? sessionIndex.get(selected) : null);
-        }
-
-        function selectedSessionIsOrphanRecovery() {
-          return sessionIsOrphanRecovery(selected ? sessionIndex.get(selected) : null);
-        }
-
-        function selectedSessionHasOrphanQueueRecovery() {
-          return sessionHasOrphanQueueRecovery(selected ? sessionIndex.get(selected) : null);
-        }
 
         function selectedSessionLaunchFailed() {
           return sessionLaunchFailed(selected ? sessionIndex.get(selected) : null);
@@ -6335,45 +6264,27 @@
         function syncSendButtonState() {
           const sendControl = $("#sendBtn");
           if (!sendControl) return;
-          const unknownSend = selectedSessionHasUnknownSend();
-          const orphanRecovery = selectedSessionIsOrphanRecovery();
-          const recoveryQueue = selectedSessionHasOrphanQueueRecovery();
           const launchFailed = selectedSessionLaunchFailed();
-          sendControl.disabled = !!sending || !selected || launchFailed || unknownSend || orphanRecovery || recoveryQueue;
-          const sendLabel = !selected ? "Select a session to send" : launchFailed ? "Failed launch cannot receive messages" : unknownSend ? "Resolve the unknown send before sending" : orphanRecovery ? "Missing session can only be reviewed" : recoveryQueue ? "Review preserved queued recovery items before sending" : "Send";
+          sendControl.disabled = !!sending || !selected || launchFailed;
+          const sendLabel = !selected ? "Select a session to send" : launchFailed ? "Failed launch cannot receive messages" : "Send";
           sendControl.title = sendLabel;
           sendControl.setAttribute("aria-label", sendLabel);
           syncComposerState();
         }
 
-        // Composer input mirrors direct-send sendability: enqueueComposerText is
-        // blocked by the same predicates as sendText, so whenever the send button
-        // is structurally blocked (no selection / failed launch / unknown send /
-        // orphan recovery / queued recovery), typing into the composer cannot
-        // deliver anywhere. Disable the textarea and surface the reason via the
-        // placeholder overlay + aria-label so the input never advertises a normal
-        // send affordance. Transient `sending`/busy states are deliberately NOT
-        // reflected here (the send button covers those); the composer stays
-        // editable during a live turn so the queue/send-choice path is unaffected.
+        // A selected real session remains a normal composer target even when its
+        // prior delivery state is uncertain. The backend remains authoritative
+        // for any rejected send; that failure is shown through the normal toast.
         function syncComposerState() {
           const composerInput = $("#msg");
           if (!composerInput) return;
-          const unknownSend = selectedSessionHasUnknownSend();
-          const orphanRecovery = selectedSessionIsOrphanRecovery();
-          const recoveryQueue = selectedSessionHasOrphanQueueRecovery();
           const launchFailed = selectedSessionLaunchFailed();
-          const composerBlocked = !selected || launchFailed || unknownSend || orphanRecovery || recoveryQueue;
+          const composerBlocked = !selected || launchFailed;
           const composerLabel = !selected
             ? "Select a session to send"
             : launchFailed
               ? "Failed launch cannot receive messages"
-              : unknownSend
-                ? "Resolve the unknown send before sending"
-                : orphanRecovery
-                  ? "Missing session can only be reviewed"
-                  : recoveryQueue
-                    ? "Review preserved queued recovery items before sending"
-                    : "Enter your instructions here";
+              : "Enter your instructions here";
           composerInput.disabled = composerBlocked;
           composerInput.setAttribute("aria-label", composerLabel);
           composerInput.title = composerBlocked ? composerLabel : "";
@@ -6478,10 +6389,6 @@
             const selectedInfo = sessionIndex.get(selected);
             if (sessionLaunchFailed(selectedInfo)) {
               setToast("failed session cannot receive messages");
-              return;
-            }
-            if (selectedInfo && (selectedInfo.queue_recovery || selectedInfo.orphan_recovery) && Number(selectedInfo.queue_len || 0) > 0) {
-              showQueueViewer({ opener: e.currentTarget });
               return;
             }
             const raw = $("#msg") ? $("#msg").value : "";
@@ -7275,19 +7182,6 @@
           const sessionInfo = sessionIndex.get(sessionId) || null;
           if (sessionInfo && sessionLaunchFailed(sessionInfo)) {
             setToast("failed launch cannot receive messages");
-            return false;
-          }
-          if (sessionInfo && sessionInfo.orphan_recovery) {
-            setToast("missing session can only be reviewed");
-            return false;
-          }
-          if (sessionInfo && sessionInfo.queue_recovery) {
-            setToast("review preserved queue before sending");
-            return false;
-          }
-          if (sessionInfo && sessionInfo.commit_unknown_send) {
-            setToast("resolve the unknown send before sending again");
-            void clearCommitUnknownSend(sessionId, sessionInfo.commit_unknown_send_text || "");
             return false;
           }
           const localAttachmentCount = renderHere ? stagedAttachments.length : normalizedStagedAttachments(sessionInfo && sessionInfo.staged_attachments).length;

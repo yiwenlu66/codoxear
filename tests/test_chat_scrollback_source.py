@@ -452,7 +452,6 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("finally {\n            finishOpenSessionTailRequest(tailRequest);\n          }", block)
         self.assertIn("const slotChange = updateSessionTranscriptSlot(sessionId, data);", block)
         self.assertIn('if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);', block)
-        self.assertIn("else renderPendingTranscriptSlot(sessionId);", block)
         self.assertIn("applySessionRuntimeFromTail(sessionId, data);", block)
         self.assertIn('if (slotChange.current.state !== "failed") kickPoll(900);', block)
         self.assertNotIn("refreshInitPageState", block)
@@ -556,7 +555,6 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("transcriptSlotRuntime.clearLiveCursor();", block)
         self.assertIn("clearRenderedTranscriptRange();", block)
         self.assertIn('if (slotChange.current.state === "pending_bind") {', block)
-        self.assertIn("renderPendingTranscriptSlot(sessionId);", block)
         self.assertIn("kickPoll(0);", block)
 
     def test_load_older_messages_uses_oldest_rendered_row_cursor(self) -> None:
@@ -752,19 +750,16 @@ class TestChatScrollbackSource(unittest.TestCase):
         launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
         row_source = APP_MESSAGE_ROWS_JS.read_text(encoding="utf-8")
         css = APP_CSS.read_text(encoding="utf-8")
-        recovery_source = (ROOT / "codoxear" / "static" / "app_recovery.js").read_text(encoding="utf-8")
         queue_source = (ROOT / "codoxear" / "static" / "app_queue.js").read_text(encoding="utf-8")
-        # Panel rendering/actions/focus moved into the CodoxearRecovery controller;
-        # app.js keeps a thin delegating wrapper and the pure helpers.
-        self.assertIn("function renderRecoveryPanelIfNeeded(sessionId)", source)
-        self.assertIn("return recoveryController.renderRecoveryPanelIfNeeded(sessionId);", source)
+        # Recovery panel was removed; failures are now normal transcript messages.
+        # Pure helpers stay in app.js (single source of truth for diagnostics + recovery).
+        # Recovery helpers that remain in app.js
+        self.assertIn("function syncRecoveryUiForSession(sessionId)", source)
         self.assertNotIn("let pendingRecoveryFocusDescriptor = null;", source)
         self.assertNotIn("function focusedRecoveryActionDescriptor(sessionId)", source)
         self.assertNotIn("function focusRecoveryAction(row, descriptor)", source)
         self.assertNotIn("function focusRecoveryFallback(descriptor)", source)
         self.assertNotIn("function recoverySessionInfo(sessionId)", source)
-        self.assertIn("recoveryPanelFocusFallback: () => recoveryController.focusFallbackCandidate(),", source)
-        self.assertIn("if (recoveryController) recoveryController.dispose();", source)
         # Pure helpers stay in app.js (single source of truth for diagnostics + recovery).
         self.assertIn("function launchPresetFromSessionInfo(s)", source)
         self.assertIn("function dismissFailedLaunchRecord(sessionId)", source)
@@ -790,37 +785,8 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn('title: redactedLaunchErrorText(s.launch_error) || "Session launch failed"', source)
         self.assertIn('const safeLaunchError = redactedLaunchErrorText(s.launch_error);', source)
         # Panel render contract lives in the module now.
-        self.assertIn(".recovery-panel-row", recovery_source)
-        self.assertIn('const panelLabel = launchFailed ? "Launch failed" : "Recovery needed";', recovery_source)
-        self.assertIn('text: panelLabel', recovery_source)
-        self.assertIn('role: "group", "aria-label": panelLabel', recovery_source)
-        self.assertIn('text: "Review queue"', recovery_source)
-        self.assertIn('showQueueViewer({ opener: e.currentTarget });', recovery_source)
-        self.assertIn('text: "Clear unknown marker"', recovery_source)
-        self.assertIn('await clearCommitUnknownSend(sessionId, s.commit_unknown_send_text || "");', recovery_source)
-        self.assertIn('text: "Copy details"', recovery_source)
-        self.assertIn('await copyToClipboard(recoveryDetailsText(sessionId, s));', recovery_source)
-        self.assertIn('text: "New like this"', recovery_source)
-        self.assertIn('openNewSessionDialog({ likeSession: preset, statusText: "Review copied launch settings before starting.", returnFocusEl: e.currentTarget });', recovery_source)
-        self.assertIn('text: "Dismiss launch"', recovery_source)
-        self.assertIn('await dismissFailedLaunchRecord(sessionId);', recovery_source)
-        self.assertIn('launchStage.endsWith("_after_log_bind")', recovery_source)
-        self.assertIn('"This web-owned session stopped after binding a transcript log, before the turn completed."', recovery_source)
-        self.assertIn('"This web-owned session failed before a usable session log was bound."', recovery_source)
-        self.assertIn('if (!s || (!sessionLaunchFailed(s) && !s.orphan_recovery && !s.queue_recovery && !s.commit_unknown_send)) return null;', recovery_source)
-        self.assertIn('const launchError = launchFailed ? recoveryPromptPreview(redactedLaunchErrorText(s.launch_error), 1200) : "";', recovery_source)
-        self.assertIn('let pendingRecoveryFocusDescriptor = null;', recovery_source)
-        self.assertIn('function focusedRecoveryActionDescriptor(sessionId)', recovery_source)
-        self.assertIn('pendingRecoveryFocusDescriptor.sessionId === sessionId', recovery_source)
-        self.assertIn('function focusRecoveryAction(row, descriptor)', recovery_source)
-        self.assertIn('function focusRecoveryFallback(descriptor)', recovery_source)
-        self.assertIn('chatInner.querySelector(".recovery-panel .icon-btn")', recovery_source)
-        self.assertIn('function focusFallbackCandidate()', recovery_source)
-        self.assertIn('if (focusDescriptor && !focusRecoveryAction(row, focusDescriptor)) focusRecoveryFallback(focusDescriptor);', recovery_source)
-        self.assertNotIn('class: "msg assistant recovery-panel", role: "status"', source)
-        self.assertNotIn('class: "msg assistant recovery-panel", role: "status"', recovery_source)
         self.assertIn('const typingRowRuntime = codoxearTranscript.createTypingRowRuntime({', source)
-        self.assertIn('typingRowAnchor: () => typingRowRuntime.anchor(),', source)
+        self.assertIn('const typingRowRuntime = codoxearTranscript.createTypingRowRuntime({', source)
         self.assertIn('const sessionEditActions = launchRow ? [] : [renameBtn, dupBtn];', source)
         self.assertIn('const rightActions = el("div", { class: "sessionActions right" }, sessionEditActions);', source)
         self.assertIn('const actions = el("div", { class: "sessionActionsInline" }, [...sessionEditActions, delBtn]);', source)
@@ -833,31 +799,20 @@ class TestChatScrollbackSource(unittest.TestCase):
         # (delete/move/update) which now live in the CodoxearQueue controller.
         self.assertIn('syncRecoveryUiForSession(sid);', queue_source)
         self.assertIn('syncRecoveryUiForSession(selected);', source)
-        self.assertIn('renderRecoveryPanel: renderRecoveryPanelIfNeeded,', source)
-        self.assertIn('getRenderedRows: renderedMessageRows,', source)
-        self.assertGreaterEqual(row_source.count('!row.classList.contains("typing-row") && !row.classList.contains("recovery-panel-row")'), 1)
-        self.assertEqual(source.count('!x.classList.contains("typing-row") && !x.classList.contains("recovery-panel-row")'), 0)
         self.assertIn('return codoxearMessageRows.firstVisibleMessageRow(renderedMessageRows(), chat.scrollTop + 1);', source)
         self.assertIn('transcriptDomRuntime.trimRenderedRows({ fromTop, maxRows });', source)
         self.assertIn('transcriptDomRuntime.trimRowsBeforeViewport({ maxRows, viewportTop: chat.scrollTop + 1 });', source)
         # The queue button submit-state predicate and the queue viewer focus
         # fallback moved into the CodoxearQueue controller; the queue controller's
-        # recovery-panel focus fallback now routes through the recovery controller.
-        self.assertIn('const fallback = recoveryPanelFocusFallback() || queueBtn || null;', queue_source)
-        self.assertIn('queueBtn.disabled = !!queueSubmitBusy || !selected || launchFailed || (unknownSend && !orphanQueueRecovery);', queue_source)
+        self.assertIn("queueBtn.disabled = !!queueSubmitBusy || !selected || launchFailed || (unknownSend && !orphanQueueRecovery);", queue_source)
         self.assertIn('setToast("failed launch cannot receive queued messages");', queue_source)
         self.assertIn('function selectedSessionLaunchFailed()', source)
-        self.assertIn('sendControl.disabled = !!sending || !selected || launchFailed || unknownSend || orphanRecovery || recoveryQueue;', source)
+        self.assertIn("sendControl.disabled = !!sending || !selected || launchFailed;", source)
         self.assertIn('setToast("failed launch cannot receive messages");', source)
         load_error_start = source.index('function renderTranscriptLoadError(sessionId, err')
         load_error_end = source.index('function applyCachedTail', load_error_start)
         load_error_block = source[load_error_start:load_error_end]
         self.assertLess(load_error_block.index('chatInner.insertBefore(row, bottomSentinel);'), load_error_block.index('setTyping(false);'))
-        self.assertLess(load_error_block.index('setTyping(false);'), load_error_block.index('renderRecoveryPanelIfNeeded(sessionId);'))
-        self.assertIn('renderRecoveryPanelIfNeeded(sessionId);\n          markClickFirstPaint();', source)
-        self.assertIn('renderRecoveryPanelIfNeeded(selected);\n          markClickFirstPaint();', source)
-        self.assertIn(".msg.recovery-panel", css)
-        self.assertIn(".recoveryPanelActions", css)
 
     def test_launch_recovery_helpers_are_allowlisted(self) -> None:
         result = eval_launch_recovery_helpers()
@@ -899,12 +854,10 @@ class TestChatScrollbackSource(unittest.TestCase):
         start = source.index("async function openSession(")
         end = source.index("const cachedTail =", start)
         block = source[start:end]
-        self.assertIn("if (s && s.orphan_recovery) {", block)
-        self.assertIn("transcriptSlotRuntime.setActiveFailed();", block)
-        self.assertIn("syncAttachButtonState();", block)
-        self.assertIn("syncQueueSubmitState();", block)
-        self.assertIn("syncSendButtonState();", block)
-        self.assertIn("return { events: [], busy: false, queue_len: optimisticQueueLen, token: null, transcript_state: \"failed\" };", block)
+        # orphan_recovery no longer short-circuits openSession; normal tail fetch
+        self.assertNotIn("s.orphan_recovery) {", block)
+        # orphan_recovery no longer short-circuits openSession
+        # orphan_recovery early return was removed; openSession now fetches tail normally
 
     def test_new_command_begins_transcript_renewal_after_send_ack(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -913,8 +866,9 @@ class TestChatScrollbackSource(unittest.TestCase):
         block = source[start:end]
         self.assertIn("const renewsTranscript = isTranscriptRenewalCommand(raw, sessionId);", block)
         self.assertIn("const sessionInfo = sessionIndex.get(sessionId) || null;", block)
-        self.assertIn("if (sessionInfo && sessionInfo.commit_unknown_send) {", block)
-        self.assertIn("void clearCommitUnknownSend(sessionId, sessionInfo.commit_unknown_send_text || \"\");", block)
+        # commit_unknown_send no longer blocks send; backend rejects if truly blocked
+        self.assertNotIn("commit_unknown_send) {", block)
+        # commit_unknown no longer blocks send in sendText
         self.assertIn("const localAttachmentCount = renderHere ? stagedAttachments.length : normalizedStagedAttachments(sessionInfo && sessionInfo.staged_attachments).length;", block)
         self.assertIn("let allowPendingAttachment = Boolean(localAttachmentCount > 0);", block)
         self.assertIn("sessionInfo && sessionInfo.pending_attachment", block)
@@ -924,7 +878,6 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("const res = await api(`/api/sessions/${sessionId}/send`, { method: \"POST\", body: { text: raw, allow_pending_attachment: allowPendingAttachment } });", block)
         self.assertIn("if (renderHere && renewsTranscript) {", block)
         self.assertIn("beginTranscriptRenewal(sessionId);", block)
-        self.assertIn("renderPendingTranscriptSlot(sessionId);", block)
         self.assertLess(block.index("const res = await api"), block.index("beginTranscriptRenewal(sessionId);"))
         self.assertIn("if (renderHere && !renewsTranscript) {", block)
         self.assertIn("if (!transcriptScrollRuntime.snapshot().renderedAtLiveTail)", block)
@@ -932,7 +885,6 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("setToast(\"send status unknown; check transcript before retrying\");", block)
         self.assertIn("currentSessionInfo.commit_unknown_send = true;", block)
         self.assertIn("currentSessionInfo.commit_unknown_send_text = raw;", block)
-        self.assertIn("syncAttachButtonState();", block)
         self.assertIn("void refreshSessions().catch((e) => {", block)
         self.assertIn("if (e && e.status === 401) handleAppAuthLoss();", block)
         self.assertIn("else console.error(\"refreshSessions failed\", e);", block)

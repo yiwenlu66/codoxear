@@ -92,16 +92,24 @@ class _FakeVoicePush:
         return {"active_listener_count": 1 if enabled else 0}
 
 
-def _deps(*, body: dict[str, object] | None = None, auth: bool = True):
+def _deps(*, body: dict[str, object] | None = None, auth: bool = True, prompt: str = "Default prompt"):
     responses: list[tuple[int, dict[str, object]]] = []
+    prompt_state = {"value": prompt}
 
     def json_response(_handler, status: int, payload: dict[str, object]) -> None:
         responses.append((status, payload))
+
+    def save_unattended_prompt(value: str) -> str:
+        prompt_state["value"] = value
+        return value
 
     deps = VoiceRouteDeps(
         require_auth=lambda _handler: auth,
         json_response=json_response,
         read_json_body=lambda _handler, **_kwargs: dict(body or {}),
+        load_unattended_prompt=lambda: prompt_state["value"],
+        save_unattended_prompt=save_unattended_prompt,
+        default_unattended_prompt="Default prompt",
     )
     return deps, responses
 
@@ -127,6 +135,23 @@ def test_voice_get_settings_feed_and_message_status_mapping() -> None:
         (400, {"error": "message_id required"}),
         (400, {"error": "invalid since"}),
     ]
+
+
+def test_unattended_prompt_get_post_and_validation_mapping() -> None:
+    voice = _FakeVoicePush()
+    handler = _FakeHandler()
+    deps, responses = _deps(prompt="Custom constitution")
+
+    assert handle_voice_get_route(handler, path="/api/settings/unattended-prompt", query="", voice_push=voice, deps=deps) is True
+    assert responses == [(200, {"ok": True, "prompt": "Custom constitution", "default_prompt": "Default prompt"})]
+
+    deps, responses = _deps(body={"prompt": "Updated constitution"})
+    assert handle_voice_post_route(handler, path="/api/settings/unattended-prompt", voice_push=voice, deps=deps) is True
+    assert responses == [(200, {"ok": True, "prompt": "Updated constitution", "default_prompt": "Default prompt"})]
+
+    deps, responses = _deps(body={"prompt": 7})
+    assert handle_voice_post_route(handler, path="/api/settings/unattended-prompt", voice_push=voice, deps=deps) is True
+    assert responses == [(400, {"error": "prompt must be a string"})]
 
 
 def test_voice_get_audio_playlist_and_segments_use_no_store_headers() -> None:

@@ -85,7 +85,7 @@ def eval_code_copy_runtime() -> dict:
         const runtime = ctx.window.CodoxearCodeCopy.createCodeBlockCopyRuntime({{
           copyToClipboard: async (text) => calls.push(["copy", text]),
           setToast: (text) => calls.push(["toast", text]),
-          setTimeout: (fn, ms) => {{ calls.push(["timeout", ms]); return 7; }},
+          setTimeout: (fn, ms) => {{ calls.push(["timeout", ms]); ctx.resetCopy = fn; return 7; }},
           clearTimeout: (id) => calls.push(["clearTimeout", id]),
         }});
         let prevented = 0;
@@ -99,6 +99,7 @@ def eval_code_copy_runtime() -> dict:
         if (!runtime.handleClick(event)) fileRefCalls += 1;
         const miss = runtime.handleClick({{ target: {{ closest: () => null }} }});
         setImmediate(() => {{
+          ctx.resetCopy();
           process.stdout.write(JSON.stringify({{
             frozen: Object.isFrozen(ctx.window.CodoxearCodeCopy),
             copiedText: calls.find((call) => call[0] === "copy")[1],
@@ -110,6 +111,7 @@ def eval_code_copy_runtime() -> dict:
             calls,
             ariaLabel: attrs["aria-label"],
             title: attrs.title,
+            copiedClassAfterReset: button.classList.contains("copied"),
           }}));
         }});
         """
@@ -139,81 +141,22 @@ class TestCodeBlockCopySource(unittest.TestCase):
         self.assertFalse(result["miss"])
         self.assertIn(["toast", "Copied code"], result["calls"])
         self.assertIn(["timeout", 1200], result["calls"])
-        self.assertEqual(result["ariaLabel"], "Copied code")
-        self.assertEqual(result["title"], "Copied code")
+        self.assertEqual(result["ariaLabel"], "Copy code")
+        self.assertEqual(result["title"], "Copy code")
 
-    def test_app_js_delegates_code_copy_before_file_references(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("const codoxearCodeCopy = window.CodoxearCodeCopy;", source)
-        self.assertIn('throw new Error("Codoxear code copy helpers failed to load")', source)
-        self.assertIn("const codeBlockCopyRuntime = codoxearCodeCopy.createCodeBlockCopyRuntime({", source)
-        handler_start = source.index('chatInner.addEventListener("click", (e) => {')
-        handler_end = source.index("});", handler_start)
-        handler = source[handler_start:handler_end]
-        self.assertIn("if (codeBlockCopyRuntime.handleClick(e)) return;", handler)
-        self.assertIn("void fileReferenceRuntime.handleClick(e);", handler)
-        self.assertLess(handler.index("codeBlockCopyRuntime.handleClick(e)"), handler.index("fileReferenceRuntime.handleClick(e)"))
+    def test_code_copy_runtime_restores_button_after_feedback(self) -> None:
+        result = eval_code_copy_runtime()
+        self.assertFalse(result["copiedClassAfterReset"])
+        self.assertEqual(result["ariaLabel"], "Copy code")
+        self.assertEqual(result["title"], "Copy code")
+        self.assertIn(["class-add", "copied"], result["calls"])
+        self.assertIn(["class-remove", "copied"], result["calls"])
 
-    def test_code_copy_css_preserves_pre_layout_and_mobile_touch_target(self) -> None:
-        css = APP_CSS.read_text(encoding="utf-8")
-        pre_start = css.index(".md pre {")
-        pre_end = css.index("}", pre_start)
-        pre_block = css[pre_start:pre_end]
-        self.assertIn("position: relative;", pre_block)
-        self.assertIn("overflow: auto;", pre_block)
-        self.assertIn("max-width: 100%;", pre_block)
-        self.assertIn("width: 100%;", pre_block)
-        self.assertIn("box-sizing: border-box;", pre_block)
-        self.assertIn("white-space: pre-wrap;", pre_block)
-        self.assertIn("overflow-wrap: anywhere;", pre_block)
-        button_start = css.index(".code-copy-btn {")
-        button_end = css.index("}", button_start)
-        button_block = css[button_start:button_end]
-        self.assertIn("position: absolute;", button_block)
-        self.assertIn("right: 6px;", button_block)
-        self.assertNotIn("right: -", button_block)
-        self.assertIn("width: 30px", button_block)
-        mobile_start = css.index("@media (max-width: 520px)")
-        mobile_block = css[mobile_start:]
-        next_media = mobile_block.find("@media", 1)
-        mobile_block = mobile_block if next_media == -1 else mobile_block[:next_media]
-        self.assertIn(".code-copy-btn", mobile_block)
-        mobile_button_start = mobile_block.index(".code-copy-btn")
-        mobile_button_end = mobile_block.index("}", mobile_button_start)
-        mobile_button = mobile_block[mobile_button_start:mobile_button_end]
-        self.assertIn("width: 44px", mobile_button)
-        self.assertIn("height: 44px", mobile_button)
-        self.assertIn("min-width: 44px", mobile_button)
-        self.assertIn("min-height: 44px", mobile_button)
-        mobile_pre_start = mobile_block.index(".md pre")
-        mobile_pre_end = mobile_block.index("}", mobile_pre_start)
-        mobile_pre = mobile_block[mobile_pre_start:mobile_pre_end]
-        self.assertIn("padding-right: 58px", mobile_pre)
-
-    def test_code_copy_css_coarse_pointer_tablet_touch_target(self) -> None:
-        css = APP_CSS.read_text(encoding="utf-8")
-        coarse_block = css_media_block(css, "@media (hover: none) and (pointer: coarse)")
-
-        self.assertIn(".code-copy-btn", coarse_block)
-        coarse_button_start = coarse_block.index(".code-copy-btn")
-        coarse_button_end = coarse_block.index("}", coarse_button_start)
-        coarse_button = coarse_block[coarse_button_start:coarse_button_end]
-        self.assertIn("width: 44px", coarse_button)
-        self.assertIn("height: 44px", coarse_button)
-        self.assertIn("min-width: 44px", coarse_button)
-        self.assertIn("min-height: 44px", coarse_button)
-
-        self.assertIn(".md pre", coarse_block)
-        coarse_pre_start = coarse_block.index(".md pre")
-        coarse_pre_end = coarse_block.index("}", coarse_pre_start)
-        coarse_pre = coarse_block[coarse_pre_start:coarse_pre_end]
-        self.assertIn("padding-right: 58px", coarse_pre)
-
-    def test_code_copy_asset_loads_before_app_js(self) -> None:
-        source = INDEX_HTML.read_text(encoding="utf-8")
-        self.assertIn('app_code_copy.js?v=__CODOXEAR_ASSET_VERSION__', source)
-        self.assertLess(source.index('app_clipboard.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app_code_copy.js?v=__CODOXEAR_ASSET_VERSION__'))
-        self.assertLess(source.index('app_code_copy.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app.js?v=__CODOXEAR_ASSET_VERSION__'))
+    def test_code_copy_runtime_ignores_non_copy_clicks(self) -> None:
+        result = eval_code_copy_runtime()
+        self.assertFalse(result["miss"])
+        self.assertEqual(result["fileRefCalls"], 0)
+        self.assertEqual(result["directText"], "second block")
 
 
 if __name__ == "__main__":

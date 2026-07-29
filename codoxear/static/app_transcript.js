@@ -374,7 +374,6 @@
     const isAdjacentAssistantDuplicateEvent = requireFunction(options.isAdjacentAssistantDuplicateEvent, "isAdjacentAssistantDuplicateEvent");
     const markEventSeen = requireFunction(options.markEventSeen, "markEventSeen");
     const markFirstPaint = requireFunction(options.markFirstPaint, "markFirstPaint");
-    const renderRecoveryPanel = requireFunction(options.renderRecoveryPanel, "renderRecoveryPanel");
     const restorePendingRows = requireFunction(options.restorePendingRows, "restorePendingRows");
     const resetRecentEvents = requireFunction(options.resetRecentEvents, "resetRecentEvents");
     const setOlderState = requireFunction(options.setOlderState, "setOlderState");
@@ -428,7 +427,6 @@
       root.insertBefore(row, typingRowRuntime.anchor());
       domRuntime.trimRenderedRows({ fromTop: stick });
       domRuntime.rebuildDecorations({ preserveScroll: false });
-      renderRecoveryPanel(getSelectedSessionId());
       if (!ev.pending) markFirstPaint();
       markEventSeen(ev);
       if (stick) scrollRuntime.scheduleScrollToBottom();

@@ -101,7 +101,6 @@ class TestFrontendSessionHelpersSource(unittest.TestCase):
             "sessionHasUnknownSend",
             "sessionIsOrphanRecovery",
             "sessionHasOrphanQueueRecovery",
-            "sessionNeedsReview",
             "sessionSidebarGroupKey",
             "sidebarSessionEntries",
             "sidebarRenderSignature",
@@ -118,12 +117,11 @@ class TestFrontendSessionHelpersSource(unittest.TestCase):
         self.assertIn("return codoxearSessionHelpers.sessionHasUnknownSend(s);", source)
         self.assertIn("return codoxearSessionHelpers.sessionIsOrphanRecovery(s);", source)
         self.assertIn("return codoxearSessionHelpers.sessionHasOrphanQueueRecovery(s);", source)
-        self.assertIn("return sessionHasUnknownSend(selected ? sessionIndex.get(selected) : null);", source)
-        self.assertIn("return sessionIsOrphanRecovery(selected ? sessionIndex.get(selected) : null);", source)
-        self.assertIn("return sessionHasOrphanQueueRecovery(selected ? sessionIndex.get(selected) : null);", source)
         self.assertIn("function sessionHasUnknownSend(s) {", helper_source)
         self.assertIn("function sessionIsOrphanRecovery(s) {", helper_source)
         self.assertIn("function sessionHasOrphanQueueRecovery(s) {", helper_source)
+        self.assertNotIn("sessionNeedsReview", helper_source)
+        self.assertNotIn("Needs review", helper_source)
         self.assertNotIn("redactedLaunchErrorText", helper_source)
         self.assertNotIn("sessionLaunchLabel", helper_source)
         self.assertNotIn("function sidebarSessionEntries(sessions) {\n        const buckets", source)
@@ -134,8 +132,8 @@ class TestFrontendSessionHelpersSource(unittest.TestCase):
 
     def test_session_helpers_preserve_grouping_and_launch_contracts(self) -> None:
         result = eval_session_helpers()
-        self.assertEqual([group["key"] for group in result["groups"]], ["review", "now", "waiting", "later"])
-        self.assertEqual([group["label"] for group in result["groups"]], ["Needs review", "Now", "Waiting", "Later"])
+        self.assertEqual([group["key"] for group in result["groups"]], ["now", "waiting", "later"])
+        self.assertEqual([group["label"] for group in result["groups"]], ["Now", "Waiting", "Later"])
         self.assertEqual(result["failedKind"], "failed")
         self.assertEqual(result["failedIcon"], "info")
         self.assertFalse(result["pendingSelectable"])
@@ -155,11 +153,11 @@ class TestFrontendSessionHelpersSource(unittest.TestCase):
         self.assertTrue(result["orphanQueueFromOrphanRecovery"])
         self.assertFalse(result["orphanQueueZeroLen"])
         self.assertFalse(result["orphanQueuePlain"])
-        self.assertEqual(result["reviewKey"], "review")
+        self.assertEqual(result["reviewKey"], "now")
         self.assertEqual(result["waitingKey"], "waiting")
         self.assertEqual(result["laterKey"], "later")
         self.assertEqual(result["nowKey"], "now")
-        self.assertEqual([entry["type"] for entry in result["entries"]], ["header", "session", "header", "session", "header", "session", "header", "session"])
+        self.assertEqual([entry["type"] for entry in result["entries"]], ["header", "session", "session", "header", "session", "header", "session"])
         self.assertIn('"selectedId":"now"', result["signature"])
         self.assertIn('"swipeActions":true', result["signature"])
         self.assertTrue(result["fast"])

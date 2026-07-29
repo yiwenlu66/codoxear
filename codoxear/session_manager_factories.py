@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from .queue_sweep import QueueSweepCoordinator
 from .session_discovery import DiscoveryDeps
@@ -92,7 +92,7 @@ class SessionManagerFactoryCaps:
     proc_find_open_rollout_log: Any
     proc_root: Any
     process_group_alive: Any
-    prompt_prefix: str
+    prompt_prefix: str | Callable[[], str]
     provider_choice_for_settings: Any
     python_executable: str
     queue_idle_grace_seconds: float
@@ -178,7 +178,7 @@ def session_manager_factory_caps(server: Any) -> SessionManagerFactoryCaps:
         proc_find_open_rollout_log=server._proc_find_open_rollout_log,
         proc_root=server.PROC_ROOT,
         process_group_alive=server._process_group_alive,
-        prompt_prefix=server.UNATTENDED_PROMPT_PREFIX,
+        prompt_prefix=lambda: server._load_unattended_prompt(server.UNATTENDED_PROMPT_PATH),
         provider_choice_for_settings=server._provider_choice_for_settings,
         python_executable=server.sys.executable,
         queue_idle_grace_seconds=server.QUEUE_IDLE_GRACE_SECONDS,

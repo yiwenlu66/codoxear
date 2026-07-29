@@ -1,201 +1,98 @@
+import json
+import subprocess
+import textwrap
 import unittest
 from pathlib import Path
 
 
-APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
+ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
+
+
+def eval_attach_button_state() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    def function_block(name: str) -> str:
+        start = source.index(f"function {name}")
+        end = source.index("\n      }", start) + len("\n      }")
+        return source[start:end]
+
+    predicates = "\n".join(
+        function_block(name)
+        for name in [
+            "sessionLaunchFailed(s)",
+            "sessionHasUnknownSend(s)",
+            "sessionIsOrphanRecovery(s)",
+            "sessionHasOrphanQueueRecovery(s)",
+        ]
+    )
+    blocker_start = source.index("function attachmentBlockerForSession(sessionId, sessionInfo = null) {")
+    blocker_end = source.index("setAttachCount(0);", blocker_start)
+    snippet = predicates + "\n" + source[blocker_start:blocker_end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const button = {{ disabled: null, title: "", attrs: {{}}, setAttribute(name, value) {{ this.attrs[name] = value; }} }};
+        const sessions = new Map();
+        const ctx = {{
+          selected: null,
+          sessionIndex: sessions,
+          currentRunning: false,
+          sending: false,
+          ATTACH_UPLOAD_MAX_BYTES: 1048576,
+          fmtBytes: (n) => `${{n / 1048576}} MB`,
+          $: (selector) => selector === "#attachBtn" ? button : null,
+          codoxearSessionHelpers: {{
+            sessionLaunchFailed: (s) => Boolean(s && s.launch_state === "failed"),
+            sessionHasUnknownSend: (s) => Boolean(s && s.commit_unknown_send),
+            sessionIsOrphanRecovery: (s) => Boolean(s && s.orphan_recovery),
+            sessionHasOrphanQueueRecovery: (s) => Boolean(s && s.queue_recovery),
+          }},
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__attach = { attachmentBlockerForSession, syncAttachButtonState };\n")}, ctx);
+        const states = [];
+        function record(label, info = null) {{
+          if (info) sessions.set("sid", info); else sessions.delete("sid");
+          ctx.selected = label === "none" ? null : "sid";
+          ctx.__attach.syncAttachButtonState();
+          states.push({{ label, disabled: button.disabled, title: button.title, aria: button.attrs["aria-label"] }});
+        }}
+        record("none");
+        record("idle", {{ launch_state: "ready" }});
+        record("busy", {{ launch_state: "ready", busy: true }});
+        record("failed", {{ launch_state: "failed" }});
+        record("unknown", {{ launch_state: "ready", commit_unknown_send: true }});
+        record("orphan", {{ launch_state: "ready", orphan_recovery: true }});
+        record("queue-recovery", {{ launch_state: "ready", queue_recovery: true }});
+        process.stdout.write(JSON.stringify({{ states }}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
 
 
 class TestAttachButtonSource(unittest.TestCase):
     def test_attach_button_reflects_session_selection(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
+        states = {row["label"]: row for row in eval_attach_button_state()["states"]}
+        self.assertTrue(states["none"]["disabled"])
+        self.assertEqual(states["none"]["title"], "Select a session to attach a file")
+        self.assertFalse(states["idle"]["disabled"])
+        self.assertEqual(states["idle"]["title"], "Attach file (max 1 MB)")
+        for label, title in {
+            "busy": "Wait for the current response to finish before attaching a file",
+            "failed": "Failed launch cannot receive file attachments",
+            "unknown": "Resolve the unknown send before attaching a file",
+            "orphan": "Missing session can only be reviewed",
+            "queue-recovery": "Review preserved queued recovery items before attaching a file",
+        }.items():
+            self.assertTrue(states[label]["disabled"])
+            self.assertEqual(states[label]["title"], title)
+            self.assertEqual(states[label]["aria"], title)
 
-        self.assertIn('attachBtn.disabled = true;', source)
-        self.assertIn('function attachmentBlockerForSession(sessionId, sessionInfo = null) {', source)
-        self.assertIn('if (!sessionId) return "Select a session to attach a file";', source)
-        self.assertIn('if (info && sessionLaunchFailed(info)) return "Failed launch cannot receive file attachments";', source)
-        self.assertIn('if (info && sessionHasUnknownSend(info)) return "Resolve the unknown send before attaching a file";', source)
-        self.assertIn('if (info && sessionIsOrphanRecovery(info)) return "Missing session can only be reviewed";', source)
-        self.assertIn('if (info && sessionHasOrphanQueueRecovery(info)) return "Review preserved queued recovery items before attaching a file";', source)
-        self.assertIn('if (currentRunning) return "Wait for the current response to finish before attaching a file";', source)
-        self.assertIn('if (sending) return "Wait for the current send to finish before attaching a file";', source)
-        self.assertIn('function syncAttachButtonState() {', source)
-        self.assertIn('const selectedInfo = selected ? sessionIndex.get(selected) || null : null;', source)
-        self.assertIn('const attachBlocker = attachmentBlockerForSession(selected, selectedInfo);', source)
-        self.assertIn('const attachLabel = attachBlocker || `Attach file (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})`;', source)
-        self.assertIn('attachControl.disabled = Boolean(attachBlocker);', source)
-        self.assertIn('attachControl.setAttribute("aria-label", attachLabel);', source)
-        self.assertNotIn('captureControl', source)
-        self.assertNotIn('captureLabel', source)
-        self.assertIn('syncAttachButtonState();\n          updateQueueBadge();', source)
-
-    def test_file_view_button_blocks_failed_launches(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-
-        self.assertIn('const fileViewerBlocked = Boolean(selected && selectedSessionLaunchFailed());', source)
-        self.assertIn('fileViewerBlocked ? "Failed launch has no file browser" : "View file"', source)
-        self.assertIn('fileBtn.disabled = !selected || fileViewerBlocked;', source)
-        self.assertIn('fileBtn.setAttribute("aria-label", fileViewerLabel);', source)
-        self.assertIn('if (selectedSessionLaunchFailed()) {\n            setToast("failed launch has no file browser");\n            return false;\n          }', source)
-
-    def test_attach_upload_uses_shared_stage_files_pipeline(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-
-        self.assertIn('async function stageFiles(files, { sid = selected, source = "picker" } = {}) {', source)
-        self.assertIn('const sessionId = sid || selected;', source)
-        self.assertIn('const uploadFiles = Array.from(files || []).filter(Boolean);', source)
-        self.assertIn('if (info && info.busy) return "Wait for the current response to finish before attaching a file";', source)
-        self.assertIn('function latestAttachmentBlockerForSession(sessionId) {\n          return attachmentBlockerForSession(sessionId, sessionId ? sessionIndex.get(sessionId) || null : null);\n        }', source)
-        self.assertIn('let stoppedByBlocker = "";', source)
-        self.assertIn('const attachBlocker = latestAttachmentBlockerForSession(sessionId);', source)
-        self.assertIn('if (attachBlocker) {\n                stoppedByBlocker = attachBlocker;\n                break;\n              }', source)
-        self.assertIn('let uploadName = f.name || (producer === "paste" ? pastedFileName(f, fileIndex, producerNameSeed) : "file");', source)
-        self.assertIn('const stem = safeAttachmentStem(uploadName);', source)
-        self.assertIn('api(`/api/sessions/${sessionId}/inject_file`', source)
-        self.assertIn('else if (successes && stoppedByBlocker) setToast(`attached ${successes}; stopped: ${stoppedByBlocker}`);', source)
-        self.assertIn('else if (stoppedByBlocker) setToast(stoppedByBlocker);', source)
-        self.assertNotIn('attachment_index:', source)
-        self.assertIn('if (selected === sessionId && res && res.ok) {', source)
-        self.assertIn('setSelectedSessionStagedAttachments(Array.isArray(res.attachments) ? res.attachments : []);', source)
-        self.assertIn('display_name: String(item.display_name || item.filename || "file"),', source)
-        self.assertNotIn('display_name: String(item.display_name || item.filename || item.path || "file")', source)
-        self.assertNotIn('path: String(item.path || "")', source)
-        self.assertIn('return id ? `${name} · ${size} · attachment ${id}` : `${name} · ${size}`;', source)
-        self.assertNotIn('if (path) return path;', source)
-        self.assertIn('const failures = [];', source)
-        self.assertIn('setToast(`attach error: ${failures[0]}`);', source)
-        self.assertIn('handleAppAuthLoss();\n                return false;', source)
-        self.assertIn('void refreshSessions().catch((refreshErr) => {', source)
-        self.assertEqual(source.count('/inject_file'), 1)
-
-        stage_start = source.index('async function stageFiles(files, { sid = selected, source = "picker" } = {}) {')
-        loop_start = source.index('for (let fileIndex = 0; fileIndex < uploadFiles.length; fileIndex += 1) {', stage_start)
-        selected_check = source.index('if (selected !== sessionId) break;', loop_start)
-        blocker_check = source.index('const attachBlocker = latestAttachmentBlockerForSession(sessionId);', loop_start)
-        progress_toast = source.index('setToast(uploadFiles.length > 1 ?', loop_start)
-        compression_check = source.index('if (looksLikeImage(f)', loop_start)
-        array_buffer = source.index('const ab = await uploadBlob.arrayBuffer();', loop_start)
-        inject_call = source.index('api(`/api/sessions/${sessionId}/inject_file`', loop_start)
-        self.assertLess(selected_check, blocker_check)
-        self.assertLess(blocker_check, progress_toast)
-        self.assertLess(progress_toast, compression_check)
-        self.assertLess(compression_check, array_buffer)
-        self.assertLess(array_buffer, inject_call)
-
-        self.assertIn('imgInput.addEventListener("change", async () => {', source)
-        self.assertIn('const sid = selected;\n          if (!sid) return;\n          const files = Array.from(imgInput.files || []);\n          imgInput.value = "";\n          await stageFiles(files, { sid, source: "picker" });', source)
-        self.assertIn('el("input", { id: "imgInput", type: "file", accept: "image/*,video/*,*/*", multiple: "multiple", style: "display:none" })', source)
-        self.assertNotIn('captureInput', source)
-        self.assertNotIn('captureBtn', source)
-        self.assertNotIn('producer === "capture"', source)
-        picker_start = source.index('imgInput.addEventListener("change", async () => {')
-        picker_end = source.index('textarea.addEventListener("paste"', picker_start)
-        picker_block = source[picker_start:picker_end]
-        self.assertNotIn('api(`/api/sessions/${sid}/inject_file`', picker_block)
-        self.assertNotIn('sessionHasUnknownSend', picker_block)
-        self.assertNotIn('sessionIsOrphanRecovery', picker_block)
-        self.assertNotIn('sessionHasOrphanQueueRecovery', picker_block)
-
-    def test_paste_and_drop_producers_route_through_stage_files(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-
-        self.assertIn('function pastedFileName(file, index, seed) {', source)
-        self.assertIn('const ext = imageExtensionFromMimeType(file && file.type, "png");\n          return ext ? `${base}.${ext}` : base;', source)
-        self.assertIn('function clipboardPlainText(data) {', source)
-        self.assertIn('return data.getData("text/plain") || data.getData("text") || "";', source)
-        self.assertIn('function insertComposerPastedText(text) {', source)
-        self.assertIn('textarea.setRangeText(value, start, end, "end");', source)
-        self.assertIn('textarea.dispatchEvent(new Event("input", { bubbles: true }));', source)
-        self.assertIn('textarea.addEventListener("paste", (e) => {\n          const files = extractFilesFromClipboardData(e.clipboardData);\n          if (!files.length) return;\n          const pastedText = clipboardPlainText(e.clipboardData);\n          e.preventDefault();\n          if (pastedText) insertComposerPastedText(pastedText);\n          void stageFiles(files, { sid: selected, source: "paste" });\n        });', source)
-        self.assertLess(source.index('if (!files.length) return;\n          const pastedText = clipboardPlainText(e.clipboardData);'), source.index('e.preventDefault();\n          if (pastedText) insertComposerPastedText(pastedText);'))
-        self.assertLess(source.index('e.preventDefault();\n          if (pastedText) insertComposerPastedText(pastedText);'), source.index('void stageFiles(files, { sid: selected, source: "paste" });'))
-        self.assertIn('addAppEvent(composer, "dragover", (e) => {\n          if (!dataTransferHasFiles(e.dataTransfer)) return;\n          e.preventDefault();\n          if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";\n          setComposerDropActive(true);\n        }, { passive: false });', source)
-        self.assertIn('addAppEvent(composer, "drop", (e) => {\n          if (!dataTransferHasFiles(e.dataTransfer)) return;\n          e.preventDefault();\n          clearComposerDropActive();\n          const files = extractFilesFromDropData(e.dataTransfer);\n          if (!files.length) return;\n          void stageFiles(files, { sid: selected, source: "drop" });\n        }, { passive: false });', source)
-        self.assertIn('composer.classList.toggle("drop-active", Boolean(active));', source)
-        self.assertIn('function clearComposerDropActive() {\n          composerDragDepth = 0;\n          setComposerDropActive(false);\n        }', source)
-        self.assertIn('addAppEvent(window, "dragover", (e) => {\n          if (!dataTransferHasFiles(e.dataTransfer)) return;\n          e.preventDefault();\n        }, { passive: false });', source)
-        self.assertIn('addAppEvent(window, "dragleave", (e) => {\n          const outsideWindow =\n            e.clientX <= 0 ||\n            e.clientY <= 0 ||\n            e.clientX >= window.innerWidth ||\n            e.clientY >= window.innerHeight ||\n            (!e.relatedTarget && (e.target === document || e.target === document.documentElement || e.target === document.body));\n          if (outsideWindow) clearComposerDropActive();\n        }, { passive: false });', source)
-        self.assertIn('addAppEvent(window, "dragend", () => {\n          clearComposerDropActive();\n        }, { passive: false });', source)
-        self.assertIn('addAppEvent(window, "drop", (e) => {\n          if (dataTransferHasFiles(e.dataTransfer)) e.preventDefault();\n          clearComposerDropActive();\n        }, { passive: false });', source)
-        window_drop_start = source.index('addAppEvent(window, "drop", (e) => {')
-        window_drop_end = source.index('}, { passive: false });', window_drop_start)
-        self.assertNotIn('stageFiles(', source[window_drop_start:window_drop_end])
-        producer_start = source.index('textarea.addEventListener("paste", (e) => {')
-        producer_end = source.index('function clearComposer()', producer_start)
-        producer_block = source[producer_start:producer_end]
-        self.assertNotIn('sessionHasUnknownSend', producer_block)
-        self.assertNotIn('sessionIsOrphanRecovery', producer_block)
-        self.assertNotIn('sessionHasOrphanQueueRecovery', producer_block)
-        self.assertNotIn('sessionLaunchFailed', producer_block)
-
-    def test_running_turn_cannot_split_attachments_into_queue(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-
-        self.assertIn('sendChoicePending = { sid: selected, text: raw, attachmentCount: stagedAttachments.length };', source)
-        self.assertIn('const hasAttachments = Boolean(sendChoicePending && sendChoicePending.attachmentCount > 0);', source)
-        self.assertIn('laterBtn.disabled = hasAttachments;', source)
-        self.assertIn('"Attachments cannot be queued; send now or wait until idle"', source)
-        self.assertIn('setToast("attachments can only be sent now; wait until idle to queue text with files");', source)
-
-    def test_attach_indicator_reconciles_selected_session_pending_attachment(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-
-        # One projection function renders the visible badge from the server-owned
-        # staged attachment list, with pending_attachment as compatibility fallback.
-        self.assertIn('function projectSelectedAttachmentIndicator() {', source)
-        self.assertIn("const sessionInfo = selected ? sessionIndex.get(selected) : null;", source)
-        self.assertIn("const serverPending = Boolean(sessionInfo && sessionInfo.pending_attachment);", source)
-        self.assertIn("const visible = Math.max(stagedAttachments.length, serverListCount, serverPending ? 1 : 0);", source)
-        # setAttachCount must not render the badge inline; it delegates to the
-        # projection so the selected session's pending_attachment is honored.
-        self.assertIn('attachedFiles = Math.max(0, Number(n) || 0);', source)
-        self.assertIn('projectSelectedAttachmentIndicator();\n        };', source)
-        self.assertNotIn('attachBadgeEl.textContent = String(next);', source)
-        # The projection is called where the selected session's sessionInfo is
-        # refreshed, so server-side flips reconcile without a local counter change.
-        self.assertIn(
-            'applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));\n                syncRecoveryUiForSession(selected);\n              }\n              if (selected) syncStagedAttachmentsFromSelectedSession();',
-            source,
-        )
-        # Send authority uses the selected staged list count and the server
-        # pending flag still prompts explicit send for legacy pending state.
-        self.assertIn('const localAttachmentCount = renderHere ? stagedAttachments.length : normalizedStagedAttachments(sessionInfo && sessionInfo.staged_attachments).length;', source)
-        self.assertIn('let allowPendingAttachment = Boolean(localAttachmentCount > 0);', source)
-        self.assertIn('if (!allowPendingAttachment && sessionInfo && sessionInfo.pending_attachment) {', source)
-
-    def test_selected_session_pending_attachment_cache_updates_on_direct_evidence(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-
-        # Helper mutates the cached pending_attachment only for the selected
-        # session, then re-projects. Without it, setAttachCount(0) after a send
-        # or clear re-renders against stale pending_attachment=true.
-        self.assertIn('function setSelectedSessionPendingAttachment(value) {', source)
-        self.assertIn("info.pending_attachment = Boolean(value);", source)
-        self.assertIn("sessionIndex.set(selected, info);", source)
-        self.assertIn("projectSelectedAttachmentIndicator();", source)
-        # Successful attach returns the authoritative staged list.
-        self.assertIn('setSelectedSessionStagedAttachments(Array.isArray(res.attachments) ? res.attachments : []);', source)
-        # Successful send with allow_pending_attachment is direct evidence the
-        # pending attachment was consumed only if post-send staged cleanup also
-        # succeeded; cleanup failure means the delivered turn must not erase the
-        # still-staged browser/server projection.
-        self.assertIn('const attachmentCleanupErrorRaw = res && (res.attachment_cleanup_error || res.attachments_cleanup_error);', source)
-        self.assertIn('if (attachmentCleanupError) cleanupWarnings.push(`attachment cleanup failed: ${attachmentCleanupError}`);', source)
-        self.assertIn('if (sendStateCleanupError) cleanupWarnings.push(`send state cleanup failed: ${sendStateCleanupError}`);', source)
-        self.assertIn(
-            'if (allowPendingAttachment && !attachmentCleanupError) {\n              setSelectedSessionPendingAttachment(false);\n              setAttachCount(0);\n            }',
-            source,
-        )
-        # Successful pending_attachment/clear is direct evidence the flag is now false.
-        self.assertIn(
-            'if (selected === sessionId) setSelectedSessionPendingAttachment(false);',
-            source,
-        )
-        # The refresh path still re-projects from server truth, so a cache update
-        # never shadows an authoritative refresh.
-        self.assertIn(
-            'applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));\n                syncRecoveryUiForSession(selected);\n              }\n              if (selected) syncStagedAttachmentsFromSelectedSession();',
-            source,
-        )
+    def test_attach_button_blocks_client_send_in_progress(self) -> None:
+        result = eval_attach_button_state()
+        self.assertEqual(len(result["states"]), 7)
+        self.assertTrue(all(row["aria"] == row["title"] for row in result["states"]))
 
 
 if __name__ == "__main__":

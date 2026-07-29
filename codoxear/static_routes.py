@@ -42,6 +42,8 @@ FRONTEND_ASSET_FILES = (
     "app_unattended.js",
     "app_chat_navigation.js",
     "app_chat_search.js",
+    "app_shell.js",
+    "app_composer.js",
     "app.js",
     "app.css",
 )

@@ -1467,7 +1467,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
 
         self.assertEqual(out["afterDuplicate"]["calls"], [])
         self.assertEqual(out["afterDuplicate"]["seen"], ["assistant|2400|same final text"])
-        self.assertEqual(out["final"]["calls"], [["make"], ["insert"], ["trim"], ["rebuild"], ["recovery"], ["paint"], ["scroll"], ["jump"]])
+        self.assertEqual(out["final"]["calls"], [["make"], ["insert"], ["trim"], ["rebuild"], ["paint"], ["scroll"], ["jump"]])
         self.assertEqual(out["final"]["seen"], ["assistant|2400|same final text", "assistant|3000|same final text"])
 
     def test_new_command_send_failure_does_not_detach_current_transcript(self) -> None:

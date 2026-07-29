@@ -211,7 +211,6 @@ from .server_main import run_main as _run_server_main
 from .server_metrics import metrics_snapshot as _metrics_snapshot_impl
 from .server_metrics import record_metric as _record_metric_impl
 from .server_route_deps import ServerRouteDepsFactory
-from .server_route_deps import server_route_caps as _server_route_caps_impl
 from .server_config import build_server_config as _build_server_config
 from .server_config import export_server_config as _export_server_config
 from .server_routing import match_session_route as _match_session_route_impl
@@ -248,6 +247,8 @@ from .util import session_id_from_rollout_path as _session_id_from_rollout_path
 from .util import subagent_parent_thread_id as _subagent_parent_thread_id
 from .unattended import UNATTENDED_PROMPT_PREFIX as _UNATTENDED_PROMPT_PREFIX
 from .unattended import UnattendedStore
+from .unattended import load_unattended_prompt as _load_unattended_prompt
+from .unattended import save_unattended_prompt as _save_unattended_prompt
 from .unattended import clean_unattended_cooldown_minutes as _clean_unattended_cooldown_minutes_impl
 from .unattended import clean_unattended_remaining_injections as _clean_unattended_remaining_injections_impl
 from .voice_push import VoicePushCoordinator
@@ -1015,8 +1016,7 @@ def _read_static_bytes(path: Path) -> bytes:
     return _read_static_bytes_impl(path, attach_upload_max_bytes=ATTACH_UPLOAD_MAX_BYTES)
 
 def _route_deps_factory() -> ServerRouteDepsFactory:
-    server_module = sys.modules[__name__]
-    return ServerRouteDepsFactory(_server_route_caps_impl(server_module))
+    return ServerRouteDepsFactory(server=sys.modules[__name__], config=_SERVER_CONFIG)
 
 def _message_runtime_snapshot(
     session_id: str,

@@ -3,11 +3,14 @@ import unittest
 from tempfile import TemporaryDirectory
 from pathlib import Path
 
+from codoxear.unattended import UNATTENDED_PROMPT_PREFIX
 from codoxear.unattended import UnattendedStore
 from codoxear.unattended import disable_unattended_if_exhausted
 from codoxear.unattended import clean_unattended_cooldown_minutes
 from codoxear.unattended import clean_unattended_remaining_injections
+from codoxear.unattended import load_unattended_prompt
 from codoxear.unattended import record_unattended_success
+from codoxear.unattended import save_unattended_prompt
 from codoxear.unattended import render_unattended_prompt
 from codoxear.unattended import unattended_cooldown_blocked
 from codoxear.unattended import unattended_prompt_decision
@@ -16,6 +19,20 @@ from codoxear.unattended import unattended_tail_allows_injection
 
 
 class TestUnattendedStore(unittest.TestCase):
+    def test_deployment_prompt_store_defaults_customizes_and_resets(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "unattended_prompt.txt"
+            self.assertEqual(load_unattended_prompt(path), UNATTENDED_PROMPT_PREFIX)
+            self.assertFalse(path.exists())
+
+            self.assertEqual(save_unattended_prompt(path, "Custom constitution\n"), "Custom constitution\n")
+            self.assertEqual(path.read_text(encoding="utf-8"), "Custom constitution\n")
+            self.assertEqual(load_unattended_prompt(path), "Custom constitution\n")
+
+            self.assertEqual(save_unattended_prompt(path, "   \n"), UNATTENDED_PROMPT_PREFIX)
+            self.assertFalse(path.exists())
+            self.assertEqual(render_unattended_prompt("next", prompt_prefix=""), render_unattended_prompt("next"))
+
     def test_load_cleans_entries_and_preserves_file_format(self) -> None:
         with TemporaryDirectory() as td:
             path = Path(td) / "unattended.json"

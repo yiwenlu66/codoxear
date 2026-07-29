@@ -44,21 +44,21 @@ def render_markdown(markdown: str, katex_expr: str | None = None) -> str:
 
 
 class TestMarkdownRendererSource(unittest.TestCase):
-    def test_app_js_requires_markdown_module_without_fallback(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        markdown_source = APP_MARKDOWN_JS.read_text(encoding="utf-8")
-        self.assertIn("const codoxearMarkdown = window.CodoxearMarkdown;", source)
-        self.assertIn('throw new Error("Codoxear markdown helpers failed to load")', source)
-        self.assertIn("function normalizeLineNumber(value) {", source)
-        self.assertIn("function parseLocalFileRef(rawValue) {", source)
-        self.assertIn("function isMarkdownPreviewable(path) {", source)
-        self.assertIn("function markdownPreviewHtml(src, options = {}) {", source)
-        self.assertIn("function chatMarkdownHtmlCached(src, sessionId) {", source)
-        self.assertNotIn("const mdCache = new Map();", source)
-        self.assertIn("const codoxearUrls = window.CodoxearUrls;", markdown_source)
-        self.assertIn('throw new Error("Codoxear URL helpers failed to load")', markdown_source)
-        self.assertIn("parseLocalFileRef,", markdown_source)
-        self.assertIn("window.CodoxearMarkdown = Object.freeze({", markdown_source)
+    def test_markdown_renderer_renders_tables_inline_formatting_citations_and_file_paths(self) -> None:
+        html = render_markdown(
+            "| Name | Value |\n| :--- | ---: |\n| **bold** | `code` |\n\n"
+            "<oai-mem-citation><citation_entries>notes/plan.md:7-9|note=[Plan]</citation_entries>"
+            "<rollout_ids>r1</rollout_ids></oai-mem-citation>\n\n"
+            "See src/app.py:12 and [settings](./config/settings.json#L3)."
+        )
+        self.assertIn('<div class="md-table-wrap"><table>', html)
+        self.assertIn('<th style="text-align:left">Name</th>', html)
+        self.assertIn('<td style="text-align:right"><code>code</code></td>', html)
+        self.assertIn('<strong>bold</strong>', html)
+        self.assertIn('Memory citations:', html)
+        self.assertIn('data-candidate-file-path="~/.codex/memories/notes/plan.md" data-candidate-file-line="7"', html)
+        self.assertIn('data-candidate-file-path="src/app.py" data-candidate-file-line="12"', html)
+        self.assertIn('data-candidate-file-path="./config/settings.json" data-candidate-file-line="3"', html)
 
     def test_fenced_code_block_nested_under_list_item_renders_as_code(self) -> None:
         html = render_markdown(

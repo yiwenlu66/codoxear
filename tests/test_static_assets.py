@@ -54,6 +54,8 @@ APP_RECOVERY_JS = ROOT / "codoxear" / "static" / "app_recovery.js"
 APP_UNATTENDED_JS = ROOT / "codoxear" / "static" / "app_unattended.js"
 APP_CHAT_NAVIGATION_JS = ROOT / "codoxear" / "static" / "app_chat_navigation.js"
 APP_CHAT_SEARCH_JS = ROOT / "codoxear" / "static" / "app_chat_search.js"
+APP_SHELL_JS = ROOT / "codoxear" / "static" / "app_shell.js"
+APP_COMPOSER_JS = ROOT / "codoxear" / "static" / "app_composer.js"
 
 
 class TestStaticAssets(unittest.TestCase):
@@ -93,6 +95,8 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn(f"app_unattended.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_chat_navigation.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_chat_search.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
+        self.assertIn(f"app_shell.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
+        self.assertIn(f"app_composer.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertLess(source.index(f"app_url.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_storage.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_storage.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_perf.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
@@ -128,7 +132,9 @@ class TestStaticAssets(unittest.TestCase):
         self.assertLess(source.index(f"app_recovery.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_unattended.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_unattended.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_chat_navigation.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_chat_search.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
-        self.assertLess(source.index(f"app_chat_search.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_chat_search.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_shell.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_shell.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_composer.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_composer.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_unattended.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_chat_navigation.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_recovery.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_diagnostics.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
@@ -292,6 +298,8 @@ class TestStaticAssets(unittest.TestCase):
             "app_unattended.js": "window.CodoxearUnattended = {};\n",
             "app_chat_navigation.js": "window.CodoxearChatNavigation = {};\n",
             "app_chat_search.js": "window.CodoxearChatSearch = {};\n",
+            "app_shell.js": "window.CodoxearShell = {};\n",
+            "app_composer.js": "window.CodoxearComposer = {};\n",
             "app.js": "console.log('one');\n",
             "app.css": "body { color: black; }\n",
             "favicon.png": "png bytes\n",

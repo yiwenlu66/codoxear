@@ -35,7 +35,7 @@ class UnattendedSweepCoordinator:
     last_chat_role_ts_from_tail: Callable[..., tuple[str, float] | None]
     send: Callable[[str, str], dict[str, Any]]
     now: Callable[[], float]
-    prompt_prefix: str
+    prompt_prefix: str | Callable[[], str]
     default_idle_minutes: int
     default_max_injections: int
     max_scan_bytes: int
@@ -126,7 +126,7 @@ class UnattendedSweepCoordinator:
                             now_ts=now_ts,
                             session_last_ts=live_last_injected,
                             scope_last_ts=live_scope_last,
-                            prompt_prefix=self.prompt_prefix,
+                            prompt_prefix=self.prompt_prefix() if callable(self.prompt_prefix) else self.prompt_prefix,
                             default_idle_minutes=self.default_idle_minutes,
                             default_max_injections=self.default_max_injections,
                         )
