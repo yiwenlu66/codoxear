@@ -444,7 +444,6 @@ def _load_or_create_hmac_secret() -> bytes:
     return _load_or_create_hmac_secret_impl(app_dir=APP_DIR, secret_path=HMAC_SECRET_PATH)
 
 
-HMAC_SECRET = _load_or_create_hmac_secret()
 
 
 def _cookie_auth_settings() -> CookieAuthSettings:
@@ -992,7 +991,25 @@ class SessionManager:
         )
 
 
-MANAGER = SessionManager()
+MANAGER: Any = None
+HMAC_SECRET: Any = None
+Handler: Any = None
+
+
+def _init_runtime() -> None:
+    """Initialize mutable server runtime state.
+
+    Separated from module import so tests can import server.py for constants
+    and helper functions without triggering HMAC secret creation, SessionManager
+    instantiation, or persistent-state loading.
+    """
+    global MANAGER, HMAC_SECRET, Handler
+    if MANAGER is not None:
+        return
+    HMAC_SECRET = _load_or_create_hmac_secret()
+    MANAGER = SessionManager()
+    Handler = make_server_handler(sys.modules[__name__])
+
 
 def _read_static_bytes(path: Path) -> bytes:
     return _read_static_bytes_impl(path, attach_upload_max_bytes=ATTACH_UPLOAD_MAX_BYTES)
@@ -1009,9 +1026,8 @@ def _message_runtime_snapshot(
 ) -> tuple[dict[str, Any], bool, int, dict[str, Any] | None]:
     return _route_deps_factory().message_runtime_snapshot(session_id, s, token_update=token_update)
 
-Handler = make_server_handler(sys.modules[__name__])
-
 def main() -> None:
+    _init_runtime()
     return _run_server_main(sys.modules[__name__])
 
 if __name__ == "__main__":
