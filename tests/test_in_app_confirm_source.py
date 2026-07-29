@@ -4,6 +4,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_COMPOSER_JS = ROOT / "codoxear" / "static" / "app_composer.js"
+APP_SHELL_JS = ROOT / "codoxear" / "static" / "app_shell.js"
 APP_CSS = ROOT / "codoxear" / "static" / "app.css"
 APP_QUEUE_JS = ROOT / "codoxear" / "static" / "app_queue.js"
 APP_FILE_VIEWER_JS = ROOT / "codoxear" / "static" / "app_file_viewer.js"
@@ -75,7 +77,10 @@ def test_destructive_confirm_dialog_focuses_cancel_and_traps_tab() -> None:
 
 
 def test_destructive_confirm_call_sites_are_marked() -> None:
-    source = APP_JS.read_text(encoding="utf-8")
+    source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (APP_JS, APP_COMPOSER_JS, APP_SHELL_JS)
+    )
     queue_source = APP_QUEUE_JS.read_text(encoding="utf-8")
 
     destructive_titles = [

@@ -75,7 +75,11 @@
       if (!codoxearDom || typeof codoxearDom.createElement !== "function") throw new Error("Codoxear DOM helpers failed to load");
       const el = (tag, attrs = {}, children = []) => codoxearDom.createElement(tag, attrs, children, defaultButtonTooltip);
       const codoxearShell = window.CodoxearShell;
-      if (!codoxearShell || typeof codoxearShell.createShellDOM !== "function")
+      if (
+        !codoxearShell ||
+        typeof codoxearShell.createShellDOM !== "function" ||
+        typeof codoxearShell.createSidebarController !== "function"
+      )
         throw new Error("Codoxear shell module failed to load");
       const codoxearComposer = window.CodoxearComposer;
       if (!codoxearComposer || typeof codoxearComposer.createComposerController !== "function")
@@ -366,20 +370,6 @@
 
       function sidebarRenderSignature(entries, { selectedId = "", swipeActions = false } = {}) {
         return codoxearSessionHelpers.sidebarRenderSignature(entries, { selectedId, swipeActions });
-      }
-
-      function renderSessionGroupHeader(entry) {
-        const count = Number(entry.count) || 0;
-        return el("div", {
-          class: "sessionGroupHeader",
-          "data-session-group": entry.key,
-          role: "heading",
-          "aria-level": "2",
-          "aria-label": `${entry.label}: ${count} session${count === 1 ? "" : "s"}`,
-        }, [
-          el("span", { class: "sessionGroupLabel", text: entry.label }),
-          el("span", { class: "sessionGroupCount", "aria-hidden": "true", text: String(count) }),
-        ]);
       }
 
       function sessionSelectable(s) {
@@ -744,81 +734,64 @@
 	      function renderApp() {
             cleanupActiveApp();
 	        const root = $("#root");
-	        root.innerHTML = "";
-
-	        const backdrop = el("div", { class: "backdrop", id: "backdrop" });
-	        const app = el("div", { class: "app" });
-        const sidebar = el("div", { class: "sidebar" });
-        const sessionsWrap = el("div", { class: "sessions", id: "sessions" });
-        const sidebarEmptyHint = el("div", { class: "sidebarEmptyHint muted", text: "No sessions yet" });
-         const sidebarFooter = el("footer", {}, [
-          el("button", { id: "helpBtnSide", type: "button", title: "Help", "aria-label": "Help", html: iconSvg("help") + "Help" }),
-          el("button", { id: "settingsBtnSide", type: "button", title: "Settings", "aria-label": "Settings", html: iconSvg("settings") + "Settings" }),
-          el("button", { id: "logoutBtnSide", type: "button", title: "Log out", "aria-label": "Log out", html: iconSvg("logout") + "Log out" }),
-        ]);
-        const main = el("div", { class: "main" });
-        const chatWrap = el("div", { class: "chatWrap", id: "chatWrap" });
-        const chatEmptyState = el("div", { class: "chatEmptyState", id: "chatEmptyState" }, [
-          el("div", { class: "chatEmptyCopy muted", text: "Start a session to begin a conversation." }),
-          el("button", { id: "chatEmptyNewBtn", class: "icon-btn text-btn", type: "button", title: "New session", "aria-label": "New session", text: "New session" }),
-        ]);
-        const chat = el("div", { class: "chat", id: "chat" });
-        const chatInner = el("div", { class: "chatInner", id: "chatInner" });
-        const olderWrap = el("div", { class: "olderWrap", id: "olderWrap" });
-        const olderBtn = el("button", {
-          class: "olderBtn",
-          id: "olderBtn",
-          type: "button",
-          text: "Load older messages",
+        const shellDOM = codoxearShell.createShellDOM({
+          root,
+          el,
+          iconSvg,
+          resolveAppUrl,
+          versionedShellAssetPath,
         });
-        const olderErrorText = el("span", { class: "olderErrorText", text: "" });
-        const olderRetryBtn = el("button", { class: "olderRetryBtn", type: "button", text: "Retry" });
-        const olderError = el("div", { class: "olderError", id: "olderError", role: "status" }, [
-          olderErrorText,
+        const {
+          app,
+          backdrop,
+          sessionsWrap,
+          sidebarEmptyHint,
+          chatWrap,
+          chatEmptyState,
+          chat,
+          chatInner,
+          olderWrap,
+          olderBtn,
           olderRetryBtn,
-        ]);
-        olderWrap.appendChild(olderBtn);
-        olderWrap.appendChild(olderError);
-        const bottomSentinel = el("div", { id: "bottomSentinel" });
-        const jumpBtn = el("button", {
-          class: "jumpBtn",
-          id: "jumpBtn",
-          title: "Jump to latest message",
-          "aria-label": "Jump to latest message",
-          html: iconSvg("down"),
-        });
-        const chatTimeChip = el("div", { id: "chatTimeChip", class: "chatTimeChip", "aria-hidden": "true" });
-        const chatSearchInput = el("input", {
-          id: "chatSearchInput",
-          class: "chatSearchInput",
-          type: "search",
-          placeholder: "Search loaded chat",
-          "aria-label": "Search loaded chat messages",
-          autocomplete: "off",
-        });
-        const chatSearchPrevBtn = el("button", { id: "chatSearchPrevBtn", class: "icon-btn", type: "button", title: "Previous match", "aria-label": "Previous match", html: iconSvg("up") });
-        const chatSearchNextBtn = el("button", { id: "chatSearchNextBtn", class: "icon-btn", type: "button", title: "Next match", "aria-label": "Next match", html: iconSvg("down") });
-        const chatSearchCloseBtn = el("button", { id: "chatSearchCloseBtn", class: "icon-btn", type: "button", title: "Close search", "aria-label": "Close search", html: iconSvg("x") });
-        const chatSearchStatus = el("span", { id: "chatSearchStatus", class: "chatSearchStatus", text: "Loaded" });
-        const chatSearchAllHintEl = el("span", { id: "chatSearchAllHint", class: "chatSearchAllHint", text: "" });
-        const chatSearchBar = el("div", { id: "chatSearchBar", class: "chatSearchBar", role: "search", "aria-label": "Search loaded chat messages" }, [
+          olderError,
+          olderErrorText,
+          bottomSentinel,
+          jumpBtn,
+          chatTimeChip,
           chatSearchInput,
-          chatSearchStatus,
-          chatSearchAllHintEl,
           chatSearchPrevBtn,
           chatSearchNextBtn,
           chatSearchCloseBtn,
-        ]);
-        chatSearchBar.style.display = "none";
-        chatInner.appendChild(olderWrap);
-        chatInner.appendChild(bottomSentinel);
-        chat.appendChild(chatInner);
-        chatWrap.appendChild(chat);
-        chatWrap.appendChild(chatEmptyState);
-        chatWrap.appendChild(jumpBtn);
-        chatWrap.appendChild(chatTimeChip);
-        chatWrap.appendChild(chatSearchBar);
-        const composer = el("div", { class: "composer" });
+          chatSearchStatus,
+          chatSearchAllHintEl,
+          chatSearchBar,
+          chatNavRail,
+          titleLabel,
+          statusChip,
+          ctxChip,
+          interruptBtn,
+          toast,
+          toggleSidebarBtn,
+          unattendedBtn,
+          announceBtn,
+          notificationBtn,
+          diagBtn,
+          prevUserBtn,
+          nextUserBtn,
+          chatSearchBtn,
+          fileBtn,
+          unattendedMenu,
+          liveAudio,
+          composer,
+          form,
+          textarea,
+          msgPh,
+          imgInput,
+          attachBtn,
+          queueBtn,
+          composerStopBtn,
+          sendBtn,
+        } = shellDOM.elements;
 
         let selected = null;
         let pendingHashSessionId = "";
@@ -846,11 +819,6 @@
          let sessionsPollingEnabled = true;
          let secondaryPollingEnabled = true;
          let currentRunning = false;
-         let openSwipeContent = null;
-         let openSwipeSessionId = null;
-         let openSwipeTargetX = 0;
-         let swipeRefreshDeferred = false;
-         let lastSidebarRenderSignature = "";
          let sessionsRefreshInFlight = null;
          let sessionsRefreshQueued = false;
 	        let sessionIndex = new Map(); // session_id -> session info
@@ -858,6 +826,25 @@
 	        let sending = false;
 	        let attachedFiles = 0;
         let stagedAttachments = [];
+        let composerController = null;
+        function resizeComposer() {
+          if (composerController) composerController.autoGrow();
+        }
+        function clearComposerInput() {
+          if (composerController) composerController.clearComposer();
+        }
+        function saveSelectedComposerDraft(sessionId) {
+          if (composerController) composerController.saveSessionDraft(sessionId);
+        }
+        function loadSelectedComposerDraft(sessionId) {
+          if (composerController) composerController.loadSessionDraft(sessionId);
+        }
+        function syncComposerSendButton() {
+          if (composerController) composerController.syncSendButtonState();
+        }
+        function closeSendChoiceDialog(options) {
+          if (composerController) composerController.hideSendChoice(options);
+        }
 				    let lastToken = null;
         let attachBadgeEl = null;
         let queueBadgeEl = null;
@@ -976,7 +963,9 @@
           hideUnattendedMenu();
           hideFilePasteDialog();
           hideFileUnsavedDialog("cancel");
-          hideSendChoice();
+          closeSendChoiceDialog();
+          if (composerController) composerController.dispose();
+          sidebarController.dispose();
           while (appEventCleanups.length) {
             const cleanup = appEventCleanups.pop();
             try {
@@ -984,6 +973,7 @@
             } catch (_error) {}
           }
           clearApiCache();
+          shellDOM.cleanup();
           if (activeAppCleanup === cleanupApp) activeAppCleanup = null;
         }
         function handleAppAuthLoss() {
@@ -1086,7 +1076,6 @@
           }, Math.max(0, Number(delayMs) || 0));
         }
 
-            const titleLabel = el("div", { id: "threadTitle", text: "No session selected" });
             titleLabel.style.cursor = "default";
             titleLabel.title = "No session selected";
             titleLabel.onclick = () => {
@@ -1115,199 +1104,6 @@
               }
             }
             syncTitleEditState();
-				        const statusChip = el("span", { class: "status-chip", id: "statusChip", text: "Idle" });
-				        const ctxChip = el("button", { class: "status-chip", id: "ctxChip", text: "", type: "button", "aria-label": "Context usage details" });
-		        ctxChip.style.display = "none";
-		        ctxChip.disabled = true;
-        const interruptBtn = el("button", {
-          id: "interruptBtn",
-          class: "icon-btn",
-          title: "Interrupt (Esc)",
-          "aria-label": "Interrupt (Esc)",
-          type: "button",
-          html: iconSvg("stop"),
-        });
-        interruptBtn.style.display = "none";
-        const toast = el("div", { class: "muted toast", id: "toast", role: "status", "aria-live": "polite" });
-			        const toggleSidebarBtn = el("button", {
-	          id: "toggleSidebarBtn",
-	          class: "icon-btn",
-	          title: "Toggle sidebar",
-	          "aria-label": "Toggle sidebar",
-	          html: iconSvg("menu"),
-	        });
-        const unattendedBtn = el("button", {
-          id: "unattendedBtn",
-          class: "icon-btn",
-          title: "Unattended mode",
-          "aria-label": "Unattended mode",
-          "aria-controls": "unattendedMenu",
-          "aria-expanded": "false",
-          "aria-haspopup": "dialog",
-          type: "button",
-          html: iconSvg("unattended"),
-        });
-        unattendedBtn.disabled = true;
-        unattendedBtn.classList.toggle("active", false);
-        const announceBtn = el("button", {
-          id: "announceBtn",
-          class: "icon-btn",
-          title: "Voice announcements",
-          "aria-label": "Voice announcements",
-          type: "button",
-          html: iconSvg("volume"),
-        });
-        const notificationBtn = el("button", {
-          id: "notificationBtn",
-          class: "icon-btn",
-          title: "Notifications",
-          "aria-label": "Notifications",
-          type: "button",
-          html: iconSvg("bell"),
-        });
-        const diagBtn = el("button", {
-          id: "diagBtn",
-          class: "icon-btn",
-          title: "Details",
-          "aria-label": "Details",
-          type: "button",
-          html: iconSvg("info"),
-        });
-        diagBtn.disabled = true;
-        const prevUserBtn = el("button", {
-          id: "prevUserBtn",
-          class: "icon-btn",
-          title: "Previous user message (Alt+↑)",
-          "aria-label": "Previous user message (Alt+↑)",
-          type: "button",
-          html: iconSvg("up"),
-        });
-        prevUserBtn.disabled = true;
-        const nextUserBtn = el("button", {
-          id: "nextUserBtn",
-          class: "icon-btn",
-          title: "Next user message (Alt+↓)",
-          "aria-label": "Next user message (Alt+↓)",
-          type: "button",
-          html: iconSvg("down"),
-        });
-        nextUserBtn.disabled = true;
-        const chatSearchBtn = el("button", {
-          id: "chatSearchBtn",
-          class: "icon-btn",
-          title: "Search loaded messages",
-          "aria-label": "Search loaded messages",
-          type: "button",
-          html: iconSvg("search"),
-        });
-        chatSearchBtn.disabled = true;
-        const fileBtn = el("button", {
-          id: "fileBtn",
-          class: "icon-btn",
-          title: "View file",
-          "aria-label": "View file",
-          type: "button",
-          html: iconSvg("file"),
-        });
-        fileBtn.disabled = true;
-        const unattendedMenu = el("div", { id: "unattendedMenu", class: "unattendedMenu", role: "dialog", "aria-label": "Unattended mode settings" }, [
-          el("div", { class: "row" }, [
-            el("label", {}, [
-              el("input", { type: "checkbox", id: "unattendedEnabled" }),
-              el("span", { text: "Unattended mode" }),
-			            ]),
-			          ]),
-			          el("div", { class: "unattendedGrid" }, [
-			            el("div", {}, [
-			              el("div", { class: "label", text: "Cooldown time (minutes)" }),
-			              el("input", { id: "unattendedCooldownMinutes", type: "number", min: "1", step: "1", inputmode: "numeric", "aria-label": "Unattended cooldown time in minutes" }),
-			            ]),
-			            el("div", {}, [
-			              el("div", { class: "label", text: "Number of injections" }),
-			              el("input", { id: "unattendedRemainingInjections", type: "number", min: "0", step: "1", inputmode: "numeric", "aria-label": "Unattended remaining injections" }),
-			            ]),
-			          ]),
-			          el("div", { class: "label", text: "Additional request to append (optional; per session)" }),
-			          el("textarea", { id: "unattendedRequest", "aria-label": "Additional request for unattended prompt" }),
-			        ]);
-        const liveAudio = el("audio", { id: "liveAudio", preload: "none", playsinline: "true" });
-        liveAudio.style.display = "none";
-
-        const topMeta = el("div", { class: "topMeta" }, [ctxChip]);
-        const titleRow = el("div", { class: "titleRow" }, [titleLabel, topMeta]);
-        const titleWrap = el("div", { class: "titleWrap" }, [titleRow]);
-        const chatMessageNavControls = el("div", { class: "chatMessageNavControls", role: "group", "aria-label": "User message navigation" }, [
-          prevUserBtn,
-          nextUserBtn,
-        ]);
-        const chatNavRail = el("div", { class: "chatNavRail", id: "chatNavRail", "aria-label": "Loaded chat navigation" }, [
-          chatSearchBtn,
-          chatMessageNavControls,
-        ]);
-        chatWrap.appendChild(chatNavRail);
-        const topbar = el("div", { class: "topbar" }, [
-          el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap]),
-          el("div", { class: "actions topActions" }, [
-            fileBtn,
-            diagBtn,
-            unattendedBtn,
-            interruptBtn,
-          ]),
-        ]);
-
-        const form = el("form", {}, [
-          el("button", {
-            class: "icon-btn",
-            id: "attachBtn",
-            type: "button",
-            title: "Attach file",
-            "aria-label": "Attach file",
-            html: iconSvg("paperclip"),
-          }),
-          el("div", { class: "inputWrap" }, [
-            el("div", { class: "stagedAttachments", id: "stagedAttachments", "aria-live": "polite" }),
-            el("textarea", { id: "msg", placeholder: "", "aria-label": "Enter your instructions here" }),
-            el("div", { class: "ph", id: "msgPh", text: "Enter your instructions here" }),
-          ]),
-          el("input", { id: "imgInput", type: "file", accept: "image/*,video/*,*/*", multiple: "multiple", style: "display:none" }),
-          el("button", { class: "icon-btn", id: "queueBtn", type: "button", title: "Queued messages", "aria-label": "Queued messages", html: iconSvg("queue") }),
-          el("button", { class: "icon-btn composerStopBtn", id: "composerStopBtn", type: "button", title: "Stop current response", "aria-label": "Stop current response", html: iconSvg("stop") }),
-          el("button", { class: "icon-btn primary", id: "sendBtn", type: "submit", title: "Send", "aria-label": "Send", html: iconSvg("send") }),
-        ]);
-        composer.appendChild(form);
-
-        sidebar.appendChild(
-          el("header", {}, [
-            el("div", { class: "title", html: `<img class="sidebarLogo" src="${resolveAppUrl(versionedShellAssetPath("/static/codoxear-icon.png"))}" alt="" />Codoxear` }),
-            el("div", { class: "actions" }, [
-              el("button", { id: "newBtn", class: "icon-btn", title: "New session", "aria-label": "New session", html: iconSvg("plus") }),
-              notificationBtn,
-              announceBtn,
-            ]),
-          ])
-        );
-        sidebar.appendChild(sessionsWrap);
-        sidebar.appendChild(sidebarFooter);
-        main.appendChild(topbar);
-        main.appendChild(toast);
-        main.appendChild(chatWrap);
-        main.appendChild(composer);
-        app.appendChild(sidebar);
-        app.appendChild(main);
-        app.appendChild(backdrop);
-        root.appendChild(app);
-        root.appendChild(unattendedMenu);
-        root.appendChild(liveAudio);
-        // Own the mounted primary chrome through the shell contract while the
-        // remaining modal DOM is migrated in subsequent slices.
-        const shellDOM = codoxearShell.createShellDOM({
-          root,
-          el,
-          iconSvg,
-          resolveAppUrl,
-          versionedShellAssetPath,
-          reuseExisting: true,
-        });
 
         const fileBackdrop = el("div", { class: "modalBackdrop", id: "fileBackdrop" });
         const fileCloseBtn = el("button", {
@@ -3028,6 +2824,59 @@
           }
         }
 
+         const sidebarController = codoxearShell.createSidebarController({
+           sessionsWrap,
+           sidebarEmptyHint,
+           el,
+           iconSvg,
+           sidebarRenderSignature,
+           sessionDisplayName,
+           sessionLaunchFailed,
+           sessionLaunchPending,
+           redactedLaunchErrorText,
+           fmtRelativeAge,
+           reasoningEffortMarker,
+           sidebarModelText,
+           baseName,
+           sessionIsFast,
+           agentBackendLogoPath,
+           agentBackendDisplayName,
+           sessionAgentBackend,
+           sessionLaunchIcon,
+           sessionLaunchLabel,
+           confirmAction: (options) => confirmApp(options),
+           api,
+           clearDeletedSessionClientState,
+           refreshSessions,
+           setToast,
+           openEditSession,
+           duplicateSession: async (session) => {
+             const cwd = session && session.cwd && session.cwd !== "?" ? session.cwd : "";
+             if (!cwd) {
+               setToast("cwd unavailable");
+               return;
+             }
+             await spawnSessionWithCwd(
+               cwd,
+               null,
+               null,
+               "",
+               sessionProviderChoice(session),
+               session && session.model ? session.model : "default",
+               session && session.reasoning_effort ? session.reasoning_effort : "high",
+               sessionIsFast(session),
+               !!(session && session.transport === "tmux"),
+               null,
+               sessionAgentBackend(session)
+             );
+           },
+           selectSession,
+           setSidebarOpen,
+           now: () => Date.now(),
+           performanceNow: () => performance.now(),
+           consoleError: (...args) => console.error(...args),
+         });
+
          async function refreshSessions() {
            if (sessionsRefreshInFlight) {
              sessionsRefreshQueued = true;
@@ -3052,7 +2901,7 @@
 	           const data = await api("/api/sessions");
           if (appDisposed) return latestSessions;
           const notModified = apiResponseNotModified(data);
-          if (notModified && !swipeRefreshDeferred) return latestSessions;
+          if (notModified && !sidebarController.hasDeferredRefresh()) return latestSessions;
           if (!notModified) {
             latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
             newSessionDefaults =
@@ -3081,341 +2930,38 @@
             fileReferenceRuntime.clearDiscoveryCaches();
           }
           const swipeActions = !useDesktopSessionActions();
-          const applyingDeferredSwipeRefresh = swipeRefreshDeferred && !openSwipeSessionId;
-            const sessions = latestSessions
-               .slice()
-               .sort((a, b) => {
-                 const p = Number(b.final_priority || 0) - Number(a.final_priority || 0);
-                 if (p) return p;
-                 const u = Number(b.updated_ts || b.start_ts || 0) - Number(a.updated_ts || a.start_ts || 0);
-                 if (u) return u;
-                 const s0 = Number(b.start_ts || 0) - Number(a.start_ts || 0);
-                 if (s0) return s0;
-                 return String(a.session_id || "").localeCompare(String(b.session_id || ""));
-               });
-              sessionIndex = new Map();
-		          for (const s of sessions) sessionIndex.set(s.session_id, s);
-              if (selected && !sessionIndex.has(selected)) clearSelectedSessionAfterRemoval(selected);
-              if (selected) {
-                applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));
-                syncRecoveryUiForSession(selected);
-              }
-              if (selected) syncStagedAttachmentsFromSelectedSession();
-              else setStagedAttachments([]);
-              const sidebarEntries = sidebarSessionEntries(sessions);
-		           if (swipeActions && openSwipeSessionId && sessionsWrap.childElementCount > 0) {
-		             swipeRefreshDeferred = true;
-		             return sessions;
-		           }
-              const sidebarSignature = sidebarRenderSignature(sidebarEntries, { selectedId: selected, swipeActions });
-              const sidebarUnchanged = !applyingDeferredSwipeRefresh && sessionsWrap.childElementCount > 0 && sidebarSignature === lastSidebarRenderSignature;
-              if (applyingDeferredSwipeRefresh) swipeRefreshDeferred = false;
-              if (!sidebarUnchanged) {
-		             sessionsWrap.innerHTML = "";
-		             openSwipeContent = null;
-                lastSidebarRenderSignature = sidebarSignature;
-			          for (const entry of sidebarEntries) {
-                    if (entry.type === "header") {
-                      sessionsWrap.appendChild(renderSessionGroupHeader(entry));
-                      continue;
-                    }
-                    const s = entry.session;
-			            const card = el("div", { class: "session" + (selected === s.session_id ? " active" : ""), "data-session-id": s.session_id, role: "link", tabindex: "0" });
-
-             const title = sessionDisplayName(s);
-             const badges = [];
-             const launchFailed = sessionLaunchFailed(s);
-             const launchPending = sessionLaunchPending(s);
-             const launchRow = launchFailed || launchPending;
-             if (launchFailed) badges.push(el("span", { class: "badge launchFailed", text: "failed", title: redactedLaunchErrorText(s.launch_error) || "Session launch failed" }));
-             if (launchPending) badges.push(el("span", { class: "badge launchPending", text: "starting", title: "Session is still starting" }));
-             if (s.unattended_enabled) badges.push(el("span", { class: "badge unattended", text: "unattended", title: "Unattended mode enabled" }));
-             if (s.queue_len) badges.push(el("span", { class: "badge queue", text: `queue ${s.queue_len}` }));
-
-	             const updatedTs = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts) ? s.updated_ts : s.start_ts;
-	             const ageS = updatedTs ? Math.max(0, Date.now() / 1000 - updatedTs) : 0;
-	             const effortTxt = String(s.reasoning_effort || "").trim().toLowerCase();
-	             const effortMark = reasoningEffortMarker(effortTxt);
-	             const stateTxt = launchPending ? "starting" : fmtRelativeAge(ageS);
-	             const modelTxt = sidebarModelText(s);
-	             const cwdBase = baseName(s.cwd);
-	             const branchTxt = typeof s.git_branch === "string" ? s.git_branch.trim() : "";
-
-	            function closeOpenSwipe() {
-	              if (!openSwipeContent) return;
-	              openSwipeContent.style.transform = "translate3d(0px, 0, 0)";
-	              openSwipeContent.dataset.swipeX = "0";
-	              openSwipeContent = null;
-	              openSwipeSessionId = null;
-	              openSwipeTargetX = 0;
-	              if (swipeRefreshDeferred) {
-	                void refreshSessions().catch((e) => console.error("refreshSessions failed after swipe close", e));
-	              }
-	            }
-
-             async function doDelete(e) {
-               if (e) {
-                 e.preventDefault();
-                 e.stopPropagation();
-               }
-              closeOpenSwipe();
-              const confirmed = await confirmApp({
-                title: launchRow ? "Dismiss launch record?" : "Delete session?",
-                message: launchRow ? "Dismiss this launch record?" : "Delete this session?",
-                confirmText: launchRow ? "Dismiss" : "Delete",
-                cancelText: "Cancel",
-                destructive: true,
-              });
-              if (!confirmed) return;
-              try {
-                await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
-                clearDeletedSessionClientState(s.session_id);
-                if (launchRow && card && card.parentNode) card.remove();
-                await refreshSessions();
-              } catch (err) {
-                setToast(`delete error: ${err.message}`);
-              }
-             }
-
-             const renameBtn = el("button", {
-               class: "icon-btn",
-               title: "Edit conversation",
-               "aria-label": "Edit conversation",
-               type: "button",
-               html: iconSvg("edit"),
-             });
-             renameBtn.onclick = (e) => {
-               e.preventDefault();
-               e.stopPropagation();
-               closeOpenSwipe();
-               openEditSession(s.session_id);
-             };
-             const dupBtn = el("button", {
-               class: "icon-btn",
-               title: "Duplicate session",
-               "aria-label": "Duplicate session",
-               type: "button",
-               html: iconSvg("duplicate"),
-             });
-             dupBtn.onclick = async (e) => {
-               e.preventDefault();
-               e.stopPropagation();
-               closeOpenSwipe();
-               if (launchRow) {
-                 if (launchFailed) void selectSession(s.session_id);
-                 setToast(launchFailed ? "review failed launch before retrying" : "session still starting");
-                 return;
-               }
-               const cwd = s && s.cwd && s.cwd !== "?" ? s.cwd : "";
-               if (!cwd) {
-                 setToast("cwd unavailable");
-                 return;
-               }
-               await spawnSessionWithCwd(
-                 cwd,
-                 null,
-                 null,
-                 "",
-                 sessionProviderChoice(s),
-                 s && s.model ? s.model : "default",
-                 s && s.reasoning_effort ? s.reasoning_effort : "high",
-                 sessionIsFast(s),
-                 !!(s && s.transport === "tmux"),
-                 null,
-                 sessionAgentBackend(s)
-               );
-             };
-             const delBtn = el("button", {
-               class: "icon-btn danger sessionDel",
-               title: launchRow ? "Dismiss launch record" : "Delete session",
-               "aria-label": launchRow ? "Dismiss launch record" : "Delete session",
-               type: "button",
-               html: iconSvg("trash"),
-             });
-             delBtn.onclick = (e) => void doDelete(e);
-
-             const stateDot = el("span", {
-               class:
-                 "stateDot" +
-                 (launchPending ? " pending" : s.snoozed || s.blocked ? " suppressed" : s.busy ? " busy" : " idle"),
-             });
-             const titleRow = el("div", { class: "sessionTitleRow" }, [
-               stateDot,
-               el("div", { class: "titleLine", title: s.cwd || "" }, [
-                 el("span", { class: "titleText", text: title }),
-                 sessionIsFast(s)
-                   ? el("span", { class: "sessionFastIcon", html: iconSvg("lightning"), title: "Fast session" })
-                   : null,
-               ].filter(Boolean)),
-             ]);
-	             const badgesWrap = el("div", { class: "sessionBadges" }, badges);
-	             const metaItems = [
-	               el("img", {
-	                 class: "sessionBackendStatusIcon",
-	                 src: agentBackendLogoPath(sessionAgentBackend(s)),
-	                 alt: `${agentBackendDisplayName(sessionAgentBackend(s))} logo`,
-	                 width: "12",
-	                 height: "12",
-	               }),
-	               el("span", {
-	                 class: `ownerBadge ownerIconBadge ${s.transport === "tmux" ? "owner-tmux" : s.owned ? "owner-web" : "owner-terminal"}`,
-	                 html: iconSvg(sessionLaunchIcon(s)),
-	                 title: sessionLaunchLabel(s),
-	               })
-	             ];
-	             if (effortMark) {
-	               metaItems.push(
-	                 el("span", {
-	                   class: `effortMark effort-${effortTxt}`,
-	                   text: effortMark,
-	                   title: `reasoning effort ${effortTxt}`,
-	                 })
-	               );
-	             }
-	             metaItems.push(el("span", { class: "metaText", text: [stateTxt, modelTxt, cwdBase, branchTxt].filter(Boolean).join(" | ") }));
-	             const meta = el("div", { class: "muted subLine sessionMetaLine" }, metaItems);
-             if (launchFailed) meta.title = redactedLaunchErrorText(s.launch_error) || "Session launch failed";
-             if (launchPending) meta.title = "Session is still starting";
-
-             const sessionEditActions = launchRow ? [] : [renameBtn, dupBtn];
-             if (swipeActions) {
-               const leftActions = el("div", { class: "sessionActions left" }, [delBtn]);
-               const rightActions = el("div", { class: "sessionActions right" }, sessionEditActions);
-               const top = el("div", { class: "row" }, [titleRow, badgesWrap]);
-               const inner = el("div", { class: "sessionInner" }, [top, meta]);
-	               const content = el("div", { class: "sessionContent" }, [inner]);
-	               content.dataset.swipeX = "0";
-	               const swipe = el("div", { class: "sessionSwipe" }, [leftActions, rightActions, content]);
-	               card.appendChild(swipe);
-	               if (openSwipeSessionId === s.session_id && openSwipeTargetX !== 0) {
-	                  content.style.transform = `translate3d(${openSwipeTargetX}px, 0, 0)`;
-	                  content.dataset.swipeX = String(openSwipeTargetX);
-	                  openSwipeContent = content;
-	               }
-
-		               const leftMax = 72;
-	               const rightMax = sessionEditActions.length ? 104 : 0;
-	               let startX = null;
-	               let startY = 0;
-	               let startSwipe = 0;
-	               let lastMoveTs = 0;
-	               let lastMoveX = 0;
-	               let swipeVelocity = 0;
-	               let dragging = false;
-	                content.addEventListener("pointerdown", (e) => {
-	                  if (e.pointerType === "mouse" && e.button !== 0) return;
-	                  startX = e.clientX;
-	                  startY = e.clientY;
-	                  startSwipe = Number(content.dataset.swipeX || 0);
-	                  lastMoveTs = performance.now();
-	                  lastMoveX = e.clientX;
-	                  swipeVelocity = 0;
-	                  dragging = false;
-	                  if (openSwipeContent && openSwipeContent !== content) closeOpenSwipe();
-	                  try {
-	                    content.setPointerCapture(e.pointerId);
-	                  } catch (_) {}
-                });
-	                 content.addEventListener("pointermove", (e) => {
-	                   if (startX === null) return;
-	                   const dx = e.clientX - startX;
-	                   const dy = e.clientY - startY;
-	                  const now = performance.now();
-	                  const dt = Math.max(now - lastMoveTs, 1);
-	                  swipeVelocity = ((e.clientX - lastMoveX) / dt) * 1000;
-	                  lastMoveTs = now;
-	                  lastMoveX = e.clientX;
-	                  if (!dragging) {
-	                    if (Math.abs(dx) < 4) return;
-	                    if (Math.abs(dx) < Math.abs(dy) * 0.7) return;
-	                    dragging = true;
-	                    content.style.transition = "none";
-	                  }
-	                  if (dragging) e.preventDefault();
-	                  let x = startSwipe + dx;
-                  x = Math.min(leftMax, Math.max(-rightMax, x));
-                   content.style.transform = `translate3d(${x}px, 0, 0)`;
-                   content.dataset.swipeX = String(x);
-                 });
-                function finishSwipe(e) {
-                  if (startX === null) return;
-                  try {
-                    if (e && e.pointerId != null) content.releasePointerCapture(e.pointerId);
-                  } catch (_) {}
-                  startX = null;
-                  if (!dragging) return;
-	                  dragging = false;
-	                  content.style.transition = "";
-	                  const x = Number(content.dataset.swipeX || 0);
-	                 let target = 0;
-	                  const commitLeft = leftMax > 0 && (x > leftMax * 0.28 || swipeVelocity > 420);
-	                  const commitRight = rightMax > 0 && (-x > rightMax * 0.28 || swipeVelocity < -420);
-	                  if (commitLeft) target = leftMax;
-	                  else if (commitRight) target = -rightMax;
-	                  content.style.transform = `translate3d(${target}px, 0, 0)`;
-	                  content.dataset.swipeX = String(target);
-	                  if (target !== 0) {
-	                    openSwipeContent = content;
-	                    openSwipeSessionId = s.session_id;
-	                    openSwipeTargetX = target;
-	                  } else if (openSwipeContent === content) {
-	                    openSwipeContent = null;
-	                    openSwipeSessionId = null;
-	                    openSwipeTargetX = 0;
-	                  }
-	                }
-               content.addEventListener("pointerup", finishSwipe);
-               content.addEventListener("pointercancel", finishSwipe);
-
-               card.onclick = () => {
-                 const x = Number(content.dataset.swipeX || 0);
-                 if (Math.abs(x) > 2) {
-                   closeOpenSwipe();
-                   return;
-                 }
-                 setSidebarOpen(false);
-                 if (launchPending) {
-                   setToast("session still starting");
-                   return;
-                 }
-                 selectSession(s.session_id);
-               };
-	             } else {
-	               card.classList.add("desktop");
-	               const actions = el("div", { class: "sessionActionsInline" }, [...sessionEditActions, delBtn]);
-	               const titleWithBadges = el("div", { class: "sessionTitleWithBadges" }, [titleRow, badgesWrap]);
-	               const main = el("div", { class: "sessionMain" }, [titleWithBadges, meta]);
-	               const inner = el("div", { class: "sessionInner sessionDesktopLayout" }, [main, actions]);
-	               card.appendChild(inner);
-	               card.onclick = () => {
-	                 if (launchPending) {
-	                   setToast("session still starting");
-	                   return;
-	                 }
-	                 selectSession(s.session_id);
-	               };
-	             }
-
-	             sessionsWrap.appendChild(card);
-	            }
-              }
-              if (sessionsWrap.childElementCount === 0) {
-                if (!sidebarEmptyHint.parentElement) sessionsWrap.appendChild(sidebarEmptyHint);
-              } else if (sidebarEmptyHint.parentElement) {
-                sidebarEmptyHint.remove();
-              }
-	          if (openSwipeSessionId && !sessionIndex.has(openSwipeSessionId)) {
-	            openSwipeSessionId = null;
-	            openSwipeTargetX = 0;
-	            openSwipeContent = null;
-	          }
+          const sessions = latestSessions
+            .slice()
+            .sort((a, b) => {
+              const p = Number(b.final_priority || 0) - Number(a.final_priority || 0);
+              if (p) return p;
+              const u = Number(b.updated_ts || b.start_ts || 0) - Number(a.updated_ts || a.start_ts || 0);
+              if (u) return u;
+              const s0 = Number(b.start_ts || 0) - Number(a.start_ts || 0);
+              if (s0) return s0;
+              return String(a.session_id || "").localeCompare(String(b.session_id || ""));
+            });
+          sessionIndex = new Map();
+          for (const session of sessions) sessionIndex.set(session.session_id, session);
+          if (selected && !sessionIndex.has(selected)) clearSelectedSessionAfterRemoval(selected);
           if (selected) {
-            const s = sessionIndex.get(selected);
-            if (s) titleLabel.textContent = sessionTitleWithId(s);
+            applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));
+            syncRecoveryUiForSession(selected);
+          }
+          if (selected) syncStagedAttachmentsFromSelectedSession();
+          else setStagedAttachments([]);
+          const renderedSidebar = sidebarController.render(sidebarSessionEntries(sessions), {
+            selectedId: selected,
+            swipeActions,
+          });
+          if (!renderedSidebar) return sessions;
+          if (selected) {
+            const session = sessionIndex.get(selected);
+            if (session) titleLabel.textContent = sessionTitleWithId(session);
           }
           updateUnattendedBtnState();
           updateQueueBadge();
-          syncSendButtonState();
+          syncComposerSendButton();
           syncQueueSubmitState();
           maybeSelectPendingHashSession();
           return sessions;
@@ -3604,7 +3150,7 @@
           updateQueueBadge();
           if (unattendedController.isOpen()) hideUnattendedMenu();
           updateUnattendedBtnState();
-          syncSendButtonState();
+          syncComposerSendButton();
           syncQueueSubmitState();
           syncAttachButtonState();
           return true;
@@ -3650,7 +3196,7 @@
           }
           syncAttachButtonState();
           syncQueueSubmitState();
-          syncSendButtonState();
+          syncComposerSendButton();
           updateUnattendedBtnState();
           updateQueueBadge();
         }
@@ -3760,8 +3306,8 @@
           const optimisticActive = sessionsWrap.querySelector(`.session[data-session-id="${sessionId}"]`);
           if (optimisticActive) optimisticActive.classList.add("active");
           // Save the outgoing session's draft, load the incoming session's draft.
-          if (oldSelected && oldSelected !== sessionId) saveSessionDraft(oldSelected);
-          loadSessionDraft(sessionId);
+          if (oldSelected && oldSelected !== sessionId) saveSelectedComposerDraft(oldSelected);
+          loadSelectedComposerDraft(sessionId);
           if (unattendedController.isOpen() && unattendedController.menuSessionId() !== sessionId) hideUnattendedMenu();
           storageSetItem("codexweb.selected", sessionId);
           setSessionHash(sessionId);
@@ -4130,7 +3676,7 @@
           if (!selected && chatSearchController.isOpen()) closeChatSearch();
           updateChatNavButtons();
           syncQueueSubmitState();
-          syncSendButtonState();
+          syncComposerSendButton();
           diagBtn.disabled = !selected;
         }
 
@@ -6092,7 +5638,7 @@
           if (sendChoice.style.display === "flex") {
             e.preventDefault();
             e.stopPropagation();
-            hideSendChoice({ restoreFocus: true });
+            closeSendChoiceDialog({ restoreFocus: true });
             return;
           }
           if (queueViewer.style.display === "flex") hideQueueViewer();
@@ -6127,82 +5673,6 @@
         };
         addAppEvent(document, "keydown", handleSessionNavigationKeydown);
         appEventCleanups.push(() => document.removeEventListener("keydown", handleSessionNavigationKeydown));
-
-        let sendChoicePending = null;
-        let sendChoiceReturnFocusEl = null;
-        function syncSendChoiceAttachmentPolicy() {
-          const laterBtn = $("#sendChoiceLater");
-          if (!laterBtn) return;
-          const hasAttachments = Boolean(sendChoicePending && sendChoicePending.attachmentCount > 0);
-          const laterLabel = hasAttachments ? "Attachments cannot be queued; send now or wait until idle" : "Send after current";
-          laterBtn.disabled = hasAttachments;
-          laterBtn.title = laterLabel;
-          laterBtn.setAttribute("aria-label", laterLabel);
-        }
-        function focusSendChoiceInitial() {
-          requestAnimationFrame(() => {
-            if (sendChoice.style.display !== "flex") return;
-            const laterBtn = $("#sendChoiceLater");
-            const nowBtn = $("#sendChoiceNow");
-            const cancelBtn = $("#sendChoiceCancel");
-            const target = laterBtn && !laterBtn.disabled ? laterBtn : nowBtn && !nowBtn.disabled ? nowBtn : cancelBtn;
-            if (!target || typeof target.focus !== "function") return;
-            try {
-              target.focus({ preventScroll: true });
-            } catch {}
-          });
-        }
-        function showSendChoice(raw, { opener = null } = {}) {
-          prepareModalOpen();
-          sendChoiceReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;
-          sendChoicePending = { sid: selected, text: raw, attachmentCount: stagedAttachments.length };
-          syncSendChoiceAttachmentPolicy();
-          sendChoiceBackdrop.style.display = "block";
-          sendChoice.style.display = "flex";
-          afterModalVisibilityChanged();
-          focusSendChoiceInitial();
-        }
-        function hideSendChoice({ restoreFocus = false } = {}) {
-          const target = sendChoiceReturnFocusEl;
-          sendChoiceReturnFocusEl = null;
-          sendChoicePending = null;
-          syncSendChoiceAttachmentPolicy();
-          sendChoiceBackdrop.style.display = "none";
-          sendChoice.style.display = "none";
-          afterModalVisibilityChanged();
-          if (restoreFocus) restoreModalFocus(target, () => sendChoice.style.display === "flex");
-        }
-        const sendChoiceNowBtn = $("#sendChoiceNow");
-        const sendChoiceLaterBtn = $("#sendChoiceLater");
-        const sendChoiceCancelBtn = $("#sendChoiceCancel");
-        if (sendChoiceNowBtn)
-          sendChoiceNowBtn.onclick = async () => {
-            const raw = sendChoicePending && sendChoicePending.text;
-            const sid = sendChoicePending && sendChoicePending.sid;
-            hideSendChoice({ restoreFocus: true });
-            if (!raw || !sid) return;
-            const ok = await sendText(raw, { sid });
-            if (ok && sid === selected && $("#msg").value === raw) clearComposer();
-          };
-        if (sendChoiceLaterBtn)
-          sendChoiceLaterBtn.onclick = async () => {
-            const raw = sendChoicePending && sendChoicePending.text;
-            const sid = sendChoicePending && sendChoicePending.sid;
-            const hasAttachments = Boolean(sendChoicePending && sendChoicePending.attachmentCount > 0);
-            if (hasAttachments) {
-              setToast("attachments can only be sent now; wait until idle to queue text with files");
-              return;
-            }
-            hideSendChoice({ restoreFocus: true });
-            if (!raw || !sid) return;
-            const ok = await enqueueComposerText(raw, { sid });
-            if (ok && sid === selected && $("#msg").value === raw) clearComposer();
-          };
-        if (sendChoiceCancelBtn)
-          sendChoiceCancelBtn.onclick = () => {
-            hideSendChoice({ restoreFocus: true });
-          };
-        sendChoiceBackdrop.onclick = () => hideSendChoice({ restoreFocus: true });
 
         const queueController = (function instantiateQueueController() {
           const codoxearQueue = window.CodoxearQueue;
@@ -6242,37 +5712,6 @@
 
         function syncQueueSubmitState() {
           queueController.syncQueueSubmitState();
-        }
-
-        function syncSendButtonState() {
-          const sendControl = $("#sendBtn");
-          if (!sendControl) return;
-          const launchFailed = selectedSessionLaunchFailed();
-          sendControl.disabled = !!sending || !selected || launchFailed;
-          const sendLabel = !selected ? "Select a session to send" : launchFailed ? "Failed launch cannot receive messages" : "Send";
-          sendControl.title = sendLabel;
-          sendControl.setAttribute("aria-label", sendLabel);
-          syncComposerState();
-        }
-
-        // A selected real session remains a normal composer target even when its
-        // prior delivery state is uncertain. The backend remains authoritative
-        // for any rejected send; that failure is shown through the normal toast.
-        function syncComposerState() {
-          const composerInput = $("#msg");
-          if (!composerInput) return;
-          const launchFailed = selectedSessionLaunchFailed();
-          const composerBlocked = !selected || launchFailed;
-          const composerLabel = !selected
-            ? "Select a session to send"
-            : launchFailed
-              ? "Failed launch cannot receive messages"
-              : "Enter your instructions here";
-          composerInput.disabled = composerBlocked;
-          composerInput.setAttribute("aria-label", composerLabel);
-          composerInput.title = composerBlocked ? composerLabel : "";
-          const composerPh = $("#msgPh");
-          if (composerPh) composerPh.textContent = composerLabel;
         }
 
         async function enqueueComposerText(raw, opts) {
@@ -6364,7 +5803,6 @@
           return diagController.hide(opts);
         }
 
-        const queueBtn = $("#queueBtn");
         if (queueBtn) {
           queueBtn.onclick = (e) => {
             e.preventDefault();
@@ -6379,7 +5817,7 @@
               if (!selected) return;
               const sid = selected;
               void enqueueComposerText(raw, { sid }).then((ok) => {
-                if (ok && selected === sid && $("#msg").value === raw) clearComposer();
+                if (ok && selected === sid && $("#msg").value === raw) clearComposerInput();
               });
               return;
             }
@@ -6504,7 +5942,6 @@
           e.stopPropagation();
           void interruptSelectedSession();
         };
-        const composerStopBtn = $("#composerStopBtn");
         if (composerStopBtn) {
           composerStopBtn.onclick = (e) => {
             e.preventDefault();
@@ -6570,9 +6007,6 @@
           void loadOlderMessages({ auto: false });
         };
 
-         const textarea = $("#msg");
-         const msgPh = $("#msgPh");
-         const imgInput = $("#imgInput");
          const isIOS =
            /iP(hone|od|ad)/.test(navigator.userAgent || "") ||
            (navigator.platform === "MacIntel" && navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
@@ -6638,7 +6072,6 @@
 	           addAppEvent(window.visualViewport, "resize", onViewportShift);
 	           addAppEvent(window.visualViewport, "scroll", onViewportShift);
 	         }
-         const attachBtn = $("#attachBtn");
          if (!attachBadgeEl) {
            attachBadgeEl = el("span", { class: "attachBadge", id: "attachBadge" });
            attachBtn.appendChild(attachBadgeEl);
@@ -6669,7 +6102,7 @@
           stagedAttachments = normalizedStagedAttachments(list);
           attachedFiles = stagedAttachments.length;
           renderStagedAttachments();
-          if (textarea) autoGrow();
+          if (textarea) resizeComposer();
           projectSelectedAttachmentIndicator();
         }
         const setAttachCount = (n) => {
@@ -6824,24 +6257,7 @@
         }
         updateQueueBadge();
         syncQueueSubmitState();
-        syncSendButtonState();
-	        function autoGrow() {
-	          const basePx = parseFloat(getComputedStyle(textarea).minHeight || "0") || 32;
-	          const maxPx = 180;
-	          const hasNewline = textarea.value.includes("\n");
-	          if (msgPh) msgPh.style.display = textarea.value || stagedAttachments.length ? "none" : "flex";
-	          textarea.style.height = `${basePx}px`;
-	          let h = textarea.scrollHeight;
-	          const needsMultiline = hasNewline || h > basePx + 1;
-	          form.classList.toggle("multiline", needsMultiline);
-	          textarea.style.height = needsMultiline ? "auto" : `${basePx}px`;
-	          h = textarea.scrollHeight;
-	          const next = needsMultiline ? Math.min(h, maxPx) : basePx;
-	          textarea.style.height = `${next}px`;
-	          textarea.style.overflowY = h > maxPx ? "auto" : "hidden";
-	          if (transcriptScrollRuntime.snapshot().autoScroll) transcriptScrollRuntime.scheduleScrollToBottom();
-	        }
-	        textarea.addEventListener("input", () => { autoGrow(); if (selected) saveSessionDraft(selected); });
+        syncComposerSendButton();
 	          textarea.addEventListener(
 	            "focus",
 	            () => {
@@ -6887,9 +6303,6 @@
           if (!(e.ctrlKey || e.metaKey)) return;
           e.preventDefault();
           form.requestSubmit();
-        });
-        addAppEvent(window, "resize", () => {
-          if (transcriptScrollRuntime.snapshot().autoScroll) transcriptScrollRuntime.scheduleScrollToBottom();
         });
 
         async function toJpegBlob(file, { maxDim = 2048, quality = 0.86 } = {}) {
@@ -7129,201 +6542,87 @@
           clearComposerDropActive();
         }, { passive: false });
 
-        function clearComposer() {
-          $("#msg").value = "";
-          if (selected) clearSessionDraft(selected);
-          autoGrow();
-        }
-
-        function sessionDraftKey(sid) {
-          return `codexweb.draft.${sid}`;
-        }
-        function saveSessionDraft(sid) {
-          if (!sid) return;
-          const val = $("#msg") ? String($("#msg").value || "") : "";
-          if (val) storageSetItem(sessionDraftKey(sid), val);
-          else storageRemoveItem(sessionDraftKey(sid));
-        }
-        function loadSessionDraft(sid) {
-          if (!sid || !$("#msg")) return;
-          $("#msg").value = storageGetItem(sessionDraftKey(sid)) || "";
-          autoGrow();
-          if (msgPh) msgPh.style.display = textarea.value ? "none" : "flex";
-        }
-        function clearSessionDraft(sid) {
-          if (!sid) return;
-          storageRemoveItem(sessionDraftKey(sid));
-        }
-
-        async function sendText(raw, { sid = null } = {}) {
-          const sessionId = sid || selected;
-          if (!sessionId) return false;
-          if (!raw || !raw.trim()) return false;
-          if (sending) return false;
-          const renderHere = sessionId === selected;
-          const renewsTranscript = isTranscriptRenewalCommand(raw, sessionId);
-          const sessionInfo = sessionIndex.get(sessionId) || null;
-          if (sessionInfo && sessionLaunchFailed(sessionInfo)) {
-            setToast("failed launch cannot receive messages");
-            return false;
-          }
-          const localAttachmentCount = renderHere ? stagedAttachments.length : normalizedStagedAttachments(sessionInfo && sessionInfo.staged_attachments).length;
-          let allowPendingAttachment = Boolean(localAttachmentCount > 0);
-          if (!allowPendingAttachment && sessionInfo && sessionInfo.pending_attachment) {
-            const confirmed = await confirmApp({
-              title: "Send pending attachment?",
-              message: "This session has a pending file attachment. Send it with this message?",
-              confirmText: "Send with attachment",
-              cancelText: "Cancel",
-            });
-            if (!confirmed) return false;
-            allowPendingAttachment = true;
-          }
-          sending = true;
-          syncSendButtonState();
-          syncAttachButtonState();
-          setToast("sending...");
-
-          const localId = transcriptEventRuntime.nextLocalEchoId();
-          const t0 = Date.now() / 1000;
-          if (renderHere && !renewsTranscript) {
-            if (!transcriptScrollRuntime.snapshot().renderedAtLiveTail) {
-              clearTranscriptDom();
-              clearRenderedTranscriptRange();
-              setOlderState({ hasMore: false, isLoading: false });
-            }
-            const slot = getSessionTranscriptSlot(sessionId);
-            transcriptEventRuntime.addPendingUser({ id: localId, sessionId, epoch: slot.epoch, text: raw, t0 });
-            appendEvent({ role: "user", text: raw, pending: true, localId, ts: t0 });
-            turnOpen = true;
-            currentRunning = true;
-          }
-          try {
-            const res = await api(`/api/sessions/${sessionId}/send`, { method: "POST", body: { text: raw, allow_pending_attachment: allowPendingAttachment } });
-            if (renderHere && renewsTranscript) {
-              transcriptSlotRuntime.deleteTailCache(sessionId);
-              beginTranscriptRenewal(sessionId);
-              transcriptSlotRuntime.clearLiveCursor();
-              clearRenderedTranscriptRange();
-              invalidateOlderLoad();
-              renderPendingTranscriptSlot(sessionId);
-              turnOpen = true;
-              currentRunning = true;
-            }
-            const attachmentCleanupErrorRaw = res && (res.attachment_cleanup_error || res.attachments_cleanup_error);
-            const attachmentCleanupError = attachmentCleanupErrorRaw ? String(attachmentCleanupErrorRaw) : "";
-            const sendStateCleanupErrorRaw = res && res.send_state_cleanup_error;
-            const sendStateCleanupError = sendStateCleanupErrorRaw ? String(sendStateCleanupErrorRaw) : "";
-            const deliveredToast = res.queued ? `queued (queue ${res.queue_len})` : "sent";
-            const cleanupWarnings = [];
-            if (attachmentCleanupError) cleanupWarnings.push(`attachment cleanup failed: ${attachmentCleanupError}`);
-            if (sendStateCleanupError) cleanupWarnings.push(`send state cleanup failed: ${sendStateCleanupError}`);
-            if (cleanupWarnings.length) setToast(`${deliveredToast}; ${cleanupWarnings.join("; ")}`);
-            else setToast(deliveredToast);
-            if (allowPendingAttachment && !attachmentCleanupError) {
-              setSelectedSessionPendingAttachment(false);
-              setAttachCount(0);
-            }
-            pollFastUntilMs = Date.now() + 5000;
-            kickPoll(0);
-            void refreshSessions().catch((e) => {
-              if (e && e.status === 401) handleAppAuthLoss();
-              else console.error("refreshSessions failed", e);
-            });
-            return true;
-          } catch (e2) {
-            if (e2 && e2.status === 401) {
-              handleAppAuthLoss();
-              return false;
-            }
-            const commitUnknown = Boolean(e2 && e2.obj && e2.obj.commit_unknown);
-            if (commitUnknown) {
-              setToast("send status unknown; check transcript before retrying");
-              const currentSessionInfo = sessionIndex.get(sessionId) || sessionInfo;
-              if (currentSessionInfo) {
-                currentSessionInfo.commit_unknown_send = true;
-                currentSessionInfo.commit_unknown_send_text = raw;
-                currentSessionInfo.commit_unknown_send_ts = Date.now() / 1000;
-                sessionIndex.set(sessionId, currentSessionInfo);
-              }
-              syncSendButtonState();
-              syncQueueSubmitState();
-              syncAttachButtonState();
-              pollFastUntilMs = Date.now() + 4000;
-              kickPoll(0);
-              void refreshSessions().catch((e) => {
-                if (e && e.status === 401) handleAppAuthLoss();
-                else console.error("refreshSessions failed", e);
-              });
-            } else setToast(`send error: ${e2.message}`);
-            if (!commitUnknown && sessionInfo && sessionInfo.pending_attachment && /broker must be restarted/i.test(String(e2 && e2.message ? e2.message : ""))) {
-              const clearPending = await confirmApp({
-                title: "Clear pending attachment state?",
-                message: "This session has a pending attachment but the current broker cannot confirm sends. Clear the browser pending-attachment state only if you already handled it in the terminal?",
-                confirmText: "Clear state",
-                cancelText: "Cancel",
-                destructive: true,
-              });
-              if (clearPending) {
-                try {
-                  await api(`/api/sessions/${sessionId}/pending_attachment/clear`, { method: "POST", body: {} });
-                  setToast("pending attachment state cleared");
-                  if (selected === sessionId) setSelectedSessionPendingAttachment(false);
-                  void refreshSessions().catch((e) => {
-                    if (e && e.status === 401) handleAppAuthLoss();
-                    else console.error("refreshSessions failed", e);
-                  });
-                } catch (clearErr) {
-                  if (clearErr && clearErr.status === 401) {
-                    handleAppAuthLoss();
-                    return false;
-                  }
-                  setToast(`clear pending attachment error: ${clearErr && clearErr.message ? clearErr.message : "unknown error"}`);
-                }
-              }
-            }
-            if (renderHere) {
-              transcriptEventRuntime.dropPendingUsers(sessionId, (pending) => pending && pending.id === localId);
-              const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${localId}"]`);
-              if (pendingEl) {
-                const pendingRow = pendingEl.closest(".msg-row");
-                if (pendingRow) pendingRow.remove();
-                else pendingEl.remove();
-              }
-              if (!transcriptEventRuntime.hasPendingForSession(sessionId)) {
-                turnOpen = false;
-                currentRunning = false;
-              }
-              if (commitUnknown) syncRecoveryUiForSession(sessionId);
-            }
-            return false;
-          } finally {
-            sending = false;
-            syncSendButtonState();
-            syncAttachButtonState();
-          }
-        }
-
-        form.onsubmit = async (e) => {
-          e.preventDefault();
-          if (!selected) {
-            setToast("select a session first");
-            return;
-          }
-          if (sessionLaunchFailed(sessionIndex.get(selected))) {
-            setToast("failed session cannot receive messages");
-            return;
-          }
-          const raw = $("#msg").value;
-          if (!raw || !raw.trim()) return;
-          if (sending) return;
-          if (currentRunning) {
-            showSendChoice(raw, { opener: document.activeElement instanceof HTMLElement ? document.activeElement : textarea });
-            return;
-          }
-          const ok = await sendText(raw);
-          if (ok && $("#msg").value === raw) clearComposer();
-        };
+        composerController = codoxearComposer.createComposerController({
+          form,
+          textarea,
+          msgPh,
+          sendBtn,
+          sendChoice,
+          sendChoiceBackdrop,
+          sendChoiceNowBtn: $("#sendChoiceNow"),
+          sendChoiceLaterBtn: $("#sendChoiceLater"),
+          sendChoiceCancelBtn: $("#sendChoiceCancel"),
+          getSelected: () => selected,
+          getSessionInfo: (sessionId) => sessionIndex.get(sessionId) || null,
+          patchSessionInfo: (sessionId, patch) => {
+            const current = sessionIndex.get(sessionId);
+            if (!current) return;
+            Object.assign(current, patch || {});
+            sessionIndex.set(sessionId, current);
+          },
+          sessionLaunchFailed,
+          getSending: () => sending,
+          setSending: (value) => { sending = Boolean(value); },
+          getCurrentRunning: () => currentRunning,
+          setCurrentRunning: (value) => { currentRunning = Boolean(value); },
+          setTurnOpen: (value) => { turnOpen = Boolean(value); },
+          getStagedAttachments: () => stagedAttachments.slice(),
+          normalizedStagedAttachments,
+          setSelectedSessionPendingAttachment: (sessionId, value) => {
+            if (selected === sessionId) setSelectedSessionPendingAttachment(value);
+          },
+          setAttachCount,
+          syncAttachButtonState,
+          syncQueueSubmitState,
+          syncRecoveryUiForSession,
+          confirmAction: (options) => confirmApp(options),
+          api,
+          setToast,
+          handleAppAuthLoss,
+          refreshSessions,
+          setPollFastUntilMs: (value) => { pollFastUntilMs = value; },
+          kickPoll,
+          isTranscriptRenewalCommand,
+          nextLocalEchoId: () => transcriptEventRuntime.nextLocalEchoId(),
+          renderedAtLiveTail: () => transcriptScrollRuntime.snapshot().renderedAtLiveTail,
+          clearTranscriptDom,
+          clearRenderedTranscriptRange,
+          setOlderState,
+          getSessionTranscriptSlot,
+          addPendingUser: (pending) => transcriptEventRuntime.addPendingUser(pending),
+          appendEvent,
+          deleteTailCache: (sessionId) => transcriptSlotRuntime.deleteTailCache(sessionId),
+          beginTranscriptRenewal,
+          clearLiveCursor: () => transcriptSlotRuntime.clearLiveCursor(),
+          invalidateOlderLoad,
+          renderPendingTranscriptSlot,
+          dropPendingUser: (sessionId, localId) => transcriptEventRuntime.dropPendingUsers(sessionId, (pending) => pending && pending.id === localId),
+          removePendingUserRow: (localId) => {
+            const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${localId}"]`);
+            if (!pendingEl) return;
+            const pendingRow = pendingEl.closest(".msg-row");
+            if (pendingRow) pendingRow.remove();
+            else pendingEl.remove();
+          },
+          hasPendingForSession: (sessionId) => transcriptEventRuntime.hasPendingForSession(sessionId),
+          enqueueComposerText,
+          prepareModalOpen,
+          afterModalVisibilityChanged,
+          restoreModalFocus,
+          storageGetItem,
+          storageSetItem,
+          storageRemoveItem,
+          onAutoGrow: () => {
+            if (transcriptScrollRuntime.snapshot().autoScroll) transcriptScrollRuntime.scheduleScrollToBottom();
+          },
+          requestFrame: (callback) => requestAnimationFrame(callback),
+          getComputedStyle: (node) => getComputedStyle(node),
+          activeElement: () => document.activeElement,
+          isHTMLElement: (value) => value instanceof HTMLElement,
+          now: () => Date.now(),
+          consoleError: (...args) => console.error(...args),
+          windowTarget: window,
+        });
 
         activeAppCleanup = cleanupApp;
         if (typeof window.__codoxearMarkBootstrapped === "function") window.__codoxearMarkBootstrapped();
@@ -7360,7 +6659,7 @@
 	          } finally {
               if (appDisposed) return;
 	            if (msgPh) msgPh.style.display = textarea.value ? "none" : "flex";
-	            autoGrow();
+	            resizeComposer();
 
 	            scheduleSessionsPoll();
             scheduleSecondaryPoll();

@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_COMPOSER_JS = ROOT / "codoxear" / "static" / "app_composer.js"
 APP_TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
 APP_MESSAGE_IDENTITY_JS = ROOT / "codoxear" / "static" / "app_message_identity.js"
 
@@ -1465,60 +1466,86 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["final"]["seen"], ["assistant|2400|same final text", "assistant|3000|same final text"])
 
     def test_new_command_send_failure_does_not_detach_current_transcript(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("async function sendText(")
-        end = source.index("form.onsubmit = async", start)
-        snippet = source[start:end]
+        composer_source = APP_COMPOSER_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
             f"""
-            const ctx = {{
-              selected: "sid",
-              sending: false,
-              transcriptEventRuntime: {{
-                nextLocalEchoId: () => 1,
-                addPendingUser: () => ({{ id: 1 }}),
-                dropPendingUsers: () => [],
-                hasPendingForSession: () => false,
-              }},
-              transcriptScrollRuntime: {{
-                snapshot: () => ({{ renderedAtLiveTail: true }}),
-              }},
-              sessionIndex: new Map([["sid", {{ agent_backend: "codex" }}]]),
-              stagedAttachments: [],
-              normalizedStagedAttachments: (list) => Array.isArray(list) ? list : [],
-              detached: 0,
-              renderedPending: 0,
-              sessionTailCache: {{ delete: () => {{ ctx.deletedCache = true; }} }},
-              beginTranscriptRenewal: () => {{ ctx.detached += 1; }},
-              clearRenderedTranscriptRange: () => {{ ctx.clearedRange = true; }},
-              invalidateOlderLoad: () => {{ ctx.invalidated = true; }},
-              renderPendingTranscriptSlot: () => {{ ctx.renderedPending += 1; }},
-              sessionAgentBackend: (s) => s.agent_backend || "codex",
-              sessionLaunchFailed: (s) => Boolean(s && String(s.launch_state || "").toLowerCase() === "failed"),
-              isTranscriptRenewalCommand: () => true,
-              setToast: (text) => {{ ctx.toast = text; }},
-              $: () => ({{ disabled: false }}),
-              chatInner: {{ querySelector: () => null }},
-              api: async () => {{ throw new Error("broker down"); }},
-              setAttachCount: () => {{}},
-              syncSendButtonState: () => {{}},
-              syncAttachButtonState: () => {{}},
-              kickPoll: () => {{}},
-              refreshSessions: async () => {{}},
-              console,
-              Date,
-            }};
-            vm = require("vm");
+            const vm = require("vm");
+            const ctx = {{ window: {{}}, console, Date }};
             vm.createContext(ctx);
-            vm.runInContext({json.dumps(snippet)}, ctx);
-            ctx.sendText("/new").then((ok) => {{
-              process.stdout.write(JSON.stringify({{
-                ok,
-                detached: ctx.detached,
-                renderedPending: ctx.renderedPending,
-                deletedCache: Boolean(ctx.deletedCache),
-                toast: ctx.toast,
-              }}));
+            vm.runInContext({json.dumps(composer_source)}, ctx);
+            const fakeNode = () => ({{
+              addEventListener: () => {{}},
+              removeEventListener: () => {{}},
+              setAttribute: () => {{}},
+              classList: {{ toggle: () => {{}} }},
+              style: {{}},
+              value: "",
+              scrollHeight: 32,
+              disabled: false,
+              focus: () => {{}},
+            }});
+            const nodes = Array.from({{ length: 9 }}, fakeNode);
+            const [form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop, sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn] = nodes;
+            form.requestSubmit = () => {{}};
+            textarea.value = "/new";
+            const state = {{ sending: false, detached: 0, renderedPending: 0, deletedCache: false, toast: "" }};
+            const noop = () => {{}};
+            const controller = ctx.window.CodoxearComposer.createComposerController({{
+              form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
+              sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn,
+              getSelected: () => "sid",
+              getSessionInfo: () => ({{ agent_backend: "codex" }}),
+              patchSessionInfo: noop,
+              sessionLaunchFailed: () => false,
+              getSending: () => state.sending,
+              setSending: (value) => {{ state.sending = value; }},
+              getCurrentRunning: () => false,
+              setCurrentRunning: noop,
+              setTurnOpen: noop,
+              getStagedAttachments: () => [],
+              normalizedStagedAttachments: (list) => Array.isArray(list) ? list : [],
+              setSelectedSessionPendingAttachment: noop,
+              setAttachCount: noop,
+              syncAttachButtonState: noop,
+              syncQueueSubmitState: noop,
+              syncRecoveryUiForSession: noop,
+              confirmAction: async () => false,
+              api: async () => {{ throw new Error("broker down"); }},
+              setToast: (text) => {{ state.toast = text; }},
+              handleAppAuthLoss: noop,
+              refreshSessions: async () => {{}},
+              setPollFastUntilMs: noop,
+              kickPoll: noop,
+              isTranscriptRenewalCommand: () => true,
+              nextLocalEchoId: () => 1,
+              renderedAtLiveTail: () => true,
+              clearTranscriptDom: noop,
+              clearRenderedTranscriptRange: noop,
+              setOlderState: noop,
+              getSessionTranscriptSlot: () => ({{ epoch: 0 }}),
+              addPendingUser: noop,
+              appendEvent: noop,
+              deleteTailCache: () => {{ state.deletedCache = true; }},
+              beginTranscriptRenewal: () => {{ state.detached += 1; }},
+              clearLiveCursor: noop,
+              invalidateOlderLoad: noop,
+              renderPendingTranscriptSlot: () => {{ state.renderedPending += 1; }},
+              dropPendingUser: noop,
+              removePendingUserRow: noop,
+              hasPendingForSession: () => false,
+              enqueueComposerText: async () => false,
+              prepareModalOpen: noop,
+              afterModalVisibilityChanged: noop,
+              restoreModalFocus: noop,
+              storageGetItem: () => null,
+              storageSetItem: noop,
+              storageRemoveItem: noop,
+              getComputedStyle: () => ({{ minHeight: "32" }}),
+              isHTMLElement: () => false,
+              now: () => 1000,
+            }});
+            controller.sendText("/new").then((ok) => {{
+              process.stdout.write(JSON.stringify({{ ok, ...state }}));
             }});
             """
         )

@@ -5,118 +5,120 @@
     if (typeof value !== "function") throw new TypeError(`composer controller dependency missing: ${name}`);
     return value;
   }
+
   function requireNode(value, name) {
     if (!value || typeof value !== "object" || typeof value.addEventListener !== "function")
       throw new TypeError(`composer controller dependency missing: ${name}`);
     return value;
   }
 
-  // Composer authority is deliberately separate from session selection and
-  // transcript rendering. Those app-wide concerns are injected through a small
-  // explicit boundary, while staging, drafts, resize, sendability projection,
-  // and submit wiring remain together so they cannot drift apart.
   function createComposerController(options = {}) {
     if (!options || typeof options !== "object") throw new TypeError("composer controller dependency missing: options");
     const form = requireNode(options.form, "form");
-    const composer = requireNode(options.composer, "composer");
     const textarea = requireNode(options.textarea, "textarea");
     const msgPh = requireNode(options.msgPh, "msgPh");
-    const attachBtn = requireNode(options.attachBtn, "attachBtn");
-    const imgInput = requireNode(options.imgInput, "imgInput");
     const sendBtn = requireNode(options.sendBtn, "sendBtn");
-    const stagedTray = requireNode(options.stagedTray, "stagedTray");
-    const el = requireFunction(options.el, "el");
-    const fmtBytes = requireFunction(options.fmtBytes, "fmtBytes");
-    const api = requireFunction(options.api, "api");
+    const sendChoice = requireNode(options.sendChoice, "sendChoice");
+    const sendChoiceBackdrop = requireNode(options.sendChoiceBackdrop, "sendChoiceBackdrop");
+    const sendChoiceNowBtn = requireNode(options.sendChoiceNowBtn, "sendChoiceNowBtn");
+    const sendChoiceLaterBtn = requireNode(options.sendChoiceLaterBtn, "sendChoiceLaterBtn");
+    const sendChoiceCancelBtn = requireNode(options.sendChoiceCancelBtn, "sendChoiceCancelBtn");
     const getSelected = requireFunction(options.getSelected, "getSelected");
     const getSessionInfo = requireFunction(options.getSessionInfo, "getSessionInfo");
-    const setSessionInfo = requireFunction(options.setSessionInfo, "setSessionInfo");
+    const patchSessionInfo = requireFunction(options.patchSessionInfo, "patchSessionInfo");
+    const sessionLaunchFailed = requireFunction(options.sessionLaunchFailed, "sessionLaunchFailed");
     const getSending = requireFunction(options.getSending, "getSending");
     const setSending = requireFunction(options.setSending, "setSending");
     const getCurrentRunning = requireFunction(options.getCurrentRunning, "getCurrentRunning");
+    const setCurrentRunning = requireFunction(options.setCurrentRunning, "setCurrentRunning");
+    const setTurnOpen = requireFunction(options.setTurnOpen, "setTurnOpen");
+    const getStagedAttachments = requireFunction(options.getStagedAttachments, "getStagedAttachments");
+    const normalizedStagedAttachments = requireFunction(options.normalizedStagedAttachments, "normalizedStagedAttachments");
+    const setSelectedSessionPendingAttachment = requireFunction(options.setSelectedSessionPendingAttachment, "setSelectedSessionPendingAttachment");
+    const setAttachCount = requireFunction(options.setAttachCount, "setAttachCount");
+    const syncAttachButtonState = requireFunction(options.syncAttachButtonState, "syncAttachButtonState");
+    const syncQueueSubmitState = requireFunction(options.syncQueueSubmitState, "syncQueueSubmitState");
+    const syncRecoveryUiForSession = requireFunction(options.syncRecoveryUiForSession, "syncRecoveryUiForSession");
+    const confirmAction = requireFunction(options.confirmAction, "confirmAction");
+    const api = requireFunction(options.api, "api");
     const setToast = requireFunction(options.setToast, "setToast");
-    const refreshSessions = requireFunction(options.refreshSessions, "refreshSessions");
     const handleAppAuthLoss = requireFunction(options.handleAppAuthLoss, "handleAppAuthLoss");
-    const kickPoll = requireFunction(options.kickPoll, "kickPoll");
+    const refreshSessions = requireFunction(options.refreshSessions, "refreshSessions");
     const setPollFastUntilMs = requireFunction(options.setPollFastUntilMs, "setPollFastUntilMs");
+    const kickPoll = requireFunction(options.kickPoll, "kickPoll");
+    const isTranscriptRenewalCommand = requireFunction(options.isTranscriptRenewalCommand, "isTranscriptRenewalCommand");
+    const nextLocalEchoId = requireFunction(options.nextLocalEchoId, "nextLocalEchoId");
+    const renderedAtLiveTail = requireFunction(options.renderedAtLiveTail, "renderedAtLiveTail");
+    const clearTranscriptDom = requireFunction(options.clearTranscriptDom, "clearTranscriptDom");
+    const clearRenderedTranscriptRange = requireFunction(options.clearRenderedTranscriptRange, "clearRenderedTranscriptRange");
+    const setOlderState = requireFunction(options.setOlderState, "setOlderState");
+    const getSessionTranscriptSlot = requireFunction(options.getSessionTranscriptSlot, "getSessionTranscriptSlot");
+    const addPendingUser = requireFunction(options.addPendingUser, "addPendingUser");
+    const appendEvent = requireFunction(options.appendEvent, "appendEvent");
+    const deleteTailCache = requireFunction(options.deleteTailCache, "deleteTailCache");
+    const beginTranscriptRenewal = requireFunction(options.beginTranscriptRenewal, "beginTranscriptRenewal");
+    const clearLiveCursor = requireFunction(options.clearLiveCursor, "clearLiveCursor");
+    const invalidateOlderLoad = requireFunction(options.invalidateOlderLoad, "invalidateOlderLoad");
+    const renderPendingTranscriptSlot = requireFunction(options.renderPendingTranscriptSlot, "renderPendingTranscriptSlot");
+    const dropPendingUser = requireFunction(options.dropPendingUser, "dropPendingUser");
+    const removePendingUserRow = requireFunction(options.removePendingUserRow, "removePendingUserRow");
+    const hasPendingForSession = requireFunction(options.hasPendingForSession, "hasPendingForSession");
+    const enqueueComposerText = requireFunction(options.enqueueComposerText, "enqueueComposerText");
+    const prepareModalOpen = requireFunction(options.prepareModalOpen, "prepareModalOpen");
+    const afterModalVisibilityChanged = requireFunction(options.afterModalVisibilityChanged, "afterModalVisibilityChanged");
+    const restoreModalFocus = requireFunction(options.restoreModalFocus, "restoreModalFocus");
     const storageGetItem = requireFunction(options.storageGetItem, "storageGetItem");
     const storageSetItem = requireFunction(options.storageSetItem, "storageSetItem");
     const storageRemoveItem = requireFunction(options.storageRemoveItem, "storageRemoveItem");
-    const sessionLaunchFailed = requireFunction(options.sessionLaunchFailed, "sessionLaunchFailed");
-    const sessionHasUnknownSend = requireFunction(options.sessionHasUnknownSend, "sessionHasUnknownSend");
-    const sessionIsOrphanRecovery = requireFunction(options.sessionIsOrphanRecovery, "sessionIsOrphanRecovery");
-    const sessionHasOrphanQueueRecovery = requireFunction(options.sessionHasOrphanQueueRecovery, "sessionHasOrphanQueueRecovery");
-    const confirmAction = requireFunction(options.confirmAction, "confirmAction");
-    const submit = requireFunction(options.submit, "submit");
-    const attachmentUploadMaxBytes = Number(options.attachmentUploadMaxBytes);
-    if (!Number.isFinite(attachmentUploadMaxBytes) || attachmentUploadMaxBytes <= 0)
-      throw new TypeError("composer controller dependency missing: attachmentUploadMaxBytes");
-    const dataTransferHasFiles = requireFunction(options.dataTransferHasFiles, "dataTransferHasFiles");
-    const extractFilesFromClipboardData = requireFunction(options.extractFilesFromClipboardData, "extractFilesFromClipboardData");
-    const extractFilesFromDropData = requireFunction(options.extractFilesFromDropData, "extractFilesFromDropData");
-    const b64FromBytes = requireFunction(options.b64FromBytes, "b64FromBytes");
-    const looksLikeImage = requireFunction(options.looksLikeImage, "looksLikeImage");
-    const isLikelyHeic = requireFunction(options.isLikelyHeic, "isLikelyHeic");
-    const safeAttachmentStem = requireFunction(options.safeAttachmentStem, "safeAttachmentStem");
-    const toJpegBlob = requireFunction(options.toJpegBlob, "toJpegBlob");
-    const now = typeof options.now === "function" ? options.now : () => Date.now();
     const onAutoGrow = typeof options.onAutoGrow === "function" ? options.onAutoGrow : () => {};
+    const requestFrame = typeof options.requestFrame === "function" ? options.requestFrame : (callback) => requestAnimationFrame(callback);
+    const getComputedStyleFn = typeof options.getComputedStyle === "function" ? options.getComputedStyle : (node) => getComputedStyle(node);
+    const activeElement = typeof options.activeElement === "function" ? options.activeElement : () => document.activeElement;
+    const isHTMLElement = typeof options.isHTMLElement === "function" ? options.isHTMLElement : (value) => typeof HTMLElement === "function" && value instanceof HTMLElement;
+    const now = typeof options.now === "function" ? options.now : () => Date.now();
+    const consoleError = typeof options.consoleError === "function" ? options.consoleError : () => {};
+    const windowTarget = options.windowTarget && typeof options.windowTarget.addEventListener === "function" ? options.windowTarget : null;
 
-    let stagedAttachments = [];
-    let dragDepth = 0;
     const cleanups = [];
     const listen = (target, type, handler, eventOptions) => {
       target.addEventListener(type, handler, eventOptions);
       cleanups.push(() => target.removeEventListener(type, handler, eventOptions));
     };
-    const normalizedAttachments = (list) => Array.isArray(list) ? list.filter((item) => item && item.id).map((item) => ({
-      id: String(item.id), display_name: String(item.display_name || item.filename || "file"), filename: String(item.filename || item.display_name || "file"), size: Number(item.size) || 0, created_ts: Number(item.created_ts) || 0,
-    })) : [];
-    const sessionDraftKey = (sid) => `codexweb.draft.${sid}`;
-    const selectedInfo = () => {
-      const sid = getSelected();
-      return sid ? getSessionInfo(sid) || null : null;
-    };
-    function attachmentBlockerForSession(sessionId, info = null) {
-      if (!sessionId) return "Select a session to attach a file";
-      const session = info || getSessionInfo(sessionId) || null;
-      if (session && sessionLaunchFailed(session)) return "Failed launch cannot receive file attachments";
-      if (session && sessionHasUnknownSend(session)) return "Resolve the unknown send before attaching a file";
-      if (session && sessionIsOrphanRecovery(session)) return "Missing session can only be reviewed";
-      if (session && sessionHasOrphanQueueRecovery(session)) return "Review preserved queued recovery items before attaching a file";
-      if (session && session.busy) return "Wait for the current response to finish before attaching a file";
-      if (getCurrentRunning() || getSending()) return "Wait for the current response to finish before attaching a file";
-      return "";
+    const sessionDraftKey = (sessionId) => `codexweb.draft.${sessionId}`;
+    let sendChoicePending = null;
+    let sendChoiceReturnFocusEl = null;
+
+    function selectedSessionLaunchFailed() {
+      const sessionId = getSelected();
+      return sessionLaunchFailed(sessionId ? getSessionInfo(sessionId) : null);
     }
-    function syncSendButtonState() {
-      const session = selectedInfo();
-      const blocked = !session || sessionLaunchFailed(session) || sessionHasUnknownSend(session) || sessionIsOrphanRecovery(session) || sessionHasOrphanQueueRecovery(session);
-      const label = !session ? "Select a session to send" : sessionLaunchFailed(session) ? "Failed launch cannot receive messages" : sessionHasUnknownSend(session) ? "Resolve the unknown send before sending" : sessionIsOrphanRecovery(session) ? "Missing session can only be reviewed" : sessionHasOrphanQueueRecovery(session) ? "Review preserved queued recovery items before sending" : "Send";
-      sendBtn.disabled = Boolean(getSending() || blocked);
-      sendBtn.title = label;
-      sendBtn.setAttribute("aria-label", label);
-      syncComposerState();
-    }
+
     function syncComposerState() {
-      const session = selectedInfo();
-      const blocked = !session || sessionLaunchFailed(session) || sessionHasUnknownSend(session) || sessionIsOrphanRecovery(session) || sessionHasOrphanQueueRecovery(session);
-      const label = !session ? "Select a session to send" : sessionLaunchFailed(session) ? "Failed launch cannot receive messages" : sessionHasUnknownSend(session) ? "Resolve the unknown send before sending" : sessionIsOrphanRecovery(session) ? "Missing session can only be reviewed" : sessionHasOrphanQueueRecovery(session) ? "Review preserved queued recovery items before sending" : "Enter your instructions here";
+      const sessionId = getSelected();
+      const launchFailed = selectedSessionLaunchFailed();
+      const blocked = !sessionId || launchFailed;
+      const label = !sessionId ? "Select a session to send" : launchFailed ? "Failed launch cannot receive messages" : "Enter your instructions here";
       textarea.disabled = blocked;
       textarea.setAttribute("aria-label", label);
       textarea.title = blocked ? label : "";
       msgPh.textContent = label;
     }
-    function syncAttachButtonState() {
-      const blocker = attachmentBlockerForSession(getSelected(), selectedInfo());
-      const label = blocker || `Attach file (max ${fmtBytes(attachmentUploadMaxBytes)})`;
-      attachBtn.disabled = Boolean(blocker);
-      attachBtn.title = label;
-      attachBtn.setAttribute("aria-label", label);
+
+    function syncSendButtonState() {
+      const sessionId = getSelected();
+      const launchFailed = selectedSessionLaunchFailed();
+      const label = !sessionId ? "Select a session to send" : launchFailed ? "Failed launch cannot receive messages" : "Send";
+      sendBtn.disabled = Boolean(getSending() || !sessionId || launchFailed);
+      sendBtn.title = label;
+      sendBtn.setAttribute("aria-label", label);
+      syncComposerState();
     }
+
     function autoGrow() {
-      const basePx = parseFloat(getComputedStyle(textarea).minHeight || "0") || 32;
+      const basePx = parseFloat(getComputedStyleFn(textarea).minHeight || "0") || 32;
       const maxPx = 180;
-      msgPh.style.display = textarea.value || stagedAttachments.length ? "none" : "flex";
+      const stagedCount = getStagedAttachments().length;
+      msgPh.style.display = textarea.value || stagedCount ? "none" : "flex";
       textarea.style.height = `${basePx}px`;
       let height = textarea.scrollHeight;
       const multiline = textarea.value.includes("\n") || height > basePx + 1;
@@ -127,89 +129,278 @@
       textarea.style.overflowY = height > maxPx ? "auto" : "hidden";
       onAutoGrow();
     }
-    function renderStagedAttachments() {
-      stagedTray.innerHTML = "";
-      stagedTray.style.display = stagedAttachments.length ? "flex" : "none";
-      for (const item of stagedAttachments) {
-        const chip = el("div", { class: "stagedAttachmentChip", title: `${item.display_name} · ${fmtBytes(item.size)}` });
-        chip.append(el("span", { class: "stagedAttachmentName", text: item.display_name }), el("span", { class: "stagedAttachmentMeta", text: fmtBytes(item.size) }));
-        const remove = el("button", { class: "stagedAttachmentRemove", type: "button", text: "×", title: `Remove ${item.display_name}`, "aria-label": `Remove ${item.display_name}` });
-        remove.onclick = () => void mutateAttachments(`/attachments/delete`, { id: item.id }, "attachment removed");
-        chip.appendChild(remove);
-        stagedTray.appendChild(chip);
-      }
-      if (stagedAttachments.length) {
-        const clear = el("button", { class: "stagedAttachmentsClear", type: "button", text: "Clear", title: "Clear staged attachments", "aria-label": "Clear staged attachments" });
-        clear.onclick = () => void mutateAttachments(`/attachments/clear`, {}, "attachments cleared");
-        stagedTray.appendChild(clear);
-      }
+
+    function saveSessionDraft(sessionId) {
+      if (!sessionId) return;
+      const value = String(textarea.value || "");
+      if (value) storageSetItem(sessionDraftKey(sessionId), value);
+      else storageRemoveItem(sessionDraftKey(sessionId));
     }
-    function setStagedAttachments(list) { stagedAttachments = normalizedAttachments(list); renderStagedAttachments(); autoGrow(); }
-    function syncStagedAttachmentsFromSelectedSession() { const session = selectedInfo(); setStagedAttachments(session && session.staged_attachments); }
-    async function mutateAttachments(path, body, successToast) {
-      const sid = getSelected();
-      if (!sid) return;
+
+    function loadSessionDraft(sessionId) {
+      textarea.value = sessionId ? storageGetItem(sessionDraftKey(sessionId)) || "" : "";
+      autoGrow();
+    }
+
+    function clearSessionDraft(sessionId) {
+      if (sessionId) storageRemoveItem(sessionDraftKey(sessionId));
+    }
+
+    function clearComposer() {
+      textarea.value = "";
+      clearSessionDraft(getSelected());
+      autoGrow();
+    }
+
+    function syncSendChoiceAttachmentPolicy() {
+      const hasAttachments = Boolean(sendChoicePending && sendChoicePending.attachmentCount > 0);
+      const label = hasAttachments ? "Attachments cannot be queued; send now or wait until idle" : "Send after current";
+      sendChoiceLaterBtn.disabled = hasAttachments;
+      sendChoiceLaterBtn.title = label;
+      sendChoiceLaterBtn.setAttribute("aria-label", label);
+    }
+
+    function focusSendChoiceInitial() {
+      requestFrame(() => {
+        if (sendChoice.style.display !== "flex") return;
+        const target = !sendChoiceLaterBtn.disabled ? sendChoiceLaterBtn : !sendChoiceNowBtn.disabled ? sendChoiceNowBtn : sendChoiceCancelBtn;
+        if (!target || typeof target.focus !== "function") return;
+        try { target.focus({ preventScroll: true }); } catch (_) {}
+      });
+    }
+
+    function showSendChoice(raw, { opener = null } = {}) {
+      prepareModalOpen();
+      const focused = activeElement();
+      sendChoiceReturnFocusEl = isHTMLElement(opener) ? opener : isHTMLElement(focused) ? focused : null;
+      sendChoicePending = { sid: getSelected(), text: raw, attachmentCount: getStagedAttachments().length };
+      syncSendChoiceAttachmentPolicy();
+      sendChoiceBackdrop.style.display = "block";
+      sendChoice.style.display = "flex";
+      afterModalVisibilityChanged();
+      focusSendChoiceInitial();
+    }
+
+    function hideSendChoice({ restoreFocus = false } = {}) {
+      const target = sendChoiceReturnFocusEl;
+      sendChoiceReturnFocusEl = null;
+      sendChoicePending = null;
+      syncSendChoiceAttachmentPolicy();
+      sendChoiceBackdrop.style.display = "none";
+      sendChoice.style.display = "none";
+      afterModalVisibilityChanged();
+      if (restoreFocus) restoreModalFocus(target, () => sendChoice.style.display === "flex");
+    }
+
+    async function sendText(raw, { sid = null } = {}) {
+      const sessionId = sid || getSelected();
+      if (!sessionId || !raw || !raw.trim() || getSending()) return false;
+      const renderHere = sessionId === getSelected();
+      const renewsTranscript = isTranscriptRenewalCommand(raw, sessionId);
+      const sessionInfo = getSessionInfo(sessionId) || null;
+      if (sessionInfo && sessionLaunchFailed(sessionInfo)) {
+        setToast("failed launch cannot receive messages");
+        return false;
+      }
+      const stagedAttachments = getStagedAttachments();
+      const localAttachmentCount = renderHere ? stagedAttachments.length : normalizedStagedAttachments(sessionInfo && sessionInfo.staged_attachments).length;
+      let allowPendingAttachment = localAttachmentCount > 0;
+      if (!allowPendingAttachment && sessionInfo && sessionInfo.pending_attachment) {
+        const confirmed = await confirmAction({
+          title: "Send pending attachment?",
+          message: "This session has a pending file attachment. Send it with this message?",
+          confirmText: "Send with attachment",
+          cancelText: "Cancel",
+        });
+        if (!confirmed) return false;
+        allowPendingAttachment = true;
+      }
+      setSending(true);
+      syncSendButtonState();
+      syncAttachButtonState();
+      setToast("sending...");
+
+      const localId = nextLocalEchoId();
+      const startedAt = now() / 1000;
+      if (renderHere && !renewsTranscript) {
+        if (!renderedAtLiveTail()) {
+          clearTranscriptDom();
+          clearRenderedTranscriptRange();
+          setOlderState({ hasMore: false, isLoading: false });
+        }
+        const slot = getSessionTranscriptSlot(sessionId);
+        addPendingUser({ id: localId, sessionId, epoch: slot.epoch, text: raw, t0: startedAt });
+        appendEvent({ role: "user", text: raw, pending: true, localId, ts: startedAt });
+        setTurnOpen(true);
+        setCurrentRunning(true);
+      }
       try {
-        const response = await api(`/api/sessions/${sid}${path}`, { method: "POST", body });
-        if (getSelected() === sid) { setStagedAttachments(response && response.attachments); setToast(successToast); void refreshSessions(); }
+        const response = await api(`/api/sessions/${sessionId}/send`, { method: "POST", body: { text: raw, allow_pending_attachment: allowPendingAttachment } });
+        if (renderHere && renewsTranscript) {
+          deleteTailCache(sessionId);
+          beginTranscriptRenewal(sessionId);
+          clearLiveCursor();
+          clearRenderedTranscriptRange();
+          invalidateOlderLoad();
+          renderPendingTranscriptSlot(sessionId);
+          setTurnOpen(true);
+          setCurrentRunning(true);
+        }
+        const attachmentCleanupError = response && (response.attachment_cleanup_error || response.attachments_cleanup_error) ? String(response.attachment_cleanup_error || response.attachments_cleanup_error) : "";
+        const sendStateCleanupError = response && response.send_state_cleanup_error ? String(response.send_state_cleanup_error) : "";
+        const deliveredToast = response.queued ? `queued (queue ${response.queue_len})` : "sent";
+        const cleanupWarnings = [];
+        if (attachmentCleanupError) cleanupWarnings.push(`attachment cleanup failed: ${attachmentCleanupError}`);
+        if (sendStateCleanupError) cleanupWarnings.push(`send state cleanup failed: ${sendStateCleanupError}`);
+        setToast(cleanupWarnings.length ? `${deliveredToast}; ${cleanupWarnings.join("; ")}` : deliveredToast);
+        if (allowPendingAttachment && !attachmentCleanupError) {
+          setSelectedSessionPendingAttachment(sessionId, false);
+          setAttachCount(0);
+        }
+        setPollFastUntilMs(now() + 5000);
+        kickPoll(0);
+        void refreshSessions().catch((error) => {
+          if (error && error.status === 401) handleAppAuthLoss();
+          else consoleError("refreshSessions failed", error);
+        });
+        return true;
       } catch (error) {
-        if (error && error.status === 401) return handleAppAuthLoss();
-        if (getSelected() === sid) setToast(`${successToast.replace("ed", "")} error: ${error && error.message ? error.message : "unknown error"}`);
-      }
-    }
-    async function stageFiles(files, { sid = getSelected(), source = "picker" } = {}) {
-      const uploadFiles = Array.from(files || []).filter(Boolean);
-      if (!sid || !uploadFiles.length) return false;
-      let successes = 0;
-      let blocker = "";
-      const failures = [];
-      for (let index = 0; index < uploadFiles.length; index += 1) {
-        const file = uploadFiles[index];
-        try {
-          if (getSelected() !== sid || (blocker = attachmentBlockerForSession(sid))) break;
-          setToast(uploadFiles.length > 1 ? `uploading ${index + 1}/${uploadFiles.length}...` : "uploading file...");
-          let blob = file;
-          let filename = file.name || (source === "paste" ? `pasted-${now()}.png` : "file");
-          if (looksLikeImage(file) && (file.size > attachmentUploadMaxBytes || isLikelyHeic(file))) {
-            filename = `${safeAttachmentStem(filename)}.jpg`;
-            for (const settings of [{ maxDim: 2048, quality: .86 }, { maxDim: 1600, quality: .72 }, { maxDim: 1280, quality: .58 }]) {
-              blob = await toJpegBlob(file, settings);
-              if (blob.size <= attachmentUploadMaxBytes) break;
+        if (error && error.status === 401) {
+          handleAppAuthLoss();
+          return false;
+        }
+        const commitUnknown = Boolean(error && error.obj && error.obj.commit_unknown);
+        if (commitUnknown) {
+          setToast("send status unknown; check transcript before retrying");
+          patchSessionInfo(sessionId, {
+            commit_unknown_send: true,
+            commit_unknown_send_text: raw,
+            commit_unknown_send_ts: now() / 1000,
+          });
+          syncSendButtonState();
+          syncQueueSubmitState();
+          syncAttachButtonState();
+          setPollFastUntilMs(now() + 4000);
+          kickPoll(0);
+          void refreshSessions().catch((refreshError) => {
+            if (refreshError && refreshError.status === 401) handleAppAuthLoss();
+            else consoleError("refreshSessions failed", refreshError);
+          });
+        } else {
+          setToast(`send error: ${error && error.message ? error.message : "unknown error"}`);
+        }
+        if (!commitUnknown && sessionInfo && sessionInfo.pending_attachment && /broker must be restarted/i.test(String(error && error.message ? error.message : ""))) {
+          const clearPending = await confirmAction({
+            title: "Clear pending attachment state?",
+            message: "This session has a pending attachment but the current broker cannot confirm sends. Clear the browser pending-attachment state only if you already handled it in the terminal?",
+            confirmText: "Clear state",
+            cancelText: "Cancel",
+            destructive: true,
+          });
+          if (clearPending) {
+            try {
+              await api(`/api/sessions/${sessionId}/pending_attachment/clear`, { method: "POST", body: {} });
+              setToast("pending attachment state cleared");
+              if (getSelected() === sessionId) setSelectedSessionPendingAttachment(sessionId, false);
+              void refreshSessions().catch((refreshError) => {
+                if (refreshError && refreshError.status === 401) handleAppAuthLoss();
+                else consoleError("refreshSessions failed", refreshError);
+              });
+            } catch (clearError) {
+              if (clearError && clearError.status === 401) {
+                handleAppAuthLoss();
+                return false;
+              }
+              setToast(`clear pending attachment error: ${clearError && clearError.message ? clearError.message : "unknown error"}`);
             }
           }
-          const bytes = await blob.arrayBuffer();
-          if (bytes.byteLength > attachmentUploadMaxBytes) throw new Error(`file too large (max ${fmtBytes(attachmentUploadMaxBytes)})`);
-          const response = await api(`/api/sessions/${sid}/inject_file`, { method: "POST", body: { filename, data_b64: b64FromBytes(new Uint8Array(bytes)) } });
-          if (getSelected() === sid && response && response.ok) { successes += 1; setStagedAttachments(response.attachments); }
-        } catch (error) {
-          if (error && error.status === 401) { handleAppAuthLoss(); return false; }
-          failures.push(`${file.name || "file"}: ${error && error.message ? error.message : "unknown error"}`);
         }
+        if (renderHere) {
+          dropPendingUser(sessionId, localId);
+          removePendingUserRow(localId);
+          if (!hasPendingForSession(sessionId)) {
+            setTurnOpen(false);
+            setCurrentRunning(false);
+          }
+          if (commitUnknown) syncRecoveryUiForSession(sessionId);
+        }
+        return false;
+      } finally {
+        setSending(false);
+        syncSendButtonState();
+        syncAttachButtonState();
       }
-      if (getSelected() === sid) {
-        if (successes) setToast(successes === 1 ? "file staged" : `${successes} files staged`);
-        else setToast(blocker || `attach error: ${failures[0] || "unknown error"}`);
-        setPollFastUntilMs(now() + 4000); kickPoll(0); void refreshSessions();
-      }
-      return successes > 0;
     }
-    function clearComposer() { textarea.value = ""; const sid = getSelected(); if (sid) storageRemoveItem(sessionDraftKey(sid)); autoGrow(); }
-    function saveSessionDraft(sid) { if (!sid) return; const value = String(textarea.value || ""); if (value) storageSetItem(sessionDraftKey(sid), value); else storageRemoveItem(sessionDraftKey(sid)); }
-    function loadSessionDraft(sid) { textarea.value = sid ? storageGetItem(sessionDraftKey(sid)) || "" : ""; autoGrow(); }
-    async function sendText(raw, { sid = null } = {}) { return submit(raw, { sid: sid || getSelected(), attachments: stagedAttachments.slice() }); }
 
-    attachBtn.onclick = () => { const blocker = attachmentBlockerForSession(getSelected()); if (blocker) return setToast(blocker); imgInput.value = ""; imgInput.click(); };
-    listen(imgInput, "change", () => { const sid = getSelected(); const files = Array.from(imgInput.files || []); imgInput.value = ""; void stageFiles(files, { sid }); });
     listen(textarea, "input", () => { autoGrow(); saveSessionDraft(getSelected()); });
-    listen(textarea, "keydown", (event) => { if (event.key === "Enter" && !event.isComposing && (event.ctrlKey || event.metaKey)) { event.preventDefault(); form.requestSubmit(); } });
-    listen(textarea, "paste", (event) => { const files = extractFilesFromClipboardData(event.clipboardData); if (!files.length) return; event.preventDefault(); void stageFiles(files, { sid: getSelected(), source: "paste" }); });
-    listen(composer, "dragenter", (event) => { if (!dataTransferHasFiles(event.dataTransfer)) return; event.preventDefault(); dragDepth += 1; composer.classList.add("drop-active"); }, { passive: false });
-    listen(composer, "dragover", (event) => { if (!dataTransferHasFiles(event.dataTransfer)) return; event.preventDefault(); if (event.dataTransfer) event.dataTransfer.dropEffect = "copy"; }, { passive: false });
-    listen(composer, "dragleave", (event) => { if (dataTransferHasFiles(event.dataTransfer) && --dragDepth <= 0) { dragDepth = 0; composer.classList.remove("drop-active"); } }, { passive: false });
-    listen(composer, "drop", (event) => { if (!dataTransferHasFiles(event.dataTransfer)) return; event.preventDefault(); dragDepth = 0; composer.classList.remove("drop-active"); void stageFiles(extractFilesFromDropData(event.dataTransfer), { sid: getSelected(), source: "drop" }); }, { passive: false });
-    form.onsubmit = (event) => { event.preventDefault(); const raw = textarea.value; if (raw && raw.trim()) void sendText(raw).then((ok) => { if (ok && textarea.value === raw) clearComposer(); }); };
-    syncSendButtonState(); syncAttachButtonState(); autoGrow();
-    return Object.freeze({ sendText, clearComposer, syncState() { syncSendButtonState(); syncAttachButtonState(); }, syncStagedAttachmentsFromSelectedSession, saveSessionDraft, loadSessionDraft, stageFiles, getStagedAttachments: () => stagedAttachments.slice(), dispose() { form.onsubmit = null; while (cleanups.length) cleanups.pop()(); } });
+    listen(textarea, "keydown", (event) => {
+      if (event.key !== "Enter" || event.isComposing || !(event.ctrlKey || event.metaKey)) return;
+      event.preventDefault();
+      form.requestSubmit();
+    });
+    if (windowTarget) listen(windowTarget, "resize", onAutoGrow);
+
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      const sessionId = getSelected();
+      if (!sessionId) { setToast("select a session first"); return; }
+      if (sessionLaunchFailed(getSessionInfo(sessionId))) { setToast("failed session cannot receive messages"); return; }
+      const raw = textarea.value;
+      if (!raw || !raw.trim() || getSending()) return;
+      if (getCurrentRunning()) {
+        const focused = activeElement();
+        showSendChoice(raw, { opener: isHTMLElement(focused) ? focused : textarea });
+        return;
+      }
+      const ok = await sendText(raw);
+      if (ok && textarea.value === raw) clearComposer();
+    };
+
+    sendChoiceNowBtn.onclick = async () => {
+      const raw = sendChoicePending && sendChoicePending.text;
+      const sessionId = sendChoicePending && sendChoicePending.sid;
+      hideSendChoice({ restoreFocus: true });
+      if (!raw || !sessionId) return;
+      const ok = await sendText(raw, { sid: sessionId });
+      if (ok && sessionId === getSelected() && textarea.value === raw) clearComposer();
+    };
+    sendChoiceLaterBtn.onclick = async () => {
+      const raw = sendChoicePending && sendChoicePending.text;
+      const sessionId = sendChoicePending && sendChoicePending.sid;
+      const hasAttachments = Boolean(sendChoicePending && sendChoicePending.attachmentCount > 0);
+      if (hasAttachments) { setToast("attachments can only be sent now; wait until idle to queue text with files"); return; }
+      hideSendChoice({ restoreFocus: true });
+      if (!raw || !sessionId) return;
+      const ok = await enqueueComposerText(raw, { sid: sessionId });
+      if (ok && sessionId === getSelected() && textarea.value === raw) clearComposer();
+    };
+    sendChoiceCancelBtn.onclick = () => hideSendChoice({ restoreFocus: true });
+    sendChoiceBackdrop.onclick = () => hideSendChoice({ restoreFocus: true });
+
+    syncSendButtonState();
+    autoGrow();
+
+    return Object.freeze({
+      autoGrow,
+      clearComposer,
+      clearSessionDraft,
+      loadSessionDraft,
+      saveSessionDraft,
+      sendText,
+      showSendChoice,
+      hideSendChoice,
+      isSendChoiceOpen: () => sendChoice.style.display === "flex",
+      syncComposerState,
+      syncSendButtonState,
+      dispose() {
+        form.onsubmit = null;
+        sendChoiceNowBtn.onclick = null;
+        sendChoiceLaterBtn.onclick = null;
+        sendChoiceCancelBtn.onclick = null;
+        sendChoiceBackdrop.onclick = null;
+        while (cleanups.length) cleanups.pop()();
+      },
+    });
   }
 
   window.CodoxearComposer = Object.freeze({ createComposerController });
