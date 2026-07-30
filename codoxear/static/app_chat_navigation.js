@@ -70,7 +70,7 @@
           Boolean(documentTarget.body && typeof documentTarget.body.classList !== "undefined" && documentTarget.body.classList.contains("sidebar-open"));
 
     function scrollBehavior() {
-      return prefersReducedMotion() ? "auto" : "smooth";
+      return "auto";
     }
 
     function syncButtons() {
