@@ -284,7 +284,11 @@
         const prov = codoxearLaunch.sessionProviderChoice(item);
         const providerChoice = providerChoices.includes(prov) || (prov && newSessionAllowsCustomProvider()) ? prov : "";
         // When providerModelMap exists, skip recent sessions whose model doesn't belong to the resolved provider.
-        if (providerModelMap && providerChoice && Array.isArray(providerModelMap[providerChoice]) && !providerModelMap[providerChoice].includes(model)) continue;
+        if (providerModelMap) {
+          if (!providerChoice) continue;
+          if (Array.isArray(providerModelMap[providerChoice]) && !providerModelMap[providerChoice].includes(model)) continue;
+          if (!Array.isArray(providerModelMap[providerChoice])) continue;
+        }
         const providerAbsent = currentBackend === "pi" && !providerChoice && !(typeof item.model_provider === "string" && item.model_provider.trim());
         addNewSessionModelOption(out, seen, model, { providerChoice, providerAbsent, recent: true });
       }
