@@ -432,8 +432,6 @@ def read_pi_launch_defaults(paths: LaunchConfigPaths) -> dict[str, Any]:
                     continue
                 provider_choices.append(name)
                 provider_models[name] = []
-                if configured_provider is not None and name != configured_provider:
-                    continue
                 if not isinstance(value, dict):
                     continue
                 models = value.get("models")
