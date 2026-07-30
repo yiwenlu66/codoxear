@@ -279,7 +279,7 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
         self.assertEqual(result["scrolls"], [])
         self.assertEqual(result["pulses"], 0)
 
-    def test_user_navigation_target_scrolls_and_pulses_smooth(self) -> None:
+    def test_user_navigation_target_scrolls_and_pulses(self) -> None:
         js = harness_script(
             """
             const h = globalThis.__harness;
@@ -293,7 +293,7 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
         )
         result = run_node_json(js)
         self.assertEqual(result["pulses"], ["u2"])
-        self.assertEqual(result["scrolls"], [["scrollIntoView", "u2", json.dumps({"block": "start", "behavior": "smooth"}, separators=(",", ":"))]])
+        self.assertEqual(result["scrolls"], [["scrollIntoView", "u2", json.dumps({"block": "start", "behavior": "auto"}, separators=(",", ":"))]])
 
     def test_user_navigation_target_uses_auto_when_reduced_motion(self) -> None:
         js = harness_script(
@@ -325,7 +325,7 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
         )
         result = run_node_json(js)
         # threshold = 224; u1@50 and u2@100 are both < 224 so prev target = u2.
-        self.assertEqual(result["scrolls"], [["scrollIntoView", "u2", json.dumps({"block": "start", "behavior": "smooth"}, separators=(",", ":"))]])
+        self.assertEqual(result["scrolls"], [["scrollIntoView", "u2", json.dumps({"block": "start", "behavior": "auto"}, separators=(",", ":"))]])
 
     # --- 4. copy navigation no rows / boundary / target scroll+pulse ---
 
@@ -387,7 +387,7 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
         )
         result = run_node_json(js)
         self.assertEqual(result["pulses"], ["c2"])
-        self.assertEqual(result["scrolls"], [["scrollIntoView", "c2", json.dumps({"block": "start", "behavior": "smooth"}, separators=(",", ":"))]])
+        self.assertEqual(result["scrolls"], [["scrollIntoView", "c2", json.dumps({"block": "start", "behavior": "auto"}, separators=(",", ":"))]])
 
     # --- 5. prev/next click handlers prevent/stop and call directions ---
 
@@ -416,10 +416,10 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
         self.assertEqual(result["prev"]["stop"], True)
         # prev (direction -1) from scrollTop 0: threshold=24; u2@400 not <24,
         # u1@0 <24 -> target u1.
-        self.assertEqual(result["prev"]["scrolls"], [["scrollIntoView", "u1", json.dumps({"block": "start", "behavior": "smooth"}, separators=(",", ":"))]])
+        self.assertEqual(result["prev"]["scrolls"], [["scrollIntoView", "u1", json.dumps({"block": "start", "behavior": "auto"}, separators=(",", ":"))]])
         self.assertEqual(result["prev"]["pulses"], ["u1"])
         # next (direction +1) -> target u2.
-        self.assertEqual(result["next"]["scrolls"], [["scrollIntoView", "u2", json.dumps({"block": "start", "behavior": "smooth"}, separators=(",", ":"))]])
+        self.assertEqual(result["next"]["scrolls"], [["scrollIntoView", "u2", json.dumps({"block": "start", "behavior": "auto"}, separators=(",", ":"))]])
         self.assertEqual(result["next"]["pulses"], ["u2"])
 
     # --- 6. `/` shortcut opens search only when not blocked ---
@@ -504,7 +504,7 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
             """
         )
         result = run_node_json(js)
-        self.assertEqual(result["scrolls"], [["scrollIntoView", "c2", json.dumps({"block": "start", "behavior": "smooth"}, separators=(",", ":"))]])
+        self.assertEqual(result["scrolls"], [["scrollIntoView", "c2", json.dumps({"block": "start", "behavior": "auto"}, separators=(",", ":"))]])
         self.assertEqual(result["pulses"], ["c2"])
         self.assertTrue(result["prevented"])
 
@@ -534,7 +534,7 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
             """
         )
         result = run_node_json(js)
-        self.assertEqual(result["scrolls"], [["scrollIntoView", "u2", json.dumps({"block": "start", "behavior": "smooth"}, separators=(",", ":"))]])
+        self.assertEqual(result["scrolls"], [["scrollIntoView", "u2", json.dumps({"block": "start", "behavior": "auto"}, separators=(",", ":"))]])
         self.assertEqual(result["pulses"], ["u2"])
         self.assertTrue(result["prevented"])
 

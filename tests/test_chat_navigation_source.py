@@ -59,7 +59,7 @@ class TestChatNavigationSource(unittest.TestCase):
 
     def test_navigation_jumps_are_delegated_to_controller(self) -> None:
         calls = eval_navigation()["calls"]
-        self.assertContains(["scroll", "u1", {"block": "start", "behavior": "smooth"}], calls)
+        self.assertContains(["scroll", "u1", {"block": "start", "behavior": "auto"}], calls)
         self.assertContains(["pulse", "u1"], calls)
         self.assertContains(["search"], calls)
         self.assertContains(["key-prevent-user"], calls)
