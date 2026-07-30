@@ -138,6 +138,7 @@
       provider_choices: providerChoices,
       model: typeof raw.model === "string" ? raw.model : null,
       models: modelChoices,
+      provider_models: raw.provider_models && typeof raw.provider_models === "object" ? raw.provider_models : null,
       reasoning_effort: typeof raw.reasoning_effort === "string" ? raw.reasoning_effort : "high",
       reasoning_efforts: Array.isArray(raw.reasoning_efforts) ? raw.reasoning_efforts.slice() : ["off", "minimal", "low", "medium", "high", "xhigh"],
       reasoning_efforts_by_model: raw.reasoning_efforts_by_model && typeof raw.reasoning_efforts_by_model === "object" ? raw.reasoning_efforts_by_model : {},
