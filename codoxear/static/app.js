@@ -6230,8 +6230,6 @@
           if (info && sessionHasUnknownSend(info)) return "Resolve the unknown send before attaching a file";
           if (info && sessionIsOrphanRecovery(info)) return "Missing session can only be reviewed";
           if (info && sessionHasOrphanQueueRecovery(info)) return "Review preserved queued recovery items before attaching a file";
-          if (info && info.busy) return "Wait for the current response to finish before attaching a file";
-          if (currentRunning) return "Wait for the current response to finish before attaching a file";
           if (sending) return "Wait for the current send to finish before attaching a file";
           return "";
         }
