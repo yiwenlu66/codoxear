@@ -296,8 +296,6 @@
               for (const value of models) addNewSessionModelOption(out, seen, value, { providerChoice, configured: true });
             }
           }
-          // Fallback: bare model names for any models not in the provider map.
-          for (const value of configuredModels) addNewSessionModelOption(out, seen, value, { configured: true });
         } else {
           for (const providerChoice of providerChoices) {
             for (const value of configuredModels) addNewSessionModelOption(out, seen, value, { providerChoice, configured: true });
