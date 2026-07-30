@@ -275,6 +275,7 @@
       const providerChoices = newSessionProviderChoices();
       const configuredDefault = typeof defaults.model === "string" ? defaults.model.trim() : "";
       const activeProvider = providerChoices.length ? defaultNewSessionProviderChoice() : "";
+      const providerModelMap = defaults.provider_models && typeof defaults.provider_models === "object" ? defaults.provider_models : null;
       if (configuredDefault) addNewSessionModelOption(out, seen, configuredDefault, { providerChoice: activeProvider, configured: true });
       for (const item of latestSessions()) {
         if (codoxearLaunch.sessionAgentBackend(item) !== currentBackend) continue;
@@ -282,11 +283,12 @@
         if (!model) continue;
         const prov = codoxearLaunch.sessionProviderChoice(item);
         const providerChoice = providerChoices.includes(prov) || (prov && newSessionAllowsCustomProvider()) ? prov : "";
+        // When providerModelMap exists, skip recent sessions whose model doesn't belong to the resolved provider.
+        if (providerModelMap && providerChoice && Array.isArray(providerModelMap[providerChoice]) && !providerModelMap[providerChoice].includes(model)) continue;
         const providerAbsent = currentBackend === "pi" && !providerChoice && !(typeof item.model_provider === "string" && item.model_provider.trim());
         addNewSessionModelOption(out, seen, model, { providerChoice, providerAbsent, recent: true });
       }
       const configuredModels = Array.isArray(defaults.models) ? defaults.models : [];
-      const providerModelMap = defaults.provider_models && typeof defaults.provider_models === "object" ? defaults.provider_models : null;
       if (providerChoices.length) {
         if (providerModelMap) {
           // Pi: each model belongs to a specific provider — no cross-product.
