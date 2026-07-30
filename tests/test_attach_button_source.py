@@ -78,8 +78,9 @@ class TestAttachButtonSource(unittest.TestCase):
         self.assertEqual(states["none"]["title"], "Select a session to attach a file")
         self.assertFalse(states["idle"]["disabled"])
         self.assertEqual(states["idle"]["title"], "Attach file (max 1 MB)")
+        self.assertFalse(states["busy"]["disabled"])
+        self.assertEqual(states["busy"]["title"], "Attach file (max 1 MB)")
         for label, title in {
-            "busy": "Wait for the current response to finish before attaching a file",
             "failed": "Failed launch cannot receive file attachments",
             "unknown": "Resolve the unknown send before attaching a file",
             "orphan": "Missing session can only be reviewed",
