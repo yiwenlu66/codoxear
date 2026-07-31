@@ -1,0 +1,2 @@
+[32m✓[0m [1mCodoxear[0m
+  [2mhttp://127.0.0.1:19357/#session=capture-proof[0m

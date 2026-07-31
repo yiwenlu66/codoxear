@@ -1,0 +1,4 @@
+Verdict: DEFECT
+Before: listed=True, tail=200 roles=['user'] search_matches=1
+After: listed=False, tail=404 search=404 failure_records=0 visible_launch_rows=0
+Mechanism: current broker/discovery/prune failure persistence is gated on log_path is None. A post-log-bound death leaves the user-only log orphaned at /home/yiwen/codex-web-product-recovery/.memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/post-log-backend-death-scout/workdir/pi-sessions/post-log-bound.jsonl with no API-visible session, no launch recovery row, and no transcript terminal outcome.

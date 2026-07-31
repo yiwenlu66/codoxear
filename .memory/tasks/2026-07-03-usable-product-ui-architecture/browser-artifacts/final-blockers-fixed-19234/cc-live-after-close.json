@@ -1,0 +1,33 @@
+{
+  "transcript_state": "bound",
+  "thread_id": "cc-live",
+  "log_path": "/home/tester/.local/share/codoxear/logs/cc-live.jsonl",
+  "live_cursor": "eyJ2IjoxLCJraW5kIjoibGl2ZSIsInRocmVhZF9pZCI6ImNjLWxpdmUiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvbG9ncy9jYy1saXZlLmpzb25sIiwicG9zIjozMjR9.WhNL2fiqJOU4YamSyzyBZhfjchoB91p3NDcxKWv05v0",
+  "events": [
+    {
+      "role": "assistant",
+      "text": "The backend completed this turn without producing a response.",
+      "message_class": "error",
+      "message_id": "51a943f3e05840664816cdda15b038bf10ce11791b377ee4c71c2e7d4e2798f5",
+      "ts": 1783123203.0,
+      "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImNjLWxpdmUiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvbG9ncy9jYy1saXZlLmpzb25sIiwicG9zIjoxOTJ9.umf1u2VdS6MQYYGevt4_vO9_FMrIr7Nzsah9WEr-HM8"
+    }
+  ],
+  "meta_delta": {
+    "thinking": 0,
+    "tool": 0,
+    "system": 0
+  },
+  "turn_start": false,
+  "turn_end": true,
+  "turn_aborted": false,
+  "diag": {
+    "tool_names": [],
+    "last_tool": null,
+    "state_ms": 0.749,
+    "meta_refresh_ms": 0.314
+  },
+  "busy": false,
+  "queue_len": 0,
+  "token": null
+}

@@ -8,6 +8,7 @@ from unittest.mock import patch
 import codoxear.server as server
 from codoxear.server import Session
 from codoxear.server import SessionManager
+from codoxear.session_store import SessionStore
 
 
 class _FakeVoicePushCoordinator:
@@ -32,13 +33,7 @@ def _make_session(session_id: str, cwd: str) -> Session:
 
 class TestSessionFileHistory(unittest.TestCase):
     def _build_manager(self) -> SessionManager:
-        with patch.object(SessionManager, "_load_harness", lambda self: None), \
-            patch.object(SessionManager, "_load_aliases", lambda self: None), \
-            patch.object(SessionManager, "_load_sidebar_meta", lambda self: None), \
-            patch.object(SessionManager, "_load_hidden_sessions", lambda self: None), \
-            patch.object(SessionManager, "_load_files", lambda self: None), \
-            patch.object(SessionManager, "_load_queues", lambda self: None), \
-            patch.object(SessionManager, "_load_recent_cwds", lambda self: None), \
+        with patch.object(SessionStore, "load_persistent_state", lambda self: None), \
             patch.object(SessionManager, "_backfill_recent_cwds_from_logs", lambda self: None), \
             patch.object(SessionManager, "_discover_existing", lambda self, force=True: None), \
             patch.object(server, "VoicePushCoordinator", _FakeVoicePushCoordinator), \
@@ -57,6 +52,17 @@ class TestSessionFileHistory(unittest.TestCase):
         self.assertEqual(mgr.files_get("session-a"), ["/tmp/shared-project/file-a.py"])
         self.assertEqual(mgr.files_get("session-b"), [])
 
+    def test_file_history_preserves_literal_whitespace_paths(self) -> None:
+        mgr = self._build_manager()
+        mgr._sessions = {
+            "session-a": _make_session("session-a", "/tmp/project"),
+        }
+        literal = "/tmp/project/trail.md "
+
+        mgr.files_add("session-a", literal)
+
+        self.assertEqual(mgr.files_get("session-a"), [literal])
+
     def test_load_files_discards_legacy_cwd_buckets(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "session_files.json"
@@ -66,6 +72,7 @@ class TestSessionFileHistory(unittest.TestCase):
                         "cwd:/tmp/shared-project": ["/tmp/shared-project/file-a.py"],
                         "session-a": ["/tmp/project-a/legacy.py"],
                         "sid:session-b": ["/tmp/project-b/current.py"],
+                        "sid:session-c": ["/tmp/project-c/trail.md "],
                     }
                 )
                 + "\n",
@@ -83,6 +90,7 @@ class TestSessionFileHistory(unittest.TestCase):
             {
                 "sid:session-a": ["/tmp/project-a/legacy.py"],
                 "sid:session-b": ["/tmp/project-b/current.py"],
+                "sid:session-c": ["/tmp/project-c/trail.md "],
             },
         )
 

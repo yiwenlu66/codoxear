@@ -1,0 +1,17 @@
+{
+  "checks": {
+    "real_cc_row_bound": true,
+    "cc_sonnet_max": true,
+    "tail_bound_and_sentinel": true,
+    "browser_sentinels": true,
+    "token_agrees": true,
+    "controls_idle_enabled": true,
+    "sidecar_live_cc": true,
+    "ledger_cc_direct": true,
+    "fake_received_prompt": true
+  },
+  "all_passed": true,
+  "session_id": "broker-190",
+  "thread_id": "69121efb-477b-47da-a1e2-bd10cb85aafd",
+  "log_path": "/home/tester/.claude/projects/-workspace/69121efb-477b-47da-a1e2-bd10cb85aafd.jsonl"
+}

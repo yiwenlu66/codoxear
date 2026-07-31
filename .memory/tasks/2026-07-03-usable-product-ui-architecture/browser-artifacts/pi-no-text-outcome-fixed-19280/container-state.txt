@@ -1,0 +1,20 @@
+{"ready": true, "sessions": ["pi-no-text-end-turn-empty", "pi-no-text-stop-empty", "pi-no-text-stop-thinking", "pi-nonterminal-thinking-control", "pi-tool-use-control"], "app": "/home/tester/.local/share/codoxear", "logs": "/home/tester/.local/share/codoxear/pi-no-text-logs", "pid": 23}
+/home/tester/.local/share/codoxear/audio/live.m3u8
+/home/tester/.local/share/codoxear/hmac_secret
+/home/tester/.local/share/codoxear/pi-no-text-logs/pi-no-text-end-turn-empty.jsonl
+/home/tester/.local/share/codoxear/pi-no-text-logs/pi-no-text-stop-empty.jsonl
+/home/tester/.local/share/codoxear/pi-no-text-logs/pi-no-text-stop-thinking.jsonl
+/home/tester/.local/share/codoxear/pi-no-text-logs/pi-nonterminal-thinking-control.jsonl
+/home/tester/.local/share/codoxear/pi-no-text-logs/pi-tool-use-control.jsonl
+/home/tester/.local/share/codoxear/recent_cwds.json
+/home/tester/.local/share/codoxear/socks/pi-no-text-end-turn-empty.json
+/home/tester/.local/share/codoxear/socks/pi-no-text-end-turn-empty.sock
+/home/tester/.local/share/codoxear/socks/pi-no-text-stop-empty.json
+/home/tester/.local/share/codoxear/socks/pi-no-text-stop-empty.sock
+/home/tester/.local/share/codoxear/socks/pi-no-text-stop-thinking.json
+/home/tester/.local/share/codoxear/socks/pi-no-text-stop-thinking.sock
+/home/tester/.local/share/codoxear/socks/pi-nonterminal-thinking-control.json
+/home/tester/.local/share/codoxear/socks/pi-nonterminal-thinking-control.sock
+/home/tester/.local/share/codoxear/socks/pi-tool-use-control.json
+/home/tester/.local/share/codoxear/socks/pi-tool-use-control.sock
+/home/tester/.local/share/codoxear/webpush_vapid_private.pem

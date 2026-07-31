@@ -1,0 +1,2 @@
+--- extensions ON (real broker path) ---
+PING-OK

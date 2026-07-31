@@ -1,0 +1,23 @@
+{
+  "body": {
+    "log_path": "/home/tester/.local/share/codoxear/pi-length-text-fixed-logs/pi-length-text-continuation-fixed.jsonl",
+    "match_count": 1,
+    "match_count_truncated": false,
+    "matches": [
+      {
+        "_before_byte": 294,
+        "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InBpLWxlbmd0aC10ZXh0LWNvbnRpbnVhdGlvbi1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9waS1sZW5ndGgtdGV4dC1maXhlZC1sb2dzL3BpLWxlbmd0aC10ZXh0LWNvbnRpbnVhdGlvbi1maXhlZC5qc29ubCIsInBvcyI6Mjk0fQ.XFMku22pX_kYRSVUMe8TMT8dgnfBAzWcN83p0bbFp50",
+        "load_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InBpLWxlbmd0aC10ZXh0LWNvbnRpbnVhdGlvbi1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9waS1sZW5ndGgtdGV4dC1maXhlZC1sb2dzL3BpLWxlbmd0aC10ZXh0LWNvbnRpbnVhdGlvbi1maXhlZC5qc29ubCIsInBvcyI6NDg4fQ.Z5RUmHerD5WPw0XFhZ4guoCj8-Q9Ys5JqtqOvvQqOe4",
+        "message_class": "narration",
+        "message_id": "f7d0ead7511691253c0a729c5e357b89b3977ff01033f2cc37fa6bf5b1e0ebb5",
+        "role": "assistant",
+        "text": "partial before compaction",
+        "ts": 2.0
+      }
+    ],
+    "query": "partial before compaction",
+    "thread_id": "pi-length-text-continuation-fixed",
+    "transcript_state": "bound"
+  },
+  "status": 200
+}

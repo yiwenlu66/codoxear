@@ -1,0 +1,94 @@
+{
+  "bodyOverflow": false,
+  "rows": [
+    {
+      "expected": "L",
+      "markerBox": {
+        "height": 12,
+        "width": 12
+      },
+      "markerClass": "effortMark effort-low",
+      "markerText": "L",
+      "markerTitle": "reasoning effort low",
+      "ok": true,
+      "title": "effort-codex-low"
+    },
+    {
+      "expected": "M",
+      "markerBox": {
+        "height": 12,
+        "width": 12
+      },
+      "markerClass": "effortMark effort-medium",
+      "markerText": "M",
+      "markerTitle": "reasoning effort medium",
+      "ok": true,
+      "title": "effort-codex-medium"
+    },
+    {
+      "expected": "H",
+      "markerBox": {
+        "height": 12,
+        "width": 12
+      },
+      "markerClass": "effortMark effort-high",
+      "markerText": "H",
+      "markerTitle": "reasoning effort high",
+      "ok": true,
+      "title": "effort-codex-high"
+    },
+    {
+      "expected": "X",
+      "markerBox": {
+        "height": 12,
+        "width": 12
+      },
+      "markerClass": "effortMark effort-xhigh",
+      "markerText": "X",
+      "markerTitle": "reasoning effort xhigh",
+      "ok": true,
+      "title": "effort-codex-xhigh"
+    },
+    {
+      "expected": "–",
+      "markerBox": {
+        "height": 12,
+        "width": 12
+      },
+      "markerClass": "effortMark effort-off",
+      "markerText": "–",
+      "markerTitle": "reasoning effort off",
+      "ok": true,
+      "title": "effort-pi-off"
+    },
+    {
+      "expected": "m",
+      "markerBox": {
+        "height": 12,
+        "width": 12
+      },
+      "markerClass": "effortMark effort-minimal",
+      "markerText": "m",
+      "markerTitle": "reasoning effort minimal",
+      "ok": true,
+      "title": "effort-pi-minimal"
+    },
+    {
+      "expected": "M+",
+      "markerBox": {
+        "height": 12,
+        "width": 15.5625
+      },
+      "markerClass": "effortMark effort-max",
+      "markerText": "M+",
+      "markerTitle": "reasoning effort max",
+      "ok": true,
+      "title": "effort-cc-max"
+    }
+  ],
+  "url": "http://127.0.0.1:19421/#session=effort-codex-low",
+  "viewport": {
+    "h": 720,
+    "w": 1280
+  }
+}

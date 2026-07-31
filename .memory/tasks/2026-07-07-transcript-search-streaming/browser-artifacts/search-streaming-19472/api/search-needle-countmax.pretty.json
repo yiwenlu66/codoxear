@@ -1,0 +1,20 @@
+{
+    "transcript_state": "bound",
+    "thread_id": "search-streaming-session",
+    "log_path": "/home/tester/large-search-proof/large-search-session.jsonl",
+    "query": "needle",
+    "match_count": 1000,
+    "match_count_truncated": true,
+    "matches": [
+        {
+            "role": "assistant",
+            "text": "bulk needle search row 0000",
+            "message_class": "final_response",
+            "message_id": "b54cd93df9d651d7a4c959c482eefba2403e3005728293741ba5647ea71dc85e",
+            "ts": 3.0,
+            "_before_byte": 296,
+            "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InNlYXJjaC1zdHJlYW1pbmctc2Vzc2lvbiIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyL2xhcmdlLXNlYXJjaC1wcm9vZi9sYXJnZS1zZWFyY2gtc2Vzc2lvbi5qc29ubCIsInBvcyI6Mjk2fQ.RIof-p5riWVYmn_7DLFTUHm6O6AIvzatV4BI9r5Uoxk",
+            "load_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InNlYXJjaC1zdHJlYW1pbmctc2Vzc2lvbiIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyL2xhcmdlLXNlYXJjaC1wcm9vZi9sYXJnZS1zZWFyY2gtc2Vzc2lvbi5qc29ubCIsInBvcyI6NDczfQ.Gj39OswcsCFSXFVsrrLdcZQVvWFou6aTdZti7uAp_qA"
+        }
+    ]
+}

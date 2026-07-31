@@ -2,11 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#1d4ed8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; font-src 'self' https://cdn.jsdelivr.net; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" />
     <title>Codoxear</title>
     <script>
       (function () {
@@ -23,19 +21,164 @@
       window.CODOXEAR_ASSET_VERSION = "__CODOXEAR_ASSET_VERSION__";
       window.CODOXEAR_ATTACH_MAX_BYTES = __CODOXEAR_ATTACH_MAX_BYTES__;
     </script>
-    <link rel="icon" type="image/png" href="favicon.png" />
-    <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script>
+      (function () {
+        window.__codoxearLoadError = null;
+        // Bootstrap-success marker. Set by app.js once renderLogin()/renderApp()
+        // has constructed a valid synchronous UI shell. The load-error fallback
+        // uses this to decide whether a partially-populated #root is a usable
+        // app (leave it alone) or a broken skeleton from a mid-bootstrap throw
+        // (replace it with the visible error panel).
+        window.__codoxearAppBootstrapped = false;
+        window.__codoxearMarkBootstrapped = function () {
+          window.__codoxearAppBootstrapped = true;
+        };
+        function record(message, source, lineno, colno, error) {
+          window.__codoxearLoadError = {
+            message: message || (error && error.message) || "unknown load error",
+            source: source || "",
+            lineno: lineno || 0,
+            colno: colno || 0,
+            stack: (error && error.stack) || "",
+            time: Date.now(),
+          };
+        }
+        window.addEventListener("error", function (event) {
+          record(
+            event.message || (event.error && event.error.message) || "uncaught error",
+            event.filename || "",
+            event.lineno || 0,
+            event.colno || 0,
+            event.error
+          );
+        });
+        window.addEventListener("unhandledrejection", function (event) {
+          var reason = event && event.reason;
+          record(
+            (reason && (reason.message || String(reason))) || "unhandled promise rejection",
+            "",
+            0,
+            0,
+            reason instanceof Error ? reason : null
+          );
+        });
+        function renderLoadErrorFallback(detail) {
+          var root = document.getElementById("root");
+          var rootEmpty =
+            !root ||
+            (root.childNodes.length === 0 && !(root.textContent && root.textContent.trim()));
+          // Render the visible fallback when #root never received any UI, OR
+          // when a load error was recorded but the app never reached a valid
+          // bootstrap state (e.g. a fail-loud dependency threw after a partial
+          // shell was appended). When bootstrapping succeeded we keep the
+          // usable UI even if a later error was recorded.
+          var shouldRender =
+            rootEmpty ||
+            (window.__codoxearLoadError && !window.__codoxearAppBootstrapped);
+          if (!shouldRender) return;
+          // If #root holds a broken partial skeleton, clear it so the fallback
+          // panel is the only visible surface and stays self-contained.
+          if (root && !rootEmpty) root.innerHTML = "";
+          var panel = document.createElement("div");
+          panel.setAttribute("data-codoxear-load-error", "true");
+          panel.style.cssText = [
+            "position:fixed",
+            "inset:0",
+            "display:flex",
+            "flex-direction:column",
+            "align-items:center",
+            "justify-content:center",
+            "padding:24px",
+            "font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif",
+            "background:#0b1220",
+            "color:#e5e7eb",
+            "text-align:center",
+          ].join(";");
+          var title = document.createElement("strong");
+          title.textContent = "Codoxear failed to load";
+          title.style.cssText = "font-size:18px;margin-bottom:8px;";
+          var msg = document.createElement("pre");
+          msg.textContent = detail
+            ? detail.message +
+              (detail.source ? "\n" + detail.source + ":" + detail.lineno + ":" + detail.colno : "") +
+              (detail.stack ? "\n" + detail.stack : "")
+            : "The application UI did not initialize. Reload to retry; if the problem persists, check the browser console.";
+          msg.style.cssText = [
+            "max-width:560px",
+            "white-space:pre-wrap",
+            "word-break:break-word",
+            "margin:0 0 12px",
+            "font-size:13px",
+            "color:#cbd5e1",
+          ].join(";");
+          var reload = document.createElement("button");
+          reload.type = "button";
+          reload.textContent = "Reload";
+          reload.style.cssText = [
+            "padding:6px 14px",
+            "font-size:14px",
+            "border:1px solid #475569",
+            "background:#1d4ed8",
+            "color:#fff",
+            "border-radius:6px",
+            "cursor:pointer",
+          ].join(";");
+          reload.onclick = function () {
+            window.location.reload();
+          };
+          panel.appendChild(title);
+          panel.appendChild(msg);
+          panel.appendChild(reload);
+          (root || document.body).appendChild(panel);
+        }
+        window.__codoxearRenderLoadErrorFallback = renderLoadErrorFallback;
+        window.addEventListener("load", function () {
+          window.setTimeout(function () {
+            renderLoadErrorFallback(window.__codoxearLoadError);
+          }, 0);
+        });
+      })();
+    </script>
+    <link rel="icon" type="image/png" href="favicon.png?v=__CODOXEAR_ASSET_VERSION__" />
+    <link rel="manifest" href="manifest.webmanifest?v=__CODOXEAR_ASSET_VERSION__" />
 			    <link rel="stylesheet" href="app.css?v=__CODOXEAR_ASSET_VERSION__" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css" crossorigin="anonymous" />
-    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js" defer></script>
   </head>
   <body>
     <div id="root"></div>
+		    <script src="app_url.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_storage.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_perf.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_api.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_markdown.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_launch.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_display.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_new_session.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_dom.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_file_helpers.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_file_picker.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_file_viewer.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="monaco/vs/loader.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_file_editor.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_session_helpers.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_viewport.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_polling.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_transcript.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_message_identity.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_message_rows.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_conversation_copy.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_modal.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_clipboard.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_code_copy.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_voice_helpers.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_voice.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_queue.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_diagnostics.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_recovery.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_unattended.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_chat_navigation.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_chat_search.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_shell.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
+		    <script src="app_composer.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
 		    <script src="app.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>
 		  </body>
 		</html>

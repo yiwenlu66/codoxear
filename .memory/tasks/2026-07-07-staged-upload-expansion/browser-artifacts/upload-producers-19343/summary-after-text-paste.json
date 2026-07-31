@@ -1,0 +1,15 @@
+{
+  "browser": {
+    "badge": "1",
+    "chipCount": 1,
+    "defaultPrevented": false,
+    "dispatchReturned": true,
+    "toast": "",
+    "value": "TEXT-ONLY-PASTE"
+  },
+  "api_count": 1,
+  "broker_counts": {
+    "state": 4
+  },
+  "send_or_keys": 0
+}

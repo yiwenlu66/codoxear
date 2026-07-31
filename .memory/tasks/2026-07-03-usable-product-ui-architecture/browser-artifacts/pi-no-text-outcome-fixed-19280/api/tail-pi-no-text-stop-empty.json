@@ -1,0 +1,30 @@
+{
+  "body": {
+    "busy": false,
+    "events": [
+      {
+        "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InBpLW5vLXRleHQtc3RvcC1lbXB0eSIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9waS1uby10ZXh0LWxvZ3MvcGktbm8tdGV4dC1zdG9wLWVtcHR5Lmpzb25sIiwicG9zIjoxMDl9.nLRmmtE6ffW1k9ZTU5CpZiamLfwOqkY22YCA1O36AwA",
+        "role": "user",
+        "text": "hello pi stop empty proof",
+        "ts": 1.0
+      },
+      {
+        "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InBpLW5vLXRleHQtc3RvcC1lbXB0eSIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9waS1uby10ZXh0LWxvZ3MvcGktbm8tdGV4dC1zdG9wLWVtcHR5Lmpzb25sIiwicG9zIjoyNzR9.in2CT49RAYjVS2QOJEhQrDlGI-BfOAaBf_jZ5MycBVw",
+        "message_class": "error",
+        "message_id": "087494d134e5cff586b33ebfb3858f0e994dd9030bcad7f4dab8001ca5f793f3",
+        "role": "assistant",
+        "text": "The backend completed this turn without producing a response.",
+        "ts": 2.0
+      }
+    ],
+    "has_older": false,
+    "history_cursor": null,
+    "live_cursor": "eyJ2IjoxLCJraW5kIjoibGl2ZSIsInRocmVhZF9pZCI6InBpLW5vLXRleHQtc3RvcC1lbXB0eSIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9waS1uby10ZXh0LWxvZ3MvcGktbm8tdGV4dC1zdG9wLWVtcHR5Lmpzb25sIiwicG9zIjo0MTN9.o5HoSRXlymOgZGihFpKk-EUgL0KEMyjhsU9kHcZyraY",
+    "log_path": "/home/tester/.local/share/codoxear/pi-no-text-logs/pi-no-text-stop-empty.jsonl",
+    "queue_len": 0,
+    "thread_id": "pi-no-text-stop-empty",
+    "token": null,
+    "transcript_state": "bound"
+  },
+  "status": 200
+}

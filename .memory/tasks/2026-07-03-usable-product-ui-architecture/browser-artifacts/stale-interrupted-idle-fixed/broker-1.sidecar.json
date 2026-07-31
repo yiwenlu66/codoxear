@@ -1,0 +1,1 @@
+{"agent_backend": "codex", "session_id": "broker-1", "codex_pid": 999991, "broker_pid": 999992, "cwd": "/workspace", "log_path": "/home/tester/.local/share/codoxear/rollout-broker-1.jsonl", "start_ts": 100.0, "owner": "terminal", "source": "cert"}

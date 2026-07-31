@@ -4,11 +4,23 @@ import unittest
 from pathlib import Path
 
 from codoxear.server import _resolve_git_path
+from codoxear.server import _resolve_under
 from codoxear.server import _resolve_unique_bare_filename
 from codoxear.server import _resolve_session_path
 
 
 class TestPathResolution(unittest.TestCase):
+    def test_resolve_under_allows_root_cwd_descendant(self) -> None:
+        resolved = _resolve_under(Path("/"), "tmp/codoxear-root-cwd-test.txt")
+        self.assertEqual(resolved, Path("/tmp/codoxear-root-cwd-test.txt").resolve())
+
+    def test_resolve_under_rejects_parent_escape(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td) / "base"
+            base.mkdir()
+            with self.assertRaisesRegex(ValueError, "path escapes session cwd"):
+                _resolve_under(base, "../escape.txt")
+
     def test_resolve_session_path_allows_absolute(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
@@ -27,6 +39,14 @@ class TestPathResolution(unittest.TestCase):
             resolved = _resolve_session_path(base, "a/b.txt")
             self.assertEqual(resolved, target.resolve())
 
+    def test_resolve_session_path_allows_whitespace_only_relative_name(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            target = base / " "
+            target.write_text("x", encoding="utf-8")
+            resolved = _resolve_session_path(base, " ")
+            self.assertEqual(resolved, target.resolve())
+
     def test_resolve_git_path_allows_absolute_inside_repo(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -38,6 +58,17 @@ class TestPathResolution(unittest.TestCase):
             self.assertEqual(resolved, target.resolve())
             self.assertEqual(repo_root, root.resolve())
             self.assertEqual(rel, "dir/file.txt")
+
+    def test_resolve_git_path_keeps_backslash_literal(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            subprocess.run(["git", "init"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            target = root / "back\\slash.md"
+            target.write_text("x", encoding="utf-8")
+            resolved, repo_root, rel = _resolve_git_path(root, "back\\slash.md")
+            self.assertEqual(resolved, target)
+            self.assertEqual(repo_root, root.resolve())
+            self.assertEqual(rel, "back\\slash.md")
 
     def test_resolve_git_path_rejects_absolute_outside_repo(self) -> None:
         with tempfile.TemporaryDirectory() as td:

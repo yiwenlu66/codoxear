@@ -1,0 +1,12 @@
+tester        15       0  0 04:01 ?        00:00:00 python3 /artifacts/fake_cc_sessions.py
+total 12
+-rw-r--r-- 1 tester tester 250 Jul  6 04:01 cc-apierr.json
+srwxr-xr-x 1 tester tester   0 Jul  6 04:01 cc-apierr.sock
+-rw-r--r-- 1 tester tester 250 Jul  6 04:01 cc-noresp.json
+srwxr-xr-x 1 tester tester   0 Jul  6 04:01 cc-noresp.sock
+-rw-r--r-- 1 tester tester 250 Jul  6 04:01 cc-normal.json
+srwxr-xr-x 1 tester tester   0 Jul  6 04:01 cc-normal.sock
+total 12
+-rw-r--r-- 1 tester tester 436 Jul  6 04:01 cc-apierr.jsonl
+-rw-r--r-- 1 tester tester 379 Jul  6 04:01 cc-noresp.jsonl
+-rw-r--r-- 1 tester tester 611 Jul  6 04:01 cc-normal.jsonl

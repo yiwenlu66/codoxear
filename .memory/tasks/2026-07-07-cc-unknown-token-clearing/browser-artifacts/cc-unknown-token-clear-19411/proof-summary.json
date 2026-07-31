@@ -1,0 +1,44 @@
+{
+  "known_session_token": {
+    "context_window": 200000,
+    "tokens_in_context": 4500,
+    "tokens_remaining": 179116,
+    "percent_remaining": 98,
+    "reserved_tokens": 16384,
+    "max_input_tokens": 183616,
+    "as_of": "2026-07-07T09:00:10.000Z"
+  },
+  "after_session_token": null,
+  "known_tail_token": {
+    "context_window": 200000,
+    "tokens_in_context": 4500,
+    "tokens_remaining": 179116,
+    "percent_remaining": 98,
+    "reserved_tokens": 16384,
+    "max_input_tokens": 183616,
+    "as_of": "2026-07-07T09:00:10.000Z"
+  },
+  "after_tail_token": null,
+  "known_browser_ctx": {
+    "aria": "Context usage details",
+    "disabled": false,
+    "display": "flex",
+    "text": "Ctx 98%",
+    "title": "Context input: 4500/183616 tokens (16384 reserved; window 200000)."
+  },
+  "after_browser_ctx": {
+    "aria": "Context usage details",
+    "disabled": true,
+    "display": "none",
+    "tabIndex": 0,
+    "text": "",
+    "title": ""
+  },
+  "after_tail_events": [
+    "cc unknown token clearing fixture",
+    "KNOWN_MODEL_TOKEN_SENTINEL visible before unknown",
+    "UNKNOWN_MODEL_CLEAR_SENTINEL should hide context chip"
+  ],
+  "browser_has_unknown_sentinel": true,
+  "browser_overflow_after_unknown": false
+}

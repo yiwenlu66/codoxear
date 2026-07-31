@@ -1,0 +1,14 @@
+cleanup_start
+2026-07-07T18:36:21Z
+close browser desktop
+[32m✓[0m Browser closed
+close browser mobile
+[32m✓[0m Browser closed
+stop fake broker by exact pid
+fake broker still alive pid=52
+stop sandbox by exact script/container name
+container_after_stop
+port_after_stop
+State    Recv-Q    Send-Q       Local Address:Port         Peer Address:Port
+cleanup_end
+2026-07-07T18:36:22Z

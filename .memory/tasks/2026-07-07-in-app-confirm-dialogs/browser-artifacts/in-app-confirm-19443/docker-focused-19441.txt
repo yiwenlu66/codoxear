@@ -1,0 +1,5 @@
+COMMAND: CODOXEAR_DOCKER_PORT=19441 scripts/codoxear-docker-sandbox test tests/test_in_app_confirm_source.py tests/test_frontend_queue_module_source.py tests/test_queue_button_source.py tests/test_frontend_file_viewer_module_source.py tests/test_chat_scrollback_source.py tests/test_launch_ui_source.py tests/test_file_viewer_source.py
+........................................................................ [ 58%]
+............................................... [ 96%]
+....                                                                     [100%]
+123 passed, 25 subtests passed in 6.32s

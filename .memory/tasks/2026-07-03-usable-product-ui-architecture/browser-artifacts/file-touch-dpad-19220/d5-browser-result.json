@@ -1,0 +1,177 @@
+{
+  "sessionClicked": null,
+  "fileOpener": {
+    "opener": "View file"
+  },
+  "fileInput": {
+    "found": true,
+    "placeholder": "Choose or search files",
+    "id": "filePickerInput"
+  },
+  "viewerState": {
+    "open": true,
+    "rect": {
+      "x": 0,
+      "w": 390,
+      "right": 390
+    },
+    "statusText": "Loading..."
+  },
+  "after": {
+    "touchBtns": [
+      {
+        "id": "fileTouchUpBtn",
+        "width": 44,
+        "height": 44,
+        "minWidth": "44px",
+        "minHeight": "44px",
+        "widthRaw": "44px",
+        "heightRaw": "44px",
+        "meets44": true,
+        "visible": true
+      },
+      {
+        "id": "fileTouchLeftBtn",
+        "width": 44,
+        "height": 44,
+        "minWidth": "44px",
+        "minHeight": "44px",
+        "widthRaw": "44px",
+        "heightRaw": "44px",
+        "meets44": true,
+        "visible": true
+      },
+      {
+        "id": "fileTouchDownBtn",
+        "width": 44,
+        "height": 44,
+        "minWidth": "44px",
+        "minHeight": "44px",
+        "widthRaw": "44px",
+        "heightRaw": "44px",
+        "meets44": true,
+        "visible": true
+      },
+      {
+        "id": "fileTouchRightBtn",
+        "width": 44,
+        "height": 44,
+        "minWidth": "44px",
+        "minHeight": "44px",
+        "widthRaw": "44px",
+        "heightRaw": "44px",
+        "meets44": true,
+        "visible": true
+      },
+      {
+        "id": "fileTouchSelectBtn",
+        "width": 44,
+        "height": 44,
+        "minWidth": "44px",
+        "minHeight": "44px",
+        "widthRaw": "44px",
+        "heightRaw": "44px",
+        "meets44": true,
+        "visible": true
+      },
+      {
+        "id": "fileTouchCopyBtn",
+        "width": 44,
+        "height": 44,
+        "minWidth": "44px",
+        "minHeight": "44px",
+        "widthRaw": "44px",
+        "heightRaw": "44px",
+        "meets44": true,
+        "visible": true
+      },
+      {
+        "id": "fileTouchPasteBtn",
+        "width": 44,
+        "height": 44,
+        "minWidth": "44px",
+        "minHeight": "44px",
+        "widthRaw": "44px",
+        "heightRaw": "44px",
+        "meets44": true,
+        "visible": true
+      }
+    ],
+    "dpadGridColumns": "44px 44px 44px",
+    "dpadGridRows": "44px 44px",
+    "dpadRect": {
+      "w": 144,
+      "h": 94
+    },
+    "actionsRect": {
+      "w": 144,
+      "h": 44
+    },
+    "toolbarRect": {
+      "w": 368,
+      "h": 94,
+      "left": 11,
+      "right": 379
+    },
+    "bodyScrollWidth": 390,
+    "bodyClientWidth": 390,
+    "viewportWidth": 390,
+    "horizontalOverflow": false,
+    "viewerRect": {
+      "left": 0,
+      "right": 390,
+      "w": 390
+    }
+  },
+  "before": {
+    "touchBtns": [
+      {
+        "id": "fileTouchUpBtn",
+        "width": 34,
+        "height": 34,
+        "meets44": false
+      },
+      {
+        "id": "fileTouchLeftBtn",
+        "width": 34,
+        "height": 34,
+        "meets44": false
+      },
+      {
+        "id": "fileTouchDownBtn",
+        "width": 34,
+        "height": 34,
+        "meets44": false
+      },
+      {
+        "id": "fileTouchRightBtn",
+        "width": 34,
+        "height": 34,
+        "meets44": false
+      },
+      {
+        "id": "fileTouchSelectBtn",
+        "width": 34,
+        "height": 34,
+        "meets44": false
+      },
+      {
+        "id": "fileTouchCopyBtn",
+        "width": 34,
+        "height": 34,
+        "meets44": false
+      },
+      {
+        "id": "fileTouchPasteBtn",
+        "width": 34,
+        "height": 34,
+        "meets44": false
+      }
+    ],
+    "dpadGridColumns": "34px 34px 34px",
+    "dpadGridRows": "34px 34px",
+    "bodyScrollWidth": 390,
+    "viewportWidth": 390,
+    "horizontalOverflow": false
+  }
+}

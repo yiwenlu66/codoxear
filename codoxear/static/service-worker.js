@@ -27,10 +27,13 @@ self.addEventListener("notificationclick", (event) => {
   const rawUrl = event.notification && event.notification.data ? event.notification.data.url : "";
   const target = typeof rawUrl === "string" && rawUrl ? rawUrl : new URL("./", self.registration.scope).toString();
   event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (windows) => {
       for (const client of windows) {
         if ("focus" in client) {
-          client.navigate(target);
+          if ("navigate" in client) {
+            const navigated = await client.navigate(target);
+            return (navigated || client).focus();
+          }
           return client.focus();
         }
       }

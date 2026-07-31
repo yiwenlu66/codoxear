@@ -1,0 +1,69 @@
+HEAD: 55896d5fd253f9bcf98e61127dff71303e128950
+Generic no-response text (for reference, NOT expected here): 'The backend completed this turn without producing a response.'
+
+==============================================================================
+SCENARIO A-pi-empty-abort  (backend=pi)
+input rows:
+  {"type": "message", "ts": 1.0, "message": {"role": "user", "content": [{"type": "text", "text": "hello pi"}]}}
+  {"type": "message", "ts": 2.0, "message": {"role": "assistant", "stopReason": "aborted", "content": []}}
+
+Surface 1 — unit normalization (_extract_positioned_chat_events):
+  events = [{"text": "hello pi", "ts": 1.0, "message_id": null, "role": "user", "message_class": null}]
+  -> DEFECT (user-only; no interruption outcome row)
+Surface 1b — disk tail page (_read_chat_tail_page):
+  events = [{"text": "hello pi", "ts": 1.0, "message_id": null, "role": "user", "message_class": null}]
+  -> DEFECT (user-only; no interruption outcome row)
+Surface 2 — transcript search:
+  user-prompt control: {'query': 'hello pi', 'match_count': 1, 'matches': [{'text': 'hello pi', 'ts': 1.0, 'message_id': None, 'role': 'user', 'message_class': None}]}
+  'interrupt' phrase : {'query': 'interrupt', 'match_count': 0}
+  -> DEFECT (no interruption row produced -> nothing to find)
+Surface 3 — /api/messages:
+  tail events        = [{"text": "hello pi", "ts": 1.0, "message_id": null, "role": "user", "message_class": null}]
+  -> DEFECT (user-only; no interruption outcome row)
+  search user prompt : match_count=1
+  search 'interrupt' : match_count=0
+
+==============================================================================
+SCENARIO B-pi-partial-abort  (backend=pi)
+input rows:
+  {"type": "message", "ts": 1.0, "message": {"role": "user", "content": [{"type": "text", "text": "hello pi partial"}]}}
+  {"type": "message", "ts": 2.0, "message": {"role": "assistant", "stopReason": "aborted", "content": [{"type": "text", "text": "I was halfway through"}]}}
+
+Surface 1 — unit normalization (_extract_positioned_chat_events):
+  events = [{"text": "hello pi partial", "ts": 1.0, "message_id": null, "role": "user", "message_class": null}]
+  -> DEFECT (user-only; no interruption outcome row)
+Surface 1b — disk tail page (_read_chat_tail_page):
+  events = [{"text": "hello pi partial", "ts": 1.0, "message_id": null, "role": "user", "message_class": null}]
+  -> DEFECT (user-only; no interruption outcome row)
+Surface 2 — transcript search:
+  user-prompt control: {'query': 'hello pi partial', 'match_count': 1, 'matches': [{'text': 'hello pi partial', 'ts': 1.0, 'message_id': None, 'role': 'user', 'message_class': None}]}
+  'interrupt' phrase : {'query': 'interrupt', 'match_count': 0}
+  partial text       : {'query': 'I was halfway through', 'match_count': 0}  (>0 would mean partial preserved & searchable)
+  -> DEFECT (no interruption row produced -> nothing to find)
+Surface 3 — /api/messages:
+  tail events        = [{"text": "hello pi partial", "ts": 1.0, "message_id": null, "role": "user", "message_class": null}]
+  -> DEFECT (user-only; no interruption outcome row)
+  search user prompt : match_count=1
+  search 'interrupt' : match_count=0
+
+==============================================================================
+SCENARIO C-codex-turn-aborted  (backend=codex)
+input rows:
+  {"type": "event_msg", "ts": 1.0, "payload": {"type": "user_message", "message": "hello codex"}}
+  {"type": "event_msg", "ts": 2.0, "payload": {"type": "turn_aborted"}}
+
+Surface 1 — unit normalization (_extract_positioned_chat_events):
+  events = [{"text": "hello codex", "ts": 1.0, "message_id": null, "role": "user", "message_class": null}]
+  -> DEFECT (user-only; no interruption outcome row)
+Surface 1b — disk tail page (_read_chat_tail_page):
+  events = [{"text": "hello codex", "ts": 1.0, "message_id": null, "role": "user", "message_class": null}]
+  -> DEFECT (user-only; no interruption outcome row)
+Surface 2 — transcript search:
+  user-prompt control: {'query': 'hello codex', 'match_count': 1, 'matches': [{'text': 'hello codex', 'ts': 1.0, 'message_id': None, 'role': 'user', 'message_class': None}]}
+  'interrupt' phrase : {'query': 'interrupt', 'match_count': 0}
+  -> DEFECT (no interruption row produced -> nothing to find)
+Surface 3 — /api/messages:
+  tail events        = [{"text": "hello codex", "ts": 1.0, "message_id": null, "role": "user", "message_class": null}]
+  -> DEFECT (user-only; no interruption outcome row)
+  search user prompt : match_count=1
+  search 'interrupt' : match_count=0

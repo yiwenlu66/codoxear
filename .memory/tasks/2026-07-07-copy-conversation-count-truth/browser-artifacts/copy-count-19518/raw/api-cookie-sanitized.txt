@@ -1,0 +1,2 @@
+# Cookie jar captured for auth smoke; cookie value redacted before commit.
+#HttpOnly_127.0.0.1	FALSE	/	FALSE	<expiry>	codoxear_auth	<redacted>

@@ -1,0 +1,15 @@
+{
+  "total": 74,
+  "cmd_counts": {
+    "state": 73,
+    "send": 1
+  },
+  "send_texts": [
+    "Attachment 1: /home/tester/.local/share/codoxear/uploads/batch-blocker-proof/1783394584455_first.txt\nFORCE_COMMIT_UNKNOWN batch blocker marker"
+  ],
+  "key_count": 0,
+  "busy_after_first_seen": true,
+  "max_staged_file_count": 1,
+  "send_count": 1,
+  "marker_send_count": 1
+}

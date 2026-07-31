@@ -1,0 +1,21 @@
+Verdict: DEFECT
+HEAD: 4af9a3f
+
+Length+visible-text prefix:
+- pi_assistant_is_final_turn_end(length row): True
+- PiBackend projection class: final_response
+- _compute_idle_from_log: True
+- pi_current_turn_state_before EOF idle: True
+- broker reducer busy/turn_open: False / False
+- runtime busy/sendable: False / True
+
+Continuation after compaction:
+- last assistant projection class: narration
+- _compute_idle_from_log: False
+- current-turn pending/idle: ['toolu_1'] / False
+- broker reducer busy/turn_open/pending: True / True / ['toolu_1']
+
+Control stop+visible-text:
+- final turn end: True
+- projection class: final_response
+- _compute_idle_from_log: True

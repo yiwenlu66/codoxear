@@ -1,0 +1,33 @@
+{
+  "surface_A_browser": {
+    "search_bad": "two .fileMenuItem options, same display bad\\xffname.txt",
+    "option_literal": {"hint": "current folder · literal name", "title": "bad\\xffname.txt — current folder · literal name"},
+    "option_nonutf": {"hint": "current folder · non-UTF bytes", "title": "bad\\xffname.txt — current folder · non-UTF bytes"},
+    "open_literal_content": "LITERAL COLLISION OK (21 B)",
+    "open_nonutf_content": "RAW COLLISION OK (17 B)"
+  },
+  "surface_B_browser_desktop": {
+    "changed_picker_entries": [
+      {"path":"icon.png","stat":"+?-?","note":"binary modified"},
+      {"path":"notes.md","stat":"+2-1"},
+      {"path":"src/app.py","stat":"+2-2","note":"staged+unstaged mixed"},
+      {"path":"todelete.txt","stat":"+0-1","note":"deleted"},
+      {"path":"oldname.txt → renamed.txt","stat":"+0-0","note":"staged rename old->new"},
+      {"path":"staged_new.txt","stat":"+1-0","note":"staged add"},
+      {"path":"nested/","stat":"untracked"},
+      {"path":"untracked.txt","stat":"untracked"}
+    ],
+    "diff_fallback_notes_md": {
+      "status": "notes.md - diff",
+      "notice": "Rich diff unavailable. Showing unified diff (read-only).",
+      "content": "diff --git a/notes.md ... -line one +line one MODIFIED +line three added"
+    },
+    "nonrepo_notice": "Not a git repository — no changed files (.fileMenuGitStatus, role=status)",
+    "write_stage_commit_checkout_controls": "none present; Edit labeled unavailable, 0 save buttons, 0 textareas, 0 contenteditable"
+  },
+  "surface_B_browser_mobile_390x844": {
+    "diff_fallback": {"hasUnifiedNotice": true, "hasPlus": true, "horizontalOverflowPx": 0},
+    "picker": {"candidateCount": 10, "hasRename": true, "untrackedBadgeCount": 2, "horizontalOverflowPx": 0},
+    "nonrepo_notice": "Not a git repository — no changed files, horizontalOverflowPx 0"
+  }
+}

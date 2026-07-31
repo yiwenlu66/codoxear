@@ -1,0 +1,167 @@
+import json
+import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from codoxear.queue_store import QueueStore
+
+
+class TestQueueStore(unittest.TestCase):
+    def test_load_migrates_legacy_strings_and_duplicate_ids(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "queues.json"
+            path.write_text(json.dumps({"s1": ["one", {"id": "dup", "text": "two"}, {"id": "dup", "text": "three"}]}), encoding="utf-8")
+            queues = QueueStore(path).load()
+
+        self.assertEqual([item["text"] for item in queues["s1"]], ["one", "two", "three"])
+        ids = [item["id"] for item in queues["s1"]]
+        self.assertEqual(len(ids), len(set(ids)))
+
+    def test_sending_item_cannot_be_mutated_and_success_removes_same_id_only(self) -> None:
+        store = QueueStore(Path("/tmp/unused.json"))
+        queues = {"s1": [{"id": "a", "text": "dup", "created_ts": 1}, {"id": "b", "text": "dup", "created_ts": 2}]}
+
+        with self.assertRaisesRegex(ValueError, "item is already sending"):
+            store.update(queues, "s1", "a", "edit", sending_item_id="a")
+        with self.assertRaisesRegex(ValueError, "item is already sending"):
+            store.delete(queues, "s1", "a", sending_item_id="a")
+        with self.assertRaisesRegex(ValueError, "item is already sending"):
+            store.move(queues, "s1", "a", 1, sending_item_id="a")
+
+        store.pop_sent(queues, "s1", "a")
+        self.assertEqual([item["id"] for item in queues["s1"]], ["b"])
+        self.assertEqual([item["text"] for item in queues["s1"]], ["dup"])
+
+    def test_promotion_helpers_manage_commit_unknown_markers(self) -> None:
+        store = QueueStore(Path("/tmp/unused.json"))
+        queues = {"s1": [{"id": "a", "text": "send me", "created_ts": 1, "extra": "kept"}, {"id": "b", "text": "later", "created_ts": 2}]}
+
+        head = store.promotion_head(queues, "s1")
+        self.assertIsNotNone(head)
+        self.assertEqual(head.item_id, "a")
+        self.assertEqual(head.text, "send me")
+        self.assertIsNone(store.promotion_head(queues, "s1", expected_item_id="b"))
+
+        self.assertEqual(store.mark_promotion_commit_unknown(queues, "s1", "a", ts=3.0), "send me")
+        self.assertTrue(store.has_recovery_items(queues, "s1"))
+        self.assertIsNone(store.promotion_head(queues, "s1"))
+        unknown_item, queue_len = store.preserve_commit_unknown_marker(queues, "s1", "a", ts=4.0)
+        self.assertEqual(queue_len, 2)
+        self.assertIsNotNone(unknown_item)
+        self.assertTrue(unknown_item["commit_unknown"])
+        self.assertEqual(unknown_item["commit_unknown_ts"], 4.0)
+        self.assertEqual(unknown_item["extra"], "kept")
+
+        store.clear_commit_unknown_marker(queues, "s1", "a")
+        self.assertFalse(store.has_recovery_items(queues, "s1"))
+        self.assertNotContains("commit_unknown", queues["s1"][0])
+        self.assertNotContains("commit_unknown_ts", queues["s1"][0])
+
+    def test_commit_unknown_state_survives_load_list_and_save(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "queues.json"
+            path.write_text(json.dumps({"s1": [{"id": "a", "text": "maybe sent", "created_ts": 1, "commit_unknown": True, "commit_unknown_ts": 2}, {"id": "b", "text": "recover later", "created_ts": 3, "orphan_recovery": True}]}), encoding="utf-8")
+            store = QueueStore(path)
+            queues = store.load()
+            listed = store.list_items(queues, "s1")
+            store.save(queues)
+            saved = json.loads(path.read_text(encoding="utf-8"))
+
+        self.assertTrue(queues["s1"][0]["commit_unknown"])
+        self.assertEqual(queues["s1"][0]["commit_unknown_ts"], 2.0)
+        self.assertTrue(queues["s1"][1]["orphan_recovery"])
+        self.assertTrue(listed[0]["commit_unknown"])
+        self.assertTrue(listed[1]["orphan_recovery"])
+        self.assertFalse(store.list_items(queues, "s1", sending_item_id="a")[0]["commit_unknown"])
+        self.assertTrue(saved["s1"][0]["commit_unknown"])
+        self.assertEqual(saved["s1"][0]["commit_unknown_ts"], 2.0)
+        self.assertTrue(saved["s1"][1]["orphan_recovery"])
+
+    def test_commit_unknown_item_blocks_reordering_past_it(self) -> None:
+        store = QueueStore(Path("/tmp/unused.json"))
+        queues = {
+            "s1": [
+                {"id": "a", "text": "maybe", "created_ts": 1, "commit_unknown": True},
+                {"id": "b", "text": "later", "created_ts": 2},
+            ]
+        }
+
+        with self.assertRaisesRegex(ValueError, "blocks reordering"):
+            store.move(queues, "s1", "b", 0)
+        with self.assertRaisesRegex(ValueError, "commit status is unknown"):
+            store.move(queues, "s1", "a", 1)
+        with self.assertRaisesRegex(ValueError, "explicit confirmation"):
+            store.delete(queues, "s1", "a")
+        with self.assertRaisesRegex(ValueError, "commit status is unknown"):
+            store.update(queues, "s1", "a", "changed")
+        self.assertEqual([item["id"] for item in queues["s1"]], ["a", "b"])
+
+        self.assertEqual(store.delete(queues, "s1", "a", allow_commit_unknown=True), 1)
+        self.assertEqual([item["id"] for item in queues["s1"]], ["b"])
+
+    def test_commit_unknown_middle_item_blocks_crossing_from_either_side(self) -> None:
+        store = QueueStore(Path("/tmp/unused.json"))
+        queues = {
+            "s1": [
+                {"id": "a", "text": "before", "created_ts": 1},
+                {"id": "u", "text": "maybe", "created_ts": 2, "commit_unknown": True},
+                {"id": "b", "text": "after", "created_ts": 3},
+                {"id": "c", "text": "after 2", "created_ts": 4},
+            ]
+        }
+
+        with self.assertRaisesRegex(ValueError, "blocks reordering"):
+            store.move(queues, "s1", "a", 2)
+        with self.assertRaisesRegex(ValueError, "blocks reordering"):
+            store.move(queues, "s1", "b", 0)
+        with self.assertRaisesRegex(ValueError, "out of range"):
+            store.move(queues, "s1", "a", 999)
+        self.assertEqual(store.move(queues, "s1", "c", 2), 4)
+        self.assertEqual([item["id"] for item in queues["s1"]], ["a", "u", "c", "b"])
+
+    def test_orphan_recovery_item_requires_explicit_delete_and_blocks_mutation(self) -> None:
+        store = QueueStore(Path("/tmp/unused.json"))
+        queues = {"s1": [{"id": "r", "text": "recover", "created_ts": 1, "orphan_recovery": True}, {"id": "n", "text": "normal", "created_ts": 2}]}
+
+        with self.assertRaisesRegex(ValueError, "explicit confirmation"):
+            store.delete(queues, "s1", "r")
+        with self.assertRaisesRegex(ValueError, "preserved for recovery"):
+            store.update(queues, "s1", "r", "changed")
+        with self.assertRaisesRegex(ValueError, "preserved for recovery"):
+            store.move(queues, "s1", "r", 1)
+        with self.assertRaisesRegex(ValueError, "blocks reordering"):
+            store.move(queues, "s1", "n", 0)
+
+        self.assertEqual(store.delete(queues, "s1", "r", allow_orphan_recovery=True), 1)
+        self.assertEqual([item["id"] for item in queues["s1"]], ["n"])
+
+    def test_mark_orphan_recovery_items_marks_all_preserved_queue_items(self) -> None:
+        store = QueueStore(Path("/tmp/unused.json"))
+        queues = {"s1": [{"id": "a", "text": "one"}, {"id": "b", "text": "two", "orphan_recovery": True}]}
+
+        self.assertTrue(store.mark_orphan_recovery_items(queues, "s1"))
+        self.assertTrue(queues["s1"][0]["orphan_recovery"])
+        self.assertTrue(queues["s1"][1]["orphan_recovery"])
+        self.assertFalse(store.mark_orphan_recovery_items(queues, "s1"))
+
+    def test_drop_missing_sessions_preserves_unknown_queue_evidence(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "queues.json"
+            store = QueueStore(path)
+            queues = {
+                "live": [{"id": "a", "text": "one", "created_ts": 1}],
+                "dead": [{"id": "b", "text": "two", "created_ts": 2}],
+                "unknown_dead": [{"id": "u", "text": "maybe", "created_ts": 3, "commit_unknown": True}],
+                "empty": [],
+            }
+
+            self.assertTrue(store.drop_missing_sessions(queues, {"live", "empty"}))
+            store.save(queues)
+            saved = json.loads(path.read_text(encoding="utf-8"))
+
+        self.assertEqual(set(saved), {"live", "unknown_dead"})
+        self.assertTrue(saved["unknown_dead"][0]["commit_unknown"])
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,27 @@
+=== Codex no-response turn ===
+[PASS] history pagination preserves Codex synthetic no-response row
+        pages_walked=1; no-response in history=True
+
+[PASS] search finds Codex synthetic no-response text
+        match_count=1 matches=['The backend completed this turn without producing a response.']
+
+[PASS] search control: ordinary user prompt is found
+        match_count=1 matches=['trigger silent backend']
+
+=== Claude Code no-response turn (system/turn_duration, no assistant) ===
+[PASS] tail includes CC synthetic no-response text
+        events=[('user', None, 'cc silent backend prompt'), ('assistant', 'error', 'The backend completed this turn without producing a response.')]
+
+[PASS] search finds CC synthetic no-response text
+        match_count=1 matches=['The backend completed this turn without producing a response.']
+
+=== Claude Code terminal api_error (real error text from log row) ===
+[PASS] tail includes CC terminal api_error text
+        events=[('user', None, 'cc failing backend prompt'), ('assistant', 'error', 'API Error: 503 Service Unavailable')]
+
+[PASS] search finds CC terminal api_error real text
+        match_count=1 matches=['API Error: 503 Service Unavailable']
+
+=== Fresh-process re-read (same handlers, same disk log) ===
+[PASS] re-read from disk reproduces CC synthetic no-response
+        events=[('user', None, 'cc silent backend prompt'), ('assistant', 'error', 'The backend completed this turn without producing a response.')]

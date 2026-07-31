@@ -1,0 +1,14 @@
+{
+  "verdict": "PASS",
+  "sends": 0,
+  "keys": 0,
+  "total_calls": 254,
+  "state_calls": 254,
+  "unattended_enabled": true,
+  "unattended_remaining_injections": 1,
+  "listing_busy": true,
+  "precondition_busy_held": true,
+  "injected_while_busy": false,
+  "remaining_decremented": false,
+  "disabled_by_success": false
+}

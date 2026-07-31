@@ -1,0 +1,7 @@
+/home/tester/.local/share/codoxear/audio/live.m3u8 74
+/home/tester/.local/share/codoxear/hmac_secret 64
+/home/tester/.local/share/codoxear/socks/search-streaming-session.json 654
+/home/tester/.local/share/codoxear/webpush_vapid_private.pem 241
+HOME=/home/tester
+APP_DIR= /home/tester/.local/share/codoxear
+TRANSCRIPT_SEARCH_MAX_LINE_BYTES= 4194304

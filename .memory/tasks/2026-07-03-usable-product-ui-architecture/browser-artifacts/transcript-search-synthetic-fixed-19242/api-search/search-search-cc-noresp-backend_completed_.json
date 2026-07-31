@@ -1,0 +1,23 @@
+{
+  "body": {
+    "log_path": "/home/tester/.local/share/codoxear/search-logs/search-cc-noresp.jsonl",
+    "match_count": 1,
+    "match_count_truncated": false,
+    "matches": [
+      {
+        "_before_byte": 208,
+        "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InNlYXJjaC1jYy1ub3Jlc3AiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvc2VhcmNoLWxvZ3Mvc2VhcmNoLWNjLW5vcmVzcC5qc29ubCIsInBvcyI6MjA4fQ.zSCPY5A1Ad7VA5giYJDH9zMM143vyUVCfBG-zNDXsOw",
+        "load_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InNlYXJjaC1jYy1ub3Jlc3AiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvc2VhcmNoLWxvZ3Mvc2VhcmNoLWNjLW5vcmVzcC5qc29ubCIsInBvcyI6MzUwfQ.Sm0KF1ELb5V3MhCxzfX7cht-hZiCXICcYygrqMdVdBs",
+        "message_class": "error",
+        "message_id": "2c3a92b5f9740f0a632828e9c0677c0c4679ad2f2aa1fcf7e422908b54763c57",
+        "role": "assistant",
+        "text": "The backend completed this turn without producing a response.",
+        "ts": 1783296003.0
+      }
+    ],
+    "query": "backend completed this turn without producing a response",
+    "thread_id": "search-cc-noresp",
+    "transcript_state": "bound"
+  },
+  "status": 200
+}

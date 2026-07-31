@@ -1,0 +1,4 @@
+warning: session discovery: ignoring invalid session metadata in /home/tester/copy-count-proof/copy-count-session.jsonl: ValueError: missing session metadata in /home/tester/copy-count-proof/copy-count-session.jsonl
+warning: main-thread coercion: ignoring invalid session metadata in /home/tester/copy-count-proof/copy-count-session.jsonl: ValueError: missing session metadata in /home/tester/copy-count-proof/copy-count-session.jsonl
+warning: run settings: ignoring invalid session metadata in /home/tester/copy-count-proof/copy-count-session.jsonl: ValueError: missing session metadata in /home/tester/copy-count-proof/copy-count-session.jsonl
+warning: session refresh: ignoring invalid session metadata in /home/tester/copy-count-proof/copy-count-session.jsonl: ValueError: missing session metadata in /home/tester/copy-count-proof/copy-count-session.jsonl

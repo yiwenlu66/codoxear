@@ -1,0 +1,2 @@
+52
+{"sid":"copy-count-session","sock":"/home/tester/.local/share/codoxear/socks/copy-count-session.sock","log":"/home/tester/copy-count-proof/copy-count-session.jsonl","log_size":513,"calls":"/home/tester/copy-count-proof/broker-calls.jsonl","fake_notice":"FAKE_COPY_CONVERSATION_COUNT_PROOF_DOCKER_ONLY"}

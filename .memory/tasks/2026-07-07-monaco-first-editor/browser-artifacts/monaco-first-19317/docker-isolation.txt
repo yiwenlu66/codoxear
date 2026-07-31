@@ -1,0 +1,17 @@
+HOME=/home/tester
+APP_DIR=/home/tester/.local/share/codoxear
+total 36
+drwxr-xr-x 5 tester tester 4096 Jul  6 18:38 .
+drwxr-xr-x 3 tester tester 4096 Jul  6 18:31 ..
+drwxr-xr-x 3 tester tester 4096 Jul  6 18:31 audio
+-rw------- 1 tester tester   64 Jul  6 18:31 hmac_secret
+-rw-r--r-- 1 tester tester   59 Jul  6 18:33 recent_cwds.json
+-rw-r--r-- 1 tester tester  128 Jul  6 18:38 session_files.json
+drwxr-xr-x 2 tester tester 4096 Jul  6 18:33 socks
+drwxr-xr-x 2 tester tester 4096 Jul  6 18:31 uploads
+-rw------- 1 tester tester  241 Jul  6 18:31 webpush_vapid_private.pem
+total 12
+drwxr-xr-x 2 tester tester 4096 Jul  6 18:33 .
+drwxr-xr-x 5 tester tester 4096 Jul  6 18:38 ..
+-rw-r--r-- 1 tester tester  427 Jul  6 18:33 monaco-proof.json
+srwxr-xr-x 1 tester tester    0 Jul  6 18:33 monaco-proof.sock

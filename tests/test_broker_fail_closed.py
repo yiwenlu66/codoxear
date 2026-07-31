@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import shutil
@@ -17,6 +18,7 @@ from codoxear.broker import _agent_shell_command
 from codoxear.broker import _exec_agent_via_login_shell
 from codoxear.broker import _observe_shell_pre_exec_marker
 from codoxear.broker import _pi_bridge_extension_path
+from codoxear.broker import _read_jsonl_from_offset
 from codoxear.broker import _read_pi_active_session_marker
 from codoxear.agent_backend import get_agent_backend
 from codoxear.util import append_launch_attempt
@@ -33,6 +35,27 @@ def _broker_state(*, codex_pid: int, sock_path: Path) -> State:
         sessions_dir=Path("/tmp"),
         sock_path=sock_path,
     )
+
+
+class TestBrokerJsonlOffsetReader(unittest.TestCase):
+    def test_broker_reader_ignores_partial_appended_line(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "rollout.jsonl"
+            first = json.dumps({"type": "event_msg", "payload": {"type": "task_complete"}}) + "\n"
+            path.write_text(first + '{"type":"event_msg"', encoding="utf-8")
+
+            objs, off = _read_jsonl_from_offset(path, 0, max_bytes=4096)
+
+        self.assertEqual(objs, [{"type": "event_msg", "payload": {"type": "task_complete"}}])
+        self.assertEqual(off, len(first.encode("utf-8")))
+
+    def test_broker_reader_preserves_missing_file_contract(self) -> None:
+        missing = Path(tempfile.gettempdir()) / "codoxear-missing-jsonl-for-test.jsonl"
+        try:
+            missing.unlink()
+        except FileNotFoundError:
+            pass
+        self.assertEqual(_read_jsonl_from_offset(missing, 12, max_bytes=4096), ([], 12))
 
 
 class _AcceptCrashSocket:
@@ -456,46 +479,78 @@ read -r -k 1 option
         self.assertEqual(exit_code, 0)
         self.assertNotIn("_stdin_to_pty", _FakeThread.started_targets)
 
-    def test_write_meta_tracks_resume_session_id(self) -> None:
-        broker = Broker(cwd="/tmp", codex_args=["resume", "resume-a"])
-        with tempfile.TemporaryDirectory() as td:
-            sock_path = Path(td) / "broker.sock"
-            log_path = Path(td) / "rollout-2026-03-29T10-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
-            log_path.write_text("", encoding="utf-8")
-            broker.state = _broker_state(codex_pid=1234, sock_path=sock_path)
-            broker.state.session_id = "broker-1"
-            broker.state.cwd = td
-            broker.state.log_path = log_path
-            broker.state.resume_session_id = "resume-a"
+    def test_pi_new_run_reserves_log_path_before_first_write(self) -> None:
+        fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
+        captured: dict[str, object] = {}
+        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch.dict(
+            "os.environ", {"PI_HOME": td, "CODEX_WEB_RESUME_SESSION_ID": ""}, clear=False
+        ), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch("codoxear.broker.BACKEND", get_agent_backend("pi")):
+            broker = Broker(cwd="/tmp", codex_args=["--model", "gpt-5.4"])
+            session_idx = broker.codex_args.index("--session")
+            reserved_log_path = Path(broker.codex_args[session_idx + 1])
 
-            broker._write_meta()
-            meta_path = sock_path.with_suffix(".json")
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            self.assertEqual(meta["resume_session_id"], "resume-a")
+            def _capture_write_meta() -> None:
+                st = broker.state
+                captured["session_id"] = st.session_id if st else None
+                captured["log_path"] = str(st.log_path) if st and st.log_path else None
+                captured["declared_log_path"] = str(st.declared_log_path) if st and st.declared_log_path else None
+                captured["log_off"] = st.log_off if st else None
 
-            broker.state.resume_session_id = None
-            broker._write_meta()
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            self.assertIsNone(meta["resume_session_id"])
+            with patch("codoxear.broker.OWNER_TAG", ""), patch("codoxear.broker._require_proc"), patch(
+                "codoxear.broker._term_size", return_value=(24, 80)
+            ), patch("codoxear.broker.pty.fork", return_value=(1234, 55)), patch("codoxear.broker._set_winsize"), patch(
+                "codoxear.broker.signal.signal"
+            ), patch("codoxear.broker.os.waitpid", return_value=(1234, 0)), patch("codoxear.broker.os.close"), patch.object(
+                broker, "_write_meta", side_effect=_capture_write_meta
+            ), patch("codoxear.broker.threading.Thread", _FakeThread):
+                broker.run()
 
-    def test_write_meta_tracks_ignored_rollout_paths(self) -> None:
-        broker = Broker(cwd="/tmp", codex_args=[])
-        with tempfile.TemporaryDirectory() as td:
+        self.assertIsNone(captured["session_id"])
+        # The --session arg reserves a future log path on disk, but the file does
+        # not exist yet, so ``log_path`` (which denotes a bound/observed log) must
+        # stay None while ``declared_log_path`` carries the reserved path. This is
+        # what lets a pre-log agent exit surface as a failed launch instead of
+        # silently disappearing, and matches session_discovery.py's
+        # non-existent-log_path-is-unbound semantics.
+        self.assertIsNone(captured["log_path"])
+        self.assertEqual(captured["declared_log_path"], str(reserved_log_path))
+        self.assertEqual(captured["log_off"], 0)
+
+    def test_pi_discover_log_watcher_registers_declared_log_when_file_appears(self) -> None:
+        fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
+        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch.dict(
+            "os.environ", {"PI_HOME": td}, clear=False
+        ), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch("codoxear.broker.BACKEND", get_agent_backend("pi")):
             root = Path(td)
-            sock_path = root / "broker.sock"
-            old_log = root / "rollout-2026-03-29T10-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
-            old_log.write_text("", encoding="utf-8")
-            broker.state = _broker_state(codex_pid=1234, sock_path=sock_path)
-            broker.state.session_id = None
-            broker.state.cwd = td
-            broker.state.log_path = None
-            broker.state.ignored_rollout_paths.add(old_log)
+            sessions_dir = root / "agent" / "sessions"
+            log_path = sessions_dir / "--tmp--" / "2026-04-07T00-00-00-000Z_test.jsonl"
+            broker = Broker(cwd="/tmp", codex_args=[])
+            broker.state = _broker_state(codex_pid=1234, sock_path=root / "broker.sock")
+            broker.state.sessions_dir = sessions_dir
+            broker.state.declared_log_path = log_path
+            broker.sessions_dir = sessions_dir
+            seen: list[Path] = []
+            sleep_count = 0
 
-            broker._write_meta()
+            def _capture_switch(*, log_path: Path) -> None:
+                seen.append(log_path)
+                broker._stop.set()
 
-            meta = json.loads(sock_path.with_suffix(".json").read_text(encoding="utf-8"))
-            self.assertEqual(meta["log_path"], None)
-            self.assertEqual(meta["ignored_rollout_paths"], [str(old_log)])
+            def _sleep(_seconds: float) -> None:
+                nonlocal sleep_count
+                sleep_count += 1
+                if sleep_count == 1:
+                    log_path.parent.mkdir(parents=True, exist_ok=True)
+                    log_path.write_text('{"type":"session","id":"declared","cwd":"/tmp"}\n', encoding="utf-8")
+                if sleep_count > 3:
+                    broker._stop.set()
+
+            with patch.object(broker, "_maybe_register_or_switch_rollout", side_effect=_capture_switch), patch(
+                "codoxear.broker.os.waitpid", return_value=(0, 0)
+            ), patch("codoxear.broker.time.sleep", side_effect=_sleep):
+                broker._discover_log_watcher()
+
+        self.assertEqual(seen, [log_path])
 
     def test_pi_resume_run_binds_log_path_from_session_arg_before_first_write(self) -> None:
         fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
@@ -533,6 +588,94 @@ read -r -k 1 option
         self.assertEqual(captured["session_id"], "resume-a")
         self.assertEqual(captured["log_path"], str(log_path))
         self.assertEqual(captured["log_off"], expected_size)
+
+    def test_web_pi_prelog_exit_records_failure_when_declared_log_missing(self) -> None:
+        """Regression: a web-owned Pi launch whose declared --session log never
+        materializes must record an agent_exit_before_log_bind failure, not
+        silently unlink its sidecar and disappear from /api/sessions."""
+        fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
+        records: list[dict[str, object]] = []
+        with tempfile.TemporaryDirectory() as td, patch.dict(
+            "os.environ", {"PI_HOME": td, "CODEX_WEB_RESUME_SESSION_ID": ""}, clear=False
+        ), patch("codoxear.broker.sys.stdin", fake_stdin), patch(
+            "codoxear.broker.AGENT_BACKEND", "pi"
+        ), patch("codoxear.broker.BACKEND", get_agent_backend("pi")):
+            broker = Broker(cwd="/tmp/pi-prelog", codex_args=["--model", "gpt-5.4"])
+            session_idx = broker.codex_args.index("--session")
+            reserved_log_path = Path(broker.codex_args[session_idx + 1])
+            # The reserved log file must not exist (pre-bind exit scenario).
+            self.assertFalse(reserved_log_path.exists())
+
+            with patch("codoxear.broker.OWNER_TAG", "web"), patch(
+                "codoxear.broker._require_proc"
+            ), patch("codoxear.broker._term_size", return_value=(24, 80)), patch(
+                "codoxear.broker.pty.openpty", return_value=(55, 56)
+            ), patch("codoxear.broker.os.ttyname", return_value="/dev/pts/test"), patch(
+                "codoxear.broker.os.pipe", return_value=(57, 58)
+            ), patch("codoxear.broker.os.fork", return_value=1234), patch(
+                "codoxear.broker._set_winsize"
+            ), patch("codoxear.broker.signal.signal"), patch(
+                "codoxear.broker.os.waitpid", return_value=(1234, 0)
+            ), patch("codoxear.broker.os.close"), patch.object(
+                broker, "_write_meta"
+            ), patch("codoxear.broker.threading.Thread", _FakeThread), patch(
+                "codoxear.broker._record_launch_attempt", side_effect=lambda rec: records.append(rec)
+            ):
+                exit_code = broker.run()
+
+        prelog_records = [r for r in records if r.get("stage") == "agent_exit_before_log_bind"]
+        self.assertEqual(len(prelog_records), 1)
+        rec = prelog_records[0]
+        self.assertEqual(rec["state"], "failed")
+        self.assertEqual(rec["agent_backend"], "pi")
+        self.assertIn("exited with status 0 before a session log was bound", str(rec["error"]))
+        self.assertIsNone(rec.get("log_path"))
+        self.assertEqual(exit_code, 0)
+
+    def test_web_pi_prelog_exit_does_not_record_failure_when_log_bound(self) -> None:
+        """When the declared log file exists/is bound, the pre-log exit guard must
+        NOT fire, so successful launches are not falsely recorded as failed."""
+        fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
+        records: list[dict[str, object]] = []
+        with tempfile.TemporaryDirectory() as td, patch.dict(
+            "os.environ", {"PI_HOME": td, "CODEX_WEB_RESUME_SESSION_ID": ""}, clear=False
+        ), patch("codoxear.broker.sys.stdin", fake_stdin), patch(
+            "codoxear.broker.AGENT_BACKEND", "pi"
+        ), patch("codoxear.broker.BACKEND", get_agent_backend("pi")):
+            broker = Broker(cwd="/tmp/pi-bound", codex_args=["--model", "gpt-5.4"])
+            session_idx = broker.codex_args.index("--session")
+            reserved_log_path = Path(broker.codex_args[session_idx + 1])
+            # Simulate the agent creating the declared log before exiting; the
+            # startup bind path then observes the file and sets st.log_path.
+            reserved_log_path.parent.mkdir(parents=True, exist_ok=True)
+            reserved_log_path.write_text(
+                '{"type":"session","id":"bound-session","cwd":"/tmp/pi-bound"}\\n',
+                encoding="utf-8",
+            )
+            self.assertTrue(reserved_log_path.exists())
+
+            with patch("codoxear.broker.OWNER_TAG", "web"), patch(
+                "codoxear.broker._require_proc"
+            ), patch("codoxear.broker._term_size", return_value=(24, 80)), patch(
+                "codoxear.broker.pty.openpty", return_value=(55, 56)
+            ), patch("codoxear.broker.os.ttyname", return_value="/dev/pts/test"), patch(
+                "codoxear.broker.os.pipe", return_value=(57, 58)
+            ), patch("codoxear.broker.os.fork", return_value=1234), patch(
+                "codoxear.broker._set_winsize"
+            ), patch("codoxear.broker.signal.signal"), patch(
+                "codoxear.broker.os.waitpid", return_value=(1234, 0)
+            ), patch("codoxear.broker.os.close"), patch.object(
+                broker, "_write_meta"
+            ), patch("codoxear.broker.threading.Thread", _FakeThread), patch(
+                "codoxear.broker._record_launch_attempt", side_effect=lambda rec: records.append(rec)
+            ):
+                exit_code = broker.run()
+
+        prelog_records = [r for r in records if r.get("stage") == "agent_exit_before_log_bind"]
+        self.assertEqual(prelog_records, [])
+        # The bound log path is reflected in broker state.
+        self.assertEqual(broker.state.log_path, reserved_log_path)
+        self.assertEqual(exit_code, 0)
 
 
 if __name__ == "__main__":

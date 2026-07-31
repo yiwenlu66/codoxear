@@ -1,0 +1,16 @@
+{
+  "phase0_post_interrupt_idle": {
+    "busy": false
+  },
+  "send_response": {
+    "queued": false,
+    "queue_len": 0,
+    "busy": true
+  },
+  "phase1_resumed_running": {
+    "busy": true
+  },
+  "phase2_completed_idle": {
+    "busy": false
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "hasTextarea": false,
+  "hasMonaco": false,
+  "hasPlainFallbackPre": true,
+  "fallbackNoticeText": "Plain text fallbackRich diff unavailable. Showing unified diff (read-only).: monaco loader timed out. Showing a read-only plain-text view.",
+  "preContainsDiff": true,
+  "preTextHead": "diff --git a/changed.md b/changed.md index c7163ed..218eb8e 100644 --- a/changed.md +++ b/changed.md @@ -1,4 +1,5 @@ # Title baseline body one -baseline body two +baseline body two changed +NEW ma",
+  "statusText": "changed.md - diff",
+  "editBtnDisabled": true,
+  "editBtnAriaDisabled": null,
+  "diffBtnActive": true,
+  "diffBtnPresent": true
+}

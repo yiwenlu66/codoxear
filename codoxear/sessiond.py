@@ -14,17 +14,28 @@ import traceback
 import select
 import sys
 import re
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
+from .broker_terminal import _reply_to_terminal_queries
+from .broker_turn_state import _mark_busy_state_idle
+from .broker_turn_state import _should_clear_busy_state as _should_clear_busy_state_impl
+from .broker_turn_state import _update_busy_from_pty_text
+from .control_socket import handle_control_socket_connection as _handle_control_socket_connection
 from . import pty_util as _pty_util
+from .sessiond_control import SessiondControlDeps
+from .sessiond_control import handle_sessiond_control_connection
+from .sessiond_state import State
+from .sessiond_state import _busy_value_after_log_batch
+from .sessiond_state import _log_busy_signals
+from .sessiond_state import _read_jsonl_from_offset
+from .sessiond_state import apply_log_batch_to_state
 from .util import default_app_dir as _default_app_dir
 from .util import now as _now
+from .util import process_group_alive as _process_group_alive
 from .util import proc_find_open_rollout_log as _proc_find_open_rollout_log
-from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 from .util import read_session_meta_payload as _read_session_meta_payload
 from .util import _send_socket_json_line as _send_socket_json_line
 from .util import _socket_peer_disconnected as _socket_peer_disconnected
@@ -50,8 +61,14 @@ PREFERRED_AUTH_METHOD_OVERRIDE = os.environ.get("CODEX_WEB_PREFERRED_AUTH_METHOD
 MODEL_OVERRIDE = os.environ.get("CODEX_WEB_MODEL", "").strip()
 REASONING_EFFORT_OVERRIDE = os.environ.get("CODEX_WEB_REASONING_EFFORT", "").strip().lower()
 SERVICE_TIER_OVERRIDE = os.environ.get("CODEX_WEB_SERVICE_TIER", "").strip().lower()
-_BRACKETED_PASTE_START = b"\x1b[200~"
-_BRACKETED_PASTE_END = b"\x1b[201~"
+_BUSY_QUIET_RAW = os.environ.get("CODEX_WEB_BUSY_QUIET_SECONDS")
+if _BUSY_QUIET_RAW is None or (not _BUSY_QUIET_RAW.strip()):
+    _BUSY_QUIET_RAW = "3.0"
+BUSY_QUIET_SECONDS = max(float(_BUSY_QUIET_RAW), 0.0)
+_BUSY_INTERRUPT_GRACE_RAW = os.environ.get("CODEX_WEB_BUSY_INTERRUPT_GRACE_SECONDS")
+if _BUSY_INTERRUPT_GRACE_RAW is None or (not _BUSY_INTERRUPT_GRACE_RAW.strip()):
+    _BUSY_INTERRUPT_GRACE_RAW = "3.0"
+BUSY_INTERRUPT_GRACE_SECONDS = max(float(_BUSY_INTERRUPT_GRACE_RAW), 0.0)
 
 
 def _set_winsize(fd: int, rows: int, cols: int) -> None:
@@ -67,51 +84,20 @@ def _seq_bytes(raw: str) -> bytes:
 
 
 def _write_all(fd: int, data: bytes) -> None:
-    view = memoryview(data)
-    while view:
-        n = os.write(fd, view)
-        if n <= 0:
-            raise OSError("short write to PTY")
-        view = view[n:]
+    _pty_util.write_all(fd, data)
 
 
 def _inject(fd: int, *, text: str, suffix: bytes, delay_s: float = 0.05) -> None:
-    _write_all(fd, _BRACKETED_PASTE_START + text.encode("utf-8") + _BRACKETED_PASTE_END)
-    if not suffix:
-        return
-    if delay_s > 0:
-        time.sleep(delay_s)
-    _write_all(fd, suffix)
+    _pty_util.inject_bracketed_paste(fd, text=text, suffix=suffix, delay_s=delay_s)
 
 
-def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 256 * 1024) -> tuple[list[dict[str, Any]], int]:
-    return _read_jsonl_from_offset_impl(path, offset, max_bytes=max_bytes)
-
-
-def _process_group_alive(root_pid: int) -> bool:
-    if root_pid <= 0:
-        return False
-    try:
-        os.killpg(root_pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-
-
-@dataclass
-class State:
-    session_id: str | None
-    codex_pid: int
-    log_path: Path
-    sock_path: Path
-    pty_master_fd: int
-    start_ts: float
-    busy: bool = False
-    output_tail: str = ""
-    output_tail_max: int = 64 * 1024
-    log_off: int = 0
+def _should_clear_busy_state(st: State, now_ts: float) -> bool:
+    return _should_clear_busy_state_impl(
+        st,
+        now_ts,
+        busy_quiet_seconds=BUSY_QUIET_SECONDS,
+        busy_interrupt_grace_seconds=BUSY_INTERRUPT_GRACE_SECONDS,
+    )
 
 
 class Sessiond:
@@ -122,6 +108,7 @@ class Sessiond:
         self.cols = DEFAULT_COLS
         self._stop = threading.Event()
         self._lock = threading.Lock()
+        self._term_query_buf = b""
         self.state: State | None = None
         self.codex_home = DEFAULT_AGENT_HOME
         self.sessions_dir = BACKEND.sessions_dir()
@@ -161,12 +148,8 @@ class Sessiond:
                 b = os.read(fd, 4096)
                 if not b:
                     break
-                # Minimal terminal-emulator responses for Codex TUI startup.
-                if b"\x1b[6n" in b:
-                    try:
-                        _write_all(fd, b"\x1b[1;1R")
-                    except Exception:
-                        traceback.print_exc()
+                # Shared minimal terminal-emulator responses for backend TUI startup.
+                self._term_query_buf = _reply_to_terminal_queries(term_query_buf=self._term_query_buf, fd=fd, chunk=b, write_all=_write_all)
                 # xterm "report terminal size" queries (some TUIs use these).
                 if b"\x1b[18t" in b:
                     try:
@@ -184,6 +167,7 @@ class Sessiond:
                     if not st2:
                         continue
                     st2.output_tail = (st2.output_tail + s)[-st2.output_tail_max :]
+                    _update_busy_from_pty_text(st2, s, _now())
             except OSError:
                 break
 
@@ -208,6 +192,8 @@ class Sessiond:
             "model": MODEL_OVERRIDE or None,
             "reasoning_effort": REASONING_EFFORT_OVERRIDE or None,
             "service_tier": SERVICE_TIER_OVERRIDE or None,
+            "control_protocol_version": 2,
+            "control_capabilities": {"sync_send": True, "key_write_errors": True},
         }
         SOCK_META_DIR.mkdir(parents=True, exist_ok=True)
         meta_path = st.sock_path.with_suffix(".json")
@@ -221,35 +207,18 @@ class Sessiond:
         while not self._stop.is_set():
             objs, off = _read_jsonl_from_offset(st.log_path, st.log_off, max_bytes=256 * 1024)
             if off == st.log_off:
+                now_ts = _now()
+                with self._lock:
+                    st2 = self.state
+                    if st2 and _should_clear_busy_state(st2, now_ts):
+                        _mark_busy_state_idle(st2, now_ts)
                 time.sleep(0.25)
                 continue
             st.log_off = off
 
-            saw_user = False
-            saw_turn_end = False
-            for obj in objs:
-                if obj.get("type") == "event_msg":
-                    p = obj.get("payload")
-                    if not isinstance(p, dict):
-                        raise ValueError("invalid rollout event_msg payload")
-                    if p.get("type") == "user_message":
-                        saw_user = True
-                    if p.get("type") == "token_count":
-                        info = p.get("info")
-                        if isinstance(info, dict) and isinstance(info.get("total_token_usage"), dict):
-                            saw_turn_end = True
-                elif obj.get("type") == "response_item":
-                    continue
-
-            if saw_user:
-                with self._lock:
-                    if self.state:
-                        self.state.busy = True
-
-            if saw_turn_end:
-                with self._lock:
-                    if self.state:
-                        self.state.busy = False
+            with self._lock:
+                if self.state:
+                    apply_log_batch_to_state(self.state, objs, now_ts=_now())
 
     def _sock_server(self) -> None:
         st = self.state
@@ -283,99 +252,23 @@ class Sessiond:
             traceback.print_exc()
 
     def _handle_conn(self, conn: socket.socket) -> None:
-        f = None
-        try:
-            f = conn.makefile("rb")
-            line = f.readline()
-            if not line:
-                return
-            req = json.loads(line.decode("utf-8"))
-            cmd = req.get("cmd")
-            if cmd == "state":
-                with self._lock:
-                    st = self.state
-                    if not st:
-                        resp = {"error": "no state"}
-                    else:
-                        resp = {"busy": st.busy, "queue_len": 0}
-                _send_socket_json_line(conn, resp)
-                return
-
-            if cmd == "tail":
-                with self._lock:
-                    st = self.state
-                    resp = {"tail": st.output_tail if st else ""}
-                _send_socket_json_line(conn, resp)
-                return
-
-            if cmd == "send":
-                text = req.get("text")
-                if not isinstance(text, str) or not text.strip():
-                    resp = {"error": "text required"}
-                    _send_socket_json_line(conn, resp)
-                    return
-                fd: int | None = None
-                enter = _encode_enter()
-                with self._lock:
-                    st = self.state
-                    if not st:
-                        resp = {"error": "no state"}
-                    else:
-                        fd = st.pty_master_fd
-                        resp = {"queued": False, "queue_len": 0}
-                _send_socket_json_line(conn, resp)
-                if fd is not None:
-                    try:
-                        _inject(fd, text=text, suffix=enter)
-                    except Exception:
-                        traceback.print_exc()
-                return
-
-            if cmd == "keys":
-                seq = req.get("seq")
-                if not isinstance(seq, str) or not seq:
-                    resp = {"error": "seq required"}
-                else:
-                    b = _seq_bytes(seq)
-                    with self._lock:
-                        st = self.state
-                        if not st:
-                            resp = {"error": "no state"}
-                        else:
-                            try:
-                                _write_all(st.pty_master_fd, b)
-                                resp = {"ok": True}
-                            except Exception as e:
-                                resp = {"error": str(e)}
-                _send_socket_json_line(conn, resp)
-                return
-
-            if cmd == "shutdown":
-                _send_socket_json_line(conn, {"ok": True})
-                self._teardown_managed_process_group()
-                return
-
-            _send_socket_json_line(conn, {"error": "unknown cmd"})
-        except Exception as exc:
-            if _socket_peer_disconnected(exc):
-                return
-            try:
-                _send_socket_json_line(conn, {"error": "exception", "trace": traceback.format_exc()})
-            except Exception as send_exc:
-                if not _socket_peer_disconnected(send_exc):
-                    traceback.print_exc()
-        finally:
-            if f is not None:
-                try:
-                    f.close()
-                except Exception as close_exc:
-                    if not _socket_peer_disconnected(close_exc):
-                        traceback.print_exc()
-            try:
-                conn.close()
-            except Exception as close_exc:
-                if not _socket_peer_disconnected(close_exc):
-                    traceback.print_exc()
+        handle_sessiond_control_connection(
+            conn,
+            deps=SessiondControlDeps(
+                lock=self._lock,
+                state=lambda: self.state,
+                encode_enter=_encode_enter,
+                seq_bytes=_seq_bytes,
+                write_all=_write_all,
+                inject=_inject,
+                teardown_managed_process_group=self._teardown_managed_process_group,
+                handle_control_socket_connection=_handle_control_socket_connection,
+                send_json_line=_send_socket_json_line,
+                socket_peer_disconnected=_socket_peer_disconnected,
+                print_exception=traceback.print_exc,
+                now=_now,
+            ),
+        )
 
     def _ensure_root_repo(self) -> None:
         if (ROOT_REPO_DIR / ".git").exists():
@@ -396,7 +289,7 @@ class Sessiond:
             with self._lock:
                 st0 = self.state
             pid = int(st0.codex_pid) if st0 else 0
-            if pid > 0 and AGENT_BACKEND == "codex":
+            if pid > 0 and AGENT_BACKEND in {"codex", "pi", "cc"}:
                 lp = _proc_find_open_rollout_log(proc_root=PROC_ROOT, root_pid=pid, agent_backend=AGENT_BACKEND, cwd=self.cwd)
             else:
                 lp = None
@@ -444,23 +337,19 @@ class Sessiond:
                 os.environ["COLUMNS"] = str(self.cols)
                 os.environ["LINES"] = str(self.rows)
                 os.environ[BACKEND.home_env_var] = str(self.codex_home)
-                if AGENT_BACKEND == "codex":
-                    os.chdir(str(ROOT_REPO_DIR))
-                    forced = [
-                        "--no-alt-screen",
-                        "-c",
-                        "disable_response_storage=false",
-                        "-c",
-                        "disable_paste_burst=true",
-                        "-C",
-                        str(ROOT_REPO_DIR),
-                    ]
-                    if self.cwd:
-                        forced += ["--add-dir", self.cwd]
-                    argv = [AGENT_BIN] + forced + self.codex_args
-                else:
-                    os.chdir(self.cwd or str(ROOT_REPO_DIR))
-                    argv = [AGENT_BIN, *self.codex_args]
+                child_cwd = BACKEND.sessiond_working_dir(root_repo_dir=ROOT_REPO_DIR, requested_cwd=self.cwd)
+                os.chdir(str(child_cwd))
+                launch_args = BACKEND.build_sessiond_launch_args(
+                    root_repo_dir=ROOT_REPO_DIR,
+                    requested_cwd=self.cwd,
+                    extra_args=self.codex_args,
+                    model_provider=MODEL_PROVIDER_OVERRIDE or None,
+                    preferred_auth_method=PREFERRED_AUTH_METHOD_OVERRIDE or None,
+                    model=MODEL_OVERRIDE or None,
+                    reasoning_effort=REASONING_EFFORT_OVERRIDE or None,
+                    service_tier=SERVICE_TIER_OVERRIDE or None,
+                )
+                argv = [AGENT_BIN, *launch_args]
                 os.execvp(argv[0], argv)
             except Exception:
                 traceback.print_exc()

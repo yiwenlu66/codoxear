@@ -1,0 +1,25 @@
+{"agent_backend": "codex", "session_id": "monaco-proof", "broker_pid": 14, "codex_pid": 14, "cwd": "/home/tester/monaco-proof-repo", "log_path": "/home/tester/monaco-proof-logs/monaco-proof.jsonl", "start_ts": 1783362807.9852548, "owner": "terminal", "sock_path": "/home/tester/.local/share/codoxear/socks/monaco-proof.sock", "control_protocol_version": 2, "control_capabilities": {"sync_send": true, "key_write_errors": true}}
+--- git status ---
+ M changed.md
+ M notes.txt
+
+--- notes ---
+EXTERNAL-DISK-VERSION
+
+--- changed ---
+# Title
+baseline body one
+baseline body two changed
+NEW monaco diff line
+
+--- diff ---
+diff --git a/changed.md b/changed.md
+index b09a85e..888e762 100644
+--- a/changed.md
++++ b/changed.md
+@@ -1,3 +1,4 @@
+ # Title
+ baseline body one
+-baseline body two
++baseline body two changed
++NEW monaco diff line

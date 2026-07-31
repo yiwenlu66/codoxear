@@ -1,0 +1,35 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from sandbox.Dockerfile
+#1 transferring dockerfile: 768B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/python:3.13-slim
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 407B done
+#3 DONE 0.0s
+
+#4 [1/5] FROM docker.io/library/python:3.13-slim
+#4 DONE 0.0s
+
+#5 [2/5] RUN apt-get update     && apt-get install -y --no-install-recommends         bash         ca-certificates         curl         ffmpeg         git         lsof         nodejs         npm         procps         tmux     && rm -rf /var/lib/apt/lists/*
+#5 CACHED
+
+#6 [3/5] RUN python3 -m pip install --no-cache-dir         Pillow>=9.0         py-vapid>=1.9.2         pywebpush>=2.3.0         pytest
+#6 CACHED
+
+#7 [4/5] RUN useradd -ms /bin/bash tester
+#7 CACHED
+
+#8 [5/5] WORKDIR /workspace
+#8 CACHED
+
+#9 exporting to image
+#9 exporting layers done
+#9 writing image sha256:7d8931259540ae3cd630c283a62946658ba487243b42cd82b87812ee55e70535 done
+#9 naming to docker.io/library/codoxear-sandbox:latest done
+#9 DONE 0.0s
+........................................                                 [100%]
+40 passed in 10.88s

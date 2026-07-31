@@ -1,0 +1,10 @@
+{
+  "cwd_value_present": true,
+  "modal_contains_claude": true,
+  "modal_contains_new_session": true,
+  "model_value_present": true,
+  "raw_source": "derived from eval-new-like-this-modal.json before pruning",
+  "reasoning_effort_button_text": "max",
+  "start_session_button_present": true,
+  "success": true
+}

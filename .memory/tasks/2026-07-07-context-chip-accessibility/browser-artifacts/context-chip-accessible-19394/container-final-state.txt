@@ -1,0 +1,21 @@
+total 40
+drwxr-xr-x 6 tester tester 4096 Jul  7 07:17 .
+drwxr-xr-x 3 tester tester 4096 Jul  7 07:15 ..
+drwxr-xr-x 3 tester tester 4096 Jul  7 07:15 audio
+-rw------- 1 tester tester   64 Jul  7 07:15 hmac_secret
+drwxr-xr-x 2 tester tester 4096 Jul  7 07:15 pi-active-sessions
+-rw-r--r-- 1 tester tester  194 Jul  7 07:17 recent_cwds.json
+-rw-r--r-- 1 tester tester   65 Jul  7 07:15 session_files.json
+drwxr-xr-x 2 tester tester 4096 Jul  7 07:17 socks
+drwxr-xr-x 2 tester tester 4096 Jul  7 07:16 uploads
+-rw------- 1 tester tester  241 Jul  7 07:15 webpush_vapid_private.pem
+total 16
+drwxr-xr-x 2 tester tester 4096 Jul  7 07:17 .
+drwxr-xr-x 6 tester tester 4096 Jul  7 07:17 ..
+-rw-r--r-- 1 tester tester  626 Jul  7 07:17 cc-context-chip-no-token.json
+srwxr-xr-x 1 tester tester    0 Jul  7 07:17 cc-context-chip-no-token.sock
+-rw-r--r-- 1 tester tester  622 Jul  7 07:17 cc-context-chip-visible.json
+srwxr-xr-x 1 tester tester    0 Jul  7 07:17 cc-context-chip-visible.sock
+    PID    PPID STAT COMMAND         COMMAND
+      1       0 Ssl  python3         python3 -m codoxear.server
+     51       1 Sl   python3         python3 /home/tester/fake_cc_context_sessions.py

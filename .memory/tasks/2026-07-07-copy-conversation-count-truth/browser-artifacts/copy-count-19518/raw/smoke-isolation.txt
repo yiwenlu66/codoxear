@@ -1,0 +1,15 @@
+HOME=/home/tester
+total 12
+drwxr-xr-x 3 tester tester 4096 Jul  7 18:32 .
+drwxr-xr-x 3 tester tester 4096 Jul  7 18:32 ..
+drwxr-xr-x 6 tester tester 4096 Jul  7 18:33 codoxear
+total 36
+drwxr-xr-x 6 tester tester 4096 Jul  7 18:33 .
+drwxr-xr-x 3 tester tester 4096 Jul  7 18:32 ..
+drwxr-xr-x 3 tester tester 4096 Jul  7 18:32 audio
+-rw------- 1 tester tester   64 Jul  7 18:32 hmac_secret
+drwxr-xr-x 2 tester tester 4096 Jul  7 18:32 pi-active-sessions
+-rw-r--r-- 1 tester tester   65 Jul  7 18:33 session_files.json
+drwxr-xr-x 2 tester tester 4096 Jul  7 18:32 socks
+drwxr-xr-x 2 tester tester 4096 Jul  7 18:33 uploads
+-rw------- 1 tester tester  241 Jul  7 18:32 webpush_vapid_private.pem

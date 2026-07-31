@@ -4,6 +4,8 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from codoxear.pi_log import pi_token_update
+from codoxear.rollout_log import _last_chat_role_ts_from_tail
+from codoxear.rollout_log import _single_chat_event
 from codoxear.server import _compute_idle_from_log
 from codoxear.server import _extract_chat_events
 
@@ -215,6 +217,113 @@ class TestServerChatFlags(unittest.TestCase):
         self.assertEqual(events[-1]["message_class"], "error")
         self.assertEqual(events[-1]["text"], "401 Invalid API key")
         self.assertEqual(events[-1]["ts"], 1777165323.0)
+
+    def test_pi_aborted_message_sets_turn_aborted(self) -> None:
+        events, _meta, flags, _diag = _extract_chat_events(
+            [
+                {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "test"}]}},
+                {"type": "message", "message": {"role": "assistant", "content": [], "stopReason": "aborted"}},
+            ]
+        )
+        self.assertTrue(flags["turn_start"])
+        self.assertTrue(flags["turn_aborted"])
+        self.assertFalse(flags["turn_end"])
+        # The aborted turn now renders a persistent interruption outcome row
+        # (message_class error), but it must still NOT be treated as a normal
+        # turn_end: the abort flag, not turn_end, governs interrupted idle.
+        self.assertEqual([event["role"] for event in events], ["user", "assistant"])
+        self.assertEqual(events[-1]["message_class"], "error")
+        self.assertIn("interrupted", events[-1]["text"])
+
+    def test_pi_aborted_text_is_not_history_final_response(self) -> None:
+        # An aborted Pi turn with partial text now renders a persistent
+        # interruption outcome row (message_class error), NOT a final_response.
+        # The partial text is preserved under a label but never masquerades as
+        # a completed answer in the history projection.
+        event = _single_chat_event(
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "partial"}],
+                    "stopReason": "aborted",
+                },
+            }
+        )
+        self.assertIsNotNone(event)
+        assert event is not None
+        self.assertEqual(event["role"], "assistant")
+        self.assertEqual(event["message_class"], "error")
+        self.assertNotEqual(event["message_class"], "final_response")
+        self.assertIn("interrupted", event["text"])
+        self.assertIn("partial", event["text"])
+
+    def test_final_assistant_only_rejects_newer_narration(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "rollout.jsonl"
+            path.write_text(
+                "\n".join(
+                    [
+                        '{"type":"event_msg","ts":1,"payload":{"type":"user_message","message":"start"}}',
+                        '{"type":"event_msg","ts":600,"payload":{"type":"agent_message","phase":"final_answer","message":"done"}}',
+                        '{"type":"event_msg","ts":700,"payload":{"type":"agent_message","phase":"analysis","message":"still working"}}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(_last_chat_role_ts_from_tail(path, max_scan_bytes=512 * 1024), ("assistant", 700.0))
+            self.assertIsNone(_last_chat_role_ts_from_tail(path, max_scan_bytes=512 * 1024, final_assistant_only=True))
+
+    def test_final_assistant_only_accepts_codex_turn_complete_last_message(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "rollout.jsonl"
+            path.write_text(
+                "\n".join(
+                    [
+                        '{"type":"event_msg","ts":1,"payload":{"type":"user_message","message":"start"}}',
+                        '{"type":"event_msg","ts":600,"payload":{"type":"agent_message","phase":"analysis","message":"working"}}',
+                        '{"type":"event_msg","ts":700,"payload":{"type":"turn_complete","last_agent_message":"done"}}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(_last_chat_role_ts_from_tail(path, max_scan_bytes=512 * 1024, final_assistant_only=True), ("assistant", 700.0))
+
+    def test_final_assistant_only_accepts_latest_final_response(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "rollout.jsonl"
+            path.write_text(
+                "\n".join(
+                    [
+                        '{"type":"event_msg","ts":1,"payload":{"type":"user_message","message":"start"}}',
+                        '{"type":"event_msg","ts":600,"payload":{"type":"agent_message","phase":"final_answer","message":"done"}}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(_last_chat_role_ts_from_tail(path, max_scan_bytes=512 * 1024, final_assistant_only=True), ("assistant", 600.0))
+
+    def test_pi_aborted_text_does_not_count_as_last_assistant_chat(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "pi.jsonl"
+            path.write_text(
+                "\n".join(
+                    [
+                        '{"type":"session","id":"s1","cwd":"/tmp"}',
+                        '{"type":"message","timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":[{"type":"text","text":"test"}]}}',
+                        '{"type":"message","timestamp":"2026-01-01T00:00:01Z","message":{"role":"assistant","stopReason":"aborted","content":[{"type":"text","text":"partial"}]}}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(_last_chat_role_ts_from_tail(path, max_scan_bytes=512 * 1024), ("user", 1767225600.0))
 
     def test_compute_idle_from_log_pi_final_message_with_thinking_is_idle(self) -> None:
         with TemporaryDirectory() as td:

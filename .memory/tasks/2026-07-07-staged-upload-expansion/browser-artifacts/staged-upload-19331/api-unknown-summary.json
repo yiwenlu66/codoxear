@@ -1,0 +1,10 @@
+{
+  "stage_count": 1,
+  "send_status": "504",
+  "send_commit_unknown": true,
+  "after_count": 1,
+  "after_pending": true,
+  "keys_count": 0,
+  "last_send_text": "Attachment 1: /home/tester/.local/share/codoxear/uploads/upload-unknown/1783366238980_unknown.txt\nFORCE_COMMIT_UNKNOWN please keep staged",
+  "last_has_attachment": true
+}

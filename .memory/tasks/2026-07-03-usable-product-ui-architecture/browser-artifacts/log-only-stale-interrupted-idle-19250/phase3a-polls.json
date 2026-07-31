@@ -1,0 +1,18 @@
+{
+  "broker_state": {
+    "busy": false,
+    "interrupted_idle": false,
+    "queue_len": 0,
+    "token": null
+  },
+  "polls": [
+    {
+      "busy": true,
+      "missing": false
+    },
+    {
+      "busy": true,
+      "missing": false
+    }
+  ]
+}

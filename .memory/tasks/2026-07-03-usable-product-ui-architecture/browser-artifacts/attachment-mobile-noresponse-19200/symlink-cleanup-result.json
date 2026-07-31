@@ -1,0 +1,30 @@
+{
+  "sid": "cert-symlinksess",
+  "removed_returned": true,
+  "before": {
+    "link_exists": true,
+    "link_target": "/home/tester/symlink-target-outside.txt",
+    "target_exists": true,
+    "target_size": 56,
+    "root_entries": [
+      "cert-attach-a",
+      "cert-attach-b",
+      "cert-outside-link",
+      "cert-sibling",
+      "cert-symlinksess"
+    ]
+  },
+  "after": {
+    "link_exists": false,
+    "target_exists": true,
+    "target_size": 56,
+    "target_content": "precious outside bytes - must survive unlink of the link",
+    "root_entries": [
+      "cert-attach-a",
+      "cert-attach-b",
+      "cert-outside-link",
+      "cert-sibling"
+    ]
+  }
+}
+SYMLINK_BRANCH_PASS

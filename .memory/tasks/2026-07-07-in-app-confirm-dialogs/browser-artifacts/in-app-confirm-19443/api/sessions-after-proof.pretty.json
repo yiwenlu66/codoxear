@@ -1,0 +1,129 @@
+{
+    "app_version": "6083d59eadf5",
+    "sessions": [
+        {
+            "session_id": "launch-confirm-cancel",
+            "thread_id": "launch-confirm-cancel",
+            "pid": null,
+            "broker_pid": 999999,
+            "agent_backend": "codex",
+            "owned": true,
+            "transport": "direct",
+            "cwd": "/workspace/confirm-cancel-project",
+            "start_ts": 1783436730.6642609,
+            "updated_ts": 1783436730.6642609,
+            "log_path": null,
+            "state_busy": false,
+            "queue_len": 0,
+            "token": null,
+            "thinking": 0,
+            "tools": 0,
+            "system": 0,
+            "unattended_enabled": false,
+            "unattended_cooldown_minutes": 5,
+            "unattended_remaining_injections": 10,
+            "alias": "",
+            "files": [],
+            "git_branch": "",
+            "model_provider": "openai-api",
+            "preferred_auth_method": null,
+            "provider_choice": "openai-api",
+            "model": "gpt-confirm-proof",
+            "reasoning_effort": "high",
+            "service_tier": null,
+            "tmux_session": null,
+            "tmux_window": null,
+            "priority_offset": 0.0,
+            "snooze_until": null,
+            "dependency_session_id": null,
+            "time_priority": 1.0,
+            "base_priority": 1.0,
+            "final_priority": 1.0,
+            "blocked": false,
+            "snoozed": false,
+            "busy": false,
+            "spawn_nonce": "confirm-proof-0",
+            "launch_id": "launch-confirm-cancel",
+            "launch_state": "failed",
+            "launch_error": "Synthetic failed launch for in-app confirm browser proof: launch-confirm-cancel",
+            "launch_stage": "in_app_confirm_browser_proof",
+            "submitted_user_message_count": 0
+        }
+    ],
+    "recent_cwds": [],
+    "new_session_defaults": {
+        "default_backend": "codex",
+        "backends": {
+            "codex": {
+                "model_provider": "openai",
+                "preferred_auth_method": "apikey",
+                "provider_choice": "openai-api",
+                "model": null,
+                "model_providers": [
+                    "chatgpt",
+                    "openai-api"
+                ],
+                "service_tier": "flex",
+                "reasoning_effort": null,
+                "agent_backend": "codex",
+                "provider_choices": [
+                    "chatgpt",
+                    "openai-api"
+                ],
+                "reasoning_efforts": [
+                    "xhigh",
+                    "high",
+                    "medium",
+                    "low"
+                ],
+                "supports_fast": true
+            },
+            "pi": {
+                "agent_backend": "pi",
+                "model_provider": null,
+                "preferred_auth_method": null,
+                "provider_choice": null,
+                "provider_choices": [],
+                "model": null,
+                "models": [],
+                "reasoning_effort": "high",
+                "reasoning_efforts": [
+                    "off",
+                    "minimal",
+                    "low",
+                    "medium",
+                    "high",
+                    "xhigh"
+                ],
+                "reasoning_efforts_by_model": {},
+                "service_tier": null,
+                "supports_fast": false
+            },
+            "cc": {
+                "agent_backend": "cc",
+                "model_provider": null,
+                "preferred_auth_method": null,
+                "provider_choice": null,
+                "provider_choices": [],
+                "model": null,
+                "models": [
+                    "sonnet",
+                    "opus",
+                    "fable"
+                ],
+                "reasoning_effort": "medium",
+                "reasoning_efforts": [
+                    "low",
+                    "medium",
+                    "high",
+                    "xhigh",
+                    "max"
+                ],
+                "service_tier": null,
+                "supports_fast": false
+            }
+        }
+    },
+    "tmux_available": true,
+    "tmux_session_name": "codoxear"
+}

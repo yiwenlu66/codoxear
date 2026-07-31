@@ -1,7 +1,12 @@
+import os
+import stat
 import unittest
 from io import BytesIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from codoxear import auth
 from codoxear import server
 
 
@@ -24,6 +29,17 @@ class _Handler:
 
 
 class TestAuthCookie(unittest.TestCase):
+    def test_existing_hmac_secret_permissions_are_repaired_on_load(self) -> None:
+        with TemporaryDirectory() as td:
+            secret_path = Path(td) / "hmac_secret"
+            secret_path.write_bytes(b"x" * 64)
+            os.chmod(secret_path, 0o644)
+
+            secret = auth.load_or_create_hmac_secret(app_dir=Path(td), secret_path=secret_path)
+
+            self.assertEqual(secret, b"x" * 64)
+            self.assertEqual(stat.S_IMODE(secret_path.stat().st_mode), 0o600)
+
     def test_login_cookie_has_no_ttl_and_verifies_across_time(self) -> None:
         handler = _Handler()
 
@@ -43,6 +59,16 @@ class TestAuthCookie(unittest.TestCase):
         payload, sig = token.split(".", 1)
         self.assertIsNone(server._verify_cookie(f"{payload}x.{sig}"))
 
+    def test_password_compare_wrapper_uses_constant_time_compare(self) -> None:
+        with patch.dict("os.environ", {"CODEX_WEB_PASSWORD": "test-password"}):
+            old_cache = server._PASSWORD_CACHE
+            try:
+                server._PASSWORD_CACHE = None
+                self.assertTrue(server._is_same_password("test-password"))
+                self.assertFalse(server._is_same_password("wrong-password"))
+            finally:
+                server._PASSWORD_CACHE = old_cache
+
     def test_legacy_exp_cookie_is_refreshed_without_time_check(self) -> None:
         token = server._sign_cookie({"exp": 1})
         handler = _Handler(cookie=f"codoxear_auth={token}")
@@ -58,6 +84,26 @@ class TestAuthCookie(unittest.TestCase):
         self.assertNotIn("Max-Age", refreshed_cookie)
         refreshed_token = refreshed_cookie.split("codoxear_auth=", 1)[1].split(";", 1)[0]
         self.assertEqual(server._verify_cookie(refreshed_token), {"v": 1})
+
+    def test_json_response_with_etag_returns_304_for_matching_if_none_match(self) -> None:
+        first = _Handler()
+        payload = {"sessions": [], "recent_cwds": []}
+
+        server._json_response_with_etag(first, payload)  # type: ignore[arg-type]
+
+        self.assertEqual(first.status, 200)
+        etag = next(value for name, value in first.sent if name == "ETag")
+        self.assertTrue(first.wfile.getvalue())
+
+        second = _Handler()
+        second.headers["If-None-Match"] = etag
+
+        server._json_response_with_etag(second, payload)  # type: ignore[arg-type]
+
+        self.assertEqual(second.status, 304)
+        self.assertEqual(second.wfile.getvalue(), b"")
+        self.assertIn(("ETag", etag), second.sent)
+        self.assertIn(("Content-Length", "0"), second.sent)
 
 
 if __name__ == "__main__":

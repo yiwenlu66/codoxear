@@ -1,0 +1,266 @@
+{
+  "api-sessions-initial.json": {
+    "app_version": "3fd3ffb26405",
+    "sessions": [
+      {
+        "session_id": "upload-proof",
+        "thread_id": "upload-proof",
+        "pid": 14,
+        "broker_pid": 14,
+        "agent_backend": "codex",
+        "owned": false,
+        "transport": null,
+        "cwd": "/home/tester/upload-proof-repo",
+        "start_ts": 1783366035.5223544,
+        "updated_ts": 2.0,
+        "log_path": "/home/tester/upload-proof-logs/upload-proof.jsonl",
+        "queue_len": 0,
+        "queue_recovery": false,
+        "pending_attachment": false,
+        "staged_attachments": [],
+        "commit_unknown_send": false,
+        "commit_unknown_send_text": null,
+        "commit_unknown_send_ts": null,
+        "token": null,
+        "thinking": 0,
+        "tools": 0,
+        "system": 0,
+        "unattended_enabled": false,
+        "unattended_cooldown_minutes": 5,
+        "unattended_remaining_injections": 10,
+        "alias": "",
+        "files": [],
+        "model_provider": null,
+        "preferred_auth_method": null,
+        "provider_choice": "openai-api",
+        "model": null,
+        "reasoning_effort": null,
+        "service_tier": null,
+        "tmux_session": null,
+        "tmux_window": null,
+        "launch_id": null,
+        "spawn_nonce": null,
+        "priority_offset": 0.0,
+        "snooze_until": null,
+        "dependency_session_id": null,
+        "time_priority": 0.0,
+        "base_priority": 0.0,
+        "final_priority": 0.0,
+        "blocked": false,
+        "snoozed": false,
+        "git_branch": null,
+        "busy": false
+      }
+    ],
+    "recent_cwds": [
+      "/home/tester/upload-proof-repo"
+    ],
+    "new_session_defaults": {
+      "default_backend": "codex",
+      "backends": {
+        "codex": {
+          "model_provider": "openai",
+          "preferred_auth_method": "apikey",
+          "provider_choice": "openai-api",
+          "model": null,
+          "model_providers": [
+            "chatgpt",
+            "openai-api"
+          ],
+          "service_tier": "flex",
+          "reasoning_effort": null,
+          "agent_backend": "codex",
+          "provider_choices": [
+            "chatgpt",
+            "openai-api"
+          ],
+          "reasoning_efforts": [
+            "xhigh",
+            "high",
+            "medium",
+            "low"
+          ],
+          "supports_fast": true
+        },
+        "pi": {
+          "agent_backend": "pi",
+          "model_provider": null,
+          "preferred_auth_method": null,
+          "provider_choice": null,
+          "provider_choices": [],
+          "model": null,
+          "models": [],
+          "reasoning_effort": "high",
+          "reasoning_efforts": [
+            "off",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "reasoning_efforts_by_model": {},
+          "service_tier": null,
+          "supports_fast": false
+        },
+        "cc": {
+          "agent_backend": "cc",
+          "model_provider": null,
+          "preferred_auth_method": null,
+          "provider_choice": null,
+          "provider_choices": [],
+          "model": null,
+          "models": [
+            "sonnet",
+            "opus",
+            "fable"
+          ],
+          "reasoning_effort": "medium",
+          "reasoning_efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "service_tier": null,
+          "supports_fast": false
+        }
+      }
+    },
+    "tmux_available": true,
+    "tmux_session_name": "codoxear"
+  },
+  "browser-after-multifile-upload.json": {
+    "success": true,
+    "data": {
+      "origin": "http://127.0.0.1:19331/#session=upload-proof",
+      "result": {
+        "badge": "2",
+        "chips": [
+          {
+            "text": "alpha.txt\n17 B \u00b7 16cc8cdd\n\u00d7",
+            "title": "/home/tester/.local/share/codoxear/uploads/upload-proof/1783366089756_alpha.txt"
+          },
+          {
+            "text": "beta.txt\n16 B \u00b7 18c0a487\n\u00d7",
+            "title": "/home/tester/.local/share/codoxear/uploads/upload-proof/1783366089763_beta.txt"
+          }
+        ],
+        "inputMultiple": true,
+        "pendingText": true,
+        "toast": "2 files staged"
+      }
+    },
+    "error": null
+  },
+  "api-attachments-after-browser-upload.json": {
+    "ok": true,
+    "attachments": [
+      {
+        "id": "16cc8cdddc294a448a849d6001205fc0",
+        "display_name": "alpha.txt",
+        "filename": "1783366089756_alpha.txt",
+        "path": "/home/tester/.local/share/codoxear/uploads/upload-proof/1783366089756_alpha.txt",
+        "size": 17,
+        "created_ts": 1783366089.7570236
+      },
+      {
+        "id": "18c0a48713ea45e5a9de0de9e6c47b36",
+        "display_name": "beta.txt",
+        "filename": "1783366089763_beta.txt",
+        "path": "/home/tester/.local/share/codoxear/uploads/upload-proof/1783366089763_beta.txt",
+        "size": 16,
+        "created_ts": 1783366089.7640605
+      }
+    ],
+    "pending_attachment": true
+  },
+  "browser-after-remove-one.json": {
+    "success": true,
+    "data": {
+      "origin": "http://127.0.0.1:19331/#session=upload-proof",
+      "result": {
+        "badge": "1",
+        "chips": [
+          {
+            "text": "beta.txt\n16 B \u00b7 18c0a487\n\u00d7",
+            "title": "/home/tester/.local/share/codoxear/uploads/upload-proof/1783366089763_beta.txt"
+          }
+        ],
+        "toast": "attachment removed"
+      }
+    },
+    "error": null
+  },
+  "browser-after-clear-all.json": {
+    "success": true,
+    "data": {
+      "origin": "http://127.0.0.1:19331/#session=upload-proof",
+      "result": {
+        "badge": "",
+        "chipCount": 0,
+        "toast": "attachments cleared",
+        "trayDisplay": "none"
+      }
+    },
+    "error": null
+  },
+  "api-attachments-after-clear.json": {
+    "ok": true,
+    "attachments": [],
+    "pending_attachment": false
+  },
+  "browser-before-send.json": {
+    "success": true,
+    "data": {
+      "origin": "http://127.0.0.1:19331/#session=upload-proof",
+      "result": {
+        "badge": "2",
+        "chips": [
+          {
+            "text": "beta.txt\n16 B \u00b7 bae3320a\n\u00d7",
+            "title": "/home/tester/.local/share/codoxear/uploads/upload-proof/1783366193849_beta.txt"
+          },
+          {
+            "text": "gamma.txt\n17 B \u00b7 80895d16\n\u00d7",
+            "title": "/home/tester/.local/share/codoxear/uploads/upload-proof/1783366193856_gamma.txt"
+          }
+        ]
+      }
+    },
+    "error": null
+  },
+  "browser-after-send.json": {
+    "success": true,
+    "data": {
+      "origin": "http://127.0.0.1:19331/#session=upload-proof",
+      "result": {
+        "badge": "",
+        "chipCount": 0,
+        "pendingUser": [
+          "upload proof fixture\n\n08:00",
+          "please use staged uploads\n\n03:29"
+        ],
+        "toast": "sent",
+        "trayDisplay": "none"
+      }
+    },
+    "error": null
+  },
+  "api-attachments-after-send.json": {
+    "ok": true,
+    "attachments": [],
+    "pending_attachment": false
+  },
+  "api-unknown-summary.json": {
+    "stage_count": 1,
+    "send_status": "504",
+    "send_commit_unknown": true,
+    "after_count": 1,
+    "after_pending": true,
+    "keys_count": 0,
+    "last_send_text": "Attachment 1: /home/tester/.local/share/codoxear/uploads/upload-unknown/1783366238980_unknown.txt\nFORCE_COMMIT_UNKNOWN please keep staged",
+    "last_has_attachment": true
+  }
+}

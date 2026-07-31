@@ -1,0 +1,504 @@
+{
+  "cases": {
+    "length_text_prefix": {
+      "broker_turn_state_after_rows": {
+        "busy": false,
+        "last_turn_activity_ts": 0.0,
+        "pending_calls": [],
+        "should_clear_busy_state_at_t_plus_10_quiet0": false,
+        "turn_has_completion_candidate": false,
+        "turn_open": false
+      },
+      "compute_idle_from_log": true,
+      "log_size": 390,
+      "name": "length_text_prefix",
+      "pi_assistant_is_final_turn_end_by_row": [
+        {
+          "row_index": 0,
+          "value": false
+        },
+        {
+          "row_index": 1,
+          "value": false
+        },
+        {
+          "row_index": 2,
+          "value": true
+        }
+      ],
+      "pi_current_turn_state_before_eof": {
+        "idle": true,
+        "pending": []
+      },
+      "projection": [
+        {
+          "event": null,
+          "message_class": null,
+          "result_type": null,
+          "role": null,
+          "row_index": 0,
+          "row_type": "session",
+          "text": null
+        },
+        {
+          "event": {
+            "role": "user",
+            "text": "please continue",
+            "ts": 1783296001.0
+          },
+          "message_class": null,
+          "result_type": "dict",
+          "role": "user",
+          "row_index": 1,
+          "row_type": "message",
+          "text": "please continue"
+        },
+        {
+          "event": {
+            "message_class": "final_response",
+            "message_id": "102116e86fc01f02f57c77f5d623fe80acb41202ae0d32e3699c029db4cf619e",
+            "role": "assistant",
+            "text": "partial before compaction",
+            "ts": 1783296002.0
+          },
+          "message_class": "final_response",
+          "result_type": "dict",
+          "role": "assistant",
+          "row_index": 2,
+          "row_type": "message",
+          "text": "partial before compaction"
+        }
+      ],
+      "rows": [
+        {
+          "id": "synthetic-pi-length-proof",
+          "timestamp": "2026-07-06T00:00:00Z",
+          "type": "session"
+        },
+        {
+          "message": {
+            "content": [
+              {
+                "text": "please continue",
+                "type": "text"
+              }
+            ],
+            "role": "user"
+          },
+          "timestamp": "2026-07-06T00:00:01Z",
+          "type": "message"
+        },
+        {
+          "message": {
+            "content": [
+              {
+                "text": "partial before compaction",
+                "type": "text"
+              }
+            ],
+            "role": "assistant",
+            "stopReason": "length"
+          },
+          "timestamp": "2026-07-06T00:00:02Z",
+          "type": "message"
+        }
+      ],
+      "runtime_readiness_from_log_and_broker": {
+        "api_sessions_would_project_busy": false,
+        "api_sessions_would_project_sendable_remote_ready": true,
+        "readiness": {
+          "direct_send": true,
+          "local_queue_len": 0,
+          "queue_promotion": true,
+          "status": {
+            "broker": {
+              "busy": false,
+              "interrupted_idle": false,
+              "queue_len": 0
+            },
+            "busy": false,
+            "log_exists": true,
+            "log_idle": true,
+            "remote_ready": true,
+            "send_boundary_unresolved": false
+          },
+          "unattended_injection": true
+        },
+        "runtime_status": {
+          "broker": {
+            "busy": false,
+            "interrupted_idle": false,
+            "queue_len": 0
+          },
+          "busy": false,
+          "log_exists": true,
+          "log_idle": true,
+          "remote_ready": true,
+          "send_boundary_unresolved": false
+        }
+      }
+    },
+    "length_text_then_tooluse_continuation": {
+      "broker_turn_state_after_rows": {
+        "busy": true,
+        "last_turn_activity_ts": 6.0,
+        "pending_calls": [
+          "toolu_1"
+        ],
+        "should_clear_busy_state_at_t_plus_10_quiet0": false,
+        "turn_has_completion_candidate": false,
+        "turn_open": true
+      },
+      "compute_idle_from_log": false,
+      "log_size": 856,
+      "name": "length_text_then_tooluse_continuation",
+      "pi_assistant_is_final_turn_end_by_row": [
+        {
+          "row_index": 0,
+          "value": false
+        },
+        {
+          "row_index": 1,
+          "value": false
+        },
+        {
+          "row_index": 2,
+          "value": true
+        },
+        {
+          "row_index": 3,
+          "value": false
+        },
+        {
+          "row_index": 4,
+          "value": false
+        },
+        {
+          "row_index": 5,
+          "value": false
+        }
+      ],
+      "pi_current_turn_state_before_eof": {
+        "idle": false,
+        "pending": [
+          "toolu_1"
+        ]
+      },
+      "projection": [
+        {
+          "event": null,
+          "message_class": null,
+          "result_type": null,
+          "role": null,
+          "row_index": 0,
+          "row_type": "session",
+          "text": null
+        },
+        {
+          "event": {
+            "role": "user",
+            "text": "please continue",
+            "ts": 1783296001.0
+          },
+          "message_class": null,
+          "result_type": "dict",
+          "role": "user",
+          "row_index": 1,
+          "row_type": "message",
+          "text": "please continue"
+        },
+        {
+          "event": {
+            "message_class": "final_response",
+            "message_id": "102116e86fc01f02f57c77f5d623fe80acb41202ae0d32e3699c029db4cf619e",
+            "role": "assistant",
+            "text": "partial before compaction",
+            "ts": 1783296002.0
+          },
+          "message_class": "final_response",
+          "result_type": "dict",
+          "role": "assistant",
+          "row_index": 2,
+          "row_type": "message",
+          "text": "partial before compaction"
+        },
+        {
+          "event": null,
+          "message_class": null,
+          "result_type": null,
+          "role": null,
+          "row_index": 3,
+          "row_type": "custom_message",
+          "text": null
+        },
+        {
+          "event": null,
+          "message_class": null,
+          "result_type": null,
+          "role": null,
+          "row_index": 4,
+          "row_type": "custom_message",
+          "text": null
+        },
+        {
+          "event": {
+            "message_class": "narration",
+            "message_id": "7ece46978ff29d70628a801641d18e0f0ddd36e3e0f17a5d3eb18c6c34df6a67",
+            "role": "assistant",
+            "text": "resuming after compaction and calling a tool",
+            "ts": 1783296005.0
+          },
+          "message_class": "narration",
+          "result_type": "dict",
+          "role": "assistant",
+          "row_index": 5,
+          "row_type": "message",
+          "text": "resuming after compaction and calling a tool"
+        }
+      ],
+      "rows": [
+        {
+          "id": "synthetic-pi-length-proof",
+          "timestamp": "2026-07-06T00:00:00Z",
+          "type": "session"
+        },
+        {
+          "message": {
+            "content": [
+              {
+                "text": "please continue",
+                "type": "text"
+              }
+            ],
+            "role": "user"
+          },
+          "timestamp": "2026-07-06T00:00:01Z",
+          "type": "message"
+        },
+        {
+          "message": {
+            "content": [
+              {
+                "text": "partial before compaction",
+                "type": "text"
+              }
+            ],
+            "role": "assistant",
+            "stopReason": "length"
+          },
+          "timestamp": "2026-07-06T00:00:02Z",
+          "type": "message"
+        },
+        {
+          "message": "Compacting conversation",
+          "timestamp": "2026-07-06T00:00:03Z",
+          "type": "custom_message"
+        },
+        {
+          "message": "Continuing after compaction",
+          "timestamp": "2026-07-06T00:00:04Z",
+          "type": "custom_message"
+        },
+        {
+          "message": {
+            "content": [
+              {
+                "text": "resuming after compaction and calling a tool",
+                "type": "text"
+              },
+              {
+                "id": "toolu_1",
+                "input": {
+                  "path": "README.md"
+                },
+                "name": "read",
+                "type": "toolCall"
+              }
+            ],
+            "role": "assistant",
+            "stopReason": "toolUse"
+          },
+          "timestamp": "2026-07-06T00:00:05Z",
+          "type": "message"
+        }
+      ],
+      "runtime_readiness_from_log_and_broker": {
+        "api_sessions_would_project_busy": true,
+        "api_sessions_would_project_sendable_remote_ready": false,
+        "readiness": {
+          "direct_send": false,
+          "local_queue_len": 0,
+          "queue_promotion": false,
+          "status": {
+            "broker": {
+              "busy": true,
+              "interrupted_idle": false,
+              "queue_len": 0
+            },
+            "busy": true,
+            "log_exists": true,
+            "log_idle": false,
+            "remote_ready": false,
+            "send_boundary_unresolved": false
+          },
+          "unattended_injection": false
+        },
+        "runtime_status": {
+          "broker": {
+            "busy": true,
+            "interrupted_idle": false,
+            "queue_len": 0
+          },
+          "busy": true,
+          "log_exists": true,
+          "log_idle": false,
+          "remote_ready": false,
+          "send_boundary_unresolved": false
+        }
+      }
+    },
+    "stop_text_control": {
+      "broker_turn_state_after_rows": {
+        "busy": false,
+        "last_turn_activity_ts": 0.0,
+        "pending_calls": [],
+        "should_clear_busy_state_at_t_plus_10_quiet0": false,
+        "turn_has_completion_candidate": false,
+        "turn_open": false
+      },
+      "compute_idle_from_log": true,
+      "log_size": 384,
+      "name": "stop_text_control",
+      "pi_assistant_is_final_turn_end_by_row": [
+        {
+          "row_index": 0,
+          "value": false
+        },
+        {
+          "row_index": 1,
+          "value": false
+        },
+        {
+          "row_index": 2,
+          "value": true
+        }
+      ],
+      "pi_current_turn_state_before_eof": {
+        "idle": true,
+        "pending": []
+      },
+      "projection": [
+        {
+          "event": null,
+          "message_class": null,
+          "result_type": null,
+          "role": null,
+          "row_index": 0,
+          "row_type": "session",
+          "text": null
+        },
+        {
+          "event": {
+            "role": "user",
+            "text": "please continue",
+            "ts": 1783296001.0
+          },
+          "message_class": null,
+          "result_type": "dict",
+          "role": "user",
+          "row_index": 1,
+          "row_type": "message",
+          "text": "please continue"
+        },
+        {
+          "event": {
+            "message_class": "final_response",
+            "message_id": "637f1d4f73d0c6bd125629f5487804b4fdbf01a81ef4d9f383e8b4da36737c84",
+            "role": "assistant",
+            "text": "complete final answer",
+            "ts": 1783296002.0
+          },
+          "message_class": "final_response",
+          "result_type": "dict",
+          "role": "assistant",
+          "row_index": 2,
+          "row_type": "message",
+          "text": "complete final answer"
+        }
+      ],
+      "rows": [
+        {
+          "id": "synthetic-pi-length-proof",
+          "timestamp": "2026-07-06T00:00:00Z",
+          "type": "session"
+        },
+        {
+          "message": {
+            "content": [
+              {
+                "text": "please continue",
+                "type": "text"
+              }
+            ],
+            "role": "user"
+          },
+          "timestamp": "2026-07-06T00:00:01Z",
+          "type": "message"
+        },
+        {
+          "message": {
+            "content": [
+              {
+                "text": "complete final answer",
+                "type": "text"
+              }
+            ],
+            "role": "assistant",
+            "stopReason": "stop"
+          },
+          "timestamp": "2026-07-06T00:00:02Z",
+          "type": "message"
+        }
+      ],
+      "runtime_readiness_from_log_and_broker": {
+        "api_sessions_would_project_busy": false,
+        "api_sessions_would_project_sendable_remote_ready": true,
+        "readiness": {
+          "direct_send": true,
+          "local_queue_len": 0,
+          "queue_promotion": true,
+          "status": {
+            "broker": {
+              "busy": false,
+              "interrupted_idle": false,
+              "queue_len": 0
+            },
+            "busy": false,
+            "log_exists": true,
+            "log_idle": true,
+            "remote_ready": true,
+            "send_boundary_unresolved": false
+          },
+          "unattended_injection": true
+        },
+        "runtime_status": {
+          "broker": {
+            "busy": false,
+            "interrupted_idle": false,
+            "queue_len": 0
+          },
+          "busy": false,
+          "log_exists": true,
+          "log_idle": true,
+          "remote_ready": true,
+          "send_boundary_unresolved": false
+        }
+      }
+    }
+  },
+  "repo": {
+    "head": "4af9a3f",
+    "status_short_before_script_output_write": "?? .memory/tasks/2026-07-03-usable-product-ui-architecture/browser-artifacts/pi-length-text-false-idle-defect/"
+  },
+  "verdict": "DEFECT"
+}

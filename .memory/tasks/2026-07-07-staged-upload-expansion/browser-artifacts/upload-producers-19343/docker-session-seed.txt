@@ -1,0 +1,2 @@
+{"agent_backend": "codex", "session_id": "upload-proof", "broker_pid": 14, "codex_pid": 14, "cwd": "/home/tester/upload-proof-repo", "log_path": "/home/tester/upload-proof-logs/upload-proof.jsonl", "start_ts": 1783372623.2917304, "owner": "terminal", "sock_path": "/home/tester/.local/share/codoxear/socks/upload-proof.sock", "control_protocol_version": 2, "control_capabilities": {"sync_send": true, "key_write_errors": false}}
+cleared calls

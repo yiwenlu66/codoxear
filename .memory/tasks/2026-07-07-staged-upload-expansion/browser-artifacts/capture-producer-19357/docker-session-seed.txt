@@ -1,0 +1,4 @@
+{"sid": "capture-proof", "cwd": "/home/tester/capture-proof-repo", "calls": "/home/tester/capture-proof-calls.jsonl", "sock": "/home/tester/.local/share/codoxear/socks/capture-proof.sock"}
+total 4
+-rw-r--r-- 1 tester tester 433 Jul  6 23:49 capture-proof.json
+srwxr-xr-x 1 tester tester   0 Jul  6 23:49 capture-proof.sock

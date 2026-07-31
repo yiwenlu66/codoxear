@@ -1,0 +1,142 @@
+import json
+import subprocess
+import textwrap
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_SESSION_HELPERS_JS = ROOT / "codoxear" / "static" / "app_session_helpers.js"
+INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
+
+
+def eval_session_helpers() -> dict:
+    source = APP_SESSION_HELPERS_JS.read_text(encoding="utf-8")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(source)}, ctx);
+        const helpers = ctx.window.CodoxearSessionHelpers;
+        const sessions = [
+          {{ session_id: "failed", launch_state: "failed", launch_error: "boom" }},
+          {{ session_id: "blocked", blocked: true }},
+          {{ session_id: "snoozed", snoozed: true }},
+          {{ session_id: "now", owned: true, service_tier: " fast " }},
+        ];
+        const entries = helpers.sidebarSessionEntries(sessions);
+        process.stdout.write(JSON.stringify({{
+          groups: helpers.SESSION_SIDEBAR_GROUPS,
+          failedKind: helpers.sessionLaunchKind(sessions[0]),
+          failedIcon: helpers.sessionLaunchIcon(sessions[0]),
+          pendingSelectable: helpers.sessionSelectable({{ launch_state: "starting" }}),
+          failedSelectable: helpers.sessionSelectable(sessions[0]),
+          nullSelectable: helpers.sessionSelectable(null),
+          tmuxKind: helpers.sessionLaunchKind({{ transport: "tmux" }}),
+          webKind: helpers.sessionLaunchKind({{ owned: true }}),
+          terminalKind: helpers.sessionLaunchKind({{}}),
+          tmuxIcon: helpers.sessionLaunchIcon({{ transport: "tmux" }}),
+          webIcon: helpers.sessionLaunchIcon({{ owned: true }}),
+          terminalIcon: helpers.sessionLaunchIcon({{}}),
+          hasUnknownSend: helpers.sessionHasUnknownSend({{ commit_unknown_send: true }}),
+          noUnknownSend: helpers.sessionHasUnknownSend({{ commit_unknown_send: false }}),
+          orphanRecovery: helpers.sessionIsOrphanRecovery({{ orphan_recovery: true }}),
+          noOrphanRecovery: helpers.sessionIsOrphanRecovery(null),
+          orphanQueueFromQueueRecovery: helpers.sessionHasOrphanQueueRecovery({{ queue_recovery: true, queue_len: 1 }}),
+          orphanQueueFromOrphanRecovery: helpers.sessionHasOrphanQueueRecovery({{ orphan_recovery: true, queue_len: "2" }}),
+          orphanQueueZeroLen: helpers.sessionHasOrphanQueueRecovery({{ queue_recovery: true, queue_len: 0 }}),
+          orphanQueuePlain: helpers.sessionHasOrphanQueueRecovery({{ queue_len: 5 }}),
+          reviewKey: helpers.sessionSidebarGroupKey(sessions[0]),
+          waitingKey: helpers.sessionSidebarGroupKey(sessions[1]),
+          laterKey: helpers.sessionSidebarGroupKey(sessions[2]),
+          nowKey: helpers.sessionSidebarGroupKey(sessions[3]),
+          entries,
+          signature: helpers.sidebarRenderSignature(entries, {{ selectedId: "now", swipeActions: true }}),
+          fast: helpers.sessionIsFast(sessions[3]),
+          notFast: helpers.sessionIsFast({{ service_tier: "standard" }}),
+          diagnosticsPiProvider: helpers.diagnosticsProviderDisplay({{ model_provider: "anthropic", provider_choice: "chatgpt" }}, "pi"),
+          diagnosticsCcProvider: helpers.diagnosticsProviderDisplay({{ model_provider: "anthropic", provider_choice: "anthropic" }}, "cc"),
+          diagnosticsCodexProvider: helpers.diagnosticsProviderDisplay({{ model_provider: "openai", provider_choice: "chatgpt" }}, "codex"),
+          diagnosticsCopyText: helpers.diagnosticsCopyText("sid-1", [["CWD", "/tmp/repo"], ["Empty", ""]]),
+          queueModern: helpers.normalizeQueueItems({{ items: [
+            {{ id: "q1", text: " first ", sending: 1, commit_unknown: true }},
+            {{ id: "", text: "missing id" }},
+            {{ id: "q2", text: "   " }},
+            null,
+            {{ id: "q3", text: "recover", orphan_recovery: true }},
+            {{ id: 42, text: "bad id" }},
+          ] }}),
+          queueLegacy: helpers.normalizeQueueItems({{ queue: ["one", " ", "two", 5, " three "] }}),
+          queueEmpty: helpers.normalizeQueueItems(null),
+          frozen: Object.isFrozen(helpers),
+          groupsFrozen: Object.isFrozen(helpers.SESSION_SIDEBAR_GROUPS),
+          groupObjectsFrozen: helpers.SESSION_SIDEBAR_GROUPS.every((group) => Object.isFrozen(group)),
+        }}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
+class TestFrontendSessionHelpersSource(unittest.TestCase):
+    def test_session_helpers_preserve_grouping_and_launch_contracts(self) -> None:
+        result = eval_session_helpers()
+        self.assertEqual([group["key"] for group in result["groups"]], ["now", "waiting", "later"])
+        self.assertEqual([group["label"] for group in result["groups"]], ["Now", "Waiting", "Later"])
+        self.assertEqual(result["failedKind"], "failed")
+        self.assertEqual(result["failedIcon"], "info")
+        self.assertFalse(result["pendingSelectable"])
+        self.assertTrue(result["failedSelectable"])
+        self.assertFalse(result["nullSelectable"])
+        self.assertEqual(result["tmuxKind"], "web_tmux")
+        self.assertEqual(result["webKind"], "web")
+        self.assertEqual(result["terminalKind"], "terminal")
+        self.assertEqual(result["tmuxIcon"], "tmux")
+        self.assertEqual(result["webIcon"], "web")
+        self.assertEqual(result["terminalIcon"], "terminal")
+        self.assertTrue(result["hasUnknownSend"])
+        self.assertFalse(result["noUnknownSend"])
+        self.assertTrue(result["orphanRecovery"])
+        self.assertFalse(result["noOrphanRecovery"])
+        self.assertTrue(result["orphanQueueFromQueueRecovery"])
+        self.assertTrue(result["orphanQueueFromOrphanRecovery"])
+        self.assertFalse(result["orphanQueueZeroLen"])
+        self.assertFalse(result["orphanQueuePlain"])
+        self.assertEqual(result["reviewKey"], "now")
+        self.assertEqual(result["waitingKey"], "waiting")
+        self.assertEqual(result["laterKey"], "later")
+        self.assertEqual(result["nowKey"], "now")
+        self.assertEqual([entry["type"] for entry in result["entries"]], ["header", "session", "session", "header", "session", "header", "session"])
+        self.assertContains('"selectedId":"now"', result["signature"])
+        self.assertContains('"swipeActions":true', result["signature"])
+        self.assertTrue(result["fast"])
+        self.assertFalse(result["notFast"])
+        self.assertEqual(result["diagnosticsPiProvider"], "anthropic")
+        self.assertEqual(result["diagnosticsCcProvider"], "-")
+        self.assertEqual(result["diagnosticsCodexProvider"], "chatgpt")
+        self.assertEqual(result["diagnosticsCopyText"], "Codoxear session details\nSession: sid-1\nCWD: /tmp/repo\nEmpty: -")
+        self.assertEqual(
+            result["queueModern"],
+            [
+                {"id": "q1", "text": " first ", "sending": True, "commitUnknown": True, "orphanRecovery": False},
+                {"id": "q3", "text": "recover", "sending": False, "commitUnknown": False, "orphanRecovery": True},
+            ],
+        )
+        self.assertEqual(
+            result["queueLegacy"],
+            [
+                {"id": "legacy-0", "text": "one", "sending": False, "commitUnknown": False, "orphanRecovery": False},
+                {"id": "legacy-1", "text": "two", "sending": False, "commitUnknown": False, "orphanRecovery": False},
+                {"id": "legacy-2", "text": " three ", "sending": False, "commitUnknown": False, "orphanRecovery": False},
+            ],
+        )
+        self.assertEqual(result["queueEmpty"], [])
+        self.assertTrue(result["frozen"])
+        self.assertTrue(result["groupsFrozen"])
+        self.assertTrue(result["groupObjectsFrozen"])
+
+
+if __name__ == "__main__":
+    unittest.main()

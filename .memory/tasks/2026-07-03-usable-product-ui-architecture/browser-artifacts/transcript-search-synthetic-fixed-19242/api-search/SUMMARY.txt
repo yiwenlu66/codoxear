@@ -1,0 +1,16 @@
+{
+  "answered_no_response_match_count": 0,
+  "answered_real_match_count": 1,
+  "base": "http://127.0.0.1:19242",
+  "cc_api_error_match_text": "API Error: 503 Search Proof",
+  "cc_no_response_history_has_row": true,
+  "cc_no_response_match_count": 1,
+  "codex_no_response_history_has_row": true,
+  "codex_no_response_match_count": 1,
+  "sessions": [
+    "search-cc-apierr",
+    "search-cc-noresp",
+    "search-codex-answered",
+    "search-codex-noresp"
+  ]
+}

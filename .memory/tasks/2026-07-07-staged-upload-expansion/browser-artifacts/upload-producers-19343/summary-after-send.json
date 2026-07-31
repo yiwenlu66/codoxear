@@ -1,0 +1,21 @@
+{
+  "browser": {
+    "badge": "",
+    "chipCount": 0,
+    "pendingUser": [
+      "upload proof fixture\n\n08:00",
+      "please process paste and drop files\n\n05:19"
+    ],
+    "toast": "sent"
+  },
+  "api_count": 0,
+  "api_pending": false,
+  "broker_counts": {
+    "state": 18,
+    "send": 1
+  },
+  "send_count": 1,
+  "keys_count": 0,
+  "last_send_text": "Attachment 1: /home/tester/.local/share/codoxear/uploads/upload-proof/1783372660381_paste-alpha.txt\nAttachment 2: /home/tester/.local/share/codoxear/uploads/upload-proof/1783372709075_drop-beta.txt\nAttachment 3: /home/tester/.local/share/codoxear/uploads/upload-proof/1783372709081_drop-gamma.txt\nplease process paste and drop files",
+  "has_three_attachment_lines": true
+}

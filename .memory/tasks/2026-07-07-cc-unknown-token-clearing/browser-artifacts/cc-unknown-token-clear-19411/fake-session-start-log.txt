@@ -1,0 +1,2 @@
+{"sid":"cc-unknown-token-proof","thread":"22222222-3333-4444-8555-666666666666","cwd":"/home/tester/cc-unknown-token-proof-repo","log":"/home/tester/.claude/projects/-home-tester-cc-unknown-token-proof-repo/22222222-3333-4444-8555-666666666666.jsonl","calls":"/home/tester/cc-unknown-token-proof-calls.jsonl","sock":"/home/tester/.local/share/codoxear/socks/cc-unknown-token-proof.sock","fake_notice":"FAKE_CC_UNKNOWN_TOKEN_CLEAR_FOR_CODOXEAR_DOCKER_ONLY"}
+---ERR---

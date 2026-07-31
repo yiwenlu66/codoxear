@@ -1,0 +1,4 @@
+v22.23.1
+0.78.1
+--- ne smoke (credential/gateway) ---
+PING-OK

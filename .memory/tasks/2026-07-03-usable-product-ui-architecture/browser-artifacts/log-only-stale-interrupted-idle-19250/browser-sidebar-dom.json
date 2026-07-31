@@ -1,0 +1,383 @@
+{
+  "sidebarPresent": true,
+  "sidebarId": "",
+  "candidateMatches": {
+    ".session": 1
+  },
+  "interruptTextNodes": [
+    {
+      "tag": "P",
+      "id": null,
+      "cls": null,
+      "text": "work that got interrupted"
+    },
+    {
+      "tag": "P",
+      "id": null,
+      "cls": null,
+      "text": "resumed turn after interrupt (browser)"
+    }
+  ],
+  "sidebarChildrenSample": [
+    {
+      "tag": "HEADER",
+      "id": null,
+      "cls": null,
+      "dsid": null
+    },
+    {
+      "tag": "DIV",
+      "id": null,
+      "cls": "title",
+      "dsid": null
+    },
+    {
+      "tag": "IMG",
+      "id": null,
+      "cls": "sidebarLogo",
+      "dsid": null
+    },
+    {
+      "tag": "DIV",
+      "id": null,
+      "cls": "actions",
+      "dsid": null
+    },
+    {
+      "tag": "BUTTON",
+      "id": "newBtn",
+      "cls": "icon-btn",
+      "dsid": null
+    },
+    {
+      "tag": "svg",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "path",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "BUTTON",
+      "id": "notificationBtn",
+      "cls": "icon-btn",
+      "dsid": null
+    },
+    {
+      "tag": "svg",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "path",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "path",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "BUTTON",
+      "id": "announceBtn",
+      "cls": "icon-btn",
+      "dsid": null
+    },
+    {
+      "tag": "svg",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "path",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "path",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "path",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "DIV",
+      "id": null,
+      "cls": "sessions",
+      "dsid": null
+    },
+    {
+      "tag": "DIV",
+      "id": null,
+      "cls": "sessionGroupHeader",
+      "dsid": null
+    },
+    {
+      "tag": "SPAN",
+      "id": null,
+      "cls": "sessionGroupLabel",
+      "dsid": null
+    },
+    {
+      "tag": "SPAN",
+      "id": null,
+      "cls": "sessionGroupCount",
+      "dsid": null
+    },
+    {
+      "tag": "DIV",
+      "id": null,
+      "cls": "session",
+      "dsid": null
+    },
+    {
+      "tag": "DIV",
+      "id": null,
+      "cls": "sessionSwipe",
+      "dsid": null
+    },
+    {
+      "tag": "DIV",
+      "id": null,
+      "cls": "sessionActions left",
+      "dsid": null
+    },
+    {
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "icon-btn danger sessionDel",
+      "dsid": null
+    },
+    {
+      "tag": "svg",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "path",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "path",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "path",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "path",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "path",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "DIV",
+      "id": null,
+      "cls": "sessionActions right",
+      "dsid": null
+    },
+    {
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "icon-btn",
+      "dsid": null
+    },
+    {
+      "tag": "svg",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "path",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "path",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "icon-btn",
+      "dsid": null
+    },
+    {
+      "tag": "svg",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "rect",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "rect",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "DIV",
+      "id": null,
+      "cls": "sessionContent",
+      "dsid": null
+    },
+    {
+      "tag": "DIV",
+      "id": null,
+      "cls": "sessionInner",
+      "dsid": null
+    },
+    {
+      "tag": "DIV",
+      "id": null,
+      "cls": "row",
+      "dsid": null
+    },
+    {
+      "tag": "DIV",
+      "id": null,
+      "cls": "sessionTitleRow",
+      "dsid": null
+    },
+    {
+      "tag": "SPAN",
+      "id": null,
+      "cls": "stateDot busy",
+      "dsid": null
+    },
+    {
+      "tag": "DIV",
+      "id": null,
+      "cls": "titleLine",
+      "dsid": null
+    },
+    {
+      "tag": "SPAN",
+      "id": null,
+      "cls": "titleText",
+      "dsid": null
+    },
+    {
+      "tag": "DIV",
+      "id": null,
+      "cls": "sessionBadges",
+      "dsid": null
+    },
+    {
+      "tag": "DIV",
+      "id": null,
+      "cls": "muted subLine sessionMetaLine",
+      "dsid": null
+    },
+    {
+      "tag": "IMG",
+      "id": null,
+      "cls": "sessionBackendStatusIcon",
+      "dsid": null
+    },
+    {
+      "tag": "SPAN",
+      "id": null,
+      "cls": "ownerBadge ownerIconBadge owner-terminal",
+      "dsid": null
+    },
+    {
+      "tag": "svg",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "rect",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "path",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "path",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "SPAN",
+      "id": null,
+      "cls": "metaText",
+      "dsid": null
+    },
+    {
+      "tag": "FOOTER",
+      "id": null,
+      "cls": null,
+      "dsid": null
+    },
+    {
+      "tag": "BUTTON",
+      "id": "helpBtnSide",
+      "cls": null,
+      "dsid": null
+    },
+    {
+      "tag": "svg",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "circle",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    },
+    {
+      "tag": "path",
+      "id": null,
+      "cls": {},
+      "dsid": null
+    }
+  ]
+}

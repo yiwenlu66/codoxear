@@ -1,0 +1,11 @@
+{
+  "commit-unknown-redaction": {
+    "created_ts": 1783387355.6147707,
+    "display_text": "commit unknown redaction prompt",
+    "error": "send commit status unknown; broker marked commit unknown",
+    "text": "Attachment 1: /home/tester/.local/share/codoxear/uploads/commit-unknown-redaction/1783387355511_commit-secret.txt\ncommit unknown redaction prompt"
+  }
+}
+
+---
+/home/tester/.local/share/codoxear/uploads/commit-unknown-redaction/1783387355511_commit-secret.txt 12 bytes

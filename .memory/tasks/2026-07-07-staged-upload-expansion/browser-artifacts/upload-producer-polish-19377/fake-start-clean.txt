@@ -1,0 +1,6 @@
+{"sid": "upload-proof", "cwd": "/home/tester/upload-proof-repo", "calls": "/home/tester/upload-proof-calls.jsonl", "sock": "/home/tester/.local/share/codoxear/socks/upload-proof.sock"}
+total 12
+drwxr-xr-x 2 tester tester 4096 Jul  7 02:57 .
+drwxr-xr-x 5 tester tester 4096 Jul  7 02:57 ..
+-rw-r--r-- 1 tester tester  426 Jul  7 02:57 upload-proof.json
+srwxr-xr-x 1 tester tester    0 Jul  7 02:57 upload-proof.sock

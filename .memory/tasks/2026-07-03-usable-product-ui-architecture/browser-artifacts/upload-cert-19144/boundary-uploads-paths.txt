@@ -1,0 +1,8 @@
+APP_DIR=/home/tester/.local/share/codoxear
+UPLOAD_DIR tree:
+600 /home/tester/.local/share/codoxear/uploads/broker-apptest/1750000000000_secret.txt
+600 /home/tester/.local/share/codoxear/uploads/broker-155/1783296624306_mobile-sentinel-source.txt
+600 /home/tester/.local/share/codoxear/uploads/broker-155/1783296373850_queue-test-file.txt
+600 /home/tester/.local/share/codoxear/uploads/broker-155/1783296586572_mobile-sentinel-source.txt
+600 /home/tester/.local/share/codoxear/uploads/broker-155/1783295830759_sentinel-source.txt
+600 /home/tester/.local/share/codoxear/uploads/broker-155/1783296506441_persist-file.txt

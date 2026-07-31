@@ -1,0 +1,27 @@
+{
+    "transcript_state": "bound",
+    "thread_id": "code-copy-session",
+    "log_path": "/home/tester/code-copy-proof/code-copy-session.jsonl",
+    "live_cursor": "eyJ2IjoxLCJraW5kIjoibGl2ZSIsInRocmVhZF9pZCI6ImNvZGUtY29weS1zZXNzaW9uIiwibG9nX3BhdGgiOiIvaG9tZS90ZXN0ZXIvY29kZS1jb3B5LXByb29mL2NvZGUtY29weS1zZXNzaW9uLmpzb25sIiwicG9zIjo0Nzd9.KuMv0uCmLHzlM5BMaaTZf2p-_QSX0WpDywIb4dMLgoI",
+    "history_cursor": null,
+    "events": [
+        {
+            "role": "user",
+            "text": "show code copy proof",
+            "ts": 1.0,
+            "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImNvZGUtY29weS1zZXNzaW9uIiwibG9nX3BhdGgiOiIvaG9tZS90ZXN0ZXIvY29kZS1jb3B5LXByb29mL2NvZGUtY29weS1zZXNzaW9uLmpzb25sIiwicG9zIjowfQ.kD8ZZbv3BKvkzpfxLG8KeZLsfRlc1XMifhBc1EX35kg"
+        },
+        {
+            "role": "assistant",
+            "text": "Here are two independent snippets.\n\n```bash\nprintf 'alpha <tag> & value'\n```\n\nThe prose between code blocks must not be copied by a block button.\n\n```json\n{\"beta\": 2, \"note\": \"second block\"}\n```\n\nEnd of answer.\n",
+            "message_class": "final_response",
+            "message_id": "d6f6200072719561f9cd4f121bf7f9ae8d572fe742254a1fa2962b181af6caf6",
+            "ts": 2.0,
+            "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6ImNvZGUtY29weS1zZXNzaW9uIiwibG9nX3BhdGgiOiIvaG9tZS90ZXN0ZXIvY29kZS1jb3B5LXByb29mL2NvZGUtY29weS1zZXNzaW9uLmpzb25sIiwicG9zIjo5N30.19AWSNAmqCGXRqZpZinide8Chpnb2815pgRcvy_81X8"
+        }
+    ],
+    "has_older": false,
+    "busy": true,
+    "queue_len": 0,
+    "token": null
+}

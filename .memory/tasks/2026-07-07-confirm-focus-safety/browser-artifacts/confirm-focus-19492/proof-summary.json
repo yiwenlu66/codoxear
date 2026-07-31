@@ -1,0 +1,28 @@
+{
+  "all_passed": true,
+  "broker_no_send_keys_shutdown": true,
+  "desktop_constructive_confirm_focus": true,
+  "desktop_delete_cancel_focus": true,
+  "desktop_delete_enter_kept_session": true,
+  "desktop_disk_after_cancel": "disk newer text\n",
+  "desktop_no_overflow": true,
+  "desktop_reload_cancel_focus": true,
+  "desktop_reload_enter_preserved_draft_conflict": true,
+  "desktop_tab_cycle": [
+    "appConfirmCancelBtn",
+    "appConfirmConfirmBtn",
+    "appConfirmCancelBtn",
+    "appConfirmConfirmBtn"
+  ],
+  "mobile_delete_cancel_focus": true,
+  "mobile_delete_enter_kept_session": true,
+  "mobile_disk_after_cancel": "mobile disk newer text\n",
+  "mobile_no_overflow": true,
+  "mobile_reload_cancel_focus": true,
+  "mobile_reload_enter_preserved_draft_conflict": true,
+  "mobile_tab_cycle": [
+    "appConfirmCancelBtn",
+    "appConfirmConfirmBtn",
+    "appConfirmCancelBtn"
+  ]
+}

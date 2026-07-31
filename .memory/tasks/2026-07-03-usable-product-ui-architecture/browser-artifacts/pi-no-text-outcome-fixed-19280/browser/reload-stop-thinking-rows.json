@@ -1,0 +1,1 @@
+{"success":true,"data":{"origin":"http://127.0.0.1:19280/#session=pi-no-text-stop-thinking","result":[{"msgClass":"msg user","rowClass":"msg-row user","text":"hello pi stop thinking proof\n\n08:00"},{"msgClass":"msg assistant error","rowClass":"msg-row assistant","text":"The backend completed this turn without producing a response.\n\n08:00"}]},"error":null}

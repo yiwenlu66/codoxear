@@ -1,0 +1,26 @@
+# Keep local secrets, runtime state, and scratch artifacts out of Docker build context.
+.env
+env
+hmac_secret
+server.log
+*.log
+
+# Git/build/cache noise.
+.git/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# Codoxear runtime artifacts.
+root-repo/
+codex-homes/
+socks/
+generated_imgs/
+video_previews/
+
+# Agent/private local state.
+.memory/local/
+.serena/

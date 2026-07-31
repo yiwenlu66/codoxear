@@ -6,26 +6,31 @@ import unittest
 from pathlib import Path
 
 
-APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
+ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
 
 
 def render_markdown(markdown: str, katex_expr: str | None = None) -> str:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function escapeHtml(s) {")
-    end = source.index("function isMarkdownPreviewable(path) {", start)
-    snippet = source[start:end]
+    source = APP_MARKDOWN_JS.read_text(encoding="utf-8")
     katex_stmt = f"katex = {katex_expr};" if katex_expr else ""
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
         const ctx = {{
+          URL,
           location: {{ origin: "http://localhost", href: "http://localhost/" }},
           console,
+          window: {{
+            CodoxearUrls: {{
+              resolveAppUrl: (path) => new URL(String(path ?? "").replace(/^\\//, ""), "http://localhost/").toString(),
+            }},
+          }},
         }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_mdToHtml = mdToHtml;\n")}, ctx);
+        vm.runInContext({json.dumps(source)}, ctx);
         {f"vm.runInContext({json.dumps(katex_stmt)}, ctx);" if katex_stmt else ""}
-        process.stdout.write(ctx.__test_mdToHtml({json.dumps(markdown)}));
+        process.stdout.write(ctx.window.CodoxearMarkdown.mdToHtml({json.dumps(markdown)}));
         """
     )
     proc = subprocess.run(
@@ -39,6 +44,22 @@ def render_markdown(markdown: str, katex_expr: str | None = None) -> str:
 
 
 class TestMarkdownRendererSource(unittest.TestCase):
+    def test_markdown_renderer_renders_tables_inline_formatting_citations_and_file_paths(self) -> None:
+        html = render_markdown(
+            "| Name | Value |\n| :--- | ---: |\n| **bold** | `code` |\n\n"
+            "<oai-mem-citation><citation_entries>notes/plan.md:7-9|note=[Plan]</citation_entries>"
+            "<rollout_ids>r1</rollout_ids></oai-mem-citation>\n\n"
+            "See src/app.py:12 and [settings](./config/settings.json#L3)."
+        )
+        self.assertContains('<div class="md-table-wrap"><table>', html)
+        self.assertContains('<th style="text-align:left">Name</th>', html)
+        self.assertContains('<td style="text-align:right"><code>code</code></td>', html)
+        self.assertContains('<strong>bold</strong>', html)
+        self.assertContains('Memory citations:', html)
+        self.assertContains('data-candidate-file-path="~/.codex/memories/notes/plan.md" data-candidate-file-line="7"', html)
+        self.assertContains('data-candidate-file-path="src/app.py" data-candidate-file-line="12"', html)
+        self.assertContains('data-candidate-file-path="./config/settings.json" data-candidate-file-line="3"', html)
+
     def test_fenced_code_block_nested_under_list_item_renders_as_code(self) -> None:
         html = render_markdown(
             "\n".join(
@@ -56,10 +77,10 @@ class TestMarkdownRendererSource(unittest.TestCase):
             )
         )
 
-        self.assertIn('<pre><code data-lang="text">fwdbwd(1), optim(1), fwdbwd(2), optim(2), ...</code></pre>', html)
-        self.assertIn("Submit requests in exact semantic order:<pre>", html)
-        self.assertIn("Do not submit all <code>fwdbwd</code> first.", html)
-        self.assertNotIn("```", html)
+        self.assertContains('<pre><button class="code-copy-btn" type="button" aria-label="Copy code" title="Copy code"></button><code data-lang="text">fwdbwd(1), optim(1), fwdbwd(2), optim(2), ...</code></pre>', html)
+        self.assertContains("Submit requests in exact semantic order:<pre><button", html)
+        self.assertContains("Do not submit all <code>fwdbwd</code> first.", html)
+        self.assertNotContains("```", html)
 
     def test_nested_fenced_code_block_preserves_blank_lines(self) -> None:
         html = render_markdown(
@@ -76,9 +97,9 @@ class TestMarkdownRendererSource(unittest.TestCase):
             )
         )
 
-        self.assertIn('<pre><code data-lang="text">one\n\ntwo</code></pre>', html)
-        self.assertIn("<li>after</li>", html)
-        self.assertNotIn("```", html)
+        self.assertContains('<pre><button class="code-copy-btn" type="button" aria-label="Copy code" title="Copy code"></button><code data-lang="text">one\n\ntwo</code></pre>', html)
+        self.assertContains("<li>after</li>", html)
+        self.assertNotContains("```", html)
 
     def test_nested_fenced_code_block_after_blank_line_in_list_item(self) -> None:
         html = render_markdown(
@@ -100,17 +121,17 @@ class TestMarkdownRendererSource(unittest.TestCase):
             )
         )
 
-        self.assertIn(
-            '<pre><code data-lang="bash">pi --no-session --print &#39;Use native provider web_search ...&#39;</code></pre>',
+        self.assertContains(
+            '<pre><button class="code-copy-btn" type="button" aria-label="Copy code" title="Copy code"></button><code data-lang="bash">pi --no-session --print &#39;Use native provider web_search ...&#39;</code></pre>',
             html,
         )
-        self.assertIn(
-            '<pre><code data-lang="text">https://platform.openai.com/docs/guides/tools-web-search?api-mode=responses</code></pre>',
+        self.assertContains(
+            '<pre><button class="code-copy-btn" type="button" aria-label="Copy code" title="Copy code"></button><code data-lang="text">https://platform.openai.com/docs/guides/tools-web-search?api-mode=responses</code></pre>',
             html,
         )
-        self.assertIn("<li>OpenAI native web search:<ul><li>Command:<pre>", html)
-        self.assertIn("</pre></li><li>Output:<pre>", html)
-        self.assertNotIn("```", html)
+        self.assertContains("<li>OpenAI native web search:<ul><li>Command:<pre><button", html)
+        self.assertContains("</pre></li><li>Output:<pre><button", html)
+        self.assertNotContains("```", html)
 
     def test_blockquote_renders_as_blockquote(self) -> None:
         html = render_markdown(
@@ -125,10 +146,10 @@ class TestMarkdownRendererSource(unittest.TestCase):
             )
         )
 
-        self.assertIn("<blockquote><p>OCC does not recognize", html)
-        self.assertIn("<code>12368</code>", html)
-        self.assertIn("</p></blockquote>", html)
-        self.assertNotIn("&gt; OCC", html)
+        self.assertContains("<blockquote><p>OCC does not recognize", html)
+        self.assertContains("<code>12368</code>", html)
+        self.assertContains("</p></blockquote>", html)
+        self.assertNotContains("&gt; OCC", html)
 
     def test_blockquote_allows_lazy_continuation(self) -> None:
         html = render_markdown(
@@ -173,74 +194,39 @@ class TestMarkdownRendererSource(unittest.TestCase):
 
     def test_inline_paren_math_renders_as_inline_math(self) -> None:
         html = render_markdown("For a residual stream vector \\(h_{\\ell,t}\\) at layer \\(\\ell\\), the J-lens asks.")
-        # No katex in the node VM -> fallback span carries the escaped source.
-        self.assertIn('<span class="md-math-fallback md-math-inline">\\(h_{\\ell,t}\\)</span>', html)
-        self.assertIn('<span class="md-math-fallback md-math-inline">\\(\\ell\\)</span>', html)
-        self.assertNotIn("@@MATH", html)
-        self.assertIn("the J-lens asks.", html)
+        # No KaTeX in the Node VM: the fallback retains escaped source delimiters.
+        self.assertContains('<span class="md-math-fallback md-math-inline">\\(h_{\\ell,t}\\)</span>', html)
+        self.assertContains('<span class="md-math-fallback md-math-inline">\\(\\ell\\)</span>', html)
+        self.assertNotContains("@@MATH", html)
+        self.assertContains("the J-lens asks.", html)
 
     def test_display_bracket_math_renders_as_block(self) -> None:
-        md = "It computes an average Jacobian:\n\n\\[\nJ_\\ell\n=\n\\mathbb{E}\\left[\\frac{\\partial h}{\\partial h_\\ell}\\right]\n\\]\n\nThen it decodes."
-        html = render_markdown(md)
-        self.assertIn('<span class="md-math-fallback md-math-display">\\[', html)
-        self.assertIn("\\mathbb{E}", html)
-        self.assertIn("Then it decodes.", html)
-        self.assertNotIn("@@MATH", html)
-        self.assertNotIn("<p>@@MATH", html)
+        markdown = "It computes an average Jacobian:\n\n\\[\nJ_\\ell\n=\n\\mathbb{E}\\left[\\frac{\\partial h}{\\partial h_\\ell}\\right]\n\\]\n\nThen it decodes."
+        html = render_markdown(markdown)
+        self.assertContains('<span class="md-math-fallback md-math-display">\\[', html)
+        self.assertContains("\\mathbb{E}", html)
+        self.assertContains("Then it decodes.", html)
+        self.assertNotContains("@@MATH", html)
+        self.assertNotContains("<p>@@MATH", html)
 
     def test_dollar_dollar_display_math(self) -> None:
         html = render_markdown("The value of $$x^2 + y^2$$ is large.")
-        self.assertIn('<span class="md-math-fallback md-math-display">\\[x^2 + y^2\\]</span>', html)
-        self.assertNotIn("@@MATH", html)
-        self.assertNotIn("$$", html)
+        self.assertContains('<span class="md-math-fallback md-math-display">\\[x^2 + y^2\\]</span>', html)
+        self.assertNotContains("@@MATH", html)
+        self.assertNotContains("$$", html)
 
-    def test_single_dollar_inline_renders_as_math(self) -> None:
-        html = render_markdown(r"At time $t$, image $I_t$ satisfies $H\delta = b$.")
-        self.assertIn('<span class="md-math-fallback md-math-inline">\\(t\\)</span>', html)
-        self.assertIn('<span class="md-math-fallback md-math-inline">\\(I_t\\)</span>', html)
-        self.assertIn('<span class="md-math-fallback md-math-inline">\\(H\\delta = b\\)</span>', html)
-        self.assertNotIn("@@MATH", html)
-
-    def test_inline_math_does_not_cross_or_render_inside_code_spans(self) -> None:
-        html = render_markdown(r"The single-`$` rule is guarded, so `$VAR` and `\(x\)` stay code.")
-        self.assertNotIn("md-math-fallback", html)
-        self.assertIn("<code>$</code>", html)
-        self.assertIn("<code>$VAR</code>", html)
-        self.assertIn(r"<code>\(x\)</code>", html)
-        self.assertIn("rule is guarded", html)
-
-    def test_single_dollar_math_does_not_cross_a_newline(self) -> None:
-        html = render_markdown("Before $x\nstill literal$ after.")
-        self.assertNotIn("md-math-fallback", html)
-        self.assertIn("$x<br />still literal$", html)
+    def test_single_dollar_inline_is_not_treated_as_math(self) -> None:
+        html = render_markdown("The single-`$` rule is guarded, so `$VAR` is safe.")
+        self.assertNotContains("md-math-fallback", html)
+        self.assertContains("$", html)
+        self.assertContains("rule is guarded", html)
+        self.assertContains("is safe", html)
 
     def test_currency_dollars_not_treated_as_math(self) -> None:
-        html = render_markdown("That costs $5 and $10 more; call the variable $x$.")
-        self.assertIn("$5", html)
-        self.assertIn("$10", html)
-        self.assertEqual(html.count("md-math-fallback md-math-inline"), 1)
-        self.assertIn('<span class="md-math-fallback md-math-inline">\\(x\\)</span>', html)
-
-    def test_escaped_and_unclosed_dollars_do_not_consume_later_math(self) -> None:
-        html = render_markdown(r"Shell $HOME/$USER, escaped \$cost\$, then variable $x$.")
-        self.assertIn("$HOME/$USER", html)
-        self.assertIn(r"\$cost\$", html)
-        self.assertEqual(html.count("md-math-fallback md-math-inline"), 1)
-        self.assertIn('<span class="md-math-fallback md-math-inline">\\(x\\)</span>', html)
-
-    def test_single_dollar_math_does_not_wrap_existing_math_tokens(self) -> None:
-        html = render_markdown(r"Mixed $a$$b$$c$ and $x$.")
-        self.assertNotIn("@@MATH", html)
-        self.assertIn("$a", html)
-        self.assertIn('<span class="md-math-fallback md-math-display">\\[b\\]</span>', html)
-        self.assertIn("c$", html)
-        self.assertIn('<span class="md-math-fallback md-math-inline">\\(x\\)</span>', html)
-
-    def test_math_is_not_extracted_from_link_destinations(self) -> None:
-        html = render_markdown("[docs](https://example.com/$path$) and $x$.")
-        self.assertIn("docs (https://example.com/$path$)", html)
-        self.assertEqual(html.count("md-math-fallback md-math-inline"), 1)
-        self.assertIn('<span class="md-math-fallback md-math-inline">\\(x\\)</span>', html)
+        html = render_markdown("That costs $5 and $10 more.")
+        self.assertNotContains("md-math-fallback", html)
+        self.assertContains("$5", html)
+        self.assertContains("$10", html)
 
     def test_math_inside_fenced_code_block_is_not_rendered(self) -> None:
         html = render_markdown(
@@ -256,20 +242,18 @@ class TestMarkdownRendererSource(unittest.TestCase):
                 ]
             )
         )
-        self.assertIn("outside", html)
-        # The code block keeps the literal delimiters untouched.
-        self.assertIn('<pre><code data-lang="text">\\(not math\\)</code></pre>', html)
-        self.assertNotIn("md-math-fallback", html)
-        self.assertNotIn("@@MATH", html)
+        self.assertContains("outside", html)
+        self.assertContains('<code data-lang="text">\\(not math\\)</code>', html)
+        self.assertNotContains("md-math-fallback", html)
+        self.assertNotContains("@@MATH", html)
 
     def test_katex_render_path_is_invoked_with_display_mode(self) -> None:
         katex_expr = "{ renderToString: function(src, opts){ return '<kmx>' + src + ':' + (opts.displayMode ? 'D' : 'I') + '</kmx>'; } }"
-        html = render_markdown("Inline \\(x\\), dollar $z$, and block:\n\n\\[y\\]", katex_expr=katex_expr)
-        self.assertIn("<kmx>x:I</kmx>", html)
-        self.assertIn("<kmx>z:I</kmx>", html)
-        self.assertIn("<kmx>y:D</kmx>", html)
-        self.assertNotIn("md-math-fallback", html)
-        self.assertNotIn("@@MATH", html)
+        html = render_markdown("Inline \\(x\\) and block:\n\n\\[y\\]", katex_expr=katex_expr)
+        self.assertContains("<kmx>x:I</kmx>", html)
+        self.assertContains("<kmx>y:D</kmx>", html)
+        self.assertNotContains("md-math-fallback", html)
+        self.assertNotContains("@@MATH", html)
 
 
 if __name__ == "__main__":

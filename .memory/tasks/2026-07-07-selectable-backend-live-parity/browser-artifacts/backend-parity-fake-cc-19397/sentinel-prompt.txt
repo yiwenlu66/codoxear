@@ -1,0 +1,1 @@
+USER_SENTINEL_FAKE_CC_PROMPT_19397 please answer through fake claude

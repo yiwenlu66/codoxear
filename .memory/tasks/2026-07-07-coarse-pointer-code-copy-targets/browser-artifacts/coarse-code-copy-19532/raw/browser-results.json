@@ -1,0 +1,419 @@
+{
+  "browser_login": {
+    "body_len": 11,
+    "status": 200
+  },
+  "browser_version": {
+    "Browser": "Chrome/146.0.7680.177",
+    "Protocol-Version": "1.3",
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/146.0.0.0 Safari/537.36",
+    "V8-Version": "14.6.202.31",
+    "WebKit-Version": "537.36 (@ae03f7fb2cf1215853896d6a4c15fdceee2badb7)",
+    "webSocketDebuggerUrl": "ws://127.0.0.1:19533/devtools/browser/a4f93354-5e3e-4885-8543-6de2feb939c7"
+  },
+  "chrome_cleanup_returncode": 0,
+  "chrome_cmd": [
+    "/usr/bin/chromium",
+    "--headless=new",
+    "--disable-gpu",
+    "--no-sandbox",
+    "--remote-debugging-address=127.0.0.1",
+    "--remote-debugging-port=19533",
+    "--remote-allow-origins=*",
+    "--user-data-dir=.memory/tasks/2026-07-07-coarse-pointer-code-copy-targets/browser-artifacts/coarse-code-copy-19532/raw/chrome-profile",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "about:blank"
+  ],
+  "chrome_pid": 1210497,
+  "failures": [],
+  "origin": "http://127.0.0.1:19532",
+  "permission_error": null,
+  "scenarios": [
+    {
+      "config": {
+        "height": 1024,
+        "hover": "none",
+        "label": "touch-tablet-768x1024",
+        "mobile": true,
+        "pointer": "coarse",
+        "requirePrePadding58": true,
+        "touch": true,
+        "width": 768
+      },
+      "copied": "printf 'alpha <tag> & value'",
+      "failures": [],
+      "metrics": {
+        "bodyTextSample": "Codoxear\nNOW\n1\nworkspace\nH\n20641d ago | gpt-coarse-code-copy-proof | workspace\nHelp\nVoice settings\nLog out\nworkspace\n1970-01-01\n\nshow coarse code copy proof\n\n08:00\n\nCoarse-pointer code-copy proof message.\n\nprintf 'alpha <tag> & value'\n\nThe prose between code blocks must not be copied by a block button.\n\nprint(\"second block should stay separate\")\n\nEnd of deterministic answer.\n\n08:00\nEnter your instructions here",
+        "buttonCount": 2,
+        "codeText": "printf 'alpha <tag> & value'",
+        "computed": {
+          "height": "44px",
+          "minHeight": "44px",
+          "minWidth": "44px",
+          "padding": "0px",
+          "width": "44px"
+        },
+        "label": "touch-tablet-768x1024",
+        "media": {
+          "anyCoarse": true,
+          "anyFine": false,
+          "anyHoverHover": false,
+          "anyHoverNone": true,
+          "coarse": true,
+          "fine": false,
+          "hoverHover": false,
+          "hoverNone": true
+        },
+        "overflow": {
+          "bodyScrollWidth": 768,
+          "clientWidth": 768,
+          "documentScrollWidth": 768,
+          "innerWidth": 768,
+          "pageHorizontalOverflow": false
+        },
+        "pre": {
+          "clientWidth": 522,
+          "paddingRight": "58px",
+          "rectWidth": 523.5,
+          "scrollWidth": 522
+        },
+        "rect": {
+          "bottom": 388.375,
+          "height": 44,
+          "left": 497.5,
+          "right": 541.5,
+          "top": 344.375,
+          "width": 44
+        },
+        "title": "Codoxear",
+        "url": "http://127.0.0.1:19532/#session=coarse-code-copy-session",
+        "viewport": {
+          "devicePixelRatio": 1,
+          "innerHeight": 1024,
+          "innerWidth": 768,
+          "visualViewportHeight": 1024,
+          "visualViewportWidth": 768
+        }
+      },
+      "metrics_after_copy": {
+        "bodyTextSample": "Codoxear\nNOW\n1\nworkspace\nH\n20641d ago | gpt-coarse-code-copy-proof | workspace\nHelp\nVoice settings\nLog out\nworkspace\nCopied code\n1970-01-01\n\nshow coarse code copy proof\n\n08:00\n\nCoarse-pointer code-copy proof message.\n\nprintf 'alpha <tag> & value'\n\nThe prose between code blocks must not be copied by a block button.\n\nprint(\"second block should stay separate\")\n\nEnd of deterministic answer.\n\n08:00\nEnter your instructions here",
+        "buttonCount": 2,
+        "codeText": "printf 'alpha <tag> & value'",
+        "computed": {
+          "height": "44px",
+          "minHeight": "44px",
+          "minWidth": "44px",
+          "padding": "0px",
+          "width": "44px"
+        },
+        "label": "touch-tablet-768x1024-after-copy",
+        "media": {
+          "anyCoarse": true,
+          "anyFine": false,
+          "anyHoverHover": false,
+          "anyHoverNone": true,
+          "coarse": true,
+          "fine": false,
+          "hoverHover": false,
+          "hoverNone": true
+        },
+        "overflow": {
+          "bodyScrollWidth": 768,
+          "clientWidth": 768,
+          "documentScrollWidth": 768,
+          "innerWidth": 768,
+          "pageHorizontalOverflow": false
+        },
+        "pre": {
+          "clientWidth": 522,
+          "paddingRight": "58px",
+          "rectWidth": 523.5,
+          "scrollWidth": 522
+        },
+        "rect": {
+          "bottom": 424.5625,
+          "height": 44,
+          "left": 497.5,
+          "right": 541.5,
+          "top": 380.5625,
+          "width": 44
+        },
+        "title": "Codoxear",
+        "url": "http://127.0.0.1:19532/#session=coarse-code-copy-session",
+        "viewport": {
+          "devicePixelRatio": 1,
+          "innerHeight": 1024,
+          "innerWidth": 768,
+          "visualViewportHeight": 1024,
+          "visualViewportWidth": 768
+        }
+      },
+      "pre_navigation_media_probe": {
+        "coarse": true,
+        "fine": false,
+        "hoverHover": false,
+        "hoverNone": true,
+        "innerHeight": 1024,
+        "innerWidth": 768
+      }
+    },
+    {
+      "config": {
+        "height": 844,
+        "hover": "none",
+        "label": "touch-phone-390x844",
+        "mobile": true,
+        "pointer": "coarse",
+        "requirePrePadding58": false,
+        "touch": true,
+        "width": 390
+      },
+      "copied": "printf 'alpha <tag> & value'",
+      "failures": [],
+      "metrics": {
+        "bodyTextSample": "Codoxear\nNOW\n1\nworkspace\nH\n20641d ago | gpt-coarse-code-copy-proof | workspace\nHelp\nVoice settings\nLog out\nworkspace\nCopied code\n1970-01-01\n\nshow coarse code copy proof\n\n08:00\n\nCoarse-pointer code-copy proof message.\n\nprintf 'alpha <tag> & value'\n\nThe prose between code blocks must not be copied by a block button.\n\nprint(\"second block should stay separate\")\n\nEnd of deterministic answer.\n\n08:00\nEnter your instructions here",
+        "buttonCount": 2,
+        "codeText": "printf 'alpha <tag> & value'",
+        "computed": {
+          "height": "44px",
+          "minHeight": "44px",
+          "minWidth": "44px",
+          "padding": "0px",
+          "width": "44px"
+        },
+        "label": "touch-phone-390x844",
+        "media": {
+          "anyCoarse": true,
+          "anyFine": false,
+          "anyHoverHover": false,
+          "anyHoverNone": true,
+          "coarse": true,
+          "fine": false,
+          "hoverHover": false,
+          "hoverNone": true
+        },
+        "overflow": {
+          "bodyScrollWidth": 390,
+          "clientWidth": 390,
+          "documentScrollWidth": 390,
+          "innerWidth": 390,
+          "pageHorizontalOverflow": false
+        },
+        "pre": {
+          "clientWidth": 275,
+          "paddingRight": "58px",
+          "rectWidth": 277.390625,
+          "scrollWidth": 275
+        },
+        "rect": {
+          "bottom": 413.96875,
+          "height": 44,
+          "left": 249.390625,
+          "right": 293.390625,
+          "top": 369.96875,
+          "width": 44
+        },
+        "title": "Codoxear",
+        "url": "http://127.0.0.1:19532/#session=coarse-code-copy-session",
+        "viewport": {
+          "devicePixelRatio": 1,
+          "innerHeight": 844,
+          "innerWidth": 390,
+          "visualViewportHeight": 844,
+          "visualViewportWidth": 390
+        }
+      },
+      "metrics_after_copy": {
+        "bodyTextSample": "Codoxear\nNOW\n1\nworkspace\nH\n20641d ago | gpt-coarse-code-copy-proof | workspace\nHelp\nVoice settings\nLog out\nworkspace\nCopied code\n1970-01-01\n\nshow coarse code copy proof\n\n08:00\n\nCoarse-pointer code-copy proof message.\n\nprintf 'alpha <tag> & value'\n\nThe prose between code blocks must not be copied by a block button.\n\nprint(\"second block should stay separate\")\n\nEnd of deterministic answer.\n\n08:00\nEnter your instructions here",
+        "buttonCount": 2,
+        "codeText": "printf 'alpha <tag> & value'",
+        "computed": {
+          "height": "44px",
+          "minHeight": "44px",
+          "minWidth": "44px",
+          "padding": "0px",
+          "width": "44px"
+        },
+        "label": "touch-phone-390x844-after-copy",
+        "media": {
+          "anyCoarse": true,
+          "anyFine": false,
+          "anyHoverHover": false,
+          "anyHoverNone": true,
+          "coarse": true,
+          "fine": false,
+          "hoverHover": false,
+          "hoverNone": true
+        },
+        "overflow": {
+          "bodyScrollWidth": 390,
+          "clientWidth": 390,
+          "documentScrollWidth": 390,
+          "innerWidth": 390,
+          "pageHorizontalOverflow": false
+        },
+        "pre": {
+          "clientWidth": 275,
+          "paddingRight": "58px",
+          "rectWidth": 277.390625,
+          "scrollWidth": 275
+        },
+        "rect": {
+          "bottom": 413.96875,
+          "height": 44,
+          "left": 249.390625,
+          "right": 293.390625,
+          "top": 369.96875,
+          "width": 44
+        },
+        "title": "Codoxear",
+        "url": "http://127.0.0.1:19532/#session=coarse-code-copy-session",
+        "viewport": {
+          "devicePixelRatio": 1,
+          "innerHeight": 844,
+          "innerWidth": 390,
+          "visualViewportHeight": 844,
+          "visualViewportWidth": 390
+        }
+      },
+      "pre_navigation_media_probe": {
+        "coarse": true,
+        "fine": false,
+        "hoverHover": false,
+        "hoverNone": true,
+        "innerHeight": 844,
+        "innerWidth": 390
+      }
+    },
+    {
+      "config": {
+        "height": 800,
+        "hover": "hover",
+        "label": "fine-desktop-1280x800",
+        "mobile": false,
+        "pointer": "fine",
+        "requirePrePadding58": false,
+        "touch": false,
+        "width": 1280
+      },
+      "copied": "printf 'alpha <tag> & value'",
+      "failures": [],
+      "metrics": {
+        "bodyTextSample": "Codoxear\nNOW\n1\nworkspace\nH\n20641d ago | gpt-coarse-code-copy-proof | workspace\nHelp\nVoice settings\nLog out\nworkspace\nCopied code\n1970-01-01\n\nshow coarse code copy proof\n\n08:00\n\nCoarse-pointer code-copy proof message.\n\nprintf 'alpha <tag> & value'\n\nThe prose between code blocks must not be copied by a block button.\n\nprint(\"second block should stay separate\")\n\nEnd of deterministic answer.\n\n08:00\nEnter your instructions here",
+        "buttonCount": 2,
+        "codeText": "printf 'alpha <tag> & value'",
+        "computed": {
+          "height": "30px",
+          "minHeight": "30px",
+          "minWidth": "30px",
+          "padding": "0px",
+          "width": "30px"
+        },
+        "label": "fine-desktop-1280x800",
+        "media": {
+          "anyCoarse": false,
+          "anyFine": false,
+          "anyHoverHover": false,
+          "anyHoverNone": true,
+          "coarse": false,
+          "fine": false,
+          "hoverHover": false,
+          "hoverNone": true
+        },
+        "overflow": {
+          "bodyScrollWidth": 1280,
+          "clientWidth": 1280,
+          "documentScrollWidth": 1280,
+          "innerWidth": 1280,
+          "pageHorizontalOverflow": false
+        },
+        "pre": {
+          "clientWidth": 522,
+          "paddingRight": "46px",
+          "rectWidth": 523.5,
+          "scrollWidth": 522
+        },
+        "rect": {
+          "bottom": 396.5625,
+          "height": 30,
+          "left": 891.5,
+          "right": 921.5,
+          "top": 366.5625,
+          "width": 30
+        },
+        "title": "Codoxear",
+        "url": "http://127.0.0.1:19532/#session=coarse-code-copy-session",
+        "viewport": {
+          "devicePixelRatio": 1,
+          "innerHeight": 800,
+          "innerWidth": 1280,
+          "visualViewportHeight": 800,
+          "visualViewportWidth": 1280
+        }
+      },
+      "metrics_after_copy": {
+        "bodyTextSample": "Codoxear\nNOW\n1\nworkspace\nH\n20641d ago | gpt-coarse-code-copy-proof | workspace\nHelp\nVoice settings\nLog out\nworkspace\nCopied code\n1970-01-01\n\nshow coarse code copy proof\n\n08:00\n\nCoarse-pointer code-copy proof message.\n\nprintf 'alpha <tag> & value'\n\nThe prose between code blocks must not be copied by a block button.\n\nprint(\"second block should stay separate\")\n\nEnd of deterministic answer.\n\n08:00\nEnter your instructions here",
+        "buttonCount": 2,
+        "codeText": "printf 'alpha <tag> & value'",
+        "computed": {
+          "height": "30px",
+          "minHeight": "30px",
+          "minWidth": "30px",
+          "padding": "0px",
+          "width": "30px"
+        },
+        "label": "fine-desktop-1280x800-after-copy",
+        "media": {
+          "anyCoarse": false,
+          "anyFine": false,
+          "anyHoverHover": false,
+          "anyHoverNone": true,
+          "coarse": false,
+          "fine": false,
+          "hoverHover": false,
+          "hoverNone": true
+        },
+        "overflow": {
+          "bodyScrollWidth": 1280,
+          "clientWidth": 1280,
+          "documentScrollWidth": 1280,
+          "innerWidth": 1280,
+          "pageHorizontalOverflow": false
+        },
+        "pre": {
+          "clientWidth": 522,
+          "paddingRight": "46px",
+          "rectWidth": 523.5,
+          "scrollWidth": 522
+        },
+        "rect": {
+          "bottom": 396.5625,
+          "height": 30,
+          "left": 891.5,
+          "right": 921.5,
+          "top": 366.5625,
+          "width": 30
+        },
+        "title": "Codoxear",
+        "url": "http://127.0.0.1:19532/#session=coarse-code-copy-session",
+        "viewport": {
+          "devicePixelRatio": 1,
+          "innerHeight": 800,
+          "innerWidth": 1280,
+          "visualViewportHeight": 800,
+          "visualViewportWidth": 1280
+        }
+      },
+      "pre_navigation_media_probe": {
+        "coarse": false,
+        "fine": false,
+        "hoverHover": false,
+        "hoverNone": true,
+        "innerHeight": 800,
+        "innerWidth": 1280
+      }
+    }
+  ],
+  "session_id": "coarse-code-copy-session"
+}

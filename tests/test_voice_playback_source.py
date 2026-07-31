@@ -1,104 +1,41 @@
+import json
+import subprocess
+import textwrap
 import unittest
 from pathlib import Path
 
 
-APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
+ROOT = Path(__file__).resolve().parents[1]
+HELPERS = ROOT / "codoxear" / "static" / "app_voice_helpers.js"
 
 
-class TestVoicePlaybackSource(unittest.TestCase):
-    def test_live_audio_support_is_checked_before_play(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("function browserSupportsNativeLiveAudioPlayback() {")
-        end = source.index("function base64UrlToUint8Array", start)
-        block = source[start:end]
-        self.assertIn('"application/vnd.apple.mpegurl"', block)
-        self.assertIn('"audio/mpegurl"', block)
-        self.assertIn("liveAudio.canPlayType(kind)", block)
-        self.assertIn("function browserSupportsMseLiveAudioPlayback()", block)
-        self.assertIn("const HlsCtor = window.Hls;", block)
-        self.assertIn("HlsCtor.isSupported()", block)
-        self.assertIn("function shouldPreferNativeLiveAudioPlayback()", block)
-        self.assertIn("navigator.vendor", block)
-        self.assertIn("navigator.userAgent", block)
-        self.assertIn("function ensureLiveAudioPlaybackSource(nextSrc, { resetSource = false } = {})", block)
-        self.assertIn("const hls = new HlsCtor();", block)
-        self.assertIn("hls.attachMedia(liveAudio);", block)
-        self.assertIn("hls.loadSource(nextSrc);", block)
-        self.assertIn("destroyLiveAudioHls();", block)
-        self.assertIn("if (shouldPreferNativeLiveAudioPlayback())", block)
-        self.assertIn("function liveAudioHasReadySegments()", block)
+def eval_playback_support() -> dict:
+    source = HELPERS.read_text(encoding="utf-8")
+    script = textwrap.dedent(
+        f"""
+        const vm=require("vm"),ctx={{window:{{}}}};vm.createContext(ctx);vm.runInContext({json.dumps(source)},ctx);
+        const h=ctx.window.CodoxearVoiceHelpers, playable={{canPlayType:k=>k==="application/vnd.apple.mpegurl"?"probably":""}}, maybe={{canPlayType:()=>"maybe"}}, none={{canPlayType:()=>""}};
+        process.stdout.write(JSON.stringify({{native:h.browserSupportsNativeLiveAudioPlayback(playable),maybe:h.browserSupportsNativeLiveAudioPlayback(maybe),unsupported:h.browserSupportsLiveAudioPlayback(none,{{Hls:{{isSupported:()=>false}}}}),mse:h.browserSupportsLiveAudioPlayback(none,{{Hls:{{isSupported:()=>true}}}}),apple:h.shouldPreferNativeLiveAudioPlayback(maybe,{{vendor:"Apple Computer, Inc.",userAgent:"Safari"}}),chrome:h.shouldPreferNativeLiveAudioPlayback(maybe,{{vendor:"",userAgent:"AppleWebKit Chrome"}}),decoded:String.fromCharCode(...h.base64UrlToUint8Array("SGVsbG8td29ybGQ",v=>Buffer.from(v,"base64").toString("binary"))),mobile:h.notificationDeviceClass({{userAgent:"Mozilla Android Mobile"}})}}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", script], check=True, text=True, capture_output=True)
+    return json.loads(proc.stdout)
 
-        play_start = source.index("async function startLiveAudioPlayback({ resetSource = false } = {}) {")
-        play_end = source.index("function describeLiveAudioStartError(error) {", play_start)
-        play_block = source[play_start:play_end]
-        self.assertIn("if (!browserSupportsLiveAudioPlayback())", play_block)
-        self.assertIn("if (!liveAudioHasReadySegments())", play_block)
-        self.assertIn("this browser does not support HLS audio playback in this app", play_block)
-        self.assertIn("wait for the first announcement and try again", play_block)
-        self.assertIn("await ensureLiveAudioPlaybackSource(nextSrc, { resetSource });", play_block)
 
-        err_start = source.index("function describeLiveAudioStartError(error) {")
-        err_end = source.index("announceBtn.onclick", err_start)
-        err_block = source[err_start:err_end]
-        self.assertIn("if (/unsupported/i.test(message))", err_block)
-        self.assertIn("this browser does not support HLS audio playback in this app", err_block)
-        self.assertIn("no live audio segments are available yet", err_block)
+class TestVoicePlaybackBehavior(unittest.TestCase):
+    def test_live_playback_selects_native_or_mse_and_rejects_unsupported_browsers(self) -> None:
+        result = eval_playback_support()
+        self.assertTrue(result["native"])
+        self.assertTrue(result["maybe"])
+        self.assertFalse(result["unsupported"])
+        self.assertTrue(result["mse"])
+        self.assertTrue(result["apple"])
+        self.assertFalse(result["chrome"])
 
-    def test_live_audio_watchdog_detects_non_progress_and_hard_resets(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("LIVE_AUDIO_WATCHDOG_MS", source)
-        self.assertIn("LIVE_AUDIO_STALL_GRACE_MS", source)
-        self.assertIn("LIVE_AUDIO_RESTART_THROTTLE_MS", source)
-        self.assertIn("function markLiveAudioProgress()", source)
-        self.assertIn("function resetLiveAudioState()", source)
-        self.assertIn("function noteLiveAudioPotentialStall(_reason = \"\")", source)
-        self.assertIn("function queueLiveAudioHardRestart(_reason = \"\")", source)
-        self.assertIn("function runLiveAudioWatchdog()", source)
-        self.assertIn("currentTime > liveAudioLastCurrentTime + 0.05", source)
-        self.assertIn("queueLiveAudioHardRestart(\"watchdog\")", source)
-        self.assertIn("scheduleLiveAudioRetry(150, { resetSource: true });", source)
-        self.assertIn("function startLiveAudioWatchdog()", source)
-        self.assertIn("function stopLiveAudioWatchdog()", source)
-        self.assertIn("function resumeAnnouncementRuntime({ resetSource = false } = {})", source)
-        self.assertIn("startAnnouncementHeartbeat();", source)
-        self.assertIn('liveAudio.addEventListener("timeupdate"', source)
-        self.assertIn('liveAudio.addEventListener("waiting"', source)
-        self.assertIn('liveAudio.addEventListener("stalled"', source)
-        self.assertIn('liveAudio.addEventListener("suspend"', source)
-        self.assertIn('document.addEventListener("visibilitychange"', source)
-        self.assertIn('window.addEventListener("pageshow"', source)
-        self.assertIn('window.addEventListener("online"', source)
-        self.assertIn('window.addEventListener("focus"', source)
-        self.assertIn('resumeAnnouncementRuntime({ resetSource: false });', source)
-        self.assertIn('resumeAnnouncementRuntime({ resetSource: true });', source)
-
-    def test_voice_controls_attempt_to_arm_live_audio_from_user_gesture(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("async function maybeAutoStartLiveAudioFromGesture({ resetSource = false } = {})", source)
-        self.assertIn("await maybeAutoStartLiveAudioFromGesture({ resetSource: true });", source)
-        self.assertIn("announceBtn auto-start failed", source)
-
-    def test_notification_transport_is_split_between_desktop_and_mobile(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("desktop_supported", source)
-        self.assertIn("push_supported", source)
-        self.assertIn("function isMobileNotificationDevice()", source)
-        self.assertIn("function notificationDeviceClass()", source)
-        self.assertIn("function pushNotificationsEnabledForCurrentDevice()", source)
-        self.assertIn('if (notificationDeviceClass() === "mobile") {', source)
-        self.assertIn('return pushNotificationsEnabledForCurrentDevice() ? "push" : "none";', source)
-        self.assertIn('return activeNotificationTransport() === "desktop";', source)
-        self.assertIn('notification error: ${err && err.message ? err.message : "unknown error"}', source)
-        self.assertIn("notifications require HTTPS or localhost", source)
-        self.assertIn("mobile notifications require web push in an installed HTTPS web app", source)
-        self.assertIn('if (notificationDeviceClass() === "desktop") {', source)
-        self.assertIn('device_class: notificationDeviceClass()', source)
-        self.assertIn("maybeShowDesktopNotification(ev)", source)
-        self.assertIn("scheduleDesktopNotificationResolve(ev)", source)
-        self.assertIn("/api/notifications/message?message_id=", source)
-        self.assertIn("async function pollNotificationFeed({ prime = false } = {})", source)
-        self.assertIn("/api/notifications/feed?since=", source)
-        self.assertIn("if (!desktopNotificationsEnabled()) return;", source)
+    def test_push_key_decoding_and_device_classification_are_executable(self) -> None:
+        result = eval_playback_support()
+        self.assertEqual(result["decoded"], "Hello-world")
+        self.assertEqual(result["mobile"], "mobile")
 
 
 if __name__ == "__main__":

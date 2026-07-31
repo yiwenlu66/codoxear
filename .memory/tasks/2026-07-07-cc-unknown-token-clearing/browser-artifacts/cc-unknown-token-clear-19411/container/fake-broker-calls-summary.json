@@ -1,0 +1,131 @@
+{
+  "total_calls": 578,
+  "counts_by_cmd": {
+    "state": 578
+  },
+  "first": [
+    {
+      "ts": 1783415948.486826,
+      "req": {
+        "cmd": "state"
+      },
+      "resp": {
+        "busy": false,
+        "queue_len": 0,
+        "token": null,
+        "interrupted_idle": false
+      }
+    },
+    {
+      "ts": 1783415948.4869509,
+      "req": {
+        "cmd": "state"
+      },
+      "resp": {
+        "busy": false,
+        "queue_len": 0,
+        "token": null,
+        "interrupted_idle": false
+      }
+    },
+    {
+      "ts": 1783415948.4877455,
+      "req": {
+        "cmd": "state"
+      },
+      "resp": {
+        "busy": false,
+        "queue_len": 0,
+        "token": null,
+        "interrupted_idle": false
+      }
+    },
+    {
+      "ts": 1783415948.4877841,
+      "req": {
+        "cmd": "state"
+      },
+      "resp": {
+        "busy": false,
+        "queue_len": 0,
+        "token": null,
+        "interrupted_idle": false
+      }
+    },
+    {
+      "ts": 1783415948.8058193,
+      "req": {
+        "cmd": "state"
+      },
+      "resp": {
+        "busy": false,
+        "queue_len": 0,
+        "token": null,
+        "interrupted_idle": false
+      }
+    }
+  ],
+  "last": [
+    {
+      "ts": 1783416082.5984008,
+      "req": {
+        "cmd": "state"
+      },
+      "resp": {
+        "busy": false,
+        "queue_len": 0,
+        "token": null,
+        "interrupted_idle": false
+      }
+    },
+    {
+      "ts": 1783416082.7189105,
+      "req": {
+        "cmd": "state"
+      },
+      "resp": {
+        "busy": false,
+        "queue_len": 0,
+        "token": null,
+        "interrupted_idle": false
+      }
+    },
+    {
+      "ts": 1783416082.719347,
+      "req": {
+        "cmd": "state"
+      },
+      "resp": {
+        "busy": false,
+        "queue_len": 0,
+        "token": null,
+        "interrupted_idle": false
+      }
+    },
+    {
+      "ts": 1783416082.747763,
+      "req": {
+        "cmd": "state"
+      },
+      "resp": {
+        "busy": false,
+        "queue_len": 0,
+        "token": null,
+        "interrupted_idle": false
+      }
+    },
+    {
+      "ts": 1783416083.0125716,
+      "req": {
+        "cmd": "state"
+      },
+      "resp": {
+        "busy": false,
+        "queue_len": 0,
+        "token": null,
+        "interrupted_idle": false
+      }
+    }
+  ],
+  "send_or_keys_calls": 0
+}

@@ -1,0 +1,3 @@
+{"sid":"code-copy-session","sock":"/home/tester/.local/share/codoxear/socks/code-copy-session.sock","log":"/home/tester/code-copy-proof/code-copy-session.jsonl","log_size":477,"calls":"/home/tester/code-copy-proof/broker-calls.jsonl","fake_notice":"FAKE_CODE_BLOCK_COPY_PROOF_DOCKER_ONLY"}
+log_size=477
+2 /home/tester/code-copy-proof/code-copy-session.jsonl

@@ -1,8 +1,30 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Callable, Mapping
+
+
+_REQUEST_ENV_VARS = (
+    "CODEX_WEB_MODEL_PROVIDER",
+    "CODEX_WEB_PREFERRED_AUTH_METHOD",
+    "CODEX_WEB_MODEL",
+    "CODEX_WEB_REASONING_EFFORT",
+    "CODEX_WEB_SERVICE_TIER",
+    "CODEX_WEB_TRANSPORT",
+    "CODEX_WEB_TMUX_SESSION",
+    "CODEX_WEB_TMUX_WINDOW",
+    "CODEX_WEB_LAUNCH_ID",
+    "CODEX_WEB_SPAWN_NONCE",
+    "CODEX_WEB_RESUME_SESSION_ID",
+    "CODEX_WEB_RESUME_LOG_PATH",
+)
+
+_BACKEND_HOME_ENV_VARS = ("CODEX_HOME", "PI_HOME", "CLAUDE_CONFIG_DIR")
+_BACKEND_BIN_ENV_VARS = ("CODEX_BIN", "PI_BIN", "CLAUDE_BIN")
+_SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 
 
 @dataclass(frozen=True)
@@ -29,8 +51,812 @@ class AgentBackend:
     def sessions_dir(self, env: dict[str, str] | None = None) -> Path:
         return self.home(env).joinpath(*self.sessions_relpath)
 
+    def log_glob_pattern(self) -> str:
+        return "*.jsonl"
 
-CODEX_BACKEND = AgentBackend(
+    def is_session_log_path(self, path: Path, *, sessions_dir: Path | None = None) -> bool:
+        raise NotImplementedError(f"{self.name} backend does not implement log path recognition")
+
+    def session_id_from_log_path(self, log_path: Path) -> str | None:
+        return None
+
+    def log_matches_session_id(self, log_path: Path, session_id: str) -> bool:
+        return self.session_id_from_log_path(log_path) == session_id
+
+    def session_id_from_payload_or_log(self, log_path: Path, payload: Mapping[str, Any]) -> str | None:
+        raw = payload.get("id")
+        return raw if isinstance(raw, str) and raw else self.session_id_from_log_path(log_path)
+
+    def read_run_settings_from_log(
+        self,
+        log_path: Path,
+        *,
+        read_pi_run_settings: Callable[[Path], tuple[str | None, str | None, str | None]],
+        read_cc_run_settings: Callable[[Path], tuple[str | None, str | None, str | None]],
+        read_session_meta_or_none_func: Callable[..., dict[str, Any] | None],
+        clean_optional_text: Callable[[Any], str | None],
+        display_reasoning_effort: Callable[[Any], str | None],
+        find_latest_turn_context: Callable[..., Any],
+    ) -> tuple[str | None, str | None, str | None]:
+        raise NotImplementedError(f"{self.name} backend does not implement run-settings extraction")
+
+    def message_keeps_turn_busy(self, obj: Mapping[str, Any]) -> bool:
+        return False
+
+    def chat_event_from_log_row(self, obj: Mapping[str, Any], *, cc_pending_tool_ids: set[str] | None = None) -> dict[str, Any] | None:
+        return None
+
+    def project_launch_defaults(self, defaults: Mapping[str, Any], *, reasoning_efforts: tuple[str, ...]) -> dict[str, Any]:
+        out = dict(defaults)
+        out["agent_backend"] = self.name
+        out.setdefault("provider_choices", list(out.get("provider_choices") or []))
+        out["reasoning_efforts"] = list(out.get("reasoning_efforts") or reasoning_efforts)
+        out.setdefault("supports_fast", False)
+        return out
+
+    def normalize_launch_request_options(
+        self,
+        obj: Mapping[str, Any],
+        *,
+        model: str | None,
+        validation_error_type: type[ValueError],
+        normalize_model_provider: Callable[..., str | None],
+        normalize_preferred_auth_method: Callable[[Any], str | None],
+        normalize_reasoning_effort: Callable[[Any], str | None],
+        normalize_pi_reasoning_effort: Callable[..., str | None],
+        normalize_cc_reasoning_effort: Callable[[Any], str | None],
+        normalize_service_tier: Callable[[Any], str | None],
+        codex_launch_defaults_provider: Callable[[], dict[str, Any]],
+        pi_launch_defaults_provider: Callable[[], dict[str, Any]],
+    ) -> dict[str, str | None]:
+        raise NotImplementedError(f"{self.name} backend does not implement launch request normalization")
+
+    def build_launch_args(
+        self,
+        *,
+        spawn_cwd: Path,
+        codex_trust_override: str,
+        model_provider: str | None = None,
+        preferred_auth_method: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+        service_tier: str | None = None,
+    ) -> list[str]:
+        raise NotImplementedError(f"{self.name} backend does not implement launch args")
+
+    def build_resume_args(self, *, resume_id: str, resume_row: Mapping[str, Any] | None = None) -> list[str]:
+        raise NotImplementedError(f"{self.name} backend does not implement resume args")
+
+    def sessiond_working_dir(self, *, root_repo_dir: Path, requested_cwd: str) -> Path:
+        cwd = str(requested_cwd or "").strip()
+        return Path(cwd) if cwd else root_repo_dir
+
+    def build_sessiond_launch_args(
+        self,
+        *,
+        root_repo_dir: Path,
+        requested_cwd: str,
+        extra_args: list[str],
+        model_provider: str | None = None,
+        preferred_auth_method: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+        service_tier: str | None = None,
+    ) -> list[str]:
+        return [
+            *self.build_launch_args(
+                spawn_cwd=self.sessiond_working_dir(root_repo_dir=root_repo_dir, requested_cwd=requested_cwd),
+                codex_trust_override="projects.*.trust_level=\"trusted\"",
+                model_provider=model_provider,
+                preferred_auth_method=preferred_auth_method,
+                model=model,
+                reasoning_effort=reasoning_effort,
+                service_tier=service_tier,
+            ),
+            *extra_args,
+        ]
+
+    def apply_launch_environment(
+        self,
+        env: dict[str, str],
+        *,
+        homes: Mapping[str, str | Path],
+        model_provider: str | None = None,
+        preferred_auth_method: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+        service_tier: str | None = None,
+        resume_session_id: str | None = None,
+    ) -> dict[str, str]:
+        if self.name not in homes:
+            raise ValueError(f"missing home path for {self.name}")
+
+        env["CODEX_WEB_OWNER"] = "web"
+        env["CODEX_WEB_AGENT_BACKEND"] = self.name
+        env.setdefault(self.home_env_var, str(homes[self.name]))
+        for key in _BACKEND_HOME_ENV_VARS:
+            if key != self.home_env_var:
+                env.pop(key, None)
+        for key in _REQUEST_ENV_VARS:
+            env.pop(key, None)
+
+        self._apply_request_environment(
+            env,
+            model_provider=model_provider,
+            preferred_auth_method=preferred_auth_method,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            service_tier=service_tier,
+            resume_session_id=resume_session_id,
+        )
+        return env
+
+    def build_tmux_inline_env(
+        self,
+        env: Mapping[str, str],
+        *,
+        tmux_session: str,
+        tmux_window: str,
+        launch_id: str,
+        spawn_nonce: str,
+        resume_session_id: str | None = None,
+        model_provider: str | None = None,
+        preferred_auth_method: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+        service_tier: str | None = None,
+        inherited_backend_bin: str | None = None,
+    ) -> dict[str, str]:
+        inline_env = {
+            "CODEX_WEB_OWNER": "web",
+            "CODEX_WEB_AGENT_BACKEND": self.name,
+            "CODEX_WEB_TRANSPORT": "tmux",
+            "CODEX_WEB_TMUX_SESSION": tmux_session,
+            "CODEX_WEB_TMUX_WINDOW": tmux_window,
+            "CODEX_WEB_LAUNCH_ID": launch_id,
+            "CODEX_WEB_SPAWN_NONCE": spawn_nonce,
+            self.home_env_var: str(env[self.home_env_var]),
+        }
+        self._apply_request_environment(
+            inline_env,
+            model_provider=model_provider,
+            preferred_auth_method=preferred_auth_method,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            service_tier=service_tier,
+            resume_session_id=resume_session_id,
+        )
+        if inherited_backend_bin is not None:
+            inline_env[self.bin_env_var] = inherited_backend_bin
+        return inline_env
+
+    @staticmethod
+    def tmux_unset_vars() -> list[str]:
+        return [
+            *_BACKEND_HOME_ENV_VARS,
+            *_BACKEND_BIN_ENV_VARS,
+            "CODEX_WEB_OWNER",
+            "CODEX_WEB_AGENT_BACKEND",
+            *_REQUEST_ENV_VARS,
+        ]
+
+    @staticmethod
+    def _apply_request_environment(
+        env: dict[str, str],
+        *,
+        model_provider: str | None,
+        preferred_auth_method: str | None,
+        model: str | None,
+        reasoning_effort: str | None,
+        service_tier: str | None,
+        resume_session_id: str | None,
+    ) -> None:
+        if model_provider is not None:
+            env["CODEX_WEB_MODEL_PROVIDER"] = model_provider
+        if preferred_auth_method is not None:
+            env["CODEX_WEB_PREFERRED_AUTH_METHOD"] = preferred_auth_method
+        if model is not None:
+            env["CODEX_WEB_MODEL"] = model
+        if reasoning_effort is not None:
+            env["CODEX_WEB_REASONING_EFFORT"] = reasoning_effort
+        if service_tier is not None:
+            env["CODEX_WEB_SERVICE_TIER"] = service_tier
+        if resume_session_id is not None:
+            env["CODEX_WEB_RESUME_SESSION_ID"] = resume_session_id
+
+
+class CodexBackend(AgentBackend):
+    def log_glob_pattern(self) -> str:
+        return "rollout-*.jsonl"
+
+    def is_session_log_path(self, path: Path, *, sessions_dir: Path | None = None) -> bool:
+        return path.name.startswith("rollout-") and path.suffix == ".jsonl"
+
+    def session_id_from_log_path(self, log_path: Path) -> str | None:
+        matches = _SESSION_ID_RE.findall(log_path.name)
+        return matches[-1] if matches else None
+
+    def log_matches_session_id(self, log_path: Path, session_id: str) -> bool:
+        return bool(session_id and session_id in log_path.name)
+
+    def project_launch_defaults(self, defaults: Mapping[str, Any], *, reasoning_efforts: tuple[str, ...]) -> dict[str, Any]:
+        out = dict(defaults)
+        out["agent_backend"] = self.name
+        out["provider_choices"] = list(out.get("model_providers") or [])
+        out["reasoning_efforts"] = list(reasoning_efforts)
+        out["supports_fast"] = True
+        return out
+
+    def chat_event_from_log_row(self, obj: Mapping[str, Any], *, cc_pending_tool_ids: set[str] | None = None) -> dict[str, Any] | None:
+        from .rollout_events import _codex_event_text
+        from .rollout_events import _event_ts
+        from .rollout_events import _text_message_id
+
+        row = dict(obj)
+        typ = row.get("type")
+        if typ == "event_msg":
+            payload = row.get("payload")
+            if not isinstance(payload, dict):
+                raise ValueError("invalid event_msg payload")
+            payload_type = payload.get("type")
+            if payload_type == "user_message":
+                message = payload.get("message")
+                if not isinstance(message, str):
+                    return None
+                ts = _event_ts(row)
+                event = {"role": "user", "text": message}
+                if ts is not None:
+                    event["ts"] = ts
+                return event
+            if payload_type in ("error", "stream_error", "warning"):
+                text = _codex_event_text(payload)
+                if text is None:
+                    return None
+                ts = _event_ts(row)
+                message_class = "warning" if payload_type == "warning" else "error"
+                event: dict[str, Any] = {
+                    "role": "assistant",
+                    "text": text,
+                    "message_class": message_class,
+                    "message_id": _text_message_id(message_class=message_class, text=text, ts=ts),
+                }
+                if ts is not None:
+                    event["ts"] = ts
+                return event
+            if payload_type == "turn_aborted":
+                from .rollout_events import _build_interrupted_event
+
+                return _build_interrupted_event(row)
+            if payload_type == "agent_message":
+                # Codex emits assistant text via event_msg.agent_message (the
+                # same row form idle/sidebar already treat as assistant output).
+                # Project it as a visible transcript message so it renders like
+                # any other assistant text and suppresses no-response injection
+                # through the existing source-of-truth mechanism. Final-answer
+                # phase mirrors response_item phase semantics.
+                message = payload.get("message")
+                if not isinstance(message, str) or not message.strip():
+                    return None
+                ts = _event_ts(row)
+                message_class = "final_response" if payload.get("phase") == "final_answer" else "narration"
+                event = {
+                    "role": "assistant",
+                    "text": message,
+                    "message_class": message_class,
+                    "message_id": _text_message_id(message_class=message_class, text=message, ts=ts),
+                }
+                if ts is not None:
+                    event["ts"] = ts
+                return event
+            if payload_type in ("task_complete", "turn_complete"):
+                # Codex carries the final assistant text on the turn-close row
+                # via last_agent_message. Project it as a visible final_response
+                # transcript message (mirroring how idle/sidebar treat it as
+                # assistant output) so it renders and suppresses no-response.
+                last_msg = payload.get("last_agent_message")
+                if not isinstance(last_msg, str) or not last_msg.strip():
+                    return None
+                ts = _event_ts(row)
+                message_class = "final_response"
+                event = {
+                    "role": "assistant",
+                    "text": last_msg,
+                    "message_class": message_class,
+                    "message_id": _text_message_id(message_class=message_class, text=last_msg, ts=ts),
+                }
+                if ts is not None:
+                    event["ts"] = ts
+                return event
+            return None
+
+        if typ == "response_item":
+            payload = row.get("payload")
+            if not isinstance(payload, dict):
+                raise ValueError("invalid response_item payload")
+            if payload.get("type") != "message" or payload.get("role") != "assistant":
+                return None
+            content = payload.get("content")
+            if not isinstance(content, list):
+                raise ValueError("invalid assistant message content")
+            out_text_parts: list[str] = []
+            for part in content:
+                if not isinstance(part, dict):
+                    continue
+                if part.get("type") == "output_text" and isinstance(part.get("text"), str):
+                    out_text_parts.append(part["text"])
+            if not out_text_parts:
+                return None
+            text = "".join(out_text_parts)
+            ts = _event_ts(row)
+            message_class = "final_response" if (payload.get("phase") == "final_answer" or payload.get("end_turn") is True) else "narration"
+            event = {
+                "role": "assistant",
+                "text": text,
+                "message_class": message_class,
+                "message_id": _text_message_id(message_class=message_class, text=text, ts=ts),
+            }
+            if ts is not None:
+                event["ts"] = ts
+            return event
+
+        return None
+
+    def normalize_launch_request_options(
+        self,
+        obj: Mapping[str, Any],
+        *,
+        model: str | None,
+        validation_error_type: type[ValueError],
+        normalize_model_provider: Callable[..., str | None],
+        normalize_preferred_auth_method: Callable[[Any], str | None],
+        normalize_reasoning_effort: Callable[[Any], str | None],
+        normalize_pi_reasoning_effort: Callable[..., str | None],
+        normalize_cc_reasoning_effort: Callable[[Any], str | None],
+        normalize_service_tier: Callable[[Any], str | None],
+        codex_launch_defaults_provider: Callable[[], dict[str, Any]],
+        pi_launch_defaults_provider: Callable[[], dict[str, Any]],
+    ) -> dict[str, str | None]:
+        allowed_providers = set(codex_launch_defaults_provider().get("model_providers") or ["openai"])
+        model_provider = normalize_model_provider(
+            obj.get("model_provider"),
+            allowed=set(["openai", *[p for p in allowed_providers if p not in {"chatgpt", "openai-api"}]]),
+        )
+        return {
+            "model_provider": model_provider,
+            "preferred_auth_method": normalize_preferred_auth_method(obj.get("preferred_auth_method")),
+            "reasoning_effort": normalize_reasoning_effort(obj.get("reasoning_effort")),
+            "service_tier": normalize_service_tier(obj.get("service_tier")),
+        }
+
+    def read_run_settings_from_log(
+        self,
+        log_path: Path,
+        *,
+        read_pi_run_settings: Callable[[Path], tuple[str | None, str | None, str | None]],
+        read_cc_run_settings: Callable[[Path], tuple[str | None, str | None, str | None]],
+        read_session_meta_or_none_func: Callable[..., dict[str, Any] | None],
+        clean_optional_text: Callable[[Any], str | None],
+        display_reasoning_effort: Callable[[Any], str | None],
+        find_latest_turn_context: Callable[..., Any],
+    ) -> tuple[str | None, str | None, str | None]:
+        meta = read_session_meta_or_none_func(log_path, agent_backend=self.name, context="run settings")
+        model_provider = clean_optional_text(meta.get("model_provider")) if meta is not None else None
+        model = clean_optional_text(meta.get("model")) if meta is not None else None
+        reasoning_effort = display_reasoning_effort(meta.get("reasoning_effort")) if meta is not None else None
+        if model is None or reasoning_effort is None:
+            payload = find_latest_turn_context(log_path, max_scan_bytes=8 * 1024 * 1024)
+            if isinstance(payload, dict):
+                if model is None:
+                    model = clean_optional_text(payload.get("model"))
+                if reasoning_effort is None:
+                    reasoning_effort = display_reasoning_effort(payload.get("reasoning_effort") or payload.get("effort"))
+        return model_provider, model, reasoning_effort
+
+    def build_launch_args(
+        self,
+        *,
+        spawn_cwd: Path,
+        codex_trust_override: str,
+        model_provider: str | None = None,
+        preferred_auth_method: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+        service_tier: str | None = None,
+    ) -> list[str]:
+        args = [
+            "-c",
+            codex_trust_override,
+            "-c",
+            "check_for_update_on_startup=false",
+            "--disable",
+            "goals",
+            "--dangerously-bypass-approvals-and-sandbox",
+        ]
+        if model is not None:
+            args.extend(["--model", model])
+        if reasoning_effort is not None:
+            args.extend(["-c", f'model_reasoning_effort="{reasoning_effort}"'])
+        if model_provider is not None:
+            args.extend(["-c", f'model_provider="{model_provider}"'])
+        if preferred_auth_method is not None:
+            args.extend(["-c", f'preferred_auth_method="{preferred_auth_method}"'])
+        if service_tier is not None:
+            args.extend(["-c", f'service_tier="{service_tier}"'])
+        return args
+
+    def build_resume_args(self, *, resume_id: str, resume_row: Mapping[str, Any] | None = None) -> list[str]:
+        return ["resume", resume_id]
+
+    def sessiond_working_dir(self, *, root_repo_dir: Path, requested_cwd: str) -> Path:
+        return root_repo_dir
+
+    def build_sessiond_launch_args(
+        self,
+        *,
+        root_repo_dir: Path,
+        requested_cwd: str,
+        extra_args: list[str],
+        model_provider: str | None = None,
+        preferred_auth_method: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+        service_tier: str | None = None,
+    ) -> list[str]:
+        args = [
+            "--no-alt-screen",
+            "-c",
+            "disable_response_storage=false",
+            "-c",
+            "disable_paste_burst=true",
+            "-C",
+            str(root_repo_dir),
+        ]
+        if requested_cwd:
+            args.extend(["--add-dir", requested_cwd])
+        if model is not None:
+            args.extend(["--model", model])
+        if reasoning_effort is not None:
+            args.extend(["-c", f'model_reasoning_effort="{reasoning_effort}"'])
+        if model_provider is not None:
+            args.extend(["-c", f'model_provider="{model_provider}"'])
+        if preferred_auth_method is not None:
+            args.extend(["-c", f'preferred_auth_method="{preferred_auth_method}"'])
+        if service_tier is not None:
+            args.extend(["-c", f'service_tier="{service_tier}"'])
+        args.extend(extra_args)
+        return args
+
+
+class PiBackend(AgentBackend):
+    def is_session_log_path(self, path: Path, *, sessions_dir: Path | None = None) -> bool:
+        if path.suffix != ".jsonl":
+            return False
+        if sessions_dir is None:
+            return "/.pi/agent/sessions/" in str(path).replace("\\", "/")
+        try:
+            path.resolve().relative_to(sessions_dir.resolve())
+        except Exception:
+            return False
+        return True
+
+    def session_id_from_log_path(self, log_path: Path) -> str | None:
+        from .pi_log import read_pi_session_id
+
+        return read_pi_session_id(log_path)
+
+    def read_run_settings_from_log(
+        self,
+        log_path: Path,
+        *,
+        read_pi_run_settings: Callable[[Path], tuple[str | None, str | None, str | None]],
+        read_cc_run_settings: Callable[[Path], tuple[str | None, str | None, str | None]],
+        read_session_meta_or_none_func: Callable[..., dict[str, Any] | None],
+        clean_optional_text: Callable[[Any], str | None],
+        display_reasoning_effort: Callable[[Any], str | None],
+        find_latest_turn_context: Callable[..., Any],
+    ) -> tuple[str | None, str | None, str | None]:
+        return read_pi_run_settings(log_path)
+
+    def normalize_launch_request_options(
+        self,
+        obj: Mapping[str, Any],
+        *,
+        model: str | None,
+        validation_error_type: type[ValueError],
+        normalize_model_provider: Callable[..., str | None],
+        normalize_preferred_auth_method: Callable[[Any], str | None],
+        normalize_reasoning_effort: Callable[[Any], str | None],
+        normalize_pi_reasoning_effort: Callable[..., str | None],
+        normalize_cc_reasoning_effort: Callable[[Any], str | None],
+        normalize_service_tier: Callable[[Any], str | None],
+        codex_launch_defaults_provider: Callable[[], dict[str, Any]],
+        pi_launch_defaults_provider: Callable[[], dict[str, Any]],
+    ) -> dict[str, str | None]:
+        pi_launch_defaults = pi_launch_defaults_provider()
+        model_provider = normalize_model_provider(obj.get("model_provider"), allowed=None)
+        if obj.get("preferred_auth_method") not in (None, ""):
+            raise validation_error_type(f"preferred_auth_method is not supported for {self.name}")
+        if obj.get("service_tier") not in (None, ""):
+            raise validation_error_type("service_tier is not supported for pi")
+        return {
+            "model_provider": model_provider,
+            "preferred_auth_method": None,
+            "reasoning_effort": normalize_pi_reasoning_effort(
+                obj.get("reasoning_effort"),
+                model_provider=model_provider,
+                model=model,
+                reasoning_efforts_by_model=pi_launch_defaults.get("reasoning_efforts_by_model") if isinstance(pi_launch_defaults, dict) else None,
+            ),
+            "service_tier": None,
+        }
+
+    def message_keeps_turn_busy(self, obj: Mapping[str, Any]) -> bool:
+        from .pi_log import pi_assistant_is_terminal_no_visible_response
+        from .pi_log import pi_assistant_thinking_count
+        from .pi_log import pi_assistant_tool_use_count
+        from .pi_log import pi_message_role
+
+        row = dict(obj)
+        if pi_assistant_is_terminal_no_visible_response(row):
+            return False
+        role = pi_message_role(row)
+        if role == "toolResult":
+            return True
+        return (pi_assistant_thinking_count(row) > 0) or (pi_assistant_tool_use_count(row) > 0)
+
+    def chat_event_from_log_row(self, obj: Mapping[str, Any], *, cc_pending_tool_ids: set[str] | None = None) -> dict[str, Any] | None:
+        from .pi_log import pi_assistant_error_text
+        from .pi_log import pi_assistant_is_aborted_turn
+        from .pi_log import pi_assistant_is_final_turn_end
+        from .pi_log import pi_assistant_is_terminal_no_visible_response
+        from .pi_log import pi_assistant_text
+        from .pi_log import pi_user_text
+        from .rollout_events import _event_ts
+        from .rollout_events import _text_message_id
+
+        row = dict(obj)
+        if row.get("type") != "message":
+            return None
+        user_text = pi_user_text(row)
+        if isinstance(user_text, str) and user_text:
+            ts = _event_ts(row)
+            event: dict[str, Any] = {"role": "user", "text": user_text}
+            if ts is not None:
+                event["ts"] = ts
+            return event
+        if pi_assistant_is_aborted_turn(row):
+            from .rollout_events import _build_interrupted_event
+
+            return _build_interrupted_event(row, partial_text=pi_assistant_text(row))
+        assistant_text = pi_assistant_text(row)
+        if isinstance(assistant_text, str) and assistant_text:
+            ts = _event_ts(row)
+            message_class = "final_response" if pi_assistant_is_final_turn_end(row) else "narration"
+            event = {
+                "role": "assistant",
+                "text": assistant_text,
+                "message_class": message_class,
+                "message_id": _text_message_id(message_class=message_class, text=assistant_text, ts=ts),
+            }
+            if ts is not None:
+                event["ts"] = ts
+            return event
+        error_text = pi_assistant_error_text(row)
+        if isinstance(error_text, str) and error_text:
+            ts = _event_ts(row)
+            return {
+                "role": "assistant",
+                "text": error_text,
+                "message_class": "error",
+                "message_id": _text_message_id(message_class="error", text=error_text, ts=ts),
+                **({"ts": ts} if ts is not None else {}),
+            }
+        if pi_assistant_is_terminal_no_visible_response(row):
+            from .rollout_chat_events import _build_no_response_event
+
+            return _build_no_response_event(row)
+        return None
+
+    def build_launch_args(
+        self,
+        *,
+        spawn_cwd: Path,
+        codex_trust_override: str,
+        model_provider: str | None = None,
+        preferred_auth_method: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+        service_tier: str | None = None,
+    ) -> list[str]:
+        if preferred_auth_method is not None:
+            raise ValueError("preferred_auth_method is not supported for pi")
+        if service_tier is not None:
+            raise ValueError("service_tier is not supported for pi")
+        args: list[str] = []
+        if model_provider is not None:
+            args.extend(["--provider", model_provider])
+        if model is not None:
+            args.extend(["--model", model])
+        if reasoning_effort is not None:
+            args.extend(["--thinking", reasoning_effort])
+        return args
+
+    def build_resume_args(self, *, resume_id: str, resume_row: Mapping[str, Any] | None = None) -> list[str]:
+        resume_target = str((resume_row or {}).get("log_path") or "").strip()
+        return ["--session", resume_target or resume_id]
+
+
+class ClaudeCodeBackend(AgentBackend):
+    def is_session_log_path(self, path: Path, *, sessions_dir: Path | None = None) -> bool:
+        if path.suffix != ".jsonl":
+            return False
+        path_text = str(path).replace("\\", "/")
+        if "/subagents/" in path_text:
+            return False
+        if path.name == "history.jsonl":
+            return False
+        if sessions_dir is None:
+            return "/.claude/projects/" in path_text
+        try:
+            path.resolve().relative_to(sessions_dir.resolve())
+        except Exception:
+            return False
+        return True
+
+    def session_id_from_log_path(self, log_path: Path) -> str | None:
+        from .cc_log import read_cc_session_id
+
+        return read_cc_session_id(log_path)
+
+    def read_run_settings_from_log(
+        self,
+        log_path: Path,
+        *,
+        read_pi_run_settings: Callable[[Path], tuple[str | None, str | None, str | None]],
+        read_cc_run_settings: Callable[[Path], tuple[str | None, str | None, str | None]],
+        read_session_meta_or_none_func: Callable[..., dict[str, Any] | None],
+        clean_optional_text: Callable[[Any], str | None],
+        display_reasoning_effort: Callable[[Any], str | None],
+        find_latest_turn_context: Callable[..., Any],
+    ) -> tuple[str | None, str | None, str | None]:
+        return read_cc_run_settings(log_path)
+
+    def normalize_launch_request_options(
+        self,
+        obj: Mapping[str, Any],
+        *,
+        model: str | None,
+        validation_error_type: type[ValueError],
+        normalize_model_provider: Callable[..., str | None],
+        normalize_preferred_auth_method: Callable[[Any], str | None],
+        normalize_reasoning_effort: Callable[[Any], str | None],
+        normalize_pi_reasoning_effort: Callable[..., str | None],
+        normalize_cc_reasoning_effort: Callable[[Any], str | None],
+        normalize_service_tier: Callable[[Any], str | None],
+        codex_launch_defaults_provider: Callable[[], dict[str, Any]],
+        pi_launch_defaults_provider: Callable[[], dict[str, Any]],
+    ) -> dict[str, str | None]:
+        if obj.get("model_provider") not in (None, ""):
+            raise validation_error_type("model_provider is not supported for cc")
+        if obj.get("preferred_auth_method") not in (None, ""):
+            raise validation_error_type(f"preferred_auth_method is not supported for {self.name}")
+        if obj.get("service_tier") not in (None, ""):
+            raise validation_error_type("service_tier is not supported for cc")
+        return {
+            "model_provider": None,
+            "preferred_auth_method": None,
+            "reasoning_effort": normalize_cc_reasoning_effort(obj.get("reasoning_effort")),
+            "service_tier": None,
+        }
+
+    def message_keeps_turn_busy(self, obj: Mapping[str, Any]) -> bool:
+        from .cc_log import cc_assistant_thinking_count
+        from .cc_log import cc_assistant_tool_use_count
+        from .cc_log import cc_message_role
+
+        row = dict(obj)
+        role = cc_message_role(row)
+        if role == "toolResult":
+            return True
+        return (cc_assistant_thinking_count(row) > 0) or (cc_assistant_tool_use_count(row) > 0)
+
+    def chat_event_from_log_row(self, obj: Mapping[str, Any], *, cc_pending_tool_ids: set[str] | None = None) -> dict[str, Any] | None:
+        from .cc_log import cc_apply_tool_result_to_pending
+        from .cc_log import cc_assistant_is_api_error
+        from .cc_log import cc_assistant_is_final_turn_end
+        from .cc_log import cc_assistant_pending_tool_use_ids
+        from .cc_log import cc_assistant_text
+        from .cc_log import cc_assistant_tool_use_count
+        from .cc_log import cc_message_role
+        from .cc_log import cc_system_api_error_is_terminal
+        from .cc_log import cc_system_api_error_text
+        from .cc_log import cc_user_text
+        from .rollout_events import _event_ts
+        from .rollout_events import _text_message_id
+
+        row = dict(obj)
+        typ = row.get("type")
+        if typ == "user":
+            user_text = cc_user_text(row)
+            if isinstance(user_text, str) and user_text:
+                if cc_pending_tool_ids is not None:
+                    cc_pending_tool_ids.clear()
+                ts = _event_ts(row)
+                event: dict[str, Any] = {"role": "user", "text": user_text}
+                if ts is not None:
+                    event["ts"] = ts
+                return event
+            if cc_pending_tool_ids is not None and cc_message_role(row) == "toolResult":
+                cc_apply_tool_result_to_pending(row, cc_pending_tool_ids)
+            return None
+
+        if typ == "assistant":
+            if cc_pending_tool_ids is not None and cc_assistant_tool_use_count(row) > 0:
+                cc_pending_tool_ids.update(cc_assistant_pending_tool_use_ids(row))
+            assistant_text = cc_assistant_text(row)
+            if isinstance(assistant_text, str) and assistant_text:
+                ts = _event_ts(row)
+                if cc_assistant_is_api_error(row):
+                    message_class = "error"
+                else:
+                    message_class = "final_response" if cc_assistant_is_final_turn_end(row) and not cc_pending_tool_ids else "narration"
+                event = {
+                    "role": "assistant",
+                    "text": assistant_text,
+                    "message_class": message_class,
+                    "message_id": _text_message_id(message_class=message_class, text=assistant_text, ts=ts),
+                }
+                if ts is not None:
+                    event["ts"] = ts
+                return event
+            return None
+
+        if typ == "system" and cc_system_api_error_is_terminal(row):
+            error_text = cc_system_api_error_text(row)
+            if isinstance(error_text, str) and error_text:
+                ts = _event_ts(row)
+                event = {
+                    "role": "assistant",
+                    "text": error_text,
+                    "message_class": "error",
+                    "message_id": _text_message_id(message_class="error", text=error_text, ts=ts),
+                }
+                if ts is not None:
+                    event["ts"] = ts
+                return event
+            return None
+
+        return None
+
+    def build_launch_args(
+        self,
+        *,
+        spawn_cwd: Path,
+        codex_trust_override: str,
+        model_provider: str | None = None,
+        preferred_auth_method: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+        service_tier: str | None = None,
+    ) -> list[str]:
+        if model_provider is not None:
+            raise ValueError("model_provider is not supported for cc")
+        if preferred_auth_method is not None:
+            raise ValueError("preferred_auth_method is not supported for cc")
+        if service_tier is not None:
+            raise ValueError("service_tier is not supported for cc")
+        args = ["--dangerously-skip-permissions"]
+        if model is not None:
+            args.extend(["--model", model])
+        if reasoning_effort is not None:
+            args.extend(["--effort", reasoning_effort])
+        return args
+
+    def build_resume_args(self, *, resume_id: str, resume_row: Mapping[str, Any] | None = None) -> list[str]:
+        return ["--resume", resume_id]
+
+
+CODEX_BACKEND = CodexBackend(
     name="codex",
     bin_env_var="CODEX_BIN",
     home_env_var="CODEX_HOME",
@@ -39,7 +865,7 @@ CODEX_BACKEND = AgentBackend(
     sessions_relpath=("sessions",),
 )
 
-PI_BACKEND = AgentBackend(
+PI_BACKEND = PiBackend(
     name="pi",
     bin_env_var="PI_BIN",
     home_env_var="PI_HOME",
@@ -48,9 +874,19 @@ PI_BACKEND = AgentBackend(
     sessions_relpath=("agent", "sessions"),
 )
 
+CC_BACKEND = ClaudeCodeBackend(
+    name="cc",
+    bin_env_var="CLAUDE_BIN",
+    home_env_var="CLAUDE_CONFIG_DIR",
+    default_bin="claude",
+    default_home_dirname=".claude",
+    sessions_relpath=("projects",),
+)
+
 _BACKENDS: dict[str, AgentBackend] = {
     CODEX_BACKEND.name: CODEX_BACKEND,
     PI_BACKEND.name: PI_BACKEND,
+    CC_BACKEND.name: CC_BACKEND,
 }
 
 
@@ -69,11 +905,12 @@ def get_agent_backend(value: object, *, default: str = "codex") -> AgentBackend:
 
 
 def infer_agent_backend_from_log_path(path: Path) -> str | None:
-    name = path.name
-    if name.startswith("rollout-") and name.endswith(".jsonl"):
+    if CODEX_BACKEND.is_session_log_path(path):
         return "codex"
-    path_text = str(path).replace("\\", "/")
-    if "/.pi/agent/sessions/" in path_text and name.endswith(".jsonl"):
+    if PI_BACKEND.is_session_log_path(path):
         return "pi"
+    if CC_BACKEND.is_session_log_path(path):
+        return "cc"
+    if CC_BACKEND.is_session_log_path(path, sessions_dir=CC_BACKEND.sessions_dir()):
+        return "cc"
     return None
-

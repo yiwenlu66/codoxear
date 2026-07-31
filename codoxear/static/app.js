@@ -5,138 +5,127 @@
 	        if (!Number.isFinite(raw) || raw <= 0) return 16 * 1024 * 1024;
 	        return Math.max(1, Math.floor(raw));
 	      })();
+      const codoxearViewport = window.CodoxearViewport;
+      if (
+        !codoxearViewport ||
+        typeof codoxearViewport.isMobile !== "function" ||
+        typeof codoxearViewport.prefersReducedMotion !== "function" ||
+        typeof codoxearViewport.useDesktopSessionActions !== "function" ||
+        typeof codoxearViewport.useTouchFileEditorControls !== "function" ||
+        typeof codoxearViewport.isTextEntryElement !== "function" ||
+        typeof codoxearViewport.updateAppHeightVar !== "function"
+      )
+        throw new Error("Codoxear viewport helpers failed to load");
       function isTextEntryElement(target) {
-	        const el = target instanceof Element ? target.closest("textarea, input, [contenteditable], [contenteditable=''], [contenteditable='true']") : null;
-	        if (!(el instanceof HTMLElement)) return false;
-	        if (el.tagName !== "INPUT") return true;
-	        const type = String(el.getAttribute("type") || "text").toLowerCase();
-	        return !["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"].includes(type);
-	      }
-	      function updateAppHeightVar() {
-	        const vv = window.visualViewport;
-	        const layoutH = Math.round(window.innerHeight);
-	        const visualH = Math.round(vv ? vv.height : window.innerHeight);
-	        const visualTop = Math.max(0, Math.round(vv ? vv.offsetTop : 0));
-	        const visualBottom = Math.max(0, layoutH - visualH - visualTop);
-	        if (updateAppHeightVar._h === visualH && updateAppHeightVar._l === layoutH && updateAppHeightVar._t === visualTop && updateAppHeightVar._b === visualBottom) return;
-	        updateAppHeightVar._h = visualH;
-	        updateAppHeightVar._l = layoutH;
-	        updateAppHeightVar._t = visualTop;
-	        updateAppHeightVar._b = visualBottom;
-	        document.documentElement.style.setProperty("--appH", `${visualH}px`);
-	        document.documentElement.style.setProperty("--layoutH", `${layoutH}px`);
-	        document.documentElement.style.setProperty("--vvTop", `${visualTop}px`);
-	        document.documentElement.style.setProperty("--vvBottom", `${visualBottom}px`);
-	      }
-	      updateAppHeightVar();
-	      window.addEventListener("resize", updateAppHeightVar);
-      // Best-effort zoom disable (iOS Safari still has edge cases).
-      document.addEventListener(
-        "gesturestart",
-        (e) => {
-          if (isTextEntryElement(e.target)) return;
-          e.preventDefault();
-        },
-        { passive: false }
-      );
-      document.addEventListener(
-        "gesturechange",
-        (e) => {
-          if (isTextEntryElement(e.target)) return;
-          e.preventDefault();
-        },
-        { passive: false }
-      );
-      document.addEventListener(
-        "gestureend",
-        (e) => {
-          if (isTextEntryElement(e.target)) return;
-          e.preventDefault();
-        },
-        { passive: false }
-      );
-      document.addEventListener(
-        "touchstart",
-        (e) => {
-          if (isTextEntryElement(e.target)) return;
-          if (e.touches && e.touches.length > 1) e.preventDefault();
-        },
-        { passive: false }
-      );
-      document.addEventListener(
-        "touchmove",
-        (e) => {
-          if (isTextEntryElement(e.target)) return;
-          if (e.touches && e.touches.length > 1) e.preventDefault();
-        },
-        { passive: false }
-      );
-      const el = (tag, attrs = {}, children = []) => {
-        const n = document.createElement(tag);
-        for (const [k, v] of Object.entries(attrs)) {
-          if (k === "class") n.className = v;
-          else if (k === "text") n.textContent = v;
-          else if (k === "html") n.innerHTML = v;
-          else n.setAttribute(k, v);
-        }
-        for (const c of children) n.appendChild(c);
-        return n;
-      };
+        return codoxearViewport.isTextEntryElement(target);
+      }
+      function updateAppHeightVar() {
+        return codoxearViewport.updateAppHeightVar();
+      }
+      updateAppHeightVar();
+      window.addEventListener("resize", updateAppHeightVar);
+      const codoxearDisplay = window.CodoxearDisplay;
+      if (
+        !codoxearDisplay ||
+        typeof codoxearDisplay.defaultButtonTooltip !== "function" ||
+        typeof codoxearDisplay.fmtTs !== "function" ||
+        typeof codoxearDisplay.ymd !== "function" ||
+        typeof codoxearDisplay.dayLabel !== "function" ||
+        typeof codoxearDisplay.time24 !== "function" ||
+        typeof codoxearDisplay.fmtBytes !== "function" ||
+        typeof codoxearDisplay.baseName !== "function" ||
+        typeof codoxearDisplay.shortSessionId !== "function" ||
+        typeof codoxearDisplay.sessionDisplayName !== "function" ||
+        typeof codoxearDisplay.fmtIdleAge !== "function" ||
+        typeof codoxearDisplay.fmtRelativeAge !== "function" ||
+        typeof codoxearDisplay.sessionTitleWithId !== "function" ||
+        typeof codoxearDisplay.recoveryPromptPreview !== "function" ||
+        typeof codoxearDisplay.fuzzyRecentCwdScore !== "function" ||
+        typeof codoxearDisplay.compactChatSearchSnippet !== "function" ||
+        typeof codoxearDisplay.chatSearchTranscriptHint !== "function" ||
+        typeof codoxearDisplay.iconSvg !== "function"
+      )
+        throw new Error("Codoxear display helpers failed to load");
+      function defaultButtonTooltip(attrs = {}, node = null) {
+        return codoxearDisplay.defaultButtonTooltip(attrs, node);
+      }
 
-      const perfWindow = 200;
-      const perfSamples = new Map();
+      // Voice helpers + the voice/settings/notification/announcement
+      // orchestration controller now live in codoxear/static/app_voice.js
+      // (loaded after app_voice_helpers.js and before app.js). app.js fails
+      // loud here if either module is missing; the controller itself
+      // additionally validates every helper API it consumes.
+      const codoxearVoiceHelpers = window.CodoxearVoiceHelpers;
+      if (
+        !codoxearVoiceHelpers ||
+        typeof codoxearVoiceHelpers.browserSupportsNativeLiveAudioPlayback !== "function" ||
+        typeof codoxearVoiceHelpers.browserSupportsMseLiveAudioPlayback !== "function" ||
+        typeof codoxearVoiceHelpers.shouldPreferNativeLiveAudioPlayback !== "function" ||
+        typeof codoxearVoiceHelpers.browserSupportsLiveAudioPlayback !== "function" ||
+        typeof codoxearVoiceHelpers.base64UrlToUint8Array !== "function" ||
+        typeof codoxearVoiceHelpers.isMobileNotificationDevice !== "function" ||
+        typeof codoxearVoiceHelpers.notificationDeviceClass !== "function"
+      )
+        throw new Error("Codoxear voice helpers failed to load");
+      const codoxearVoice = window.CodoxearVoice;
+      if (!codoxearVoice || typeof codoxearVoice.createVoiceController !== "function")
+        throw new Error("Codoxear voice controller failed to load");
 
+      const codoxearDom = window.CodoxearDom;
+      if (!codoxearDom || typeof codoxearDom.createElement !== "function") throw new Error("Codoxear DOM helpers failed to load");
+      const el = (tag, attrs = {}, children = []) => codoxearDom.createElement(tag, attrs, children, defaultButtonTooltip);
+      const codoxearShell = window.CodoxearShell;
+      if (
+        !codoxearShell ||
+        typeof codoxearShell.createShellDOM !== "function" ||
+        typeof codoxearShell.createSidebarController !== "function"
+      )
+        throw new Error("Codoxear shell module failed to load");
+      const codoxearComposer = window.CodoxearComposer;
+      if (!codoxearComposer || typeof codoxearComposer.createComposerController !== "function")
+        throw new Error("Codoxear composer module failed to load");
+
+      const codoxearPerfHelpers = window.CodoxearPerf;
+      if (!codoxearPerfHelpers || typeof codoxearPerfHelpers.pushSample !== "function" || typeof codoxearPerfHelpers.summarize !== "function") throw new Error("Codoxear performance helpers failed to load");
       function pushPerfSample(name, valueMs) {
-        if (!(valueMs >= 0)) return;
-        const arr = perfSamples.get(name) || [];
-        arr.push(valueMs);
-        if (arr.length > perfWindow) arr.splice(0, arr.length - perfWindow);
-        perfSamples.set(name, arr);
+        return codoxearPerfHelpers.pushSample(name, valueMs);
       }
-
-      function perfPercentile(sorted, p) {
-        if (!sorted.length) return 0;
-        if (sorted.length === 1) return sorted[0];
-        const pos = Math.max(0, Math.min(1, p)) * (sorted.length - 1);
-        const lo = Math.floor(pos);
-        const hi = Math.min(lo + 1, sorted.length - 1);
-        const frac = pos - lo;
-        return sorted[lo] * (1 - frac) + sorted[hi] * frac;
-      }
-
       function summarizePerf() {
-        const out = {};
-        for (const [k, arr] of perfSamples.entries()) {
-          if (!arr.length) continue;
-          const s = arr.slice().sort((a, b) => a - b);
-          out[k] = {
-            count: s.length,
-            p50_ms: Math.round(perfPercentile(s, 0.5) * 100) / 100,
-            p95_ms: Math.round(perfPercentile(s, 0.95) * 100) / 100,
-            max_ms: Math.round(s[s.length - 1] * 100) / 100,
-            last_ms: Math.round(arr[arr.length - 1] * 100) / 100,
-          };
-        }
-        return out;
+        return codoxearPerfHelpers.summarize();
       }
 
       window.codoxearPerf = summarizePerf;
 
-      const appBaseUrl = (() => {
-        const here = new URL(window.location.href);
-        const p0 = String(here.pathname || "/");
-        if (p0.endsWith("/static/index.html")) {
-          return new URL(p0.slice(0, -"/static/index.html".length) + "/", here.origin);
-        }
-        if (p0.endsWith("/static/")) {
-          return new URL(p0.slice(0, -"/static/".length) + "/", here.origin);
-        }
-        return new URL(".", here);
-      })();
+      const codoxearUrls = window.CodoxearUrls;
+      if (
+        !codoxearUrls ||
+        typeof codoxearUrls.resolveAppUrl !== "function" ||
+        typeof codoxearUrls.sessionIdFromHash !== "function" ||
+        typeof codoxearUrls.setSessionHash !== "function"
+      )
+        throw new Error("Codoxear URL helpers failed to load");
       function resolveAppUrl(path) {
-        const s = String(path ?? "");
-        const rel = s.startsWith("/") ? s.slice(1) : s;
-        return new URL(rel, appBaseUrl).toString();
+        return codoxearUrls.resolveAppUrl(path);
+      }
+      function versionedShellAssetPath(path) {
+        const version = String(window.CODOXEAR_ASSET_VERSION || "").trim();
+        if (!version) return path;
+        return `${path}?v=${encodeURIComponent(version)}`;
+      }
+
+      const codoxearStorage = window.CodoxearStorage;
+      if (!codoxearStorage || typeof codoxearStorage.getItem !== "function" || typeof codoxearStorage.setItem !== "function" || typeof codoxearStorage.removeItem !== "function") throw new Error("Codoxear storage helpers failed to load");
+      function optionalLocalStorage() {
+        return typeof codoxearStorage.optionalLocalStorage === "function" ? codoxearStorage.optionalLocalStorage() : null;
+      }
+      function storageGetItem(key) {
+        return codoxearStorage.getItem(key);
+      }
+      function storageSetItem(key, value) {
+        return codoxearStorage.setItem(key, value);
+      }
+      function storageRemoveItem(key) {
+        return codoxearStorage.removeItem(key);
       }
 
       let newSessionBackend = "codex";
@@ -145,1437 +134,668 @@
         backends: {
           codex: null,
           pi: null,
+          cc: null,
         },
       };
       let latestSessions = [];
-      const LAST_BACKEND_KEY = "codoxear.newSessionBackend";
+      const codoxearLaunch = window.CodoxearLaunch;
+      if (
+        !codoxearLaunch ||
+        typeof codoxearLaunch.lastProviderKey !== "function" ||
+        typeof codoxearLaunch.lastProviderModelKey !== "function" ||
+        typeof codoxearLaunch.loadRememberedBackendChoice !== "function" ||
+        typeof codoxearLaunch.rememberBackendChoice !== "function" ||
+        typeof codoxearLaunch.loadRememberedProviderChoice !== "function" ||
+        typeof codoxearLaunch.rememberProviderChoice !== "function" ||
+        typeof codoxearLaunch.loadRememberedProviderModelChoice !== "function" ||
+        typeof codoxearLaunch.rememberedProviderModelAbsentChoice !== "function" ||
+        typeof codoxearLaunch.rememberProviderModelChoice !== "function" ||
+        typeof codoxearLaunch.normalizeAgentBackendName !== "function" ||
+        typeof codoxearLaunch.agentBackendDisplayName !== "function" ||
+        typeof codoxearLaunch.agentBackendLogoPath !== "function" ||
+        typeof codoxearLaunch.sessionAgentBackend !== "function" ||
+        typeof codoxearLaunch.legacyCodexLaunchDefaults !== "function" ||
+        typeof codoxearLaunch.emptyPiLaunchDefaults !== "function" ||
+        typeof codoxearLaunch.emptyCcLaunchDefaults !== "function" ||
+        typeof codoxearLaunch.defaultsForAgentBackend !== "function" ||
+        typeof codoxearLaunch.providerChoicesForBackend !== "function" ||
+        typeof codoxearLaunch.reasoningChoicesForBackend !== "function" ||
+        typeof codoxearLaunch.backendSupportsFast !== "function" ||
+        typeof codoxearLaunch.providerChoiceToSettings !== "function" ||
+        typeof codoxearLaunch.sessionProviderChoice !== "function" ||
+        typeof codoxearLaunch.modelOptionMatches !== "function" ||
+        typeof codoxearLaunch.providerModelDisplay !== "function" ||
+        typeof codoxearLaunch.redactedLaunchErrorText !== "function"
+      )
+        throw new Error("Codoxear launch helpers failed to load");
+      const codoxearNewSession = window.CodoxearNewSession;
+      if (
+        !codoxearNewSession ||
+        typeof codoxearNewSession.createNewSessionController !== "function"
+      )
+        throw new Error("Codoxear new session controller failed to load");
       function lastProviderKey(backend) {
-        return `codoxear.newSessionProvider.${normalizeAgentBackendName(backend)}`;
+        return codoxearLaunch.lastProviderKey(backend);
+      }
+      function lastProviderModelKey(backend) {
+        return codoxearLaunch.lastProviderModelKey(backend);
       }
       function loadRememberedBackendChoice() {
-        return normalizeAgentBackendName(localStorage.getItem(LAST_BACKEND_KEY) || "codex");
+        return codoxearLaunch.loadRememberedBackendChoice();
       }
       function rememberBackendChoice(backend) {
-        localStorage.setItem(LAST_BACKEND_KEY, normalizeAgentBackendName(backend));
+        return codoxearLaunch.rememberBackendChoice(backend);
       }
       function loadRememberedProviderChoice(backend) {
-        return String(localStorage.getItem(lastProviderKey(backend)) || "").trim();
+        return codoxearLaunch.loadRememberedProviderChoice(backend);
       }
       function rememberProviderChoice(backend, provider) {
-        const value = String(provider || "").trim();
-        if (value) localStorage.setItem(lastProviderKey(backend), value);
-        else localStorage.removeItem(lastProviderKey(backend));
+        return codoxearLaunch.rememberProviderChoice(backend, provider);
+      }
+      function loadRememberedProviderModelChoice(backend) {
+        return codoxearLaunch.loadRememberedProviderModelChoice(backend);
+      }
+      function rememberedProviderModelAbsentChoice(value) {
+        return codoxearLaunch.rememberedProviderModelAbsentChoice(value);
+      }
+      function rememberProviderModelChoice(backend, provider, model, options = {}) {
+        return codoxearLaunch.rememberProviderModelChoice(backend, provider, model, options);
       }
 
-      async function api(path, { method = "GET", body, signal } = {}) {
-        const t0 = performance.now();
-        const opts = { method, headers: {}, signal };
-        if (body !== undefined) {
-          opts.headers["Content-Type"] = "application/json";
-          opts.body = JSON.stringify(body);
-        }
-        const url = resolveAppUrl(path);
-        const res = await fetch(url, opts);
-        const txt = await res.text();
-        let obj;
-        try {
-          obj = JSON.parse(txt);
-        } catch (e) {
-          console.error("api: invalid json response", { path, url, method, txt });
-          throw e;
-        }
-        const dt = performance.now() - t0;
-        const rawPath = String(path ?? "");
-        if (rawPath === "/api/sessions" && method === "GET") pushPerfSample("api_sessions_ms", dt);
-        else if (rawPath.includes("/messages") && method === "GET") {
-          if (rawPath.includes("init=1")) pushPerfSample("api_messages_init_ms", dt);
-          else pushPerfSample("api_messages_poll_ms", dt);
-        }
-        if (!res.ok) throw Object.assign(new Error(obj.error || "request failed"), { status: res.status, obj });
-        return obj;
+      const codoxearApi = window.CodoxearApi;
+      if (!codoxearApi || typeof codoxearApi.api !== "function" || typeof codoxearApi.apiResponseNotModified !== "function" || typeof codoxearApi.clearApiCache !== "function") throw new Error("Codoxear API helpers failed to load");
+      function apiResponseNotModified(obj) {
+        return codoxearApi.apiResponseNotModified(obj);
+      }
+      function clearApiCache() {
+        return codoxearApi.clearApiCache();
+      }
+      async function api(path, options = {}) {
+        return codoxearApi.api(path, options);
       }
 
       function fmtTs(ts) {
-        try {
-          const d = new Date(ts * 1000);
-          const y = String(d.getFullYear()).padStart(4, "0");
-          const m = String(d.getMonth() + 1).padStart(2, "0");
-          const day = String(d.getDate()).padStart(2, "0");
-          const hh = String(d.getHours()).padStart(2, "0");
-          const mm = String(d.getMinutes()).padStart(2, "0");
-          return `${y}-${m}-${day} ${hh}:${mm}`;
-        } catch {
-          return String(ts);
-        }
+        return codoxearDisplay.fmtTs(ts);
       }
 
       function fmtBytes(n) {
-        const v = Number(n);
-        if (!Number.isFinite(v)) return String(n ?? "");
-        if (v < 1024) return `${v} B`;
-        const units = ["B", "KB", "MB", "GB", "TB"];
-        let val = v;
-        let u = 0;
-        while (val >= 1024 && u < units.length - 1) {
-          val /= 1024;
-          u += 1;
-        }
-        const dec = val >= 100 ? 0 : val >= 10 ? 1 : 2;
-        return `${val.toFixed(dec)} ${units[u]}`;
+        return codoxearDisplay.fmtBytes(n);
       }
 
+      const codoxearFileHelpers = window.CodoxearFileHelpers;
+      if (
+        !codoxearFileHelpers ||
+        typeof codoxearFileHelpers.listFromFilesField !== "function" ||
+        typeof codoxearFileHelpers.stripPathLocationSuffix !== "function" ||
+        typeof codoxearFileHelpers.isTextFileKind !== "function" ||
+        typeof codoxearFileHelpers.isDiffableFileKind !== "function" ||
+        typeof codoxearFileHelpers.blockedFileMessage !== "function" ||
+        typeof codoxearFileHelpers.formatPriorityOffset !== "function" ||
+        typeof codoxearFileHelpers.fileVideoPreviewErrorText !== "function" ||
+        typeof codoxearFileHelpers.fileSearchScore !== "function" ||
+        typeof codoxearFileHelpers.normalizeDraftFilePath !== "function" ||
+        typeof codoxearFileHelpers.filePickerFoldedSearchText !== "function" ||
+        typeof codoxearFileHelpers.filePickerOriginalRangeForFolded !== "function" ||
+        typeof codoxearFileHelpers.filePickerMatchRanges !== "function" ||
+        typeof codoxearFileHelpers.filePickerMatchRangesForQuery !== "function" ||
+        typeof codoxearFileHelpers.filePickerCandidateScore !== "function" ||
+        typeof codoxearFileHelpers.compareFilePickerEntries !== "function" ||
+        typeof codoxearFileHelpers.normalizeFileCandidateSource !== "function" ||
+        typeof codoxearFileHelpers.filePickerSectionLabel !== "function" ||
+        typeof codoxearFileHelpers.duplicateFilePickerPaths !== "function" ||
+        typeof codoxearFileHelpers.rawByteDuplicatePaths !== "function" ||
+        typeof codoxearFileHelpers.filePickerIdentityHint !== "function" ||
+        typeof codoxearFileHelpers.filePickerTitle !== "function" ||
+        typeof codoxearFileHelpers.positionAfterInsertedText !== "function" ||
+        typeof codoxearFileHelpers.fileEditorDeleteCommandForKey !== "function" ||
+        typeof codoxearFileHelpers.dataTransferHasFiles !== "function" ||
+        typeof codoxearFileHelpers.extractFilesFromClipboardData !== "function" ||
+        typeof codoxearFileHelpers.extractFilesFromDropData !== "function" ||
+        typeof codoxearFileHelpers.attachmentSafeStem !== "function" ||
+        typeof codoxearFileHelpers.attachmentExtensionLower !== "function" ||
+        typeof codoxearFileHelpers.attachmentIsLikelyHeic !== "function" ||
+        typeof codoxearFileHelpers.attachmentLooksLikeImage !== "function" ||
+        typeof codoxearFileHelpers.bytesToBase64 !== "function"
+      )
+        throw new Error("Codoxear file helpers failed to load");
       function listFromFilesField(val) {
-        if (!Array.isArray(val)) return [];
-        const out = [];
-        for (const v of val) {
-          if (typeof v !== "string") continue;
-          const p = v.trim();
-          if (!p || out.includes(p)) continue;
-          out.push(p);
-        }
-        return out;
+        return codoxearFileHelpers.listFromFilesField(val);
+      }
+
+      function listFromFileRecords(val) {
+        return codoxearFileHelpers.listFromFileRecords(val);
       }
 
       function baseName(p) {
-        if (!p) return "";
-        const s = String(p);
-        const parts = s.split("/").filter(Boolean);
-        return parts.length ? parts[parts.length - 1] : s;
+        return codoxearDisplay.baseName(p);
+      }
+
+      function fuzzyRecentCwdScore(candidate, query) {
+        return codoxearDisplay.fuzzyRecentCwdScore(candidate, query);
       }
 
       function shortSessionId(sid) {
-        const s = sid == null ? "" : String(sid);
-        const m = s.match(/^([0-9a-f]{8})[0-9a-f-]{28}-(\d+)$/i);
-        if (m) return `${m[1]}-${m[2]}`;
-        return s.slice(0, 8);
+        return codoxearDisplay.shortSessionId(sid);
       }
 
       function sessionDisplayName(s) {
-        if (!s || typeof s !== "object") return "";
-        const alias = typeof s.alias === "string" ? s.alias.trim() : "";
-        if (alias) return alias;
-        const cwdName = baseName(s.cwd);
-        if (cwdName) return cwdName;
-        const ts = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts)
-          ? s.updated_ts
-          : typeof s.start_ts === "number" && Number.isFinite(s.start_ts)
-            ? s.start_ts
-            : 0;
-        return ts ? `Session ${fmtTs(ts)}` : "Session";
+        return codoxearDisplay.sessionDisplayName(s);
+      }
+
+      const REASONING_EFFORT_MARKERS = Object.freeze({
+        xhigh: "X",
+        high: "H",
+        medium: "M",
+        low: "L",
+        max: "M+",
+        minimal: "m",
+        off: "–",
+      });
+
+      function reasoningEffortMarker(effortTxt) {
+        return REASONING_EFFORT_MARKERS[effortTxt] || "";
+      }
+
+      function sidebarModelText(s) {
+        const model = s && typeof s.model === "string" ? s.model.trim() : "";
+        return model && model.toLowerCase() !== "default" ? model : "";
       }
 
       function sessionIdFromHash() {
-        const raw = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "";
-        const params = new URLSearchParams(raw);
-        const sid = params.get("session");
-        return sid && sid.trim() ? sid.trim() : "";
+        return codoxearUrls.sessionIdFromHash();
       }
 
       function setSessionHash(sessionId) {
-        const params = new URLSearchParams(window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "");
-        if (sessionId) params.set("session", sessionId);
-        else params.delete("session");
-        const next = params.toString();
-        const target = `${window.location.pathname}${window.location.search}${next ? `#${next}` : ""}`;
-        history.replaceState(null, "", target);
+        codoxearUrls.setSessionHash(sessionId);
       }
 
+      const codoxearSessionHelpers = window.CodoxearSessionHelpers;
+      if (
+        !codoxearSessionHelpers ||
+        !Array.isArray(codoxearSessionHelpers.SESSION_SIDEBAR_GROUPS) ||
+        typeof codoxearSessionHelpers.sessionLaunchFailed !== "function" ||
+        typeof codoxearSessionHelpers.sessionLaunchPending !== "function" ||
+        typeof codoxearSessionHelpers.sessionLaunchKind !== "function" ||
+        typeof codoxearSessionHelpers.sessionLaunchIcon !== "function" ||
+        typeof codoxearSessionHelpers.sessionHasUnknownSend !== "function" ||
+        typeof codoxearSessionHelpers.sessionIsOrphanRecovery !== "function" ||
+        typeof codoxearSessionHelpers.sessionHasOrphanQueueRecovery !== "function" ||
+        typeof codoxearSessionHelpers.sessionSidebarGroupKey !== "function" ||
+        typeof codoxearSessionHelpers.sidebarSessionEntries !== "function" ||
+        typeof codoxearSessionHelpers.sidebarRenderSignature !== "function" ||
+        typeof codoxearSessionHelpers.sessionSelectable !== "function" ||
+        typeof codoxearSessionHelpers.sessionIsFast !== "function" ||
+        typeof codoxearSessionHelpers.diagnosticsProviderDisplay !== "function" ||
+        typeof codoxearSessionHelpers.diagnosticsCopyText !== "function" ||
+        typeof codoxearSessionHelpers.normalizeQueueItems !== "function"
+      )
+        throw new Error("Codoxear session helpers failed to load");
+      const SESSION_SIDEBAR_GROUPS = codoxearSessionHelpers.SESSION_SIDEBAR_GROUPS;
+
       function sessionLaunchKind(s) {
-        if (sessionLaunchFailed(s)) return "failed";
-        if (s && s.transport === "tmux") return "web_tmux";
-        if (s && s.owned) return "web";
-        return "terminal";
+        return codoxearSessionHelpers.sessionLaunchKind(s);
       }
 
       function sessionLaunchIcon(s) {
-        const kind = sessionLaunchKind(s);
-        if (kind === "failed") return "info";
-        if (kind === "web_tmux") return "tmux";
-        return kind === "web" ? "web" : "terminal";
+        return codoxearSessionHelpers.sessionLaunchIcon(s);
       }
 
       function sessionLaunchFailed(s) {
-        return !!(s && String(s.launch_state || "").trim().toLowerCase() === "failed");
+        return codoxearSessionHelpers.sessionLaunchFailed(s);
       }
 
       function sessionLaunchPending(s) {
-        const state = s && String(s.launch_state || "").trim().toLowerCase();
-        return !!(state && state !== "failed");
+        return codoxearSessionHelpers.sessionLaunchPending(s);
+      }
+
+      function sessionHasUnknownSend(s) {
+        return codoxearSessionHelpers.sessionHasUnknownSend(s);
+      }
+
+      function sessionIsOrphanRecovery(s) {
+        return codoxearSessionHelpers.sessionIsOrphanRecovery(s);
+      }
+
+      function sessionHasOrphanQueueRecovery(s) {
+        return codoxearSessionHelpers.sessionHasOrphanQueueRecovery(s);
+      }
+
+      function sessionSidebarGroupKey(s) {
+        return codoxearSessionHelpers.sessionSidebarGroupKey(s);
+      }
+
+      function sidebarSessionEntries(sessions) {
+        return codoxearSessionHelpers.sidebarSessionEntries(sessions);
+      }
+
+      function sidebarRenderSignature(entries, { selectedId = "", swipeActions = false } = {}) {
+        return codoxearSessionHelpers.sidebarRenderSignature(entries, { selectedId, swipeActions });
       }
 
       function sessionSelectable(s) {
-        return !!(s && !sessionLaunchPending(s));
+        return codoxearSessionHelpers.sessionSelectable(s);
+      }
+
+      function diagnosticsProviderDisplay(d) {
+        return codoxearSessionHelpers.diagnosticsProviderDisplay(d, sessionAgentBackend(d));
+      }
+
+      function diagnosticsCopyText(sessionId, rows) {
+        return codoxearSessionHelpers.diagnosticsCopyText(sessionId, rows);
+      }
+
+      function normalizeQueueItems(data) {
+        return codoxearSessionHelpers.normalizeQueueItems(data);
+      }
+
+      const codoxearPolling = window.CodoxearPolling;
+      if (
+        !codoxearPolling ||
+        !codoxearPolling.POLLING_INTERVALS ||
+        typeof codoxearPolling.sessionsPollDelayMs !== "function" ||
+        typeof codoxearPolling.secondaryPollDelayMs !== "function" ||
+        typeof codoxearPolling.browserOffline !== "function" ||
+        typeof codoxearPolling.messagePollErrorDelayMs !== "function" ||
+        typeof codoxearPolling.messagePollDelayMs !== "function" ||
+        typeof codoxearPolling.normalizeMessagePollKickDelay !== "function"
+      )
+        throw new Error("Codoxear polling helpers failed to load");
+
+      const codoxearConversationCopy = window.CodoxearConversationCopy;
+      if (
+        !codoxearConversationCopy ||
+        typeof codoxearConversationCopy.formatConversationForCopy !== "function" ||
+        typeof codoxearConversationCopy.formatConversationForCopyResult !== "function" ||
+        typeof codoxearConversationCopy.transcriptExportTooLargeCopyMessage !== "function"
+      )
+        throw new Error("Codoxear conversation-copy helpers failed to load");
+
+      function transcriptExportTooLargeCopyMessage(err) {
+        return codoxearConversationCopy.transcriptExportTooLargeCopyMessage(err);
+      }
+
+      function copyConversationFailureToast(err) {
+        return transcriptExportTooLargeCopyMessage(err) || `copy failed: ${err && err.message ? err.message : "unknown error"}`;
       }
 
       function normalizeAgentBackendName(value) {
-        const raw = String(value || "").trim().toLowerCase();
-        if (raw === "pi") return "pi";
-        return "codex";
+        return codoxearLaunch.normalizeAgentBackendName(value);
       }
-
       function agentBackendDisplayName(value) {
-        const backend = normalizeAgentBackendName(value);
-        return backend === "pi" ? "Pi" : "Codex";
+        return codoxearLaunch.agentBackendDisplayName(value);
       }
-
       function agentBackendLogoPath(value) {
-        const backend = normalizeAgentBackendName(value);
-        return resolveAppUrl(`/static/logos/${backend}.svg`);
+        return codoxearLaunch.agentBackendLogoPath(value);
       }
-
-      function sessionAgentBackend(s) {
-        if (!s || typeof s !== "object") return "codex";
-        return normalizeAgentBackendName(s.agent_backend);
+      function sessionAgentBackend(session) {
+        return codoxearLaunch.sessionAgentBackend(session);
       }
-
       function legacyCodexLaunchDefaults(seed = {}) {
-        const raw = seed && typeof seed === "object" ? seed : {};
-        const modelProviders = Array.isArray(raw.model_providers) ? raw.model_providers.slice() : ["chatgpt", "openai-api"];
-        if (!modelProviders.includes("chatgpt")) modelProviders.unshift("chatgpt");
-        if (!modelProviders.includes("openai-api")) modelProviders.splice(Math.min(1, modelProviders.length), 0, "openai-api");
-        return {
-          agent_backend: "codex",
-          model_provider: typeof raw.model_provider === "string" ? raw.model_provider : "openai",
-          preferred_auth_method: typeof raw.preferred_auth_method === "string" ? raw.preferred_auth_method : "chatgpt",
-          provider_choice: typeof raw.provider_choice === "string" ? raw.provider_choice : "chatgpt",
-          provider_choices: modelProviders,
-          model: typeof raw.model === "string" ? raw.model : null,
-          models: Array.isArray(raw.models) ? raw.models.slice() : [],
-          model_providers: modelProviders,
-          reasoning_effort: typeof raw.reasoning_effort === "string" ? raw.reasoning_effort : "high",
-          reasoning_efforts: Array.isArray(raw.reasoning_efforts) ? raw.reasoning_efforts.slice() : ["xhigh", "high", "medium", "low"],
-          service_tier: typeof raw.service_tier === "string" ? raw.service_tier : "flex",
-          supports_fast: raw.supports_fast !== false,
-        };
+        return codoxearLaunch.legacyCodexLaunchDefaults(seed);
       }
-
       function emptyPiLaunchDefaults(seed = {}) {
-        const raw = seed && typeof seed === "object" ? seed : {};
-        const providerChoices = Array.isArray(raw.provider_choices) ? raw.provider_choices.slice() : [];
-        const modelChoices = Array.isArray(raw.models) ? raw.models.slice() : [];
-        return {
-          agent_backend: "pi",
-          model_provider: typeof raw.model_provider === "string" ? raw.model_provider : null,
-          preferred_auth_method: null,
-          provider_choice: typeof raw.provider_choice === "string" ? raw.provider_choice : null,
-          provider_choices: providerChoices,
-          model: typeof raw.model === "string" ? raw.model : null,
-          models: modelChoices,
-          reasoning_effort: typeof raw.reasoning_effort === "string" ? raw.reasoning_effort : "high",
-          reasoning_efforts: Array.isArray(raw.reasoning_efforts) ? raw.reasoning_efforts.slice() : ["off", "minimal", "low", "medium", "high", "xhigh"],
-          service_tier: null,
-          supports_fast: false,
-        };
+        return codoxearLaunch.emptyPiLaunchDefaults(seed);
       }
-
+      function emptyCcLaunchDefaults(seed = {}) {
+        return codoxearLaunch.emptyCcLaunchDefaults(seed);
+      }
       function defaultsForAgentBackend(backend) {
-        const normalized = normalizeAgentBackendName(backend);
-        const raw = newSessionDefaults && typeof newSessionDefaults === "object" ? newSessionDefaults : {};
-        if (raw.backends && typeof raw.backends === "object") {
-          const item = raw.backends[normalized];
-          if (item && typeof item === "object") {
-            return normalized === "pi" ? emptyPiLaunchDefaults(item) : legacyCodexLaunchDefaults(item);
-          }
-        }
-        return normalized === "pi" ? emptyPiLaunchDefaults() : legacyCodexLaunchDefaults(raw);
+        return codoxearLaunch.defaultsForAgentBackend(backend, newSessionDefaults);
       }
-
       function providerChoicesForBackend(backend) {
-        const defaults = defaultsForAgentBackend(backend);
-        const out = [];
-        for (const value of Array.isArray(defaults.provider_choices) ? defaults.provider_choices : []) {
-          if (typeof value !== "string") continue;
-          const trimmed = value.trim();
-          if (!trimmed || out.includes(trimmed)) continue;
-          out.push(trimmed);
-        }
-        return out;
+        return codoxearLaunch.providerChoicesForBackend(backend, newSessionDefaults);
       }
-
-      function reasoningChoicesForBackend(backend) {
-        const defaults = defaultsForAgentBackend(backend);
-        const out = [];
-        for (const value of Array.isArray(defaults.reasoning_efforts) ? defaults.reasoning_efforts : []) {
-          if (typeof value !== "string") continue;
-          const trimmed = value.trim().toLowerCase();
-          if (!trimmed || out.includes(trimmed)) continue;
-          out.push(trimmed);
-        }
-        return out;
+      function reasoningChoicesForBackend(backend, options = {}) {
+        return codoxearLaunch.reasoningChoicesForBackend(backend, newSessionDefaults, options);
       }
-
       function backendSupportsFast(backend) {
-        return !!defaultsForAgentBackend(backend).supports_fast;
+        return codoxearLaunch.backendSupportsFast(backend, newSessionDefaults);
+      }
+
+      function redactedLaunchErrorText(value) {
+        return codoxearLaunch.redactedLaunchErrorText(value);
       }
 
       function sessionLaunchLabel(s) {
         const kind = sessionLaunchKind(s);
-        if (kind === "failed") return s && s.launch_error ? String(s.launch_error) : "session launch failed";
+        if (kind === "failed") return redactedLaunchErrorText(s && s.launch_error) || "session launch failed";
         if (kind === "web_tmux") return "web-owned tmux session";
         return kind === "web" ? "web-owned session" : "terminal-owned session";
       }
 
       function sessionIsFast(s) {
-        return !!(s && typeof s.service_tier === "string" && s.service_tier.trim().toLowerCase() === "fast");
+        return codoxearSessionHelpers.sessionIsFast(s);
       }
 
       function providerChoiceToSettings(choice, agentBackend = "codex") {
-        const backend = normalizeAgentBackendName(agentBackend);
-        const value = String(choice || "").trim() || "chatgpt";
-        if (backend === "pi") return { model_provider: value || null, preferred_auth_method: null };
-        if (value === "chatgpt") return { model_provider: "openai", preferred_auth_method: "chatgpt" };
-        if (value === "openai-api") return { model_provider: "openai", preferred_auth_method: "apikey" };
-        return { model_provider: value, preferred_auth_method: "apikey" };
+        return codoxearLaunch.providerChoiceToSettings(choice, agentBackend);
       }
-
-      function sessionProviderChoice(s) {
-        if (!s || typeof s !== "object") return "chatgpt";
-        const explicit = typeof s.provider_choice === "string" ? s.provider_choice.trim() : "";
-        if (explicit) return explicit;
-        const provider = typeof s.model_provider === "string" ? s.model_provider.trim() : "";
-        const auth = typeof s.preferred_auth_method === "string" ? s.preferred_auth_method.trim() : "";
-        if (provider === "openai") return auth === "chatgpt" ? "chatgpt" : "openai-api";
-        return provider || "chatgpt";
+      function sessionProviderChoice(session) {
+        return codoxearLaunch.sessionProviderChoice(session);
+      }
+      function modelOptionMatches(option, query) {
+        return codoxearLaunch.modelOptionMatches(option, query);
+      }
+      function providerModelDisplay(model, providerChoice = "", options = {}) {
+        return codoxearLaunch.providerModelDisplay(model, providerChoice, options);
       }
 
 	      function fmtIdleAge(seconds) {
-	        const s = Number(seconds);
-	        if (!(s >= 0)) return "";
-	        if (s < 60) return "just now";
-	        if (s < 3600) return `${Math.max(1, Math.floor(s / 60))}m`;
-	        if (s < 86400) return `${Math.max(1, Math.floor(s / 3600))}h`;
-	        return `${Math.max(1, Math.floor(s / 86400))}d`;
-	      }
+        return codoxearDisplay.fmtIdleAge(seconds);
+      }
 
 	      function fmtRelativeAge(seconds) {
-	        const base = fmtIdleAge(seconds);
-	        if (!base || base === "just now") return base;
-	        return `${base} ago`;
-	      }
+        return codoxearDisplay.fmtRelativeAge(seconds);
+      }
 
       function sessionTitleWithId(s) {
-        if (!s || typeof s !== "object") return "No session selected";
-        const name = sessionDisplayName(s);
-        return name || "No session selected";
-      }
-
-      function escapeHtml(s) {
-        return String(s)
-          .replaceAll("&", "&amp;")
-          .replaceAll("<", "&lt;")
-          .replaceAll(">", "&gt;")
-          .replaceAll('"', "&quot;")
-          .replaceAll("'", "&#39;");
-      }
-
-      function safeUrl(u) {
-        try {
-          const url = new URL(String(u), location.origin);
-          if (url.protocol === "http:" || url.protocol === "https:" || url.protocol === "mailto:") return url.href;
-        } catch (e) {
-          console.error("safeUrl: invalid url", { u, e });
-        }
-        return null;
-      }
-
-      const CLICKABLE_FILE_EXTENSIONS = new Set([
-        "7z",
-        "3gp",
-        "avi",
-        "bash",
-        "bin",
-        "bz2",
-        "c",
-        "cc",
-        "cfg",
-        "conf",
-        "cpp",
-        "css",
-        "csv",
-        "flv",
-        "gif",
-        "go",
-        "gz",
-        "h",
-        "hpp",
-        "html",
-        "htm",
-        "ico",
-        "ini",
-        "java",
-        "jpeg",
-        "jpg",
-        "js",
-        "json",
-        "jsonl",
-        "log",
-        "m4v",
-        "md",
-        "mkv",
-        "mov",
-        "mp4",
-        "mpeg",
-        "mpg",
-        "ogv",
-        "pdf",
-        "patch",
-        "png",
-        "py",
-        "rs",
-        "scss",
-        "sh",
-        "sql",
-        "svg",
-        "tar",
-        "tgz",
-        "toml",
-        "ts",
-        "tsx",
-        "txt",
-        "webm",
-        "webp",
-        "wmv",
-        "xml",
-        "xz",
-        "yaml",
-        "yml",
-        "zip",
-        "zsh",
-      ]);
-
-      function filePathExtension(path) {
-        const last = String(path || "").split("/").pop() || "";
-        const idx = last.lastIndexOf(".");
-        if (idx <= 0 || idx === last.length - 1) return "";
-        return last.slice(idx + 1).toLowerCase();
-      }
-
-      function hasClickableFileExtension(path) {
-        const ext = filePathExtension(path);
-        return ext ? CLICKABLE_FILE_EXTENSIONS.has(ext) : false;
-      }
-
-      function normalizeLineNumber(value) {
-        const n = Number(value);
-        if (!Number.isFinite(n) || n <= 0) return null;
-        return Math.max(1, Math.floor(n));
-      }
-
-      function isTextFileKind(kind) {
-        return kind === "text" || kind === "markdown";
-      }
-
-      function isDiffableFileKind(kind) {
-        return isTextFileKind(kind);
-      }
-
-      function blockedFileMessage(rel, reason, viewerMaxBytes, size) {
-        const name = String(rel || "file");
-        if (reason === "too_large") {
-          const maxText = viewerMaxBytes ? fmtBytes(viewerMaxBytes) : "the viewer limit";
-          return `${name} is ${fmtBytes(size)}. The viewer refuses to render text beyond ${maxText}. Use Download instead.`;
-        }
-        return `${name} is not renderable as text, markdown, image, or PDF. Use Download instead.`;
-      }
-
-      function formatPriorityOffset(value) {
-        const n = Number(value);
-        if (!Number.isFinite(n)) return "0.00";
-        return `${n >= 0 ? "+" : ""}${n.toFixed(2)}`;
-      }
-
-      function parseFileLocation(rawValue) {
-        const raw = String(rawValue || "").trim();
-        if (!raw) return null;
-        let path = raw;
-        let line = null;
-        let m = path.match(/^(.*)#L(\d+)(?:-\d+)?$/);
-        if (m) {
-          path = m[1];
-          line = normalizeLineNumber(m[2]);
-        } else {
-          m = path.match(/^(.*):(\d+)(?::\d+)?$/);
-          if (m && !/^[A-Za-z]:$/.test(m[1])) {
-            path = m[1];
-            line = normalizeLineNumber(m[2]);
-          }
-        }
-        path = String(path || "").trim();
-        if (!path) return null;
-        return { path, line };
+        return codoxearDisplay.sessionTitleWithId(s);
       }
 
       function stripPathLocationSuffix(rawPath) {
-        const parsed = parseFileLocation(rawPath);
-        return parsed ? parsed.path : String(rawPath || "").trim();
+        return codoxearFileHelpers.stripPathLocationSuffix(rawPath);
       }
 
+      function isTextFileKind(kind) {
+        return codoxearFileHelpers.isTextFileKind(kind);
+      }
+
+      function isDiffableFileKind(kind) {
+        return codoxearFileHelpers.isDiffableFileKind(kind);
+      }
+
+      function blockedFileMessage(rel, reason, viewerMaxBytes, size) {
+        return codoxearFileHelpers.blockedFileMessage(rel, reason, viewerMaxBytes, size);
+      }
+
+      function formatPriorityOffset(value) {
+        return codoxearFileHelpers.formatPriorityOffset(value);
+      }
+
+      function fileSearchScore(candidate, query) {
+        return codoxearFileHelpers.fileSearchScore(candidate, query);
+      }
+
+      function normalizeDraftFilePath(raw) {
+        return codoxearFileHelpers.normalizeDraftFilePath(raw);
+      }
+
+      function filePickerFoldedSearchText(text) {
+        return codoxearFileHelpers.filePickerFoldedSearchText(text);
+      }
+
+      function filePickerOriginalRangeForFolded(mapped, start, end) {
+        return codoxearFileHelpers.filePickerOriginalRangeForFolded(mapped, start, end);
+      }
+
+      function filePickerMatchRanges(text, query) {
+        return codoxearFileHelpers.filePickerMatchRanges(text, query);
+      }
+
+      function filePickerMatchRangesForQuery(text, query) {
+        return codoxearFileHelpers.filePickerMatchRangesForQuery(text, query);
+      }
+
+      function filePickerCandidateScore(path, query) {
+        return codoxearFileHelpers.filePickerCandidateScore(path, query);
+      }
+
+      function compareFilePickerEntries(a, b) {
+        return codoxearFileHelpers.compareFilePickerEntries(a, b);
+      }
+
+      function normalizeFileCandidateSource(source) {
+        return codoxearFileHelpers.normalizeFileCandidateSource(source);
+      }
+
+      function filePickerSectionLabel(source) {
+        return codoxearFileHelpers.filePickerSectionLabel(source);
+      }
+
+      function duplicateFilePickerPaths(entries) {
+        return codoxearFileHelpers.duplicateFilePickerPaths(entries);
+      }
+
+      function rawByteDuplicatePaths(entries) {
+        return codoxearFileHelpers.rawByteDuplicatePaths(entries);
+      }
+
+      function filePickerIdentityHint(entry, duplicatePaths, options) {
+        return codoxearFileHelpers.filePickerIdentityHint(entry, duplicatePaths, options);
+      }
+
+      function filePickerTitle(entry, hint = "") {
+        return codoxearFileHelpers.filePickerTitle(entry, hint);
+      }
+
+      function dataTransferHasFiles(data) {
+        return codoxearFileHelpers.dataTransferHasFiles(data);
+      }
+
+      function extractFilesFromClipboardData(data) {
+        return codoxearFileHelpers.extractFilesFromClipboardData(data);
+      }
+
+      function extractFilesFromDropData(data) {
+        return codoxearFileHelpers.extractFilesFromDropData(data);
+      }
+
+      function safeAttachmentStem(name) {
+        return codoxearFileHelpers.attachmentSafeStem(name);
+      }
+
+      function isLikelyHeic(file) {
+        return codoxearFileHelpers.attachmentIsLikelyHeic(file);
+      }
+
+      function looksLikeImage(file) {
+        return codoxearFileHelpers.attachmentLooksLikeImage(file);
+      }
+
+      function b64FromBytes(bytes) {
+        return codoxearFileHelpers.bytesToBase64(bytes, btoa);
+      }
+
+      const codoxearFilePicker = window.CodoxearFilePicker;
+      if (
+        !codoxearFilePicker ||
+        typeof codoxearFilePicker.appendDraftFileMenuItem !== "function" ||
+        typeof codoxearFilePicker.appendFilePickerEntryItem !== "function" ||
+        typeof codoxearFilePicker.appendFilePickerSection !== "function" ||
+        typeof codoxearFilePicker.appendFilePickerStatusRow !== "function" ||
+        typeof codoxearFilePicker.appendHighlightedFileMenuPath !== "function" ||
+        typeof codoxearFilePicker.createEntryRuntime !== "function" ||
+        typeof codoxearFilePicker.createInputRuntime !== "function" ||
+        typeof codoxearFilePicker.createMenuDomRuntime !== "function" ||
+        typeof codoxearFilePicker.createMenuRenderRuntime !== "function" ||
+        typeof codoxearFilePicker.createMenuState !== "function" ||
+        typeof codoxearFilePicker.createSearchState !== "function" ||
+        typeof codoxearFilePicker.localFilePickerSearchEntries !== "function" ||
+        typeof codoxearFilePicker.visibleFilePickerEntries !== "function"
+      )
+        throw new Error("Codoxear file picker helpers failed to load");
+
+      const codoxearFileViewer = window.CodoxearFileViewer;
+      if (
+        !codoxearFileViewer ||
+        typeof codoxearFileViewer.bindFileTouchClick !== "function" ||
+        typeof codoxearFileViewer.bindFileTouchPress !== "function" ||
+        typeof codoxearFileViewer.createFileDownloadRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileFallbackRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileInspectRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileLoadResultRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileCandidateRefreshRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileViewerPanelRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileViewerLifecycleRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileModeControlsRuntime !== "function" ||
+        typeof codoxearFileViewer.createFilePasteDialogRuntime !== "function" ||
+        typeof codoxearFileViewer.createFilePdfRenderRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileReferenceRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileRenderSurfaceRuntime !== "function" ||
+        typeof codoxearFileViewer.createOpenedFileRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileTouchToolbarRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileUnsavedDialogRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileViewerModalRuntime !== "function" ||
+        typeof codoxearFileViewer.createFileViewerController !== "function" ||
+        typeof codoxearFileViewer.createFileVideoPreviewRuntime !== "function" ||
+        typeof codoxearFileViewer.createPdfLoader !== "function"
+      )
+        throw new Error("Codoxear file viewer controller failed to load");
+
+      const codoxearFileEditor = window.CodoxearFileEditor;
+      if (
+        !codoxearFileEditor ||
+        typeof codoxearFileEditor.createFileEditorRuntime !== "function" ||
+        typeof codoxearFileEditor.createFileEditorRenderer !== "function" ||
+        typeof codoxearFileEditor.createMonacoLoader !== "function"
+      )
+        throw new Error("Codoxear file editor runtime failed to load");
+
+      const codoxearMarkdown = window.CodoxearMarkdown;
+      if (
+        !codoxearMarkdown ||
+        typeof codoxearMarkdown.normalizeLineNumber !== "function" ||
+        typeof codoxearMarkdown.parseLocalFileRef !== "function" ||
+        typeof codoxearMarkdown.isMarkdownPreviewable !== "function" ||
+        typeof codoxearMarkdown.markdownPreviewHtml !== "function" ||
+        typeof codoxearMarkdown.chatMarkdownHtmlCached !== "function"
+      )
+        throw new Error("Codoxear markdown helpers failed to load");
+      function normalizeLineNumber(value) {
+        return codoxearMarkdown.normalizeLineNumber(value);
+      }
       function parseLocalFileRef(rawValue) {
-        const parsed = parseFileLocation(rawValue);
-        if (!parsed) return null;
-        const path = parsed.path;
-        if (!path) return null;
-        if (path.includes("://") || path.startsWith("mailto:")) return null;
-        if (path.startsWith("//")) return null;
-        const looksAbsolute = path.startsWith("/");
-        const looksRelative = path.startsWith("./") || path.startsWith("../") || path.includes("/");
-        const looksBareFile = !looksAbsolute && !looksRelative && hasClickableFileExtension(path);
-        if (!looksAbsolute && !looksRelative && !looksBareFile) return null;
-        return { path, line: parsed.line };
+        return codoxearMarkdown.parseLocalFileRef(rawValue);
       }
-
-      function normalizePathLike(rawPath) {
-        const raw = String(rawPath || "").trim();
-        if (!raw) return "";
-        const absolute = raw.startsWith("/");
-        const parts = raw.split("/");
-        const out = [];
-        for (const part of parts) {
-          if (!part || part === ".") continue;
-          if (part === "..") {
-            if (out.length && out[out.length - 1] !== "..") {
-              out.pop();
-              continue;
-            }
-            if (!absolute) out.push("..");
-            continue;
-          }
-          out.push(part);
-        }
-        const joined = out.join("/");
-        if (absolute) return joined ? `/${joined}` : "/";
-        return joined || ".";
-      }
-
-      function pathDirname(rawPath) {
-        const raw = normalizePathLike(rawPath);
-        if (!raw || raw === ".") return ".";
-        if (raw === "/") return "/";
-        const idx = raw.lastIndexOf("/");
-        if (idx < 0) return ".";
-        if (idx === 0) return "/";
-        return raw.slice(0, idx);
-      }
-
-      function resolveRelativePath(basePath, rawPath) {
-        const raw = String(rawPath || "").trim();
-        if (!raw) return "";
-        if (raw.startsWith("/")) return normalizePathLike(raw);
-        const baseDir = pathDirname(basePath);
-        if (!baseDir || baseDir === ".") return normalizePathLike(raw);
-        if (baseDir === "/") return normalizePathLike(`/${raw}`);
-        return normalizePathLike(`${baseDir}/${raw}`);
-      }
-
-      function resolveLocalRefWithOptions(ref, options) {
-        if (!ref || !options || typeof options.resolveLocalRef !== "function") return ref;
-        const next = options.resolveLocalRef({ path: ref.path, line: ref.line });
-        if (!next || typeof next.path !== "string" || !next.path.trim()) return ref;
-        return { path: next.path.trim(), line: normalizeLineNumber(next.line ?? ref.line) };
-      }
-
-      function rewriteOaiMemCitations(rawText) {
-        const raw = String(rawText ?? "");
-        if (!raw.includes("<oai-mem-citation>")) return raw;
-        const blockRe =
-          /<oai-mem-citation>\s*<citation_entries>\s*([\s\S]*?)\s*<\/citation_entries>\s*<rollout_ids>[\s\S]*?<\/rollout_ids>\s*<\/oai-mem-citation>/g;
-        return raw.replace(blockRe, (whole, body) => {
-          const lines = String(body || "")
-            .split("\n")
-            .map((line) => line.trim())
-            .filter(Boolean);
-          if (!lines.length) return whole;
-          const items = [];
-          for (const line of lines) {
-            const m = line.match(/^(.*?):(\d+)(?:-(\d+))?\|note=\[(.*)\]$/);
-            if (!m) return whole;
-            const relPath = String(m[1] || "").trim().replace(/^\.?\//, "");
-            const startLine = normalizeLineNumber(m[2]);
-            const endLine = normalizeLineNumber(m[3]);
-            const note = String(m[4] || "").trim();
-            if (!relPath || !startLine || !note) return whole;
-            const rangeSuffix = endLine && endLine >= startLine ? `#L${startLine}-${endLine}` : `#L${startLine}`;
-            const target = `~/.codex/memories/${relPath}${rangeSuffix}`;
-            items.push(`[${note}](${target})`);
-          }
-          return `\n---\n\nMemory citations:\n${items.map((item, idx) => `${idx + 1}. ${item}`).join("\n")}`;
-        });
-      }
-
-      function localFileRefFromRef(u, options = null) {
-        const raw = String(u ?? "").trim();
-        if (!raw) return null;
-        const direct = parseLocalFileRef(raw);
-        if (direct) return resolveLocalRefWithOptions(direct, options);
-        try {
-          const url = new URL(raw, location.href);
-          if (url.origin !== location.origin) return null;
-          const combined = `${decodeURIComponent(url.pathname || "")}${url.hash || ""}`;
-          const parsed = parseLocalFileRef(combined);
-          if (!parsed) return null;
-          if (parsed.path.startsWith("/") && /^\/(?:home|tmp|mnt|var|opt|usr|etc|private|Users|Volumes)\//.test(parsed.path)) {
-            return resolveLocalRefWithOptions(parsed, options);
-          }
-        } catch {}
-        return null;
-      }
-
-      function fileLocationDisplaySuffix(rawRef, lineNumber) {
-        const line = normalizeLineNumber(lineNumber);
-        if (!line) return "";
-        const raw = String(rawRef ?? "").trim();
-        if (/#L\d+(?:-\d+)?$/i.test(raw)) return `#L${line}`;
-        if (/:\d+(?::\d+)?$/.test(raw)) return `:${line}`;
-        return `#L${line}`;
-      }
-
-      function formatLocalFileLinkLabel(label, rawRef, localRef) {
-        const text = String(label ?? "");
-        if (!localRef || !localRef.line) return text;
-        const parsedLabel = parseFileLocation(text);
-        if (parsedLabel && parsedLabel.line) return text;
-        if (!parseLocalFileRef(text)) return text;
-        return `${text}${fileLocationDisplaySuffix(rawRef, localRef.line)}`;
-      }
-
-      function renderInlineText(rawText, options = null) {
-        const raw = String(rawText ?? "");
-        const re =
-          /(^|[\s([{"'])((?:\/[A-Za-z0-9._~@%+=:,/-]+|(?:\.{1,2}\/)?[A-Za-z0-9._~@-]+(?:\/[A-Za-z0-9._~@-]+)+|[A-Za-z0-9._~@-]+\.[A-Za-z0-9._-]+)(?:#L\d+(?:-\d+)?)?(?::\d+(?::\d+)?)?)(?=$|[\s)\]}:;"',!?])/g;
-        let out = "";
-        let last = 0;
-        for (;;) {
-          const m = re.exec(raw);
-          if (!m) break;
-          const wholeStart = m.index;
-          const tokenStart = wholeStart + m[1].length;
-          const token = m[2];
-          out += escapeHtml(raw.slice(last, tokenStart));
-          const ref = resolveLocalRefWithOptions(parseLocalFileRef(token), options);
-          if (ref) {
-            out += `<span data-candidate-file-path="${escapeHtml(ref.path)}"${ref.line ? ` data-candidate-file-line="${ref.line}"` : ""}>${escapeHtml(token)}</span>`;
-          } else {
-            out += escapeHtml(token);
-          }
-          last = tokenStart + token.length;
-        }
-        out += escapeHtml(raw.slice(last));
-        return out;
-      }
-
-      function renderInlineMd(s, options = null) {
-        const raw = String(s ?? "");
-        const re = /!\[([^\]]*)\]\(([^)]+)\)|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*/g;
-        let out = "";
-        let last = 0;
-        for (;;) {
-          const m = re.exec(raw);
-          if (!m) break;
-          out += renderInlineText(raw.slice(last, m.index), options);
-          if (m[1] !== undefined) {
-            const imageAlt = m[1];
-            const imageRef = m[2];
-            const localImageRef = localFileRefFromRef(imageRef, options);
-            const imageSrc =
-              options && typeof options.resolveImageSrc === "function"
-                ? options.resolveImageSrc(imageRef, localImageRef)
-                : safeUrl(imageRef);
-            if (!imageSrc) out += `![${escapeHtml(imageAlt)}](${escapeHtml(imageRef)})`;
-            else out += `<img src="${escapeHtml(imageSrc)}" alt="${escapeHtml(imageAlt)}" loading="lazy" />`;
-          } else if (m[3] !== undefined) {
-            const inlineRef = resolveLocalRefWithOptions(parseLocalFileRef(m[3]), options);
-            if (inlineRef) {
-              out += `<code><span data-candidate-file-path="${escapeHtml(inlineRef.path)}"${inlineRef.line ? ` data-candidate-file-line="${inlineRef.line}"` : ""}>${escapeHtml(m[3])}</span></code>`;
-            } else {
-              out += `<code>${escapeHtml(m[3])}</code>`;
-            }
-          } else if (m[4] !== undefined) {
-            const localRef = localFileRefFromRef(m[5], options);
-            if (localRef) {
-              out += `<span data-candidate-file-path="${escapeHtml(localRef.path)}"${localRef.line ? ` data-candidate-file-line="${localRef.line}"` : ""}>${escapeHtml(formatLocalFileLinkLabel(m[4], m[5], localRef))}</span>`;
-            } else {
-              const href = safeUrl(m[5]);
-              if (!href) out += `${escapeHtml(m[4])} (${escapeHtml(m[5])})`;
-              else out += `<a href="${escapeHtml(href)}" target="_blank" rel="noreferrer noopener">${escapeHtml(m[4])}</a>`;
-            }
-          } else if (m[6] !== undefined) {
-            out += `<strong>${escapeHtml(m[6])}</strong>`;
-          } else {
-            out += escapeHtml(m[0]);
-          }
-          last = m.index + m[0].length;
-        }
-        out += renderInlineText(raw.slice(last), options);
-        return out;
-      }
-
-      // --- Math (KaTeX) support --------------------------------------------------
-      //
-      // Math is extracted from non-code text *before* the rest of the markdown
-      // pipeline runs and replaced with opaque placeholder tokens of the form
-      // "@@MATH<n>@@". Those tokens are plain ASCII (no regex/HTML-significant
-      // characters), so they survive escapeHtml, renderInlineText (which would
-      // otherwise mangle paths/underscores inside math), and nested re-renders
-      // (e.g. blockquotes re-run mdToHtml). After the HTML is assembled, each
-      // placeholder is substituted with the KaTeX output (or a styled fallback
-      // when KaTeX failed to load).
-      const MATH_TOKEN_PREFIX = "@@MATH";
-      const MATH_TOKEN_SUFFIX = "@@";
-
-      function mathToken(id) {
-        return `${MATH_TOKEN_PREFIX}${id}${MATH_TOKEN_SUFFIX}`;
-      }
-
-      function renderMath(latex, displayMode) {
-        const src = String(latex ?? "");
-        if (typeof katex !== "undefined" && katex && typeof katex.renderToString === "function") {
-          try {
-            return String(
-              katex.renderToString(src, {
-                displayMode: !!displayMode,
-                throwOnError: false,
-                strict: "ignore",
-              })
-            );
-          } catch (e) {
-            // fall through to the fallback below
-          }
-        }
-        const cls = displayMode ? "md-math-fallback md-math-display" : "md-math-fallback md-math-inline";
-        const open = displayMode ? "\\[" : "\\(";
-        const close = displayMode ? "\\]" : "\\)";
-        return `<span class="${cls}">${open}${escapeHtml(src)}${close}</span>`;
-      }
-
-      // Apply a transform only outside matched Markdown code spans and links.
-      // Math extraction runs before inline Markdown rendering, so these regions
-      // must be protected here rather than relying on renderInlineMd later.
-      function transformOutsideInlineSyntax(input, transform) {
-        return String(input ?? "")
-          .split(/(`[^`]+`|!?\[[^\]]*\]\([^)]+\))/g)
-          .map((part, index) => (index % 2 ? part : transform(part)))
-          .join("");
-      }
-
-      // Extract display and inline math, replacing each occurrence with an
-      // opaque placeholder. Single-dollar pairs cannot cross a newline or code
-      // span, and currency/shell-shaped openers stay literal.
-      function extractMathFromText(input, store) {
-        const push = (latex, display) => {
-          const id = store.length;
-          store.push({ latex: String(latex).trim(), display: !!display });
-          return mathToken(id);
-        };
-        // A digit immediately after the opener remains literal to avoid
-        // treating currency as math; \(...\) handles numeric-leading TeX.
-        const extractSingleDollar = (text) =>
-          String(text ?? "").replace(
-            /(^|[^\\$])\$(?![\s$\d])([^\s$\n](?:[^\n$]*?[^\s$])?)(?<!\\)\$(?![\w$])/g,
-            (match, prefix, body) => (body.includes(MATH_TOKEN_PREFIX) ? match : `${prefix}${push(body, false)}`)
-          );
-
-        return transformOutsideInlineSyntax(input, (plainText) => {
-          let text = plainText;
-          // Display delimiters are consumed before their inline prefixes.
-          text = text.replace(/\\\[([\s\S]+?)\\\]/g, (_m, body) => push(body, true));
-          text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_m, body) => push(body, true));
-          text = text.replace(/\\\(([\s\S]+?)\\\)/g, (_m, body) => push(body, false));
-          return extractSingleDollar(text);
-        });
-      }
-
-      function substituteMath(html, store) {
-        if (!store.length) return html;
-        let out = html;
-        for (let i = 0; i < store.length; i++) {
-          const entry = store[i];
-          out = out.split(mathToken(i)).join(renderMath(entry.latex, entry.display));
-        }
-        return out;
-      }
-
-      function mdToHtml(src, options = null) {
-        const s = rewriteOaiMemCitations(String(src ?? "").replaceAll("\r\n", "\n"));
-        const listItemInfo = (line) => {
-          const l = String(line ?? "");
-          const mUl = l.match(/^(\s*)([-*\u2022])(\s+)(.*)$/);
-          if (mUl) {
-            return {
-              type: "ul",
-              indent: mUl[1].length,
-              contentIndent: mUl[1].length + mUl[2].length + mUl[3].length,
-              text: (mUl[4] || "").trimStart(),
-            };
-          }
-          const mOl = l.match(/^(\s*)(\d+\.)(\s+)(.*)$/);
-          if (mOl) {
-            return {
-              type: "ol",
-              indent: mOl[1].length,
-              contentIndent: mOl[1].length + mOl[2].length + mOl[3].length,
-              marker: mOl[2],
-              text: (mOl[4] || "").trimStart(),
-            };
-          }
-          return null;
-        };
-
-        const leadingSpaceCount = (line) => {
-          const raw = String(line ?? "");
-          let i = 0;
-          while (i < raw.length && raw[i] === " ") i += 1;
-          return i;
-        };
-
-        const stripContinuationIndent = (line, width) => {
-          const raw = String(line ?? "");
-          let i = 0;
-          while (i < raw.length && i < width && raw[i] === " ") i += 1;
-          return raw.slice(i);
-        };
-
-        const fenceOpenInfo = (line) => {
-          const m = String(line ?? "").match(/^\s{0,3}```\s*([a-zA-Z0-9_-]+)?\s*$/);
-          return m ? { lang: m[1] || "" } : null;
-        };
-
-        const isFenceClose = (line) => /^\s{0,3}```\s*$/.test(String(line ?? ""));
-
-        const pendingListFenceIndent = (priorLines, line) => {
-          const indent = leadingSpaceCount(line);
-          if (!indent) return null;
-          for (let j = priorLines.length - 1; j >= 0; j--) {
-            const prev = priorLines[j] || "";
-            if (!prev.trim()) continue;
-            const info = listItemInfo(prev);
-            if (info) {
-              const contentIndent = info.contentIndent || 0;
-              return indent >= contentIndent && fenceOpenInfo(stripContinuationIndent(line, contentIndent)) ? contentIndent : null;
-            }
-            if (leadingSpaceCount(prev) < indent) return null;
-          }
-          return null;
-        };
-
-        const continuesPriorList = (priorLines, line) => {
-          const next = listItemInfo(line);
-          if (!next) return false;
-          for (let j = priorLines.length - 1; j >= 0; j--) {
-            const prev = priorLines[j] || "";
-            if (!prev.trim()) continue;
-            const info = listItemInfo(prev);
-            if (info) return next.indent >= info.indent;
-            if (leadingSpaceCount(prev) < next.indent) return false;
-          }
-          return false;
-        };
-
-        const splitByFences = (input) => {
-          const chunks = [];
-          const lines = String(input ?? "").split("\n");
-          let textLines = [];
-          let inFence = false;
-          let fenceLang = "";
-          let fenceLines = [];
-          let fenceStart = "";
-          let deferredFenceIndent = null;
-
-          const flushText = () => {
-            const v = textLines.join("\n");
-            textLines = [];
-            if (v.trim()) chunks.push({ type: "text", value: v });
-          };
-          const flushFence = () => {
-            const v = fenceLines.join("\n");
-            fenceLines = [];
-            chunks.push({ type: "code", lang: fenceLang, value: v });
-            fenceLang = "";
-            fenceStart = "";
-          };
-
-          for (const line of lines) {
-            if (deferredFenceIndent !== null) {
-              textLines.push(line);
-              if (isFenceClose(stripContinuationIndent(line, deferredFenceIndent))) deferredFenceIndent = null;
-              continue;
-            }
-            if (!inFence) {
-              const m = fenceOpenInfo(line);
-              const nestedIndent = pendingListFenceIndent(textLines, line);
-              if (m || nestedIndent !== null) {
-                if (nestedIndent !== null) {
-                  deferredFenceIndent = nestedIndent;
-                  textLines.push(line);
-                  continue;
-                }
-                flushText();
-                inFence = true;
-                fenceLang = m.lang || "";
-                fenceStart = line;
-                fenceLines = [];
-                continue;
-              }
-              textLines.push(line);
-              continue;
-            }
-            if (isFenceClose(line)) {
-              inFence = false;
-              flushFence();
-              continue;
-            }
-            fenceLines.push(line);
-          }
-
-          if (inFence) {
-            // Preserve prior behavior: an unclosed fence is not treated as code.
-            textLines.push(fenceStart);
-            for (const x of fenceLines) textLines.push(x);
-          }
-          flushText();
-          return chunks;
-        };
-
-        const parseIndentedFence = (lines, start, contentIndent) => {
-          const open = fenceOpenInfo(stripContinuationIndent(lines[start], contentIndent));
-          if (!open) return null;
-          const codeLines = [];
-          let i = start + 1;
-          while (i < lines.length) {
-            const stripped = stripContinuationIndent(lines[i], contentIndent);
-            if (isFenceClose(stripped)) {
-              return { node: { type: "code", lang: open.lang, value: codeLines.join("\n") }, next: i + 1 };
-            }
-            codeLines.push(stripped);
-            i += 1;
-          }
-          return null;
-        };
-
-        const renderCodeBlock = (value, lang) => {
-          const langAttr = lang ? ` data-lang="${escapeHtml(lang)}"` : "";
-          return `<pre><code${langAttr}>${escapeHtml(value)}</code></pre>`;
-        };
-
-        const parseList = (lines, start) => {
-          const head = listItemInfo(lines[start]);
-          if (!head) throw new Error("parseList called on non-list line");
-          const baseIndent = head.indent;
-          const listType = head.type;
-          const items = [];
-
-          let i = start;
-          while (i < lines.length) {
-            const info = listItemInfo(lines[i]);
-            if (!info) {
-              const last = items[items.length - 1];
-              if (last && !String(lines[i] || "").trim()) {
-                let j = i + 1;
-                while (j < lines.length && !String(lines[j] || "").trim()) j += 1;
-                const nextFence = j < lines.length ? parseIndentedFence(lines, j, last.contentIndent || baseIndent) : null;
-                if (nextFence) {
-                  last.blocks.push(nextFence.node);
-                  i = nextFence.next;
-                  continue;
-                }
-                const nextInfo = j < lines.length ? listItemInfo(lines[j]) : null;
-                if (nextInfo && nextInfo.indent >= baseIndent) {
-                  i = j;
-                  continue;
-                }
-              }
-              const fence = last ? parseIndentedFence(lines, i, last.contentIndent || baseIndent) : null;
-              if (!fence) break;
-              last.blocks.push(fence.node);
-              i = fence.next;
-              continue;
-            }
-            if (info.indent < baseIndent) break;
-            if (info.indent > baseIndent) {
-              if (!items.length) break;
-              const child = parseList(lines, i);
-              items[items.length - 1].child = child.node;
-              i = child.next;
-              continue;
-            }
-            if (info.type !== listType) break;
-            items.push({ text: info.text, marker: info.marker || "", contentIndent: info.contentIndent, child: null, blocks: [] });
-            i += 1;
-          }
-          return { node: { type: listType, items }, next: i };
-        };
-
-        const renderList = (node) => {
-          const out = [];
-          out.push(node.type === "ol" ? '<ol class="md-literal-ol">' : "<ul>");
-          for (const it of node.items) {
-            out.push("<li>");
-            if (node.type === "ol") {
-              out.push('<span class="md-list-line">');
-              out.push(`<span class="md-list-marker">${escapeHtml(it.marker || "")}</span>`);
-              out.push(`<span class="md-list-body">${renderInlineMd(it.text || "", options)}</span>`);
-              out.push("</span>");
-            } else {
-              out.push(renderInlineMd(it.text || "", options));
-            }
-            for (const block of it.blocks || []) {
-              if (block.type === "code") out.push(renderCodeBlock(block.value, block.lang));
-            }
-            if (it.child) out.push(renderList(it.child));
-            out.push("</li>");
-          }
-          out.push(node.type === "ol" ? "</ol>" : "</ul>");
-          return out.join("");
-        };
-
-        const splitTableCells = (line) => {
-          let text = String(line ?? "").trim();
-          if (!text.includes("|")) return [];
-          if (text.startsWith("|")) text = text.slice(1);
-          if (text.endsWith("|")) text = text.slice(0, -1);
-          const cells = [];
-          let cell = "";
-          let escaped = false;
-          for (const ch of text) {
-            if (escaped) {
-              cell += ch;
-              escaped = false;
-              continue;
-            }
-            if (ch === "\\") {
-              escaped = true;
-              continue;
-            }
-            if (ch === "|") {
-              cells.push(cell.trim());
-              cell = "";
-              continue;
-            }
-            cell += ch;
-          }
-          if (escaped) cell += "\\";
-          cells.push(cell.trim());
-          return cells;
-        };
-
-        const parseTableAlignmentRow = (line) => {
-          const cells = splitTableCells(line);
-          if (!cells.length) return null;
-          const alignments = [];
-          for (const cell of cells) {
-            const compact = String(cell ?? "").replace(/\s+/g, "");
-            if (!/^:?-{3,}:?$/.test(compact)) return null;
-            if (compact.startsWith(":") && compact.endsWith(":")) alignments.push("center");
-            else if (compact.endsWith(":")) alignments.push("right");
-            else if (compact.startsWith(":")) alignments.push("left");
-            else alignments.push("");
-          }
-          return alignments;
-        };
-
-        const parseTable = (lines, start) => {
-          if (start + 1 >= lines.length) return null;
-          const headerLine = lines[start] || "";
-          const separatorLine = lines[start + 1] || "";
-          if (!headerLine.includes("|") || !separatorLine.includes("|")) return null;
-          const headers = splitTableCells(headerLine);
-          const alignments = parseTableAlignmentRow(separatorLine);
-          if (!headers.length || !alignments || headers.length !== alignments.length) return null;
-          const rows = [];
-          let i = start + 2;
-          while (i < lines.length) {
-            const line = lines[i] || "";
-            if (!line.trim() || !line.includes("|")) break;
-            if (parseTableAlignmentRow(line)) break;
-            const cells = splitTableCells(line);
-            if (cells.length !== headers.length) break;
-            rows.push(cells);
-            i += 1;
-          }
-          return { node: { headers, alignments, rows }, next: i };
-        };
-
-        const renderTableCell = (tag, text, alignment) => {
-          const alignAttr = alignment ? ` style="text-align:${alignment}"` : "";
-          return `<${tag}${alignAttr}>${renderInlineMd(text || "", options)}</${tag}>`;
-        };
-
-        const renderTable = (node) => {
-          const out = [];
-          out.push('<div class="md-table-wrap"><table>');
-          out.push("<thead><tr>");
-          for (let i = 0; i < node.headers.length; i++) {
-            out.push(renderTableCell("th", node.headers[i], node.alignments[i]));
-          }
-          out.push("</tr></thead>");
-          out.push("<tbody>");
-          for (const row of node.rows) {
-            out.push("<tr>");
-            for (let i = 0; i < row.length; i++) {
-              out.push(renderTableCell("td", row[i], node.alignments[i]));
-            }
-            out.push("</tr>");
-          }
-          out.push("</tbody></table></div>");
-          return out.join("");
-        };
-
-        const blockquoteInfo = (line) => {
-          const m = String(line ?? "").match(/^\s{0,3}>(?:[ \t]?)(.*)$/);
-          return m ? { text: m[1] || "" } : null;
-        };
-
-        const parseBlockquote = (lines, start) => {
-          const quoteLines = [];
-          let i = start;
-          while (i < lines.length) {
-            const line = lines[i] || "";
-            const info = blockquoteInfo(line);
-            if (info) {
-              quoteLines.push(info.text);
-              i += 1;
-              continue;
-            }
-            // CommonMark allows lazy continuation lines inside a block quote paragraph.
-            if (quoteLines.length && line.trim()) {
-              quoteLines.push(line);
-              i += 1;
-              continue;
-            }
-            break;
-          }
-          return { node: { type: "blockquote", value: quoteLines.join("\n") }, next: i };
-        };
-
-        const renderBlockquote = (node) => `<blockquote>${mdToHtml(node.value || "", options)}</blockquote>`;
-
-        const splitTextBlocks = (input) => {
-          const blocks = [];
-          const lines = String(input ?? "").split("\n");
-          let current = [];
-          let inFence = false;
-          let currentFenceIndent = 0;
-          const flush = () => {
-            const block = current.join("\n");
-            current = [];
-            if (block.trim()) blocks.push(block);
-          };
-          for (let idx = 0; idx < lines.length; idx++) {
-            const line = lines[idx];
-            const stripped = line.trim();
-            if (!inFence && !stripped) {
-              let j = idx + 1;
-              while (j < lines.length && !String(lines[j] || "").trim()) j += 1;
-              if (
-                j < lines.length &&
-                (pendingListFenceIndent(current, lines[j]) !== null || continuesPriorList(current, lines[j]))
-              ) {
-                current.push(line);
-                continue;
-              }
-              flush();
-              continue;
-            }
-            const nestedIndent = pendingListFenceIndent(current, line);
-            const open = fenceOpenInfo(line);
-            if (!inFence && open) {
-              inFence = true;
-              currentFenceIndent = 0;
-              current.push(line);
-              continue;
-            }
-            if (!inFence && nestedIndent !== null) {
-              inFence = true;
-              currentFenceIndent = nestedIndent;
-              current.push(line);
-              continue;
-            }
-            if (inFence && isFenceClose(stripContinuationIndent(line, currentFenceIndent))) {
-              inFence = false;
-              currentFenceIndent = 0;
-              current.push(line);
-              continue;
-            }
-            current.push(line);
-          }
-          flush();
-          return blocks;
-        };
-
-        const chunks = splitByFences(s);
-        const mathStore = [];
-        for (const c of chunks) {
-          if (c.type === "text") c.value = extractMathFromText(c.value, mathStore);
-        }
-
-        const out = [];
-        for (const c of chunks) {
-          if (c.type === "code") {
-            out.push(renderCodeBlock(c.value, c.lang));
-            continue;
-          }
-          const blocks = splitTextBlocks(c.value);
-          for (const block of blocks) {
-            const lines = block.split("\n").map((x) => x.trimEnd());
-            if (!lines.length) continue;
-
-            const head = lines[0] || "";
-            const mHeading = head.match(/^(#{1,6})\s+(.*)$/);
-            let startIdx = 0;
-            if (mHeading) {
-              const level = mHeading[1].length;
-              out.push(`<h${level}>${renderInlineMd(mHeading[2], options)}</h${level}>`);
-              startIdx = 1;
-            }
-
-            let paraLines = [];
-            const flushPara = () => {
-              const para = paraLines.join("\n").trim();
-              paraLines = [];
-              if (!para) return;
-              out.push(`<p>${renderInlineMd(para, options).replaceAll("\n", "<br />")}</p>`);
-            };
-
-            for (let i = startIdx; i < lines.length; i++) {
-              const l = lines[i] || "";
-              const t = l.trim();
-              if (!t) {
-                flushPara();
-                continue;
-              }
-              if (/^(?:-{3,}|\*{3,}|_{3,})$/.test(t.replace(/\s+/g, ""))) {
-                flushPara();
-                out.push("<hr />");
-                continue;
-              }
-              if (blockquoteInfo(l)) {
-                flushPara();
-                const parsed = parseBlockquote(lines, i);
-                out.push(renderBlockquote(parsed.node));
-                i = parsed.next - 1;
-                continue;
-              }
-              const info = listItemInfo(l);
-              if (info) {
-                flushPara();
-                const parsed = parseList(lines, i);
-                out.push(renderList(parsed.node));
-                i = parsed.next - 1;
-                continue;
-              }
-              const table = parseTable(lines, i);
-              if (table) {
-                flushPara();
-                out.push(renderTable(table.node));
-                i = table.next - 1;
-                continue;
-              }
-              paraLines.push(l);
-            }
-            flushPara();
-          }
-        }
-        return substituteMath(out.join(""), mathStore);
-      }
-
-      const mdCache = new Map();
-      function mdToHtmlCached(src, options = null) {
-        const text = String(src ?? "");
-        const scope = options && typeof options.cacheKey === "string" ? options.cacheKey : "";
-        const key = `${scope}\0${text}`;
-        const hit = mdCache.get(key);
-        if (hit !== undefined) return hit;
-        const html = mdToHtml(text, options);
-        mdCache.set(key, html);
-        if (mdCache.size > 1200) {
-          // Prevent unbounded growth; chat history is expected to be small.
-          mdCache.clear();
-        }
-        return html;
-      }
-
       function isMarkdownPreviewable(path) {
-        const ext = filePathExtension(path);
-        return ext === "md" || ext === "markdown" || ext === "mdown" || ext === "mkd";
+        return codoxearMarkdown.isMarkdownPreviewable(path);
       }
-
-      function previewImageUrlForRef(rawRef, localRef, { filePath, sessionId } = {}) {
-        if (localRef && localRef.path) {
-          if (sessionId) return resolveAppUrl(`/api/sessions/${sessionId}/file/blob?path=${encodeURIComponent(localRef.path)}`);
-          if (localRef.path.startsWith("/")) return resolveAppUrl(`/api/files/blob?path=${encodeURIComponent(localRef.path)}`);
-        }
-        const safe = safeUrl(rawRef);
-        return safe || null;
+      function markdownPreviewHtml(src, options = {}) {
+        return codoxearMarkdown.markdownPreviewHtml(src, options);
       }
-
-      function markdownPreviewHtml(src, { filePath = "", sessionId = "" } = {}) {
-        const basePath = String(filePath || "").trim();
-        const sid = String(sessionId || "").trim();
-        return mdToHtml(src, {
-          resolveLocalRef(ref) {
-            if (!ref || typeof ref.path !== "string") return ref;
-            return { path: resolveRelativePath(basePath, ref.path), line: ref.line };
-          },
-          resolveImageSrc(rawRef, localRef) {
-            return previewImageUrlForRef(rawRef, localRef, { filePath: basePath, sessionId: sid });
-          },
-        });
-      }
-
       function chatMarkdownHtmlCached(src, sessionId) {
-        const sid = String(sessionId || "").trim();
-        return mdToHtmlCached(src, {
-          cacheKey: sid ? `chat:${sid}` : "chat",
-          resolveImageSrc(rawRef, localRef) {
-            return previewImageUrlForRef(rawRef, localRef, { sessionId: sid });
-          },
-        });
+        return codoxearMarkdown.chatMarkdownHtmlCached(src, sessionId);
       }
 
       function iconSvg(name) {
-        if (name === "menu")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>`;
-        if (name === "refresh")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v6h-6"/></svg>`;
-        if (name === "volume")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15 9a5 5 0 0 1 0 6"/><path d="M18.5 6.5a9 9 0 0 1 0 11"/></svg>`;
-        if (name === "bell")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 17H5l2-2v-4a5 5 0 1 1 10 0v4l2 2h-4"/><path d="M10 17a2 2 0 0 0 4 0"/></svg>`;
-        if (name === "play")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
-	        if (name === "harness")
-	          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h3l2-4 3 8 2-4h6"/><path d="M12 21a9 9 0 1 0-9-9"/></svg>`;
-	        if (name === "stop")
-	          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>`;
-	        if (name === "plus")
-	          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>`;
-	        if (name === "logout")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M21 3v18"/></svg>`;
-        if (name === "send")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>`;
-        if (name === "paperclip")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-8.49 8.49a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.19 9.19a2 2 0 0 1-2.83-2.83l8.49-8.49"/></svg>`;
-        if (name === "down")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg>`;
-        if (name === "up")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>`;
-        if (name === "left")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5"/><path d="M12 5 5 12l7 7"/></svg>`;
-        if (name === "right")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>`;
-        if (name === "download")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>`;
-        if (name === "save")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v6h8"/><path d="M9 20v-6h6v6"/></svg>`;
-        if (name === "preview")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>`;
-        if (name === "diff")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 4v16"/><path d="M17 4v16"/><path d="M4 7h6"/><path d="M14 17h6"/><path d="M14 7h6"/><path d="M4 17h6"/></svg>`;
-        if (name === "chevronDown")
-          return `<svg class="icon pickerChevronIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
-        if (name === "trash")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 16h10l1-16"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>`;
-        if (name === "edit")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
-        if (name === "file")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>`;
-        if (name === "x")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>`;
-        if (name === "queue")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>`;
-        if (name === "web")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M4 12h16"/><path d="M12 4a13 13 0 0 1 0 16"/><path d="M12 4a13 13 0 0 0 0 16"/></svg>`;
-        if (name === "terminal")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m7 10 3 2-3 2"/><path d="M13 14h4"/></svg>`;
-        if (name === "tmux")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 5v14"/><path d="M10 12h11"/><path d="m6 10 2 2-2 2"/></svg>`;
-        if (name === "lightning")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 5 14h6l-1 8 8-12h-6z"/></svg>`;
-        if (name === "duplicate")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="11" height="11" rx="2"/><rect x="5" y="5" width="11" height="11" rx="2"/></svg>`;
-        if (name === "copy")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M7 15H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v1"/></svg>`;
-        if (name === "paste")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6"/><path d="M10 2h4a1 1 0 0 1 1 1v2H9V3a1 1 0 0 1 1-1Z"/><rect x="6" y="5" width="12" height="16" rx="2"/><path d="m12 10 0 7"/><path d="m9.5 14.5 2.5 2.5 2.5-2.5"/></svg>`;
-        if (name === "select")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5h4"/><path d="M20 9V5h-4"/><path d="M4 15v4h4"/><path d="M20 15v4h-4"/><path d="M8 5H6a2 2 0 0 0-2 2v2"/><path d="M16 5h2a2 2 0 0 1 2 2v2"/><path d="M8 19H6a2 2 0 0 1-2-2v-2"/><path d="M16 19h2a2 2 0 0 0 2-2v-2"/></svg>`;
-        if (name === "help")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.35 9.25a2.85 2.85 0 1 1 5.3 1.4c-.55.88-1.46 1.34-2.15 1.83-.74.53-1.25 1.08-1.25 2.02"/><circle cx="12" cy="17.2" r="0.9" fill="currentColor" stroke="none"/></svg>`;
-        if (name === "info")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 10.5v5"/><circle cx="12" cy="7.6" r="0.9" fill="currentColor" stroke="none"/></svg>`;
-        if (name === "settings")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.1"/><path d="M19.4 15a1 1 0 0 0 .2 1.1l.05.05a2 2 0 0 1-2.83 2.83l-.05-.05a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.91V20a2 2 0 1 1-4 0v-.08a1 1 0 0 0-.66-.94 1 1 0 0 0-1.08.23l-.05.05a2 2 0 1 1-2.83-2.83l.05-.05a1 1 0 0 0 .2-1.1 1 1 0 0 0-.91-.6H4a2 2 0 1 1 0-4h.08a1 1 0 0 0 .94-.66 1 1 0 0 0-.23-1.08l-.05-.05a2 2 0 1 1 2.83-2.83l.05.05a1 1 0 0 0 1.1.2 1 1 0 0 0 .6-.91V4a2 2 0 1 1 4 0v.08a1 1 0 0 0 .66.94 1 1 0 0 0 1.08-.23l.05-.05a2 2 0 1 1 2.83 2.83l-.05.05a1 1 0 0 0-.2 1.1 1 1 0 0 0 .91.6H20a2 2 0 1 1 0 4h-.08a1 1 0 0 0-.94.66 1 1 0 0 0 .23 1.08z"/></svg>`;
-        return "";
+        return codoxearDisplay.iconSvg(name);
+      }
+
+      let activeAppCleanup = null;
+      function cleanupActiveApp() {
+        if (typeof activeAppCleanup !== "function") return;
+        const cleanup = activeAppCleanup;
+        activeAppCleanup = null;
+        cleanup();
       }
 
       function renderLogin(onAuthed) {
+        cleanupActiveApp();
         const root = $("#root");
         root.innerHTML = "";
-        const err = el("div", { class: "err" });
+        const err = el("div", { class: "err", id: "loginError", role: "alert" });
+        const pwInput = el("input", {
+          type: "password",
+          id: "pw",
+          name: "password",
+          placeholder: "Password",
+          "aria-label": "Password",
+          autocomplete: "current-password",
+          "aria-describedby": "loginError",
+        });
+        const loginBtn = el("button", { class: "primary", id: "loginBtn", type: "submit", text: "Login" });
         const wrap = el("div", { class: "loginWrap" });
-        const box = el("div", { class: "login" }, [
+        const form = el("form", { class: "login", id: "loginForm" }, [
           el("h1", { text: "Codoxear login" }),
+          el("label", { class: "sr-only", for: "pw", text: "Password" }),
           el("div", { class: "row2" }, [
-            el("input", { type: "password", id: "pw", placeholder: "Password" }),
-            el("button", { class: "primary", id: "loginBtn", text: "Login" }),
+            pwInput,
+            loginBtn,
             err,
           ]),
         ]);
-        wrap.appendChild(box);
+        wrap.appendChild(form);
         root.appendChild(wrap);
-        $("#loginBtn").onclick = async () => {
+        form.onsubmit = async (e) => {
+          e.preventDefault();
           err.textContent = "";
-          const pw = $("#pw").value;
+          const pw = pwInput.value;
           try {
             await api("/api/login", { method: "POST", body: { password: pw } });
             onAuthed();
-          } catch (e) {
-            err.textContent = e.obj?.error || e.message;
+          } catch (e2) {
+            err.textContent = e2.obj?.error || e2.message;
           }
         };
+        pwInput.focus();
+        if (typeof window.__codoxearMarkBootstrapped === "function") window.__codoxearMarkBootstrapped();
       }
 
 	      function renderApp() {
+            cleanupActiveApp();
 	        const root = $("#root");
-	        root.innerHTML = "";
-
-	        const backdrop = el("div", { class: "backdrop", id: "backdrop" });
-	        const app = el("div", { class: "app" });
-        const sidebar = el("div", { class: "sidebar" });
-        const sessionsWrap = el("div", { class: "sessions" });
-         const sidebarFooter = el("footer", {}, [
-          el("button", { id: "helpBtnSide", type: "button", title: "Help", "aria-label": "Help", html: iconSvg("help") + "Help" }),
-          el("button", { id: "settingsBtnSide", type: "button", title: "Settings", "aria-label": "Settings", html: iconSvg("settings") + "Settings" }),
-          el("button", { id: "logoutBtnSide", type: "button", title: "Log out", "aria-label": "Log out", html: iconSvg("logout") + "Log out" }),
-        ]);
-        const main = el("div", { class: "main" });
-        const chatWrap = el("div", { class: "chatWrap", id: "chatWrap" });
-        const chat = el("div", { class: "chat", id: "chat" });
-        const chatInner = el("div", { class: "chatInner", id: "chatInner" });
-        const olderWrap = el("div", { class: "olderWrap", id: "olderWrap" });
-        const olderBtn = el("button", {
-          class: "olderBtn",
-          id: "olderBtn",
-          type: "button",
-          text: "Load older messages",
+        const shellDOM = codoxearShell.createShellDOM({
+          root,
+          el,
+          iconSvg,
+          resolveAppUrl,
+          versionedShellAssetPath,
         });
-        olderWrap.appendChild(olderBtn);
-        const bottomSentinel = el("div", { id: "bottomSentinel" });
-        const jumpBtn = el("button", {
-          class: "jumpBtn",
-          id: "jumpBtn",
-          title: "Jump to latest",
-          "aria-label": "Jump to latest",
-          html: iconSvg("down"),
-        });
-        chatInner.appendChild(olderWrap);
-        chatInner.appendChild(bottomSentinel);
-        chat.appendChild(chatInner);
-        chatWrap.appendChild(chat);
-        chatWrap.appendChild(jumpBtn);
-        const composer = el("div", { class: "composer" });
+        const {
+          app,
+          backdrop,
+          sessionsWrap,
+          sidebarEmptyHint,
+          chatWrap,
+          chatEmptyState,
+          chat,
+          chatInner,
+          olderWrap,
+          olderBtn,
+          olderRetryBtn,
+          olderError,
+          olderErrorText,
+          bottomSentinel,
+          jumpBtn,
+          chatTimeChip,
+          chatSearchInput,
+          chatSearchPrevBtn,
+          chatSearchNextBtn,
+          chatSearchCloseBtn,
+          chatSearchStatus,
+          chatSearchAllHintEl,
+          chatSearchBar,
+          chatNavRail,
+          titleLabel,
+          statusChip,
+          ctxChip,
+          interruptBtn,
+          toast,
+          toggleSidebarBtn,
+          unattendedBtn,
+          announceBtn,
+          notificationBtn,
+          diagBtn,
+          prevUserBtn,
+          nextUserBtn,
+          chatSearchBtn,
+          fileBtn,
+          unattendedMenu,
+          liveAudio,
+          composer,
+          form,
+          textarea,
+          msgPh,
+          imgInput,
+          attachBtn,
+          queueBtn,
+          composerStopBtn,
+          sendBtn,
+        } = shellDOM.elements;
 
         let selected = null;
-        let liveCursor = null;
+        let pendingHashSessionId = "";
+        let pendingHashSessionSelectInFlight = false;
         const INIT_PAGE_LIMIT_DESKTOP = 60;
         const INIT_PAGE_LIMIT_MOBILE = 24;
         const OLDER_PAGE_LIMIT = 60;
@@ -1583,62 +803,61 @@
         const CHAT_DOM_WINDOW_WITH_HISTORY_SLACK = CHAT_DOM_WINDOW + OLDER_PAGE_LIMIT;
         const OLDER_TOP_TRIGGER_PX = 1;
         const OLDER_CANCEL_PX = 48;
-        let activeTranscriptState = "pending_bind";
-        let activeLogPath = null;
-        let activeThreadId = null;
-        let activeFileLine = null;
-        let hasOlder = false;
-        let renderedAtLiveTail = true;
-        let loadingOlder = false;
-        let olderLoadRequestId = 0;
-        let olderLoadController = null;
-        let olderAutoTriggerAt = 0;
+        let openSessionTailAbortController = null;
+        let messagePollAbortController = null;
         const OLDER_AUTO_COOLDOWN_MS = 450;
         let pollTimer = null;
         let pollGen = 0;
         let pollLoopBusy = false;
         let pollKickPending = false;
+        let pollKickDelayMs = null;
+        let messagePollErrorStreak = 0;
 	        let pollFastUntilMs = 0;
 	         let turnOpen = false;
 	         let sessionsTimer = null;
+         let secondaryPollTimer = null;
+         let sessionsPollingEnabled = true;
+         let secondaryPollingEnabled = true;
          let currentRunning = false;
-         let openSwipeContent = null;
-         let openSwipeSessionId = null;
-         let openSwipeTargetX = 0;
-         let swipeRefreshDeferred = false;
+         let sessionsRefreshInFlight = null;
+         let sessionsRefreshQueued = false;
 	        let sessionIndex = new Map(); // session_id -> session info
-        const sessionTranscriptSlots = new Map();
-        const sessionTailCache = new Map();
         let recentCwds = [];
 	        let sending = false;
-	        let localEchoSeq = 0;
-	        const pendingUser = [];
 	        let attachedFiles = 0;
-		        let autoScroll = true;
-			        let backfillToken = 0;
-        let backfillState = null;
-			    let lastScrollTop = 0;
+        let stagedAttachments = [];
+        let composerController = null;
+        function resizeComposer() {
+          if (composerController) composerController.autoGrow();
+        }
+        function clearComposerInput() {
+          if (composerController) composerController.clearComposer();
+        }
+        function saveSelectedComposerDraft(sessionId) {
+          if (composerController) composerController.saveSessionDraft(sessionId);
+        }
+        function loadSelectedComposerDraft(sessionId) {
+          if (composerController) composerController.loadSessionDraft(sessionId);
+        }
+        function syncComposerSendButton() {
+          if (composerController) composerController.syncSendButtonState();
+        }
+        function closeSendChoiceDialog(options) {
+          if (composerController) composerController.hideSendChoice(options);
+        }
 				    let lastToken = null;
-				    let typingRow = null;
         let attachBadgeEl = null;
         let queueBadgeEl = null;
-        const fileRefValidationCache = new Map();
-        const fileRefValidationPending = new Map();
-        const fileRefCandidateCache = new Map();
         let editDependencyMenuOpen = false;
         let newSessionCwdMenuOpen = false;
         let newSessionCwdMenuFocus = -1;
         let newSessionModelMenuOpen = false;
         let newSessionModelMenuFocus = -1;
-        let newSessionProviderMenuOpen = false;
         let newSessionReasoningMenuOpen = false;
         let newSessionResumeMenuOpen = false;
-        let newSessionResumeCandidates = [];
-        let newSessionResumeSelection = null;
-        let newSessionResumeLoadSeq = 0;
-        let newSessionResumeLoadTimer = null;
-        let newSessionCwdInfo = { exists: false, will_create: false, git_repo: false, git_root: "", git_branch: "" };
-        let newSessionCwdError = "";
+        let newSessionStartBusy = false;
+        let newSessionLiteralModelInputValue = "";
+        let newSessionLaunchPresetProviderAbsent = false;
         newSessionBackend = "codex";
         let newSessionProvider = "chatgpt";
         let newSessionFast = false;
@@ -1647,215 +866,244 @@
           backends: {
             codex: legacyCodexLaunchDefaults(),
             pi: emptyPiLaunchDefaults(),
+            cc: emptyCcLaunchDefaults(),
           },
         };
         latestSessions = [];
         let tmuxAvailable = false;
-        let voiceSaveTimer = null;
-        let voiceSettings = {
-          tts_enabled_for_narration: false,
-          tts_enabled_for_final_response: true,
-          tts_base_url: "https://api.openai.com/v1",
-          tts_api_key: "",
-          audio: { queue_depth: 0, segment_count: 0, last_error: "", stream_url: "/api/audio/live.m3u8" },
-          notifications: { enabled_devices: 0, total_devices: 0, vapid_public_key: "" },
-        };
-        let localAnnouncementEnabled = localStorage.getItem("codoxear.announcementEnabled") === "1";
-        let localNotificationEnabled = localStorage.getItem("codoxear.notificationEnabled") === "1";
-        const desktopNotificationTimers = new Map();
-        const deliveredDesktopNotificationIds = new Set();
-        let notificationFeedSinceTs = Date.now() / 1000;
-        const announcementClientId = (() => {
-          const key = "codoxear.announcementClientId";
-          const current = localStorage.getItem(key);
-          if (current) return current;
-          const next = (window.crypto && crypto.randomUUID ? crypto.randomUUID() : `ann-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-          localStorage.setItem(key, next);
-          return next;
-        })();
-        let announcementHeartbeatTimer = null;
-        let liveAudioRetryTimer = null;
-        let liveAudioWatchdogTimer = null;
-        let notificationState = {
-          desktop_supported: false,
-          push_supported: false,
-          permission: typeof Notification === "undefined" ? "unsupported" : Notification.permission,
-          desktop_enabled: false,
-          endpoint: "",
-          notifications_enabled: false,
-          subscriptions: [],
-        };
-        let liveAudioStarted = false;
-        let liveAudioSourceUrl = "";
-        let liveAudioHls = null;
-        let liveAudioLastProgressTs = 0;
-        let liveAudioLastCurrentTime = 0;
-        let liveAudioSuspectSinceTs = 0;
-        let liveAudioLastRestartTs = 0;
-        const LIVE_AUDIO_WATCHDOG_MS = 2500;
-        const LIVE_AUDIO_STALL_GRACE_MS = 12000;
-        const LIVE_AUDIO_RESTART_THROTTLE_MS = 4000;
-        let swRegistration = null;
-         const recentEventKeys = [];
-         const recentEventKeySet = new Set();
-         const RECENT_EVENT_KEYS_MAX = 320;
                  let clickLoadT0 = 0;
                  let clickMetricPending = false;
-              let harnessMenuOpen = false;
-              let harnessCfg = { enabled: false, request: "", cooldown_minutes: 5, remaining_injections: 10 };
-              let harnessNumberDraft = { cooldown_minutes: "5", remaining_injections: "10" };
-              let harnessNumberDirty = { cooldown_minutes: false, remaining_injections: false };
-              let harnessSaveTimer = null;
+              // Unattended menu state, cfg cache, number-input drafts, and the
+              // per-session save timers/in-flight/pending maps live in the
+              // CodoxearUnattended controller (codoxear/static/app_unattended.js).
               let editSessionId = null;
+        let appDisposed = false;
+        const appEventCleanups = [];
+        function addAppEvent(target, type, handler, options) {
+          if (!target || typeof target.addEventListener !== "function") return handler;
+          target.addEventListener(type, handler, options);
+          appEventCleanups.push(() => target.removeEventListener(type, handler, options));
+          return handler;
+        }
+        function stopMessagePolling() {
+          selected = null;
+          pollGen += 1;
+          abortOpenSessionTailRequest();
+          abortMessagePollRequest();
+          if (pollTimer) clearTimeout(pollTimer);
+          pollTimer = null;
+          pollKickPending = false;
+          pollKickDelayMs = null;
+          messagePollErrorStreak = 0;
+          pollFastUntilMs = 0;
+          turnOpen = false;
+        }
+        function abortController(controller) {
+          if (!controller || typeof controller.abort !== "function") return;
+          try {
+            controller.abort();
+          } catch (_error) {}
+        }
+        function abortOpenSessionTailRequest() {
+          const controller = openSessionTailAbortController;
+          openSessionTailAbortController = null;
+          abortController(controller);
+        }
+        function beginOpenSessionTailRequest(sessionId, gen) {
+          abortOpenSessionTailRequest();
+          const controller = typeof AbortController === "function" ? new AbortController() : null;
+          openSessionTailAbortController = controller;
+          return Object.freeze({ sessionId, gen, controller, signal: controller ? controller.signal : undefined });
+        }
+        function isCurrentOpenSessionTailRequest(request) {
+          return Boolean(request && selected === request.sessionId && pollGen === request.gen);
+        }
+        function isOpenSessionTailAbortError(request, error) {
+          return Boolean(error && error.name === "AbortError" && request && request.signal && request.signal.aborted);
+        }
+        function finishOpenSessionTailRequest(request) {
+          if (request && openSessionTailAbortController === request.controller) openSessionTailAbortController = null;
+        }
+        function abortMessagePollRequest() {
+          const controller = messagePollAbortController;
+          messagePollAbortController = null;
+          abortController(controller);
+        }
+        function beginMessagePollRequest(sessionId, gen) {
+          abortMessagePollRequest();
+          const controller = typeof AbortController === "function" ? new AbortController() : null;
+          messagePollAbortController = controller;
+          return Object.freeze({ sessionId, gen, controller, signal: controller ? controller.signal : undefined });
+        }
+        function isMessagePollAbortError(request, error) {
+          return Boolean(error && error.name === "AbortError" && request && request.signal && request.signal.aborted);
+        }
+        function finishMessagePollRequest(request) {
+          if (request && messagePollAbortController === request.controller) messagePollAbortController = null;
+        }
+        function cleanupApp() {
+          if (appDisposed) return;
+          appDisposed = true;
+          sessionsPollingEnabled = false;
+          secondaryPollingEnabled = false;
+          stopMessagePolling();
+          stopAllPolling();
+          if (newSessionController) newSessionController.disposeResumeLoadTimer();
+          if (voiceController) voiceController.dispose();
+          if (unattendedController) unattendedController.dispose();
+          filePickerSearchState.dispose();
+          if (iosViewportGuardTimer) clearTimeout(iosViewportGuardTimer);
+          iosViewportGuardTimer = null;
+          if (chatSearchController) chatSearchController.dispose();
+          if (queueController) queueController.dispose();
+          if (diagController) diagController.dispose();
+          if (chatNavigationController) chatNavigationController.dispose();
+          olderLoadRuntime.invalidate();
+          fileViewerController.abortPendingFileOpenTransport();
+          hideUnattendedMenu();
+          hideFilePasteDialog();
+          hideFileUnsavedDialog("cancel");
+          closeSendChoiceDialog();
+          if (composerController) composerController.dispose();
+          sidebarController.dispose();
+          while (appEventCleanups.length) {
+            const cleanup = appEventCleanups.pop();
+            try {
+              cleanup();
+            } catch (_error) {}
+          }
+          clearApiCache();
+          shellDOM.cleanup();
+          if (activeAppCleanup === cleanupApp) activeAppCleanup = null;
+        }
+        function handleAppAuthLoss() {
+          if (appDisposed) return;
+          cleanupApp();
+          renderLogin(renderApp);
+        }
+        function sessionsPollDelayMs() {
+          return codoxearPolling.sessionsPollDelayMs(document.visibilityState);
+        }
+        function secondaryPollDelayMs() {
+          return codoxearPolling.secondaryPollDelayMs(document.visibilityState);
+        }
+        function browserOffline() {
+          return codoxearPolling.browserOffline(typeof navigator === "undefined" ? undefined : navigator);
+        }
+        function messagePollErrorDelayMs() {
+          return codoxearPolling.messagePollErrorDelayMs(messagePollErrorStreak);
+        }
+        function messagePollDelayMs(now = Date.now()) {
+          return codoxearPolling.messagePollDelayMs({
+            now,
+            visibilityState: document.visibilityState,
+            offline: browserOffline(),
+            errorStreak: messagePollErrorStreak,
+            pollFastUntilMs,
+            turnOpen,
+          });
+        }
+        function markMessagePollSuccess() {
+          messagePollErrorStreak = 0;
+        }
+        function markMessagePollFailure() {
+          messagePollErrorStreak = Math.min(messagePollErrorStreak + 1, 20);
+        }
+        function normalizeMessagePollKickDelay(ms = 0) {
+          return codoxearPolling.normalizeMessagePollKickDelay({
+            requested: ms,
+            visibilityState: document.visibilityState,
+            offline: browserOffline(),
+            errorStreak: messagePollErrorStreak,
+            pollFastUntilMs,
+            turnOpen,
+          });
+        }
+        function stopSessionsPolling() {
+          if (sessionsTimer) clearTimeout(sessionsTimer);
+          sessionsTimer = null;
+        }
+        function stopSecondaryPolling() {
+          if (secondaryPollTimer) clearTimeout(secondaryPollTimer);
+          secondaryPollTimer = null;
+        }
+        function stopAllPolling() {
+          stopSessionsPolling();
+          stopSecondaryPolling();
+        }
+        async function runSessionsPollTick() {
+          if (appDisposed || !sessionsPollingEnabled) return;
+          try {
+            await refreshSessions();
+          } catch (e2) {
+            if (e2 && e2.status === 401) {
+              handleAppAuthLoss();
+              return;
+            }
+            console.error("refreshSessions timer failed", e2);
+          }
+          scheduleSessionsPoll();
+        }
+        async function runSecondaryPollTick() {
+          if (appDisposed || !secondaryPollingEnabled) return;
+          try {
+            await loadVoiceSettings();
+            await syncNotificationState();
+            if (notificationsEnabledLocally()) await pollNotificationFeed();
+          } catch (e2) {
+            if (e2 && e2.status === 401) {
+              handleAppAuthLoss();
+              return;
+            }
+            console.error("secondary poll failed", e2);
+          }
+          scheduleSecondaryPoll();
+        }
+        function scheduleSessionsPoll(delayMs = sessionsPollDelayMs()) {
+          if (appDisposed || !sessionsPollingEnabled) return;
+          stopSessionsPolling();
+          sessionsTimer = setTimeout(() => {
+            sessionsTimer = null;
+            void runSessionsPollTick();
+          }, Math.max(0, Number(delayMs) || 0));
+        }
+        function scheduleSecondaryPoll(delayMs = secondaryPollDelayMs()) {
+          if (appDisposed || !secondaryPollingEnabled) return;
+          stopSecondaryPolling();
+          secondaryPollTimer = setTimeout(() => {
+            secondaryPollTimer = null;
+            void runSecondaryPollTick();
+          }, Math.max(0, Number(delayMs) || 0));
+        }
 
-            const titleLabel = el("div", { id: "threadTitle", text: "No session selected" });
-            titleLabel.style.cursor = "pointer";
-            titleLabel.title = "Edit conversation";
+            titleLabel.style.cursor = "default";
+            titleLabel.title = "No session selected";
             titleLabel.onclick = () => {
               if (!selected) return;
               openEditSession(selected);
             };
-				        const statusChip = el("span", { class: "status-chip", id: "statusChip", text: "Idle" });
-				        const ctxChip = el("span", { class: "status-chip", id: "ctxChip", text: "" });
-		        ctxChip.style.display = "none";
-        const interruptBtn = el("button", {
-          id: "interruptBtn",
-          class: "icon-btn",
-          title: "Interrupt (Esc)",
-          "aria-label": "Interrupt (Esc)",
-          type: "button",
-          html: iconSvg("stop"),
-        });
-        interruptBtn.style.display = "none";
-        const toast = el("div", { class: "muted toast", id: "toast" });
-			        const toggleSidebarBtn = el("button", {
-	          id: "toggleSidebarBtn",
-	          class: "icon-btn",
-	          title: "Toggle sidebar",
-	          "aria-label": "Toggle sidebar",
-	          html: iconSvg("menu"),
-	        });
-        const harnessBtn = el("button", {
-          id: "harnessBtn",
-          class: "icon-btn",
-          title: "Harness mode",
-          "aria-label": "Harness mode",
-          type: "button",
-          html: iconSvg("harness"),
-        });
-        harnessBtn.disabled = true;
-        harnessBtn.classList.toggle("active", false);
-        const announceBtn = el("button", {
-          id: "announceBtn",
-          class: "icon-btn",
-          title: "Voice announcements",
-          "aria-label": "Voice announcements",
-          type: "button",
-          html: iconSvg("volume"),
-        });
-        const notificationBtn = el("button", {
-          id: "notificationBtn",
-          class: "icon-btn",
-          title: "Notifications",
-          "aria-label": "Notifications",
-          type: "button",
-          html: iconSvg("bell"),
-        });
-        const diagBtn = el("button", {
-          id: "diagBtn",
-          class: "icon-btn",
-          title: "Details",
-          "aria-label": "Details",
-          type: "button",
-          html: iconSvg("info"),
-        });
-        diagBtn.disabled = true;
-        const fileBtn = el("button", {
-          id: "fileBtn",
-          class: "icon-btn",
-          title: "View file",
-          "aria-label": "View file",
-          type: "button",
-          html: iconSvg("file"),
-        });
-        fileBtn.disabled = true;
-        const harnessMenu = el("div", { id: "harnessMenu", class: "harnessMenu", role: "dialog", "aria-label": "Harness mode settings" }, [
-          el("div", { class: "row" }, [
-            el("label", {}, [
-              el("input", { type: "checkbox", id: "harnessEnabled" }),
-              el("span", { text: "Harness mode" }),
-			            ]),
-			          ]),
-			          el("div", { class: "harnessGrid" }, [
-			            el("div", {}, [
-			              el("div", { class: "label", text: "Cooldown time (minutes)" }),
-			              el("input", { id: "harnessCooldownMinutes", type: "number", min: "1", step: "1", inputmode: "numeric", "aria-label": "Harness cooldown time in minutes" }),
-			            ]),
-			            el("div", {}, [
-			              el("div", { class: "label", text: "Number of injections" }),
-			              el("input", { id: "harnessRemainingInjections", type: "number", min: "0", step: "1", inputmode: "numeric", "aria-label": "Harness remaining injections" }),
-			            ]),
-			          ]),
-			          el("div", { class: "label", text: "Additional request to append (optional; per session)" }),
-			          el("textarea", { id: "harnessRequest", "aria-label": "Additional request for harness prompt" }),
-			        ]);
-        const liveAudio = el("audio", { id: "liveAudio", preload: "none", playsinline: "true" });
-        liveAudio.style.display = "none";
-
-        const topMeta = el("div", { class: "topMeta" }, [ctxChip]);
-        const titleRow = el("div", { class: "titleRow" }, [titleLabel, topMeta]);
-        const titleWrap = el("div", { class: "titleWrap" }, [titleRow]);
-        const topbar = el("div", { class: "topbar" }, [
-          el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap]),
-          el("div", { class: "actions topActions" }, [
-            fileBtn,
-            diagBtn,
-            interruptBtn,
-            harnessBtn,
-          ]),
-        ]);
-
-        const form = el("form", {}, [
-          el("button", {
-            class: "icon-btn",
-            id: "attachBtn",
-            type: "button",
-            title: "Attach file",
-            "aria-label": "Attach file",
-            html: iconSvg("paperclip"),
-          }),
-          el("div", { class: "inputWrap" }, [
-            el("textarea", { id: "msg", placeholder: "", "aria-label": "Enter your instructions here" }),
-            el("div", { class: "ph", id: "msgPh", text: "Enter your instructions here" }),
-          ]),
-          el("input", { id: "imgInput", type: "file", style: "display:none" }),
-          el("button", { class: "icon-btn", id: "queueBtn", type: "button", title: "Queued messages", "aria-label": "Queued messages", html: iconSvg("queue") }),
-          el("button", { class: "icon-btn primary", id: "sendBtn", type: "submit", title: "Send", "aria-label": "Send", html: iconSvg("send") }),
-        ]);
-        composer.appendChild(form);
-
-        sidebar.appendChild(
-          el("header", {}, [
-            el("div", { class: "title", html: `<img class="sidebarLogo" src="/static/codoxear-icon.png" alt="" />Codoxear` }),
-            el("div", { class: "actions" }, [
-              el("button", { id: "newBtn", class: "icon-btn", title: "New session", "aria-label": "New session", html: iconSvg("plus") }),
-              notificationBtn,
-              announceBtn,
-            ]),
-          ])
-        );
-        sidebar.appendChild(sessionsWrap);
-        sidebar.appendChild(sidebarFooter);
-        main.appendChild(topbar);
-        main.appendChild(toast);
-        main.appendChild(chatWrap);
-        main.appendChild(composer);
-        app.appendChild(sidebar);
-        app.appendChild(main);
-        app.appendChild(backdrop);
-        root.appendChild(app);
-        root.appendChild(harnessMenu);
-        root.appendChild(liveAudio);
+            titleLabel.onkeydown = (e) => {
+              if (!selected) return;
+              if (e.key !== "Enter" && e.key !== " ") return;
+              e.preventDefault();
+              openEditSession(selected);
+            };
+            function syncTitleEditState() {
+              const interactive = Boolean(selected);
+              titleLabel.style.cursor = interactive ? "pointer" : "default";
+              titleLabel.title = interactive ? "Edit conversation" : "No session selected";
+              titleLabel.tabIndex = interactive ? 0 : -1;
+              if (interactive) {
+                titleLabel.setAttribute("role", "button");
+                titleLabel.setAttribute("aria-label", "Edit conversation");
+                titleLabel.removeAttribute("aria-disabled");
+              } else {
+                titleLabel.removeAttribute("role");
+                titleLabel.removeAttribute("aria-label");
+                titleLabel.setAttribute("aria-disabled", "true");
+              }
+            }
+            syncTitleEditState();
 
         const fileBackdrop = el("div", { class: "modalBackdrop", id: "fileBackdrop" });
         const fileCloseBtn = el("button", {
@@ -1866,7 +1114,7 @@
           type: "button",
           html: iconSvg("x"),
         });
-        const fileStatus = el("div", { class: "muted fileStatus", id: "fileStatus", text: "" });
+        const fileStatus = el("div", { class: "muted fileStatus", id: "fileStatus", role: "status", "aria-live": "polite", text: "" });
         const filePickerInput = el("input", {
           id: "filePickerInput",
           class: "filePickerInput",
@@ -1909,6 +1157,15 @@
           "aria-label": "Edit file",
           html: iconSvg("edit"),
         });
+        const fileVideoPreviewBtn = el("button", {
+          id: "fileVideoPreviewBtn",
+          class: "icon-btn",
+          type: "button",
+          title: "Use compatible MP4 preview",
+          "aria-label": "Use compatible MP4 preview",
+          html: iconSvg("play"),
+        });
+        fileVideoPreviewBtn.style.display = "none";
         const fileDownloadBtn = el("button", {
           id: "fileDownloadBtn",
           class: "icon-btn",
@@ -1993,10 +1250,10 @@
         const fileDiff = el("div", { class: "fileDiff", id: "fileDiff" });
         const fileImage = el("img", { id: "fileImage", class: "fileImage", alt: "" });
         const fileVideo = el("video", { id: "fileVideo", class: "fileVideo", controls: true, preload: "metadata" });
-        const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-label": "File viewer" }, [
+        const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-modal": "true", "aria-label": "File viewer" }, [
           el("div", { class: "fileViewerHeader" }, [
             el("div", { class: "title", text: "View file" }),
-            el("div", { class: "actions" }, [fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, fileDownloadBtn, fileCloseBtn]),
+            el("div", { class: "actions" }, [fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, fileVideoPreviewBtn, fileDownloadBtn, fileCloseBtn]),
           ]),
           el("div", { class: "fileCandRow", id: "fileCandRow" }, [filePickerField]),
           fileStatus,
@@ -2009,7 +1266,7 @@
         root.appendChild(fileViewer);
 
         const fileUnsavedBackdrop = el("div", { class: "modalBackdrop", id: "fileUnsavedBackdrop" });
-        const fileUnsavedDialog = el("div", { class: "sendChoice fileUnsavedDialog", id: "fileUnsavedDialog", role: "dialog", "aria-label": "Unsaved file changes" }, [
+        const fileUnsavedDialog = el("div", { class: "sendChoice fileUnsavedDialog", id: "fileUnsavedDialog", role: "dialog", "aria-modal": "true", "aria-label": "Unsaved file changes" }, [
           el("div", { class: "title", text: "Unsaved changes" }),
           el("div", { class: "muted", text: "Save this file before leaving the editor?" }),
           el("div", { class: "sendChoiceActions" }, [
@@ -2030,7 +1287,7 @@
           autocomplete: "off",
           autocorrect: "off",
         });
-        const filePasteDialog = el("div", { class: "sendChoice filePasteDialog", id: "filePasteDialog", role: "dialog", "aria-label": "Paste into file" }, [
+        const filePasteDialog = el("div", { class: "sendChoice filePasteDialog", id: "filePasteDialog", role: "dialog", "aria-modal": "true", "aria-label": "Paste into file" }, [
           el("div", { class: "title", text: "Paste into file" }),
           el("div", { class: "muted", text: "Long-press in this box to use the browser paste menu, then insert into the editor." }),
           filePasteInput,
@@ -2043,7 +1300,7 @@
         root.appendChild(filePasteDialog);
 
         const sendChoiceBackdrop = el("div", { class: "modalBackdrop", id: "sendChoiceBackdrop" });
-        const sendChoice = el("div", { class: "sendChoice", id: "sendChoice", role: "dialog", "aria-label": "Send options" }, [
+        const sendChoice = el("div", { class: "sendChoice", id: "sendChoice", role: "dialog", "aria-modal": "true", "aria-label": "Send options" }, [
           el("div", { class: "title", text: "Current response is running" }),
           el("div", { class: "muted", text: "Choose how to handle your next message." }),
           el("div", { class: "sendChoiceActions" }, [
@@ -2055,19 +1312,25 @@
         root.appendChild(sendChoiceBackdrop);
         root.appendChild(sendChoice);
 
-        const confirmAppBackdrop = el("div", { class: "modalBackdrop", id: "confirmAppBackdrop" });
-        const confirmAppMessage = el("div", { class: "muted", id: "confirmAppMessage" });
-        const confirmAppAcceptBtn = el("button", { class: "primary", id: "confirmAppAcceptBtn", type: "button", text: "Confirm" });
-        const confirmAppDialog = el("div", { class: "sendChoice", id: "confirmAppDialog", role: "alertdialog", "aria-modal": "true", "aria-label": "Confirm action" }, [
-          el("div", { class: "title", text: "Confirm action" }),
-          confirmAppMessage,
-          el("div", { class: "sendChoiceActions" }, [
-            el("button", { id: "confirmAppCancelBtn", type: "button", text: "Cancel" }),
-            confirmAppAcceptBtn,
-          ]),
+        const appConfirmBackdrop = el("div", { class: "modalBackdrop appConfirmBackdrop", id: "appConfirmBackdrop" });
+        const appConfirmTitle = el("div", { class: "title", id: "appConfirmTitle", text: "Confirm action" });
+        const appConfirmMessage = el("div", { class: "muted appConfirmMessage", id: "appConfirmMessage", text: "" });
+        const appConfirmConfirmBtn = el("button", { class: "primary", id: "appConfirmConfirmBtn", type: "button", text: "Confirm" });
+        const appConfirmCancelBtn = el("button", { id: "appConfirmCancelBtn", type: "button", text: "Cancel" });
+        const appConfirm = el("div", {
+          class: "sendChoice appConfirm",
+          id: "appConfirm",
+          role: "dialog",
+          "aria-modal": "true",
+          "aria-labelledby": "appConfirmTitle",
+          "aria-describedby": "appConfirmMessage",
+        }, [
+          appConfirmTitle,
+          appConfirmMessage,
+          el("div", { class: "sendChoiceActions appConfirmActions" }, [appConfirmConfirmBtn, appConfirmCancelBtn]),
         ]);
-        root.appendChild(confirmAppBackdrop);
-        root.appendChild(confirmAppDialog);
+        root.appendChild(appConfirmBackdrop);
+        root.appendChild(appConfirm);
 
         const queueBackdrop = el("div", { class: "modalBackdrop", id: "queueBackdrop" });
         const queueCloseBtn = el("button", {
@@ -2080,7 +1343,7 @@
         });
         const queueList = el("div", { class: "queueList", id: "queueList" });
         const queueEmpty = el("div", { class: "muted", id: "queueEmpty", text: "No queued messages." });
-        const queueViewer = el("div", { class: "queueViewer", id: "queueViewer", role: "dialog", "aria-label": "Queued messages" }, [
+        const queueViewer = el("div", { class: "queueViewer", id: "queueViewer", role: "dialog", "aria-modal": "true", "aria-label": "Queued messages" }, [
           el("div", { class: "queueHeader" }, [
             el("div", { class: "title", text: "Queued messages" }),
             el("div", { class: "actions" }, [queueCloseBtn]),
@@ -2100,7 +1363,8 @@
           type: "button",
           html: iconSvg("x"),
         });
-        const helpViewer = el("div", { class: "helpViewer", id: "helpViewer", role: "dialog", "aria-label": "Help" }, [
+        let helpReturnFocusEl = null;
+        const helpViewer = el("div", { class: "helpViewer", id: "helpViewer", role: "dialog", "aria-modal": "true", "aria-label": "Help" }, [
           el("div", { class: "queueHeader" }, [
             el("div", { class: "title", text: "Help" }),
             el("div", { class: "actions" }, [helpCloseBtn]),
@@ -2112,27 +1376,30 @@
   <li>Choose a conversation from the sidebar. On desktop, hover a row to reveal <b>Edit</b>, <b>Duplicate</b>, and <b>Delete</b>. On touch, swipe left for <b>Edit</b>/<b>Duplicate</b> and right for <b>Delete</b>.</li>
   <li>The dot on the title row shows state: <b>blue</b> = busy, <b>gray</b> = idle, <b>orange</b> = snoozed or blocked.</li>
   <li>The metadata line shows the agent-backend icon first, then the session-type icon, then the reasoning marker (<b>X/H/M/L</b>) when available, followed by recency, folder, and branch.</li>
-  <li>Click the conversation title in the top bar to rename or reprioritize it. <b>Details</b> shows the exact backend, provider, model, reasoning level, queue state, and token usage.</li>
+  <li>Click the conversation title to rename or reprioritize it. <b>Details</b> in the session utilities bar shows the exact backend, provider, model, reasoning level, queue state, and token usage.</li>
 </ul>
 <div class="muted">New session</div>
 <ul class="md">
   <li><b>New session</b> can start fresh or resume a matching conversation for the currently selected backend in the current working directory.</li>
-  <li>The backend tabs choose between the supported agent backends. Right now that is <b>Codex</b> and <b>Pi</b>.</li>
-  <li>You can choose working directory, provider, model, reasoning level, and whether the session should start in tmux. If the directory is a Git repo, you can also start in a new worktree branch.</li>
-  <li>Codoxear remembers the last backend you used and the last provider choice for each backend.</li>
+  <li>The backend tabs choose between the supported agent backends. Right now that is <b>Codex</b>, <b>Pi</b>, and <b>Claude</b>.</li>
+  <li>You can choose working directory, a combined provider/model pair, reasoning level, and whether the session should start in tmux. If the directory is a Git repo, you can also start in a new worktree branch.</li>
+  <li>Codoxear remembers the last backend you used and the last provider/model pair for each backend.</li>
 </ul>
 <div class="muted">Messages and queue</div>
 <ul class="md">
   <li>If the selected session is idle, <b>Send</b> submits immediately. If it is busy, choose <b>Send after current</b> to queue the prompt.</li>
   <li>The queue is stored per session and drains automatically when that session becomes idle. Use <b>Queued messages</b> to review or edit queued prompts.</li>
   <li><b>Load older messages</b> fetches more scrollback. <b>Jump to latest</b> returns to the newest turn when you are reading history.</li>
+  <li>Use <b>/</b> to search the loaded chat; Previous/Next can load an older matching window when the transcript count shows more matches.</li>
+  <li>Use <b>Alt+↑</b>/<b>Alt+↓</b> to jump between loaded user messages. Use <b>Alt+Shift+↑</b>/<b>Alt+Shift+↓</b> to move the active per-message copy control across all loaded messages.</li>
+  <li>Use <b>Alt+1</b>–<b>Alt+9</b> to switch sessions by sidebar position. Use <b>Alt+J</b>/<b>Alt+K</b> for next/previous session.</li>
 </ul>
-<div class="muted">Harness</div>
+<div class="muted">Unattended mode</div>
 <ul class="md">
-  <li>Harness is a per-session idle nudge. Open the Harness button in the top bar, turn it on, and optionally add an extra request to append to the built-in unattended-work prompt.</li>
-  <li><b>Cooldown time</b> is how many idle minutes must pass after the assistant finishes before the next harness prompt is injected.</li>
-  <li><b>Number of injections</b> is the remaining auto-injection budget for that session. Each harness prompt decrements it, and harness turns itself off when it reaches zero.</li>
-  <li>Harness runs in the server process, so it keeps working even if you close the browser tab. Enabled sessions show a <b>harness</b> badge in the sidebar.</li>
+  <li>Unattended mode is a per-session idle nudge. Open the Unattended button in the session utilities bar, turn it on, and optionally add an extra request to append to the built-in unattended-work prompt.</li>
+  <li><b>Cooldown time</b> is how many idle minutes must pass after the assistant finishes before the next unattended prompt is injected.</li>
+  <li><b>Number of injections</b> is the remaining auto-injection budget for that session. Each unattended prompt decrements it, and unattended mode turns itself off when it reaches zero.</li>
+  <li>Unattended mode runs in the server process, so it keeps working even if you close the browser tab. Enabled sessions show an <b>unattended</b> badge in the sidebar.</li>
 </ul>
 <div class="muted">Files</div>
 <ul class="md">
@@ -2152,6 +1419,30 @@
         root.appendChild(helpViewer);
 
         const diagBackdrop = el("div", { class: "modalBackdrop", id: "diagBackdrop" });
+        const diagNewLikeBtn = el("button", {
+          id: "diagNewLikeBtn",
+          class: "icon-btn text-btn",
+          title: "Start a new session with these visible launch settings",
+          "aria-label": "New like this",
+          type: "button",
+          text: "New like this",
+        });
+        const diagCopyConversationBtn = el("button", {
+          id: "diagCopyConversationBtn",
+          class: "icon-btn text-btn",
+          title: "Copy conversation",
+          "aria-label": "Copy conversation",
+          type: "button",
+          text: "Copy conversation",
+        });
+        const diagCopyBtn = el("button", {
+          id: "diagCopyBtn",
+          class: "icon-btn text-btn",
+          title: "Copy details",
+          "aria-label": "Copy details",
+          type: "button",
+          text: "Copy details",
+        });
         const diagCloseBtn = el("button", {
           id: "diagCloseBtn",
           class: "icon-btn",
@@ -2160,12 +1451,17 @@
           type: "button",
           html: iconSvg("x"),
         });
+        // Detail actions start disabled until the controller loads the selected
+        // session's details and enables their corresponding payloads.
+        diagNewLikeBtn.disabled = true;
+        diagCopyConversationBtn.disabled = true;
+        diagCopyBtn.disabled = true;
         const diagStatus = el("div", { class: "muted", id: "diagStatus", text: "" });
         const diagContent = el("div", { class: "detailsGrid", id: "diagContent" });
-        const diagViewer = el("div", { class: "diagViewer", id: "diagViewer", role: "dialog", "aria-label": "Details" }, [
+        const diagViewer = el("div", { class: "diagViewer", id: "diagViewer", role: "dialog", "aria-modal": "true", "aria-label": "Details" }, [
           el("div", { class: "queueHeader" }, [
             el("div", { class: "title", text: "Details" }),
-            el("div", { class: "actions" }, [diagCloseBtn]),
+            el("div", { class: "actions" }, [diagNewLikeBtn, diagCopyConversationBtn, diagCopyBtn, diagCloseBtn]),
           ]),
           diagStatus,
           diagContent,
@@ -2281,7 +1577,15 @@
         const voiceSettingsStatus = el("div", { class: "muted", id: "voiceSettingsStatus", text: "" });
         const voiceBaseUrlInput = el("input", { id: "voiceBaseUrlInput", type: "text", autocomplete: "off", spellcheck: "false" });
         const voiceApiKeyInput = el("input", { id: "voiceApiKeyInput", type: "password", autocomplete: "off", spellcheck: "false" });
+        const voiceClearApiKeyToggle = el("input", { id: "voiceClearApiKeyToggle", type: "checkbox" });
         const narrationSettingToggle = el("input", { id: "narrationSettingToggle", type: "checkbox" });
+        const unattendedPromptInput = el("textarea", {
+          id: "unattendedPromptInput",
+          rows: "14",
+          spellcheck: "true",
+          "aria-describedby": "unattendedPromptHint",
+        });
+        const unattendedPromptResetBtn = el("button", { id: "unattendedPromptResetBtn", class: "text-btn", type: "button", text: "Reset to default" });
         const voiceSettingsViewer = el("dialog", { class: "formViewer formDialog", id: "voiceSettingsViewer", "aria-label": "Settings" }, [
           el("div", { class: "queueHeader" }, [
             el("div", { class: "title", text: "Settings" }),
@@ -2297,12 +1601,25 @@
             el("label", { class: "field" }, [
               el("span", { class: "fieldLabel", text: "OpenAI-compatible API key" }),
               voiceApiKeyInput,
+              el("span", { class: "fieldHint", text: "Leave blank to keep the saved key." }),
+            ]),
+            el("div", { class: "field" }, [
+              el("label", { class: "voiceToggleRow" }, [
+                voiceClearApiKeyToggle,
+                el("span", { text: "Clear saved API key" }),
+              ]),
             ]),
             el("div", { class: "field" }, [
               el("label", { class: "voiceToggleRow" }, [
                 narrationSettingToggle,
                 el("span", { text: "Announce narration messages" }),
               ]),
+            ]),
+            el("div", { class: "field" }, [
+              el("span", { class: "fieldLabel", text: "Unattended mode prompt" }),
+              unattendedPromptInput,
+              el("span", { class: "fieldHint", id: "unattendedPromptHint", text: "Sent when unattended mode resumes an idle session. Reset then Save to restore the built-in constitution." }),
+              unattendedPromptResetBtn,
             ]),
           ]),
           el("div", { class: "formActions" }, [
@@ -2323,6 +1640,7 @@
           html: iconSvg("x"),
         });
         const newSessionStatus = el("div", { class: "muted", id: "newSessionStatus", text: "" });
+        let newSessionReturnFocusEl = null;
         const newSessionCwdInput = el("input", {
           id: "newSessionCwdInput",
           type: "text",
@@ -2355,7 +1673,7 @@
         const newSessionModelInput = el("input", {
           id: "newSessionModelInput",
           type: "text",
-          placeholder: "Model",
+          placeholder: "Provider/model",
           autocomplete: "off",
           spellcheck: "false",
           role: "combobox",
@@ -2373,20 +1691,9 @@
           newSessionModelInput,
           newSessionModelMenu,
         ]);
+        const newSessionModelLabel = el("span", { class: "fieldLabel", text: "Provider / model" });
         const newSessionBackendTabs = el("div", { class: "agentBackendTabs", id: "newSessionBackendTabs" });
-        const newSessionProviderBtn = el("button", {
-          id: "newSessionProviderBtn",
-          class: "filePickerBtn dialogPickerBtn sidePickerBtn",
-          type: "button",
-          "aria-label": "Choose provider",
-          "aria-haspopup": "menu",
-          "aria-expanded": "false",
-        });
-        const newSessionProviderMenu = el("div", { id: "newSessionProviderMenu", class: "filePickerMenu dialogPickerMenu" });
-        const newSessionProviderField = el("div", { class: "pickerField comboboxField pickerButtonField", id: "newSessionProviderField" }, [
-          el("span", { class: "cwdComboboxIcon", html: iconSvg("chevronDown"), "aria-hidden": "true" }),
-          newSessionProviderBtn,
-        ]);
+        const newSessionBackendName = el("span", { class: "agentBackendTabName", id: "newSessionBackendName" });
         let newSessionReasoningEffort = "high";
         const newSessionReasoningBtn = el("button", {
           id: "newSessionReasoningBtn",
@@ -2421,11 +1728,7 @@
             el("span", { text: "Create in tmux" }),
           ]),
         ]);
-        const newSessionProviderTmuxRow = el("div", { class: "formGrid newSessionOptionsRow" }, [
-          el("label", { class: "field" }, [
-            el("span", { class: "fieldLabel", text: "Provider" }),
-            newSessionProviderField,
-          ]),
+        const newSessionLaunchRow = el("div", { class: "formGrid newSessionOptionsRow" }, [
           newSessionTmuxField,
         ]);
         const newSessionFastToggle = el("input", {
@@ -2460,11 +1763,12 @@
           newSessionWorktreeInput,
         ]);
         const newSessionStartBtn = el("button", { class: "primary", id: "newSessionStartBtn", type: "button", text: "Start session" });
-        const newSessionViewer = el("div", { class: "formViewer newSessionViewer", id: "newSessionViewer", role: "dialog", "aria-label": "New session" }, [
+        const newSessionViewer = el("div", { class: "formViewer newSessionViewer", id: "newSessionViewer", role: "dialog", "aria-modal": "true", "aria-label": "New session" }, [
           el("div", { class: "queueHeader" }, [
             el("div", { class: "newSessionHeaderLead" }, [
               el("div", { class: "title", text: "New session" }),
               newSessionBackendTabs,
+              newSessionBackendName,
             ]),
             el("div", { class: "actions" }, [newSessionCloseBtn]),
           ]),
@@ -2481,7 +1785,7 @@
             ]),
             el("div", { class: "formGrid newSessionRunConfigRow" }, [
               el("label", { class: "field" }, [
-                el("span", { class: "fieldLabel", text: "Model" }),
+                newSessionModelLabel,
                 newSessionModelField,
               ]),
               el("label", { class: "field" }, [
@@ -2494,7 +1798,7 @@
               el("span", { class: "fieldLabel", text: "Resume conversation" }),
               newSessionResumeBtn,
             ]),
-            newSessionProviderTmuxRow,
+            newSessionLaunchRow,
             newSessionWorktreeField,
           ]),
           el("div", { class: "formActions" }, [
@@ -2505,9 +1809,149 @@
         root.appendChild(newSessionBackdrop);
         root.appendChild(newSessionViewer);
         newSessionViewer.appendChild(newSessionModelMenu);
-        newSessionViewer.appendChild(newSessionProviderMenu);
         newSessionViewer.appendChild(newSessionReasoningMenu);
         newSessionViewer.appendChild(newSessionResumeMenu);
+
+        const codoxearModal = window.CodoxearModal;
+        if (
+          !codoxearModal ||
+          typeof codoxearModal.isModalTargetOpen !== "function" ||
+          typeof codoxearModal.syncModalIsolation !== "function" ||
+          typeof codoxearModal.restoreModalFocus !== "function" ||
+          typeof codoxearModal.focusModalCloseButton !== "function"
+        )
+          throw new Error("Codoxear modal helpers failed to load");
+
+        const modalIsolationTargets = [
+          fileViewer,
+          fileUnsavedDialog,
+          filePasteDialog,
+          sendChoice,
+          appConfirm,
+          queueViewer,
+          helpViewer,
+          diagViewer,
+          editViewer,
+          voiceSettingsViewer,
+          newSessionViewer,
+        ];
+
+        function isModalTargetOpen(node) {
+          return codoxearModal.isModalTargetOpen(node);
+        }
+
+        function syncModalIsolation() {
+          return codoxearModal.syncModalIsolation(app, modalIsolationTargets);
+        }
+
+        function closeTransientOverlays({ closeSearch = false } = {}) {
+          if (unattendedController.isOpen()) hideUnattendedMenu();
+          if (closeSearch && chatSearchController.isOpen()) closeChatSearch();
+          if (document.body.classList.contains("sidebar-open")) setSidebarOpen(false);
+          filePickerMenuState.close();
+          filePickerMenu.classList.remove("open");
+          filePickerInput.setAttribute("aria-expanded", "false");
+          newSessionCwdMenuOpen = false;
+          newSessionCwdMenuFocus = -1;
+          newSessionModelMenuOpen = false;
+          newSessionModelMenuFocus = -1;
+          newSessionReasoningMenuOpen = false;
+          newSessionResumeMenuOpen = false;
+          editDependencyMenuOpen = false;
+          applyDialogMenus();
+        }
+
+        function prepareModalOpen(options = {}) {
+          closeTransientOverlays(options);
+        }
+
+        function afterModalVisibilityChanged() {
+          syncModalIsolation();
+        }
+
+        function restoreModalFocus(target, isStillOpen) {
+          return codoxearModal.restoreModalFocus(target, isStillOpen);
+        }
+
+        function focusModalCloseButton(viewer, closeBtn) {
+          return codoxearModal.focusModalCloseButton(viewer, closeBtn);
+        }
+
+        let appConfirmPending = null;
+        let appConfirmReturnFocusEl = null;
+
+        function normalizeAppConfirmOptions(options = {}) {
+          if (typeof options === "string") return { title: "Confirm action", message: options, confirmText: "Confirm", cancelText: "Cancel", destructive: false };
+          const raw = options && typeof options === "object" ? options : {};
+          return {
+            title: String(raw.title || "Confirm action"),
+            message: String(raw.message || ""),
+            confirmText: String(raw.confirmText || "Confirm"),
+            cancelText: String(raw.cancelText || "Cancel"),
+            destructive: Boolean(raw.destructive),
+          };
+        }
+
+        function appConfirmFocusableControls() {
+          return [appConfirmCancelBtn, appConfirmConfirmBtn].filter((control) => control && !control.disabled && typeof control.focus === "function");
+        }
+
+        function focusAppConfirmInitial({ destructive = false } = {}) {
+          requestAnimationFrame(() => {
+            if (appConfirm.style.display !== "flex") return;
+            const preferred = destructive ? appConfirmCancelBtn : appConfirmConfirmBtn;
+            const fallback = destructive ? appConfirmConfirmBtn : appConfirmCancelBtn;
+            const target = preferred && !preferred.disabled ? preferred : fallback && !fallback.disabled ? fallback : null;
+            if (!target || typeof target.focus !== "function") return;
+            try {
+              target.focus({ preventScroll: true });
+            } catch {}
+          });
+        }
+
+        function resolveAppConfirm(result, { restoreFocus = true } = {}) {
+          const pending = appConfirmPending;
+          const target = appConfirmReturnFocusEl;
+          appConfirmPending = null;
+          appConfirmReturnFocusEl = null;
+          appConfirmBackdrop.style.display = "none";
+          appConfirm.style.display = "none";
+          afterModalVisibilityChanged();
+          if (restoreFocus) restoreModalFocus(target, () => appConfirm.style.display === "flex");
+          if (pending && !pending.settled) {
+            pending.settled = true;
+            pending.resolve(Boolean(result));
+          }
+        }
+
+        function confirmApp(options = {}) {
+          if (appConfirmPending) resolveAppConfirm(false, { restoreFocus: false });
+          const normalized = normalizeAppConfirmOptions(options);
+          prepareModalOpen();
+          appConfirmTitle.textContent = normalized.title;
+          appConfirmMessage.textContent = normalized.message;
+          appConfirmConfirmBtn.textContent = normalized.confirmText;
+          appConfirmCancelBtn.textContent = normalized.cancelText;
+          appConfirmReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          appConfirmBackdrop.style.display = "block";
+          appConfirm.style.display = "flex";
+          afterModalVisibilityChanged();
+          focusAppConfirmInitial(normalized);
+          return new Promise((resolve) => {
+            appConfirmPending = { resolve, settled: false };
+          });
+        }
+
+        appConfirmConfirmBtn.onclick = () => resolveAppConfirm(true);
+        appConfirmCancelBtn.onclick = () => resolveAppConfirm(false);
+        appConfirmBackdrop.onclick = () => resolveAppConfirm(false);
+
+        const codoxearClipboard = window.CodoxearClipboard;
+        if (!codoxearClipboard || typeof codoxearClipboard.copyToClipboard !== "function")
+          throw new Error("Codoxear clipboard helpers failed to load");
+        const codoxearCodeCopy = window.CodoxearCodeCopy;
+        if (!codoxearCodeCopy || typeof codoxearCodeCopy.createCodeBlockCopyRuntime !== "function")
+          throw new Error("Codoxear code copy helpers failed to load");
 
         function setToast(text) {
           toast.textContent = text || "";
@@ -2517,40 +1961,46 @@
           }, 2200);
         }
 
-        function copyTextViaSelection(text) {
-          if (typeof document.execCommand !== "function") {
-            throw new Error("Selection copy unavailable");
-          }
-          const value = String(text ?? "");
-          const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-          const ta = el("textarea", { "aria-hidden": "true" });
-          ta.value = value;
-          ta.setAttribute("readonly", "");
-          ta.style.position = "fixed";
-          ta.style.top = "0";
-          ta.style.left = "0";
-          ta.style.width = "1px";
-          ta.style.height = "1px";
-          ta.style.padding = "0";
-          ta.style.border = "0";
-          ta.style.opacity = "0";
-          ta.style.pointerEvents = "none";
-          document.body.appendChild(ta);
-          ta.focus({ preventScroll: true });
-          ta.select();
-          ta.setSelectionRange(0, value.length);
-          const ok = document.execCommand("copy");
-          ta.remove();
-          if (active) active.focus({ preventScroll: true });
-          if (!ok) throw new Error("Selection copy failed");
+        async function copyToClipboard(text) {
+          return codoxearClipboard.copyToClipboard(text);
         }
 
-        async function copyToClipboard(text) {
-          if (window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-            await navigator.clipboard.writeText(String(text ?? ""));
-            return;
+        const codeBlockCopyRuntime = codoxearCodeCopy.createCodeBlockCopyRuntime({
+          copyToClipboard,
+          setToast,
+          setTimeout,
+          clearTimeout,
+        });
+
+        function formatConversationForCopy(events) {
+          return codoxearConversationCopy.formatConversationForCopy(events);
+        }
+
+        function formatConversationForCopyResult(events) {
+          return codoxearConversationCopy.formatConversationForCopyResult(events);
+        }
+
+        function copiedConversationToast(messageCount) {
+          return messageCount === 1 ? "Copied 1 message" : `Copied ${messageCount} messages`;
+        }
+
+        async function copyConversation() {
+          if (!selected) return;
+          const sid = selected;
+          try {
+            const data = await api(`/api/sessions/${sid}/messages/export`);
+            if (selected !== sid) return;
+            const events = Array.isArray(data && data.events) ? data.events : [];
+            const formatted = formatConversationForCopyResult(events);
+            if (!formatted.text) {
+              setToast("No conversation to copy");
+              return;
+            }
+            await copyToClipboard(formatted.text);
+            setToast(copiedConversationToast(formatted.messageCount));
+          } catch (err) {
+            setToast(copyConversationFailureToast(err));
           }
-          copyTextViaSelection(text);
         }
 
         let currentQueueLen = 0;
@@ -2568,11 +2018,18 @@
                if (q) statusChip.textContent = mobile ? `Q ${q}` : `Queue ${q}`;
                else statusChip.textContent = "Idle";
           }
-          interruptBtn.style.display = running && selected ? "inline-flex" : "none";
-          interruptBtn.disabled = !(running && selected);
+          const canInterrupt = Boolean(running && selected);
+          interruptBtn.style.display = canInterrupt ? "inline-flex" : "none";
+          interruptBtn.disabled = !canInterrupt;
+          const composerStopControl = $("#composerStopBtn");
+          if (composerStopControl) {
+            composerStopControl.classList.toggle("is-visible", canInterrupt);
+            composerStopControl.disabled = !canInterrupt;
+          }
           if (wasRunning && !currentRunning) {
             // no-op placeholder; keep transition boundary for future UI behavior
           }
+          syncAttachButtonState();
           updateQueueBadge();
         }
 
@@ -2580,6 +2037,7 @@
 	          if (!tok || typeof tok !== "object") {
 	            lastToken = null;
 	            ctxChip.style.display = "none";
+	            ctxChip.disabled = true;
 	            ctxChip.textContent = "";
 	            ctxChip.title = "";
 	            return;
@@ -2590,6 +2048,7 @@
 	          if (!Number.isFinite(ctx) || !Number.isFinite(used) || ctx <= 0 || used < 0) {
 	            lastToken = null;
 	            ctxChip.style.display = "none";
+	            ctxChip.disabled = true;
 	            return;
 	          }
 	          const p = Number.isFinite(pct) ? Math.max(0, Math.min(100, Math.round(pct))) : null;
@@ -2599,6 +2058,7 @@
 	          const effectiveReserved = Number.isFinite(reserved) && reserved >= 0 ? reserved : Math.max(ctx - effectiveMaxInput, 0);
 	          lastToken = { ctx, used, pct: p, remaining: Math.max(effectiveMaxInput - used, 0), maxInput: effectiveMaxInput, reserved: effectiveReserved, asOf: tok.as_of || "" };
 	          ctxChip.style.display = "inline-flex";
+	          ctxChip.disabled = false;
 	          ctxChip.textContent = p === null ? "Ctx" : `Ctx ${p}%`;
 	          ctxChip.title = `Context input: ${used}/${lastToken.maxInput} tokens (${lastToken.reserved} reserved; window ${ctx}).`;
 	        }
@@ -2608,69 +2068,247 @@
         };
 
         function invalidateOlderLoad() {
-          if (!loadingOlder && !olderLoadController) return;
-          olderLoadRequestId += 1;
-          if (olderLoadController) {
-            const ctl = olderLoadController;
-            olderLoadController = null;
-            try {
-              ctl.abort();
-            } catch {}
-          }
-          if (loadingOlder) setOlderState({ hasMore: hasOlder, isLoading: false });
+          olderLoadRuntime.invalidate();
         }
 
         function resetChatRenderState() {
           invalidateOlderLoad();
-          autoScroll = true;
+          transcriptScrollRuntime.enableAutoScroll();
           sending = false;
-          recentEventKeys.length = 0;
-          recentEventKeySet.clear();
-          liveCursor = null;
-          hasOlder = false;
-          renderedAtLiveTail = true;
-          loadingOlder = false;
-          olderAutoTriggerAt = 0;
+          transcriptEventRuntime.resetRecentEvents();
+          transcriptSlotRuntime.clearLiveCursor();
+          transcriptScrollRuntime.markLiveTail();
+          olderLoadRuntime.resetAutoTrigger();
               clickMetricPending = false;
           clearTranscriptDom();
+          messageCopyNavigationRuntime.reset();
               setOlderState({ hasMore: false, isLoading: false });
-	          typingRow = null;
-	          jumpBtn.style.display = "none";
-	          backfillState = null;
-	          backfillToken += 1;
-	          lastScrollTop = 0;
-	          chat.scrollTop = 0;
+          typingRowRuntime.reset();
+          jumpBtn.style.display = "none";
+              updateChatNavButtons();
+              if (chatSearchController.isOpen()) closeChatSearch();
+          transcriptScrollRuntime.reset({ scrollTop: 0 });
+              transcriptScrollRuntime.syncVisibleTimeIndicator();
 	        }
 
         function clearTranscriptDom() {
-          chatInner.innerHTML = "";
-          chatInner.appendChild(olderWrap);
-          chatInner.appendChild(bottomSentinel);
+          transcriptDomRuntime.clear();
+        }
+
+        function clearOlderLoadError() {
+          olderLoadRuntime.clearError();
+        }
+
+        function showOlderLoadError() {
+          olderLoadRuntime.showError();
         }
 
         function setOlderState({ hasMore, isLoading }) {
-          hasOlder = Boolean(hasMore);
-          loadingOlder = Boolean(isLoading);
-          olderWrap.style.display = hasOlder ? "flex" : "none";
-          olderBtn.disabled = loadingOlder;
-          olderBtn.textContent = loadingOlder ? "Loading..." : "Load older messages";
+          olderLoadRuntime.setState({ hasMore, isLoading });
         }
 
+        const codoxearMessageRows = window.CodoxearMessageRows;
+        if (
+          !codoxearMessageRows ||
+          typeof codoxearMessageRows.makeRow !== "function" ||
+          typeof codoxearMessageRows.safeMakeRow !== "function" ||
+          typeof codoxearMessageRows.messageCopyButtonForRow !== "function" ||
+          typeof codoxearMessageRows.renderedMessageRows !== "function" ||
+          typeof codoxearMessageRows.loadedUserMessageRows !== "function" ||
+          typeof codoxearMessageRows.loadedCopyMessageRows !== "function" ||
+          typeof codoxearMessageRows.activeElementIsMessageCopyButton !== "function" ||
+          typeof codoxearMessageRows.createMessageCopyNavigationRuntime !== "function" ||
+          typeof codoxearMessageRows.rowSearchText !== "function" ||
+          typeof codoxearMessageRows.compareRowsInDomOrder !== "function" ||
+          typeof codoxearMessageRows.loadedUserJumpTarget !== "function" ||
+          typeof codoxearMessageRows.loadedCopyJumpTarget !== "function" ||
+          typeof codoxearMessageRows.clearChatSearchMarks !== "function" ||
+          typeof codoxearMessageRows.applyChatSearchMarks !== "function" ||
+          typeof codoxearMessageRows.oldestRenderedHistoryCursor !== "function" ||
+          typeof codoxearMessageRows.firstVisibleMessageRow !== "function" ||
+          typeof codoxearMessageRows.trimRenderedRowTargets !== "function" ||
+          typeof codoxearMessageRows.trimRowsBeforeViewportTargets !== "function"
+        )
+          throw new Error("Codoxear message row helpers failed to load");
+
+        const messageCopyNavigationRuntime = codoxearMessageRows.createMessageCopyNavigationRuntime({ root: chatInner });
+
         function renderedMessageRows() {
-          return Array.from(chatInner.querySelectorAll(".msg-row")).filter((row) => !row.classList.contains("typing-row"));
+          return codoxearMessageRows.renderedMessageRows(chatInner);
+        }
+
+        function loadedUserMessageRows() {
+          return codoxearMessageRows.loadedUserMessageRows(chatInner);
+        }
+
+        function loadedCopyMessageRows() {
+          return codoxearMessageRows.loadedCopyMessageRows(chatInner);
+        }
+
+        function messageCopyButtonForRow(row) {
+          return codoxearMessageRows.messageCopyButtonForRow(row);
+        }
+
+        function activeElementIsMessageCopyButton() {
+          return codoxearMessageRows.activeElementIsMessageCopyButton(document);
+        }
+
+        function rowSearchText(row) {
+          return codoxearMessageRows.rowSearchText(row);
+        }
+
+        function compareRowsInDomOrder(a, b) {
+          return codoxearMessageRows.compareRowsInDomOrder(a, b, Node);
+        }
+
+        function loadedUserJumpTarget(rows, direction, threshold) {
+          return codoxearMessageRows.loadedUserJumpTarget(rows, direction, threshold);
+        }
+
+        function loadedCopyJumpTarget(rows, direction, threshold) {
+          return messageCopyNavigationRuntime.jumpTarget(rows, direction, threshold);
+        }
+
+        function applyChatSearchMarks(matches, currentRow) {
+          codoxearMessageRows.applyChatSearchMarks(matches, currentRow);
+        }
+
+        function firstVisibleMessageRow() {
+          return codoxearMessageRows.firstVisibleMessageRow(renderedMessageRows(), chat.scrollTop + 1);
+        }
+
+        function syncMessageCopyTabStops() {
+          messageCopyNavigationRuntime.syncTabStops(renderedMessageRows());
+        }
+
+        function setActiveMessageCopyRow(row, { focusCopy = false } = {}) {
+          messageCopyNavigationRuntime.setActiveRow(row, { focusCopy });
+        }
+
+        addAppEvent(chatInner, "pointerover", (e) => {
+          if (activeElementIsMessageCopyButton()) return;
+          const row = e.target && typeof e.target.closest === "function" ? e.target.closest(".msg-row") : null;
+          if (row && chatInner.contains(row)) setActiveMessageCopyRow(row);
+        });
+
+        addAppEvent(chatInner, "focusin", (e) => {
+          const row = e.target && typeof e.target.closest === "function" ? e.target.closest(".msg-row") : null;
+          if (row && chatInner.contains(row)) setActiveMessageCopyRow(row);
+        });
+
+        function prefersReducedMotion() {
+          return codoxearViewport.prefersReducedMotion();
+        }
+
+        function pulseNavigatedRow(row) {
+          if (!row) return;
+          setActiveMessageCopyRow(row, { focusCopy: activeElementIsMessageCopyButton() });
+          row.classList.remove("nav-pulse");
+          void row.offsetWidth;
+          row.classList.add("nav-pulse");
+          setTimeout(() => row.classList.remove("nav-pulse"), 1400);
+        }
+
+        // Loaded-chat navigation rail + document shortcut orchestration now
+        // lives in the CodoxearChatNavigation controller
+        // (codoxear/static/app_chat_navigation.js). app.js keeps DOM
+        // construction for prevUserBtn/nextUserBtn and the thin wrappers below.
+        // The controller is instantiated after the DOM nodes and message-row
+        // helpers exist; it wires the prev/next button handlers and the
+        // document keydown listener itself. Chat search internals stay here.
+        const chatNavigationController = (function instantiateChatNavigationController() {
+          const codoxearChatNavigation = window.CodoxearChatNavigation;
+          if (!codoxearChatNavigation || typeof codoxearChatNavigation.createChatNavigationController !== "function")
+            throw new Error("Codoxear chat navigation controller failed to load");
+          return codoxearChatNavigation.createChatNavigationController({
+            prevUserBtn,
+            nextUserBtn,
+            getSelected: () => selected,
+            loadedUserMessageRows,
+            loadedCopyMessageRows,
+            loadedUserJumpTarget,
+            loadedCopyJumpTarget,
+            getScrollTop: () => chat.scrollTop,
+            prefersReducedMotion,
+            pulseNavigatedRow,
+            setToast,
+            openChatSearch,
+            isTextEntryElement,
+            modalIsolationTargets,
+            isModalTargetOpen,
+            addAppEvent,
+            documentTarget: document,
+          });
+        })();
+
+        function updateChatNavButtons() {
+          chatNavigationController.syncButtons();
+        }
+
+        function jumpToLoadedUserMessage(direction) {
+          chatNavigationController.jumpToLoadedUserMessage(direction);
+        }
+
+        function jumpToLoadedMessage(direction) {
+          chatNavigationController.jumpToLoadedMessage(direction);
+        }
+
+        function clearChatSearchMarks() {
+          codoxearMessageRows.clearChatSearchMarks(renderedMessageRows());
+        }
+
+        function compactChatSearchSnippet(text, query, limit = 96) {
+          return codoxearDisplay.compactChatSearchSnippet(text, query, limit);
+        }
+
+        function chatSearchTranscriptHint(match, query) {
+          return codoxearDisplay.chatSearchTranscriptHint(match, query);
+        }
+
+        // --- Loaded-chat search + older-history search orchestration now
+        // lives in the CodoxearChatSearch controller
+        // (codoxear/static/app_chat_search.js). app.js keeps DOM construction
+        // for the search bar/controls, the row/text/mark helpers, transcript
+        // rendering + older-load authority, and the thin wrappers below that
+        // other app.js call sites and the chat navigation controller use.
+        let chatSearchController;
+
+        function openChatSearch() {
+          chatSearchController.open();
+        }
+
+        function closeChatSearch() {
+          chatSearchController.close();
+        }
+
+        function refreshLoadedChatSearch(options) {
+          chatSearchController.refreshLoaded(options);
+        }
+
+        function stepChatSearch(delta) {
+          return chatSearchController.step(delta);
+        }
+
+        // Loaded-chat navigation shortcut blocking and the document keydown
+        // handler for `/`, Alt+Shift+↑/↓ (copy-message nav), and Alt+↑/↓
+        // (user-message nav) now live in the CodoxearChatNavigation
+        // controller (codoxear/static/app_chat_navigation.js), wired via
+        // chatNavigationController above.
+
+        let activeTailHistoryCursor = null;
+
+        function usableOlderHistoryCursor(data) {
+          return codoxearTranscript.hasUsableOlderHistory(data) ? codoxearTranscript.historyCursorFromPayload(data) : null;
         }
 
         function oldestRenderedHistoryCursor() {
-          for (const row of renderedMessageRows()) {
-            const cursor = typeof row.dataset.historyCursor === "string" ? row.dataset.historyCursor : "";
-            if (cursor) return cursor;
-          }
-          return null;
+          return codoxearMessageRows.oldestRenderedHistoryCursor(renderedMessageRows()) || activeTailHistoryCursor;
         }
 
         function clearRenderedTranscriptRange() {
-          hasOlder = false;
-          renderedAtLiveTail = true;
+          activeTailHistoryCursor = null;
+          setOlderState({ hasMore: false, isLoading: false });
+          transcriptScrollRuntime.markLiveTail();
         }
 
         function initPageLimit() {
@@ -2681,187 +2319,228 @@
           return OLDER_PAGE_LIMIT;
         }
 
+        const codoxearTranscript = window.CodoxearTranscript;
+        if (
+          !codoxearTranscript ||
+          typeof codoxearTranscript.normalizeTailEvent !== "function" ||
+          typeof codoxearTranscript.normalizeTranscriptState !== "function" ||
+          typeof codoxearTranscript.normalizedTranscriptEvents !== "function" ||
+          typeof codoxearTranscript.transcriptKey !== "function" ||
+          typeof codoxearTranscript.historyCursorFromPayload !== "function" ||
+          typeof codoxearTranscript.hasUsableOlderHistory !== "function" ||
+          typeof codoxearTranscript.transcriptSnapshotFromData !== "function" ||
+          typeof codoxearTranscript.transcriptIdentityFromData !== "function" ||
+          typeof codoxearTranscript.tailCacheMatchesSession !== "function" ||
+          typeof codoxearTranscript.rememberTailSnapshot !== "function" ||
+          typeof codoxearTranscript.appendTailSnapshotEvents !== "function" ||
+          typeof codoxearTranscript.createTranscriptSlotRuntime !== "function" ||
+          typeof codoxearTranscript.createTypingRowRuntime !== "function" ||
+          typeof codoxearTranscript.createTranscriptRenderRuntime !== "function" ||
+          typeof codoxearTranscript.createTranscriptDomRuntime !== "function" ||
+          typeof codoxearTranscript.createTranscriptScrollRuntime !== "function" ||
+          typeof codoxearTranscript.createTranscriptEventRuntime !== "function" ||
+          typeof codoxearTranscript.createOlderLoadRuntime !== "function" ||
+          typeof codoxearTranscript.createLoadedChatSearchRuntime !== "function" ||
+          typeof codoxearTranscript.createChatSearchAllRuntime !== "function"
+        )
+          throw new Error("Codoxear transcript helpers failed to load");
+
+        const olderLoadRuntime = codoxearTranscript.createOlderLoadRuntime({
+          olderWrap,
+          olderButton: olderBtn,
+          olderError,
+          olderErrorText,
+          AbortControllerCtor: AbortController,
+          nowMs: () => performance.now(),
+          autoCooldownMs: OLDER_AUTO_COOLDOWN_MS,
+        });
+
+        chatSearchController = (function instantiateChatSearchController() {
+          const codoxearChatSearch = window.CodoxearChatSearch;
+          if (!codoxearChatSearch || typeof codoxearChatSearch.createChatSearchController !== "function")
+            throw new Error("Codoxear chat search controller failed to load");
+          return codoxearChatSearch.createChatSearchController({
+            chatSearchBtn,
+            chatSearchInput,
+            chatSearchPrevBtn,
+            chatSearchNextBtn,
+            chatSearchCloseBtn,
+            chatSearchStatus,
+            chatSearchAllHintEl,
+            chatSearchBar,
+            createLoadedChatSearchRuntime: codoxearTranscript.createLoadedChatSearchRuntime,
+            createChatSearchAllRuntime: codoxearTranscript.createChatSearchAllRuntime,
+            getSelected: () => selected,
+            getPollGen: () => pollGen,
+            api,
+            setToast,
+            openSession,
+            handleAppAuthLoss,
+            chatSearchTranscriptHint,
+            syncVisibleTimeIndicator: () => transcriptScrollRuntime.syncVisibleTimeIndicator(),
+            renderedMessageRows,
+            rowSearchText,
+            compareRowsInDomOrder,
+            clearChatSearchMarks,
+            applyChatSearchMarks,
+            pulseNavigatedRow,
+            prefersReducedMotion,
+            oldestRenderedHistoryCursor,
+            renderDetachedTranscriptWindow,
+            invalidateOlderLoad,
+            setOlderState,
+            showOlderLoadError,
+            hasOlderMessages,
+            isLoadingOlderMessages,
+            olderPageLimit,
+            loadOlderMessages,
+            olderLoadRuntime,
+          });
+        })();
+
+        const transcriptSlotRuntime = codoxearTranscript.createTranscriptSlotRuntime({
+          getSession: (sessionId) => sessionIndex.get(sessionId) || null,
+          maxTailEvents: Math.max(INIT_PAGE_LIMIT_DESKTOP, INIT_PAGE_LIMIT_MOBILE),
+        });
+
+        function activeTranscriptSnapshot() {
+          return transcriptSlotRuntime.activeSnapshot();
+        }
+
+        const typingRowRuntime = codoxearTranscript.createTypingRowRuntime({
+          root: chatInner,
+          bottomSentinel,
+          el,
+          shouldAutoScroll: () => transcriptScrollRuntime.snapshot().autoScroll,
+          scheduleScrollToBottom: () => transcriptScrollRuntime.scheduleScrollToBottom(),
+        });
+
+        const transcriptScrollRuntime = codoxearTranscript.createTranscriptScrollRuntime({
+          chat,
+          jumpButton: jumpBtn,
+          timeChip: chatTimeChip,
+          requestAnimationFrame: (callback) => requestAnimationFrame(callback),
+          hasSelection: () => Boolean(selected),
+          isSearchOpen: () => chatSearchController.isOpen(),
+          firstVisibleMessageRow,
+          dayLabel,
+          time24,
+          shouldCancelOlderLoad: () => olderLoadRuntime.shouldCancelOnScroll(),
+          cancelOlderLoad: invalidateOlderLoad,
+          autoLoadOlder: () => { void loadOlderMessages({ auto: true }); },
+          bottomThresholdPx: 80,
+          olderTopTriggerPx: OLDER_TOP_TRIGGER_PX,
+          olderCancelPx: OLDER_CANCEL_PX,
+        });
+
+        const transcriptDomRuntime = codoxearTranscript.createTranscriptDomRuntime({
+          root: chatInner,
+          olderWrap,
+          bottomSentinel,
+          el,
+          ymd,
+          dayLabel,
+          getRenderedRows: renderedMessageRows,
+          trimRenderedRowTargets: codoxearMessageRows.trimRenderedRowTargets,
+          trimRowsBeforeViewportTargets: codoxearMessageRows.trimRowsBeforeViewportTargets,
+          scrollRuntime: transcriptScrollRuntime,
+          defaultWindowRows: CHAT_DOM_WINDOW,
+          afterDecorate: () => {
+            updateChatNavButtons();
+            syncMessageCopyTabStops();
+            if (chatSearchController.isOpen()) chatSearchController.refreshLoaded({ jump: false, preserveCurrent: true });
+          },
+        });
+
+        function olderLoadSnapshot() {
+          return olderLoadRuntime.snapshot();
+        }
+
+        function hasOlderMessages() {
+          return olderLoadSnapshot().hasMore;
+        }
+
+        function isLoadingOlderMessages() {
+          return olderLoadSnapshot().isLoading;
+        }
+
         function normalizeTailEvent(ev) {
-          if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return null;
-          if (typeof ev.text !== "string" || !ev.text.trim()) return null;
-          const out = { role: ev.role, text: ev.text };
-          if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) out.ts = ev.ts;
-          if (typeof ev.message_class === "string") out.message_class = ev.message_class;
-          if (typeof ev.message_id === "string") out.message_id = ev.message_id;
-          if (typeof ev.notification_text === "string") out.notification_text = ev.notification_text;
-          if (typeof ev.history_cursor === "string" && ev.history_cursor) out.history_cursor = ev.history_cursor;
-          return out;
+          return codoxearTranscript.normalizeTailEvent(ev);
         }
 
         function normalizeTranscriptState(data) {
-          const raw = data && typeof data.transcript_state === "string" ? data.transcript_state : "";
-          if (raw === "bound" || raw === "pending_bind" || raw === "failed") return raw;
-          return data && typeof data.log_path === "string" && data.log_path ? "bound" : "pending_bind";
+          return codoxearTranscript.normalizeTranscriptState(data);
         }
 
         function transcriptKey(threadId, logPath) {
-          if (typeof threadId !== "string" || !threadId) return null;
-          if (typeof logPath !== "string" || !logPath) return null;
-          return `${threadId}\n${logPath}`;
+          return codoxearTranscript.transcriptKey(threadId, logPath);
         }
 
         function transcriptSnapshotFromData(data) {
-          const state = normalizeTranscriptState(data);
-          const threadId = state === "bound" && typeof data?.thread_id === "string" && data.thread_id ? data.thread_id : null;
-          const logPath = state === "bound" && typeof data?.log_path === "string" && data.log_path ? data.log_path : null;
-          return {
-            state,
-            threadId,
-            logPath,
-            key: state === "bound" ? transcriptKey(threadId, logPath) : null,
-          };
+          return codoxearTranscript.transcriptSnapshotFromData(data);
+        }
+
+        function transcriptIdentityFromData(data, fallback = null) {
+          return codoxearTranscript.transcriptIdentityFromData(data, fallback);
         }
 
         function getSessionTranscriptSlot(sessionId) {
-          if (!sessionId) return { state: "pending_bind", threadId: null, logPath: null, key: null, epoch: 0, ignoredKey: null };
-          const current = sessionTranscriptSlots.get(sessionId);
-          if (current) return current;
-          return { state: "pending_bind", threadId: null, logPath: null, key: null, epoch: 0, ignoredKey: null };
+          return transcriptSlotRuntime.getSlot(sessionId);
         }
 
         function syncActiveTranscriptSlot(sessionId) {
-          const slot = getSessionTranscriptSlot(sessionId);
-          activeTranscriptState = slot.state;
-          activeThreadId = slot.threadId;
-          activeLogPath = slot.logPath;
-          return slot;
+          return transcriptSlotRuntime.syncActiveSlot(sessionId);
         }
 
         function dropPendingUserRows(sessionId, predicate = null) {
-          if (!sessionId || !pendingUser.length) return;
-          const kept = [];
-          for (const item of pendingUser) {
-            const match = !!(item && item.sessionId === sessionId && (!predicate || predicate(item)));
-            if (!match) {
-              kept.push(item);
-              continue;
-            }
-            if (selected === sessionId && item.id) {
-              const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${item.id}"]`);
-              const row = pendingEl ? pendingEl.closest(".msg-row") : null;
-              if (row) row.remove();
-            }
+          if (!sessionId) return;
+          const dropped = transcriptEventRuntime.dropPendingUsers(sessionId, predicate);
+          if (selected !== sessionId) return;
+          for (const item of dropped) {
+            if (!item || !item.id) continue;
+            const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${item.id}"]`);
+            const row = pendingEl ? pendingEl.closest(".msg-row") : null;
+            if (row) row.remove();
           }
-          pendingUser.length = 0;
-          pendingUser.push(...kept);
         }
 
         function updateSessionTranscriptSlot(sessionId, data) {
-          const prev = getSessionTranscriptSlot(sessionId);
-          const snap = transcriptSnapshotFromData(data);
-          if (prev.state === "pending_bind" && prev.ignoredKey && snap.state === "bound" && snap.key === prev.ignoredKey) {
-            const next = { ...prev };
-            if (sessionId) sessionTranscriptSlots.set(sessionId, next);
-            if (selected === sessionId) syncActiveTranscriptSlot(sessionId);
-            return { previous: prev, current: next, resetPending: false, ignoredStaleBound: true };
-          }
-          let epoch = prev.epoch;
-          let resetPending = false;
-          let ignoredKey = null;
-          if (snap.state === "pending_bind") {
-            if (prev.state === "bound") {
-              epoch += 1;
-              resetPending = true;
-              ignoredKey = prev.key;
-            } else {
-              ignoredKey = prev.ignoredKey || null;
-            }
-          } else if (prev.state === "bound" && prev.key !== snap.key) {
-            epoch += 1;
-            resetPending = true;
-          }
-          const next = { ...snap, epoch, ignoredKey };
-          if (sessionId) sessionTranscriptSlots.set(sessionId, next);
-          if (resetPending) dropPendingUserRows(sessionId, () => true);
+          const change = transcriptSlotRuntime.updateSlot(sessionId, data);
+          if (change.resetPending) dropPendingUserRows(sessionId, () => true);
           if (selected === sessionId) syncActiveTranscriptSlot(sessionId);
-          return { previous: prev, current: next, resetPending, ignoredStaleBound: false };
+          return change;
         }
 
         function beginTranscriptRenewal(sessionId) {
-          if (!sessionId) return;
-          const prev = getSessionTranscriptSlot(sessionId);
-          const next = {
-            state: "pending_bind",
-            threadId: null,
-            logPath: null,
-            key: null,
-            epoch: Number(prev.epoch || 0) + 1,
-            ignoredKey: prev.state === "bound" ? prev.key : prev.ignoredKey || null,
-          };
-          sessionTranscriptSlots.set(sessionId, next);
+          const change = transcriptSlotRuntime.beginRenewal(sessionId);
+          if (!change) return;
           dropPendingUserRows(sessionId, () => true);
           if (selected === sessionId) syncActiveTranscriptSlot(sessionId);
         }
 
         function tailCacheMatchesSession(cache, session) {
-          if (!cache || !session) return false;
-          const cacheThreadId = typeof cache.threadId === "string" ? cache.threadId : null;
-          const cacheLogPath = typeof cache.logPath === "string" ? cache.logPath : null;
-          const sessionThreadId = typeof session.thread_id === "string" ? session.thread_id : null;
-          const sessionLogPath = typeof session.log_path === "string" ? session.log_path : null;
-          return cacheThreadId === sessionThreadId && cacheLogPath === sessionLogPath;
+          return transcriptSlotRuntime.tailCacheMatchesSession(cache, session);
         }
 
         function rememberTailSnapshot(sessionId, session, data) {
-          if (!sessionId || !session || !data || typeof data !== "object") return;
-          if (normalizeTranscriptState(data) !== "bound") {
-            sessionTailCache.delete(sessionId);
-            return;
-          }
-          const events = [];
-          for (const ev of Array.isArray(data.events) ? data.events : []) {
-            const norm = normalizeTailEvent(ev);
-            if (norm) events.push(norm);
-          }
-          const maxEvents = Math.max(INIT_PAGE_LIMIT_DESKTOP, INIT_PAGE_LIMIT_MOBILE);
-          if (events.length > maxEvents) events.splice(0, events.length - maxEvents);
-          sessionTailCache.set(sessionId, {
-            threadId: typeof session.thread_id === "string" ? session.thread_id : null,
-            logPath: typeof session.log_path === "string" ? session.log_path : null,
-            liveCursor: typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null,
-            hasOlder: Boolean(data.has_older),
-            busy: Boolean(data.busy),
-            queueLen: Number.isFinite(Number(data.queue_len)) ? Number(data.queue_len) : 0,
-            token: data.token || null,
-            events,
-          });
+          return transcriptSlotRuntime.rememberTail(sessionId, session, data);
         }
 
-        function appendTailSnapshotEvents(sessionId, events, { session = null, liveCursor: nextLiveCursor, busy, queueLen, token } = {}) {
-          if (!sessionId || !events || !events.length) return;
-          const current = sessionTailCache.get(sessionId);
-          const list = current && Array.isArray(current.events) ? current.events.slice() : [];
-          for (const ev of events) {
-            const norm = normalizeTailEvent(ev);
-            if (!norm) continue;
-            list.push(norm);
-          }
-          const maxEvents = Math.max(INIT_PAGE_LIMIT_DESKTOP, INIT_PAGE_LIMIT_MOBILE);
-          if (list.length > maxEvents) list.splice(0, list.length - maxEvents);
-          const meta = session || sessionIndex.get(sessionId) || null;
-          sessionTailCache.set(sessionId, {
-            threadId: meta && typeof meta.thread_id === "string" ? meta.thread_id : current ? current.threadId : null,
-            logPath: meta && typeof meta.log_path === "string" ? meta.log_path : current ? current.logPath : null,
-            liveCursor: typeof nextLiveCursor === "string" && nextLiveCursor ? nextLiveCursor : current ? current.liveCursor : null,
-            hasOlder: current ? Boolean(current.hasOlder) : false,
-            busy: typeof busy === "boolean" ? busy : current ? Boolean(current.busy) : false,
-            queueLen: Number.isFinite(Number(queueLen)) ? Number(queueLen) : current ? Number(current.queueLen || 0) : 0,
-            token: token !== undefined ? token : current ? current.token : null,
-            events: list,
+        function appendTailSnapshotEvents(sessionId, events, { session = null, identityData = null, liveCursor: nextLiveCursor, busy, queueLen, token } = {}) {
+          return transcriptSlotRuntime.appendTailEvents(sessionId, events, {
+            session,
+            identityData,
+            liveCursor: nextLiveCursor,
+            busy,
+            queueLen,
+            token,
           });
         }
 
         function restorePendingUserRowsForSession(sessionId) {
           if (!sessionId) return;
           const slot = getSessionTranscriptSlot(sessionId);
-          const items = pendingUser
-            .filter((item) => item && item.sessionId === sessionId && Number(item.epoch || 0) === Number(slot.epoch || 0))
-            .sort((a, b) => Number(a.t0 || 0) - Number(b.t0 || 0));
+          const items = transcriptEventRuntime.pendingUsersForSession(sessionId, Number(slot.epoch || 0));
           for (const item of items) {
             if (!item || !item.id) continue;
             if (chatInner.querySelector(`.msg.user[data-local-id="${item.id}"]`)) continue;
@@ -2874,22 +2553,19 @@
           const slotChange = updateSessionTranscriptSlot(sessionId, sessionMeta);
           if (!slotChange.resetPending) return;
 
-          sessionTailCache.delete(sessionId);
-          liveCursor = null;
+          transcriptSlotRuntime.deleteTailCache(sessionId);
+          transcriptSlotRuntime.clearLiveCursor();
           clearRenderedTranscriptRange();
           setAttachCount(0);
           invalidateOlderLoad();
-          recentEventKeys.length = 0;
-          recentEventKeySet.clear();
-          backfillToken += 1;
-          backfillState = null;
-          autoScroll = true;
+          transcriptEventRuntime.resetRecentEvents();
+          transcriptScrollRuntime.enableAutoScroll();
           clearTranscriptDom();
           if (slotChange.current.state === "pending_bind") {
             renderPendingTranscriptSlot(sessionId);
           } else {
             setOlderState({ hasMore: false, isLoading: false });
-            syncJumpButton();
+            transcriptScrollRuntime.syncJumpButton();
             kickPoll(0);
           }
 
@@ -2928,281 +2604,105 @@
             pushPerfSample("click_to_first_message_ms", dt);
           }
 
-	        function ensureTypingRow() {
-	          if (typingRow && typingRow.isConnected) return typingRow;
-	          const row = el("div", { class: "msg-row assistant typing-row" });
-	          row.dataset.role = "assistant";
-	          const bubble = el("div", { class: "msg assistant typing" });
-	          const dots = el("div", { class: "typingDots", "aria-label": "Running", title: "Running" }, [
-	            el("span", { class: "typingDot" }),
-	            el("span", { class: "typingDot" }),
-	            el("span", { class: "typingDot" }),
-	          ]);
-	          bubble.appendChild(dots);
-	          row.appendChild(bubble);
-	          typingRow = row;
-	          return row;
-	        }
-
 	        function setTyping(show) {
-	          if (!show) {
-	            if (typingRow && typingRow.isConnected) typingRow.remove();
-	            return;
-	          }
-	          const row = ensureTypingRow();
-	          if (!row.isConnected) {
-	            chatInner.insertBefore(row, bottomSentinel);
-	          } else if (row.nextSibling !== bottomSentinel) {
-	            chatInner.insertBefore(row, bottomSentinel);
-	          }
-	          if (autoScroll) requestAnimationFrame(() => scrollToBottom());
+	          typingRowRuntime.setVisible(show);
 	        }
-
-        function isNearBottom() {
-          const thresholdPx = 80;
-          return chat.scrollHeight - (chat.scrollTop + chat.clientHeight) <= thresholdPx;
-        }
-
-        function syncJumpButton() {
-          jumpBtn.style.display = renderedAtLiveTail && (autoScroll || isNearBottom()) ? "none" : "inline-flex";
-        }
-
-        function scrollToBottom() {
-          // Avoid scrollIntoView() on mobile Safari, which can scroll the whole page when the
-          // on-screen keyboard opens/closes.
-          chat.scrollTop = chat.scrollHeight;
-          lastScrollTop = chat.scrollTop;
-        }
 
         function ymd(d) {
-          const y = String(d.getFullYear()).padStart(4, "0");
-          const m = String(d.getMonth() + 1).padStart(2, "0");
-          const day = String(d.getDate()).padStart(2, "0");
-          return `${y}-${m}-${day}`;
+          return codoxearDisplay.ymd(d);
         }
 
         function dayLabel(d) {
-          const today = new Date();
-          const a = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-          const b = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-          const diffDays = Math.round((a - b) / 86400000);
-          const date = ymd(d);
-          if (diffDays === 0) return `Today (${date})`;
-          if (diffDays === 1) return `Yesterday (${date})`;
-          return date;
+          return codoxearDisplay.dayLabel(d);
         }
 
         function time24(d) {
-          const hh = String(d.getHours()).padStart(2, "0");
-          const mm = String(d.getMinutes()).padStart(2, "0");
-          return `${hh}:${mm}`;
+          return codoxearDisplay.time24(d);
         }
 
         function rebuildDecorations({ preserveScroll }) {
-          const oldTop = chat.scrollTop;
-          const oldH = chat.scrollHeight;
-
-          for (const n of Array.from(chatInner.querySelectorAll(".day-sep"))) n.remove();
-
-          const rows = Array.from(chatInner.querySelectorAll(".msg-row"));
-          let prevRole = null;
-          let prevDay = null;
-          let lastDay = null;
-
-          for (const row of rows) {
-            const role = row.classList.contains("user") ? "user" : "assistant";
-            const ts = Number(row.dataset.ts || "0");
-            const day = ts ? ymd(new Date(ts * 1000)) : null;
-
-            row.classList.remove("grouped");
-            if (prevRole === role && prevDay && day && prevDay === day) row.classList.add("grouped");
-            prevRole = role;
-            prevDay = day;
-
-            if (day && day !== lastDay) {
-              const d = new Date(ts * 1000);
-              const sep = el("div", { class: "day-sep", text: dayLabel(d) });
-              sep.dataset.day = day;
-              chatInner.insertBefore(sep, row);
-              lastDay = day;
-            }
-          }
-
-          if (preserveScroll) {
-            chat.scrollTop = oldTop + (chat.scrollHeight - oldH);
-          }
-          if (autoScroll) {
-            requestAnimationFrame(() => scrollToBottom());
-          }
-          syncJumpButton();
+          transcriptDomRuntime.rebuildDecorations({ preserveScroll });
         }
 
         function trimRenderedRows({ fromTop, maxRows = CHAT_DOM_WINDOW }) {
-          const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row"));
-          const allowedRows = Number.isFinite(Number(maxRows))
-            ? Math.max(1, Math.floor(Number(maxRows)))
-            : CHAT_DOM_WINDOW;
-          if (rows.length <= allowedRows) return;
-          const extra = rows.length - allowedRows;
-          if (fromTop) {
-            for (const row of rows.slice(0, extra)) row.remove();
-            renderedAtLiveTail = true;
-          } else {
-            for (const row of rows.slice(rows.length - extra)) row.remove();
-            renderedAtLiveTail = false;
-          }
-        }
-
-        function firstVisibleMessageRow() {
-          const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row"));
-          const viewportTop = chat.scrollTop + 1;
-          for (const row of rows) {
-            if ((row.offsetTop + row.offsetHeight) > viewportTop) return row;
-          }
-          return rows.length ? rows[rows.length - 1] : null;
+          transcriptDomRuntime.trimRenderedRows({ fromTop, maxRows });
         }
 
         function trimRenderedRowsBeforeViewport({ maxRows = CHAT_DOM_WINDOW } = {}) {
-          const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row"));
-          const allowedRows = Number.isFinite(Number(maxRows))
-            ? Math.max(CHAT_DOM_WINDOW, Math.floor(Number(maxRows)))
-            : CHAT_DOM_WINDOW;
-          if (rows.length <= allowedRows) return;
-          const extra = rows.length - allowedRows;
-          const viewportTop = chat.scrollTop + 1;
-          let firstVisible = 0;
-          while (firstVisible < rows.length) {
-            const row = rows[firstVisible];
-            if ((row.offsetTop + row.offsetHeight) > viewportTop) break;
-            firstVisible += 1;
-          }
-          const removable = Math.min(extra, firstVisible);
-          if (removable <= 0) return;
-          for (const row of rows.slice(0, removable)) row.remove();
+          transcriptDomRuntime.trimRowsBeforeViewport({ maxRows, viewportTop: chat.scrollTop + 1 });
+        }
+
+        function messageRowDeps() {
+          return {
+            el,
+            chatMarkdownHtmlCached,
+            selectedSessionId: selected,
+            upgradeCandidateFileRefs,
+            time24,
+            iconSvg,
+            copyToClipboard,
+            setToast,
+            chatAssistantDedupeKey,
+            setTimeout: window.setTimeout.bind(window),
+            consoleError: console.error.bind(console),
+          };
         }
 
         function makeRow(ev, { ts, pending }) {
-          const role = ev.role === "user" ? "user" : "assistant";
-          const row = el("div", { class: `msg-row ${role}` });
-          row.dataset.role = role;
-          if (typeof ts === "number" && Number.isFinite(ts)) row.dataset.ts = String(ts);
-          if (!pending && typeof ev.history_cursor === "string" && ev.history_cursor) row.dataset.historyCursor = ev.history_cursor;
-          const messageClass = typeof ev.message_class === "string" ? ev.message_class : "";
-
-          const bubble = el("div", { class: role === "user" ? "msg user" : "msg assistant" });
-          if (role === "assistant" && (messageClass === "error" || messageClass === "warning")) {
-            bubble.classList.add(messageClass);
-          }
-          const md = el("div", { class: "md", html: chatMarkdownHtmlCached(ev.text, selected) });
-          bubble.appendChild(md);
-          void upgradeCandidateFileRefs(md);
-          if (typeof ts === "number" && Number.isFinite(ts)) bubble.appendChild(el("div", { class: "ts", text: time24(new Date(ts * 1000)) }));
-
-          if (pending) {
-            bubble.style.opacity = "0.72";
-            bubble.setAttribute("data-pending", "1");
-            if (ev.localId) bubble.setAttribute("data-local-id", String(ev.localId));
-          }
-
-          const shell = el("div", { class: `msg-shell ${role}` });
-          shell.appendChild(bubble);
-          if (typeof ev.text === "string" && ev.text.length) {
-            const copyBtn = el("button", {
-              class: "icon-btn msg-copy-btn",
-              type: "button",
-              title: "Copy raw markdown",
-              "aria-label": "Copy raw markdown",
-              html: iconSvg("copy"),
-            });
-            copyBtn.onclick = async (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              try {
-                await copyToClipboard(ev.text);
-                copyBtn.classList.add("copied");
-                setTimeout(() => copyBtn.classList.remove("copied"), 1200);
-                setToast("Copied markdown");
-              } catch (err) {
-                setToast(`copy failed: ${err && err.message ? err.message : "unknown error"}`);
-              }
-            };
-            shell.appendChild(copyBtn);
-          }
-
-          row.appendChild(shell);
-          return { row, bubble };
+          return codoxearMessageRows.makeRow(ev, { ts, pending }, messageRowDeps());
         }
 
         function safeMakeRow(ev, opts) {
-          try {
-            return makeRow(ev, opts);
-          } catch (err) {
-            console.error("makeRow failed", err);
-            const role = ev && ev.role === "user" ? "user" : "assistant";
-            const ts = opts && typeof opts.ts === "number" && Number.isFinite(opts.ts) ? opts.ts : null;
-            const pending = Boolean(opts && opts.pending);
-            const row = el("div", { class: `msg-row ${role}` });
-            row.dataset.role = role;
-            if (ts !== null) row.dataset.ts = String(ts);
-            if (!pending && typeof ev?.history_cursor === "string" && ev.history_cursor) row.dataset.historyCursor = ev.history_cursor;
-            const messageClass = typeof ev?.message_class === "string" ? ev.message_class : "";
-            const bubble = el("div", { class: role === "user" ? "msg user" : "msg assistant" });
-            if (role === "assistant" && (messageClass === "error" || messageClass === "warning")) {
-              bubble.classList.add(messageClass);
-            }
-            const md = el("div", { class: "md" });
-            md.textContent = typeof ev?.text === "string" ? ev.text : String(ev?.text ?? "");
-            bubble.appendChild(md);
-            if (ts !== null) bubble.appendChild(el("div", { class: "ts", text: time24(new Date(ts * 1000)) }));
-            if (pending) {
-              bubble.style.opacity = "0.72";
-              bubble.setAttribute("data-pending", "1");
-              if (ev && ev.localId) bubble.setAttribute("data-local-id", String(ev.localId));
-            }
-            const shell = el("div", { class: `msg-shell ${role}` });
-            shell.appendChild(bubble);
-            row.appendChild(shell);
-            return { row, bubble };
-          }
+          return codoxearMessageRows.safeMakeRow(ev, opts, messageRowDeps());
         }
 
+      const codoxearMessageIdentity = window.CodoxearMessageIdentity;
+      if (
+        !codoxearMessageIdentity ||
+        typeof codoxearMessageIdentity.normalizeTextForPendingMatch !== "function" ||
+        typeof codoxearMessageIdentity.pendingMatchKey !== "function" ||
+        typeof codoxearMessageIdentity.eventKey !== "function" ||
+        typeof codoxearMessageIdentity.chatAssistantDedupeKey !== "function"
+      )
+        throw new Error("Codoxear message identity helpers failed to load");
+
       function normalizeTextForPendingMatch(s) {
-        // Normalize common platform newline differences to improve pending->ack reconciliation.
-        return String(s || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        return codoxearMessageIdentity.normalizeTextForPendingMatch(s);
       }
 
+      const transcriptEventRuntime = codoxearTranscript.createTranscriptEventRuntime({
+        eventKey: codoxearMessageIdentity.eventKey,
+        pendingMatchKey: codoxearMessageIdentity.pendingMatchKey,
+        normalizePendingText: codoxearMessageIdentity.normalizeTextForPendingMatch,
+        assistantDedupeKey: codoxearMessageIdentity.chatAssistantDedupeKey,
+        maxRecentEventKeys: 320,
+      });
+
       function eventKey(ev) {
-        if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return "";
-        const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
-        if (ts === null) return "";
-        const tsMs = Math.round(ts * 1000);
-        const text = typeof ev.text === "string" ? pendingMatchKey(ev.text) : "";
-        return `${ev.role}|${tsMs}|${text}`;
+        return codoxearMessageIdentity.eventKey(ev);
       }
 
         function markEventSeen(ev) {
-          const key = eventKey(ev);
-          if (!key) return;
-          if (recentEventKeySet.has(key)) return;
-          recentEventKeySet.add(key);
-          recentEventKeys.push(key);
-          if (recentEventKeys.length > RECENT_EVENT_KEYS_MAX) {
-            const drop = recentEventKeys.splice(0, recentEventKeys.length - RECENT_EVENT_KEYS_MAX);
-            for (const k of drop) recentEventKeySet.delete(k);
-          }
+          transcriptEventRuntime.markEventSeen(ev);
         }
 
         function isDuplicateEvent(ev) {
-          const key = eventKey(ev);
-          if (!key) return false;
-          return recentEventKeySet.has(key);
+          return transcriptEventRuntime.isDuplicateEvent(ev);
+        }
+
+        function chatAssistantDedupeKey(ev) {
+          return codoxearMessageIdentity.chatAssistantDedupeKey(ev);
+        }
+
+        function isAdjacentAssistantDuplicateEvent(ev) {
+          return transcriptEventRuntime.isAdjacentAssistantDuplicateEvent(ev, {
+            renderedAtLiveTail: transcriptScrollRuntime.snapshot().renderedAtLiveTail,
+            rows: renderedMessageRows(),
+          });
         }
 
         function pendingMatchKey(s) {
-          // Codex log serialization can trim trailing whitespace/newlines; match on a slightly
-          // normalized key to avoid duplicating the optimistic local echo bubble.
-          const t = normalizeTextForPendingMatch(s);
-          return t.replace(/[ \t]+$/gm, "").replace(/\s+$/, "");
+          return codoxearMessageIdentity.pendingMatchKey(s);
         }
 
       function isTranscriptRenewalCommand(raw, sessionId = selected) {
@@ -3212,41 +2712,8 @@
       }
 
       function takePendingUserMatch(ev, sessionId = selected, { allowUntimedCommit = true } = {}) {
-        if (ev.role !== "user" || ev.pending) return false;
         const slot = getSessionTranscriptSlot(sessionId);
-        const slotEpoch = Number(slot.epoch || 0);
-        const key = pendingMatchKey(ev.text);
-        const loose = normalizeTextForPendingMatch(ev.text);
-        const evTs = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
-        const sameSlot = [];
-        const exactCandidates = [];
-        for (let i = 0; i < pendingUser.length; i++) {
-          const x = pendingUser[i];
-          if (!x || x.sessionId !== sessionId || Number(x.epoch || 0) !== slotEpoch) continue;
-          const candidate = { i, x };
-          sameSlot.push(candidate);
-          if (x.key === key || x.loose === loose) exactCandidates.push(candidate);
-        }
-        const candidates = exactCandidates.length
-          ? exactCandidates
-          : sameSlot.filter(({ x }) => evTs !== null ? evTs >= Number(x.t0 || 0) - 5 : allowUntimedCommit);
-          if (!candidates.length) return false;
-          let best = candidates[0];
-          if (exactCandidates.length && evTs !== null) {
-            let bestD = Math.abs(evTs - (best.x.t0 || evTs));
-            for (const c of candidates.slice(1)) {
-              const d = Math.abs(evTs - (c.x.t0 || evTs));
-              if (d < bestD) {
-                best = c;
-                bestD = d;
-              }
-          }
-        }
-        const idx = best.i;
-        if (idx < 0) return null;
-        const match = pendingUser[idx];
-        pendingUser.splice(idx, 1);
-        return match || null;
+        return transcriptEventRuntime.takePendingUserMatch(ev, sessionId, Number(slot.epoch || 0), { allowUntimedCommit });
       }
 
       function consumePendingUserIfMatches(ev, sessionId = selected) {
@@ -3272,527 +2739,318 @@
           return true;
         }
 
+        const transcriptRenderRuntime = codoxearTranscript.createTranscriptRenderRuntime({
+          root: chatInner,
+          bottomSentinel,
+          document,
+          safeMakeRow,
+          normalizeEvents: normalizedTranscriptEvents,
+          consumePendingUserIfMatches,
+          isDuplicateEvent,
+          isAdjacentAssistantDuplicateEvent,
+          markEventSeen,
+          markFirstPaint: markClickFirstPaint,
+          restorePendingRows: restorePendingUserRowsForSession,
+          resetRecentEvents: () => transcriptEventRuntime.resetRecentEvents(),
+          setOlderState,
+          firstVisibleMessageRow,
+          getScrollTop: () => chat.scrollTop,
+          getSelectedSessionId: () => selected,
+          domRuntime: transcriptDomRuntime,
+          scrollRuntime: transcriptScrollRuntime,
+          typingRowRuntime,
+          historySlackRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK,
+        });
+
         function isMobile() {
-          return window.matchMedia && window.matchMedia("(max-width: 880px)").matches;
+          return codoxearViewport.isMobile();
         }
 
         function useDesktopSessionActions() {
-          return Boolean(
-            window.matchMedia &&
-              window.matchMedia("(hover: hover) and (pointer: fine) and (min-width: 881px)").matches
-          );
+          return codoxearViewport.useDesktopSessionActions();
         }
 
         function useTouchFileEditorControls() {
-          if (!window.matchMedia) return false;
-          return Boolean(window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(hover: none)").matches);
+          return codoxearViewport.useTouchFileEditorControls();
         }
 
         function setSidebarOpen(open) {
           if (open) {
             document.body.classList.add("sidebar-open");
-            localStorage.setItem("codexweb.sidebarOpen", "1");
+            storageSetItem("codexweb.sidebarOpen", "1");
           } else {
             document.body.classList.remove("sidebar-open");
-            localStorage.removeItem("codexweb.sidebarOpen");
+            storageRemoveItem("codexweb.sidebarOpen");
           }
         }
 
         function setSidebarCollapsed(collapsed) {
           if (collapsed) {
             document.body.classList.add("sidebar-collapsed");
-            localStorage.setItem("codexweb.sidebarCollapsed", "1");
+            storageSetItem("codexweb.sidebarCollapsed", "1");
           } else {
             document.body.classList.remove("sidebar-collapsed");
-            localStorage.removeItem("codexweb.sidebarCollapsed");
+            storageRemoveItem("codexweb.sidebarCollapsed");
           }
         }
 
-	         async function refreshSessions() {
-	           const data = await api("/api/sessions");
-          latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
-          newSessionDefaults =
-            data && typeof data.new_session_defaults === "object" && data.new_session_defaults
-              ? data.new_session_defaults
-              : {
-                  default_backend: "codex",
-                  backends: {
-                    codex: legacyCodexLaunchDefaults(),
-                    pi: emptyPiLaunchDefaults(),
-                  },
-                };
-          tmuxAvailable = !!data.tmux_available;
-          recentCwds = Array.isArray(data.recent_cwds)
-            ? data.recent_cwds.filter((cwd, idx, arr) => typeof cwd === "string" && cwd.trim() && arr.indexOf(cwd) === idx)
-            : [];
-          if (newSessionViewer.style.display === "flex") {
-            syncNewSessionTmuxUi();
-            renderNewSessionBackendTabs();
-            renderNewSessionProviderMenu();
-            renderNewSessionReasoningMenu();
-            syncNewSessionRunConfigUi();
+        async function clearCommitUnknownSend(sid, previewText = "") {
+          const sessionId = String(sid || "").trim();
+          if (!sessionId) return false;
+          const preview = String(previewText || "").trim();
+          const suffix = preview ? `\n\nPrompt: ${preview.slice(0, 240)}${preview.length > 240 ? "..." : ""}` : "";
+          const confirmed = await confirmApp({
+            title: "Clear unknown-send marker?",
+            message: `Clear the unknown-send marker only after checking the transcript or terminal. This does not undo a prompt that may already have been sent.${suffix}`,
+            confirmText: "Clear marker",
+            cancelText: "Cancel",
+            destructive: true,
+          });
+          if (!confirmed) return false;
+          try {
+            await api(`/api/sessions/${sessionId}/commit_unknown_send/clear`, { method: "POST", body: {} });
+            setToast("unknown send marker cleared");
+            await refreshSessions();
+            updateQueueBadge();
+            if (selected === sessionId) syncRecoveryUiForSession(sessionId);
+            return true;
+          } catch (e) {
+            if (e && e.status === 401) {
+              handleAppAuthLoss();
+              return false;
+            }
+            setToast(`clear unknown send error: ${e && e.message ? e.message : "unknown error"}`);
+            return false;
           }
-          fileRefCandidateCache.clear();
-          const swipeActions = !useDesktopSessionActions();
-            const sessions = (data.sessions || [])
-               .slice()
-               .sort((a, b) => {
-                 const p = Number(b.final_priority || 0) - Number(a.final_priority || 0);
-                 if (p) return p;
-                 const u = Number(b.updated_ts || b.start_ts || 0) - Number(a.updated_ts || a.start_ts || 0);
-                 if (u) return u;
-                 const s0 = Number(b.start_ts || 0) - Number(a.start_ts || 0);
-                 if (s0) return s0;
-                 return String(a.session_id || "").localeCompare(String(b.session_id || ""));
-               });
-              sessionIndex = new Map();
-		          for (const s of sessions) sessionIndex.set(s.session_id, s);
-              if (selected) applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));
-		           if (swipeActions && openSwipeSessionId && sessionsWrap.childElementCount > 0) {
-		             swipeRefreshDeferred = true;
-		             return sessions;
-		           }
-		           sessionsWrap.innerHTML = "";
-		           openSwipeContent = null;
-			          for (const s of sessions) {
-			            const card = el("div", { class: "session" + (selected === s.session_id ? " active" : "") });
+        }
 
-             const title = sessionDisplayName(s);
-             const badges = [];
-             const launchFailed = sessionLaunchFailed(s);
-             const launchPending = sessionLaunchPending(s);
-             const launchRow = launchFailed || launchPending;
-             if (launchFailed) badges.push(el("span", { class: "badge launchFailed", text: "failed", title: s.launch_error || "Session launch failed" }));
-             if (launchPending) badges.push(el("span", { class: "badge launchPending", text: "starting", title: "Session is still starting" }));
-             if (s.harness_enabled) badges.push(el("span", { class: "badge harness", text: "harness", title: "Harness mode enabled" }));
-             if (s.queue_len) badges.push(el("span", { class: "badge queue", text: `queue ${s.queue_len}` }));
-
-	             const updatedTs = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts) ? s.updated_ts : s.start_ts;
-	             const ageS = updatedTs ? Math.max(0, Date.now() / 1000 - updatedTs) : 0;
-	             const effortTxt = String(s.reasoning_effort || "").trim().toLowerCase();
-	             const effortMark = effortTxt === "xhigh" ? "X" : effortTxt === "high" ? "H" : effortTxt === "medium" ? "M" : effortTxt === "low" ? "L" : "";
-	             const stateTxt = launchPending ? "starting" : fmtRelativeAge(ageS);
-	             const cwdBase = baseName(s.cwd);
-	             const branchTxt = typeof s.git_branch === "string" ? s.git_branch.trim() : "";
-
-	            function closeOpenSwipe() {
-	              if (!openSwipeContent) return;
-	              openSwipeContent.style.transform = "translate3d(0px, 0, 0)";
-	              openSwipeContent.dataset.swipeX = "0";
-	              openSwipeContent = null;
-	              openSwipeSessionId = null;
-	              openSwipeTargetX = 0;
-	              if (swipeRefreshDeferred) {
-	                swipeRefreshDeferred = false;
-	                void refreshSessions().catch((e) => console.error("refreshSessions failed after swipe close", e));
-	              }
-	            }
-
-             async function doDelete(e) {
-               if (e) {
-                 e.preventDefault();
-                 e.stopPropagation();
-               }
-              closeOpenSwipe();
-              if (!(await confirmApp(launchRow ? "Dismiss this launch record?" : "Delete this session?"))) return;
-              try {
-                await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
-                if (selected === s.session_id) {
-                  selected = null;
-                   activeTranscriptState = "pending_bind";
-                   activeLogPath = null;
-                   activeThreadId = null;
-                   liveCursor = null;
-                   clearRenderedTranscriptRange();
-                   turnOpen = false;
-                   localStorage.removeItem("codexweb.selected");
-                   setSessionHash("");
-                   titleLabel.textContent = "No session selected";
-                   setStatus({ running: false, queueLen: 0 });
-                   setContext(null);
-                   setTyping(false);
-                   setAttachCount(0);
-                   resetChatRenderState();
-                   updateQueueBadge();
-                   if (harnessMenuOpen) hideHarnessMenu();
-                   updateHarnessBtnState();
-                 }
-                 sessionTranscriptSlots.delete(s.session_id);
-                 sessionTailCache.delete(s.session_id);
-                 dropPendingUserRows(s.session_id, () => true);
-                 if (launchRow && card && card.parentNode) card.remove();
-                 await refreshSessions();
-               } catch (err) {
-                 setToast(`delete error: ${err.message}`);
-               }
+         const sidebarController = codoxearShell.createSidebarController({
+           sessionsWrap,
+           sidebarEmptyHint,
+           el,
+           iconSvg,
+           sidebarRenderSignature,
+           sessionDisplayName,
+           sessionLaunchFailed,
+           sessionLaunchPending,
+           redactedLaunchErrorText,
+           fmtRelativeAge,
+           reasoningEffortMarker,
+           sidebarModelText,
+           baseName,
+           sessionIsFast,
+           agentBackendLogoPath,
+           agentBackendDisplayName,
+           sessionAgentBackend,
+           sessionLaunchIcon,
+           sessionLaunchLabel,
+           confirmAction: (options) => confirmApp(options),
+           api,
+           clearDeletedSessionClientState,
+           refreshSessions,
+           setToast,
+           openEditSession,
+           duplicateSession: async (session) => {
+             const cwd = session && session.cwd && session.cwd !== "?" ? session.cwd : "";
+             if (!cwd) {
+               setToast("cwd unavailable");
+               return;
              }
+             await spawnSessionWithCwd(
+               cwd,
+               null,
+               null,
+               "",
+               sessionProviderChoice(session),
+               session && session.model ? session.model : "default",
+               session && session.reasoning_effort ? session.reasoning_effort : "high",
+               sessionIsFast(session),
+               !!(session && session.transport === "tmux"),
+               null,
+               sessionAgentBackend(session)
+             );
+           },
+           selectSession,
+           setSidebarOpen,
+           now: () => Date.now(),
+           performanceNow: () => performance.now(),
+           consoleError: (...args) => console.error(...args),
+         });
 
-             const renameBtn = el("button", {
-               class: "icon-btn",
-               title: "Edit conversation",
-               "aria-label": "Edit conversation",
-               type: "button",
-               html: iconSvg("edit"),
-             });
-             renameBtn.onclick = (e) => {
-               e.preventDefault();
-               e.stopPropagation();
-               closeOpenSwipe();
-               openEditSession(s.session_id);
-             };
-             const dupBtn = el("button", {
-               class: "icon-btn",
-               title: "Duplicate session",
-               "aria-label": "Duplicate session",
-               type: "button",
-               html: iconSvg("duplicate"),
-             });
-             dupBtn.onclick = async (e) => {
-               e.preventDefault();
-               e.stopPropagation();
-               closeOpenSwipe();
-               const cwd = s && s.cwd && s.cwd !== "?" ? s.cwd : "";
-               if (!cwd) {
-                 setToast("cwd unavailable");
-                 return;
-               }
-               await spawnSessionWithCwd(
-                 cwd,
-                 null,
-                 null,
-                 "",
-                 sessionProviderChoice(s),
-                 s && s.model ? s.model : "default",
-                 s && s.reasoning_effort ? s.reasoning_effort : "high",
-                 sessionIsFast(s),
-                 !!(s && s.transport === "tmux"),
-                 null,
-                 sessionAgentBackend(s)
-               );
-             };
-             const delBtn = el("button", {
-               class: "icon-btn danger sessionDel",
-               title: launchRow ? "Dismiss launch record" : "Delete session",
-               "aria-label": launchRow ? "Dismiss launch record" : "Delete session",
-               type: "button",
-               html: iconSvg("trash"),
-             });
-             delBtn.onclick = (e) => void doDelete(e);
+         async function refreshSessions() {
+           if (sessionsRefreshInFlight) {
+             sessionsRefreshQueued = true;
+             return sessionsRefreshInFlight;
+           }
+           sessionsRefreshInFlight = (async () => {
+             let result = latestSessions;
+             try {
+               do {
+                 sessionsRefreshQueued = false;
+                 result = await refreshSessionsOnce();
+               } while (sessionsRefreshQueued && !appDisposed);
+               return result;
+             } finally {
+               sessionsRefreshInFlight = null;
+             }
+           })();
+           return sessionsRefreshInFlight;
+         }
 
-             const stateDot = el("span", {
-               class:
-                 "stateDot" +
-                 (launchPending ? " pending" : s.snoozed || s.blocked ? " suppressed" : s.busy ? " busy" : " idle"),
-             });
-             const titleRow = el("div", { class: "sessionTitleRow" }, [
-               stateDot,
-               el("div", { class: "titleLine", title: s.cwd || "" }, [
-                 el("span", { class: "titleText", text: title }),
-                 sessionIsFast(s)
-                   ? el("span", { class: "sessionFastIcon", html: iconSvg("lightning"), title: "Fast session" })
-                   : null,
-               ].filter(Boolean)),
-             ]);
-	             const badgesWrap = el("div", { class: "sessionBadges" }, badges);
-	             const metaItems = [
-	               el("img", {
-	                 class: "sessionBackendStatusIcon",
-	                 src: agentBackendLogoPath(sessionAgentBackend(s)),
-	                 alt: `${agentBackendDisplayName(sessionAgentBackend(s))} logo`,
-	                 width: "12",
-	                 height: "12",
-	               }),
-	               el("span", {
-	                 class: `ownerBadge ownerIconBadge ${s.transport === "tmux" ? "owner-tmux" : s.owned ? "owner-web" : "owner-terminal"}`,
-	                 html: iconSvg(sessionLaunchIcon(s)),
-	                 title: sessionLaunchLabel(s),
-	               })
-	             ];
-	             if (effortMark) {
-	               metaItems.push(
-	                 el("span", {
-	                   class: `effortMark effort-${effortTxt}`,
-	                   text: effortMark,
-	                   title: `reasoning effort ${effortTxt}`,
-	                 })
-	               );
-	             }
-	             metaItems.push(el("span", { class: "metaText", text: `${stateTxt}${cwdBase ? ` | ${cwdBase}` : ""}${branchTxt ? ` | ${branchTxt}` : ""}` }));
-	             const meta = el("div", { class: "muted subLine sessionMetaLine" }, metaItems);
-             if (launchFailed) meta.title = s.launch_error || "Session launch failed";
-             if (launchPending) meta.title = "Session is still starting";
-
-             if (swipeActions) {
-               const leftActions = el("div", { class: "sessionActions left" }, [delBtn]);
-               const rightActions = el("div", { class: "sessionActions right" }, [renameBtn, dupBtn]);
-               const top = el("div", { class: "row" }, [titleRow, badgesWrap]);
-               const inner = el("div", { class: "sessionInner" }, [top, meta]);
-	               const content = el("div", { class: "sessionContent" }, [inner]);
-	               content.dataset.swipeX = "0";
-	               const swipe = el("div", { class: "sessionSwipe" }, [leftActions, rightActions, content]);
-	               card.appendChild(swipe);
-	               if (openSwipeSessionId === s.session_id && openSwipeTargetX !== 0) {
-	                  content.style.transform = `translate3d(${openSwipeTargetX}px, 0, 0)`;
-	                  content.dataset.swipeX = String(openSwipeTargetX);
-	                  openSwipeContent = content;
-	               }
-
-		               const leftMax = 72;
-	               const rightMax = 104;
-	               let startX = null;
-	               let startY = 0;
-	               let startSwipe = 0;
-	               let lastMoveTs = 0;
-	               let lastMoveX = 0;
-	               let swipeVelocity = 0;
-	               let dragging = false;
-	                content.addEventListener("pointerdown", (e) => {
-	                  if (e.pointerType === "mouse" && e.button !== 0) return;
-	                  startX = e.clientX;
-	                  startY = e.clientY;
-	                  startSwipe = Number(content.dataset.swipeX || 0);
-	                  lastMoveTs = performance.now();
-	                  lastMoveX = e.clientX;
-	                  swipeVelocity = 0;
-	                  dragging = false;
-	                  if (openSwipeContent && openSwipeContent !== content) closeOpenSwipe();
-	                  try {
-	                    content.setPointerCapture(e.pointerId);
-	                  } catch (_) {}
-                });
-	                 content.addEventListener("pointermove", (e) => {
-	                   if (startX === null) return;
-	                   const dx = e.clientX - startX;
-	                   const dy = e.clientY - startY;
-	                  const now = performance.now();
-	                  const dt = Math.max(now - lastMoveTs, 1);
-	                  swipeVelocity = ((e.clientX - lastMoveX) / dt) * 1000;
-	                  lastMoveTs = now;
-	                  lastMoveX = e.clientX;
-	                  if (!dragging) {
-	                    if (Math.abs(dx) < 4) return;
-	                    if (Math.abs(dx) < Math.abs(dy) * 0.7) return;
-	                    dragging = true;
-	                    content.style.transition = "none";
-	                  }
-	                  if (dragging) e.preventDefault();
-	                  let x = startSwipe + dx;
-                  x = Math.min(leftMax, Math.max(-rightMax, x));
-                   content.style.transform = `translate3d(${x}px, 0, 0)`;
-                   content.dataset.swipeX = String(x);
-                 });
-                function finishSwipe(e) {
-                  if (startX === null) return;
-                  try {
-                    if (e && e.pointerId != null) content.releasePointerCapture(e.pointerId);
-                  } catch (_) {}
-                  startX = null;
-                  if (!dragging) return;
-	                  dragging = false;
-	                  content.style.transition = "";
-	                  const x = Number(content.dataset.swipeX || 0);
-	                 let target = 0;
-	                  const commitLeft = leftMax > 0 && (x > leftMax * 0.28 || swipeVelocity > 420);
-	                  const commitRight = rightMax > 0 && (-x > rightMax * 0.28 || swipeVelocity < -420);
-	                  if (commitLeft) target = leftMax;
-	                  else if (commitRight) target = -rightMax;
-	                  content.style.transform = `translate3d(${target}px, 0, 0)`;
-	                  content.dataset.swipeX = String(target);
-	                  if (target !== 0) {
-	                    openSwipeContent = content;
-	                    openSwipeSessionId = s.session_id;
-	                    openSwipeTargetX = target;
-	                  } else if (openSwipeContent === content) {
-	                    openSwipeContent = null;
-	                    openSwipeSessionId = null;
-	                    openSwipeTargetX = 0;
-	                  }
-	                }
-               content.addEventListener("pointerup", finishSwipe);
-               content.addEventListener("pointercancel", finishSwipe);
-
-               card.onclick = () => {
-                 const x = Number(content.dataset.swipeX || 0);
-                 if (Math.abs(x) > 2) {
-                   closeOpenSwipe();
-                   return;
-                 }
-                 setSidebarOpen(false);
-                 if (launchPending) {
-                   setToast("session still starting");
-                   return;
-                 }
-                 selectSession(s.session_id);
-               };
-	             } else {
-	               card.classList.add("desktop");
-	               const actions = el("div", { class: "sessionActionsInline" }, [renameBtn, dupBtn, delBtn]);
-	               const titleWithBadges = el("div", { class: "sessionTitleWithBadges" }, [titleRow, badgesWrap]);
-	               const main = el("div", { class: "sessionMain" }, [titleWithBadges, meta]);
-	               const inner = el("div", { class: "sessionInner sessionDesktopLayout" }, [main, actions]);
-	               card.appendChild(inner);
-	               card.onclick = () => {
-	                 if (launchPending) {
-	                   setToast("session still starting");
-	                   return;
-	                 }
-	                 selectSession(s.session_id);
-	               };
-	             }
-
-	             sessionsWrap.appendChild(card);
-	            }
-	          if (openSwipeSessionId && !sessionIndex.has(openSwipeSessionId)) {
-	            openSwipeSessionId = null;
-	            openSwipeTargetX = 0;
-	            openSwipeContent = null;
-	          }
-          if (selected) {
-            const s = sessionIndex.get(selected);
-            if (s) titleLabel.textContent = sessionTitleWithId(s);
+	         async function refreshSessionsOnce() {
+	           const data = await api("/api/sessions");
+          if (appDisposed) return latestSessions;
+          const notModified = apiResponseNotModified(data);
+          if (notModified && !sidebarController.hasDeferredRefresh()) return latestSessions;
+          if (!notModified) {
+            latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
+            newSessionDefaults =
+              data && typeof data.new_session_defaults === "object" && data.new_session_defaults
+                ? data.new_session_defaults
+                : {
+                    default_backend: "codex",
+                    backends: {
+                      codex: legacyCodexLaunchDefaults(),
+                      pi: emptyPiLaunchDefaults(),
+                      cc: emptyCcLaunchDefaults(),
+                    },
+                  };
+            tmuxAvailable = !!data.tmux_available;
+            recentCwds = Array.isArray(data.recent_cwds)
+              ? data.recent_cwds.filter((cwd, idx, arr) => typeof cwd === "string" && cwd.trim() && arr.indexOf(cwd) === idx)
+              : [];
+            if (newSessionViewer.style.display === "flex") {
+              const statusText = String(newSessionStatus.textContent || "").trim();
+              syncNewSessionTmuxUi();
+              renderNewSessionModelMenu();
+              renderNewSessionReasoningMenu();
+              syncNewSessionRunConfigUi();
+              if (!statusText || statusText.startsWith("Launch defaults degraded for ")) newSessionStatus.textContent = newSessionDefaultsWarningText();
+            }
+            fileReferenceRuntime.clearDiscoveryCaches();
           }
-          updateHarnessBtnState();
+          const swipeActions = !useDesktopSessionActions();
+          const sessions = latestSessions
+            .slice()
+            .sort((a, b) => {
+              const p = Number(b.final_priority || 0) - Number(a.final_priority || 0);
+              if (p) return p;
+              const u = Number(b.updated_ts || b.start_ts || 0) - Number(a.updated_ts || a.start_ts || 0);
+              if (u) return u;
+              const s0 = Number(b.start_ts || 0) - Number(a.start_ts || 0);
+              if (s0) return s0;
+              return String(a.session_id || "").localeCompare(String(b.session_id || ""));
+            });
+          sessionIndex = new Map();
+          for (const session of sessions) sessionIndex.set(session.session_id, session);
+          if (selected && !sessionIndex.has(selected)) clearSelectedSessionAfterRemoval(selected);
+          if (selected) {
+            applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));
+            syncRecoveryUiForSession(selected);
+          }
+          if (selected) syncStagedAttachmentsFromSelectedSession();
+          else setStagedAttachments([]);
+          const renderedSidebar = sidebarController.render(sidebarSessionEntries(sessions), {
+            selectedId: selected,
+            swipeActions,
+          });
+          if (!renderedSidebar) return sessions;
+          if (selected) {
+            const session = sessionIndex.get(selected);
+            if (session) titleLabel.textContent = sessionTitleWithId(session);
+          }
+          updateUnattendedBtnState();
           updateQueueBadge();
+          syncComposerSendButton();
+          syncQueueSubmitState();
+          maybeSelectPendingHashSession();
           return sessions;
         }
 
         function appendEvent(ev) {
-          if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return;
-          if (consumePendingUserIfMatches(ev)) return;
-          if (isDuplicateEvent(ev)) return;
+          transcriptRenderRuntime.appendEvent(ev);
+        }
 
-          const pending = Boolean(ev.pending);
-          const stick = pending || (renderedAtLiveTail && (autoScroll || isNearBottom()));
-          if (!pending && !renderedAtLiveTail) {
-            markEventSeen(ev);
-            syncJumpButton();
-            return;
-          }
-          const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : ev.pending ? Date.now() / 1000 : null;
-          const { row } = safeMakeRow(ev, { ts, pending });
-	          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
-	          chatInner.insertBefore(row, anchor);
-            trimRenderedRows({ fromTop: stick });
-          rebuildDecorations({ preserveScroll: false });
-            if (!ev.pending) markClickFirstPaint();
-          markEventSeen(ev);
-
-          if (stick) {
-            requestAnimationFrame(() => scrollToBottom());
-          }
-          syncJumpButton();
+        function normalizedTranscriptEvents(events, { consumePending = false } = {}) {
+          return codoxearTranscript.normalizedTranscriptEvents(events, {
+            consumePending,
+            selectedSessionId: selected,
+            eventKey,
+            takePendingMatch: takePendingUserMatch,
+          });
         }
 
         function renderTranscript(events, { preserveScroll = false } = {}) {
-          const msgs = [];
-          const seen = new Set();
-          for (const ev of events || []) {
-            if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
-            takePendingUserMatch(ev, selected, { allowUntimedCommit: false });
-            const k = eventKey(ev);
-            if (k && seen.has(k)) continue;
-            if (k) seen.add(k);
-            msgs.push(ev);
-          }
-          renderedAtLiveTail = true;
-          clearTranscriptDom();
-          if (!msgs.length) {
-            restorePendingUserRowsForSession(selected);
-            return;
-          }
-          recentEventKeys.length = 0;
-          recentEventKeySet.clear();
-          const frag = document.createDocumentFragment();
-          for (const ev of msgs) {
-            const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
-            markEventSeen(ev);
-            frag.appendChild(safeMakeRow(ev, { ts, pending: false }).row);
-          }
-          chatInner.insertBefore(frag, bottomSentinel);
-          rebuildDecorations({ preserveScroll });
-          restorePendingUserRowsForSession(selected);
+          return transcriptRenderRuntime.renderTranscript(events, { preserveScroll });
+        }
+
+        function renderDetachedTranscriptWindow(events, { hasMore = false } = {}) {
+          return transcriptRenderRuntime.renderDetachedTranscriptWindow(events, { hasMore });
         }
 
         function prependOlderEvents(allEvents, { preserveViewport = false } = {}) {
-          const msgs = [];
-          for (const ev of allEvents) {
-            if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
-            msgs.push(ev);
-          }
-          if (!msgs.length) return;
-          autoScroll = false;
-          const frag = document.createDocumentFragment();
-          for (const ev of msgs) {
-            const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
-            frag.appendChild(safeMakeRow(ev, { ts, pending: false }).row);
-          }
-          const anchorRow = preserveViewport ? firstVisibleMessageRow() : null;
-          const anchorOffset = anchorRow ? anchorRow.offsetTop - chat.scrollTop : 0;
-          const firstMsg = chatInner.querySelector(".msg-row:not(.typing-row)");
-          const anchor = firstMsg || (typingRow && typingRow.isConnected ? typingRow : bottomSentinel);
-          chatInner.insertBefore(frag, anchor);
-          const wasAtLiveTail = renderedAtLiveTail;
-          if (!preserveViewport) chat.scrollTop = 1;
-          trimRenderedRows({ fromTop: false, maxRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK });
-          if (wasAtLiveTail && renderedAtLiveTail === false) {
-            autoScroll = false;
-          }
-          rebuildDecorations({ preserveScroll: false });
-          if (preserveViewport && anchorRow && anchorRow.isConnected) {
-            chat.scrollTop = Math.max(0, anchorRow.offsetTop - anchorOffset);
-          } else {
-            chat.scrollTop = 1;
-          }
-          lastScrollTop = chat.scrollTop;
-          syncJumpButton();
+          return transcriptRenderRuntime.prependOlderEvents(allEvents, { preserveViewport });
         }
 
-        async function loadOlderMessages({ auto = false } = {}) {
-          if (!selected || !hasOlder || loadingOlder) return;
-          if (auto) {
-            const now = performance.now();
-            if (now - olderAutoTriggerAt < OLDER_AUTO_COOLDOWN_MS) return;
-            olderAutoTriggerAt = now;
-          }
+        async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {
+          const state = olderLoadSnapshot();
+          if (!selected || !state.hasMore || state.isLoading) return false;
+          if (auto && !olderLoadRuntime.markAutoTrigger()) return false;
           const sid = selected;
           const gen = pollGen;
-          const reqId = olderLoadRequestId + 1;
-          olderLoadRequestId = reqId;
-          const ctl = new AbortController();
-          olderLoadController = ctl;
-          setOlderState({ hasMore: hasOlder, isLoading: true });
+          const load = olderLoadRuntime.beginLoad({ cancelOnScroll });
           try {
             const reqCursor = oldestRenderedHistoryCursor();
             if (!reqCursor) throw new Error("history cursor missing");
             const data = await api(`/api/sessions/${sid}/messages/history?cursor=${encodeURIComponent(reqCursor)}&limit=${olderPageLimit()}`, {
-              signal: ctl.signal,
+              signal: load.signal,
             });
-            if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return;
+            if (selected !== sid || pollGen !== gen || !olderLoadRuntime.isCurrent(load)) return false;
             const evs = Array.isArray(data.events) ? data.events : [];
-            const nextHasOlder = Boolean(data.has_older);
+            activeTailHistoryCursor = usableOlderHistoryCursor(data);
+            const nextHasOlder = Boolean(activeTailHistoryCursor);
+            clearOlderLoadError();
             setOlderState({ hasMore: nextHasOlder, isLoading: false });
-            if (evs.length) prependOlderEvents(evs, { preserveViewport: auto });
+            if (evs.length) {
+              prependOlderEvents(evs, { preserveViewport: auto });
+              return true;
+            }
+            return false;
           } catch (e) {
-            if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return;
+            if (e && e.status === 401) {
+              handleAppAuthLoss();
+              return false;
+            }
+            if (selected !== sid || pollGen !== gen || !olderLoadRuntime.isCurrent(load)) return false;
             if (e && e.status === 409) {
               await openSession(sid, { useCache: false });
-              return;
+              return false;
             }
-            setOlderState({ hasMore: hasOlder, isLoading: false });
+            setOlderState({ hasMore: hasOlderMessages(), isLoading: false });
+            showOlderLoadError();
+            return false;
           } finally {
-            if (olderLoadController === ctl) olderLoadController = null;
+            olderLoadRuntime.finishLoad(load);
           }
         }
 
+        // Older-history search window loading (loadNearestOlderChatSearchWindow /
+        // loadChatSearchCursorWindow) now lives in the CodoxearChatSearch
+        // controller (codoxear/static/app_chat_search.js). app.js keeps the
+        // transcript/older-load authority those paths invoke through injected
+        // deps (olderLoadRuntime, loadOlderMessages, renderDetachedTranscript
+        // Window, openSession, handleAppAuthLoss, invalidateOlderLoad,
+        // setOlderState, showOlderLoadError).
+
         function maybeAutoLoadOlder() {
-          if (chat.scrollTop > OLDER_TOP_TRIGGER_PX) return;
-          void loadOlderMessages({ auto: true });
+          transcriptScrollRuntime.maybeAutoLoadOlder();
         }
 
         function applySessionRuntimeFromTail(sessionId, data) {
           const slot = syncActiveTranscriptSlot(sessionId);
-          liveCursor = slot.state === "bound" && typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null;
-          setOlderState({ hasMore: slot.state === "bound" && Boolean(data && data.has_older), isLoading: false });
+          transcriptSlotRuntime.setLiveCursor(slot.state === "bound" && typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null);
+          activeTailHistoryCursor = usableOlderHistoryCursor(data);
+          setOlderState({ hasMore: Boolean(activeTailHistoryCursor), isLoading: false });
           const nowBusy = Boolean(data && data.busy);
           turnOpen = nowBusy;
           const queueLen = data && Number.isFinite(Number(data.queue_len)) ? Number(data.queue_len) : 0;
@@ -3803,26 +3061,203 @@
             const s = sessionIndex.get(sessionId);
             if (s) rememberTailSnapshot(sessionId, s, data);
           } else {
-            sessionTailCache.delete(sessionId);
+            transcriptSlotRuntime.deleteTailCache(sessionId);
           }
         }
 
         function renderSessionTail(events) {
           renderTranscript(events, { preserveScroll: false });
           markClickFirstPaint();
-          requestAnimationFrame(() => {
-            scrollToBottom();
-            requestAnimationFrame(() => scrollToBottom());
+          transcriptScrollRuntime.scheduleScrollToBottom({ double: true });
+        }
+
+
+        function recoveryPromptPreview(text, maxLen = 320) {
+          return codoxearDisplay.recoveryPromptPreview(text, maxLen);
+        }
+
+        function launchPresetFromSessionInfo(s) {
+          return s && typeof s === "object" ? {
+            session_id: s.session_id,
+            cwd: s.cwd,
+            agent_backend: s.agent_backend,
+            provider_choice: s.provider_choice,
+            model_provider: s.model_provider,
+            preferred_auth_method: s.preferred_auth_method,
+            model: s.model,
+            reasoning_effort: s.reasoning_effort,
+            service_tier: s.service_tier,
+            transport: s.transport,
+            tmux_session: s.tmux_session,
+            tmux_window: s.tmux_window,
+          } : null;
+        }
+
+        function recoveryDetailsText(sessionId, s) {
+          const lines = [
+            "Codoxear recovery details",
+            `Session: ${sessionId}`,
+          ];
+          if (s && s.cwd) lines.push(`cwd: ${s.cwd}`);
+          if (s && s.agent_backend) lines.push(`backend: ${s.agent_backend}`);
+          if (s && sessionLaunchFailed(s)) {
+            lines.push("state: launch failed");
+            if (s.launch_stage) lines.push(`launch stage: ${s.launch_stage}`);
+            const safeLaunchError = redactedLaunchErrorText(s.launch_error);
+            if (safeLaunchError) lines.push(`launch error: ${safeLaunchError}`);
+            if (s.model_provider) lines.push(`model provider: ${s.model_provider}`);
+            if (s.model) lines.push(`model: ${s.model}`);
+            if (s.reasoning_effort) lines.push(`reasoning: ${s.reasoning_effort}`);
+            if (s.service_tier) lines.push(`service tier: ${s.service_tier}`);
+            if (s.tmux_session || s.tmux_window) lines.push(`tmux: ${s.tmux_session || "-"}${s.tmux_window ? ":" + s.tmux_window : ""}`);
+            const submitted = Number.isFinite(Number(s.submitted_user_message_count)) ? Number(s.submitted_user_message_count) : 0;
+            if (submitted > 0) lines.push(`submitted prompts: ${submitted}`);
+          }
+          if (s && s.orphan_recovery) lines.push("state: missing session/orphan recovery");
+          if (s && s.queue_recovery) lines.push("state: queued recovery items present");
+          if (s && s.commit_unknown_send) lines.push("state: direct send commit unknown");
+          const qn = s && Number.isFinite(Number(s.queue_len)) ? Number(s.queue_len) : 0;
+          if (qn > 0) lines.push(`queued recovery items: ${qn}`);
+          const preview = recoveryPromptPreview(s && s.commit_unknown_send_text ? s.commit_unknown_send_text : "", 2000);
+          if (preview) lines.push("", "Unknown-send prompt:", preview);
+          return lines.join("\n");
+        }
+
+        function clearSelectedSessionAfterRemoval(sessionId, { incrementPollGen = false, clearPollState = false } = {}) {
+          if (selected !== sessionId) return false;
+          handleFileViewerSessionUnavailable(sessionId);
+          selected = null;
+          abortMessagePollRequest();
+          if (incrementPollGen) pollGen += 1;
+          if (clearPollState) {
+            if (pollTimer) clearTimeout(pollTimer);
+            pollTimer = null;
+            pollKickPending = false;
+            pollKickDelayMs = null;
+          }
+          transcriptSlotRuntime.setActivePending();
+          clearRenderedTranscriptRange();
+          turnOpen = false;
+          storageRemoveItem("codexweb.selected");
+          setSessionHash("");
+          titleLabel.textContent = "No session selected";
+          setStatus({ running: false, queueLen: 0 });
+          setContext(null);
+          setTyping(false);
+          if (typeof setStagedAttachments === "function") setStagedAttachments([]);
+          else setAttachCount(0);
+          resetChatRenderState();
+          updateQueueBadge();
+          if (unattendedController.isOpen()) hideUnattendedMenu();
+          updateUnattendedBtnState();
+          syncComposerSendButton();
+          syncQueueSubmitState();
+          syncAttachButtonState();
+          return true;
+        }
+
+        function clearDeletedSessionClientState(sessionId) {
+          const selectedCleared = clearSelectedSessionAfterRemoval(sessionId);
+          transcriptSlotRuntime.deleteSession(sessionId);
+          dropPendingUserRows(sessionId, () => true);
+          return selectedCleared;
+        }
+
+        async function dismissFailedLaunchRecord(sessionId) {
+          const s = sessionIndex.get(sessionId);
+          if (!sessionLaunchFailed(s)) {
+            setToast("launch record is not failed");
+            return;
+          }
+          const confirmed = await confirmApp({
+            title: "Dismiss launch record?",
+            message: "Dismiss this launch record?",
+            confirmText: "Dismiss",
+            cancelText: "Cancel",
+            destructive: true,
           });
+          if (!confirmed) return;
+          try {
+            await api(`/api/sessions/${sessionId}/delete`, { method: "POST", body: {} });
+            clearDeletedSessionClientState(sessionId);
+            await refreshSessions();
+            setToast("Dismissed launch record");
+          } catch (err) {
+            setToast(`dismiss error: ${err && err.message ? err.message : "unknown error"}`);
+          }
+        }
+
+        function syncRecoveryUiForSession(sessionId) {
+          if (selected !== sessionId) return;
+          const s = sessionIndex.get(sessionId) || null;
+          if (s) {
+            const queueLen = Number.isFinite(Number(s.queue_len)) ? Number(s.queue_len) : 0;
+            setStatus({ running: currentRunning, queueLen });
+          }
+          syncAttachButtonState();
+          syncQueueSubmitState();
+          syncComposerSendButton();
+          updateUnattendedBtnState();
+          updateQueueBadge();
         }
 
         function renderPendingTranscriptSlot(sessionId) {
           clearTranscriptDom();
+          activeTailHistoryCursor = null;
           setOlderState({ hasMore: false, isLoading: false });
-          renderedAtLiveTail = true;
+          transcriptScrollRuntime.markLiveTail();
           restorePendingUserRowsForSession(sessionId);
           markClickFirstPaint();
-          syncJumpButton();
+          transcriptScrollRuntime.syncJumpButton();
+        }
+
+        function renderTranscriptLoading(sessionId) {
+          clearTranscriptDom();
+          activeTailHistoryCursor = null;
+          setOlderState({ hasMore: false, isLoading: false });
+          transcriptScrollRuntime.markLiveTail();
+          restorePendingUserRowsForSession(sessionId);
+          const row = el("div", { class: "msg-row assistant typing-row transcript-loading-row" });
+          row.dataset.role = "assistant";
+          row.appendChild(el("div", { class: "msg assistant loading", role: "status", "aria-live": "polite", text: "Loading transcript…" }));
+          chatInner.insertBefore(row, bottomSentinel);
+          transcriptScrollRuntime.syncJumpButton();
+        }
+
+        function renderTranscriptLoadError(sessionId, err, { preserveTranscript = false } = {}) {
+          for (const row of Array.from(chatInner.querySelectorAll(".transcript-error-row"))) row.remove();
+          if (!preserveTranscript) {
+            clearTranscriptDom();
+            activeTailHistoryCursor = null;
+            setOlderState({ hasMore: false, isLoading: false });
+            transcriptScrollRuntime.markLiveTail();
+            restorePendingUserRowsForSession(sessionId);
+          }
+          const reason = err && err.message ? ` ${err.message}` : "";
+          const row = el("div", { class: "msg-row assistant typing-row transcript-error-row" });
+          row.dataset.role = "assistant";
+          const bubble = el("div", { class: "msg assistant error transcript-error", role: "alert" });
+          bubble.appendChild(el("span", { class: "transcriptErrorText", text: `Could not load transcript.${reason}` }));
+          const retryBtn = el("button", {
+            class: "icon-btn text-btn transcriptRetryBtn",
+            type: "button",
+            text: "Retry",
+            title: "Retry loading this transcript",
+            "aria-label": "Retry loading this transcript",
+          });
+          retryBtn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (selected !== sessionId) return;
+            void openSession(sessionId, { useCache: true });
+          };
+          bubble.appendChild(retryBtn);
+          row.appendChild(bubble);
+          chatInner.insertBefore(row, bottomSentinel);
+          turnOpen = false;
+          setTyping(false);
+          markClickFirstPaint();
+          transcriptScrollRuntime.syncJumpButton();
         }
 
         function applyCachedTail(sessionId, cache, sessionMeta) {
@@ -3832,8 +3267,9 @@
             log_path: cache.logPath || (sessionMeta ? sessionMeta.log_path : null),
           });
           syncActiveTranscriptSlot(sessionId);
-          liveCursor = cache.liveCursor || null;
-          setOlderState({ hasMore: Boolean(cache.hasOlder), isLoading: false });
+          transcriptSlotRuntime.setLiveCursor(cache.liveCursor || null);
+          activeTailHistoryCursor = typeof cache.historyCursor === "string" && cache.historyCursor ? cache.historyCursor : null;
+          setOlderState({ hasMore: Boolean(cache.hasOlder && activeTailHistoryCursor), isLoading: false });
           renderSessionTail(cache.events);
           const metaBusy = Boolean(sessionMeta && sessionMeta.busy);
           const cachedBusy = Boolean(cache.busy) || metaBusy;
@@ -3849,25 +3285,37 @@
           setTyping(cachedBusy);
         }
 
-        async function openSession(sessionId, { useCache = true } = {}) {
+        async function openSession(sessionId, { useCache = true, fallbackToCacheOnFailure = false } = {}) {
           pollGen += 1;
           const myGen = pollGen;
+          abortOpenSessionTailRequest();
+          abortMessagePollRequest();
           if (pollTimer) {
             clearTimeout(pollTimer);
             pollTimer = null;
           }
           pollKickPending = false;
+          pollKickDelayMs = null;
 
+          const oldSelected = selected;
           selected = sessionId;
-          localStorage.setItem("codexweb.selected", sessionId);
+          // Optimistically update sidebar active state for immediate visual feedback.
+          // The next poll cycle re-renders the full sidebar, but this avoids the
+          // perceived lag where the transcript switches before the highlight moves.
+          sessionsWrap.querySelectorAll(".session.active").forEach((el) => el.classList.remove("active"));
+          const optimisticActive = sessionsWrap.querySelector(`.session[data-session-id="${sessionId}"]`);
+          if (optimisticActive) optimisticActive.classList.add("active");
+          // Save the outgoing session's draft, load the incoming session's draft.
+          if (oldSelected && oldSelected !== sessionId) saveSelectedComposerDraft(oldSelected);
+          loadSelectedComposerDraft(sessionId);
+          if (unattendedController.isOpen() && unattendedController.menuSessionId() !== sessionId) hideUnattendedMenu();
+          storageSetItem("codexweb.selected", sessionId);
           setSessionHash(sessionId);
-          activeTranscriptState = "pending_bind";
-          activeLogPath = null;
-          activeThreadId = null;
-          liveCursor = null;
+          transcriptSlotRuntime.setActivePending();
           clearRenderedTranscriptRange();
           turnOpen = false;
-          setAttachCount(0);
+          if (typeof syncStagedAttachmentsFromSelectedSession === "function") syncStagedAttachmentsFromSelectedSession();
+          else setAttachCount(0);
           updateQueueBadge();
           setStatus({ running: false, queueLen: 0 });
           setContext(null);
@@ -3884,14 +3332,53 @@
           setStatus({ running: optimisticBusy, queueLen: optimisticQueueLen });
           setContext(s ? s.token || null : null);
           setTyping(optimisticBusy);
-
-          const cachedTail = s ? sessionTailCache.get(sessionId) : null;
-          if (useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
-            applyCachedTail(sessionId, cachedTail, s);
+          const fileViewerSyncStarted = Boolean(isFileViewerOpen() && !currentFileDirty());
+          if (fileViewerSyncStarted) {
+            void ensureCurrentFileViewerSession().catch((e) => console.error("file viewer session sync failed after selection", e));
           }
 
-          const data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);
-          if (pollGen !== myGen || selected !== sessionId) return null;
+          const cachedTail = s ? transcriptSlotRuntime.getTailCache(sessionId) : null;
+          let displayedCachedTail = false;
+          if (useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
+            applyCachedTail(sessionId, cachedTail, s);
+            displayedCachedTail = true;
+          }
+          if (!displayedCachedTail) renderTranscriptLoading(sessionId);
+
+          let data;
+          const tailRequest = beginOpenSessionTailRequest(sessionId, myGen);
+          try {
+            data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`, {
+              signal: tailRequest.signal,
+            });
+          } catch (e) {
+            if (e && e.status === 401) {
+              handleAppAuthLoss();
+              return null;
+            }
+            if (isOpenSessionTailAbortError(tailRequest, e)) return null;
+            if (!isCurrentOpenSessionTailRequest(tailRequest)) return null;
+            markMessagePollFailure();
+            if (e && e.status === 404) {
+              clearSelectedSessionAfterRemoval(sessionId, { clearPollState: true });
+              void refreshSessions().catch((e2) => {
+                if (e2 && e2.status === 401) handleAppAuthLoss();
+                else console.error("refreshSessions failed after session disappeared", e2);
+              });
+              return null;
+            }
+            if (fallbackToCacheOnFailure && !displayedCachedTail && !useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
+              applyCachedTail(sessionId, cachedTail, s);
+              displayedCachedTail = true;
+            }
+            renderTranscriptLoadError(sessionId, e, { preserveTranscript: displayedCachedTail });
+            if (!appDisposed && selected === sessionId && pollGen === myGen) kickPoll(messagePollDelayMs());
+            return null;
+          } finally {
+            finishOpenSessionTailRequest(tailRequest);
+          }
+          if (!isCurrentOpenSessionTailRequest(tailRequest)) return null;
+          markMessagePollSuccess();
           const slotChange = updateSessionTranscriptSlot(sessionId, data);
           if (slotChange.ignoredStaleBound) {
             renderPendingTranscriptSlot(sessionId);
@@ -3905,53 +3392,62 @@
 
           if (slotChange.current.state !== "failed") kickPoll(900);
           if (isMobile()) setSidebarOpen(false);
-          updateHarnessBtnState();
-          if (isFileViewerOpen() && !fileDirty) void ensureCurrentFileViewerSession();
+          updateUnattendedBtnState();
+          if (isFileViewerOpen() && !currentFileDirty() && !fileViewerSyncStarted) {
+            void ensureCurrentFileViewerSession();
+          } else if (isFileViewerOpen() && !currentFileDirty() && currentFileViewerSessionId() === sessionId) {
+            void refreshFileCandidates({ sessionId }).catch((e) => console.error("file candidates refresh failed after transcript load", e));
+          }
           return data;
         }
 
 			        async function pollMessages(sid = selected, gen = pollGen) {
-			          if (!sid) return;
-			          try {
-	            if (!liveCursor) {
-	              if (activeTranscriptState === "pending_bind") {
-		                const data = await api(`/api/sessions/${sid}/messages/tail?limit=${initPageLimit()}`);
-		                if (gen !== pollGen || sid !== selected) return;
-		                const slotChange = updateSessionTranscriptSlot(sid, data);
-		                if (slotChange.ignoredStaleBound) {
-		                  renderPendingTranscriptSlot(sid);
-		                  applySessionRuntimeFromTail(sid, { transcript_state: "pending_bind", busy: data.busy, queue_len: data.queue_len, token: data.token });
-		                  return;
-		                }
-		                if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);
-		                applySessionRuntimeFromTail(sid, data);
-	                return;
-	              }
-	              if (activeTranscriptState === "failed") return;
-	              await openSession(sid, { useCache: false });
-	              return;
-	            }
-	            const reqCursor = liveCursor;
-		            const data = await api(`/api/sessions/${sid}/messages/live?cursor=${encodeURIComponent(reqCursor)}`);
-	            if (gen !== pollGen || sid !== selected) return;
-	            const slotInfo = transcriptSnapshotFromData(data);
-	            const nowBusy = Boolean(data.busy);
-	            if (activeTranscriptState === "bound" && slotInfo.state === "pending_bind") {
-	              updateSessionTranscriptSlot(sid, data);
-	              resetChatRenderState();
-	              renderPendingTranscriptSlot(sid);
-	              setAttachCount(0);
-	              applySessionRuntimeFromTail(sid, data);
-	              return;
-	            }
-	            if (activeTranscriptState === "bound" && slotInfo.state === "bound" && slotInfo.logPath !== activeLogPath) {
-	              await openSession(sid, { useCache: false });
-	              return;
-	            }
+          if (appDisposed || !sid) return;
+          let pollRequest = null;
+          try {
+            if (!transcriptSlotRuntime.activeSnapshot().liveCursor) {
+              if (activeTranscriptSnapshot().state === "pending_bind") {
+                pollRequest = beginMessagePollRequest(sid, gen);
+                const data = await api(`/api/sessions/${sid}/messages/tail?limit=${initPageLimit()}`, { signal: pollRequest.signal });
+                if (gen !== pollGen || sid !== selected) return;
+                markMessagePollSuccess();
+                const slotChange = updateSessionTranscriptSlot(sid, data);
+                if (slotChange.ignoredStaleBound) {
+                  renderPendingTranscriptSlot(sid);
+                  applySessionRuntimeFromTail(sid, { transcript_state: "pending_bind", busy: data.busy, queue_len: data.queue_len, token: data.token });
+                  return;
+                }
+                if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);
+                applySessionRuntimeFromTail(sid, data);
+                return;
+              }
+              if (activeTranscriptSnapshot().state === "failed") return;
+              await openSession(sid, { useCache: false });
+              return;
+            }
+            const reqCursor = transcriptSlotRuntime.activeSnapshot().liveCursor;
+            pollRequest = beginMessagePollRequest(sid, gen);
+            const data = await api(`/api/sessions/${sid}/messages/live?cursor=${encodeURIComponent(reqCursor)}`, { signal: pollRequest.signal });
+            if (gen !== pollGen || sid !== selected) return;
+            markMessagePollSuccess();
+            const slotInfo = transcriptSnapshotFromData(data);
+            const nowBusy = Boolean(data.busy);
+            if (activeTranscriptSnapshot().state === "bound" && slotInfo.state === "pending_bind") {
+              updateSessionTranscriptSlot(sid, data);
+              resetChatRenderState();
+              renderPendingTranscriptSlot(sid);
+              setAttachCount(0);
+              applySessionRuntimeFromTail(sid, data);
+              return;
+            }
+            if (activeTranscriptSnapshot().state === "bound" && slotInfo.state === "bound" && slotInfo.logPath !== activeTranscriptSnapshot().logPath) {
+              await openSession(sid, { useCache: false });
+              return;
+            }
 
-	            liveCursor = typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null;
-	            const evs = Array.isArray(data.events) ? data.events : [];
-	            for (const ev of evs) appendEvent(ev);
+            transcriptSlotRuntime.setLiveCursor(typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null);
+            const evs = Array.isArray(data.events) ? data.events : [];
+            for (const ev of evs) appendEvent(ev);
 
             const turnStart = Boolean(data.turn_start);
             const turnEnd = Boolean(data.turn_end);
@@ -3959,60 +3455,53 @@
             if (turnStart) turnOpen = true;
             if (!turnOpen && nowBusy) turnOpen = true;
             if ((turnEnd || turnAborted) && turnOpen) turnOpen = false;
-		            if (turnOpen && !nowBusy) turnOpen = false;
+            if (turnOpen && !nowBusy) turnOpen = false;
 
-				            setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
-				            setContext(data.token);
-				            setTyping(Boolean(turnOpen || nowBusy));
-	            const s2 = sessionIndex.get(sid);
+            setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
+            setContext(data.token);
+            setTyping(Boolean(turnOpen || nowBusy));
+            const s2 = sessionIndex.get(sid);
             if (evs.length) {
               appendTailSnapshotEvents(sid, evs, {
                 session: s2,
-                liveCursor,
+                liveCursor: transcriptSlotRuntime.activeSnapshot().liveCursor,
                 busy: Boolean(turnOpen || nowBusy),
                 queueLen: data.queue_len,
                 token: data.token,
+                identityData: data,
               });
             }
             if (s2) titleLabel.textContent = sessionTitleWithId(s2);
-		          } catch (e) {
+          } catch (e) {
+            if (e && e.status === 401) {
+              handleAppAuthLoss();
+              return;
+            }
+            if (isMessagePollAbortError(pollRequest, e)) return;
             if (gen !== pollGen || sid !== selected) return;
             if (e && e.status === 409) {
               await openSession(sid, { useCache: false });
               return;
             }
             if (e && e.status === 404) {
-              selected = null;
-              activeLogPath = null;
-              activeThreadId = null;
-              liveCursor = null;
-              clearRenderedTranscriptRange();
-              pollGen += 1;
-              if (pollTimer) clearTimeout(pollTimer);
-              pollTimer = null;
-              pollKickPending = false;
-              turnOpen = false;
-              localStorage.removeItem("codexweb.selected");
-              setSessionHash("");
-              titleLabel.textContent = "No session selected";
-              setStatus({ running: false, queueLen: 0 });
-              setTyping(false);
-              resetChatRenderState();
-              updateQueueBadge();
+              clearSelectedSessionAfterRemoval(sid, { incrementPollGen: true, clearPollState: true });
               try {
                 await refreshSessions();
               } catch (e2) {
-                  console.error("refreshSessions failed after session disappeared", e2);
-                  toast.textContent = `refresh error: ${e2 && e2.message ? e2.message : "unknown error"}`;
-                }
-                return;
+                console.error("refreshSessions failed after session disappeared", e2);
+                toast.textContent = `refresh error: ${e2 && e2.message ? e2.message : "unknown error"}`;
+              }
+              return;
             }
+            markMessagePollFailure();
             toast.textContent = `error: ${e.message}`;
+          } finally {
+            finishMessagePollRequest(pollRequest);
           }
         }
 
         async function pollLoop() {
-          if (!selected) return;
+          if (appDisposed || !selected) return;
           if (pollLoopBusy) {
             pollKickPending = true;
             return;
@@ -4026,46 +3515,44 @@
             pollLoopBusy = false;
           }
           if (pollKickPending) {
+            const delay = pollKickDelayMs == null ? 0 : pollKickDelayMs;
             pollKickPending = false;
-            kickPoll(0);
+            pollKickDelayMs = null;
+            kickPoll(delay);
             return;
           }
-          if (selected !== mySid || pollGen !== myGen) return;
-          const now = Date.now();
-          let nextMs = 900;
-          if (now < pollFastUntilMs) nextMs = 200;
-          else if (turnOpen) nextMs = 250;
-          pollTimer = setTimeout(pollLoop, nextMs);
+          if (appDisposed || selected !== mySid || pollGen !== myGen) return;
+          pollTimer = setTimeout(pollLoop, messagePollDelayMs());
         }
 
         function kickPoll(ms = 0) {
+          if (appDisposed) return;
+          const delay = normalizeMessagePollKickDelay(ms);
           if (pollTimer) {
             clearTimeout(pollTimer);
             pollTimer = null;
           }
           if (pollLoopBusy) {
             pollKickPending = true;
+            pollKickDelayMs = delay;
             return;
           }
-          pollTimer = setTimeout(pollLoop, ms);
+          pollTimer = setTimeout(pollLoop, delay);
         }
 
         async function jumpToLatest() {
           if (!selected) return;
           const sid = selected;
           invalidateOlderLoad();
-          autoScroll = true;
+          transcriptScrollRuntime.enableAutoScroll();
           try {
-            await openSession(sid, { useCache: false });
+            await openSession(sid, { useCache: false, fallbackToCacheOnFailure: true });
           } catch (e) {
             if (selected !== sid) return;
             setToast(`jump error: ${e && e.message ? e.message : "unknown error"}`);
           }
           if (selected !== sid) return;
-          requestAnimationFrame(() => {
-            scrollToBottom();
-            syncJumpButton();
-          });
+          transcriptScrollRuntime.scheduleScrollToBottom({ syncJump: true });
           kickPoll(0);
         }
 
@@ -4073,1083 +3560,224 @@
           await openSession(id, { useCache: true });
         }
 
-        function parseHarnessDraftInt(name) {
-          const raw = String(harnessNumberDraft[name] ?? "").trim();
-          if (!raw) return null;
-          const minValue = name === "cooldown_minutes" ? 1 : 0;
-          const value = Number.parseInt(raw, 10);
-          if (!Number.isInteger(value) || value < minValue) return null;
-          return value;
+        function rememberPendingHashSession(sid) {
+          pendingHashSessionId = String(sid || "").trim();
         }
 
-        function syncHarnessNumberDraftsFromCfg() {
-          if (!harnessNumberDirty.cooldown_minutes) harnessNumberDraft.cooldown_minutes = String(harnessCfg.cooldown_minutes);
-          if (!harnessNumberDirty.remaining_injections) harnessNumberDraft.remaining_injections = String(harnessCfg.remaining_injections);
+        function maybeSelectPendingHashSession() {
+          const sid = pendingHashSessionId;
+          if (!sid || pendingHashSessionSelectInFlight) return;
+          if (sessionIdFromHash() !== sid) {
+            rememberPendingHashSession("");
+            return;
+          }
+          if (sid === selected) {
+            rememberPendingHashSession("");
+            return;
+          }
+          const session = sessionIndex.get(sid);
+          if (!sessionSelectable(session)) return;
+          rememberPendingHashSession("");
+          pendingHashSessionSelectInFlight = true;
+          void selectSession(sid)
+            .catch((e) => {
+              if (e && e.status === 401) handleAppAuthLoss();
+              else console.error("pending hash session select failed", e);
+            })
+            .finally(() => {
+              pendingHashSessionSelectInFlight = false;
+            });
         }
 
-        function syncHarnessNumberInputs() {
-          const cooldownEl = $("#harnessCooldownMinutes");
-          const remainingEl = $("#harnessRemainingInjections");
-          if (cooldownEl) {
-            cooldownEl.value = harnessNumberDirty.cooldown_minutes
-              ? harnessNumberDraft.cooldown_minutes
-              : String(harnessCfg.cooldown_minutes);
+        async function selectSessionFromHash({ refreshIfMissing = false, deferIfMissing = false } = {}) {
+          const sid = sessionIdFromHash();
+          if (!sid) {
+            rememberPendingHashSession("");
+            return;
           }
-          if (remainingEl) {
-            remainingEl.value = harnessNumberDirty.remaining_injections
-              ? harnessNumberDraft.remaining_injections
-              : String(harnessCfg.remaining_injections);
+          if (sid === selected) {
+            rememberPendingHashSession("");
+            return;
           }
+          let session = sessionIndex.get(sid);
+          if (!session && refreshIfMissing) {
+            try {
+              await refreshSessions();
+            } catch (e) {
+              if (e && e.status === 401) handleAppAuthLoss();
+              else console.error("hash session refresh failed", e);
+              return;
+            }
+            session = sessionIndex.get(sid);
+          }
+          if (!sessionSelectable(session)) {
+            if (deferIfMissing) rememberPendingHashSession(sid);
+            return;
+          }
+          rememberPendingHashSession("");
+          await selectSession(sid);
         }
 
-        function restoreHarnessNumberDraft(name) {
-          harnessNumberDirty[name] = false;
-          harnessNumberDraft[name] = String(harnessCfg[name]);
-          syncHarnessNumberInputs();
-        }
+        // Unattended menu state, async load/save orchestration, input draft
+        // handling, menu focus/visibility, and control event handling live in
+        // the CodoxearUnattended controller (codoxear/static/app_unattended.js).
+        // app.js owns DOM construction for the unattended button/menu/controls,
+        // the updateUnattendedBtnState shell projection (which delegates the
+        // unattended-specific projection to the controller), and the thin
+        // delegating wrappers below. The controller is instantiated after the
+        // DOM nodes exist; it wires the button/menu/input handlers and the
+        // document Escape/click + window resize listeners itself.
+        const unattendedController = (function instantiateUnattendedController() {
+          const codoxearUnattended = window.CodoxearUnattended;
+          if (!codoxearUnattended || typeof codoxearUnattended.createUnattendedController !== "function")
+            throw new Error("Codoxear unattended controller failed to load");
+          return codoxearUnattended.createUnattendedController({
+            unattendedBtn,
+            unattendedMenu,
+            enabledEl: $("#unattendedEnabled"),
+            cooldownEl: $("#unattendedCooldownMinutes"),
+            remainingEl: $("#unattendedRemainingInjections"),
+            requestEl: $("#unattendedRequest"),
+            getSelected: () => selected,
+            getSessionInfo: (sid) => sessionIndex.get(sid),
+            isAppDisposed: () => appDisposed,
+            api,
+            refreshSessions,
+            handleAppAuthLoss,
+            setToast,
+            addAppEvent,
+            documentTarget: document,
+            windowTarget: window,
+            requestFrame: requestAnimationFrame,
+            setTimeout,
+            clearTimeout,
+            requestShellProjection: updateUnattendedBtnState,
+          });
+        })();
 
-        function finalizeHarnessNumberDraft(name) {
-          const value = parseHarnessDraftInt(name);
-          if (value === null || value !== harnessCfg[name]) return;
-          harnessNumberDirty[name] = false;
-          harnessNumberDraft[name] = String(harnessCfg[name]);
-        }
-
-        function updateHarnessBtnState() {
-          const s = selected ? sessionIndex.get(selected) : null;
-          const on = Boolean(s && s.harness_enabled);
-          harnessBtn.disabled = !selected;
-          harnessBtn.classList.toggle("active", Boolean(selected && on));
-          if (
-            selected &&
-            s &&
-            !harnessNumberDirty.cooldown_minutes &&
-            Number.isInteger(s.harness_cooldown_minutes) &&
-            s.harness_cooldown_minutes >= 1
-          ) {
-            harnessCfg.cooldown_minutes = s.harness_cooldown_minutes;
-          }
-          if (
-            selected &&
-            s &&
-            !harnessNumberDirty.remaining_injections &&
-            Number.isInteger(s.harness_remaining_injections) &&
-            s.harness_remaining_injections >= 0
-          ) {
-            harnessCfg.remaining_injections = s.harness_remaining_injections;
-          }
-          syncHarnessNumberDraftsFromCfg();
-          if (harnessMenuOpen) {
-            const enabledEl = $("#harnessEnabled");
-            syncHarnessNumberInputs();
-            if (enabledEl) enabledEl.checked = Boolean(selected && on);
-          }
-          fileBtn.disabled = !selected;
+        // App-shell button projection. The unattended-specific projection
+        // (button disabled/title/active, cfg cache sync from session fields,
+        // number-input draft sync, menu enabled-checkbox sync, and the
+        // close-menu-when-selected-changes guard) is delegated to the
+        // controller. Everything else (title edit, attach/file/send/queue/diag
+        // buttons, context bar, chat nav, chat-search close) stays here.
+        function updateUnattendedBtnState() {
+          syncTitleEditState();
+          unattendedController.syncButtonState();
+          syncAttachButtonState();
+          const fileViewerBlocked = Boolean(selected && selectedSessionLaunchFailed());
+          const fileViewerLabel = !selected ? "Select a session to view files" : fileViewerBlocked ? "Failed launch has no file browser" : "View file";
+          fileBtn.disabled = !selected || fileViewerBlocked;
+          fileBtn.title = fileViewerLabel;
+          fileBtn.setAttribute("aria-label", fileViewerLabel);
+          chatSearchBtn.disabled = !selected;
+          chatNavRail.style.display = selected ? "flex" : "none";
+          chatEmptyState.style.display = selected ? "none" : "flex";
+          if (!selected && chatSearchController.isOpen()) closeChatSearch();
+          updateChatNavButtons();
+          syncQueueSubmitState();
+          syncComposerSendButton();
           diagBtn.disabled = !selected;
         }
-           async function loadHarnessCfgForSelected() {
-             if (!selected) return;
-             const sid = selected;
-              const d = await api(`/api/sessions/${sid}/harness`);
-              if (selected !== sid) return;
-              if (!d || typeof d !== "object") throw new Error("invalid harness response");
-              if (typeof d.enabled !== "boolean") throw new Error("invalid harness.enabled");
-              if (typeof d.request !== "string") throw new Error("invalid harness.request");
-              if (!Number.isInteger(d.cooldown_minutes) || d.cooldown_minutes < 1) throw new Error("invalid harness.cooldown_minutes");
-              if (!Number.isInteger(d.remaining_injections) || d.remaining_injections < 0) throw new Error("invalid harness.remaining_injections");
-              harnessCfg = {
-                enabled: d.enabled,
-                request: d.request,
-                cooldown_minutes: d.cooldown_minutes,
-                remaining_injections: d.remaining_injections,
-              };
-             harnessNumberDirty.cooldown_minutes = false;
-             harnessNumberDirty.remaining_injections = false;
-             syncHarnessNumberDraftsFromCfg();
-             const enabledEl = $("#harnessEnabled");
-             const requestEl = $("#harnessRequest");
-             if (enabledEl) enabledEl.checked = harnessCfg.enabled;
-             syncHarnessNumberInputs();
-             if (requestEl) requestEl.value = harnessCfg.request;
-           }
-			        function scheduleHarnessSave() {
-			          if (!selected) return;
-			          const sid = selected;
-			          if (harnessSaveTimer) clearTimeout(harnessSaveTimer);
-			          harnessSaveTimer = setTimeout(async () => {
-			            if (selected !== sid) return;
-               try {
-                 const saved = await api(`/api/sessions/${sid}/harness`, {
-                   method: "POST",
-                   body: {
-                     enabled: harnessCfg.enabled,
-                     request: harnessCfg.request,
-                     cooldown_minutes: harnessCfg.cooldown_minutes,
-                     remaining_injections: harnessCfg.remaining_injections,
-                   },
-                 });
-                 if (!saved || typeof saved !== "object") throw new Error("invalid harness response");
-                 if (typeof saved.enabled !== "boolean") throw new Error("invalid harness.enabled");
-                 if (typeof saved.request !== "string") throw new Error("invalid harness.request");
-                 if (!Number.isInteger(saved.cooldown_minutes) || saved.cooldown_minutes < 1) throw new Error("invalid harness.cooldown_minutes");
-                 if (!Number.isInteger(saved.remaining_injections) || saved.remaining_injections < 0) throw new Error("invalid harness.remaining_injections");
-                 harnessCfg = {
-                   enabled: saved.enabled,
-                   request: saved.request,
-                   cooldown_minutes: saved.cooldown_minutes,
-                   remaining_injections: saved.remaining_injections,
-                 };
-                 finalizeHarnessNumberDraft("cooldown_minutes");
-                 finalizeHarnessNumberDraft("remaining_injections");
-                 syncHarnessNumberDraftsFromCfg();
-                 await refreshSessions();
-               } catch (e) {
-                 console.error("save harness failed", e);
-                 setToast(`harness save error: ${e && e.message ? e.message : "unknown error"}`);
-               }
-               updateHarnessBtnState();
-             }, 450);
-           }
-			        function hideHarnessMenu() {
-			          harnessMenuOpen = false;
-			          harnessMenu.style.display = "none";
-			        }
-			        async function showHarnessMenu() {
-			          if (!selected) return;
-			          harnessMenuOpen = true;
-			          harnessMenu.style.display = "block";
-			          const rect = harnessBtn.getBoundingClientRect();
-			          const top = Math.min(window.innerHeight - 12, rect.bottom + 8);
-			          harnessMenu.style.top = `${top}px`;
-			          harnessMenu.style.left = "12px";
-			          harnessMenu.style.right = "auto";
-             const w = harnessMenu.offsetWidth || 320;
-             const left = Math.max(12, Math.min(window.innerWidth - 12 - w, rect.right - w));
-             harnessMenu.style.left = `${left}px`;
-             try {
-               await loadHarnessCfgForSelected();
-             } catch (e) {
-               console.error("load harness failed", e);
-               setToast(`harness load error: ${e && e.message ? e.message : "unknown error"}`);
-               hideHarnessMenu();
-             }
-           }
-			        function toggleHarnessMenu() {
-			          if (harnessMenuOpen) hideHarnessMenu();
-			          else showHarnessMenu();
-			        }
 
-			        harnessBtn.onclick = (e) => {
-			          e.preventDefault();
-			          e.stopPropagation();
-		          toggleHarnessMenu();
-		        };
-		        harnessMenu.onclick = (e) => e.stopPropagation();
-		        if (window.__codexwebHarnessGlobalHandlers) {
-		          const h = window.__codexwebHarnessGlobalHandlers;
-		          if (h.docClick) document.removeEventListener("click", h.docClick);
-		          if (h.resize) window.removeEventListener("resize", h.resize);
-		        }
-		        const onDocClick = () => {
-		          if (harnessMenuOpen) hideHarnessMenu();
-		        };
-		        const onResize = () => {
-		          if (harnessMenuOpen) hideHarnessMenu();
-		        };
-			        window.__codexwebHarnessGlobalHandlers = { docClick: onDocClick, resize: onResize };
-			        document.addEventListener("click", onDocClick);
-			        window.addEventListener("resize", onResize);
-			        const harnessEnabledEl = $("#harnessEnabled");
-			        const harnessCooldownEl = $("#harnessCooldownMinutes");
-			        const harnessRemainingEl = $("#harnessRemainingInjections");
-			        const harnessRequestEl = $("#harnessRequest");
-			        if (harnessEnabledEl)
-			          harnessEnabledEl.onchange = (e) => {
-			            if (!selected) return;
-			            harnessCfg.enabled = Boolean(e.target.checked);
-			            const s = sessionIndex.get(selected);
-			            if (s) s.harness_enabled = harnessCfg.enabled;
-			            updateHarnessBtnState();
-			            scheduleHarnessSave();
-			          };
-        if (harnessCooldownEl)
-          harnessCooldownEl.oninput = (e) => {
-            if (!selected) return;
-            harnessNumberDraft.cooldown_minutes = String(e.target.value ?? "");
-            harnessNumberDirty.cooldown_minutes = true;
-            const value = parseHarnessDraftInt("cooldown_minutes");
-            if (value === null) return;
-            harnessCfg.cooldown_minutes = value;
-            scheduleHarnessSave();
-          };
-        if (harnessCooldownEl)
-          harnessCooldownEl.onblur = () => {
-            if (parseHarnessDraftInt("cooldown_minutes") !== null) return;
-            restoreHarnessNumberDraft("cooldown_minutes");
-          };
-        if (harnessRemainingEl)
-          harnessRemainingEl.oninput = (e) => {
-            if (!selected) return;
-            harnessNumberDraft.remaining_injections = String(e.target.value ?? "");
-            harnessNumberDirty.remaining_injections = true;
-            const value = parseHarnessDraftInt("remaining_injections");
-            if (value === null) return;
-            harnessCfg.remaining_injections = value;
-            const s = sessionIndex.get(selected);
-            if (s) {
-              s.harness_remaining_injections = value;
-              if (value <= 0) s.harness_enabled = false;
-            }
-            updateHarnessBtnState();
-            scheduleHarnessSave();
-          };
-        if (harnessRemainingEl)
-          harnessRemainingEl.onblur = () => {
-            if (parseHarnessDraftInt("remaining_injections") !== null) return;
-            restoreHarnessNumberDraft("remaining_injections");
-          };
-        if (harnessRequestEl)
-          harnessRequestEl.oninput = (e) => {
-            if (!selected) return;
-            harnessCfg.request = String(e.target.value ?? "");
-            scheduleHarnessSave();
-          };
-
-        function voiceAnnouncementsEnabled() {
-          return !!localAnnouncementEnabled;
+        function hideUnattendedMenu(opts) {
+          return unattendedController.hide(opts);
         }
 
-        function notificationsEnabledLocally() {
-          return !!localNotificationEnabled;
+        function showUnattendedMenu(opts) {
+          return unattendedController.show(opts);
         }
 
-        function setAnnouncementEnabled(enabled) {
-          localAnnouncementEnabled = !!enabled;
-          if (localAnnouncementEnabled) localStorage.setItem("codoxear.announcementEnabled", "1");
-          else localStorage.removeItem("codoxear.announcementEnabled");
-          if (!localAnnouncementEnabled) {
-            stopAnnouncementHeartbeat();
-            stopLiveAudioWatchdog();
-            if (liveAudioRetryTimer) clearTimeout(liveAudioRetryTimer);
-            liveAudioRetryTimer = null;
-            resetLiveAudioState();
-          } else {
-            startAnnouncementHeartbeat();
-            startLiveAudioWatchdog();
-          }
-          updateVoiceUi();
+        function toggleUnattendedMenu(opts) {
+          return unattendedController.toggle(opts);
         }
-
-        function setNotificationEnabledLocal(enabled) {
-          localNotificationEnabled = !!enabled;
-          if (localNotificationEnabled) localStorage.setItem("codoxear.notificationEnabled", "1");
-          else localStorage.removeItem("codoxear.notificationEnabled");
-          if (localNotificationEnabled) {
-            notificationFeedSinceTs = Date.now() / 1000;
-          }
-          updateVoiceUi();
-        }
-
-        function currentVoiceStreamUrl() {
-          const streamUrl = voiceSettings && voiceSettings.audio && typeof voiceSettings.audio.stream_url === "string" && voiceSettings.audio.stream_url
-            ? voiceSettings.audio.stream_url
-            : "/api/audio/live.m3u8";
-          return resolveAppUrl(streamUrl);
-        }
-
-        function hasAnnouncementCredentials() {
-          return Boolean(String(voiceSettings.tts_base_url || "").trim() && String(voiceSettings.tts_api_key || "").trim());
-        }
-
-        function browserSupportsNativeLiveAudioPlayback() {
-          if (!liveAudio || typeof liveAudio.canPlayType !== "function") return false;
-          return ["application/vnd.apple.mpegurl", "audio/mpegurl"].some((kind) => {
-            const result = liveAudio.canPlayType(kind);
-            return result === "probably" || result === "maybe";
-          });
-        }
-
-        function browserSupportsMseLiveAudioPlayback() {
-          const HlsCtor = window.Hls;
-          return !!(HlsCtor && typeof HlsCtor.isSupported === "function" && HlsCtor.isSupported());
-        }
-
-        function shouldPreferNativeLiveAudioPlayback() {
-          if (!browserSupportsNativeLiveAudioPlayback()) return false;
-          const vendor = String(navigator.vendor || "");
-          const ua = String(navigator.userAgent || "");
-          if (/Apple/i.test(vendor)) return true;
-          return /AppleWebKit/i.test(ua) && !/(?:Chrom(?:e|ium)|CriOS|Edg|OPR|Firefox|FxiOS)/i.test(ua);
-        }
-
-        function browserSupportsLiveAudioPlayback() {
-          return browserSupportsNativeLiveAudioPlayback() || browserSupportsMseLiveAudioPlayback();
-        }
-
-        function liveAudioHasReadySegments() {
-          const audio = voiceSettings && voiceSettings.audio ? voiceSettings.audio : {};
-          return Number(audio.segment_count || 0) > 0;
-        }
-
-        function destroyLiveAudioHls() {
-          const current = liveAudioHls;
-          liveAudioHls = null;
-          if (!current || typeof current.destroy !== "function") return;
-          try {
-            current.destroy();
-          } catch (e) {
-            console.error("destroy live hls failed", e);
-          }
-        }
-
-        async function ensureLiveAudioPlaybackSource(nextSrc, { resetSource = false } = {}) {
-          if (resetSource) {
-            resetLiveAudioState();
-          }
-          if (shouldPreferNativeLiveAudioPlayback()) {
-            destroyLiveAudioHls();
-            if (resetSource || liveAudioSourceUrl !== nextSrc || liveAudio.currentSrc !== nextSrc) {
-              liveAudio.src = nextSrc;
-              liveAudioSourceUrl = nextSrc;
-            }
-            return;
-          }
-          if (!browserSupportsMseLiveAudioPlayback()) {
-            throw new Error("this browser does not support HLS audio playback in this app");
-          }
-          const HlsCtor = window.Hls;
-          const needsReload = resetSource || !liveAudioHls || liveAudioSourceUrl !== nextSrc;
-          if (!needsReload) return;
-          destroyLiveAudioHls();
-          liveAudio.removeAttribute("src");
-          liveAudio.load();
-          liveAudioSourceUrl = nextSrc;
-          const hls = new HlsCtor();
-          liveAudioHls = hls;
-          hls.on(HlsCtor.Events.ERROR, (_event, data) => {
-            if (!data) return;
-            console.error("live hls error", data.type, data.details, data);
-            if (!data.fatal || liveAudioHls !== hls) return;
-            switch (data.type) {
-              case HlsCtor.ErrorTypes.NETWORK_ERROR:
-                hls.startLoad();
-                return;
-              case HlsCtor.ErrorTypes.MEDIA_ERROR:
-                hls.recoverMediaError();
-                return;
-              default:
-                destroyLiveAudioHls();
-                liveAudioStarted = false;
-                liveAudioSuspectSinceTs = 0;
-                updateVoiceUi();
-                scheduleLiveAudioRetry(1200, { resetSource: true });
-            }
-          });
-          await new Promise((resolve, reject) => {
-            let settled = false;
-            const cleanup = () => {
-              hls.off(HlsCtor.Events.MEDIA_ATTACHED, onAttached);
-              hls.off(HlsCtor.Events.MANIFEST_PARSED, onManifestParsed);
-              hls.off(HlsCtor.Events.ERROR, onInitError);
-            };
-            const settle = (fn, value) => {
-              if (settled) return;
-              settled = true;
-              cleanup();
-              fn(value);
-            };
-            const onAttached = () => {
-              hls.loadSource(nextSrc);
-            };
-            const onManifestParsed = () => {
-              settle(resolve);
-            };
-            const onInitError = (_event, data) => {
-              if (!data || !data.fatal) return;
-              settle(reject, new Error(data.details || data.type || "failed to load HLS stream"));
-            };
-            hls.on(HlsCtor.Events.MEDIA_ATTACHED, onAttached);
-            hls.on(HlsCtor.Events.MANIFEST_PARSED, onManifestParsed);
-            hls.on(HlsCtor.Events.ERROR, onInitError);
-            hls.attachMedia(liveAudio);
-          });
-        }
-
-        async function sendAnnouncementHeartbeat(enabled) {
-          try {
-            await api("/api/audio/listener", {
-              method: "POST",
-              body: {
-                client_id: announcementClientId,
-                enabled: !!enabled,
-              },
-            });
-          } catch (e) {
-            console.error("announcement heartbeat failed", e);
-          }
-        }
-
-        function stopAnnouncementHeartbeat() {
-          if (announcementHeartbeatTimer) clearInterval(announcementHeartbeatTimer);
-          announcementHeartbeatTimer = null;
-          void sendAnnouncementHeartbeat(false);
-        }
-
-        function markLiveAudioProgress() {
-          liveAudioLastProgressTs = Date.now();
-          liveAudioSuspectSinceTs = 0;
-          liveAudioLastCurrentTime = Number(liveAudio.currentTime || 0);
-        }
-
-        function resetLiveAudioState() {
-          destroyLiveAudioHls();
-          try {
-            liveAudio.pause();
-          } catch (_error) {}
-          liveAudio.removeAttribute("src");
-          liveAudio.load();
-          liveAudioStarted = false;
-          liveAudioSourceUrl = "";
-          liveAudioLastProgressTs = 0;
-          liveAudioLastCurrentTime = 0;
-          liveAudioSuspectSinceTs = 0;
-        }
-
-        function noteLiveAudioPotentialStall(_reason = "") {
-          if (!localAnnouncementEnabled) return;
-          if (!liveAudioStarted || liveAudio.paused || liveAudio.ended) return;
-          if (!liveAudioHasReadySegments()) return;
-          if (!liveAudioSuspectSinceTs) liveAudioSuspectSinceTs = Date.now();
-        }
-
-        function queueLiveAudioHardRestart(_reason = "") {
-          if (!localAnnouncementEnabled) return;
-          if (!browserSupportsLiveAudioPlayback()) return;
-          if (!liveAudioHasReadySegments()) return;
-          const now = Date.now();
-          if ((now - liveAudioLastRestartTs) < LIVE_AUDIO_RESTART_THROTTLE_MS) return;
-          liveAudioLastRestartTs = now;
-          liveAudioStarted = false;
-          liveAudioSuspectSinceTs = 0;
-          updateVoiceUi();
-          scheduleLiveAudioRetry(150, { resetSource: true });
-        }
-
-        function runLiveAudioWatchdog() {
-          if (!localAnnouncementEnabled) return;
-          if (!browserSupportsLiveAudioPlayback()) return;
-          if (!liveAudioHasReadySegments()) return;
-          const now = Date.now();
-          const currentTime = Number(liveAudio.currentTime || 0);
-          if (currentTime > liveAudioLastCurrentTime + 0.05) {
-            markLiveAudioProgress();
-            return;
-          }
-          liveAudioLastCurrentTime = currentTime;
-          if (!liveAudioStarted || liveAudio.paused || liveAudio.ended) {
-            liveAudioSuspectSinceTs = 0;
-            return;
-          }
-          if (!liveAudioSuspectSinceTs) liveAudioSuspectSinceTs = now;
-          const baselineTs = Math.max(liveAudioLastProgressTs || 0, liveAudioSuspectSinceTs || 0);
-          if (!baselineTs) return;
-          if ((now - baselineTs) < LIVE_AUDIO_STALL_GRACE_MS) return;
-          queueLiveAudioHardRestart("watchdog");
-        }
-
-        function stopLiveAudioWatchdog() {
-          if (liveAudioWatchdogTimer) clearInterval(liveAudioWatchdogTimer);
-          liveAudioWatchdogTimer = null;
-        }
-
-        function startLiveAudioWatchdog() {
-          runLiveAudioWatchdog();
-          if (liveAudioWatchdogTimer) clearInterval(liveAudioWatchdogTimer);
-          liveAudioWatchdogTimer = setInterval(() => {
-            runLiveAudioWatchdog();
-          }, LIVE_AUDIO_WATCHDOG_MS);
-        }
-
-        function startAnnouncementHeartbeat() {
-          void sendAnnouncementHeartbeat(true);
-          if (announcementHeartbeatTimer) clearInterval(announcementHeartbeatTimer);
-          announcementHeartbeatTimer = setInterval(() => {
-            void sendAnnouncementHeartbeat(true);
-          }, 15000);
-        }
-
-        function resumeAnnouncementRuntime({ resetSource = false } = {}) {
-          if (!localAnnouncementEnabled) return;
-          startAnnouncementHeartbeat();
-          startLiveAudioWatchdog();
-          if (!liveAudioStarted && browserSupportsLiveAudioPlayback() && liveAudioHasReadySegments()) {
-            scheduleLiveAudioRetry(150, { resetSource });
-          }
-        }
-
-        function scheduleLiveAudioRetry(delayMs = 1200, { resetSource = true } = {}) {
-          if (!localAnnouncementEnabled) return;
-          if (liveAudioRetryTimer) clearTimeout(liveAudioRetryTimer);
-          liveAudioRetryTimer = setTimeout(async () => {
-            liveAudioRetryTimer = null;
-            if (!localAnnouncementEnabled) return;
-            try {
-              await startLiveAudioPlayback({ resetSource });
-            } catch (e) {
-              console.error("live audio retry failed", e);
-            }
-          }, delayMs);
-        }
-
-        async function maybeAutoStartLiveAudioFromGesture({ resetSource = false } = {}) {
-          if (!localAnnouncementEnabled) return;
-          if (!browserSupportsLiveAudioPlayback()) return;
-          if (!liveAudioHasReadySegments()) return;
-          try {
-            await startLiveAudioPlayback({ resetSource: resetSource || liveAudio.ended });
-          } catch (e) {
-            console.error("auto-start live audio failed", e);
-          }
-        }
-
-        function base64UrlToUint8Array(value) {
-          const raw = String(value || "");
-          const pad = "=".repeat((4 - (raw.length % 4 || 4)) % 4);
-          const base64 = (raw + pad).replace(/-/g, "+").replace(/_/g, "/");
-          const data = atob(base64);
-          const out = new Uint8Array(data.length);
-          for (let i = 0; i < data.length; i += 1) out[i] = data.charCodeAt(i);
-          return out;
-        }
-
-        function setDesktopNotificationsEnabled(enabled) {
-          if (enabled) localStorage.setItem("codoxear.desktopNotificationsEnabled", "1");
-          else localStorage.removeItem("codoxear.desktopNotificationsEnabled");
-          notificationState.desktop_enabled = !!enabled;
-        }
-
-        function pushNotificationsEnabledForCurrentDevice() {
-          return !!(
-            localNotificationEnabled &&
-            notificationDeviceClass() === "mobile" &&
-            notificationState.push_supported &&
-            notificationState.permission === "granted" &&
-            notificationState.notifications_enabled &&
-            notificationState.endpoint
-          );
-        }
-
-        function isMobileNotificationDevice() {
-          const ua = navigator.userAgent || "";
-          if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return true;
-          if (/Macintosh/i.test(ua) && Number(navigator.maxTouchPoints || 0) > 1) return true;
-          return false;
-        }
-
-        function notificationDeviceClass() {
-          return isMobileNotificationDevice() ? "mobile" : "desktop";
-        }
-
-        function activeNotificationTransport() {
-          if (!localNotificationEnabled) return "none";
-          if (notificationDeviceClass() === "mobile") {
-            return pushNotificationsEnabledForCurrentDevice() ? "push" : "none";
-          }
-          if (
-            notificationState.desktop_supported &&
-            notificationState.permission === "granted" &&
-            notificationState.desktop_enabled
-          ) {
-            return "desktop";
-          }
-          return "none";
-        }
-
-        function desktopNotificationsEnabled() {
-          return activeNotificationTransport() === "desktop";
-        }
-
-        function showDesktopNotification({ messageId, title, body }) {
-          if (!desktopNotificationsEnabled()) return;
-          const id = String(messageId || "").trim();
-          if (id && deliveredDesktopNotificationIds.has(id)) return;
-          const safeTitle = String(title || "Session").trim() || "Session";
-          const safeBody = String(body || "").replace(/\s+/g, " ").trim();
-          if (!safeBody) return;
-          try {
-            new Notification(safeTitle, {
-              body: safeBody.length <= 180 ? safeBody : `${safeBody.slice(0, 179).trimEnd()}...`,
-              tag: id || `desktop:${Date.now()}`,
-            });
-            if (id) deliveredDesktopNotificationIds.add(id);
-          } catch (e) {
-            console.error("desktop notification failed", e);
-          }
-        }
-
-        async function pollNotificationFeed({ prime = false } = {}) {
-          if (!desktopNotificationsEnabled()) return;
-          let maxSeen = notificationFeedSinceTs;
-          try {
-            const data = await api(`/api/notifications/feed?since=${encodeURIComponent(notificationFeedSinceTs)}`);
-            const items = Array.isArray(data.items) ? data.items : [];
-            for (const item of items) {
-              const updatedTs = Number(item && item.updated_ts ? item.updated_ts : 0);
-              if (updatedTs > maxSeen) maxSeen = updatedTs;
-              if (prime) continue;
-              showDesktopNotification({
-                messageId: item && item.message_id,
-                title: item && item.session_display_name,
-                body: item && item.notification_text,
+        // --- Voice / Settings / Notifications / Announcement orchestration
+        // now lives in the CodoxearVoice controller
+        // (codoxear/static/app_voice.js). app.js keeps DOM construction for
+        // announceBtn, notificationBtn, liveAudio, and the voice settings
+        // dialog nodes, and delegates every voice/settings/notification/
+        // announcement call site through the thin wrappers below. The
+        // controller owns its state, handlers, timers, and HLS lifecycle and
+        // exposes dispose() for cleanupApp.
+        let voiceController;
+        function instantiateVoiceController() {
+          return codoxearVoice.createVoiceController({
+            announceBtn,
+            notificationBtn,
+            liveAudio,
+            voiceSettingsBackdrop,
+            voiceSettingsCloseBtn,
+            voiceSettingsStatus,
+            voiceBaseUrlInput,
+            voiceApiKeyInput,
+            voiceClearApiKeyToggle,
+            narrationSettingToggle,
+            unattendedPromptInput,
+            unattendedPromptResetBtn,
+            voiceSettingsViewer,
+            voiceSettingsCancelBtn: $("#voiceSettingsCancelBtn"),
+            voiceSettingsSaveBtn: $("#voiceSettingsSaveBtn"),
+            isAppDisposed: () => appDisposed,
+            api,
+            setToast,
+            handleAppAuthLoss,
+            prepareModalOpen,
+            afterModalVisibilityChanged,
+            resolveAppUrl,
+            versionedShellAssetPath,
+            storageGetItem,
+            storageSetItem,
+            storageRemoveItem,
+            focusSessionFromNotification: (sid) => {
+              if (sessionIdFromHash() !== sid) setSessionHash(sid);
+              void selectSessionFromHash({ refreshIfMissing: true, deferIfMissing: true }).catch((e) => {
+                if (e && e.status === 401) handleAppAuthLoss();
+                else console.error("desktop notification session select failed", e);
               });
-            }
-          } catch (e) {
-            console.error("notification feed poll failed", e);
-            return;
-          }
-          notificationFeedSinceTs = maxSeen;
-        }
-
-        function maybeShowDesktopNotification(ev) {
-          if (!ev || ev.role !== "assistant" || ev.pending) return;
-          if (ev.message_class !== "final_response") return;
-          if (!desktopNotificationsEnabled()) return;
-          const messageId = typeof ev.message_id === "string" ? ev.message_id : "";
-          if (messageId && !ev.notification_text) {
-            scheduleDesktopNotificationResolve(ev);
-            return;
-          }
-          const s = selected ? sessionIndex.get(selected) : null;
-          const title = s ? sessionDisplayName(s) : "Session";
-          const body = String(ev.notification_text || ev.text || "").replace(/\s+/g, " ").trim();
-          if (!body) return;
-          showDesktopNotification({ messageId, title, body });
-        }
-
-        function scheduleDesktopNotificationResolve(ev) {
-          const messageId = typeof ev.message_id === "string" ? ev.message_id : "";
-          if (!messageId || desktopNotificationTimers.has(messageId)) return;
-          let attempts = 0;
-          const tick = async () => {
-            if (!desktopNotificationsEnabled()) {
-              desktopNotificationTimers.delete(messageId);
-              return;
-            }
-            attempts += 1;
-            try {
-              const data = await api(`/api/notifications/message?message_id=${encodeURIComponent(messageId)}`);
-              const text = String(data.notification_text || "").trim();
-              const summaryStatus = String(data.summary_status || "");
-              if (text && (summaryStatus === "sent" || summaryStatus === "skipped" || summaryStatus === "error")) {
-                desktopNotificationTimers.delete(messageId);
-                maybeShowDesktopNotification({ ...ev, notification_text: text });
-                return;
-              }
-            } catch (e) {
-              if (!(e && e.status === 404)) console.error("desktop notification resolve failed", e);
-            }
-            if (attempts >= 20) {
-              desktopNotificationTimers.delete(messageId);
-              return;
-            }
-            const nextTimer = setTimeout(() => {
-              desktopNotificationTimers.delete(messageId);
-              void tick();
-            }, 800);
-            desktopNotificationTimers.set(messageId, nextTimer);
-          };
-          const firstTimer = setTimeout(() => {
-            desktopNotificationTimers.delete(messageId);
-            void tick();
-          }, 800);
-          desktopNotificationTimers.set(messageId, firstTimer);
-        }
-
-        function updateVoiceUi() {
-          announceBtn.classList.toggle("active", voiceAnnouncementsEnabled());
-          announceBtn.title = voiceAnnouncementsEnabled() ? "Announcements on" : "Announcements off";
-          announceBtn.setAttribute("aria-label", announceBtn.title);
-          notificationBtn.classList.toggle("active", notificationsEnabledLocally());
-          const transport = activeNotificationTransport();
-          notificationBtn.title = notificationsEnabledLocally()
-            ? transport === "push"
-              ? "Notifications on (push)"
-              : transport === "desktop"
-                ? "Notifications on"
-                : "Notifications pending"
-            : "Notifications off";
-          notificationBtn.setAttribute("aria-label", notificationBtn.title);
-          if (voiceBaseUrlInput) voiceBaseUrlInput.value = String(voiceSettings.tts_base_url || "");
-          if (voiceApiKeyInput && !voiceApiKeyInput.matches(":focus")) voiceApiKeyInput.value = String(voiceSettings.tts_api_key || "");
-          if (narrationSettingToggle) narrationSettingToggle.checked = !!voiceSettings.tts_enabled_for_narration;
-          notificationState.permission = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
-        }
-
-        async function loadVoiceSettings() {
-          const data = await api("/api/settings/voice");
-          if (!data || typeof data !== "object") throw new Error("invalid voice settings response");
-          voiceSettings = {
-            ...voiceSettings,
-            ...data,
-            audio: data && typeof data.audio === "object" && data.audio ? data.audio : voiceSettings.audio,
-            notifications: data && typeof data.notifications === "object" && data.notifications ? data.notifications : voiceSettings.notifications,
-          };
-          if (liveAudioStarted && liveAudioSourceUrl !== currentVoiceStreamUrl()) {
-            void ensureLiveAudioPlaybackSource(currentVoiceStreamUrl(), { resetSource: true }).catch((e) => {
-              console.error("reload live audio source failed", e);
-            });
-          }
-          updateVoiceUi();
-          if (localAnnouncementEnabled && !liveAudioStarted && browserSupportsLiveAudioPlayback() && liveAudioHasReadySegments()) {
-            scheduleLiveAudioRetry(100, { resetSource: false });
-          }
-          return data;
-        }
-
-        async function saveVoiceSettings() {
-          const payload = {
-            tts_enabled_for_narration: !!voiceSettings.tts_enabled_for_narration,
-            tts_enabled_for_final_response: true,
-            tts_base_url: String(voiceBaseUrlInput.value || voiceSettings.tts_base_url || "").trim(),
-            tts_api_key: String(voiceApiKeyInput.value || "").trim(),
-          };
-          const data = await api("/api/settings/voice", { method: "POST", body: payload });
-          if (!data || typeof data !== "object") throw new Error("invalid voice settings response");
-          voiceSettings = {
-            ...voiceSettings,
-            ...data,
-            audio: data && typeof data.audio === "object" && data.audio ? data.audio : voiceSettings.audio,
-            notifications: data && typeof data.notifications === "object" && data.notifications ? data.notifications : voiceSettings.notifications,
-          };
-          updateVoiceUi();
-          return data;
-        }
-
-        function scheduleVoiceSave() {
-          if (voiceSaveTimer) clearTimeout(voiceSaveTimer);
-          voiceSaveTimer = setTimeout(async () => {
-            try {
-              await saveVoiceSettings();
-            } catch (e) {
-              console.error("save voice settings failed", e);
-              setToast(`voice settings error: ${e && e.message ? e.message : "unknown error"}`);
-              try {
-                await loadVoiceSettings();
-              } catch (_error) {}
-            }
-          }, 250);
-        }
-
-        async function ensureVoiceServiceWorker() {
-          if (!("serviceWorker" in navigator) || !("PushManager" in window) || typeof Notification === "undefined") {
-            throw new Error("push notifications are not supported in this browser");
-          }
-          if (!swRegistration) {
-            swRegistration = await navigator.serviceWorker.register(resolveAppUrl("/service-worker.js"), { scope: resolveAppUrl("/") });
-          }
-          return swRegistration;
-        }
-
-        async function syncNotificationState(serverSnapshot) {
-          notificationState.desktop_supported = !!(window.isSecureContext && typeof Notification !== "undefined");
-          notificationState.push_supported = !!(notificationState.desktop_supported && "serviceWorker" in navigator && "PushManager" in window);
-          notificationState.permission = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
-          notificationState.desktop_enabled = localStorage.getItem("codoxear.desktopNotificationsEnabled") === "1";
-          let snapshot = serverSnapshot;
-          if (!snapshot) {
-            try {
-              snapshot = await api("/api/notifications/subscription");
-            } catch (e) {
-              if (!(e && e.status === 404)) throw e;
-            }
-          }
-          let endpoint = "";
-          if (notificationDeviceClass() === "mobile" && notificationState.push_supported) {
-            try {
-              const reg = await ensureVoiceServiceWorker();
-              const sub = await reg.pushManager.getSubscription();
-              endpoint = sub && typeof sub.endpoint === "string" ? sub.endpoint : "";
-            } catch (e) {
-              console.error("load push subscription failed", e);
-            }
-          }
-          const subscriptions = snapshot && Array.isArray(snapshot.subscriptions) ? snapshot.subscriptions : [];
-          const current = endpoint ? subscriptions.find((item) => item && item.endpoint === endpoint) : null;
-          notificationState.endpoint = endpoint;
-          notificationState.subscriptions = subscriptions;
-          notificationState.notifications_enabled = !!(current && current.notifications_enabled);
-          updateVoiceUi();
-        }
-
-        async function enableNotificationsOnDevice() {
-          if (!notificationState.desktop_supported) {
-            throw new Error("notifications require HTTPS or localhost");
-          }
-          if (Notification.permission !== "granted") {
-            const permission = await Notification.requestPermission();
-            if (permission !== "granted") {
-              throw new Error(`notification permission ${permission}`);
-            }
-          }
-          if (notificationDeviceClass() === "desktop") {
-            setDesktopNotificationsEnabled(true);
-            await syncNotificationState();
-            return;
-          }
-          if (!notificationState.push_supported) {
-            throw new Error("mobile notifications require web push in an installed HTTPS web app");
-          }
-          const reg = await ensureVoiceServiceWorker();
-          const publicKey = voiceSettings && voiceSettings.notifications ? voiceSettings.notifications.vapid_public_key : "";
-          if (!publicKey) throw new Error("missing VAPID public key");
-          let sub = await reg.pushManager.getSubscription();
-          if (!sub) {
-            sub = await reg.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: base64UrlToUint8Array(publicKey),
-            });
-          }
-          const snapshot = await api("/api/notifications/subscription", {
-            method: "POST",
-            body: {
-              subscription: sub.toJSON(),
-              user_agent: navigator.userAgent,
-              device_label: "current-device",
-              device_class: notificationDeviceClass(),
             },
           });
-          await syncNotificationState(snapshot);
         }
-
-        async function toggleCurrentDeviceNotifications(enabled) {
-          if (!notificationState.desktop_supported) {
-            throw new Error("notifications require HTTPS or localhost");
-          }
-          if (notificationDeviceClass() === "desktop") {
-            setDesktopNotificationsEnabled(enabled);
-            await syncNotificationState();
-            return;
-          }
-          if (!notificationState.push_supported) {
-            throw new Error("mobile notifications require web push in an installed HTTPS web app");
-          }
-          if (!notificationState.endpoint && enabled) {
-            await enableNotificationsOnDevice();
-            return;
-          }
-          if (!notificationState.endpoint) {
-            await syncNotificationState();
-            return;
-          }
-          const snapshot = await api("/api/notifications/subscription/toggle", {
-            method: "POST",
-            body: {
-              endpoint: notificationState.endpoint,
-              enabled: !!enabled,
-            },
-          });
-          await syncNotificationState(snapshot);
+        voiceController = instantiateVoiceController();
+        function voiceAnnouncementsEnabled() {
+          return voiceController.voiceAnnouncementsEnabled();
         }
-
-        async function startLiveAudioPlayback({ resetSource = false } = {}) {
-          if (!browserSupportsLiveAudioPlayback()) {
-            throw new Error("this browser does not support HLS audio playback in this app");
-          }
-          if (!liveAudioHasReadySegments()) {
-            throw new Error("no live audio segments are available yet; wait for the first announcement and try again");
-          }
-          const nextSrc = currentVoiceStreamUrl();
-          await ensureLiveAudioPlaybackSource(nextSrc, { resetSource });
-          await liveAudio.play();
-          liveAudioStarted = true;
-          markLiveAudioProgress();
-          updateVoiceUi();
+        function notificationsEnabledLocally() {
+          return voiceController.notificationsEnabledLocally();
         }
-
-        function describeLiveAudioStartError(error) {
-          const message = error && error.message ? String(error.message) : "";
-          if (/unsupported/i.test(message)) {
-            if (!browserSupportsLiveAudioPlayback()) {
-              return "this browser does not support HLS audio playback in this app";
-            }
-            if (!liveAudioHasReadySegments()) {
-              return "no live audio segments are available yet; wait for the first announcement and try again";
-            }
-          }
-          return message || "unknown error";
+        function loadVoiceSettings() {
+          return voiceController.loadVoiceSettings();
         }
-
+        function syncNotificationState(serverSnapshot) {
+          return voiceController.syncNotificationState(serverSnapshot);
+        }
+        function pollNotificationFeed(opts) {
+          return voiceController.pollNotificationFeed(opts);
+        }
+        function resumeAnnouncementRuntime(opts) {
+          return voiceController.resumeAnnouncementRuntime(opts);
+        }
         function showVoiceSettingsDialog() {
-          voiceSettingsBackdrop.style.display = "block";
-          voiceSettingsViewer.style.display = "flex";
-          updateVoiceUi();
+          return voiceController.showVoiceSettingsDialog();
         }
-
         function hideVoiceSettingsDialog() {
-          voiceSettingsBackdrop.style.display = "none";
-          voiceSettingsViewer.style.display = "none";
-          voiceSettingsStatus.textContent = "";
+          return voiceController.hideVoiceSettingsDialog();
         }
-
-        announceBtn.onclick = async (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const next = !voiceAnnouncementsEnabled();
-          if (next && !hasAnnouncementCredentials()) {
-            voiceSettingsStatus.textContent = "Set the OpenAI-compatible API base URL and API key before enabling announcements.";
-            showVoiceSettingsDialog();
-            return;
-          }
-          setAnnouncementEnabled(next);
-          if (!next) return;
-          try {
-            await maybeAutoStartLiveAudioFromGesture({ resetSource: true });
-          } catch (err) {
-            console.error("announceBtn auto-start failed", err);
-            setToast(`audio start error: ${describeLiveAudioStartError(err)}`);
-          }
-        };
-        notificationBtn.onclick = async (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const pending = notificationsEnabledLocally() && activeNotificationTransport() === "none";
-          const next = pending ? true : !notificationsEnabledLocally();
-          try {
-            if (next) {
-              setNotificationEnabledLocal(true);
-              await enableNotificationsOnDevice();
-            } else {
-              await toggleCurrentDeviceNotifications(false);
-              setNotificationEnabledLocal(false);
-            }
-          } catch (err) {
-            console.error("notification toggle failed", err);
-            setNotificationEnabledLocal(false);
-            setToast(`notification error: ${err && err.message ? err.message : "unknown error"}`);
-          }
-        };
-        liveAudio.addEventListener("error", () => {
-          liveAudioStarted = false;
-          liveAudioSuspectSinceTs = 0;
-          updateVoiceUi();
-          scheduleLiveAudioRetry(1200, { resetSource: true });
-        });
-        liveAudio.addEventListener("playing", () => {
-          liveAudioStarted = true;
-          markLiveAudioProgress();
-          updateVoiceUi();
-        });
-        liveAudio.addEventListener("timeupdate", () => {
-          markLiveAudioProgress();
-        });
-        liveAudio.addEventListener("waiting", () => {
-          noteLiveAudioPotentialStall("waiting");
-          runLiveAudioWatchdog();
-        });
-        liveAudio.addEventListener("stalled", () => {
-          noteLiveAudioPotentialStall("stalled");
-          runLiveAudioWatchdog();
-        });
-        liveAudio.addEventListener("suspend", () => {
-          noteLiveAudioPotentialStall("suspend");
-          runLiveAudioWatchdog();
-        });
-        liveAudio.addEventListener("ended", () => {
-          liveAudioStarted = false;
-          liveAudioSuspectSinceTs = 0;
-          updateVoiceUi();
-          scheduleLiveAudioRetry(500, { resetSource: true });
-        });
-        liveAudio.addEventListener("pause", () => {
-          liveAudioStarted = false;
-          liveAudioSuspectSinceTs = 0;
-          updateVoiceUi();
-        });
-        narrationSettingToggle.onchange = (e) => {
-          voiceSettings.tts_enabled_for_narration = Boolean(e.target.checked);
-          scheduleVoiceSave();
-        };
-        voiceSettingsCloseBtn.onclick = hideVoiceSettingsDialog;
-        $("#voiceSettingsCancelBtn").onclick = hideVoiceSettingsDialog;
-        voiceSettingsBackdrop.onclick = hideVoiceSettingsDialog;
-        $("#voiceSettingsSaveBtn").onclick = async () => {
-          try {
-            voiceSettingsStatus.textContent = "Saving...";
-            await saveVoiceSettings();
-            await syncNotificationState();
-            voiceSettingsStatus.textContent = "";
-            hideVoiceSettingsDialog();
-          } catch (e) {
-            console.error("save voice settings failed", e);
-            voiceSettingsStatus.textContent = `save error: ${e && e.message ? e.message : "unknown error"}`;
-          }
-        };
         function renderRecentCwdOptions() {
-          const out = [];
-          const seen = new Set();
-          for (const raw of recentCwds) {
-            const cwd = typeof raw === "string" ? raw.trim() : "";
-            if (!cwd || seen.has(cwd)) continue;
-            seen.add(cwd);
-            out.push(cwd);
-          }
-          return out;
-        }
-
-        function fuzzyRecentCwdScore(candidate, query) {
-          const text = String(candidate || "");
-          const raw = String(query || "").trim().toLowerCase();
-          if (!raw) return 0;
-          const lower = text.toLowerCase();
-          if (lower === raw) return 10000;
-          const base = baseName(text).toLowerCase();
-          if (base === raw) return 9000;
-          let total = 0;
-          for (const token of raw.split(/\s+/).filter(Boolean)) {
-            const exactIdx = lower.indexOf(token);
-            if (exactIdx >= 0) {
-              const prev = exactIdx > 0 ? lower[exactIdx - 1] : "";
-              const boundaryBonus = !prev || "/._-".includes(prev) ? 28 : 0;
-              const baseIdx = base.indexOf(token);
-              total += 260 - exactIdx * 2 + boundaryBonus + (baseIdx >= 0 ? 36 - baseIdx : 0);
-              continue;
-            }
-            let pos = -1;
-            let first = -1;
-            let last = -1;
-            let consecutive = 0;
-            let boundaries = 0;
-            for (const ch of token) {
-              pos = lower.indexOf(ch, pos + 1);
-              if (pos < 0) return -1;
-              if (first < 0) first = pos;
-              if (last >= 0 && pos === last + 1) consecutive += 1;
-              if (pos === 0 || "/._-".includes(lower[pos - 1] || "")) boundaries += 1;
-              last = pos;
-            }
-            const span = last - first + 1;
-            total += 120 - first - Math.max(0, span - token.length) * 4 + consecutive * 10 + boundaries * 8;
-          }
-          return total;
+          return newSessionController.renderRecentCwdOptions();
         }
 
         function filteredRecentCwdOptions() {
-          const items = renderRecentCwdOptions();
-          const query = String(newSessionCwdInput.value || "").trim();
-          if (!query) return items.slice(0, 10).map((cwd, idx) => ({ cwd, idx, score: 1000 - idx }));
-          return items
-            .map((cwd, idx) => ({ cwd, idx, score: fuzzyRecentCwdScore(cwd, query) }))
-            .filter((item) => item.score >= 0)
-            .sort((a, b) => b.score - a.score || a.idx - b.idx || a.cwd.localeCompare(b.cwd))
-            .slice(0, 10);
+          return newSessionController.filteredRecentCwdOptions();
         }
 
         function hideEditSession() {
           editSessionId = null;
           editStatus.textContent = "";
+          editSaveBtn.disabled = false;
           editDependencyMenuOpen = false;
           applyDialogMenus();
           if (editViewer.open) editViewer.close();
+          afterModalVisibilityChanged();
         }
 
         function syncEditPriorityLabel() {
@@ -5221,65 +3849,19 @@
         }
 
         function applyNewSessionCwdSuggestion(cwd) {
-          newSessionCwdInput.value = String(cwd || "");
-          setNewSessionCwdError("");
-          syncNewSessionNamePlaceholder();
-          newSessionCwdMenuOpen = false;
-          newSessionCwdMenuFocus = -1;
-          applyDialogMenus();
-          scheduleNewSessionResumeLoad();
-          newSessionCwdInput.focus();
-          const end = newSessionCwdInput.value.length;
-          try {
-            newSessionCwdInput.setSelectionRange(end, end);
-          } catch {}
+          return newSessionController.applyNewSessionCwdSuggestion(cwd);
         }
 
         function renderRecentCwdMenu() {
-          newSessionCwdMenu.innerHTML = "";
-          const raw = String(newSessionCwdInput.value || "").trim();
-          const items = filteredRecentCwdOptions();
-          if (newSessionCwdMenuFocus >= items.length) newSessionCwdMenuFocus = items.length ? items.length - 1 : -1;
-          if (!items.length) {
-            const emptyText = raw ? "No matching recent directories. Start still uses the typed path." : "No recent directories";
-            newSessionCwdMenu.appendChild(el("div", { class: "pickerEmpty", text: emptyText }));
-            newSessionCwdInput.removeAttribute("aria-activedescendant");
-            return items;
-          }
-          for (const [idx, item] of items.entries()) {
-            const cwd = item.cwd;
-            const active = newSessionCwdMenuFocus === idx || (newSessionCwdMenuFocus < 0 && raw === cwd);
-            const btn = el("button", {
-              id: `newSessionCwdOption-${idx}`,
-              class: "fileMenuItem" + (active ? " active" : ""),
-              type: "button",
-              role: "option",
-              "aria-selected": active ? "true" : "false",
-              title: cwd,
-            });
-            btn.appendChild(el("span", { class: "fileMenuPath", text: cwd }));
-            btn.onmousedown = (e) => e.preventDefault();
-            btn.onclick = () => applyNewSessionCwdSuggestion(cwd);
-            newSessionCwdMenu.appendChild(btn);
-          }
-          if (newSessionCwdMenuFocus >= 0) newSessionCwdInput.setAttribute("aria-activedescendant", `newSessionCwdOption-${newSessionCwdMenuFocus}`);
-          else newSessionCwdInput.removeAttribute("aria-activedescendant");
-          return items;
+          return newSessionController.renderRecentCwdMenu();
         }
 
         function syncNewSessionNamePlaceholder() {
-          const fallback = baseName(String(newSessionCwdInput.value || "").trim());
-          newSessionNameInput.placeholder = fallback || "session-name";
+          return newSessionController.syncNewSessionNamePlaceholder();
         }
 
         function newSessionResumeLabel(item) {
-          if (!item || typeof item !== "object") return "Start fresh";
-          const alias = typeof item.alias === "string" ? item.alias.trim() : "";
-          const firstUser = typeof item.first_user_message === "string" ? item.first_user_message.trim() : "";
-          const primary = alias || firstUser || shortSessionId(item.session_id);
-          const ts = Number(item.updated_ts || 0);
-          const age = ts > 0 ? fmtRelativeAge(Math.max(0, Date.now() / 1000 - ts)) : "";
-          return `${age ? `${age} | ` : ""}${primary}`;
+          return newSessionController.newSessionResumeLabel(item);
         }
 
         function setPickerButtonContent(button, primaryText, secondaryText = "", placeholder = false) {
@@ -5293,19 +3875,12 @@
         }
 
         function setNewSessionResumeSelection(item) {
-          newSessionResumeSelection = item && typeof item === "object" ? item : null;
-          setPickerButtonContent(
-            newSessionResumeBtn,
-            newSessionResumeSelection ? newSessionResumeLabel(newSessionResumeSelection) : "Start fresh",
-            "",
-            !newSessionResumeSelection
-          );
-          syncNewSessionWorktreeUi();
+          return newSessionController.setNewSessionResumeSelection(item);
         }
 
         function renderNewSessionBackendTabs() {
           newSessionBackendTabs.innerHTML = "";
-          for (const backend of ["codex", "pi"]) {
+          for (const backend of ["codex", "pi", "cc"]) {
             const active = newSessionBackend === backend;
             const btn = el("button", {
               class: `agentBackendTab${active ? " active" : ""}`,
@@ -5324,11 +3899,126 @@
             btn.onclick = () => setNewSessionBackend(backend, { resetSelections: true });
             newSessionBackendTabs.appendChild(btn);
           }
+          newSessionBackendName.textContent = agentBackendDisplayName(newSessionBackend);
+        }
+
+        const newSessionController = codoxearNewSession.createNewSessionController({
+          backend: () => newSessionBackend,
+          provider: () => newSessionProvider,
+          reasoningEffort: () => newSessionReasoningEffort,
+          literalModelInputValue: () => newSessionLiteralModelInputValue,
+          launchPresetProviderAbsent: () => newSessionLaunchPresetProviderAbsent,
+          defaultsSource: () => newSessionDefaults,
+          latestSessions: () => latestSessions,
+          tmuxAvailable: () => tmuxAvailable,
+          assignProvider: (value) => {
+            newSessionProvider = value;
+          },
+          assignReasoningEffort: (value) => {
+            newSessionReasoningEffort = value;
+          },
+          assignLiteralModelInputValue: (value) => {
+            newSessionLiteralModelInputValue = value;
+          },
+          assignLaunchPresetProviderAbsent: (value) => {
+            newSessionLaunchPresetProviderAbsent = Boolean(value);
+          },
+          modelInput: newSessionModelInput,
+          modelField: newSessionModelField,
+          status: newSessionStatus,
+          reasoningBtn: newSessionReasoningBtn,
+          setPickerButtonContent: (button, primaryText, secondaryText, placeholder) => setPickerButtonContent(button, primaryText, secondaryText, placeholder),
+          renderReasoningMenu: () => renderNewSessionReasoningMenu(),
+          renderModelMenu: () => renderNewSessionModelMenu(),
+          setFast: (value) => setNewSessionFast(value),
+          setBackend: (value, opts) => setNewSessionBackend(value, opts),
+          setTmuxChecked: (value) => {
+            newSessionTmuxToggle.checked = value;
+          },
+          applyDialogMenus: () => applyDialogMenus(),
+          closeModelMenu: () => {
+            newSessionModelMenuOpen = false;
+            newSessionModelMenuFocus = -1;
+          },
+          cwdInput: newSessionCwdInput,
+          cwdMenu: newSessionCwdMenu,
+          cwdField: newSessionCwdField,
+          cwdHint: newSessionCwdHint,
+          nameInput: newSessionNameInput,
+          recentCwds: () => recentCwds,
+          cwdMenuFocus: () => newSessionCwdMenuFocus,
+          assignCwdMenuFocus: (value) => {
+            newSessionCwdMenuFocus = value;
+          },
+          closeCwdMenu: () => {
+            newSessionCwdMenuOpen = false;
+            newSessionCwdMenuFocus = -1;
+          },
+          el,
+          resumeMenu: newSessionResumeMenu,
+          resumeBtn: newSessionResumeBtn,
+          closeResumeMenu: () => {
+            newSessionResumeMenuOpen = false;
+          },
+          fetchResumeCandidates: (cwd, backend) => api(`/api/session_resume_candidates?cwd=${encodeURIComponent(cwd)}&agent_backend=${encodeURIComponent(backend)}`),
+          tmuxToggle: newSessionTmuxToggle,
+          tmuxField: newSessionTmuxField,
+          worktreeToggle: newSessionWorktreeToggle,
+          worktreeInput: newSessionWorktreeInput,
+          worktreeField: newSessionWorktreeField,
+          startBtn: newSessionStartBtn,
+        });
+        function newSessionProviderChoices() {
+          return newSessionController.newSessionProviderChoices();
+        }
+
+        function newSessionHasProviderChoices() {
+          return newSessionController.newSessionHasProviderChoices();
+        }
+
+        function defaultNewSessionProviderChoice() {
+          return newSessionController.defaultNewSessionProviderChoice();
+        }
+
+        function newSessionProviderModelDisplay(model, providerChoice = "") {
+          return newSessionController.newSessionProviderModelDisplay(model, providerChoice);
+        }
+
+        function newSessionAllowsCustomProvider() {
+          return newSessionController.newSessionAllowsCustomProvider();
+        }
+
+        function parseNewSessionProviderModelInput(value = newSessionModelInput.value) {
+          return newSessionController.parseNewSessionProviderModelInput(value);
+        }
+
+        function rememberedNewSessionProviderModelChoice() {
+          return newSessionController.rememberedNewSessionProviderModelChoice();
+        }
+
+        function newSessionDefaultsWarningText() {
+          return newSessionController.newSessionDefaultsWarningText();
+        }
+
+        function clearNewSessionProviderModelError() {
+          return newSessionController.clearNewSessionProviderModelError();
+        }
+
+        function syncNewSessionProviderFromModelInput() {
+          return newSessionController.syncNewSessionProviderFromModelInput();
+        }
+
+        function currentNewSessionModelForCapabilities() {
+          return newSessionController.currentNewSessionModelForCapabilities();
+        }
+
+        function currentReasoningChoices() {
+          return newSessionController.currentReasoningChoices();
         }
 
         function renderNewSessionReasoningMenu() {
           newSessionReasoningMenu.innerHTML = "";
-          const items = reasoningChoicesForBackend(newSessionBackend);
+          const items = currentReasoningChoices();
           for (const value of items) {
             const label = value;
             const btn = el("button", {
@@ -5349,6 +4039,9 @@
         function syncNewSessionRunConfigUi() {
           const defaults = defaultsForAgentBackend(newSessionBackend);
           const supportsFast = !!defaults.supports_fast;
+          const hasProviders = newSessionHasProviderChoices() || newSessionAllowsCustomProvider();
+          newSessionModelLabel.textContent = hasProviders ? "Provider / model" : "Model";
+          newSessionModelInput.placeholder = hasProviders ? "provider/model or model" : "Model";
           newSessionFastField.style.display = supportsFast ? "" : "none";
           if (!supportsFast) setNewSessionFast(false);
         }
@@ -5369,9 +4062,17 @@
           }
           const modelDefault = typeof defaults.model === "string" ? defaults.model.trim() : "";
           if (resetSelections || previous !== next) {
-            newSessionModelInput.value = modelDefault;
+            const rememberedPair = rememberedNewSessionProviderModelChoice();
+            const selectedPair = rememberedPair || parseNewSessionProviderModelInput(newSessionProviderModelDisplay(modelDefault || "default", newSessionProvider));
+            if (selectedPair.providerChoice && (providerChoices.includes(selectedPair.providerChoice) || newSessionAllowsCustomProvider())) {
+              setNewSessionProvider(selectedPair.providerChoice);
+            }
+            newSessionModelInput.value = newSessionProviderModelDisplay(selectedPair.model || modelDefault || "default", selectedPair.providerAbsent ? "" : selectedPair.providerChoice || newSessionProvider);
+            newSessionLiteralModelInputValue = selectedPair.providerAbsent ? newSessionModelInput.value : "";
+            newSessionLaunchPresetProviderAbsent = Boolean(selectedPair.providerAbsent);
+            clearNewSessionProviderModelError();
           }
-          const reasoningChoices = reasoningChoicesForBackend(next);
+          const reasoningChoices = currentReasoningChoices();
           const defaultEffort = typeof defaults.reasoning_effort === "string" ? defaults.reasoning_effort.trim().toLowerCase() : "";
           if (resetSelections || previous !== next || !reasoningChoices.includes(newSessionReasoningEffort)) {
             setNewSessionReasoningEffort(defaultEffort || reasoningChoices[0] || "high");
@@ -5383,87 +4084,29 @@
           }
           syncNewSessionRunConfigUi();
           renderNewSessionBackendTabs();
-          renderNewSessionProviderMenu();
           renderNewSessionReasoningMenu();
           renderNewSessionModelMenu();
           scheduleNewSessionResumeLoad();
         }
 
         function setNewSessionProvider(value) {
-          const options = providerChoicesForBackend(newSessionBackend);
-          const fallback = String(defaultsForAgentBackend(newSessionBackend).provider_choice || "").trim();
-          const next = String(value || "").trim();
-          newSessionProvider = options.includes(next) ? next : (fallback && options.includes(fallback) ? fallback : options[0] || "");
-          rememberProviderChoice(newSessionBackend, newSessionProvider);
-          setPickerButtonContent(newSessionProviderBtn, newSessionProvider || "Default provider", "", !newSessionProvider);
+          return newSessionController.setNewSessionProvider(value);
         }
 
-        function renderNewSessionProviderMenu() {
-          newSessionProviderMenu.innerHTML = "";
-          const items = providerChoicesForBackend(newSessionBackend);
-          if (!items.length) {
-            newSessionProviderMenu.appendChild(el("div", { class: "pickerEmpty", text: "No configured providers" }));
-            return;
-          }
-          for (const provider of items) {
-            const btn = el("button", {
-              class: "fileMenuItem" + (newSessionProvider === provider ? " active" : ""),
-              type: "button",
-              title: provider,
-            });
-            btn.appendChild(el("span", { class: "fileMenuPath", text: provider }));
-            btn.onclick = () => {
-              setNewSessionProvider(provider);
-              newSessionProviderMenuOpen = false;
-              applyDialogMenus();
-            };
-            newSessionProviderMenu.appendChild(btn);
-          }
+        function newSessionModelOption(model, { providerChoice = "", recent = false, configured = false, providerAbsent = false } = {}) {
+          return newSessionController.newSessionModelOption(model, { providerChoice, recent, configured, providerAbsent });
         }
 
         function sessionModelOptions() {
-          const seen = new Set();
-          const out = [];
-          const defaults = defaultsForAgentBackend(newSessionBackend);
-          const configured = typeof defaults.model === "string" ? defaults.model.trim() : "";
-          if (configured) {
-            seen.add(configured);
-            out.push(configured);
-          }
-          for (const value of Array.isArray(defaults.models) ? defaults.models : []) {
-            if (typeof value !== "string") continue;
-            const model = value.trim();
-            if (!model || seen.has(model)) continue;
-            seen.add(model);
-            out.push(model);
-          }
-          for (const item of latestSessions) {
-            if (sessionAgentBackend(item) !== newSessionBackend) continue;
-            const model = typeof item.model === "string" ? item.model.trim() : "";
-            if (!model || seen.has(model)) continue;
-            seen.add(model);
-            out.push(model);
-          }
-          if (!out.length) out.push("default");
-          return out;
+          return newSessionController.sessionModelOptions();
         }
 
         function filteredNewSessionModelOptions() {
-          const query = String(newSessionModelInput.value || "").trim().toLowerCase();
-          const options = sessionModelOptions();
-          if (!query) return options.slice(0, 12);
-          const exact = options.filter((value) => value.toLowerCase() === query);
-          const prefix = options.filter((value) => value.toLowerCase() !== query && value.toLowerCase().startsWith(query));
-          const contains = options.filter((value) => !value.toLowerCase().startsWith(query) && value.toLowerCase().includes(query));
-          return exact.concat(prefix, contains).slice(0, 12);
+          return newSessionController.filteredNewSessionModelOptions();
         }
 
         function setNewSessionReasoningEffort(value) {
-          const choices = reasoningChoicesForBackend(newSessionBackend);
-          const next = String(value || "").trim().toLowerCase();
-          const fallback = String(defaultsForAgentBackend(newSessionBackend).reasoning_effort || "").trim().toLowerCase();
-          newSessionReasoningEffort = choices.includes(next) ? next : (choices.includes(fallback) ? fallback : choices[0] || "high");
-          setPickerButtonContent(newSessionReasoningBtn, newSessionReasoningEffort);
+          return newSessionController.setNewSessionReasoningEffort(value);
         }
 
         function setNewSessionFast(value) {
@@ -5471,94 +4114,32 @@
           newSessionFastToggle.checked = newSessionFast;
         }
 
-        function worktreePathSlug(branch) {
-          return String(branch || "")
-            .trim()
-            .replace(/[^A-Za-z0-9._-]+/g, "-")
-            .replace(/^[.-]+|[.-]+$/g, "") || "worktree";
-        }
-
         function syncNewSessionCwdHint() {
-          const errorText = String(newSessionCwdError || "").trim();
-          const hintText = !errorText && newSessionCwdInfo && newSessionCwdInfo.will_create ? "Directory will be created when you start the session." : "";
-          const text = errorText || hintText;
-          newSessionCwdField.classList.toggle("error", !!errorText);
-          newSessionCwdHint.classList.toggle("danger", !!errorText);
-          newSessionCwdHint.textContent = text;
+          return newSessionController.syncNewSessionCwdHint();
         }
 
         function setNewSessionCwdError(message) {
-          newSessionCwdError = String(message || "").trim();
-          syncNewSessionCwdHint();
+          return newSessionController.setNewSessionCwdError(message);
         }
 
         function clearNewSessionCwdInfo() {
-          newSessionCwdInfo = { exists: false, will_create: false, git_repo: false, git_root: "", git_branch: "" };
-          syncNewSessionCwdHint();
+          return newSessionController.clearNewSessionCwdInfo();
         }
 
         function syncNewSessionTmuxUi() {
-          if (!tmuxAvailable) newSessionTmuxToggle.checked = false;
-          newSessionTmuxToggle.disabled = !tmuxAvailable;
-          newSessionTmuxField.style.opacity = tmuxAvailable ? "1" : "0.58";
+          return newSessionController.syncNewSessionTmuxUi();
         }
 
         function syncNewSessionWorktreeUi() {
-          const canOffer = !!(newSessionCwdInfo && newSessionCwdInfo.git_repo) && !newSessionResumeSelection;
-          if (!canOffer) newSessionWorktreeToggle.checked = false;
-          const enabled = canOffer && !!newSessionWorktreeToggle.checked;
-          newSessionWorktreeField.style.display = canOffer ? "" : "none";
-          newSessionWorktreeInput.disabled = !enabled;
-          newSessionWorktreeInput.style.display = enabled ? "" : "none";
-          if (newSessionResumeSelection) newSessionStartBtn.textContent = "Resume session";
-          else if (enabled) newSessionStartBtn.textContent = "Create worktree session";
-          else newSessionStartBtn.textContent = "Start session";
+          return newSessionController.syncNewSessionWorktreeUi();
         }
 
         function renderNewSessionResumeMenu() {
-          newSessionResumeMenu.innerHTML = "";
-          const freshBtn = el("button", {
-            class: "fileMenuItem" + (!newSessionResumeSelection ? " active" : ""),
-            type: "button",
-            title: "Start a new conversation",
-          });
-          freshBtn.appendChild(el("span", { class: "fileMenuPath", text: "Start fresh" }));
-          freshBtn.onclick = () => {
-            setNewSessionResumeSelection(null);
-            newSessionResumeMenuOpen = false;
-            applyDialogMenus();
-          };
-          newSessionResumeMenu.appendChild(freshBtn);
-          if (!newSessionResumeCandidates.length) {
-            newSessionResumeMenu.appendChild(el("div", { class: "pickerEmpty", text: "No matching sessions" }));
-            return;
-          }
-          for (const item of newSessionResumeCandidates) {
-            const btn = el("button", {
-              class: "fileMenuItem" + (newSessionResumeSelection && newSessionResumeSelection.session_id === item.session_id ? " active" : ""),
-              type: "button",
-              title: newSessionResumeLabel(item),
-            });
-            btn.appendChild(el("span", { class: "fileMenuPath", text: newSessionResumeLabel(item) }));
-            btn.onclick = () => {
-              setNewSessionResumeSelection(item);
-              newSessionResumeMenuOpen = false;
-              applyDialogMenus();
-            };
-            newSessionResumeMenu.appendChild(btn);
-          }
+          return newSessionController.renderNewSessionResumeMenu();
         }
 
-        function selectNewSessionModel(model) {
-          newSessionModelInput.value = String(model || "default");
-          newSessionModelMenuOpen = false;
-          newSessionModelMenuFocus = -1;
-          applyDialogMenus();
-          newSessionModelInput.focus();
-          const end = newSessionModelInput.value.length;
-          try {
-            newSessionModelInput.setSelectionRange(end, end);
-          } catch (_) {}
+        function selectNewSessionModel(option) {
+          return newSessionController.selectNewSessionModel(option);
         }
 
         function renderNewSessionModelMenu() {
@@ -5570,7 +4151,7 @@
           if (newSessionModelMenuFocus < 0) {
             const selected = raw || configured;
             if (selected) {
-              const selectedIdx = items.findIndex((item) => item === selected);
+              const selectedIdx = items.findIndex((item) => item.displayText === selected || item.model === selected);
               if (selectedIdx >= 0) newSessionModelMenuFocus = selectedIdx;
             }
           }
@@ -5580,19 +4161,22 @@
             newSessionModelInput.removeAttribute("aria-activedescendant");
             return items;
           }
-          for (const [idx, model] of items.entries()) {
-            const active = newSessionModelMenuFocus === idx || (newSessionModelMenuFocus < 0 && raw === model);
+          for (const [idx, item] of items.entries()) {
+            const model = item.model;
+            const title = item.displayText || newSessionProviderModelDisplay(model, item.providerChoice);
+            const active = newSessionModelMenuFocus === idx || (newSessionModelMenuFocus < 0 && (raw === title || raw === model));
             const btn = el("button", {
               id: `newSessionModelOption-${idx}`,
               class: "fileMenuItem" + (active ? " active" : ""),
               type: "button",
               role: "option",
               "aria-selected": active ? "true" : "false",
-              title: model,
+              title,
             });
-            btn.appendChild(el("span", { class: "fileMenuPath", text: model }));
+            btn.appendChild(el("span", { class: "fileMenuPath", text: title }));
+            if (item.providerChoice) btn.appendChild(el("span", { class: "fileMenuHint", text: item.recent ? "Recent" : item.configured ? "Configured" : item.providerChoice }));
             btn.onmousedown = (e) => e.preventDefault();
-            btn.onclick = () => selectNewSessionModel(model);
+            btn.onclick = () => selectNewSessionModel(item);
             newSessionModelMenu.appendChild(btn);
           }
           if (newSessionModelMenuFocus >= 0) newSessionModelInput.setAttribute("aria-activedescendant", `newSessionModelOption-${newSessionModelMenuFocus}`);
@@ -5600,62 +4184,14 @@
           return items;
         }
 
-        async function loadNewSessionResumeCandidates(cwd) {
-          const raw = String(cwd || "").trim();
-          const seq = ++newSessionResumeLoadSeq;
-          const backend = newSessionBackend;
-          if (!raw) {
-            setNewSessionCwdError("");
-            newSessionResumeCandidates = [];
-            setNewSessionResumeSelection(null);
-            clearNewSessionCwdInfo();
-            renderNewSessionResumeMenu();
-            syncNewSessionWorktreeUi();
-            return;
-          }
-          try {
-            const res = await api(`/api/session_resume_candidates?cwd=${encodeURIComponent(raw)}&agent_backend=${encodeURIComponent(backend)}`);
-            if (seq !== newSessionResumeLoadSeq) return;
-            newSessionCwdInfo = {
-              exists: !!(res && res.exists),
-              will_create: !!(res && res.will_create),
-              git_repo: !!(res && res.git_repo),
-              git_root: res && typeof res.git_root === "string" ? res.git_root : "",
-              git_branch: res && typeof res.git_branch === "string" ? res.git_branch : "",
-            };
-            setNewSessionCwdError("");
-            const items = Array.isArray(res && res.sessions) ? res.sessions.filter((item) => item && typeof item === "object" && typeof item.session_id === "string") : [];
-            newSessionResumeCandidates = items;
-            const currentId = newSessionResumeSelection && typeof newSessionResumeSelection.session_id === "string" ? newSessionResumeSelection.session_id : "";
-            const next = currentId ? items.find((item) => item.session_id === currentId) || null : null;
-            setNewSessionResumeSelection(next);
-            renderNewSessionResumeMenu();
-            syncNewSessionWorktreeUi();
-          } catch (e) {
-            if (seq !== newSessionResumeLoadSeq) return;
-            newSessionResumeCandidates = [];
-            setNewSessionResumeSelection(null);
-            clearNewSessionCwdInfo();
-            if (e && e.obj && e.obj.field === "cwd") setNewSessionCwdError(e.message);
-            renderNewSessionResumeMenu();
-            syncNewSessionWorktreeUi();
-          }
-        }
-
         function scheduleNewSessionResumeLoad() {
-          if (newSessionResumeLoadTimer) clearTimeout(newSessionResumeLoadTimer);
-          const cwd = String(newSessionCwdInput.value || "").trim();
-          newSessionResumeLoadTimer = setTimeout(() => {
-            newSessionResumeLoadTimer = null;
-            void loadNewSessionResumeCandidates(cwd);
-          }, 180);
+          return newSessionController.scheduleNewSessionResumeLoad();
         }
 
         function applyDialogMenus() {
           editDependencyMenu.classList.toggle("open", editDependencyMenuOpen);
           newSessionCwdMenu.classList.toggle("open", newSessionCwdMenuOpen);
           newSessionModelMenu.classList.toggle("open", newSessionModelMenuOpen);
-          newSessionProviderMenu.classList.toggle("open", newSessionProviderMenuOpen);
           newSessionReasoningMenu.classList.toggle("open", newSessionReasoningMenuOpen);
           newSessionResumeMenu.classList.toggle("open", newSessionResumeMenuOpen);
           editDependencyBtn.setAttribute("aria-expanded", editDependencyMenuOpen ? "true" : "false");
@@ -5663,13 +4199,11 @@
           if (!newSessionCwdMenuOpen && newSessionCwdMenuFocus < 0) newSessionCwdInput.removeAttribute("aria-activedescendant");
           newSessionModelInput.setAttribute("aria-expanded", newSessionModelMenuOpen ? "true" : "false");
           if (!newSessionModelMenuOpen && newSessionModelMenuFocus < 0) newSessionModelInput.removeAttribute("aria-activedescendant");
-          newSessionProviderBtn.setAttribute("aria-expanded", newSessionProviderMenuOpen ? "true" : "false");
           newSessionReasoningBtn.setAttribute("aria-expanded", newSessionReasoningMenuOpen ? "true" : "false");
           newSessionResumeBtn.setAttribute("aria-expanded", newSessionResumeMenuOpen ? "true" : "false");
           if (editDependencyMenuOpen) positionDialogMenu(editDependencyMenu, editDependencyBtn);
           if (newSessionCwdMenuOpen) positionDialogMenu(newSessionCwdMenu, newSessionCwdInput);
           if (newSessionModelMenuOpen) positionDialogMenu(newSessionModelMenu, newSessionModelInput);
-          if (newSessionProviderMenuOpen) positionDialogMenu(newSessionProviderMenu, newSessionProviderBtn);
           if (newSessionReasoningMenuOpen) positionDialogMenu(newSessionReasoningMenu, newSessionReasoningBtn);
           if (newSessionResumeMenuOpen) positionDialogMenu(newSessionResumeMenu, newSessionResumeBtn);
         }
@@ -5716,6 +4250,7 @@
           if (!s) return;
           editSessionId = sid;
           editStatus.textContent = "";
+          editSaveBtn.disabled = false;
           editNameInput.value = typeof s.alias === "string" ? s.alias : "";
           editNameInput.placeholder = sessionDisplayName(s) || "Conversation title";
           editPriorityRange.value = String(Number(s.priority_offset || 0));
@@ -5729,34 +4264,81 @@
             fillCustomSnoozeInputs(tomorrowSnoozeSeconds());
           }
           fillDependencyOptions(sid, s.dependency_session_id || "");
+          prepareModalOpen();
           if (!editViewer.open) editViewer.showModal();
+          afterModalVisibilityChanged();
+        }
+
+        function restoreNewSessionFocus() {
+          const target = newSessionReturnFocusEl;
+          newSessionReturnFocusEl = null;
+          if (!target || !target.isConnected || typeof target.focus !== "function") return;
+          if (typeof target.disabled === "boolean" && target.disabled) return;
+          requestAnimationFrame(() => {
+            if (isModalTargetOpen(newSessionViewer)) return;
+            try {
+              target.focus({ preventScroll: true });
+            } catch {}
+          });
+        }
+
+        function focusNewSessionInitialControl() {
+          const target = isMobile() ? newSessionCloseBtn : newSessionCwdInput;
+          requestAnimationFrame(() => {
+            if (!isModalTargetOpen(newSessionViewer)) return;
+            target.focus({ preventScroll: true });
+            if (target !== newSessionCwdInput) return;
+            const end = newSessionCwdInput.value.length;
+            try {
+              newSessionCwdInput.setSelectionRange(end, end);
+            } catch {}
+          });
         }
 
         function hideNewSessionDialog() {
+          const wasOpen = isModalTargetOpen(newSessionViewer);
+          if (newSessionController) newSessionController.disposeResumeLoadTimer();
           newSessionStatus.textContent = "";
           newSessionCwdMenuOpen = false;
           newSessionCwdMenuFocus = -1;
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
-          newSessionProviderMenuOpen = false;
           newSessionReasoningMenuOpen = false;
           newSessionResumeMenuOpen = false;
           applyDialogMenus();
           newSessionBackdrop.style.display = "none";
           newSessionViewer.style.display = "none";
+          afterModalVisibilityChanged();
+          if (wasOpen) restoreNewSessionFocus();
+          else newSessionReturnFocusEl = null;
         }
 
-        function openNewSessionDialog({ cwd = null, statusText = "" } = {}) {
+        function launchPresetProviderChoice(s) {
+          return newSessionController.launchPresetProviderChoice(s);
+        }
+
+        function applyNewSessionLaunchPreset(sessionInfo) {
+          return newSessionController.applyNewSessionLaunchPreset(sessionInfo);
+        }
+
+        function openNewSessionDialog({ cwd = null, statusText = "", likeSession = null, returnFocusEl = null } = {}) {
+          newSessionReturnFocusEl = returnFocusEl instanceof HTMLElement ? returnFocusEl : document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          prepareModalOpen();
           const cur = selected ? sessionIndex.get(selected) : null;
-          const initialCwd = typeof cwd === "string" && cwd.trim() ? cwd.trim() : cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
+          const like = likeSession && typeof likeSession === "object" ? likeSession : null;
+          const initialCwd = typeof cwd === "string" && cwd.trim() ? cwd.trim() : like && like.cwd && like.cwd !== "?" ? like.cwd : cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
           const rememberedBackend = loadRememberedBackendChoice();
-          const initialBackend = rememberedBackend || (cur ? sessionAgentBackend(cur) : normalizeAgentBackendName(newSessionDefaults && newSessionDefaults.default_backend));
-          newSessionStatus.textContent = String(statusText || "");
+          const currentBackend = like ? sessionAgentBackend(like) : cur ? sessionAgentBackend(cur) : "";
+          const defaultBackend = normalizeAgentBackendName(newSessionDefaults && newSessionDefaults.default_backend);
+          const initialBackend = currentBackend || rememberedBackend || defaultBackend;
+          newSessionStatus.textContent = String(statusText || newSessionDefaultsWarningText() || "");
           newSessionCwdInput.value = initialCwd;
           newSessionNameInput.value = "";
           newSessionModelInput.value = "";
+          newSessionLiteralModelInputValue = "";
+          newSessionLaunchPresetProviderAbsent = false;
           syncNewSessionNamePlaceholder();
-          newSessionResumeCandidates = [];
+          newSessionController.clearNewSessionResumeCandidates();
           setNewSessionResumeSelection(null);
           setNewSessionCwdError("");
           clearNewSessionCwdInfo();
@@ -5770,24 +4352,18 @@
           newSessionCwdMenuFocus = -1;
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
-          newSessionProviderMenuOpen = false;
           newSessionReasoningMenuOpen = false;
           renderRecentCwdMenu();
           setNewSessionBackend(initialBackend, { resetSelections: true });
+          if (like) applyNewSessionLaunchPreset(like);
           renderNewSessionResumeMenu();
           newSessionBackdrop.style.display = "block";
           newSessionViewer.style.display = "flex";
+          afterModalVisibilityChanged();
           scheduleNewSessionResumeLoad();
           syncNewSessionTmuxUi();
           syncNewSessionWorktreeUi();
-          if (isMobile()) return;
-          requestAnimationFrame(() => {
-            newSessionCwdInput.focus({ preventScroll: true });
-            const end = newSessionCwdInput.value.length;
-            try {
-              newSessionCwdInput.setSelectionRange(end, end);
-            } catch {}
-          });
+          focusNewSessionInitialControl();
         }
 
         editPriorityRange.oninput = syncEditPriorityLabel;
@@ -5821,7 +4397,6 @@
           newSessionCwdMenuFocus = -1;
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
-          newSessionProviderMenuOpen = false;
           newSessionReasoningMenuOpen = false;
           applyDialogMenus();
         };
@@ -5835,7 +4410,8 @@
           if (e.target === editViewer) hideEditSession();
         };
         editSaveBtn.onclick = async () => {
-          if (!editSessionId) return;
+          const sid = editSessionId;
+          if (!sid || editSaveBtn.disabled) return;
           let snoozeUntil = null;
           const snoozeMode = editSnoozeMode;
           if (snoozeMode === "4h") {
@@ -5857,8 +4433,9 @@
             snoozeUntil = Math.floor(parsed / 1000);
           }
           try {
+            editSaveBtn.disabled = true;
             editStatus.textContent = "Saving...";
-            await api(`/api/sessions/${editSessionId}/edit`, {
+            await api(`/api/sessions/${sid}/edit`, {
               method: "POST",
               body: {
                 name: String(editNameInput.value || ""),
@@ -5867,15 +4444,19 @@
                 dependency_session_id: String(editDependencyBtn.dataset.value || "") || null,
               },
             });
-            hideEditSession();
             await refreshSessions();
-            if (selected === editSessionId) {
-              const s2 = sessionIndex.get(editSessionId);
+            if (editSessionId !== sid) return;
+            hideEditSession();
+            if (selected === sid) {
+              const s2 = sessionIndex.get(sid);
               if (s2) titleLabel.textContent = sessionTitleWithId(s2);
             }
             setToast("conversation updated");
           } catch (e) {
+            if (editSessionId !== sid) return;
             editStatus.textContent = e && e.message ? e.message : "Save failed";
+          } finally {
+            if (editSessionId === sid) editSaveBtn.disabled = false;
           }
         };
 
@@ -5890,7 +4471,6 @@
           editDependencyMenuOpen = false;
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
-          newSessionProviderMenuOpen = false;
           newSessionResumeMenuOpen = false;
           applyDialogMenus();
         };
@@ -5902,7 +4482,6 @@
           newSessionCwdMenuOpen = true;
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
-          newSessionProviderMenuOpen = false;
           scheduleNewSessionResumeLoad();
           applyDialogMenus();
         };
@@ -5923,7 +4502,6 @@
             editDependencyMenuOpen = false;
             newSessionModelMenuOpen = false;
             newSessionModelMenuFocus = -1;
-            newSessionProviderMenuOpen = false;
             newSessionResumeMenuOpen = false;
             const delta = e.key === "ArrowDown" ? 1 : -1;
             if (newSessionCwdMenuFocus < 0) newSessionCwdMenuFocus = delta > 0 ? 0 : items.length - 1;
@@ -5962,17 +4540,20 @@
           editDependencyMenuOpen = false;
           newSessionCwdMenuOpen = false;
           newSessionCwdMenuFocus = -1;
-          newSessionProviderMenuOpen = false;
           newSessionReasoningMenuOpen = false;
           newSessionResumeMenuOpen = false;
           applyDialogMenus();
         };
         newSessionModelInput.oninput = () => {
+          newSessionLiteralModelInputValue = "";
+          newSessionLaunchPresetProviderAbsent = false;
           newSessionModelMenuFocus = -1;
+          syncNewSessionProviderFromModelInput();
           renderNewSessionModelMenu();
+          setNewSessionReasoningEffort(newSessionReasoningEffort);
+          renderNewSessionReasoningMenu();
           newSessionModelMenuOpen = true;
           newSessionReasoningMenuOpen = false;
-          newSessionProviderMenuOpen = false;
           applyDialogMenus();
         };
         newSessionModelInput.onblur = () => {
@@ -5992,7 +4573,6 @@
             editDependencyMenuOpen = false;
             newSessionCwdMenuOpen = false;
             newSessionCwdMenuFocus = -1;
-            newSessionProviderMenuOpen = false;
             newSessionReasoningMenuOpen = false;
             newSessionResumeMenuOpen = false;
             const delta = e.key === "ArrowDown" ? 1 : -1;
@@ -6030,20 +4610,6 @@
           if (newSessionWorktreeToggle.checked) newSessionWorktreeInput.focus();
         };
         newSessionWorktreeInput.oninput = () => syncNewSessionWorktreeUi();
-        newSessionProviderBtn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          renderNewSessionProviderMenu();
-          newSessionProviderMenuOpen = !newSessionProviderMenuOpen;
-          editDependencyMenuOpen = false;
-          newSessionCwdMenuOpen = false;
-          newSessionCwdMenuFocus = -1;
-          newSessionModelMenuOpen = false;
-          newSessionModelMenuFocus = -1;
-          newSessionReasoningMenuOpen = false;
-          newSessionResumeMenuOpen = false;
-          applyDialogMenus();
-        };
         newSessionFastToggle.onchange = () => setNewSessionFast(newSessionFastToggle.checked);
         newSessionReasoningBtn.onclick = (e) => {
           e.preventDefault();
@@ -6055,11 +4621,11 @@
           newSessionCwdMenuFocus = -1;
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
-          newSessionProviderMenuOpen = false;
           newSessionResumeMenuOpen = false;
           applyDialogMenus();
         };
         newSessionStartBtn.onclick = async () => {
+          if (newSessionStartBusy) return;
           const cwd = String(newSessionCwdInput.value || "").trim();
           const agentBackend = newSessionBackend;
           setNewSessionCwdError("");
@@ -6069,9 +4635,15 @@
             return;
           }
           const sessionName = String(newSessionNameInput.value || "").trim();
-          const providerChoice = String(newSessionProvider || "").trim();
-          const model = String(newSessionModelInput.value || "").trim() || "default";
-          const resumeSessionId = newSessionResumeSelection && newSessionResumeSelection.session_id ? newSessionResumeSelection.session_id : null;
+          const parsedProviderModel = syncNewSessionProviderFromModelInput();
+          if (parsedProviderModel.providerError) {
+            newSessionStatus.textContent = parsedProviderModel.providerError;
+            return;
+          }
+          const providerChoice = String(parsedProviderModel.providerAbsent ? "" : parsedProviderModel.providerChoice || newSessionProvider || "").trim();
+          const model = String(parsedProviderModel.model || "default").trim() || "default";
+          rememberProviderModelChoice(agentBackend, providerChoice, model, { providerAbsent: Boolean(parsedProviderModel.providerAbsent) });
+          const resumeSessionId = (newSessionController.currentResumeSelection() || {}).session_id || null;
           const createInTmux = !!newSessionTmuxToggle.checked;
           const worktreeBranch = !resumeSessionId && newSessionWorktreeToggle.checked ? String(newSessionWorktreeInput.value || "").trim() : null;
           if (newSessionWorktreeToggle.checked && !worktreeBranch) {
@@ -6081,1800 +4653,788 @@
           newSessionStatus.textContent = resumeSessionId ? "Resuming..." : worktreeBranch ? "Creating worktree..." : createInTmux ? "Starting in tmux..." : "Starting...";
           let cwdStartError = false;
           let startErrorText = "";
-          const brokerPid = await spawnSessionWithCwd(cwd, resumeSessionId, worktreeBranch, sessionName, providerChoice, model, newSessionReasoningEffort, newSessionFast, createInTmux, (e) => {
-            if (e && e.obj && e.obj.field === "cwd") {
-              cwdStartError = true;
-              newSessionStatus.textContent = "";
-              setNewSessionCwdError(e.message);
-              return;
-            }
-            const launchId = e && e.obj && e.obj.launch_id ? String(e.obj.launch_id) : "";
-            startErrorText = launchId ? `${e.message} (${launchId})` : e && e.message ? e.message : "Start failed.";
-          }, agentBackend);
-          if (brokerPid) hideNewSessionDialog();
-          else if (!cwdStartError) newSessionStatus.textContent = startErrorText || "Start failed.";
+          newSessionStartBusy = true;
+          newSessionStartBtn.disabled = true;
+          try {
+            const brokerPid = await spawnSessionWithCwd(cwd, resumeSessionId, worktreeBranch, sessionName, providerChoice, model, newSessionReasoningEffort, newSessionFast, createInTmux, (e) => {
+              if (e && e.obj && e.obj.field === "cwd") {
+                cwdStartError = true;
+                newSessionStatus.textContent = "";
+                setNewSessionCwdError(e.message);
+                return;
+              }
+              const launchId = e && e.obj && e.obj.launch_id ? String(e.obj.launch_id) : "";
+              startErrorText = launchId ? `${e.message} (${launchId})` : e && e.message ? e.message : "Start failed.";
+            }, agentBackend);
+            if (brokerPid) hideNewSessionDialog();
+            else if (!cwdStartError) newSessionStatus.textContent = startErrorText || "Start failed.";
+          } finally {
+            newSessionStartBusy = false;
+            newSessionStartBtn.disabled = false;
+          }
         };
-        let fileViewMode = localStorage.getItem("codexweb.fileViewMode") || "diff"; // "diff" | "file" | "preview"
-        let fileNonDiffMode = localStorage.getItem("codexweb.fileNonDiffMode") === "preview" ? "preview" : "file";
-        let fileCandidateList = [];
-        let fileEntryMap = new Map();
-        let fileViewerSessionId = "";
-        let activeFilePath = "";
-        let activeFileKind = "";
-        let activeFileText = "";
-        let activeFileEditable = false;
-        let activeFileVersion = "";
-        let activeFileDraft = false;
-        let activeVideoFallback = null;
-        let fileMenuOpen = false;
-        let fileMenuFocus = -1;
-        let filePickerSearchActive = false;
-        let fileSearchResults = [];
-        let fileSearchLoadedQuery = "";
-        let fileSearchPendingQuery = "";
-        let fileSearchErrorQuery = "";
-        let fileSearchError = "";
-        let fileSearchTruncatedQuery = "";
-        let fileSearchSessionId = "";
-        let fileSearchSeq = 0;
-        let fileSearchTimer = null;
-        let fileSearchAbort = null;
-        let monacoReadyPromise = null;
-        let monacoNs = null;
-        let monacoThemeReady = false;
-        let pdfjsReadyPromise = null;
-        let activePdfRender = null;
-        let fileEditor = null;
-        let fileEditorKind = "";
-        let fileEditorModels = [];
-        let fileEditorChangeDisposable = null;
-        let fileEditMode = false;
-        let fileDirty = false;
-        let fileSavePending = false;
-        let fileEditorProgrammaticChange = false;
-        let fileUnsavedResolver = null;
-        let fileOpenRequestId = 0;
-        let fileOpenAbortController = null;
-        let fileTouchSelectMode = false;
-        let fileTouchSelectAnchor = null;
-        let fileTouchSelectHead = null;
-        let fileTouchSelectGoalColumn = null;
-        let fileTouchDeleteNativeSuppressUntil = 0;
-        let fileSessionSelections = new Map();
+        const FILE_CANDIDATE_CACHE_TTL_MS = 15000;
+        const filePickerMenuState = codoxearFilePicker.createMenuState({
+          normalizeLineNumber,
+        });
+        const filePickerDomRuntime = codoxearFilePicker.createMenuDomRuntime({
+          field: filePickerField,
+          menu: filePickerMenu,
+          input: filePickerInput,
+          menuState: filePickerMenuState,
+        });
+        const filePickerSearchState = codoxearFilePicker.createSearchState({
+          blocked: () => blockUnavailableFileAction(),
+          currentSessionId: () => currentFileViewerSessionId() || selected || "",
+          api,
+          inputValue: () => filePickerInput.value,
+          isMenuOpen: () => filePickerMenuState.isOpen(),
+          renderMenu: () => renderFilePickerMenu(),
+          applyMenuState: () => applyFileMenuState(),
+          normalizeFileApiPath: (value) => normalizeFileApiPath(value),
+        });
+        const filePickerEntryRuntime = codoxearFilePicker.createEntryRuntime({
+          menuState: filePickerMenuState,
+          inputValue: () => filePickerInput.value,
+          candidateKeys: () => fileViewerController.currentFileCandidateKeys(),
+          entryForKey: (key) => fileViewerController.fileEntryForKey(key),
+          pickerEntryForKey: (key, options) => fileViewerController.pickerEntryForKey(key, options),
+          pickerEntryForPath: (path, options) => fileViewerController.pickerEntryForPath(path, options),
+          keyForPath: (path, gitPath, apiPath) => fileCandidateKey(path, gitPath, apiPath),
+          activeFileDraft: () => currentActiveFileDraft(),
+          activeFilePath: () => activeFilePathValue(),
+          searchSnapshot: () => filePickerSearchSnapshot(),
+          normalizeFileApiPath: (value) => normalizeFileApiPath(value),
+        });
+        const filePickerRenderRuntime = codoxearFilePicker.createMenuRenderRuntime({
+          menu: filePickerMenu,
+          menuState: filePickerMenuState,
+          inputValue: () => filePickerInput.value,
+          visibleEntries: () => filePickerEntryRuntime.visibleEntries(),
+          searchSnapshot: () => filePickerSearchSnapshot(),
+          normalizeDraftFilePath: (query) => normalizeDraftFilePath(query),
+          draftSuppressed: () => filePickerDraftSuppressed(),
+          draftEntry: (path) => filePickerEntryRuntime.draftEntry(path),
+          syncActiveDescendant: (focusIndex) => filePickerDomRuntime.syncActiveDescendant(focusIndex),
+          sectionLabel: (source) => filePickerSectionLabel(source),
+          duplicatePaths: (entries) => duplicateFilePickerPaths(entries),
+          rawByteDuplicatePaths: (entries) => rawByteDuplicatePaths(entries),
+          identityHint: (entry, duplicatePaths, options) => filePickerIdentityHint(entry, duplicatePaths, options),
+          titleForEntry: (entry, hint) => filePickerTitle(entry, hint),
+          normalizeFileApiPath: (value) => normalizeFileApiPath(value),
+          activeIdentity: () => currentActiveFileIdentity(),
+          gitStatusMessage: () => fileViewerController.currentFileCandidateGitStateMessage(),
+          openDraftFilePath: (draftPath) => openDraftFilePathWithGuard(draftPath),
+          openEntry: async (selectedEntry) => {
+            try {
+              await openFilePathWithResolvedMode(selectedEntry.path, { line: filePickerSelectionLine(), changed: Boolean(selectedEntry.changed), gitPath: Boolean(selectedEntry.gitPath), apiPath: selectedEntry.apiPath });
+            } catch (e) {
+              fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
+            }
+          },
+          el,
+          createTextNode: (value) => document.createTextNode(value),
+        });
+        const filePickerInputRuntime = codoxearFilePicker.createInputRuntime({
+          input: filePickerInput,
+          menuState: filePickerMenuState,
+          ensureCurrentSession: () => ensureCurrentFileViewerSession(),
+          renderMenu: () => renderFilePickerMenu(),
+          applyMenuState: () => applyFileMenuState(),
+          resetInput: () => resetFilePickerInput(),
+          closeMenu: (options) => closeFilePickerMenu(options),
+          currentSessionId: () => currentFileViewerSessionId(),
+          selectedSessionId: () => selected,
+          resetSearchState: () => resetFileSearchState(),
+          setSearchSessionId: (sessionId) => filePickerSearchState.setSessionId(sessionId),
+          scheduleSearch: (query) => filePickerSearchState.schedule(query),
+          selectionLine: () => filePickerSelectionLine(),
+          openDraftFilePathWithGuard: (path) => openDraftFilePathWithGuard(path),
+          openFilePathWithResolvedMode: (path, options) => openFilePathWithResolvedMode(path, options),
+          setStatus: (status) => {
+            fileStatus.textContent = status;
+          },
+          optionElementById: (id) => document.getElementById(id),
+          isFocusInsideField: () => filePickerField.contains(document.activeElement),
+          requestAnimationFrame: (callback) => requestAnimationFrame(callback),
+        });
+        const MONACO_LOADER_TIMEOUT_MS = 4000;
+        const PDFJS_LOADER_TIMEOUT_MS = 6000;
+        const fileEditorRuntime = codoxearFileEditor.createFileEditorRuntime();
+        const fileEditorMonacoLoader = codoxearFileEditor.createMonacoLoader({
+          resolveAppUrl,
+          timeoutMs: MONACO_LOADER_TIMEOUT_MS,
+        });
+        const fileEditorRenderer = codoxearFileEditor.createFileEditorRenderer({
+          runtime: fileEditorRuntime,
+          monacoLoader: fileEditorMonacoLoader,
+          host: fileDiff,
+          normalizeLineNumber,
+          requestAnimationFrame: (callback) => requestAnimationFrame(callback),
+          setTimeout: (callback, delay) => setTimeout(callback, delay),
+          isCurrentFileOpenRequest: (request) => isCurrentFileOpenRequest(request),
+          renderPlainTextFallback: (rel, text, lineNumber, reason) => renderPlainTextFallback(rel, text, lineNumber, reason),
+          disposeFileEditor: () => disposeFileEditor(),
+          currentEditorKind: () => currentFileEditorKind(),
+          setEditorKind: (kind) => setFileEditorKind(kind),
+          currentFileEditMode: () => currentFileEditMode(),
+          currentActiveFileEditable: () => currentActiveFileEditable(),
+          isUnavailable: () => isFileViewerSessionUnavailable(),
+          isProgrammaticChange: () => fileViewerController.isFileEditorProgrammaticChange(),
+          currentTouchSelectMode: () => currentFileTouchSelectMode(),
+          resetTouchSelectionState: () => resetFileTouchSelectionState(),
+          currentActiveFileText: () => currentActiveFileText(),
+          setDirty: (dirty) => setFileDirty(dirty),
+          runProgrammaticChange: (callback) => fileViewerController.runFileEditorProgrammaticChange(callback),
+          syncReadOnly: () => syncFileEditorReadOnly(),
+          updateTouchToolbar: () => updateFileTouchToolbar(),
+        });
+        const filePdfLoader = codoxearFileViewer.createPdfLoader({
+          resolveAppUrl,
+          timeoutMs: PDFJS_LOADER_TIMEOUT_MS,
+        });
+        const fileFallbackRuntime = codoxearFileViewer.createFileFallbackRuntime({
+          host: fileDiff,
+          el,
+          normalizeLineNumber,
+          requestAnimationFrame: (callback) => requestAnimationFrame(callback),
+          disposeFileEditor: () => disposeFileEditor(),
+          disposePdfRender: () => disposePdfRender(),
+          clearFileVideo: () => clearFileVideo(),
+          setFileRenderSurface: (surface) => setFileRenderSurface(surface),
+          setFileEditorKind: (kind) => setFileEditorKind(kind),
+          applyPlainTextFallbackState: () => fileViewerController.applyPlainTextFallbackState(),
+          updateFileTouchToolbar: () => updateFileTouchToolbar(),
+          currentSessionId: () => currentFileViewerSessionId() || selected || "",
+          markdownPreviewHtml: (body, context) => markdownPreviewHtml(body, context),
+          upgradeCandidateFileRefs: (node) => upgradeCandidateFileRefs(node),
+          blockedFileMessage: (rel, reason, viewerMaxBytes, size) => blockedFileMessage(rel, reason, viewerMaxBytes, size),
+        });
+        const fileDownloadRuntime = codoxearFileViewer.createFileDownloadRuntime({
+          resolveAppUrl,
+          document,
+        });
+        const filePdfRenderRuntime = codoxearFileViewer.createFilePdfRenderRuntime({
+          host: fileDiff,
+          el,
+          ensurePdfJs: () => ensurePdfJs(),
+          createCanvas: () => document.createElement("canvas"),
+          devicePixelRatio: () => window.devicePixelRatio || 1,
+          disposeFileEditor: () => disposeFileEditor(),
+          disposePdfRender: () => disposePdfRender(),
+          clearFileVideo: () => clearFileVideo(),
+          setFileRenderSurface: (surface) => setFileRenderSurface(surface),
+          renderDownloadFallback: (rel, url, reason) => renderDownloadFallback(rel, url, reason),
+          isCurrentFileOpenRequest: (request) => isCurrentFileOpenRequest(request),
+          setActivePdfRenderState: (state) => fileViewerController.setActivePdfRenderState(state),
+          isActivePdfRenderState: (state) => fileViewerController.isActivePdfRenderState(state),
+          updateFileTouchToolbar: () => updateFileTouchToolbar(),
+          IntersectionObserverCtor: typeof IntersectionObserver === "function" ? IntersectionObserver : null,
+        });
+        const filePasteDialogRuntime = codoxearFileViewer.createFilePasteDialogRuntime({
+          backdrop: filePasteBackdrop,
+          dialog: filePasteDialog,
+          input: filePasteInput,
+          prepareModalOpen,
+          afterModalVisibilityChanged,
+          focusActiveEditor: () => fileEditorRuntime.focusActiveCodeEditor(currentFileEditorKind()),
+          requestAnimationFrame: (callback) => requestAnimationFrame(callback),
+        });
+        const fileRenderSurfaceRuntime = codoxearFileViewer.createFileRenderSurfaceRuntime({
+          diff: fileDiff,
+          image: fileImage,
+          video: fileVideo,
+          videoPreviewButton: fileVideoPreviewBtn,
+          clearActiveVideoFallback: () => fileViewerController.clearActiveVideoFallback(),
+        });
+        const fileModeControlsRuntime = codoxearFileViewer.createFileModeControlsRuntime({
+          diffButton: fileModeDiffBtn,
+          previewButton: fileModePreviewBtn,
+          downloadButton: fileDownloadBtn,
+          videoPreviewButton: fileVideoPreviewBtn,
+          hideFilePasteDialog: () => hideFilePasteDialog(),
+          setFileEditMode: (mode) => setFileEditMode(mode),
+          syncFileEditorReadOnly: () => syncFileEditorReadOnly(),
+          updateFileEditButton: () => updateFileEditButton(),
+        });
+        const fileTouchToolbarRuntime = codoxearFileViewer.createFileTouchToolbarRuntime({
+          toolbar: fileTouchToolbar,
+          actions: fileTouchActions,
+          dpad: fileTouchDpad,
+          copyButton: fileTouchCopyBtn,
+          pasteButton: fileTouchPasteBtn,
+          selectButton: fileTouchSelectBtn,
+        });
+        const fileViewerModalRuntime = codoxearFileViewer.createFileViewerModalRuntime({
+          backdrop: fileBackdrop,
+          viewer: fileViewer,
+          pickerInput: filePickerInput,
+          closeButton: fileCloseBtn,
+          prepareModalOpen,
+          afterModalVisibilityChanged,
+          focusModalCloseButton,
+          restoreModalFocus,
+          isModalTargetOpen,
+          setReturnFocusElement: (element, ElementCtor) => fileViewerController.setFileViewerReturnFocusElement(element, ElementCtor),
+          takeReturnFocusElement: () => fileViewerController.takeFileViewerReturnFocusElement(),
+        });
+        const fileUnsavedDialogRuntime = codoxearFileViewer.createFileUnsavedDialogRuntime({
+          backdrop: fileUnsavedBackdrop,
+          dialog: fileUnsavedDialog,
+          viewer: fileViewer,
+          title: fileUnsavedDialog.querySelector(".title"),
+          message: fileUnsavedDialog.querySelector(".muted"),
+          saveButton: $("#fileUnsavedSaveBtn"),
+          discardButton: $("#fileUnsavedDiscardBtn"),
+          cancelButton: $("#fileUnsavedCancelBtn"),
+          prepareModalOpen,
+          afterModalVisibilityChanged,
+          restoreModalFocus,
+          isModalTargetOpen,
+          requestAnimationFrame: (callback) => requestAnimationFrame(callback),
+          promptPlan: () => fileViewerController.fileUnsavedPromptPlan(),
+          beginPrompt: () => fileViewerController.beginFileUnsavedPrompt(),
+          resolvePrompt: (choice) => fileViewerController.resolveFileUnsavedPrompt(choice),
+          setReturnFocusElement: (element, ElementCtor) => fileViewerController.setFileUnsavedReturnFocusElement(element, ElementCtor),
+          takeReturnFocusElement: () => fileViewerController.takeFileUnsavedReturnFocusElement(),
+          isUnavailable: () => isFileViewerSessionUnavailable(),
+        });
+
+        function currentFileViewerSessionId() {
+          return fileViewerController.currentFileViewerSessionId();
+        }
 
         function currentFileSessionId() {
-          return String(fileViewerSessionId || selected || "").trim();
+          return String(currentFileViewerSessionId() || selected || "").trim();
         }
 
-        function cancelPendingFileOpen() {
-          fileOpenRequestId += 1;
-          disposePdfRender();
-          if (!fileOpenAbortController) return;
-          try {
-            fileOpenAbortController.abort();
-          } catch (_) {}
-          fileOpenAbortController = null;
+        function isFileViewerSessionUnavailable() {
+          return fileViewerController.isFileViewerSessionUnavailable();
         }
 
-        function beginFileOpenRequest(nextPath = null, { line = undefined } = {}) {
-          cancelPendingFileOpen();
-          const rel = String(nextPath == null ? activeFilePath : nextPath).trim();
-          activeFilePath = rel;
-          activeFileLine = line === undefined ? activeFileLine : normalizeLineNumber(line);
-          const controller = typeof AbortController === "function" ? new AbortController() : null;
-          if (controller) fileOpenAbortController = controller;
-          return {
-            requestId: fileOpenRequestId,
-            sessionId: currentFileSessionId(),
-            path: rel,
-            line: activeFileLine,
-            signal: controller ? controller.signal : null,
-          };
+        function blockUnavailableFileAction() {
+          return fileViewerController.blockUnavailableFileAction();
+        }
+
+        function currentActiveFileIdentity() {
+          return fileViewerController.currentActiveFileIdentity();
+        }
+
+        function activeFilePathValue() {
+          return currentActiveFileIdentity().path;
+        }
+
+        function currentFileEditorKind() {
+          return fileViewerController.currentFileEditorKind();
+        }
+
+        function setFileEditorKind(kind) {
+          return fileViewerController.setFileEditorKind(kind);
         }
 
         function isCurrentFileOpenRequest(request) {
-          if (!request) return false;
-          return (
-            request.requestId === fileOpenRequestId &&
-            request.sessionId === currentFileSessionId() &&
-            request.path === String(activeFilePath || "").trim()
-          );
-        }
-
-        function finalizeFileOpenRequest(request) {
-          if (!request || !fileOpenAbortController) return;
-          if (fileOpenAbortController.signal !== request.signal) return;
-          if (!isCurrentFileOpenRequest(request)) return;
-          fileOpenAbortController = null;
-        }
-
-        function rememberActiveFileSelection(sessionId = currentFileSessionId()) {
-          const sid = String(sessionId || "").trim();
-          const path = String(activeFilePath || "").trim();
-          if (!sid || !path) return;
-          fileSessionSelections.set(sid, {
-            path,
-            line: activeFileLine == null ? null : activeFileLine,
-          });
-        }
-
-        function historyFileSelectionForSession(sessionId) {
-          const sid = String(sessionId || "").trim();
-          if (!sid) return { path: "", line: null };
-          const s = sessionIndex.get(sid);
-          if (!s) return { path: "", line: null };
-          for (const abs of listFromFilesField(s.files)) {
-            const rel = sessionRelativePath(abs, sid);
-            if (typeof rel === "string" && rel && rel !== ".") {
-              return { path: rel, line: null };
-            }
-          }
-          return { path: "", line: null };
-        }
-
-        function preferredFileSelectionForSession(sessionId) {
-          const sid = String(sessionId || "").trim();
-          if (!sid) return { path: "", line: null };
-          const remembered = fileSessionSelections.get(sid);
-          const rememberedPath = remembered && typeof remembered.path === "string" ? remembered.path.trim() : "";
-          if (rememberedPath) {
-            return {
-              path: rememberedPath,
-              line: normalizeLineNumber(remembered.line),
-            };
-          }
-          return historyFileSelectionForSession(sid);
+          return fileViewerController.isCurrentFileOpenRequest(request);
         }
 
         function clearFileVideo() {
-          activeVideoFallback = null;
-          fileVideo.onerror = null;
-          fileVideo.onloadedmetadata = null;
-          fileVideo.pause();
-          fileVideo.removeAttribute("src");
-          fileVideo.load();
-          fileVideo.style.display = "none";
+          return fileRenderSurfaceRuntime.clearVideo();
+        }
+
+        function setFileRenderSurface(surface) {
+          return fileRenderSurfaceRuntime.setSurface(surface);
         }
 
         function resetFileViewerPanel() {
-          disposeFileEditor();
-          resetActiveFileBufferState();
-          fileImage.removeAttribute("src");
-          fileImage.style.display = "none";
-          clearFileVideo();
-          fileDiff.style.display = "block";
+          return fileViewerPanelRuntime.resetPanel();
+        }
+
+        function renderEmptyFileViewerTarget({ updateTouchToolbar = false } = {}) {
+          return fileViewerPanelRuntime.renderEmptyTarget({ updateTouchToolbar });
         }
 
         async function ensureCurrentFileViewerSession() {
-          if (!isFileViewerOpen()) return true;
-          const sid = String(selected || "").trim();
-          if (!sid) return false;
-          if (fileViewerSessionId === sid) return true;
-          if (!(await maybeHandleUnsavedFileChanges())) return false;
-          cancelPendingFileOpen();
-          rememberActiveFileSelection(fileViewerSessionId);
-          fileViewerSessionId = sid;
-          if (fileSearchSessionId !== fileViewerSessionId) {
-            resetFileSearchState();
-            fileSearchSessionId = fileViewerSessionId;
-          }
-          await refreshFileCandidates();
-          const preferred = preferredFileSelectionForSession(sid);
-          if (preferred.path) {
-            setFilePath(preferred.path, { line: preferred.line });
-            try {
-              await openFilePathWithResolvedMode(preferred.path, { line: preferred.line });
-            } catch (e) {
-              fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
-            }
-            return true;
-          }
-          const first = fileCandidateList.length ? fileCandidateList[0] : "";
-          if (first) {
-            setFilePath(first, { line: null });
-            try {
-              await openFilePathWithResolvedMode(first, { line: null });
-            } catch (e) {
-              fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
-            }
-            return true;
-          }
-          resetFileViewerPanel();
-          activeFilePath = "";
-          activeFileLine = null;
-          resetFilePickerInput();
-          renderFilePickerMenu();
-          fileStatus.textContent = "Type to search files.";
-          updateFileTouchToolbar();
-          return true;
-        }
-
-        function extToEditorLang(p) {
-          const ext = String(p || "").split(".").pop().toLowerCase();
-          if (ext === "js") return "javascript";
-          if (ext === "ts") return "typescript";
-          if (ext === "json") return "json";
-          if (ext === "py") return "python";
-          if (ext === "sh" || ext === "bash" || ext === "zsh") return "bash";
-          if (ext === "md") return "markdown";
-          if (ext === "html" || ext === "htm") return "markup";
-          if (ext === "css") return "css";
-          if (ext === "yml" || ext === "yaml") return "yaml";
-          if (ext === "toml") return "toml";
-          if (ext === "rs") return "rust";
-          if (ext === "go") return "go";
-          if (ext === "java") return "java";
-          if (ext === "c" || ext === "h") return "c";
-          if (ext === "cpp" || ext === "cc" || ext === "hpp") return "cpp";
-          return "";
+          return await fileViewerLifecycleRuntime.ensureCurrentSession();
         }
 
         function disposeFileEditor() {
-          if (fileEditorChangeDisposable) {
-            try {
-              fileEditorChangeDisposable.dispose();
-            } catch (_) {}
-            fileEditorChangeDisposable = null;
-          }
-          fileEditorProgrammaticChange = false;
-          fileDiff.innerHTML = "";
-          for (const model of fileEditorModels) {
-            try {
-              model.dispose();
-            } catch (_) {}
-          }
-          fileEditorModels = [];
-          if (fileEditor) {
-            try {
-              fileEditor.dispose();
-            } catch (_) {}
-            fileEditor = null;
-          }
-          fileEditorKind = "";
-          fileTouchSelectMode = false;
-          fileTouchSelectAnchor = null;
-          fileTouchSelectHead = null;
-          fileTouchSelectGoalColumn = null;
+          return fileEditorRuntime.disposeCurrentFile({
+            finishProgrammaticChange: () => fileViewerController.finishFileEditorProgrammaticChange(),
+            clearHost: () => {
+              fileDiff.innerHTML = "";
+            },
+            setFileEditorKind: (kind) => setFileEditorKind(kind),
+            clearFileTouchSelectionState: () => clearFileTouchSelectionState(),
+          });
         }
 
         function disposePdfRender() {
-          const state = activePdfRender;
-          activePdfRender = null;
-          if (!state) return;
-          if (state.observer) {
-            try {
-              state.observer.disconnect();
-            } catch (_) {}
-          }
-          for (const task of state.renderTasks || []) {
-            try {
-              task.cancel();
-            } catch (_) {}
-          }
-          if (state.loadingTask) {
-            try {
-              state.loadingTask.destroy();
-            } catch (_) {}
-          }
+          return fileViewerController.disposeActivePdfRender();
         }
 
         function isFileViewerOpen() {
-          return fileViewer.style.display === "flex";
-        }
-
-        function activeFileCanEnterEditMode() {
-          if (!activeFilePath || fileSavePending) return false;
-          if (activeFileKind && !isTextFileKind(activeFileKind)) return false;
-          if (fileViewMode === "file") return Boolean(activeFileEditable);
-          return Boolean(activeFileEditable);
+          return fileViewerModalRuntime.isOpen();
         }
 
         function syncFileEditorReadOnly() {
-          if (fileEditorKind !== "file" || !fileEditor || typeof fileEditor.updateOptions !== "function") return;
-          fileEditor.updateOptions({ readOnly: !(fileEditMode && activeFileEditable && fileViewMode === "file") });
-        }
-
-        function getActiveFileCodeEditor() {
-          if (fileEditorKind === "diff" && fileEditor && typeof fileEditor.getModifiedEditor === "function") {
-            return fileEditor.getModifiedEditor();
-          }
-          if (fileEditorKind === "file" && fileEditor) return fileEditor;
-          return null;
-        }
-
-        function syncFileDiffSelectionMode() {
-          if (fileEditorKind !== "diff" || !fileEditor || typeof fileEditor.updateOptions !== "function") return;
-          const hideOpts = fileTouchSelectMode
-            ? { enabled: false }
-            : {
-                enabled: true,
-                contextLineCount: 4,
-                minimumLineCount: 1,
-                revealLineCount: 2,
-              };
-          fileEditor.updateOptions({ hideUnchangedRegions: hideOpts });
-        }
-
-        function focusActiveFileCodeEditor() {
-          const editor = getActiveFileCodeEditor();
-          if (editor && typeof editor.focus === "function") editor.focus();
-          return editor;
-        }
-
-        function normalizeFileEditorPosition(editor, pos) {
-          if (!editor || !pos) return null;
-          const model = typeof editor.getModel === "function" ? editor.getModel() : null;
-          if (!model) return null;
-          const lineCount = Math.max(1, Number(model.getLineCount && model.getLineCount()) || 1);
-          const lineNumber = Math.max(1, Math.min(lineCount, Number(pos.lineNumber) || 1));
-          const lineMaxColumn = Math.max(1, Number(model.getLineMaxColumn && model.getLineMaxColumn(lineNumber)) || 1);
-          const column = Math.max(1, Math.min(lineMaxColumn, Number(pos.column) || 1));
-          return { lineNumber, column };
-        }
-
-        function applyFileEditorSelection(editor, cursor, anchor = null) {
-          if (!editor || !monacoNs || !monacoNs.Selection) return;
-          const nextCursor = normalizeFileEditorPosition(editor, cursor);
-          if (!nextCursor) return;
-          const nextAnchor = anchor ? normalizeFileEditorPosition(editor, anchor) : null;
-          const selection = nextAnchor
-            ? new monacoNs.Selection(nextAnchor.lineNumber, nextAnchor.column, nextCursor.lineNumber, nextCursor.column)
-            : new monacoNs.Selection(nextCursor.lineNumber, nextCursor.column, nextCursor.lineNumber, nextCursor.column);
-          if (typeof editor.setSelection === "function") editor.setSelection(selection);
-          if (!nextAnchor && typeof editor.setPosition === "function") editor.setPosition(nextCursor);
-          if (typeof editor.revealPositionInCenterIfOutsideViewport === "function") editor.revealPositionInCenterIfOutsideViewport(nextCursor);
-          else if (typeof editor.revealPositionInCenter === "function") editor.revealPositionInCenter(nextCursor);
-        }
-
-        function isCollapsedFileSelection(selection) {
-          return !selection || (
-            selection.startLineNumber === selection.endLineNumber &&
-            selection.startColumn === selection.endColumn
-          );
-        }
-
-        function getActiveFileSelectionText() {
-          const editor = getActiveFileCodeEditor();
-          if (!editor || typeof editor.getSelection !== "function" || typeof editor.getModel !== "function") return "";
-          const selection = editor.getSelection();
-          if (isCollapsedFileSelection(selection)) return "";
-          const model = editor.getModel();
-          if (!model || typeof model.getValueInRange !== "function") return "";
-          return String(model.getValueInRange(selection) || "");
-        }
-
-        function isFileTouchToolbarActive() {
-          return Boolean(
-            useTouchFileEditorControls() &&
-            isFileViewerOpen() &&
-            isTextFileKind(activeFileKind) &&
-            fileViewMode !== "preview" &&
-            getActiveFileCodeEditor()
-          );
+          return fileViewerController.syncFileEditorReadOnly();
         }
 
         function updateFileTouchToolbar() {
-          if (!isFileTouchToolbarActive()) {
-            fileTouchToolbar.style.display = "none";
-            fileTouchDpad.style.display = "none";
-            fileTouchCopyBtn.style.display = "none";
-            fileTouchPasteBtn.style.display = "none";
-            return;
-          }
-          const canPaste = fileEditMode && activeFileEditable && fileViewMode === "file" && !fileSavePending;
-          const hasSelection = Boolean(getActiveFileSelectionText());
-          fileTouchSelectBtn.classList.toggle("active", fileTouchSelectMode);
-          fileTouchDpad.style.display = fileTouchSelectMode ? "grid" : "none";
-          fileTouchCopyBtn.style.display = hasSelection ? "" : "none";
-          fileTouchPasteBtn.style.display = canPaste ? "" : "none";
-          fileTouchActions.style.display = "flex";
-          fileTouchToolbar.style.display = "flex";
+          return fileTouchToolbarRuntime.update(fileViewerController.currentFileTouchToolbarState());
         }
 
-        function resetFileTouchSelectionState({ collapse = false } = {}) {
-          const editor = collapse ? getActiveFileCodeEditor() : null;
-          const cursor = editor ? normalizeFileEditorPosition(editor, editor.getPosition && editor.getPosition()) : null;
-          fileTouchSelectMode = false;
-          fileTouchSelectAnchor = null;
-          fileTouchSelectHead = null;
-          fileTouchSelectGoalColumn = null;
-          if (editor && cursor) applyFileEditorSelection(editor, cursor, null);
-          syncFileEditorReadOnly();
-          syncFileDiffSelectionMode();
-          updateFileTouchToolbar();
+        function clearFileTouchSelectionState() {
+          return fileViewerController.clearFileTouchSelectionState();
+        }
+
+        function currentFileTouchSelectMode() {
+          return fileViewerController.currentFileTouchSelectMode();
+        }
+
+        function resetFileTouchSelectionState(options) {
+          return fileViewerController.resetFileTouchSelectionState(options);
         }
 
         function toggleFileTouchSelectionMode() {
-          if (fileTouchSelectMode) {
-            resetFileTouchSelectionState({ collapse: true });
-            focusActiveFileCodeEditor();
-            return;
-          }
-          const editor = getActiveFileCodeEditor();
-          if (!editor) return;
-          const cursor = normalizeFileEditorPosition(editor, editor.getPosition && editor.getPosition()) || { lineNumber: 1, column: 1 };
-          fileTouchSelectMode = true;
-          fileTouchSelectAnchor = { ...cursor };
-          fileTouchSelectHead = { ...cursor };
-          fileTouchSelectGoalColumn = cursor.column;
-          applyFileEditorSelection(editor, cursor, cursor);
-          syncFileEditorReadOnly();
-          syncFileDiffSelectionMode();
-          updateFileTouchToolbar();
-          focusActiveFileCodeEditor();
+          return fileViewerController.toggleFileTouchSelectionMode();
         }
 
-        function moveFileTouchSelection(direction) {
-          if (!fileTouchSelectMode) return;
-          const editor = getActiveFileCodeEditor();
-          if (!editor || typeof editor.trigger !== "function") {
-            setToast("selection move unavailable");
-            return;
-          }
-          const args =
-            direction === "left"
-              ? { to: "left", by: "character", value: 1, select: true }
-              : direction === "right"
-                ? { to: "right", by: "character", value: 1, select: true }
-                : direction === "up"
-                  ? { to: "up", by: "wrappedLine", value: 1, select: true }
-                  : direction === "down"
-                    ? { to: "down", by: "wrappedLine", value: 1, select: true }
-                    : null;
-          if (!args) return;
-          try {
-            editor.trigger("file-touch-select", "cursorMove", args);
-            const pos = normalizeFileEditorPosition(editor, editor.getPosition && editor.getPosition());
-            if (pos) {
-              fileTouchSelectHead = { ...pos };
-              fileTouchSelectGoalColumn = pos.column;
-            }
-            focusActiveFileCodeEditor();
-            updateFileTouchToolbar();
-          } catch (e) {
-            setToast(`selection move error: ${e && e.message ? e.message : "unknown error"}`);
-          }
+        function handleFileTouchMoveButtonPress(direction) {
+          return fileViewerController.handleFileTouchMoveButtonPress(direction);
         }
 
-        function isActiveFileEditorInput(target) {
-          if (!(target instanceof HTMLElement)) return false;
-          if (!target.classList.contains("inputarea")) return false;
-          const editor = getActiveFileCodeEditor();
-          const node = editor && typeof editor.getDomNode === "function" ? editor.getDomNode() : null;
-          return Boolean(node && node.contains(target));
-        }
-
-        function fileEditorDeleteCommandForKey(key) {
-          if (key === "backspace") return "deleteLeft";
-          if (key === "delete") return "deleteRight";
-          return "";
+        function handleFileEditorSaveShortcut(e) {
+          return fileViewerController.handleFileEditorSaveShortcut(e);
         }
 
         function handleFileEditorDeleteKeydown(e) {
-          if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return false;
-          const key = String(e.key || "").toLowerCase();
-          const command = fileEditorDeleteCommandForKey(key);
-          if (!command) return false;
-          if (!(fileEditMode && activeFileEditable && fileViewMode === "file")) return false;
-          const target = e.target instanceof HTMLElement ? e.target : null;
-          if (!isActiveFileEditorInput(target)) return false;
-          const editor = getActiveFileCodeEditor();
-          if (!editor || typeof editor.trigger !== "function") return false;
-          fileTouchDeleteNativeSuppressUntil = Date.now() + 250;
-          e.preventDefault();
-          e.stopPropagation();
-          try {
-            focusActiveFileCodeEditor();
-            editor.trigger("file-editor-delete-key", command, null);
-            if (fileTouchSelectMode) resetFileTouchSelectionState();
-            return true;
-          } catch (e) {
-            setToast(`delete error: ${e && e.message ? e.message : "unknown error"}`);
-            return true;
-          }
-        }
-
-        function isFileEditorNativeDeleteEvent(e) {
-          const inputType = String((e && e.inputType) || "");
-          if (inputType !== "deleteContentBackward" && inputType !== "deleteContentForward") return false;
-          const target = e.target instanceof HTMLElement ? e.target : null;
-          return isActiveFileEditorInput(target);
+          return fileViewerController.handleFileEditorDeleteKeydown(e);
         }
 
         function suppressFileEditorNativeDelete(e) {
-          if (e.cancelable) e.preventDefault();
-          e.stopPropagation();
-          fileTouchDeleteNativeSuppressUntil = 0;
-        }
-
-        function bindFileTouchPress(button, handler) {
-          if (!button || typeof handler !== "function") return;
-          let suppressClickUntil = 0;
-          let sawPointerTouchAt = 0;
-          const run = (e) => {
-            if (e) {
-              e.preventDefault();
-              e.stopPropagation();
-            }
-            suppressClickUntil = Date.now() + 700;
-            handler();
-          };
-          button.addEventListener("pointerdown", (e) => {
-            if (e && e.pointerType === "touch") sawPointerTouchAt = Date.now();
-            run(e);
-          });
-          button.addEventListener(
-            "touchstart",
-            (e) => {
-              if (Date.now() - sawPointerTouchAt < 700) {
-                e.preventDefault();
-                e.stopPropagation();
-                return;
-              }
-              run(e);
-            },
-            { passive: false }
-          );
-          button.addEventListener("click", (e) => {
-            if (Date.now() < suppressClickUntil) {
-              e.preventDefault();
-              e.stopPropagation();
-              return;
-            }
-            run(e);
-          });
-        }
-
-        function bindFileTouchClick(button, handler) {
-          if (!button || typeof handler !== "function") return;
-          button.addEventListener("click", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            handler();
-          });
+          return fileViewerController.suppressFileEditorNativeDelete(e);
         }
 
         async function copyActiveFileSelection() {
-          const text = getActiveFileSelectionText();
-          if (!text) {
-            setToast("nothing selected");
-            return;
-          }
-          try {
-            await copyToClipboard(text);
-            resetFileTouchSelectionState({ collapse: true });
-            setToast("selection copied");
-          } catch (e) {
-            setToast(`copy error: ${e && e.message ? e.message : "unknown error"}`);
-          }
-          focusActiveFileCodeEditor();
+          return await fileViewerController.copyActiveFileSelection();
         }
 
-        function hideFilePasteDialog() {
-          filePasteBackdrop.style.display = "none";
-          filePasteDialog.style.display = "none";
-          filePasteInput.value = "";
+        function hideFilePasteDialog({ restoreFocus = false } = {}) {
+          return filePasteDialogRuntime.hide({ restoreFocus });
+        }
+
+        function showFilePasteDialog() {
+          return filePasteDialogRuntime.show();
         }
 
         async function pasteFromClipboardIntoActiveFile() {
-          if (!(fileEditMode && activeFileEditable && fileViewMode === "file" && isTextFileKind(activeFileKind) && !fileSavePending)) return;
-          if (!(window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.readText === "function")) {
-            setToast("paste unavailable");
-            focusActiveFileCodeEditor();
-            return;
-          }
-          try {
-            const text = await navigator.clipboard.readText();
-            if (!text) {
-              setToast("clipboard empty");
-              focusActiveFileCodeEditor();
-              return;
-            }
-            if (!insertIntoActiveFileEditor(text)) {
-              setToast("paste unavailable");
-              focusActiveFileCodeEditor();
-              return;
-            }
-            setToast("pasted");
-          } catch (e) {
-            setToast(`paste error: ${e && e.message ? e.message : "clipboard denied"}`);
-          }
-          focusActiveFileCodeEditor();
+          return await fileViewerController.pasteFromClipboardIntoActiveFile();
         }
 
-        function positionAfterInsertedText(start, text) {
-          const value = String(text || "");
-          if (!value) return { lineNumber: start.lineNumber, column: start.column };
-          const parts = value.replace(/\r\n?/g, "\n").split("\n");
-          if (parts.length === 1) {
-            return { lineNumber: start.lineNumber, column: start.column + parts[0].length };
-          }
-          return { lineNumber: start.lineNumber + parts.length - 1, column: parts[parts.length - 1].length + 1 };
-        }
-
-        function insertIntoActiveFileEditor(text) {
-          const editor = getActiveFileCodeEditor();
-          if (!editor || !monacoNs || typeof editor.executeEdits !== "function") return false;
-          const current = normalizeFileEditorPosition(editor, editor.getPosition && editor.getPosition()) || { lineNumber: 1, column: 1 };
-          const selection = editor.getSelection && editor.getSelection();
-          const range = selection && !isCollapsedFileSelection(selection)
-            ? {
-                startLineNumber: selection.startLineNumber,
-                startColumn: selection.startColumn,
-                endLineNumber: selection.endLineNumber,
-                endColumn: selection.endColumn,
-              }
-            : {
-                startLineNumber: current.lineNumber,
-                startColumn: current.column,
-                endLineNumber: current.lineNumber,
-                endColumn: current.column,
-              };
-          if (typeof editor.pushUndoStop === "function") editor.pushUndoStop();
-          editor.executeEdits("file-touch-paste", [{ range, text: String(text || ""), forceMoveMarkers: true }]);
-          const nextCursor = positionAfterInsertedText({ lineNumber: range.startLineNumber, column: range.startColumn }, text);
-          resetFileTouchSelectionState();
-          applyFileEditorSelection(editor, nextCursor, null);
-          if (typeof editor.pushUndoStop === "function") editor.pushUndoStop();
-          setFileDirty(getFileEditorText() !== String(activeFileText || ""));
-          focusActiveFileCodeEditor();
-          return true;
+        function handleFilePasteInsert(text) {
+          return fileViewerController.handleFilePasteInsert(text);
         }
 
         function updateFileEditButton() {
-          const canEdit = activeFileCanEnterEditMode();
-          fileEditBtn.disabled = !canEdit;
-          const saveStyle = fileEditMode || fileSavePending;
-          fileEditBtn.classList.toggle("active", saveStyle);
-          fileEditBtn.classList.toggle("primary", saveStyle);
-          fileEditBtn.classList.toggle("dirty", fileDirty);
-          if (fileSavePending) fileEditBtn.innerHTML = iconSvg("save");
-          else if (fileEditMode) fileEditBtn.innerHTML = iconSvg("save");
-          else fileEditBtn.innerHTML = iconSvg("edit");
-          fileEditBtn.title = fileSavePending ? "Saving file" : fileEditMode ? "Save file" : canEdit ? "Edit file" : "File is read-only";
-          fileEditBtn.setAttribute("aria-label", fileSavePending ? "Saving file" : fileEditMode ? "Save file" : "Edit file");
-          updateFileTouchToolbar();
+          return fileViewerController.updateFileEditButton();
+        }
+
+        function currentFileDirty() {
+          return fileViewerController.currentFileDirty();
         }
 
         function setFileDirty(nextDirty) {
-          fileDirty = Boolean(nextDirty);
-          updateFileEditButton();
-          updateFileTouchToolbar();
+          return fileViewerController.setFileDirty(nextDirty);
         }
 
         function resetActiveFileBufferState() {
-          activeFileKind = "";
-          activeFileText = "";
-          activeFileEditable = false;
-          activeFileVersion = "";
-          activeFileDraft = false;
-          fileEditMode = false;
-          fileSavePending = false;
-          resetFileTouchSelectionState();
-          setFileDirty(false);
+          fileViewerController.resetActiveFileBufferState();
+        }
+
+        function currentActiveFileText() {
+          return fileViewerController.currentActiveFileText();
+        }
+
+        function currentActiveFileEditable() {
+          return fileViewerController.currentActiveFileEditable();
+        }
+
+        function currentActiveFileDraft() {
+          return fileViewerController.currentActiveFileDraft();
         }
 
         function getFileEditorText() {
-          if (fileEditorKind === "file" && fileEditor && typeof fileEditor.getModel === "function") {
-            const model = fileEditor.getModel();
-            if (model && typeof model.getValue === "function") return String(model.getValue());
-          }
-          return String(activeFileText || "");
+          return fileEditorRuntime.currentFileText(currentFileEditorKind(), currentActiveFileText());
         }
 
         function restoreFileEditorText(text) {
-          activeFileText = String(text || "");
-          if (fileEditorKind !== "file" || !fileEditor || typeof fileEditor.getModel !== "function") {
-            setFileDirty(false);
-            return;
-          }
-          const model = fileEditor.getModel();
-          if (!model || typeof model.setValue !== "function") {
-            setFileDirty(false);
-            return;
-          }
-          fileEditorProgrammaticChange = true;
-          model.setValue(activeFileText);
-          fileEditorProgrammaticChange = false;
-          setFileDirty(false);
+          return fileEditorRuntime.restoreCurrentFileText(text, {
+            prepareFileEditorTextRestore: (value) => fileViewerController.prepareFileEditorTextRestore(value),
+            currentFileEditorKind: () => currentFileEditorKind(),
+            runFileEditorProgrammaticChange: (callback) => fileViewerController.runFileEditorProgrammaticChange(callback),
+            finishFileEditorTextRestore: () => fileViewerController.finishFileEditorTextRestore(),
+          });
         }
 
-        function ensureMonaco() {
-          if (monacoReadyPromise) return monacoReadyPromise;
-          monacoReadyPromise = new Promise((resolve, reject) => {
-            const finish = () => {
-              if (!(window.require && window.require.config)) {
-                reject(new Error("monaco loader unavailable"));
-                return;
-              }
-              const base = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs";
-              window.MonacoEnvironment = {
-                getWorkerUrl(_moduleId, _label) {
-                  const src = `
-self.MonacoEnvironment={baseUrl:${JSON.stringify(base + "/")}};
-importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
-`;
-                  return `data:text/javascript;charset=utf-8,${encodeURIComponent(src)}`;
-                },
-              };
-              window.require.config({ paths: { vs: base } });
-              window.require(["vs/editor/editor.main"], () => {
-                monacoNs = window.monaco;
-                if (!monacoNs) {
-                  reject(new Error("monaco failed to initialize"));
-                  return;
-                }
-                if (!monacoThemeReady) {
-                  monacoNs.editor.defineTheme("codoxear-github-light", {
-                    base: "vs",
-                    inherit: true,
-                    rules: [],
-                    colors: {
-                      "editor.background": "#ffffff",
-                      "editor.lineHighlightBackground": "#f6f8fa",
-                      "editorGutter.background": "#ffffff",
-                      "editorLineNumber.foreground": "#8c959f",
-                      "editorLineNumber.activeForeground": "#57606a",
-                      "diffEditor.insertedTextBackground": "#dafbe1",
-                      "diffEditor.removedTextBackground": "#ffebe9",
-                      "diffEditor.insertedLineBackground": "#f0fff4",
-                      "diffEditor.removedLineBackground": "#fff5f5",
-                    },
-                  });
-                  monacoThemeReady = true;
-                }
-                resolve(monacoNs);
-              }, reject);
-            };
-            if (window.monaco && window.monaco.editor) {
-              monacoNs = window.monaco;
-              finish();
-              return;
-            }
-            if (window.require && window.require.config) {
-              finish();
-              return;
-            }
-            const waitForLoader = () => {
-              if (window.require && window.require.config) {
-                finish();
-                return;
-              }
-              setTimeout(waitForLoader, 25);
-            };
-            waitForLoader();
-          });
-          return monacoReadyPromise;
+        function renderPlainTextFallback(rel, text, lineNumber = null, reason = "Rich file viewer unavailable") {
+          return fileFallbackRuntime.applyPlainText(rel, text, lineNumber, reason);
+        }
+
+        function renderDownloadFallback(rel, url, reason = "Preview unavailable") {
+          return fileFallbackRuntime.applyDownload(rel, url, reason);
         }
 
         async function ensurePdfJs() {
-          if (pdfjsReadyPromise) return pdfjsReadyPromise;
-          pdfjsReadyPromise = import("https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.394/build/pdf.mjs").then((pdfjs) => {
-            pdfjs.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.394/build/pdf.worker.mjs";
-            return pdfjs;
-          });
-          return pdfjsReadyPromise;
-        }
-
-        function applyEditorLineFocus(lineNumber) {
-          const line = normalizeLineNumber(lineNumber);
-          if (!fileEditor || !line) return;
-          if (fileEditorKind === "diff" && fileEditor.getModifiedEditor) {
-            const editor = fileEditor.getModifiedEditor();
-            editor.setPosition({ lineNumber: line, column: 1 });
-            editor.revealLineInCenter(line);
-            editor.focus();
-            return;
-          }
-          if (fileEditor.setPosition) {
-            fileEditor.setPosition({ lineNumber: line, column: 1 });
-            fileEditor.revealLineInCenter(line);
-            fileEditor.focus();
-          }
+          return await filePdfLoader.ensure();
         }
 
         async function renderMonacoFile(rel, text, lineNumber = null, langOverride = "", request = null) {
-          const monaco = await ensureMonaco();
-          if (request && !isCurrentFileOpenRequest(request)) return false;
-          const host = fileDiff;
-          const lang = langOverride || extToEditorLang(rel);
-          if (fileEditorKind !== "file") {
-            disposeFileEditor();
-            fileEditor = monaco.editor.create(host, {
-              language: lang || "plaintext",
-              value: String(text || ""),
-              readOnly: !(fileEditMode && activeFileEditable),
-              theme: "codoxear-github-light",
-              lineNumbers: "on",
-              minimap: { enabled: false },
-              scrollBeyondLastLine: false,
-              wordWrap: "on",
-              folding: false,
-              renderLineHighlight: "none",
-              glyphMargin: false,
-              overviewRulerBorder: false,
-              stickyScroll: { enabled: false },
-              automaticLayout: true,
-              accessibilitySupport: "off",
-              quickSuggestions: false,
-              suggestOnTriggerCharacters: false,
-              acceptSuggestionOnEnter: "off",
-              inlineSuggest: { enabled: false },
-              parameterHints: { enabled: false },
-              snippetSuggestions: "none",
-              tabCompletion: "off",
-              wordBasedSuggestions: "off",
-            });
-            fileEditorKind = "file";
-            fileEditorModels = [fileEditor.getModel()].filter(Boolean);
-            fileEditorChangeDisposable = fileEditor.onDidChangeModelContent(() => {
-              if (fileEditorProgrammaticChange) return;
-              if (fileTouchSelectMode) resetFileTouchSelectionState();
-              setFileDirty(getFileEditorText() !== String(activeFileText || ""));
-            });
-          } else {
-            const model = fileEditor.getModel();
-            fileEditorProgrammaticChange = true;
-            monaco.editor.setModelLanguage(model, lang || "plaintext");
-            model.setValue(String(text || ""));
-            fileEditorProgrammaticChange = false;
-          }
-          syncFileEditorReadOnly();
-          const targetLine = normalizeLineNumber(lineNumber) || 1;
-          fileEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
-          fileEditor.setPosition({ lineNumber: targetLine, column: 1 });
-          fileEditor.revealPositionInCenter({ lineNumber: targetLine, column: 1 });
-          fileEditor.layout();
-          requestAnimationFrame(() => {
-            if (!fileEditor) return;
-            if (request && !isCurrentFileOpenRequest(request)) return;
-            fileEditor.layout();
-            applyEditorLineFocus(targetLine);
-          });
-          setTimeout(() => {
-            if (!fileEditor) return;
-            if (request && !isCurrentFileOpenRequest(request)) return;
-            fileEditor.layout();
-            applyEditorLineFocus(targetLine);
-          }, 60);
-          updateFileTouchToolbar();
-          return true;
+          return await fileEditorRenderer.renderFile(rel, text, lineNumber, langOverride, request);
         }
 
         async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null) {
-          const monaco = await ensureMonaco();
-          if (request && !isCurrentFileOpenRequest(request)) return false;
-          const host = fileDiff;
-          const lang = extToEditorLang(rel);
-          disposeFileEditor();
-          const originalModel = monaco.editor.createModel(String(originalText || ""), lang || "plaintext");
-          const modifiedModel = monaco.editor.createModel(String(modifiedText || ""), lang || "plaintext");
-          fileEditor = monaco.editor.createDiffEditor(host, {
-            readOnly: true,
-            theme: "codoxear-github-light",
-            renderSideBySide: false,
-            useInlineViewWhenSpaceIsLimited: true,
-            lineNumbers: "on",
-            minimap: { enabled: false },
-            scrollBeyondLastLine: false,
-            wordWrap: "on",
-            diffWordWrap: "on",
-            folding: false,
-            renderLineHighlight: "none",
-            glyphMargin: false,
-            overviewRulerBorder: false,
-            stickyScroll: { enabled: false },
-            automaticLayout: true,
-            hideUnchangedRegions: {
-              enabled: true,
-              contextLineCount: 4,
-              minimumLineCount: 1,
-              revealLineCount: 2,
-            },
-          });
-          fileEditor.setModel({ original: originalModel, modified: modifiedModel });
-          fileEditorKind = "diff";
-          fileEditorModels = [originalModel, modifiedModel];
-          const originalEditor = fileEditor.getOriginalEditor();
-          const modifiedEditor = fileEditor.getModifiedEditor();
-          originalEditor.updateOptions({
-            wordWrap: "on",
-            lineNumbers: "off",
-            glyphMargin: false,
-            lineDecorationsWidth: 0,
-            lineNumbersMinChars: 0,
-          });
-          modifiedEditor.updateOptions({
-            wordWrap: "on",
-            lineNumbers: "on",
-            glyphMargin: false,
-            lineDecorationsWidth: 0,
-            lineNumbersMinChars: 3,
-          });
-          const targetLine = normalizeLineNumber(lineNumber) || 1;
-          originalEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
-          modifiedEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
-          originalEditor.setPosition({ lineNumber: targetLine, column: 1 });
-          modifiedEditor.setPosition({ lineNumber: targetLine, column: 1 });
-          modifiedEditor.revealPositionInCenter({ lineNumber: targetLine, column: 1 });
-          fileEditor.layout();
-          requestAnimationFrame(() => {
-            if (!fileEditor) return;
-            if (request && !isCurrentFileOpenRequest(request)) return;
-            fileEditor.layout();
-            applyEditorLineFocus(targetLine);
-          });
-          setTimeout(() => {
-            if (!fileEditor) return;
-            if (request && !isCurrentFileOpenRequest(request)) return;
-            fileEditor.layout();
-            applyEditorLineFocus(targetLine);
-          }, 60);
-          updateFileTouchToolbar();
-          return true;
+          return await fileEditorRenderer.renderDiff(rel, originalText, modifiedText, lineNumber, request);
         }
 
         function renderMarkdownPreview(rel, text) {
-          disposeFileEditor();
-          clearFileVideo();
-          fileDiff.innerHTML = "";
-          const preview = el("div", {
-            class: "md fileMarkdownPreview",
-            html: markdownPreviewHtml(String(text || ""), { filePath: rel, sessionId: fileViewerSessionId || selected || "" }),
-          });
-          fileDiff.appendChild(preview);
-          void upgradeCandidateFileRefs(preview);
-          updateFileTouchToolbar();
+          return fileFallbackRuntime.applyMarkdown(rel, text);
         }
 
         function renderBlockedFileNotice(rel, reason, viewerMaxBytes, size) {
-          disposeFileEditor();
-          clearFileVideo();
-          fileDiff.innerHTML = "";
-          const body = el("div", { class: "fileBlockedNotice" }, [
-            el("div", { class: "title", text: "Preview unavailable" }),
-            el("p", { text: blockedFileMessage(rel, reason, viewerMaxBytes, size) }),
-          ]);
-          fileDiff.appendChild(body);
-          updateFileTouchToolbar();
+          return fileFallbackRuntime.applyBlocked(rel, reason, viewerMaxBytes, size);
         }
 
         async function renderPdfFile(rel, url, request) {
-          disposeFileEditor();
-          disposePdfRender();
-          clearFileVideo();
-          fileDiff.innerHTML = "";
-          fileDiff.style.display = "block";
-          fileDiff.scrollTop = 0;
-          const container = el("div", { class: "filePdfPages", role: "document", "aria-label": `${rel} PDF preview` });
-          fileDiff.appendChild(container);
-          if (typeof IntersectionObserver !== "function") throw new Error("PDF lazy renderer unavailable");
-          const pdfjs = await ensurePdfJs();
-          if (!isCurrentFileOpenRequest(request)) return false;
-          const loadingTask = pdfjs.getDocument({ url, withCredentials: true });
-          const state = {
-            request,
-            loadingTask,
-            observer: null,
-            renderTasks: new Set(),
-            rendered: new Set(),
-            rendering: new Set(),
-            pdf: null,
-          };
-          activePdfRender = state;
-          const pdf = await loadingTask.promise;
-          if (activePdfRender !== state || !isCurrentFileOpenRequest(request)) return false;
-          state.pdf = pdf;
-          const firstPage = await pdf.getPage(1);
-          if (activePdfRender !== state || !isCurrentFileOpenRequest(request)) return false;
-          const unitViewport = firstPage.getViewport({ scale: 1 });
-          const maxWidth = Math.max(240, container.clientWidth - 24);
-          const scale = maxWidth / Math.max(1, unitViewport.width);
-          const pageWidth = Math.floor(unitViewport.width * scale);
-          const pageHeight = Math.floor(unitViewport.height * scale);
-          const renderPage = async (slot) => {
-            const pageNumber = Number(slot.dataset.pageNumber || "0");
-            if (!pageNumber || state.rendered.has(pageNumber) || state.rendering.has(pageNumber)) return;
-            state.rendering.add(pageNumber);
-            slot.classList.add("rendering");
-            try {
-              const page = pageNumber === 1 ? firstPage : await pdf.getPage(pageNumber);
-              if (activePdfRender !== state || !isCurrentFileOpenRequest(request)) return;
-              const viewport = page.getViewport({ scale });
-              const outputScale = window.devicePixelRatio || 1;
-              const canvas = document.createElement("canvas");
-              const context = canvas.getContext("2d", { alpha: false });
-              if (!context) throw new Error("PDF canvas unavailable");
-              canvas.width = Math.floor(viewport.width * outputScale);
-              canvas.height = Math.floor(viewport.height * outputScale);
-              canvas.style.width = `${Math.floor(viewport.width)}px`;
-              canvas.style.height = `${Math.floor(viewport.height)}px`;
-              const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
-              const task = page.render({
-                canvasContext: context,
-                viewport,
-                transform,
-                background: "rgb(255, 255, 255)",
-              });
-              state.renderTasks.add(task);
-              await task.promise;
-              state.renderTasks.delete(task);
-              if (activePdfRender !== state || !isCurrentFileOpenRequest(request)) return;
-              slot.replaceChildren(canvas);
-              slot.classList.remove("rendering");
-              state.rendered.add(pageNumber);
-            } catch (e) {
-              if (e && e.name === "RenderingCancelledException") return;
-              if (activePdfRender !== state || !isCurrentFileOpenRequest(request)) return;
-              slot.textContent = `Page ${pageNumber} failed to render`;
-              slot.classList.add("failed");
-            } finally {
-              state.rendering.delete(pageNumber);
-            }
-          };
-          for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-            const slot = el("div", {
-              class: "filePdfPage",
-              "data-page-number": String(pageNumber),
-              style: `width: ${pageWidth}px; min-height: ${pageHeight}px;`,
-            }, [
-              el("span", { class: "filePdfPageLabel", text: `Page ${pageNumber}` }),
-            ]);
-            container.appendChild(slot);
-          }
-          state.observer = new IntersectionObserver(
-            (entries) => {
-              for (const entry of entries) {
-                if (entry.isIntersecting) void renderPage(entry.target);
-              }
-            },
-            { root: fileDiff, rootMargin: "900px 0px" }
-          );
-          container.querySelectorAll(".filePdfPage").forEach((slot) => state.observer.observe(slot));
-          updateFileTouchToolbar();
-          return true;
+          return await filePdfRenderRuntime.render(rel, url, request);
+        }
+
+        function currentFileEditMode() {
+          return fileViewerController.currentFileEditMode();
         }
 
         function setFileEditMode(nextMode) {
-          fileEditMode = Boolean(nextMode) && fileViewMode === "file" && isTextFileKind(activeFileKind) && activeFileEditable;
-          syncFileEditorReadOnly();
-          updateFileEditButton();
-        }
-
-        function discardActiveFileEdits() {
-          restoreFileEditorText(activeFileText);
-          setFileEditMode(false);
+          return fileViewerController.setFileEditMode(nextMode);
         }
 
         function hideFileUnsavedDialog(choice = "cancel") {
-          const resolve = fileUnsavedResolver;
-          fileUnsavedResolver = null;
-          fileUnsavedBackdrop.style.display = "none";
-          fileUnsavedDialog.style.display = "none";
-          if (resolve) resolve(choice);
+          return fileUnsavedDialogRuntime.hide(choice);
         }
 
         function promptFileUnsavedChoice() {
-          if (!fileDirty) return Promise.resolve("discard");
-          if (fileUnsavedResolver) return Promise.resolve("cancel");
-          fileUnsavedBackdrop.style.display = "block";
-          fileUnsavedDialog.style.display = "flex";
-          return new Promise((resolve) => {
-            fileUnsavedResolver = resolve;
-          });
+          return fileUnsavedDialogRuntime.promptChoice(document.activeElement, HTMLElement);
         }
 
-        async function saveActiveFileEdits({ exitEditMode = true } = {}) {
-          if (!fileViewerSessionId || !activeFilePath || !isTextFileKind(activeFileKind) || !activeFileEditable) return false;
-          if (!fileDirty && !activeFileDraft) {
-            if (exitEditMode) setFileEditMode(false);
-            return true;
-          }
-          const text = getFileEditorText();
-          fileSavePending = true;
-          updateFileEditButton();
-          syncFileEditorReadOnly();
-          fileStatus.textContent = `Saving ${activeFilePath}...`;
-          try {
-            const saveBody = activeFileDraft
-              ? { path: activeFilePath, text, create: true }
-              : { path: activeFilePath, text, version: activeFileVersion };
-            const res = await api(`/api/sessions/${fileViewerSessionId}/file/write`, {
-              method: "POST",
-              body: saveBody,
-            });
-            activeFileText = text;
-            if (res && typeof res.version === "string") activeFileVersion = res.version;
-            if (res && typeof res.editable === "boolean") activeFileEditable = res.editable;
-            activeFileDraft = false;
-            applyFileMode();
-            setFileDirty(false);
-            if (exitEditMode) setFileEditMode(false);
-            const size = res && typeof res.size === "number" ? res.size : text.length;
-            fileStatus.textContent = `${activeFilePath} - ${fmtBytes(size)}`;
-            rememberOpenedFile(activeFilePath, res && typeof res.path === "string" ? res.path : null);
-            renderFilePickerMenu();
-            return true;
-          } catch (e) {
-            if (e && e.status === 409) {
-              fileStatus.textContent = `${activeFilePath} - save conflict: ${e && e.message ? e.message : "conflict"}`;
-            } else {
-              fileStatus.textContent = `save error: ${e && e.message ? e.message : "unknown error"}`;
+        const fileInspectRuntime = codoxearFileViewer.createFileInspectRuntime({
+          currentSessionId: () => currentFileViewerSessionId(),
+          selectedSessionId: () => selected,
+          normalizeFileApiPath: (value) => normalizeFileApiPath(value),
+          api: (url, options) => api(url, options),
+        });
+
+        const fileViewerController = codoxearFileViewer.createFileViewerController({
+          el,
+          fileStatus,
+          fileEditButton: fileEditBtn,
+          iconSvg,
+          currentSessionId: () => currentFileViewerSessionId(),
+          currentFileSessionId: () => currentFileSessionId(),
+          normalizeLineNumber,
+          normalizeFileApiPath,
+          isFileViewerOpen: () => isFileViewerOpen(),
+          hideFileUnsavedDialog: (choice) => hideFileUnsavedDialog(choice),
+          resetFileSearchState: () => resetFileSearchState(),
+          closeFilePickerMenu: (options) => closeFilePickerMenu(options),
+          isTextFileKind: (kind) => isTextFileKind(kind),
+          isDiffableFileKind: (kind) => isDiffableFileKind(kind),
+          confirmReload: (message) => confirmApp({ title: "Reload file from disk?", message, confirmText: "Reload", cancelText: "Cancel", destructive: true }),
+          promptUnsavedFileChoice: () => promptFileUnsavedChoice(),
+          restoreFileEditorText: (text) => restoreFileEditorText(text),
+          hideFileViewer: () => hideFileViewer(),
+          setFilePath: (path, options) => setFilePath(path, options),
+          resetFileViewerPanel: () => resetFileViewerPanel(),
+          applyFileLoadResult: (rel, result, request, options) => applyFileLoadResult(rel, result, request, options),
+          normalizeDraftFilePath: (path) => normalizeDraftFilePath(path),
+          inspectSessionFilePath: (path, options) => fileInspectRuntime.inspectSessionFilePath(path, options),
+          api: (url, options) => api(url, options),
+          focusEditor: () => fileEditorRuntime.focusActiveCodeEditor(currentFileEditorKind()),
+          disposeOpenRender: () => disposePdfRender(),
+          initialFileViewMode: storageGetItem("codexweb.fileViewMode") || "diff",
+          initialFileNonDiffMode: storageGetItem("codexweb.fileNonDiffMode") === "preview" ? "preview" : "file",
+          persistFileViewMode: (mode) => storageSetItem("codexweb.fileViewMode", mode),
+          persistFileNonDiffMode: (mode) => storageSetItem("codexweb.fileNonDiffMode", mode),
+          isMarkdownPreviewable,
+          resetActiveFileBufferState: () => resetActiveFileBufferState(),
+          updateFileTouchToolbar: () => updateFileTouchToolbar(),
+          useTouchFileEditorControls: () => useTouchFileEditorControls(),
+          hasActiveFileCodeEditor: () => Boolean(fileEditorRuntime.activeCodeEditor(currentFileEditorKind())),
+          hasBlockingFileEditorModal: () => modalIsolationTargets.some((node) => node !== fileViewer && isModalTargetOpen(node)),
+          isTextEntryTarget: (target) => isTextEntryElement(target),
+          eventTargetElement: (value) => value instanceof HTMLElement ? value : null,
+          normalizeFileEditorPosition: (editor, position) => fileEditorRuntime.normalizePosition(editor, position),
+          applyFileEditorSelection: (editor, cursor, anchor) => fileEditorRuntime.applySelection(editor, cursor, anchor, fileEditorMonacoLoader.selectionCtor()),
+          isCollapsedFileSelection: (selection) => fileEditorRuntime.isCollapsedSelection(selection),
+          fileEditorEditSupportAvailable: () => fileEditorMonacoLoader.editSupportAvailable(),
+          updateFileDiffEditorOptions: (options) => fileEditorRuntime.updateEditorOptions(currentFileEditorKind(), options),
+          showFilePasteDialog: () => showFilePasteDialog(),
+          hideFilePasteDialog: (options) => hideFilePasteDialog(options),
+          clipboardReadAvailable: () => Boolean(window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.readText === "function"),
+          readClipboardText: () => navigator.clipboard.readText(),
+          isActiveFileEditorInput: (target) => fileEditorRuntime.isActiveInput(currentFileEditorKind(), target, HTMLElement),
+          getActiveFileSelectionText: () => fileEditorRuntime.activeSelectionText(currentFileEditorKind()),
+          copyToClipboard: (text) => copyToClipboard(text),
+          focusActiveFileCodeEditor: () => fileEditorRuntime.focusActiveCodeEditor(currentFileEditorKind()),
+          nowMs: () => Date.now(),
+          setToast: (message) => setToast(message),
+          setFileViewMode: (mode) => setFileViewMode(mode),
+          renderMonacoFile: (rel, text, lineNumber, langOverride, request) => renderMonacoFile(rel, text, lineNumber, langOverride, request),
+          getFileEditorText: () => getFileEditorText(),
+          fmtBytes: (value) => fmtBytes(value),
+          applyFileMode: () => applyFileMode(),
+          rememberOpenedFile: (rel, absPath) => rememberOpenedFile(rel, absPath),
+          historyFileSelectionForSession: (sessionId) => openedFileRuntime.historySelection(sessionId),
+          renderFilePickerMenu: () => renderFilePickerMenu(),
+        });
+        const fileViewerPanelRuntime = codoxearFileViewer.createFileViewerPanelRuntime({
+          controller: fileViewerController,
+          disposeFileEditor: () => disposeFileEditor(),
+          resetRenderSurface: () => fileRenderSurfaceRuntime.reset(),
+          resetFilePickerInput: () => resetFilePickerInput(),
+          renderFilePickerMenu: () => renderFilePickerMenu(),
+          closeFilePickerMenu: () => closeFilePickerMenu(),
+          applyFileMode: () => applyFileMode(),
+          updateFileTouchToolbar: () => updateFileTouchToolbar(),
+          setStatus: (status) => {
+            fileStatus.textContent = status;
+          },
+        });
+        const fileViewerLifecycleRuntime = codoxearFileViewer.createFileViewerLifecycleRuntime({
+          controller: fileViewerController,
+          beginHide: () => fileViewerModalRuntime.beginHide(),
+          hideDisplay: () => fileViewerModalRuntime.hideDisplay(),
+          finishHide: (state) => fileViewerModalRuntime.finishHide(state),
+          hideFileUnsavedDialog: () => hideFileUnsavedDialog(),
+          hideFilePasteDialog: () => hideFilePasteDialog(),
+          resetFileViewerPanel: () => resetFileViewerPanel(),
+          closeFilePickerMenu: (options) => closeFilePickerMenu(options),
+          resetFileSearchState: () => resetFileSearchState(),
+          setFileSearchSessionId: (sessionId) => filePickerSearchState.setSessionId(sessionId),
+          updateFileTouchToolbar: () => updateFileTouchToolbar(),
+          isFileViewerOpen: () => isFileViewerOpen(),
+          selectedSessionId: () => selected,
+          maybeHandleUnsavedFileChanges: () => maybeHandleUnsavedFileChanges(),
+          filePickerSearchSessionId: () => filePickerSearchSnapshot().sessionId,
+          refreshFileCandidates: (options) => refreshFileCandidates(options),
+          setFilePath: (path, options) => setFilePath(path, options),
+          openFilePathWithResolvedMode: (path, options) => openFilePathWithResolvedMode(path, options),
+          renderEmptyFileViewerTarget: (options) => renderEmptyFileViewerTarget(options),
+          setStatus: (status) => {
+            fileStatus.textContent = status;
+          },
+          showModal: (options) => fileViewerModalRuntime.show({ ...options, activeElement: document.activeElement, ElementCtor: HTMLElement }),
+          setFileViewMode: (nextMode) => setFileViewMode(nextMode),
+          applyFileMode: () => applyFileMode(),
+          openFilePickerSearchQuery: (query, options) => openFilePickerSearchQuery(query, options),
+          setPreserveSearchOnFocus: (value) => filePickerMenuState.setPreserveSearchOnFocus(value),
+          focusFilePickerInput: () => {
+            try {
+              filePickerInput.focus({ preventScroll: true });
+            } catch (_) {
+              filePickerInput.focus();
             }
-            return false;
-          } finally {
-            fileSavePending = false;
-            syncFileEditorReadOnly();
-            updateFileEditButton();
-          }
-        }
+          },
+        });
+        const fileVideoPreviewRuntime = codoxearFileViewer.createFileVideoPreviewRuntime({
+          controller: fileViewerController,
+          fetchPreview: (url, options) => fetch(url, options),
+          resolveAppUrl: (url) => resolveAppUrl(url),
+          handleAuthLoss: () => handleAppAuthLoss(),
+          errorText: (error) => codoxearFileHelpers.fileVideoPreviewErrorText(error),
+          video: fileVideo,
+        });
+        const fileLoadResultRuntime = codoxearFileViewer.createFileLoadResultRuntime({
+          controller: fileViewerController,
+          resolveAppUrl,
+          setStatus: (status) => {
+            fileStatus.textContent = status;
+          },
+          disposeFileEditor: () => disposeFileEditor(),
+          renderMonacoDiff: (rel, originalText, modifiedText, lineNumber, request, options) => renderMonacoDiff(rel, originalText, modifiedText, lineNumber, request, options),
+          renderMonacoFile: (rel, text, lineNumber, langOverride, request) => renderMonacoFile(rel, text, lineNumber, langOverride, request),
+          renderMarkdownPreview: (rel, text) => renderMarkdownPreview(rel, text),
+          renderBlockedFileNotice: (rel, reason, viewerMaxBytes, size) => renderBlockedFileNotice(rel, reason, viewerMaxBytes, size),
+          renderPdfFile: (rel, url, request) => renderPdfFile(rel, url, request),
+          showImage: (src, alt) => fileRenderSurfaceRuntime.showImage(src, alt),
+          showVideo: (loadPlan, options) => fileRenderSurfaceRuntime.showVideo(loadPlan, options),
+          loadCompatibleVideoPreview: (token, options) => fileVideoPreviewRuntime.loadCompatibleVideoPreview(token, options),
+        });
+        const fileCandidateRefreshRuntime = codoxearFileViewer.createFileCandidateRefreshRuntime({
+          controller: fileViewerController,
+          currentSessionId: () => currentFileViewerSessionId(),
+          selectedSessionId: () => selected,
+          blockUnavailableFileAction: () => blockUnavailableFileAction(),
+          isSessionCurrent: (sessionId, syncToken) => fileViewerLifecycleRuntime.isSessionCurrent(sessionId, syncToken),
+          ttlMs: FILE_CANDIDATE_CACHE_TTL_MS,
+          nowMs: () => Date.now(),
+          collectMessageFileRefs: () => collectMessageFileRefs(),
+          sessionFiles: (sessionId) => {
+            const s = sessionId ? sessionIndex.get(sessionId) : null;
+            return listFromFilesField(s && s.files);
+          },
+          sessionFileRecords: (sessionId) => {
+            const s = sessionId ? sessionIndex.get(sessionId) : null;
+            return listFromFileRecords(s && s.files);
+          },
+          sessionRelativePath: (rawPath, sessionId) => sessionRelativePath(rawPath, sessionId),
+          api: (url) => api(url),
+          normalizeFileApiPath: (value) => normalizeFileApiPath(value),
+          renderMenu: () => renderFilePickerMenu(),
+        });
+        const openedFileRuntime = codoxearFileViewer.createOpenedFileRuntime({
+          currentSessionId: () => currentFileViewerSessionId(),
+          selectedSessionId: () => selected,
+          sessionRelativePath: (rawPath, sessionId) => sessionRelativePath(rawPath, sessionId),
+          activeIdentity: () => currentActiveFileIdentity(),
+          fileEntryForPath: (rel, gitPath, apiPath) => fileEntryForPath(rel, gitPath, apiPath),
+          upsertFileEntry: (entry) => upsertFileEntry(entry),
+          sessionById: (sessionId) => sessionIndex.get(sessionId) || null,
+          listFromFilesField: (files) => listFromFilesField(files),
+          listFromFileRecords: (files) => listFromFileRecords(files),
+          deleteCandidateCache: (sessionId) => fileViewerController.deleteFileCandidateCache(sessionId),
+        });
+        const fileReferenceRuntime = codoxearFileViewer.createFileReferenceRuntime({
+          selectedSessionId: () => selected,
+          sessionById: (sessionId) => sessionIndex.get(sessionId) || null,
+          sessions: () => Array.from(sessionIndex.values()),
+          chatRoot: chatInner,
+          ElementCtor: Element,
+          sessionRelativePath: (rawPath, sessionId) => sessionRelativePath(rawPath, sessionId),
+          listFromFilesField: (files) => listFromFilesField(files),
+          listFromFileRecords: (files) => listFromFileRecords(files),
+          normalizeFileApiPath: (value) => normalizeFileApiPath(value),
+          normalizeLineNumber: (value) => normalizeLineNumber(value),
+          parseLocalFileRef,
+          showFileViewer: (options) => showFileViewer(options),
+          selectSession: (sessionId) => selectSession(sessionId),
+          openDirectorySession: (options) => openNewSessionDialog(options),
+          setToast: (message) => setToast(message),
+          api: (url, options) => api(url, options),
+          el,
+        });
 
         async function maybeHandleUnsavedFileChanges() {
-          if (!fileDirty) return true;
-          const choice = await promptFileUnsavedChoice();
-          if (choice === "discard") {
-            discardActiveFileEdits();
-            return true;
-          }
-          if (choice === "save") return await saveActiveFileEdits({ exitEditMode: true });
-          return false;
+          return await fileViewerController.maybeHandleUnsavedFileChanges();
         }
 
-        async function openFilePathWithGuard(path, { line = null, mode = null } = {}) {
-          if (!(await maybeHandleUnsavedFileChanges())) return false;
-          setFilePath(path, { line });
-          if (mode) setFileViewMode(mode);
-          renderFilePickerMenu();
-          await openFilePath(path, { line });
-          return true;
+        function handleFileUnsavedSaveChoice() {
+          return fileViewerController.handleFileUnsavedSaveChoice();
+        }
+
+        function handleFileUnsavedDiscardChoice() {
+          return fileViewerController.handleFileUnsavedDiscardChoice();
+        }
+
+        function handleFileUnsavedCancelChoice() {
+          return fileViewerController.handleFileUnsavedCancelChoice();
         }
 
         async function openDraftFilePathWithGuard(path) {
-          const rel = normalizeDraftFilePath(path);
-          if (!rel) {
-            fileStatus.textContent = "Choose a valid relative file path.";
-            return false;
-          }
-          if (!(await maybeHandleUnsavedFileChanges())) return false;
-          try {
-            const inspect = await inspectSessionFilePath(rel);
-            if (inspect && inspect.exists) {
-              if (inspect.kind === "directory") {
-                fileStatus.textContent = `${rel} - path is a directory`;
-                return false;
-              }
-              return await openFilePathWithGuard(rel, { line: null, mode: "file" });
-            }
-          } catch (e) {
-            fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
-            return false;
-          }
-          setFileViewMode("file");
-          setFilePath(rel, { line: null });
-          renderFilePickerMenu();
-          await openDraftFilePath(rel, { line: null });
-          return true;
-        }
-
-        async function setFileViewModeWithGuard(mode) {
-          const next = mode === "preview" ? "preview" : mode === "file" ? "file" : "diff";
-          if (next === fileViewMode) return true;
-          if (activeFileDraft && next !== "file") return false;
-          if (!(await maybeHandleUnsavedFileChanges())) return false;
-          setFileViewMode(next);
-          renderFilePickerMenu();
-          await openFilePath(activeFilePath, { line: activeFileLine });
-          return true;
+          return await fileViewerController.openDraftFilePathWithGuard(path);
         }
 
         async function requestHideFileViewer() {
-          if (!(await maybeHandleUnsavedFileChanges())) return;
-          hideFileViewer();
+          return await fileViewerController.requestHideFileViewer();
+        }
+
+        async function handleFileDiffModeButtonPress() {
+          return await fileViewerController.handleFileDiffModeButtonPress();
+        }
+
+        async function handleFilePreviewModeButtonPress() {
+          return await fileViewerController.handleFilePreviewModeButtonPress();
+        }
+
+        async function handleFileEditButtonPress() {
+          return await fileViewerController.handleFileEditButtonPress();
+        }
+
+        function activeFileDownloadApiPath() {
+          return fileViewerController.activeFileDownloadApiPath();
         }
 
         function setFileViewMode(mode) {
-          const next = mode === "preview" ? "preview" : mode === "file" ? "file" : "diff";
-          fileViewMode = next;
-          localStorage.setItem("codexweb.fileViewMode", fileViewMode);
-          if (next !== "diff") {
-            fileNonDiffMode = next;
-            localStorage.setItem("codexweb.fileNonDiffMode", fileNonDiffMode);
-          }
-          applyFileMode();
+          return fileViewerController.setFileViewMode(mode);
         }
 
         function applyFileMode() {
-          const hasPath = Boolean(activeFilePath);
-          const entry = hasPath ? fileEntryMap.get(activeFilePath) : null;
-          const canToggleMode = hasPath && !activeFileDraft;
-          const isDiff = fileViewMode === "diff";
-          const isPreview = fileViewMode === "preview";
-          const diffable = canToggleMode && Boolean(entry && entry.changed) && isDiffableFileKind(activeFileKind);
-          const previewable = !activeFileDraft && activeFileKind === "markdown";
-          fileModeDiffBtn.classList.toggle("active", hasPath && isDiff);
-          fileModePreviewBtn.classList.toggle("active", hasPath && isPreview);
-          fileModeDiffBtn.disabled = !diffable;
-          fileModePreviewBtn.disabled = !canToggleMode;
-          fileDownloadBtn.disabled = !hasPath || activeFileDraft;
-          fileModePreviewBtn.style.display = previewable ? "" : "none";
-          if (fileViewMode !== "file") hideFilePasteDialog();
-          if (fileViewMode !== "file" && fileEditMode) setFileEditMode(false);
-          syncFileEditorReadOnly();
-          updateFileEditButton();
+          return fileModeControlsRuntime.apply(fileViewerController.currentFileModeControlState());
         }
 
         function applyFileMenuState() {
-          filePickerField.classList.toggle("active", fileMenuOpen);
-          filePickerMenu.classList.toggle("open", fileMenuOpen);
-          filePickerInput.setAttribute("aria-expanded", fileMenuOpen ? "true" : "false");
-          if (!fileMenuOpen && fileMenuFocus < 0) filePickerInput.removeAttribute("aria-activedescendant");
+          return filePickerDomRuntime.apply();
         }
 
         function resetFilePickerInput() {
-          filePickerSearchActive = false;
-          fileMenuFocus = -1;
-          filePickerInput.value = activeFilePath || "";
-          filePickerInput.removeAttribute("aria-activedescendant");
+          return filePickerDomRuntime.resetInput(activeFilePathValue() || "");
         }
 
         function closeFilePickerMenu({ restoreInput = false } = {}) {
-          fileMenuOpen = false;
-          fileMenuFocus = -1;
-          if (restoreInput) resetFilePickerInput();
-          applyFileMenuState();
+          return filePickerDomRuntime.close({ restoreInput, inputValue: activeFilePathValue() || "" });
         }
 
-        function setFilePath(rel, { line = null } = {}) {
-          const next = String(rel || "").trim();
-          activeFilePath = next;
-          activeFileLine = normalizeLineNumber(line);
-          resetFilePickerInput();
-          fileMenuOpen = false;
-          applyFileMenuState();
-          applyFileMode();
+        function filePickerSelectionLine() {
+          return filePickerMenuState.selectionLine(filePickerInput.value);
         }
 
-        async function inspectSessionFilePath(path) {
-          const sid = fileViewerSessionId || selected || "";
-          if (!sid) throw new Error("select a session first");
-          try {
-            const res = await api("/api/files/inspect", {
-              method: "POST",
-              body: { session_id: sid, path },
-            });
-            return { exists: true, ...res };
-          } catch (e) {
-            if (e && e.status === 404) return { exists: false };
-            throw e;
-          }
+        function openFilePickerSearchQuery(query, { line = null, suppressDraft = false } = {}) {
+          return filePickerInputRuntime.openSearchQuery(query, { line, suppressDraft });
         }
 
-        async function resolveFileOpenMode(path, { changed = null } = {}) {
-          const inspect = await inspectSessionFilePath(path);
-          if (!inspect || !inspect.exists) throw new Error("file not found");
-          const kind = String(inspect.kind || "").trim();
-          const isChanged = changed == null ? Boolean(fileEntryMap.get(String(path || "").trim())?.changed) : Boolean(changed);
-          if (isChanged && isDiffableFileKind(kind)) return "diff";
-          if (kind === "markdown" && fileNonDiffMode === "preview") return "preview";
-          return "file";
+        function normalizeFileApiPath(value) {
+          return typeof value === "string" && value !== "" ? value : "";
         }
 
-        async function openFilePathWithResolvedMode(path, { line = null, changed = null } = {}) {
-          const mode = await resolveFileOpenMode(path, { changed });
-          return await openFilePathWithGuard(path, { line, mode });
+        function setFilePath(rel, { line = null, gitPath = undefined, apiPath = undefined } = {}) {
+          return fileViewerPanelRuntime.setFilePath(rel, { line, gitPath, apiPath });
         }
 
-        async function openDraftFilePath(path, { line = null } = {}) {
-          if (!fileViewerSessionId) return;
-          const request = beginFileOpenRequest(path, { line });
-          const rel = normalizeDraftFilePath(path);
-          if (!rel) {
-            fileStatus.textContent = "Choose a valid relative file path.";
-            finalizeFileOpenRequest(request);
-            return;
-          }
-          fileStatus.textContent = "Preparing new file...";
-          disposeFileEditor();
-          resetActiveFileBufferState();
-          fileImage.removeAttribute("src");
-          fileImage.style.display = "none";
-          clearFileVideo();
-          fileDiff.style.display = "block";
-          try {
-            if (fileViewMode !== "file") setFileViewMode("file");
-            activeFileDraft = true;
-            activeFileKind = "text";
-            activeFileText = "";
-            activeFileEditable = true;
-            activeFileVersion = "";
-            applyFileMode();
-            const rendered = await renderMonacoFile(rel, "", request.line, "", request);
-            if (!rendered || !isCurrentFileOpenRequest(request)) return;
-            setFileEditMode(true);
-            fileStatus.textContent = `${rel} - new file`;
-            rememberActiveFileSelection();
-            renderFilePickerMenu();
-          } catch (e) {
-            if (e && e.name === "AbortError") return;
-            if (!isCurrentFileOpenRequest(request)) return;
-            resetActiveFileBufferState();
-            fileStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
-          } finally {
-            finalizeFileOpenRequest(request);
-          }
+        function fileCandidateKey(path, gitPath = false, apiPath = "") {
+          return fileViewerController.fileCandidateKey(path, gitPath, apiPath);
+        }
+
+        function fileEntryForPath(path, gitPath = false, apiPath = "") {
+          return fileViewerController.fileEntryForPath(path, gitPath, apiPath);
+        }
+
+        async function openFilePathWithResolvedMode(path, { line = null, changed = null, isCurrent = null, gitPath = null, apiPath = "" } = {}) {
+          return await fileViewerController.openFilePathWithResolvedMode(path, { line, changed, isCurrent, gitPath, apiPath });
         }
 
         function upsertFileEntry(entry) {
-          if (!entry || typeof entry.path !== "string" || !entry.path.trim()) return;
-          const path = entry.path.trim();
-          const merged = {
-            path,
-            additions: entry.additions ?? null,
-            deletions: entry.deletions ?? null,
-            changed: Boolean(entry.changed),
-          };
-          if (!fileEntryMap.has(path)) {
-            fileCandidateList.push(path);
-          }
-          fileEntryMap.set(path, merged);
+          return fileViewerController.upsertFileEntry(entry);
         }
 
         function rememberOpenedFile(relPath, absPath = null) {
-          const raw = String(relPath || "").trim();
-          const sid = fileViewerSessionId || selected || "";
-          const rel = sessionRelativePath(raw, sid) || raw;
-          if (!rel) return;
-          const current = fileEntryMap.get(rel);
-          upsertFileEntry({
-            path: rel,
-            additions: current && current.changed ? current.additions : null,
-            deletions: current && current.changed ? current.deletions : null,
-            changed: Boolean(current && current.changed),
-          });
-          const s = sid ? sessionIndex.get(sid) : null;
-          if (!s) return;
-          const files = listFromFilesField(s.files);
-          const abs = typeof absPath === "string" && absPath.trim()
-            ? absPath.trim()
-            : s.cwd && rel !== "."
-              ? `${String(s.cwd).replace(/\/+$/, "")}/${rel.replace(/^\.?\//, "")}`
-              : "";
-          if (!abs) return;
-          const nextFiles = [abs, ...files.filter((x) => x !== abs)];
-          s.files = nextFiles;
+          return openedFileRuntime.remember(relPath, absPath);
         }
 
         function collectMessageFileRefs() {
-          if (!selected) return [];
-          const out = [];
-          const seen = new Set();
-          const nodes = Array.from(chatInner.querySelectorAll("[data-file-path]"));
-          for (const node of nodes) {
-            if (!(node instanceof Element)) continue;
-            const kind = String(node.getAttribute("data-file-kind") || "").trim();
-            if (kind === "directory") continue;
-            const rawAbs = String(node.getAttribute("data-file-path") || "").trim();
-            const raw = rawAbs;
-            if (!raw) continue;
-            const rel = raw.startsWith("/") ? sessionRelativePath(raw) || "" : raw.replace(/^\.?\//, "");
-            if (!rel || rel === "." || seen.has(rel)) continue;
-            seen.add(rel);
-            out.push(rel);
-          }
-          return out;
-        }
-
-        function fileSearchScore(candidate, query) {
-          const text = String(candidate || "");
-          const raw = String(query || "").trim().toLowerCase();
-          if (!raw) return 0;
-          const lower = text.toLowerCase();
-          if (lower === raw) return 12000;
-          const base = baseName(text).toLowerCase();
-          if (base === raw) return 10000;
-          let total = 0;
-          for (const token of raw.split(/\s+/).filter(Boolean)) {
-            const exactIdx = lower.indexOf(token);
-            if (exactIdx >= 0) {
-              const prev = exactIdx > 0 ? lower[exactIdx - 1] : "";
-              const boundaryBonus = !prev || "/._-".includes(prev) ? 24 : 0;
-              const baseIdx = base.indexOf(token);
-              total += 240 - exactIdx * 2 + boundaryBonus + (baseIdx >= 0 ? 44 - baseIdx : 0);
-              continue;
-            }
-            let pos = -1;
-            let first = -1;
-            let last = -1;
-            let consecutive = 0;
-            let boundaries = 0;
-            for (const ch of token) {
-              pos = lower.indexOf(ch, pos + 1);
-              if (pos < 0) return -1;
-              if (first < 0) first = pos;
-              if (last >= 0 && pos === last + 1) consecutive += 1;
-              if (pos === 0 || "/._-".includes(lower[pos - 1] || "")) boundaries += 1;
-              last = pos;
-            }
-            const span = last - first + 1;
-            total += 120 - first - Math.max(0, span - token.length) * 4 + consecutive * 10 + boundaries * 8;
-          }
-          return total;
-        }
-
-        function pickerEntryForPath(path, { score = 0 } = {}) {
-          const entry = fileEntryMap.get(path) || { path, additions: null, deletions: null, changed: false };
-          return {
-            path,
-            additions: entry.additions ?? null,
-            deletions: entry.deletions ?? null,
-            changed: Boolean(entry.changed),
-            added: fileEntryMap.has(path),
-            score,
-          };
-        }
-
-        function normalizeDraftFilePath(raw) {
-          let path = String(raw || "").trim().replace(/\\/g, "/");
-          path = path.replace(/^(?:\.\/)+/, "");
-          if (!path || path === "." || path.startsWith("/") || path.endsWith("/") || path.includes("\x00")) return "";
-          const parts = path.split("/");
-          if (!parts.length) return "";
-          for (const part of parts) {
-            if (!part || part === "." || part === "..") return "";
-          }
-          return parts.join("/");
-        }
-
-        function draftFileEntry(path) {
-          return {
-            path,
-            additions: null,
-            deletions: null,
-            changed: false,
-            added: false,
-            score: 0,
-            createNew: true,
-          };
+          return fileReferenceRuntime.collectMessageFileRefs();
         }
 
         function resetFileSearchState() {
-          if (fileSearchTimer) {
-            clearTimeout(fileSearchTimer);
-            fileSearchTimer = null;
-          }
-          if (fileSearchAbort) {
-            try {
-              fileSearchAbort.abort();
-            } catch (_) {}
-            fileSearchAbort = null;
-          }
-          fileSearchResults = [];
-          fileSearchLoadedQuery = "";
-          fileSearchPendingQuery = "";
-          fileSearchErrorQuery = "";
-          fileSearchError = "";
-          fileSearchTruncatedQuery = "";
-          fileSearchSeq += 1;
+          filePickerSearchState.reset();
         }
 
-        async function requestSessionFileSearch(query) {
-          const trimmed = String(query || "").trim();
-          const sid = fileViewerSessionId || selected || "";
-          if (!trimmed || !sid) {
-            resetFileSearchState();
-            fileSearchSessionId = sid;
-            return [];
-          }
-          if (fileSearchSessionId !== sid) {
-            resetFileSearchState();
-            fileSearchSessionId = sid;
-          }
-          if (fileSearchLoadedQuery === trimmed) return fileSearchResults;
-          const seq = ++fileSearchSeq;
-          fileSearchPendingQuery = trimmed;
-          fileSearchErrorQuery = "";
-          fileSearchError = "";
-          fileSearchTruncatedQuery = "";
-          if (fileSearchAbort) {
-            try {
-              fileSearchAbort.abort();
-            } catch (_) {}
-          }
-          const controller = typeof AbortController === "function" ? new AbortController() : null;
-          fileSearchAbort = controller;
-          try {
-            const res = await api(`/api/sessions/${sid}/file/search?q=${encodeURIComponent(trimmed)}&limit=120`, {
-              signal: controller ? controller.signal : undefined,
-            });
-            if (seq !== fileSearchSeq || fileSearchSessionId !== sid) return [];
-            const matches = [];
-            const seen = new Set();
-            for (const item of Array.isArray(res && res.matches) ? res.matches : []) {
-              const path = item && typeof item.path === "string" ? item.path.trim() : "";
-              if (!path || path === "." || seen.has(path)) continue;
-              seen.add(path);
-              const score = Number.isFinite(item && item.score) ? Number(item.score) : 0;
-              matches.push({ path, score });
-            }
-            fileSearchResults = matches;
-            fileSearchLoadedQuery = trimmed;
-            fileSearchPendingQuery = "";
-            fileSearchTruncatedQuery = res && res.truncated ? trimmed : "";
-            return matches;
-          } catch (err) {
-            if (controller && controller.signal && controller.signal.aborted) return [];
-            if (seq !== fileSearchSeq || fileSearchSessionId !== sid) return [];
-            fileSearchResults = [];
-            fileSearchLoadedQuery = "";
-            fileSearchPendingQuery = "";
-            fileSearchErrorQuery = trimmed;
-            fileSearchError = err && err.message ? err.message : "Unable to search files";
-            fileSearchTruncatedQuery = "";
-            throw err;
-          } finally {
-            if (fileSearchAbort === controller) fileSearchAbort = null;
-          }
-        }
-
-        function scheduleSessionFileSearch(query) {
-          const trimmed = String(query || "").trim();
-          const sid = fileViewerSessionId || selected || "";
-          if (fileSearchTimer) {
-            clearTimeout(fileSearchTimer);
-            fileSearchTimer = null;
-          }
-          if (!trimmed || !sid) {
-            resetFileSearchState();
-            fileSearchSessionId = sid;
-            return;
-          }
-          if (fileSearchSessionId !== sid) {
-            resetFileSearchState();
-            fileSearchSessionId = sid;
-          }
-          if (fileSearchAbort) {
-            try {
-              fileSearchAbort.abort();
-            } catch (_) {}
-            fileSearchAbort = null;
-          }
-          fileSearchPendingQuery = trimmed;
-          fileSearchErrorQuery = "";
-          fileSearchError = "";
-          fileSearchTruncatedQuery = "";
-          fileSearchTimer = setTimeout(() => {
-            fileSearchTimer = null;
-            void requestSessionFileSearch(trimmed)
-              .then(() => {
-                if (!fileMenuOpen) return;
-                if (String(filePickerInput.value || "").trim() !== trimmed) return;
-                renderFilePickerMenu();
-                applyFileMenuState();
-              })
-              .catch(() => {
-                if (!fileMenuOpen) return;
-                if (String(filePickerInput.value || "").trim() !== trimmed) return;
-                renderFilePickerMenu();
-                applyFileMenuState();
-              });
-          }, 120);
-        }
-
-        function visibleFilePickerEntries() {
-          const query = filePickerSearchActive ? String(filePickerInput.value || "").trim() : "";
-          if (!query) {
-            const entries = fileCandidateList.map((path) => pickerEntryForPath(path));
-            if (activeFileDraft && activeFilePath && !entries.some((entry) => entry.path === activeFilePath)) {
-              entries.unshift(draftFileEntry(activeFilePath));
-            }
-            return entries;
-          }
-          if (fileSearchPendingQuery === query) return null;
-          if (fileSearchErrorQuery === query) return [];
-          if (fileSearchLoadedQuery !== query) return null;
-          const out = [];
-          const seen = new Set();
-          for (const item of fileSearchResults) {
-            const path = item && typeof item.path === "string" ? item.path.trim() : "";
-            if (!path || path === "." || seen.has(path)) continue;
-            seen.add(path);
-            const score = Number.isFinite(item && item.score) ? Number(item.score) : 0;
-            out.push(pickerEntryForPath(path, { score }));
-          }
-          for (const path of fileCandidateList) {
-            if (seen.has(path)) continue;
-            const score = fileSearchScore(path, query);
-            if (score < 0) continue;
-            out.push(pickerEntryForPath(path, { score }));
-          }
-          out.sort((a, b) => Number(b.added) - Number(a.added) || b.score - a.score || Number(b.changed) - Number(a.changed) || a.path.localeCompare(b.path));
-          const limited = out.slice(0, 120);
-          const draftPath = normalizeDraftFilePath(query);
-          if (draftPath && !limited.some((entry) => entry.path === draftPath)) {
-            limited.unshift(draftFileEntry(draftPath));
-          }
-          return limited;
-        }
-
-        async function getKnownFileRefCandidates() {
-          if (!selected) return [];
-          const sid = selected;
-          const hit = fileRefCandidateCache.get(sid);
-          if (hit) return hit;
-          const task = (async () => {
-            const out = new Set();
-            const s = sessionIndex.get(sid);
-            for (const abs of listFromFilesField(s && s.files)) {
-              const rel = sessionRelativePath(abs);
-              if (typeof rel === "string" && rel && rel !== ".") out.add(rel);
-            }
-            for (const rel of collectMessageFileRefs()) {
-              if (rel) out.add(rel);
-            }
-            try {
-              const res = await api(`/api/sessions/${sid}/git/changed_files`);
-              const entries = Array.isArray(res.entries) ? res.entries : [];
-              for (const entry of entries) {
-                if (!entry || typeof entry.path !== "string") continue;
-                const path = String(entry.path).trim();
-                if (path) out.add(path);
-              }
-            } catch {}
-            return [...out];
-          })();
-          fileRefCandidateCache.set(sid, task);
-          const resolved = await task;
-          fileRefCandidateCache.set(sid, resolved);
-          return resolved;
-        }
-
-        function appendDraftFileMenuItem(path, idx, active) {
-          const btn = el("button", {
-            id: `filePickerOption-${idx}`,
-            class: "fileMenuItem fileMenuCreate" + (active ? " active" : ""),
-            type: "button",
-            role: "option",
-            "aria-selected": active ? "true" : "false",
-            title: path,
-          });
-          btn.appendChild(el("span", { class: "fileMenuPath", text: `Create new file: ${path}` }));
-          btn.appendChild(el("span", { class: "fileMenuHint", text: "Creates only when you save" }));
-          btn.onmousedown = (e) => e.preventDefault();
-          btn.onclick = () => {
-            void openDraftFilePathWithGuard(path);
-          };
-          filePickerMenu.appendChild(btn);
+        function filePickerSearchSnapshot() {
+          return filePickerSearchState.snapshot();
         }
 
         function renderFilePickerMenu() {
-          filePickerMenu.innerHTML = "";
-          const entries = visibleFilePickerEntries();
-          const query = filePickerSearchActive ? String(filePickerInput.value || "").trim() : "";
-          const draftPath = normalizeDraftFilePath(query);
-          if (entries === null) {
-            if (draftPath) appendDraftFileMenuItem(draftPath, 0, fileMenuFocus === 0);
-            filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: "Searching files..." }));
-            return draftPath ? [draftFileEntry(draftPath)] : [];
-          }
-          if (!entries.length) {
-            if (draftPath) {
-              appendDraftFileMenuItem(draftPath, 0, fileMenuFocus === 0);
-              filePickerInput.setAttribute("aria-activedescendant", "filePickerOption-0");
-              return [draftFileEntry(draftPath)];
-            }
-            const emptyText = query
-              ? fileSearchErrorQuery === query
-                ? fileSearchError || "Unable to search files"
-                : "No matching files"
-              : "Type to search files.";
-            filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: emptyText }));
-            filePickerInput.removeAttribute("aria-activedescendant");
-            return entries;
-          }
-          if (fileMenuFocus >= entries.length) fileMenuFocus = entries.length ? entries.length - 1 : -1;
-          for (const [idx, entry] of entries.entries()) {
-            const path = entry.path;
-            const active = fileMenuFocus === idx || (fileMenuFocus < 0 && activeFilePath === path && !query);
-            const btn = el("button", {
-              id: `filePickerOption-${idx}`,
-              class: "fileMenuItem" + (entry.createNew ? " fileMenuCreate" : "") + (active ? " active" : ""),
-              type: "button",
-              role: "option",
-              "aria-selected": active ? "true" : "false",
-              title: path,
-            });
-            if (entry.createNew) {
-              btn.appendChild(el("span", { class: "fileMenuPath", text: `Create new file: ${path}` }));
-              btn.appendChild(el("span", { class: "fileMenuHint", text: "Creates only when you save" }));
-            } else if (entry.changed) {
-              btn.appendChild(el("span", { class: "fileMenuPath", text: path }));
-              const stat = el("span", { class: "fileMenuStat changed" });
-              stat.appendChild(el("span", { class: "fileMenuAdd", text: entry.additions == null ? "+?" : `+${entry.additions}` }));
-              stat.appendChild(el("span", { class: "fileMenuDel", text: entry.deletions == null ? "-?" : `-${entry.deletions}` }));
-              btn.appendChild(stat);
-            } else {
-              btn.appendChild(el("span", { class: "fileMenuPath", text: path }));
-            }
-            btn.onmousedown = (e) => e.preventDefault();
-            btn.onclick = async () => {
-              if (entry.createNew) {
-                void openDraftFilePathWithGuard(path);
-                return;
-              }
-              try {
-                await openFilePathWithResolvedMode(path, { line: null, changed: Boolean(fileEntryMap.get(path)?.changed) });
-              } catch (e) {
-                fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
-              }
-            };
-            filePickerMenu.appendChild(btn);
-          }
-          if (query && fileSearchTruncatedQuery === query) {
-            filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: "Search capped at top matches." }));
-          }
-          if (fileMenuFocus >= 0) filePickerInput.setAttribute("aria-activedescendant", `filePickerOption-${fileMenuFocus}`);
-          else filePickerInput.removeAttribute("aria-activedescendant");
-          return entries;
-        }
-
-        function fileRefValidationKey(path) {
-          return `${selected || ""}|${String(path || "").trim()}`;
-        }
-
-        async function inspectFileRefPath(path) {
-          const rawPath = String(path || "").trim();
-          if (!rawPath) return { ok: false };
-          let inspectPath = rawPath;
-          if (!rawPath.includes("/") && selected) {
-            const candidates = await getKnownFileRefCandidates();
-            const matches = candidates.filter((candidate) => {
-              const tail = String(candidate || "").split("/").pop() || "";
-              return tail === rawPath;
-            });
-            if (matches.length === 1) inspectPath = matches[0];
-            else if (matches.length > 1) return { ok: false, ambiguous: true, path: rawPath };
-          }
-          const key = fileRefValidationKey(inspectPath);
-          if (fileRefValidationCache.has(key)) return fileRefValidationCache.get(key);
-          const pending = fileRefValidationPending.get(key);
-          if (pending) return pending;
-          const task = (async () => {
-            try {
-              const body = { path: inspectPath };
-              if (selected) body.session_id = selected;
-              const res = await api("/api/files/inspect", { method: "POST", body });
-              return { ok: true, path: rawPath, inspectPath, kind: res.kind, resolvedPath: res.path };
-            } catch {
-              return { ok: false, path: rawPath, inspectPath };
-            }
-          })();
-          fileRefValidationPending.set(key, task);
-          const result = await task;
-          fileRefValidationPending.delete(key);
-          fileRefValidationCache.set(key, result);
-          return result;
+          return filePickerRenderRuntime.render();
         }
 
         async function upgradeCandidateFileRefs(root) {
-          if (!root) return;
-          const nodes = Array.from(root.querySelectorAll("[data-candidate-file-path]"));
-          for (const node of nodes) {
-            const path = String(node.getAttribute("data-candidate-file-path") || "").trim();
-            const line = normalizeLineNumber(node.getAttribute("data-candidate-file-line"));
-            if (!path) continue;
-            const result = await inspectFileRefPath(path);
-            if (!result || !result.ok) continue;
-            const resolvedPath = String(result.resolvedPath || result.inspectPath || path).trim();
-            const link = el("a", {
-              href: "#",
-              class: "inlineFileLink",
-              "data-file-path": resolvedPath,
-              "data-file-kind": result.kind || "text",
-            });
-            if (line && result.kind !== "directory") link.setAttribute("data-file-line", String(line));
-            link.textContent = node.textContent || path;
-            node.replaceWith(link);
-          }
+          return await fileReferenceRuntime.upgradeCandidateRefs(root);
         }
 
         function sessionRelativePath(rawPath, sidOverride = null) {
@@ -7889,392 +5449,84 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return null;
         }
 
-        async function refreshFileCandidates() {
-          fileCandidateList = [];
-          fileEntryMap = new Map();
-          const sid = fileViewerSessionId || selected || "";
-          if (!sid) return;
-          try {
-            const res = await api(`/api/sessions/${sid}/git/changed_files`);
-            const entriesIn = Array.isArray(res.entries) ? res.entries : [];
-            const changedEntries = entriesIn
-              .filter((entry) => entry && typeof entry.path === "string" && String(entry.path).trim())
-              .map((entry) => ({
-                path: String(entry.path).trim(),
-                additions:
-                  typeof entry.additions === "number" && Number.isFinite(entry.additions) ? entry.additions : entry.additions == null ? null : null,
-                deletions:
-                  typeof entry.deletions === "number" && Number.isFinite(entry.deletions) ? entry.deletions : entry.deletions == null ? null : null,
-                changed: true,
-              }));
-            const messageEntries = collectMessageFileRefs().map((path) => ({
-              path,
-              additions: null,
-              deletions: null,
-              changed: false,
-            }));
-            const s = sid ? sessionIndex.get(sid) : null;
-            const manualEntries = listFromFilesField(s && s.files)
-              .map((abs) => sessionRelativePath(abs, sid))
-              .filter((rel) => typeof rel === "string" && rel && rel !== ".")
-              .map((path) => ({ path, additions: null, deletions: null, changed: false }));
-            const merged = [];
-            const seen = new Set();
-            for (const entry of [...changedEntries, ...messageEntries, ...manualEntries]) {
-              if (!entry || !entry.path || seen.has(entry.path)) continue;
-              seen.add(entry.path);
-              merged.push(entry);
-            }
-            fileCandidateList = merged.map((entry) => entry.path);
-            for (const entry of merged) {
-              fileEntryMap.set(entry.path, entry);
-            }
-          } catch (e) {}
-          renderFilePickerMenu();
+        async function refreshFileCandidates({ force = false, sessionId = null, syncToken = null } = {}) {
+          return await fileCandidateRefreshRuntime.refresh({ force, sessionId, syncToken });
         }
 
-        async function showFileViewer({ path = "", mode = "", manual = false, line = null } = {}) {
-          if (isFileViewerOpen() && !(await maybeHandleUnsavedFileChanges())) return;
-          cancelPendingFileOpen();
-          fileBackdrop.style.display = "block";
-          fileViewer.style.display = "flex";
-          updateFileTouchToolbar();
-          rememberActiveFileSelection(fileViewerSessionId);
-          fileViewerSessionId = selected || "";
-          if (fileSearchSessionId !== fileViewerSessionId) {
-            resetFileSearchState();
-            fileSearchSessionId = fileViewerSessionId;
+        async function showFileViewer({ path = "", mode = "", manual = false, line = null, pickerQuery = "" } = {}) {
+          void manual;
+          if (selectedSessionLaunchFailed()) {
+            setToast("failed launch has no file browser");
+            return false;
           }
-          if (mode === "file" || mode === "diff" || mode === "preview") setFileViewMode(mode);
-          else applyFileMode();
-          await refreshFileCandidates();
-          const explicitPath = String(path || "").trim();
-          const preferredSelection = preferredFileSelectionForSession(fileViewerSessionId);
-          const preferred = explicitPath || preferredSelection.path;
-          const preferredLine = explicitPath ? normalizeLineNumber(line) : preferredSelection.line;
-          if (preferred) {
-            setFilePath(preferred, { line: preferredLine });
-            void openFilePathWithResolvedMode(preferred, { line: preferredLine }).catch((e) => {
-              fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
-            });
-            return;
-          }
-          const first = fileCandidateList.length ? fileCandidateList[0] : "";
-          if (first) {
-            setFilePath(first, { line: null });
-            void openFilePathWithResolvedMode(first, { line: null }).catch((e) => {
-              fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
-            });
-            return;
-          }
-          resetFileViewerPanel();
-          activeFilePath = "";
-          activeFileLine = null;
-          resetFilePickerInput();
-          renderFilePickerMenu();
-          fileStatus.textContent = "Type to search files.";
+          return await fileViewerLifecycleRuntime.show({ path, mode, line, pickerQuery });
         }
         function hideFileViewer() {
-          cancelPendingFileOpen();
-          hideFileUnsavedDialog();
-          hideFilePasteDialog();
-          rememberActiveFileSelection();
-          resetFileViewerPanel();
-          closeFilePickerMenu({ restoreInput: true });
-          resetFileSearchState();
-          fileSearchSessionId = "";
-          fileBackdrop.style.display = "none";
-          fileViewer.style.display = "none";
-          fileViewerSessionId = "";
-          activeFileLine = null;
-          updateFileTouchToolbar();
+          return fileViewerLifecycleRuntime.hide();
         }
-        async function openFilePath(nextPath = null, { line = undefined } = {}) {
-          if (!fileViewerSessionId) return false;
-          const request = beginFileOpenRequest(nextPath, { line });
-          const rel = request.path;
-          if (!rel) {
-            fileStatus.textContent = "Choose a file first.";
-            finalizeFileOpenRequest(request);
-            return false;
-          }
-          fileStatus.textContent = "Loading...";
-          disposeFileEditor();
-          resetActiveFileBufferState();
-          fileImage.removeAttribute("src");
-          fileImage.style.display = "none";
-          clearFileVideo();
-          fileDiff.style.display = "block";
-          try {
-            const viewMode = fileViewMode === "preview" && !isMarkdownPreviewable(rel) ? "file" : fileViewMode;
-            if (viewMode !== fileViewMode) setFileViewMode(viewMode);
-            if (viewMode === "diff") {
-              const res = await api(`/api/sessions/${request.sessionId}/git/file_versions?path=${encodeURIComponent(rel)}`, {
-                signal: request.signal,
-              });
-              if (!isCurrentFileOpenRequest(request)) return false;
-              const baseText = res && typeof res.base_text === "string" ? res.base_text : "";
-              const currentText = res && typeof res.current_text === "string" ? res.current_text : "";
-              activeFileKind = "text";
-              activeFileText = currentText;
-              activeFileEditable = Boolean(res && res.current_exists);
-              if (!res.base_exists && !res.current_exists) {
-                disposeFileEditor();
-                fileStatus.textContent = `${rel} - no diff`;
-              } else {
-                const rendered = await renderMonacoDiff(rel, baseText, currentText, request.line, request);
-                if (!rendered || !isCurrentFileOpenRequest(request)) return false;
-                fileStatus.textContent = `${rel} - diff`;
-              }
-              applyFileMode();
-              rememberOpenedFile(rel, res && typeof res.abs_path === "string" ? res.abs_path : null);
-            } else {
-              const res = await api(`/api/sessions/${request.sessionId}/file/read?path=${encodeURIComponent(rel)}`, {
-                signal: request.signal,
-              });
-              if (!isCurrentFileOpenRequest(request)) return false;
-              if (!res || typeof res.kind !== "string") throw new Error("invalid response");
-              if (res.kind === "image") {
-                activeFileKind = "image";
-                if (typeof res.image_url !== "string" || !res.image_url) throw new Error("invalid image response");
-                clearFileVideo();
-                fileDiff.style.display = "none";
-                fileImage.src = resolveAppUrl(res.image_url);
-                fileImage.alt = rel;
-                fileImage.style.display = "block";
-                const size = typeof res.size === "number" ? res.size : 0;
-                fileStatus.textContent = `${rel} - ${fmtBytes(size)}`;
-              } else if (res.kind === "pdf") {
-                activeFileKind = "pdf";
-                if (typeof res.pdf_url !== "string" || !res.pdf_url) throw new Error("invalid pdf response");
-                const rendered = await renderPdfFile(rel, resolveAppUrl(res.pdf_url), request);
-                if (!rendered || !isCurrentFileOpenRequest(request)) return false;
-                const size = typeof res.size === "number" ? res.size : 0;
-                fileStatus.textContent = `${rel} - PDF - ${fmtBytes(size)}`;
-              } else if (res.kind === "video") {
-                activeFileKind = "video";
-                if (typeof res.video_url !== "string" || !res.video_url) throw new Error("invalid video response");
-                const previewUrl = typeof res.video_preview_url === "string" ? res.video_preview_url : "";
-                const size = typeof res.size === "number" ? res.size : 0;
-                const videoToken = `${request.requestId}:${rel}:${Date.now()}`;
-                activeVideoFallback = previewUrl ? { token: videoToken, previewUrl, used: false } : null;
-                fileVideo.onerror = () => {
-                  const state = activeVideoFallback;
-                  if (!state || state.token !== videoToken) {
-                    if (!previewUrl) fileStatus.textContent = `${rel} - video unsupported`;
-                    return;
-                  }
-                  if (state.used) {
-                    activeVideoFallback = null;
-                    fileVideo.onerror = null;
-                    fileVideo.onloadedmetadata = null;
-                    fileStatus.textContent = `${rel} - video preview unavailable (ffmpeg missing or conversion failed)`;
-                    return;
-                  }
-                  state.used = true;
-                  fileStatus.textContent = `${rel} - building compatible video preview...`;
-                  fileVideo.src = resolveAppUrl(state.previewUrl);
-                  fileVideo.load();
-                };
-                fileVideo.onloadedmetadata = () => {
-                  const state = activeVideoFallback;
-                  if (state && state.token === videoToken && state.used) {
-                    fileStatus.textContent = `${rel} - compatible video preview - ${fmtBytes(size)}`;
-                  }
-                };
-                fileDiff.style.display = "none";
-                fileVideo.src = resolveAppUrl(res.video_url);
-                fileVideo.style.display = "block";
-                fileStatus.textContent = `${rel} - video - ${fmtBytes(size)}`;
-              } else if (res.kind === "download_only") {
-                activeFileKind = "download_only";
-                const size = typeof res.size === "number" ? res.size : 0;
-                renderBlockedFileNotice(rel, String(res.reason || ""), Number(res.viewer_max_bytes || 0), size);
-                fileStatus.textContent = `${rel} - download only - ${fmtBytes(size)}`;
-              } else {
-                if (typeof res.text !== "string") throw new Error("invalid response");
-                activeFileKind = res.kind === "markdown" ? "markdown" : "text";
-                activeFileText = res.text;
-                activeFileEditable = Boolean(res.editable);
-                activeFileVersion = typeof res.version === "string" ? res.version : "";
-                if (viewMode === "preview" && activeFileKind === "markdown") {
-                  renderMarkdownPreview(rel, res.text);
-                } else {
-                  const rendered = await renderMonacoFile(rel, res.text, request.line, "", request);
-                  if (!rendered || !isCurrentFileOpenRequest(request)) return false;
-                }
-                const size = typeof res.size === "number" ? res.size : res.text.length;
-                const statusParts = [rel];
-                if (viewMode === "preview" && activeFileKind === "markdown") statusParts.push("preview");
-                if (!activeFileEditable) statusParts.push("read-only");
-                statusParts.push(fmtBytes(size));
-                fileStatus.textContent = statusParts.join(" - ");
-              }
-              applyFileMode();
-              rememberOpenedFile(rel, typeof res.path === "string" ? res.path : null);
-            }
-            rememberActiveFileSelection();
-            updateFileEditButton();
-            renderFilePickerMenu();
-            return true;
-          } catch (e) {
-            if (e && e.name === "AbortError") return false;
-            if (!isCurrentFileOpenRequest(request)) return false;
-            resetActiveFileBufferState();
-            fileStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
-            updateFileTouchToolbar();
-            return false;
-          } finally {
-            finalizeFileOpenRequest(request);
-          }
+        function handleFileViewerSessionUnavailable(sessionId) {
+          return fileViewerController.handleFileViewerSessionUnavailable(sessionId);
         }
+        async function applyFileLoadResult(rel, result, request, { viewMode = "file" } = {}) {
+          return await fileLoadResultRuntime.apply(rel, result, request, { viewMode });
+        }
+
         fileBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
           void showFileViewer();
         };
-        filePickerInput.onfocus = async () => {
-          if (!(await ensureCurrentFileViewerSession())) return;
-          resetFilePickerInput();
-          renderFilePickerMenu();
-          fileMenuOpen = true;
-          applyFileMenuState();
-        };
-        filePickerInput.onclick = async (e) => {
-          e.stopPropagation();
-          if (!(await ensureCurrentFileViewerSession())) return;
-          resetFilePickerInput();
-          renderFilePickerMenu();
-          fileMenuOpen = true;
-          applyFileMenuState();
-        };
-        filePickerInput.oninput = async () => {
-          if (!(await ensureCurrentFileViewerSession())) return;
-          filePickerSearchActive = true;
-          fileMenuFocus = -1;
-          renderFilePickerMenu();
-          fileMenuOpen = true;
-          applyFileMenuState();
-          const query = String(filePickerInput.value || "").trim();
-          if (!query || !(fileViewerSessionId || selected)) {
-            resetFileSearchState();
-            fileSearchSessionId = fileViewerSessionId || selected || "";
-            renderFilePickerMenu();
-            applyFileMenuState();
-            return;
-          }
-          scheduleSessionFileSearch(query);
-          renderFilePickerMenu();
-          applyFileMenuState();
-        };
-        filePickerInput.onblur = () => {
-          requestAnimationFrame(() => {
-            if (filePickerField.contains(document.activeElement)) return;
-            closeFilePickerMenu({ restoreInput: true });
-          });
-        };
-        filePickerInput.onkeydown = async (e) => {
-          if (!(await ensureCurrentFileViewerSession())) return;
-          const entries = renderFilePickerMenu();
-          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-            if (!entries || !entries.length) return;
-            e.preventDefault();
-            fileMenuOpen = true;
-            const delta = e.key === "ArrowDown" ? 1 : -1;
-            if (fileMenuFocus < 0) fileMenuFocus = delta > 0 ? 0 : entries.length - 1;
-            else fileMenuFocus = (fileMenuFocus + delta + entries.length) % entries.length;
-            renderFilePickerMenu();
-            applyFileMenuState();
-            const active = document.getElementById(`filePickerOption-${fileMenuFocus}`);
-            if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" });
-            return;
-          }
-          if (e.key === "Enter" && fileMenuOpen) {
-            const active = entries && entries.length ? entries[fileMenuFocus >= 0 ? fileMenuFocus : filePickerSearchActive ? 0 : -1] : null;
-            if (!active) return;
-            e.preventDefault();
-            if (active.createNew) {
-              void openDraftFilePathWithGuard(active.path);
-              return;
-            }
-            void openFilePathWithResolvedMode(active.path, { line: null, changed: Boolean(active.changed) }).catch((err) => {
-              fileStatus.textContent = `error: ${err && err.message ? err.message : "unable to inspect path"}`;
-            });
-            return;
-          }
-          if (e.key === "Escape" && fileMenuOpen) {
-            e.preventDefault();
-            e.stopPropagation();
-            closeFilePickerMenu({ restoreInput: true });
-            return;
-          }
-          if (e.key === "Tab" && fileMenuOpen) {
-            closeFilePickerMenu({ restoreInput: true });
-          }
-        };
+        filePickerInput.onfocus = () => filePickerInputRuntime.focus();
+        filePickerInput.onclick = (e) => filePickerInputRuntime.click(e);
+        filePickerInput.oninput = () => filePickerInputRuntime.input();
+        filePickerInput.onblur = () => filePickerInputRuntime.blur();
+        filePickerInput.onkeydown = (e) => filePickerInputRuntime.keydown(e);
         fileModeDiffBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          void setFileViewModeWithGuard(fileViewMode === "diff" ? fileNonDiffMode : "diff");
+          void handleFileDiffModeButtonPress();
         };
         fileModePreviewBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          if (!isMarkdownPreviewable(activeFilePath)) return;
-          void setFileViewModeWithGuard(fileViewMode === "preview" ? "file" : "preview");
+          void handleFilePreviewModeButtonPress();
         };
         fileEditBtn.onclick = async (e) => {
           e.preventDefault();
           e.stopPropagation();
-          if (fileSavePending) return;
-          if (fileEditMode) {
-            await saveActiveFileEdits({ exitEditMode: true });
-            return;
-          }
-          if (fileViewMode !== "file") {
-            const changed = await setFileViewModeWithGuard("file");
-            if (!changed) return;
-          }
-          if (!activeFileEditable || !isTextFileKind(activeFileKind)) return;
-          setFileEditMode(true);
+          await handleFileEditButtonPress();
         };
+        fileVideoPreviewBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void fileVideoPreviewRuntime.handleButtonPress();
+        };
+
         fileDownloadBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          if (!fileViewerSessionId || !activeFilePath) return;
-          const url = resolveAppUrl(`/api/sessions/${fileViewerSessionId}/file/download?path=${encodeURIComponent(activeFilePath)}`);
-          const link = document.createElement("a");
-          link.href = url;
-          link.rel = "noopener";
-          link.style.display = "none";
-          document.body.appendChild(link);
-          link.click();
-          link.remove();
+          fileDownloadRuntime.download(activeFileDownloadApiPath());
         };
-        bindFileTouchPress(fileTouchSelectBtn, () => {
+        codoxearFileViewer.bindFileTouchPress(fileTouchSelectBtn, () => {
           toggleFileTouchSelectionMode();
         });
-        bindFileTouchClick(fileTouchCopyBtn, () => {
+        codoxearFileViewer.bindFileTouchClick(fileTouchCopyBtn, () => {
           void copyActiveFileSelection();
         });
-        bindFileTouchClick(fileTouchPasteBtn, () => {
+        codoxearFileViewer.bindFileTouchClick(fileTouchPasteBtn, () => {
           void pasteFromClipboardIntoActiveFile();
         });
-        bindFileTouchPress(fileTouchUpBtn, () => {
-          focusActiveFileCodeEditor();
-          moveFileTouchSelection("up");
+        codoxearFileViewer.bindFileTouchPress(fileTouchUpBtn, () => {
+          handleFileTouchMoveButtonPress("up");
         });
-        bindFileTouchPress(fileTouchLeftBtn, () => {
-          focusActiveFileCodeEditor();
-          moveFileTouchSelection("left");
+        codoxearFileViewer.bindFileTouchPress(fileTouchLeftBtn, () => {
+          handleFileTouchMoveButtonPress("left");
         });
-        bindFileTouchPress(fileTouchDownBtn, () => {
-          focusActiveFileCodeEditor();
-          moveFileTouchSelection("down");
+        codoxearFileViewer.bindFileTouchPress(fileTouchDownBtn, () => {
+          handleFileTouchMoveButtonPress("down");
         });
-        bindFileTouchPress(fileTouchRightBtn, () => {
-          focusActiveFileCodeEditor();
-          moveFileTouchSelection("right");
+        codoxearFileViewer.bindFileTouchPress(fileTouchRightBtn, () => {
+          handleFileTouchMoveButtonPress("right");
         });
         fileCloseBtn.onclick = (e) => {
           e.preventDefault();
@@ -8282,85 +5534,26 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           void requestHideFileViewer();
         };
         fileBackdrop.onclick = () => void requestHideFileViewer();
-        $("#fileUnsavedSaveBtn").onclick = () => hideFileUnsavedDialog("save");
-        $("#fileUnsavedDiscardBtn").onclick = () => hideFileUnsavedDialog("discard");
-        $("#fileUnsavedCancelBtn").onclick = () => hideFileUnsavedDialog("cancel");
-        fileUnsavedBackdrop.onclick = () => hideFileUnsavedDialog("cancel");
+        $("#fileUnsavedSaveBtn").onclick = () => handleFileUnsavedSaveChoice();
+        $("#fileUnsavedDiscardBtn").onclick = () => handleFileUnsavedDiscardChoice();
+        $("#fileUnsavedCancelBtn").onclick = () => handleFileUnsavedCancelChoice();
+        fileUnsavedBackdrop.onclick = () => handleFileUnsavedCancelChoice();
         $("#filePasteInsertBtn").onclick = () => {
-          if (insertIntoActiveFileEditor(filePasteInput.value)) {
-            hideFilePasteDialog();
-            setToast("text inserted");
-          }
+          handleFilePasteInsert(filePasteInput.value);
         };
-        $("#filePasteCancelBtn").onclick = () => hideFilePasteDialog();
-        filePasteBackdrop.onclick = () => hideFilePasteDialog();
-        async function openFileReference(ref) {
-          if (!ref || typeof ref.path !== "string") return;
-          const rawPath = String(ref.path || "").trim();
-          const line = normalizeLineNumber(ref.line);
-          if (!rawPath) return;
-          const parsed = parseLocalFileRef(rawPath);
-          if (!parsed) {
-            setToast("unsupported file reference");
-            return;
-          }
-          if (!parsed.path.startsWith("/")) {
-            if (!selected) {
-              setToast("select a session first");
-              return;
-            }
-            void showFileViewer({ path: parsed.path, mode: "file", manual: false, line });
-            return;
-          }
-          if (selected) {
-            void showFileViewer({ path: parsed.path, mode: "file", manual: false, line });
-            return;
-          }
-          const currentRel = sessionRelativePath(parsed.path);
-          if (currentRel) {
-            void showFileViewer({ path: currentRel, mode: "file", manual: false, line });
-            return;
-          }
-          const match = [...sessionIndex.values()].find((s) => {
-            const cwd = String(s && s.cwd ? s.cwd : "").replace(/\/+$/, "");
-            return cwd && (parsed.path === cwd || parsed.path.startsWith(cwd + "/"));
-          });
-          if (!match) {
-            setToast("file is outside the known session roots");
-            return;
-          }
-          await selectSession(match.session_id);
-          const matchRoot = String(match.cwd || "").replace(/\/+$/, "");
-          const rel2 = parsed.path === matchRoot ? "." : parsed.path.slice(matchRoot.length + 1);
-          void showFileViewer({ path: rel2, mode: "file", manual: false, line });
-        }
-
-        async function confirmDirectorySession(rawPath) {
-          const cwd = String(rawPath || "").trim();
-          if (!cwd) return;
-          openNewSessionDialog({
-            cwd,
-            statusText: "Review resume or worktree options, then start the session.",
-          });
-        }
-
-        chatInner.addEventListener("click", async (e) => {
-          const target = e.target instanceof Element ? e.target.closest("a[data-file-path]") : null;
-          if (!target) return;
-          e.preventDefault();
-          const path = String(target.getAttribute("data-file-path") || "").trim();
-          const kind = String(target.getAttribute("data-file-kind") || "").trim();
-          const line = normalizeLineNumber(target.getAttribute("data-file-line"));
-          if (kind === "directory") {
-            await confirmDirectorySession(path);
-            return;
-          }
-          await openFileReference({ path, line });
+        $("#filePasteCancelBtn").onclick = () => hideFilePasteDialog({ restoreFocus: true });
+        filePasteBackdrop.onclick = () => hideFilePasteDialog({ restoreFocus: true });
+        chatInner.addEventListener("click", (e) => {
+          if (codeBlockCopyRuntime.handleClick(e)) return;
+          void fileReferenceRuntime.handleClick(e);
         });
-        document.addEventListener("click", (e) => {
+        fileDiff.addEventListener("click", (e) => {
+          void fileReferenceRuntime.handleClick(e);
+        });
+        addAppEvent(document, "click", (e) => {
           const t = e.target instanceof Element ? e.target : null;
           if (!t) return;
-          if (fileViewer.style.display === "flex" && fileMenuOpen && !t.closest("#fileCandRow")) {
+          if (isFileViewerOpen() && filePickerMenuState.isOpen() && !t.closest("#fileCandRow")) {
             closeFilePickerMenu({ restoreInput: true });
           }
           if (editDependencyMenuOpen && !t.closest("#editDependencyBtn") && !t.closest("#editDependencyMenu")) {
@@ -8377,10 +5570,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             newSessionModelMenuFocus = -1;
             applyDialogMenus();
           }
-          if (newSessionProviderMenuOpen && !t.closest("#newSessionProviderField") && !t.closest("#newSessionProviderMenu")) {
-            newSessionProviderMenuOpen = false;
-            applyDialogMenus();
-          }
           if (newSessionReasoningMenuOpen && !t.closest("#newSessionReasoningBtn") && !t.closest("#newSessionReasoningMenu")) {
             newSessionReasoningMenuOpen = false;
             applyDialogMenus();
@@ -8391,505 +5580,235 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
         });
         function handleFileTouchSelectionKeydown(e) {
-          if (!fileTouchSelectMode || !isFileTouchToolbarActive()) return;
-          if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
-          const target = e.target instanceof HTMLElement ? e.target : null;
-          if (target && isTextEntryElement(target) && !target.classList.contains("inputarea")) return;
-          if (target && !target.closest("#fileViewer")) return;
-          const key = String(e.key || "").toLowerCase();
-          if (key === "escape") {
-            e.preventDefault();
-            e.stopPropagation();
-            resetFileTouchSelectionState({ collapse: true });
-            return;
-          }
-          const direction = key === "h" ? "left" : key === "j" ? "down" : key === "k" ? "up" : key === "l" ? "right" : "";
-          if (!direction) {
-            const blocksEdit =
-              key === "enter" ||
-              key === "tab" ||
-              key === " " ||
-              key === "backspace" ||
-              key === "delete" ||
-              (key.length === 1 && !e.altKey && !e.ctrlKey && !e.metaKey);
-            if (!blocksEdit) return;
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-          }
-          e.preventDefault();
-          e.stopPropagation();
-          moveFileTouchSelection(direction);
+          return fileViewerController.handleFileTouchSelectionKeydown(e);
         }
-        document.addEventListener("keydown", handleFileTouchSelectionKeydown, true);
-        document.addEventListener("keydown", handleFileEditorDeleteKeydown, true);
-        document.addEventListener(
+        addAppEvent(document, "keydown", handleFileTouchSelectionKeydown, true);
+        addAppEvent(document, "keydown", handleFileEditorSaveShortcut, true);
+        addAppEvent(document, "keydown", handleFileEditorDeleteKeydown, true);
+        addAppEvent(
+          document,
           "beforeinput",
           (e) => {
-            if (Date.now() <= fileTouchDeleteNativeSuppressUntil && isFileEditorNativeDeleteEvent(e)) suppressFileEditorNativeDelete(e);
+            suppressFileEditorNativeDelete(e);
           },
           true
         );
-        document.addEventListener(
+        addAppEvent(
+          document,
           "input",
           (e) => {
-            if (Date.now() <= fileTouchDeleteNativeSuppressUntil && isFileEditorNativeDeleteEvent(e)) suppressFileEditorNativeDelete(e);
+            suppressFileEditorNativeDelete(e);
           },
           true
         );
-        document.addEventListener("keydown", (e) => {
-          if (e.key !== "Escape") return;
-          if (confirmAppDialog.style.display === "flex") {
+        addAppEvent(document, "keydown", (e) => {
+          if (e.key === "Tab" && appConfirm.style.display === "flex") {
+            const focusable = appConfirmFocusableControls();
             e.preventDefault();
-            resolveAppConfirmation(false);
+            e.stopPropagation();
+            if (!focusable.length) return;
+            const currentIndex = focusable.indexOf(document.activeElement);
+            const offset = e.shiftKey ? -1 : 1;
+            const nextIndex = currentIndex < 0 ? (e.shiftKey ? focusable.length - 1 : 0) : (currentIndex + offset + focusable.length) % focusable.length;
+            try {
+              focusable[nextIndex].focus({ preventScroll: true });
+            } catch {}
             return;
           }
-          if (filePasteDialog.style.display === "flex") {
-            hideFilePasteDialog();
+          if (e.key !== "Escape") return;
+          if (appConfirm.style.display === "flex") {
+            e.preventDefault();
+            e.stopPropagation();
+            resolveAppConfirm(false);
+            return;
+          }
+          if (filePasteDialogRuntime.isOpen()) {
+            hideFilePasteDialog({ restoreFocus: true });
             return;
           }
           if (fileUnsavedDialog.style.display === "flex") {
             hideFileUnsavedDialog("cancel");
             return;
           }
-          if (fileViewer.style.display === "flex") {
+          if (isFileViewerOpen()) {
             e.preventDefault();
             void requestHideFileViewer();
             return;
           }
-          if (sendChoice.style.display === "flex") hideSendChoice();
+          if (sendChoice.style.display === "flex") {
+            e.preventDefault();
+            e.stopPropagation();
+            closeSendChoiceDialog({ restoreFocus: true });
+            return;
+          }
           if (queueViewer.style.display === "flex") hideQueueViewer();
           if (helpViewer.style.display === "flex") hideHelpViewer();
           if (diagViewer.style.display === "flex") hideDiagViewer();
+          if (voiceController.isSettingsOpen()) hideVoiceSettingsDialog();
           if (editViewer.style.display === "flex") hideEditSession();
           if (newSessionViewer.style.display === "flex") hideNewSessionDialog();
         });
 
-        let confirmAppPending = null;
-        async function confirmApp(message, { confirmText = "Confirm" } = {}) {
-          if (confirmAppPending) return Promise.resolve(false);
-          return new Promise((resolve) => {
-            confirmAppPending = {
-              resolve,
-              returnFocus: document.activeElement instanceof HTMLElement ? document.activeElement : null,
-            };
-            confirmAppMessage.textContent = String(message || "");
-            confirmAppAcceptBtn.textContent = confirmText;
-            confirmAppBackdrop.style.display = "block";
-            confirmAppDialog.style.display = "flex";
-            requestAnimationFrame(() => confirmAppAcceptBtn.focus());
+        const handleSessionNavigationKeydown = (e) => {
+          if (e.defaultPrevented || !e.altKey || e.shiftKey || e.ctrlKey || e.metaKey) return;
+          if (isTextEntryElement(document.activeElement)) return;
+
+          const sessionCards = Array.from(document.querySelectorAll("#sessions .session[data-session-id]"));
+          let targetCard = null;
+          if (/^[1-9]$/.test(e.key)) {
+            targetCard = sessionCards[Number(e.key) - 1];
+          } else if (e.key === "j" || e.key === "ArrowDown" || e.key === "k" || e.key === "ArrowUp") {
+            const currentIndex = sessionCards.findIndex((card) => card.dataset.sessionId === selected);
+            if (currentIndex < 0) return;
+            const direction = e.key === "j" || e.key === "ArrowDown" ? 1 : -1;
+            targetCard = sessionCards[currentIndex + direction];
+          } else {
+            return;
+          }
+
+          const sessionId = targetCard && targetCard.dataset.sessionId;
+          if (!sessionId) return;
+          e.preventDefault();
+          void selectSession(sessionId);
+        };
+        addAppEvent(document, "keydown", handleSessionNavigationKeydown);
+        appEventCleanups.push(() => document.removeEventListener("keydown", handleSessionNavigationKeydown));
+
+        const queueController = (function instantiateQueueController() {
+          const codoxearQueue = window.CodoxearQueue;
+          if (!codoxearQueue || typeof codoxearQueue.createQueueController !== "function")
+            throw new Error("Codoxear queue controller failed to load");
+          return codoxearQueue.createQueueController({
+            queueBackdrop,
+            queueCloseBtn,
+            queueList,
+            queueEmpty,
+            queueViewer,
+            queueBtn: $("#queueBtn"),
+            getSelected: () => selected,
+            getSessionInfo: (sid) => sessionIndex.get(sid),
+            isAppDisposed: () => appDisposed,
+            api,
+            setToast,
+            clearCommitUnknownSend,
+            refreshSessions,
+            updateQueueBadge,
+            syncRecoveryUiForSession,
+            kickPoll,
+            setPollFastUntilMs: (ms) => { pollFastUntilMs = ms; },
+            handleAppAuthLoss,
+            prepareModalOpen,
+            afterModalVisibilityChanged,
+            el,
+            iconSvg,
+            confirmAction: (options) => confirmApp(options),
+            recoveryPanelFocusFallback: () => null,
           });
-        }
-        function resolveAppConfirmation(confirmed) {
-          const pending = confirmAppPending;
-          if (!pending) return;
-          confirmAppPending = null;
-          confirmAppBackdrop.style.display = "none";
-          confirmAppDialog.style.display = "none";
-          pending.resolve(!!confirmed);
-          if (pending.returnFocus && pending.returnFocus.isConnected) pending.returnFocus.focus();
-        }
-        confirmAppAcceptBtn.onclick = () => resolveAppConfirmation(true);
-        $("#confirmAppCancelBtn").onclick = () => resolveAppConfirmation(false);
-        confirmAppBackdrop.onclick = () => resolveAppConfirmation(false);
+        })();
 
-        let sendChoicePending = null;
-        function showSendChoice(raw) {
-          sendChoicePending = { sid: selected, text: raw };
-          sendChoiceBackdrop.style.display = "block";
-          sendChoice.style.display = "flex";
-        }
-        function hideSendChoice() {
-          sendChoicePending = null;
-          sendChoiceBackdrop.style.display = "none";
-          sendChoice.style.display = "none";
-        }
-        const sendChoiceNowBtn = $("#sendChoiceNow");
-        const sendChoiceLaterBtn = $("#sendChoiceLater");
-        const sendChoiceCancelBtn = $("#sendChoiceCancel");
-        if (sendChoiceNowBtn)
-          sendChoiceNowBtn.onclick = async () => {
-            const raw = sendChoicePending && sendChoicePending.text;
-            const sid = sendChoicePending && sendChoicePending.sid;
-            hideSendChoice();
-            if (!raw || !sid) return;
-            const ok = await sendText(raw, { sid });
-            if (ok && sid === selected && $("#msg").value === raw) clearComposer();
-          };
-        if (sendChoiceLaterBtn)
-          sendChoiceLaterBtn.onclick = async () => {
-            const raw = sendChoicePending && sendChoicePending.text;
-            const sid = sendChoicePending && sendChoicePending.sid;
-            hideSendChoice();
-            if (!raw || !sid) return;
-            const ok = await enqueueComposerText(raw, { sid });
-            if (ok && sid === selected && $("#msg").value === raw) clearComposer();
-          };
-        if (sendChoiceCancelBtn)
-          sendChoiceCancelBtn.onclick = () => {
-            hideSendChoice();
-          };
-        sendChoiceBackdrop.onclick = () => hideSendChoice();
-
-        const queueUpdateTimers = new Map();
-        const queueMutationLocks = new Set();
-        const queuePendingDeletes = new Set();
-        const queueDraftTexts = new Map();
-        let queueLastEditMs = 0;
-        let queueSubmitBusy = false;
-        let queueViewerSid = null;
-        let queueViewerItems = [];
-
-        function normalizeQueueItems(data) {
-          if (data && Array.isArray(data.items)) {
-            return data.items
-              .filter((item) => item && typeof item === "object")
-              .map((item) => ({
-                id: typeof item.id === "string" ? item.id : "",
-                text: typeof item.text === "string" ? item.text : "",
-                sending: !!item.sending,
-              }))
-              .filter((item) => item.id && item.text.trim());
-          }
-          if (data && Array.isArray(data.queue)) {
-            return data.queue
-              .filter((text) => typeof text === "string" && text.trim())
-              .map((text, idx) => ({ id: `legacy-${idx}`, text, sending: false }));
-          }
-          return [];
+        function selectedSessionLaunchFailed() {
+          return sessionLaunchFailed(selected ? sessionIndex.get(selected) : null);
         }
 
         function syncQueueSubmitState() {
-          if (queueBtn) queueBtn.disabled = !!queueSubmitBusy;
+          queueController.syncQueueSubmitState();
         }
 
-        async function enqueueComposerText(raw, { sid = null } = {}) {
-          const sessionId = sid || selected;
-          const text = String(raw || "");
-          if (!sessionId || !text.trim()) return false;
-          if (queueSubmitBusy) return false;
-          queueSubmitBusy = true;
-          syncQueueSubmitState();
-          try {
-            const res = await api(`/api/sessions/${sessionId}/enqueue`, { method: "POST", body: { text } });
-            const qn = res && typeof res.queue_len === "number" ? res.queue_len : null;
-            if (res && res.queued) setToast(`queued (${qn ?? "?"})`);
-            else setToast("sent");
-            pollFastUntilMs = Date.now() + 5000;
-            kickPoll(0);
-            await refreshSessions();
-            updateQueueBadge();
-            if (queueViewer.style.display === "flex" && (queueViewerSid || selected) === sessionId) {
-              await refreshQueueViewer();
-            }
-            return true;
-          } catch (e) {
-            setToast(`queue error: ${e && e.message ? e.message : "unknown error"}`);
-            return false;
-          } finally {
-            queueSubmitBusy = false;
-            syncQueueSubmitState();
-          }
-        }
-
-        async function deleteQueueItem(sid, itemId) {
-          const key = String(itemId || "");
-          if (!sid || !key) return;
-          const timerKey = `${sid}:${key}`;
-          const pendingUpdate = queueUpdateTimers.get(timerKey);
-          if (pendingUpdate) {
-            clearTimeout(pendingUpdate);
-            queueUpdateTimers.delete(timerKey);
-          }
-          if (queueMutationLocks.has(key)) {
-            queuePendingDeletes.add(key);
-            setToast("delete queued");
-            return;
-          }
-          queueLastEditMs = 0;
-          queuePendingDeletes.delete(key);
-          queueMutationLocks.add(key);
-          queueViewerItems = queueViewerItems.filter((item) => String(item.id || "") !== key);
-          queueDraftTexts.delete(key);
-          renderQueueList();
-          try {
-            await api(`/api/sessions/${sid}/queue/delete`, { method: "POST", body: { id: key } });
-            await refreshQueueViewer();
-            await refreshSessions();
-            updateQueueBadge();
-          } catch (e) {
-            await refreshQueueViewer();
-            setToast(`queue delete error: ${e && e.message ? e.message : "unknown error"}`);
-          } finally {
-            queueMutationLocks.delete(key);
-          }
-        }
-
-        async function moveQueueItem(sid, itemId, toIndex) {
-          const key = String(itemId || "");
-          if (!sid || !key) return;
-          if (queueMutationLocks.has(key)) {
-            setToast("queue item busy; retry in a moment");
-            return;
-          }
-          queueMutationLocks.add(key);
-          try {
-            await api(`/api/sessions/${sid}/queue/move`, { method: "POST", body: { id: key, to_index: toIndex } });
-            await refreshQueueViewer();
-            await refreshSessions();
-            updateQueueBadge();
-          } catch (e) {
-            setToast(`queue move error: ${e && e.message ? e.message : "unknown error"}`);
-          } finally {
-            queueMutationLocks.delete(key);
-          }
-        }
-
-        function scheduleQueueUpdate(sid, itemId, text) {
-          if (!sid) return;
-          const itemKey = String(itemId || "");
-          if (!itemKey) return;
-          if (!String(text || "").trim()) {
-            const key0 = `${sid}:${itemKey}`;
-            const existing0 = queueUpdateTimers.get(key0);
-            if (existing0) clearTimeout(existing0);
-            queueUpdateTimers.delete(key0);
-            return;
-          }
-          const key = `${sid}:${itemKey}`;
-          const existing = queueUpdateTimers.get(key);
-          if (existing) clearTimeout(existing);
-          const t = setTimeout(async () => {
-            queueUpdateTimers.delete(key);
-            queueMutationLocks.add(itemKey);
-            try {
-              await api(`/api/sessions/${sid}/queue/update`, { method: "POST", body: { id: itemKey, text } });
-              queueLastEditMs = 0;
-              queueDraftTexts.set(itemKey, text);
-              await refreshQueueViewer();
-              await refreshSessions();
-              updateQueueBadge();
-            } catch (e) {
-              setToast(`queue update error: ${e && e.message ? e.message : "unknown error"}`);
-            } finally {
-              queueMutationLocks.delete(itemKey);
-              if (queuePendingDeletes.has(itemKey)) {
-                queuePendingDeletes.delete(itemKey);
-                void deleteQueueItem(sid, itemKey);
-              }
-            }
-          }, 350);
-          queueUpdateTimers.set(key, t);
-        }
-
-        function renderQueueList() {
-          queueList.innerHTML = "";
-          const sid = queueViewerSid || selected;
-          if (!sid) {
-            queueEmpty.style.display = "block";
-            return;
-          }
-          const q = Array.isArray(queueViewerItems) ? queueViewerItems : [];
-          queueEmpty.style.display = q.length ? "none" : "block";
-          if (!q.length) return;
-          const autosizeQueueText = (ta) => {
-            if (!ta) return;
-            ta.style.height = "0px";
-            ta.style.height = `${Math.max(58, Math.min(220, ta.scrollHeight))}px`;
-          };
-          const minMoveIndex = q[0] && q[0].sending ? 1 : 0;
-          q.forEach((item, idx) => {
-            const itemId = String(item.id || "");
-            const sending = !!item.sending;
-            const locked = sending || queueMutationLocks.has(itemId);
-            const row = el("div", { class: "queueItem" });
-            const editorShell = el("div", { class: "queueEditorShell" });
-            const ta = el("textarea", { class: "queueText", "aria-label": `Queued message ${idx + 1}` });
-            ta.value = queueDraftTexts.has(itemId) ? String(queueDraftTexts.get(itemId) || "") : String(item.text || "");
-            ta.disabled = locked;
-            ta.oninput = () => {
-              queueLastEditMs = Date.now();
-              const nextText = String(ta.value || "");
-              queueDraftTexts.set(itemId, nextText);
-              autosizeQueueText(ta);
-              scheduleQueueUpdate(sid, itemId, nextText);
-            };
-            autosizeQueueText(ta);
-            editorShell.appendChild(ta);
-            const actions = el("div", { class: "queueActionRail" });
-            if (sending) actions.appendChild(el("div", { class: "queueSendingTag muted", text: "Sending" }));
-            const up = el("button", { class: "icon-btn queueIconBtn", title: "Move up", "aria-label": "Move up", type: "button", html: iconSvg("up") });
-            up.disabled = locked || idx <= minMoveIndex;
-            up.onclick = (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              void moveQueueItem(sid, itemId, idx - 1);
-            };
-            const down = el("button", { class: "icon-btn queueIconBtn", title: "Move down", "aria-label": "Move down", type: "button", html: iconSvg("down") });
-            down.disabled = locked || idx >= q.length - 1;
-            down.onclick = (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              void moveQueueItem(sid, itemId, idx + 1);
-            };
-            const del = el("button", { class: "icon-btn queueIconBtn danger", title: "Delete", "aria-label": "Delete", type: "button", html: iconSvg("trash") });
-            del.disabled = locked;
-            del.onclick = async (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              await deleteQueueItem(sid, itemId);
-            };
-            actions.appendChild(up);
-            actions.appendChild(down);
-            actions.appendChild(del);
-            row.appendChild(editorShell);
-            row.appendChild(actions);
-            queueList.appendChild(row);
-          });
+        async function enqueueComposerText(raw, opts) {
+          return queueController.enqueueComposerText(raw, opts);
         }
 
         async function refreshQueueViewer() {
-          const sid = queueViewerSid || selected;
-          if (!sid) return;
-          if (queueViewer.style.display === "flex" && Date.now() - queueLastEditMs < 900) return;
-          queueEmpty.textContent = "Loading...";
-          try {
-            const data = await api(`/api/sessions/${sid}/queue`);
-            if (queueViewerSid && queueViewerSid !== sid) return;
-            const q = normalizeQueueItems(data);
-            const nextDrafts = new Map();
-            q.forEach((item) => {
-              const itemId = String(item.id || "");
-              if (!itemId) return;
-              if (queueDraftTexts.has(itemId)) {
-                const draft = String(queueDraftTexts.get(itemId) || "");
-                if (draft.trim()) {
-                  item.text = draft;
-                  nextDrafts.set(itemId, draft);
-                  return;
-                }
-              }
-              nextDrafts.set(itemId, String(item.text || ""));
-            });
-            queueDraftTexts.clear();
-            nextDrafts.forEach((value, key) => queueDraftTexts.set(key, value));
-            queueViewerSid = sid;
-            queueViewerItems = q;
-            queueEmpty.textContent = "No queued messages.";
-            renderQueueList();
-          } catch (e) {
-            if (queueViewerSid && queueViewerSid !== sid) return;
-            queueViewerSid = sid;
-            queueViewerItems = [];
-            queueEmpty.textContent = `Queue unavailable: ${e && e.message ? e.message : "unknown error"}`;
-            setToast(`queue load error: ${e && e.message ? e.message : "unknown error"}`);
-            renderQueueList();
-          }
+          return queueController.refreshQueueViewer();
         }
 
-        function showQueueViewer() {
-          if (!selected) return;
-          queueViewerSid = selected;
-          queueBackdrop.style.display = "block";
-          queueViewer.style.display = "flex";
-          void refreshQueueViewer();
+        function showQueueViewer(opts) {
+          return queueController.showQueueViewer(opts);
         }
 
         function hideQueueViewer() {
-          queueBackdrop.style.display = "none";
-          queueViewer.style.display = "none";
-          queueViewerSid = null;
-          queueViewerItems = [];
+          return queueController.hideQueueViewer();
         }
 
-        function showHelpViewer() {
+        function showHelpViewer({ opener = null } = {}) {
+          helpReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          prepareModalOpen();
           helpBackdrop.style.display = "block";
           helpViewer.style.display = "flex";
+          afterModalVisibilityChanged();
+          focusModalCloseButton(helpViewer, helpCloseBtn);
         }
         function hideHelpViewer() {
+          const wasOpen = isModalTargetOpen(helpViewer);
+          const focusTarget = helpReturnFocusEl;
+          helpReturnFocusEl = null;
           helpBackdrop.style.display = "none";
           helpViewer.style.display = "none";
+          afterModalVisibilityChanged();
+          if (wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(helpViewer));
         }
 
-        async function showDiagViewer() {
-          if (!selected) return;
-          diagContent.innerHTML = "";
-          diagStatus.textContent = "Loading...";
-          diagBackdrop.style.display = "block";
-          diagViewer.style.display = "flex";
-          try {
-            const d = await api(`/api/sessions/${selected}/diagnostics`);
-            diagStatus.textContent = "";
-            const now = Date.now() / 1000;
-            const addRow = (label, value, { mono = false } = {}) => {
-              const v = value == null || value === "" ? "-" : String(value);
-              const row = el("div", { class: "detailsRow" });
-              row.appendChild(el("div", { class: "detailsLabel", text: String(label || "") }));
-              row.appendChild(el("div", { class: mono ? "detailsValue mono" : "detailsValue", text: v }));
-              diagContent.appendChild(row);
-            };
-            const age = (ts) => {
-              const t = Number(ts);
-              if (!Number.isFinite(t) || t <= 0) return "";
-              const s = Math.max(0, Math.floor(now - t));
-              return fmtRelativeAge(s);
-            };
-            addRow("Session", d && d.session_id ? d.session_id : "-");
-            addRow("Thread", d && d.thread_id ? d.thread_id : "-");
-            addRow("Owned", d ? sessionLaunchLabel(d).replace("-owned", "") : "-");
-            addRow("Busy", d && typeof d.busy === "boolean" ? (d.busy ? "busy" : "idle") : "-");
-            addRow("Queue", d && typeof d.queue_len === "number" ? String(d.queue_len) : "-");
-            addRow("CWD", d && d.cwd ? d.cwd : "-", { mono: true });
-            addRow("Started", d && typeof d.start_ts === "number" ? `${fmtTs(d.start_ts)}${age(d.start_ts) ? " (" + age(d.start_ts) + ")" : ""}` : "-");
-            addRow(
-              "Updated",
-              d && typeof d.updated_ts === "number" ? `${fmtTs(d.updated_ts)}${age(d.updated_ts) ? " (" + age(d.updated_ts) + ")" : ""}` : "-"
-            );
-            addRow("Broker PID", d && typeof d.broker_pid === "number" ? String(d.broker_pid) : "-");
-            addRow("Agent", d ? agentBackendDisplayName(d.agent_backend) : "-");
-            addRow("Agent PID", d && typeof d.codex_pid === "number" ? String(d.codex_pid) : "-");
-	            addRow("Log", d && d.log_path ? d.log_path : "-", { mono: true });
-	            addRow("tmux", d && d.tmux_session ? `${d.tmux_session}${d.tmux_window ? ":" + d.tmux_window : ""}` : "-");
-	            addRow("Branch", d && d.git_branch ? d.git_branch : "-");
-	            addRow("Provider", d && d.provider_choice ? d.provider_choice : d && d.model_provider ? d.model_provider : "-");
-	            addRow("Model", d && d.model ? d.model : "-");
-	            addRow("Reasoning", d && d.reasoning_effort ? d.reasoning_effort : "-");
-	            addRow("Service tier", d && d.service_tier ? d.service_tier : "-");
-	            addRow("Priority", d && typeof d.final_priority === "number" ? Number(d.final_priority).toFixed(4) : "-");
-	            addRow("Priority offset", d && typeof d.priority_offset === "number" ? formatPriorityOffset(d.priority_offset) : "-");
-	            addRow("Snooze", d && typeof d.snooze_until === "number" ? fmtTs(d.snooze_until) : "-");
-	            addRow("Depends on", d && d.dependency_session_id ? d.dependency_session_id : "-");
-	            addRow("UI", UI_VERSION);
-	            const tok = d && d.token && typeof d.token === "object" ? d.token : null;
-	            if (tok) {
-	              const ctx = Number(tok.context_window);
-	              const used = Number(tok.tokens_in_context);
-	              const pct = Number(tok.percent_remaining);
-              if (Number.isFinite(ctx) && Number.isFinite(used) && ctx > 0 && used >= 0) {
-                const p = Number.isFinite(pct) ? Math.max(0, Math.min(100, Math.round(pct))) : null;
-                const maxInput = Number(tok.max_input_tokens);
-                const reserved = Number(tok.reserved_tokens);
-                const effectiveMaxInput = Number.isFinite(maxInput) && maxInput >= 0 ? maxInput : ctx;
-                const effectiveReserved = Number.isFinite(reserved) && reserved >= 0 ? reserved : Math.max(ctx - effectiveMaxInput, 0);
-                const txt = p === null ? `${used}/${effectiveMaxInput}` : `${used}/${effectiveMaxInput} (${p}% left; ${effectiveReserved} reserved)`;
-                addRow("Context", txt);
-              }
-            }
-          } catch (e) {
-            diagStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
-          }
-        }
-        function hideDiagViewer() {
-          diagBackdrop.style.display = "none";
-          diagViewer.style.display = "none";
+        // Details/diagnostics modal state, rendering decisions, and the
+        // New-like-this / Copy conversation / Copy details / show / hide
+        // behavior live in the CodoxearDiagnostics controller
+        // (codoxear/static/app_diagnostics.js).
+        // app.js owns DOM construction for the diag nodes and the thin
+        // delegating wrappers below; all diag rendering authority is delegated.
+        const diagController = (function instantiateDiagnosticsController() {
+          const codoxearDiagnostics = window.CodoxearDiagnostics;
+          if (!codoxearDiagnostics || typeof codoxearDiagnostics.createDiagnosticsController !== "function")
+            throw new Error("Codoxear diagnostics controller failed to load");
+          return codoxearDiagnostics.createDiagnosticsController({
+            diagBackdrop,
+            diagViewer,
+            diagContent,
+            diagStatus,
+            diagCloseBtn,
+            diagNewLikeBtn,
+            diagCopyConversationBtn,
+            diagCopyBtn,
+            getSelected: () => selected,
+            getSessionInfo: (sid) => sessionIndex.get(sid),
+            api,
+            setToast,
+            copyToClipboard,
+            copyConversation,
+            openNewSessionDialog,
+            recoveryDetailsText,
+            launchPresetFromSessionInfo,
+            redactedLaunchErrorText,
+            sessionLaunchLabel,
+            agentBackendDisplayName,
+            diagnosticsProviderDisplay,
+            diagnosticsCopyText,
+            fmtTs,
+            fmtRelativeAge,
+            formatPriorityOffset,
+            prepareModalOpen,
+            afterModalVisibilityChanged,
+            el,
+            uiVersion: UI_VERSION,
+          });
+        })();
+
+        diagNewLikeBtn.onclick = (e) => diagController.onNewLikeClick(e);
+        diagCopyConversationBtn.onclick = (e) => void diagController.onCopyConversationClick(e);
+        diagCopyBtn.onclick = (e) => diagController.onCopyClick(e);
+
+        async function showDiagViewer(opts) {
+          return diagController.show(opts);
         }
 
-        const queueBtn = $("#queueBtn");
+        function hideDiagViewer(opts) {
+          return diagController.hide(opts);
+        }
+
         if (queueBtn) {
           queueBtn.onclick = (e) => {
             e.preventDefault();
             e.stopPropagation();
-            if (sessionLaunchFailed(sessionIndex.get(selected))) {
+            const selectedInfo = sessionIndex.get(selected);
+            if (sessionLaunchFailed(selectedInfo)) {
               setToast("failed session cannot receive messages");
               return;
             }
@@ -8898,11 +5817,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               if (!selected) return;
               const sid = selected;
               void enqueueComposerText(raw, { sid }).then((ok) => {
-                if (ok && selected === sid && $("#msg").value === raw) clearComposer();
+                if (ok && selected === sid && $("#msg").value === raw) clearComposerInput();
               });
               return;
             }
-            showQueueViewer();
+            showQueueViewer({ opener: e.currentTarget });
           };
         }
         syncQueueSubmitState();
@@ -8916,7 +5835,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         $("#helpBtnSide").onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          showHelpViewer();
+          showHelpViewer({ opener: e.currentTarget });
         };
         $("#settingsBtnSide").onclick = (e) => {
           e.preventDefault();
@@ -8933,7 +5852,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         diagBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          void showDiagViewer();
+          void showDiagViewer({ opener: e.currentTarget });
         };
         diagCloseBtn.onclick = (e) => {
           e.preventDefault();
@@ -9004,7 +5923,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         $("#newBtn").onclick = async () => {
           openNewSessionDialog();
         };
-	        interruptBtn.onclick = async () => {
+        $("#chatEmptyNewBtn").onclick = async () => {
+          openNewSessionDialog();
+        };
+	        async function interruptSelectedSession() {
 	          if (!selected) return;
 	          try {
 	            setToast("interrupting...");
@@ -9014,11 +5936,30 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           } catch (e) {
             setToast(`interrupt error: ${e.message}`);
           }
+        }
+        interruptBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void interruptSelectedSession();
         };
+        if (composerStopBtn) {
+          composerStopBtn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            void interruptSelectedSession();
+          };
+        }
 
         $("#logoutBtnSide").onclick = async () => {
-          await api("/api/logout", { method: "POST" });
-          renderLogin(renderApp);
+          try {
+            await api("/api/logout", { method: "POST" });
+          } catch (e) {
+            console.error("logout failed", e);
+          } finally {
+            if (appDisposed) return;
+            cleanupApp();
+            renderLogin(renderApp);
+          }
         };
 
         toggleSidebarBtn.onclick = () => {
@@ -9030,49 +5971,28 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         };
 	        backdrop.onclick = () => setSidebarOpen(false);
 
-	        chat.addEventListener("scroll", () => {
-	          const cur = chat.scrollTop;
-	          const d = cur - lastScrollTop;
-	          lastScrollTop = cur;
-	          if (d < 0) autoScroll = false;
-          else if (isNearBottom()) autoScroll = true;
-          if (loadingOlder && cur > OLDER_CANCEL_PX) invalidateOlderLoad();
-          if (cur <= OLDER_TOP_TRIGGER_PX && d <= 0) maybeAutoLoadOlder();
-          syncJumpButton();
+        chat.addEventListener("scroll", () => {
+          transcriptScrollRuntime.handleScroll();
         });
         chat.addEventListener(
           "wheel",
           (e) => {
-            if (e.deltaY < 0) {
-              autoScroll = false;
-              syncJumpButton();
-              maybeAutoLoadOlder();
-            }
+            transcriptScrollRuntime.handleWheel(e);
           },
           { passive: true }
         );
-        let touchY = null;
         chat.addEventListener(
           "touchstart",
           (e) => {
-            const t = e.touches && e.touches[0];
-            touchY = t ? t.clientY : null;
+            transcriptScrollRuntime.handleTouchStart(e);
           },
           { passive: true }
         );
         chat.addEventListener(
           "touchmove",
           (e) => {
-            const t = e.touches && e.touches[0];
-            if (!t || touchY === null) return;
-            const dy = t.clientY - touchY;
-            touchY = t.clientY;
             // Finger moves down -> content scrolls up.
-            if (dy > 0) {
-              autoScroll = false;
-              syncJumpButton();
-              maybeAutoLoadOlder();
-            }
+            transcriptScrollRuntime.handleTouchMove(e);
           },
           { passive: true }
         );
@@ -9082,10 +6002,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         olderBtn.onclick = () => {
           void loadOlderMessages({ auto: false });
         };
+        olderRetryBtn.onclick = () => {
+          clearOlderLoadError();
+          void loadOlderMessages({ auto: false });
+        };
 
-         const textarea = $("#msg");
-         const msgPh = $("#msgPh");
-         const imgInput = $("#imgInput");
          const isIOS =
            /iP(hone|od|ad)/.test(navigator.userAgent || "") ||
            (navigator.platform === "MacIntel" && navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
@@ -9125,7 +6046,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	             }
 	             updateAppHeightVar();
 	             normalizePageScroll();
-	             if (preserveChatBottom && (autoScroll || isNearBottom())) scrollToBottom();
+	             if (preserveChatBottom && transcriptScrollRuntime.shouldAutoScrollOrNearBottom()) transcriptScrollRuntime.scrollToBottom();
 	             if (!isIOSViewportGuardActive()) {
 	               iosViewportGuardTimer = null;
 	               return;
@@ -9145,13 +6066,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	             }
 	             if (document.activeElement === textarea || isIOSViewportGuardActive()) {
 	               normalizePageScroll();
-	               if (autoScroll || isNearBottom()) requestAnimationFrame(() => scrollToBottom());
+	               if (transcriptScrollRuntime.shouldAutoScrollOrNearBottom()) transcriptScrollRuntime.scheduleScrollToBottom();
 	             }
 	           };
-	           window.visualViewport.addEventListener("resize", onViewportShift);
-	           window.visualViewport.addEventListener("scroll", onViewportShift);
+	           addAppEvent(window.visualViewport, "resize", onViewportShift);
+	           addAppEvent(window.visualViewport, "scroll", onViewportShift);
 	         }
-         const attachBtn = $("#attachBtn");
          if (!attachBadgeEl) {
            attachBadgeEl = el("span", { class: "attachBadge", id: "attachBadge" });
            attachBtn.appendChild(attachBadgeEl);
@@ -9160,53 +6080,195 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           queueBadgeEl = el("span", { class: "attachBadge queueBadge", id: "queueBadge" });
           queueBtn.appendChild(queueBadgeEl);
         }
+        function normalizedStagedAttachments(list) {
+          if (!Array.isArray(list)) return [];
+          return list
+            .filter((item) => item && typeof item === "object" && typeof item.id === "string" && item.id)
+            .map((item) => ({
+              id: String(item.id),
+              display_name: String(item.display_name || item.filename || "file"),
+              filename: String(item.filename || item.display_name || "file"),
+              size: Number.isFinite(Number(item.size)) ? Number(item.size) : 0,
+              created_ts: Number.isFinite(Number(item.created_ts)) ? Number(item.created_ts) : 0,
+            }));
+        }
+        function attachmentIdentityText(item) {
+          const name = item && (item.display_name || item.filename) ? String(item.display_name || item.filename) : "staged attachment";
+          const id = item && item.id ? String(item.id).slice(0, 8) : "";
+          const size = item && Number.isFinite(Number(item.size)) ? fmtBytes(Number(item.size)) : "0 B";
+          return id ? `${name} · ${size} · attachment ${id}` : `${name} · ${size}`;
+        }
+        function setStagedAttachments(list) {
+          stagedAttachments = normalizedStagedAttachments(list);
+          attachedFiles = stagedAttachments.length;
+          renderStagedAttachments();
+          if (textarea) resizeComposer();
+          projectSelectedAttachmentIndicator();
+        }
         const setAttachCount = (n) => {
-          const next = Math.max(0, Number(n) || 0);
-          attachedFiles = next;
+          attachedFiles = Math.max(0, Number(n) || 0);
+          if (attachedFiles === 0 && stagedAttachments.length) stagedAttachments = [];
+          renderStagedAttachments();
+          projectSelectedAttachmentIndicator();
+        };
+        function setSelectedSessionStagedAttachments(list) {
+          if (selected) {
+            const info = sessionIndex.get(selected);
+            if (info) {
+              info.staged_attachments = normalizedStagedAttachments(list);
+              info.pending_attachment = info.staged_attachments.length > 0;
+              sessionIndex.set(selected, info);
+            }
+          }
+          setStagedAttachments(list);
+        }
+        function syncStagedAttachmentsFromSelectedSession() {
+          const info = selected ? sessionIndex.get(selected) : null;
+          setStagedAttachments(info && Array.isArray(info.staged_attachments) ? info.staged_attachments : []);
+        }
+        function renderStagedAttachments() {
+          const tray = $("#stagedAttachments");
+          if (!tray) return;
+          tray.innerHTML = "";
+          if (!stagedAttachments.length) {
+            tray.style.display = "none";
+            return;
+          }
+          tray.style.display = "flex";
+          for (const item of stagedAttachments) {
+            const chip = el("div", { class: "stagedAttachmentChip", title: attachmentIdentityText(item) });
+            chip.appendChild(el("span", { class: "stagedAttachmentName", text: item.display_name || item.filename || "file" }));
+            chip.appendChild(el("span", { class: "stagedAttachmentMeta", text: fmtBytes(item.size || 0) }));
+            const removeBtn = el("button", { class: "stagedAttachmentRemove", type: "button", text: "×", title: `Remove ${item.display_name || "attachment"}`, "aria-label": `Remove ${item.display_name || "attachment"}` });
+            removeBtn.onclick = async () => {
+              if (!selected) return;
+              const sid = selected;
+              try {
+                const res = await api(`/api/sessions/${sid}/attachments/delete`, { method: "POST", body: { id: item.id } });
+                if (selected === sid) {
+                  setSelectedSessionStagedAttachments(res && Array.isArray(res.attachments) ? res.attachments : []);
+                  setToast("attachment removed");
+                  void refreshSessions().catch((e) => {
+                    if (e && e.status === 401) handleAppAuthLoss();
+                    else console.error("refreshSessions failed", e);
+                  });
+                }
+              } catch (err) {
+                if (err && err.status === 401) {
+                  handleAppAuthLoss();
+                  return;
+                }
+                if (selected === sid) setToast(`remove attachment error: ${err && err.message ? err.message : "unknown error"}`);
+              }
+            };
+            chip.appendChild(removeBtn);
+            tray.appendChild(chip);
+          }
+          const clearBtn = el("button", { class: "stagedAttachmentsClear", type: "button", text: "Clear", title: "Clear staged attachments", "aria-label": "Clear staged attachments" });
+          clearBtn.onclick = async () => {
+            if (!selected) return;
+            const sid = selected;
+            try {
+              const res = await api(`/api/sessions/${sid}/attachments/clear`, { method: "POST", body: {} });
+              if (selected === sid) {
+                setSelectedSessionStagedAttachments(res && Array.isArray(res.attachments) ? res.attachments : []);
+                setToast("attachments cleared");
+                void refreshSessions().catch((e) => {
+                  if (e && e.status === 401) handleAppAuthLoss();
+                  else console.error("refreshSessions failed", e);
+                });
+              }
+            } catch (err) {
+              if (err && err.status === 401) {
+                handleAppAuthLoss();
+                return;
+              }
+              if (selected === sid) setToast(`clear attachments error: ${err && err.message ? err.message : "unknown error"}`);
+            }
+          };
+          tray.appendChild(clearBtn);
+        }
+        // The visible attachment indicator is a projection of the selected
+        // session's server-owned staged attachment list; the legacy
+        // pending_attachment flag is only a compatibility fallback.
+        function projectSelectedAttachmentIndicator() {
           if (!attachBadgeEl) return;
-          if (next > 0) {
-            attachBadgeEl.textContent = String(next);
+          const sessionInfo = selected ? sessionIndex.get(selected) : null;
+          const serverListCount = sessionInfo && Array.isArray(sessionInfo.staged_attachments) ? normalizedStagedAttachments(sessionInfo.staged_attachments).length : 0;
+          const serverPending = Boolean(sessionInfo && sessionInfo.pending_attachment);
+          const visible = Math.max(stagedAttachments.length, serverListCount, serverPending ? 1 : 0);
+          if (visible > 0) {
+            attachBadgeEl.textContent = String(visible);
             attachBadgeEl.style.display = "inline-flex";
           } else {
             attachBadgeEl.textContent = "";
             attachBadgeEl.style.display = "none";
           }
         };
+        // Mutate the selected session's cached pending_attachment only when the
+        // frontend has direct evidence it changed (successful attach -> true;
+        // successful send with allow_pending_attachment -> false; successful
+        // pending_attachment/clear -> false). This keeps the cached value in
+        // step with what the server now knows until the next refreshSessions()
+        // returns the authoritative value, so the indicator does not re-render
+        // against stale pending_attachment=true right after a send/clear.
+        function setSelectedSessionPendingAttachment(value) {
+          if (!selected) return false;
+          const info = sessionIndex.get(selected);
+          if (!info) return false;
+          info.pending_attachment = Boolean(value);
+          if (!value) info.staged_attachments = [];
+          sessionIndex.set(selected, info);
+          if (!value) setStagedAttachments([]);
+          else projectSelectedAttachmentIndicator();
+          return true;
+        }
+        function attachmentBlockerForSession(sessionId, sessionInfo = null) {
+          if (!sessionId) return "Select a session to attach a file";
+          const info = sessionInfo || sessionIndex.get(sessionId) || null;
+          if (info && sessionLaunchFailed(info)) return "Failed launch cannot receive file attachments";
+          if (info && sessionHasUnknownSend(info)) return "Resolve the unknown send before attaching a file";
+          if (info && sessionIsOrphanRecovery(info)) return "Missing session can only be reviewed";
+          if (info && sessionHasOrphanQueueRecovery(info)) return "Review preserved queued recovery items before attaching a file";
+          if (sending) return "Wait for the current send to finish before attaching a file";
+          return "";
+        }
+        function latestAttachmentBlockerForSession(sessionId) {
+          return attachmentBlockerForSession(sessionId, sessionId ? sessionIndex.get(sessionId) || null : null);
+        }
+        function syncAttachButtonState() {
+          const attachControl = $("#attachBtn");
+          if (!attachControl) return;
+          const selectedInfo = selected ? sessionIndex.get(selected) || null : null;
+          const attachBlocker = attachmentBlockerForSession(selected, selectedInfo);
+          const attachLabel = attachBlocker || `Attach file (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})`;
+          attachControl.disabled = Boolean(attachBlocker);
+          attachControl.title = attachLabel;
+          attachControl.setAttribute("aria-label", attachLabel);
+        }
         setAttachCount(0);
-        const attachHint = `Attach file (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})`;
-        attachBtn.title = attachHint;
-        attachBtn.setAttribute("aria-label", attachHint);
+        syncAttachButtonState();
+        if (!selected) {
+          attachBtn.disabled = true;
+          attachBtn.title = "Select a session to attach a file";
+          attachBtn.setAttribute("aria-label", "Select a session to attach a file");
+        }
         updateQueueBadge();
-	        function autoGrow() {
-	          const basePx = parseFloat(getComputedStyle(textarea).minHeight || "0") || 32;
-	          const maxPx = 180;
-	          const hasNewline = textarea.value.includes("\n");
-	          if (msgPh) msgPh.style.display = textarea.value ? "none" : "flex";
-	          textarea.style.height = `${basePx}px`;
-	          let h = textarea.scrollHeight;
-	          const needsMultiline = hasNewline || h > basePx + 1;
-	          form.classList.toggle("multiline", needsMultiline);
-	          textarea.style.height = needsMultiline ? "auto" : `${basePx}px`;
-	          h = textarea.scrollHeight;
-	          const next = needsMultiline ? Math.min(h, maxPx) : basePx;
-	          textarea.style.height = `${next}px`;
-	          textarea.style.overflowY = h > maxPx ? "auto" : "hidden";
-	          if (autoScroll) requestAnimationFrame(() => scrollToBottom());
-	        }
-	        textarea.addEventListener("input", autoGrow);
+        syncQueueSubmitState();
+        syncComposerSendButton();
 	          textarea.addEventListener(
 	            "focus",
 	            () => {
-	              const wasNear = isNearBottom();
+	              const wasNear = transcriptScrollRuntime.isNearBottom();
               if (wasNear) {
-                autoScroll = true;
-                syncJumpButton();
+                transcriptScrollRuntime.enableAutoScroll();
+                transcriptScrollRuntime.syncJumpButton();
               }
 	              if (isIOS) runIOSViewportGuard({ preserveChatBottom: wasNear, durationMs: 1800 });
 	              else {
 	                const tick = () => {
 	                  updateAppHeightVar();
-	                  if (wasNear) scrollToBottom();
+	                  if (wasNear) transcriptScrollRuntime.scrollToBottom();
 	                };
 	                requestAnimationFrame(tick);
 	                setTimeout(tick, 120);
@@ -9240,224 +6302,343 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           e.preventDefault();
           form.requestSubmit();
         });
-        window.addEventListener("resize", () => {
-          if (autoScroll) requestAnimationFrame(() => scrollToBottom());
+
+        async function toJpegBlob(file, { maxDim = 2048, quality = 0.86 } = {}) {
+          const url = URL.createObjectURL(file);
+          try {
+            const img = new Image();
+            img.decoding = "async";
+            img.src = url;
+            if (img.decode) await img.decode();
+            else
+              await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = () => reject(new Error("decode failed"));
+              });
+            const w0 = img.naturalWidth || img.width || 0;
+            const h0 = img.naturalHeight || img.height || 0;
+            if (!w0 || !h0) throw new Error("invalid image dimensions");
+            const scale = Math.min(1, maxDim / Math.max(w0, h0));
+            const w = Math.max(1, Math.round(w0 * scale));
+            const h = Math.max(1, Math.round(h0 * scale));
+            const canvas = document.createElement("canvas");
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext("2d", { alpha: false });
+            if (!ctx) throw new Error("no canvas");
+            ctx.drawImage(img, 0, 0, w, h);
+            const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+            if (!blob) throw new Error("jpeg encode failed");
+            return blob;
+          } finally {
+            URL.revokeObjectURL(url);
+          }
+        }
+
+        function imageExtensionFromMimeType(type, fallback = "") {
+          const normalized = String(type || "").toLowerCase();
+          if (normalized === "image/jpeg" || normalized === "image/jpg") return "jpg";
+          if (normalized === "image/png") return "png";
+          if (normalized === "image/gif") return "gif";
+          if (normalized === "image/webp") return "webp";
+          if (normalized === "image/heic") return "heic";
+          if (normalized === "image/heif") return "heif";
+          if (normalized === "image/avif") return "avif";
+          return normalized.startsWith("image/") ? fallback : "";
+        }
+
+        function pastedFileName(file, index, seed) {
+          const suffix = index > 0 ? `-${index + 1}` : "";
+          const base = `pasted-${seed}${suffix}`;
+          const ext = imageExtensionFromMimeType(file && file.type, "png");
+          return ext ? `${base}.${ext}` : base;
+        }
+
+        async function stageFiles(files, { sid = selected, source = "picker" } = {}) {
+          const sessionId = sid || selected;
+          const uploadFiles = Array.from(files || []).filter(Boolean);
+          if (!uploadFiles.length) return false;
+
+          const producer = String(source || "picker");
+          const progressVerb = producer === "paste" ? "pasting" : producer === "drop" ? "dropping" : "uploading";
+          const producerNameSeed = Date.now();
+          let successes = 0;
+          let stoppedByBlocker = "";
+          const failures = [];
+          for (let fileIndex = 0; fileIndex < uploadFiles.length; fileIndex += 1) {
+            const f = uploadFiles[fileIndex];
+            try {
+              if (selected !== sessionId) break;
+              const attachBlocker = latestAttachmentBlockerForSession(sessionId);
+              if (attachBlocker) {
+                stoppedByBlocker = attachBlocker;
+                break;
+              }
+              setToast(uploadFiles.length > 1 ? `${progressVerb} ${fileIndex + 1}/${uploadFiles.length}...` : "uploading file...");
+              const maxBytes = ATTACH_UPLOAD_MAX_BYTES;
+              let uploadBlob = f;
+              let uploadName = f.name || (producer === "paste" ? pastedFileName(f, fileIndex, producerNameSeed) : "file");
+              if (looksLikeImage(f) && (f.size > maxBytes || isLikelyHeic(f))) {
+                setToast("compressing image...");
+                const stem = safeAttachmentStem(uploadName);
+                uploadName = `${stem}.jpg`;
+                const tries = [
+                  { maxDim: 2048, quality: 0.86 },
+                  { maxDim: 1600, quality: 0.82 },
+                  { maxDim: 1600, quality: 0.72 },
+                  { maxDim: 1280, quality: 0.68 },
+                  { maxDim: 1280, quality: 0.58 },
+                ];
+                let blob = null;
+                for (const t of tries) {
+                  blob = await toJpegBlob(f, t);
+                  if (blob.size <= maxBytes) break;
+                }
+                if (!blob || blob.size > maxBytes) throw new Error(`image too large (max ${fmtBytes(maxBytes)})`);
+                uploadBlob = blob;
+              }
+              const ab = await uploadBlob.arrayBuffer();
+              if (ab.byteLength > maxBytes) throw new Error(`file too large (max ${fmtBytes(maxBytes)})`);
+              const b64 = b64FromBytes(new Uint8Array(ab));
+              const res = await api(`/api/sessions/${sessionId}/inject_file`, {
+                method: "POST",
+                body: { filename: uploadName, data_b64: b64 },
+              });
+              if (selected === sessionId && res && res.ok) {
+                successes += 1;
+                setSelectedSessionStagedAttachments(Array.isArray(res.attachments) ? res.attachments : []);
+              }
+            } catch (e) {
+              if (e && e.status === 401) {
+                handleAppAuthLoss();
+                return false;
+              }
+              failures.push(`${f && f.name ? f.name : "file"}: ${e && e.message ? e.message : "unknown error"}`);
+            }
+          }
+          if (selected === sessionId) {
+            if (successes && failures.length) setToast(`attached ${successes}; ${failures.length} failed: ${failures[0]}`);
+            else if (successes && stoppedByBlocker) setToast(`attached ${successes}; stopped: ${stoppedByBlocker}`);
+            else if (successes) setToast(successes === 1 ? "file staged" : `${successes} files staged`);
+            else if (failures.length) setToast(`attach error: ${failures[0]}`);
+            else if (stoppedByBlocker) setToast(stoppedByBlocker);
+            pollFastUntilMs = Date.now() + 4000;
+            kickPoll(0);
+            void refreshSessions().catch((refreshErr) => {
+              if (refreshErr && refreshErr.status === 401) handleAppAuthLoss();
+              else console.error("refreshSessions failed", refreshErr);
+            });
+          }
+          return successes > 0;
+        }
+
+        attachBtn.onclick = () => {
+          const sid = selected;
+          const sessionInfo = sid ? sessionIndex.get(sid) || null : null;
+          const attachBlocker = attachmentBlockerForSession(sid, sessionInfo);
+          if (attachBlocker) {
+            setToast(attachBlocker);
+            return;
+          }
+          imgInput.value = "";
+          imgInput.click();
+        };
+        imgInput.addEventListener("change", async () => {
+          const sid = selected;
+          if (!sid) return;
+          const files = Array.from(imgInput.files || []);
+          imgInput.value = "";
+          await stageFiles(files, { sid, source: "picker" });
         });
 
-	        attachBtn.onclick = () => {
-	          if (!selected) return;
-	          imgInput.value = "";
-	          imgInput.click();
-	        };
-		        imgInput.addEventListener("change", async () => {
-		          if (!selected) return;
-		          const f = imgInput.files && imgInput.files[0];
-		          if (!f) return;
-		          if (sending) return;
-		          try {
-	            function safeStem(name) {
-	              const s = String(name || "file");
-	              const base = s.split("/").pop() || s;
-	              const dot = base.lastIndexOf(".");
-	              return (dot > 0 ? base.slice(0, dot) : base).replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "file";
-	            }
-	            function extLower(name) {
-	              const s = String(name || "");
-	              const dot = s.lastIndexOf(".");
-	              return dot >= 0 ? s.slice(dot + 1).toLowerCase() : "";
-	            }
-	            function isLikelyHeic(file) {
-	              const t = String(file.type || "").toLowerCase();
-	              const e = extLower(file.name);
-	              return t.includes("heic") || t.includes("heif") || e === "heic" || e === "heif";
-	            }
-	            function looksLikeImage(file) {
-	              const t = String(file && file.type ? file.type : "").toLowerCase();
-	              if (t.startsWith("image/")) return true;
-	              const e = extLower(file && file.name ? file.name : "");
-	              return ["png", "jpg", "jpeg", "webp", "gif", "bmp", "svg", "avif", "heic", "heif"].includes(e);
-	            }
-	            function b64FromBytes(bytes) {
-	              let bin = "";
-	              const chunk = 0x8000;
-	              for (let i = 0; i < bytes.length; i += chunk) {
-	                bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-	              }
-	              return btoa(bin);
-	            }
-	            async function toJpegBlob(file, { maxDim = 2048, quality = 0.86 } = {}) {
-	              const url = URL.createObjectURL(file);
-	              try {
-	                const img = new Image();
-	                img.decoding = "async";
-	                img.src = url;
-	                if (img.decode) await img.decode();
-	                else
-	                  await new Promise((resolve, reject) => {
-	                    img.onload = resolve;
-	                    img.onerror = () => reject(new Error("decode failed"));
-	                  });
-	                const w0 = img.naturalWidth || img.width || 0;
-	                const h0 = img.naturalHeight || img.height || 0;
-	                if (!w0 || !h0) throw new Error("invalid image dimensions");
-	                const scale = Math.min(1, maxDim / Math.max(w0, h0));
-	                const w = Math.max(1, Math.round(w0 * scale));
-	                const h = Math.max(1, Math.round(h0 * scale));
-	                const canvas = document.createElement("canvas");
-	                canvas.width = w;
-	                canvas.height = h;
-	                const ctx = canvas.getContext("2d", { alpha: false });
-	                if (!ctx) throw new Error("no canvas");
-	                ctx.drawImage(img, 0, 0, w, h);
-	                const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
-	                if (!blob) throw new Error("jpeg encode failed");
-	                return blob;
-	              } finally {
-	                URL.revokeObjectURL(url);
-	              }
-	            }
 
-	            setToast("uploading file...");
-	            const maxBytes = ATTACH_UPLOAD_MAX_BYTES;
-	            let uploadBlob = f;
-	            let uploadName = f.name || "file";
-	            if (looksLikeImage(f) && (f.size > maxBytes || isLikelyHeic(f))) {
-	              setToast("compressing image...");
-	              const stem = safeStem(f.name);
-	              uploadName = `${stem}.jpg`;
-	              // Try a few (dim, quality) pairs until it fits.
-	              const tries = [
-	                { maxDim: 2048, quality: 0.86 },
-	                { maxDim: 1600, quality: 0.82 },
-	                { maxDim: 1600, quality: 0.72 },
-	                { maxDim: 1280, quality: 0.68 },
-	                { maxDim: 1280, quality: 0.58 },
-	              ];
-	              let blob = null;
-	              for (const t of tries) {
-	                blob = await toJpegBlob(f, t);
-	                if (blob.size <= maxBytes) break;
-	              }
-	              if (!blob || blob.size > maxBytes) throw new Error(`image too large (max ${fmtBytes(maxBytes)})`);
-	              uploadBlob = blob;
-	            }
-
-	            const ab = await uploadBlob.arrayBuffer();
-	            if (ab.byteLength > maxBytes) throw new Error(`file too large (max ${fmtBytes(maxBytes)})`);
-		            const b64 = b64FromBytes(new Uint8Array(ab));
-			            const res = await api(`/api/sessions/${selected}/inject_file`, {
-		              method: "POST",
-		              body: { filename: uploadName, data_b64: b64, attachment_index: attachedFiles + 1 },
-		            });
-		            if (res && res.ok) {
-		              setToast("file attached");
-		              setAttachCount(attachedFiles + 1);
-		            }
-		            pollFastUntilMs = Date.now() + 4000;
-		            kickPoll(0);
-		          } catch (e) {
-	            setToast(`attach error: ${e.message}`);
-	          }
-	        });
-
-        function clearComposer() {
-          $("#msg").value = "";
-          autoGrow();
-        }
-
-        async function sendText(raw, { sid = null } = {}) {
-          const sessionId = sid || selected;
-          if (!sessionId) return false;
-          if (!raw || !raw.trim()) return false;
-          if (sending) return false;
-          sending = true;
-          $("#sendBtn").disabled = true;
-          setToast("sending...");
-
-          const localId = ++localEchoSeq;
-          const t0 = Date.now() / 1000;
-          const renderHere = sessionId === selected;
-          const renewsTranscript = isTranscriptRenewalCommand(raw, sessionId);
-          if (renderHere && !renewsTranscript) {
-            if (!renderedAtLiveTail) {
-              clearTranscriptDom();
-              clearRenderedTranscriptRange();
-              setOlderState({ hasMore: false, isLoading: false });
-            }
-            const slot = getSessionTranscriptSlot(sessionId);
-            pendingUser.push({ id: localId, sessionId, epoch: slot.epoch, key: pendingMatchKey(raw), loose: normalizeTextForPendingMatch(raw), t0, text: raw });
-            appendEvent({ role: "user", text: raw, pending: true, localId, ts: t0 });
-            turnOpen = true;
-            currentRunning = true;
-          }
+        function clipboardPlainText(data) {
+          if (!data || typeof data.getData !== "function") return "";
           try {
-            const res = await api(`/api/sessions/${sessionId}/send`, { method: "POST", body: { text: raw } });
-            if (renderHere && renewsTranscript) {
-              sessionTailCache.delete(sessionId);
-              beginTranscriptRenewal(sessionId);
-              liveCursor = null;
-              clearRenderedTranscriptRange();
-              invalidateOlderLoad();
-              renderPendingTranscriptSlot(sessionId);
-              turnOpen = true;
-              currentRunning = true;
-            }
-            if (res.queued) setToast(`queued (queue ${res.queue_len})`);
-            else setToast("sent");
-            setAttachCount(0);
-            pollFastUntilMs = Date.now() + 5000;
-            kickPoll(0);
-            void refreshSessions().catch((e) => console.error("refreshSessions failed", e));
-            return true;
-          } catch (e2) {
-            setToast(`send error: ${e2.message}`);
-            if (renderHere) {
-              const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${localId}"]`);
-              if (pendingEl) {
-                pendingEl.style.opacity = "1";
-                pendingEl.style.borderColor = "rgba(185, 28, 28, 0.7)";
-                pendingEl.style.boxShadow = "0 0 0 2px rgba(185, 28, 28, 0.12)";
-              }
-            }
-            return false;
-          } finally {
-            sending = false;
-            $("#sendBtn").disabled = false;
+            return data.getData("text/plain") || data.getData("text") || "";
+          } catch (_) {
+            return "";
           }
         }
 
-        form.onsubmit = async (e) => {
+        function insertComposerPastedText(text) {
+          const value = String(text || "");
+          if (!value) return false;
+          const start = Number.isFinite(textarea.selectionStart) ? textarea.selectionStart : textarea.value.length;
+          const end = Number.isFinite(textarea.selectionEnd) ? textarea.selectionEnd : start;
+          if (typeof textarea.setRangeText === "function") {
+            textarea.setRangeText(value, start, end, "end");
+          } else {
+            textarea.value = `${textarea.value.slice(0, start)}${value}${textarea.value.slice(end)}`;
+            textarea.selectionStart = start + value.length;
+            textarea.selectionEnd = start + value.length;
+          }
+          textarea.dispatchEvent(new Event("input", { bubbles: true }));
+          return true;
+        }
+
+        textarea.addEventListener("paste", (e) => {
+          const files = extractFilesFromClipboardData(e.clipboardData);
+          if (!files.length) return;
+          const pastedText = clipboardPlainText(e.clipboardData);
           e.preventDefault();
-          if (!selected) return;
-          if (sessionLaunchFailed(sessionIndex.get(selected))) {
-            setToast("failed session cannot receive messages");
-            return;
-          }
-          const raw = $("#msg").value;
-          if (!raw || !raw.trim()) return;
-          if (sending) return;
-          if (currentRunning) {
-            showSendChoice(raw);
-            return;
-          }
-          const ok = await sendText(raw);
-          if (ok && $("#msg").value === raw) clearComposer();
-        };
+          if (pastedText) insertComposerPastedText(pastedText);
+          void stageFiles(files, { sid: selected, source: "paste" });
+        });
+
+        let composerDragDepth = 0;
+        function setComposerDropActive(active) {
+          composer.classList.toggle("drop-active", Boolean(active));
+        }
+        function clearComposerDropActive() {
+          composerDragDepth = 0;
+          setComposerDropActive(false);
+        }
+        addAppEvent(composer, "dragenter", (e) => {
+          if (!dataTransferHasFiles(e.dataTransfer)) return;
+          e.preventDefault();
+          composerDragDepth += 1;
+          setComposerDropActive(true);
+        }, { passive: false });
+        addAppEvent(composer, "dragover", (e) => {
+          if (!dataTransferHasFiles(e.dataTransfer)) return;
+          e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+          setComposerDropActive(true);
+        }, { passive: false });
+        addAppEvent(composer, "dragleave", (e) => {
+          if (!dataTransferHasFiles(e.dataTransfer)) return;
+          composerDragDepth = Math.max(0, composerDragDepth - 1);
+          if (composerDragDepth === 0) setComposerDropActive(false);
+        }, { passive: false });
+        addAppEvent(composer, "drop", (e) => {
+          if (!dataTransferHasFiles(e.dataTransfer)) return;
+          e.preventDefault();
+          clearComposerDropActive();
+          const files = extractFilesFromDropData(e.dataTransfer);
+          if (!files.length) return;
+          void stageFiles(files, { sid: selected, source: "drop" });
+        }, { passive: false });
+        addAppEvent(window, "dragover", (e) => {
+          if (!dataTransferHasFiles(e.dataTransfer)) return;
+          e.preventDefault();
+        }, { passive: false });
+        addAppEvent(window, "dragleave", (e) => {
+          const outsideWindow =
+            e.clientX <= 0 ||
+            e.clientY <= 0 ||
+            e.clientX >= window.innerWidth ||
+            e.clientY >= window.innerHeight ||
+            (!e.relatedTarget && (e.target === document || e.target === document.documentElement || e.target === document.body));
+          if (outsideWindow) clearComposerDropActive();
+        }, { passive: false });
+        addAppEvent(window, "dragend", () => {
+          clearComposerDropActive();
+        }, { passive: false });
+        addAppEvent(window, "drop", (e) => {
+          if (dataTransferHasFiles(e.dataTransfer)) e.preventDefault();
+          clearComposerDropActive();
+        }, { passive: false });
+
+        composerController = codoxearComposer.createComposerController({
+          form,
+          textarea,
+          msgPh,
+          sendBtn,
+          sendChoice,
+          sendChoiceBackdrop,
+          sendChoiceNowBtn: $("#sendChoiceNow"),
+          sendChoiceLaterBtn: $("#sendChoiceLater"),
+          sendChoiceCancelBtn: $("#sendChoiceCancel"),
+          getSelected: () => selected,
+          getSessionInfo: (sessionId) => sessionIndex.get(sessionId) || null,
+          patchSessionInfo: (sessionId, patch) => {
+            const current = sessionIndex.get(sessionId);
+            if (!current) return;
+            Object.assign(current, patch || {});
+            sessionIndex.set(sessionId, current);
+          },
+          sessionLaunchFailed,
+          getSending: () => sending,
+          setSending: (value) => { sending = Boolean(value); },
+          getCurrentRunning: () => currentRunning,
+          setCurrentRunning: (value) => { currentRunning = Boolean(value); },
+          setTurnOpen: (value) => { turnOpen = Boolean(value); },
+          getStagedAttachments: () => stagedAttachments.slice(),
+          normalizedStagedAttachments,
+          setSelectedSessionPendingAttachment: (sessionId, value) => {
+            if (selected === sessionId) setSelectedSessionPendingAttachment(value);
+          },
+          setAttachCount,
+          syncAttachButtonState,
+          syncQueueSubmitState,
+          syncRecoveryUiForSession,
+          confirmAction: (options) => confirmApp(options),
+          api,
+          setToast,
+          handleAppAuthLoss,
+          refreshSessions,
+          setPollFastUntilMs: (value) => { pollFastUntilMs = value; },
+          kickPoll,
+          isTranscriptRenewalCommand,
+          nextLocalEchoId: () => transcriptEventRuntime.nextLocalEchoId(),
+          renderedAtLiveTail: () => transcriptScrollRuntime.snapshot().renderedAtLiveTail,
+          clearTranscriptDom,
+          clearRenderedTranscriptRange,
+          setOlderState,
+          getSessionTranscriptSlot,
+          addPendingUser: (pending) => transcriptEventRuntime.addPendingUser(pending),
+          appendEvent,
+          deleteTailCache: (sessionId) => transcriptSlotRuntime.deleteTailCache(sessionId),
+          beginTranscriptRenewal,
+          clearLiveCursor: () => transcriptSlotRuntime.clearLiveCursor(),
+          invalidateOlderLoad,
+          renderPendingTranscriptSlot,
+          dropPendingUser: (sessionId, localId) => transcriptEventRuntime.dropPendingUsers(sessionId, (pending) => pending && pending.id === localId),
+          removePendingUserRow: (localId) => {
+            const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${localId}"]`);
+            if (!pendingEl) return;
+            const pendingRow = pendingEl.closest(".msg-row");
+            if (pendingRow) pendingRow.remove();
+            else pendingEl.remove();
+          },
+          hasPendingForSession: (sessionId) => transcriptEventRuntime.hasPendingForSession(sessionId),
+          enqueueComposerText,
+          prepareModalOpen,
+          afterModalVisibilityChanged,
+          restoreModalFocus,
+          storageGetItem,
+          storageSetItem,
+          storageRemoveItem,
+          onAutoGrow: () => {
+            if (transcriptScrollRuntime.snapshot().autoScroll) transcriptScrollRuntime.scheduleScrollToBottom();
+          },
+          requestFrame: (callback) => requestAnimationFrame(callback),
+          getComputedStyle: (node) => getComputedStyle(node),
+          activeElement: () => document.activeElement,
+          isHTMLElement: (value) => value instanceof HTMLElement,
+          now: () => Date.now(),
+          consoleError: (...args) => console.error(...args),
+          windowTarget: window,
+        });
+
+        activeAppCleanup = cleanupApp;
+        if (typeof window.__codoxearMarkBootstrapped === "function") window.__codoxearMarkBootstrapped();
 
 	        (async () => {
-	          if (localStorage.getItem("codexweb.sidebarCollapsed") === "1") setSidebarCollapsed(true);
-	          if (localStorage.getItem("codexweb.sidebarOpen") === "1") setSidebarOpen(true);
+	          if (storageGetItem("codexweb.sidebarCollapsed") === "1") setSidebarCollapsed(true);
+	          if (storageGetItem("codexweb.sidebarOpen") === "1") setSidebarOpen(true);
 
 	          try {
               await loadVoiceSettings();
               await syncNotificationState();
-              if (localAnnouncementEnabled) {
+              if (voiceAnnouncementsEnabled()) {
                 resumeAnnouncementRuntime({ resetSource: false });
               }
               if (notificationsEnabledLocally()) await pollNotificationFeed({ prime: true });
 	            const sessions = await refreshSessions();
               const hashed = sessionIdFromHash();
-	            const remembered = localStorage.getItem("codexweb.selected");
+	            const remembered = storageGetItem("codexweb.selected");
 	            const first = sessions && sessions.length ? (sessions.find(sessionSelectable) || {}).session_id || null : null;
 	            const pick =
 	              hashed && sessionSelectable(sessionIndex.get(hashed))
@@ -9468,53 +6649,55 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	            if (pick) await selectSession(pick);
 	          } catch (e) {
 	            if (e && e.status === 401) {
-	              renderLogin(renderApp);
+              handleAppAuthLoss();
 	              return;
 	            }
 	            console.error("initial refreshSessions failed", e);
 	            setToast(`sessions error: ${e && e.message ? e.message : "unknown error"}`);
 	          } finally {
+              if (appDisposed) return;
 	            if (msgPh) msgPh.style.display = textarea.value ? "none" : "flex";
-	            autoGrow();
+	            resizeComposer();
 
-	            if (sessionsTimer) clearInterval(sessionsTimer);
-	            sessionsTimer = setInterval(async () => {
-	              try {
-	                await refreshSessions();
-                  await loadVoiceSettings();
-                  await syncNotificationState();
-                  if (notificationsEnabledLocally()) await pollNotificationFeed();
-	              } catch (e2) {
-	                if (e2 && e2.status === 401) {
-	                  if (sessionsTimer) clearInterval(sessionsTimer);
-	                  sessionsTimer = null;
-	                  renderLogin(renderApp);
-	                  return;
-	                }
-	                console.error("refreshSessions timer failed", e2);
-	              }
-	            }, 2500);
-              window.addEventListener("hashchange", async () => {
-                const sid = sessionIdFromHash();
-                if (!sid || sid === selected || !sessionIndex.has(sid)) return;
-                await selectSession(sid);
+	            scheduleSessionsPoll();
+            scheduleSecondaryPoll();
+              addAppEvent(window, "hashchange", async () => {
+                await selectSessionFromHash({ refreshIfMissing: true, deferIfMissing: true });
               });
-              window.addEventListener("beforeunload", () => {
-                stopAnnouncementHeartbeat();
-                stopLiveAudioWatchdog();
+              addAppEvent(window, "beforeunload", () => {
+                cleanupApp();
               });
-              document.addEventListener("visibilitychange", () => {
-                if (document.visibilityState !== "visible") return;
-                resumeAnnouncementRuntime({ resetSource: false });
+              addAppEvent(document, "visibilitychange", () => {
+                if (appDisposed) return;
+                if (document.visibilityState === "visible") {
+                  resumeAnnouncementRuntime({ resetSource: false });
+                  if (selected) kickPoll(0);
+                  scheduleSessionsPoll(0);
+                  scheduleSecondaryPoll(0);
+                  return;
+                }
+                if (selected) kickPoll(messagePollDelayMs());
+                scheduleSessionsPoll(sessionsPollDelayMs());
+                scheduleSecondaryPoll(secondaryPollDelayMs());
               });
-              window.addEventListener("pageshow", () => {
-                resumeAnnouncementRuntime({ resetSource: false });
+              addAppEvent(window, "online", () => {
+                if (appDisposed) return;
+                messagePollErrorStreak = 0;
+                if (selected) kickPoll(0);
+                scheduleSessionsPoll(0);
               });
-              window.addEventListener("online", () => {
-                resumeAnnouncementRuntime({ resetSource: true });
+              addAppEvent(window, "offline", () => {
+                if (appDisposed) return;
+                if (selected) kickPoll(messagePollDelayMs());
               });
-              window.addEventListener("focus", () => {
-                resumeAnnouncementRuntime({ resetSource: false });
+              addAppEvent(window, "pageshow", () => {
+                if (!appDisposed) resumeAnnouncementRuntime({ resetSource: false });
+              });
+              addAppEvent(window, "online", () => {
+                if (!appDisposed) resumeAnnouncementRuntime({ resetSource: true });
+              });
+              addAppEvent(window, "focus", () => {
+                if (!appDisposed) resumeAnnouncementRuntime({ resetSource: false });
               });
 	          }
 	        })();

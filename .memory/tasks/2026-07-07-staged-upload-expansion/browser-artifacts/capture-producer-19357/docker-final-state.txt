@@ -1,0 +1,16 @@
+/home/tester/.local/share/codoxear/audio/live.m3u8
+/home/tester/.local/share/codoxear/commit_unknown_sends.json
+/home/tester/.local/share/codoxear/hmac_secret
+/home/tester/.local/share/codoxear/pending_attachments.json
+/home/tester/.local/share/codoxear/recent_cwds.json
+/home/tester/.local/share/codoxear/socks/capture-proof.json
+/home/tester/.local/share/codoxear/socks/capture-proof.sock
+/home/tester/.local/share/codoxear/staged_attachments.json
+/home/tester/.local/share/codoxear/webpush_vapid_private.pem
+---calls
+{"ts": 1783382013.991614, "req": {"cmd": "state"}, "resp": {"busy": false, "queue_len": 0, "token": null, "interrupted_idle": false}}
+{"ts": 1783382014.2152, "req": {"cmd": "state"}, "resp": {"busy": false, "queue_len": 0, "token": null, "interrupted_idle": false}}
+{"ts": 1783382014.2157588, "req": {"cmd": "state"}, "resp": {"busy": false, "queue_len": 0, "token": null, "interrupted_idle": false}}
+{"ts": 1783382014.246014, "req": {"cmd": "state"}, "resp": {"busy": false, "queue_len": 0, "token": null, "interrupted_idle": false}}
+{"ts": 1783382014.4999747, "req": {"cmd": "state"}, "resp": {"busy": false, "queue_len": 0, "token": null, "interrupted_idle": false}}
+---uploads

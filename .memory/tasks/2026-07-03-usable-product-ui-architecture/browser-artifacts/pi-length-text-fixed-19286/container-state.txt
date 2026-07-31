@@ -1,0 +1,14 @@
+{"ready": true, "sessions": ["pi-length-text-continuation-fixed", "pi-length-text-prefix-fixed", "pi-stop-text-control"], "app": "/home/tester/.local/share/codoxear", "logs": "/home/tester/.local/share/codoxear/pi-length-text-fixed-logs", "pid": 24}
+/home/tester/.local/share/codoxear/audio/live.m3u8
+/home/tester/.local/share/codoxear/hmac_secret
+/home/tester/.local/share/codoxear/pi-length-text-fixed-logs/pi-length-text-continuation-fixed.jsonl
+/home/tester/.local/share/codoxear/pi-length-text-fixed-logs/pi-length-text-prefix-fixed.jsonl
+/home/tester/.local/share/codoxear/pi-length-text-fixed-logs/pi-stop-text-control.jsonl
+/home/tester/.local/share/codoxear/recent_cwds.json
+/home/tester/.local/share/codoxear/socks/pi-length-text-continuation-fixed.json
+/home/tester/.local/share/codoxear/socks/pi-length-text-continuation-fixed.sock
+/home/tester/.local/share/codoxear/socks/pi-length-text-prefix-fixed.json
+/home/tester/.local/share/codoxear/socks/pi-length-text-prefix-fixed.sock
+/home/tester/.local/share/codoxear/socks/pi-stop-text-control.json
+/home/tester/.local/share/codoxear/socks/pi-stop-text-control.sock
+/home/tester/.local/share/codoxear/webpush_vapid_private.pem

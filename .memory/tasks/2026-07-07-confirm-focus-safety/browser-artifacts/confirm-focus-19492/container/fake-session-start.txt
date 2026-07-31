@@ -1,0 +1,8 @@
+{"sid":"confirm-focus-session","sock":"/home/tester/.local/share/codoxear/socks/confirm-focus-session.sock","cwd":"/home/tester/confirm-focus-proof/workspace","file":"/home/tester/confirm-focus-proof/workspace/proof.txt","log":"/home/tester/confirm-focus-proof/confirm-focus-session.jsonl","calls":"/home/tester/confirm-focus-proof/broker-calls.jsonl","fake_notice":"FAKE_CONFIRM_FOCUS_PROOF_DOCKER_ONLY"}
+---
+/home/tester/.local/share/codoxear/audio/live.m3u8 74
+/home/tester/.local/share/codoxear/pending_attachments.json 25
+/home/tester/.local/share/codoxear/session_files.json 87
+/home/tester/.local/share/codoxear/socks/confirm-focus-session.json 634
+---
+original file text

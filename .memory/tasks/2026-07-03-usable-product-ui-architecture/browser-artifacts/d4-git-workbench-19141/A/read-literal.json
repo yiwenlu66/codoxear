@@ -1,0 +1,1 @@
+{"ok": true, "kind": "text", "path": "/home/tester/work/collision/bad\\xffname.txt", "rel": "bad\\xffname.txt", "size": 21, "text": "LITERAL COLLISION OK\n", "editable": true, "version": "f6f457bf092bcc7aa08e9eb1ae94374d45c45f5c47f25084a674b46f603e7e08"}

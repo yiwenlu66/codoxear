@@ -1,0 +1,3 @@
+/usr/local/bin/claude
+FAKE_CLAUDE_CODE_FOR_CODOXEAR_DOCKER_ONLY ready session_id=692d0157-149e-40cf-ab24-16d44f31cf83 log_path=/home/tester/.claude/projects/-workspace/692d0157-149e-40cf-ab24-16d44f31cf83.jsonl
+2026-07-07T08:08:43.180Z FAKE_CLAUDE_CODE_FOR_CODOXEAR_DOCKER_ONLY argv=["/usr/local/bin/claude", "--fake-preflight"] cwd=/workspace log_path=/home/tester/.claude/projects/-workspace/692d0157-149e-40cf-ab24-16d44f31cf83.jsonl session_id=692d0157-149e-40cf-ab24-16d44f31cf83 env_model= env_effort=

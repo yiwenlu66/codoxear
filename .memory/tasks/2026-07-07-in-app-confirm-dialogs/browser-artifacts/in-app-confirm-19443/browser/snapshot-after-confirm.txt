@@ -1,0 +1,13 @@
+- button "New session" [ref=e1]
+- button "Notifications off" [ref=e2]
+- button "Announcements off" [ref=e3]
+- button "Help" [ref=e4]
+- button "Voice settings" [ref=e5]
+- button "Log out" [ref=e6]
+- button "Toggle sidebar" [ref=e7]
+- button "New session" [ref=e8] [nth=1]
+- button "Select a session to attach a file" [ref=e9] [disabled]:
+- button "Select a session to attach a file" [ref=e10] [nth=1] [disabled]:
+- textbox "Select a session to send" [ref=e11] [disabled]:
+- button "Select a session to view queued messages" [ref=e12] [disabled]:
+- button "Select a session to send" [ref=e13] [disabled]:

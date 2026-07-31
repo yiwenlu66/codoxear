@@ -1,0 +1,83 @@
+{
+  "server": "http://127.0.0.1:19272",
+  "per_session": {
+    "interrupt-pi-empty": {
+      "url": "http://127.0.0.1:19272/#session=interrupt-pi-empty",
+      "rowCount": 2,
+      "roles": [
+        "user",
+        "assistant"
+      ],
+      "has_assistant_interruption_row": true,
+      "partial_text_preserved": false,
+      "rows": [
+        {
+          "msgClass": "msg user",
+          "role": "user",
+          "text": "hello pi (empty abort proof)\n\n08:00"
+        },
+        {
+          "msgClass": "msg assistant error",
+          "role": "assistant",
+          "text": "The backend turn was interrupted before completion.\n\n08:00"
+        }
+      ]
+    },
+    "interrupt-pi-partial": {
+      "url": "http://127.0.0.1:19272/#session=interrupt-pi-partial",
+      "rowCount": 2,
+      "roles": [
+        "user",
+        "assistant"
+      ],
+      "has_assistant_interruption_row": true,
+      "partial_text_preserved": true,
+      "rows": [
+        {
+          "msgClass": "msg user",
+          "role": "user",
+          "text": "hello pi (partial abort proof)\n\n08:00"
+        },
+        {
+          "msgClass": "msg assistant error",
+          "role": "assistant",
+          "text": "The backend turn was interrupted before completion.\n\nPartial output before interruption:\nI was halfway through the answer\n\n08:00"
+        }
+      ]
+    },
+    "interrupt-codex-abort": {
+      "url": "http://127.0.0.1:19272/#session=interrupt-codex-abort",
+      "rowCount": 2,
+      "roles": [
+        "user",
+        "assistant"
+      ],
+      "has_assistant_interruption_row": true,
+      "partial_text_preserved": false,
+      "rows": [
+        {
+          "msgClass": "msg user",
+          "role": "user",
+          "text": "hello codex (turn_aborted proof)\n\n08:00"
+        },
+        {
+          "msgClass": "msg assistant error",
+          "role": "assistant",
+          "text": "The backend turn was interrupted before completion.\n\n08:00"
+        }
+      ]
+    }
+  },
+  "screenshots": {
+    "interrupt-pi-empty": "pi-empty-abort.png",
+    "interrupt-pi-partial": "pi-partial-abort.png",
+    "interrupt-codex-abort": "codex-abort.png"
+  },
+  "reload_persistence": {
+    "partialPreservedAfterReload": true,
+    "rolesAfterReload": [
+      "user",
+      "assistant"
+    ]
+  }
+}

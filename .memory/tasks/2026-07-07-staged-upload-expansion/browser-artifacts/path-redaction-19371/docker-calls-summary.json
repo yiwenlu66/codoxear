@@ -1,0 +1,15 @@
+{
+  "total": 718,
+  "cmd_counts": {
+    "state": 717,
+    "send": 1
+  },
+  "send_texts": [
+    "Attachment 1: /home/tester/.local/share/codoxear/uploads/redaction-proof/1783385992175_alpha-secret.txt\nAttachment 2: /home/tester/.local/share/codoxear/uploads/redaction-proof/1783385992181_beta-secret.txt\nprocess redacted staged attachments"
+  ],
+  "key_count": 0,
+  "send_count": 1,
+  "send_contains_attachment_1_absolute": true,
+  "send_contains_attachment_2_absolute": true,
+  "send_contains_user_text": true
+}

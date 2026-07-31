@@ -1,0 +1,25 @@
+- button "New session" [ref=e1]
+- button "Notifications off" [ref=e2]
+- button "Announcements off" [ref=e3]
+- button "Dismiss launch record" [ref=e4]
+- button "Help" [ref=e5]
+- button "Voice settings" [ref=e6]
+- button "Log out" [ref=e7]
+- button "Toggle sidebar" [ref=e8]
+- button "Edit conversation" [ref=e9]
+- button "Failed launch has no file browser" [ref=e10] [disabled]:
+- button "Copy conversation" [ref=e11]
+- button "Details" [ref=e12]
+- button "Failed launch has no unattended mode" [ref=e13] [disabled]:
+- button "Copy raw markdown" [ref=e14]
+- button "New like this" [ref=e15]
+- button "Dismiss launch" [ref=e16]
+- button "Copy details" [ref=e17]
+- button "Search loaded messages" [ref=e18]
+- button "Previous user message" [ref=e19] [disabled]:
+- button "Next user message" [ref=e20] [disabled]:
+- button "Failed launch cannot receive file attachments" [ref=e21] [disabled]:
+- button "Failed launch cannot receive file attachments" [ref=e22] [nth=1] [disabled]:
+- textbox "Failed launch cannot receive messages" [ref=e23] [disabled]:
+- button "Failed launch cannot receive queued messages" [ref=e24] [disabled]:
+- button "Failed launch cannot receive messages" [ref=e25] [disabled]:

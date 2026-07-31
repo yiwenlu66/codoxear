@@ -1,0 +1,10 @@
+[
+  {
+    "body": {
+      "error": "file changed on disk",
+      "conflict": true,
+      "path": "/home/tester/work/repo/notes.txt",
+      "version": "362e3192925bd75df98b4b83358aa0534ca8b3f012311d60c37aa15b64af782b"
+    }
+  }
+]

@@ -1,0 +1,113 @@
+{
+  "counts": {
+    "model-cc-sonnet:state": 262,
+    "model-codex-gpt:state": 262,
+    "model-default-omitted:state": 262,
+    "model-empty-omitted:state": 312,
+    "model-pi-long:state": 262
+  },
+  "first": [
+    {
+      "sid": "model-cc-sonnet",
+      "cmd": "state",
+      "resp_keys": [
+        "busy",
+        "interrupted_idle",
+        "queue_len",
+        "token"
+      ]
+    },
+    {
+      "sid": "model-codex-gpt",
+      "cmd": "state",
+      "resp_keys": [
+        "busy",
+        "interrupted_idle",
+        "queue_len",
+        "token"
+      ]
+    },
+    {
+      "sid": "model-default-omitted",
+      "cmd": "state",
+      "resp_keys": [
+        "busy",
+        "interrupted_idle",
+        "queue_len",
+        "token"
+      ]
+    },
+    {
+      "sid": "model-empty-omitted",
+      "cmd": "state",
+      "resp_keys": [
+        "busy",
+        "interrupted_idle",
+        "queue_len",
+        "token"
+      ]
+    },
+    {
+      "sid": "model-pi-long",
+      "cmd": "state",
+      "resp_keys": [
+        "busy",
+        "interrupted_idle",
+        "queue_len",
+        "token"
+      ]
+    }
+  ],
+  "last": [
+    {
+      "sid": "model-cc-sonnet",
+      "cmd": "state",
+      "resp_keys": [
+        "busy",
+        "interrupted_idle",
+        "queue_len",
+        "token"
+      ]
+    },
+    {
+      "sid": "model-codex-gpt",
+      "cmd": "state",
+      "resp_keys": [
+        "busy",
+        "interrupted_idle",
+        "queue_len",
+        "token"
+      ]
+    },
+    {
+      "sid": "model-default-omitted",
+      "cmd": "state",
+      "resp_keys": [
+        "busy",
+        "interrupted_idle",
+        "queue_len",
+        "token"
+      ]
+    },
+    {
+      "sid": "model-empty-omitted",
+      "cmd": "state",
+      "resp_keys": [
+        "busy",
+        "interrupted_idle",
+        "queue_len",
+        "token"
+      ]
+    },
+    {
+      "sid": "model-pi-long",
+      "cmd": "state",
+      "resp_keys": [
+        "busy",
+        "interrupted_idle",
+        "queue_len",
+        "token"
+      ]
+    }
+  ]
+}

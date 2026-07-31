@@ -1,0 +1,20 @@
+{
+    "transcript_state": "bound",
+    "thread_id": "search-streaming-session",
+    "log_path": "/home/tester/large-search-proof/large-search-session.jsonl",
+    "query": "EARLY_ONLY_TARGET",
+    "match_count": 1,
+    "match_count_truncated": false,
+    "matches": [
+        {
+            "role": "assistant",
+            "text": "EARLY_ONLY_TARGET first historical match",
+            "message_class": "final_response",
+            "message_id": "7bf0a073f75a8dfcdd2a42d1093af4e02e3c7f7d132d90abb30566db3d1c9e1b",
+            "ts": 2.0,
+            "_before_byte": 106,
+            "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InNlYXJjaC1zdHJlYW1pbmctc2Vzc2lvbiIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyL2xhcmdlLXNlYXJjaC1wcm9vZi9sYXJnZS1zZWFyY2gtc2Vzc2lvbi5qc29ubCIsInBvcyI6MTA2fQ.6uXe4QZJqFYbj8y8CsVi3xeN0QT8oAUwAOw1fygkke4",
+            "load_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InNlYXJjaC1zdHJlYW1pbmctc2Vzc2lvbiIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyL2xhcmdlLXNlYXJjaC1wcm9vZi9sYXJnZS1zZWFyY2gtc2Vzc2lvbi5qc29ubCIsInBvcyI6Mjk2fQ.RIof-p5riWVYmn_7DLFTUHm6O6AIvzatV4BI9r5Uoxk"
+        }
+    ]
+}

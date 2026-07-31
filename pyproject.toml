@@ -14,10 +14,14 @@ dependencies = ["Pillow>=9.0", "py-vapid>=1.9.2", "pywebpush>=2.3.0"]
 [project.scripts]
 codoxear-server = "codoxear.server:main"
 codoxear-broker = "codoxear.broker:main"
+codoxear-sessiond = "codoxear.sessiond:main"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
 
 [tool.setuptools]
 packages = ["codoxear"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-codoxear = ["static/*", "pi_active_session_bridge.ts"]
+codoxear = ["static/*", "static/logos/*", "static/monaco/*", "static/monaco/vs/**", "pi_active_session_bridge.ts"]

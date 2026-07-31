@@ -5,7 +5,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from codoxear.util import proc_find_open_rollout_log, proc_open_rollout_logs
+from codoxear.broker import _expand_cwd
+from codoxear.util import find_new_session_log, proc_find_open_rollout_log, proc_open_rollout_logs
 
 
 def _write_jsonl(path: Path, objs: list[dict]) -> None:
@@ -61,6 +62,242 @@ class TestBrokerProcRolloutDiscovery(unittest.TestCase):
 
             found = proc_find_open_rollout_log(proc_root=proc_root, root_pid=100, cwd="/x")
             self.assertEqual(found, want)
+
+    def test_proc_matches_rollout_cwd_by_resolved_path_identity(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            proc_root = root / "proc"
+            logs = root / "logs"
+            real_cwd = root / "real-work"
+            link_cwd = root / "link-work"
+            logs.mkdir(parents=True, exist_ok=True)
+            real_cwd.mkdir()
+            link_cwd.symlink_to(real_cwd, target_is_directory=True)
+
+            want = logs / "rollout-2026-02-04T00-00-02-11111111-1111-1111-1111-111111111111.jsonl"
+            _write_jsonl(want, [{"type": "session_meta", "payload": {"id": "want", "cwd": str(real_cwd.resolve()), "source": "cli"}}])
+
+            _ensure_proc_pid(proc_root, "100")
+            _ensure_proc_pid(proc_root, "101")
+            (proc_root / "100" / "task" / "100" / "children").write_text("101\n", encoding="utf-8")
+            _link_fd(proc_root, "101", "3", want, flags_octal="0100001")
+
+            found = proc_find_open_rollout_log(proc_root=proc_root, root_pid=100, cwd=str(link_cwd))
+            self.assertEqual(found, want)
+
+    def test_proc_rejects_relative_payload_cwd_for_alias_matching(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            proc_root = root / "proc"
+            logs = root / "logs"
+            logs.mkdir(parents=True, exist_ok=True)
+
+            candidate = logs / "rollout-2026-02-04T00-00-02-11111111-1111-1111-1111-111111111111.jsonl"
+            _write_jsonl(candidate, [{"type": "session_meta", "payload": {"id": "candidate", "cwd": ".", "source": "cli"}}])
+
+            _ensure_proc_pid(proc_root, "100")
+            _ensure_proc_pid(proc_root, "101")
+            (proc_root / "100" / "task" / "100" / "children").write_text("101\n", encoding="utf-8")
+            _link_fd(proc_root, "101", "3", candidate, flags_octal="0100001")
+
+            with patch("codoxear.util.os.path.samefile", return_value=True):
+                found = proc_find_open_rollout_log(proc_root=proc_root, root_pid=100, cwd=str(root))
+            self.assertIsNone(found)
+
+    def test_proc_rejects_tilde_payload_cwd_for_alias_matching(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            proc_root = root / "proc"
+            logs = root / "logs"
+            logs.mkdir(parents=True, exist_ok=True)
+
+            candidate = logs / "rollout-2026-02-04T00-00-02-11111111-1111-1111-1111-111111111111.jsonl"
+            _write_jsonl(candidate, [{"type": "session_meta", "payload": {"id": "candidate", "cwd": "~", "source": "cli"}}])
+
+            _ensure_proc_pid(proc_root, "100")
+            _ensure_proc_pid(proc_root, "101")
+            (proc_root / "100" / "task" / "100" / "children").write_text("101\n", encoding="utf-8")
+            _link_fd(proc_root, "101", "3", candidate, flags_octal="0100001")
+
+            with patch("codoxear.util.os.path.samefile", return_value=True):
+                found = proc_find_open_rollout_log(proc_root=proc_root, root_pid=100, cwd=str(Path.home()))
+            self.assertIsNone(found)
+
+    def test_proc_rejects_unknown_user_payload_cwd_without_raising(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            proc_root = root / "proc"
+            logs = root / "logs"
+            logs.mkdir(parents=True, exist_ok=True)
+
+            candidate = logs / "rollout-2026-02-04T00-00-02-11111111-1111-1111-1111-111111111111.jsonl"
+            _write_jsonl(candidate, [{"type": "session_meta", "payload": {"id": "candidate", "cwd": "~nosuchuser123456/work", "source": "cli"}}])
+
+            _ensure_proc_pid(proc_root, "100")
+            _ensure_proc_pid(proc_root, "101")
+            (proc_root / "100" / "task" / "100" / "children").write_text("101\n", encoding="utf-8")
+            _link_fd(proc_root, "101", "3", candidate, flags_octal="0100001")
+
+            found = proc_find_open_rollout_log(proc_root=proc_root, root_pid=100, cwd=str(root))
+            self.assertIsNone(found)
+
+    def test_proc_rejects_nonexistent_payload_cwd_resolve_alias(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            proc_root = root / "proc"
+            logs = root / "logs"
+            work = root / "work"
+            logs.mkdir(parents=True, exist_ok=True)
+            work.mkdir()
+
+            candidate = logs / "rollout-2026-02-04T00-00-02-11111111-1111-1111-1111-111111111111.jsonl"
+            _write_jsonl(candidate, [{"type": "session_meta", "payload": {"id": "candidate", "cwd": str(work / "missing" / ".."), "source": "cli"}}])
+
+            _ensure_proc_pid(proc_root, "100")
+            _ensure_proc_pid(proc_root, "101")
+            (proc_root / "100" / "task" / "100" / "children").write_text("101\n", encoding="utf-8")
+            _link_fd(proc_root, "101", "3", candidate, flags_octal="0100001")
+
+            found = proc_find_open_rollout_log(proc_root=proc_root, root_pid=100, cwd=str(work))
+            self.assertIsNone(found)
+
+    def test_proc_matches_rollout_cwd_by_samefile_identity(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            proc_root = root / "proc"
+            logs = root / "logs"
+            logs.mkdir(parents=True, exist_ok=True)
+
+            want = logs / "rollout-2026-02-04T00-00-02-11111111-1111-1111-1111-111111111111.jsonl"
+            _write_jsonl(want, [{"type": "session_meta", "payload": {"id": "want", "cwd": "/.tmp-on-ssd/work", "source": "cli"}}])
+
+            _ensure_proc_pid(proc_root, "100")
+            _ensure_proc_pid(proc_root, "101")
+            (proc_root / "100" / "task" / "100" / "children").write_text("101\n", encoding="utf-8")
+            _link_fd(proc_root, "101", "3", want, flags_octal="0100001")
+
+            with patch("codoxear.util.os.path.samefile", return_value=True):
+                found = proc_find_open_rollout_log(proc_root=proc_root, root_pid=100, cwd="/tmp/work")
+            self.assertEqual(found, want)
+
+    def test_find_new_cc_session_log_matches_samefile_cwd_alias(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sessions = root / ".claude" / "projects"
+            log = sessions / "--tmp-work" / "session.jsonl"
+            _write_jsonl(log, [{"type": "user", "sessionId": "cc-sid", "cwd": "/.tmp-on-ssd/work", "message": {"role": "user", "content": "hi"}}])
+
+            with patch("codoxear.util.os.path.samefile", return_value=True):
+                found = find_new_session_log(
+                    sessions_dir=sessions,
+                    agent_backend="cc",
+                    cwd="/tmp/work",
+                    after_ts=0,
+                    preexisting=set(),
+                    timeout_s=0,
+                )
+            self.assertEqual(found, ("cc-sid", log))
+
+    def test_find_new_cc_session_log_finds_large_valid_first_record(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sessions = root / ".claude" / "projects"
+            work = root / "work"
+            work.mkdir()
+            log = sessions / "--tmp-work" / "session.jsonl"
+            _write_jsonl(log, [{"type": "user", "sessionId": "cc-sid", "cwd": str(work), "message": {"role": "user", "content": "x" * (600 * 1024)}}])
+
+            found = find_new_session_log(
+                sessions_dir=sessions,
+                agent_backend="cc",
+                cwd=str(work),
+                after_ts=0,
+                preexisting=set(),
+                timeout_s=0,
+            )
+            self.assertEqual(found, ("cc-sid", log))
+
+    def test_find_new_cc_session_log_finds_after_start_log_with_prelaunch_snapshot(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sessions = root / ".claude" / "projects"
+            work = root / "work"
+            work.mkdir()
+            log = sessions / "--tmp-work" / "session.jsonl"
+            _write_jsonl(log, [{"type": "user", "sessionId": "cc-sid", "cwd": str(work), "message": {"role": "user", "content": "hi"}}])
+            after_ts = log.stat().st_mtime - 1
+
+            found_with_prelaunch_snapshot = find_new_session_log(
+                sessions_dir=sessions,
+                agent_backend="cc",
+                cwd=str(work),
+                after_ts=after_ts,
+                preexisting=set(),
+                timeout_s=0,
+            )
+            missed_with_postfork_snapshot = find_new_session_log(
+                sessions_dir=sessions,
+                agent_backend="cc",
+                cwd=str(work),
+                after_ts=after_ts,
+                preexisting={log},
+                timeout_s=0,
+            )
+
+            self.assertEqual(found_with_prelaunch_snapshot, ("cc-sid", log))
+            self.assertIsNone(missed_with_postfork_snapshot)
+
+    def test_find_new_cc_session_log_matches_relative_broker_cwd_after_expansion(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sessions = root / ".claude" / "projects"
+            work = root / "work"
+            work.mkdir()
+            log = sessions / "--tmp-work" / "session.jsonl"
+            _write_jsonl(log, [{"type": "user", "sessionId": "cc-sid", "cwd": str(work), "message": {"role": "user", "content": "hi"}}])
+            with patch("codoxear.broker.os.getcwd", return_value=str(work)):
+                broker_cwd = _expand_cwd(".")
+
+            self.assertEqual(broker_cwd, str(work))
+            found = find_new_session_log(
+                sessions_dir=sessions,
+                agent_backend="cc",
+                cwd=broker_cwd,
+                after_ts=0,
+                preexisting=set(),
+                timeout_s=0,
+            )
+            self.assertEqual(found, ("cc-sid", log))
+
+    def test_find_new_cc_session_log_rejects_malformed_cwd_aliases(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sessions = root / ".claude" / "projects"
+            home_log = sessions / "home" / "session.jsonl"
+            missing_log = sessions / "missing" / "session.jsonl"
+            _write_jsonl(home_log, [{"type": "user", "sessionId": "home", "cwd": "~", "message": {"role": "user", "content": "hi"}}])
+            _write_jsonl(missing_log, [{"type": "user", "sessionId": "missing", "cwd": str(root / "work" / "missing" / ".."), "message": {"role": "user", "content": "hi"}}])
+            (root / "work").mkdir()
+
+            with patch("codoxear.util.os.path.samefile", return_value=True):
+                home_found = find_new_session_log(
+                    sessions_dir=sessions,
+                    agent_backend="cc",
+                    cwd=str(Path.home()),
+                    after_ts=0,
+                    preexisting={missing_log},
+                    timeout_s=0,
+                )
+            missing_found = find_new_session_log(
+                sessions_dir=sessions,
+                agent_backend="cc",
+                cwd=str(root / "work"),
+                after_ts=0,
+                preexisting={home_log},
+                timeout_s=0,
+            )
+            self.assertIsNone(home_found)
+            self.assertIsNone(missing_found)
 
     def test_proc_disambiguates_same_cwd_by_root_pid(self) -> None:
         with TemporaryDirectory() as td:

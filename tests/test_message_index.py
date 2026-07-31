@@ -26,6 +26,23 @@ def _write_assistant_rows(path: Path, count: int) -> None:
     path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
 
 
+def _assistant_text(text: str, ts: float) -> dict:
+    return {
+        "type": "response_item",
+        "payload": {
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": text}],
+            "phase": "final_answer",
+        },
+        "ts": ts,
+    }
+
+
+def _user_text(text: str, ts: float) -> dict:
+    return {"type": "event_msg", "payload": {"type": "user_message", "message": text}, "ts": ts}
+
+
 class TestMessageIndex(unittest.TestCase):
     def test_tail_and_history_pages_reach_bof_in_order(self) -> None:
         with TemporaryDirectory() as td:
@@ -56,6 +73,38 @@ class TestMessageIndex(unittest.TestCase):
             self.assertEqual(page3[-1].get("text"), "a39")
             self.assertFalse(has_older3)
             self.assertEqual(before3, 0)
+
+    def test_tail_page_dedupes_adjacent_assistant_duplicate_texts(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "rollout.jsonl"
+            rows = [
+                _user_text("first", 1.0),
+                _assistant_text("same final text", 2.0),
+                _assistant_text("same final text", 2.4),
+                _user_text("second", 3.0),
+                _assistant_text("same final text", 4.0),
+            ]
+            path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+
+            events, _before, _after, _has_older = _read_chat_tail_page(path, limit=10)
+
+        self.assertEqual([ev.get("role") for ev in events], ["user", "assistant", "user", "assistant"])
+        self.assertEqual([ev.get("text") for ev in events], ["first", "same final text", "second", "same final text"])
+
+    def test_live_delta_dedupes_adjacent_assistant_duplicate_texts(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "rollout.jsonl"
+            rows = [
+                _user_text("first", 1.0),
+                _assistant_text("same final text", 2.0),
+                _assistant_text("same final text", 2.4),
+            ]
+            path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+
+            events, _next_after, _meta, _flags, _diag, _token = _read_chat_live_delta(path, after_byte=0)
+
+        self.assertEqual([ev.get("role") for ev in events], ["user", "assistant"])
+        self.assertEqual([ev.get("text") for ev in events], ["first", "same final text"])
 
     def test_stale_live_delta_does_not_affect_history_order(self) -> None:
         with TemporaryDirectory() as td:

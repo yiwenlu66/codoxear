@@ -1,0 +1,1 @@
+{"success":true,"data":{"origin":"http://127.0.0.1:19280/#session=pi-tool-use-control","result":[{"msgClass":"msg user","rowClass":"msg-row user","text":"hello pi tool use control\n\n08:00"},{"msgClass":"msg assistant typing","rowClass":"msg-row assistant typing-row","text":""}]},"error":null}

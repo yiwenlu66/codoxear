@@ -1,11 +1,21 @@
 import subprocess
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from codoxear.sessiond import Sessiond
 from codoxear.sessiond import State
+from codoxear.sessiond import _busy_value_after_log_batch
+from codoxear.sessiond import _log_busy_signals
+from codoxear.sessiond import _read_jsonl_from_offset
+from codoxear.sessiond import _should_clear_busy_state
+from codoxear.broker_turn_state import _mark_busy_state_idle
+from codoxear.broker_turn_state import _update_busy_from_pty_text
+from codoxear.sessiond_control import SessiondControlDeps
+from codoxear.sessiond_control import handle_sessiond_control_connection
+from codoxear.sessiond_state import apply_log_batch_to_state
 
 
 def _sessiond_state(*, codex_pid: int, sock_path: Path) -> State:
@@ -37,6 +47,140 @@ class _AcceptCrashSocket:
 
 
 class TestSessiondFailClosed(unittest.TestCase):
+    def test_log_busy_signals_treat_pi_aborted_as_turn_end(self) -> None:
+        self.assertEqual(
+            _log_busy_signals({"type": "message", "message": {"role": "assistant", "content": [], "stopReason": "aborted"}}),
+            (False, True),
+        )
+        self.assertEqual(
+            _log_busy_signals({"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}}),
+            (True, False),
+        )
+
+    def test_log_busy_batch_preserves_record_order(self) -> None:
+        aborted = {"type": "message", "message": {"role": "assistant", "content": [], "stopReason": "aborted"}}
+        user = {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "new turn"}]}}
+        self.assertIs(_busy_value_after_log_batch([aborted, user]), True)
+        self.assertIs(_busy_value_after_log_batch([user, aborted]), False)
+
+    def test_log_busy_signals_cover_claude_code_user_and_final_assistant_rows(self) -> None:
+        cc_user = {"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": "run"}]}}
+        cc_final = {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "done"}], "stop_reason": "end_turn"}}
+        self.assertEqual(_log_busy_signals(cc_user), (True, False))
+        self.assertEqual(_log_busy_signals(cc_final), (False, True))
+        self.assertIs(_busy_value_after_log_batch([cc_user, cc_final]), False)
+
+    def test_sessiond_log_batch_applies_token_and_interrupted_idle_state(self) -> None:
+        state = _sessiond_state(codex_pid=1234, sock_path=Path("/tmp/sessiond.sock"))
+        user = {"type": "event_msg", "payload": {"type": "user_message", "message": "run"}}
+        token = {
+            "type": "event_msg",
+            "timestamp": "2026-07-03T13:00:00Z",
+            "payload": {
+                "type": "token_count",
+                "info": {
+                    "model_context_window": 1000,
+                    "last_token_usage": {"total_tokens": 321},
+                    "total_token_usage": {},
+                },
+            },
+        }
+        done = {"type": "event_msg", "payload": {"type": "turn_complete"}}
+
+        self.assertTrue(apply_log_batch_to_state(state, [user], now_ts=10.0))
+        self.assertTrue(state.busy)
+        self.assertTrue(state.turn_open)
+
+        self.assertTrue(apply_log_batch_to_state(state, [token], now_ts=10.5))
+        self.assertEqual(state.token["context_window"], 1000)
+        self.assertEqual(state.token["tokens_in_context"], 321)
+
+        self.assertTrue(apply_log_batch_to_state(state, [user], now_ts=11.0))
+        state.last_interrupt_request_ts = 11.5
+        self.assertTrue(apply_log_batch_to_state(state, [done], now_ts=12.0))
+        self.assertFalse(state.busy)
+        self.assertFalse(state.turn_open)
+        self.assertEqual(state.last_interrupt_request_ts, 0.0)
+        self.assertEqual(state.last_interrupted_idle_ts, 0.0)
+
+        self.assertTrue(apply_log_batch_to_state(state, [user], now_ts=20.0))
+        state.last_interrupt_request_ts = 21.0
+        self.assertFalse(_should_clear_busy_state(state, now_ts=22.0))
+        self.assertTrue(_should_clear_busy_state(state, now_ts=25.0))
+        _mark_busy_state_idle(state, now_ts=25.0)
+        self.assertFalse(state.busy)
+        self.assertEqual(state.last_interrupted_idle_ts, 25.0)
+
+    def test_sessiond_log_batch_uses_shared_pi_pending_tool_state(self) -> None:
+        state = _sessiond_state(codex_pid=1234, sock_path=Path("/tmp/sessiond.sock"))
+        tool_call = {
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "toolCall", "id": "tool-1", "name": "bash", "arguments": {"command": "pwd"}}],
+            },
+        }
+        tool_result = {
+            "type": "message",
+            "message": {"role": "toolResult", "toolCallId": "tool-1", "content": [{"type": "text", "text": "ok"}]},
+        }
+
+        self.assertTrue(apply_log_batch_to_state(state, [tool_call], now_ts=30.0))
+        self.assertTrue(state.busy)
+        self.assertIn("tool-1", state.pending_calls)
+        self.assertFalse(_should_clear_busy_state(state, now_ts=100.0))
+
+        self.assertTrue(apply_log_batch_to_state(state, [tool_result], now_ts=31.0))
+        self.assertEqual(state.pending_calls, set())
+
+    def test_sessiond_state_accepts_broker_pty_interrupt_hint_updates(self) -> None:
+        state = _sessiond_state(codex_pid=1234, sock_path=Path("/tmp/sessiond.sock"))
+
+        _update_busy_from_pty_text(state, "press Esc to interrupt", 40.0)
+
+        self.assertTrue(state.busy)
+        self.assertEqual(state.last_interrupt_hint_ts, 40.0)
+        self.assertEqual(state.last_turn_activity_ts, 40.0)
+
+    def test_sessiond_control_state_uses_runtime_state_schema(self) -> None:
+        captured: dict[str, object] = {}
+
+        def fake_control_connection(_conn, *, handlers, **_kwargs):
+            response, after = handlers["state"]({})
+            captured["response"] = response
+            captured["after"] = after
+
+        state = _sessiond_state(codex_pid=1234, sock_path=Path("/tmp/sessiond.sock"))
+        state.busy = True
+        deps = SessiondControlDeps(
+            lock=threading.Lock(),
+            state=lambda: state,
+            encode_enter=lambda: b"\r",
+            seq_bytes=lambda raw: raw.encode("utf-8"),
+            write_all=lambda _fd, _data: None,
+            inject=lambda **_kwargs: None,
+            teardown_managed_process_group=lambda: None,
+            handle_control_socket_connection=fake_control_connection,
+            send_json_line=lambda _conn, _obj: None,
+            socket_peer_disconnected=lambda _exc: False,
+            print_exception=lambda: None,
+            now=lambda: 12.0,
+        )
+
+        handle_sessiond_control_connection(object(), deps=deps)
+
+        self.assertEqual(captured["response"], {"busy": True, "queue_len": 0, "token": None, "interrupted_idle": False})
+        self.assertIsNone(captured["after"])
+
+    def test_sessiond_reader_preserves_missing_file_contract(self) -> None:
+        missing = Path(tempfile.gettempdir()) / "codoxear-missing-sessiond-jsonl-for-test.jsonl"
+        try:
+            missing.unlink()
+        except FileNotFoundError:
+            pass
+
+        self.assertEqual(_read_jsonl_from_offset(missing, 17, max_bytes=4096), ([], 17))
+
     def test_teardown_managed_process_group_kills_real_process_group(self) -> None:
         proc = subprocess.Popen(["sh", "-c", "sleep 100"], start_new_session=True)
         try:
@@ -62,6 +206,33 @@ class TestSessiondFailClosed(unittest.TestCase):
                         sessiond._sock_server()
 
         teardown.assert_called_once_with()
+
+    def test_discover_log_binds_pi_open_log(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            pi_log = root / "pi-session.jsonl"
+            pi_log.write_text('{"type":"session","id":"pi-sid","cwd":"/repo"}\n', encoding="utf-8")
+            pending = root / "pending.jsonl"
+            pending.write_text("", encoding="utf-8")
+            sock_path = root / "sessiond.sock"
+            sessiond = Sessiond(cwd="/repo", codex_args=[])
+            sessiond.state = _sessiond_state(codex_pid=1234, sock_path=sock_path)
+            sessiond.state.log_path = pending
+
+            with patch("codoxear.sessiond.AGENT_BACKEND", "pi"):
+                with patch("codoxear.sessiond.PENDING_DIR", root):
+                    with patch("codoxear.sessiond._proc_find_open_rollout_log", return_value=pi_log) as find_log:
+                        with patch("codoxear.sessiond._read_session_meta_payload", return_value={"id": "pi-sid", "cwd": "/repo"}):
+                            with patch.object(sessiond, "_write_meta") as write_meta:
+                                sessiond._discover_log()
+
+            find_log.assert_called_once()
+            self.assertEqual(find_log.call_args.kwargs["agent_backend"], "pi")
+            self.assertEqual(find_log.call_args.kwargs["cwd"], "/repo")
+            self.assertEqual(sessiond.state.session_id, "pi-sid")
+            self.assertEqual(sessiond.state.log_path, pi_log)
+            self.assertFalse(pending.exists())
+            write_meta.assert_called_once_with()
 
 
 if __name__ == "__main__":

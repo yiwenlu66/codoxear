@@ -1,0 +1,17 @@
+{
+  "count": 1015,
+  "commands": {
+    "state": 1014,
+    "send": 1
+  },
+  "send_count": 1,
+  "keys_count": 0,
+  "sends": [
+    {
+      "cmd": "send",
+      "text": "Attachment 1: /home/tester/.local/share/codoxear/uploads/capture-proof/1783381957894_captured-1783381957888.jpg\nplease process captured photo",
+      "sync": true
+    }
+  ],
+  "keys": []
+}

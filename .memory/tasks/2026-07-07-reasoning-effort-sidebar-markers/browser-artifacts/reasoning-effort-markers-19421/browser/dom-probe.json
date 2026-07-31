@@ -1,0 +1,62 @@
+{
+  "bodyText": "Codoxear\nNOW\n7\neffort-codex-low\nL\n3h ago | effort-codex-low\neffort-codex-medium\nM\n3h ago | effort-codex-medium\neffort-codex-high\nH\n3h ago | effort-codex-high\neffort-codex-xhigh\nX\n3h ago | effort-codex-xhigh\neffort-pi-off\n–\n3h ago | effort-pi-off\neffort-pi-minimal\nm\n3h ago | effort-pi-minimal\neffort-cc-max\nM+\n3h ago | effort-cc-max\nHelp\nVoice settings\nLog out\neffort-codex-low\nEnter your instructions here",
+  "candidates": [
+    {
+      "cls": "session active desktop",
+      "html": "<div class=\"session active desktop\"><div class=\"sessionInner sessionDesktopLayout\"><div class=\"sessionMain\"><div class=\"sessionTitleWithBadges\"><div class=\"sessionTitleRow\"><span class=\"stateDot idle\"></span><div class=\"titleLine\" title=\"/home/tester/reasoning-effort-proof/effort-codex-low\"><span class=\"titleText\">effort-codex-low</span></div></div><div class=\"sessionBadges\"></div></div><div class=\"muted subLine sessionMetaLine\"><img class=\"sessionBackendStatusIcon\" src=\"http://127.0.0.1:19421/static/logos/codex.svg?v=1afec825562e\" alt=\"Codex logo\" width=\"12\" height=\"12\"><span class=\"ownerBadge ownerIconBadge owner-terminal\" title=\"terminal-owned session\"><svg class=\"icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"></rect><path d=\"m7 10 3 2-3 2\"></path><path d=\"M13 14h4\"></path></svg></span><span class=\"effortMark effort-low\" title=\"reasoning effort low\">L</span><s",
+      "sid": "",
+      "tag": "DIV",
+      "text": "effort-codex-low\nL\n3h ago | effort-codex-low"
+    },
+    {
+      "cls": "session desktop",
+      "html": "<div class=\"session desktop\"><div class=\"sessionInner sessionDesktopLayout\"><div class=\"sessionMain\"><div class=\"sessionTitleWithBadges\"><div class=\"sessionTitleRow\"><span class=\"stateDot idle\"></span><div class=\"titleLine\" title=\"/home/tester/reasoning-effort-proof/effort-codex-medium\"><span class=\"titleText\">effort-codex-medium</span></div></div><div class=\"sessionBadges\"></div></div><div class=\"muted subLine sessionMetaLine\"><img class=\"sessionBackendStatusIcon\" src=\"http://127.0.0.1:19421/static/logos/codex.svg?v=1afec825562e\" alt=\"Codex logo\" width=\"12\" height=\"12\"><span class=\"ownerBadge ownerIconBadge owner-terminal\" title=\"terminal-owned session\"><svg class=\"icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"></rect><path d=\"m7 10 3 2-3 2\"></path><path d=\"M13 14h4\"></path></svg></span><span class=\"effortMark effort-medium\" title=\"reasoning effort medium\">M</sp",
+      "sid": "",
+      "tag": "DIV",
+      "text": "effort-codex-medium\nM\n3h ago | effort-codex-medium"
+    },
+    {
+      "cls": "session desktop",
+      "html": "<div class=\"session desktop\"><div class=\"sessionInner sessionDesktopLayout\"><div class=\"sessionMain\"><div class=\"sessionTitleWithBadges\"><div class=\"sessionTitleRow\"><span class=\"stateDot idle\"></span><div class=\"titleLine\" title=\"/home/tester/reasoning-effort-proof/effort-codex-high\"><span class=\"titleText\">effort-codex-high</span></div></div><div class=\"sessionBadges\"></div></div><div class=\"muted subLine sessionMetaLine\"><img class=\"sessionBackendStatusIcon\" src=\"http://127.0.0.1:19421/static/logos/codex.svg?v=1afec825562e\" alt=\"Codex logo\" width=\"12\" height=\"12\"><span class=\"ownerBadge ownerIconBadge owner-terminal\" title=\"terminal-owned session\"><svg class=\"icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"></rect><path d=\"m7 10 3 2-3 2\"></path><path d=\"M13 14h4\"></path></svg></span><span class=\"effortMark effort-high\" title=\"reasoning effort high\">H</span><span",
+      "sid": "",
+      "tag": "DIV",
+      "text": "effort-codex-high\nH\n3h ago | effort-codex-high"
+    },
+    {
+      "cls": "session desktop",
+      "html": "<div class=\"session desktop\"><div class=\"sessionInner sessionDesktopLayout\"><div class=\"sessionMain\"><div class=\"sessionTitleWithBadges\"><div class=\"sessionTitleRow\"><span class=\"stateDot idle\"></span><div class=\"titleLine\" title=\"/home/tester/reasoning-effort-proof/effort-codex-xhigh\"><span class=\"titleText\">effort-codex-xhigh</span></div></div><div class=\"sessionBadges\"></div></div><div class=\"muted subLine sessionMetaLine\"><img class=\"sessionBackendStatusIcon\" src=\"http://127.0.0.1:19421/static/logos/codex.svg?v=1afec825562e\" alt=\"Codex logo\" width=\"12\" height=\"12\"><span class=\"ownerBadge ownerIconBadge owner-terminal\" title=\"terminal-owned session\"><svg class=\"icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"></rect><path d=\"m7 10 3 2-3 2\"></path><path d=\"M13 14h4\"></path></svg></span><span class=\"effortMark effort-xhigh\" title=\"reasoning effort xhigh\">X</span><",
+      "sid": "",
+      "tag": "DIV",
+      "text": "effort-codex-xhigh\nX\n3h ago | effort-codex-xhigh"
+    },
+    {
+      "cls": "session desktop",
+      "html": "<div class=\"session desktop\"><div class=\"sessionInner sessionDesktopLayout\"><div class=\"sessionMain\"><div class=\"sessionTitleWithBadges\"><div class=\"sessionTitleRow\"><span class=\"stateDot idle\"></span><div class=\"titleLine\" title=\"/home/tester/reasoning-effort-proof/effort-pi-off\"><span class=\"titleText\">effort-pi-off</span></div></div><div class=\"sessionBadges\"></div></div><div class=\"muted subLine sessionMetaLine\"><img class=\"sessionBackendStatusIcon\" src=\"http://127.0.0.1:19421/static/logos/pi.svg?v=1afec825562e\" alt=\"Pi logo\" width=\"12\" height=\"12\"><span class=\"ownerBadge ownerIconBadge owner-terminal\" title=\"terminal-owned session\"><svg class=\"icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"></rect><path d=\"m7 10 3 2-3 2\"></path><path d=\"M13 14h4\"></path></svg></span><span class=\"effortMark effort-off\" title=\"reasoning effort off\">–</span><span class=\"metaText",
+      "sid": "",
+      "tag": "DIV",
+      "text": "effort-pi-off\n–\n3h ago | effort-pi-off"
+    },
+    {
+      "cls": "session desktop",
+      "html": "<div class=\"session desktop\"><div class=\"sessionInner sessionDesktopLayout\"><div class=\"sessionMain\"><div class=\"sessionTitleWithBadges\"><div class=\"sessionTitleRow\"><span class=\"stateDot idle\"></span><div class=\"titleLine\" title=\"/home/tester/reasoning-effort-proof/effort-pi-minimal\"><span class=\"titleText\">effort-pi-minimal</span></div></div><div class=\"sessionBadges\"></div></div><div class=\"muted subLine sessionMetaLine\"><img class=\"sessionBackendStatusIcon\" src=\"http://127.0.0.1:19421/static/logos/pi.svg?v=1afec825562e\" alt=\"Pi logo\" width=\"12\" height=\"12\"><span class=\"ownerBadge ownerIconBadge owner-terminal\" title=\"terminal-owned session\"><svg class=\"icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"></rect><path d=\"m7 10 3 2-3 2\"></path><path d=\"M13 14h4\"></path></svg></span><span class=\"effortMark effort-minimal\" title=\"reasoning effort minimal\">m</span><span",
+      "sid": "",
+      "tag": "DIV",
+      "text": "effort-pi-minimal\nm\n3h ago | effort-pi-minimal"
+    },
+    {
+      "cls": "session desktop",
+      "html": "<div class=\"session desktop\"><div class=\"sessionInner sessionDesktopLayout\"><div class=\"sessionMain\"><div class=\"sessionTitleWithBadges\"><div class=\"sessionTitleRow\"><span class=\"stateDot idle\"></span><div class=\"titleLine\" title=\"/home/tester/reasoning-effort-proof/effort-cc-max\"><span class=\"titleText\">effort-cc-max</span></div></div><div class=\"sessionBadges\"></div></div><div class=\"muted subLine sessionMetaLine\"><img class=\"sessionBackendStatusIcon\" src=\"http://127.0.0.1:19421/static/logos/cc.svg?v=1afec825562e\" alt=\"Claude logo\" width=\"12\" height=\"12\"><span class=\"ownerBadge ownerIconBadge owner-terminal\" title=\"terminal-owned session\"><svg class=\"icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"></rect><path d=\"m7 10 3 2-3 2\"></path><path d=\"M13 14h4\"></path></svg></span><span class=\"effortMark effort-max\" title=\"reasoning effort max\">M+</span><span class=\"met",
+      "sid": "",
+      "tag": "DIV",
+      "text": "effort-cc-max\nM+\n3h ago | effort-cc-max"
+    },
+    {
+      "cls": "row",
+      "html": "<div class=\"row\"><label><input type=\"checkbox\" id=\"unattendedEnabled\"><span>Unattended mode</span></label></div>",
+      "sid": "",
+      "tag": "DIV",
+      "text": "Unattended mode"
+    }
+  ],
+  "url": "http://127.0.0.1:19421/#session=effort-codex-low"
+}

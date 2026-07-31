@@ -1,0 +1,2 @@
+staged_count=0
+status_short=?? .memory/tasks/2026-07-07-copy-conversation-count-truth/browser-artifacts/

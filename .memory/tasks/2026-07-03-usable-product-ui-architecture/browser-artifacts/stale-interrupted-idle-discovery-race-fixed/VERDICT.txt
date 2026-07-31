@@ -1,0 +1,4 @@
+verdict=PASS
+phase1_busy_last=False
+phase2_busy_last=True
+phase3_busy_last=False

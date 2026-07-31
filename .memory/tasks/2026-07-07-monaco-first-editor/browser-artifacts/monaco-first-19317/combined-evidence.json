@@ -1,0 +1,178 @@
+{
+  "api-summary.json": {
+    "me_status": "401",
+    "loader_status": "200",
+    "sessions": [
+      "monaco-proof"
+    ],
+    "file_kind": "text",
+    "file_editable": true,
+    "file_text_has_alpha": true,
+    "diff_has_marker": true
+  },
+  "browser-save-result.json": {
+    "success": true,
+    "data": {
+      "origin": "http://127.0.0.1:19317/#session=monaco-proof",
+      "result": {
+        "dirty": false,
+        "editLabel": "Edit file",
+        "hasMonaco": true,
+        "plainTextarea": false,
+        "saveStatus": "notes.txt - 49 B",
+        "serverHasMarker": true,
+        "serverText": "alpha line\nbeta line\ngamma line\nSAVED-BY-MONACO\\n"
+      }
+    },
+    "error": null
+  },
+  "browser-diff-result.json": {
+    "success": true,
+    "data": {
+      "origin": "http://127.0.0.1:19317/#session=monaco-proof",
+      "result": {
+        "bodyText": "#\u00a0Title\nbaseline\u00a0body\u00a0one\nbaseline\u00a0body\u00a0two\n1\n2\n3\n4\n5\n#\u00a0Title\nbaseline\u00a0body\u00a0one\nbaseline\u00a0body\u00a0two\u00a0changed\nNEW\u00a0monaco\u00a0diff\u00a0line",
+        "diffButtonActive": true,
+        "hasMonacoDiff": true,
+        "hasMonacoEditor": true,
+        "hasPlainFallbackPre": false,
+        "hasPlainTextarea": false,
+        "options": [
+          {
+            "cls": "fileMenuItem",
+            "i": 0,
+            "text": "changed.md+2-1"
+          },
+          {
+            "cls": "fileMenuItem active",
+            "i": 1,
+            "text": "notes.txt"
+          }
+        ],
+        "status": "changed.md - diff",
+        "textHasAddedLine": false
+      }
+    },
+    "error": null
+  },
+  "browser-diff-models.json": {
+    "success": true,
+    "data": {
+      "origin": "http://127.0.0.1:19317/#session=monaco-proof",
+      "result": {
+        "diffEditors": 1,
+        "editors": 2,
+        "modified": "# Title\nbaseline body one\nbaseline body two changed\nNEW monaco diff line\n",
+        "modifiedHasMarker": true,
+        "original": "# Title\nbaseline body one\nbaseline body two\n",
+        "originalHasOldLine": true
+      }
+    },
+    "error": null
+  },
+  "browser-monaco-unavailable.json": {
+    "success": true,
+    "data": {
+      "origin": "http://127.0.0.1:19317/#session=monaco-proof",
+      "result": {
+        "anyTextarea": [
+          {
+            "cls": "",
+            "id": "msg",
+            "readOnly": false,
+            "value": ""
+          },
+          {
+            "cls": "",
+            "id": "unattendedRequest",
+            "readOnly": false,
+            "value": ""
+          },
+          {
+            "cls": "filePasteInput",
+            "id": "filePasteInput",
+            "readOnly": false,
+            "value": ""
+          }
+        ],
+        "editAria": "true",
+        "editDisabled": false,
+        "editLabel": "Editing is unavailable because the code editor failed to load. Read-only preview remains available.",
+        "hasMonaco": false,
+        "plainTextarea": false,
+        "status": "changed.md - editor unavailable",
+        "text": "Plain text fallback\n\nCode editor unavailable. Editing disabled: monaco loader timed out. Showing a read-only plain-text view.\n\n# Title\nbaseline body one\nbaseline body two changed\nNEW monaco diff line\n"
+      }
+    },
+    "error": null
+  },
+  "browser-diff-unavailable.json": {
+    "success": true,
+    "data": {
+      "origin": "http://127.0.0.1:19317/#session=monaco-proof",
+      "result": {
+        "afterStatus": "changed.md - editor unavailable",
+        "before": {
+          "disabled": true,
+          "label": "Toggle diff",
+          "status": "changed.md - editor unavailable"
+        },
+        "bodyText": "Plain text fallback\n\nCode editor unavailable. Editing disabled: monaco loader timed out. Showing a read-only plain-text view.\n\n# Title\nbaseline body one\nbaseline body two changed\nNEW monaco diff line\n",
+        "diffButtonActive": false,
+        "editLabel": "Editing is unavailable because the code editor failed to load. Read-only preview remains available.",
+        "hasMonacoDiff": false,
+        "hasPlainFallbackPre": false,
+        "preText": "# Title\nbaseline body one\nbaseline body two changed\nNEW monaco diff line\n"
+      }
+    },
+    "error": null
+  },
+  "browser-conflict-result.json": {
+    "success": true,
+    "data": {
+      "origin": "http://127.0.0.1:19317/#session=monaco-proof",
+      "result": {
+        "afterReloadHasExternal": true,
+        "afterReloadValue": "EXTERNAL-DISK-VERSION\n",
+        "beforeVersion": "8cc840509fc65e5b11f7357a81fb316a7e9e59f1208a9f4bb46a92318cbe7a8c",
+        "conflictText": "notes.txt - save conflict: file changed on disk\nReload from disk\nKeep editing",
+        "externalText": "EXTERNAL-DISK-VERSION\n",
+        "externalWriteOk": true,
+        "hasMonaco": true,
+        "hasPlainTextarea": false,
+        "keptHasDraft": true,
+        "keptValue": "UNSAVED-MONACO-DRAFT\n",
+        "status": "notes.txt - 22 B"
+      }
+    },
+    "error": null
+  },
+  "browser-before-diff-screenshot.json": {
+    "success": true,
+    "data": {
+      "origin": "http://127.0.0.1:19317/#session=monaco-proof",
+      "result": {
+        "diff": true,
+        "status": "changed.md - diff"
+      }
+    },
+    "error": null
+  },
+  "browser-open-editor-result.json": {
+    "success": true,
+    "data": {
+      "origin": "http://127.0.0.1:19317/#session=monaco-proof",
+      "result": {
+        "editorCount": 1,
+        "hasMonaco": true,
+        "hasMonacoDiff": false,
+        "plainTextarea": false,
+        "status": "notes.txt - 22 B",
+        "text": "EXTERNAL-DISK-VERSION\n",
+        "windowMonaco": "object",
+        "windowRequire": "function"
+      }
+    },
+    "error": null
+  }
+}

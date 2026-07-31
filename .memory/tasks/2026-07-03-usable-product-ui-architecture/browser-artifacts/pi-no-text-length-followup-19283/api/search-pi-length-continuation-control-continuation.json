@@ -1,0 +1,23 @@
+{
+  "body": {
+    "log_path": "/home/tester/.local/share/codoxear/pi-length-followup-logs/pi-length-continuation-control.jsonl",
+    "match_count": 1,
+    "match_count_truncated": false,
+    "matches": [
+      {
+        "_before_byte": 718,
+        "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InBpLWxlbmd0aC1jb250aW51YXRpb24tY29udHJvbCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9waS1sZW5ndGgtZm9sbG93dXAtbG9ncy9waS1sZW5ndGgtY29udGludWF0aW9uLWNvbnRyb2wuanNvbmwiLCJwb3MiOjcxOH0.WhDUiMaoDrJR4mvk-Lf0ZCnD4kqYCtoF_W5700ULWCo",
+        "load_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InBpLWxlbmd0aC1jb250aW51YXRpb24tY29udHJvbCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9waS1sZW5ndGgtZm9sbG93dXAtbG9ncy9waS1sZW5ndGgtY29udGludWF0aW9uLWNvbnRyb2wuanNvbmwiLCJwb3MiOjk5N30.YIJC4byhVBDRT2b4R-vrPwWAhbErbG6y8ZslgXRlngk",
+        "message_class": "narration",
+        "message_id": "e3cf0741657c2142dc6d15976f393aa539c74e0a71a8ce4ea600203d76330224",
+        "role": "assistant",
+        "text": "continuing with a tool",
+        "ts": 5.0
+      }
+    ],
+    "query": "continuing with a tool",
+    "thread_id": "pi-length-continuation-control",
+    "transcript_state": "bound"
+  },
+  "status": 200
+}

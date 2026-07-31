@@ -1,0 +1,173 @@
+{
+  "claim1": {
+    "beforeAttach": {
+      "present": true,
+      "display": "none",
+      "textContent": "",
+      "visible": false
+    },
+    "injectFile": {
+      "status": 200,
+      "ok": true
+    },
+    "afterAttach": {
+      "present": true,
+      "display": "flex",
+      "textContent": "1",
+      "visible": true
+    },
+    "afterReload": {
+      "present": true,
+      "display": "flex",
+      "textContent": "1",
+      "visible": true
+    },
+    "sendIndicator": {
+      "beforeBadge": {
+        "display": "flex",
+        "text": "1"
+      },
+      "afterBadge": {
+        "display": "none",
+        "text": ""
+      },
+      "hiddenAtMs": 40
+    },
+    "injectFileB": {
+      "status": 200,
+      "ok": true
+    },
+    "afterAttachB": {
+      "present": true,
+      "display": "flex",
+      "textContent": "1",
+      "visible": true
+    },
+    "clearResp": {
+      "status": 200,
+      "json": {
+        "ok": true,
+        "pending_attachment": false
+      }
+    },
+    "afterClearB": {
+      "present": true,
+      "display": "none",
+      "textContent": "",
+      "visible": false,
+      "hiddenAtMs": 1646
+    }
+  },
+  "claim3": {
+    "desktopPointer": {
+      "controls": [
+        {
+          "id": "attachBtn",
+          "width": 44,
+          "height": 44,
+          "minWidth": "44px",
+          "minHeight": "44px",
+          "display": "flex",
+          "meets44": true
+        },
+        {
+          "id": "queueBtn",
+          "width": 44,
+          "height": 44,
+          "minWidth": "44px",
+          "minHeight": "44px",
+          "display": "flex",
+          "meets44": true
+        },
+        {
+          "id": "sendBtn",
+          "width": 44,
+          "height": 44,
+          "minWidth": "44px",
+          "minHeight": "44px",
+          "display": "flex",
+          "meets44": true
+        },
+        {
+          "id": "composerStopBtn",
+          "width": 44,
+          "height": 44,
+          "minWidth": "44px",
+          "minHeight": "44px",
+          "display": "flex",
+          "meets44": true
+        }
+      ],
+      "composerScrollWidth": 390,
+      "composerClientWidth": 390,
+      "formScrollWidth": 368,
+      "formClientWidth": 368,
+      "bodyScrollWidth": 390,
+      "viewportWidth": 390,
+      "horizontalOverflow": false
+    },
+    "touchEmulated": {
+      "controls": [
+        {
+          "id": "attachBtn",
+          "width": 44,
+          "height": 44,
+          "meets44": true
+        },
+        {
+          "id": "queueBtn",
+          "width": 44,
+          "height": 44,
+          "meets44": true
+        },
+        {
+          "id": "sendBtn",
+          "width": 44,
+          "height": 44,
+          "meets44": true
+        },
+        {
+          "id": "composerStopBtn",
+          "width": 44,
+          "height": 44,
+          "meets44": true
+        }
+      ],
+      "composerScrollWidth": 390,
+      "composerClientWidth": 390,
+      "horizontalOverflow": false
+    }
+  },
+  "claim4Browser": {
+    "rowCount": 6,
+    "rows": [
+      {
+        "cls": "msg-row user",
+        "text": "please summarize the report08:00"
+      },
+      {
+        "cls": "msg-shell user",
+        "text": "please summarize the report08:00"
+      },
+      {
+        "cls": "msg user",
+        "text": "please summarize the report08:00"
+      },
+      {
+        "cls": "msg-row assistant",
+        "text": "The backend completed this turn without producing a response.08:00"
+      },
+      {
+        "cls": "msg-shell assistant",
+        "text": "The backend completed this turn without producing a response.08:00"
+      },
+      {
+        "cls": "msg assistant error",
+        "text": "The backend completed this turn without producing a response.08:00"
+      }
+    ],
+    "hasNoResponseText": true,
+    "hitText": "The backend completed this turn without producing a response.",
+    "hitClass": ""
+  }
+}

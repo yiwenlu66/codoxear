@@ -1,0 +1,4 @@
+/home/tester/.local/share/codoxear/audio/live.m3u8 74
+/home/tester/.local/share/codoxear/socks/code-copy-session.json 609
+HOME=/home/tester
+APP_DIR= /home/tester/.local/share/codoxear

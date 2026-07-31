@@ -1,0 +1,883 @@
+{
+  "attach": {
+    "payload": {
+      "error": "unknown session"
+    },
+    "status": 404
+  },
+  "control_row": null,
+  "enqueue": {
+    "payload": {
+      "error": "unknown session"
+    },
+    "status": 404
+  },
+  "export": {
+    "payload": {
+      "busy": false,
+      "event_count": 2,
+      "events": [
+        {
+          "_before_byte": 111,
+          "role": "user",
+          "text": "POST_LOG_BOUND_DEATH_SENTINEL",
+          "ts": 1.0
+        },
+        {
+          "codoxear_lifecycle": "backend_stopped_after_log_bind",
+          "message_class": "error",
+          "role": "assistant",
+          "text": "The backend process stopped before completing this turn.",
+          "ts": 1783359081.064825
+        }
+      ],
+      "has_older": false,
+      "history_cursor": null,
+      "launch_id": "launch-post-log-recovery-fixed",
+      "live_cursor": null,
+      "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-recovery-fixed.jsonl",
+      "queue_len": 0,
+      "session_id": "post-log-recovery-fixed",
+      "thread_id": "thread-post-log-recovery-fixed",
+      "token": null,
+      "transcript_state": "failed"
+    },
+    "status": 200
+  },
+  "history": {
+    "payload": {
+      "busy": false,
+      "events": [
+        {
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1yZWNvdmVyeS1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9wb3N0LWxvZy1yZWNvdmVyeS1wcm9vZi1sb2dzL3Bvc3QtbG9nLXJlY292ZXJ5LWZpeGVkLmpzb25sIiwicG9zIjoxMTF9.KXiCgOkSjwHurDjTApkeohrO_ORKpSOA5EJmm_K2XVs",
+          "role": "user",
+          "text": "POST_LOG_BOUND_DEATH_SENTINEL",
+          "ts": 1.0
+        },
+        {
+          "codoxear_lifecycle": "backend_stopped_after_log_bind",
+          "message_class": "error",
+          "role": "assistant",
+          "text": "The backend process stopped before completing this turn.",
+          "ts": 1783359081.064825
+        }
+      ],
+      "has_older": false,
+      "history_cursor": null,
+      "launch_id": "launch-post-log-recovery-fixed",
+      "live_cursor": null,
+      "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-recovery-fixed.jsonl",
+      "queue_len": 0,
+      "session_id": "post-log-recovery-fixed",
+      "thread_id": "thread-post-log-recovery-fixed",
+      "token": null,
+      "transcript_state": "failed"
+    },
+    "status": 200
+  },
+  "initial_sessions": {
+    "payload": {
+      "app_version": "0c45256d427e",
+      "new_session_defaults": {
+        "backends": {
+          "cc": {
+            "agent_backend": "cc",
+            "model": null,
+            "model_provider": null,
+            "models": [
+              "sonnet",
+              "opus",
+              "fable"
+            ],
+            "preferred_auth_method": null,
+            "provider_choice": null,
+            "provider_choices": [],
+            "reasoning_effort": "medium",
+            "reasoning_efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "service_tier": null,
+            "supports_fast": false
+          },
+          "codex": {
+            "agent_backend": "codex",
+            "model": null,
+            "model_provider": "openai",
+            "model_providers": [
+              "chatgpt",
+              "openai-api"
+            ],
+            "preferred_auth_method": "apikey",
+            "provider_choice": "openai-api",
+            "provider_choices": [
+              "chatgpt",
+              "openai-api"
+            ],
+            "reasoning_effort": null,
+            "reasoning_efforts": [
+              "xhigh",
+              "high",
+              "medium",
+              "low"
+            ],
+            "service_tier": "flex",
+            "supports_fast": true
+          },
+          "pi": {
+            "agent_backend": "pi",
+            "model": null,
+            "model_provider": null,
+            "models": [],
+            "preferred_auth_method": null,
+            "provider_choice": null,
+            "provider_choices": [],
+            "reasoning_effort": "high",
+            "reasoning_efforts": [
+              "off",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "reasoning_efforts_by_model": {},
+            "service_tier": null,
+            "supports_fast": false
+          }
+        },
+        "default_backend": "codex"
+      },
+      "recent_cwds": [
+        "/workspace"
+      ],
+      "sessions": [
+        {
+          "agent_backend": "pi",
+          "alias": "",
+          "base_priority": 1.0,
+          "blocked": false,
+          "broker_pid": 987654321,
+          "busy": false,
+          "cwd": "/workspace",
+          "dependency_session_id": null,
+          "files": [],
+          "final_priority": 1.0,
+          "git_branch": "",
+          "launch_error": "broker control socket went stale after binding a transcript log before the turn completed",
+          "launch_id": "launch-post-log-recovery-fixed",
+          "launch_stage": "broker_exit_after_log_bind",
+          "launch_state": "failed",
+          "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-recovery-fixed.jsonl",
+          "model": "proof-model",
+          "model_provider": "proof-provider",
+          "owned": true,
+          "pid": 987654322,
+          "preferred_auth_method": "[redacted]",
+          "priority_offset": 0.0,
+          "provider_choice": "proof-provider",
+          "queue_len": 0,
+          "reasoning_effort": "low",
+          "service_tier": null,
+          "session_id": "post-log-recovery-fixed",
+          "snooze_until": null,
+          "snoozed": false,
+          "spawn_nonce": "spawn-post-log-recovery-fixed",
+          "start_ts": 1783312000.0,
+          "state_busy": false,
+          "submitted_user_message_count": 0,
+          "system": 0,
+          "thinking": 0,
+          "thread_id": "thread-post-log-recovery-fixed",
+          "time_priority": 1.0,
+          "tmux_session": null,
+          "tmux_window": null,
+          "token": null,
+          "tools": 0,
+          "transport": null,
+          "unattended_cooldown_minutes": 5,
+          "unattended_enabled": false,
+          "unattended_remaining_injections": 10,
+          "updated_ts": 1783359081.064825
+        },
+        {
+          "agent_backend": "codex",
+          "alias": "",
+          "base_priority": 1.0,
+          "blocked": false,
+          "broker_pid": 987654321,
+          "busy": false,
+          "cwd": "/workspace",
+          "dependency_session_id": null,
+          "files": [],
+          "final_priority": 1.0,
+          "git_branch": "",
+          "launch_error": "broker control socket went stale after binding a transcript log before the turn completed",
+          "launch_id": "launch-post-log-large-cursor",
+          "launch_stage": "broker_exit_after_log_bind",
+          "launch_state": "failed",
+          "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-large-cursor.jsonl",
+          "model": "proof-model",
+          "model_provider": "proof-provider",
+          "owned": true,
+          "pid": 987654322,
+          "preferred_auth_method": "[redacted]",
+          "priority_offset": 0.0,
+          "provider_choice": "proof-provider",
+          "queue_len": 0,
+          "reasoning_effort": "low",
+          "service_tier": null,
+          "session_id": "post-log-large-cursor",
+          "snooze_until": null,
+          "snoozed": false,
+          "spawn_nonce": "spawn-post-log-large-cursor",
+          "start_ts": 1783312000.0,
+          "state_busy": false,
+          "submitted_user_message_count": 0,
+          "system": 0,
+          "thinking": 0,
+          "thread_id": "thread-post-log-large-cursor",
+          "time_priority": 1.0,
+          "tmux_session": null,
+          "tmux_window": null,
+          "token": null,
+          "tools": 0,
+          "transport": null,
+          "unattended_cooldown_minutes": 5,
+          "unattended_enabled": false,
+          "unattended_remaining_injections": 10,
+          "updated_ts": 1783359081.0643454
+        }
+      ],
+      "tmux_available": true,
+      "tmux_session_name": "codoxear"
+    },
+    "status": 200
+  },
+  "large_event_cursor_present": true,
+  "large_history": {
+    "payload": {
+      "busy": false,
+      "events": [
+        {
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjB9.AZEt4DJ3TUdzO1-24AE8_YxVAq6a-OcqUEBDmgHQUx0",
+          "role": "user",
+          "text": "FIRST_EVENT_SENTINEL",
+          "ts": 1.0
+        }
+      ],
+      "has_older": false,
+      "history_cursor": null,
+      "launch_id": "launch-post-log-large-cursor",
+      "live_cursor": null,
+      "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-large-cursor.jsonl",
+      "queue_len": 0,
+      "session_id": "post-log-large-cursor",
+      "thread_id": "thread-post-log-large-cursor",
+      "token": null,
+      "transcript_state": "failed"
+    },
+    "status": 200
+  },
+  "large_row": {
+    "agent_backend": "codex",
+    "alias": "",
+    "base_priority": 1.0,
+    "blocked": false,
+    "broker_pid": 987654321,
+    "busy": false,
+    "cwd": "/workspace",
+    "dependency_session_id": null,
+    "files": [],
+    "final_priority": 1.0,
+    "git_branch": "",
+    "launch_error": "broker control socket went stale after binding a transcript log before the turn completed",
+    "launch_id": "launch-post-log-large-cursor",
+    "launch_stage": "broker_exit_after_log_bind",
+    "launch_state": "failed",
+    "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-large-cursor.jsonl",
+    "model": "proof-model",
+    "model_provider": "proof-provider",
+    "owned": true,
+    "pid": 987654322,
+    "preferred_auth_method": "[redacted]",
+    "priority_offset": 0.0,
+    "provider_choice": "proof-provider",
+    "queue_len": 0,
+    "reasoning_effort": "low",
+    "service_tier": null,
+    "session_id": "post-log-large-cursor",
+    "snooze_until": null,
+    "snoozed": false,
+    "spawn_nonce": "spawn-post-log-large-cursor",
+    "start_ts": 1783312000.0,
+    "state_busy": false,
+    "submitted_user_message_count": 0,
+    "system": 0,
+    "thinking": 0,
+    "thread_id": "thread-post-log-large-cursor",
+    "time_priority": 1.0,
+    "tmux_session": null,
+    "tmux_window": null,
+    "token": null,
+    "tools": 0,
+    "transport": null,
+    "unattended_cooldown_minutes": 5,
+    "unattended_enabled": false,
+    "unattended_remaining_injections": 10,
+    "updated_ts": 1783359081.0643454
+  },
+  "large_search_first": {
+    "payload": {
+      "busy": false,
+      "events": [
+        {
+          "codoxear_lifecycle": "backend_stopped_after_log_bind",
+          "message_class": "error",
+          "role": "assistant",
+          "text": "The backend process stopped before completing this turn.",
+          "ts": 1783359081.0643454
+        }
+      ],
+      "has_older": true,
+      "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjgzNDl9.CiJXfE7hQwzMpHG6-Jj9hD79oUu3JbyZ_m25DbovYxU",
+      "launch_id": "launch-post-log-large-cursor",
+      "live_cursor": null,
+      "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-large-cursor.jsonl",
+      "match_count": 1,
+      "match_count_truncated": false,
+      "matches": [
+        {
+          "_before_byte": 0,
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjB9.AZEt4DJ3TUdzO1-24AE8_YxVAq6a-OcqUEBDmgHQUx0",
+          "load_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjk3fQ.puclv27ks_xwkn9_t-L8FZHlTXg9KUc2QMmPTTmTrOk",
+          "role": "user",
+          "text": "FIRST_EVENT_SENTINEL",
+          "ts": 1.0
+        }
+      ],
+      "query": "FIRST_EVENT_SENTINEL",
+      "queue_len": 0,
+      "session_id": "post-log-large-cursor",
+      "thread_id": "thread-post-log-large-cursor",
+      "token": null,
+      "transcript_state": "failed"
+    },
+    "status": 200
+  },
+  "large_search_stopped": {
+    "payload": {
+      "busy": false,
+      "events": [
+        {
+          "codoxear_lifecycle": "backend_stopped_after_log_bind",
+          "message_class": "error",
+          "role": "assistant",
+          "text": "The backend process stopped before completing this turn.",
+          "ts": 1783359081.0643454
+        }
+      ],
+      "has_older": true,
+      "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjgzNDl9.CiJXfE7hQwzMpHG6-Jj9hD79oUu3JbyZ_m25DbovYxU",
+      "launch_id": "launch-post-log-large-cursor",
+      "live_cursor": null,
+      "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-large-cursor.jsonl",
+      "match_count": 1,
+      "match_count_truncated": false,
+      "matches": [
+        {
+          "codoxear_lifecycle": "backend_stopped_after_log_bind",
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjgzNDl9.CiJXfE7hQwzMpHG6-Jj9hD79oUu3JbyZ_m25DbovYxU",
+          "message_class": "error",
+          "role": "assistant",
+          "text": "The backend process stopped before completing this turn.",
+          "text_truncated": false,
+          "ts": 1783359081.0643454
+        }
+      ],
+      "query": "The backend process stopped before completing this turn.",
+      "queue_len": 0,
+      "session_id": "post-log-large-cursor",
+      "thread_id": "thread-post-log-large-cursor",
+      "token": null,
+      "transcript_state": "failed"
+    },
+    "status": 200
+  },
+  "large_tail": {
+    "payload": {
+      "busy": false,
+      "events": [
+        {
+          "codoxear_lifecycle": "backend_stopped_after_log_bind",
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjgzNDl9.CiJXfE7hQwzMpHG6-Jj9hD79oUu3JbyZ_m25DbovYxU",
+          "message_class": "error",
+          "role": "assistant",
+          "text": "The backend process stopped before completing this turn.",
+          "ts": 1783359081.0643454
+        }
+      ],
+      "has_older": true,
+      "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1sYXJnZS1jdXJzb3IiLCJsb2dfcGF0aCI6Ii9ob21lL3Rlc3Rlci8ubG9jYWwvc2hhcmUvY29kb3hlYXIvcG9zdC1sb2ctcmVjb3ZlcnktcHJvb2YtbG9ncy9wb3N0LWxvZy1sYXJnZS1jdXJzb3IuanNvbmwiLCJwb3MiOjgzNDl9.CiJXfE7hQwzMpHG6-Jj9hD79oUu3JbyZ_m25DbovYxU",
+      "launch_id": "launch-post-log-large-cursor",
+      "live_cursor": null,
+      "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-large-cursor.jsonl",
+      "queue_len": 0,
+      "session_id": "post-log-large-cursor",
+      "thread_id": "thread-post-log-large-cursor",
+      "token": null,
+      "transcript_state": "failed"
+    },
+    "status": 200
+  },
+  "live": {
+    "payload": {
+      "busy": false,
+      "diag": {
+        "meta_refresh_ms": 0.088,
+        "post_log_recovery": true
+      },
+      "events": [
+        {
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1yZWNvdmVyeS1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9wb3N0LWxvZy1yZWNvdmVyeS1wcm9vZi1sb2dzL3Bvc3QtbG9nLXJlY292ZXJ5LWZpeGVkLmpzb25sIiwicG9zIjoxMTF9.KXiCgOkSjwHurDjTApkeohrO_ORKpSOA5EJmm_K2XVs",
+          "role": "user",
+          "text": "POST_LOG_BOUND_DEATH_SENTINEL",
+          "ts": 1.0
+        },
+        {
+          "codoxear_lifecycle": "backend_stopped_after_log_bind",
+          "message_class": "error",
+          "role": "assistant",
+          "text": "The backend process stopped before completing this turn.",
+          "ts": 1783359081.064825
+        }
+      ],
+      "has_older": false,
+      "history_cursor": null,
+      "launch_id": "launch-post-log-recovery-fixed",
+      "live_cursor": null,
+      "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-recovery-fixed.jsonl",
+      "meta_delta": {
+        "system": 0,
+        "thinking": 0,
+        "tool": 0
+      },
+      "queue_len": 0,
+      "session_id": "post-log-recovery-fixed",
+      "thread_id": "thread-post-log-recovery-fixed",
+      "token": null,
+      "transcript_state": "failed",
+      "turn_aborted": false,
+      "turn_end": true,
+      "turn_start": false
+    },
+    "status": 200
+  },
+  "login": {
+    "payload": {
+      "ok": true
+    },
+    "status": 200
+  },
+  "recovery_row": {
+    "agent_backend": "pi",
+    "alias": "",
+    "base_priority": 1.0,
+    "blocked": false,
+    "broker_pid": 987654321,
+    "busy": false,
+    "cwd": "/workspace",
+    "dependency_session_id": null,
+    "files": [],
+    "final_priority": 1.0,
+    "git_branch": "",
+    "launch_error": "broker control socket went stale after binding a transcript log before the turn completed",
+    "launch_id": "launch-post-log-recovery-fixed",
+    "launch_stage": "broker_exit_after_log_bind",
+    "launch_state": "failed",
+    "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-recovery-fixed.jsonl",
+    "model": "proof-model",
+    "model_provider": "proof-provider",
+    "owned": true,
+    "pid": 987654322,
+    "preferred_auth_method": "[redacted]",
+    "priority_offset": 0.0,
+    "provider_choice": "proof-provider",
+    "queue_len": 0,
+    "reasoning_effort": "low",
+    "service_tier": null,
+    "session_id": "post-log-recovery-fixed",
+    "snooze_until": null,
+    "snoozed": false,
+    "spawn_nonce": "spawn-post-log-recovery-fixed",
+    "start_ts": 1783312000.0,
+    "state_busy": false,
+    "submitted_user_message_count": 0,
+    "system": 0,
+    "thinking": 0,
+    "thread_id": "thread-post-log-recovery-fixed",
+    "time_priority": 1.0,
+    "tmux_session": null,
+    "tmux_window": null,
+    "token": null,
+    "tools": 0,
+    "transport": null,
+    "unattended_cooldown_minutes": 5,
+    "unattended_enabled": false,
+    "unattended_remaining_injections": 10,
+    "updated_ts": 1783359081.064825
+  },
+  "rediscovered_sessions": {
+    "payload": {
+      "app_version": "0c45256d427e",
+      "new_session_defaults": {
+        "backends": {
+          "cc": {
+            "agent_backend": "cc",
+            "model": null,
+            "model_provider": null,
+            "models": [
+              "sonnet",
+              "opus",
+              "fable"
+            ],
+            "preferred_auth_method": null,
+            "provider_choice": null,
+            "provider_choices": [],
+            "reasoning_effort": "medium",
+            "reasoning_efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "service_tier": null,
+            "supports_fast": false
+          },
+          "codex": {
+            "agent_backend": "codex",
+            "model": null,
+            "model_provider": "openai",
+            "model_providers": [
+              "chatgpt",
+              "openai-api"
+            ],
+            "preferred_auth_method": "apikey",
+            "provider_choice": "openai-api",
+            "provider_choices": [
+              "chatgpt",
+              "openai-api"
+            ],
+            "reasoning_effort": null,
+            "reasoning_efforts": [
+              "xhigh",
+              "high",
+              "medium",
+              "low"
+            ],
+            "service_tier": "flex",
+            "supports_fast": true
+          },
+          "pi": {
+            "agent_backend": "pi",
+            "model": null,
+            "model_provider": null,
+            "models": [],
+            "preferred_auth_method": null,
+            "provider_choice": null,
+            "provider_choices": [],
+            "reasoning_effort": "high",
+            "reasoning_efforts": [
+              "off",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "reasoning_efforts_by_model": {},
+            "service_tier": null,
+            "supports_fast": false
+          }
+        },
+        "default_backend": "codex"
+      },
+      "recent_cwds": [
+        "/workspace"
+      ],
+      "sessions": [
+        {
+          "agent_backend": "pi",
+          "alias": "",
+          "base_priority": 1.0,
+          "blocked": false,
+          "broker_pid": 987654321,
+          "busy": false,
+          "cwd": "/workspace",
+          "dependency_session_id": null,
+          "files": [],
+          "final_priority": 1.0,
+          "git_branch": "",
+          "launch_error": "broker control socket went stale after binding a transcript log before the turn completed",
+          "launch_id": "launch-post-log-recovery-fixed",
+          "launch_stage": "broker_exit_after_log_bind",
+          "launch_state": "failed",
+          "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-recovery-fixed.jsonl",
+          "model": "proof-model",
+          "model_provider": "proof-provider",
+          "owned": true,
+          "pid": 987654322,
+          "preferred_auth_method": "[redacted]",
+          "priority_offset": 0.0,
+          "provider_choice": "proof-provider",
+          "queue_len": 0,
+          "reasoning_effort": "low",
+          "service_tier": null,
+          "session_id": "post-log-recovery-fixed",
+          "snooze_until": null,
+          "snoozed": false,
+          "spawn_nonce": "spawn-post-log-recovery-fixed",
+          "start_ts": 1783312000.0,
+          "state_busy": false,
+          "submitted_user_message_count": 0,
+          "system": 0,
+          "thinking": 0,
+          "thread_id": "thread-post-log-recovery-fixed",
+          "time_priority": 1.0,
+          "tmux_session": null,
+          "tmux_window": null,
+          "token": null,
+          "tools": 0,
+          "transport": null,
+          "unattended_cooldown_minutes": 5,
+          "unattended_enabled": false,
+          "unattended_remaining_injections": 10,
+          "updated_ts": 1783359081.064825
+        },
+        {
+          "agent_backend": "codex",
+          "alias": "",
+          "base_priority": 1.0,
+          "blocked": false,
+          "broker_pid": 987654321,
+          "busy": false,
+          "cwd": "/workspace",
+          "dependency_session_id": null,
+          "files": [],
+          "final_priority": 1.0,
+          "git_branch": "",
+          "launch_error": "broker control socket went stale after binding a transcript log before the turn completed",
+          "launch_id": "launch-post-log-large-cursor",
+          "launch_stage": "broker_exit_after_log_bind",
+          "launch_state": "failed",
+          "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-large-cursor.jsonl",
+          "model": "proof-model",
+          "model_provider": "proof-provider",
+          "owned": true,
+          "pid": 987654322,
+          "preferred_auth_method": "[redacted]",
+          "priority_offset": 0.0,
+          "provider_choice": "proof-provider",
+          "queue_len": 0,
+          "reasoning_effort": "low",
+          "service_tier": null,
+          "session_id": "post-log-large-cursor",
+          "snooze_until": null,
+          "snoozed": false,
+          "spawn_nonce": "spawn-post-log-large-cursor",
+          "start_ts": 1783312000.0,
+          "state_busy": false,
+          "submitted_user_message_count": 0,
+          "system": 0,
+          "thinking": 0,
+          "thread_id": "thread-post-log-large-cursor",
+          "time_priority": 1.0,
+          "tmux_session": null,
+          "tmux_window": null,
+          "token": null,
+          "tools": 0,
+          "transport": null,
+          "unattended_cooldown_minutes": 5,
+          "unattended_enabled": false,
+          "unattended_remaining_injections": 10,
+          "updated_ts": 1783359081.0643454
+        }
+      ],
+      "tmux_available": true,
+      "tmux_session_name": "codoxear"
+    },
+    "status": 200
+  },
+  "rediscovered_tail": {
+    "payload": {
+      "busy": false,
+      "events": [
+        {
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1yZWNvdmVyeS1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9wb3N0LWxvZy1yZWNvdmVyeS1wcm9vZi1sb2dzL3Bvc3QtbG9nLXJlY292ZXJ5LWZpeGVkLmpzb25sIiwicG9zIjoxMTF9.KXiCgOkSjwHurDjTApkeohrO_ORKpSOA5EJmm_K2XVs",
+          "role": "user",
+          "text": "POST_LOG_BOUND_DEATH_SENTINEL",
+          "ts": 1.0
+        },
+        {
+          "codoxear_lifecycle": "backend_stopped_after_log_bind",
+          "message_class": "error",
+          "role": "assistant",
+          "text": "The backend process stopped before completing this turn.",
+          "ts": 1783359081.064825
+        }
+      ],
+      "has_older": false,
+      "history_cursor": null,
+      "launch_id": "launch-post-log-recovery-fixed",
+      "live_cursor": null,
+      "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-recovery-fixed.jsonl",
+      "queue_len": 0,
+      "session_id": "post-log-recovery-fixed",
+      "thread_id": "thread-post-log-recovery-fixed",
+      "token": null,
+      "transcript_state": "failed"
+    },
+    "status": 200
+  },
+  "search_error": {
+    "payload": {
+      "busy": false,
+      "events": [
+        {
+          "_before_byte": 111,
+          "role": "user",
+          "text": "POST_LOG_BOUND_DEATH_SENTINEL",
+          "ts": 1.0
+        },
+        {
+          "codoxear_lifecycle": "backend_stopped_after_log_bind",
+          "message_class": "error",
+          "role": "assistant",
+          "text": "The backend process stopped before completing this turn.",
+          "ts": 1783359081.064825
+        }
+      ],
+      "has_older": false,
+      "history_cursor": null,
+      "launch_id": "launch-post-log-recovery-fixed",
+      "live_cursor": null,
+      "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-recovery-fixed.jsonl",
+      "match_count": 1,
+      "match_count_truncated": false,
+      "matches": [
+        {
+          "codoxear_lifecycle": "backend_stopped_after_log_bind",
+          "message_class": "error",
+          "role": "assistant",
+          "text": "The backend process stopped before completing this turn.",
+          "text_truncated": false,
+          "ts": 1783359081.064825
+        }
+      ],
+      "query": "The backend process stopped before completing this turn.",
+      "queue_len": 0,
+      "session_id": "post-log-recovery-fixed",
+      "thread_id": "thread-post-log-recovery-fixed",
+      "token": null,
+      "transcript_state": "failed"
+    },
+    "status": 200
+  },
+  "search_prompt": {
+    "payload": {
+      "busy": false,
+      "events": [
+        {
+          "_before_byte": 111,
+          "role": "user",
+          "text": "POST_LOG_BOUND_DEATH_SENTINEL",
+          "ts": 1.0
+        },
+        {
+          "codoxear_lifecycle": "backend_stopped_after_log_bind",
+          "message_class": "error",
+          "role": "assistant",
+          "text": "The backend process stopped before completing this turn.",
+          "ts": 1783359081.064825
+        }
+      ],
+      "has_older": false,
+      "history_cursor": null,
+      "launch_id": "launch-post-log-recovery-fixed",
+      "live_cursor": null,
+      "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-recovery-fixed.jsonl",
+      "match_count": 1,
+      "match_count_truncated": false,
+      "matches": [
+        {
+          "_before_byte": 111,
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1yZWNvdmVyeS1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9wb3N0LWxvZy1yZWNvdmVyeS1wcm9vZi1sb2dzL3Bvc3QtbG9nLXJlY292ZXJ5LWZpeGVkLmpzb25sIiwicG9zIjoxMTF9.KXiCgOkSjwHurDjTApkeohrO_ORKpSOA5EJmm_K2XVs",
+          "load_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1yZWNvdmVyeS1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9wb3N0LWxvZy1yZWNvdmVyeS1wcm9vZi1sb2dzL3Bvc3QtbG9nLXJlY292ZXJ5LWZpeGVkLmpzb25sIiwicG9zIjoyNjd9.U4mV1Wn0R7CfcUrxZGNto80bGlijqMLBWlJhfWuKfQk",
+          "role": "user",
+          "text": "POST_LOG_BOUND_DEATH_SENTINEL",
+          "ts": 1.0
+        }
+      ],
+      "query": "POST_LOG_BOUND_DEATH_SENTINEL",
+      "queue_len": 0,
+      "session_id": "post-log-recovery-fixed",
+      "thread_id": "thread-post-log-recovery-fixed",
+      "token": null,
+      "transcript_state": "failed"
+    },
+    "status": 200
+  },
+  "send": {
+    "payload": {
+      "error": "unknown session"
+    },
+    "status": 404
+  },
+  "tail": {
+    "payload": {
+      "busy": false,
+      "events": [
+        {
+          "history_cursor": "eyJ2IjoxLCJraW5kIjoiaGlzdG9yeSIsInRocmVhZF9pZCI6InRocmVhZC1wb3N0LWxvZy1yZWNvdmVyeS1maXhlZCIsImxvZ19wYXRoIjoiL2hvbWUvdGVzdGVyLy5sb2NhbC9zaGFyZS9jb2RveGVhci9wb3N0LWxvZy1yZWNvdmVyeS1wcm9vZi1sb2dzL3Bvc3QtbG9nLXJlY292ZXJ5LWZpeGVkLmpzb25sIiwicG9zIjoxMTF9.KXiCgOkSjwHurDjTApkeohrO_ORKpSOA5EJmm_K2XVs",
+          "role": "user",
+          "text": "POST_LOG_BOUND_DEATH_SENTINEL",
+          "ts": 1.0
+        },
+        {
+          "codoxear_lifecycle": "backend_stopped_after_log_bind",
+          "message_class": "error",
+          "role": "assistant",
+          "text": "The backend process stopped before completing this turn.",
+          "ts": 1783359081.064825
+        }
+      ],
+      "has_older": false,
+      "history_cursor": null,
+      "launch_id": "launch-post-log-recovery-fixed",
+      "live_cursor": null,
+      "log_path": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-recovery-fixed.jsonl",
+      "queue_len": 0,
+      "session_id": "post-log-recovery-fixed",
+      "thread_id": "thread-post-log-recovery-fixed",
+      "token": null,
+      "transcript_state": "failed"
+    },
+    "status": 200
+  },
+  "unattended": {
+    "payload": {
+      "error": "unknown session"
+    },
+    "status": 404
+  },
+  "unknown_control_tail": {
+    "payload": {
+      "error": "unknown session"
+    },
+    "status": 404
+  }
+}

@@ -1,0 +1,14 @@
+HOME=/home/tester
+APP_DIR= /home/tester/.local/share/codoxear
+TRANSCRIPT_EXPORT_MAX_BYTES= 1024
+
+log stats:
+size=2285 blocks=8 path=/home/tester/oversized-export-proof/oversized-session.jsonl
+
+app dir files: omitted (names only in raw runtime were checked; no secret values copied)
+
+broker calls:
+broker state call count=596
+broker sample 1: {"ts":1783438687.7978404,"req":{"cmd":"state"},"resp":{"busy":false,"queue_len":0,"token":null,"interrupted_idle":false}}
+broker sample 2: {"ts":1783438687.8290656,"req":{"cmd":"state"},"resp":{"busy":false,"queue_len":0,"token":null,"interrupted_idle":false}}
+broker sample 3: {"ts":1783438688.7609928,"req":{"cmd":"state"},"resp":{"busy":false,"queue_len":0,"token":null,"interrupted_idle":false}}

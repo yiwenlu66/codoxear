@@ -1,0 +1,24 @@
+{
+  "app": "/home/tester/.local/share/codoxear",
+  "first": "FIRST_EVENT_SENTINEL",
+  "ledger": "/home/tester/.local/share/codoxear/session_launches.jsonl",
+  "logs": {
+    "control": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-completed-control.jsonl",
+    "large": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-large-cursor.jsonl",
+    "large_size": 2104357,
+    "recovery": "/home/tester/.local/share/codoxear/post-log-recovery-proof-logs/post-log-recovery-fixed.jsonl"
+  },
+  "ready": true,
+  "sentinel": "POST_LOG_BOUND_DEATH_SENTINEL",
+  "sidecars": [
+    "post-log-completed-control.json",
+    "post-log-large-cursor.json",
+    "post-log-recovery-fixed.json"
+  ],
+  "socks": [
+    "post-log-completed-control.sock",
+    "post-log-large-cursor.sock",
+    "post-log-recovery-fixed.sock"
+  ],
+  "stopped": "The backend process stopped before completing this turn."
+}

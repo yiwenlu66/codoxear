@@ -1,0 +1,1 @@
+error: session launch failed: launch-1783410079933-781f85a0: broker_early_exit: broker exited early (rc=1): error: session launch failed: launch-1783410079933-781f85a0: agent_exit_before_log_bind: claude exited with status 1 before a session log was bound

@@ -1,48 +1,50 @@
+import json
+import subprocess
+import textwrap
 from pathlib import Path
 
 
-APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
+ROOT = Path(__file__).resolve().parents[1]
+LAUNCH = ROOT / "codoxear" / "static" / "app_launch.js"
+URLS = ROOT / "codoxear" / "static" / "app_url.js"
+STORAGE = ROOT / "codoxear" / "static" / "app_storage.js"
 
 
-def test_launch_failure_sidebar_uses_single_visible_failure_marker() -> None:
-    source = APP_JS.read_text(encoding="utf-8")
-
-    assert '`${cwdName} launch failed`' not in source
-    assert '`${name} launch failed`' not in source
-    assert 'const stateTxt = launchPending ? "starting" : fmtRelativeAge(ageS);' in source
-    assert '(launchPending ? " pending" : s.snoozed || s.blocked ? " suppressed" : s.busy ? " busy" : " idle")' in source
-    assert 'setToast(`launch failed:' not in source
-
-
-def test_launch_attempt_rows_use_dismiss_language() -> None:
-    source = APP_JS.read_text(encoding="utf-8")
-
-    assert 'const launchRow = launchFailed || launchPending;' in source
-    assert 'await confirmApp(launchRow ? "Dismiss this launch record?" : "Delete this session?")' in source
-    assert 'title: launchRow ? "Dismiss launch record" : "Delete session"' in source
-    assert 'if (launchRow && card && card.parentNode) card.remove();' in source
-
-
-def test_sidebar_delete_uses_app_confirmation_before_post() -> None:
-    source = APP_JS.read_text(encoding="utf-8")
-
-    assert "async function confirmApp(" in source
-    assert "window.confirm" not in source
-    assert "if (!confirm(" not in source
-    assert "confirmAppAcceptBtn.onclick = () => resolveAppConfirmation(true);" in source
-    assert "pending.resolve(!!confirmed);" in source
-    confirmation = 'if (!(await confirmApp(launchRow ? "Dismiss this launch record?" : "Delete this session?"))) return;'
-    delete_request = 'await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });'
-    assert confirmation in source
-    assert delete_request in source
-    assert source.index(confirmation) < source.index(delete_request)
+def eval_launch_ui() -> dict:
+    programs = [path.read_text(encoding="utf-8") for path in (URLS, STORAGE, LAUNCH)]
+    script = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const localStorage = {{ values: new Map(), getItem(k) {{ return this.values.get(k) || null; }}, setItem(k,v) {{ this.values.set(k, String(v)); }}, removeItem(k) {{ this.values.delete(k); }} }};
+        const ctx = {{ URL, window: {{ location: {{ href: "http://host/codoxear/", origin: "http://host", pathname: "/codoxear/" }}, localStorage, CODOXEAR_ASSET_VERSION: "v1" }} }};
+        vm.createContext(ctx);
+        for (const source of {json.dumps(programs)}) vm.runInContext(source, ctx);
+        const launch = ctx.window.CodoxearLaunch;
+        launch.rememberBackendChoice("claude-code");
+        launch.rememberProviderModelChoice("pi", "anthropic", "claude-haiku-4-5");
+        process.stdout.write(JSON.stringify({{
+          rememberedBackend: launch.loadRememberedBackendChoice(),
+          rememberedModel: launch.loadRememberedProviderModelChoice("pi"),
+          pi: launch.providerChoiceToSettings("anthropic", "pi"),
+          codex: launch.providerChoiceToSettings("openai-api", "codex"),
+          cc: launch.providerChoiceToSettings("anthropic", "cc"),
+          logo: launch.agentBackendLogoPath("cc"),
+          modelLabel: launch.providerModelDisplay("gpt-5.4", "crs", {{hasProviderChoices:true}}),
+          redacted: launch.redactedLaunchErrorText("API_TOKEN=secret Authorization: Bearer tokenvalue"),
+        }}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", script], check=True, text=True, capture_output=True)
+    return json.loads(proc.stdout)
 
 
-def test_failed_launch_rows_are_clickable_transcripts() -> None:
-    source = APP_JS.read_text(encoding="utf-8")
-
-    assert 'return !!(s && !sessionLaunchPending(s));' in source
-    assert 'raw === "bound" || raw === "pending_bind" || raw === "failed"' in source
-    assert 'if (slotChange.current.state !== "failed") kickPoll(900);' in source
-    assert 'if (activeTranscriptState === "failed") return;' in source
-    assert 'failed session cannot receive messages' in source
+def test_launch_ui_projects_backend_choices_and_safe_labels() -> None:
+    result = eval_launch_ui()
+    assert result["rememberedBackend"] == "cc"
+    assert result["rememberedModel"] == "anthropic/claude-haiku-4-5"
+    assert result["pi"] == {"model_provider": "anthropic", "preferred_auth_method": None}
+    assert result["codex"] == {"model_provider": "openai", "preferred_auth_method": "apikey"}
+    assert result["cc"] == {"model_provider": None, "preferred_auth_method": None}
+    assert result["logo"] == "http://host/codoxear/static/logos/cc.svg?v=v1"
+    assert result["modelLabel"] == "crs/gpt-5.4"
+    assert result["redacted"] == "API_TOKEN=[redacted] Authorization: [redacted]"

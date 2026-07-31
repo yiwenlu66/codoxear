@@ -1,0 +1,13 @@
+- button "Codex" [ref=e1]
+- button "Pi" [ref=e2]
+- button "Claude" [ref=e3]
+- button "Close" [ref=e4]
+- combobox "Working directory" [ref=e5] [expanded]: /workspace
+- listbox [ref=e6]
+- textbox "Session name" [ref=e7]
+- combobox "Model" [ref=e8]
+- button "Choose reasoning effort" [ref=e9]
+- button "Choose a conversation to resume" [ref=e10]
+- checkbox "Create in tmux" [ref=e11] [checked]
+- button "Cancel" [ref=e12]
+- button "Start session" [ref=e13]

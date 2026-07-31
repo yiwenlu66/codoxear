@@ -1,0 +1,15 @@
+{
+  "total": 35,
+  "cmd_counts": {
+    "state": 34,
+    "send": 1
+  },
+  "send_texts": [
+    "Attachment 1: /home/tester/.local/share/codoxear/uploads/upload-proof/1783393046692_pasted-1783393046685.jpg\nAttachment 2: /home/tester/.local/share/codoxear/uploads/upload-proof/1783393046701_pasted-1783393046685-2.webp\nprocess polished upload producers"
+  ],
+  "key_count": 0,
+  "send_count": 1,
+  "send_contains_jpg_attachment": true,
+  "send_contains_webp_attachment": true,
+  "send_contains_prompt": true
+}

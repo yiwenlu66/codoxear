@@ -1,0 +1,14 @@
+{"sessions":[{"sid":"model-codex-gpt","backend":"codex","model":"gpt-5.4","effort":"high","cwd_name":"same-project"},{"sid":"model-cc-sonnet","backend":"cc","model":"claude-sonnet-4-5","effort":"max","cwd_name":"same-project"},{"sid":"model-pi-long","backend":"pi","model":"provider/very-long-model-name-for-mobile-ellipsis-proof-claude-sonnet-4-5-extra-suffix","effort":"minimal","cwd_name":"same-project"},{"sid":"model-default-omitted","backend":"codex","model":"default","effort":"medium","cwd_name":"default-model-project"},{"sid":"model-empty-omitted","backend":"pi","model":"","effort":"off","cwd_name":"empty-model-project"}],"calls":"/home/tester/sidebar-model-proof-calls.jsonl","socks":"/home/tester/.local/share/codoxear/socks","fake_notice":"FAKE_SIDEBAR_MODEL_DISPLAY_PROOF_FOR_CODOXEAR_DOCKER_ONLY"}
+total 28
+drwxr-xr-x 2 tester tester 4096 Jul  7 14:35 .
+drwxr-xr-x 5 tester tester 4096 Jul  7 14:35 ..
+-rw-r--r-- 1 tester tester  577 Jul  7 14:35 model-cc-sonnet.json
+srwxr-xr-x 1 tester tester    0 Jul  7 14:35 model-cc-sonnet.sock
+-rw-r--r-- 1 tester tester  571 Jul  7 14:35 model-codex-gpt.json
+srwxr-xr-x 1 tester tester    0 Jul  7 14:35 model-codex-gpt.sock
+-rw-r--r-- 1 tester tester  606 Jul  7 14:35 model-default-omitted.json
+srwxr-xr-x 1 tester tester    0 Jul  7 14:35 model-default-omitted.sock
+-rw-r--r-- 1 tester tester  583 Jul  7 14:35 model-empty-omitted.json
+srwxr-xr-x 1 tester tester    0 Jul  7 14:35 model-empty-omitted.sock
+-rw-r--r-- 1 tester tester  642 Jul  7 14:35 model-pi-long.json
+srwxr-xr-x 1 tester tester    0 Jul  7 14:35 model-pi-long.sock

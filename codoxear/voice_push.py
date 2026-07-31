@@ -1,70 +1,65 @@
 from __future__ import annotations
 
-import base64
-import hashlib
 import json
-import math
 import os
-import shutil
+import shutil  # retained as a module-level patch seam for voice_push.MergedHLSStream compatibility
 import subprocess
-import tempfile
 import threading
 import time
-import urllib.error
-import urllib.request
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from cryptography.hazmat.primitives import serialization
-from py_vapid import Vapid
-from pywebpush import WebPushException
-from pywebpush import webpush
+from .voice_persistence import load_subscription_records
+from .voice_persistence import load_voice_delivery_ledger
+from .voice_persistence import load_voice_settings
+from .voice_persistence import save_subscription_records
+from .voice_persistence import save_voice_delivery_ledger
+from .voice_persistence import save_voice_settings
+from .voice_projection import notification_feed_since as _notification_feed_since_payload
+from .voice_projection import notification_state_for_message as _notification_state_for_message_payload
+from .voice_projection import notification_text_for_message as _notification_text_for_message_payload
+from .voice_projection import subscriptions_snapshot_payload
+from .voice_projection import voice_settings_snapshot_payload
+from .voice_push_state import AnnouncementTask
+from .voice_push_state import ClassifiedAssistantMessage
+from .voice_push_state import DEFAULT_SUMMARIZATION_MODEL
+from .voice_push_state import DEFAULT_TTS_BASE_URL
+from .voice_push_state import DEFAULT_TTS_MODEL
+from .voice_push_state import DEFAULT_VAPID_SUBJECT
+from .voice_push_state import DEFAULT_VOICES
+from .voice_push_state import DELIVERY_LEDGER_MAX
+from .voice_push_state import GeneratedAnnouncement
+from .voice_push_state import _b64u
+from .voice_push_state import _chmod_private_file
+from .voice_push_state import _clean_device_class
+from .voice_push_state import _clean_ledger
+from .voice_push_state import _clean_subscription
+from .voice_push_state import _clean_subscription_record
+from .voice_push_state import _clean_voice_settings
+from .voice_push_state import _clip_text
+from .voice_push_state import _compact_text
+from .voice_push_state import _normalize_vapid_subject
+from .voice_push_state import _sha256_hex
+from .voice_push_state import _subscription_id
+from .voice_openai_client import OpenAICompatibleClient
+from .voice_hls import HLS_KEEPALIVE_SECONDS
+from .voice_hls import HLS_MAX_SEGMENTS
+from .voice_hls import HLS_SILENCE_SECONDS
+from .voice_hls import HLS_TARGET_DURATION_SECONDS
+from .voice_hls import MergedHLSStream
+from .voice_ledger import mark_task_replaced
+from .voice_ledger import mark_tasks_skipped_no_listener
+from .voice_ledger import set_ledger_fields_many
+from .voice_ledger import set_task_error
+from .voice_ledger import trim_delivery_ledger
+from .voice_task_queue import enqueue_announcement_task
+from .voice_task_queue import voice_for_session
+from .voice_webpush import ensure_vapid_public_key
+from .voice_webpush import push_payload_json
+from .voice_webpush import send_web_push_notifications
 
 
-DEFAULT_SUMMARIZATION_MODEL = "gpt-4.1-mini"
-DEFAULT_TTS_MODEL = "gpt-4o-mini-tts"
-DEFAULT_TTS_BASE_URL = "https://api.openai.com/v1"
-DEFAULT_VAPID_SUBJECT = "https://localhost"
-DEFAULT_VOICES = ("alloy", "ash", "ballad", "cedar", "coral", "echo", "fable", "marin", "nova", "onyx", "sage", "shimmer", "verse")
-HLS_TARGET_DURATION_SECONDS = 12
-HLS_MAX_SEGMENTS = 18
-HLS_KEEPALIVE_SECONDS = 6.0
-HLS_SILENCE_SECONDS = 6.0
 LISTENER_TTL_SECONDS = 45.0
-DELIVERY_LEDGER_MAX = 4000
-
-
-def _sha256_hex(raw: str | bytes) -> str:
-    data = raw.encode("utf-8") if isinstance(raw, str) else raw
-    return hashlib.sha256(data).hexdigest()
-
-
-def _clip_text(raw: str, *, limit: int) -> str:
-    text = " ".join(str(raw or "").split())
-    return text if len(text) <= limit else text[: max(0, limit - 1)].rstrip() + "..."
-
-
-def _compact_text(raw: str) -> str:
-    return " ".join(str(raw or "").split()).strip()
-
-
-def _normalize_base_url(raw: Any) -> str:
-    value = str(raw or "").strip() or DEFAULT_TTS_BASE_URL
-    if not value.startswith(("http://", "https://")):
-        raise ValueError("tts_base_url must start with http:// or https://")
-    return value.rstrip("/")
-
-
-def _normalize_vapid_subject(raw: Any) -> str:
-    value = str(raw or "").strip()
-    if not value:
-        raise ValueError("empty vapid subject")
-    if value.startswith("mailto:"):
-        return value
-    if value.startswith(("http://", "https://")):
-        return value.rstrip("/")
-    raise ValueError("vapid subject must start with https://, http://, or mailto:")
 
 
 def _tailscale_https_subject() -> str | None:
@@ -90,520 +85,6 @@ def _default_vapid_subject() -> str:
     if tailscale_subject:
         return tailscale_subject
     return DEFAULT_VAPID_SUBJECT
-
-
-def _clean_voice_settings(raw: Any) -> dict[str, Any]:
-    obj = dict(raw) if isinstance(raw, dict) else {}
-    narration = bool(obj.get("tts_enabled_for_narration"))
-    final_response = bool(obj.get("tts_enabled_for_final_response"))
-    base_url = _normalize_base_url(obj.get("tts_base_url"))
-    api_key = str(obj.get("tts_api_key") or "").strip()
-    summarization_model = str(obj.get("summarization_model") or DEFAULT_SUMMARIZATION_MODEL).strip() or DEFAULT_SUMMARIZATION_MODEL
-    tts_model = str(obj.get("tts_model") or DEFAULT_TTS_MODEL).strip() or DEFAULT_TTS_MODEL
-    return {
-        "tts_enabled_for_narration": narration,
-        "tts_enabled_for_final_response": final_response,
-        "tts_base_url": base_url,
-        "tts_api_key": api_key,
-        "summarization_model": summarization_model,
-        "tts_model": tts_model,
-    }
-
-
-def _subscription_id(subscription: dict[str, Any]) -> str:
-    endpoint = str(subscription.get("endpoint") or "").strip()
-    return _sha256_hex(endpoint)[:24]
-
-
-def _clean_subscription(raw: Any) -> dict[str, Any]:
-    if not isinstance(raw, dict):
-        raise ValueError("subscription must be an object")
-    endpoint = str(raw.get("endpoint") or "").strip()
-    keys = raw.get("keys")
-    if not endpoint:
-        raise ValueError("subscription endpoint required")
-    if not isinstance(keys, dict):
-        raise ValueError("subscription keys required")
-    p256dh = str(keys.get("p256dh") or "").strip()
-    auth = str(keys.get("auth") or "").strip()
-    if not p256dh or not auth:
-        raise ValueError("subscription keys.p256dh and keys.auth required")
-    return {"endpoint": endpoint, "keys": {"p256dh": p256dh, "auth": auth}}
-
-
-def _device_class_from_user_agent(raw: Any) -> str:
-    ua = str(raw or "").strip().lower()
-    if "mobile" in ua or "android" in ua or "iphone" in ua or "ipad" in ua or "ipod" in ua:
-        return "mobile"
-    return "desktop"
-
-
-def _clean_device_class(raw: Any, *, user_agent: str) -> str:
-    value = str(raw or "").strip().lower()
-    if value in {"mobile", "desktop"}:
-        return value
-    return _device_class_from_user_agent(user_agent)
-
-
-def _clean_subscription_record(raw: Any) -> dict[str, Any] | None:
-    if not isinstance(raw, dict):
-        return None
-    try:
-        subscription = _clean_subscription(raw.get("subscription"))
-    except ValueError:
-        return None
-    now_ts = float(time.time())
-    enabled = bool(raw.get("notifications_enabled", True))
-    created_ts = float(raw.get("created_ts", now_ts))
-    updated_ts = float(raw.get("updated_ts", created_ts))
-    last_success_ts = raw.get("last_success_ts")
-    last_failure_ts = raw.get("last_failure_ts")
-    last_error = str(raw.get("last_error") or "").strip()
-    user_agent = str(raw.get("user_agent") or "").strip()
-    device_label = str(raw.get("device_label") or "").strip()
-    device_class = _clean_device_class(raw.get("device_class"), user_agent=user_agent)
-    return {
-        "id": _subscription_id(subscription),
-        "subscription": subscription,
-        "notifications_enabled": enabled,
-        "created_ts": created_ts,
-        "updated_ts": updated_ts,
-        "last_success_ts": float(last_success_ts) if isinstance(last_success_ts, (int, float)) else None,
-        "last_failure_ts": float(last_failure_ts) if isinstance(last_failure_ts, (int, float)) else None,
-        "last_error": last_error,
-        "user_agent": user_agent,
-        "device_label": device_label,
-        "device_class": device_class,
-    }
-
-
-def _clean_ledger(raw: Any) -> dict[str, dict[str, Any]]:
-    if not isinstance(raw, dict):
-        return {}
-    cleaned: dict[str, dict[str, Any]] = {}
-    for message_id, row in raw.items():
-        if not isinstance(message_id, str) or not message_id:
-            continue
-        if not isinstance(row, dict):
-            continue
-        session_id = str(row.get("session_id") or "").strip()
-        message_class = str(row.get("message_class") or "").strip()
-        if not session_id or message_class not in {"narration", "final_response"}:
-            continue
-        cleaned[message_id] = {
-            "message_id": message_id,
-            "session_id": session_id,
-            "session_display_name": str(row.get("session_display_name") or "").strip(),
-            "message_class": message_class,
-            "preview_text": str(row.get("preview_text") or "").strip(),
-            "notification_text": str(row.get("notification_text") or "").strip(),
-            "summary_text": str(row.get("summary_text") or "").strip(),
-            "summary_status": str(row.get("summary_status") or "pending"),
-            "narrated_status": str(row.get("narrated_status") or "pending"),
-            "push_status": str(row.get("push_status") or "pending"),
-            "voice": str(row.get("voice") or "").strip(),
-            "created_ts": float(row.get("created_ts") or time.time()),
-            "updated_ts": float(row.get("updated_ts") or time.time()),
-            "last_error": str(row.get("last_error") or "").strip(),
-        }
-    return cleaned
-
-
-def _b64u(raw: bytes) -> str:
-    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
-
-
-@dataclass(frozen=True)
-class ClassifiedAssistantMessage:
-    message_id: str
-    message_class: str
-    text: str
-    ts: float | None
-
-
-@dataclass(frozen=True)
-class AnnouncementTask:
-    message_id: str
-    source_message_ids: tuple[str, ...]
-    session_id: str
-    session_display_name: str
-    message_class: str
-    source_text: str
-    spoken_text: str
-    notification_text: str
-    voice: str
-    ts: float | None
-    summary_word_target: int | None
-    listener_epoch: int
-
-
-@dataclass(frozen=True)
-class GeneratedAnnouncement:
-    task: AnnouncementTask
-    audio_bytes: bytes
-
-
-class OpenAICompatibleClient:
-    def __init__(self, *, timeout_seconds: float = 30.0) -> None:
-        self._timeout_seconds = float(timeout_seconds)
-
-    def _request_json(self, *, base_url: str, api_key: str, route: str, payload: dict[str, Any]) -> dict[str, Any]:
-        if not api_key:
-            raise ValueError("tts_api_key is required")
-        body = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            base_url.rstrip("/") + route,
-            data=body,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=self._timeout_seconds) as resp:
-                raw = resp.read()
-        except urllib.error.HTTPError as e:
-            detail = e.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"{route} failed with {e.code}: {detail}") from e
-        obj = json.loads(raw.decode("utf-8"))
-        if not isinstance(obj, dict):
-            raise ValueError(f"{route} returned non-object json")
-        return obj
-
-    def _request_bytes(self, *, base_url: str, api_key: str, route: str, payload: dict[str, Any]) -> bytes:
-        if not api_key:
-            raise ValueError("tts_api_key is required")
-        body = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            base_url.rstrip("/") + route,
-            data=body,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "Accept": "application/octet-stream",
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=self._timeout_seconds) as resp:
-                return resp.read()
-        except urllib.error.HTTPError as e:
-            detail = e.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"{route} failed with {e.code}: {detail}") from e
-
-    def summarize(
-        self,
-        *,
-        base_url: str,
-        api_key: str,
-        model: str,
-        session_name: str,
-        source_label: str,
-        text: str,
-        target_words: int,
-    ) -> str:
-        max_words = 15 if int(target_words) <= 15 else 30
-        if max_words <= 15:
-            system_content = (
-                "You compress assistant progress narration for spoken mobile notifications. "
-                "Return exactly one plain sentence with only the concrete progress fact. "
-                "Use at most 15 words. If the source is already 15 words or fewer, do not expand it. "
-                "Compression only: never add filler, politeness, waiting language, stage directions, or meta-commentary. "
-                "No markdown, no quotes, no prefixes."
-            )
-        else:
-            system_content = (
-                "You compress assistant final responses for spoken mobile notifications. "
-                "Return exactly one plain sentence with only the main result. "
-                "Use at most 30 words. Prefer compression over paraphrase. "
-                "Never add filler, politeness, stage directions, or meta-commentary, and never invent details not present in the source. "
-                "No markdown, no quotes, no prefixes."
-            )
-        obj = self._request_json(
-            base_url=base_url,
-            api_key=api_key,
-            route="/chat/completions",
-            payload={
-                "model": model,
-                "temperature": 0.0,
-                "max_completion_tokens": 48 if max_words <= 15 else 72,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": system_content,
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Session name: {session_name}\n{source_label}:\n{text}",
-                    },
-                ],
-            },
-        )
-        choices = obj.get("choices")
-        if not isinstance(choices, list) or not choices:
-            raise ValueError("chat completions response missing choices")
-        message = choices[0].get("message")
-        if not isinstance(message, dict):
-            raise ValueError("chat completions response missing message")
-        content = message.get("content")
-        if isinstance(content, str):
-            summary = " ".join(content.split()).strip()
-        elif isinstance(content, list):
-            parts = []
-            for item in content:
-                if isinstance(item, dict) and item.get("type") in {"text", "output_text"} and isinstance(item.get("text"), str):
-                    parts.append(item["text"])
-            summary = " ".join("".join(parts).split()).strip()
-        else:
-            raise ValueError("chat completions response missing content")
-        if not summary:
-            raise ValueError("empty summary response")
-        summary_word_count = len(summary.split())
-        if summary_word_count > max_words:
-            raise ValueError(f"summary exceeded {max_words} words")
-        return summary
-
-    def synthesize(self, *, base_url: str, api_key: str, model: str, voice: str, text: str) -> bytes:
-        audio = self._request_bytes(
-            base_url=base_url,
-            api_key=api_key,
-            route="/audio/speech",
-            payload={
-                "model": model,
-                "voice": voice,
-                "input": text,
-                "response_format": "aac",
-            },
-        )
-        if not audio:
-            raise ValueError("audio/speech returned empty body")
-        return audio
-
-
-class MergedHLSStream:
-    def __init__(self, *, root_dir: Path) -> None:
-        self._root_dir = Path(root_dir)
-        self._segments_dir = self._root_dir / "segments"
-        self._playlist_path = self._root_dir / "live.m3u8"
-        self._lock = threading.Lock()
-        self._segments: list[dict[str, Any]] = []
-        self._next_seq = 1
-        self._last_error = ""
-        self._last_append_ts = 0.0
-        os.makedirs(self._segments_dir, exist_ok=True)
-        self._rewrite_playlist()
-
-    def snapshot(self) -> dict[str, Any]:
-        with self._lock:
-            return {
-                "segment_count": len(self._segments),
-                "last_error": self._last_error,
-                "media_sequence": self._segments[0]["seq"] if self._segments else self._next_seq,
-            }
-
-    def playlist_bytes(self) -> bytes:
-        with self._lock:
-            return self._playlist_path.read_bytes() if self._playlist_path.exists() else b"#EXTM3U\n"
-
-    def segment_path(self, segment_name: str) -> Path:
-        name = Path(segment_name).name
-        if name != segment_name or not name.endswith(".ts"):
-            raise FileNotFoundError(segment_name)
-        path = (self._segments_dir / name).resolve()
-        if not str(path).startswith(str(self._segments_dir.resolve())) or not path.exists():
-            raise FileNotFoundError(segment_name)
-        return path
-
-    def append_audio(self, *, message_id: str, audio_bytes: bytes) -> float:
-        if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
-            raise RuntimeError("ffmpeg and ffprobe are required for merged HLS output")
-        os.makedirs(self._segments_dir, exist_ok=True)
-        input_path = self._segments_dir / f"{message_id[:12] or 'audio'}.aac"
-        input_path.write_bytes(audio_bytes)
-        tmp_pattern = self._segments_dir / f"{message_id[:12] or 'audio'}-part-%03d.ts"
-        try:
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-hide_banner",
-                    "-loglevel",
-                    "error",
-                    "-y",
-                    "-i",
-                    str(input_path),
-                    "-vn",
-                    "-c:a",
-                    "aac",
-                    "-b:a",
-                    "128k",
-                    "-f",
-                    "segment",
-                    "-segment_time",
-                    "6",
-                    "-segment_format",
-                    "mpegts",
-                    "-reset_timestamps",
-                    "1",
-                    str(tmp_pattern),
-                ],
-                check=True,
-                capture_output=True,
-            )
-            total_duration = 0.0
-            chunk_paths = sorted(self._segments_dir.glob(f"{message_id[:12] or 'audio'}-part-*.ts"))
-            if not chunk_paths:
-                raise RuntimeError("ffmpeg produced no HLS segments")
-            for chunk_path in chunk_paths:
-                try:
-                    duration = self._segment_duration_seconds(chunk_path)
-                except RuntimeError as e:
-                    if "invalid ffprobe duration: N/A" not in str(e):
-                        raise
-                    try:
-                        chunk_path.unlink()
-                    except FileNotFoundError:
-                        pass
-                    continue
-                seq, segment_name, segment_path = self._reserve_segment(f"{message_id[:12] or 'audio'}")
-                chunk_path.replace(segment_path)
-                total_duration += duration
-                self._store_segment(seq=seq, segment_name=segment_name, segment_path=segment_path, duration=duration)
-            if total_duration <= 0.0:
-                raise RuntimeError("ffmpeg produced no valid HLS segments")
-        except subprocess.CalledProcessError as e:
-            detail = e.stderr.decode("utf-8", errors="replace")
-            raise RuntimeError(f"ffmpeg failed: {detail}") from e
-        finally:
-            try:
-                input_path.unlink()
-            except FileNotFoundError:
-                pass
-            for chunk_path in self._segments_dir.glob(f"{message_id[:12] or 'audio'}-part-*.ts"):
-                try:
-                    chunk_path.unlink()
-                except FileNotFoundError:
-                    pass
-
-        return total_duration
-
-    def append_silence(self, *, force: bool = False) -> bool:
-        if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
-            raise RuntimeError("ffmpeg and ffprobe are required for merged HLS output")
-        with self._lock:
-            if (not force) and self._last_append_ts and (time.time() - self._last_append_ts) < HLS_KEEPALIVE_SECONDS:
-                return False
-        os.makedirs(self._segments_dir, exist_ok=True)
-        seq, segment_name, segment_path = self._reserve_segment("silence")
-        try:
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-hide_banner",
-                    "-loglevel",
-                    "error",
-                    "-y",
-                    "-f",
-                    "lavfi",
-                    "-i",
-                    "anullsrc=r=24000:cl=mono",
-                    "-t",
-                    str(HLS_SILENCE_SECONDS),
-                    "-c:a",
-                    "aac",
-                    "-b:a",
-                    "32k",
-                    "-f",
-                    "mpegts",
-                    str(segment_path),
-                ],
-                check=True,
-                capture_output=True,
-            )
-            duration = self._segment_duration_seconds(segment_path)
-        except subprocess.CalledProcessError as e:
-            detail = e.stderr.decode("utf-8", errors="replace")
-            raise RuntimeError(f"ffmpeg failed: {detail}") from e
-        self._store_segment(seq=seq, segment_name=segment_name, segment_path=segment_path, duration=duration)
-        return True
-
-    def reset(self) -> None:
-        with self._lock:
-            old_paths = [Path(item["path"]) for item in self._segments]
-            self._segments = []
-            self._last_error = ""
-            self._last_append_ts = 0.0
-            self._rewrite_playlist()
-        for path in old_paths:
-            try:
-                path.unlink()
-            except FileNotFoundError:
-                pass
-
-    def _reserve_segment(self, prefix: str) -> tuple[int, str, Path]:
-        with self._lock:
-            seq = self._next_seq
-            self._next_seq += 1
-        segment_name = f"{seq:06d}-{prefix[:12]}.ts"
-        segment_path = self._segments_dir / segment_name
-        return seq, segment_name, segment_path
-
-    def _store_segment(self, *, seq: int, segment_name: str, segment_path: Path, duration: float) -> None:
-        with self._lock:
-            self._segments.append({"seq": seq, "name": segment_name, "duration": duration, "path": segment_path})
-            self._segments.sort(key=lambda item: int(item["seq"]))
-            while len(self._segments) > HLS_MAX_SEGMENTS:
-                old = self._segments.pop(0)
-                try:
-                    Path(old["path"]).unlink()
-                except FileNotFoundError:
-                    pass
-            self._last_append_ts = time.time()
-            self._rewrite_playlist()
-
-    def set_last_error(self, message: str) -> None:
-        with self._lock:
-            self._last_error = str(message or "").strip()
-
-    def _segment_duration_seconds(self, segment_path: Path) -> float:
-        try:
-            raw = subprocess.check_output(
-                [
-                    "ffprobe",
-                    "-v",
-                    "error",
-                    "-show_entries",
-                    "format=duration",
-                    "-of",
-                    "default=noprint_wrappers=1:nokey=1",
-                    str(segment_path),
-                ],
-                text=True,
-            ).strip()
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"ffprobe failed: {e}") from e
-        try:
-            value = float(raw)
-        except ValueError as e:
-            raise RuntimeError(f"invalid ffprobe duration: {raw}") from e
-        return max(0.2, value)
-
-    def _rewrite_playlist(self) -> None:
-        target_duration = max(
-            HLS_TARGET_DURATION_SECONDS,
-            int(math.ceil(max((float(item["duration"]) for item in self._segments), default=0.0))),
-        )
-        lines = [
-            "#EXTM3U",
-            "#EXT-X-VERSION:3",
-            f"#EXT-X-TARGETDURATION:{target_duration}",
-            f"#EXT-X-MEDIA-SEQUENCE:{self._segments[0]['seq'] if self._segments else self._next_seq}",
-        ]
-        for item in self._segments:
-            lines.append(f"#EXTINF:{item['duration']:.3f},")
-            lines.append(f"segments/{item['name']}")
-        self._playlist_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 class VoicePushCoordinator:
@@ -650,32 +131,21 @@ class VoicePushCoordinator:
         self._keepalive = threading.Thread(target=self._keepalive_loop, name="voice-push-keepalive", daemon=True)
         self._keepalive.start()
 
-    def settings_snapshot(self) -> dict[str, Any]:
+    def settings_snapshot(self, *, redact_secrets: bool = False) -> dict[str, Any]:
         with self._lock:
             settings = dict(self._voice_settings)
+            subscriptions = dict(self._subscriptions)
             queue_depth = len(self._queue)
-            enabled_devices = sum(
-                1
-                for item in self._subscriptions.values()
-                if item.get("notifications_enabled") and item.get("device_class") == "mobile"
-            )
-            total_devices = sum(1 for item in self._subscriptions.values() if item.get("device_class") == "mobile")
             active_listener_count = self._active_listener_count_locked(now_ts=time.time())
-        audio_state = self._hls.snapshot()
-        return {
-            **settings,
-            "audio": {
-                "queue_depth": queue_depth,
-                "active_listener_count": active_listener_count,
-                "stream_url": "/api/audio/live.m3u8",
-                **audio_state,
-            },
-            "notifications": {
-                "enabled_devices": enabled_devices,
-                "total_devices": total_devices,
-                "vapid_public_key": self._vapid_public_key,
-            },
-        }
+        return voice_settings_snapshot_payload(
+            voice_settings=settings,
+            subscriptions=subscriptions,
+            queue_depth=queue_depth,
+            active_listener_count=active_listener_count,
+            audio_state=self._hls.snapshot(),
+            vapid_public_key=self._vapid_public_key,
+            redact_secrets=redact_secrets,
+        )
 
     def listener_heartbeat(self, *, client_id: str, enabled: bool) -> dict[str, Any]:
         cid = str(client_id or "").strip()
@@ -712,34 +182,33 @@ class VoicePushCoordinator:
             self._hls.reset()
         return {"active_listener_count": count}
 
-    def set_settings(self, raw: Any) -> dict[str, Any]:
-        settings = _clean_voice_settings(raw)
+    def set_settings(
+        self,
+        raw: Any,
+        *,
+        preserve_blank_api_key: bool = False,
+        redact_response: bool = False,
+    ) -> dict[str, Any]:
+        obj = dict(raw) if isinstance(raw, dict) else {}
+        clear_api_key = bool(obj.get("tts_api_key_clear"))
+        if clear_api_key:
+            obj["tts_api_key"] = ""
+        elif preserve_blank_api_key:
+            candidate = str(obj.get("tts_api_key") or "").strip()
+            if not candidate:
+                with self._lock:
+                    obj["tts_api_key"] = str(self._voice_settings.get("tts_api_key") or "")
+        settings = _clean_voice_settings(obj)
         with self._lock:
             self._voice_settings = settings
             self._queue_ready.notify_all()
         self._save_settings()
-        return self.settings_snapshot()
+        return self.settings_snapshot(redact_secrets=redact_response)
 
     def subscriptions_snapshot(self) -> dict[str, Any]:
         with self._lock:
-            items = [
-                {
-                    "id": record["id"],
-                    "endpoint": record["subscription"]["endpoint"],
-                    "notifications_enabled": bool(record.get("notifications_enabled")),
-                    "device_class": str(record.get("device_class") or "desktop"),
-                    "created_ts": record.get("created_ts"),
-                    "updated_ts": record.get("updated_ts"),
-                    "last_success_ts": record.get("last_success_ts"),
-                    "last_failure_ts": record.get("last_failure_ts"),
-                    "last_error": record.get("last_error"),
-                    "user_agent": record.get("user_agent"),
-                    "device_label": record.get("device_label"),
-                }
-                for record in self._subscriptions.values()
-            ]
-        items.sort(key=lambda item: float(item.get("updated_ts") or 0.0), reverse=True)
-        return {"vapid_public_key": self._vapid_public_key, "subscriptions": items}
+            subscriptions = dict(self._subscriptions)
+        return subscriptions_snapshot_payload(subscriptions=subscriptions, vapid_public_key=self._vapid_public_key)
 
     def upsert_subscription(
         self,
@@ -882,54 +351,18 @@ class VoicePushCoordinator:
 
     def notification_text_for_message(self, message_id: str) -> str | None:
         with self._lock:
-            row = self._delivery_ledger.get(message_id)
-            if not isinstance(row, dict):
-                return None
-            text = _compact_text(row.get("notification_text") or "")
-            return text or None
+            ledger = dict(self._delivery_ledger)
+        return _notification_text_for_message_payload(ledger, message_id)
 
     def notification_state_for_message(self, message_id: str) -> dict[str, Any] | None:
         with self._lock:
-            row = self._delivery_ledger.get(message_id)
-            if not isinstance(row, dict):
-                return None
-            return {
-                "message_id": message_id,
-                "message_class": row.get("message_class"),
-                "summary_status": row.get("summary_status"),
-                "push_status": row.get("push_status"),
-                "notification_text": _compact_text(row.get("notification_text") or ""),
-            }
+            ledger = dict(self._delivery_ledger)
+        return _notification_state_for_message_payload(ledger, message_id)
 
     def notification_feed_since(self, since_ts: float) -> list[dict[str, Any]]:
         with self._lock:
-            rows = list(self._delivery_ledger.values())
-        out: list[dict[str, Any]] = []
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            if row.get("message_class") != "final_response":
-                continue
-            updated_ts = float(row.get("updated_ts") or 0.0)
-            if updated_ts <= float(since_ts):
-                continue
-            summary_status = str(row.get("summary_status") or "")
-            if summary_status not in {"sent", "skipped", "error"}:
-                continue
-            text = _compact_text(row.get("notification_text") or "")
-            if not text:
-                continue
-            out.append(
-                {
-                    "message_id": str(row.get("message_id") or ""),
-                    "session_id": str(row.get("session_id") or ""),
-                    "session_display_name": str(row.get("session_display_name") or "").strip() or "Session",
-                    "notification_text": text,
-                    "updated_ts": updated_ts,
-                }
-            )
-        out.sort(key=lambda item: (float(item.get("updated_ts") or 0.0), str(item.get("message_id") or "")))
-        return out
+            ledger = dict(self._delivery_ledger)
+        return _notification_feed_since_payload(ledger, since_ts)
 
     def _keepalive_loop(self) -> None:
         while not self._stop.is_set():
@@ -1177,140 +610,51 @@ class VoicePushCoordinator:
         if not subscriptions:
             self._set_ledger_field(message_id, "push_status", "skipped")
             return
-        vapid = Vapid.from_file(str(self._vapid_private_key_path))
-        payload = json.dumps(
-            {
-                "session_id": session_id,
-                "session_display_name": session_display_name,
-                "message_id": message_id,
-                "notification_text": notification_text,
-                "timestamp": timestamp or time.time(),
-            }
+        payload = push_payload_json(
+            session_id=session_id,
+            session_display_name=session_display_name,
+            message_id=message_id,
+            notification_text=notification_text,
+            timestamp=timestamp,
+        )
+        outcomes = send_web_push_notifications(
+            subscriptions=subscriptions,
+            private_key_path=self._vapid_private_key_path,
+            vapid_subject=self._vapid_subject,
+            payload_json=payload,
         )
         any_success = False
-        for record in subscriptions:
-            try:
-                response = webpush(
-                    subscription_info=record["subscription"],
-                    data=payload,
-                    vapid_private_key=vapid,
-                    vapid_claims={"sub": self._vapid_subject},
-                    ttl=300,
-                    timeout=10.0,
-                )
-                now_ts = float(time.time())
-                with self._lock:
-                    current = self._subscriptions.get(record["id"])
-                    if isinstance(current, dict):
-                        current["last_success_ts"] = now_ts
-                        current["last_error"] = ""
-                        current["updated_ts"] = now_ts
-                        self._subscriptions[record["id"]] = current
+        for outcome in outcomes:
+            if outcome.success:
+                self._mark_subscription_success(record_id=outcome.record_id, now_ts=outcome.timestamp)
                 any_success = True
-                _ = response
-            except WebPushException as e:
-                status = getattr(getattr(e, "response", None), "status_code", None)
-                self._mark_subscription_failure(record_id=record["id"], error=str(e))
-                if status in {404, 410}:
-                    self._drop_subscription(record["id"])
+                continue
+            self._mark_subscription_failure(record_id=outcome.record_id, error=outcome.error)
+            if outcome.drop_subscription:
+                self._drop_subscription(outcome.record_id)
         self._save_subscriptions()
         self._set_ledger_field(message_id, "push_status", "sent" if any_success else "error")
 
     def _voice_for_session(self, session_id: str, session_name: str) -> str:
-        token = _sha256_hex(session_id)
-        return DEFAULT_VOICES[int(token[:8], 16) % len(DEFAULT_VOICES)]
+        return voice_for_session(session_id)
 
     def _mark_task_replaced_locked(self, task: AnnouncementTask) -> None:
-        now_ts = float(time.time())
-        for message_id in dict.fromkeys(task.source_message_ids):
-            row = self._delivery_ledger.get(message_id)
-            if not isinstance(row, dict):
-                continue
-            row["last_error"] = "replaced by newer message"
-            row["updated_ts"] = now_ts
-            row["narrated_status"] = "skipped"
-            if row.get("summary_status") == "pending":
-                row["summary_status"] = "skipped"
-            if row.get("push_status") == "pending":
-                row["push_status"] = "skipped"
-            self._delivery_ledger[message_id] = row
-
-    def _merge_narration_tasks_locked(self, older: AnnouncementTask, newer: AnnouncementTask) -> AnnouncementTask:
-        source_message_ids = tuple(dict.fromkeys((*older.source_message_ids, *newer.source_message_ids)))
-        parts = [part for part in (older.source_text, newer.source_text) if part]
-        return AnnouncementTask(
-            message_id=newer.message_id,
-            source_message_ids=source_message_ids,
-            session_id=newer.session_id,
-            session_display_name=newer.session_display_name,
-            message_class="narration",
-            source_text="\n\n".join(parts),
-            spoken_text="",
-            notification_text="",
-            voice=newer.voice,
-            ts=newer.ts if newer.ts is not None else older.ts,
-            summary_word_target=newer.summary_word_target,
-            listener_epoch=newer.listener_epoch,
-        )
+        mark_task_replaced(self._delivery_ledger, task, now_ts=float(time.time()))
 
     def _enqueue_task_locked(self, new_task: AnnouncementTask) -> None:
-        if not self._queue:
-            self._queue.append(new_task)
-            return
-        kept: list[AnnouncementTask] = []
-        insert_index: int | None = None
-        task_to_enqueue = new_task
-        for queued in self._queue:
-            same_slot = queued.session_id == new_task.session_id and queued.message_class == new_task.message_class
-            if not same_slot:
-                kept.append(queued)
-                continue
-            if insert_index is None:
-                insert_index = len(kept)
-            if new_task.message_class == "narration":
-                task_to_enqueue = self._merge_narration_tasks_locked(queued, task_to_enqueue)
-            else:
-                self._mark_task_replaced_locked(queued)
-        if insert_index is None:
-            kept.append(task_to_enqueue)
-        else:
-            kept.insert(insert_index, task_to_enqueue)
-        self._queue = kept
+        update = enqueue_announcement_task(self._queue, new_task)
+        for replaced_task in update.replaced_tasks:
+            self._mark_task_replaced_locked(replaced_task)
+        self._queue = update.queue
 
     def _set_task_error(self, task: AnnouncementTask, error: str) -> None:
-        clipped_error = _clip_text(error, limit=400)
         with self._lock:
-            now_ts = float(time.time())
-            for message_id in dict.fromkeys(task.source_message_ids):
-                row = self._delivery_ledger.get(message_id)
-                if not isinstance(row, dict):
-                    continue
-                row["last_error"] = clipped_error
-                row["updated_ts"] = now_ts
-                row["narrated_status"] = "error"
-                if row.get("summary_status") == "pending":
-                    row["summary_status"] = "error"
-                if row.get("push_status") == "pending":
-                    row["push_status"] = "error"
-                self._delivery_ledger[message_id] = row
+            set_task_error(self._delivery_ledger, task, error, now_ts=float(time.time()))
         self._save_delivery_ledger()
 
     def _mark_tasks_skipped_no_listener(self, tasks: list[AnnouncementTask]) -> None:
         with self._lock:
-            now_ts = float(time.time())
-            dirty = False
-            for task in tasks:
-                for message_id in dict.fromkeys(task.source_message_ids):
-                    row = self._delivery_ledger.get(message_id)
-                    if not isinstance(row, dict):
-                        continue
-                    row["narrated_status"] = "skipped"
-                    row["last_error"] = "no active listener"
-                    row["updated_ts"] = now_ts
-                    if row.get("summary_status") == "pending":
-                        row["summary_status"] = "skipped"
-                    self._delivery_ledger[message_id] = row
-                    dirty = True
+            dirty = mark_tasks_skipped_no_listener(self._delivery_ledger, tasks, now_ts=float(time.time()))
         if dirty:
             self._save_delivery_ledger()
 
@@ -1325,19 +669,20 @@ class VoicePushCoordinator:
 
     def _set_ledger_fields_many(self, message_ids: tuple[str, ...], patch: dict[str, Any]) -> None:
         with self._lock:
-            now_ts = float(time.time())
-            dirty = False
-            for message_id in dict.fromkeys(message_ids):
-                row = self._delivery_ledger.get(message_id)
-                if not isinstance(row, dict):
-                    continue
-                row.update(patch)
-                row["updated_ts"] = now_ts
-                self._delivery_ledger[message_id] = row
-                dirty = True
+            dirty = set_ledger_fields_many(self._delivery_ledger, message_ids, patch, now_ts=float(time.time()))
         if not dirty:
             return
         self._save_delivery_ledger()
+
+    def _mark_subscription_success(self, *, record_id: str, now_ts: float) -> None:
+        with self._lock:
+            record = self._subscriptions.get(record_id)
+            if not isinstance(record, dict):
+                return
+            record["last_success_ts"] = now_ts
+            record["last_error"] = ""
+            record["updated_ts"] = now_ts
+            self._subscriptions[record_id] = record
 
     def _mark_subscription_failure(self, *, record_id: str, error: str) -> None:
         with self._lock:
@@ -1364,82 +709,32 @@ class VoicePushCoordinator:
         return len(self._listeners)
 
     def _ensure_vapid_keys(self) -> None:
-        if self._vapid_private_key_path.exists():
-            vapid = Vapid.from_file(str(self._vapid_private_key_path))
-        else:
-            vapid = Vapid()
-            vapid.generate_keys()
-            os.makedirs(self._vapid_private_key_path.parent, exist_ok=True)
-            self._vapid_private_key_path.write_bytes(vapid.private_pem())
-        public_bytes = vapid.public_key.public_bytes(
-            encoding=serialization.Encoding.X962,
-            format=serialization.PublicFormat.UncompressedPoint,
-        )
-        self._vapid_public_key = _b64u(public_bytes)
+        self._vapid_public_key = ensure_vapid_public_key(self._vapid_private_key_path)
 
     def _trim_locked(self) -> None:
-        if len(self._delivery_ledger) <= DELIVERY_LEDGER_MAX:
-            return
-        doomed = sorted(
-            self._delivery_ledger.values(),
-            key=lambda row: float(row.get("updated_ts") or row.get("created_ts") or 0.0),
-        )[: len(self._delivery_ledger) - DELIVERY_LEDGER_MAX]
-        for row in doomed:
-            message_id = row.get("message_id")
-            if isinstance(message_id, str):
-                self._delivery_ledger.pop(message_id, None)
+        trim_delivery_ledger(self._delivery_ledger, limit=DELIVERY_LEDGER_MAX)
 
     def _load_settings(self) -> None:
-        try:
-            raw = json.loads(self._settings_path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            raw = {}
-        self._voice_settings = _clean_voice_settings(raw)
+        self._voice_settings = load_voice_settings(self._settings_path)
 
     def _save_settings(self) -> None:
-        os.makedirs(self._settings_path.parent, exist_ok=True)
         with self._lock:
             payload = dict(self._voice_settings)
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=self._settings_path.parent, prefix=self._settings_path.name + ".", suffix=".tmp", delete=False) as tmp:
-            tmp.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-            tmp_path = Path(tmp.name)
-        os.replace(tmp_path, self._settings_path)
+        save_voice_settings(self._settings_path, payload)
 
     def _load_subscriptions(self) -> None:
-        try:
-            raw = json.loads(self._subscriptions_path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            raw = []
-        cleaned: dict[str, dict[str, Any]] = {}
-        if isinstance(raw, list):
-            for item in raw:
-                record = _clean_subscription_record(item)
-                if record is not None:
-                    cleaned[record["id"]] = record
-        self._subscriptions = cleaned
+        self._subscriptions = load_subscription_records(self._subscriptions_path)
 
     def _save_subscriptions(self) -> None:
-        os.makedirs(self._subscriptions_path.parent, exist_ok=True)
         with self._lock:
-            payload = list(self._subscriptions.values())
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=self._subscriptions_path.parent, prefix=self._subscriptions_path.name + ".", suffix=".tmp", delete=False) as tmp:
-            tmp.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-            tmp_path = Path(tmp.name)
-        os.replace(tmp_path, self._subscriptions_path)
+            payload = dict(self._subscriptions)
+        save_subscription_records(self._subscriptions_path, payload)
 
     def _load_delivery_ledger(self) -> None:
-        try:
-            raw = json.loads(self._delivery_ledger_path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            raw = {}
-        self._delivery_ledger = _clean_ledger(raw)
+        self._delivery_ledger = load_voice_delivery_ledger(self._delivery_ledger_path)
 
     def _save_delivery_ledger(self) -> None:
-        os.makedirs(self._delivery_ledger_path.parent, exist_ok=True)
         with self._lock:
             self._trim_locked()
             payload = dict(self._delivery_ledger)
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=self._delivery_ledger_path.parent, prefix=self._delivery_ledger_path.name + ".", suffix=".tmp", delete=False) as tmp:
-            tmp.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-            tmp_path = Path(tmp.name)
-        os.replace(tmp_path, self._delivery_ledger_path)
+        save_voice_delivery_ledger(self._delivery_ledger_path, payload)

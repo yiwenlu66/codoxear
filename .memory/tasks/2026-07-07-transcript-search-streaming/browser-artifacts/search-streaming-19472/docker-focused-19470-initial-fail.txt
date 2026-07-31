@@ -1,0 +1,70 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from sandbox.Dockerfile
+#1 transferring dockerfile: 768B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/python:3.13-slim
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 407B done
+#3 DONE 0.0s
+
+#4 [1/5] FROM docker.io/library/python:3.13-slim
+#4 DONE 0.0s
+
+#5 [3/5] RUN python3 -m pip install --no-cache-dir         Pillow>=9.0         py-vapid>=1.9.2         pywebpush>=2.3.0         pytest
+#5 CACHED
+
+#6 [2/5] RUN apt-get update     && apt-get install -y --no-install-recommends         bash         ca-certificates         curl         ffmpeg         git         lsof         nodejs         npm         procps         tmux     && rm -rf /var/lib/apt/lists/*
+#6 CACHED
+
+#7 [4/5] RUN useradd -ms /bin/bash tester
+#7 CACHED
+
+#8 [5/5] WORKDIR /workspace
+#8 CACHED
+
+#9 exporting to image
+#9 exporting layers done
+#9 writing image sha256:7d8931259540ae3cd630c283a62946658ba487243b42cd82b87812ee55e70535 done
+#9 naming to docker.io/library/codoxear-sandbox:latest done
+#9 DONE 0.0s
+F...............................................                         [100%]
+=================================== FAILURES ===================================
+_ TestTranscriptExport.test_count_limited_first_order_search_stops_record_stream _
+
+self = <test_transcript_export.TestTranscriptExport testMethod=test_count_limited_first_order_search_stops_record_stream>
+
+    def test_count_limited_first_order_search_stops_record_stream(self) -> None:
+        consumed = 0
+        count_limit = 5
+
+        def fake_records(_log_path, **_kwargs):
+            nonlocal consumed
+            for idx in range(1000):
+                consumed += 1
+                yield JsonlRecord(
+                    start=idx * 10,
+                    end=idx * 10 + 9,
+                    obj={
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": f"needle match {idx}"}],
+                            "phase": "final_answer",
+                        },
+                        "ts": float(idx),
+                    },
+                )
+
+>       with unittest.mock.patch.object(transcript_search_module, "iter_jsonl_records_forward_bounded", fake_records):
+             ^^^^^^^^^^^^^
+E       AttributeError: module 'unittest' has no attribute 'mock'
+
+tests/test_transcript_export.py:110: AttributeError
+=========================== short test summary info ============================
+FAILED tests/test_transcript_export.py::TestTranscriptExport::test_count_limited_first_order_search_stops_record_stream
+1 failed, 47 passed in 0.28s

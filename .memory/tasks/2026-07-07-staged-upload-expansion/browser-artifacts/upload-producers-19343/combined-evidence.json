@@ -1,0 +1,106 @@
+{
+  "summary-after-drop.json": {
+    "browser": {
+      "activeAfterDragover": true,
+      "activeAfterDrop": false,
+      "badge": "3",
+      "chips": [
+        {
+          "text": "paste-alpha.txt\n11 B \u00b7 c8c11208\n\u00d7",
+          "title": "/home/tester/.local/share/codoxear/uploads/upload-proof/1783372660381_paste-alpha.txt"
+        },
+        {
+          "text": "drop-beta.txt\n9 B \u00b7 c03be789\n\u00d7",
+          "title": "/home/tester/.local/share/codoxear/uploads/upload-proof/1783372709075_drop-beta.txt"
+        },
+        {
+          "text": "drop-gamma.txt\n10 B \u00b7 ba547aa7\n\u00d7",
+          "title": "/home/tester/.local/share/codoxear/uploads/upload-proof/1783372709081_drop-gamma.txt"
+        }
+      ],
+      "dragoverPrevented": true,
+      "dropPrevented": true,
+      "dropReturned": false,
+      "toast": "2 files staged"
+    },
+    "api_count": 3,
+    "api_pending": true,
+    "broker_counts": {
+      "state": 19
+    },
+    "send_or_keys": 0
+  },
+  "summary-after-offzone-drop.json": {
+    "browser": {
+      "afterHref": "http://127.0.0.1:19343/#session=upload-proof",
+      "badge": "3",
+      "beforeHref": "http://127.0.0.1:19343/#session=upload-proof",
+      "chipCount": 3,
+      "defaultPrevented": true,
+      "dispatchReturned": false,
+      "toast": ""
+    },
+    "api_count": 3,
+    "broker_counts": {
+      "state": 6
+    },
+    "send_or_keys": 0
+  },
+  "summary-after-paste.json": {
+    "browser": {
+      "badge": "1",
+      "chips": [
+        {
+          "text": "paste-alpha.txt\n11 B \u00b7 c8c11208\n\u00d7",
+          "title": "/home/tester/.local/share/codoxear/uploads/upload-proof/1783372660381_paste-alpha.txt"
+        }
+      ],
+      "defaultPrevented": true,
+      "dispatchReturned": false,
+      "toast": "file staged",
+      "value": ""
+    },
+    "api_count": 1,
+    "api_pending": true,
+    "broker_counts": {
+      "state": 171
+    },
+    "send_or_keys": 0
+  },
+  "summary-after-send.json": {
+    "browser": {
+      "badge": "",
+      "chipCount": 0,
+      "pendingUser": [
+        "upload proof fixture\n\n08:00",
+        "please process paste and drop files\n\n05:19"
+      ],
+      "toast": "sent"
+    },
+    "api_count": 0,
+    "api_pending": false,
+    "broker_counts": {
+      "state": 18,
+      "send": 1
+    },
+    "send_count": 1,
+    "keys_count": 0,
+    "last_send_text": "Attachment 1: /home/tester/.local/share/codoxear/uploads/upload-proof/1783372660381_paste-alpha.txt\nAttachment 2: /home/tester/.local/share/codoxear/uploads/upload-proof/1783372709075_drop-beta.txt\nAttachment 3: /home/tester/.local/share/codoxear/uploads/upload-proof/1783372709081_drop-gamma.txt\nplease process paste and drop files",
+    "has_three_attachment_lines": true
+  },
+  "summary-after-text-paste.json": {
+    "browser": {
+      "badge": "1",
+      "chipCount": 1,
+      "defaultPrevented": false,
+      "dispatchReturned": true,
+      "toast": "",
+      "value": "TEXT-ONLY-PASTE"
+    },
+    "api_count": 1,
+    "broker_counts": {
+      "state": 4
+    },
+    "send_or_keys": 0
+  }
+}

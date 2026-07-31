@@ -1,0 +1,32 @@
+{
+    "session_id": null,
+    "owner": "web",
+    "broker_pid": 155,
+    "sessiond_pid": 155,
+    "codex_pid": 158,
+    "cwd": "/home/tester/work",
+    "start_ts": 1783295797.0252373,
+    "log_path": null,
+    "ignored_rollout_paths": [],
+    "sock_path": "/home/tester/.local/share/codoxear/socks/broker-155.sock",
+    "agent_backend": "pi",
+    "launch_id": "launch-1783295796774-d86c1264",
+    "resume_session_id": null,
+    "model_provider": "openai-codex",
+    "preferred_auth_method": null,
+    "model": "gpt-5.4-mini",
+    "reasoning_effort": "high",
+    "service_tier": null,
+    "transport": "tmux",
+    "tmux_session": "codoxear",
+    "tmux_window": "work-968ee6",
+    "spawn_nonce": "968ee6c09ad8057c",
+    "control_protocol_version": 2,
+    "control_capabilities": {
+        "sync_send": true,
+        "key_write_errors": true
+    }
+}
+{"agent_backend": "pi", "created_ts": 1783295796.7743587, "cwd": "/home/tester/work", "launch_id": "launch-1783295796774-d86c1264", "model": "gpt-5.4-mini", "model_provider": "openai-codex", "preferred_auth_method": null, "reasoning_effort": "high", "requested_cwd": "/home/tester/work", "resume_session_id": null, "service_tier": null, "spawn_nonce": "968ee6c09ad8057c", "state": "starting", "transport": "tmux", "type": "launch_attempt", "updated_ts": 1783295796.774403, "worktree_branch": null}
+{"agent_backend": "pi", "created_ts": 1783295796.7743587, "cwd": "/home/tester/work", "launch_id": "launch-1783295796774-d86c1264", "model": "gpt-5.4-mini", "model_provider": "openai-codex", "preferred_auth_method": null, "reasoning_effort": "high", "requested_cwd": "/home/tester/work", "resume_session_id": null, "service_tier": null, "spawn_nonce": "968ee6c09ad8057c", "state": "tmux_pane_created", "tmux_attempts": [{"cmd": "new-window", "returncode": 1, "stderr": "error connecting to /tmp/tmux-1000/default (No such file or directory)", "stdout": ""}, {"cmd": "new-session", "returncode": 0, "stderr": "", "stdout": "%0"}], "tmux_pane_command": "python3", "tmux_pane_dead": "0", "tmux_pane_dead_status": "", "tmux_pane_id": "%0", "tmux_pane_pid": "155", "tmux_pane_tail": "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n", "tmux_session": "codoxear", "tmux_target": "%0", "tmux_window": "work-968ee6", "transport": "tmux", "type": "launch_attempt", "updated_ts": 1783295796.797002, "worktree_branch": null}
+{"agent_backend": "pi", "broker_pid": 155, "created_ts": 1783295796.7743587, "cwd": "/home/tester/work", "launch_id": "launch-1783295796774-d86c1264", "model": "gpt-5.4-mini", "model_provider": "openai-codex", "preferred_auth_method": null, "reasoning_effort": "high", "requested_cwd": "/home/tester/work", "resume_session_id": null, "service_tier": null, "spawn_nonce": "968ee6c09ad8057c", "state": "broker_meta_bound", "tmux_pane_id": "%0", "tmux_session": "codoxear", "tmux_window": "work-968ee6", "transport": "tmux", "type": "launch_attempt", "updated_ts": 1783295797.0488553, "worktree_branch": null}

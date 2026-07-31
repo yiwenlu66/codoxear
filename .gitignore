@@ -20,3 +20,6 @@ codex-homes/
 socks/
 generated_imgs/
 video_previews/
+
+# Private machine-local memory (never commit)
+.memory/local/

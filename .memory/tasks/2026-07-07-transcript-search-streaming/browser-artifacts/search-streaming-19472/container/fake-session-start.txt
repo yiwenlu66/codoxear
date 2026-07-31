@@ -1,0 +1,3 @@
+{"sid":"search-streaming-session","sock":"/home/tester/.local/share/codoxear/socks/search-streaming-session.sock","log":"/home/tester/large-search-proof/large-search-session.jsonl","log_size":539195,"row_count":3002,"calls":"/home/tester/large-search-proof/broker-calls.jsonl","fake_notice":"FAKE_LARGE_TRANSCRIPT_SEARCH_STREAMING_PROOF_DOCKER_ONLY"}
+log_size=539195
+3002 /home/tester/large-search-proof/large-search-session.jsonl
