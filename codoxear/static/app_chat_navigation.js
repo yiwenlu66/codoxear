@@ -2,14 +2,10 @@
   "use strict";
 
   // Loaded-chat navigation rail + document shortcut orchestration. Owns the
-  // chat nav button projection (prev/next enabled/disabled state), the
-  // loaded user-message and loaded copy-message jump behavior (boundary
-  // toasts, scrollIntoView with reduced-motion-aware behavior, row pulse),
-  // the prev/next button click handlers, and the document keydown handler
-  // that dispatches:
-  //   `/`           -> open the existing loaded-chat search (when not blocked)
-  //   Alt+Shift+↑/↓ -> navigate among all loaded message rows
-  //   Alt+↑/↓       -> navigate among loaded user messages
+  // chat nav button projection (prev/next enabled/disabled state), loaded user-
+  // message and loaded copy-message jump behavior (boundary toasts,
+  // scrollIntoView with reduced-motion-aware behavior, row pulse), the prev/next
+  // button click handlers, and the document `/` direct-to-search shortcut.
   //
   // The deeper loaded-chat search implementation, older-history search,
   // transcript rendering/runtime creation, the message-copy active-row
@@ -140,18 +136,6 @@
         if (chatSearchShortcutBlocked(e.target)) return;
         e.preventDefault();
         openChatSearch();
-        return;
-      }
-      if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
-        if (chatNavigationShortcutBlocked(e.target)) return;
-        e.preventDefault();
-        jumpToLoadedMessage(e.key === "ArrowUp" ? -1 : 1);
-        return;
-      }
-      if (e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
-        if (chatNavigationShortcutBlocked(e.target)) return;
-        e.preventDefault();
-        jumpToLoadedUserMessage(e.key === "ArrowUp" ? -1 : 1);
       }
     });
 

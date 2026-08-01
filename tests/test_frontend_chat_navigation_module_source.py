@@ -490,9 +490,9 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
         self.assertEqual(result["open"], 0)
         self.assertFalse(result["prevented"])
 
-    # --- 7. Alt+Shift (copy) and Alt (user) arrow shortcuts ---
+    # --- 7. Removed Alt arrow shortcuts stay browser-owned ---
 
-    def test_alt_shift_arrow_down_navigates_copy(self) -> None:
+    def test_alt_shift_arrow_down_is_ignored(self) -> None:
         js = harness_script(
             """
             const h = globalThis.__harness;
@@ -504,11 +504,11 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
             """
         )
         result = run_node_json(js)
-        self.assertEqual(result["scrolls"], [["scrollIntoView", "c2", json.dumps({"block": "start", "behavior": "auto"}, separators=(",", ":"))]])
-        self.assertEqual(result["pulses"], ["c2"])
-        self.assertTrue(result["prevented"])
+        self.assertEqual(result["scrolls"], [])
+        self.assertEqual(result["pulses"], [])
+        self.assertFalse(result["prevented"])
 
-    def test_alt_shift_arrow_up_navigates_copy(self) -> None:
+    def test_alt_shift_arrow_up_is_ignored(self) -> None:
         js = harness_script(
             """
             const h = globalThis.__harness;
@@ -520,9 +520,9 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
             """
         )
         result = run_node_json(js)
-        self.assertEqual(result["pulses"], ["c1"])
+        self.assertEqual(result["pulses"], [])
 
-    def test_alt_arrow_down_navigates_user(self) -> None:
+    def test_alt_arrow_down_is_ignored(self) -> None:
         js = harness_script(
             """
             const h = globalThis.__harness;
@@ -534,11 +534,11 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
             """
         )
         result = run_node_json(js)
-        self.assertEqual(result["scrolls"], [["scrollIntoView", "u2", json.dumps({"block": "start", "behavior": "auto"}, separators=(",", ":"))]])
-        self.assertEqual(result["pulses"], ["u2"])
-        self.assertTrue(result["prevented"])
+        self.assertEqual(result["scrolls"], [])
+        self.assertEqual(result["pulses"], [])
+        self.assertFalse(result["prevented"])
 
-    def test_alt_arrow_up_navigates_user(self) -> None:
+    def test_alt_arrow_up_is_ignored(self) -> None:
         js = harness_script(
             """
             const h = globalThis.__harness;
@@ -550,7 +550,7 @@ class TestFrontendChatNavigationModuleSource(unittest.TestCase):
             """
         )
         result = run_node_json(js)
-        self.assertEqual(result["pulses"], ["u1"])
+        self.assertEqual(result["pulses"], [])
 
     def test_arrow_shortcuts_ignore_default_prevented(self) -> None:
         js = harness_script(

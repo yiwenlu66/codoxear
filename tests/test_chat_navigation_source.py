@@ -40,6 +40,7 @@ def eval_navigation() -> dict:
         controller.syncButtons();
         const enabled = {{ prev: prev.disabled, next: next.disabled }};
         prev.onclick({{ preventDefault: () => calls.push(["prevent"]), stopPropagation: () => calls.push(["stop"]) }});
+        next.onclick({{ preventDefault: () => calls.push(["prevent-next"]), stopPropagation: () => calls.push(["stop-next"]) }});
         events.keydown({{ key: "/", target: "body", defaultPrevented: false, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, preventDefault: () => calls.push(["key-prevent"]) }});
         events.keydown({{ key: "ArrowDown", target: "body", defaultPrevented: false, ctrlKey: false, metaKey: false, altKey: true, shiftKey: false, preventDefault: () => calls.push(["key-prevent-user"]) }});
         events.keydown({{ key: "ArrowUp", target: "input", defaultPrevented: false, ctrlKey: false, metaKey: false, altKey: true, shiftKey: false, preventDefault: () => calls.push(["blocked-prevent"]) }});
@@ -62,7 +63,7 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertContains(["scroll", "u1", {"block": "start", "behavior": "auto"}], calls)
         self.assertContains(["pulse", "u1"], calls)
         self.assertContains(["search"], calls)
-        self.assertContains(["key-prevent-user"], calls)
+        self.assertNotContains(["key-prevent-user"], calls)
         self.assertNotContains(["blocked-prevent"], calls)
 
     def test_navigation_boundary_reports_loaded_message_limit(self) -> None:

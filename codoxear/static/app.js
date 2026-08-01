@@ -958,6 +958,7 @@
           if (queueController) queueController.dispose();
           if (diagController) diagController.dispose();
           if (chatNavigationController) chatNavigationController.dispose();
+          if (hintModeController) hintModeController.dispose();
           olderLoadRuntime.invalidate();
           fileViewerController.abortPendingFileOpenTransport();
           hideUnattendedMenu();
@@ -1391,8 +1392,7 @@
   <li>The queue is stored per session and drains automatically when that session becomes idle. Use <b>Queued messages</b> to review or edit queued prompts.</li>
   <li><b>Load older messages</b> fetches more scrollback. <b>Jump to latest</b> returns to the newest turn when you are reading history.</li>
   <li>Use <b>/</b> to search the loaded chat; Previous/Next can load an older matching window when the transcript count shows more matches.</li>
-  <li>Use <b>Alt+↑</b>/<b>Alt+↓</b> to jump between loaded user messages. Use <b>Alt+Shift+↑</b>/<b>Alt+Shift+↓</b> to move the active per-message copy control across all loaded messages.</li>
-  <li>Use <b>Alt+1</b>–<b>Alt+9</b> to switch sessions by sidebar position. Use <b>Alt+J</b>/<b>Alt+K</b> for next/previous session.</li>
+  <li>Press <b>f</b> to show keyboard hints for visible controls: <b>1</b>–<b>9</b> switch sessions; <b>s</b> sidebar; <b>b</b> files; <b>d</b> details; <b>u</b> unattended; <b>i</b> interrupt; <b>r</b> search; <b>p</b>/<b>n</b> previous/next user message; <b>o</b> older messages; <b>j</b> latest; <b>a</b> attach; <b>q</b> queued messages; <b>x</b> stop; <b>e</b> send; <b>c</b> new session. Press <b>Escape</b> or <b>Backspace</b> to cancel.</li>
 </ul>
 <div class="muted">Unattended mode</div>
 <ul class="md">
@@ -2209,7 +2209,38 @@
           setTimeout(() => row.classList.remove("nav-pulse"), 1400);
         }
 
-        // Loaded-chat navigation rail + document shortcut orchestration now
+        const hintModeController = (function instantiateHintModeController() {
+          const codoxearHintMode = window.CodoxearHintMode;
+          if (!codoxearHintMode || typeof codoxearHintMode.createHintModeController !== "function")
+            throw new Error("Codoxear hint mode controller failed to load");
+          return codoxearHintMode.createHintModeController({
+            documentTarget: document,
+            isTextEntryElement,
+            isMobile,
+            modalIsolationTargets,
+            isModalTargetOpen,
+            addAppEvent,
+            shellHints: [
+              { label: "s", element: toggleSidebarBtn },
+              { label: "b", element: fileBtn },
+              { label: "d", element: diagBtn },
+              { label: "u", element: unattendedBtn },
+              { label: "i", element: interruptBtn },
+              { label: "r", element: chatSearchBtn },
+              { label: "p", element: prevUserBtn },
+              { label: "n", element: nextUserBtn },
+              { label: "o", element: olderBtn },
+              { label: "j", element: jumpBtn },
+              { label: "a", element: attachBtn },
+              { label: "q", element: queueBtn },
+              { label: "x", element: composerStopBtn },
+              { label: "e", element: sendBtn },
+              { label: "c", element: $("#newBtn") },
+            ],
+          });
+        })();
+
+        // Loaded-chat navigation rail + direct-to-search shortcut orchestration
         // lives in the CodoxearChatNavigation controller
         // (codoxear/static/app_chat_navigation.js). app.js keeps DOM
         // construction for prevUserBtn/nextUserBtn and the thin wrappers below.
@@ -2289,11 +2320,9 @@
           return chatSearchController.step(delta);
         }
 
-        // Loaded-chat navigation shortcut blocking and the document keydown
-        // handler for `/`, Alt+Shift+↑/↓ (copy-message nav), and Alt+↑/↓
-        // (user-message nav) now live in the CodoxearChatNavigation
-        // controller (codoxear/static/app_chat_navigation.js), wired via
-        // chatNavigationController above.
+        // The direct-to-search shortcut (`/`) lives in the
+        // CodoxearChatNavigation controller (codoxear/static/app_chat_navigation.js),
+        // wired via chatNavigationController above.
 
         let activeTailHistoryCursor = null;
 
@@ -5648,31 +5677,6 @@
           if (editViewer.style.display === "flex") hideEditSession();
           if (newSessionViewer.style.display === "flex") hideNewSessionDialog();
         });
-
-        const handleSessionNavigationKeydown = (e) => {
-          if (e.defaultPrevented || !e.altKey || e.shiftKey || e.ctrlKey || e.metaKey) return;
-          if (isTextEntryElement(document.activeElement)) return;
-
-          const sessionCards = Array.from(document.querySelectorAll("#sessions .session[data-session-id]"));
-          let targetCard = null;
-          if (/^[1-9]$/.test(e.key)) {
-            targetCard = sessionCards[Number(e.key) - 1];
-          } else if (e.key === "j" || e.key === "ArrowDown" || e.key === "k" || e.key === "ArrowUp") {
-            const currentIndex = sessionCards.findIndex((card) => card.dataset.sessionId === selected);
-            if (currentIndex < 0) return;
-            const direction = e.key === "j" || e.key === "ArrowDown" ? 1 : -1;
-            targetCard = sessionCards[currentIndex + direction];
-          } else {
-            return;
-          }
-
-          const sessionId = targetCard && targetCard.dataset.sessionId;
-          if (!sessionId) return;
-          e.preventDefault();
-          void selectSession(sessionId);
-        };
-        addAppEvent(document, "keydown", handleSessionNavigationKeydown);
-        appEventCleanups.push(() => document.removeEventListener("keydown", handleSessionNavigationKeydown));
 
         const queueController = (function instantiateQueueController() {
           const codoxearQueue = window.CodoxearQueue;

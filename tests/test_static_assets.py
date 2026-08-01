@@ -46,6 +46,7 @@ APP_CONVERSATION_COPY_JS = ROOT / "codoxear" / "static" / "app_conversation_copy
 APP_MODAL_JS = ROOT / "codoxear" / "static" / "app_modal.js"
 APP_CLIPBOARD_JS = ROOT / "codoxear" / "static" / "app_clipboard.js"
 APP_CODE_COPY_JS = ROOT / "codoxear" / "static" / "app_code_copy.js"
+APP_HINT_MODE_JS = ROOT / "codoxear" / "static" / "app_hint_mode.js"
 APP_VOICE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_voice_helpers.js"
 APP_VOICE_JS = ROOT / "codoxear" / "static" / "app_voice.js"
 APP_QUEUE_JS = ROOT / "codoxear" / "static" / "app_queue.js"
@@ -102,6 +103,7 @@ class TestStaticAssets(unittest.TestCase):
             "app_modal.js": "window.CodoxearModal = {};\n",
             "app_clipboard.js": "window.CodoxearClipboard = {};\n",
             "app_code_copy.js": "window.CodoxearCodeCopy = {};\n",
+            "app_hint_mode.js": "window.CodoxearHintMode = {};\n",
             "app_voice_helpers.js": "window.CodoxearVoiceHelpers = {};\n",
             "app_voice.js": "window.CodoxearVoice = {};\n",
             "app_queue.js": "window.CodoxearQueue = {};\n",
@@ -171,6 +173,7 @@ class TestStaticAssets(unittest.TestCase):
                     '<script src="app_modal.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_clipboard.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_code_copy.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
+                    '<script src="app_hint_mode.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_voice_helpers.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_voice.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_queue.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
@@ -214,6 +217,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertIn(f"app_modal.js?v={version}", rendered)
             self.assertIn(f"app_clipboard.js?v={version}", rendered)
             self.assertIn(f"app_code_copy.js?v={version}", rendered)
+            self.assertIn(f"app_hint_mode.js?v={version}", rendered)
             self.assertIn(f"app_voice_helpers.js?v={version}", rendered)
             self.assertIn(f"app_voice.js?v={version}", rendered)
             self.assertIn(f"app_queue.js?v={version}", rendered)
@@ -295,6 +299,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn("codoxear/static/app_modal.js", names)
         self.assertIn("codoxear/static/app_clipboard.js", names)
         self.assertIn("codoxear/static/app_code_copy.js", names)
+        self.assertIn("codoxear/static/app_hint_mode.js", names)
         self.assertIn("codoxear/static/app_voice_helpers.js", names)
         self.assertIn("codoxear/static/app_voice.js", names)
         self.assertIn("codoxear/static/app_queue.js", names)

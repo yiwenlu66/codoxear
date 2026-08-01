@@ -75,8 +75,8 @@
     const notificationBtn = el("button", { id: "notificationBtn", class: "icon-btn", title: "Notifications", "aria-label": "Notifications", type: "button", html: iconSvg("bell") });
     const diagBtn = el("button", { id: "diagBtn", class: "icon-btn", title: "Details", "aria-label": "Details", type: "button", html: iconSvg("info") });
     diagBtn.disabled = true;
-    const prevUserBtn = el("button", { id: "prevUserBtn", class: "icon-btn", title: "Previous user message (Alt+↑)", "aria-label": "Previous user message (Alt+↑)", type: "button", html: iconSvg("up") });
-    const nextUserBtn = el("button", { id: "nextUserBtn", class: "icon-btn", title: "Next user message (Alt+↓)", "aria-label": "Next user message (Alt+↓)", type: "button", html: iconSvg("down") });
+    const prevUserBtn = el("button", { id: "prevUserBtn", class: "icon-btn", title: "Previous user message", "aria-label": "Previous user message", type: "button", html: iconSvg("up") });
+    const nextUserBtn = el("button", { id: "nextUserBtn", class: "icon-btn", title: "Next user message", "aria-label": "Next user message", type: "button", html: iconSvg("down") });
     const chatSearchBtn = el("button", { id: "chatSearchBtn", class: "icon-btn", title: "Search loaded messages", "aria-label": "Search loaded messages", type: "button", html: iconSvg("search") });
     const fileBtn = el("button", { id: "fileBtn", class: "icon-btn", title: "View file", "aria-label": "View file", type: "button", html: iconSvg("file") });
     prevUserBtn.disabled = nextUserBtn.disabled = chatSearchBtn.disabled = fileBtn.disabled = true;
