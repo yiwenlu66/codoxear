@@ -3,9 +3,9 @@
         --panel: #ffffff;
         --border: #94a3b8;
         --text: #111827;
-        --muted: rgba(17, 24, 39, 0.6);
+        --muted: #70747d;
         --accent: #1d4ed8;
-        --accent-weak: rgba(29, 78, 216, 0.1);
+        --accent-weak: #e8edfb;
         --danger: #b91c1c;
         --shadow-sm: none;
         --sidebar-w: 320px;
@@ -154,7 +154,7 @@
         justify-content: space-between;
         gap: 10px;
         padding: 10px 4px 6px;
-        color: rgba(15, 23, 42, 0.56);
+        color: #797d88;
         font-size: 11px;
         font-weight: 700;
         letter-spacing: 0.08em;
@@ -163,10 +163,10 @@
       .sessionGroupCount {
         min-width: 20px;
         padding: 1px 7px;
-        border: 1px solid rgba(148, 163, 184, 0.35);
+        border: 1px solid #dadfe6;
         border-radius: 999px;
         background: #f8fafc;
-        color: rgba(51, 65, 85, 0.74);
+        color: #687281;
         font-size: 11px;
         line-height: 1.45;
         text-align: center;
@@ -218,22 +218,22 @@
       .sessionActions.left {
         left: 0;
         justify-content: flex-start;
-        background: rgba(185, 28, 28, 0.08);
+        background: #f9eded;
       }
       .sessionActions.right {
         right: 0;
         justify-content: flex-end;
-        background: rgba(15, 23, 42, 0.04);
+        background: #f5f6f6;
       }
       .ownDot {
         width: 8px;
         height: 8px;
         border-radius: 999px;
         flex: 0 0 auto;
-        background: rgba(107, 114, 128, 0.85);
+        background: #818793;
       }
       .ownDot.owned {
-        background: rgba(29, 78, 216, 0.95);
+        background: #2857da;
       }
       .stateDot {
         width: 8px;
@@ -245,23 +245,23 @@
            solid filled busy/suppressed/pending dots. Color is a secondary
            cue only — fill + motion carry the meaning (monochrome-proof). */
         background: transparent;
-        box-shadow: inset 0 0 0 1.5px rgba(107, 114, 128, 0.85);
+        box-shadow: inset 0 0 0 1.5px #818793;
       }
       .stateDot.busy,
       .stateDot.suppressed,
       .stateDot.pending {
-        background: var(--stateDot-fill, rgba(29, 78, 216, 0.95));
+        background: var(--stateDot-fill, #2857da);
         box-shadow: none;
       }
       .stateDot.busy {
-        --stateDot-fill: rgba(29, 78, 216, 0.95);
+        --stateDot-fill: #2857da;
         animation: stateDotPulse 1.8s ease-in-out infinite;
       }
       .stateDot.suppressed {
-        --stateDot-fill: rgba(234, 88, 12, 0.92);
+        --stateDot-fill: #ec651f;
       }
       .stateDot.pending {
-        --stateDot-fill: rgba(245, 158, 11, 0.95);
+        --stateDot-fill: #f6a317;
         animation: stateDotPulse 1.8s ease-in-out infinite;
       }
       @keyframes stateDotPulse {
@@ -281,13 +281,13 @@
         }
       }
       .session.active {
-        border-color: rgba(37, 99, 235, 0.4);
+        border-color: #a8c1f7;
         background: #eef4ff;
         /* Thickened edge via outline: unlike box-shadow it is never clipped by
            child overflow:hidden (.sessionSwipe), and unlike border-width it
            doesn't cause layout shift. Works for both the swipe (touch) and
            desktop DOM layouts. Survives monochrome as a solid edge. */
-        outline: 2px solid rgba(37, 99, 235, 0.4);
+        outline: 2px solid #a8c1f7;
         outline-offset: -2px;
       }
       .session.active .sessionContent {
@@ -503,7 +503,7 @@
         touch-action: manipulation;
       }
       .sessionFile:hover {
-        background: rgba(15, 23, 42, 0.04);
+        background: #f5f6f6;
       }
       .sessionFilesMore {
         font-size: 11px;
@@ -521,11 +521,11 @@
         justify-content: space-between;
       }
       .danger {
-        color: rgba(185, 28, 28, 0.92);
+        color: #bf2e2e;
       }
       .danger:hover {
-        background: rgba(185, 28, 28, 0.08);
-        border-color: rgba(185, 28, 28, 0.25);
+        background: #f9eded;
+        border-color: #eec6c6;
       }
       .titleLine {
         display: inline-flex;
@@ -546,7 +546,7 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        color: rgba(17, 24, 39, 0.62);
+        color: #6b7079;
         flex: 0 0 auto;
         opacity: 0.9;
       }
@@ -577,16 +577,16 @@
       }
 	      .badge.busy {
 	        color: var(--accent);
-	        border-color: rgba(37, 99, 235, 0.5);
+	        border-color: #92b1f5;
 	      }
 	      .badge.unattended {
 	        color: var(--accent);
-	        border-color: rgba(37, 99, 235, 0.5);
-	        background: rgba(37, 99, 235, 0.08);
+	        border-color: #92b1f5;
+	        background: #eef3fd;
 	      }
 	      .badge.queue {
 	        color: #f59e0b;
-	        border-color: rgba(245, 158, 11, 0.5);
+	        border-color: #face85;
 	      }
       button.badge {
         font: inherit;
@@ -594,22 +594,22 @@
       }
       .badge.commitUnknown {
         color: #b45309;
-        border-color: rgba(245, 158, 11, 0.65);
-        background: rgba(245, 158, 11, 0.1);
+        border-color: #f8c060;
+        background: #fef5e7;
       }
       .badge.commitUnknown:hover,
       .badge.commitUnknown:focus-visible {
-        border-color: rgba(180, 83, 9, 0.85);
+        border-color: #bf6d2e;
       }
       .badge.launchFailed {
         color: #991b1b;
-        border-color: rgba(185, 28, 28, 0.5);
-        background: rgba(185, 28, 28, 0.08);
+        border-color: #dc8e8e;
+        background: #f9eded;
       }
       .badge.launchPending {
         color: #92400e;
-        border-color: rgba(245, 158, 11, 0.5);
-        background: rgba(245, 158, 11, 0.08);
+        border-color: #face85;
+        background: #fef7eb;
       }
 
       .main {
@@ -675,7 +675,7 @@
         padding: 6px 12px;
         min-height: 0;
         border-radius: 999px;
-        background: rgba(15, 23, 42, 0.9);
+        background: #272e3f;
         color: #fff;
         font-size: 13px;
         line-height: 1.4;
@@ -726,7 +726,7 @@
         gap: 4px;
         margin-left: 2px;
         padding-left: 4px;
-        border-left: 1px solid rgba(15, 23, 42, 0.12);
+        border-left: 1px solid #e2e3e5;
       }
       @media (hover: hover) and (pointer: fine) and (min-width: 701px) {
         /* Desktop chat navigation is secondary chrome: keep the rail to a
@@ -758,8 +758,8 @@
         cursor: pointer;
       }
       button.primary {
-        border-color: rgba(29, 78, 216, 0.35);
-        background: rgba(29, 78, 216, 0.08);
+        border-color: #b0c1f1;
+        background: #edf1fc;
         color: #1d4ed8;
       }
       button:disabled {
@@ -777,8 +777,8 @@
 	        position: relative;
 	      }
       .icon-btn.active {
-        border-color: rgba(37, 99, 235, 0.5);
-        background: rgba(37, 99, 235, 0.08);
+        border-color: #92b1f5;
+        background: #eef3fd;
         color: var(--accent);
       }
       /* Announcement audio/HLS error state (see app_voice.js updateVoiceUi).
@@ -788,13 +788,13 @@
          flat UI; scoped to #announceBtn so other .icon-btn surfaces stay
          unaffected. */
       #announceBtn.error {
-        border-color: rgba(185, 28, 28, 0.65);
-        background: rgba(185, 28, 28, 0.12);
+        border-color: #d26b6b;
+        background: #f7e4e4;
         color: #b91c1c;
       }
       #announceBtn.error.active {
-        border-color: rgba(185, 28, 28, 0.85);
-        background: rgba(185, 28, 28, 0.18);
+        border-color: #c43e3e;
+        background: #f2d6d6;
         color: #b91c1c;
       }
       .icon-btn.text-btn {
@@ -817,7 +817,7 @@
         height: 18px;
         padding: 0 5px;
         border-radius: 999px;
-        background: rgba(29, 78, 216, 0.95);
+        background: #2857da;
         color: #ffffff;
         font-size: 11px;
         line-height: 18px;
@@ -826,7 +826,7 @@
         box-shadow: none;
       }
       .queueBadge {
-        background: rgba(245, 158, 11, 0.95);
+        background: #f6a317;
       }
 
       .status-chip {
@@ -850,9 +850,9 @@
         cursor: pointer;
       }
       .status-chip.running {
-        color: rgba(29, 78, 216, 0.9);
-        border-color: rgba(29, 78, 216, 0.25);
-        background: rgba(29, 78, 216, 0.06);
+        color: #3460dc;
+        border-color: #c6d3f5;
+        background: #f1f4fd;
       }
 
       .chatWrap {
@@ -906,7 +906,7 @@
         margin: 14px 0 8px 0;
         padding: 6px 10px;
         border-radius: 999px;
-        border: 1px solid rgba(15, 23, 42, 0.1);
+        border: 1px solid #e7e8ea;
         background: transparent;
         color: var(--muted);
         font-size: 12px;
@@ -941,7 +941,7 @@
       .olderRetryBtn {
         padding: 4px 8px;
         border-radius: 999px;
-        border-color: rgba(185, 28, 28, 0.24);
+        border-color: #eec9c9;
         color: #7f1d1d;
         font-size: 12px;
         line-height: 1.1;
@@ -990,8 +990,8 @@
         outline: none;
       }
       .chatSearchInput:focus {
-        border-color: rgba(37, 99, 235, 0.45);
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+        border-color: #9db9f6;
+        box-shadow: 0 0 0 3px #e5ecfd;
       }
       .chatSearchStatus {
         min-width: 64px;
@@ -1015,11 +1015,11 @@
         border-radius: 9px;
       }
       .msg-row.chat-search-hit .msg {
-        border-color: rgba(245, 158, 11, 0.35);
+        border-color: #fcddaa;
       }
       .msg-row.chat-search-current .msg {
-        border-color: rgba(37, 99, 235, 0.5);
-        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+        border-color: #92b1f5;
+        box-shadow: 0 0 0 2px #e9effd;
       }
       .msg-row {
         display: flex;
@@ -1036,10 +1036,10 @@
       }
       @keyframes navPulse {
         0% {
-          box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.28);
+          box-shadow: 0 0 0 3px #c2d3f9;
         }
         100% {
-          box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+          box-shadow: 0 0 0 2px #e5ecfd;
         }
       }
       .msg-shell {
@@ -1068,7 +1068,7 @@
         background: var(--bubble-assistant);
       }
       .msg.assistant.error {
-        border-color: rgba(185, 28, 28, 0.34);
+        border-color: #e7b2b2;
         background: #fef2f2;
       }
       .msg.transcript-error {
@@ -1086,13 +1086,13 @@
         background: #ffffff;
       }
       .msg.assistant.warning {
-        border-color: rgba(180, 83, 9, 0.28);
+        border-color: #eacfba;
         background: #fffbeb;
       }
       .msg.recovery-panel {
         width: min(100%, 640px);
         color: #713f12;
-        border-color: rgba(180, 83, 9, 0.26);
+        border-color: #ecd2bf;
         background: #fffbeb;
       }
       .recoveryPanelTitle {
@@ -1129,9 +1129,9 @@
         width: 30px;
         height: 30px;
         border-radius: 999px;
-        border-color: rgba(15, 23, 42, 0.2);
+        border-color: #cfd1d4;
         background: #e9eef5;
-        color: rgba(17, 24, 39, 0.7);
+        color: #585d68;
       }
       .msg-shell.user .msg-copy-btn {
         left: -40px;
@@ -1145,12 +1145,12 @@
         box-shadow: none;
       }
       .msg-copy-btn:hover {
-        border-color: rgba(37, 99, 235, 0.4);
+        border-color: #a8c1f7;
         color: var(--accent);
       }
       .msg-copy-btn.copied {
-        border-color: rgba(37, 99, 235, 0.45);
-        background: rgba(29, 78, 216, 0.08);
+        border-color: #9db9f6;
+        background: #edf1fc;
         color: var(--accent);
       }
       .msg-copy-btn .icon {
@@ -1175,7 +1175,7 @@
       }
       .typingStats {
         margin-left: 8px;
-        color: rgba(17, 24, 39, 0.5);
+        color: #888c93;
         font-size: 11px;
         line-height: 14px;
         white-space: nowrap;
@@ -1187,7 +1187,7 @@
         width: 6px;
         height: 6px;
         border-radius: 999px;
-        background: rgba(17, 24, 39, 0.45);
+        background: #94979e;
         animation: typingDot 1.2s infinite ease-in-out;
       }
       .typingDot:nth-child(2) {
@@ -1217,11 +1217,11 @@
         bottom: 6px;
         font-size: 11px;
         line-height: 1.1;
-        color: rgba(17, 24, 39, 0.55);
+        color: #7c8088;
         user-select: none;
       }
       .msg.user .ts {
-        color: rgba(17, 24, 39, 0.55);
+        color: #7c8088;
       }
       .md p {
         margin: 0 0 10px 0;
@@ -1265,8 +1265,8 @@
         font-size: 13px;
         padding: 1px 6px;
         border-radius: 8px;
-        background: rgba(15, 23, 42, 0.06);
-        border: 1px solid rgba(15, 23, 42, 0.08);
+        background: #f1f1f2;
+        border: 1px solid #ececee;
         white-space: pre-wrap;
         word-break: break-word;
       }
@@ -1284,7 +1284,7 @@
         overflow-wrap: anywhere;
         background: #f8fafc;
         color: var(--text);
-        border: 1px solid rgba(15, 23, 42, 0.1);
+        border: 1px solid #e7e8ea;
       }
       .md pre code {
         padding: 0;
@@ -1309,7 +1309,7 @@
         border: 1px solid #94a3b8;
         border-radius: 999px;
         background: #ffffff;
-        color: rgba(17, 24, 39, 0.68);
+        color: #5d626c;
         opacity: 0.72;
       }
       .code-copy-btn::before {
@@ -1320,13 +1320,13 @@
       .md pre:hover .code-copy-btn,
       .code-copy-btn:focus-visible {
         opacity: 1;
-        border-color: rgba(37, 99, 235, 0.4);
+        border-color: #a8c1f7;
         color: var(--accent);
       }
       .code-copy-btn.copied {
         opacity: 1;
-        border-color: rgba(37, 99, 235, 0.45);
-        background: rgba(29, 78, 216, 0.08);
+        border-color: #9db9f6;
+        background: #edf1fc;
         color: var(--accent);
       }
       .md ul,
@@ -1352,15 +1352,15 @@
         margin: 14px 0 12px 0;
         height: 0;
         border: 0;
-        border-top: 1px solid rgba(15, 23, 42, 0.12);
+        border-top: 1px solid #e2e3e5;
       }
       .md blockquote {
         margin: 10px 0 12px 0;
         padding: 10px 12px 10px 14px;
-        border-left: 3px solid rgba(15, 23, 42, 0.22);
+        border-left: 3px solid #caccd0;
         border-radius: 0 12px 12px 0;
-        background: rgba(15, 23, 42, 0.045);
-        color: rgba(15, 23, 42, 0.82);
+        background: #f4f5f5;
+        color: #3a4150;
       }
       .md blockquote > :last-child {
         margin-bottom: 0;
@@ -1382,7 +1382,7 @@
         border-spacing: 0;
         font-size: 13px;
         line-height: 1.35;
-        border: 1px solid rgba(15, 23, 42, 0.1);
+        border: 1px solid #e7e8ea;
         border-radius: 12px;
         overflow: hidden;
         background: #f8fafc;
@@ -1391,8 +1391,8 @@
       .md td {
         padding: 8px 10px;
         vertical-align: top;
-        border-right: 1px solid rgba(15, 23, 42, 0.08);
-        border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+        border-right: 1px solid #ececee;
+        border-bottom: 1px solid #ececee;
         overflow-wrap: anywhere;
         word-break: break-word;
       }
@@ -1420,7 +1420,7 @@
         height: auto;
         margin: 10px auto 12px auto;
         border-radius: 12px;
-        border: 1px solid rgba(15, 23, 42, 0.1);
+        border: 1px solid #e7e8ea;
         background: #ffffff;
       }
 
@@ -1444,7 +1444,7 @@
       .md-math-fallback {
         font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas, "Liberation Mono", monospace;
         font-size: 0.9em;
-        background: rgba(15, 23, 42, 0.06);
+        background: #f1f1f2;
         border-radius: 4px;
         padding: 0 4px;
         white-space: nowrap;
@@ -1480,8 +1480,8 @@
         transition: border-color 120ms ease-out;
       }
       .composer.drop-active form {
-        border-color: rgba(37, 99, 235, 0.78);
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16);
+        border-color: #5585ef;
+        box-shadow: 0 0 0 3px #dce6fc;
       }
       .composer .icon-btn {
         width: var(--composerCtl);
@@ -1505,8 +1505,8 @@
         align-items: center;
         gap: 6px;
         max-width: min(320px, 100%);
-        border: 1px solid rgba(29, 78, 216, 0.22);
-        background: rgba(29, 78, 216, 0.08);
+        border: 1px solid #cdd8f6;
+        background: #edf1fc;
         color: #1e3a8a;
         border-radius: 999px;
         padding: 3px 4px 3px 9px;
@@ -1520,13 +1520,13 @@
       }
       .stagedAttachmentMeta {
         flex: 0 0 auto;
-        color: rgba(30, 58, 138, 0.68);
+        color: #6679af;
         font-size: 11px;
       }
       .stagedAttachmentRemove,
       .stagedAttachmentsClear {
         border: 0;
-        background: rgba(29, 78, 216, 0.12);
+        background: #e4eafa;
         color: #1e3a8a;
         border-radius: 999px;
         cursor: pointer;
@@ -1548,7 +1548,7 @@
         display: flex;
         align-items: center;
         padding: 0 10px;
-        color: rgba(17, 24, 39, 0.35);
+        color: #acaeb3;
         pointer-events: none;
         white-space: nowrap;
         overflow: hidden;
@@ -1587,7 +1587,7 @@
       }
       .composer .modelPickerOption:hover,
       .composer .modelPickerOption.active {
-        background: rgba(15, 23, 42, 0.08);
+        background: #ececee;
       }
 textarea,
 input[type="password"],
@@ -1643,16 +1643,16 @@ select {
         box-shadow: none;
       }
       .composer .icon-btn:hover {
-        background: rgba(15, 23, 42, 0.05);
+        background: #f3f3f4;
       }
       .composer .icon-btn.primary {
-        border: 1px solid rgba(29, 78, 216, 0.18);
-        background: rgba(29, 78, 216, 0.92);
+        border: 1px solid #d6dff8;
+        background: #2f5cdb;
         color: #ffffff;
         border-radius: 999px;
       }
       .composer .icon-btn.primary:hover {
-        background: rgba(29, 78, 216, 1);
+        background: #1d4ed8;
       }
       .composer .icon-btn:disabled,
       .composer .icon-btn:disabled:hover {
@@ -1664,16 +1664,16 @@ select {
       .composer .icon-btn.primary:disabled,
       .composer .icon-btn.primary:disabled:hover {
         opacity: 0.5;
-        background: rgba(29, 78, 216, 0.45);
-        border-color: rgba(29, 78, 216, 0.12);
+        background: #99afed;
+        border-color: #e4eafa;
         cursor: not-allowed;
       }
       .composer .icon-btn.primary .icon {
-        filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.06));
+        filter: drop-shadow(0 1px 0 #f0f0f0);
       }
       .composerStopBtn {
         display: none;
-        color: rgba(185, 28, 28, 0.95);
+        color: #bc2727;
       }
       @media (max-width: 700px), (pointer: coarse) {
         .composerStopBtn.is-visible {
@@ -1805,15 +1805,15 @@ select {
       }
       #announceBtn.active,
       #notificationBtn.active {
-        background: rgba(29, 78, 216, 0.12);
-        border-color: rgba(29, 78, 216, 0.28);
+        background: #e4eafa;
+        border-color: #c0cdf4;
         color: var(--accent);
       }
       .modalBackdrop {
         display: none;
         position: fixed;
         inset: 0;
-        background: rgba(15, 23, 42, 0.45);
+        background: #93979f;
         z-index: 70;
       }
       .fileViewer {
@@ -1855,7 +1855,7 @@ select {
         min-width: 38px;
       }
       #fileEditBtn.dirty {
-        box-shadow: inset 0 0 0 1px rgba(29, 78, 216, 0.12);
+        box-shadow: inset 0 0 0 1px #e4eafa;
       }
       .fileCandRow.hidden {
         display: none;
@@ -1875,8 +1875,8 @@ select {
         padding-right: 40px;
       }
       .filePickerField.active .filePickerInput {
-        border-color: rgba(37, 99, 235, 0.42);
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+        border-color: #a3bdf7;
+        box-shadow: 0 0 0 3px #e5ecfd;
       }
       .filePickerIcon {
         position: absolute;
@@ -1886,7 +1886,7 @@ select {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        color: rgba(17, 24, 39, 0.48);
+        color: #8d9097;
         pointer-events: none;
         z-index: 1;
       }
@@ -1930,7 +1930,7 @@ select {
         text-transform: uppercase;
         color: var(--muted);
         background: #f8fafc;
-        border-top: 1px solid rgba(15, 23, 42, 0.08);
+        border-top: 1px solid #ececee;
       }
       .filePickerMenu .fileMenuSection:first-child {
         border-top: 0;
@@ -1948,10 +1948,10 @@ select {
         text-align: left;
       }
       .fileMenuItem + .fileMenuItem {
-        border-top: 1px solid rgba(15, 23, 42, 0.08);
+        border-top: 1px solid #ececee;
       }
       .fileMenuItem.active {
-        background: rgba(37, 99, 235, 0.08);
+        background: #eef3fd;
       }
       .fileMenuCreate {
         align-items: flex-start;
@@ -1972,14 +1972,14 @@ select {
         font-size: 10px;
         font-weight: 700;
         line-height: 1.2;
-        color: rgba(17, 24, 39, 0.62);
-        background: rgba(15, 23, 42, 0.07);
+        color: #6b7079;
+        background: #eeeff0;
       }
       .fileMenuMatch {
         padding: 0 1px;
         border-radius: 3px;
         color: inherit;
-        background: rgba(250, 204, 21, 0.42);
+        background: #fdea9d;
       }
       .fileMenuHint {
         font-size: 12px;
@@ -2007,7 +2007,7 @@ select {
         flex: 1 1 auto;
         min-height: 0;
         border-radius: 12px;
-        border: 1px solid rgba(15, 23, 42, 0.1);
+        border: 1px solid #e7e8ea;
         background: #ffffff;
         overflow: auto;
       }
@@ -2040,7 +2040,7 @@ select {
       }
       .fileFallbackNotice {
         padding: 12px 14px;
-        border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+        border-bottom: 1px solid #e7e8ea;
         background: #f8fafc;
       }
       .fileFallbackNotice .title {
@@ -2076,7 +2076,7 @@ select {
         -webkit-overflow-scrolling: touch;
       }
       .filePlainEditTextarea:focus {
-        box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.18);
+        box-shadow: inset 0 0 0 2px #d8e3fb;
       }
       .filePlainEditTextarea.readOnly {
         cursor: default;
@@ -2088,7 +2088,7 @@ select {
         min-height: 320px;
         width: auto;
         margin: 0 auto;
-        border: 1px solid rgba(15, 23, 42, 0.1);
+        border: 1px solid #e7e8ea;
         border-radius: 12px;
         background: #ffffff;
         object-fit: contain;
@@ -2099,7 +2099,7 @@ select {
         max-height: min(65vh, 720px);
         min-height: 320px;
         margin: 0 auto;
-        border: 1px solid rgba(15, 23, 42, 0.1);
+        border: 1px solid #e7e8ea;
         border-radius: 12px;
         background: #000000;
       }
@@ -2223,9 +2223,9 @@ select {
         -webkit-tap-highlight-color: transparent;
       }
       .fileTouchBtn.active {
-        background: rgba(29, 78, 216, 0.14);
+        background: #dfe6fa;
         color: var(--accent);
-        box-shadow: inset 0 0 0 1px rgba(29, 78, 216, 0.28);
+        box-shadow: inset 0 0 0 1px #c0cdf4;
       }
       .filePasteDialog {
         z-index: 90;
@@ -2254,7 +2254,7 @@ select {
         display: inline-block;
         padding: 0 4px;
         border-radius: 999px;
-        background: rgba(29, 78, 216, 0.08);
+        background: #edf1fc;
         color: var(--muted);
         font-size: 0.78em;
         line-height: 1.3;
@@ -2319,7 +2319,7 @@ select {
         display: flex;
       }
       .formDialog::backdrop {
-        background: rgba(15, 23, 42, 0.45);
+        background: #93979f;
       }
       .newSessionViewer {
         width: min(92vw, 480px);
@@ -2345,17 +2345,17 @@ select {
         width: 34px;
         height: 34px;
         border-radius: 999px;
-        border: 1px solid rgba(15, 23, 42, 0.12);
-        background: rgba(15, 23, 42, 0.03);
+        border: 1px solid #e2e3e5;
+        background: #f8f8f9;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         padding: 0;
       }
       .agentBackendTab.active {
-        border-color: rgba(29, 78, 216, 0.6);
-        background: rgba(29, 78, 216, 0.14);
-        box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.18), inset 0 0 0 1px rgba(29, 78, 216, 0.16);
+        border-color: #7795e8;
+        background: #dfe6fa;
+        box-shadow: 0 0 0 2px #d6dff8, inset 0 0 0 1px #dbe3f9;
       }
       .agentBackendTabLogo {
         width: 20px;
@@ -2396,7 +2396,7 @@ select {
       .fieldLabel {
         font-size: 13px;
         font-weight: 600;
-        color: rgba(17, 24, 39, 0.86);
+        color: #323845;
       }
       .fieldHint {
         font-size: 12px;
@@ -2438,8 +2438,8 @@ select {
         padding-right: 40px;
       }
       .cwdComboboxField.error input[type="text"] {
-        border-color: rgba(185, 28, 28, 0.45);
-        box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.12);
+        border-color: #e09999;
+        box-shadow: 0 0 0 3px #f7e4e4;
       }
       .comboboxField input[type="text"] {
         padding-right: 40px;
@@ -2458,12 +2458,12 @@ select {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        color: rgba(17, 24, 39, 0.48);
+        color: #8d9097;
         pointer-events: none;
         z-index: 1;
       }
       .cwdComboboxField.error .cwdComboboxIcon {
-        color: rgba(185, 28, 28, 0.72);
+        color: #cd5c5c;
       }
       .pickerInputRow {
         display: grid;
@@ -2550,7 +2550,7 @@ select {
         gap: 2px;
       }
       .pickerButtonText.placeholder .pickerButtonPrimary {
-        color: rgba(17, 24, 39, 0.78);
+        color: #454b57;
       }
       .pickerButtonPrimary {
         width: 100%;
@@ -2576,7 +2576,7 @@ select {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        color: rgba(17, 24, 39, 0.55);
+        color: #7c8088;
       }
       .pickerChevronIcon {
         width: 16px;
@@ -2609,8 +2609,8 @@ select {
         flex: 0 0 auto;
       }
       .choiceChip.active {
-        border-color: rgba(29, 78, 216, 0.35);
-        background: rgba(29, 78, 216, 0.08);
+        border-color: #b0c1f1;
+        background: #edf1fc;
         color: var(--accent);
       }
       .subtleBtn {
@@ -2659,7 +2659,7 @@ select {
         display: flex;
         gap: 12px;
         padding: 10px 10px;
-        border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+        border-bottom: 1px solid #f1f1f2;
         align-items: flex-start;
       }
       .detailsRow:last-child {
@@ -2667,7 +2667,7 @@ select {
       }
       .detailsLabel {
         flex: 0 0 110px;
-        color: rgba(17, 24, 39, 0.62);
+        color: #6b7079;
         font-size: 12px;
         line-height: 1.2;
         padding-top: 2px;
@@ -2707,7 +2707,7 @@ select {
       }
       .queueEditorShell {
         min-width: 0;
-        border: 1px solid rgba(148, 163, 184, 0.24);
+        border: 1px solid #e5e9ee;
         border-radius: 10px;
         background: #ffffff;
         padding: 8px 10px;
@@ -2731,25 +2731,25 @@ select {
         height: 32px;
         border-radius: 8px;
         background: #f8fafc;
-        border-color: rgba(148, 163, 184, 0.28);
-        color: rgba(30, 41, 59, 0.92);
+        border-color: #e1e5eb;
+        color: #303a4b;
         box-shadow: none;
       }
       .queueIconBtn:hover:not(:disabled) {
-        background: rgba(241, 245, 249, 1);
-        border-color: rgba(100, 116, 139, 0.38);
+        background: #f1f5f9;
+        border-color: #c4cad3;
       }
       .queueIconBtn:disabled {
         opacity: 0.38;
       }
       .queueIconBtn.danger {
-        color: rgba(185, 28, 28, 0.96);
-        border-color: rgba(185, 28, 28, 0.26);
+        color: #bc2525;
+        border-color: #edc4c4;
         background: #fef2f2;
       }
       .queueIconBtn.danger:hover:not(:disabled) {
-        background: rgba(254, 226, 226, 1);
-        border-color: rgba(185, 28, 28, 0.34);
+        background: #fee2e2;
+        border-color: #e7b2b2;
       }
       .queueText {
         min-height: 42px;
@@ -2768,7 +2768,7 @@ select {
         outline: none;
       }
       .queueText:disabled {
-        color: rgba(71, 85, 105, 0.88);
+        color: #5d697b;
       }
       .sendChoice {
         display: none;
@@ -2810,7 +2810,7 @@ select {
 		        display: none;
 		        position: absolute;
 		        inset: 0;
-	        background: rgba(15, 23, 42, 0.35);
+	        background: #abaeb4;
 	        z-index: 20;
 	      }
       @media (max-width: 880px) {
@@ -2856,7 +2856,7 @@ select {
           padding: 7px 11px;
           border-radius: 999px;
           color: #fff;
-          background: rgba(15, 23, 42, 0.9);
+          background: #272e3f;
           text-align: center;
           white-space: normal;
           pointer-events: none;
