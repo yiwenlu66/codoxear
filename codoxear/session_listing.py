@@ -57,6 +57,7 @@ class ActiveSessionRowFacts:
     tools: int
     system: int
     unattended_enabled: bool
+    unattended_request: str
     unattended_cooldown_minutes: int
     unattended_remaining_injections: int
     alias: str
@@ -245,6 +246,7 @@ def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
         "tools": facts.tools,
         "system": facts.system,
         "unattended_enabled": facts.unattended_enabled,
+        "unattended_request": facts.unattended_request,
         "unattended_cooldown_minutes": facts.unattended_cooldown_minutes,
         "unattended_remaining_injections": facts.unattended_remaining_injections,
         "alias": facts.alias,
@@ -305,6 +307,7 @@ def build_active_session_rows_snapshot(
             else unattended_default_max_injections
         )
         unattended_enabled = bool(cfg0.get("enabled")) and unattended_remaining_injections > 0 if isinstance(cfg0, dict) else False
+        unattended_request = cfg0.get("request") if isinstance(cfg0, dict) and isinstance(cfg0.get("request"), str) else ""
         alias = aliases.get(s.session_id)
         if not isinstance(alias, str):
             alias = ""
@@ -375,6 +378,7 @@ def build_active_session_rows_snapshot(
                     tools=int(s.meta_tools),
                     system=int(s.meta_system),
                     unattended_enabled=unattended_enabled,
+                    unattended_request=unattended_request,
                     unattended_cooldown_minutes=unattended_cooldown_minutes,
                     unattended_remaining_injections=unattended_remaining_injections,
                     alias=alias,
@@ -484,6 +488,7 @@ def build_orphan_recovery_rows(
                 "tools": 0,
                 "system": 0,
                 "unattended_enabled": False,
+                "unattended_request": "",
                 "unattended_cooldown_minutes": unattended_default_idle_minutes,
                 "unattended_remaining_injections": unattended_default_max_injections,
                 "alias": "Recovery needed",

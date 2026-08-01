@@ -299,6 +299,14 @@
       ) {
         unattendedCfg.remaining_injections = s.unattended_remaining_injections;
       }
+      if (
+        selected &&
+        s &&
+        typeof s.unattended_request === "string" &&
+        (!unattendedMenuOpen || unattendedMenuSessionId !== selected)
+      ) {
+        unattendedCfg.request = s.unattended_request;
+      }
       syncUnattendedNumberDraftsFromCfg();
       if (unattendedMenuOpen) {
         syncUnattendedNumberInputs();

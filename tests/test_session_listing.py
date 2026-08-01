@@ -97,7 +97,7 @@ def test_build_active_session_rows_snapshot_combines_session_and_store_state(tmp
     snapshot = build_active_session_rows_snapshot(
         sessions=[session],
         queues={"s1": [{"commit_unknown": True}]},
-        unattended={"s1": {"enabled": True, "cooldown_minutes": 7, "remaining_injections": 2}},
+        unattended={"s1": {"enabled": True, "request": "continue with the refactor", "cooldown_minutes": 7, "remaining_injections": 2}},
         aliases={"s1": "Alias"},
         store=store,
         now_ts=10.0,
@@ -125,6 +125,7 @@ def test_build_active_session_rows_snapshot_combines_session_and_store_state(tmp
     assert row["queue_recovery"] is True
     assert row["commit_unknown_send"] is True
     assert row["unattended_enabled"] is True
+    assert row["unattended_request"] == "continue with the refactor"
     assert row["unattended_cooldown_minutes"] == 7
     assert row["unattended_remaining_injections"] == 2
     assert row["provider_choice"] == "provider-choice"
@@ -169,6 +170,7 @@ def test_build_active_session_row_projects_public_and_staging_fields() -> None:
         tools=7,
         system=8,
         unattended_enabled=True,
+        unattended_request="preserve this request",
         unattended_cooldown_minutes=9,
         unattended_remaining_injections=10,
         alias="Alias",
@@ -229,6 +231,7 @@ def test_build_active_session_row_projects_public_and_staging_fields() -> None:
     assert row["tools"] == 7
     assert row["system"] == 8
     assert row["unattended_enabled"] is True
+    assert row["unattended_request"] == "preserve this request"
     assert row["unattended_cooldown_minutes"] == 9
     assert row["unattended_remaining_injections"] == 10
     assert row["alias"] == "Alias"
