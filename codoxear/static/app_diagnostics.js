@@ -2,20 +2,19 @@
   "use strict";
 
   // Details/diagnostics modal authority. Owns every piece of Details/diagnostics
-  // state that used to live as app.js locals (return-focus element, copy text,
-  // new-like preset) plus the diag New-like-this / Copy conversation / Copy
-  // details click behavior,
-  // show/hide modal behavior, and the rendering decisions for failed-launch
-  // (local recovery rows, no API), live sessions (fetch /diagnostics, ignore
-  // stale responses), and the error path.
+  // state that used to live as app.js locals (return-focus element and copy text)
+  // plus the diag Copy conversation / Copy details click behavior, show/hide modal
+  // behavior, and the rendering decisions for failed-launch (local recovery rows,
+  // no API), live sessions (fetch /diagnostics, ignore stale responses), and the
+  // error path.
   //
   // Pure helpers (sessionLaunchFailed) come from window.CodoxearSessionHelpers;
   // modal focus/isolation helpers come from window.CodoxearModal. Everything
   // that touches app-level runtime state (selected session, session index, API,
-  // clipboard, toasts, new-session dialog opener, recovery text/preset helpers,
-  // DOM element factory, modal open/close coordination) is injected through
-  // createDiagnosticsController(options) so the controller has no hidden
-  // coupling to app.js globals and can be exercised in a VM with fakes.
+  // clipboard, toasts, recovery-text helpers, DOM element factory, modal
+  // open/close coordination) is injected through createDiagnosticsController(options)
+  // so the controller has no hidden coupling to app.js globals and can be exercised
+  // in a VM with fakes.
 
   const codoxearSessionHelpers = window.CodoxearSessionHelpers;
   if (
@@ -62,7 +61,6 @@
     const diagContent = requireNode(options.diagContent, "diagContent");
     const diagStatus = requireNode(options.diagStatus, "diagStatus");
     const diagCloseBtn = requireNode(options.diagCloseBtn, "diagCloseBtn");
-    const diagNewLikeBtn = requireNode(options.diagNewLikeBtn, "diagNewLikeBtn");
     const diagCopyConversationBtn = requireNode(options.diagCopyConversationBtn, "diagCopyConversationBtn");
     const diagCopyBtn = requireNode(options.diagCopyBtn, "diagCopyBtn");
 
@@ -73,9 +71,7 @@
     const setToast = requireFunction(options.setToast, "setToast");
     const copyToClipboard = requireFunction(options.copyToClipboard, "copyToClipboard");
     const copyConversation = requireFunction(options.copyConversation, "copyConversation");
-    const openNewSessionDialog = requireFunction(options.openNewSessionDialog, "openNewSessionDialog");
     const recoveryDetailsText = requireFunction(options.recoveryDetailsText, "recoveryDetailsText");
-    const launchPresetFromSessionInfo = requireFunction(options.launchPresetFromSessionInfo, "launchPresetFromSessionInfo");
     const redactedLaunchErrorText = requireFunction(options.redactedLaunchErrorText, "redactedLaunchErrorText");
     const sessionLaunchLabel = requireFunction(options.sessionLaunchLabel, "sessionLaunchLabel");
     const agentBackendDisplayName = requireFunction(options.agentBackendDisplayName, "agentBackendDisplayName");
@@ -94,17 +90,14 @@
     // Details/diagnostics state owned by this controller.
     let diagReturnFocusEl = null;
     let diagCopyText = "";
-    let diagNewLikeSession = null;
     let diagConversationCopyReady = false;
 
     function resetActionButtonState() {
-      diagNewLikeBtn.disabled = true;
       diagCopyConversationBtn.disabled = true;
       diagCopyBtn.disabled = true;
     }
 
     function applyActionButtonState() {
-      diagNewLikeBtn.disabled = !diagNewLikeSession;
       diagCopyConversationBtn.disabled = !diagConversationCopyReady;
       diagCopyBtn.disabled = !diagCopyText;
     }
@@ -138,7 +131,6 @@
           : "-"
       );
       diagCopyText = recoveryDetailsText(sid, selectedInfo);
-      diagNewLikeSession = launchPresetFromSessionInfo(selectedInfo);
       diagConversationCopyReady = true;
       applyActionButtonState();
     }
@@ -197,29 +189,11 @@
       }
       diagCopyText = diagnosticsCopyText(sid, diagRows);
       diagConversationCopyReady = true;
-      diagNewLikeSession =
-        d && typeof d === "object"
-          ? {
-              session_id: d.session_id,
-              cwd: d.cwd,
-              agent_backend: d.agent_backend,
-              provider_choice: d.provider_choice,
-              model_provider: d.model_provider,
-              preferred_auth_method: d.preferred_auth_method,
-              model: d.model,
-              reasoning_effort: d.reasoning_effort,
-              service_tier: d.service_tier,
-              transport: d.transport,
-              tmux_session: d.tmux_session,
-              tmux_window: d.tmux_window,
-            }
-          : null;
       applyActionButtonState();
     }
 
     function showErrorState(e) {
       diagCopyText = "";
-      diagNewLikeSession = null;
       diagConversationCopyReady = false;
       resetActionButtonState();
       diagStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
@@ -232,7 +206,6 @@
       prepareModalOpen();
       diagContent.innerHTML = "";
       diagCopyText = "";
-      diagNewLikeSession = null;
       diagConversationCopyReady = false;
       resetActionButtonState();
       diagStatus.textContent = "Loading...";
@@ -263,21 +236,6 @@
       diagViewer.style.display = "none";
       afterModalVisibilityChanged();
       if (restoreFocus && wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(diagViewer), requestFrame);
-    }
-
-    function onNewLikeClick(e) {
-      if (e && typeof e.preventDefault === "function") {
-        e.preventDefault();
-        e.stopPropagation();
-      }
-      if (!diagNewLikeSession) {
-        setToast("details not loaded");
-        return;
-      }
-      const preset = diagNewLikeSession;
-      const returnFocusEl = diagReturnFocusEl && diagReturnFocusEl.isConnected ? diagReturnFocusEl : null;
-      hide({ restoreFocus: false });
-      openNewSessionDialog({ likeSession: preset, statusText: "Review copied launch settings before starting.", returnFocusEl });
     }
 
     async function onCopyConversationClick(e) {
@@ -317,7 +275,6 @@
     function dispose() {
       diagReturnFocusEl = null;
       diagCopyText = "";
-      diagNewLikeSession = null;
       diagConversationCopyReady = false;
       resetActionButtonState();
     }
@@ -325,7 +282,6 @@
     return Object.freeze({
       show,
       hide,
-      onNewLikeClick,
       onCopyConversationClick,
       onCopyClick,
       dispose,

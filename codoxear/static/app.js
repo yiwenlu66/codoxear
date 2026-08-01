@@ -791,7 +791,6 @@
           imgInput,
           attachBtn,
           queueBtn,
-          composerStopBtn,
           sendBtn,
         } = shellDOM.elements;
 
@@ -1496,29 +1495,21 @@
         root.appendChild(helpViewer);
 
         const diagBackdrop = el("div", { class: "modalBackdrop", id: "diagBackdrop" });
-        const diagNewLikeBtn = el("button", {
-          id: "diagNewLikeBtn",
-          class: "icon-btn text-btn",
-          title: "Start a new session with these visible launch settings",
-          "aria-label": "New like this",
-          type: "button",
-          text: "New like this",
-        });
         const diagCopyConversationBtn = el("button", {
           id: "diagCopyConversationBtn",
-          class: "icon-btn text-btn",
+          class: "icon-btn",
           title: "Copy conversation",
           "aria-label": "Copy conversation",
           type: "button",
-          text: "Copy conversation",
+          html: iconSvg("copy"),
         });
         const diagCopyBtn = el("button", {
           id: "diagCopyBtn",
-          class: "icon-btn text-btn",
+          class: "icon-btn",
           title: "Copy details",
           "aria-label": "Copy details",
           type: "button",
-          text: "Copy details",
+          html: iconSvg("copy"),
         });
         const diagCloseBtn = el("button", {
           id: "diagCloseBtn",
@@ -1530,7 +1521,6 @@
         });
         // Detail actions start disabled until the controller loads the selected
         // session's details and enables their corresponding payloads.
-        diagNewLikeBtn.disabled = true;
         diagCopyConversationBtn.disabled = true;
         diagCopyBtn.disabled = true;
         const diagStatus = el("div", { class: "muted", id: "diagStatus", text: "" });
@@ -1538,7 +1528,7 @@
         const diagViewer = el("div", { class: "diagViewer", id: "diagViewer", role: "dialog", "aria-modal": "true", "aria-label": "Details" }, [
           el("div", { class: "queueHeader" }, [
             el("div", { class: "title", text: "Details" }),
-            el("div", { class: "actions" }, [diagNewLikeBtn, diagCopyConversationBtn, diagCopyBtn, diagCloseBtn]),
+            el("div", { class: "actions" }, [diagCopyConversationBtn, diagCopyBtn, diagCloseBtn]),
           ]),
           diagStatus,
           diagContent,
@@ -2098,11 +2088,6 @@
           const canInterrupt = Boolean(running && selected);
           interruptBtn.style.display = canInterrupt ? "inline-flex" : "none";
           interruptBtn.disabled = !canInterrupt;
-          const composerStopControl = $("#composerStopBtn");
-          if (composerStopControl) {
-            composerStopControl.classList.toggle("is-visible", canInterrupt);
-            composerStopControl.disabled = !canInterrupt;
-          }
           if (wasRunning && !currentRunning) {
             // no-op placeholder; keep transition boundary for future UI behavior
           }
@@ -2311,7 +2296,6 @@
               { label: "g", element: jumpBtn },
               { label: "a", element: attachBtn },
               { label: "q", element: queueBtn },
-              { label: "x", element: composerStopBtn },
               { label: "e", element: sendBtn },
               { label: "i", element: textarea },
               { label: "c", element: $("#newBtn") },
@@ -3323,23 +3307,6 @@
 
         function recoveryPromptPreview(text, maxLen = 320) {
           return codoxearDisplay.recoveryPromptPreview(text, maxLen);
-        }
-
-        function launchPresetFromSessionInfo(s) {
-          return s && typeof s === "object" ? {
-            session_id: s.session_id,
-            cwd: s.cwd,
-            agent_backend: s.agent_backend,
-            provider_choice: s.provider_choice,
-            model_provider: s.model_provider,
-            preferred_auth_method: s.preferred_auth_method,
-            model: s.model,
-            reasoning_effort: s.reasoning_effort,
-            service_tier: s.service_tier,
-            transport: s.transport,
-            tmux_session: s.tmux_session,
-            tmux_window: s.tmux_window,
-          } : null;
         }
 
         function recoveryDetailsText(sessionId, s) {
@@ -5991,7 +5958,7 @@
         }
 
         // Details/diagnostics modal state, rendering decisions, and the
-        // New-like-this / Copy conversation / Copy details / show / hide
+        // Copy conversation / Copy details / show / hide
         // behavior live in the CodoxearDiagnostics controller
         // (codoxear/static/app_diagnostics.js).
         // app.js owns DOM construction for the diag nodes and the thin
@@ -6006,7 +5973,6 @@
             diagContent,
             diagStatus,
             diagCloseBtn,
-            diagNewLikeBtn,
             diagCopyConversationBtn,
             diagCopyBtn,
             getSelected: () => selected,
@@ -6015,9 +5981,7 @@
             setToast,
             copyToClipboard,
             copyConversation,
-            openNewSessionDialog,
             recoveryDetailsText,
-            launchPresetFromSessionInfo,
             redactedLaunchErrorText,
             sessionLaunchLabel,
             agentBackendDisplayName,
@@ -6033,7 +5997,6 @@
           });
         })();
 
-        diagNewLikeBtn.onclick = (e) => diagController.onNewLikeClick(e);
         diagCopyConversationBtn.onclick = (e) => void diagController.onCopyConversationClick(e);
         diagCopyBtn.onclick = (e) => diagController.onCopyClick(e);
 
@@ -6184,13 +6147,6 @@
           e.stopPropagation();
           void interruptSelectedSession();
         };
-        if (composerStopBtn) {
-          composerStopBtn.onclick = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            void interruptSelectedSession();
-          };
-        }
 
         $("#logoutBtnSide").onclick = async () => {
           try {

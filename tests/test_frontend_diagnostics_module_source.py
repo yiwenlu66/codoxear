@@ -28,7 +28,6 @@ HARNESS = r"""
 const vm = require("vm");
 const calls = [];
 const toasts = [];
-const opens = [];
 const sessions = new Map();
 let selected = null;
 let apiResponse = null;
@@ -68,12 +67,11 @@ const diagViewer = fakeNode();
 const diagContent = fakeNode();
 const diagStatus = fakeNode();
 const diagCloseBtn = fakeNode();
-const diagNewLikeBtn = fakeNode();
 const diagCopyConversationBtn = fakeNode();
 const diagCopyBtn = fakeNode();
 
 const deps = {
-  diagBackdrop, diagViewer, diagContent, diagStatus, diagCloseBtn, diagNewLikeBtn, diagCopyConversationBtn, diagCopyBtn,
+  diagBackdrop, diagViewer, diagContent, diagStatus, diagCloseBtn, diagCopyConversationBtn, diagCopyBtn,
   getSelected: () => selected,
   getSessionInfo: (sid) => sessions.get(sid) || null,
   api: (url) => {
@@ -92,9 +90,7 @@ const deps = {
     if (conversationCopyError) return Promise.reject(conversationCopyError);
     return Promise.resolve();
   },
-  openNewSessionDialog: (opts) => { opens.push(opts); calls.push(["openNewSessionDialog", opts]); },
   recoveryDetailsText: (sid, s) => `RECOVERY:${sid}:${s && s.session_id}`,
-  launchPresetFromSessionInfo: (s) => (s && typeof s === "object" ? { session_id: s.session_id, cwd: s.cwd } : null),
   redactedLaunchErrorText: (e) => `REDACTED:${e}`,
   sessionLaunchLabel: (s) => (s && s.launch_state === "failed" ? "session launch failed" : "web-owned session"),
   agentBackendDisplayName: (b) => `BACKEND:${b}`,
@@ -134,8 +130,7 @@ globalThis.__harness = {
   controller,
   calls,
   toasts,
-  opens,
-  dom: { diagBackdrop, diagViewer, diagContent, diagStatus, diagCloseBtn, diagNewLikeBtn, diagCopyConversationBtn, diagCopyBtn },
+  dom: { diagBackdrop, diagViewer, diagContent, diagStatus, diagCloseBtn, diagCopyConversationBtn, diagCopyBtn },
   HTMLElementCtor: ctx.HTMLElement,
   sessions,
   select: (sid) => { selected = sid; },
@@ -230,11 +225,11 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
             const node = { style: {}, setAttribute() {}, appendChild() {} };
             const wiredExceptApi = {
               diagBackdrop: node, diagViewer: node, diagContent: node, diagStatus: node,
-              diagCloseBtn: node, diagNewLikeBtn: node, diagCopyConversationBtn: node, diagCopyBtn: node,
+              diagCloseBtn: node, diagCopyConversationBtn: node, diagCopyBtn: node,
               getSelected: () => null, getSessionInfo: () => null,
               api: null,
-              setToast: () => {}, copyToClipboard: () => {}, copyConversation: () => {}, openNewSessionDialog: () => {},
-              recoveryDetailsText: () => "", launchPresetFromSessionInfo: () => null,
+              setToast: () => {}, copyToClipboard: () => {}, copyConversation: () => {},
+              recoveryDetailsText: () => "",
               redactedLaunchErrorText: () => "", sessionLaunchLabel: () => "",
               agentBackendDisplayName: () => "", diagnosticsProviderDisplay: () => "",
               diagnosticsCopyText: () => "", fmtTs: () => "", fmtRelativeAge: () => "",
@@ -287,7 +282,7 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
         result = run_node_json(js_only_diag)
         self.assertContains("failed to load", result["err"])
 
-    # --- 2. failed-launch / local path: no API, recovery rows, copy/new-like enabled ---
+    # --- 2. failed-launch / local path: no API, recovery rows, copy enabled ---
 
     def test_failed_launch_path_renders_locally_without_api(self) -> None:
         js = harness_script(
@@ -313,11 +308,9 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
             const labels = rows.map((r) => r[0]);
             const statusText = h.dom.diagStatus.textContent;
             const copyDisabled = h.dom.diagCopyBtn.disabled;
-            const newLikeDisabled = h.dom.diagNewLikeBtn.disabled;
-            const copyCall = h.calls.find((c) => c[0] === "copyToClipboard");
             await h.controller.onCopyClick({});
             const copyAfter = h.calls.find((c) => c[0] === "copyToClipboard");
-            globalThis.__result = { apiCalled, labels, statusText, copyDisabled, newLikeDisabled, copyAfter };
+            globalThis.__result = { apiCalled, labels, statusText, copyDisabled, copyAfter };
             """
         )
         result = run_node_json(js)
@@ -331,7 +324,6 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
         # (The harness labelValues returns [label, value]; we kept labels only here.)
         self.assertEqual(result["statusText"], "")
         self.assertFalse(result["copyDisabled"])
-        self.assertFalse(result["newLikeDisabled"])
         # Copy details on the failed-launch path copies the recoveryDetailsText output.
         self.assertIsNotNone(result["copyAfter"])
         self.assertEqual(result["copyAfter"][1], "RECOVERY:launch-dead:launch-dead")
@@ -373,7 +365,7 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
         self.assertEqual(rows["Reasoning"], "medium")
         self.assertEqual(rows["tmux"], "codex:1")
 
-    # --- 3. live path: /diagnostics, row labels including Provider/Model/Reasoning/Context/UI, copy text, new-like preset ---
+    # --- 3. live path: /diagnostics, row labels including Provider/Model/Reasoning/Context/UI and copy text ---
 
     def test_live_path_fetches_diagnostics_and_renders_rows(self) -> None:
         js = harness_script(
@@ -413,9 +405,8 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
             // Capture copy text via the injected copyToClipboard.
             await h.controller.onCopyClick({});
             const copyCall = h.calls.filter((c) => c[0] === "copyToClipboard").pop();
-            const newLikeDisabled = h.dom.diagNewLikeBtn.disabled;
             const copyDisabled = h.dom.diagCopyBtn.disabled;
-            globalThis.__result = { apiCalls, rows, copyText: copyCall && copyCall[1], newLikeDisabled, copyDisabled };
+            globalThis.__result = { apiCalls, rows, copyText: copyCall && copyCall[1], copyDisabled };
             """
         )
         result = run_node_json(js)
@@ -432,7 +423,6 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
         self.assertContains("Session=sid-1", result["copyText"])
         self.assertContains("Provider=PROV:chatgpt", result["copyText"])
         self.assertFalse(result["copyDisabled"])
-        self.assertFalse(result["newLikeDisabled"])
 
     def test_copy_conversation_action_delegates_after_details_load(self) -> None:
         js = harness_script(
@@ -478,51 +468,6 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
         self.assertEqual(result["callsAfter"], result["callsBefore"])
         self.assertEqual(result["toast"], "details not loaded")
 
-    def test_live_path_creates_new_like_preset_from_diagnostics_response(self) -> None:
-        js = harness_script(
-            """
-            const h = globalThis.__harness;
-            h.sessions.set("sid-1", { session_id: "sid-1", launch_state: "ready", agent_backend: "pi" });
-            h.select("sid-1");
-            h.setApiResponse({
-              session_id: "sid-1",
-              cwd: "/repo",
-              agent_backend: "pi",
-              provider_choice: "macaron",
-              model_provider: "anthropic",
-              preferred_auth_method: "api_key",
-              model: "claude-haiku-4-5",
-              reasoning_effort: "medium",
-              service_tier: "fast",
-              transport: "tmux",
-              tmux_session: "codex",
-              tmux_window: "1",
-            });
-            await h.controller.show({ opener: null });
-            const newLikeDisabled = h.dom.diagNewLikeBtn.disabled;
-            await h.controller.onNewLikeClick({});
-            const openCall = h.opens.pop();
-            globalThis.__result = { newLikeDisabled, openCall };
-            """
-        )
-        result = run_node_json(js)
-        self.assertFalse(result["newLikeDisabled"])
-        self.assertIsNotNone(result["openCall"])
-        preset = result["openCall"]["likeSession"]
-        self.assertEqual(preset["session_id"], "sid-1")
-        self.assertEqual(preset["cwd"], "/repo")
-        self.assertEqual(preset["agent_backend"], "pi")
-        self.assertEqual(preset["provider_choice"], "macaron")
-        self.assertEqual(preset["model_provider"], "anthropic")
-        self.assertEqual(preset["preferred_auth_method"], "api_key")
-        self.assertEqual(preset["model"], "claude-haiku-4-5")
-        self.assertEqual(preset["reasoning_effort"], "medium")
-        self.assertEqual(preset["service_tier"], "fast")
-        self.assertEqual(preset["transport"], "tmux")
-        self.assertEqual(preset["tmux_session"], "codex")
-        self.assertEqual(preset["tmux_window"], "1")
-        self.assertEqual(result["openCall"]["statusText"], "Review copied launch settings before starting.")
-
     # --- 4. stale response ignored when selected changes ---
 
     def test_stale_response_ignored_when_selected_changes(self) -> None:
@@ -543,9 +488,8 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
             const rows = {};
             h.labelValues().forEach(([k, v]) => { rows[k] = v; });
             const copyDisabled = h.dom.diagCopyBtn.disabled;
-            const newLikeDisabled = h.dom.diagNewLikeBtn.disabled;
             const statusText = h.dom.diagStatus.textContent;
-            globalThis.__result = { rows, copyDisabled, newLikeDisabled, statusText };
+            globalThis.__result = { rows, copyDisabled, statusText };
             """
         )
         result = run_node_json(js)
@@ -553,7 +497,6 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
         # buttons remain disabled because renderLiveRows never ran.
         self.assertEqual(result["rows"], {})
         self.assertTrue(result["copyDisabled"])
-        self.assertTrue(result["newLikeDisabled"])
         self.assertEqual(result["statusText"], "Loading...")
 
     def test_stale_response_after_error_ignored_when_selected_changes(self) -> None:
@@ -578,7 +521,7 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
         # Error path also short-circuits when selection changed: status not overwritten.
         self.assertEqual(result["statusText"], "Loading...")
 
-    # --- 5. error path: disables copy/new-like, writes "error: ..." status ---
+    # --- 5. error path: disables copy buttons, writes "error: ..." status ---
 
     def test_error_path_disables_buttons_and_writes_status(self) -> None:
         js = harness_script(
@@ -589,19 +532,17 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
             h.setApiError(new Error("kaboom"));
             await h.controller.show({ opener: null });
             const copyDisabled = h.dom.diagCopyBtn.disabled;
-            const newLikeDisabled = h.dom.diagNewLikeBtn.disabled;
             const statusText = h.dom.diagStatus.textContent;
             // Copy with cleared text -> "details not loaded" toast, no clipboard call.
             const copyCallsBefore = h.calls.filter((c) => c[0] === "copyToClipboard").length;
             await h.controller.onCopyClick({});
             const toastsAfter = h.toasts.slice();
             const copyCallsAfter = h.calls.filter((c) => c[0] === "copyToClipboard").length;
-            globalThis.__result = { copyDisabled, newLikeDisabled, statusText, toastsAfter, copyCallsBefore, copyCallsAfter };
+            globalThis.__result = { copyDisabled, statusText, toastsAfter, copyCallsBefore, copyCallsAfter };
             """
         )
         result = run_node_json(js)
         self.assertTrue(result["copyDisabled"])
-        self.assertTrue(result["newLikeDisabled"])
         self.assertEqual(result["statusText"], "error: kaboom")
         self.assertEqual(result["toastsAfter"][-1], "details not loaded")
         self.assertEqual(result["copyCallsAfter"], result["copyCallsBefore"])
@@ -644,57 +585,7 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
         result = run_node_json(js)
         self.assertEqual(result["lastToast"], "copy failed: denied")
 
-    # --- 7. New-like click: applies preset, hides without restoring focus, opens New Session ---
-
-    def test_new_like_click_hides_without_focus_restore_and_opens_dialog(self) -> None:
-        js = harness_script(
-            """
-            const h = globalThis.__harness;
-            h.sessions.set("sid-1", { session_id: "sid-1", launch_state: "ready", agent_backend: "pi" });
-            h.select("sid-1");
-            h.setApiResponse({ session_id: "sid-1", cwd: "/repo", agent_backend: "pi", provider_choice: "macaron" });
-            const opener = new h.HTMLElementCtor();
-            opener.isConnected = true;
-            opener.disabled = false;
-            opener.focus = () => { calls.push(["opener-focus"]); };
-            await h.controller.show({ opener });
-            const backdropBefore = h.dom.diagBackdrop.style.display;
-            // New-like click should hide the diag modal WITHOUT focus restore.
-            h.controller.onNewLikeClick({});
-            const backdropAfter = h.dom.diagBackdrop.style.display;
-            const viewerAfter = h.dom.diagViewer.style.display;
-            const openCall = h.opens.pop();
-            const openerFocusCalled = h.calls.some((c) => c[0] === "opener-focus");
-            globalThis.__result = { backdropBefore, backdropAfter, viewerAfter, openCall, openerFocusCalled };
-            """
-        )
-        result = run_node_json(js)
-        self.assertEqual(result["backdropBefore"], "block")
-        self.assertEqual(result["backdropAfter"], "none")
-        self.assertEqual(result["viewerAfter"], "none")
-        self.assertIsNotNone(result["openCall"])
-        self.assertEqual(result["openCall"]["statusText"], "Review copied launch settings before starting.")
-        # hide({ restoreFocus: false }) must not invoke the opener's focus.
-        self.assertFalse(result["openerFocusCalled"])
-
-    def test_new_like_click_with_no_preset_toasts_not_loaded(self) -> None:
-        js = harness_script(
-            """
-            const h = globalThis.__harness;
-            h.sessions.set("sid-1", { session_id: "sid-1", launch_state: "ready", agent_backend: "codex" });
-            h.select("sid-1");
-            h.setApiError(new Error("x"));
-            await h.controller.show({ opener: null });
-            const opensBefore = h.opens.length;
-            h.controller.onNewLikeClick({});
-            globalThis.__result = { lastToast: h.toasts[h.toasts.length - 1], opensAfter: h.opens.length - opensBefore };
-            """
-        )
-        result = run_node_json(js)
-        self.assertEqual(result["lastToast"], "details not loaded")
-        self.assertEqual(result["opensAfter"], 0)
-
-    # --- 8. show/hide modal focus + backdrop behavior ---
+    # --- 7. show/hide modal focus + backdrop behavior ---
 
     def test_show_requires_selection_and_does_not_open_modal(self) -> None:
         js = harness_script(
@@ -781,19 +672,17 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
             const copyEnabledBefore = !h.dom.diagCopyBtn.disabled;
             h.controller.dispose();
             const copyDisabledAfter = h.dom.diagCopyBtn.disabled;
-            const newLikeDisabledAfter = h.dom.diagNewLikeBtn.disabled;
             // After dispose, a copy click must toast "details not loaded".
             const copyCallsBefore = h.calls.filter((c) => c[0] === "copyToClipboard").length;
             await h.controller.onCopyClick({});
             const toast = h.toasts[h.toasts.length - 1];
             const copyCallsAfter = h.calls.filter((c) => c[0] === "copyToClipboard").length;
-            globalThis.__result = { copyEnabledBefore, copyDisabledAfter, newLikeDisabledAfter, toast, copyCallsBefore, copyCallsAfter };
+            globalThis.__result = { copyEnabledBefore, copyDisabledAfter, toast, copyCallsBefore, copyCallsAfter };
             """
         )
         result = run_node_json(js)
         self.assertTrue(result["copyEnabledBefore"])
         self.assertTrue(result["copyDisabledAfter"])
-        self.assertTrue(result["newLikeDisabledAfter"])
         self.assertEqual(result["toast"], "details not loaded")
         self.assertEqual(result["copyCallsAfter"], result["copyCallsBefore"])
 

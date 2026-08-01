@@ -190,10 +190,11 @@ class TestFrontendHintModeModuleSource(unittest.TestCase):
             "s": "toggleSidebarBtn", "t": "titleLabel", "b": "fileBtn", "d": "diagBtn", "u": "unattendedBtn",
             "z": "interruptBtn", "r": "chatSearchBtn", "p": "prevUserBtn", "n": "nextUserBtn",
             "o": "olderBtn", "g": "jumpBtn", "a": "attachBtn", "q": "queueBtn",
-            "x": "composerStopBtn", "e": "sendBtn", "i": "textarea", "c": "$(\"#newBtn\")",
+            "e": "sendBtn", "i": "textarea", "c": "$(\"#newBtn\")",
         }
         for label, element in expected.items():
             self.assertIn(f'{{ label: "{label}", element: {element} }}', app_source)
+        self.assertNotIn('{ label: "x",', app_source)
         self.assertNotIn("handleSessionNavigationKeydown", app_source)
         self.assertNotIn("Alt+1", app_source)
         index_source = INDEX_HTML.read_text(encoding="utf-8")

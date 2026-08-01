@@ -56,6 +56,7 @@ def render_shell_parents() -> dict[str, str | None]:
           chatSearch: parentClass(elements.chatSearchBtn),
           prev: parentClass(elements.prevUserBtn),
           next: parentClass(elements.nextUserBtn),
+          hasComposerStop: Object.hasOwn(elements, "composerStopBtn"),
         }}));
         """
     )
@@ -71,6 +72,7 @@ class TestFrontendShellDomSource(unittest.TestCase):
                 "chatSearch": "chatNavRail",
                 "prev": "chatMessageNavControls",
                 "next": "chatMessageNavControls",
+                "hasComposerStop": False,
             },
         )
 

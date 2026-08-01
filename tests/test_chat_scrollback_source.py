@@ -14,16 +14,15 @@ APP_MESSAGE_ROWS_JS = ROOT / "codoxear" / "static" / "app_message_rows.js"
 APP_CSS = ROOT / "codoxear" / "static" / "app.css"
 
 
-def eval_launch_recovery_helpers() -> dict:
+def eval_launch_recovery_details() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
     launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
     redactor_start = source.index("function redactedLaunchErrorText(value) {")
     redactor_end = source.index("function sessionLaunchLabel(s)", redactor_start)
     # recoverySessionInfo moved into the CodoxearRecovery controller; the pure
-    # helpers (recoveryPromptPreview / launchPresetFromSessionInfo /
-    # recoveryDetailsText) stay in app.js and are exercised here so diagnostics
-    # and recovery share a single source of truth.
+    # helpers (recoveryPromptPreview / recoveryDetailsText) stay in app.js and
+    # are exercised here so diagnostics and recovery share a single source of truth.
     start = source.index("function recoveryPromptPreview(text, maxLen = 320)")
     end = source.index("function clearSelectedSessionAfterRemoval(sessionId, {", start)
     snippet = source[redactor_start:redactor_end] + "\n" + source[start:end]
@@ -68,10 +67,9 @@ def eval_launch_recovery_helpers() -> dict:
           confirm: () => false,
         }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = { launchPresetFromSessionInfo, recoveryDetailsText };\n")}, ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = { recoveryDetailsText };\n")}, ctx);
         process.stdout.write(JSON.stringify({{
           details: ctx.__test.recoveryDetailsText("launch-dead", launchRow),
-          preset: ctx.__test.launchPresetFromSessionInfo(launchRow),
         }}));
         """
     )
@@ -416,8 +414,8 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertEqual(result["successCalls"], [["markMessagePollSuccess"]])
         self.assertEqual(len(result["renderTailCalls"]), 1)
 
-    def test_launch_recovery_helpers_are_allowlisted(self) -> None:
-        result = eval_launch_recovery_helpers()
+    def test_launch_recovery_details_are_allowlisted(self) -> None:
+        result = eval_launch_recovery_details()
         details = result["details"]
         self.assertContains("state: launch failed", details)
         self.assertContains("launch stage: pty_fork", details)
@@ -431,25 +429,6 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertContains("reasoning: medium", details)
         self.assertContains("tmux: codoxear:work-abc123", details)
         self.assertContains("submitted prompts: 2", details)
-        self.assertEqual(
-            result["preset"],
-            {
-                "session_id": "launch-dead",
-                "cwd": "/tmp/work",
-                "agent_backend": "pi",
-                "provider_choice": "macaron",
-                "model_provider": "macaron",
-                "preferred_auth_method": None,
-                "model": "gpt-5.4",
-                "reasoning_effort": "medium",
-                "service_tier": "fast",
-                "transport": "tmux",
-                "tmux_session": "codoxear",
-                "tmux_window": "work-abc123",
-            },
-        )
-        self.assertNotContains("launch_state", result["preset"])
-        self.assertNotContains("launch_error", result["preset"])
 
         # orphan_recovery no longer short-circuits openSession
         # orphan_recovery early return was removed; openSession now fetches tail normally
