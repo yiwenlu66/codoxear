@@ -283,14 +283,15 @@
       .session.active {
         border-color: rgba(37, 99, 235, 0.4);
         background: #eef4ff;
+        /* Thickened edge via outline: unlike box-shadow it is never clipped by
+           child overflow:hidden (.sessionSwipe), and unlike border-width it
+           doesn't cause layout shift. Works for both the swipe (touch) and
+           desktop DOM layouts. Survives monochrome as a solid edge. */
+        outline: 2px solid rgba(37, 99, 235, 0.4);
+        outline-offset: -2px;
       }
-      /* Thickened edge on the inner content (not the card) because the
-         .sessionSwipe wrapper has overflow:hidden which clips box-shadow
-         on the parent .session card. Putting it on .sessionContent keeps
-         the indicator visible inside the swipe/clip layer on all viewports. */
       .session.active .sessionContent {
         background: #eef4ff;
-        box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.4);
       }
 	      .sessionMain {
 	        flex: 1 1 auto;
