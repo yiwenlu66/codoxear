@@ -3558,7 +3558,14 @@
               return;
             }
             markMessagePollFailure();
-            toast.textContent = `error: ${e.message}`;
+            // Transient network errors (fetch failed entirely, no HTTP status)
+            // are self-recovering via poll backoff — don't toast them. Only
+            // surface errors where the server actually responded with a status.
+            if (e && typeof e.status === "number") {
+              toast.textContent = `error: ${e.message}`;
+            } else {
+              console.warn("message poll network error", e && e.message);
+            }
           } finally {
             finishMessagePollRequest(pollRequest);
           }
