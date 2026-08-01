@@ -1608,6 +1608,16 @@ select {
         color: rgba(185, 28, 28, 0.95);
       }
       @media (max-width: 700px), (pointer: coarse) {
+        /* iOS Safari auto-zooms the page when an input with font-size < 16px
+           gains focus. Bump text inputs to 16px on coarse-pointer/narrow
+           viewports to prevent the unsolicited zoom. Pinch-zoom stays. */
+        input[type="text"],
+        input[type="password"],
+        input[type="datetime-local"],
+        select,
+        textarea {
+          font-size: 16px;
+        }
         .composerStopBtn.is-visible {
           display: inline-flex;
         }
