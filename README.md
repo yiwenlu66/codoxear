@@ -11,7 +11,7 @@ Codoxear runs a small web server on your computer and exposes a phone-friendly U
 Currently supported agent backends:
 
 - Codex
-- Pi
+- Pi (default backend)
 - Claude Code (`cc` backend; launches the `claude` CLI)
 
 Name: "codoxear" = "codex dogear" (dog-ear a page so you can pick up where you left off), meaning you can seamlessly continue the same work from different devices.
@@ -156,6 +156,19 @@ The current UI offers Delete for all session kinds. Delete sends a shutdown requ
 
 If you start a web-owned session and later want to continue it in your terminal while keeping it registered with Codoxear, use the matching backend workflow: Codex sessions resume through `codox ...`, Pi sessions through `piox ...` or plain `pi --session <session-file>` if you want to continue the same Pi session file directly, and Claude Code sessions through `ccox --resume <session-id>`.
 
+## Keyboard shortcuts
+
+- `f` — Vimium-style hint mode. Press `f`, then the letter shown over any visible control to activate it (sessions `1`–`9`, sidebar, files, details, unattended, search, previous/next message, send, attach, queued messages, stop, new session, and dynamically-assigned hints on clickable file references). Press `Esc` or `Backspace` to cancel.
+- `i` — focus the message composer.
+- `j` / `k` — scroll down / up.
+- `d` / `u` — scroll half a page down / up.
+- `G` — jump to the bottom of the conversation.
+- `D` — delete the current session (with confirmation).
+- `/` — search the loaded conversation.
+- On a Pi session, type `/model` in the composer to switch models live (start typing a provider or model name to filter).
+
+Most shortcuts are ignored while the message composer is focused; press `Esc` to leave it.
+
 ## Known limitations
 
 ### Codex confirmation prompts still need a terminal
@@ -189,7 +202,7 @@ Set these in `.env` (or in the process environment):
 - `CODEX_WEB_HOST` (default `::`)
 - `CODEX_WEB_PORT` (default `8743`)
 - `CODEX_WEB_URL_PREFIX` (default empty). Example: `/codoxear` serves the UI at `/codoxear/` and the API under `/codoxear/api/*`.
-- `CODEX_WEB_DEFAULT_AGENT_BACKEND` (default `codex`) - default backend tab for new web-owned sessions
+- `CODEX_WEB_DEFAULT_AGENT_BACKEND` (default `pi`) - default backend tab for new web-owned sessions
 - `CODEX_HOME` (default `~/.codex`)
 - `CODEX_BIN` (default `codex`)
 - `PI_HOME` (default `~/.pi`)
@@ -198,7 +211,7 @@ Set these in `.env` (or in the process environment):
 - `CLAUDE_BIN` (default `claude`)
 - `CODEX_WEB_COOKIE_NAME` (default `codoxear_auth`; use a distinct valid cookie-token name when multiple Codoxear services share one hostname)
 - `CODEX_WEB_COOKIE_SECURE` (default `0`; set to `1` behind HTTPS)
-- Versioned static assets (`?v=...`) are served with a one-year immutable cache policy; HTML and unversioned assets revalidate on every use.
+- Versioned static assets (`?v=...`) are served with a one-year immutable cache policy; HTML and unversioned assets revalidate on every use. Static asset responses are gzip-compressed when the client accepts it.
 - `CODEX_WEB_TRANSCRIPT_EXPORT_MAX_BYTES` (default `52428800`; maximum backend log size eligible for full-conversation copy/export)
 - `CODEX_WEB_UNATTENDED_SWEEP_SECONDS` (default `2.5`)
 - `CODEX_WEB_QUEUE_SWEEP_SECONDS` (default `1.0`)

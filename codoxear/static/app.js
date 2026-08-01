@@ -1393,7 +1393,8 @@
   <li>If the selected session is idle, <b>Send</b> submits immediately. If it is busy, choose <b>Send after current</b> to queue the prompt.</li>
   <li>The queue is stored per session and drains automatically when that session becomes idle. Use <b>Queued messages</b> to review or edit queued prompts.</li>
   <li><b>Load older messages</b> fetches more scrollback. <b>Jump to latest</b> returns to the newest turn when you are reading history.</li>
-  <li>Use <b>/</b> to search the loaded chat; Previous/Next can load an older matching window when the transcript count shows more matches.</li>
+  <li>The <b>Search</b> button and <b>Previous</b>/<b>Next</b> message controls live in the navigation bar at the top of the conversation (not a floating rail). Use <b>/</b> to start a search of the loaded chat; when the match count shows more results, Previous/Next can load an older matching window.</li>
+  <li>On a <b>Pi</b> session, type <b>/model</b> in the composer to switch models live. Start typing a provider or model name to filter the list, then choose an entry.</li>
   <li>Press <b>f</b> to show keyboard hints for visible controls: <b>1</b>–<b>9</b> switch sessions; <b>s</b> sidebar; <b>b</b> files; <b>d</b> details; <b>u</b> unattended; <b>i</b> interrupt; <b>r</b> search; <b>p</b>/<b>n</b> previous/next user message; <b>o</b> older messages; <b>g</b> latest; <b>a</b> attach; <b>q</b> queued messages; <b>x</b> stop; <b>e</b> send; <b>m</b> message box; <b>c</b> new session. Clickable file references in the conversation also get dynamically-assigned letter hints. Press <b>Escape</b> or <b>Backspace</b> to cancel.</li>
   <li>Direct shortcuts (no leader): <b>i</b> focus message box; <b>j</b>/<b>k</b> scroll down/up; <b>d</b>/<b>u</b> scroll half-page down/up; <b>G</b> go to bottom; <b>D</b> delete current session (confirm); <b>/</b> search; <b>Esc</b> exit message box or close dialog.</li>
 </ul>

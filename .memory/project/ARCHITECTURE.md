@@ -1,7 +1,7 @@
 # Codoxear architecture (distilled)
 
-Active development checkout: `/home/yiwen/codex-web-product-recovery`, branch `recovery/product-gaps`.
-Protected checkout: `/home/yiwen/codex-web` on `main` — never edit/restart/merge/promote without explicit user approval.
+Single repo: `/home/yiwen/codoxear` on `main` (remote `git@github.com:yiwenlu66/codoxear.git`). The former `recovery/product-gaps` branch was merged into `main` (merge `1976c30b`); the old two-checkout model (recovery worktree + protected `/home/yiwen/codex-web` checkout) is obsolete and removed.
+Deployed service: `codoxear-server.service` (systemd user unit) runs from a NON-editable pipx install of this repo on `127.0.0.1:8743` (tailscale https `:8443`). A `git pull` alone does NOT redeploy — reinstall with `pipx install --force /home/yiwen/codoxear`, then `systemctl --user restart codoxear-server.service`. Restart is safe for live broker/backend sessions; never kill brokers or backend CLIs.
 
 ## Ownership map (post-refactor, 2026-07)
 
@@ -38,6 +38,15 @@ Protected checkout: `/home/yiwen/codex-web` on `main` — never edit/restart/mer
 - Attachment badge/list authority is server staged-list truth plus immediate local attach feedback reconciled by session-list refresh. Client producers are only file event sources; they must route through the shared staging path and enforce the same attach blockers before calling `/inject_file`. Long upload batches must re-confirm the selected target and re-read blockers before each file; if a blocker appears after partial success, remaining files stop before upload work and already-staged entries remain visible. Browser count/chips must derive from staged entries, not an independent badge state. Direct successful attach/remove/clear/send responses may update the selected cached value for immediate UI projection; server refresh overwrites it.
 - Deleting a session sends shutdown to the broker (terminal-owned sessions too) and removes only that session's staged-upload entry under `uploads/<session_id>`. Cleanup must treat symlink entries as links to unlink, never directories to follow, and must preserve sibling session uploads. `attachments/clear`/delete must surface guard failures explicitly rather than silently claiming cleanup.
 - Failed synthetic launch rows (`launch-*` ids) are not real sessions: no send/queue/attach/file-viewer; Details/Copy/New-like-this render from the session-list row locally. Backend-tab launches that fail before transcript log bind must preserve visible backend/model/reasoning metadata (for example Claude `sonnet` + `max`), project a failed transcript payload, and keep browser/API real-session actions blocked rather than idling silently. The complementary usable Claude path is a real bound CC session only after a live Claude-shaped JSONL is discovered through the sidecar/log binding path; then browser send, transcript/tail outcome rendering, token projection, and idle controls follow the same real-session contracts. Deterministic fake-Claude Docker proofs establish Codoxear mechanics, not real Claude provider/auth behavior.
+
+## Implementation and frontend invariants
+
+- Markdown rendering uses the `marked` library (jsdelivr) plus Codoxear post-processors: file-reference rewriting (`app_markdown.js`), KaTeX math, and OAI memory-citation rewriting. The CSP (`script-src`/`style-src`) allows the jsdelivr origin. Do not reintroduce a hand-rolled markdown parser or CDN-free paths that skip the post-processors.
+- Send path is unconditional confirmed-send: the busy/queue gate was removed. `require_send_preconditions` only blocks on commit-unknown resolution, a pending attachment, a stale queue item, or missing broker `sync_send`. Steering via confirmed-send works on all backends; the queue is an opt-in alternative, not a hard gate. Do not reintroduce a busy-gate that blocks direct sends.
+- Performance: static asset responses are gzip-compressed (`static_routes.py`), served over HTTP/1.1 (`server_handler.py`), versioned assets (`?v=...`) carry immutable one-year cache headers, the asset version is memoized, and poll cadence is tuned via `CODEX_WEB_*_INTERVAL_SECONDS` env vars.
+- Visual style is flat: no `backdrop-filter`; the only `box-shadow`/`outline` usage is functional focus/state indication, not decorative depth.
+- Session card DOM is a locked two-branch design: touch uses swipe actions, desktop uses hover-revealed actions (`useDesktopSessionActions()` / `swipeActions`). Do not unify the branches.
+- Keyboard: vimium-style hint mode (`f` leader, then a per-control letter) plus direct shortcuts (`i`, `j`/`k`, `d`/`u`, `G`, `D`, `/`); on Pi sessions `/model` in the composer switches models live. (`/thinking` is not implemented.)
 
 ## Validation norms (learned the hard way)
 

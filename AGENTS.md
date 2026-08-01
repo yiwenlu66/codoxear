@@ -48,7 +48,7 @@ Currently supported agent backends:
 
 - UI shell served at `/` and `/static/index.html`, with assets under `codoxear/static/` (`app.css`, `app.js`).
 - Polls `/api/sessions` and `/api/sessions/<id>/messages`.
-- Supports creating web-owned sessions via the "New session" button with backend tabs for Codex/Pi.
+- Supports creating web-owned sessions via the "New session" button with backend tabs for Codex/Pi/Claude Code; **Pi is the default** (overridable via `CODEX_WEB_DEFAULT_AGENT_BACKEND`).
 - Remembers the last backend choice and last provider choice per backend in browser local storage.
 - Shows backend status icons in the sidebar metadata line and backend logos in the new-session modal.
 - Also uses queue, diagnostics, file-read, and git-viewer endpoints for the current UI.
@@ -58,6 +58,15 @@ Currently supported agent backends:
 1. Terminal: `codoxear-broker` runs the selected backend CLI and registers a control socket + metadata file.
 2. Server: lists available sockets, reads metadata, and serves session content via `/api/*`.
 3. Browser: selects a session, sends prompts via `/api/sessions/<id>/send` or `/enqueue`, renders normalized messages from the backend log, and reads files/git state through `/api/sessions/<id>/*` helpers.
+
+## Current frontend and runtime state
+
+- **Send path is unconditional confirmed-send.** The busy/queue gate was removed: `require_send_preconditions` only blocks on commit-unknown resolution, a pending attachment, a stale queue item, or missing broker `sync_send`. Direct sends submit regardless of busy state, so steering works on all backends. The queue remains an opt-in alternative, not a hard gate.
+- **Markdown rendering uses the `marked` library**, loaded from `cdn.jsdelivr.net` (`index.html`); the CSP (`script-src`/`style-src`) was updated to allow it. Codoxear post-processors run after `marked`: file-reference rewriting (`app_markdown.js`), KaTeX math, and OAI memory-citation rewriting.
+- **Flat visual style.** No `backdrop-filter` anywhere; the only `box-shadow`/`outline` usage is functional focus/state indication, not decorative depth.
+- **Performance.** Static asset responses are gzip-compressed (`static_routes.py`), served over `HTTP/1.1` (`server_handler.py`), versioned assets (`?v=...`) get immutable one-year cache headers, the asset version is memoized, and poll cadence is tuned via `CODEX_WEB_*_INTERVAL_SECONDS` env vars.
+- **Session card DOM has two branches and must stay split.** Touch uses swipe actions; desktop uses hover-revealed actions (`useDesktopSessionActions()` / `swipeActions` flag in `app_session_helpers.js`). Do not attempt to unify them into one branch.
+- **Keyboard.** Vimium-style hint mode: press `f`, then the letter over any visible control to activate it. Direct shortcuts (no leader): `i` focus message, `j`/`k` scroll, `d`/`u` half-page, `G` go to bottom, `D` delete session, `/` search. On Pi sessions, `/model` in the composer switches models live.
 
 ## Development reminders
 

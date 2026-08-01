@@ -288,7 +288,7 @@ def build_server_config(
         CC_HOME=cc_home,
         CC_SESSIONS_DIR=get_agent_backend("cc").sessions_dir(env),
         CC_SETTINGS_PATH=cc_home / "settings.json",
-        DEFAULT_AGENT_BACKEND=normalize_agent_backend(env.get("CODEX_WEB_DEFAULT_AGENT_BACKEND"), default="codex"),
+        DEFAULT_AGENT_BACKEND=normalize_agent_backend(env.get("CODEX_WEB_DEFAULT_AGENT_BACKEND"), default="pi"),
         DEFAULT_HOST=env.get("CODEX_WEB_HOST", "::"),
         DEFAULT_PORT=_env_int(env, "CODEX_WEB_PORT", "8743"),
         UNATTENDED_DEFAULT_IDLE_MINUTES=5,
