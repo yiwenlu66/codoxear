@@ -165,7 +165,7 @@
         padding: 1px 7px;
         border: 1px solid rgba(148, 163, 184, 0.35);
         border-radius: 999px;
-        background: rgba(248, 250, 252, 0.9);
+        background: #f8fafc;
         color: rgba(51, 65, 85, 0.74);
         font-size: 11px;
         line-height: 1.45;
@@ -319,7 +319,7 @@
 	        font-weight: 700;
 	        line-height: 1;
 	        color: var(--muted);
-	        background: rgba(255, 255, 255, 0.92);
+	        background: #ffffff;
 	        flex: 0 0 auto;
 	      }
 	      .ownerIconBadge {
@@ -912,7 +912,7 @@
         gap: 6px;
         padding: 4px 8px;
         border-radius: 999px;
-        background: rgba(254, 242, 242, 0.92);
+        background: #fef2f2;
         color: #7f1d1d;
         font-size: 12px;
         line-height: 1.2;
@@ -934,16 +934,14 @@
         align-items: center;
         transform: translateX(-50%);
         padding: 5px 10px;
-        border: 1px solid rgba(15, 23, 42, 0.12);
+        border: 1px solid var(--border);
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.88);
+        background: var(--panel);
         color: var(--muted);
         font-size: 12px;
         line-height: 1.1;
         white-space: nowrap;
-        box-shadow: var(--shadow-sm);
         pointer-events: none;
-        backdrop-filter: blur(10px);
       }
       .chatSearchBar {
         order: 0;
@@ -959,8 +957,7 @@
         padding: 6px;
         border: 1px solid rgba(15, 23, 42, 0.2);
         border-radius: 14px;
-        background: rgba(255, 255, 255, 0.96);
-        box-shadow: var(--shadow-sm);
+        background: var(--panel);
       }
       .chatSearchInput {
         flex: 1 1 160px;
@@ -1051,7 +1048,7 @@
       }
       .msg.assistant.error {
         border-color: rgba(185, 28, 28, 0.34);
-        background: rgba(254, 242, 242, 0.96);
+        background: #fef2f2;
       }
       .msg.transcript-error {
         color: #7f1d1d;
@@ -1065,11 +1062,11 @@
         height: 28px;
         min-width: 0;
         padding: 0 9px;
-        background: rgba(255, 255, 255, 0.8);
+        background: #ffffff;
       }
       .msg.assistant.warning {
         border-color: rgba(180, 83, 9, 0.28);
-        background: rgba(255, 251, 235, 0.96);
+        background: #fffbeb;
       }
       .msg.recovery-panel {
         width: min(100%, 640px);
@@ -1093,7 +1090,7 @@
         white-space: pre-wrap;
         word-break: break-word;
         border-radius: 12px;
-        background: rgba(255, 255, 255, 0.72);
+        background: #ffffff;
       }
       .recoveryPanelActions {
         display: flex;
@@ -1112,7 +1109,7 @@
         height: 30px;
         border-radius: 999px;
         border-color: rgba(15, 23, 42, 0.2);
-        background: rgba(233, 238, 245, 0.98);
+        background: #e9eef5;
         color: rgba(17, 24, 39, 0.7);
       }
       .msg-shell.user .msg-copy-btn {
@@ -1147,7 +1144,7 @@
         padding: 9px 12px;
         color: var(--muted);
         box-shadow: none;
-        background: rgba(255, 255, 255, 0.68);
+        background: #ffffff;
       }
       .typingDots {
         display: inline-flex;
@@ -1254,7 +1251,7 @@
         box-sizing: border-box;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
-        background: rgba(248, 250, 252, 0.96);
+        background: #f8fafc;
         color: var(--text);
         border: 1px solid rgba(15, 23, 42, 0.1);
       }
@@ -1280,7 +1277,7 @@
         padding: 0;
         border: 1px solid rgba(15, 23, 42, 0.2);
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.92);
+        background: #ffffff;
         color: rgba(17, 24, 39, 0.68);
         opacity: 0.72;
       }
@@ -1357,7 +1354,7 @@
         border: 1px solid rgba(15, 23, 42, 0.1);
         border-radius: 12px;
         overflow: hidden;
-        background: rgba(248, 250, 252, 0.92);
+        background: #f8fafc;
       }
       .md th,
       .md td {
@@ -1377,10 +1374,10 @@
       }
       .md th {
         font-weight: 650;
-        background: rgba(226, 232, 240, 0.8);
+        background: #e2e8f0;
       }
       .md td {
-        background: rgba(255, 255, 255, 0.94);
+        background: #ffffff;
       }
       .md th p,
       .md td p {
@@ -1446,15 +1443,14 @@
         align-items: center;
         gap: 8px;
         border: 1px solid var(--border);
-        background: rgba(255, 255, 255, 0.98);
+        background: var(--panel);
         border-radius: 14px;
         padding: 6px 8px;
-        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
-        transition: border-color 120ms ease-out, box-shadow 120ms ease-out;
+        transition: border-color 120ms ease-out;
       }
       .composer.drop-active form {
         border-color: rgba(37, 99, 235, 0.78);
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16), 0 8px 22px rgba(15, 23, 42, 0.08);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16);
       }
       .composer .icon-btn {
         width: var(--composerCtl);
@@ -1637,7 +1633,6 @@ select {
         border: 1px solid var(--border);
         border-radius: 18px;
         background: var(--panel);
-        box-shadow: var(--shadow-sm);
       }
       .loginWrap {
         position: fixed;
@@ -1773,7 +1768,6 @@ select {
         background: var(--panel);
         border: 1px solid var(--border);
         border-radius: 16px;
-        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
         padding: 12px;
         flex-direction: column;
         gap: 8px;
@@ -1874,7 +1868,7 @@ select {
         letter-spacing: 0.04em;
         text-transform: uppercase;
         color: var(--muted);
-        background: rgba(248, 250, 252, 0.92);
+        background: #f8fafc;
         border-top: 1px solid rgba(15, 23, 42, 0.08);
       }
       .filePickerMenu .fileMenuSection:first-child {
@@ -2601,7 +2595,7 @@ select {
         -webkit-overflow-scrolling: touch;
         border: 1px solid var(--border);
         border-radius: 12px;
-        background: rgba(255, 255, 255, 0.96);
+        background: #ffffff;
       }
       .detailsRow {
         display: flex;
@@ -2657,7 +2651,7 @@ select {
         min-width: 0;
         border: 1px solid rgba(148, 163, 184, 0.24);
         border-radius: 10px;
-        background: rgba(255, 255, 255, 0.96);
+        background: #ffffff;
         padding: 8px 10px;
       }
       .queueActionRail {
@@ -2678,7 +2672,7 @@ select {
         width: 32px;
         height: 32px;
         border-radius: 8px;
-        background: rgba(248, 250, 252, 0.98);
+        background: #f8fafc;
         border-color: rgba(148, 163, 184, 0.28);
         color: rgba(30, 41, 59, 0.92);
         box-shadow: none;
@@ -2693,7 +2687,7 @@ select {
       .queueIconBtn.danger {
         color: rgba(185, 28, 28, 0.96);
         border-color: rgba(185, 28, 28, 0.26);
-        background: rgba(254, 242, 242, 0.98);
+        background: #fef2f2;
       }
       .queueIconBtn.danger:hover:not(:disabled) {
         background: rgba(254, 226, 226, 1);
