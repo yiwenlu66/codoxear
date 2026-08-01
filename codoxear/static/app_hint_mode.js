@@ -65,6 +65,20 @@
         if (!label || label === "f" || targets.has(label) || !targetIsVisible(target) || targetIsInsideOpenModal(target)) continue;
         targets.set(label, target);
       }
+      // Dynamic hints: assign available letters to clickable file references
+      // in the conversation view (a[data-file-path] and a[data-file-picker-query]).
+      // These are not locked — labels are assigned on the fly from whatever
+      // single-char letters remain after sessions and shell hints.
+      const ALPHABET = "abcdefghijklmnopqrstuvwxyz";
+      const usedLabels = new Set(targets.keys());
+      usedLabels.add("f"); // reserved leader
+      const pool = ALPHABET.split("").filter((ch) => !usedLabels.has(ch));
+      const fileLinks = Array.from(documentTarget.querySelectorAll(".chat a[data-file-path], .chat a[data-file-picker-query]"))
+        .filter((link) => targetIsVisible(link) && !targetIsInsideOpenModal(link));
+      for (const link of fileLinks) {
+        if (!pool.length) break;
+        targets.set(pool.shift(), link);
+      }
       return targets;
     }
 

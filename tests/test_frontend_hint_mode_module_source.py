@@ -68,8 +68,9 @@ def eval_hint_mode() -> dict:
           activeElement: null,
           defaultView: {{ getComputedStyle: (node) => node.style }},
           querySelectorAll(selector) {{
-            if (selector !== "#sessions .session[data-session-id]") throw new Error(`unexpected selector: ${{selector}}`);
-            return [hiddenSession, sessionOne, sessionTwo];
+            if (selector === "#sessions .session[data-session-id]") return [hiddenSession, sessionOne, sessionTwo];
+            if (selector === ".chat a[data-file-path], .chat a[data-file-picker-query]") return [];
+            throw new Error(`unexpected selector: ${{selector}}`);
           }},
           createElement() {{
             const node = {{
@@ -188,7 +189,7 @@ class TestFrontendHintModeModuleSource(unittest.TestCase):
         expected = {
             "s": "toggleSidebarBtn", "b": "fileBtn", "d": "diagBtn", "u": "unattendedBtn",
             "i": "interruptBtn", "r": "chatSearchBtn", "p": "prevUserBtn", "n": "nextUserBtn",
-            "o": "olderBtn", "j": "jumpBtn", "a": "attachBtn", "q": "queueBtn",
+            "o": "olderBtn", "g": "jumpBtn", "a": "attachBtn", "q": "queueBtn",
             "x": "composerStopBtn", "e": "sendBtn", "c": "$(\"#newBtn\")",
         }
         for label, element in expected.items():
