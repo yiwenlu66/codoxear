@@ -6301,6 +6301,15 @@
 	            { passive: true }
 	          );
         textarea.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") {
+            // Exit the message box and return focus to the document so global
+            // shortcuts (hint mode, etc.) are reachable again. Without this,
+            // Esc does nothing in the composer and the user is stranded.
+            e.preventDefault();
+            e.stopPropagation();
+            textarea.blur();
+            return;
+          }
           if (e.key !== "Enter") return;
           if (e.isComposing) return;
           if (!(e.ctrlKey || e.metaKey)) return;
