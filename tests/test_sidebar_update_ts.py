@@ -73,6 +73,42 @@ class TestSidebarUpdateTimestamp(unittest.TestCase):
         )
         self.assertEqual(session.last_chat_ts, 130.0)
 
+    def test_mark_log_delta_tracks_latest_pi_model_and_thinking_changes(self) -> None:
+        mgr = SessionManager.__new__(SessionManager)
+        mgr._lock = threading.Lock()
+        mgr._sessions = {}
+        session = Session(
+            session_id="broker-pi",
+            thread_id="pi-thread",
+            broker_pid=1,
+            codex_pid=2,
+            agent_backend="pi",
+            owned=False,
+            start_ts=100.0,
+            cwd="/tmp",
+            log_path=None,
+            sock_path=Path("/tmp/broker-pi.sock"),
+            model_provider="old-provider",
+            model="old-model",
+            reasoning_effort="xhigh",
+        )
+        mgr._sessions[session.session_id] = session
+
+        mgr.mark_log_delta(
+            session.session_id,
+            objs=[
+                {"type": "model_change", "provider": "first-provider", "modelId": "first-model"},
+                {"type": "thinking_level_change", "thinkingLevel": "high"},
+                {"type": "model_change", "provider": "new-provider", "modelId": "new-model"},
+                {"type": "thinking_level_change", "thinkingLevel": "medium"},
+            ],
+            new_off=12,
+        )
+
+        self.assertEqual(session.model_provider, "new-provider")
+        self.assertEqual(session.model, "new-model")
+        self.assertEqual(session.reasoning_effort, "medium")
+
     def test_mark_log_delta_does_not_trigger_voice_push_delivery(self) -> None:
         class _FakeVoicePush:
             def __init__(self) -> None:

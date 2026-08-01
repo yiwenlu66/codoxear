@@ -120,19 +120,41 @@ class SessionLogRuntimeCoordinator:
 
     def mark_log_delta(self, session_id: str, *, objs: list[dict[str, Any]], new_off: int) -> None:
         _thinking, _tools, _system, last_ts, _token_update, _chat_events = self.analyze_log_chunk(objs)
+        with self.lock:
+            current = self.sessions().get(session_id)
+            agent_backend = current.agent_backend if current is not None else None
+
+        model_provider = None
         model = None
         reasoning_effort = None
-        for obj in reversed(objs):
-            if not isinstance(obj, dict) or obj.get("type") != "turn_context":
-                continue
-            model, reasoning_effort = self.turn_context_run_settings(obj.get("payload"))
-            break
+        if agent_backend == "pi":
+            for obj in objs:
+                if not isinstance(obj, dict):
+                    continue
+                if obj.get("type") == "model_change":
+                    provider_value = obj.get("provider")
+                    model_value = obj.get("modelId")
+                    if isinstance(provider_value, str) and provider_value.strip() and isinstance(model_value, str) and model_value.strip():
+                        model_provider = provider_value.strip()
+                        model = model_value.strip()
+                elif obj.get("type") == "thinking_level_change":
+                    effort_value = obj.get("thinkingLevel")
+                    if isinstance(effort_value, str) and effort_value.strip():
+                        reasoning_effort = effort_value.strip()
+        else:
+            for obj in reversed(objs):
+                if not isinstance(obj, dict) or obj.get("type") != "turn_context":
+                    continue
+                model, reasoning_effort = self.turn_context_run_settings(obj.get("payload"))
+                break
         with self.lock:
             session = self.sessions().get(session_id)
             if session:
                 if isinstance(last_ts, (int, float)):
                     tsf = float(last_ts)
                     session.last_chat_ts = tsf if session.last_chat_ts is None else max(session.last_chat_ts, tsf)
+                if model_provider is not None:
+                    session.model_provider = model_provider
                 if model is not None:
                     session.model = model
                 if reasoning_effort is not None:

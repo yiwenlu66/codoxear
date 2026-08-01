@@ -141,6 +141,11 @@
       modelPicker.style.display = "none";
       modelPicker.innerHTML = "";
       modelPicker.removeAttribute("aria-activedescendant");
+      textarea.removeAttribute("role");
+      textarea.removeAttribute("aria-autocomplete");
+      textarea.removeAttribute("aria-controls");
+      textarea.removeAttribute("aria-expanded");
+      textarea.removeAttribute("aria-activedescendant");
     }
 
     function selectModel(modelId) {
@@ -151,6 +156,25 @@
       void sendText(`/model ${id}`);
     }
 
+    function syncModelPickerSelection({ scroll = false } = {}) {
+      if (!modelPicker) return;
+      const options = Array.from(modelPicker.children || []);
+      options.forEach((option, index) => {
+        const active = index === modelPickerFocus;
+        option.classList.toggle("active", active);
+        option.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      const activeOption = modelPickerFocus >= 0 ? options[modelPickerFocus] : null;
+      if (activeOption) {
+        textarea.setAttribute("aria-activedescendant", activeOption.id);
+        if (scroll && typeof activeOption.scrollIntoView === "function") {
+          activeOption.scrollIntoView({ block: "nearest" });
+        }
+      } else {
+        textarea.removeAttribute("aria-activedescendant");
+      }
+    }
+
     function renderModelPicker() {
       if (!modelPicker) return;
       modelPicker.innerHTML = "";
@@ -159,17 +183,24 @@
       modelPickerOptions.forEach((id, index) => {
         const option = document.createElement("button");
         option.type = "button";
-        option.className = "modelPickerOption" + (index === modelPickerFocus ? " active" : "");
+        option.tabIndex = -1;
+        option.className = "modelPickerOption";
         option.setAttribute("role", "option");
         option.id = `model-picker-option-${index}`;
-        option.setAttribute("aria-selected", index === modelPickerFocus ? "true" : "false");
         option.textContent = id;
+        option.onpointerdown = (event) => event.preventDefault();
         option.onclick = () => selectModel(id);
         modelPicker.appendChild(option);
       });
       modelPicker.style.display = modelPickerOptions.length ? "block" : "none";
       modelPickerOpen = modelPickerOptions.length > 0;
-      if (modelPickerFocus >= 0) modelPicker.setAttribute("aria-activedescendant", `model-picker-option-${modelPickerFocus}`);
+      if (modelPickerOpen) {
+        textarea.setAttribute("role", "combobox");
+        textarea.setAttribute("aria-autocomplete", "list");
+        textarea.setAttribute("aria-controls", modelPicker.id || "modelPicker");
+        textarea.setAttribute("aria-expanded", "true");
+      }
+      syncModelPickerSelection();
     }
 
     function syncModelPicker() {
@@ -447,7 +478,7 @@
           event.preventDefault();
           const delta = event.key === "ArrowDown" ? 1 : -1;
           modelPickerFocus = (modelPickerFocus + delta + modelPickerOptions.length) % modelPickerOptions.length;
-          renderModelPicker();
+          syncModelPickerSelection({ scroll: true });
           return;
         }
         if (event.key === "Enter" && !event.isComposing) {

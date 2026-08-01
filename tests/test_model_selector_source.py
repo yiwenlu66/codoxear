@@ -16,6 +16,7 @@ class TestComposerModelPicker(unittest.TestCase):
         script = "(async () => {\n" + textwrap.dedent(
             f"""
             const vm = require("vm");
+            let scrollCalls = 0;
             class Node {{
               constructor() {{
                 this.listeners = {{}};
@@ -36,6 +37,7 @@ class TestComposerModelPicker(unittest.TestCase):
               setAttribute(name, value) {{ this.attributes[name] = String(value); }}
               removeAttribute(name) {{ delete this.attributes[name]; }}
               appendChild(child) {{ this.children.push(child); return child; }}
+              scrollIntoView() {{ scrollCalls += 1; }}
               focus() {{}}
               blur() {{}}
             }}
@@ -45,8 +47,8 @@ class TestComposerModelPicker(unittest.TestCase):
             vm.runInContext({json.dumps(source)}, ctx);
             const nodes = Array.from({{ length: 10 }}, () => new Node());
             const [form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop, nowBtn, laterBtn, cancelBtn, modelPicker] = nodes;
-            form.requestSubmit = () => {{}};
-            const state = {{ backend: "pi", sent: [], sending: false }};
+            form.requestSubmit = () => {{ state.formSubmits += 1; }};
+            const state = {{ backend: "pi", sent: [], sending: false, formSubmits: 0 }};
             const noop = () => {{}};
             const controller = ctx.window.CodoxearComposer.createComposerController({{
               form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
@@ -85,6 +87,8 @@ class TestComposerModelPicker(unittest.TestCase):
             textarea.value = "/model";
             textarea.dispatch("input");
             if (modelPicker.style.display !== "block" || modelPicker.children.length !== 2) throw new Error("Pi /model did not open full picker");
+            if (textarea.attributes.role !== "combobox" || textarea.attributes["aria-expanded"] !== "true") throw new Error("textarea did not expose expanded combobox semantics");
+            if (textarea.attributes["aria-activedescendant"] !== "model-picker-option-0") throw new Error("active descendant belongs on the focused textarea");
             textarea.value = "/model claude";
             textarea.dispatch("input");
             if (modelPicker.children.length !== 1 || modelPicker.children[0].textContent !== "anthropic/claude-sonnet-4") throw new Error("model filter mismatch");
@@ -92,10 +96,17 @@ class TestComposerModelPicker(unittest.TestCase):
             if (modelPicker.style.display !== "none") throw new Error("Escape did not dismiss picker");
             textarea.value = "/model";
             textarea.dispatch("input");
-            textarea.dispatch("keydown", {{ key: "ArrowDown", preventDefault() {{}} }});
-            textarea.dispatch("keydown", {{ key: "Enter", preventDefault() {{}} }});
+            const downEvent = {{ key: "ArrowDown", defaultPrevented: false, preventDefault() {{ this.defaultPrevented = true; }} }};
+            textarea.dispatch("keydown", downEvent);
+            if (!downEvent.defaultPrevented || scrollCalls !== 1) throw new Error("ArrowDown did not consume the key and reveal the active option");
+            if (modelPicker.children[1].attributes["aria-selected"] !== "true" || textarea.attributes["aria-activedescendant"] !== "model-picker-option-1") throw new Error("ArrowDown did not expose the selected option");
+            const enterEvent = {{ key: "Enter", defaultPrevented: false, preventDefault() {{ this.defaultPrevented = true; }} }};
+            textarea.dispatch("keydown", enterEvent);
+            if (!enterEvent.defaultPrevented) throw new Error("picker Enter was not consumed");
             await Promise.resolve();
             if (state.sent[0] !== "/model openai/gpt-5") throw new Error("selected provider/model id was not sent");
+            if (state.sent.length !== 1 || state.formSubmits !== 0) throw new Error("picker Enter also submitted the composer form");
+            if (textarea.attributes.role || textarea.attributes["aria-expanded"] || textarea.attributes["aria-activedescendant"]) throw new Error("closed picker left stale combobox state");
             textarea.value = "/thinking";
             textarea.dispatch("input");
             if (modelPicker.style.display !== "none" || modelPicker.children.length !== 0) throw new Error("Pi /thinking still opened a picker");
