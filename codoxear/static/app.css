@@ -174,7 +174,7 @@
       }
       .session {
         padding: 0;
-        border: 1px solid var(--border);
+        border: 2px solid var(--border);
         border-radius: 12px;
         margin-bottom: 8px;
         cursor: pointer;
@@ -328,17 +328,18 @@
         }
       }
       .session.active {
-        border-color: rgba(37, 99, 235, 0.4);
+        border-color: rgba(37, 99, 235, 0.5);
         background: #eef4ff;
-        /* Thickened edge via outline: unlike box-shadow it is never clipped by
-           child overflow:hidden (.sessionSwipe), and unlike border-width it
-           doesn't cause layout shift. Works for touch swipe and desktop hover
-           action modes. Survives monochrome as a solid edge. */
-        outline: 2px solid rgba(37, 99, 235, 0.4);
-        outline-offset: -2px;
       }
+      /* Thickened edge on .sessionContent (the topmost painted layer) because
+         it fills the entire card with a solid background that would cover an
+         outline/inset-shadow on the parent .session. Inset box-shadow here is
+         safe: .sessionSwipe clips overflow so it can't leak, and nothing sits
+         above .sessionContent to paint over it. Survives monochrome as a
+         solid edge. */
       .session.active .sessionContent {
         background: #eef4ff;
+        box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.5);
       }
 	      .sessionMetaLine {
 	        display: flex;
