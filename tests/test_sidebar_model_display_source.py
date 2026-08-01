@@ -27,7 +27,7 @@ def eval_sidebar_model_text_cases() -> dict[str, str]:
           defaultMixedWhitespace: sidebarModelText({{ model: "  DeFaUlT  " }}),
           gpt: sidebarModelText({{ model: "  gpt-5.4  " }}),
           claude: sidebarModelText({{ model: "claude-sonnet-4-5" }}),
-          longProviderModel: sidebarModelText({{ model: "provider/very-long-model-name-for-ellipsis-proof" }}),
+          longProviderModel: sidebarModelText({{ model: "provider/very-long-model-name-for-ellipsis-proof", model_provider: "ignored-provider" }}),
         }};
         process.stdout.write(JSON.stringify(cases));
         """
@@ -47,8 +47,8 @@ class TestSidebarModelDisplaySource(unittest.TestCase):
         self.assertEqual(result["defaultLower"], "")
         self.assertEqual(result["defaultMixedWhitespace"], "")
         self.assertEqual(result["gpt"], "gpt-5.4")
-        self.assertEqual(result["claude"], "claude-sonnet-4-5")
-        self.assertEqual(result["longProviderModel"], "provider/very-long-model-name-for-ellipsis-proof")
+        self.assertEqual(result["claude"], "claude-sonne…")
+        self.assertEqual(result["longProviderModel"], "provider/ver…")
 
 if __name__ == "__main__":
     unittest.main()

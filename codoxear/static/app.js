@@ -298,7 +298,8 @@
 
       function sidebarModelText(s) {
         const model = s && typeof s.model === "string" ? s.model.trim() : "";
-        return model && model.toLowerCase() !== "default" ? model : "";
+        if (!model || model.toLowerCase() === "default") return "";
+        return model.length > 15 ? `${model.slice(0, 12)}…` : model;
       }
 
       function sessionIdFromHash() {
@@ -1461,7 +1462,7 @@
 </ul>
 <div class="muted">Messages and queue</div>
 <ul class="md">
-  <li>If the selected session is idle, <b>Send</b> submits immediately. If it is busy, choose <b>Send after current</b> to queue the prompt.</li>
+  <li><b>Send</b> submits immediately when the session is idle. When it is busy, a dialog offers <b>Send now</b> (sends right away, steering the running turn) or <b>Send after current</b> (queues the prompt for when the session becomes idle).</li>
   <li>The queue is stored per session and drains automatically when that session becomes idle. Use <b>Queued messages</b> to review or edit queued prompts.</li>
   <li><b>Load older messages</b> fetches more scrollback. <b>Jump to latest</b> returns to the newest turn when you are reading history.</li>
   <li>The <b>Search</b> button and <b>Previous</b>/<b>Next</b> message controls live in the navigation bar at the top of the conversation (not a floating rail). Use <b>/</b> to start a search of the loaded chat; when the match count shows more results, Previous/Next can load an older matching window.</li>
