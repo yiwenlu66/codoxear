@@ -2818,17 +2818,25 @@
 
         function updateTypingStatsFromSession(session) {
           if (!session) return;
-          const current = typingRowRuntime.snapshot().stats || { thinking: 0, tools: 0 };
           const stats = {
             thinking: session.thinking,
             tools: session.tools,
           };
-          // Live deltas are authoritative once observed; session-list counts
-          // fill the initial projection and recover counts while idle polling
-          // catches up. Always update when the session has non-zero counts,
-          // even if turnOpen is false — otherwise stale zero counts persist
-          // falsely when the session list reports real activity.
-          if ((stats.thinking || stats.tools) || (!turnOpen || (!current.thinking && !current.tools))) typingRowRuntime.updateTypingStats(stats);
+          // Two feeds write these counts: live per-event deltas (exact, sees
+          // every event from turn start) and session-list snapshots (the
+          // server's resumable scan, which can lag or start mid-turn). While
+          // a turn is open the display must be monotonic, so the snapshot may
+          // only raise the count (recovering from an SSE gap), never lower
+          // it. With no turn open the snapshot is the seed projection.
+          if (!turnOpen) {
+            typingRowRuntime.updateTypingStats(stats);
+            return;
+          }
+          const current = typingRowRuntime.snapshot().stats || { thinking: 0, tools: 0 };
+          typingRowRuntime.updateTypingStats({
+            thinking: Math.max(current.thinking, stats.thinking || 0),
+            tools: Math.max(current.tools, stats.tools || 0),
+          });
         }
 
         function applyTypingMetaDelta(data) {
