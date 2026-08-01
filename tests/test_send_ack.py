@@ -107,6 +107,39 @@ class TestSendAck(unittest.TestCase):
         finally:
             client_sock.close()
 
+    def test_broker_busy_send_preserves_live_turn_state(self) -> None:
+        broker = Broker(cwd="/tmp", codex_args=[])
+        broker.state = BrokerState(
+            codex_pid=1,
+            pty_master_fd=1,
+            cwd="/tmp",
+            start_ts=0.0,
+            codex_home=Path("/tmp"),
+            sessions_dir=Path("/tmp"),
+            busy=True,
+            turn_open=True,
+            turn_has_completion_candidate=True,
+            last_interrupt_hint_ts=5.0,
+            last_interrupt_request_ts=7.0,
+            last_interrupted_idle_ts=8.0,
+        )
+        server_sock, client_sock = socket.socketpair()
+        try:
+            client_sock.sendall((json.dumps({"cmd": "send", "text": "steer", "sync": True}) + "\n").encode("utf-8"))
+            with patch("codoxear.broker._inject") as inject:
+                broker._handle_conn(server_sock)
+
+            self.assertEqual(json.loads(_recv_line(client_sock).decode("utf-8")), {"queued": False, "queue_len": 0})
+            inject.assert_called_once_with(1, text="steer", suffix=b"\r")
+            self.assertTrue(broker.state.busy)
+            self.assertTrue(broker.state.turn_open)
+            self.assertTrue(broker.state.turn_has_completion_candidate)
+            self.assertEqual(broker.state.last_interrupt_hint_ts, 5.0)
+            self.assertEqual(broker.state.last_interrupt_request_ts, 7.0)
+            self.assertEqual(broker.state.last_interrupted_idle_ts, 8.0)
+        finally:
+            client_sock.close()
+
     def test_broker_keys_reports_write_failure(self) -> None:
         broker = Broker(cwd="/tmp", codex_args=[])
         broker.state = BrokerState(

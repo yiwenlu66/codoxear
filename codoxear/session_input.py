@@ -26,8 +26,6 @@ def require_send_preconditions(
         raise not_ready_error("resolve the unknown send before submitting more text")
     if session.pending_attachment and not allow_pending_attachment:
         raise not_ready_error("send the pending attachment explicitly before submitting other text")
-    if queue_item_id is None and (local_queue_len > 0 or session.queue_sending_item_id is not None):
-        raise not_ready_error("send queued prompts before submitting new text")
     if queue_item_id is not None and session.queue_sending_item_id != queue_item_id:
         raise not_ready_error("queued prompt is no longer active")
     if not session.sync_send_supported:

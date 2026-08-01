@@ -51,11 +51,22 @@ def test_require_send_preconditions_allows_valid_direct_send() -> None:
     ) == Path("/tmp/s1.sock")
 
 
+def test_require_send_preconditions_allows_direct_send_with_local_queue() -> None:
+    session = _session()
+
+    assert require_send_preconditions(
+        session,
+        local_queue_len=1,
+        queue_item_id=None,
+        allow_pending_attachment=False,
+        not_ready_error=NotReady,
+    ) == Path("/tmp/s1.sock")
+
+
 def test_require_send_preconditions_preserves_not_ready_messages() -> None:
     cases: list[tuple[dict[str, Any], dict[str, Any], str]] = [
         ({"commit_unknown_send": {"text": "x"}}, {}, "resolve the unknown send before submitting more text"),
         ({"pending_attachment": True}, {}, "send the pending attachment explicitly before submitting other text"),
-        ({}, {"local_queue_len": 1}, "send queued prompts before submitting new text"),
         ({"queue_sending_item_id": "other"}, {"queue_item_id": "item"}, "queued prompt is no longer active"),
         ({"sync_send_supported": False}, {}, "broker must be restarted before confirmed sends are available"),
     ]

@@ -1843,7 +1843,7 @@ class TestServerQueuePersistence(unittest.TestCase):
             self.assertFalse(SessionManager._queue_remote_ready(mgr, sid, log_path=old_log))
             self.assertEqual(mgr._sessions[sid].log_path, new_log)
 
-    def test_send_queues_when_busy_before_socket_send(self) -> None:
+    def test_send_confirms_when_busy_before_socket_send(self) -> None:
         sid = "s1"
         mgr = self._mgr()
         with TemporaryDirectory() as td:
@@ -1851,13 +1851,17 @@ class TestServerQueuePersistence(unittest.TestCase):
             log_path.write_text("{}\n", encoding="utf-8")
             mgr._sessions[sid] = _make_session(sid)
             mgr._sessions[sid].log_path = log_path
-            mgr.get_state = lambda _sid: {"busy": True, "queue_len": 0}  # type: ignore[method-assign]
-            mgr.idle_from_log = lambda _sid: False  # type: ignore[method-assign]
-            mgr._record_prelog_user_message = lambda *_args, **_kwargs: self.fail("busy send should queue before local echo record")  # type: ignore[method-assign]
-            mgr._sock_call = lambda *_args, **_kwargs: self.fail("busy send should queue before broker send")  # type: ignore[method-assign]
+            mgr.get_state = lambda _sid: self.fail("direct send must not check runtime readiness")  # type: ignore[method-assign]
+            recorded: list[str] = []
+            sent: list[dict[str, object]] = []
+            mgr._record_prelog_user_message = lambda _session, text, **_kwargs: recorded.append(text)  # type: ignore[method-assign]
+            mgr._sock_call = lambda _sock, request, **_kwargs: sent.append(request) or {"queued": False, "queue_len": 0}  # type: ignore[method-assign]
 
             result = SessionManager.send(mgr, sid, "prompt during busy turn")
-            self.assertTrue(result.get("queued"))
+
+        self.assertEqual(result, {"queued": False, "queue_len": 0})
+        self.assertEqual(sent, [{"cmd": "send", "text": "prompt during busy turn", "sync": True}])
+        self.assertEqual(recorded, ["prompt during busy turn"])
 
     def test_readiness_rejects_malformed_broker_state(self) -> None:
         sid = "s1"
@@ -1890,43 +1894,58 @@ class TestServerQueuePersistence(unittest.TestCase):
 
             self.assertTrue(SessionManager.attachment_staging_ready(mgr, sid))
 
-    def test_direct_send_rejects_when_local_queue_exists(self) -> None:
+    def test_direct_send_confirms_with_local_queue(self) -> None:
         sid = "s1"
         mgr = self._mgr()
         mgr._sessions[sid] = _make_session(sid)
         mgr._queues[sid] = [_queue_item("q1", "queued first")]
-        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
-        mgr._sock_call = lambda *_args, **_kwargs: self.fail("direct send should not overtake local queue")  # type: ignore[method-assign]
+        mgr.get_state = lambda _sid: self.fail("direct send must not check runtime readiness")  # type: ignore[method-assign]
+        sent: list[dict[str, object]] = []
+        mgr._sock_call = lambda _sock, request, **_kwargs: sent.append(request) or {"queued": False, "queue_len": 0}  # type: ignore[method-assign]
 
-        with self.assertRaisesRegex(SessionNotReadyError, "queued prompts"):
-            SessionManager.send(mgr, sid, "direct second")
+        self.assertEqual(SessionManager.send(mgr, sid, "direct second"), {"queued": False, "queue_len": 0})
 
-    def test_send_readiness_refreshes_sidecar_before_log_idle_check(self) -> None:
+        self.assertEqual(sent, [{"cmd": "send", "text": "direct second", "sync": True}])
+        self.assertEqual([item["id"] for item in mgr._queues[sid]], ["q1"])
+
+    def test_direct_send_does_not_gate_on_runtime_readiness(self) -> None:
+        # A direct send must not probe runtime busy/idle readiness (the old
+        # send_remote_ready gate is gone). It MAY refresh sidecar meta for
+        # log_path freshness, but must never consult get_state to gate.
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr.get_state = lambda _sid: self.fail("direct send must not check runtime readiness")  # type: ignore[method-assign]
+        sent: list[dict[str, object]] = []
+        mgr._sock_call = lambda _sock, request, **_kwargs: sent.append(request) or {"queued": False, "queue_len": 0}  # type: ignore[method-assign]
+
+        self.assertEqual(SessionManager.send(mgr, sid, "stale log send"), {"queued": False, "queue_len": 0})
+
+        self.assertEqual(sent, [{"cmd": "send", "text": "stale log send", "sync": True}])
+
+    def test_direct_send_refreshes_sidecar_meta_before_confirmed_send(self) -> None:
+        # A direct send preserves the pre-send sidecar freshness refresh that
+        # originally lived inside send_remote_ready. The refresh keeps the
+        # manager's log_path current for the post-send log-size snapshot and
+        # prelog-user-message record. It is NOT a busy-gate (no get_state call).
+        from tempfile import TemporaryDirectory
+
         sid = "s1"
         mgr = self._mgr()
         with TemporaryDirectory() as td:
             root = Path(td)
             session = _make_session(sid)
             session.sock_path = root / "s1.sock"
-            old_idle_log = root / "old.jsonl"
-            old_idle_log.write_text("{}\n", encoding="utf-8")
-            new_busy_log = root / "new.jsonl"
-            new_busy_log.write_text("{}\n", encoding="utf-8")
-            session.log_path = old_idle_log
+            (root / "s1.json").write_text("{}\n", encoding="utf-8")
             mgr._sessions[sid] = session
-            session.sock_path.with_suffix(".json").write_text("{}\n", encoding="utf-8")
-            mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
-            mgr.idle_from_log = lambda _sid: mgr._sessions[sid].log_path != new_busy_log  # type: ignore[method-assign]
-            mgr._sock_call = lambda *_args, **_kwargs: self.fail("send should not bypass refreshed busy log")  # type: ignore[method-assign]
+            refreshed: list[str] = []
+            mgr.refresh_session_meta = lambda _sid, **_kw: refreshed.append(_sid)  # type: ignore[method-assign]
+            mgr.get_state = lambda _sid: self.fail("refresh must not gate on runtime readiness")  # type: ignore[method-assign]
+            mgr._sock_call = lambda _sock, request, **_kw: {"queued": False, "queue_len": 0}  # type: ignore[method-assign]
 
-            def refresh(_sid: str, *, drain_queue: bool = True) -> None:
-                self.assertFalse(drain_queue)
-                mgr._sessions[sid].log_path = new_busy_log
+            self.assertEqual(SessionManager.send(mgr, sid, "fresh send"), {"queued": False, "queue_len": 0})
 
-            mgr.refresh_session_meta = refresh  # type: ignore[method-assign]
-
-            result = SessionManager.send(mgr, sid, "stale log send")
-            self.assertTrue(result.get("queued"))
+        self.assertEqual(refreshed, [sid])
 
     def test_pending_attachment_stops_queue_promotion(self) -> None:
         sid = "s1"

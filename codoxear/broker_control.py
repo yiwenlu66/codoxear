@@ -64,10 +64,11 @@ def _handle_broker_control_connection(
             st.pending_calls.clear()
             st.busy = True
             st.turn_open = True
-            st.turn_has_completion_candidate = False
-            st.last_interrupt_hint_ts = 0.0
-            st.last_interrupt_request_ts = 0.0
-            st.last_interrupted_idle_ts = 0.0
+            if not prev_busy and not prev_turn_open:
+                st.turn_has_completion_candidate = False
+                st.last_interrupt_hint_ts = 0.0
+                st.last_interrupt_request_ts = 0.0
+                st.last_interrupted_idle_ts = 0.0
             if now_ts > st.last_turn_activity_ts:
                 st.last_turn_activity_ts = now_ts
             fd = st.pty_master_fd

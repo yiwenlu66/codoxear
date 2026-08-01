@@ -39,6 +39,7 @@ class SessionSendCoordinator:
     input_lock_for_session: Callable[[str], Any]
     queue_len: Callable[[str], int]
     send_remote_ready: Callable[..., bool]
+    refresh_session_meta_if_sidecar_exists: Callable[[str], None]
     log_size_or_none: Callable[[Path | None], int | None]
     call_confirmed_send: Callable[..., dict[str, Any]]
     staged_attachments_for_session: Callable[[str], list[dict[str, Any]]]
@@ -69,9 +70,13 @@ class SessionSendCoordinator:
                     allow_pending_attachment=allow_pending_attachment,
                     not_ready_error=self.not_ready_error,
                 )
-            if not self.send_remote_ready(session_id, allow_pending_attachment=allow_pending_attachment):
-                # Session is busy; queue the prompt for later delivery.
-                return self.enqueue(session_id, text)
+            # Refresh sidecar meta before the confirmed send so the manager's
+            # log_path snapshot is current. Previously this freshness refresh
+            # lived inside send_remote_ready alongside the busy-gate; the gate
+            # is removed (direct sends are now unconditional) but the freshness
+            # op is preserved because the pre/post-send log-size snapshot and
+            # prelog-user-message record both rely on a current log_path.
+            self.refresh_session_meta_if_sidecar_exists(session_id)
             with self.lock:
                 current = self.sessions().get(session_id)
                 pre_send_log_path = current.log_path if current is not None else None

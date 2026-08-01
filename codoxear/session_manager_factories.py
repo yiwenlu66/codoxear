@@ -590,6 +590,7 @@ def send_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) 
         input_lock_for_session=manager._input_lock_for_session,
         queue_len=lambda session_id: manager._queue_store_for_manager().queue_len(getattr(manager, "_queues", {}), session_id),
         send_remote_ready=manager._send_remote_ready,
+        refresh_session_meta_if_sidecar_exists=lambda session_id: manager._refresh_session_meta_if_sidecar_exists(session_id),
         log_size_or_none=manager._log_size_or_none,
         call_confirmed_send=lambda session_id, **kwargs: manager._control_coordinator_for_manager().call_confirmed_send(session_id, **kwargs),
         staged_attachments_for_session=lambda session_id: manager._session_store_for_manager().staged_attachments_for_session(session_id),
