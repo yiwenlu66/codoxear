@@ -74,7 +74,23 @@ def _pi_subagent_intercom_summary(content: str) -> str | None:
     if not lines:
         return None
     run_id = _pi_subagent_field(lines, "Run")
+    if not run_id:
+        run_match = re.search(r"\brun\s+([0-9a-f-]{8,})", content, re.I)
+        run_id = run_match.group(1) if run_match else None
+    if "subagent needs attention" in content.lower():
+        agent = None
+        for line in lines:
+            match = re.match(r"(.+?) needs attention in run\b", line, re.I)
+            if match:
+                agent = match.group(1).strip()
+                break
+        return _compact_pi_subagent_text(
+            f"Subagent needs attention{f' — {agent}' if agent else ''}{_pi_subagent_run_label(run_id)}",
+            limit=200,
+        )
     status = _pi_subagent_field(lines, "Status")
+    if status and status.split(maxsplit=1)[0].lower() not in {"completed", "failed", "stopped", "running"}:
+        status = None
     children = _pi_subagent_field(lines, "Children")
     summary_text = None
     for index, line in enumerate(lines):
@@ -686,7 +702,8 @@ class PiBackend(AgentBackend):
                 return None
             custom_type = row.get("customType")
             if custom_type == "subagent_control_notice":
-                summary = _pi_subagent_control_summary(content, row.get("details") if isinstance(row.get("details"), Mapping) else None)
+                details = row.get("details") if isinstance(row.get("details"), Mapping) else None
+                summary = _pi_subagent_control_summary(content, details)
                 return self._subagent_narration_event(row, summary) if summary else None
             if custom_type == "intercom_message":
                 summary = _pi_subagent_intercom_summary(content)
