@@ -2260,18 +2260,19 @@
           }
           const step = Math.round(chat.clientHeight * 0.15);
           const halfPage = Math.round(chat.clientHeight * 0.45);
+          const scrollBehavior = prefersReducedMotion() ? "auto" : "smooth";
           if (key === "j") {
             e.preventDefault();
-            chat.scrollBy({ top: step, behavior: "smooth" });
+            chat.scrollBy({ top: step, behavior: scrollBehavior });
           } else if (key === "k") {
             e.preventDefault();
-            chat.scrollBy({ top: -step, behavior: "smooth" });
+            chat.scrollBy({ top: -step, behavior: scrollBehavior });
           } else if (key === "d") {
             e.preventDefault();
-            chat.scrollBy({ top: halfPage, behavior: "smooth" });
+            chat.scrollBy({ top: halfPage, behavior: scrollBehavior });
           } else if (key === "u") {
             e.preventDefault();
-            chat.scrollBy({ top: -halfPage, behavior: "smooth" });
+            chat.scrollBy({ top: -halfPage, behavior: scrollBehavior });
           }
         });
 

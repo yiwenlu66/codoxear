@@ -273,6 +273,12 @@
         .stateDot.pending {
           animation: none;
         }
+        .msg-row.nav-pulse .msg {
+          animation: none;
+        }
+        .typingDot {
+          animation: none;
+        }
       }
       .session.active {
         border-color: rgba(37, 99, 235, 0.4);
