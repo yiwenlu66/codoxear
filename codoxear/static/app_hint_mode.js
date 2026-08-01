@@ -136,7 +136,13 @@
       }
       if (typeof event.preventDefault === "function") event.preventDefault();
       exit();
-      target.click();
+      // Prefer focus() for focusable form elements (textarea/input) so the
+      // cursor lands in the field; fall back to click() for buttons.
+      if (typeof target.focus === "function" && /^(textarea|input)$/i.test(target.tagName)) {
+        try { target.focus({ preventScroll: false }); } catch (_) { target.click(); }
+      } else {
+        target.click();
+      }
     }
 
     addAppEvent(documentTarget, "keydown", handleKeydown);

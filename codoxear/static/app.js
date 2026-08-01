@@ -1392,7 +1392,7 @@
   <li>The queue is stored per session and drains automatically when that session becomes idle. Use <b>Queued messages</b> to review or edit queued prompts.</li>
   <li><b>Load older messages</b> fetches more scrollback. <b>Jump to latest</b> returns to the newest turn when you are reading history.</li>
   <li>Use <b>/</b> to search the loaded chat; Previous/Next can load an older matching window when the transcript count shows more matches.</li>
-  <li>Press <b>f</b> to show keyboard hints for visible controls: <b>1</b>–<b>9</b> switch sessions; <b>s</b> sidebar; <b>b</b> files; <b>d</b> details; <b>u</b> unattended; <b>i</b> interrupt; <b>r</b> search; <b>p</b>/<b>n</b> previous/next user message; <b>o</b> older messages; <b>j</b> latest; <b>a</b> attach; <b>q</b> queued messages; <b>x</b> stop; <b>e</b> send; <b>c</b> new session. Press <b>Escape</b> or <b>Backspace</b> to cancel.</li>
+  <li>Press <b>f</b> to show keyboard hints for visible controls: <b>1</b>–<b>9</b> switch sessions; <b>s</b> sidebar; <b>b</b> files; <b>d</b> details; <b>u</b> unattended; <b>i</b> interrupt; <b>r</b> search; <b>p</b>/<b>n</b> previous/next user message; <b>o</b> older messages; <b>j</b> latest; <b>a</b> attach; <b>q</b> queued messages; <b>x</b> stop; <b>e</b> send; <b>m</b> message box; <b>c</b> new session. Press <b>Escape</b> or <b>Backspace</b> to cancel.</li>
 </ul>
 <div class="muted">Unattended mode</div>
 <ul class="md">
@@ -2235,6 +2235,7 @@
               { label: "q", element: queueBtn },
               { label: "x", element: composerStopBtn },
               { label: "e", element: sendBtn },
+              { label: "m", element: textarea },
               { label: "c", element: $("#newBtn") },
             ],
           });
