@@ -95,9 +95,9 @@
     const titleRow = el("div", { class: "titleRow" }, [titleLabel, topMeta]);
     const titleWrap = el("div", { class: "titleWrap" }, [titleRow]);
     const chatMessageNavControls = el("div", { class: "chatMessageNavControls", role: "group", "aria-label": "User message navigation" }, [prevUserBtn, nextUserBtn]);
-    const chatNavRail = el("div", { class: "chatNavRail", id: "chatNavRail", "aria-label": "Loaded chat navigation" }, [chatMessageNavControls]);
+    const chatNavRail = el("div", { class: "chatNavRail", id: "chatNavRail", "aria-label": "Loaded chat navigation" }, [chatSearchBtn, chatMessageNavControls]);
     chatWrap.appendChild(chatNavRail);
-    const topbar = el("div", { class: "topbar" }, [el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap]), el("div", { class: "actions topActions" }, [chatSearchBtn, prevUserBtn, nextUserBtn, fileBtn, diagBtn, unattendedBtn, interruptBtn])]);
+    const topbar = el("div", { class: "topbar" }, [el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap]), el("div", { class: "actions topActions" }, [fileBtn, diagBtn, unattendedBtn, interruptBtn])]);
     const composer = el("div", { class: "composer" });
     const stagedTray = el("div", { class: "stagedAttachments", id: "stagedAttachments", "aria-live": "polite" });
     const textarea = el("textarea", { id: "msg", placeholder: "", "aria-label": "Message" });

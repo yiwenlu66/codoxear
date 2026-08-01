@@ -64,13 +64,13 @@ def render_shell_parents() -> dict[str, str | None]:
 
 
 class TestFrontendShellDomSource(unittest.TestCase):
-    def test_message_navigation_controls_mount_in_top_actions(self) -> None:
+    def test_message_navigation_controls_mount_in_chat_nav_rail(self) -> None:
         self.assertEqual(
             render_shell_parents(),
             {
-                "chatSearch": "actions topActions",
-                "prev": "actions topActions",
-                "next": "actions topActions",
+                "chatSearch": "chatNavRail",
+                "prev": "chatMessageNavControls",
+                "next": "chatMessageNavControls",
             },
         )
 

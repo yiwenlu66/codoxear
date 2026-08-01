@@ -1385,6 +1385,7 @@
   <li><b>New session</b> can start fresh or resume a matching conversation for the currently selected backend in the current working directory.</li>
   <li>The backend tabs choose between the supported agent backends. Right now that is <b>Codex</b>, <b>Pi</b>, and <b>Claude</b>.</li>
   <li>You can choose working directory, a combined provider/model pair, reasoning level, and whether the session should start in tmux. If the directory is a Git repo, you can also start in a new worktree branch.</li>
+  <li>For Pi, the reasoning level is set when the session launches. To change it later, use <b>Shift+Tab</b> in Pi's terminal; Codoxear does not guess or inject thinking-level cycles.</li>
   <li>Codoxear remembers the last backend you used and the last provider/model pair for each backend.</li>
 </ul>
 <div class="muted">Messages and queue</div>
@@ -3779,9 +3780,8 @@
           fileBtn.title = fileViewerLabel;
           fileBtn.setAttribute("aria-label", fileViewerLabel);
           chatSearchBtn.disabled = !selected;
-          // The chat nav rail is hidden on all viewports via CSS (search lives
-          // in the topbar now); never force it visible with inline display.
-          chatNavRail.style.display = "none";
+          if (!isMobile()) chatNavRail.style.display = selected ? "flex" : "none";
+          else chatNavRail.style.display = "none";
           chatEmptyState.style.display = selected ? "none" : "flex";
           if (!selected && chatSearchController.isOpen()) closeChatSearch();
           updateChatNavButtons();

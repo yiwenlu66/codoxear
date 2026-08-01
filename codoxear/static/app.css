@@ -714,10 +714,10 @@
         z-index: 4;
         align-items: center;
         gap: 4px;
-        margin: 8px 12px 0 12px;
-        padding: 4px;
+        margin: 6px 12px 0 12px;
+        padding: 2px;
         border: 1px solid var(--border);
-        border-radius: 13px;
+        border-radius: 8px;
         background: var(--panel);
       }
       .chatMessageNavControls {
