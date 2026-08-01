@@ -14,6 +14,7 @@ from codoxear.message_routes import MessageRouteDeps
 from codoxear.message_routes import handle_messages_export
 from codoxear.message_routes import handle_messages_history
 from codoxear.message_routes import handle_messages_live
+from codoxear.message_routes import handle_messages_live_stream
 from codoxear.message_routes import handle_messages_search
 from codoxear.message_routes import handle_messages_tail
 from codoxear.post_log_recovery import POST_LOG_BOUND_BACKEND_STOPPED_TEXT
@@ -46,6 +47,40 @@ def _session(td: str, log_path: Path | None) -> Session:
         log_path=log_path,
         sock_path=Path(td) / "s1.sock",
     )
+
+
+class _SseHandler:
+    def __init__(self) -> None:
+        from io import BytesIO
+        self.wfile = BytesIO()
+        self.headers: list[tuple[str, str]] = []
+        self.status = None
+        self.unauthorized = False
+
+    def _unauthorized(self) -> None:
+        self.unauthorized = True
+
+    def send_response(self, status: int) -> None:
+        self.status = status
+
+    def send_header(self, name: str, value: str) -> None:
+        self.headers.append((name, value))
+
+    def end_headers(self) -> None:
+        return None
+
+    def _attach_disconnect_flush(self, *, after: int = 1) -> None:
+        original = self.wfile.flush
+        flush_count = 0
+
+        def flush_then_disconnect() -> None:
+            nonlocal flush_count
+            original()
+            flush_count += 1
+            if flush_count >= after:
+                raise BrokenPipeError()
+
+        self.wfile.flush = flush_then_disconnect
 
 
 class _TailManager:
@@ -103,6 +138,7 @@ def _deps(**overrides):
 
     deps = MessageRouteDeps(
         require_auth=lambda _handler: True,
+        set_auth_cookie=lambda _handler: None,
         json_response=json_response,
         launch_attempt_transcript_for_session_id=lambda _sid: None,
         transcript_export_max_bytes=50 * 1024 * 1024,
@@ -166,6 +202,84 @@ def test_messages_tail_returns_signed_live_and_history_cursors() -> None:
     assert body["token"] is None
     assert "diag" not in body
     assert metrics and metrics[0][0] == "api_messages_init_ms"
+
+
+def test_messages_live_stream_sets_sse_headers_and_sends_initial_tail() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "rollout.jsonl"
+        log_path.write_text(
+            json.dumps({"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}}) + "\n",
+            encoding="utf-8",
+        )
+        session = _session(td, log_path)
+        deps, _responses, _metrics = _deps()
+        handler = _SseHandler()
+        handler._attach_disconnect_flush()
+        handle_messages_live_stream(
+            handler,
+            session_id="s1",
+            query="",
+            manager=_TailManager(session),
+            deps=deps,
+        )
+    assert handler.status == 200
+    assert ("Content-Type", "text/event-stream") in handler.headers
+    assert ("Cache-Control", "no-cache") in handler.headers
+    assert ("Connection", "keep-alive") in handler.headers
+    raw = handler.wfile.getvalue().decode("utf-8")
+    assert raw.startswith("event: message\ndata: ")
+    payload = json.loads(raw.split("data: ", 1)[1].split("\n", 1)[0])
+    assert [event["text"] for event in payload["events"]] == ["hello"]
+    assert payload["live_cursor"]
+
+
+def test_messages_live_stream_pushes_records_appended_after_initial_event(monkeypatch) -> None:
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "rollout.jsonl"
+        user_row = {"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}, "ts": 1.0}
+        log_path.write_text(json.dumps(user_row) + "\n", encoding="utf-8")
+        session = _session(td, log_path)
+        cursor = encode_message_cursor(kind="live", session=session, pos=log_path.stat().st_size, secret=_SECRET)
+        deps, _responses, _metrics = _deps()
+        handler = _SseHandler()
+        handler._attach_disconnect_flush(after=2)
+        appended = False
+
+        def append_once(_seconds: float) -> None:
+            nonlocal appended
+            if appended:
+                return
+            appended = True
+            assistant_row = {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "world"}],
+                    "phase": "final_answer",
+                },
+                "ts": 2.0,
+            }
+            with log_path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(assistant_row) + "\n")
+
+        monkeypatch.setattr("codoxear.message_routes.time.sleep", append_once)
+        handle_messages_live_stream(
+            handler,
+            session_id="s1",
+            query=f"cursor={cursor}",
+            manager=_LiveManager(session),
+            deps=deps,
+        )
+
+    message_payloads = [
+        json.loads(block.split("data: ", 1)[1])
+        for block in handler.wfile.getvalue().decode("utf-8").strip().split("\n\n")
+        if block.startswith("event: message")
+    ]
+    assert message_payloads[0]["events"] == []
+    assert [event["text"] for event in message_payloads[1]["events"]] == ["world"]
+    assert message_payloads[1]["live_cursor"] != message_payloads[0]["live_cursor"]
 
 
 def test_messages_live_rejects_bad_cursor_without_mutating_log_state() -> None:

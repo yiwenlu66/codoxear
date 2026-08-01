@@ -806,6 +806,10 @@
         const OLDER_CANCEL_PX = 48;
         let openSessionTailAbortController = null;
         let messagePollAbortController = null;
+        let messageEventSource = null;
+        let messageSseRetryTimer = null;
+        let messageSseOpen = false;
+        let messageSseFallbackUntil = 0;
         const OLDER_AUTO_COOLDOWN_MS = 450;
         let pollTimer = null;
         let pollGen = 0;
@@ -886,9 +890,76 @@
           appEventCleanups.push(() => target.removeEventListener(type, handler, options));
           return handler;
         }
+        function closeMessageEventSource() {
+          if (messageSseRetryTimer) clearTimeout(messageSseRetryTimer);
+          messageSseRetryTimer = null;
+          const source = messageEventSource;
+          messageEventSource = null;
+          messageSseOpen = false;
+          if (source && typeof source.close === "function") {
+            try { source.close(); } catch (_error) {}
+          }
+        }
+        function scheduleMessageEventSourceRetry(sessionId, gen) {
+          if (appDisposed || selected !== sessionId || pollGen !== gen || messageSseRetryTimer) return;
+          const delay = Math.max(1000, messageSseFallbackUntil - Date.now());
+          messageSseRetryTimer = setTimeout(() => {
+            messageSseRetryTimer = null;
+            if (!appDisposed && selected === sessionId && pollGen === gen) openMessageEventSource(sessionId, gen);
+          }, delay);
+        }
+        function openMessageEventSource(sessionId = selected, gen = pollGen) {
+          if (appDisposed || !sessionId || selected !== sessionId || pollGen !== gen) return;
+          if (typeof EventSource !== "function") return;
+          const snapshot = transcriptSlotRuntime.activeSnapshot();
+          if (snapshot.state !== "bound" || !snapshot.liveCursor) return;
+          closeMessageEventSource();
+          const url = resolveAppUrl(`/api/sessions/${sessionId}/live?cursor=${encodeURIComponent(snapshot.liveCursor)}`);
+          const source = new EventSource(url);
+          messageEventSource = source;
+          source.onopen = () => {
+            if (messageEventSource !== source || selected !== sessionId || pollGen !== gen) return;
+            messageSseOpen = true;
+            messageSseFallbackUntil = 0;
+            messagePollErrorStreak = 0;
+            abortMessagePollRequest();
+            if (pollTimer) clearTimeout(pollTimer);
+            pollTimer = null;
+          };
+          source.addEventListener("message", (event) => {
+            if (messageEventSource !== source || selected !== sessionId || pollGen !== gen) return;
+            let data;
+            try { data = JSON.parse(event.data); } catch (error) {
+              console.warn("message SSE payload was invalid", error);
+              return;
+            }
+            Promise.resolve(applyLiveMessageData(sessionId, gen, data)).catch((error) => {
+              console.warn("message SSE update failed", error);
+              source.close();
+              if (messageEventSource === source) {
+                messageEventSource = null;
+                messageSseOpen = false;
+                messageSseFallbackUntil = Date.now() + 6000;
+                kickPoll(0);
+                scheduleMessageEventSourceRetry(sessionId, gen);
+              }
+            });
+          });
+          source.addEventListener("error", () => {
+            if (messageEventSource !== source || selected !== sessionId || pollGen !== gen) return;
+            source.close();
+            messageEventSource = null;
+            messageSseOpen = false;
+            messageSseFallbackUntil = Date.now() + 6000;
+            markMessagePollFailure();
+            kickPoll(0);
+            scheduleMessageEventSourceRetry(sessionId, gen);
+          });
+        }
         function stopMessagePolling() {
           selected = null;
           pollGen += 1;
+          closeMessageEventSource();
           abortOpenSessionTailRequest();
           abortMessagePollRequest();
           if (pollTimer) clearTimeout(pollTimer);
@@ -3391,6 +3462,7 @@
         async function openSession(sessionId, { useCache = true, fallbackToCacheOnFailure = false } = {}) {
           pollGen += 1;
           const myGen = pollGen;
+          if (typeof closeMessageEventSource === "function") closeMessageEventSource();
           abortOpenSessionTailRequest();
           abortMessagePollRequest();
           if (pollTimer) {
@@ -3492,8 +3564,10 @@
           if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);
           else renderPendingTranscriptSlot(sessionId);
           applySessionRuntimeFromTail(sessionId, data);
-
-          if (slotChange.current.state !== "failed") kickPoll(900);
+          if (slotChange.current.state !== "failed") {
+            if (typeof openMessageEventSource === "function") openMessageEventSource(sessionId, myGen);
+            kickPoll(900);
+          }
           if (isMobile()) setSidebarOpen(false);
           updateUnattendedBtnState();
           if (isFileViewerOpen() && !currentFileDirty() && !fileViewerSyncStarted) {
@@ -3504,7 +3578,51 @@
           return data;
         }
 
-			        async function pollMessages(sid = selected, gen = pollGen) {
+			        async function applyLiveMessageData(sid, gen, data) {
+          if (gen !== pollGen || sid !== selected) return;
+          markMessagePollSuccess();
+          const slotInfo = transcriptSnapshotFromData(data);
+          const nowBusy = Boolean(data.busy);
+          if (activeTranscriptSnapshot().state === "bound" && slotInfo.state === "pending_bind") {
+            updateSessionTranscriptSlot(sid, data);
+            resetChatRenderState();
+            renderPendingTranscriptSlot(sid);
+            setAttachCount(0);
+            applySessionRuntimeFromTail(sid, data);
+            return;
+          }
+          if (activeTranscriptSnapshot().state === "bound" && slotInfo.state === "bound" && slotInfo.logPath !== activeTranscriptSnapshot().logPath) {
+            await openSession(sid, { useCache: false });
+            return;
+          }
+          transcriptSlotRuntime.setLiveCursor(typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null);
+          const evs = Array.isArray(data.events) ? data.events : [];
+          for (const ev of evs) appendEvent(ev);
+          const turnStart = Boolean(data.turn_start);
+          const turnEnd = Boolean(data.turn_end);
+          const turnAborted = Boolean(data.turn_aborted);
+          if (turnStart) turnOpen = true;
+          if (!turnOpen && nowBusy) turnOpen = true;
+          if ((turnEnd || turnAborted) && turnOpen) turnOpen = false;
+          if (turnOpen && !nowBusy) turnOpen = false;
+          setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
+          setContext(data.token);
+          setTyping(Boolean(turnOpen || nowBusy));
+          const s2 = sessionIndex.get(sid);
+          if (evs.length) {
+            appendTailSnapshotEvents(sid, evs, {
+              session: s2,
+              liveCursor: transcriptSlotRuntime.activeSnapshot().liveCursor,
+              busy: Boolean(turnOpen || nowBusy),
+              queueLen: data.queue_len,
+              token: data.token,
+              identityData: data,
+            });
+          }
+          if (s2) titleLabel.textContent = sessionTitleWithId(s2);
+        }
+
+        async function pollMessages(sid = selected, gen = pollGen) {
           if (appDisposed || !sid) return;
           let pollRequest = null;
           try {
@@ -3531,50 +3649,7 @@
             const reqCursor = transcriptSlotRuntime.activeSnapshot().liveCursor;
             pollRequest = beginMessagePollRequest(sid, gen);
             const data = await api(`/api/sessions/${sid}/messages/live?cursor=${encodeURIComponent(reqCursor)}`, { signal: pollRequest.signal });
-            if (gen !== pollGen || sid !== selected) return;
-            markMessagePollSuccess();
-            const slotInfo = transcriptSnapshotFromData(data);
-            const nowBusy = Boolean(data.busy);
-            if (activeTranscriptSnapshot().state === "bound" && slotInfo.state === "pending_bind") {
-              updateSessionTranscriptSlot(sid, data);
-              resetChatRenderState();
-              renderPendingTranscriptSlot(sid);
-              setAttachCount(0);
-              applySessionRuntimeFromTail(sid, data);
-              return;
-            }
-            if (activeTranscriptSnapshot().state === "bound" && slotInfo.state === "bound" && slotInfo.logPath !== activeTranscriptSnapshot().logPath) {
-              await openSession(sid, { useCache: false });
-              return;
-            }
-
-            transcriptSlotRuntime.setLiveCursor(typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null);
-            const evs = Array.isArray(data.events) ? data.events : [];
-            for (const ev of evs) appendEvent(ev);
-
-            const turnStart = Boolean(data.turn_start);
-            const turnEnd = Boolean(data.turn_end);
-            const turnAborted = Boolean(data.turn_aborted);
-            if (turnStart) turnOpen = true;
-            if (!turnOpen && nowBusy) turnOpen = true;
-            if ((turnEnd || turnAborted) && turnOpen) turnOpen = false;
-            if (turnOpen && !nowBusy) turnOpen = false;
-
-            setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
-            setContext(data.token);
-            setTyping(Boolean(turnOpen || nowBusy));
-            const s2 = sessionIndex.get(sid);
-            if (evs.length) {
-              appendTailSnapshotEvents(sid, evs, {
-                session: s2,
-                liveCursor: transcriptSlotRuntime.activeSnapshot().liveCursor,
-                busy: Boolean(turnOpen || nowBusy),
-                queueLen: data.queue_len,
-                token: data.token,
-                identityData: data,
-              });
-            }
-            if (s2) titleLabel.textContent = sessionTitleWithId(s2);
+            await applyLiveMessageData(sid, gen, data);
           } catch (e) {
             if (e && e.status === 401) {
               handleAppAuthLoss();
@@ -3611,7 +3686,7 @@
         }
 
         async function pollLoop() {
-          if (appDisposed || !selected) return;
+          if (appDisposed || !selected || messageSseOpen) return;
           if (pollLoopBusy) {
             pollKickPending = true;
             return;
@@ -3636,7 +3711,7 @@
         }
 
         function kickPoll(ms = 0) {
-          if (appDisposed) return;
+          if (appDisposed || messageSseOpen) return;
           const delay = normalizeMessagePollKickDelay(ms);
           if (pollTimer) {
             clearTimeout(pollTimer);

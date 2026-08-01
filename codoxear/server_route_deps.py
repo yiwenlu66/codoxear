@@ -60,6 +60,7 @@ class ServerRouteDepsFactory:
         server = self.server
         return MessageRouteDeps(
             require_auth=server._require_auth,
+            set_auth_cookie=server._set_auth_cookie,
             json_response=server._json_response,
             launch_attempt_transcript_for_session_id=server._launch_attempt_transcript_for_session_id,
             transcript_export_max_bytes=self.config.TRANSCRIPT_EXPORT_MAX_BYTES,

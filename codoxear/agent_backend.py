@@ -27,6 +27,68 @@ _BACKEND_BIN_ENV_VARS = ("CODEX_BIN", "PI_BIN", "CLAUDE_BIN")
 _SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 
 
+_PI_SUBAGENT_EVENT_PREFIX = "pi-subagent:"
+
+
+def _compact_pi_subagent_text(text: str, *, limit: int) -> str:
+    compact = " ".join(text.split())
+    if len(compact) <= limit:
+        return compact
+    return f"{compact[: limit - 1].rstrip()}…"
+
+
+def _pi_subagent_field(lines: list[str], label: str) -> str | None:
+    prefix = f"{label.lower()}:"
+    for line in lines:
+        if line.lower().startswith(prefix):
+            value = line[len(prefix) :].strip()
+            if value:
+                return value
+    return None
+
+
+def _pi_subagent_run_label(run_id: str | None) -> str:
+    return f" (run {run_id[:8]})" if run_id else ""
+
+
+def _pi_subagent_control_summary(content: str, details: Mapping[str, Any] | None) -> str | None:
+    lines = [line.strip() for line in content.splitlines() if line.strip()]
+    if not lines:
+        return None
+    event = details.get("event") if isinstance(details, Mapping) else None
+    event = event if isinstance(event, Mapping) else {}
+    headline = lines[0].split(":", 1)[0].strip() or "Subagent status"
+    agent = event.get("agent") if isinstance(event.get("agent"), str) else None
+    if not agent and ":" in lines[0]:
+        agent = lines[0].split(":", 1)[1].strip() or None
+    run_id = event.get("runId") if isinstance(event.get("runId"), str) else _pi_subagent_field(lines, "Run")
+    status = event.get("message") if isinstance(event.get("message"), str) else (_pi_subagent_field(lines, "Signal") or _pi_subagent_field(lines, "UPDATE"))
+    summary = f"{headline}{f' — {agent}' if agent else ''}{_pi_subagent_run_label(run_id)}"
+    if status:
+        summary = f"{summary}: {status}"
+    return _compact_pi_subagent_text(summary, limit=200)
+
+
+def _pi_subagent_intercom_summary(content: str) -> str | None:
+    lines = [line.strip() for line in content.splitlines() if line.strip()]
+    if not lines:
+        return None
+    run_id = _pi_subagent_field(lines, "Run")
+    status = _pi_subagent_field(lines, "Status")
+    children = _pi_subagent_field(lines, "Children")
+    summary_text = None
+    for index, line in enumerate(lines):
+        if line.rstrip(":").lower() == "summary":
+            summary_text = next((candidate for candidate in lines[index + 1 :] if candidate), None)
+            break
+    summary = f"Subagent result{f' — {status}' if status else ''}{_pi_subagent_run_label(run_id)}"
+    if children:
+        summary = f"{summary}; {children}"
+    if summary_text:
+        summary = f"{summary}: {summary_text}"
+    return _compact_pi_subagent_text(summary, limit=200)
+
+
 @dataclass(frozen=True)
 class AgentBackend:
     name: str
@@ -615,7 +677,22 @@ class PiBackend(AgentBackend):
         from .rollout_events import _text_message_id
 
         row = dict(obj)
-        if row.get("type") != "message":
+        row_type = row.get("type")
+        if row_type == "active_long_running":
+            return self._subagent_narration_event(row, "Background task in progress...")
+        if row_type == "custom_message":
+            content = row.get("content")
+            if not isinstance(content, str) or not content.strip():
+                return None
+            custom_type = row.get("customType")
+            if custom_type == "subagent_control_notice":
+                summary = _pi_subagent_control_summary(content, row.get("details") if isinstance(row.get("details"), Mapping) else None)
+                return self._subagent_narration_event(row, summary) if summary else None
+            if custom_type == "intercom_message":
+                summary = _pi_subagent_intercom_summary(content)
+                return self._subagent_narration_event(row, summary) if summary else None
+            return None
+        if row_type != "message":
             return None
         user_text = pi_user_text(row)
         if isinstance(user_text, str) and user_text:
@@ -656,6 +733,28 @@ class PiBackend(AgentBackend):
 
             return _build_no_response_event(row)
         return None
+
+    @staticmethod
+    def _subagent_narration_event(row: Mapping[str, Any], text: str) -> dict[str, Any]:
+        from .rollout_events import _event_ts
+        from .rollout_events import _text_message_id
+
+        ts = _event_ts(dict(row))
+        row_id = row.get("id")
+        message_id = (
+            f"{_PI_SUBAGENT_EVENT_PREFIX}{row_id}"
+            if isinstance(row_id, str) and row_id
+            else f"{_PI_SUBAGENT_EVENT_PREFIX}{_text_message_id(message_class='narration', text=text, ts=ts)}"
+        )
+        event: dict[str, Any] = {
+            "role": "assistant",
+            "text": text,
+            "message_class": "narration",
+            "message_id": message_id,
+        }
+        if ts is not None:
+            event["ts"] = ts
+        return event
 
     def build_launch_args(
         self,

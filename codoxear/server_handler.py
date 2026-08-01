@@ -17,6 +17,7 @@ from .file_routes import handle_file_write_post_route
 from .file_routes import handle_global_file_post_route
 from .git_routes import handle_git_get_route
 from .hook_routes import handle_hook_post_route
+from .message_routes import handle_messages_live_stream
 from .message_routes import handle_messages_get_route
 from .queue_routes import handle_queue_get_route
 from .queue_routes import handle_queue_post_route
@@ -209,6 +210,16 @@ class CodoxearHandler(http.server.BaseHTTPRequestHandler):
                 deps=self.deps.git_route_deps(),
                 match_session_route=self.deps.match_session_route,
             ):
+                return
+            session_id = self.deps.match_session_route(path, "live")
+            if session_id is not None:
+                handle_messages_live_stream(
+                    self,
+                    session_id=session_id,
+                    query=url.query,
+                    manager=manager,
+                    deps=self.deps.message_route_deps(),
+                )
                 return
             if handle_messages_get_route(
                 self,

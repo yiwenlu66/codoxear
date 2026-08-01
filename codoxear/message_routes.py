@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable, Mapping
+import errno
+import json
 import time
 import urllib.parse
 
@@ -25,6 +27,7 @@ LIVE_POLL_READ_MAX_BYTES = 2 * 1024 * 1024
 @dataclass(frozen=True)
 class MessageRouteDeps:
     require_auth: Callable[[Any], bool]
+    set_auth_cookie: Callable[[Any], None]
     json_response: JsonResponse
     launch_attempt_transcript_for_session_id: Callable[..., dict[str, Any] | None]
     transcript_export_max_bytes: int
@@ -270,6 +273,237 @@ def _merge_log_and_lifecycle_search_matches(
         matches.extend(lifecycle_matches[:remaining_slots])
     return match_count, matches, match_count_truncated
 
+
+def _sse_write_event(handler: Any, event_name: str, payload: Mapping[str, Any]) -> None:
+    """Write one unbuffered SSE event and surface disconnects to the caller."""
+    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    handler.wfile.write(f"event: {event_name}\ndata: {body}\n\n".encode("utf-8"))
+    handler.wfile.flush()
+
+
+def _live_payload_from_records(
+    *,
+    records: list[Any],
+    next_after: int,
+    log_path: Path,
+    after_byte: int,
+    session: Any,
+    session_id: str,
+    manager: Any,
+    deps: MessageRouteDeps,
+) -> dict[str, Any]:
+    objs = [record.obj for record in records]
+    initial_cc_pending = _rollout_log._cc_pending_tool_ids_before(log_path, after_byte) if records and after_byte > 0 else set()
+    events, meta_delta, flags, _diag = _rollout_log._extract_chat_events(
+        objs,
+        initial_cc_pending_tool_ids=initial_cc_pending,
+    )
+    token_update = _rollout_log._extract_token_observation(objs)
+    prior_user_byte, prior_turn_has_assistant = (
+        _rollout_log._prior_open_turn_context(log_path, after_byte) if after_byte > 0 else (None, False)
+    )
+    events = _rollout_log._extract_positioned_chat_events(
+        records,
+        initial_cc_pending_tool_ids=initial_cc_pending,
+        prior_user_byte=prior_user_byte,
+        prior_turn_has_assistant=prior_turn_has_assistant,
+    )
+    if objs:
+        manager.mark_log_delta(session_id, objs=objs, new_off=next_after)
+    s2 = manager.get_session(session_id)
+    if token_update.observed and s2 is not None:
+        s2.token = token_update.public_token
+    events = manager._attach_notification_texts(events)
+    events = _attach_history_cursors_impl(events, session=session, encode_cursor=deps.encode_message_cursor)
+    _state, busy_val, queue_val, token_val = deps.message_runtime_snapshot(
+        session_id,
+        session,
+        token_update=token_update,
+    )
+    return {
+        **_message_transcript_identity(session),
+        "live_cursor": deps.encode_message_cursor(kind="live", session=session, pos=next_after),
+        "events": events,
+        "meta_delta": meta_delta,
+        "turn_start": bool(flags.get("turn_start")),
+        "turn_end": bool(flags.get("turn_end")),
+        "turn_aborted": bool(flags.get("turn_aborted")),
+        "busy": bool(busy_val),
+        "queue_len": int(queue_val),
+        "token": token_val,
+    }
+
+
+def handle_messages_live_stream(handler: Any, *, session_id: str, query: str, manager: Any, deps: MessageRouteDeps) -> None:
+    """Stream transcript deltas for one session over a persistent SSE response."""
+    if not deps.require_auth(handler):
+        handler._unauthorized()
+        return
+    manager.refresh_session_meta(session_id)
+    session = manager.get_session(session_id)
+    if not session:
+        # Failed launch rows have a finite transcript. Reuse their live shape and
+        # let EventSource report a completed stream rather than spinning forever.
+        launch_payload = _launch_payload_for_missing_session(deps, session_id)
+        if launch_payload is None:
+            deps.json_response(handler, 404, {"error": "unknown session"})
+            return
+        payload = {
+            **_launch_payload_response_base(launch_payload, encode_cursor=deps.encode_message_cursor),
+            "live_cursor": None,
+            "events": _launch_payload_events_with_cursors(launch_payload, encode_cursor=deps.encode_message_cursor),
+            "meta_delta": {"thinking": 0, "tool": 0, "system": 0},
+            "turn_start": False,
+            "turn_end": True,
+            "turn_aborted": False,
+            "busy": False,
+            "queue_len": 0,
+            "token": None,
+        }
+        handler.send_response(200)
+        if getattr(handler, "_codoxear_refresh_auth_cookie", False):
+            deps.set_auth_cookie(handler)
+        handler.send_header("Content-Type", "text/event-stream")
+        handler.send_header("Cache-Control", "no-cache")
+        handler.send_header("Connection", "keep-alive")
+        handler.send_header("X-Accel-Buffering", "no")
+        handler.end_headers()
+        _sse_write_event(handler, "message", payload)
+        return
+
+    qs = urllib.parse.parse_qs(query)
+    cursor_q = qs.get("cursor")
+    log_path = session.log_path
+    offset: int | None = None
+    if cursor_q and cursor_q[0].strip():
+        if log_path is None or not log_path.exists():
+            deps.json_response(handler, 409, {"error": "transcript_pending"})
+            return
+        try:
+            offset = deps.decode_message_cursor(cursor_q[0], kind="live", session=session)
+        except MessageCursorError as exc:
+            deps.json_response(handler, 409, {"error": str(exc)})
+            return
+
+    handler.send_response(200)
+    if getattr(handler, "_codoxear_refresh_auth_cookie", False):
+        deps.set_auth_cookie(handler)
+    handler.send_header("Content-Type", "text/event-stream")
+    handler.send_header("Cache-Control", "no-cache")
+    handler.send_header("Connection", "keep-alive")
+    handler.send_header("X-Accel-Buffering", "no")
+    handler.end_headers()
+
+    last_status: tuple[bool, int, Any] | None = None
+    watched_log_path = log_path
+    next_meta_refresh = time.monotonic() + 1.0
+    last_emit = time.monotonic()
+    heartbeat_interval = 25.0
+    try:
+        while True:
+            now = time.monotonic()
+            if now >= next_meta_refresh:
+                manager.refresh_session_meta(session_id)
+                next_meta_refresh = now + 1.0
+            session = manager.get_session(session_id) or session
+            current_path = session.log_path
+            if current_path != watched_log_path:
+                watched_log_path = current_path
+                offset = None
+            records: list[Any] = []
+            payload: dict[str, Any] | None = None
+            next_after = offset
+            if current_path is not None and current_path.exists():
+                try:
+                    size = int(current_path.stat().st_size)
+                except OSError:
+                    size = 0
+                if offset is None or (next_after is not None and size < next_after):
+                    # No cursor means this is the first connection: send the
+                    # same bounded tail a normal session open receives.
+                    if offset is None:
+                        events, before_byte, next_after, has_older = _rollout_log._read_chat_tail_page(current_path, limit=80)
+                        events = manager._attach_notification_texts(events)
+                        events = _attach_history_cursors_impl(events, session=session, encode_cursor=deps.encode_message_cursor)
+                        _state, busy_val, queue_val, token_val = deps.message_runtime_snapshot(session_id, session)
+                        payload = {
+                            "transcript_state": "bound",
+                            "thread_id": session.thread_id,
+                            "log_path": str(current_path),
+                            "live_cursor": deps.encode_message_cursor(kind="live", session=session, pos=next_after),
+                            "events": events,
+                            "has_older": bool(has_older),
+                            "history_cursor": deps.encode_message_cursor(kind="history", session=session, pos=before_byte) if has_older and before_byte > 0 else None,
+                            "meta_delta": {"thinking": 0, "tool": 0, "system": 0},
+                            "turn_start": False,
+                            "turn_end": False,
+                            "turn_aborted": False,
+                            "busy": bool(busy_val),
+                            "queue_len": int(queue_val),
+                            "token": token_val,
+                        }
+                        offset = next_after
+                    else:
+                        offset = 0
+                        next_after = 0
+                elif next_after is not None and size > next_after:
+                    records, next_after = _rollout_log._read_jsonl_records_from_offset(
+                        current_path,
+                        next_after,
+                        max_bytes=LIVE_POLL_READ_MAX_BYTES,
+                    )
+                    if records:
+                        payload = _live_payload_from_records(
+                            records=records,
+                            next_after=next_after,
+                            log_path=current_path,
+                            after_byte=offset,
+                            session=session,
+                            session_id=session_id,
+                            manager=manager,
+                            deps=deps,
+                        )
+                        offset = next_after
+                    else:
+                        payload = None
+                else:
+                    payload = None
+            else:
+                offset = None if current_path is None else offset
+                payload = None
+
+            if payload is not None:
+                status = (bool(payload.get("busy")), int(payload.get("queue_len", 0)), payload.get("token"))
+                last_status = status
+                _sse_write_event(handler, "message", payload)
+                last_emit = time.monotonic()
+            else:
+                if last_status is None:
+                    _state, busy_val, queue_val, token_val = deps.message_runtime_snapshot(session_id, session)
+                    last_status = (bool(busy_val), int(queue_val), token_val)
+                    _sse_write_event(handler, "message", {
+                        **_message_transcript_identity(session),
+                        "events": [],
+                        "live_cursor": deps.encode_message_cursor(kind="live", session=session, pos=offset) if offset is not None and session.log_path else None,
+                        "busy": last_status[0],
+                        "queue_len": last_status[1],
+                        "token": last_status[2],
+                    })
+                    last_emit = time.monotonic()
+                elif last_emit and time.monotonic() - last_emit >= heartbeat_interval:
+                    _sse_write_event(handler, "heartbeat", {})
+                    last_emit = time.monotonic()
+            time.sleep(0.15)
+    except Exception as exc:
+        if not _is_disconnect_for_handler(handler, exc):
+            raise
+
+
+def _is_disconnect_for_handler(handler: Any, exc: BaseException) -> bool:
+    del handler
+    if isinstance(exc, (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)):
+        return True
+    return isinstance(exc, OSError) and getattr(exc, "errno", None) in {errno.EPIPE, errno.ECONNRESET, errno.ECONNABORTED}
 
 def handle_messages_get_route(
     handler: Any,

@@ -103,7 +103,7 @@ def _single_chat_event(obj: dict[str, Any], *, cc_pending_tool_ids: set[str] | N
     typ = obj.get("type")
     if typ in ("user", "assistant", "system"):
         return get_agent_backend("cc").chat_event_from_log_row(obj, cc_pending_tool_ids=cc_pending_tool_ids)
-    if typ == "message":
+    if typ in ("message", "custom_message", "active_long_running"):
         return get_agent_backend("pi").chat_event_from_log_row(obj)
     if typ in ("event_msg", "response_item"):
         return get_agent_backend("codex").chat_event_from_log_row(obj)
@@ -134,6 +134,7 @@ def _chat_assistant_dedupe_key(event: dict[str, Any]) -> tuple[str, str] | None:
 def _dedupe_assistant_chat_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     last_assistant_key: tuple[str, str] | None = None
+    seen_pi_subagent_ids: set[str] = set()
     for event in events:
         role = event.get("role")
         if role == "user":
@@ -141,6 +142,11 @@ def _dedupe_assistant_chat_events(events: list[dict[str, Any]]) -> list[dict[str
             out.append(event)
             continue
         if role == "assistant":
+            message_id = event.get("message_id")
+            if isinstance(message_id, str) and message_id.startswith("pi-subagent:"):
+                if message_id in seen_pi_subagent_ids:
+                    continue
+                seen_pi_subagent_ids.add(message_id)
             key = _chat_assistant_dedupe_key(event)
             if key is not None and key == last_assistant_key:
                 continue

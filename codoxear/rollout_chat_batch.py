@@ -31,11 +31,19 @@ def _extract_chat_events(
     tool_names: set[str] = set()
     last_tool: str | None = None
     cc_pending_tool_ids: set[str] = set(initial_cc_pending_tool_ids or set())
+    seen_pi_subagent_ids: set[str] = set()
     for obj in objs:
         typ = obj.get("type")
         event = _single_chat_event(obj, cc_pending_tool_ids=cc_pending_tool_ids)
         if event is not None:
-            events.append(event)
+            message_id = event.get("message_id")
+            if isinstance(message_id, str) and message_id.startswith("pi-subagent:"):
+                if message_id in seen_pi_subagent_ids:
+                    event = None
+                else:
+                    seen_pi_subagent_ids.add(message_id)
+            if event is not None:
+                events.append(event)
 
         if typ == "user":
             user_text = cc_user_text(obj)

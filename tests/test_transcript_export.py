@@ -487,6 +487,7 @@ def _deps(**overrides):
 
     deps = MessageRouteDeps(
         require_auth=lambda _handler: True,
+        set_auth_cookie=lambda _handler: None,
         json_response=json_response,
         launch_attempt_transcript_for_session_id=lambda _sid: None,
         transcript_export_max_bytes=50 * 1024 * 1024,
