@@ -3856,8 +3856,7 @@
           fileBtn.title = fileViewerLabel;
           fileBtn.setAttribute("aria-label", fileViewerLabel);
           chatSearchBtn.disabled = !selected;
-          if (!isMobile()) chatNavRail.style.display = selected ? "flex" : "none";
-          else chatNavRail.style.display = "none";
+          chatNavRail.style.display = selected ? "flex" : "none";
           chatEmptyState.style.display = selected ? "none" : "flex";
           if (!selected && chatSearchController.isOpen()) closeChatSearch();
           updateChatNavButtons();

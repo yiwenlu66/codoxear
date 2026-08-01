@@ -3133,6 +3133,35 @@ select {
       }
 
       @media (max-width: 700px), (pointer: coarse) {
+        /* The rail is a compact chat-header utility row on touch screens,
+           not a floating action group. */
+        .chatNavRail {
+          align-self: flex-end;
+          gap: 2px;
+          margin: 2px 10px 0;
+          padding: 2px;
+          border: none;
+          border-radius: 0;
+          background: transparent;
+          box-shadow: none;
+        }
+        .chatNavRail .icon-btn {
+          width: 30px;
+          height: 30px;
+          min-width: 30px;
+          min-height: 30px;
+          padding: 0;
+          border: none;
+          border-radius: 6px;
+          background: transparent;
+          box-shadow: none;
+        }
+        .chatMessageNavControls {
+          gap: 2px;
+          margin-left: 0;
+          padding-left: 0;
+          border-left: none;
+        }
         input[type="text"],
         input[type="password"],
         input[type="datetime-local"],
