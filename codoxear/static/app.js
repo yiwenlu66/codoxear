@@ -786,6 +786,7 @@
           form,
           textarea,
           msgPh,
+          modelPicker,
           imgInput,
           attachBtn,
           queueBtn,
@@ -6639,6 +6640,7 @@
           form,
           textarea,
           msgPh,
+          modelPicker,
           sendBtn,
           sendChoice,
           sendChoiceBackdrop,
@@ -6647,6 +6649,7 @@
           sendChoiceCancelBtn: $("#sendChoiceCancel"),
           getSelected: () => selected,
           getSessionInfo: (sessionId) => sessionIndex.get(sessionId) || null,
+          getNewSessionDefaults: () => newSessionDefaults,
           patchSessionInfo: (sessionId, patch) => {
             const current = sessionIndex.get(sessionId);
             if (!current) return;

@@ -102,12 +102,14 @@
     const stagedTray = el("div", { class: "stagedAttachments", id: "stagedAttachments", "aria-live": "polite" });
     const textarea = el("textarea", { id: "msg", placeholder: "", "aria-label": "Message" });
     const msgPh = el("div", { class: "ph", id: "msgPh", text: "Message" });
+    const modelPicker = el("div", { class: "modelPicker", id: "modelPicker", role: "listbox", "aria-label": "Available Pi models" });
+    modelPicker.style.display = "none";
     const imgInput = el("input", { id: "imgInput", type: "file", accept: "image/*,video/*,*/*", multiple: "multiple", style: "display:none" });
     const attachBtn = el("button", { class: "icon-btn", id: "attachBtn", type: "button", title: "Attach file", "aria-label": "Attach file", html: iconSvg("paperclip") });
     const queueBtn = el("button", { class: "icon-btn", id: "queueBtn", type: "button", title: "Queued messages", "aria-label": "Queued messages", html: iconSvg("queue") });
     const composerStopBtn = el("button", { class: "icon-btn composerStopBtn", id: "composerStopBtn", type: "button", title: "Stop current response", "aria-label": "Stop current response", html: iconSvg("stop") });
     const sendBtn = el("button", { class: "icon-btn primary", id: "sendBtn", type: "submit", title: "Send", "aria-label": "Send", html: iconSvg("send") });
-    const form = el("form", {}, [attachBtn, el("div", { class: "inputWrap" }, [stagedTray, textarea, msgPh]), imgInput, queueBtn, composerStopBtn, sendBtn]);
+    const form = el("form", {}, [attachBtn, el("div", { class: "inputWrap" }, [stagedTray, textarea, msgPh, modelPicker]), imgInput, queueBtn, composerStopBtn, sendBtn]);
     composer.appendChild(form);
     sidebar.appendChild(el("header", {}, [el("div", { class: "title", html: `<img class="sidebarLogo" src="${resolveAppUrl(versionedShellAssetPath("/static/codoxear-icon.png"))}" alt="" />Codoxear` }), el("div", { class: "actions" }, [el("button", { id: "newBtn", class: "icon-btn", title: "New session", "aria-label": "New session", html: iconSvg("plus") }), notificationBtn, announceBtn])]));
     sidebar.append(sessionsWrap, sidebarFooter);
@@ -115,7 +117,7 @@
     app.append(sidebar, main, backdrop);
     root.append(app, unattendedMenu, liveAudio);
 
-    const elements = Object.freeze({ root, app, backdrop, sidebar, sessionsWrap, sidebarEmptyHint, main, chatWrap, chatEmptyState, chat, chatInner, olderWrap, olderBtn, olderRetryBtn, olderError, olderErrorText, bottomSentinel, jumpBtn, chatTimeChip, chatSearchInput, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn, chatSearchStatus, chatSearchAllHintEl, chatSearchBar, chatNavRail, titleLabel, statusChip, ctxChip, interruptBtn, toast, toggleSidebarBtn, unattendedBtn, announceBtn, notificationBtn, diagBtn, prevUserBtn, nextUserBtn, chatSearchBtn, fileBtn, unattendedMenu, liveAudio, composer, form, textarea, msgPh, imgInput, attachBtn, queueBtn, composerStopBtn, sendBtn, stagedTray });
+    const elements = Object.freeze({ root, app, backdrop, sidebar, sessionsWrap, sidebarEmptyHint, main, chatWrap, chatEmptyState, chat, chatInner, olderWrap, olderBtn, olderRetryBtn, olderError, olderErrorText, bottomSentinel, jumpBtn, chatTimeChip, chatSearchInput, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn, chatSearchStatus, chatSearchAllHintEl, chatSearchBar, chatNavRail, titleLabel, statusChip, ctxChip, interruptBtn, toast, toggleSidebarBtn, unattendedBtn, announceBtn, notificationBtn, diagBtn, prevUserBtn, nextUserBtn, chatSearchBtn, fileBtn, unattendedMenu, liveAudio, composer, form, textarea, msgPh, modelPicker, imgInput, attachBtn, queueBtn, composerStopBtn, sendBtn, stagedTray });
     return Object.freeze({ elements, cleanup() { root.innerHTML = ""; } });
   }
 

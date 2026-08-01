@@ -1528,6 +1528,36 @@
         padding: 6px 10px;
         white-space: normal;
       }
+      .composer .modelPicker {
+        position: absolute;
+        z-index: 20;
+        left: 0;
+        right: 0;
+        top: calc(100% + 6px);
+        max-height: 240px;
+        overflow-y: auto;
+        padding: 4px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+      .composer .modelPickerOption {
+        display: block;
+        width: 100%;
+        border: 0;
+        border-radius: 5px;
+        padding: 7px 9px;
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+        font-size: 13px;
+        text-align: left;
+        cursor: pointer;
+      }
+      .composer .modelPickerOption:hover,
+      .composer .modelPickerOption.active {
+        background: rgba(15, 23, 42, 0.08);
+      }
 textarea,
 input[type="password"],
 input[type="text"],

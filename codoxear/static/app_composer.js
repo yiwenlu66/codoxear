@@ -70,6 +70,8 @@
     const storageGetItem = requireFunction(options.storageGetItem, "storageGetItem");
     const storageSetItem = requireFunction(options.storageSetItem, "storageSetItem");
     const storageRemoveItem = requireFunction(options.storageRemoveItem, "storageRemoveItem");
+    const getNewSessionDefaults = typeof options.getNewSessionDefaults === "function" ? options.getNewSessionDefaults : () => null;
+    const modelPicker = options.modelPicker && typeof options.modelPicker === "object" ? options.modelPicker : null;
     const onAutoGrow = typeof options.onAutoGrow === "function" ? options.onAutoGrow : () => {};
     const requestFrame = typeof options.requestFrame === "function" ? options.requestFrame : (callback) => requestAnimationFrame(callback);
     const getComputedStyleFn = typeof options.getComputedStyle === "function" ? options.getComputedStyle : (node) => getComputedStyle(node);
@@ -87,6 +89,90 @@
     const sessionDraftKey = (sessionId) => `codexweb.draft.${sessionId}`;
     let sendChoicePending = null;
     let sendChoiceReturnFocusEl = null;
+    let modelPickerOpen = false;
+    let modelPickerOptions = [];
+    let modelPickerFocus = -1;
+
+    function piModelIds() {
+      const defaults = getNewSessionDefaults();
+      const pi = defaults && defaults.backends && defaults.backends.pi && typeof defaults.backends.pi === "object" ? defaults.backends.pi : {};
+      const providerModels = pi.provider_models && typeof pi.provider_models === "object" ? pi.provider_models : null;
+      const out = [];
+      const seen = new Set();
+      if (providerModels) {
+        for (const [provider, models] of Object.entries(providerModels)) {
+          if (!Array.isArray(models)) continue;
+          for (const model of models) {
+            const id = `${String(provider).trim()}/${String(model || "").trim()}`;
+            if (!id.includes("/") || id.endsWith("/") || seen.has(id)) continue;
+            seen.add(id);
+            out.push(id);
+          }
+        }
+      }
+      if (!out.length && Array.isArray(pi.models)) {
+        for (const model of pi.models) {
+          const id = String(model || "").trim();
+          if (id && !seen.has(id)) { seen.add(id); out.push(id); }
+        }
+      }
+      return out;
+    }
+
+    function modelPickerMatches() {
+      const match = String(textarea.value || "").match(/^\/model(?:\s+(.+?)\s*)?$/i);
+      if (!match || !getSelected()) return null;
+      const session = getSessionInfo(getSelected());
+      if (!session || String(session.agent_backend || "").trim().toLowerCase() !== "pi") return null;
+      const query = String(match[1] || "").trim().toLowerCase();
+      return piModelIds().filter((id) => !query || id.toLowerCase().startsWith(query) || id.toLowerCase().includes(query));
+    }
+
+    function hideModelPicker() {
+      modelPickerOpen = false;
+      modelPickerFocus = -1;
+      if (!modelPicker) return;
+      modelPicker.style.display = "none";
+      modelPicker.innerHTML = "";
+      modelPicker.removeAttribute("aria-activedescendant");
+    }
+
+    function selectModel(modelId) {
+      const id = String(modelId || "").trim();
+      if (!id) return;
+      hideModelPicker();
+      clearComposer();
+      void sendText(`/model ${id}`);
+    }
+
+    function renderModelPicker() {
+      if (!modelPicker) return;
+      modelPicker.innerHTML = "";
+      modelPicker.setAttribute("role", "listbox");
+      modelPicker.setAttribute("aria-label", "Available Pi models");
+      modelPickerOptions.forEach((id, index) => {
+        const option = document.createElement("button");
+        option.type = "button";
+        option.className = "modelPickerOption" + (index === modelPickerFocus ? " active" : "");
+        option.setAttribute("role", "option");
+        option.id = `model-picker-option-${index}`;
+        option.setAttribute("aria-selected", index === modelPickerFocus ? "true" : "false");
+        option.textContent = id;
+        option.onclick = () => selectModel(id);
+        modelPicker.appendChild(option);
+      });
+      modelPicker.style.display = modelPickerOptions.length ? "block" : "none";
+      modelPickerOpen = modelPickerOptions.length > 0;
+      if (modelPickerFocus >= 0) modelPicker.setAttribute("aria-activedescendant", `model-picker-option-${modelPickerFocus}`);
+    }
+
+    function syncModelPicker() {
+      const matches = modelPickerMatches();
+      if (!matches || !matches.length) { hideModelPicker(); return; }
+      modelPickerOptions = matches;
+      modelPickerFocus = Math.min(Math.max(modelPickerFocus, 0), matches.length - 1);
+      renderModelPicker();
+    }
 
     function selectedSessionLaunchFailed() {
       const sessionId = getSelected();
@@ -338,8 +424,32 @@
       }
     }
 
-    listen(textarea, "input", () => { autoGrow(); saveSessionDraft(getSelected()); });
+    listen(textarea, "input", () => {
+      autoGrow();
+      saveSessionDraft(getSelected());
+      modelPickerFocus = -1;
+      syncModelPicker();
+    });
     listen(textarea, "keydown", (event) => {
+      if (modelPickerOpen) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          hideModelPicker();
+          return;
+        }
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          event.preventDefault();
+          const delta = event.key === "ArrowDown" ? 1 : -1;
+          modelPickerFocus = (modelPickerFocus + delta + modelPickerOptions.length) % modelPickerOptions.length;
+          renderModelPicker();
+          return;
+        }
+        if (event.key === "Enter" && !event.isComposing) {
+          event.preventDefault();
+          selectModel(modelPickerOptions[modelPickerFocus >= 0 ? modelPickerFocus : 0]);
+          return;
+        }
+      }
       if (event.key !== "Enter" || event.isComposing || !(event.ctrlKey || event.metaKey)) return;
       event.preventDefault();
       form.requestSubmit();
@@ -404,6 +514,7 @@
         sendChoiceLaterBtn.onclick = null;
         sendChoiceCancelBtn.onclick = null;
         sendChoiceBackdrop.onclick = null;
+        if (modelPicker) hideModelPicker();
         while (cleanups.length) cleanups.pop()();
       },
     });
