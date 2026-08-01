@@ -198,6 +198,9 @@
 	        will-change: transform;
 	        touch-action: pan-y;
 	      }
+      .session.active .sessionContent {
+        background: #eef4ff;
+      }
       .sessionActions {
         position: absolute;
         top: 0;
@@ -325,14 +328,16 @@
         }
       }
       .session.active {
-        border: 2px solid rgba(37, 99, 235, 0.6);
-        background: rgba(29, 78, 216, 0.1);
+        border-color: rgba(37, 99, 235, 0.4);
+        background: #eef4ff;
+        /* Thickened edge via outline: unlike box-shadow it is never clipped by
+           child overflow:hidden (.sessionSwipe), and unlike border-width it
+           doesn't cause layout shift. Works for touch swipe and desktop hover
+           action modes. Survives monochrome as a solid edge. */
+        outline: 2px solid rgba(37, 99, 235, 0.4);
+        outline-offset: -2px;
       }
       .session.active .sessionContent {
-        background: #eef4ff;
-      }
-	      .sessionMetaLine {
-	        display: flex;
 	        align-items: center;
 	        gap: 6px;
 	        min-width: 0;
