@@ -341,8 +341,10 @@
             el("img", { class: "sessionBackendStatusIcon", src: agentBackendLogoPath(backend), alt: `${agentBackendDisplayName(backend)} logo`, width: "12", height: "12" }),
             el("span", { class: `ownerBadge ownerIconBadge ${session.transport === "tmux" ? "owner-tmux" : session.owned ? "owner-web" : "owner-terminal"}`, html: iconSvg(sessionLaunchIcon(session)), title: sessionLaunchLabel(session) }),
           ];
-          if (effortMarker) metaItems.push(el("span", { class: `effortMark effort-${effortText}`, text: effortMarker, title: `reasoning effort ${effortText}` }));
-          metaItems.push(el("span", { class: "metaText", text: [stateText, modelText, baseName(session.cwd), branchText].filter(Boolean).join(" | ") }));
+          // Combine effort marker + model into one pipe-separated unit so they
+          // read as "X glm-5.2" instead of effort sitting alone at the far left.
+          const modelUnit = effortMarker ? `${effortMarker} ${modelText}` : modelText;
+          metaItems.push(el("span", { class: "metaText", text: [stateText, modelUnit, baseName(session.cwd), branchText].filter(Boolean).join(" | ") }));
           const meta = el("div", { class: "muted subLine sessionMetaLine" }, metaItems);
           if (launchFailed) meta.title = redactedLaunchErrorText(session.launch_error) || "Session launch failed";
           if (launchPending) meta.title = "Session is still starting";

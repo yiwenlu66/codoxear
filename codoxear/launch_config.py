@@ -11,7 +11,7 @@ from .agent_backend import normalize_agent_backend
 from .cc_log import CC_SUPPORTED_REASONING_EFFORTS
 
 SUPPORTED_REASONING_EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max")
-SUPPORTED_PI_REASONING_EFFORTS = ("off", "minimal", "low", "medium", "high", "xhigh")
+SUPPORTED_PI_REASONING_EFFORTS = ("off", "minimal", "low", "medium", "high", "xhigh", "max")
 SUPPORTED_CC_REASONING_EFFORTS = CC_SUPPORTED_REASONING_EFFORTS
 
 
