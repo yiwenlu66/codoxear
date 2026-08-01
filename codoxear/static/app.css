@@ -3131,3 +3131,17 @@ select {
         border-radius: 999px;
         padding: 9px 10px;
       }
+
+      @media (max-width: 700px), (pointer: coarse) {
+        input[type="text"],
+        input[type="password"],
+        input[type="datetime-local"],
+        input[type="search"],
+        select,
+        textarea {
+          font-size: 16px !important;
+        }
+        #jumpBtn {
+          padding: 7px 8px;
+        }
+      }
