@@ -1,7 +1,7 @@
       :root {
         --bg: #e9eef5;
         --panel: #ffffff;
-        --border: rgba(15, 23, 42, 0.3);
+        --border: rgba(15, 23, 42, 0.38);
         --text: #111827;
         --muted: rgba(17, 24, 39, 0.6);
         --accent: #1d4ed8;
@@ -955,14 +955,14 @@
         box-sizing: border-box;
         margin: 8px 12px 0 12px;
         padding: 6px;
-        border: 1px solid rgba(15, 23, 42, 0.3);
+        border: 1px solid rgba(15, 23, 42, 0.38);
         border-radius: 14px;
         background: var(--panel);
       }
       .chatSearchInput {
         flex: 1 1 160px;
         min-width: 0;
-        border: 1px solid rgba(15, 23, 42, 0.3);
+        border: 1px solid rgba(15, 23, 42, 0.38);
         border-radius: 10px;
         padding: 8px 10px;
         font-size: 14px;
@@ -1033,7 +1033,7 @@
         min-width: 0;
         padding: 10px 12px 18px 12px;
         border-radius: 18px;
-        border: 1px solid rgba(15, 23, 42, 0.3);
+        border: 1px solid rgba(15, 23, 42, 0.38);
         position: relative;
         white-space: normal;
         line-height: 1.35;
@@ -1285,7 +1285,7 @@
         min-width: 30px;
         min-height: 30px;
         padding: 0;
-        border: 1px solid rgba(15, 23, 42, 0.3);
+        border: 1px solid rgba(15, 23, 42, 0.38);
         border-radius: 999px;
         background: #ffffff;
         color: rgba(17, 24, 39, 0.68);
@@ -2096,7 +2096,7 @@ select {
         display: flex;
         align-items: center;
         justify-content: center;
-        border: 1px solid rgba(15, 23, 42, 0.3);
+        border: 1px solid rgba(15, 23, 42, 0.38);
         border-radius: 8px;
         background: #ffffff;
         color: var(--muted);
