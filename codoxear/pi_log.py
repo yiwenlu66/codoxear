@@ -310,7 +310,16 @@ def pi_token_update(obj: dict[str, Any], *, models_path: Path | None = None, set
     return pi_context_token_update(context_window=context_window, tokens_in_context=total_tokens, as_of=as_of, settings_path=settings_path)
 
 
-def read_pi_run_settings(path: Path, *, max_scan_bytes: int = 8 * 1024 * 1024) -> tuple[str | None, str | None, str | None]:
+def read_pi_run_settings(path: Path, *, max_scan_bytes: int | None = None) -> tuple[str | None, str | None, str | None]:
+    """Replay Pi's authoritative model/thinking changes.
+
+    The session header is only the launch-time baseline.  ``model_change`` and
+    ``thinking_level_change`` records can remain authoritative for the rest of
+    a long session, so a tail-bounded default would eventually forget them and
+    let stale sidecar/header values overwrite the UI.  Production callers
+    therefore replay the full log.  A bound remains available only to explicit
+    diagnostic callers that accept an incomplete historical projection.
+    """
     provider: str | None = None
     model: str | None = None
     thinking_level: str | None = None
@@ -334,7 +343,7 @@ def read_pi_run_settings(path: Path, *, max_scan_bytes: int = 8 * 1024 * 1024) -
     except Exception:
         return provider, model, thinking_level
 
-    start = max(0, size - int(max_scan_bytes))
+    start = 0 if max_scan_bytes is None else max(0, size - max(0, int(max_scan_bytes)))
     try:
         with path.open("rb") as f:
             if start > 0:
