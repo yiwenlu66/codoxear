@@ -60,6 +60,7 @@ def test_server_config_applies_dotenv_before_deriving_paths_without_overriding_e
     assert config.UNATTENDED_SWEEP_SECONDS == 7.5
     assert config.QUEUE_SWEEP_MAX_DRAINS == 6
     assert config.QUEUE_SWEEP_MAX_ATTEMPTS == 8
+    assert config.SIDEBAR_PRIORITY_BUCKET_SECONDS == 30.0
     assert config.ATTACH_UPLOAD_MAX_BYTES == 6
     assert config.ATTACH_UPLOAD_BODY_MAX_BYTES == 65544
     assert config.UNATTENDED_PATH == config.APP_DIR / "unattended.json"

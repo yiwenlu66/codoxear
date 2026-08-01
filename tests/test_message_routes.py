@@ -164,6 +164,7 @@ def test_messages_tail_returns_signed_live_and_history_cursors() -> None:
     assert body["busy"] is False
     assert body["queue_len"] == 0
     assert body["token"] is None
+    assert "diag" not in body
     assert metrics and metrics[0][0] == "api_messages_init_ms"
 
 
@@ -226,6 +227,7 @@ def test_messages_live_streams_new_events_after_valid_cursor() -> None:
     assert status == 200
     assert [event["role"] for event in body["events"]] == ["user", "assistant"]
     assert body["events"][1]["text"] == "world"
+    assert "diag" not in body
     next_cursor = body["live_cursor"]
     assert isinstance(next_cursor, str)
     assert decode_message_cursor(next_cursor, kind="live", session=session, secret=_SECRET) > 0

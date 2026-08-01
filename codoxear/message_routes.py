@@ -663,9 +663,7 @@ def handle_messages_live(handler: Any, *, session_id: str, query: str, manager: 
         handler._unauthorized()
         return
     t0_total = time.perf_counter()
-    t0_meta = time.perf_counter()
     manager.refresh_session_meta(session_id)
-    dt_meta_ms = (time.perf_counter() - t0_meta) * 1000.0
     s = manager.get_session(session_id)
     if not s:
         launch_payload = _launch_payload_for_missing_session(deps, session_id)
@@ -682,7 +680,6 @@ def handle_messages_live(handler: Any, *, session_id: str, query: str, manager: 
                     "turn_start": False,
                     "turn_end": True,
                     "turn_aborted": False,
-                    "diag": {"post_log_recovery": True, "meta_refresh_ms": round(dt_meta_ms, 3)},
                     "busy": False,
                     "queue_len": 0,
                     "token": None,
@@ -711,7 +708,6 @@ def handle_messages_live(handler: Any, *, session_id: str, query: str, manager: 
                 "turn_start": False,
                 "turn_end": False,
                 "turn_aborted": False,
-                "diag": {"pending_log": True, "meta_refresh_ms": round(dt_meta_ms, 3)},
                 "busy": bool(busy_val),
                 "queue_len": int(queue_val),
                 "token": token_val,
@@ -727,7 +723,7 @@ def handle_messages_live(handler: Any, *, session_id: str, query: str, manager: 
     records, next_after = _rollout_log._read_jsonl_records_from_offset(s.log_path, after_byte, max_bytes=LIVE_POLL_READ_MAX_BYTES)
     objs = [record.obj for record in records]
     initial_cc_pending = _rollout_log._cc_pending_tool_ids_before(s.log_path, after_byte) if records and after_byte > 0 else set()
-    events, meta_delta, flags, diag = _rollout_log._extract_chat_events(objs, initial_cc_pending_tool_ids=initial_cc_pending)
+    events, meta_delta, flags, _diag = _rollout_log._extract_chat_events(objs, initial_cc_pending_tool_ids=initial_cc_pending)
     token_update = _rollout_log._extract_token_observation(objs)
     prior_user_byte, prior_turn_has_assistant = (
         _rollout_log._prior_open_turn_context(s.log_path, after_byte) if after_byte > 0 else (None, False)
@@ -746,10 +742,7 @@ def handle_messages_live(handler: Any, *, session_id: str, query: str, manager: 
     events = manager._attach_notification_texts(events)
     events = _attach_history_cursors_impl(events, session=s, encode_cursor=deps.encode_message_cursor)
     live_cursor = deps.encode_message_cursor(kind="live", session=s, pos=next_after)
-    t0_state = time.perf_counter()
     _state, busy_val, queue_val, token_val = deps.message_runtime_snapshot(session_id, s, token_update=token_update)
-    diag["state_ms"] = round((time.perf_counter() - t0_state) * 1000.0, 3)
-    diag["meta_refresh_ms"] = round(dt_meta_ms, 3)
     transcript = _message_transcript_identity(s)
     deps.json_response(
         handler,
@@ -762,7 +755,6 @@ def handle_messages_live(handler: Any, *, session_id: str, query: str, manager: 
             "turn_start": bool(flags.get("turn_start")),
             "turn_end": bool(flags.get("turn_end")),
             "turn_aborted": bool(flags.get("turn_aborted")),
-            "diag": diag,
             "busy": bool(busy_val),
             "queue_len": int(queue_val),
             "token": token_val,
