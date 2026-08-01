@@ -225,6 +225,53 @@
         justify-content: flex-end;
         background: rgba(15, 23, 42, 0.04);
       }
+      @media (hover: hover) and (pointer: fine) and (min-width: 881px) {
+        .sessionSwipe {
+          overflow: visible;
+        }
+        .session.desktop .sessionContent {
+          transition:
+            transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+            padding-right 140ms ease;
+        }
+        .session.desktop .sessionActions {
+          top: 50%;
+          bottom: auto;
+          z-index: 3;
+          padding: 0;
+          background: transparent;
+          transform: translateY(-50%);
+          opacity: 0;
+          visibility: hidden;
+          pointer-events: none;
+          transition:
+            opacity 140ms ease,
+            visibility 140ms step-end;
+        }
+        .session.desktop .sessionActions.right {
+          right: 8px;
+        }
+        .session.desktop .sessionActions.left {
+          left: auto;
+          right: 92px;
+        }
+        .session.desktop .sessionActions.left:has(+ .sessionActions.right:empty) {
+          right: 8px;
+        }
+        .session.desktop:hover .sessionContent,
+        .session.desktop:focus-within .sessionContent {
+          padding-right: 132px;
+        }
+        .session.desktop:hover .sessionActions,
+        .session.desktop:focus-within .sessionActions {
+          opacity: 1;
+          visibility: visible;
+          pointer-events: auto;
+          transition:
+            opacity 140ms ease,
+            visibility 0s linear;
+        }
+      }
       .ownDot {
         width: 8px;
         height: 8px;
@@ -285,21 +332,14 @@
         background: #eef4ff;
         /* Thickened edge via outline: unlike box-shadow it is never clipped by
            child overflow:hidden (.sessionSwipe), and unlike border-width it
-           doesn't cause layout shift. Works for both the swipe (touch) and
-           desktop DOM layouts. Survives monochrome as a solid edge. */
+           doesn't cause layout shift. Works for touch swipe and desktop hover
+           action modes. Survives monochrome as a solid edge. */
         outline: 2px solid rgba(37, 99, 235, 0.4);
         outline-offset: -2px;
       }
       .session.active .sessionContent {
         background: #eef4ff;
       }
-	      .sessionMain {
-	        flex: 1 1 auto;
-	        min-width: 0;
-	        display: flex;
-	        flex-direction: column;
-	        gap: 4px;
-	      }
 	      .sessionMetaLine {
 	        display: flex;
 	        align-items: center;
@@ -379,28 +419,13 @@
 	        text-overflow: ellipsis;
 	        white-space: nowrap;
 	      }
-	      .sessionTitleWithBadges {
-	        display: flex;
-	        align-items: flex-start;
-	        gap: 10px;
-	        min-width: 0;
-	      }
-	      .sessionTitleWithBadges .sessionTitleRow {
-	        flex: 1 1 auto;
-	      }
-	      .sessionInner {
-	        padding: 8px;
-	        display: flex;
-	        flex-direction: column;
-	        gap: 4px;
-	        min-width: 0;
-	      }
-	      .sessionInner.sessionDesktopLayout {
-	        flex-direction: row;
-	        align-items: flex-start;
-	        justify-content: space-between;
-	        gap: 12px;
-	      }
+      .sessionInner {
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+      }
       .sessionTitleRow {
         display: flex;
         align-items: center;
@@ -427,47 +452,6 @@
         align-items: center;
         gap: 8px;
         min-width: 0;
-      }
-	      .sessionActionsInline {
-	        display: inline-flex;
-	        align-items: center;
-	        gap: 8px;
-	        flex: 0 0 auto;
-	      }
-      @media (hover: hover) and (pointer: fine) and (min-width: 521px) {
-        .session.desktop .sessionDesktopLayout {
-          position: relative;
-          align-items: center;
-        }
-        .session.desktop .sessionMain {
-          padding-right: 0;
-          transition: padding-right 140ms ease;
-        }
-        .session.desktop .sessionActionsInline {
-          position: absolute;
-          top: 50%;
-          right: 8px;
-          transform: translateY(-50%);
-          opacity: 0;
-          visibility: hidden;
-          pointer-events: none;
-          transition:
-            opacity 140ms ease,
-            visibility 140ms step-end;
-        }
-        .session.desktop:hover .sessionMain,
-        .session.desktop:focus-within .sessionMain {
-          padding-right: 132px;
-        }
-        .session.desktop:hover .sessionActionsInline,
-        .session.desktop:focus-within .sessionActionsInline {
-          opacity: 1;
-          visibility: visible;
-          pointer-events: auto;
-          transition:
-            opacity 140ms ease,
-            visibility 0s linear;
-        }
       }
       .sessionAction {
         flex: 0 0 auto;
@@ -3069,10 +3053,6 @@ select {
 	        }
 	        .sessionSwipe {
 	          border-radius: 10px;
-	        }
-	        .sessionInner {
-	          padding: 6px;
-	          gap: 2px;
 	        }
         .row {
           gap: 8px;
