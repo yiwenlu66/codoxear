@@ -153,6 +153,7 @@ class TestStaticAssets(unittest.TestCase):
                     '<script src="app_storage.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_perf.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_api.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
+                    '<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>\n'
                     '<script src="app_markdown.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_launch.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_display.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
@@ -197,6 +198,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertIn(f"app_storage.js?v={version}", rendered)
             self.assertIn(f"app_perf.js?v={version}", rendered)
             self.assertIn(f"app_api.js?v={version}", rendered)
+            self.assertIn('src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"', rendered)
             self.assertIn(f"app_markdown.js?v={version}", rendered)
             self.assertIn(f"app_launch.js?v={version}", rendered)
             self.assertIn(f"app_new_session.js?v={version}", rendered)

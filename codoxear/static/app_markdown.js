@@ -1,8 +1,8 @@
 (function () {
   "use strict";
 
-  // Dynamically load KaTeX from CDN for math rendering. The script/style are
-  // injected at runtime so index.html stays CDN-free and CSP loads are explicit.
+  // KaTeX loads independently because rendered transcript rows can arrive before
+  // the library does. Until then, renderMath leaves readable source in place.
   (function loadKatex() {
     if (window.__codoxearKatexLoading) return;
     window.__codoxearKatexLoading = true;
@@ -45,68 +45,7 @@
   }
 
   const CLICKABLE_FILE_EXTENSIONS = new Set([
-    "7z",
-    "3gp",
-    "avi",
-    "bash",
-    "bin",
-    "bz2",
-    "c",
-    "cc",
-    "cfg",
-    "conf",
-    "cpp",
-    "css",
-    "csv",
-    "flv",
-    "gif",
-    "go",
-    "gz",
-    "h",
-    "hpp",
-    "html",
-    "htm",
-    "ico",
-    "ini",
-    "java",
-    "jpeg",
-    "jpg",
-    "js",
-    "json",
-    "jsonl",
-    "log",
-    "m4v",
-    "md",
-    "mkv",
-    "mov",
-    "mp4",
-    "mpeg",
-    "mpg",
-    "ogv",
-    "pdf",
-    "patch",
-    "png",
-    "py",
-    "rs",
-    "scss",
-    "sh",
-    "sql",
-    "svg",
-    "tar",
-    "tgz",
-    "toml",
-    "ts",
-    "tsx",
-    "txt",
-    "webm",
-    "webp",
-    "wmv",
-    "xml",
-    "xz",
-    "yaml",
-    "yml",
-    "zip",
-    "zsh",
+    "7z", "3gp", "avi", "bash", "bin", "bz2", "c", "cc", "cfg", "conf", "cpp", "css", "csv", "flv", "gif", "go", "gz", "h", "hpp", "html", "htm", "ico", "ini", "java", "jpeg", "jpg", "js", "json", "jsonl", "log", "m4v", "md", "mkv", "mov", "mp4", "mpeg", "mpg", "ogv", "pdf", "patch", "png", "py", "rs", "scss", "sh", "sql", "svg", "tar", "tgz", "toml", "ts", "tsx", "txt", "webm", "webp", "wmv", "xml", "xz", "yaml", "yml", "zip", "zsh",
   ]);
 
   function filePathExtension(path) {
@@ -144,55 +83,34 @@
       }
     }
     path = String(path || "").trim();
-    if (!path) return null;
-    return { path, line };
-  }
-
-  function stripPathLocationSuffix(rawPath) {
-    const raw = String(rawPath ?? "");
-    const trimmed = raw.trim();
-    let m = trimmed.match(/^(.*)#L(\d+)(?:-\d+)?$/);
-    if (m) return m[1];
-    m = trimmed.match(/^(.*):(\d+)(?::\d+)?$/);
-    if (m && !/^[A-Za-z]:$/.test(m[1])) return m[1];
-    return raw;
+    return path ? { path, line } : null;
   }
 
   function parseLocalFileRef(rawValue) {
     const parsed = parseFileLocation(rawValue);
     if (!parsed) return null;
     const path = parsed.path;
-    if (!path) return null;
-    if (path.includes("://") || path.startsWith("mailto:")) return null;
-    if (path.startsWith("//")) return null;
+    if (path.includes("://") || path.startsWith("mailto:") || path.startsWith("//")) return null;
     const looksAbsolute = path.startsWith("/");
     const looksRelative = path.startsWith("./") || path.startsWith("../") || path.includes("/");
     const looksBareFile = !looksAbsolute && !looksRelative && hasClickableFileExtension(path);
-    if (!looksAbsolute && !looksRelative && !looksBareFile) return null;
-    return { path, line: parsed.line };
+    return looksAbsolute || looksRelative || looksBareFile ? { path, line: parsed.line } : null;
   }
 
   function normalizePathLike(rawPath) {
     const raw = String(rawPath || "").trim();
     if (!raw) return "";
     const absolute = raw.startsWith("/");
-    const parts = raw.split("/");
     const out = [];
-    for (const part of parts) {
+    for (const part of raw.split("/")) {
       if (!part || part === ".") continue;
       if (part === "..") {
-        if (out.length && out[out.length - 1] !== "..") {
-          out.pop();
-          continue;
-        }
-        if (!absolute) out.push("..");
-        continue;
-      }
-      out.push(part);
+        if (out.length && out[out.length - 1] !== "..") out.pop();
+        else if (!absolute) out.push("..");
+      } else out.push(part);
     }
     const joined = out.join("/");
-    if (absolute) return joined ? `/${joined}` : "/";
-    return joined || ".";
+    return absolute ? (joined ? `/${joined}` : "/") : joined || ".";
   }
 
   function pathDirname(rawPath) {
@@ -200,9 +118,7 @@
     if (!raw || raw === ".") return ".";
     if (raw === "/") return "/";
     const idx = raw.lastIndexOf("/");
-    if (idx < 0) return ".";
-    if (idx === 0) return "/";
-    return raw.slice(0, idx);
+    return idx < 0 ? "." : idx === 0 ? "/" : raw.slice(0, idx);
   }
 
   function resolveRelativePath(basePath, rawPath) {
@@ -211,8 +127,7 @@
     if (raw.startsWith("/")) return normalizePathLike(raw);
     const baseDir = pathDirname(basePath);
     if (!baseDir || baseDir === ".") return normalizePathLike(raw);
-    if (baseDir === "/") return normalizePathLike(`/${raw}`);
-    return normalizePathLike(`${baseDir}/${raw}`);
+    return normalizePathLike(baseDir === "/" ? `/${raw}` : `${baseDir}/${raw}`);
   }
 
   function resolveLocalRefWithOptions(ref, options) {
@@ -225,13 +140,9 @@
   function rewriteOaiMemCitations(rawText) {
     const raw = String(rawText ?? "");
     if (!raw.includes("<oai-mem-citation>")) return raw;
-    const blockRe =
-      /<oai-mem-citation>\s*<citation_entries>\s*([\s\S]*?)\s*<\/citation_entries>\s*<rollout_ids>[\s\S]*?<\/rollout_ids>\s*<\/oai-mem-citation>/g;
+    const blockRe = /<oai-mem-citation>\s*<citation_entries>\s*([\s\S]*?)\s*<\/citation_entries>\s*<rollout_ids>[\s\S]*?<\/rollout_ids>\s*<\/oai-mem-citation>/g;
     return raw.replace(blockRe, (whole, body) => {
-      const lines = String(body || "")
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean);
+      const lines = String(body || "").split("\n").map((line) => line.trim()).filter(Boolean);
       if (!lines.length) return whole;
       const items = [];
       for (const line of lines) {
@@ -242,11 +153,10 @@
         const endLine = normalizeLineNumber(m[3]);
         const note = String(m[4] || "").trim();
         if (!relPath || !startLine || !note) return whole;
-        const rangeSuffix = endLine && endLine >= startLine ? `#L${startLine}-${endLine}` : `#L${startLine}`;
-        const target = `~/.codex/memories/${relPath}${rangeSuffix}`;
-        items.push(`[${note}](${target})`);
+        const range = endLine && endLine >= startLine ? `#L${startLine}-${endLine}` : `#L${startLine}`;
+        items.push(`[${note}](~/.codex/memories/${relPath}${range})`);
       }
-      return `\n---\n\nMemory citations:\n${items.map((item, idx) => `${idx + 1}. ${item}`).join("\n")}`;
+      return `\n---\n\nMemory citations:\n${items.map((item, index) => `${index + 1}. ${item}`).join("\n")}`;
     });
   }
 
@@ -258,10 +168,8 @@
     try {
       const url = new URL(raw, location.href);
       if (url.origin !== location.origin) return null;
-      const combined = `${decodeURIComponent(url.pathname || "")}${url.hash || ""}`;
-      const parsed = parseLocalFileRef(combined);
-      if (!parsed) return null;
-      if (parsed.path.startsWith("/") && /^\/(?:home|tmp|mnt|var|opt|usr|etc|private|Users|Volumes)\//.test(parsed.path)) {
+      const parsed = parseLocalFileRef(`${decodeURIComponent(url.pathname || "")}${url.hash || ""}`);
+      if (parsed && parsed.path.startsWith("/") && /^\/(?:home|tmp|mnt|var|opt|usr|etc|private|Users|Volumes)\//.test(parsed.path)) {
         return resolveLocalRefWithOptions(parsed, options);
       }
     } catch {}
@@ -286,83 +194,137 @@
     return `${text}${fileLocationDisplaySuffix(rawRef, localRef.line)}`;
   }
 
-  function renderInlineText(rawText, options = null) {
-    const raw = String(rawText ?? "");
-    const re =
-      /(^|[\s([{"'])((?:\/[A-Za-z0-9._~@%+=:,/-]+|(?:\.{1,2}\/)?[A-Za-z0-9._~@-]+(?:\/[A-Za-z0-9._~@-]+)+|[A-Za-z0-9._~@-]+\.[A-Za-z0-9._-]+)(?:#L\d+(?:-\d+)?)?(?::\d+(?::\d+)?)?)(?=$|[\s)\]}:;"',!?])/g;
-    let out = "";
-    let last = 0;
-    for (;;) {
-      const m = re.exec(raw);
-      if (!m) break;
-      const wholeStart = m.index;
-      const tokenStart = wholeStart + m[1].length;
-      const token = m[2];
-      out += escapeHtml(raw.slice(last, tokenStart));
-      const ref = resolveLocalRefWithOptions(parseLocalFileRef(token), options);
-      if (ref) {
-        out += `<span data-candidate-file-path="${escapeHtml(ref.path)}"${ref.line ? ` data-candidate-file-line="${ref.line}"` : ""}>${escapeHtml(token)}</span>`;
-      } else {
-        out += escapeHtml(token);
-      }
-      last = tokenStart + token.length;
-    }
-    out += escapeHtml(raw.slice(last));
-    return out;
+  const FILE_REF_TEXT_RE = /(^|[\s([{"'])((?:\/[A-Za-z0-9._~@%+=:,/-]+|(?:\.{1,2}\/)?[A-Za-z0-9._~@-]+(?:\/[A-Za-z0-9._~@-]+)+|[A-Za-z0-9._~@-]+\.[A-Za-z0-9._-]+)(?:#L\d+(?:-\d+)?)?(?::\d+(?::\d+)?)?)(?=$|[\s)\]}:;"',!?])/g;
+
+  function createFileRefSpan(doc, ref, label) {
+    const span = doc.createElement("span");
+    span.dataset.candidateFilePath = ref.path;
+    if (ref.line) span.dataset.candidateFileLine = String(ref.line);
+    span.textContent = label;
+    return span;
   }
 
-  function renderInlineMd(s, options = null) {
-    const raw = String(s ?? "");
-    const re = /!\[([^\]]*)\]\(([^)]+)\)|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*/g;
-    let out = "";
-    let last = 0;
-    for (;;) {
-      const m = re.exec(raw);
-      if (!m) break;
-      out += renderInlineText(raw.slice(last, m.index), options);
-      if (m[1] !== undefined) {
-        const imageAlt = m[1];
-        const imageRef = m[2];
-        const localImageRef = localFileRefFromRef(imageRef, options);
-        const imageSrc =
-          options && typeof options.resolveImageSrc === "function"
-            ? options.resolveImageSrc(imageRef, localImageRef)
-            : safeUrl(imageRef);
-        if (!imageSrc) out += `![${escapeHtml(imageAlt)}](${escapeHtml(imageRef)})`;
-        else out += `<img src="${escapeHtml(imageSrc)}" alt="${escapeHtml(imageAlt)}" loading="lazy" />`;
-      } else if (m[3] !== undefined) {
-        const inlineRef = resolveLocalRefWithOptions(parseLocalFileRef(m[3]), options);
-        if (inlineRef) {
-          out += `<code><span data-candidate-file-path="${escapeHtml(inlineRef.path)}"${inlineRef.line ? ` data-candidate-file-line="${inlineRef.line}"` : ""}>${escapeHtml(m[3])}</span></code>`;
-        } else {
-          out += `<code>${escapeHtml(m[3])}</code>`;
-        }
-      } else if (m[4] !== undefined) {
-        const localRef = localFileRefFromRef(m[5], options);
-        if (localRef) {
-          out += `<span data-candidate-file-path="${escapeHtml(localRef.path)}"${localRef.line ? ` data-candidate-file-line="${localRef.line}"` : ""}>${escapeHtml(formatLocalFileLinkLabel(m[4], m[5], localRef))}</span>`;
-        } else {
-          const href = safeUrl(m[5]);
-          if (!href) out += `${escapeHtml(m[4])} (${escapeHtml(m[5])})`;
-          else out += `<a href="${escapeHtml(href)}" target="_blank" rel="noreferrer noopener">${escapeHtml(m[4])}</a>`;
-        }
-      } else if (m[6] !== undefined) {
-        out += `<strong>${escapeHtml(m[6])}</strong>`;
-      } else {
-        out += escapeHtml(m[0]);
-      }
-      last = m.index + m[0].length;
+  function nodeHasAncestor(node, tagName) {
+    for (let current = node.parentElement; current; current = current.parentElement) {
+      if (current.tagName === tagName) return true;
     }
-    out += renderInlineText(raw.slice(last), options);
-    return out;
+    return false;
   }
 
-  // Math is extracted from non-code text before markdown rendering and replaced
-  // with opaque tokens. The ASCII tokens survive escaping and nested mdToHtml
-  // calls; KaTeX output is substituted only after the HTML is assembled.
+  function rewriteTextFileRefs(root, doc, options) {
+    const walker = doc.createTreeWalker(root, 4);
+    const textNodes = [];
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (!nodeHasAncestor(node, "A") && !nodeHasAncestor(node, "CODE") && !nodeHasAncestor(node, "SCRIPT") && !nodeHasAncestor(node, "STYLE")) textNodes.push(node);
+    }
+    for (const textNode of textNodes) {
+      const raw = textNode.nodeValue || "";
+      FILE_REF_TEXT_RE.lastIndex = 0;
+      let last = 0;
+      let changed = false;
+      const fragment = doc.createDocumentFragment();
+      for (let match = FILE_REF_TEXT_RE.exec(raw); match; match = FILE_REF_TEXT_RE.exec(raw)) {
+        const tokenStart = match.index + match[1].length;
+        const token = match[2];
+        const ref = resolveLocalRefWithOptions(parseLocalFileRef(token), options);
+        if (!ref) continue;
+        changed = true;
+        fragment.append(raw.slice(last, tokenStart));
+        fragment.append(createFileRefSpan(doc, ref, token));
+        last = tokenStart + token.length;
+      }
+      if (changed) {
+        fragment.append(raw.slice(last));
+        textNode.replaceWith(fragment);
+      }
+    }
+  }
+
+  function rewriteMarkedLinks(root, doc, options) {
+    for (const link of root.querySelectorAll("a[href]")) {
+      const rawHref = link.getAttribute("href") || "";
+      const localRef = localFileRefFromRef(rawHref, options);
+      if (localRef) {
+        link.replaceWith(createFileRefSpan(doc, localRef, formatLocalFileLinkLabel(link.textContent, rawHref, localRef)));
+        continue;
+      }
+      const href = safeUrl(rawHref);
+      if (!href) {
+        link.replaceWith(doc.createTextNode(`${link.textContent} (${rawHref})`));
+        continue;
+      }
+      link.href = href;
+      link.target = "_blank";
+      link.rel = "noreferrer noopener";
+    }
+  }
+
+  function rewriteMarkedImages(root, doc, options) {
+    for (const image of root.querySelectorAll("img[src]")) {
+      const rawSrc = image.getAttribute("src") || "";
+      const localRef = localFileRefFromRef(rawSrc, options);
+      const src = options && typeof options.resolveImageSrc === "function" ? options.resolveImageSrc(rawSrc, localRef) : safeUrl(rawSrc);
+      if (!src) image.replaceWith(doc.createTextNode(image.alt || ""));
+      else image.src = src;
+      image.loading = "lazy";
+    }
+  }
+
+  function decorateCodeBlocks(root, doc) {
+    for (const pre of root.querySelectorAll("pre")) {
+      const code = pre.querySelector(":scope > code");
+      if (!code) continue;
+      const languageClass = Array.from(code.classList).find((value) => value.startsWith("language-"));
+      if (languageClass) code.dataset.lang = languageClass.slice("language-".length);
+      if (!pre.querySelector(":scope > .code-copy-btn")) {
+        const button = doc.createElement("button");
+        button.className = "code-copy-btn";
+        button.type = "button";
+        button.setAttribute("aria-label", "Copy code");
+        button.title = "Copy code";
+        pre.prepend(button);
+      }
+    }
+  }
+
+  function rewriteInlineCodeFileRefs(root, doc, options) {
+    for (const code of root.querySelectorAll("code")) {
+      if (nodeHasAncestor(code, "PRE")) continue;
+      const ref = resolveLocalRefWithOptions(parseLocalFileRef(code.textContent), options);
+      if (!ref) continue;
+      code.replaceChildren(createFileRefSpan(doc, ref, code.textContent));
+    }
+  }
+
+  function wrapMarkedTables(root, doc) {
+    for (const table of root.querySelectorAll("table")) {
+      if (table.parentElement && table.parentElement.classList.contains("md-table-wrap")) continue;
+      const wrapper = doc.createElement("div");
+      wrapper.className = "md-table-wrap";
+      table.replaceWith(wrapper);
+      wrapper.append(table);
+    }
+  }
+
+  function postProcessMarkedHtml(html, options) {
+    if (typeof document === "undefined" || !document.createElement) return html;
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    const root = template.content;
+    rewriteMarkedLinks(root, document, options);
+    rewriteMarkedImages(root, document, options);
+    rewriteInlineCodeFileRefs(root, document, options);
+    rewriteTextFileRefs(root, document, options);
+    decorateCodeBlocks(root, document);
+    wrapMarkedTables(root, document);
+    return template.innerHTML;
+  }
+
+  // Math tokens are opaque to marked and are substituted only after its HTML has
+  // been passed through the Codoxear DOM post-processors. Fence/code-span
+  // protection prevents source code from becoming mathematical markup.
   const MATH_TOKEN_PREFIX = "@@MATH";
   const MATH_TOKEN_SUFFIX = "@@";
-
   function mathToken(id) {
     return `${MATH_TOKEN_PREFIX}${id}${MATH_TOKEN_SUFFIX}`;
   }
@@ -371,532 +333,59 @@
     const src = String(latex ?? "");
     if (typeof katex !== "undefined" && katex && typeof katex.renderToString === "function") {
       try {
-        return String(
-          katex.renderToString(src, {
-            displayMode: !!displayMode,
-            throwOnError: false,
-            strict: "ignore",
-          })
-        );
-      } catch (e) {
-        // Fall through to the readable source fallback when KaTeX rejects input.
-      }
+        return String(katex.renderToString(src, { displayMode: !!displayMode, throwOnError: false, strict: "ignore" }));
+      } catch {}
     }
     const cls = displayMode ? "md-math-fallback md-math-display" : "md-math-fallback md-math-inline";
-    const open = displayMode ? "\\[" : "\\(";
-    const close = displayMode ? "\\]" : "\\)";
-    return `<span class="${cls}">${open}${escapeHtml(src)}${close}</span>`;
+    return `<span class="${cls}">${displayMode ? "\\[" : "\\("}${escapeHtml(src)}${displayMode ? "\\]" : "\\)"}</span>`;
   }
 
-  function extractMathFromText(input, store) {
-    let text = String(input ?? "");
+  function extractMathFromPlainText(text, store) {
     const push = (latex, display) => {
       const id = store.length;
       store.push({ latex: String(latex).trim(), display: !!display });
       return mathToken(id);
     };
-    // Match displays first so their delimiters cannot be consumed by inline rules.
-    text = text.replace(/\\\[([\s\S]+?)\\\]/g, (_m, body) => push(body, true));
-    text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_m, body) => push(body, true));
-    // Single-$ inline math remains deliberately unsupported: in prose it is
-    // ambiguous with currency, shell variables, and code. Explicit \(...\) is
-    // unambiguous and is the form emitted by well-formed math output.
-    text = text.replace(/\\\(([\s\S]+?)\\\)/g, (_m, body) => push(body, false));
-    return text;
+    return String(text)
+      .replace(/\\\[([\s\S]+?)\\\]/g, (_m, body) => push(body, true))
+      .replace(/\$\$([\s\S]+?)\$\$/g, (_m, body) => push(body, true))
+      .replace(/\\\(([\s\S]+?)\\\)/g, (_m, body) => push(body, false))
+      .replace(/\$(?!\$|\s)([^$\n]*?\S)\$(?!\$)/g, (_m, body) => push(body, false));
+  }
+
+  function extractMathFromText(input, store) {
+    const lines = String(input ?? "").split("\n");
+    const out = [];
+    let fence = null;
+    for (const line of lines) {
+      const openOrClose = line.match(/^\s{0,3}(`{3,}|~{3,})/);
+      if (fence) {
+        out.push(line);
+        if (openOrClose && openOrClose[1][0] === fence) fence = null;
+        continue;
+      }
+      if (openOrClose) {
+        fence = openOrClose[1][0];
+        out.push(line);
+        continue;
+      }
+      const parts = line.split(/(`+[^`]*`+)/g);
+      out.push(parts.map((part, index) => (index % 2 ? part : extractMathFromPlainText(part, store))).join(""));
+    }
+    return out.join("\n");
   }
 
   function substituteMath(html, store) {
-    if (!store.length) return html;
     let out = html;
-    for (let i = 0; i < store.length; i++) {
-      const entry = store[i];
-      out = out.split(mathToken(i)).join(renderMath(entry.latex, entry.display));
-    }
+    for (let i = 0; i < store.length; i++) out = out.split(mathToken(i)).join(renderMath(store[i].latex, store[i].display));
     return out;
   }
 
   function mdToHtml(src, options = null) {
-    const s = rewriteOaiMemCitations(String(src ?? "").replaceAll("\r\n", "\n"));
-    const listItemInfo = (line) => {
-      const l = String(line ?? "");
-      const mUl = l.match(/^(\s*)([-*\u2022])(\s+)(.*)$/);
-      if (mUl) {
-        return {
-          type: "ul",
-          indent: mUl[1].length,
-          contentIndent: mUl[1].length + mUl[2].length + mUl[3].length,
-          text: (mUl[4] || "").trimStart(),
-        };
-      }
-      const mOl = l.match(/^(\s*)(\d+\.)(\s+)(.*)$/);
-      if (mOl) {
-        return {
-          type: "ol",
-          indent: mOl[1].length,
-          contentIndent: mOl[1].length + mOl[2].length + mOl[3].length,
-          marker: mOl[2],
-          text: (mOl[4] || "").trimStart(),
-        };
-      }
-      return null;
-    };
-
-    const leadingSpaceCount = (line) => {
-      const raw = String(line ?? "");
-      let i = 0;
-      while (i < raw.length && raw[i] === " ") i += 1;
-      return i;
-    };
-
-    const stripContinuationIndent = (line, width) => {
-      const raw = String(line ?? "");
-      let i = 0;
-      while (i < raw.length && i < width && raw[i] === " ") i += 1;
-      return raw.slice(i);
-    };
-
-    const fenceOpenInfo = (line) => {
-      const m = String(line ?? "").match(/^\s{0,3}```\s*([a-zA-Z0-9_-]+)?\s*$/);
-      return m ? { lang: m[1] || "" } : null;
-    };
-
-    const isFenceClose = (line) => /^\s{0,3}```\s*$/.test(String(line ?? ""));
-
-    const pendingListFenceIndent = (priorLines, line) => {
-      const indent = leadingSpaceCount(line);
-      if (!indent) return null;
-      for (let j = priorLines.length - 1; j >= 0; j--) {
-        const prev = priorLines[j] || "";
-        if (!prev.trim()) continue;
-        const info = listItemInfo(prev);
-        if (info) {
-          const contentIndent = info.contentIndent || 0;
-          return indent >= contentIndent && fenceOpenInfo(stripContinuationIndent(line, contentIndent)) ? contentIndent : null;
-        }
-        if (leadingSpaceCount(prev) < indent) return null;
-      }
-      return null;
-    };
-
-    const continuesPriorList = (priorLines, line) => {
-      const next = listItemInfo(line);
-      if (!next) return false;
-      for (let j = priorLines.length - 1; j >= 0; j--) {
-        const prev = priorLines[j] || "";
-        if (!prev.trim()) continue;
-        const info = listItemInfo(prev);
-        if (info) return next.indent >= info.indent;
-        if (leadingSpaceCount(prev) < next.indent) return false;
-      }
-      return false;
-    };
-
-    const splitByFences = (input) => {
-      const chunks = [];
-      const lines = String(input ?? "").split("\n");
-      let textLines = [];
-      let inFence = false;
-      let fenceLang = "";
-      let fenceLines = [];
-      let fenceStart = "";
-      let deferredFenceIndent = null;
-
-      const flushText = () => {
-        const v = textLines.join("\n");
-        textLines = [];
-        if (v.trim()) chunks.push({ type: "text", value: v });
-      };
-      const flushFence = () => {
-        const v = fenceLines.join("\n");
-        fenceLines = [];
-        chunks.push({ type: "code", lang: fenceLang, value: v });
-        fenceLang = "";
-        fenceStart = "";
-      };
-
-      for (const line of lines) {
-        if (deferredFenceIndent !== null) {
-          textLines.push(line);
-          if (isFenceClose(stripContinuationIndent(line, deferredFenceIndent))) deferredFenceIndent = null;
-          continue;
-        }
-        if (!inFence) {
-          const m = fenceOpenInfo(line);
-          const nestedIndent = pendingListFenceIndent(textLines, line);
-          if (m || nestedIndent !== null) {
-            if (nestedIndent !== null) {
-              deferredFenceIndent = nestedIndent;
-              textLines.push(line);
-              continue;
-            }
-            flushText();
-            inFence = true;
-            fenceLang = m.lang || "";
-            fenceStart = line;
-            fenceLines = [];
-            continue;
-          }
-          textLines.push(line);
-          continue;
-        }
-        if (isFenceClose(line)) {
-          inFence = false;
-          flushFence();
-          continue;
-        }
-        fenceLines.push(line);
-      }
-
-      if (inFence) {
-        // Preserve prior behavior: an unclosed fence is not treated as code.
-        textLines.push(fenceStart);
-        for (const x of fenceLines) textLines.push(x);
-      }
-      flushText();
-      return chunks;
-    };
-
-    const parseIndentedFence = (lines, start, contentIndent) => {
-      const open = fenceOpenInfo(stripContinuationIndent(lines[start], contentIndent));
-      if (!open) return null;
-      const codeLines = [];
-      let i = start + 1;
-      while (i < lines.length) {
-        const stripped = stripContinuationIndent(lines[i], contentIndent);
-        if (isFenceClose(stripped)) {
-          return { node: { type: "code", lang: open.lang, value: codeLines.join("\n") }, next: i + 1 };
-        }
-        codeLines.push(stripped);
-        i += 1;
-      }
-      return null;
-    };
-
-    const renderCodeBlock = (value, lang) => {
-      const langAttr = lang ? ` data-lang="${escapeHtml(lang)}"` : "";
-      const copyButton = '<button class="code-copy-btn" type="button" aria-label="Copy code" title="Copy code"></button>';
-      return `<pre>${copyButton}<code${langAttr}>${escapeHtml(value)}</code></pre>`;
-    };
-
-    const parseList = (lines, start) => {
-      const head = listItemInfo(lines[start]);
-      if (!head) throw new Error("parseList called on non-list line");
-      const baseIndent = head.indent;
-      const listType = head.type;
-      const items = [];
-
-      let i = start;
-      while (i < lines.length) {
-        const info = listItemInfo(lines[i]);
-        if (!info) {
-          const last = items[items.length - 1];
-          if (last && !String(lines[i] || "").trim()) {
-            let j = i + 1;
-            while (j < lines.length && !String(lines[j] || "").trim()) j += 1;
-            const nextFence = j < lines.length ? parseIndentedFence(lines, j, last.contentIndent || baseIndent) : null;
-            if (nextFence) {
-              last.blocks.push(nextFence.node);
-              i = nextFence.next;
-              continue;
-            }
-            const nextInfo = j < lines.length ? listItemInfo(lines[j]) : null;
-            if (nextInfo && nextInfo.indent >= baseIndent) {
-              i = j;
-              continue;
-            }
-          }
-          const fence = last ? parseIndentedFence(lines, i, last.contentIndent || baseIndent) : null;
-          if (!fence) break;
-          last.blocks.push(fence.node);
-          i = fence.next;
-          continue;
-        }
-        if (info.indent < baseIndent) break;
-        if (info.indent > baseIndent) {
-          if (!items.length) break;
-          const child = parseList(lines, i);
-          items[items.length - 1].child = child.node;
-          i = child.next;
-          continue;
-        }
-        if (info.type !== listType) break;
-        items.push({ text: info.text, marker: info.marker || "", contentIndent: info.contentIndent, child: null, blocks: [] });
-        i += 1;
-      }
-      return { node: { type: listType, items }, next: i };
-    };
-
-    const renderList = (node) => {
-      const out = [];
-      out.push(node.type === "ol" ? '<ol class="md-literal-ol">' : "<ul>");
-      for (const it of node.items) {
-        out.push("<li>");
-        if (node.type === "ol") {
-          out.push('<span class="md-list-line">');
-          out.push(`<span class="md-list-marker">${escapeHtml(it.marker || "")}</span>`);
-          out.push(`<span class="md-list-body">${renderInlineMd(it.text || "", options)}</span>`);
-          out.push("</span>");
-        } else {
-          out.push(renderInlineMd(it.text || "", options));
-        }
-        for (const block of it.blocks || []) {
-          if (block.type === "code") out.push(renderCodeBlock(block.value, block.lang));
-        }
-        if (it.child) out.push(renderList(it.child));
-        out.push("</li>");
-      }
-      out.push(node.type === "ol" ? "</ol>" : "</ul>");
-      return out.join("");
-    };
-
-    const splitTableCells = (line) => {
-      let text = String(line ?? "").trim();
-      if (!text.includes("|")) return [];
-      if (text.startsWith("|")) text = text.slice(1);
-      if (text.endsWith("|")) text = text.slice(0, -1);
-      const cells = [];
-      let cell = "";
-      let escaped = false;
-      for (const ch of text) {
-        if (escaped) {
-          cell += ch;
-          escaped = false;
-          continue;
-        }
-        if (ch === "\\") {
-          escaped = true;
-          continue;
-        }
-        if (ch === "|") {
-          cells.push(cell.trim());
-          cell = "";
-          continue;
-        }
-        cell += ch;
-      }
-      if (escaped) cell += "\\";
-      cells.push(cell.trim());
-      return cells;
-    };
-
-    const parseTableAlignmentRow = (line) => {
-      const cells = splitTableCells(line);
-      if (!cells.length) return null;
-      const alignments = [];
-      for (const cell of cells) {
-        const compact = String(cell ?? "").replace(/\s+/g, "");
-        if (!/^:?-{3,}:?$/.test(compact)) return null;
-        if (compact.startsWith(":") && compact.endsWith(":")) alignments.push("center");
-        else if (compact.endsWith(":")) alignments.push("right");
-        else if (compact.startsWith(":")) alignments.push("left");
-        else alignments.push("");
-      }
-      return alignments;
-    };
-
-    const parseTable = (lines, start) => {
-      if (start + 1 >= lines.length) return null;
-      const headerLine = lines[start] || "";
-      const separatorLine = lines[start + 1] || "";
-      if (!headerLine.includes("|") || !separatorLine.includes("|")) return null;
-      const headers = splitTableCells(headerLine);
-      const alignments = parseTableAlignmentRow(separatorLine);
-      if (!headers.length || !alignments || headers.length !== alignments.length) return null;
-      const rows = [];
-      let i = start + 2;
-      while (i < lines.length) {
-        const line = lines[i] || "";
-        if (!line.trim() || !line.includes("|")) break;
-        if (parseTableAlignmentRow(line)) break;
-        const cells = splitTableCells(line);
-        if (cells.length !== headers.length) break;
-        rows.push(cells);
-        i += 1;
-      }
-      return { node: { headers, alignments, rows }, next: i };
-    };
-
-    const renderTableCell = (tag, text, alignment) => {
-      const alignAttr = alignment ? ` style="text-align:${alignment}"` : "";
-      return `<${tag}${alignAttr}>${renderInlineMd(text || "", options)}</${tag}>`;
-    };
-
-    const renderTable = (node) => {
-      const out = [];
-      out.push('<div class="md-table-wrap"><table>');
-      out.push("<thead><tr>");
-      for (let i = 0; i < node.headers.length; i++) {
-        out.push(renderTableCell("th", node.headers[i], node.alignments[i]));
-      }
-      out.push("</tr></thead>");
-      out.push("<tbody>");
-      for (const row of node.rows) {
-        out.push("<tr>");
-        for (let i = 0; i < row.length; i++) {
-          out.push(renderTableCell("td", row[i], node.alignments[i]));
-        }
-        out.push("</tr>");
-      }
-      out.push("</tbody></table></div>");
-      return out.join("");
-    };
-
-    const blockquoteInfo = (line) => {
-      const m = String(line ?? "").match(/^\s{0,3}>(?:[ \t]?)(.*)$/);
-      return m ? { text: m[1] || "" } : null;
-    };
-
-    const parseBlockquote = (lines, start) => {
-      const quoteLines = [];
-      let i = start;
-      while (i < lines.length) {
-        const line = lines[i] || "";
-        const info = blockquoteInfo(line);
-        if (info) {
-          quoteLines.push(info.text);
-          i += 1;
-          continue;
-        }
-        // CommonMark allows lazy continuation lines inside a block quote paragraph.
-        if (quoteLines.length && line.trim()) {
-          quoteLines.push(line);
-          i += 1;
-          continue;
-        }
-        break;
-      }
-      return { node: { type: "blockquote", value: quoteLines.join("\n") }, next: i };
-    };
-
-    const renderBlockquote = (node) => `<blockquote>${mdToHtml(node.value || "", options)}</blockquote>`;
-
-    const splitTextBlocks = (input) => {
-      const blocks = [];
-      const lines = String(input ?? "").split("\n");
-      let current = [];
-      let inFence = false;
-      let currentFenceIndent = 0;
-      const flush = () => {
-        const block = current.join("\n");
-        current = [];
-        if (block.trim()) blocks.push(block);
-      };
-      for (let idx = 0; idx < lines.length; idx++) {
-        const line = lines[idx];
-        const stripped = line.trim();
-        if (!inFence && !stripped) {
-          let j = idx + 1;
-          while (j < lines.length && !String(lines[j] || "").trim()) j += 1;
-          if (
-            j < lines.length &&
-            (pendingListFenceIndent(current, lines[j]) !== null || continuesPriorList(current, lines[j]))
-          ) {
-            current.push(line);
-            continue;
-          }
-          flush();
-          continue;
-        }
-        const nestedIndent = pendingListFenceIndent(current, line);
-        const open = fenceOpenInfo(line);
-        if (!inFence && open) {
-          inFence = true;
-          currentFenceIndent = 0;
-          current.push(line);
-          continue;
-        }
-        if (!inFence && nestedIndent !== null) {
-          inFence = true;
-          currentFenceIndent = nestedIndent;
-          current.push(line);
-          continue;
-        }
-        if (inFence && isFenceClose(stripContinuationIndent(line, currentFenceIndent))) {
-          inFence = false;
-          currentFenceIndent = 0;
-          current.push(line);
-          continue;
-        }
-        current.push(line);
-      }
-      flush();
-      return blocks;
-    };
-
-    const chunks = splitByFences(s);
+    if (!window.marked || typeof window.marked.parse !== "function") throw new Error("marked failed to load");
     const mathStore = [];
-    for (const chunk of chunks) {
-      if (chunk.type === "text") chunk.value = extractMathFromText(chunk.value, mathStore);
-    }
-
-    const out = [];
-    for (const c of chunks) {
-      if (c.type === "code") {
-        out.push(renderCodeBlock(c.value, c.lang));
-        continue;
-      }
-      const blocks = splitTextBlocks(c.value);
-      for (const block of blocks) {
-        const lines = block.split("\n").map((x) => x.trimEnd());
-        if (!lines.length) continue;
-
-        const head = lines[0] || "";
-        const mHeading = head.match(/^(#{1,6})\s+(.*)$/);
-        let startIdx = 0;
-        if (mHeading) {
-          const level = mHeading[1].length;
-          out.push(`<h${level}>${renderInlineMd(mHeading[2], options)}</h${level}>`);
-          startIdx = 1;
-        }
-
-        let paraLines = [];
-        const flushPara = () => {
-          const para = paraLines.join("\n").trim();
-          paraLines = [];
-          if (!para) return;
-          out.push(`<p>${renderInlineMd(para, options).replaceAll("\n", "<br />")}</p>`);
-        };
-
-        for (let i = startIdx; i < lines.length; i++) {
-          const l = lines[i] || "";
-          const t = l.trim();
-          if (!t) {
-            flushPara();
-            continue;
-          }
-          if (/^(?:-{3,}|\*{3,}|_{3,})$/.test(t.replace(/\s+/g, ""))) {
-            flushPara();
-            out.push("<hr />");
-            continue;
-          }
-          if (blockquoteInfo(l)) {
-            flushPara();
-            const parsed = parseBlockquote(lines, i);
-            out.push(renderBlockquote(parsed.node));
-            i = parsed.next - 1;
-            continue;
-          }
-          const info = listItemInfo(l);
-          if (info) {
-            flushPara();
-            const parsed = parseList(lines, i);
-            out.push(renderList(parsed.node));
-            i = parsed.next - 1;
-            continue;
-          }
-          const table = parseTable(lines, i);
-          if (table) {
-            flushPara();
-            out.push(renderTable(table.node));
-            i = table.next - 1;
-            continue;
-          }
-          paraLines.push(l);
-        }
-        flushPara();
-      }
-    }
-    return substituteMath(out.join(""), mathStore);
+    const prepared = extractMathFromText(rewriteOaiMemCitations(String(src ?? "").replaceAll("\r\n", "\n")), mathStore);
+    return substituteMath(postProcessMarkedHtml(window.marked.parse(prepared), options), mathStore);
   }
 
   const mdCache = new Map();
@@ -908,16 +397,12 @@
     if (hit !== undefined) return hit;
     const html = mdToHtml(text, options);
     mdCache.set(key, html);
-    if (mdCache.size > 1200) {
-      // Prevent unbounded growth; chat history is expected to be small.
-      mdCache.clear();
-    }
+    if (mdCache.size > 1200) mdCache.clear();
     return html;
   }
 
   function isMarkdownPreviewable(path) {
-    const ext = filePathExtension(path);
-    return ext === "md" || ext === "markdown" || ext === "mdown" || ext === "mkd";
+    return ["md", "markdown", "mdown", "mkd"].includes(filePathExtension(path));
   }
 
   function previewImageUrlForRef(rawRef, localRef, { filePath, sessionId } = {}) {
@@ -925,8 +410,7 @@
       if (sessionId) return resolveAppUrl(`/api/sessions/${sessionId}/file/blob?path=${encodeURIComponent(localRef.path)}`);
       if (localRef.path.startsWith("/")) return resolveAppUrl(`/api/files/blob?path=${encodeURIComponent(localRef.path)}`);
     }
-    const safe = safeUrl(rawRef);
-    return safe || null;
+    return safeUrl(rawRef);
   }
 
   function markdownPreviewHtml(src, { filePath = "", sessionId = "" } = {}) {

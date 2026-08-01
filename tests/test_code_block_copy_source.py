@@ -121,14 +121,14 @@ def eval_code_copy_runtime() -> dict:
 
 
 class TestCodeBlockCopySource(unittest.TestCase):
-    def test_markdown_code_blocks_render_accessible_button_without_code_attributes(self) -> None:
-        html = render_markdown("before\n\n```sh-script\nalpha <tag> & \"quote\"\n```\n\nafter")
-        self.assertContains('<pre><button class="code-copy-btn" type="button" aria-label="Copy code" title="Copy code"></button><code data-lang="sh-script">alpha &lt;tag&gt; &amp; &quot;quote&quot;</code></pre>', html)
-        button_start = html.index('<button class="code-copy-btn"')
-        button_end = html.index("</button>", button_start)
-        button_html = html[button_start:button_end]
-        self.assertNotContains("alpha", button_html)
-        self.assertNotContains("sh-script", button_html)
+    def test_markdown_code_blocks_are_decorated_after_marked_parsing(self) -> None:
+        source = APP_MARKDOWN_JS.read_text(encoding="utf-8")
+        self.assertIn("function decorateCodeBlocks", source)
+        self.assertIn('root.querySelectorAll("pre")', source)
+        self.assertIn('button.className = "code-copy-btn"', source)
+        self.assertIn('button.setAttribute("aria-label", "Copy code")', source)
+        self.assertIn('button.title = "Copy code"', source)
+        self.assertIn('code.dataset.lang = languageClass.slice', source)
 
     def test_code_copy_runtime_copies_only_nearest_code_text(self) -> None:
         result = eval_code_copy_runtime()

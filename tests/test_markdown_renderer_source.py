@@ -1,5 +1,4 @@
 import json
-import re
 import subprocess
 import textwrap
 import unittest
@@ -7,253 +6,72 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
+INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 
 
-def render_markdown(markdown: str, katex_expr: str | None = None) -> str:
+def run_renderer_with_marked_stub(markdown: str) -> tuple[str, str]:
     source = APP_MARKDOWN_JS.read_text(encoding="utf-8")
-    katex_stmt = f"katex = {katex_expr};" if katex_expr else ""
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
+        let parsed = "";
         const ctx = {{
           URL,
           location: {{ origin: "http://localhost", href: "http://localhost/" }},
           console,
           window: {{
-            CodoxearUrls: {{
-              resolveAppUrl: (path) => new URL(String(path ?? "").replace(/^\\//, ""), "http://localhost/").toString(),
-            }},
+            marked: {{ parse(value) {{ parsed = value; return `<p>${{value}}</p>`; }} }},
+            CodoxearUrls: {{ resolveAppUrl: (path) => new URL(String(path ?? "").replace(/^\\//, ""), "http://localhost/").toString() }},
           }},
         }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(source)}, ctx);
-        {f"vm.runInContext({json.dumps(katex_stmt)}, ctx);" if katex_stmt else ""}
-        process.stdout.write(ctx.window.CodoxearMarkdown.mdToHtml({json.dumps(markdown)}));
+        const html = ctx.window.CodoxearMarkdown.mdToHtml({json.dumps(markdown)});
+        process.stdout.write(JSON.stringify([parsed, html]));
         """
     )
-    proc = subprocess.run(
-        ["node", "-e", js],
-        check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    return proc.stdout
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return tuple(json.loads(proc.stdout))
 
 
 class TestMarkdownRendererSource(unittest.TestCase):
-    def test_markdown_renderer_renders_tables_inline_formatting_citations_and_file_paths(self) -> None:
-        html = render_markdown(
-            "| Name | Value |\n| :--- | ---: |\n| **bold** | `code` |\n\n"
-            "<oai-mem-citation><citation_entries>notes/plan.md:7-9|note=[Plan]</citation_entries>"
-            "<rollout_ids>r1</rollout_ids></oai-mem-citation>\n\n"
-            "See src/app.py:12 and [settings](./config/settings.json#L3)."
+    def test_marked_is_loaded_before_codoxear_renderer(self) -> None:
+        html = INDEX_HTML.read_text(encoding="utf-8")
+        marked_tag = '<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>'
+        self.assertIn(marked_tag, html)
+        self.assertLess(html.index(marked_tag), html.index('src="app_markdown.js'))
+
+    def test_renderer_delegates_standard_markdown_to_marked(self) -> None:
+        source = APP_MARKDOWN_JS.read_text(encoding="utf-8")
+        self.assertIn("window.marked.parse(prepared)", source)
+        self.assertNotIn("function renderInlineMd", source)
+        self.assertNotIn("function parseList", source)
+        self.assertNotIn("function parseTable", source)
+        parsed, html = run_renderer_with_marked_stub("*italic* and **bold**")
+        self.assertEqual(parsed, "*italic* and **bold**")
+        self.assertEqual(html, "<p>*italic* and **bold**</p>")
+
+    def test_math_is_extracted_before_marked_including_single_dollars(self) -> None:
+        parsed, html = run_renderer_with_marked_stub("Inline $x^2$; display $$y$$; and \\(z\\).")
+        self.assertNotIn("$x^2$", parsed)
+        self.assertNotIn("$$y$$", parsed)
+        self.assertNotIn("\\(z\\)", parsed)
+        self.assertIn("@@MATH0@@", parsed)
+        self.assertIn("md-math-fallback md-math-inline", html)
+        self.assertIn("md-math-fallback md-math-display", html)
+
+    def test_math_does_not_rewrite_code_spans_or_fenced_code(self) -> None:
+        parsed, _html = run_renderer_with_marked_stub("`$code$`\n\n```text\n$also_code$\n```")
+        self.assertIn("`$code$`", parsed)
+        self.assertIn("$also_code$", parsed)
+
+    def test_citation_rewrite_happens_before_marked(self) -> None:
+        parsed, _html = run_renderer_with_marked_stub(
+            "<oai-mem-citation><citation_entries>notes/plan.md:7-9|note=[Plan]</citation_entries><rollout_ids>r1</rollout_ids></oai-mem-citation>"
         )
-        self.assertContains('<div class="md-table-wrap"><table>', html)
-        self.assertContains('<th style="text-align:left">Name</th>', html)
-        self.assertContains('<td style="text-align:right"><code>code</code></td>', html)
-        self.assertContains('<strong>bold</strong>', html)
-        self.assertContains('Memory citations:', html)
-        self.assertContains('data-candidate-file-path="~/.codex/memories/notes/plan.md" data-candidate-file-line="7"', html)
-        self.assertContains('data-candidate-file-path="src/app.py" data-candidate-file-line="12"', html)
-        self.assertContains('data-candidate-file-path="./config/settings.json" data-candidate-file-line="3"', html)
-
-    def test_fenced_code_block_nested_under_list_item_renders_as_code(self) -> None:
-        html = render_markdown(
-            "\n".join(
-                [
-                    "**Implementation Plan**",
-                    "",
-                    "1. Update SFT training submission to pipeline steps:",
-                    "   - Build the next N SFT batches ahead of time, e.g. window size 10.",
-                    "   - Submit requests in exact semantic order:",
-                    "     ```text",
-                    "     fwdbwd(1), optim(1), fwdbwd(2), optim(2), ...",
-                    "     ```",
-                    "   - Do not submit all `fwdbwd` first.",
-                ]
-            )
-        )
-
-        self.assertContains('<pre><button class="code-copy-btn" type="button" aria-label="Copy code" title="Copy code"></button><code data-lang="text">fwdbwd(1), optim(1), fwdbwd(2), optim(2), ...</code></pre>', html)
-        self.assertContains("Submit requests in exact semantic order:<pre><button", html)
-        self.assertContains("Do not submit all <code>fwdbwd</code> first.", html)
-        self.assertNotContains("```", html)
-
-    def test_nested_fenced_code_block_preserves_blank_lines(self) -> None:
-        html = render_markdown(
-            "\n".join(
-                [
-                    "- intro:",
-                    "  ```text",
-                    "  one",
-                    "",
-                    "  two",
-                    "  ```",
-                    "- after",
-                ]
-            )
-        )
-
-        self.assertContains('<pre><button class="code-copy-btn" type="button" aria-label="Copy code" title="Copy code"></button><code data-lang="text">one\n\ntwo</code></pre>', html)
-        self.assertContains("<li>after</li>", html)
-        self.assertNotContains("```", html)
-
-    def test_nested_fenced_code_block_after_blank_line_in_list_item(self) -> None:
-        html = render_markdown(
-            "\n".join(
-                [
-                    "- OpenAI native web search:",
-                    "  - Command:",
-                    "",
-                    "    ```bash",
-                    "    pi --no-session --print 'Use native provider web_search ...'",
-                    "    ```",
-                    "",
-                    "  - Output:",
-                    "",
-                    "    ```text",
-                    "    https://platform.openai.com/docs/guides/tools-web-search?api-mode=responses",
-                    "    ```",
-                ]
-            )
-        )
-
-        self.assertContains(
-            '<pre><button class="code-copy-btn" type="button" aria-label="Copy code" title="Copy code"></button><code data-lang="bash">pi --no-session --print &#39;Use native provider web_search ...&#39;</code></pre>',
-            html,
-        )
-        self.assertContains(
-            '<pre><button class="code-copy-btn" type="button" aria-label="Copy code" title="Copy code"></button><code data-lang="text">https://platform.openai.com/docs/guides/tools-web-search?api-mode=responses</code></pre>',
-            html,
-        )
-        self.assertContains("<li>OpenAI native web search:<ul><li>Command:<pre><button", html)
-        self.assertContains("</pre></li><li>Output:<pre><button", html)
-        self.assertNotContains("```", html)
-
-    def test_blockquote_renders_as_blockquote(self) -> None:
-        html = render_markdown(
-            "\n".join(
-                [
-                    "So the best current mechanism is:",
-                    "",
-                    "> OCC does not recognize Pi/my locally-cloaked request as native Claude Code traffic and reads `12368`.",
-                    "",
-                    "This also explains why body-level fixes did not work.",
-                ]
-            )
-        )
-
-        self.assertContains("<blockquote><p>OCC does not recognize", html)
-        self.assertContains("<code>12368</code>", html)
-        self.assertContains("</p></blockquote>", html)
-        self.assertNotContains("&gt; OCC", html)
-
-    def test_blockquote_allows_lazy_continuation(self) -> None:
-        html = render_markdown(
-            "\n".join(
-                [
-                    "> first quoted line",
-                    "continued quoted line with **bold** text",
-                ]
-            )
-        )
-
-        self.assertEqual(
-            html,
-            "<blockquote><p>first quoted line<br />continued quoted line with <strong>bold</strong> text</p></blockquote>",
-        )
-
-    def test_ordered_list_markers_are_literal_when_blank_separated(self) -> None:
-        html = render_markdown(
-            "\n".join(
-                [
-                    "1. one",
-                    "",
-                    "3. three",
-                    "",
-                    "```text",
-                    "ignored",
-                    "```",
-                    "",
-                    "5. five",
-                ]
-            )
-        )
-
-        markers = re.findall(r'<span class="md-list-marker">([^<]+)</span>', html)
-        self.assertEqual(markers, ["1.", "3.", "5."])
-
-    def test_ordered_list_markers_are_literal_when_contiguous(self) -> None:
-        html = render_markdown("1. one\n3. three\n5. five")
-
-        markers = re.findall(r'<span class="md-list-marker">([^<]+)</span>', html)
-        self.assertEqual(markers, ["1.", "3.", "5."])
-
-    def test_inline_paren_math_renders_as_inline_math(self) -> None:
-        html = render_markdown("For a residual stream vector \\(h_{\\ell,t}\\) at layer \\(\\ell\\), the J-lens asks.")
-        # No KaTeX in the Node VM: the fallback retains escaped source delimiters.
-        self.assertContains('<span class="md-math-fallback md-math-inline">\\(h_{\\ell,t}\\)</span>', html)
-        self.assertContains('<span class="md-math-fallback md-math-inline">\\(\\ell\\)</span>', html)
-        self.assertNotContains("@@MATH", html)
-        self.assertContains("the J-lens asks.", html)
-
-    def test_display_bracket_math_renders_as_block(self) -> None:
-        markdown = "It computes an average Jacobian:\n\n\\[\nJ_\\ell\n=\n\\mathbb{E}\\left[\\frac{\\partial h}{\\partial h_\\ell}\\right]\n\\]\n\nThen it decodes."
-        html = render_markdown(markdown)
-        self.assertContains('<span class="md-math-fallback md-math-display">\\[', html)
-        self.assertContains("\\mathbb{E}", html)
-        self.assertContains("Then it decodes.", html)
-        self.assertNotContains("@@MATH", html)
-        self.assertNotContains("<p>@@MATH", html)
-
-    def test_dollar_dollar_display_math(self) -> None:
-        html = render_markdown("The value of $$x^2 + y^2$$ is large.")
-        self.assertContains('<span class="md-math-fallback md-math-display">\\[x^2 + y^2\\]</span>', html)
-        self.assertNotContains("@@MATH", html)
-        self.assertNotContains("$$", html)
-
-    def test_single_dollar_inline_is_not_treated_as_math(self) -> None:
-        html = render_markdown("The single-`$` rule is guarded, so `$VAR` is safe.")
-        self.assertNotContains("md-math-fallback", html)
-        self.assertContains("$", html)
-        self.assertContains("rule is guarded", html)
-        self.assertContains("is safe", html)
-
-    def test_currency_dollars_not_treated_as_math(self) -> None:
-        html = render_markdown("That costs $5 and $10 more.")
-        self.assertNotContains("md-math-fallback", html)
-        self.assertContains("$5", html)
-        self.assertContains("$10", html)
-
-    def test_math_inside_fenced_code_block_is_not_rendered(self) -> None:
-        html = render_markdown(
-            "\n".join(
-                [
-                    "\\text{outside}",
-                    "",
-                    "```text",
-                    "\\(not math\\)",
-                    "```",
-                    "",
-                    "After.",
-                ]
-            )
-        )
-        self.assertContains("outside", html)
-        self.assertContains('<code data-lang="text">\\(not math\\)</code>', html)
-        self.assertNotContains("md-math-fallback", html)
-        self.assertNotContains("@@MATH", html)
-
-    def test_katex_render_path_is_invoked_with_display_mode(self) -> None:
-        katex_expr = "{ renderToString: function(src, opts){ return '<kmx>' + src + ':' + (opts.displayMode ? 'D' : 'I') + '</kmx>'; } }"
-        html = render_markdown("Inline \\(x\\) and block:\n\n\\[y\\]", katex_expr=katex_expr)
-        self.assertContains("<kmx>x:I</kmx>", html)
-        self.assertContains("<kmx>y:D</kmx>", html)
-        self.assertNotContains("md-math-fallback", html)
-        self.assertNotContains("@@MATH", html)
+        self.assertIn("Memory citations:", parsed)
+        self.assertIn("[Plan](~/.codex/memories/notes/plan.md#L7-9)", parsed)
 
 
 if __name__ == "__main__":
