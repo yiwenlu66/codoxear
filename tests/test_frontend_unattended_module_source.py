@@ -702,6 +702,106 @@ class TestFrontendUnattendedModuleBehavior(unittest.TestCase):
         self.assertEqual(result["saveBodies"][0], { "request": "first" })
         self.assertEqual(result["saveBodies"][1], { "request": "second" })
 
+    def test_pending_enabled_edit_wins_over_older_session_poll(self) -> None:
+        js = harness_script(
+            """
+            const h = globalThis.__harness;
+            h.sessions.set("sid-1", {
+              launch_state: "ready",
+              unattended_enabled: false,
+              unattended_cooldown_minutes: 5,
+              unattended_remaining_injections: 10,
+            });
+            h.select("sid-1");
+            h.controller.syncButtonState();
+
+            h.dom.enabledEl.checked = true;
+            h.dom.enabledEl.onchange({ target: h.dom.enabledEl });
+            h.controller.syncButtonState();
+            const activeBeforeFlush = h.dom.unattendedBtn.classList._flag;
+
+            let resolveSave;
+            const save = new Promise((resolve) => { resolveSave = resolve; });
+            h.setApiResponses([{ __promise: save }]);
+            h.runPendingTimers();
+
+            // Simulate /api/sessions replacing the row with its older value
+            // while the debounced edit is still crossing the POST boundary.
+            h.sessions.set("sid-1", {
+              launch_state: "ready",
+              unattended_enabled: false,
+              unattended_cooldown_minutes: 5,
+              unattended_remaining_injections: 10,
+            });
+            h.controller.syncButtonState();
+            const activeDuringSave = h.dom.unattendedBtn.classList._flag;
+
+            resolveSave({ enabled: true, request: "", cooldown_minutes: 5, remaining_injections: 10 });
+            await new Promise((r) => setTimeout(r, 0));
+            globalThis.__result = { activeBeforeFlush, activeDuringSave };
+            """
+        )
+        result = run_node_json(js)
+        self.assertTrue(result["activeBeforeFlush"])
+        self.assertTrue(result["activeDuringSave"])
+
+    def test_pending_config_fields_survive_stale_reload_and_poll(self) -> None:
+        js = harness_script(
+            """
+            const h = globalThis.__harness;
+            const stale = {
+              launch_state: "ready",
+              unattended_enabled: false,
+              unattended_request: "server-old",
+              unattended_cooldown_minutes: 5,
+              unattended_remaining_injections: 10,
+            };
+            h.sessions.set("sid-1", { ...stale });
+            h.select("sid-1");
+            h.setApiResponses([{ enabled: false, request: "server-old", cooldown_minutes: 5, remaining_injections: 10 }]);
+            await h.controller.show({ opener: null });
+
+            h.dom.requestEl.value = "local-new";
+            h.dom.requestEl.oninput({ target: h.dom.requestEl });
+            h.dom.cooldownEl.value = "7";
+            h.dom.cooldownEl.oninput({ target: h.dom.cooldownEl });
+            h.dom.remainingEl.value = "4";
+            h.dom.remainingEl.oninput({ target: h.dom.remainingEl });
+            h.dom.enabledEl.checked = true;
+            h.dom.enabledEl.onchange({ target: h.dom.enabledEl });
+            h.controller.hide();
+
+            // Reopening fetches an older server snapshot. Pending user edits
+            // remain authoritative until their debounced POST completes.
+            h.setApiResponses([{ enabled: false, request: "server-old", cooldown_minutes: 5, remaining_injections: 10 }]);
+            await h.controller.show({ opener: null });
+            const afterReload = {
+              enabled: h.dom.enabledEl.checked,
+              request: h.dom.requestEl.value,
+              cooldown: h.dom.cooldownEl.value,
+              remaining: h.dom.remainingEl.value,
+            };
+
+            // A concurrent /api/sessions row replacement must obey the same
+            // reconciliation while the menu remains open.
+            h.sessions.set("sid-1", { ...stale });
+            h.controller.syncButtonState();
+            const afterPoll = {
+              active: h.dom.unattendedBtn.classList._flag,
+              enabled: h.dom.enabledEl.checked,
+              request: h.dom.requestEl.value,
+              cooldown: h.dom.cooldownEl.value,
+              remaining: h.dom.remainingEl.value,
+            };
+            globalThis.__result = { afterReload, afterPoll };
+            """
+        )
+        result = run_node_json(js)
+        expected = {"enabled": True, "request": "local-new", "cooldown": "7", "remaining": "4"}
+        self.assertEqual(result["afterReload"], expected)
+        self.assertTrue(result["afterPoll"].pop("active"))
+        self.assertEqual(result["afterPoll"], expected)
+
     # --- 10. 401 -> handleAppAuthLoss; non-401 -> "unattended save error: ..." ---
 
     def test_401_save_triggers_auth_loss(self) -> None:

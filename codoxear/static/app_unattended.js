@@ -161,11 +161,12 @@
       if (getSelected() !== sid) return;
       if (openToken !== null && (unattendedMenuToken !== openToken || unattendedMenuSessionId !== sid || !unattendedMenuOpen)) return;
       validateUnattendedPayload(d);
+      const reconciled = reconcileUnattendedServerPayload(d, sid);
       unattendedCfg = {
-        enabled: d.enabled,
-        request: d.request,
-        cooldown_minutes: d.cooldown_minutes,
-        remaining_injections: d.remaining_injections,
+        enabled: reconciled.enabled,
+        request: reconciled.request,
+        cooldown_minutes: reconciled.cooldown_minutes,
+        remaining_injections: reconciled.remaining_injections,
       };
       unattendedNumberDirty.cooldown_minutes = false;
       unattendedNumberDirty.remaining_injections = false;
@@ -190,6 +191,19 @@
         out.enabled = Boolean(patch.enabled) && Number.isFinite(remaining) && remaining > 0;
       }
       return out;
+    }
+
+    function unattendedPatchIsLocallyAuthoritative(sid, name) {
+      const has = (value) => Boolean(value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, name));
+      return has(unattendedSavePending.get(sid)) || has(unattendedSaveInFlight.get(sid));
+    }
+
+    function reconcileUnattendedServerPayload(serverPayload, sid) {
+      return {
+        ...serverPayload,
+        ...(unattendedSaveInFlight.get(sid) || {}),
+        ...(unattendedSavePending.get(sid) || {}),
+      };
     }
 
     function applySavedUnattendedCfg(saved, sid) {
@@ -220,7 +234,7 @@
       const snapshot = unattendedSavePending.get(sid);
       if (!snapshot) return;
       unattendedSavePending.delete(sid);
-      unattendedSaveInFlight.set(sid, true);
+      unattendedSaveInFlight.set(sid, snapshot);
       try {
         const saved = await api(`/api/sessions/${sid}/unattended`, {
           method: "POST",
@@ -274,7 +288,12 @@
     function projectButtonState() {
       const selected = getSelected();
       const s = selected ? getSessionInfo(selected) : null;
-      const on = Boolean(s && s.unattended_enabled);
+      // The session-list poll is server truth, except for fields whose user
+      // edit has not crossed the debounced-save commit boundary yet.  Keep the
+      // local enabled edit authoritative while queued/in flight so an older
+      // poll cannot visibly undo it and then re-apply it after the POST.
+      const enabledLocallyAuthoritative = Boolean(selected && unattendedPatchIsLocallyAuthoritative(selected, "enabled"));
+      const on = enabledLocallyAuthoritative ? Boolean(unattendedCfg.enabled) : Boolean(s && s.unattended_enabled);
       const unattendedBlocked = Boolean(selected && sessionLaunchFailed(s));
       const unattendedLabel = !selected ? "Select a session for unattended mode" : unattendedBlocked ? "Failed launch has no unattended mode" : "Unattended mode";
       unattendedBtn.disabled = !selected || unattendedBlocked;
@@ -285,6 +304,7 @@
         selected &&
         s &&
         !unattendedNumberDirty.cooldown_minutes &&
+        !unattendedPatchIsLocallyAuthoritative(selected, "cooldown_minutes") &&
         Number.isInteger(s.unattended_cooldown_minutes) &&
         s.unattended_cooldown_minutes >= 1
       ) {
@@ -294,6 +314,7 @@
         selected &&
         s &&
         !unattendedNumberDirty.remaining_injections &&
+        !unattendedPatchIsLocallyAuthoritative(selected, "remaining_injections") &&
         Number.isInteger(s.unattended_remaining_injections) &&
         s.unattended_remaining_injections >= 0
       ) {
@@ -303,6 +324,7 @@
         selected &&
         s &&
         typeof s.unattended_request === "string" &&
+        !unattendedPatchIsLocallyAuthoritative(selected, "request") &&
         (!unattendedMenuOpen || unattendedMenuSessionId !== selected)
       ) {
         unattendedCfg.request = s.unattended_request;
