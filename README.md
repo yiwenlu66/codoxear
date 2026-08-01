@@ -156,6 +156,14 @@ The current UI offers Delete for all session kinds. Delete sends a shutdown requ
 
 If you start a web-owned session and later want to continue it in your terminal while keeping it registered with Codoxear, use the matching backend workflow: Codex sessions resume through `codox ...`, Pi sessions through `piox ...` or plain `pi --session <session-file>` if you want to continue the same Pi session file directly, and Claude Code sessions through `ccox --resume <session-id>`.
 
+## UI features
+
+- **Live transcript via SSE.** When a session is selected and bound to a backend log, the browser opens a persistent `EventSource` connection (`/api/sessions/<id>/live`) so new messages stream in real time; polling is the automatic fallback.
+- **Subagent activity (Pi).** Pi subagent events surface as inline narration rows in the transcript, showing delegation, background-task progress, and results without the terminal.
+- **Typing indicator with counts.** While a session is busy, the typing row shows live tool and thinking counts (`tools: N · thinking: N`).
+- **Markdown rendering.** Assistant messages render with the `marked` library, with clickable file-reference links, KaTeX math, and per-code-block copy buttons.
+- **Flat, e-ink-friendly design.** Solid opaque borders (`#94a3b8`) and a flat visual style with no translucency or decorative shadows, tuned for e-ink and high-glare screens.
+
 ## Keyboard shortcuts
 
 - `f` — Vimium-style hint mode. Press `f`, then the letter shown over any visible control to activate it (sessions `1`–`9`, sidebar, files, details, unattended, search, previous/next message, send, attach, queued messages, stop, new session, and dynamically-assigned hints on clickable file references). Press `Esc` or `Backspace` to cancel.
@@ -166,6 +174,7 @@ If you start a web-owned session and later want to continue it in your terminal 
 - `D` — delete the current session (with confirmation).
 - `/` — search the loaded conversation.
 - On a Pi session, type `/model` in the composer to switch models live (start typing a provider or model name to filter).
+- In an open dialog, press a visible button's first distinctive letter to activate it. When buttons share their first letter, use a later distinctive letter. `Esc` closes the dialog.
 
 Most shortcuts are ignored while the message composer is focused; press `Esc` to leave it.
 
