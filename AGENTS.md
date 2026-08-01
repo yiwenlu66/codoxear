@@ -64,13 +64,38 @@ Currently supported agent backends:
 - **Send path is unconditional confirmed-send.** The busy/queue gate was removed: `require_send_preconditions` only blocks on commit-unknown resolution, a pending attachment, a stale queue item, or missing broker `sync_send`. Direct sends submit regardless of busy state, so steering works on all backends. The queue remains an opt-in alternative, not a hard gate.
 - **Live transcript delivery uses SSE.** Once a session is selected and bound to a backend log, the browser opens an `EventSource` on `/api/sessions/<id>/live` (`message_routes.py` `handle_messages_live_stream`) for real-time message deltas; HTTP polling is the automatic fallback. The SSE handler and the poll handler share the same live-delta/normalization path, so both produce identical transcript state.
 - **Pi subagent activity is visible in the transcript.** Pi `pi-subagent:` custom events are normalized into inline narration rows by `agent_backend.py` (`_pi_subagent_*` helpers): background-task progress, control notices, and results render as assistant-side rows so the user sees delegation without the terminal.
-- **Typing indicator shows tool/thinking counts.** `app_transcript.js` `typingRowRuntime` tracks live `{ thinking, tools }` deltas from SSE/session-list payloads and renders `tools: N · thinking: N` in the busy typing row.
+- **Typing indicator shows tool/thinking counts.** `app_transcript.js` `typingRowRuntime` tracks live `{ thinking, tools }` deltas from SSE/session-list payloads and renders `tools: N · thinking: N` in the busy typing row. Counts are monotonic within a turn (the snapshot feed may only raise the count, never lower it, recovering from an SSE gap) and reset when a new turn opens.
 - **Markdown rendering uses the `marked` library**, loaded from `cdn.jsdelivr.net` (`index.html`); the CSP (`script-src`/`style-src`) was updated to allow it. Codoxear post-processors run after `marked`: file-reference rewriting (`app_markdown.js`), KaTeX math, and OAI memory-citation rewriting.
-- **Flat visual style.** No `backdrop-filter` anywhere; the only `box-shadow`/`outline` usage is functional focus/state indication, not decorative depth.
+- **Paper design language.** See the “Design language” section below for the full rule set. In short: zero border radius, ink `#141111`/paper/wash palette, inversion (ink-on-paper) primaries with no accent blue, square state dots, monospace for data, no translucent colors, no decorative shadows.
 - **Performance.** Static asset responses are gzip-compressed (`static_routes.py`), served over `HTTP/1.1` (`server_handler.py`), versioned assets (`?v=...`) get immutable one-year cache headers, the asset version is memoized, and poll cadence is tuned via `CODEX_WEB_*_INTERVAL_SECONDS` env vars.
 - **Session card DOM has two branches and must stay split.** Touch uses swipe actions; desktop uses hover-revealed actions (`useDesktopSessionActions()` / `swipeActions` flag in `app_session_helpers.js`). Do not attempt to unify them into one branch.
-- **Keyboard.** Vimium-style hint mode: press `f`, then the letter over any visible control to activate it. Direct shortcuts (no leader): `i` focus message, `j`/`k` scroll, `d`/`u` half-page, `G` go to bottom, `D` delete session, `/` search. On Pi sessions, `/model` in the composer switches models live. In open dialogs, the first distinctive letter of a visible button activates it (`activateModalButtonForKey` in `app.js`).
+- **Keyboard.** Vimium-style hint mode: press `f`, then the letter over any visible control to activate it. Direct shortcuts (no leader): `i` focus message, `j`/`k` scroll, `d`/`u` half-page, `G` go to bottom, `D` delete session, `/` search. The topbar interrupt button (`interruptBtn`) is the sole interrupt control on all viewports with hint `z`; the composer stop button was removed. On Pi sessions, `/model` and `/thinking` in the composer switch models and reasoning levels live (the `/thinking` command is registered by the `pi_active_session_bridge.ts` extension; existing sessions need `/reload` or a restart to load the updated bridge). In open dialogs, the first distinctive letter of a visible button activates it, with a later distinctive letter breaking first-letter ties (`activateModalButtonForKey` in `app.js`).
 - **Pi control authority goes through an extension bridge, not web-only RPC.** Codoxear wraps all backends in a PTY so web and terminal share the same session; Pi `--mode rpc` is a separate headless mode that cannot coexist with the TUI. Authoritative model/thinking control for shared sessions requires expanding the `pi_active_session_bridge.ts` extension side-channel, not a web-owned RPC adapter. See `.memory/project/ARCHITECTURE.md` “Pi integration strategy” for details.
+
+## Design language
+
+The UI follows a single “paper” design language. These rules are invariants, not preferences.
+
+- **Zero border radius everywhere.** No rounded corners on any element.
+- **Ink/paper/wash palette.** `--ink: #141111`, `--paper: #ffffff`, `--bg: #f6f5f1`, `--wash: #efeee9`, `--hairline: #dcdad4`. Borders are ink (`--border: #141111`), not a neutral gray.
+- **Inversion primaries, no accent blue.** Primary actions are ink-on-paper inversion (`background: var(--ink); color: var(--paper)`). Do not introduce a blue/accent primary.
+- **Square state dots.** Session state dots are squares; fill and motion distinguish busy (filled + pulse), idle (hollow), suppressed/snoozed/blocked (filled, no pulse), and pending/starting (filled amber + pulse). Motion, not hue, is the primary discriminator.
+- **Monospace for data.** Use `--font-mono` for model names, token counts, paths, and other data-like text.
+- **No translucent colors.** No `rgba`/`hsla` with alpha for fills or borders. Backdrops are solid.
+- **No decorative shadows.** `box-shadow`/`outline` is allowed only for functional focus/state indication, never for depth. No `backdrop-filter`.
+- **Chrome controls are compact with touch hit-slop.** Topbar/sidebar/nav chrome buttons are 32px (`--ctl-chrome`) on all viewports, with a 44px touch hit-slop via an `::after` inset pseudo-element. Composer and dialog controls use the `--ctl` token (38px desktop, 44px on touch).
+
+### Media-query branching rule
+
+Media queries may only **retune tokens** (e.g. `--ctl`, `--sidebar-w`), **flip visibility** (show/hide a branch), or **switch layout mode** (grid columns, fixed/flow). They must never restyle a component (no per-viewport color, radius, font, or border changes on an existing component). When viewport-specific behavior is genuinely component-level, branch the component instead.
+
+The sanctioned component branches are:
+
+- **Sidebar drawer** — fixed off-canvas on narrow viewports, static column on wide.
+- **Session-card reveal mechanism** — touch uses swipe-revealed actions; desktop uses hover-revealed inline actions. This DOM split is **LOCKED**: do not unify the two branches (`useDesktopSessionActions()` / `swipeActions` flag in `app_session_helpers.js`).
+- **Viewer fullscreen takeover** — file viewer takes over the viewport on small screens.
+- **Hover → always-visible flips** — controls revealed on hover for fine pointers become persistently visible on coarse-pointer/touch.
+- **Composer safe-area / anti-zoom** — iOS safe-area insets and input-focus anti-zoom handling.
 
 ## Development reminders
 

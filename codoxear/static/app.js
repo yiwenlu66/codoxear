@@ -1448,7 +1448,7 @@
             html: `<div class="muted">Sessions</div>
 <ul class="md">
   <li>Choose a conversation from the sidebar. On desktop, hover a row to reveal <b>Edit</b>, <b>Duplicate</b>, and <b>Delete</b>. On touch, swipe left for <b>Edit</b>/<b>Duplicate</b> and right for <b>Delete</b>.</li>
-  <li>The dot on the title row shows state: <b>filled + pulsing</b> = busy, <b>hollow</b> = idle, <b>filled orange</b> = snoozed or blocked, <b>filled amber</b> = starting.</li>
+  <li>The dot on the title row shows state: <b>filled + pulsing</b> = busy, <b>hollow</b> = idle, <b>filled (no pulse)</b> = snoozed or blocked, <b>filled amber + pulsing</b> = starting.</li>
   <li>The metadata line shows the agent-backend icon first, then the session-type icon, followed by recency, model and reasoning suffix (for example <b>·hi</b>), folder, and branch.</li>
   <li>Click the conversation title to rename or reprioritize it. <b>Details</b> in the session utilities bar shows the exact backend, provider, model, reasoning level, queue state, and token usage.</li>
 </ul>
@@ -1457,7 +1457,7 @@
   <li><b>New session</b> can start fresh or resume a matching conversation for the currently selected backend in the current working directory.</li>
   <li>The backend tabs choose between the supported agent backends. Right now that is <b>Codex</b>, <b>Pi</b>, and <b>Claude</b>.</li>
   <li>You can choose working directory, a combined provider/model pair, reasoning level, and whether the session should start in tmux. If the directory is a Git repo, you can also start in a new worktree branch.</li>
-  <li>For Pi, the reasoning level is set when the session launches. To change it later, use <b>Shift+Tab</b> in Pi's terminal; Codoxear does not guess or inject thinking-level cycles.</li>
+  <li>For Pi, the reasoning level is set when the session launches. To change it later on a live session, type <b>/thinking</b> in the composer (see Messages and queue).</li>
   <li>Codoxear remembers the last backend you used and the last provider/model pair for each backend.</li>
 </ul>
 <div class="muted">Messages and queue</div>
@@ -1466,8 +1466,8 @@
   <li>The queue is stored per session and drains automatically when that session becomes idle. Use <b>Queued messages</b> to review or edit queued prompts.</li>
   <li><b>Load older messages</b> fetches more scrollback. <b>Jump to latest</b> returns to the newest turn when you are reading history.</li>
   <li>The <b>Search</b> button and <b>Previous</b>/<b>Next</b> message controls live in the navigation bar at the top of the conversation (not a floating rail). Use <b>/</b> to search the conversation. The search bar shows a position such as <b>2 of 5</b>; at the oldest visible match, it tells you when <b>Previous</b> can load older matches.</li>
-  <li>On a <b>Pi</b> session, type <b>/model</b> in the composer to switch models live. Start typing a provider or model name to filter the list, then choose an entry.</li>
-  <li>Press <b>f</b> to show keyboard hints for visible controls: <b>1</b>–<b>9</b> switch sessions; <b>s</b> sidebar; <b>t</b> edit conversation; <b>b</b> files; <b>d</b> details; <b>u</b> unattended; <b>z</b> interrupt; <b>/</b> search; <b>p</b>/<b>n</b> previous/next user message; <b>o</b> older messages; <b>g</b> latest; <b>a</b> attach; <b>q</b> queued messages; <b>x</b> stop; <b>e</b> send; <b>i</b> message box; <b>c</b> new session. Clickable file references in the conversation also get dynamically-assigned letter hints. Press <b>Escape</b> or <b>Backspace</b> to cancel.</li>
+  <li>On a <b>Pi</b> session, type <b>/model</b> in the composer to switch models live, or <b>/thinking</b> to switch the reasoning level. Start typing to filter the list, then choose an entry. The model picker lists configured providers and models; the thinking picker lists the levels the current model supports.</li>
+  <li>Press <b>f</b> to show keyboard hints for visible controls: <b>1</b>–<b>9</b> switch sessions; <b>s</b> sidebar; <b>t</b> edit conversation; <b>b</b> files; <b>d</b> details; <b>u</b> unattended; <b>z</b> interrupt; <b>/</b> search; <b>p</b>/<b>n</b> previous/next user message; <b>o</b> older messages; <b>g</b> latest; <b>a</b> attach; <b>q</b> queued messages; <b>e</b> send; <b>i</b> message box; <b>c</b> new session. Clickable file references in the conversation also get dynamically-assigned letter hints. Press <b>Escape</b> or <b>Backspace</b> to cancel.</li>
   <li>In an open dialog, press a visible button's first distinctive letter to activate it. When buttons share their first letter, use a later distinctive letter. <b>Esc</b> closes the dialog.</li>
   <li>Direct shortcuts (no leader): <b>i</b> focus message box; <b>j</b>/<b>k</b> scroll down/up; <b>d</b>/<b>u</b> scroll half-page down/up; <b>G</b> go to bottom; <b>D</b> delete current session (confirm); <b>/</b> search; <b>Esc</b> exit message box or close dialog.</li>
 </ul>

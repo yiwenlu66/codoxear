@@ -162,19 +162,19 @@ If you start a web-owned session and later want to continue it in your terminal 
 - **Subagent activity (Pi).** Pi subagent events surface as inline narration rows in the transcript, showing delegation, background-task progress, and results without the terminal.
 - **Typing indicator with counts.** While a session is busy, the typing row shows live tool and thinking counts (`tools: N · thinking: N`).
 - **Markdown rendering.** Assistant messages render with the `marked` library, with clickable file-reference links, KaTeX math, and per-code-block copy buttons.
-- **Flat, e-ink-friendly design.** Solid opaque borders (`#94a3b8`) and a flat visual style with no translucency or decorative shadows, tuned for e-ink and high-glare screens.
+- **Paper design language.** A flat, high-contrast ink/paper palette (`#141111` ink, paper white, warm wash) with zero border radius, square state dots, inversion (ink-on-paper) primaries instead of accent blue, no translucent colors, and no decorative shadows. Chrome controls stay a compact 32px with a 44px touch hit-slop; composer and dialog controls grow to 44px on touch screens.
 
 ## Keyboard shortcuts
 
-- `f` — Vimium-style hint mode. Press `f`, then the letter shown over any visible control to activate it (sessions `1`–`9`, sidebar, files, details, unattended, search, previous/next message, send, attach, queued messages, stop, new session, and dynamically-assigned hints on clickable file references). Press `Esc` or `Backspace` to cancel.
+- `f` — Vimium-style hint mode. Press `f`, then the letter shown over any visible control to activate it (sessions `1`–`9`, `s` sidebar, `t` edit conversation title, `b` files, `d` details, `u` unattended, `z` interrupt, `/` search, `p`/`n` previous/next message, `o` older messages, `g` latest, `a` attach, `q` queued messages, `e` send, `i` message box, `c` new session, and dynamically-assigned hints on clickable file references). Press `Esc` or `Backspace` to cancel.
 - `i` — focus the message composer.
 - `j` / `k` — scroll down / up.
 - `d` / `u` — scroll half a page down / up.
 - `G` — jump to the bottom of the conversation.
 - `D` — delete the current session (with confirmation).
-- `/` — search the loaded conversation.
-- On a Pi session, type `/model` in the composer to switch models live (start typing a provider or model name to filter).
-- In an open dialog, press a visible button's first distinctive letter to activate it. When buttons share their first letter, use a later distinctive letter. `Esc` closes the dialog.
+- `/` — search the conversation.
+- On a Pi session, type `/model` in the composer to switch models live, or `/thinking` to switch the reasoning level (start typing to filter).
+- In an open dialog, press a visible button's first distinctive letter to activate it. When buttons share their first letter, use a later distinctive letter (for example Confirm→`o`, Cancel→`a`). `Esc` closes the dialog.
 
 Most shortcuts are ignored while the message composer is focused; press `Esc` to leave it.
 
