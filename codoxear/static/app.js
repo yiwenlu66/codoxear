@@ -128,9 +128,9 @@
         return codoxearStorage.removeItem(key);
       }
 
-      let newSessionBackend = "codex";
+      let newSessionBackend = "pi";
       let newSessionDefaults = {
-        default_backend: "codex",
+        default_backend: "pi",
         backends: {
           codex: null,
           pi: null,
@@ -858,11 +858,11 @@
         let newSessionStartBusy = false;
         let newSessionLiteralModelInputValue = "";
         let newSessionLaunchPresetProviderAbsent = false;
-        newSessionBackend = "codex";
+        newSessionBackend = "pi";
         let newSessionProvider = "chatgpt";
         let newSessionFast = false;
         newSessionDefaults = {
-          default_backend: "codex",
+          default_backend: "pi",
           backends: {
             codex: legacyCodexLaunchDefaults(),
             pi: emptyPiLaunchDefaults(),
@@ -2972,7 +2972,7 @@
               data && typeof data.new_session_defaults === "object" && data.new_session_defaults
                 ? data.new_session_defaults
                 : {
-                    default_backend: "codex",
+                    default_backend: "pi",
                     backends: {
                       codex: legacyCodexLaunchDefaults(),
                       pi: emptyPiLaunchDefaults(),
@@ -3955,7 +3955,7 @@
 
         function renderNewSessionBackendTabs() {
           newSessionBackendTabs.innerHTML = "";
-          for (const backend of ["codex", "pi", "cc"]) {
+          for (const backend of ["pi", "codex", "cc"]) {
             const active = newSessionBackend === backend;
             const btn = el("button", {
               class: `agentBackendTab${active ? " active" : ""}`,
