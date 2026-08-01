@@ -143,6 +143,7 @@ def send_inline_file_response(handler: http.server.BaseHTTPRequestHandler, path:
             handler.send_response(416)
             handler.send_header("Content-Range", f"bytes */{size}")
             handler.send_header("Accept-Ranges", "bytes")
+            handler.send_header("Content-Length", "0")
             handler.end_headers()
             return
         start = 0 if byte_range is None else byte_range[0]

@@ -198,7 +198,7 @@ Set these in `.env` (or in the process environment):
 - `CLAUDE_BIN` (default `claude`)
 - `CODEX_WEB_COOKIE_NAME` (default `codoxear_auth`; use a distinct valid cookie-token name when multiple Codoxear services share one hostname)
 - `CODEX_WEB_COOKIE_SECURE` (default `0`; set to `1` behind HTTPS)
-- `CODEX_WEB_STATIC_CACHE` (default `0`; set to `1` to serve static assets with long-lived immutable cache headers)
+- Versioned static assets (`?v=...`) are served with a one-year immutable cache policy; HTML and unversioned assets revalidate on every use.
 - `CODEX_WEB_TRANSCRIPT_EXPORT_MAX_BYTES` (default `52428800`; maximum backend log size eligible for full-conversation copy/export)
 - `CODEX_WEB_UNATTENDED_SWEEP_SECONDS` (default `2.5`)
 - `CODEX_WEB_QUEUE_SWEEP_SECONDS` (default `1.0`)

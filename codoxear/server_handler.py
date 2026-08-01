@@ -55,6 +55,7 @@ class ServerHandlerDeps:
 
 
 class CodoxearHandler(http.server.BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
     server_version = "codoxear/0.1"
     deps: ServerHandlerDeps
 
@@ -87,6 +88,7 @@ class CodoxearHandler(http.server.BaseHTTPRequestHandler):
                     location = location + "?" + parsed.query
                 self.send_response(308)
                 self.send_header("Location", location)
+                self.send_header("Content-Length", "0")
                 self.end_headers()
                 return None
             stripped = self.deps.strip_url_prefix(self.deps.url_prefix, path)
@@ -96,10 +98,11 @@ class CodoxearHandler(http.server.BaseHTTPRequestHandler):
             path = stripped
         return parsed, path
 
-    def _handle_static_get(self, path: str) -> bool:
+    def _handle_static_get(self, path: str, query: str) -> bool:
         return handle_static_get_route(
             self,
             path=path,
+            query=query,
             deps=self.deps.static_route_deps(),
         )
 
@@ -150,7 +153,7 @@ class CodoxearHandler(http.server.BaseHTTPRequestHandler):
                 return
             url, path = parsed
             manager = self.deps.manager()
-            if self._handle_static_get(path):
+            if self._handle_static_get(path, url.query):
                 return
             if handle_auth_get_route(self, path=path, deps=self.deps.auth_route_deps()):
                 return

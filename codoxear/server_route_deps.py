@@ -137,7 +137,6 @@ class ServerRouteDepsFactory:
             json_response_with_etag=server._json_response_with_etag,
             read_json_body=lambda handler, **kwargs: handler._read_json_body(**kwargs),
             read_new_session_defaults=server._read_new_session_defaults,
-            static_asset_version=server._static_asset_version,
             tmux_available=server._tmux_available,
             tmux_session_name=self.config.TMUX_SESSION_NAME,
             metrics_snapshot=server._metrics_snapshot,

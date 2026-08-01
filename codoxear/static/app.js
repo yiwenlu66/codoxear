@@ -6725,12 +6725,6 @@
 	          if (storageGetItem("codexweb.sidebarOpen") === "1") setSidebarOpen(true);
 
 	          try {
-              await loadVoiceSettings();
-              await syncNotificationState();
-              if (voiceAnnouncementsEnabled()) {
-                resumeAnnouncementRuntime({ resetSource: false });
-              }
-              if (notificationsEnabledLocally()) await pollNotificationFeed({ prime: true });
 	            const sessions = await refreshSessions();
               const hashed = sessionIdFromHash();
 	            const remembered = storageGetItem("codexweb.selected");
@@ -6742,6 +6736,17 @@
 	                  ? remembered
 	                  : first;
 	            if (pick) await selectSession(pick);
+              void (async () => {
+                try {
+                  await Promise.all([loadVoiceSettings(), syncNotificationState()]);
+                  if (appDisposed) return;
+                  if (voiceAnnouncementsEnabled()) resumeAnnouncementRuntime({ resetSource: false });
+                  if (notificationsEnabledLocally()) await pollNotificationFeed({ prime: true });
+                } catch (e) {
+                  if (e && e.status === 401) handleAppAuthLoss();
+                  else console.error("initial voice and notification sync failed", e);
+                }
+              })();
 	          } catch (e) {
 	            if (e && e.status === 401) {
               handleAppAuthLoss();

@@ -74,6 +74,7 @@ class TestStaticAssets(unittest.TestCase):
             monaco_loader.write_text("loader one\n", encoding="utf-8")
             monaco_worker.write_text("worker one\n", encoding="utf-8")
             first = _static_asset_version(root)
+            _static_asset_version.cache_clear()
             monaco_worker.write_text("worker two\n", encoding="utf-8")
             second = _static_asset_version(root)
             self.assertNotEqual(first, second)
@@ -134,6 +135,7 @@ class TestStaticAssets(unittest.TestCase):
             for name in STATIC_ASSET_VERSION_FILES:
                 target = root / name
                 target.write_text(initial_content[name] + "/* changed */\n", encoding="utf-8")
+                _static_asset_version.cache_clear()
                 versions.append(_static_asset_version(root))
             self.assertEqual(len(versions), len(set(versions)))
 
@@ -230,15 +232,25 @@ class TestStaticAssets(unittest.TestCase):
             self.assertIn(f"app_chat_search.js?v={version}", rendered)
             self.assertIn(f"app.js?v={version}", rendered)
 
-    def test_static_cache_headers_default_to_no_store(self) -> None:
+    def test_static_asset_version_is_memoized(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            asset = root / "app.js"
+            asset.write_text("one\n", encoding="utf-8")
+            first = _static_asset_version(root)
+            asset.write_text("two\n", encoding="utf-8")
+            self.assertEqual(_static_asset_version(root), first)
+            _static_asset_version.cache_clear()
+
+    def test_static_cache_headers_default_to_no_cache(self) -> None:
         self.assertEqual(
-            _static_cache_control_headers(enabled=False),
-            {"Cache-Control": "no-store", "Pragma": "no-cache", "Expires": "0"},
+            _static_cache_control_headers(versioned=False, is_html=True),
+            {"Cache-Control": "no-cache"},
         )
 
     def test_static_cache_headers_can_be_immutable(self) -> None:
         self.assertEqual(
-            _static_cache_control_headers(enabled=True),
+            _static_cache_control_headers(versioned=True, is_html=False),
             {"Cache-Control": "public, max-age=31536000, immutable"},
         )
 

@@ -21,7 +21,6 @@ class SessionRouteDeps:
     json_response_with_etag: JsonResponseWithEtag
     read_json_body: ReadJsonBody
     read_new_session_defaults: Callable[[], dict[str, Any]]
-    static_asset_version: Callable[[], str]
     tmux_available: Callable[[], bool]
     tmux_session_name: str
     metrics_snapshot: Callable[[], dict[str, Any]]
@@ -105,7 +104,6 @@ def _handle_sessions_list(handler: Any, *, manager: Any, deps: SessionRouteDeps)
     deps.json_response_with_etag(
         handler,
         {
-            "app_version": deps.static_asset_version(),
             "sessions": sessions,
             "recent_cwds": recent_cwds,
             "new_session_defaults": new_session_defaults,

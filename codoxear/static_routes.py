@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import hashlib
-import os
+import urllib.parse
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable
+
+from .server_http import gzip_response_body
 
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -77,20 +80,14 @@ class StaticRouteDeps:
     static_dir: Path
     top_level_static_assets: tuple[tuple[str, str], ...]
     read_static_bytes: Callable[[Path], bytes]
-    static_cache_control_headers: Callable[[], dict[str, str]]
+    static_cache_control_headers: Callable[..., dict[str, str]]
     content_security_policy: str
 
 
-def static_cache_control_headers(*, enabled: bool | None = None) -> dict[str, str]:
-    if enabled is None:
-        enabled = str(os.environ.get("CODEX_WEB_STATIC_CACHE") or "").strip() == "1"
-    if enabled:
+def static_cache_control_headers(*, versioned: bool, is_html: bool) -> dict[str, str]:
+    if versioned and not is_html:
         return {"Cache-Control": "public, max-age=31536000, immutable"}
-    return {
-        "Cache-Control": "no-store",
-        "Pragma": "no-cache",
-        "Expires": "0",
-    }
+    return {"Cache-Control": "no-cache"}
 
 
 def _static_version_asset_paths(base: Path) -> list[tuple[str, Path]]:
@@ -104,6 +101,7 @@ def _static_version_asset_paths(base: Path) -> list[tuple[str, Path]]:
     return assets
 
 
+@lru_cache(maxsize=None)
 def static_asset_version(static_dir: Path = STATIC_DIR) -> str:
     base = static_dir.resolve()
     digest = hashlib.sha256()
@@ -162,11 +160,11 @@ def static_content_type(path: Path) -> str:
     return "application/octet-stream"
 
 
-def handle_static_get_route(handler: Any, *, path: str, deps: StaticRouteDeps) -> bool:
+def handle_static_get_route(handler: Any, *, path: str, query: str, deps: StaticRouteDeps) -> bool:
     rel = static_route_asset(path, top_level_static_assets=deps.top_level_static_assets)
     if rel is None:
         return False
-    send_static_file(handler, rel, deps=deps)
+    send_static_file(handler, rel, query=query, deps=deps)
     return True
 
 
@@ -181,7 +179,7 @@ def static_route_asset(path: str, *, top_level_static_assets: tuple[tuple[str, s
     return None
 
 
-def send_static_file(handler: Any, rel: str, *, deps: StaticRouteDeps) -> None:
+def send_static_file(handler: Any, rel: str, *, query: str, deps: StaticRouteDeps) -> None:
     static_root = deps.static_dir.resolve()
     path = (static_root / rel.lstrip("/")).resolve()
     try:
@@ -193,17 +191,20 @@ def send_static_file(handler: Any, rel: str, *, deps: StaticRouteDeps) -> None:
         handler.send_error(404)
         return
     data = deps.read_static_bytes(path)
+    body, gzip_encoded = gzip_response_body(handler, data)
     handler.send_response(200)
     handler.send_header("Content-Type", static_content_type(path))
+    if gzip_encoded:
+        handler.send_header("Content-Encoding", "gzip")
+        handler.send_header("Vary", "Accept-Encoding")
     if path.suffix == ".html":
         handler.send_header("Content-Security-Policy", deps.content_security_policy)
         handler.send_header("X-Frame-Options", "DENY")
-    handler.send_header("Content-Length", str(len(data)))
-    # UI is used for interactive debugging; serve assets without caching by
-    # default so changes (including inline JS) show up immediately on
-    # refresh. Packaged deployments may opt into immutable static caching
-    # with CODEX_WEB_STATIC_CACHE=1.
-    for name, value in deps.static_cache_control_headers().items():
+    handler.send_header("Content-Length", str(len(body)))
+    for name, value in deps.static_cache_control_headers(
+        versioned="v" in urllib.parse.parse_qs(query, keep_blank_values=True),
+        is_html=path.suffix == ".html",
+    ).items():
         handler.send_header(name, value)
     handler.end_headers()
-    handler.wfile.write(data)
+    handler.wfile.write(body)

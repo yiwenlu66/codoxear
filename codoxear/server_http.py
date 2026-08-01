@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import errno
 import http.server
 import json
@@ -10,6 +11,25 @@ from typing import Any, Callable
 
 CLIENT_DISCONNECT_ERRNOS = {errno.EPIPE, errno.ECONNRESET, errno.ECONNABORTED}
 CLIENT_DISCONNECT_ERRORS = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
+GZIP_MIN_BYTES = 1024
+
+
+def gzip_response_body(handler: http.server.BaseHTTPRequestHandler, body: bytes) -> tuple[bytes, bool]:
+    accept_encoding = str(handler.headers.get("Accept-Encoding") or "")
+    accepts_gzip = False
+    for raw_coding in accept_encoding.split(","):
+        parts = [part.strip() for part in raw_coding.split(";")]
+        if not parts or parts[0].lower() != "gzip":
+            continue
+        quality = next((part.split("=", 1)[1] for part in parts[1:] if part.lower().startswith("q=") and "=" in part), "1")
+        try:
+            accepts_gzip = float(quality) > 0
+        except ValueError:
+            accepts_gzip = False
+        break
+    if len(body) < GZIP_MIN_BYTES or not accepts_gzip:
+        return body, False
+    return gzip.compress(body), True
 
 
 class BadRequestError(Exception):
@@ -55,10 +75,14 @@ def json_response(
     set_auth_cookie: Callable[[http.server.BaseHTTPRequestHandler], None],
 ) -> None:
     body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+    body, gzip_encoded = gzip_response_body(handler, body)
     handler.send_response(status)
     if getattr(handler, "_codoxear_refresh_auth_cookie", False):
         set_auth_cookie(handler)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
+    if gzip_encoded:
+        handler.send_header("Content-Encoding", "gzip")
+        handler.send_header("Vary", "Accept-Encoding")
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
     handler.wfile.write(body)
@@ -79,6 +103,7 @@ def json_response_with_etag(
     set_auth_cookie: Callable[[http.server.BaseHTTPRequestHandler], None],
 ) -> None:
     body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+    body, gzip_encoded = gzip_response_body(handler, body)
     etag = '"' + sha256_hex(body) + '"'
     if if_none_match_contains(handler.headers.get("If-None-Match"), etag):
         handler.send_response(304)
@@ -86,6 +111,9 @@ def json_response_with_etag(
             set_auth_cookie(handler)
         handler.send_header("ETag", etag)
         handler.send_header("Cache-Control", "private, no-cache")
+        if gzip_encoded:
+            handler.send_header("Content-Encoding", "gzip")
+            handler.send_header("Vary", "Accept-Encoding")
         handler.send_header("Content-Length", "0")
         handler.end_headers()
         return
@@ -93,6 +121,9 @@ def json_response_with_etag(
     if getattr(handler, "_codoxear_refresh_auth_cookie", False):
         set_auth_cookie(handler)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
+    if gzip_encoded:
+        handler.send_header("Content-Encoding", "gzip")
+        handler.send_header("Vary", "Accept-Encoding")
     handler.send_header("Content-Length", str(len(body)))
     handler.send_header("ETag", etag)
     handler.send_header("Cache-Control", "private, no-cache")

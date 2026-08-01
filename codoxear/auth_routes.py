@@ -35,24 +35,28 @@ def handle_auth_post_route(handler: Any, *, path: str, deps: AuthRouteDeps) -> b
         if not isinstance(pw, str) or not deps.is_same_password(pw):
             deps.json_response(handler, 403, {"error": "bad password"})
             return True
+        body = b'{"ok":true}'
         handler.send_response(200)
         deps.set_auth_cookie(handler)
         handler.send_header("Content-Type", "application/json; charset=utf-8")
+        handler.send_header("Content-Length", str(len(body)))
         handler.end_headers()
-        handler.wfile.write(b'{"ok":true}')
+        handler.wfile.write(body)
         return True
 
     if path == "/api/logout":
         if not _authorized(handler, deps):
             return True
+        body = b'{"ok":true}'
         handler.send_response(200)
         handler.send_header(
             "Set-Cookie",
             f"{deps.cookie_name}=deleted; Path={deps.cookie_path}; Max-Age=0; HttpOnly; SameSite=Strict",
         )
         handler.send_header("Content-Type", "application/json; charset=utf-8")
+        handler.send_header("Content-Length", str(len(body)))
         handler.end_headers()
-        handler.wfile.write(b'{"ok":true}')
+        handler.wfile.write(body)
         return True
 
     return False

@@ -86,7 +86,6 @@ def _deps(**overrides):
         json_response_with_etag=json_response_with_etag,
         read_json_body=lambda _handler, **_kwargs: {},
         read_new_session_defaults=lambda: {"backend": "codex"},
-        static_asset_version=lambda: "v1",
         tmux_available=lambda: True,
         tmux_session_name="codoxear",
         metrics_snapshot=lambda: {"api_sessions_ms": {"count": 1}},
@@ -133,7 +132,6 @@ def test_handle_session_get_route_lists_sessions_with_etag_and_metric() -> None:
     assert responses == []
     assert etag_payloads == [
         {
-            "app_version": "v1",
             "sessions": [{"id": "s1"}],
             "recent_cwds": ["/repo"],
             "new_session_defaults": {"backend": "codex"},

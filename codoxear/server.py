@@ -242,8 +242,8 @@ _strip_url_prefix = _strip_url_prefix_impl
 _SERVER_CONFIG = _build_server_config()
 _export_server_config(globals(), _SERVER_CONFIG)
 
-def _static_cache_control_headers(*, enabled: bool = STATIC_CACHE_ENABLED) -> dict[str, str]:
-    return _static_cache_control_headers_impl(enabled=enabled)
+def _static_cache_control_headers(*, versioned: bool, is_html: bool) -> dict[str, str]:
+    return _static_cache_control_headers_impl(versioned=versioned, is_html=is_html)
 
 
 UNATTENDED_PROMPT_PREFIX = _UNATTENDED_PROMPT_PREFIX
