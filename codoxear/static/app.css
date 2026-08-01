@@ -1593,6 +1593,12 @@ select {
         .composerStopBtn.is-visible {
           display: inline-flex;
         }
+        /* Mobile uses the composer stop button as the sole interrupt affordance
+           (thumb is already at the composer). Hide the topbar interrupt button
+           on coarse-pointer/mobile to avoid a redundant stop button. */
+        #interruptBtn {
+          display: none !important;
+        }
       }
 
       .login {
@@ -2407,8 +2413,7 @@ select {
       }
       @media (max-width: 700px) {
         .chatNavRail {
-          align-self: flex-end;
-          margin: 6px 10px 0 10px;
+          display: none;
         }
         .newSessionRunConfigRow {
           grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) auto;
@@ -2772,7 +2777,7 @@ select {
         .toast {
           position: fixed;
           left: 50%;
-          bottom: calc(76px + env(safe-area-inset-bottom));
+          top: calc(56px + env(safe-area-inset-top));
           transform: translateX(-50%);
           z-index: 95;
           max-width: min(88vw, 360px);
