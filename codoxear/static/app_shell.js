@@ -345,15 +345,11 @@
           if (launchFailed) meta.title = redactedLaunchErrorText(session.launch_error) || "Session launch failed";
           if (launchPending) meta.title = "Session is still starting";
           const editActions = launchRow ? [] : [renameBtn, duplicateBtn];
-          const content = el("div", { class: "sessionContent" }, [el("div", { class: "sessionInner" }, [el("div", { class: "row" }, [titleRow, badgesWrap]), meta])]);
-          card.appendChild(el("div", { class: "sessionSwipe" }, [
-            el("div", { class: "sessionActions left" }, [deleteBtn]),
-            el("div", { class: "sessionActions right" }, editActions),
-            content,
-          ]));
 
           if (swipeActions) {
+            const content = el("div", { class: "sessionContent" }, [el("div", { class: "sessionInner" }, [el("div", { class: "row" }, [titleRow, badgesWrap]), meta])]);
             content.dataset.swipeX = "0";
+            card.appendChild(el("div", { class: "sessionSwipe" }, [el("div", { class: "sessionActions left" }, [deleteBtn]), el("div", { class: "sessionActions right" }, editActions), content]));
             if (openSwipeSessionId === sessionId && openSwipeTargetX !== 0) {
               content.style.transform = `translate3d(${openSwipeTargetX}px, 0, 0)`;
               content.dataset.swipeX = String(openSwipeTargetX);
@@ -368,6 +364,10 @@
             };
           } else {
             card.classList.add("desktop");
+            card.appendChild(el("div", { class: "sessionInner sessionDesktopLayout" }, [
+              el("div", { class: "sessionMain" }, [el("div", { class: "sessionTitleWithBadges" }, [titleRow, badgesWrap]), meta]),
+              el("div", { class: "sessionActionsInline" }, [...editActions, deleteBtn]),
+            ]));
             card.onclick = () => {
               if (launchPending) { setToast("session still starting"); return; }
               void selectSession(sessionId);
