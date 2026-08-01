@@ -620,8 +620,12 @@
     }
 
     function updateVoiceUi() {
-      const audioError = liveAudioHasErrorState();
       const announcementsOn = voiceAnnouncementsEnabled();
+      // Only surface the audio error state when the user has actually enabled
+      // voice. Server-side pipeline errors (e.g. "tts_api_key is required",
+      // keepalive sweep failures) are irrelevant to users who never opted in —
+      // showing them as a red button is a category error.
+      const audioError = announcementsOn && liveAudioHasErrorState();
       announceBtn.classList.toggle("active", announcementsOn);
       const announceBase = announcementsOn ? "Announcements on" : "Announcements off";
       announceBtn.title = audioError ? `${announceBase} (audio error)` : announceBase;
