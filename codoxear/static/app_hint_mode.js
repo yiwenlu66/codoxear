@@ -105,11 +105,11 @@
         zIndex: "10000",
         pointerEvents: "none",
         padding: "1px 4px",
-        borderRadius: "3px",
-        background: "#111827",
+        borderRadius: "0",
+        border: "1px solid #141111",
+        background: "#141111",
         color: "#fff",
-        font: "600 14px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace",
-        boxShadow: "0 1px 3px rgba(0, 0, 0, .45)",
+        font: "600 14px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
       });
       badgeContainer.appendChild(badge);
     }

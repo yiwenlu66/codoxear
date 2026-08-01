@@ -1,16 +1,23 @@
       :root {
-        --bg: #e9eef5;
-        --panel: #ffffff;
-        --border: #94a3b8;
-        --text: #111827;
-        --muted: #70747d;
-        --accent: #1d4ed8;
-        --accent-weak: #e8edfb;
+        --ink: #141111;
+        --paper: #ffffff;
+        --bg: #f6f5f1;
+        --wash: #efeee9;
+        --hairline: #dcdad4;
+        --panel: var(--paper);
+        --border: #141111;
+        --text: var(--ink);
+        --muted: #6b6862;
+        --accent: #141111;
+        --accent-weak: #efeee9;
         --danger: #b91c1c;
+        --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        --ctl: 38px;
+        --ctl-chrome: 32px;
         --shadow-sm: none;
         --sidebar-w: 320px;
-        --bubble-user: #eaf3fc;
-        --bubble-assistant: #ffffff;
+        --bubble-user: var(--wash);
+        --bubble-assistant: var(--paper);
       }
 
       @media (min-width: 881px) {
@@ -141,7 +148,7 @@
         justify-content: center;
         gap: 8px;
         height: 38px;
-        border-radius: 12px;
+        border-radius: 0;
         font-weight: 500;
         line-height: 1;
       }
@@ -164,9 +171,9 @@
         min-width: 20px;
         padding: 1px 7px;
         border: 1px solid #dadfe6;
-        border-radius: 999px;
+        border-radius: 0;
         background: #f8fafc;
-        color: #687281;
+        color: #141111;
         font-size: 11px;
         line-height: 1.45;
         text-align: center;
@@ -175,7 +182,7 @@
       .session {
         padding: 0;
         border: 1px solid var(--border);
-        border-radius: 12px;
+        border-radius: 0;
         margin-bottom: 8px;
         cursor: pointer;
         background: #ffffff;
@@ -187,7 +194,7 @@
         flex: 1 1 auto;
         min-width: 0;
         overflow: hidden;
-        border-radius: 12px;
+        border-radius: 0;
       }
 	      .sessionContent {
 	        position: relative;
@@ -199,7 +206,7 @@
 	        touch-action: pan-y;
 	      }
       .session.active .sessionContent {
-        background: #eef4ff;
+        background: #efeee9;
       }
       .sessionActions {
         position: absolute;
@@ -228,40 +235,38 @@
       .ownDot {
         width: 8px;
         height: 8px;
-        border-radius: 999px;
+        border-radius: 0;
         flex: 0 0 auto;
-        background: #818793;
+        background: #141111;
       }
       .ownDot.owned {
-        background: #2857da;
+        background: #141111;
       }
       .stateDot {
         width: 8px;
         height: 8px;
-        border-radius: 999px;
+        border: 1.5px solid var(--ink);
+        border-radius: 0;
         flex: 0 0 auto;
-        /* idle = hollow ring (transparent center, gray outline) so the
-           absence-of-state reads as "empty", maximally distinct from the
-           solid filled busy/suppressed/pending dots. Color is a secondary
-           cue only — fill + motion carry the meaning (monochrome-proof). */
+        /* Idle is hollow; fill and motion distinguish active states without
+           depending on color. */
         background: transparent;
-        box-shadow: inset 0 0 0 1.5px #818793;
       }
       .stateDot.busy,
       .stateDot.suppressed,
       .stateDot.pending {
-        background: var(--stateDot-fill, #2857da);
-        box-shadow: none;
+        border-color: transparent;
+        background: var(--stateDot-fill, var(--ink));
       }
       .stateDot.busy {
-        --stateDot-fill: #2857da;
+        --stateDot-fill: var(--ink);
         animation: stateDotPulse 1.8s ease-in-out infinite;
       }
       .stateDot.suppressed {
-        --stateDot-fill: #ec651f;
+        --stateDot-fill: var(--ink);
       }
       .stateDot.pending {
-        --stateDot-fill: #f6a317;
+        --stateDot-fill: #f59e0b;
         animation: stateDotPulse 1.8s ease-in-out infinite;
       }
       @keyframes stateDotPulse {
@@ -281,17 +286,13 @@
         }
       }
       .session.active {
-        border-color: #a8c1f7;
-        background: #eef4ff;
-        /* Thickened edge via outline: unlike box-shadow it is never clipped by
-           child overflow:hidden (.sessionSwipe), and unlike border-width it
-           doesn't cause layout shift. Works for both the swipe (touch) and
-           desktop DOM layouts. Survives monochrome as a solid edge. */
-        outline: 2px solid #a8c1f7;
+        border-color: var(--ink);
+        background: var(--wash);
+        outline: 2px solid #141111;
         outline-offset: -2px;
       }
       .session.active .sessionContent {
-        background: #eef4ff;
+        background: #efeee9;
       }
 	      .sessionMain {
 	        flex: 1 1 auto;
@@ -310,7 +311,7 @@
 	      .ownerBadge {
 	        width: 18px;
 	        height: 18px;
-	        border-radius: 6px;
+	        border-radius: 0;
 	        border: 1px solid var(--border);
 	        display: inline-flex;
 	        align-items: center;
@@ -374,6 +375,7 @@
 	        color: #777777;
 	      }
 	      .metaText {
+          font-family: var(--font-mono);
 	        min-width: 0;
 	        overflow: hidden;
 	        text-overflow: ellipsis;
@@ -491,7 +493,7 @@
       .sessionFile {
         text-align: left;
         padding: 6px 8px;
-        border-radius: 8px;
+        border-radius: 0;
         font-size: 12px;
         line-height: 1.2;
         border: 1px solid var(--border);
@@ -569,7 +571,7 @@
       .badge {
         font-size: 12px;
         padding: 2px 8px;
-        border-radius: 999px;
+        border-radius: 0;
         border: 1px solid var(--border);
         color: var(--muted);
         background: #ffffff;
@@ -577,12 +579,12 @@
       }
 	      .badge.busy {
 	        color: var(--accent);
-	        border-color: #92b1f5;
+	        border-color: #141111;
 	      }
 	      .badge.unattended {
-	        color: var(--accent);
-	        border-color: #92b1f5;
-	        background: #eef3fd;
+	        color: var(--paper);
+	        border-color: var(--ink);
+	        background: var(--ink);
 	      }
 	      .badge.queue {
 	        color: #f59e0b;
@@ -674,9 +676,9 @@
         margin: 6px 12px 0 12px;
         padding: 6px 12px;
         min-height: 0;
-        border-radius: 999px;
-        background: #272e3f;
-        color: #fff;
+        border-radius: 0;
+        background: var(--ink);
+        color: var(--paper);
         font-size: 13px;
         line-height: 1.4;
         max-width: min(70vw, 520px);
@@ -701,11 +703,6 @@
         align-items: center;
         gap: 6px;
       }
-      .chatNavRail .icon-btn {
-        width: 34px;
-        height: 34px;
-        border-radius: 9px;
-      }
       .chatNavRail {
         display: none;
         order: 0;
@@ -717,7 +714,7 @@
         margin: 6px 12px 0 12px;
         padding: 2px;
         border: 1px solid var(--border);
-        border-radius: 8px;
+        border-radius: 0;
         background: var(--panel);
       }
       .chatMessageNavControls {
@@ -726,67 +723,68 @@
         gap: 4px;
         margin-left: 2px;
         padding-left: 4px;
-        border-left: 1px solid #e2e3e5;
-      }
-      @media (hover: hover) and (pointer: fine) and (min-width: 701px) {
-        /* Desktop chat navigation is secondary chrome: keep the rail to a
-           tight icon cluster so it does not consume chat width or height. */
-        .chatNavRail .icon-btn {
-          width: 28px;
-          height: 28px;
-          border-radius: 7px;
-        }
-        .chatNavRail {
-          align-self: flex-end;
-          gap: 2px;
-          margin: 2px 4px 0;
-          padding: 2px;
-        }
-        .chatMessageNavControls {
-          gap: 2px;
-          margin-left: 0;
-          padding-left: 0;
-          border-left: none;
-        }
+        border-left: 1px solid var(--hairline);
       }
       button {
         border: 1px solid var(--border);
-        background: #ffffff;
+        background: var(--paper);
         color: var(--text);
-        border-radius: 10px;
+        border-radius: 0;
         padding: 10px 12px;
         cursor: pointer;
       }
-      button.primary {
-        border-color: #b0c1f1;
-        background: #edf1fc;
-        color: #1d4ed8;
+      button.primary,
+      .composer .icon-btn.primary {
+        border-color: var(--ink);
+        background: var(--ink);
+        color: var(--paper);
+      }
+      button.primary:hover,
+      .composer .icon-btn.primary:hover {
+        border-color: #2a2624;
+        background: #2a2624;
+        color: var(--paper);
       }
       button:disabled {
-        opacity: 0.6;
         cursor: default;
       }
+      button.primary:disabled,
+      button.primary:disabled:hover,
+      .composer .icon-btn.primary:disabled,
+      .composer .icon-btn.primary:disabled:hover {
+        border-color: #b9b6ae;
+        background: #b9b6ae;
+        color: var(--paper);
+        opacity: 1;
+        cursor: not-allowed;
+      }
 	      .icon-btn {
-	        width: 38px;
-	        height: 38px;
+	        width: var(--ctl);
+	        height: var(--ctl);
 	        padding: 0;
 	        display: inline-flex;
 	        align-items: center;
 	        justify-content: center;
-	        border-radius: 10px;
+	        border-radius: 0;
 	        position: relative;
 	      }
+      .topActions .icon-btn,
+      .pill > .icon-btn,
+      .sidebar header .icon-btn,
+      .chatNavRail .icon-btn {
+        width: var(--ctl-chrome);
+        height: var(--ctl-chrome);
+        min-width: var(--ctl-chrome);
+        min-height: var(--ctl-chrome);
+      }
       .icon-btn.active {
-        border-color: #92b1f5;
-        background: #eef3fd;
-        color: var(--accent);
+        border-color: var(--ink);
+        background: var(--ink);
+        color: var(--paper);
       }
       /* Announcement audio/HLS error state (see app_voice.js updateVoiceUi).
-         Visually distinct from .active (blue) and the default off state so a
-         sighted user can see announcements are armed but audio is broken
-         without relying on the hover title. Kept minimal to preserve the
-         flat UI; scoped to #announceBtn so other .icon-btn surfaces stay
-         unaffected. */
+         The danger treatment distinguishes an armed-but-broken state from
+         both the inverted active state and default chrome. */
       #announceBtn.error {
         border-color: #d26b6b;
         background: #f7e4e4;
@@ -816,8 +814,8 @@
         min-width: 18px;
         height: 18px;
         padding: 0 5px;
-        border-radius: 999px;
-        background: #2857da;
+        border-radius: 0;
+        background: #141111;
         color: #ffffff;
         font-size: 11px;
         line-height: 18px;
@@ -826,17 +824,18 @@
         box-shadow: none;
       }
       .queueBadge {
-        background: #f6a317;
+        background: #f59e0b;
       }
 
       .status-chip {
         display: inline-flex;
         align-items: center;
         padding: 4px 10px;
-        border-radius: 999px;
+        border-radius: 0;
         border: 1px solid var(--border);
         background: var(--panel);
         color: var(--muted);
+        font-family: var(--font-mono);
         font-size: 12px;
         line-height: 1.2;
         white-space: nowrap;
@@ -845,14 +844,29 @@
         appearance: none;
         -webkit-appearance: none;
         margin: 0;
-        font-family: inherit;
+        font-family: var(--font-mono);
         font-weight: inherit;
         cursor: pointer;
       }
       .status-chip.running {
-        color: #3460dc;
-        border-color: #c6d3f5;
-        background: #f1f4fd;
+        color: var(--paper);
+        border-color: var(--ink);
+        background: var(--ink);
+      }
+      .metaText,
+      .status-chip,
+      #ctxChip,
+      .chatTimeChip,
+      .ts {
+        font-family: var(--font-mono);
+      }
+
+      button:focus-visible,
+      input:focus-visible,
+      textarea:focus-visible,
+      select:focus-visible {
+        outline: 2px solid #141111;
+        outline-offset: 1px;
       }
 
       .chatWrap {
@@ -905,7 +919,7 @@
         align-self: center;
         margin: 14px 0 8px 0;
         padding: 6px 10px;
-        border-radius: 999px;
+        border-radius: 0;
         border: 1px solid #e7e8ea;
         background: transparent;
         color: var(--muted);
@@ -922,7 +936,7 @@
       }
       .olderBtn {
         padding: 6px 12px;
-        border-radius: 999px;
+        border-radius: 0;
         font-size: 12px;
         line-height: 1.1;
         color: var(--muted);
@@ -932,7 +946,7 @@
         align-items: center;
         gap: 6px;
         padding: 4px 8px;
-        border-radius: 999px;
+        border-radius: 0;
         background: #fef2f2;
         color: #7f1d1d;
         font-size: 12px;
@@ -940,7 +954,7 @@
       }
       .olderRetryBtn {
         padding: 4px 8px;
-        border-radius: 999px;
+        border-radius: 0;
         border-color: #eec9c9;
         color: #7f1d1d;
         font-size: 12px;
@@ -956,7 +970,7 @@
         transform: translateX(-50%);
         padding: 5px 10px;
         border: 1px solid var(--border);
-        border-radius: 999px;
+        border-radius: 0;
         background: var(--panel);
         color: var(--muted);
         font-size: 12px;
@@ -976,22 +990,23 @@
         box-sizing: border-box;
         margin: 8px 12px 0 12px;
         padding: 6px;
-        border: 1px solid #94a3b8;
-        border-radius: 14px;
+        border: 1px solid #141111;
+        border-radius: 0;
         background: var(--panel);
       }
       .chatSearchInput {
         flex: 1 1 160px;
         min-width: 0;
-        border: 1px solid #94a3b8;
-        border-radius: 10px;
+        border: 1px solid #141111;
+        border-radius: 0;
         padding: 8px 10px;
         font-size: 14px;
         outline: none;
       }
-      .chatSearchInput:focus {
-        border-color: #9db9f6;
-        box-shadow: 0 0 0 3px #e5ecfd;
+      .chatSearchInput:focus-visible {
+        border-color: var(--ink);
+        outline: 2px solid var(--ink);
+        outline-offset: 1px;
       }
       .chatSearchStatus {
         min-width: 64px;
@@ -1012,14 +1027,15 @@
       .chatSearchBar .icon-btn {
         width: 32px;
         height: 32px;
-        border-radius: 9px;
+        border-radius: 0;
       }
       .msg-row.chat-search-hit .msg {
         border-color: #fcddaa;
       }
       .msg-row.chat-search-current .msg {
-        border-color: #92b1f5;
-        box-shadow: 0 0 0 2px #e9effd;
+        border-color: var(--ink);
+        outline: 2px solid var(--ink);
+        outline-offset: 1px;
       }
       .msg-row {
         display: flex;
@@ -1036,10 +1052,12 @@
       }
       @keyframes navPulse {
         0% {
-          box-shadow: 0 0 0 3px #c2d3f9;
+          outline: 2px solid var(--ink);
+          outline-offset: 4px;
         }
         100% {
-          box-shadow: 0 0 0 2px #e5ecfd;
+          outline: 2px solid var(--ink);
+          outline-offset: 1px;
         }
       }
       .msg-shell {
@@ -1053,8 +1071,8 @@
         max-width: min(760px, 82%);
         min-width: 0;
         padding: 10px 12px 18px 12px;
-        border-radius: 18px;
-        border: 1px solid #94a3b8;
+        border-radius: 0;
+        border: 1px solid #141111;
         position: relative;
         white-space: normal;
         line-height: 1.35;
@@ -1110,7 +1128,7 @@
         padding: 8px;
         white-space: pre-wrap;
         word-break: break-word;
-        border-radius: 12px;
+        border-radius: 0;
         background: #ffffff;
       }
       .recoveryPanelActions {
@@ -1128,10 +1146,10 @@
         bottom: 0;
         width: 30px;
         height: 30px;
-        border-radius: 999px;
+        border-radius: 0;
         border-color: #cfd1d4;
-        background: #e9eef5;
-        color: #585d68;
+        background: #f6f5f1;
+        color: #141111;
       }
       .msg-shell.user .msg-copy-btn {
         left: -40px;
@@ -1145,13 +1163,13 @@
         box-shadow: none;
       }
       .msg-copy-btn:hover {
-        border-color: #a8c1f7;
+        border-color: #141111;
         color: var(--accent);
       }
       .msg-copy-btn.copied {
-        border-color: #9db9f6;
-        background: #edf1fc;
-        color: var(--accent);
+        border-color: var(--ink);
+        background: var(--ink);
+        color: var(--paper);
       }
       .msg-copy-btn .icon {
         width: 15px;
@@ -1186,7 +1204,7 @@
       .typingDot {
         width: 6px;
         height: 6px;
-        border-radius: 999px;
+        border-radius: 0;
         background: #94979e;
         animation: typingDot 1.2s infinite ease-in-out;
       }
@@ -1264,7 +1282,7 @@
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         font-size: 13px;
         padding: 1px 6px;
-        border-radius: 8px;
+        border-radius: 0;
         background: #f1f1f2;
         border: 1px solid #ececee;
         white-space: pre-wrap;
@@ -1274,7 +1292,7 @@
         position: relative;
         margin: 10px 0 12px 0;
         padding: 12px 46px 12px 12px;
-        border-radius: 12px;
+        border-radius: 0;
         overflow: auto;
         max-width: 100%;
         -webkit-overflow-scrolling: touch;
@@ -1306,8 +1324,8 @@
         min-width: 30px;
         min-height: 30px;
         padding: 0;
-        border: 1px solid #94a3b8;
-        border-radius: 999px;
+        border: 1px solid #141111;
+        border-radius: 0;
         background: #ffffff;
         color: #5d626c;
         opacity: 0.72;
@@ -1320,14 +1338,14 @@
       .md pre:hover .code-copy-btn,
       .code-copy-btn:focus-visible {
         opacity: 1;
-        border-color: #a8c1f7;
+        border-color: #141111;
         color: var(--accent);
       }
       .code-copy-btn.copied {
         opacity: 1;
-        border-color: #9db9f6;
-        background: #edf1fc;
-        color: var(--accent);
+        border-color: var(--ink);
+        background: var(--ink);
+        color: var(--paper);
       }
       .md ul,
       .md ol {
@@ -1358,9 +1376,9 @@
         margin: 10px 0 12px 0;
         padding: 10px 12px 10px 14px;
         border-left: 3px solid #caccd0;
-        border-radius: 0 12px 12px 0;
+        border-radius: 0;
         background: #f4f5f5;
-        color: #3a4150;
+        color: #141111;
       }
       .md blockquote > :last-child {
         margin-bottom: 0;
@@ -1383,7 +1401,7 @@
         font-size: 13px;
         line-height: 1.35;
         border: 1px solid #e7e8ea;
-        border-radius: 12px;
+        border-radius: 0;
         overflow: hidden;
         background: #f8fafc;
       }
@@ -1419,7 +1437,7 @@
         max-width: 100%;
         height: auto;
         margin: 10px auto 12px auto;
-        border-radius: 12px;
+        border-radius: 0;
         border: 1px solid #e7e8ea;
         background: #ffffff;
       }
@@ -1445,7 +1463,7 @@
         font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas, "Liberation Mono", monospace;
         font-size: 0.9em;
         background: #f1f1f2;
-        border-radius: 4px;
+        border-radius: 0;
         padding: 0 4px;
         white-space: nowrap;
       }
@@ -1475,18 +1493,19 @@
         gap: 8px;
         border: 1px solid var(--border);
         background: var(--panel);
-        border-radius: 14px;
+        border-radius: 0;
         padding: 6px 8px;
         transition: border-color 120ms ease-out;
       }
       .composer.drop-active form {
-        border-color: #5585ef;
-        box-shadow: 0 0 0 3px #dce6fc;
+        border-color: var(--ink);
+        outline: 2px solid var(--ink);
+        outline-offset: 1px;
       }
       .composer .icon-btn {
         width: var(--composerCtl);
         height: var(--composerCtl);
-        border-radius: 999px;
+        border-radius: 0;
       }
       .composer .inputWrap {
         flex: 1 1 auto;
@@ -1505,10 +1524,10 @@
         align-items: center;
         gap: 6px;
         max-width: min(320px, 100%);
-        border: 1px solid #cdd8f6;
-        background: #edf1fc;
-        color: #1e3a8a;
-        border-radius: 999px;
+        border: 1px solid var(--hairline);
+        background: var(--wash);
+        color: var(--ink);
+        border-radius: 0;
         padding: 3px 4px 3px 9px;
         font-size: 12px;
       }
@@ -1520,15 +1539,15 @@
       }
       .stagedAttachmentMeta {
         flex: 0 0 auto;
-        color: #6679af;
+        color: #141111;
         font-size: 11px;
       }
       .stagedAttachmentRemove,
       .stagedAttachmentsClear {
         border: 0;
-        background: #e4eafa;
-        color: #1e3a8a;
-        border-radius: 999px;
+        background: #efeee9;
+        color: #141111;
+        border-radius: 0;
         cursor: pointer;
         font: inherit;
       }
@@ -1569,14 +1588,14 @@
         overflow-y: auto;
         padding: 4px;
         border: 1px solid var(--border);
-        border-radius: 8px;
+        border-radius: 0;
         background: var(--panel);
       }
       .composer .modelPickerOption {
         display: block;
         width: 100%;
         border: 0;
-        border-radius: 5px;
+        border-radius: 0;
         padding: 7px 9px;
         background: transparent;
         color: var(--text);
@@ -1599,7 +1618,7 @@ select {
   border: 1px solid var(--border);
   background: #ffffff;
   color: var(--text);
-        border-radius: 18px;
+        border-radius: 0;
         padding: 10px 12px;
         font-family: inherit;
         font-size: 14px;
@@ -1643,16 +1662,7 @@ select {
         box-shadow: none;
       }
       .composer .icon-btn:hover {
-        background: #f3f3f4;
-      }
-      .composer .icon-btn.primary {
-        border: 1px solid #d6dff8;
-        background: #2f5cdb;
-        color: #ffffff;
-        border-radius: 999px;
-      }
-      .composer .icon-btn.primary:hover {
-        background: #1d4ed8;
+        background: var(--wash);
       }
       .composer .icon-btn:disabled,
       .composer .icon-btn:disabled:hover {
@@ -1661,38 +1671,13 @@ select {
         box-shadow: none;
         cursor: not-allowed;
       }
-      .composer .icon-btn.primary:disabled,
-      .composer .icon-btn.primary:disabled:hover {
-        opacity: 0.5;
-        background: #99afed;
-        border-color: #e4eafa;
-        cursor: not-allowed;
-      }
-      .composer .icon-btn.primary .icon {
-        filter: drop-shadow(0 1px 0 #f0f0f0);
-      }
-      .composerStopBtn {
-        display: none;
-        color: #bc2727;
-      }
-      @media (max-width: 700px), (pointer: coarse) {
-        .composerStopBtn.is-visible {
-          display: inline-flex;
-        }
-        /* Mobile uses the composer stop button as the sole interrupt affordance
-           (thumb is already at the composer). Hide the topbar interrupt button
-           on coarse-pointer/mobile to avoid a redundant stop button. */
-        #interruptBtn {
-          display: none !important;
-        }
-      }
 
       .login {
         width: min(92vw, 360px);
         margin: 0;
         padding: 20px;
         border: 1px solid var(--border);
-        border-radius: 18px;
+        border-radius: 0;
         background: var(--panel);
       }
       .loginWrap {
@@ -1736,7 +1721,7 @@ select {
 	        width: min(92vw, 460px);
 	        background: var(--panel);
 	        border: 1px solid var(--border);
-	        border-radius: 16px;
+	        border-radius: 0;
 	        padding: 12px;
 	      }
 	      .unattendedMenu .row {
@@ -1776,14 +1761,14 @@ select {
         padding: 10px 12px;
         font-family: inherit;
         font-size: 14px;
-        border-radius: 14px;
+        border-radius: 0;
       }
       .unattendedMenu textarea {
         min-height: 160px;
         height: 160px;
         max-height: 320px;
         overflow-y: auto;
-        border-radius: 14px;
+        border-radius: 0;
         resize: vertical;
       }
       .voiceMenuRow {
@@ -1805,9 +1790,9 @@ select {
       }
       #announceBtn.active,
       #notificationBtn.active {
-        background: #e4eafa;
-        border-color: #c0cdf4;
-        color: var(--accent);
+        background: var(--ink);
+        border-color: var(--ink);
+        color: var(--paper);
       }
       .modalBackdrop {
         display: none;
@@ -1828,7 +1813,7 @@ select {
         max-height: calc(var(--appH, 100dvh) - 24px);
         background: var(--panel);
         border: 1px solid var(--border);
-        border-radius: 16px;
+        border-radius: 0;
         padding: 12px;
         flex-direction: column;
         gap: 8px;
@@ -1855,7 +1840,8 @@ select {
         min-width: 38px;
       }
       #fileEditBtn.dirty {
-        box-shadow: inset 0 0 0 1px #e4eafa;
+        outline: 2px solid var(--ink);
+        outline-offset: 1px;
       }
       .fileCandRow.hidden {
         display: none;
@@ -1875,8 +1861,9 @@ select {
         padding-right: 40px;
       }
       .filePickerField.active .filePickerInput {
-        border-color: #a3bdf7;
-        box-shadow: 0 0 0 3px #e5ecfd;
+        border-color: var(--ink);
+        outline: 2px solid var(--ink);
+        outline-offset: 1px;
       }
       .filePickerIcon {
         position: absolute;
@@ -1894,7 +1881,7 @@ select {
         flex: 1 1 auto;
         min-width: 0;
         padding: 10px 12px;
-        border-radius: 12px;
+        border-radius: 0;
         border: 1px solid var(--border);
         background: #ffffff;
         color: var(--text);
@@ -1916,7 +1903,7 @@ select {
         max-height: min(44vh, 360px);
         overflow: auto;
         border: 1px solid var(--border);
-        border-radius: 12px;
+        border-radius: 0;
         background: #ffffff;
       }
       .filePickerMenu.open {
@@ -1951,7 +1938,8 @@ select {
         border-top: 1px solid #ececee;
       }
       .fileMenuItem.active {
-        background: #eef3fd;
+        background: var(--ink);
+        color: var(--paper);
       }
       .fileMenuCreate {
         align-items: flex-start;
@@ -1967,7 +1955,7 @@ select {
       }
       .cwdSuggestionSource {
         flex: 0 0 auto;
-        border-radius: 999px;
+        border-radius: 0;
         padding: 2px 6px;
         font-size: 10px;
         font-weight: 700;
@@ -1977,7 +1965,7 @@ select {
       }
       .fileMenuMatch {
         padding: 0 1px;
-        border-radius: 3px;
+        border-radius: 0;
         color: inherit;
         background: #fdea9d;
       }
@@ -2006,7 +1994,7 @@ select {
       .fileDiff {
         flex: 1 1 auto;
         min-height: 0;
-        border-radius: 12px;
+        border-radius: 0;
         border: 1px solid #e7e8ea;
         background: #ffffff;
         overflow: auto;
@@ -2014,7 +2002,7 @@ select {
       .fileDiff .monaco-editor,
       .fileDiff .monaco-diff-editor,
       .fileDiff .overflow-guard {
-        border-radius: 12px;
+        border-radius: 0;
       }
       .fileDiff .monaco-diff-editor .editor.original,
       .fileDiff .monaco-diff-editor .editor.original .monaco-editor,
@@ -2064,7 +2052,7 @@ select {
         min-height: 260px;
         resize: none;
         border: 0;
-        border-radius: 0 0 12px 12px;
+        border-radius: 0;
         padding: 14px 16px 22px 16px;
         outline: none;
         background: #ffffff;
@@ -2075,8 +2063,9 @@ select {
         overflow: auto;
         -webkit-overflow-scrolling: touch;
       }
-      .filePlainEditTextarea:focus {
-        box-shadow: inset 0 0 0 2px #d8e3fb;
+      .filePlainEditTextarea:focus-visible {
+        outline: 2px solid var(--ink);
+        outline-offset: -2px;
       }
       .filePlainEditTextarea.readOnly {
         cursor: default;
@@ -2089,7 +2078,7 @@ select {
         width: auto;
         margin: 0 auto;
         border: 1px solid #e7e8ea;
-        border-radius: 12px;
+        border-radius: 0;
         background: #ffffff;
         object-fit: contain;
       }
@@ -2100,7 +2089,7 @@ select {
         min-height: 320px;
         margin: 0 auto;
         border: 1px solid #e7e8ea;
-        border-radius: 12px;
+        border-radius: 0;
         background: #000000;
       }
       .filePdfPages {
@@ -2117,8 +2106,8 @@ select {
         display: flex;
         align-items: center;
         justify-content: center;
-        border: 1px solid #94a3b8;
-        border-radius: 8px;
+        border: 1px solid #141111;
+        border-radius: 0;
         background: #ffffff;
         color: var(--muted);
         font-size: 12px;
@@ -2127,7 +2116,7 @@ select {
         display: block;
         max-width: 100%;
         height: auto;
-        border-radius: 8px;
+        border-radius: 0;
       }
       .filePdfPage.failed {
         color: var(--danger);
@@ -2210,7 +2199,7 @@ select {
         width: 34px;
         height: 34px;
         min-height: 34px;
-        border-radius: 999px;
+        border-radius: 0;
         border: 1px solid var(--border);
         background: #ffffff;
         color: var(--text);
@@ -2223,9 +2212,9 @@ select {
         -webkit-tap-highlight-color: transparent;
       }
       .fileTouchBtn.active {
-        background: #dfe6fa;
-        color: var(--accent);
-        box-shadow: inset 0 0 0 1px #c0cdf4;
+        border-color: var(--ink);
+        background: var(--ink);
+        color: var(--paper);
       }
       .filePasteDialog {
         z-index: 90;
@@ -2253,18 +2242,12 @@ select {
       .inlineFileChoiceHint {
         display: inline-block;
         padding: 0 4px;
-        border-radius: 999px;
-        background: #edf1fc;
+        border-radius: 0;
+        background: var(--wash);
         color: var(--muted);
         font-size: 0.78em;
         line-height: 1.3;
         text-decoration: none;
-      }
-      @media (min-width: 881px) {
-        .topActions .icon-btn {
-          width: 36px;
-          height: 36px;
-        }
       }
       .queueViewer {
         display: none;
@@ -2277,7 +2260,7 @@ select {
         max-height: calc(var(--appH, 100dvh) - 24px);
         background: var(--panel);
         border: 1px solid var(--border);
-        border-radius: 14px;
+        border-radius: 0;
         padding: 12px;
         flex-direction: column;
         gap: 10px;
@@ -2296,7 +2279,7 @@ select {
         max-height: calc(var(--appH, 100dvh) - 24px);
         background: var(--panel);
         border: 1px solid var(--border);
-        border-radius: 14px;
+        border-radius: 0;
         padding: 12px;
         flex-direction: column;
         gap: 10px;
@@ -2342,20 +2325,22 @@ select {
         white-space: nowrap;
       }
       .agentBackendTab {
-        width: 34px;
-        height: 34px;
-        border-radius: 999px;
-        border: 1px solid #e2e3e5;
-        background: #f8f8f9;
+        width: var(--ctl);
+        height: var(--ctl);
+        min-width: var(--ctl);
+        min-height: var(--ctl);
+        border-radius: 0;
+        border: 1px solid var(--border);
+        background: var(--paper);
         display: inline-flex;
         align-items: center;
         justify-content: center;
         padding: 0;
       }
       .agentBackendTab.active {
-        border-color: #7795e8;
-        background: #dfe6fa;
-        box-shadow: 0 0 0 2px #d6dff8, inset 0 0 0 1px #dbe3f9;
+        border-color: var(--ink);
+        background: var(--ink);
+        color: var(--paper);
       }
       .agentBackendTabLogo {
         width: 20px;
@@ -2396,7 +2381,7 @@ select {
       .fieldLabel {
         font-size: 13px;
         font-weight: 600;
-        color: #323845;
+        color: #141111;
       }
       .fieldHint {
         font-size: 12px;
@@ -2438,8 +2423,9 @@ select {
         padding-right: 40px;
       }
       .cwdComboboxField.error input[type="text"] {
-        border-color: #e09999;
-        box-shadow: 0 0 0 3px #f7e4e4;
+        border-color: var(--danger);
+        outline: 2px solid var(--danger);
+        outline-offset: 1px;
       }
       .comboboxField input[type="text"] {
         padding-right: 40px;
@@ -2474,7 +2460,7 @@ select {
       .dialogPickerBtn {
         min-height: 39px;
         height: 39px;
-        border-radius: 18px;
+        border-radius: 0;
         box-sizing: border-box;
         font-size: 14px;
         line-height: normal;
@@ -2550,7 +2536,7 @@ select {
         gap: 2px;
       }
       .pickerButtonText.placeholder .pickerButtonPrimary {
-        color: #454b57;
+        color: #141111;
       }
       .pickerButtonPrimary {
         width: 100%;
@@ -2601,7 +2587,7 @@ select {
         -webkit-overflow-scrolling: touch;
       }
       .choiceChip {
-        border-radius: 999px;
+        border-radius: 0;
         padding: 8px 12px;
         font-size: 13px;
         line-height: 1;
@@ -2609,9 +2595,9 @@ select {
         flex: 0 0 auto;
       }
       .choiceChip.active {
-        border-color: #b0c1f1;
-        background: #edf1fc;
-        color: var(--accent);
+        border-color: var(--ink);
+        background: var(--ink);
+        color: var(--paper);
       }
       .subtleBtn {
         color: var(--muted);
@@ -2652,7 +2638,7 @@ select {
         overflow: auto;
         -webkit-overflow-scrolling: touch;
         border: 1px solid var(--border);
-        border-radius: 12px;
+        border-radius: 0;
         background: #ffffff;
       }
       .detailsRow {
@@ -2708,7 +2694,7 @@ select {
       .queueEditorShell {
         min-width: 0;
         border: 1px solid #e5e9ee;
-        border-radius: 10px;
+        border-radius: 0;
         background: #ffffff;
         padding: 8px 10px;
       }
@@ -2729,10 +2715,10 @@ select {
       .queueIconBtn {
         width: 32px;
         height: 32px;
-        border-radius: 8px;
+        border-radius: 0;
         background: #f8fafc;
         border-color: #e1e5eb;
-        color: #303a4b;
+        color: #141111;
         box-shadow: none;
       }
       .queueIconBtn:hover:not(:disabled) {
@@ -2764,11 +2750,12 @@ select {
         box-shadow: none;
         overflow-y: auto;
       }
-      .queueText:focus {
-        outline: none;
+      .queueText:focus-visible {
+        outline: 2px solid var(--ink);
+        outline-offset: 1px;
       }
       .queueText:disabled {
-        color: #5d697b;
+        color: #141111;
       }
       .sendChoice {
         display: none;
@@ -2780,7 +2767,7 @@ select {
         width: min(92vw, 420px);
         background: var(--panel);
         border: 1px solid var(--border);
-        border-radius: 14px;
+        border-radius: 0;
         padding: 12px;
         flex-direction: column;
         gap: 10px;
@@ -2853,145 +2840,32 @@ select {
           transform: translateX(-50%);
           z-index: 95;
           max-width: min(88vw, 360px);
-          padding: 7px 11px;
-          border-radius: 999px;
-          color: #fff;
-          background: #272e3f;
           text-align: center;
           white-space: normal;
           pointer-events: none;
         }
-        button {
-          padding: 9px 10px;
-          border-radius: 10px;
-          touch-action: manipulation;
-        }
-        .icon-btn {
-          width: 34px;
-          height: 34px;
-          border-radius: 10px;
-        }
-        .attachBadge {
-          top: -5px;
-          right: -5px;
-          min-width: 17px;
-          height: 17px;
-          padding: 0 5px;
-          font-size: 10px;
-          line-height: 17px;
-        }
-        .chatTimeChip {
-          display: none !important;
-        }
-        .chatSearchAllHint {
-          display: none !important;
-        }
         .topbar {
           padding: calc(8px + env(safe-area-inset-top)) 10px 8px 10px;
-          gap: 10px;
-          align-items: center;
-          display: flex;
-          flex-direction: row;
         }
         #threadTitle {
           max-width: 100%;
           font-size: 15px;
           line-height: 1.2;
         }
-        .pill {
-          align-items: center;
-          gap: 8px;
-        }
-        .titleRow {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          flex-wrap: nowrap;
-        }
-        .topMeta {
-          justify-content: flex-end;
-          flex-wrap: nowrap;
-          white-space: nowrap;
-        }
-        .status-chip {
-          font-size: 11px;
-          padding: 2px 6px;
-        }
-        .day-sep {
-          padding: 0;
-          border: none;
-          background: transparent;
-        }
         .chat {
-          padding: 10px 10px;
-        }
-        textarea {
-          font-size: 16px;
+          padding: 10px;
         }
         .composer {
-          --composerCtl: 34px;
           padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
         }
         .composer form {
           padding: 5px 6px;
           gap: 6px;
         }
-        .composer textarea {
-          font-size: 16px;
-        }
-        /* Composer icon controls (paperclip/queue/stop/send) must meet the
-           44x44 CSS px touch-target minimum on mobile. A min-width/min-height
-           floor is used instead of --composerCtl because the later coarse-pointer
-           media query overrides --composerCtl to 40px on phones; the floor holds
-           regardless, while desktop (38px) and the textarea/pill height are
-           untouched. inputWrap is flex:1 1 auto with min-width:0, so the four
-           44px controls plus gaps/padding shrink the textarea rather than forcing
-           horizontal overflow at 390px. */
-        .composer .icon-btn {
-          min-width: 44px;
-          min-height: 44px;
-        }
         .msg {
           max-width: 88%;
         }
-        .md pre {
-          padding-right: 58px;
-        }
-        .code-copy-btn {
-          width: 44px;
-          height: 44px;
-          min-width: 44px;
-          min-height: 44px;
-          opacity: 1;
-        }
-        .topActions {
-          display: flex;
-          gap: 8px;
-          flex-wrap: nowrap;
-          justify-content: flex-end;
-          padding: 0;
-          border: none;
-          background: transparent;
-        }
-        .topActions .icon-btn {
-          width: 34px;
-          height: 34px;
-        }
-        /* Phone shell command surfaces are the session controller, not dense
-           editor chrome. Keep the generic mobile .icon-btn compact above, then
-           raise only the always-used shell targets to the 44x44 CSS px floor.
-           Width/height plus min-width/min-height preserve the floor even where
-           these flex items sit in horizontally scrolling or shrinking rails. */
-        .pill > .icon-btn,
-        .topActions .icon-btn,
-        .sidebar header .icon-btn,
-        .chatNavRail .icon-btn,
-        .agentBackendTab {
-          width: 44px;
-          height: 44px;
-          min-width: 44px;
-          min-height: 44px;
-        }
+
         .fileViewer {
           width: 100vw;
           max-height: none;
@@ -3013,38 +2887,6 @@ select {
         }
         .fileViewerHeader .actions {
           gap: 6px;
-        }
-        /* Ensure the file-viewer toolbar controls (diff/preview/edit/video/download/close)
-           meet the 44x44 CSS px touch-target minimum on mobile. Scoped to the viewer
-           header actions; the .fileTouchBtn dpad has its own 44px rule below. */
-        .fileViewer .icon-btn:not(.fileTouchBtn) {
-          min-width: 44px;
-          min-height: 44px;
-        }
-        .fileViewer #fileEditBtn {
-          min-width: 44px;
-        }
-        /* Touch dpad (.fileTouchBtn) controls: meet the 44x44 CSS px touch-target
-           minimum on mobile. The dpad is a 3x2 grid (up/left/down/right + 2
-           spacers); tracks, spacers, and buttons are all bumped to 44px. The
-           compact cluster stays 144px wide for the dpad and 144px for the
-           actions row (select/copy/paste), fitting within the 370px mobile
-           toolbar channel (390px viewport - 2x10px inset) with no horizontal
-           overflow. Scoped under .fileViewer (specificity 0,2,0) so it wins
-           over the coarse-pointer .icon-btn 40px rule below. */
-        .fileViewer .fileTouchDpad {
-          grid-template-columns: repeat(3, 44px);
-          grid-template-rows: repeat(2, 44px);
-        }
-        .fileViewer .fileTouchSpacer {
-          width: 44px;
-          height: 44px;
-        }
-        .fileViewer .fileTouchBtn {
-          width: 44px;
-          height: 44px;
-          min-width: 44px;
-          min-height: 44px;
         }
         .queueViewer {
           width: 100vw;
@@ -3077,39 +2919,21 @@ select {
           left: 50%;
           right: auto;
           transform: translateX(-50%);
-          border-radius: 18px;
+          border-radius: 0;
           padding: 12px;
         }
         .formGrid.twoCol,
         .customSnoozeRow {
           grid-template-columns: 1fr;
         }
-        .choiceChips {
-          gap: 6px;
-          padding-bottom: 2px;
-        }
-        .choiceChip {
-          padding: 7px 10px;
-          font-size: 12px;
-        }
         .pickerInputRow {
           grid-template-columns: 1fr;
-        }
-        .sessionFilesLabel {
-          font-size: 10px;
-        }
-        .sessionFile {
-          font-size: 11px;
         }
 	        .sidebar .sessions {
 	          padding: 6px;
 	        }
 	        .session {
 	          margin-bottom: 6px;
-	          border-radius: 10px;
-	        }
-	        .sessionSwipe {
-	          border-radius: 10px;
 	        }
 	        .sessionInner {
 	          padding: 6px;
@@ -3120,14 +2944,40 @@ select {
         }
       }
 
-      @media (hover: none) and (pointer: coarse) {
+      .jumpBtn {
+        position: absolute;
+        right: 14px;
+        bottom: 14px;
+        z-index: 10;
+        display: none;
+        border-radius: 0;
+        padding: 9px 10px;
+      }
+
+      @media (max-width: 700px), (pointer: coarse) {
+        :root {
+          --ctl: 44px;
+        }
+        .composer {
+          --composerCtl: 44px;
+        }
         button {
-          min-height: 40px;
+          min-height: 44px;
           touch-action: manipulation;
         }
-        .icon-btn {
-          width: 40px;
-          height: 40px;
+        .topActions .icon-btn,
+        .pill > .icon-btn,
+        .sidebar header .icon-btn,
+        .chatNavRail .icon-btn {
+          position: relative;
+        }
+        .topActions .icon-btn::after,
+        .pill > .icon-btn::after,
+        .sidebar header .icon-btn::after,
+        .chatNavRail .icon-btn::after {
+          content: "";
+          position: absolute;
+          inset: -6px;
         }
         .md pre {
           padding-right: 58px;
@@ -3137,61 +2987,21 @@ select {
           height: 44px;
           min-width: 44px;
           min-height: 44px;
+          opacity: 1;
         }
-        .composer {
-          --composerCtl: 40px;
+        .fileViewer .fileTouchDpad {
+          grid-template-columns: repeat(3, 44px);
+          grid-template-rows: repeat(2, 44px);
         }
-        textarea,
-        input[type="password"] {
-          font-size: 16px;
+        .fileViewer .fileTouchSpacer {
+          width: 44px;
+          height: 44px;
         }
-        .composer textarea {
-          font-size: 16px;
-        }
-        .session {
-          padding: 0;
-        }
-      }
-
-      .jumpBtn {
-        position: absolute;
-        right: 14px;
-        bottom: 14px;
-        z-index: 10;
-        display: none;
-        border-radius: 999px;
-        padding: 9px 10px;
-      }
-
-      @media (max-width: 700px), (pointer: coarse) {
-        /* The rail is a compact chat-header utility row on touch screens,
-           not a floating action group. */
-        .chatNavRail {
-          align-self: flex-end;
-          gap: 2px;
-          margin: 2px 10px 0;
-          padding: 2px;
-          border: none;
-          border-radius: 0;
-          background: transparent;
-          box-shadow: none;
-        }
-        .chatNavRail .icon-btn {
-          width: 30px;
-          height: 30px;
-          min-width: 30px;
-          min-height: 30px;
-          padding: 0;
-          border: none;
-          border-radius: 6px;
-          background: transparent;
-          box-shadow: none;
-        }
-        .chatMessageNavControls {
-          gap: 2px;
-          margin-left: 0;
-          padding-left: 0;
-          border-left: none;
+        .fileViewer .fileTouchBtn {
+          width: 44px;
+          height: 44px;
+          min-width: 44px;
+          min-height: 44px;
         }
         input[type="text"],
         input[type="password"],
