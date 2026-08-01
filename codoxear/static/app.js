@@ -1393,7 +1393,7 @@
   <li><b>Load older messages</b> fetches more scrollback. <b>Jump to latest</b> returns to the newest turn when you are reading history.</li>
   <li>Use <b>/</b> to search the loaded chat; Previous/Next can load an older matching window when the transcript count shows more matches.</li>
   <li>Press <b>f</b> to show keyboard hints for visible controls: <b>1</b>–<b>9</b> switch sessions; <b>s</b> sidebar; <b>b</b> files; <b>d</b> details; <b>u</b> unattended; <b>i</b> interrupt; <b>r</b> search; <b>p</b>/<b>n</b> previous/next user message; <b>o</b> older messages; <b>j</b> latest; <b>a</b> attach; <b>q</b> queued messages; <b>x</b> stop; <b>e</b> send; <b>m</b> message box; <b>c</b> new session. Press <b>Escape</b> or <b>Backspace</b> to cancel.</li>
-  <li>Direct shortcuts (no leader): <b>i</b> focus message box; <b>j</b>/<b>k</b> scroll down/up; <b>d</b>/<b>u</b> scroll half-page down/up; <b>/</b> search; <b>Esc</b> exit message box or close dialog.</li>
+  <li>Direct shortcuts (no leader): <b>i</b> focus message box; <b>j</b>/<b>k</b> scroll down/up; <b>d</b>/<b>u</b> scroll half-page down/up; <b>G</b> go to bottom; <b>D</b> delete current session (confirm); <b>/</b> search; <b>Esc</b> exit message box or close dialog.</li>
 </ul>
 <div class="muted">Unattended mode</div>
 <ul class="md">
@@ -2231,7 +2231,7 @@
               { label: "p", element: prevUserBtn },
               { label: "n", element: nextUserBtn },
               { label: "o", element: olderBtn },
-              { label: "j", element: jumpBtn },
+              { label: "g", element: jumpBtn },
               { label: "a", element: attachBtn },
               { label: "q", element: queueBtn },
               { label: "x", element: composerStopBtn },
@@ -2247,11 +2247,46 @@
         // hint mode is not active. They don't conflict with hint-mode letters
         // (which require `f` leader first) — the context disambiguates.
         addAppEvent(document, "keydown", (e) => {
-          if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+          if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
           if (e.isComposing) return;
           if (hintModeController && hintModeController.isActive()) return;
           if (isTextEntryElement(document.activeElement)) return;
           if (isModalTargetOpen(appConfirm) || isModalTargetOpen(sendChoice) || isModalTargetOpen(queueViewer) || isModalTargetOpen(helpViewer) || isModalTargetOpen(diagViewer) || isModalTargetOpen(editViewer) || isModalTargetOpen(newSessionViewer) || isFileViewerOpen()) return;
+          // Capital keys (Shift) are distinct actions: G = go to bottom, D = delete.
+          if (e.shiftKey) {
+            const shifted = String(e.key || "");
+            if (shifted === "G") {
+              e.preventDefault();
+              void jumpToLatest();
+              return;
+            }
+            if (shifted === "D") {
+              e.preventDefault();
+              void (async () => {
+                if (!selected) return;
+                const sid = selected;
+                const confirmed = await confirmApp({
+                  title: "Delete session?",
+                  message: "Delete the current session? This cannot be undone.",
+                  confirmText: "Delete",
+                  cancelText: "Cancel",
+                  destructive: true,
+                });
+                if (!confirmed) return;
+                if (selected !== sid) return;
+                try {
+                  await api(`/api/sessions/${sid}/delete`, { method: "POST", body: {} });
+                  clearDeletedSessionClientState(sid);
+                  await refreshSessions();
+                  setToast("session deleted");
+                } catch (err) {
+                  setToast(`delete error: ${err && err.message ? err.message : "unknown error"}`);
+                }
+              })();
+              return;
+            }
+            return;
+          }
           const key = String(e.key || "").toLowerCase();
           if (key === "i") {
             e.preventDefault();
