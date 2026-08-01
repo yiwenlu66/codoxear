@@ -1375,7 +1375,7 @@
             html: `<div class="muted">Sessions</div>
 <ul class="md">
   <li>Choose a conversation from the sidebar. On desktop, hover a row to reveal <b>Edit</b>, <b>Duplicate</b>, and <b>Delete</b>. On touch, swipe left for <b>Edit</b>/<b>Duplicate</b> and right for <b>Delete</b>.</li>
-  <li>The dot on the title row shows state: <b>blue</b> = busy, <b>gray</b> = idle, <b>orange</b> = snoozed or blocked.</li>
+  <li>The dot on the title row shows state: <b>filled + pulsing</b> = busy, <b>hollow</b> = idle, <b>filled orange</b> = snoozed or blocked, <b>filled amber</b> = starting.</li>
   <li>The metadata line shows the agent-backend icon first, then the session-type icon, then the reasoning marker (<b>X/H/M/L</b>) when available, followed by recency, folder, and branch.</li>
   <li>Click the conversation title to rename or reprioritize it. <b>Details</b> in the session utilities bar shows the exact backend, provider, model, reasoning level, queue state, and token usage.</li>
 </ul>

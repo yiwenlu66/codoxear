@@ -240,16 +240,39 @@
         height: 8px;
         border-radius: 999px;
         flex: 0 0 auto;
-        background: rgba(107, 114, 128, 0.85);
+        /* idle = hollow ring (transparent center, gray outline) so the
+           absence-of-state reads as "empty", maximally distinct from the
+           solid filled busy/suppressed/pending dots. Color is a secondary
+           cue only — fill + motion carry the meaning (monochrome-proof). */
+        background: transparent;
+        box-shadow: inset 0 0 0 1.5px rgba(107, 114, 128, 0.85);
+      }
+      .stateDot.busy,
+      .stateDot.suppressed,
+      .stateDot.pending {
+        background: var(--stateDot-fill, rgba(29, 78, 216, 0.95));
+        box-shadow: none;
       }
       .stateDot.busy {
-        background: rgba(29, 78, 216, 0.95);
+        --stateDot-fill: rgba(29, 78, 216, 0.95);
+        animation: stateDotPulse 1.8s ease-in-out infinite;
       }
       .stateDot.suppressed {
-        background: rgba(234, 88, 12, 0.92);
+        --stateDot-fill: rgba(234, 88, 12, 0.92);
       }
       .stateDot.pending {
-        background: rgba(245, 158, 11, 0.95);
+        --stateDot-fill: rgba(245, 158, 11, 0.95);
+        animation: stateDotPulse 1.8s ease-in-out infinite;
+      }
+      @keyframes stateDotPulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .stateDot.busy,
+        .stateDot.pending {
+          animation: none;
+        }
       }
       .session.active {
         border-color: rgba(37, 99, 235, 0.6);
