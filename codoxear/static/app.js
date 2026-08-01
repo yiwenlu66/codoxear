@@ -3779,11 +3779,9 @@
           fileBtn.title = fileViewerLabel;
           fileBtn.setAttribute("aria-label", fileViewerLabel);
           chatSearchBtn.disabled = !selected;
-          // The chat nav rail is hidden on mobile (coarse pointer / narrow
-          // viewport) via CSS; never force it visible there. Inline
-          // display would otherwise override the CSS media-query hide.
-          if (!isMobile()) chatNavRail.style.display = selected ? "flex" : "none";
-          else chatNavRail.style.display = "none";
+          // The chat nav rail is hidden on all viewports via CSS (search lives
+          // in the topbar now); never force it visible with inline display.
+          chatNavRail.style.display = "none";
           chatEmptyState.style.display = selected ? "none" : "flex";
           if (!selected && chatSearchController.isOpen()) closeChatSearch();
           updateChatNavButtons();

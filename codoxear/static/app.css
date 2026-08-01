@@ -2458,9 +2458,6 @@ select {
         width: 100%;
       }
       @media (max-width: 700px) {
-        .chatNavRail {
-          display: none;
-        }
         .newSessionRunConfigRow {
           grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) auto;
         }
@@ -2853,8 +2850,7 @@ select {
           line-height: 17px;
         }
         .chatTimeChip {
-          top: auto;
-          bottom: 14px;
+          display: none !important;
         }
         .chatSearchAllHint {
           display: none !important;
@@ -2888,7 +2884,12 @@ select {
         }
         .status-chip {
           font-size: 11px;
-          padding: 3px 8px;
+          padding: 2px 6px;
+        }
+        .day-sep {
+          padding: 0;
+          border: none;
+          background: transparent;
         }
         .chat {
           padding: 10px 10px;
