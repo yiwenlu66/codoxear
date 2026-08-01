@@ -163,7 +163,7 @@
     function focusSendChoiceInitial() {
       requestFrame(() => {
         if (sendChoice.style.display !== "flex") return;
-        const target = !sendChoiceLaterBtn.disabled ? sendChoiceLaterBtn : !sendChoiceNowBtn.disabled ? sendChoiceNowBtn : sendChoiceCancelBtn;
+        const target = !sendChoiceNowBtn.disabled ? sendChoiceNowBtn : !sendChoiceLaterBtn.disabled ? sendChoiceLaterBtn : sendChoiceCancelBtn;
         if (!target || typeof target.focus !== "function") return;
         try { target.focus({ preventScroll: true }); } catch (_) {}
       });
