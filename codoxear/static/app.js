@@ -1466,7 +1466,8 @@
   <li><b>Load older messages</b> fetches more scrollback. <b>Jump to latest</b> returns to the newest turn when you are reading history.</li>
   <li>The <b>Search</b> button and <b>Previous</b>/<b>Next</b> message controls live in the navigation bar at the top of the conversation (not a floating rail). Use <b>/</b> to start a search of the loaded chat; when the match count shows more results, Previous/Next can load an older matching window.</li>
   <li>On a <b>Pi</b> session, type <b>/model</b> in the composer to switch models live. Start typing a provider or model name to filter the list, then choose an entry.</li>
-  <li>Press <b>f</b> to show keyboard hints for visible controls: <b>1</b>–<b>9</b> switch sessions; <b>s</b> sidebar; <b>b</b> files; <b>d</b> details; <b>u</b> unattended; <b>i</b> interrupt; <b>r</b> search; <b>p</b>/<b>n</b> previous/next user message; <b>o</b> older messages; <b>g</b> latest; <b>a</b> attach; <b>q</b> queued messages; <b>x</b> stop; <b>e</b> send; <b>m</b> message box; <b>c</b> new session. Clickable file references in the conversation also get dynamically-assigned letter hints. Press <b>Escape</b> or <b>Backspace</b> to cancel.</li>
+  <li>Press <b>f</b> to show keyboard hints for visible controls: <b>1</b>–<b>9</b> switch sessions; <b>s</b> sidebar; <b>t</b> edit conversation; <b>b</b> files; <b>d</b> details; <b>u</b> unattended; <b>i</b> interrupt; <b>r</b> search; <b>p</b>/<b>n</b> previous/next user message; <b>o</b> older messages; <b>g</b> latest; <b>a</b> attach; <b>q</b> queued messages; <b>x</b> stop; <b>e</b> send; <b>m</b> message box; <b>c</b> new session. Clickable file references in the conversation also get dynamically-assigned letter hints. Press <b>Escape</b> or <b>Backspace</b> to cancel.</li>
+  <li>In an open dialog, press a visible button's first distinctive letter to activate it. When buttons share their first letter, use a later distinctive letter. <b>Esc</b> closes the dialog.</li>
   <li>Direct shortcuts (no leader): <b>i</b> focus message box; <b>j</b>/<b>k</b> scroll down/up; <b>d</b>/<b>u</b> scroll half-page down/up; <b>G</b> go to bottom; <b>D</b> delete current session (confirm); <b>/</b> search; <b>Esc</b> exit message box or close dialog.</li>
 </ul>
 <div class="muted">Unattended mode</div>
@@ -2297,6 +2298,7 @@
             addAppEvent,
             shellHints: [
               { label: "s", element: toggleSidebarBtn },
+              { label: "t", element: titleLabel },
               { label: "b", element: fileBtn },
               { label: "d", element: diagBtn },
               { label: "u", element: unattendedBtn },
@@ -2315,6 +2317,41 @@
             ],
           });
         })();
+
+        function modalButtonLabel(button) {
+          return [button.textContent, button.getAttribute("aria-label")]
+            .map((label) => String(label || "").trim().toLowerCase())
+            .find(Boolean) || "";
+        }
+
+        function modalButtonHint(label, labels) {
+          for (let index = 0; index < label.length; index += 1) {
+            const candidate = label[index];
+            if (!/[a-z0-9]/.test(candidate)) continue;
+            if (labels.filter((other) => other[index] === candidate).length === 1) return candidate;
+          }
+          return "";
+        }
+
+        function activateModalButtonForKey(e) {
+          if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.isComposing) return false;
+          const key = String(e.key || "").toLowerCase();
+          if (key.length !== 1 || isTextEntryElement(e.target)) return false;
+          for (const modal of modalIsolationTargets) {
+            if (!isModalTargetOpen(modal)) continue;
+            const buttons = [...modal.querySelectorAll("button")].filter((button) => !button.disabled && !button.hidden && button.getClientRects().length);
+            const labels = buttons.map(modalButtonLabel);
+            const button = buttons.find((candidate, index) => modalButtonHint(labels[index], labels) === key);
+            if (!button) continue;
+            e.preventDefault();
+            e.stopPropagation();
+            button.click();
+            return true;
+          }
+          return false;
+        }
+
+        addAppEvent(document, "keydown", activateModalButtonForKey);
 
         // --- Direct (no-leader) Vimium-style shortcuts ---
         // These fire when not in a text-entry element, no modal is open, and
