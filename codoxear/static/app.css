@@ -277,6 +277,10 @@
       .session.active {
         border-color: rgba(37, 99, 235, 0.4);
         background: #eef4ff;
+        /* Thickened edge as a non-color indicator (survives monochrome).
+           Inset box-shadow avoids the layout shift that changing
+           border-width would cause on selection. */
+        box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.4);
       }
 	      .sessionMain {
 	        flex: 1 1 auto;
