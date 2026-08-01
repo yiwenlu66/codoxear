@@ -19,6 +19,7 @@ Deployed service: `codoxear-server.service` (systemd user unit) runs from a NON-
 - Selectable backend tabs are product promises. If a turn records user input and then terminates without assistant output or explicit backend error, normalization must emit a truthful visible outcome event; ordinary idle silence violates the projection contract. Completed-without-answer turns use a no-response event, explicit aborts/interruption use a distinct interruption event (`message_class:"error"`, searchable `interrupted` wording), and Pi aborted partial text must remain visible under the interruption row. Claude Code terminal `system/api_error` rows are visible error outcomes only when retries are exhausted; transient retry notices stay out of the transcript by themselves. Live transcript polling must use the unified backend-aware prior-turn context, not a Codex-only helper, or split-poll closes can drop visible outcomes.
 - Sidebar session metadata is a scan surface, not decoration. Backend/model/reasoning state that Codoxear supports must remain visible in compact rows: meaningful non-default model names appear in `.metaText` as `age | model | cwd | branch`, absent/empty/`default` model values are omitted, reasoning markers map `xhigh/high/medium/low/max/minimal/off` to `X/H/M/L/M+/m/–`, unknown effort strings render no marker, and Details/diagnostics remain the expanded raw-value surfaces.
 - Pi turn-close semantics are stop-reason-specific. `stop` and defensive `end_turn` are terminal non-error close reasons; no-visible `stop`/`end_turn` rows become the standard no-response error row, and visible-text `stop`/`end_turn` rows are final answers. `length` is a continuation/compaction boundary, not a turn close: visible-text `length` rows render as narration and remain busy; no-visible/thinking-only `length` rows do not create no-response rows and remain busy until a continuation, explicit terminal row, interruption, error, or process-death recovery resolves the turn.
+- Pi subagent activity is a first-class transcript surface, not a log detail. Pi `pi-subagent:` custom events are normalized into inline narration rows by `agent_backend.py` (`_pi_subagent_*` helpers): background-task progress, control notices (including "subagent needs attention"), and results render as assistant-side rows so the user sees delegation without the terminal. These narration rows must participate in the same tail/history/live/search/export projection contract as ordinary assistant rows.
 - Transcript search is a projection surface, not a separate parser. Search, tail, history pagination, live polling, export, and server rehydration must preserve the same normalized transcript messages, including synthetic no-response/error rows, and search matches for rendered rows must carry cursors that can load a history window containing the same row. Search must stream positioned events rather than materializing whole-log record/event lists before first-order `count_max` can stop work; any future search optimization must preserve adjacent assistant dedupe, synthetic no-response injection, `_before_byte`/`_after_byte` load/history cursors, before-boundary semantics, oversized-line truncation signaling, and backend pending-tool state.
 - Copy Conversation export-size failures are product limit messages, not clipboard failures. When `/messages/export` returns the known transcript/export-too-large `413` shape with `max_bytes`, the browser must show a specific conversation-too-large copy message with the limit and an actionable alternative; unrelated copy/export/clipboard failures keep generic `copy failed: ...` handling, and the server export cap remains authoritative.
 - Copy Conversation success counts are clipboard-payload counts, not export-row counts. The formatter-owned copyable selection is the single source for both clipboard text and toast count: only non-empty `user`/`assistant` events become `## User` / `## Assistant` sections, `formatConversationForCopy(events)` remains the string contract, and `formatConversationForCopyResult(events).messageCount` is the success-toast count. Raw `/messages/export` `events.length` is a proxy and must not drive user-visible copied-message counts.
@@ -42,9 +43,10 @@ Deployed service: `codoxear-server.service` (systemd user unit) runs from a NON-
 ## Implementation and frontend invariants
 
 - Markdown rendering uses the `marked` library (jsdelivr) plus Codoxear post-processors: file-reference rewriting (`app_markdown.js`), KaTeX math, and OAI memory-citation rewriting. The CSP (`script-src`/`style-src`) allows the jsdelivr origin. Do not reintroduce a hand-rolled markdown parser or CDN-free paths that skip the post-processors.
+- Live transcript delivery uses SSE (`EventSource`) with polling fallback. When a session is selected and bound to a backend log, the browser opens `/api/sessions/<id>/live` (`message_routes.py` `handle_messages_live_stream`, `text/event-stream`) for real-time message deltas. The SSE handler and the poll handler share the same live-delta/normalization path (`_read_chat_live_delta`, `applyLiveMessageData`), so both produce identical transcript state. If SSE fails or is unavailable, polling resumes automatically.
 - Send path is unconditional confirmed-send: the busy/queue gate was removed. `require_send_preconditions` only blocks on commit-unknown resolution, a pending attachment, a stale queue item, or missing broker `sync_send`. Steering via confirmed-send works on all backends; the queue is an opt-in alternative, not a hard gate. Do not reintroduce a busy-gate that blocks direct sends.
 - Performance: static asset responses are gzip-compressed (`static_routes.py`), served over HTTP/1.1 (`server_handler.py`), versioned assets (`?v=...`) carry immutable one-year cache headers, the asset version is memoized, and poll cadence is tuned via `CODEX_WEB_*_INTERVAL_SECONDS` env vars.
-- Visual style is flat: no `backdrop-filter`; the only `box-shadow`/`outline` usage is functional focus/state indication, not decorative depth.
+- Visual style is flat and e-ink-friendly: no `backdrop-filter`; solid opaque borders (`--border: #94a3b8`) provide hard separation for e-ink and high-glare screens; the only `box-shadow`/`outline` usage is functional focus/state indication, not decorative depth.
 - Session card DOM is a locked two-branch design: touch uses swipe actions, desktop uses hover-revealed actions (`useDesktopSessionActions()` / `swipeActions`). Do not unify the branches.
 - Keyboard: vimium-style hint mode (`f` leader, then a per-control letter) plus direct shortcuts (`i`, `j`/`k`, `d`/`u`, `G`, `D`, `/`); on Pi sessions `/model` in the composer switches models live. (`/thinking` is not implemented.)
 
@@ -77,3 +79,36 @@ Deployed service: `codoxear-server.service` (systemd user unit) runs from a NON-
 - Lifecycle drop paths that can discover a dead web-owned bound-log session (broker exit, stale discovery, prune, session-control dead-process drop) must check the bound log with the same idle reducer. Incomplete/non-idle logs get a post-log recovery record; completed/idle logs do not get false stopped errors.
 - Missing-session message routes must preserve one transcript contract across tail/history/live/search/export: read the bound log read-only, append exactly one lifecycle assistant error (`The backend process stopped before completing this turn.`), keep the recovered row idle, and block send/queue/attachment/unattended through failed-row/no-active-session semantics rather than a new busy category.
 - Large recovered logs have route-specific read semantics. Tail/live project a recent tail window and must carry usable history cursors when older content exists. A truncated recovery payload needs a signed cursor at the truncation boundary, and if no retained real chat row has a cursor, the lifecycle error row carries it so browser `Load older messages` can retrieve older context. History pages the bound log by cursor. Search must search the real bound log with the same whole-log, per-line-bounded search primitive as live sessions, then merge the Codoxear lifecycle error from the recovery payload for the full/latest recovered transcript. Do not set `has_older:true` without a usable cursor.
+
+## Pi integration strategy (investigation 2026-08-01)
+
+### Current mechanism
+Codoxear wraps Pi (and all backends) in a PTY. For Pi specifically:
+- Prompts via bracketed-paste + Enter injection into PTY
+- Busy/state inferred from JSONL log reconstruction
+- Model/thinking set only at launch time (--model, --thinking flags)
+- `pi_active_session_bridge.ts` extension injected for session-path discovery only
+
+### No web-only RPC path — PTY sharing is the core invariant
+The whole point of Codoxear is web and terminal share the SAME PTY session.
+Pi native RPC mode (`pi --mode rpc`) cannot coexist with the interactive TUI —
+it's a separate headless mode. Splitting transport by ownership (web=RPC,
+terminal=PTY) would break the shared-session invariant. Therefore:
+- ALL sessions stay on PTY. No web-owned-only RPC adapter.
+- To get authoritative model/thinking control for shared sessions, expand
+  `pi_active_session_bridge.ts` into a structured extension side-channel
+  (Wherever/remote-pi pattern) that calls `pi.setModel()`,
+  `pi.setThinkingLevel()` etc. from WITHIN the live TUI process.
+  This preserves terminal visibility while gaining structured control.
+
+### Future: official Pi remote-session protocol
+Pi upstream merged experimental `pi-protocol`/`pi-client`/`pi-server` packages
+(PRs #7344, #7386, #7409). CBOR-based, authoritative snapshots, lease ownership.
+Not yet published or production-ready. Coding-agent backend (#7396) still draft.
+Track for future adoption IF it supports TUI coexistence — if the TUI becomes
+a client of the server protocol, both web and terminal could share the same
+authoritative session. Depends on upstream evolution.
+
+### Competitor landscape
+- **Wherever** (@wherever-dev/pi, AGPL-3.0): direct competitor. Multi-session web dashboard + Pi extension bridge + headless SDK sessions. Architecture reference for terminal/headless handover.
+- **remote-pi**: mobile control + daemon supervisor + agent mesh. Reference for typed mobile actions, correlated delivery, persistent daemon patterns.
