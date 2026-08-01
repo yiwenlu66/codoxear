@@ -174,7 +174,7 @@
       }
       .session {
         padding: 0;
-        border: 2px solid var(--border);
+        border: 1px solid var(--border);
         border-radius: 12px;
         margin-bottom: 8px;
         cursor: pointer;
