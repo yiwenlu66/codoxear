@@ -150,6 +150,12 @@
       textarea.value = "";
       clearSessionDraft(getSelected());
       autoGrow();
+      // Blur the message box after sending — users rarely send two
+      // consecutive messages to the same session, and returning focus to
+      // the document restores access to global keyboard shortcuts.
+      if (typeof textarea.blur === "function") {
+        try { textarea.blur(); } catch (_) {}
+      }
     }
 
     function syncSendChoiceAttachmentPolicy() {
