@@ -199,10 +199,6 @@
 	        will-change: transform;
 	        touch-action: pan-y;
 	      }
-      .session.active .sessionContent {
-        background: #eef4ff;
-        box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.5);
-      }
       .sessionActions {
         position: absolute;
         top: 0;
@@ -330,7 +326,17 @@
         }
       }
       .session.active {
-        border-color: rgba(37, 99, 235, 0.5);
+        background: #eef4ff;
+        /* ONE clean thick edge via outline painted OUTSIDE the border.
+           outline-offset:0 keeps it flush with the outer border edge so it
+           replaces (not doubles) the visible edge. No box-shadow on
+           .sessionContent, no border-color change — those stacked into a
+           patchy double ring. Outline is never clipped by child overflow and
+           doesn't shift layout. */
+        outline: 2px solid rgba(37, 99, 235, 0.6);
+        outline-offset: 0;
+      }
+      .session.active .sessionContent {
         background: #eef4ff;
       }
 	      .sessionMetaLine {
