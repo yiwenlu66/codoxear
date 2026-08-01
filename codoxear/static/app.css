@@ -30,8 +30,7 @@
         width: 100%;
         max-width: 100%;
         margin: 0;
-        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI Variable", "Segoe UI", Roboto, "Helvetica Neue", Arial,
-          "Noto Sans", "Liberation Sans", sans-serif;
+        font-family: sans-serif;
         font-optical-sizing: auto;
         -webkit-text-size-adjust: 100%;
         text-size-adjust: 100%;
