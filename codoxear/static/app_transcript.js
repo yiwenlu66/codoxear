@@ -291,6 +291,19 @@
     const shouldAutoScroll = requireFunction(options.shouldAutoScroll, "shouldAutoScroll");
     const scheduleScrollToBottom = requireFunction(options.scheduleScrollToBottom, "scheduleScrollToBottom");
     let typingRow = null;
+    let typingStatsNode = null;
+    let typingStats = { thinking: 0, tools: 0 };
+
+    function normalizeTypingCount(value) {
+      const count = Number(value);
+      return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+    }
+
+    function renderTypingStats() {
+      if (!typingStatsNode) return;
+      const { thinking, tools } = typingStats;
+      typingStatsNode.textContent = tools || thinking ? `tools: ${tools} · thinking: ${thinking}` : "";
+    }
 
     function ensureRow() {
       if (typingRow && typingRow.isConnected) return typingRow;
@@ -303,9 +316,33 @@
         el("span", { class: "typingDot" }),
       ]);
       bubble.appendChild(dots);
+      typingStatsNode = el("span", { class: "typingStats", "aria-hidden": "true" });
+      bubble.appendChild(typingStatsNode);
       row.appendChild(bubble);
       typingRow = row;
+      renderTypingStats();
       return row;
+    }
+
+    function updateTypingStats({ thinking, tools } = {}, { delta = false } = {}) {
+      const next = {
+        thinking: normalizeTypingCount(thinking),
+        tools: normalizeTypingCount(tools),
+      };
+      typingStats = delta
+        ? {
+            thinking: typingStats.thinking + next.thinking,
+            tools: typingStats.tools + next.tools,
+          }
+        : next;
+      renderTypingStats();
+      return snapshot();
+    }
+
+    function resetTypingStats() {
+      typingStats = { thinking: 0, tools: 0 };
+      renderTypingStats();
+      return snapshot();
     }
 
     function anchor() {
@@ -314,6 +351,7 @@
 
     function setVisible(show) {
       if (!show) {
+        resetTypingStats();
         if (typingRow && typingRow.isConnected && typeof typingRow.remove === "function") typingRow.remove();
         return snapshot();
       }
@@ -328,20 +366,27 @@
     }
 
     function reset() {
+      resetTypingStats();
       if (typingRow && typingRow.isConnected && typeof typingRow.remove === "function") typingRow.remove();
       typingRow = null;
+      typingStatsNode = null;
       return snapshot();
     }
 
     function snapshot() {
-      return Object.freeze({ connected: Boolean(typingRow && typingRow.isConnected) });
+      return Object.freeze({
+        connected: Boolean(typingRow && typingRow.isConnected),
+        stats: Object.freeze({ ...typingStats }),
+      });
     }
 
     return Object.freeze({
       anchor,
       reset,
+      resetTypingStats,
       setVisible,
       snapshot,
+      updateTypingStats,
     });
   }
 

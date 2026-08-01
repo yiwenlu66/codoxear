@@ -31,6 +31,58 @@ def _source_between(start: str, end: str) -> str:
 
 
 class TestChatTranscriptRuntime(unittest.TestCase):
+    def test_typing_row_runtime_projects_activity_stats_without_replacing_dots(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const ctx = {{ window: {{}} }};
+            const vm = require("vm");
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            function node(attrs = {{}}, children = []) {{
+              const out = {{ ...attrs, children: [], dataset: {{}}, isConnected: false }};
+              out.appendChild = (child) => {{ out.children.push(child); return child; }};
+              out.querySelector = (selector) => {{
+                if (selector === ".typingStats" && out.class === "typingStats") return out;
+                for (const child of out.children) {{
+                  const found = child && typeof child.querySelector === "function" ? child.querySelector(selector) : null;
+                  if (found) return found;
+                }}
+                return null;
+              }};
+              out.remove = () => {{ out.isConnected = false; }};
+              for (const child of children) out.appendChild(child);
+              return out;
+            }}
+            const bottom = node();
+            const root = {{
+              insertBefore: (row) => {{ row.isConnected = true; }},
+            }};
+            const runtime = ctx.window.CodoxearTranscript.createTypingRowRuntime({{
+              root,
+              bottomSentinel: bottom,
+              el: (tag, attrs, children) => node(attrs, children),
+              shouldAutoScroll: () => false,
+              scheduleScrollToBottom: () => {{}},
+            }});
+            runtime.setVisible(true);
+            const statsNode = runtime.anchor().querySelector(".typingStats");
+            const initial = {{ text: statsNode.textContent, stats: runtime.snapshot().stats }};
+            runtime.updateTypingStats({{ tools: 2, thinking: 1 }}, {{ delta: true }});
+            const incremented = {{ text: statsNode.textContent, stats: runtime.snapshot().stats }};
+            runtime.updateTypingStats({{ tools: 7, thinking: 3 }});
+            const replaced = {{ text: statsNode.textContent, stats: runtime.snapshot().stats }};
+            runtime.setVisible(false);
+            const hidden = {{ text: statsNode.textContent, stats: runtime.snapshot().stats }};
+            process.stdout.write(JSON.stringify({{ initial, incremented, replaced, hidden }}));
+            """
+        )
+        out = _run_node(js)
+        self.assertEqual(out["initial"], {"text": "", "stats": {"thinking": 0, "tools": 0}})
+        self.assertEqual(out["incremented"], {"text": "tools: 2 · thinking: 1", "stats": {"thinking": 1, "tools": 2}})
+        self.assertEqual(out["replaced"], {"text": "tools: 7 · thinking: 3", "stats": {"thinking": 3, "tools": 7}})
+        self.assertEqual(out["hidden"], {"text": "", "stats": {"thinking": 0, "tools": 0}})
+
     def test_transcript_scroll_runtime_owns_bottom_lock_and_input_policy(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(

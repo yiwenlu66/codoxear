@@ -2778,6 +2778,28 @@
             pushPerfSample("click_to_first_message_ms", dt);
           }
 
+        function updateTypingStatsFromSession(session) {
+          if (!session) return;
+          const current = typingRowRuntime.snapshot().stats || { thinking: 0, tools: 0 };
+          const stats = {
+            thinking: session.thinking,
+            tools: session.tools,
+          };
+          // Live deltas are authoritative once observed; session-list counts
+          // fill the initial projection and recover counts while idle polling
+          // catches up.
+          if (!turnOpen || (!current.thinking && !current.tools)) typingRowRuntime.updateTypingStats(stats);
+        }
+
+        function applyTypingMetaDelta(data) {
+          const delta = data && data.meta_delta;
+          if (!delta || typeof delta !== "object") return;
+          typingRowRuntime.updateTypingStats(
+            { thinking: delta.thinking, tools: delta.tool },
+            { delta: true },
+          );
+        }
+
 	        function setTyping(show) {
 	          typingRowRuntime.setVisible(show);
 	        }
@@ -3131,7 +3153,10 @@
           if (!renderedSidebar) return sessions;
           if (selected) {
             const session = sessionIndex.get(selected);
-            if (session) titleLabel.textContent = sessionTitleWithId(session);
+            if (session) {
+              titleLabel.textContent = sessionTitleWithId(session);
+              updateTypingStatsFromSession(session);
+            }
           }
           updateUnattendedBtnState();
           updateQueueBadge();
@@ -3228,6 +3253,8 @@
           const nowBusy = Boolean(data && data.busy);
           turnOpen = nowBusy;
           const queueLen = data && Number.isFinite(Number(data.queue_len)) ? Number(data.queue_len) : 0;
+          const session = sessionIndex.get(sessionId);
+          updateTypingStatsFromSession(session);
           setStatus({ running: nowBusy, queueLen });
           setContext(data ? data.token : null);
           setTyping(nowBusy);
@@ -3456,6 +3483,7 @@
           turnOpen = cachedBusy;
           setStatus({ running: cachedBusy, queueLen });
           setContext(cache.token || (sessionMeta ? sessionMeta.token : null));
+          updateTypingStatsFromSession(sessionMeta);
           setTyping(cachedBusy);
         }
 
@@ -3506,6 +3534,7 @@
           turnOpen = optimisticBusy;
           setStatus({ running: optimisticBusy, queueLen: optimisticQueueLen });
           setContext(s ? s.token || null : null);
+          updateTypingStatsFromSession(s);
           setTyping(optimisticBusy);
           const fileViewerSyncStarted = Boolean(isFileViewerOpen() && !currentFileDirty());
           if (fileViewerSyncStarted) {
@@ -3583,6 +3612,7 @@
           markMessagePollSuccess();
           const slotInfo = transcriptSnapshotFromData(data);
           const nowBusy = Boolean(data.busy);
+          const wasTurnOpen = turnOpen;
           if (activeTranscriptSnapshot().state === "bound" && slotInfo.state === "pending_bind") {
             updateSessionTranscriptSlot(sid, data);
             resetChatRenderState();
@@ -3601,10 +3631,13 @@
           const turnStart = Boolean(data.turn_start);
           const turnEnd = Boolean(data.turn_end);
           const turnAborted = Boolean(data.turn_aborted);
+          const newTurn = turnStart || (!wasTurnOpen && nowBusy);
+          if (newTurn) typingRowRuntime.resetTypingStats();
           if (turnStart) turnOpen = true;
           if (!turnOpen && nowBusy) turnOpen = true;
           if ((turnEnd || turnAborted) && turnOpen) turnOpen = false;
           if (turnOpen && !nowBusy) turnOpen = false;
+          applyTypingMetaDelta(data);
           setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
           setContext(data.token);
           setTyping(Boolean(turnOpen || nowBusy));
