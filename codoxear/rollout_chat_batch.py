@@ -109,7 +109,7 @@ def _extract_chat_events(
                 last_tool = "pi_tool"
             if pi_assistant_is_aborted_turn(obj):
                 turn_aborted = True
-            elif event is not None and event.get("message_class") in {"final_response", "error"}:
+            elif event is not None and event.get("message_class") == "final_response":
                 turn_end = True
             continue
 

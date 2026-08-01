@@ -229,7 +229,6 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
 
         role = _pi_message_role(obj)
         has_text = bool(_pi_assistant_text(obj))
-        has_error = bool(_pi_assistant_error_text(obj))
         thinking_count = _pi_assistant_thinking_count(obj)
         tool_count = _pi_assistant_tool_use_count(obj)
         is_tool_result = role == "toolResult"
@@ -238,8 +237,16 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             _close_turn_state(st)
             return
 
-        if has_error and role == "assistant":
-            _close_turn_state(st)
+        if _pi_assistant_error_text(obj) and role == "assistant":
+            # A Pi error row can precede its automatic retry and carries no
+            # terminal/retry discriminator. It is turn activity, never a
+            # close; clear stale calls from the failed request before retrying.
+            st.pending_calls.clear()
+            _reopen_turn_on_activity(st)
+            if st.turn_open:
+                st.turn_has_completion_candidate = False
+            st.busy = True
+            st.last_turn_activity_ts = now_ts
             return
 
         if role == "assistant" and _pi_assistant_is_terminal_no_visible_response(obj):

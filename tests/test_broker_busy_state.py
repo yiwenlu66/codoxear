@@ -1211,13 +1211,14 @@ class TestBrokerBusyState(unittest.TestCase):
         self.assertEqual(st.pending_calls, set())
         self.assertEqual(st.last_turn_activity_ts, 0.0)
 
-    def test_pi_error_message_clears_busy_and_pending_calls(self) -> None:
+    def test_pi_error_message_keeps_busy_through_retry_activity(self) -> None:
         st = _state()
-        st.busy = True
-        st.turn_open = True
-        st.turn_has_completion_candidate = False
-        st.pending_calls.add("call-1")
-        st.last_turn_activity_ts = 10.0
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "retry this"}]}},
+            now_ts=10.0,
+        )
+        st.pending_calls.add("failed-call")
         _apply_rollout_obj_to_state(
             st,
             {
@@ -1226,16 +1227,54 @@ class TestBrokerBusyState(unittest.TestCase):
                     "role": "assistant",
                     "content": [],
                     "stopReason": "error",
-                    "errorMessage": "401 Invalid API key",
+                    "errorMessage": "429 rate limit; retrying",
                 },
             },
             now_ts=11.0,
         )
-        self.assertFalse(st.busy)
-        self.assertFalse(st.turn_open)
+        self.assertTrue(st.busy)
+        self.assertTrue(st.turn_open)
         self.assertFalse(st.turn_has_completion_candidate)
         self.assertEqual(st.pending_calls, set())
-        self.assertEqual(st.last_turn_activity_ts, 0.0)
+        self.assertEqual(st.last_turn_activity_ts, 11.0)
+
+        _apply_rollout_obj_to_state(
+            st,
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "thinking", "thinking": "retrying request"}],
+                    "stopReason": "toolUse",
+                },
+            },
+            now_ts=12.0,
+        )
+        self.assertTrue(st.busy)
+        self.assertTrue(st.turn_open)
+        self.assertEqual(st.last_turn_activity_ts, 12.0)
+
+    def test_pi_error_message_does_not_seed_idle_on_broker_bind(self) -> None:
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "session.jsonl"
+            rows = [
+                {"type": "session", "id": "sid"},
+                {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "retry this"}]}},
+                {
+                    "type": "message",
+                    "message": {
+                        "role": "assistant",
+                        "content": [],
+                        "stopReason": "error",
+                        "errorMessage": "429 rate limit; retrying",
+                    },
+                },
+            ]
+            log_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            pending, idle = pi_current_turn_state_before(log_path, log_path.stat().st_size)
+
+        self.assertEqual(pending, set())
+        self.assertIs(idle, False)
 
     def test_pi_aborted_message_clears_busy_and_pending_calls(self) -> None:
         st = _state()

@@ -244,7 +244,10 @@ def pi_current_turn_state_before(log_path: Path, before: int) -> tuple[set[PiPen
         if pi_assistant_error_text(obj):
             pending.clear()
             saw_signal = True
-            idle = True
+            # Pi records the first failed request as an assistant error before
+            # it may automatically retry the same user turn. The error row has
+            # no retry/final marker, so it cannot close the turn by itself.
+            idle = False
             continue
         if pi_assistant_is_terminal_no_visible_response(obj):
             pending.clear()

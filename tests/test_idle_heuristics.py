@@ -217,7 +217,8 @@ class TestIdleHeuristics(unittest.TestCase):
             )
             self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), True)
 
-    def test_pi_error_message_is_idle(self) -> None:
+    def test_pi_error_message_without_terminal_row_stays_busy(self) -> None:
+        """Pi's error row has no terminal/retry discriminator, so it cannot end a turn."""
         with TemporaryDirectory() as td:
             p = Path(td) / "pi.jsonl"
             _write_jsonl(
@@ -232,6 +233,64 @@ class TestIdleHeuristics(unittest.TestCase):
                             "content": [],
                             "stopReason": "error",
                             "errorMessage": "401 Invalid API key",
+                        },
+                    },
+                ],
+            )
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), False)
+
+    def test_pi_error_then_retry_activity_stays_busy(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "pi.jsonl"
+            _write_jsonl(
+                p,
+                [
+                    {"type": "session", "id": "s", "cwd": "/tmp"},
+                    {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}},
+                    {
+                        "type": "message",
+                        "message": {
+                            "role": "assistant",
+                            "content": [],
+                            "stopReason": "error",
+                            "errorMessage": "429 rate limit; retrying",
+                        },
+                    },
+                    {
+                        "type": "message",
+                        "message": {
+                            "role": "assistant",
+                            "content": [{"type": "thinking", "thinking": "retrying"}],
+                            "stopReason": "toolUse",
+                        },
+                    },
+                ],
+            )
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), False)
+
+    def test_pi_error_then_final_response_is_idle(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "pi.jsonl"
+            _write_jsonl(
+                p,
+                [
+                    {"type": "session", "id": "s", "cwd": "/tmp"},
+                    {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}},
+                    {
+                        "type": "message",
+                        "message": {
+                            "role": "assistant",
+                            "content": [],
+                            "stopReason": "error",
+                            "errorMessage": "503 overloaded; retrying",
+                        },
+                    },
+                    {
+                        "type": "message",
+                        "message": {
+                            "role": "assistant",
+                            "content": [{"type": "text", "text": "done after retry"}],
+                            "stopReason": "stop",
                         },
                     },
                 ],

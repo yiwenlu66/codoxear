@@ -196,8 +196,8 @@ class TestServerChatFlags(unittest.TestCase):
         self.assertEqual(events[-1]["message_class"], "final_response")
         self.assertEqual(meta["thinking"], 1)
 
-    def test_pi_error_message_is_visible_and_ends_turn(self) -> None:
-        events, _meta, flags, _diag = _extract_chat_events(
+    def test_pi_error_message_is_visible_without_ending_retrying_turn(self) -> None:
+        events, meta, flags, diag = _extract_chat_events(
             [
                 {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "test"}]}},
                 {
@@ -207,16 +207,32 @@ class TestServerChatFlags(unittest.TestCase):
                         "role": "assistant",
                         "content": [],
                         "stopReason": "error",
-                        "errorMessage": "401 Invalid API key",
+                        "errorMessage": "429 rate limit; retrying",
+                    },
+                },
+                {
+                    "type": "message",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "thinking", "thinking": "retrying request"},
+                            {"type": "toolCall", "id": "retry-1", "name": "bash", "arguments": {"command": "pwd"}},
+                        ],
+                        "stopReason": "toolUse",
                     },
                 },
             ]
         )
-        self.assertTrue(flags["turn_end"])
+        self.assertTrue(flags["turn_start"])
+        self.assertFalse(flags["turn_end"])
+        self.assertFalse(flags["turn_aborted"])
         self.assertEqual(events[-1]["role"], "assistant")
         self.assertEqual(events[-1]["message_class"], "error")
-        self.assertEqual(events[-1]["text"], "401 Invalid API key")
+        self.assertEqual(events[-1]["text"], "429 rate limit; retrying")
         self.assertEqual(events[-1]["ts"], 1777165323.0)
+        self.assertEqual(meta["thinking"], 1)
+        self.assertEqual(meta["tool"], 1)
+        self.assertEqual(diag["last_tool"], "pi_tool")
 
     def test_pi_aborted_message_sets_turn_aborted(self) -> None:
         events, _meta, flags, _diag = _extract_chat_events(

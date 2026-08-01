@@ -186,8 +186,11 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     idle = pi_assistant_is_final_turn_end(obj)
                     continue
                 if pi_assistant_error_text(obj):
+                    # Pi emits this row before an automatic retry but does not
+                    # encode whether a retry will follow. Keep the user turn
+                    # open until an explicit terminal row arrives.
                     saw_terminal_signal = True
-                    idle = True
+                    idle = False
                     continue
                 if pi_assistant_is_terminal_no_visible_response(obj):
                     saw_terminal_signal = True
