@@ -188,9 +188,9 @@ class TestFrontendHintModeModuleSource(unittest.TestCase):
         app_source = APP_JS.read_text(encoding="utf-8")
         expected = {
             "s": "toggleSidebarBtn", "t": "titleLabel", "b": "fileBtn", "d": "diagBtn", "u": "unattendedBtn",
-            "i": "interruptBtn", "r": "chatSearchBtn", "p": "prevUserBtn", "n": "nextUserBtn",
+            "z": "interruptBtn", "r": "chatSearchBtn", "p": "prevUserBtn", "n": "nextUserBtn",
             "o": "olderBtn", "g": "jumpBtn", "a": "attachBtn", "q": "queueBtn",
-            "x": "composerStopBtn", "e": "sendBtn", "c": "$(\"#newBtn\")",
+            "x": "composerStopBtn", "e": "sendBtn", "i": "textarea", "c": "$(\"#newBtn\")",
         }
         for label, element in expected.items():
             self.assertIn(f'{{ label: "{label}", element: {element} }}', app_source)
