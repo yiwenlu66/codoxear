@@ -9,7 +9,7 @@
         --danger: #b91c1c;
         --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.08);
         --sidebar-w: 320px;
-        --bubble-user: #cfe7ff;
+        --bubble-user: #eaf3fc;
         --bubble-assistant: #ffffff;
       }
 
@@ -990,7 +990,7 @@
       }
       .msg-row.chat-search-current .msg {
         border-color: rgba(37, 99, 235, 0.5);
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16), var(--shadow-sm);
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
       }
       .msg-row {
         display: flex;
@@ -1029,7 +1029,6 @@
         position: relative;
         white-space: normal;
         line-height: 1.35;
-        box-shadow: var(--shadow-sm);
         overflow-wrap: anywhere;
       }
       .msg.user {
@@ -1105,7 +1104,6 @@
         border-color: rgba(15, 23, 42, 0.14);
         background: rgba(233, 238, 245, 0.98);
         color: rgba(17, 24, 39, 0.7);
-        box-shadow: var(--shadow-sm);
       }
       .msg-shell.user .msg-copy-btn {
         left: -40px;
@@ -1274,7 +1272,6 @@
         border-radius: 999px;
         background: rgba(255, 255, 255, 0.92);
         color: rgba(17, 24, 39, 0.68);
-        box-shadow: var(--shadow-sm);
         opacity: 0.72;
       }
       .code-copy-btn::before {
@@ -3108,5 +3105,5 @@ select {
         display: none;
         border-radius: 999px;
         padding: 9px 10px;
-        box-shadow: 0 10px 22px rgba(15, 23, 42, 0.14);
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
       }
