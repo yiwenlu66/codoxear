@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LAUNCH = ROOT / "codoxear" / "static" / "app_launch.js"
 DISPLAY = ROOT / "codoxear" / "static" / "app_display.js"
 NEW_SESSION = ROOT / "codoxear" / "static" / "app_new_session.js"
+APP = ROOT / "codoxear" / "static" / "app.js"
 
 
 def eval_model_options(query: str, *, backend: str = "codex", provider_choices: list[str] | None = None) -> dict:
@@ -56,6 +57,12 @@ class TestNewSessionModelOptionsBehavior(unittest.TestCase):
         self.assertEqual(result["parsed"]["providerChoice"], "anthropic")
         self.assertEqual(result["parsed"]["model"], "claude-haiku-4-5")
         self.assertEqual(result["parsed"]["providerError"], "")
+
+    def test_new_session_dropdown_visuals_prioritize_model_but_name_canonical_pair(self) -> None:
+        source = APP.read_text(encoding="utf-8")
+        self.assertIn('"aria-label": title,', source)
+        self.assertIn('class: "fileMenuPath", text: model', source)
+        self.assertIn('class: "fileMenuHint", text: item.providerChoice', source)
 
 
 if __name__ == "__main__":

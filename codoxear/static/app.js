@@ -4283,10 +4283,11 @@
               type: "button",
               role: "option",
               "aria-selected": active ? "true" : "false",
+              "aria-label": title,
               title,
             });
-            btn.appendChild(el("span", { class: "fileMenuPath", text: title }));
-            if (item.providerChoice) btn.appendChild(el("span", { class: "fileMenuHint", text: item.recent ? "Recent" : item.configured ? "Configured" : item.providerChoice }));
+            btn.appendChild(el("span", { class: "fileMenuPath", text: model }));
+            if (item.providerChoice) btn.appendChild(el("span", { class: "fileMenuHint", text: item.providerChoice }));
             btn.onmousedown = (e) => e.preventDefault();
             btn.onclick = () => selectNewSessionModel(item);
             newSessionModelMenu.appendChild(btn);
