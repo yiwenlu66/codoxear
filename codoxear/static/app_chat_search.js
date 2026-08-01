@@ -118,24 +118,23 @@
       const searchState = loadedChatSearchRuntime.snapshot();
       const total = searchState.matches.length;
       const allState = chatSearchAllRuntime.snapshot();
-      const allSuffix = searchState.query
-        ? searchState.loadingOlder
-          ? " · loading older"
-          : Number.isFinite(allState.count)
-            ? ` · ${allState.count}${allState.truncated ? "+" : ""} all`
-            : ""
-        : "";
-      const canLoadOlderMatch = Boolean(
+      const mayHaveOlderMatches = Boolean(
         searchState.query &&
-          Number.isFinite(allState.count) &&
-          (allState.truncated || allState.count > total) &&
           hasOlderMessages() &&
           !searchState.loadingOlder &&
-          !isLoadingOlderMessages()
+          !isLoadingOlderMessages() &&
+          (!Number.isFinite(allState.count) || allState.truncated || allState.count > total)
       );
-      const showAllHint = Boolean(searchState.query && !searchState.loadingOlder && Number.isFinite(allState.count) && (allState.truncated || allState.count > total) && allState.hint);
-      chatSearchStatus.textContent = searchState.query ? `${total ? searchState.index + 1 : 0}/${total} loaded${allSuffix}` : "Loaded";
-      chatSearchAllHintEl.textContent = showAllHint ? `all: ${allState.hint}` : "";
+      const canLoadOlderMatch = Boolean(
+        mayHaveOlderMatches &&
+          (total > 0 || (Number.isFinite(allState.count) && allState.count > 0))
+      );
+      const atOldestLoadedMatch = total > 0 && searchState.index === 0;
+      const showAllHint = Boolean(searchState.query && !searchState.loadingOlder && Number.isFinite(allState.count) && allState.hint);
+      chatSearchStatus.textContent = searchState.query
+        ? `${total ? searchState.index + 1 : 0} of ${total}${atOldestLoadedMatch && mayHaveOlderMatches ? " · Older matches may exist; Previous loads them" : ""}`
+        : "Search conversation";
+      chatSearchAllHintEl.textContent = showAllHint ? allState.hint : "";
       chatSearchAllHintEl.title = showAllHint ? allState.hint : "";
       chatSearchAllHintEl.style.display = showAllHint ? "" : "none";
       chatSearchPrevBtn.disabled = total <= 0;
@@ -371,10 +370,10 @@
           if (jumped) return;
           const found = await loadOlderUntilChatSearchMatch();
           if (found) return;
-          setToast("No loaded matches after loading older messages");
+          setToast("No matches found after checking older messages");
           return;
         }
-        setToast(state.query ? "No loaded matches" : "Enter a loaded-chat search");
+        setToast(state.query ? "No matches found" : "Enter a search term");
         return;
       }
       const startIndex = state.index;

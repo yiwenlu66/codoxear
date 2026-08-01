@@ -48,13 +48,13 @@
     const bottomSentinel = el("div", { id: "bottomSentinel" });
     const jumpBtn = el("button", { class: "jumpBtn", id: "jumpBtn", title: "Jump to latest message", "aria-label": "Jump to latest message", html: iconSvg("down") });
     const chatTimeChip = el("div", { id: "chatTimeChip", class: "chatTimeChip", "aria-hidden": "true" });
-    const chatSearchInput = el("input", { id: "chatSearchInput", class: "chatSearchInput", type: "search", placeholder: "Search loaded chat", "aria-label": "Search loaded chat messages", autocomplete: "off" });
+    const chatSearchInput = el("input", { id: "chatSearchInput", class: "chatSearchInput", type: "search", placeholder: "Search conversation", "aria-label": "Search conversation", autocomplete: "off" });
     const chatSearchPrevBtn = el("button", { id: "chatSearchPrevBtn", class: "icon-btn", type: "button", title: "Previous match", "aria-label": "Previous match", html: iconSvg("up") });
     const chatSearchNextBtn = el("button", { id: "chatSearchNextBtn", class: "icon-btn", type: "button", title: "Next match", "aria-label": "Next match", html: iconSvg("down") });
     const chatSearchCloseBtn = el("button", { id: "chatSearchCloseBtn", class: "icon-btn", type: "button", title: "Close search", "aria-label": "Close search", html: iconSvg("x") });
-    const chatSearchStatus = el("span", { id: "chatSearchStatus", class: "chatSearchStatus", text: "Loaded" });
+    const chatSearchStatus = el("span", { id: "chatSearchStatus", class: "chatSearchStatus", text: "Search conversation" });
     const chatSearchAllHintEl = el("span", { id: "chatSearchAllHint", class: "chatSearchAllHint", text: "" });
-    const chatSearchBar = el("div", { id: "chatSearchBar", class: "chatSearchBar", role: "search", "aria-label": "Search loaded chat messages" }, [chatSearchInput, chatSearchStatus, chatSearchAllHintEl, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn]);
+    const chatSearchBar = el("div", { id: "chatSearchBar", class: "chatSearchBar", role: "search", "aria-label": "Search conversation" }, [chatSearchInput, chatSearchStatus, chatSearchAllHintEl, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn]);
     chatSearchBar.style.display = "none";
     chatInner.append(olderWrap, bottomSentinel);
     chat.appendChild(chatInner);
@@ -77,7 +77,7 @@
     diagBtn.disabled = true;
     const prevUserBtn = el("button", { id: "prevUserBtn", class: "icon-btn", title: "Previous user message", "aria-label": "Previous user message", type: "button", html: iconSvg("up") });
     const nextUserBtn = el("button", { id: "nextUserBtn", class: "icon-btn", title: "Next user message", "aria-label": "Next user message", type: "button", html: iconSvg("down") });
-    const chatSearchBtn = el("button", { id: "chatSearchBtn", class: "icon-btn", title: "Search loaded messages", "aria-label": "Search loaded messages", type: "button", html: iconSvg("search") });
+    const chatSearchBtn = el("button", { id: "chatSearchBtn", class: "icon-btn", title: "Search conversation", "aria-label": "Search conversation", type: "button", html: iconSvg("search") });
     const fileBtn = el("button", { id: "fileBtn", class: "icon-btn", title: "View file", "aria-label": "View file", type: "button", html: iconSvg("file") });
     prevUserBtn.disabled = nextUserBtn.disabled = chatSearchBtn.disabled = fileBtn.disabled = true;
     const unattendedMenu = el("div", { id: "unattendedMenu", class: "unattendedMenu", role: "dialog", "aria-label": "Unattended mode settings" }, [
@@ -132,7 +132,7 @@
     const sessionLaunchPending = requireFunction(options.sessionLaunchPending, "sessionLaunchPending");
     const redactedLaunchErrorText = requireFunction(options.redactedLaunchErrorText, "redactedLaunchErrorText");
     const fmtRelativeAge = requireFunction(options.fmtRelativeAge, "fmtRelativeAge");
-    const reasoningEffortMarker = requireFunction(options.reasoningEffortMarker, "reasoningEffortMarker");
+    const sidebarEffortCode = requireFunction(options.sidebarEffortCode, "sidebarEffortCode");
     const sidebarModelText = requireFunction(options.sidebarModelText, "sidebarModelText");
     const baseName = requireFunction(options.baseName, "baseName");
     const sessionIsFast = requireFunction(options.sessionIsFast, "sessionIsFast");
@@ -285,7 +285,7 @@
           const updatedTs = typeof session.updated_ts === "number" && Number.isFinite(session.updated_ts) ? session.updated_ts : session.start_ts;
           const ageSeconds = updatedTs ? Math.max(0, now() / 1000 - updatedTs) : 0;
           const effortText = String(session.reasoning_effort || "").trim().toLowerCase();
-          const effortMarker = reasoningEffortMarker(effortText);
+          const effortCode = sidebarEffortCode(effortText);
           const stateText = launchPending ? "starting" : fmtRelativeAge(ageSeconds);
           const modelText = sidebarModelText(session);
           const branchText = typeof session.git_branch === "string" ? session.git_branch.trim() : "";
@@ -340,10 +340,25 @@
             el("img", { class: "sessionBackendStatusIcon", src: agentBackendLogoPath(backend), alt: `${agentBackendDisplayName(backend)} logo`, width: "12", height: "12" }),
             el("span", { class: `ownerBadge ownerIconBadge ${session.transport === "tmux" ? "owner-tmux" : session.owned ? "owner-web" : "owner-terminal"}`, html: iconSvg(sessionLaunchIcon(session)), title: sessionLaunchLabel(session) }),
           ];
-          // Combine effort marker + model into one pipe-separated unit so they
-          // read as "X glm-5.2" instead of effort sitting alone at the far left.
-          const modelUnit = effortMarker ? `${effortMarker} ${modelText}` : modelText;
-          metaItems.push(el("span", { class: "metaText", text: [stateText, modelUnit, baseName(session.cwd), branchText].filter(Boolean).join(" | ") }));
+          const metadataSegments = [
+            stateText,
+            modelText
+              ? el("span", {}, [
+                  el("span", { text: modelText }),
+                  effortCode ? el("span", { class: "muted", text: ` ·${effortCode}` }) : null,
+                ].filter(Boolean))
+              : effortCode
+                ? el("span", { class: "muted", text: `·${effortCode}` })
+                : null,
+            baseName(session.cwd),
+            branchText,
+          ].filter(Boolean);
+          const metaText = el("span", { class: "metaText" });
+          metadataSegments.forEach((segment, index) => {
+            if (index) metaText.appendChild(el("span", { text: " | " }));
+            metaText.appendChild(typeof segment === "string" ? el("span", { text: segment }) : segment);
+          });
+          metaItems.push(metaText);
           const meta = el("div", { class: "muted subLine sessionMetaLine" }, metaItems);
           if (launchFailed) meta.title = redactedLaunchErrorText(session.launch_error) || "Session launch failed";
           if (launchPending) meta.title = "Session is still starting";

@@ -56,6 +56,12 @@ def render_shell_parents() -> dict[str, str | None]:
           chatSearch: parentClass(elements.chatSearchBtn),
           prev: parentClass(elements.prevUserBtn),
           next: parentClass(elements.nextUserBtn),
+          searchPlaceholder: elements.chatSearchInput.attrs.placeholder,
+          searchStatus: elements.chatSearchStatus.attrs.text,
+          searchButtonClass: elements.chatSearchBtn.attrs.class,
+          searchPrevButtonClass: elements.chatSearchPrevBtn.attrs.class,
+          searchNextButtonClass: elements.chatSearchNextBtn.attrs.class,
+          searchCloseButtonClass: elements.chatSearchCloseBtn.attrs.class,
           hasComposerStop: Object.hasOwn(elements, "composerStopBtn"),
         }}));
         """
@@ -72,6 +78,12 @@ class TestFrontendShellDomSource(unittest.TestCase):
                 "chatSearch": "chatNavRail",
                 "prev": "chatMessageNavControls",
                 "next": "chatMessageNavControls",
+                "searchPlaceholder": "Search conversation",
+                "searchStatus": "Search conversation",
+                "searchButtonClass": "icon-btn",
+                "searchPrevButtonClass": "icon-btn",
+                "searchNextButtonClass": "icon-btn",
+                "searchCloseButtonClass": "icon-btn",
                 "hasComposerStop": False,
             },
         )

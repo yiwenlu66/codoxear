@@ -46,10 +46,23 @@ const controller = ctx.window.CodoxearChatSearch.createChatSearchController({ ..
 nodes.chatSearchInput.value = 'needle'; controller.open(); const opened = { open: controller.isOpen(), display: nodes.chatSearchBar.style.display, status: nodes.chatSearchStatus.textContent, matches: controller.currentMatches().length }; controller.step(1).then(() => { const stepped = controller.snapshot(); controller.close(); process.stdout.write(JSON.stringify({ opened, stepped, closed: { open: controller.isOpen(), display: nodes.chatSearchBar.style.display }, events })); });
 '''
         )
-        self.assertEqual(result["opened"], {"open": True, "display": "flex", "status": "1/2 loaded", "matches": 2})
+        self.assertEqual(result["opened"], {"open": True, "display": "flex", "status": "1 of 2", "matches": 2})
         self.assertEqual(result["stepped"]["index"], 1)
         self.assertEqual(result["closed"], {"open": False, "display": "none"})
         self.assertContains("pulse:1", result["events"])
+
+    def test_status_explains_how_to_reach_older_matches(self) -> None:
+        result = run_chat(
+            r'''
+const makeNode = () => ({ style: {}, disabled: false, textContent: '', title: '', value: '', dataset: {}, focus() {}, select() {} });
+const nodes = { chatSearchBtn: makeNode(), chatSearchInput: makeNode(), chatSearchPrevBtn: makeNode(), chatSearchNextBtn: makeNode(), chatSearchCloseBtn: makeNode(), chatSearchStatus: makeNode(), chatSearchAllHintEl: makeNode(), chatSearchBar: makeNode() };
+const rows = [{ dataset: {}, text: 'needle', scrollIntoView() {} }];
+const transcript = ctx.window.CodoxearTranscript;
+const controller = ctx.window.CodoxearChatSearch.createChatSearchController({ ...nodes, createLoadedChatSearchRuntime: transcript.createLoadedChatSearchRuntime, createChatSearchAllRuntime: transcript.createChatSearchAllRuntime, getSelected: () => 'sid-1', getPollGen: () => 1, api: async () => ({ match_count: 2, matches: [] }), setToast() {}, openSession: async () => {}, handleAppAuthLoss() {}, chatSearchTranscriptHint: () => '', syncVisibleTimeIndicator() {}, renderedMessageRows: () => rows, rowSearchText: (row) => row.text, compareRowsInDomOrder: () => 0, clearChatSearchMarks() {}, applyChatSearchMarks() {}, pulseNavigatedRow() {}, prefersReducedMotion: () => true, oldestRenderedHistoryCursor: () => 'cursor', renderDetachedTranscriptWindow: () => false, invalidateOlderLoad() {}, setOlderState() {}, showOlderLoadError() {}, hasOlderMessages: () => true, isLoadingOlderMessages: () => false, olderPageLimit: () => 50, loadOlderMessages: async () => false, olderLoadRuntime: { beginLoad: () => ({ signal: {} }), isCurrent: () => true, finishLoad() {} } });
+nodes.chatSearchInput.value = 'needle'; controller.open(); process.stdout.write(JSON.stringify({ status: nodes.chatSearchStatus.textContent, prevDisabled: nodes.chatSearchPrevBtn.disabled }));
+'''
+        )
+        self.assertEqual(result, {"status": "1 of 1 · Older matches may exist; Previous loads them", "prevDisabled": False})
 
 
 if __name__ == "__main__":

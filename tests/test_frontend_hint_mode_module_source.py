@@ -58,6 +58,7 @@ def eval_hint_mode() -> dict:
         const sessionOne = makeNode("session-1");
         const sessionTwo = makeNode("session-2");
         const sidebar = makeNode("sidebar");
+        const search = makeNode("search");
         const disabledBrowse = makeNode("browse", {{ disabled: true }});
         const hiddenDetails = makeNode("details", {{ hidden: true }});
         const reserved = makeNode("reserved");
@@ -97,6 +98,7 @@ def eval_hint_mode() -> dict:
           addAppEvent: (_target, type, handler) => {{ events[type] = handler; }},
           shellHints: [
             {{ label: "s", element: sidebar }},
+            {{ label: "/", element: search }},
             {{ label: "b", element: disabledBrowse }},
             {{ label: "d", element: hiddenDetails }},
             {{ label: "f", element: reserved }},
@@ -131,6 +133,8 @@ def eval_hint_mode() -> dict:
         const sessionHint = press("2");
         const enterShell = press("f");
         const shellHint = press("s");
+        const enterSearch = press("f");
+        const searchHint = press("/");
         const enterEscape = press("f");
         const escape = press("Escape");
         const enterReserved = press("f");
@@ -144,6 +148,8 @@ def eval_hint_mode() -> dict:
           sessionHintPrevented: sessionHint.defaultPrevented,
           enterShellPrevented: enterShell.defaultPrevented,
           shellHintPrevented: shellHint.defaultPrevented,
+          enterSearchPrevented: enterSearch.defaultPrevented,
+          searchHintPrevented: searchHint.defaultPrevented,
           enterEscapePrevented: enterEscape.defaultPrevented,
           escapePrevented: escape.defaultPrevented,
           enterReservedPrevented: enterReserved.defaultPrevented,
@@ -169,7 +175,10 @@ class TestFrontendHintModeModuleSource(unittest.TestCase):
         self.assertTrue(result["sessionHintPrevented"])
         self.assertTrue(result["enterShellPrevented"])
         self.assertTrue(result["shellHintPrevented"])
-        self.assertEqual(result["clicks"], ["session-2", "sidebar"])
+        self.assertTrue(result["enterSearchPrevented"])
+        self.assertTrue(result["searchHintPrevented"])
+        self.assertEqual(result["clicks"], ["session-2", "sidebar", "search"])
+        self.assertIn("/", result["labels"])
         self.assertNotIn("b", result["labels"])
         self.assertNotIn("d", result["labels"])
         self.assertNotIn("f", result["labels"])
@@ -188,13 +197,14 @@ class TestFrontendHintModeModuleSource(unittest.TestCase):
         app_source = APP_JS.read_text(encoding="utf-8")
         expected = {
             "s": "toggleSidebarBtn", "t": "titleLabel", "b": "fileBtn", "d": "diagBtn", "u": "unattendedBtn",
-            "z": "interruptBtn", "r": "chatSearchBtn", "p": "prevUserBtn", "n": "nextUserBtn",
+            "z": "interruptBtn", "/": "chatSearchBtn", "p": "prevUserBtn", "n": "nextUserBtn",
             "o": "olderBtn", "g": "jumpBtn", "a": "attachBtn", "q": "queueBtn",
             "e": "sendBtn", "i": "textarea", "c": "$(\"#newBtn\")",
         }
         for label, element in expected.items():
             self.assertIn(f'{{ label: "{label}", element: {element} }}', app_source)
         self.assertNotIn('{ label: "x",', app_source)
+        self.assertNotIn('{ label: "r", element: chatSearchBtn }', app_source)
         self.assertNotIn("handleSessionNavigationKeydown", app_source)
         self.assertNotIn("Alt+1", app_source)
         index_source = INDEX_HTML.read_text(encoding="utf-8")

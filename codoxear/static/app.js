@@ -282,24 +282,25 @@
         return codoxearDisplay.sessionDisplayName(s);
       }
 
-      const REASONING_EFFORT_MARKERS = Object.freeze({
-        xhigh: "X",
-        high: "H",
-        medium: "M",
-        low: "L",
-        max: "M+",
-        minimal: "m",
-        off: "–",
+      const SIDEBAR_REASONING_EFFORT_CODES = Object.freeze({
+        off: "off",
+        minimal: "min",
+        low: "low",
+        medium: "med",
+        high: "hi",
+        xhigh: "xh",
+        max: "max",
       });
 
-      function reasoningEffortMarker(effortTxt) {
-        return REASONING_EFFORT_MARKERS[effortTxt] || "";
+      function sidebarEffortCode(effort) {
+        const normalized = typeof effort === "string" ? effort.trim().toLowerCase() : "";
+        return SIDEBAR_REASONING_EFFORT_CODES[normalized] || "";
       }
 
       function sidebarModelText(s) {
         const model = s && typeof s.model === "string" ? s.model.trim() : "";
         if (!model || model.toLowerCase() === "default") return "";
-        return model.length > 15 ? `${model.slice(0, 12)}…` : model;
+        return model.length > 16 ? `${model.slice(0, 6)}…${model.slice(-8)}` : model;
       }
 
       function sessionIdFromHash() {
@@ -1448,7 +1449,7 @@
 <ul class="md">
   <li>Choose a conversation from the sidebar. On desktop, hover a row to reveal <b>Edit</b>, <b>Duplicate</b>, and <b>Delete</b>. On touch, swipe left for <b>Edit</b>/<b>Duplicate</b> and right for <b>Delete</b>.</li>
   <li>The dot on the title row shows state: <b>filled + pulsing</b> = busy, <b>hollow</b> = idle, <b>filled orange</b> = snoozed or blocked, <b>filled amber</b> = starting.</li>
-  <li>The metadata line shows the agent-backend icon first, then the session-type icon, then the reasoning marker (<b>X/H/M/L</b>) when available, followed by recency, folder, and branch.</li>
+  <li>The metadata line shows the agent-backend icon first, then the session-type icon, followed by recency, model and reasoning suffix (for example <b>·hi</b>), folder, and branch.</li>
   <li>Click the conversation title to rename or reprioritize it. <b>Details</b> in the session utilities bar shows the exact backend, provider, model, reasoning level, queue state, and token usage.</li>
 </ul>
 <div class="muted">New session</div>
@@ -1464,9 +1465,9 @@
   <li><b>Send</b> submits immediately when the session is idle. When it is busy, a dialog offers <b>Send now</b> (sends right away, steering the running turn) or <b>Send after current</b> (queues the prompt for when the session becomes idle).</li>
   <li>The queue is stored per session and drains automatically when that session becomes idle. Use <b>Queued messages</b> to review or edit queued prompts.</li>
   <li><b>Load older messages</b> fetches more scrollback. <b>Jump to latest</b> returns to the newest turn when you are reading history.</li>
-  <li>The <b>Search</b> button and <b>Previous</b>/<b>Next</b> message controls live in the navigation bar at the top of the conversation (not a floating rail). Use <b>/</b> to start a search of the loaded chat; when the match count shows more results, Previous/Next can load an older matching window.</li>
+  <li>The <b>Search</b> button and <b>Previous</b>/<b>Next</b> message controls live in the navigation bar at the top of the conversation (not a floating rail). Use <b>/</b> to search the conversation. The search bar shows a position such as <b>2 of 5</b>; at the oldest visible match, it tells you when <b>Previous</b> can load older matches.</li>
   <li>On a <b>Pi</b> session, type <b>/model</b> in the composer to switch models live. Start typing a provider or model name to filter the list, then choose an entry.</li>
-  <li>Press <b>f</b> to show keyboard hints for visible controls: <b>1</b>–<b>9</b> switch sessions; <b>s</b> sidebar; <b>t</b> edit conversation; <b>b</b> files; <b>d</b> details; <b>u</b> unattended; <b>z</b> interrupt; <b>r</b> search; <b>p</b>/<b>n</b> previous/next user message; <b>o</b> older messages; <b>g</b> latest; <b>a</b> attach; <b>q</b> queued messages; <b>x</b> stop; <b>e</b> send; <b>i</b> message box; <b>c</b> new session. Clickable file references in the conversation also get dynamically-assigned letter hints. Press <b>Escape</b> or <b>Backspace</b> to cancel.</li>
+  <li>Press <b>f</b> to show keyboard hints for visible controls: <b>1</b>–<b>9</b> switch sessions; <b>s</b> sidebar; <b>t</b> edit conversation; <b>b</b> files; <b>d</b> details; <b>u</b> unattended; <b>z</b> interrupt; <b>/</b> search; <b>p</b>/<b>n</b> previous/next user message; <b>o</b> older messages; <b>g</b> latest; <b>a</b> attach; <b>q</b> queued messages; <b>x</b> stop; <b>e</b> send; <b>i</b> message box; <b>c</b> new session. Clickable file references in the conversation also get dynamically-assigned letter hints. Press <b>Escape</b> or <b>Backspace</b> to cancel.</li>
   <li>In an open dialog, press a visible button's first distinctive letter to activate it. When buttons share their first letter, use a later distinctive letter. <b>Esc</b> closes the dialog.</li>
   <li>Direct shortcuts (no leader): <b>i</b> focus message box; <b>j</b>/<b>k</b> scroll down/up; <b>d</b>/<b>u</b> scroll half-page down/up; <b>G</b> go to bottom; <b>D</b> delete current session (confirm); <b>/</b> search; <b>Esc</b> exit message box or close dialog.</li>
 </ul>
@@ -2289,7 +2290,7 @@
               { label: "d", element: diagBtn },
               { label: "u", element: unattendedBtn },
               { label: "z", element: interruptBtn },
-              { label: "r", element: chatSearchBtn },
+              { label: "/", element: chatSearchBtn },
               { label: "p", element: prevUserBtn },
               { label: "n", element: nextUserBtn },
               { label: "o", element: olderBtn },
@@ -3063,7 +3064,7 @@
            sessionLaunchPending,
            redactedLaunchErrorText,
            fmtRelativeAge,
-           reasoningEffortMarker,
+           sidebarEffortCode,
            sidebarModelText,
            baseName,
            sessionIsFast,
