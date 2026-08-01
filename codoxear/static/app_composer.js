@@ -92,19 +92,6 @@
     let modelPickerOpen = false;
     let modelPickerOptions = [];
     let modelPickerFocus = -1;
-    let modelPickerMode = null;
-
-    function piThinkingLevels() {
-      const defaults = getNewSessionDefaults();
-      const pi = defaults && defaults.backends && defaults.backends.pi && typeof defaults.backends.pi === "object" ? defaults.backends.pi : {};
-      const configured = Array.isArray(pi.reasoning_efforts) ? pi.reasoning_efforts : ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
-      const levels = [];
-      for (const value of configured) {
-        const level = String(value || "").trim().toLowerCase();
-        if (level && !levels.includes(level)) levels.push(level);
-      }
-      return levels;
-    }
 
     function piSession() {
       const sessionId = getSelected();
@@ -147,23 +134,9 @@
       return piModelIds().filter((id) => !query || id.toLowerCase().startsWith(query) || id.toLowerCase().includes(query));
     }
 
-    function thinkingPickerMatches() {
-      if (!/^\/thinking\s*$/i.test(String(textarea.value || "")) || !piSession()) return null;
-      return piThinkingLevels();
-    }
-
-    function slashPickerMatches() {
-      const modelMatches = modelPickerMatches();
-      if (modelMatches) return { mode: "model", options: modelMatches };
-      const thinkingMatches = thinkingPickerMatches();
-      if (thinkingMatches) return { mode: "thinking", options: thinkingMatches };
-      return null;
-    }
-
     function hideModelPicker() {
       modelPickerOpen = false;
       modelPickerFocus = -1;
-      modelPickerMode = null;
       if (!modelPicker) return;
       modelPicker.style.display = "none";
       modelPicker.innerHTML = "";
@@ -178,68 +151,32 @@
       void sendText(`/model ${id}`);
     }
 
-    async function selectThinking(level) {
-      const target = String(level || "").trim().toLowerCase();
-      const sessionId = getSelected();
-      const session = piSession();
-      const levels = piThinkingLevels();
-      const targetIndex = levels.indexOf(target);
-      const current = String(session && session.reasoning_effort || "").trim().toLowerCase();
-      const currentIndex = levels.indexOf(current);
-      if (!sessionId || targetIndex < 0) return;
-      hideModelPicker();
-      clearComposer();
-      if (currentIndex < 0) {
-        setToast("current Pi thinking level is unavailable; use Shift+Tab in the terminal");
-        return;
-      }
-      const cycles = (targetIndex - currentIndex + levels.length) % levels.length;
-      if (!cycles) {
-        setToast(`thinking already ${target}`);
-        return;
-      }
-      try {
-        await api(`/api/sessions/${sessionId}/keys`, { method: "POST", body: { seq: "\\x1b[Z", count: cycles } });
-        patchSessionInfo(sessionId, { reasoning_effort: target });
-        setToast(`thinking: ${target}`);
-      } catch (error) {
-        if (error && error.status === 401) handleAppAuthLoss();
-        else setToast(`thinking error: ${error && error.message ? error.message : "unknown error"}`);
-      }
-    }
-
-    function selectPickerOption(value) {
-      if (modelPickerMode === "thinking") void selectThinking(value);
-      else selectModel(value);
-    }
-
     function renderModelPicker() {
       if (!modelPicker) return;
       modelPicker.innerHTML = "";
       modelPicker.setAttribute("role", "listbox");
-      modelPicker.setAttribute("aria-label", modelPickerMode === "thinking" ? "Pi thinking level" : "Available Pi models");
+      modelPicker.setAttribute("aria-label", "Available Pi models");
       modelPickerOptions.forEach((id, index) => {
         const option = document.createElement("button");
         option.type = "button";
         option.className = "modelPickerOption" + (index === modelPickerFocus ? " active" : "");
         option.setAttribute("role", "option");
-        option.id = `${modelPickerMode || "model"}-picker-option-${index}`;
+        option.id = `model-picker-option-${index}`;
         option.setAttribute("aria-selected", index === modelPickerFocus ? "true" : "false");
         option.textContent = id;
-        option.onclick = () => selectPickerOption(id);
+        option.onclick = () => selectModel(id);
         modelPicker.appendChild(option);
       });
       modelPicker.style.display = modelPickerOptions.length ? "block" : "none";
       modelPickerOpen = modelPickerOptions.length > 0;
-      if (modelPickerFocus >= 0) modelPicker.setAttribute("aria-activedescendant", `${modelPickerMode || "model"}-picker-option-${modelPickerFocus}`);
+      if (modelPickerFocus >= 0) modelPicker.setAttribute("aria-activedescendant", `model-picker-option-${modelPickerFocus}`);
     }
 
     function syncModelPicker() {
-      const picker = slashPickerMatches();
-      if (!picker || !picker.options.length) { hideModelPicker(); return; }
-      modelPickerMode = picker.mode;
-      modelPickerOptions = picker.options;
-      modelPickerFocus = Math.min(Math.max(modelPickerFocus, 0), picker.options.length - 1);
+      const matches = modelPickerMatches();
+      if (!matches || !matches.length) { hideModelPicker(); return; }
+      modelPickerOptions = matches;
+      modelPickerFocus = Math.min(Math.max(modelPickerFocus, 0), matches.length - 1);
       renderModelPicker();
     }
 
@@ -515,7 +452,7 @@
         }
         if (event.key === "Enter" && !event.isComposing) {
           event.preventDefault();
-          selectPickerOption(modelPickerOptions[modelPickerFocus >= 0 ? modelPickerFocus : 0]);
+          selectModel(modelPickerOptions[modelPickerFocus >= 0 ? modelPickerFocus : 0]);
           return;
         }
       }

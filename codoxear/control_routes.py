@@ -102,7 +102,6 @@ def handle_control_post_route(
         ("send", None, _handle_send),
         ("unattended", None, _handle_unattended),
         ("interrupt", None, _handle_interrupt),
-        ("keys", None, _handle_keys),
     )
     for route, suffix, route_handler in route_handlers:
         session_id = match_session_route(path, route) if suffix is None else match_session_route(path, route, suffix)
@@ -302,26 +301,6 @@ def _handle_unattended(handler: Any, *, session_id: str, manager: Any, deps: Con
         remaining_injections=remaining_injections,
     )
     deps.json_response(handler, 200, {"ok": True, **cfg})
-
-
-def _handle_keys(handler: Any, *, session_id: str, manager: Any, deps: ControlRouteDeps) -> None:
-    if not _authorized(handler, deps):
-        return
-    obj = deps.read_json_body(handler)
-    seq = obj.get("seq")
-    count = obj.get("count", 1)
-    if not isinstance(seq, str) or not seq:
-        deps.json_response(handler, 400, {"error": "seq required"})
-        return
-    if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 16:
-        deps.json_response(handler, 400, {"error": "count must be an integer from 1 to 16"})
-        return
-    try:
-        resp = manager.inject_keys(session_id, seq * count)
-    except KeyError:
-        deps.json_response(handler, 404, {"error": "unknown session"})
-        return
-    deps.json_response(handler, 200, {"ok": True, "broker": resp})
 
 
 def _handle_interrupt(handler: Any, *, session_id: str, manager: Any, deps: ControlRouteDeps) -> None:

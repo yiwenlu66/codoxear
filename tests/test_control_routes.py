@@ -323,7 +323,7 @@ def test_unattended_route_rejects_legacy_text_field_and_validates_numbers() -> N
     assert manager.calls == [("unattended", "s1", {"enabled": True, "request": "continue", "cooldown_minutes": 3, "remaining_injections": 2})]
 
 
-def test_keys_route_repeats_a_sequence_for_requested_cycle_count() -> None:
+def test_keys_route_is_not_exposed() -> None:
     responses = []
     manager = Manager()
     assert handle_control_post_route(
@@ -332,24 +332,9 @@ def test_keys_route_repeats_a_sequence_for_requested_cycle_count() -> None:
         manager=manager,
         deps=_deps(responses),
         match_session_route=_match_session_route,
-    ) is True
-    assert manager.calls == [("inject_keys", "s1", "\\x1b[Z\\x1b[Z\\x1b[Z", False)]
-    assert responses == [(200, {"ok": True, "broker": {"ok": True}})]
-
-
-def test_keys_route_rejects_invalid_sequence_counts() -> None:
-    for body in ({}, {"seq": "\\x1b[Z", "count": 0}, {"seq": "\\x1b[Z", "count": True}, {"seq": "\\x1b[Z", "count": 17}):
-        responses = []
-        manager = Manager()
-        assert handle_control_post_route(
-            Handler(body),
-            path="/api/sessions/s1/keys",
-            manager=manager,
-            deps=_deps(responses),
-            match_session_route=_match_session_route,
-        ) is True
-        assert manager.calls == []
-        assert responses[0][0] == 400
+    ) is False
+    assert manager.calls == []
+    assert responses == []
 
 
 def test_interrupt_route_sends_escaped_esc_sequence() -> None:

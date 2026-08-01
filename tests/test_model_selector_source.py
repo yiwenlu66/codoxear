@@ -7,10 +7,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_COMPOSER_JS = ROOT / "codoxear" / "static" / "app_composer.js"
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
 
 
-class TestComposerSlashPickers(unittest.TestCase):
-    def test_model_and_thinking_prefixes_select_only_for_pi(self) -> None:
+class TestComposerModelPicker(unittest.TestCase):
+    def test_model_prefix_filters_and_selects_only_for_pi(self) -> None:
         source = APP_COMPOSER_JS.read_text(encoding="utf-8")
         script = "(async () => {\n" + textwrap.dedent(
             f"""
@@ -45,19 +46,18 @@ class TestComposerSlashPickers(unittest.TestCase):
             const nodes = Array.from({{ length: 10 }}, () => new Node());
             const [form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop, nowBtn, laterBtn, cancelBtn, modelPicker] = nodes;
             form.requestSubmit = () => {{}};
-            const state = {{ backend: "pi", sent: [], keys: [], thinking: "high", sending: false }};
+            const state = {{ backend: "pi", sent: [], sending: false }};
             const noop = () => {{}};
             const controller = ctx.window.CodoxearComposer.createComposerController({{
               form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
               sendChoiceNowBtn: nowBtn, sendChoiceLaterBtn: laterBtn, sendChoiceCancelBtn: cancelBtn,
               modelPicker,
               getSelected: () => "sid",
-              getSessionInfo: () => ({{ agent_backend: state.backend, reasoning_effort: state.thinking }}),
+              getSessionInfo: () => ({{ agent_backend: state.backend }}),
               getNewSessionDefaults: () => ({{ backends: {{ pi: {{
                 provider_models: {{ anthropic: ["claude-sonnet-4"], openai: ["gpt-5"] }},
-                reasoning_efforts: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
               }} }} }}),
-              patchSessionInfo: (_sid, patch) => {{ if (patch.reasoning_effort) state.thinking = patch.reasoning_effort; }},
+              patchSessionInfo: noop,
               sessionLaunchFailed: () => false,
               getSending: () => state.sending,
               setSending: (value) => {{ state.sending = value; }},
@@ -67,11 +67,7 @@ class TestComposerSlashPickers(unittest.TestCase):
               setSelectedSessionPendingAttachment: noop, setAttachCount: noop,
               syncAttachButtonState: noop, syncQueueSubmitState: noop,
               syncRecoveryUiForSession: noop, confirmAction: async () => false,
-              api: async (_path, options) => {{
-                if (options.body.seq) state.keys.push({{ path: _path, ...options.body }});
-                else state.sent.push(options.body.text);
-                return {{}};
-              }},
+              api: async (_path, options) => {{ state.sent.push(options.body.text); return {{}}; }},
               setToast: noop, handleAppAuthLoss: noop, refreshSessions: async () => [],
               setPollFastUntilMs: noop, kickPoll: noop, isTranscriptRenewalCommand: () => false,
               nextLocalEchoId: () => "local", renderedAtLiveTail: () => true,
@@ -102,35 +98,25 @@ class TestComposerSlashPickers(unittest.TestCase):
             if (state.sent[0] !== "/model openai/gpt-5") throw new Error("selected provider/model id was not sent");
             textarea.value = "/thinking";
             textarea.dispatch("input");
-            if (modelPicker.style.display !== "block" || modelPicker.children.length !== 7) throw new Error("Pi /thinking did not open all thinking levels");
-            textarea.dispatch("keydown", {{ key: "Escape", preventDefault() {{}} }});
-            if (modelPicker.style.display !== "none") throw new Error("Escape did not dismiss thinking picker");
-            textarea.value = "/thinking";
-            textarea.dispatch("input");
-            for (let index = 0; index < 6; index += 1) textarea.dispatch("keydown", {{ key: "ArrowDown", preventDefault() {{}} }});
-            textarea.dispatch("keydown", {{ key: "Enter", preventDefault() {{}} }});
-            await Promise.resolve();
-            await new Promise((resolve) => setTimeout(resolve, 0));
-            if (state.keys.length !== 1 || state.keys[0].path !== "/api/sessions/sid/keys" || state.keys[0].seq !== "\\\\x1b[Z" || state.keys[0].count !== 2) throw new Error("thinking picker did not inject the exact cycle distance");
-            if (state.thinking !== "max") throw new Error("thinking picker did not update the known session level");
+            if (modelPicker.style.display !== "none" || modelPicker.children.length !== 0) throw new Error("Pi /thinking still opened a picker");
+            if (state.sent.length !== 1) throw new Error("Pi /thinking triggered an API request");
             state.backend = "codex";
             textarea.value = "/model";
             textarea.dispatch("input");
             if (modelPicker.style.display !== "none") throw new Error("non-Pi session opened picker");
-            process.stdout.write(JSON.stringify({{ sent: state.sent, keys: state.keys, selected: modelPicker.style.display }}));
+            process.stdout.write(JSON.stringify({{ sent: state.sent, selected: modelPicker.style.display }}));
             """
         ) + "\n})();"
         result = subprocess.run(["node", "-e", script], check=False, capture_output=True, text=True)
         if result.returncode:
             raise AssertionError(result.stderr or result.stdout)
-        self.assertEqual(
-            json.loads(result.stdout),
-            {
-                "sent": ["/model openai/gpt-5"],
-                "keys": [{"path": "/api/sessions/sid/keys", "seq": "\\x1b[Z", "count": 2}],
-                "selected": "none",
-            },
-        )
+        self.assertEqual(json.loads(result.stdout), {"sent": ["/model openai/gpt-5"], "selected": "none"})
+
+    def test_help_documents_pi_thinking_launch_boundary(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("For Pi, the reasoning level is set when the session launches.", source)
+        self.assertIn("use <b>Shift+Tab</b> in Pi's terminal", source)
+        self.assertIn("Codoxear does not guess or inject thinking-level cycles.", source)
 
 
 if __name__ == "__main__":
