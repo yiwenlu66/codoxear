@@ -90,8 +90,11 @@
     let sendChoicePending = null;
     let sendChoiceReturnFocusEl = null;
     let modelPickerOpen = false;
+    let modelPickerKind = null;
     let modelPickerOptions = [];
     let modelPickerFocus = -1;
+
+    const PI_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
     function piSession() {
       const sessionId = getSelected();
@@ -100,9 +103,13 @@
       return session && String(session.agent_backend || "").trim().toLowerCase() === "pi" ? session : null;
     }
 
-    function piModelIds() {
+    function piLaunchDefaults() {
       const defaults = getNewSessionDefaults();
-      const pi = defaults && defaults.backends && defaults.backends.pi && typeof defaults.backends.pi === "object" ? defaults.backends.pi : {};
+      return defaults && defaults.backends && defaults.backends.pi && typeof defaults.backends.pi === "object" ? defaults.backends.pi : {};
+    }
+
+    function piModelIds() {
+      const pi = piLaunchDefaults();
       const providerModels = pi.provider_models && typeof pi.provider_models === "object" ? pi.provider_models : null;
       const out = [];
       const seen = new Set();
@@ -126,6 +133,19 @@
       return out;
     }
 
+    function piThinkingLevels(session) {
+      const pi = piLaunchDefaults();
+      const byModel = pi.reasoning_efforts_by_model && typeof pi.reasoning_efforts_by_model === "object" ? pi.reasoning_efforts_by_model : {};
+      const provider = String(session.model_provider || "").trim();
+      const model = String(session.model || "").trim();
+      const scoped = byModel[provider && model ? `${provider}/${model}` : ""] || byModel[model];
+      const configured = Array.isArray(scoped) ? scoped : Array.isArray(pi.reasoning_efforts) ? pi.reasoning_efforts : PI_THINKING_LEVELS;
+      const seen = new Set();
+      return configured
+        .map((level) => String(level || "").trim().toLowerCase())
+        .filter((level) => PI_THINKING_LEVELS.includes(level) && !seen.has(level) && seen.add(level));
+    }
+
     function modelPickerMatches() {
       const match = String(textarea.value || "").match(/^\/model(?:\s+(.+?)\s*)?$/i);
       const session = piSession();
@@ -134,8 +154,19 @@
       return piModelIds().filter((id) => !query || id.toLowerCase().startsWith(query) || id.toLowerCase().includes(query));
     }
 
+    function thinkingPickerMatches() {
+      const match = String(textarea.value || "").match(/^\/thinking(?:\s+(.*))?$/i);
+      const session = piSession();
+      if (!match || !session) return null;
+      const query = String(match[1] || "").trim().toLowerCase();
+      const choices = piThinkingLevels(session).filter((level) => !query || level.startsWith(query) || level.includes(query));
+      const current = String(session.reasoning_effort || "").trim().toLowerCase();
+      return current && choices.includes(current) ? [current, ...choices.filter((level) => level !== current)] : choices;
+    }
+
     function hideModelPicker() {
       modelPickerOpen = false;
+      modelPickerKind = null;
       modelPickerFocus = -1;
       if (!modelPicker) return;
       modelPicker.style.display = "none";
@@ -154,6 +185,19 @@
       hideModelPicker();
       clearComposer();
       void sendText(`/model ${id}`);
+    }
+
+    function selectThinkingLevel(level) {
+      const choice = String(level || "").trim();
+      if (!choice) return;
+      hideModelPicker();
+      clearComposer();
+      void sendText(`/thinking ${choice}`);
+    }
+
+    function selectPickerOption(option) {
+      if (modelPickerKind === "thinking") selectThinkingLevel(option);
+      else selectModel(option);
     }
 
     function syncModelPickerSelection({ scroll = false } = {}) {
@@ -179,17 +223,17 @@
       if (!modelPicker) return;
       modelPicker.innerHTML = "";
       modelPicker.setAttribute("role", "listbox");
-      modelPicker.setAttribute("aria-label", "Available Pi models");
+      modelPicker.setAttribute("aria-label", modelPickerKind === "thinking" ? "Available Pi thinking levels" : "Available Pi models");
       modelPickerOptions.forEach((id, index) => {
         const option = document.createElement("button");
         option.type = "button";
         option.tabIndex = -1;
         option.className = "modelPickerOption";
         option.setAttribute("role", "option");
-        option.id = `model-picker-option-${index}`;
+        option.id = `${modelPickerKind === "thinking" ? "thinking" : "model"}-picker-option-${index}`;
         option.textContent = id;
         option.onpointerdown = (event) => event.preventDefault();
-        option.onclick = () => selectModel(id);
+        option.onclick = () => selectPickerOption(id);
         modelPicker.appendChild(option);
       });
       modelPicker.style.display = modelPickerOptions.length ? "block" : "none";
@@ -204,8 +248,11 @@
     }
 
     function syncModelPicker() {
-      const matches = modelPickerMatches();
+      const models = modelPickerMatches();
+      const thinkingLevels = models ? null : thinkingPickerMatches();
+      const matches = models || thinkingLevels;
       if (!matches || !matches.length) { hideModelPicker(); return; }
+      modelPickerKind = models ? "model" : "thinking";
       modelPickerOptions = matches;
       modelPickerFocus = Math.min(Math.max(modelPickerFocus, 0), matches.length - 1);
       renderModelPicker();
@@ -483,7 +530,7 @@
         }
         if (event.key === "Enter" && !event.isComposing) {
           event.preventDefault();
-          selectModel(modelPickerOptions[modelPickerFocus >= 0 ? modelPickerFocus : 0]);
+          selectPickerOption(modelPickerOptions[modelPickerFocus >= 0 ? modelPickerFocus : 0]);
           return;
         }
       }

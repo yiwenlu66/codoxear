@@ -7,7 +7,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_COMPOSER_JS = ROOT / "codoxear" / "static" / "app_composer.js"
-APP_JS = ROOT / "codoxear" / "static" / "app.js"
 
 
 class TestComposerModelPicker(unittest.TestCase):
@@ -55,9 +54,15 @@ class TestComposerModelPicker(unittest.TestCase):
               sendChoiceNowBtn: nowBtn, sendChoiceLaterBtn: laterBtn, sendChoiceCancelBtn: cancelBtn,
               modelPicker,
               getSelected: () => "sid",
-              getSessionInfo: () => ({{ agent_backend: state.backend }}),
+              getSessionInfo: () => ({{
+                agent_backend: state.backend,
+                model_provider: "anthropic",
+                model: "claude-sonnet-4",
+                reasoning_effort: "high",
+              }}),
               getNewSessionDefaults: () => ({{ backends: {{ pi: {{
                 provider_models: {{ anthropic: ["claude-sonnet-4"], openai: ["gpt-5"] }},
+                reasoning_efforts_by_model: {{ "anthropic/claude-sonnet-4": ["off", "low", "high"] }},
               }} }} }}),
               patchSessionInfo: noop,
               sessionLaunchFailed: () => false,
@@ -103,14 +108,26 @@ class TestComposerModelPicker(unittest.TestCase):
             const enterEvent = {{ key: "Enter", defaultPrevented: false, preventDefault() {{ this.defaultPrevented = true; }} }};
             textarea.dispatch("keydown", enterEvent);
             if (!enterEvent.defaultPrevented) throw new Error("picker Enter was not consumed");
-            await Promise.resolve();
+            await new Promise((resolve) => setTimeout(resolve, 0));
             if (state.sent[0] !== "/model openai/gpt-5") throw new Error("selected provider/model id was not sent");
             if (state.sent.length !== 1 || state.formSubmits !== 0) throw new Error("picker Enter also submitted the composer form");
             if (textarea.attributes.role || textarea.attributes["aria-expanded"] || textarea.attributes["aria-activedescendant"]) throw new Error("closed picker left stale combobox state");
             textarea.value = "/thinking";
             textarea.dispatch("input");
-            if (modelPicker.style.display !== "none" || modelPicker.children.length !== 0) throw new Error("Pi /thinking still opened a picker");
-            if (state.sent.length !== 1) throw new Error("Pi /thinking triggered an API request");
+            if (modelPicker.style.display !== "block" || modelPicker.children.length !== 3) throw new Error("Pi /thinking did not open model-scoped picker");
+            if (modelPicker.children[0].textContent !== "high" || modelPicker.attributes["aria-label"] !== "Available Pi thinking levels") throw new Error("current thinking level was not first/highlighted");
+            textarea.value = "/thinking lo";
+            textarea.dispatch("input");
+            if (modelPicker.children.length !== 1 || modelPicker.children[0].textContent !== "low") throw new Error("thinking level filter mismatch");
+            const thinkingEnter = {{ key: "Enter", defaultPrevented: false, preventDefault() {{ this.defaultPrevented = true; }} }};
+            textarea.dispatch("keydown", thinkingEnter);
+            if (!thinkingEnter.defaultPrevented) throw new Error("thinking picker Enter was not consumed");
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            if (state.sent[1] !== "/thinking low") throw new Error("selected thinking level was not sent through composer path");
+            textarea.value = "/thinking";
+            textarea.dispatch("input");
+            textarea.dispatch("keydown", {{ key: "Escape", preventDefault() {{}} }});
+            if (modelPicker.style.display !== "none") throw new Error("thinking picker Escape did not dismiss picker");
             state.backend = "codex";
             textarea.value = "/model";
             textarea.dispatch("input");
@@ -121,13 +138,7 @@ class TestComposerModelPicker(unittest.TestCase):
         result = subprocess.run(["node", "-e", script], check=False, capture_output=True, text=True)
         if result.returncode:
             raise AssertionError(result.stderr or result.stdout)
-        self.assertEqual(json.loads(result.stdout), {"sent": ["/model openai/gpt-5"], "selected": "none"})
-
-    def test_help_documents_pi_thinking_launch_boundary(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("For Pi, the reasoning level is set when the session launches.", source)
-        self.assertIn("use <b>Shift+Tab</b> in Pi's terminal", source)
-        self.assertIn("Codoxear does not guess or inject thinking-level cycles.", source)
+        self.assertEqual(json.loads(result.stdout), {"sent": ["/model openai/gpt-5", "/thinking low"], "selected": "none"})
 
 
 if __name__ == "__main__":

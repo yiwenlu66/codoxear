@@ -7,9 +7,18 @@ type SessionManager = {
 	getCwd(): string;
 };
 
+type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+
+type ExtensionUI = {
+	notify(message: string, type?: "info" | "warning" | "error"): void;
+};
+
 type ExtensionContext = {
 	sessionManager: SessionManager;
+	ui: ExtensionUI;
 };
+
+type ExtensionCommandContext = ExtensionContext;
 
 type ExtensionAPI = {
 	on(event: "session_start", handler: (event: { type: "session_start" }, ctx: ExtensionContext) => void): void;
@@ -18,7 +27,18 @@ type ExtensionAPI = {
 		handler: (event: { type: "session_switch"; reason: "new" | "resume" }, ctx: ExtensionContext) => void,
 	): void;
 	on(event: "session_fork", handler: (event: { type: "session_fork" }, ctx: ExtensionContext) => void): void;
+	registerCommand(
+		name: string,
+		options: {
+			description?: string;
+			handler: (args: string, ctx: ExtensionCommandContext) => void | Promise<void>;
+		},
+	): void;
+	getThinkingLevel(): ThinkingLevel;
+	setThinkingLevel(level: ThinkingLevel): void;
 };
+
+const THINKING_LEVELS: readonly ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 function writeActiveSession(ctx: ExtensionContext, reason: string): void {
 	const markerPath = process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE;
@@ -53,4 +73,23 @@ export default function (pi: ExtensionAPI): void {
 	pi.on("session_start", (_event, ctx) => writeActiveSession(ctx, "session_start"));
 	pi.on("session_switch", (event, ctx) => writeActiveSession(ctx, event.reason));
 	pi.on("session_fork", (_event, ctx) => writeActiveSession(ctx, "fork"));
+	pi.registerCommand("thinking", {
+		description: "Set the thinking level for the current model",
+		handler: (args, ctx) => {
+			const requested = args.trim().toLowerCase();
+			if (!THINKING_LEVELS.includes(requested as ThinkingLevel)) {
+				ctx.ui.notify(
+					`Thinking level: ${pi.getThinkingLevel()}. Choose one of: ${THINKING_LEVELS.join(", ")}.`,
+					"warning",
+				);
+				return;
+			}
+			pi.setThinkingLevel(requested as ThinkingLevel);
+			const effective = pi.getThinkingLevel();
+			const message = effective === requested
+				? `Thinking level: ${effective}`
+				: `Thinking level: ${effective} (requested ${requested}; adjusted for the current model)`;
+			ctx.ui.notify(message, "info");
+		},
+	});
 }
