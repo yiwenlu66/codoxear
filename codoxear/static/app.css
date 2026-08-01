@@ -728,6 +728,27 @@
         padding-left: 4px;
         border-left: 1px solid rgba(15, 23, 42, 0.12);
       }
+      @media (hover: hover) and (pointer: fine) and (min-width: 701px) {
+        /* Desktop chat navigation is secondary chrome: keep the rail to a
+           tight icon cluster so it does not consume chat width or height. */
+        .chatNavRail .icon-btn {
+          width: 28px;
+          height: 28px;
+          border-radius: 7px;
+        }
+        .chatNavRail {
+          align-self: flex-end;
+          gap: 2px;
+          margin: 2px 4px 0;
+          padding: 2px;
+        }
+        .chatMessageNavControls {
+          gap: 2px;
+          margin-left: 0;
+          padding-left: 0;
+          border-left: none;
+        }
+      }
       button {
         border: 1px solid var(--border);
         background: #ffffff;
