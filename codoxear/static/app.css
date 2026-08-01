@@ -879,7 +879,7 @@
         padding: 6px 10px;
         border-radius: 999px;
         border: 1px solid rgba(15, 23, 42, 0.1);
-        background: rgba(15, 23, 42, 0.05);
+        background: transparent;
         color: var(--muted);
         font-size: 12px;
         line-height: 1.1;
