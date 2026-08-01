@@ -101,36 +101,36 @@ class TestFrontendPollingModuleSource(unittest.TestCase):
     def test_polling_policy_preserves_delay_contracts(self) -> None:
         result = eval_polling_policy()
         self.assertEqual(result["intervals"], {
-            "SESSION_POLL_VISIBLE_MS": 5000,
+            "SESSION_POLL_VISIBLE_MS": 3500,
             "SESSION_POLL_HIDDEN_MS": 15000,
             "SECONDARY_POLL_VISIBLE_MS": 30000,
             "SECONDARY_POLL_HIDDEN_MS": 60000,
-            "MESSAGE_POLL_FAST_MS": 500,
-            "MESSAGE_POLL_RUNNING_MS": 800,
-            "MESSAGE_POLL_IDLE_MS": 2500,
+            "MESSAGE_POLL_FAST_MS": 300,
+            "MESSAGE_POLL_RUNNING_MS": 500,
+            "MESSAGE_POLL_IDLE_MS": 1500,
             "MESSAGE_POLL_HIDDEN_MS": 5000,
             "MESSAGE_POLL_OFFLINE_MS": 15000,
             "MESSAGE_POLL_ERROR_MIN_MS": 2000,
             "MESSAGE_POLL_ERROR_MAX_MS": 30000,
         })
-        self.assertEqual(result["sessionsVisible"], 5000)
+        self.assertEqual(result["sessionsVisible"], 3500)
         self.assertEqual(result["sessionsHidden"], 15000)
         self.assertEqual(result["secondaryVisible"], 30000)
         self.assertEqual(result["secondaryHidden"], 60000)
         self.assertFalse(result["offlineUndefined"])
         self.assertTrue(result["offlineTrue"])
         self.assertFalse(result["offlineFalse"])
-        self.assertEqual(result["idle"], 2500)
-        self.assertEqual(result["running"], 800)
-        self.assertEqual(result["fast"], 500)
+        self.assertEqual(result["idle"], 1500)
+        self.assertEqual(result["running"], 500)
+        self.assertEqual(result["fast"], 300)
         self.assertEqual(result["hidden"], 5000)
         self.assertEqual(result["offline"], 15000)
-        self.assertEqual(result["error1"], 2500)
+        self.assertEqual(result["error1"], 2000)
         self.assertEqual(result["errorKick0"], 2000)
         self.assertEqual(result["error2"], 4000)
         self.assertEqual(result["offlineHighError"], 30000)
         self.assertEqual(result["offlineHighErrorKick0"], 30000)
-        self.assertEqual(result["recovered"], 2500)
+        self.assertEqual(result["recovered"], 1500)
         self.assertEqual(result["negativeKick"], 0)
         self.assertEqual(result["stringKick"], 42)
         self.assertEqual(result["positiveKick"], 5000)

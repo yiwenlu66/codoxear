@@ -44,7 +44,18 @@
       const computed = view && typeof view.getComputedStyle === "function" ? view.getComputedStyle(target) : null;
       const display = computed ? computed.display : style.display;
       const visibility = computed ? computed.visibility : style.visibility;
-      return display !== "none" && visibility !== "hidden";
+      if (display === "none" || visibility === "hidden") return false;
+      // Must also be within the current viewport (not scrolled off-screen).
+      // This prevents hint badges for file links that exist in the DOM but
+      // are far above or below the visible conversation area.
+      if (typeof target.getBoundingClientRect === "function") {
+        const rect = target.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return false;
+        const vh = view ? view.innerHeight : 0;
+        const vw = view ? view.innerWidth : 0;
+        if (rect.bottom < 0 || rect.top > vh || rect.right < 0 || rect.left > vw) return false;
+      }
+      return true;
     }
 
     function targetIsInsideOpenModal(target) {
