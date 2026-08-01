@@ -2825,8 +2825,10 @@
           };
           // Live deltas are authoritative once observed; session-list counts
           // fill the initial projection and recover counts while idle polling
-          // catches up.
-          if (!turnOpen || (!current.thinking && !current.tools)) typingRowRuntime.updateTypingStats(stats);
+          // catches up. Always update when the session has non-zero counts,
+          // even if turnOpen is false — otherwise stale zero counts persist
+          // falsely when the session list reports real activity.
+          if ((stats.thinking || stats.tools) || (!turnOpen || (!current.thinking && !current.tools))) typingRowRuntime.updateTypingStats(stats);
         }
 
         function applyTypingMetaDelta(data) {
