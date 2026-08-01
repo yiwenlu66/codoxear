@@ -1757,7 +1757,7 @@ select {
         display: none;
         position: fixed;
         inset: 0;
-        background: rgba(15, 23, 42, 0.45);
+        background: rgba(15, 23, 42, 0.08);
         z-index: 70;
       }
       .fileViewer {
@@ -2270,7 +2270,7 @@ select {
         display: flex;
       }
       .formDialog::backdrop {
-        background: rgba(15, 23, 42, 0.45);
+        background: rgba(15, 23, 42, 0.08);
       }
       .newSessionViewer {
         width: min(92vw, 480px);
@@ -2765,7 +2765,7 @@ select {
 		        display: none;
 		        position: absolute;
 		        inset: 0;
-	        background: rgba(15, 23, 42, 0.35);
+	        background: rgba(15, 23, 42, 0.06);
 	        z-index: 20;
 	      }
       @media (max-width: 880px) {
