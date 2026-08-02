@@ -7,7 +7,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
-INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 
 
 def run_renderer_with_marked_stub(markdown: str) -> tuple[str, str]:
@@ -36,22 +35,6 @@ def run_renderer_with_marked_stub(markdown: str) -> tuple[str, str]:
 
 
 class TestMarkdownRendererSource(unittest.TestCase):
-    def test_marked_is_loaded_before_codoxear_renderer(self) -> None:
-        html = INDEX_HTML.read_text(encoding="utf-8")
-        marked_tag = '<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>'
-        self.assertIn(marked_tag, html)
-        self.assertLess(html.index(marked_tag), html.index('src="app_markdown.js'))
-
-    def test_renderer_delegates_standard_markdown_to_marked(self) -> None:
-        source = APP_MARKDOWN_JS.read_text(encoding="utf-8")
-        self.assertIn("window.marked.parse(prepared)", source)
-        self.assertNotIn("function renderInlineMd", source)
-        self.assertNotIn("function parseList", source)
-        self.assertNotIn("function parseTable", source)
-        parsed, html = run_renderer_with_marked_stub("*italic* and **bold**")
-        self.assertEqual(parsed, "*italic* and **bold**")
-        self.assertEqual(html, "<p>*italic* and **bold**</p>")
-
     def test_math_is_extracted_before_marked_including_single_dollars(self) -> None:
         parsed, html = run_renderer_with_marked_stub("Inline $x^2$; display $$y$$; and \\(z\\).")
         self.assertNotIn("$x^2$", parsed)

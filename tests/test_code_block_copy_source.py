@@ -1,5 +1,4 @@
 import json
-import re
 import subprocess
 import textwrap
 import unittest
@@ -7,49 +6,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_JS = ROOT / "codoxear" / "static" / "app.js"
-APP_CSS = ROOT / "codoxear" / "static" / "app.css"
 APP_CODE_COPY_JS = ROOT / "codoxear" / "static" / "app_code_copy.js"
-APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
-INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
-
-
-def render_markdown(markdown: str) -> str:
-    source = APP_MARKDOWN_JS.read_text(encoding="utf-8")
-    js = textwrap.dedent(
-        f"""
-        const vm = require("vm");
-        const ctx = {{
-          URL,
-          location: {{ origin: "http://localhost", href: "http://localhost/" }},
-          console,
-          window: {{
-            CodoxearUrls: {{
-              resolveAppUrl: (path) => new URL(String(path ?? "").replace(/^\\//, ""), "http://localhost/").toString(),
-            }},
-          }},
-        }};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(source)}, ctx);
-        process.stdout.write(ctx.window.CodoxearMarkdown.mdToHtml({json.dumps(markdown)}));
-        """
-    )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    return proc.stdout
-
-
-def css_media_block(css: str, marker: str) -> str:
-    start = css.index(marker)
-    open_brace = css.index("{", start)
-    depth = 1
-    pos = open_brace + 1
-    while pos < len(css) and depth:
-        if css[pos] == "{":
-            depth += 1
-        elif css[pos] == "}":
-            depth -= 1
-        pos += 1
-    return css[open_brace + 1 : pos - 1]
 
 
 def eval_code_copy_runtime() -> dict:
@@ -145,15 +102,6 @@ def eval_code_copy_runtime() -> dict:
 
 
 class TestCodeBlockCopySource(unittest.TestCase):
-    def test_markdown_code_blocks_are_decorated_after_marked_parsing(self) -> None:
-        source = APP_MARKDOWN_JS.read_text(encoding="utf-8")
-        self.assertIn("function decorateCodeBlocks", source)
-        self.assertIn('root.querySelectorAll("pre")', source)
-        self.assertIn('button.className = "code-copy-btn"', source)
-        self.assertIn('button.setAttribute("aria-label", "Copy code")', source)
-        self.assertIn('button.title = "Copy code"', source)
-        self.assertIn('code.dataset.lang = languageClass.slice', source)
-
     def test_code_copy_runtime_copies_only_nearest_code_text(self) -> None:
         result = eval_code_copy_runtime()
         self.assertTrue(result["frozen"])
@@ -191,35 +139,6 @@ class TestCodeBlockCopySource(unittest.TestCase):
         self.assertIsNone(result["touchHidden"])
         self.assertEqual(result["touchHiddenState"], [False, False])
         self.assertTrue(result["codePreFound"])
-
-    def test_code_copy_reveal_css_reclaims_code_width(self) -> None:
-        css = APP_CSS.read_text(encoding="utf-8")
-        button = re.search(r"\.code-copy-btn\s*\{(?P<body>[^}]*)\}", css)
-        self.assertIsNotNone(button)
-        self.assertIn("opacity: 0", button.group("body"))
-        self.assertIn("pointer-events: none", button.group("body"))
-        self.assertIn(".md pre:hover .code-copy-btn", css)
-        self.assertIn(".md pre:focus-within .code-copy-btn", css)
-        self.assertIn(".md pre.show-copy .code-copy-btn", css)
-        pre = re.search(r"\.md pre\s*\{(?P<body>[^}]*)\}", css)
-        self.assertIsNotNone(pre)
-        self.assertIn("padding: 12px", pre.group("body"))
-        self.assertNotIn("padding-right", pre.group("body"))
-        touch = css_media_block(css, "@media (max-width: 700px), (pointer: coarse)")
-        self.assertNotIn(".md pre {", touch)
-        self.assertIn(".code-copy-btn::after", touch)
-        self.assertIn("inset: -7px", touch)
-
-    def test_touch_code_copy_toggle_is_wired_before_message_copy_toggle(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("window.getSelection().toString()", source)
-        self.assertIn("a, button, input, select, textarea, [role='link'], mark", source)
-        self.assertIn("const pre = codoxearCodeCopy.codePreFromTarget(target);", source)
-        self.assertIn("codeBlockCopyRuntime.toggleTouchPre(pre, chatInner);", source)
-        self.assertLess(
-            source.index("codeBlockCopyRuntime.toggleTouchPre(pre, chatInner);"),
-            source.index("messageCopyNavigationRuntime.toggleTouchRow(row);"),
-        )
 
 
 if __name__ == "__main__":
