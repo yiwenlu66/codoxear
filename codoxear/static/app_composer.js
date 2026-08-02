@@ -96,17 +96,47 @@
     let modelPickerFocus = -1;
 
     const PI_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+    const CC_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max", "auto"];
+    // Each entry describes commands that can be injected into an existing
+    // shared PTY session. Codex's /model opens a TUI picker and its effort is
+    // launch-time only, so it deliberately has no live picker descriptor.
+    const BACKEND_COMMAND_SPECS = Object.freeze({
+      pi: Object.freeze({
+        model: Object.freeze({ command: "/model", aliases: Object.freeze(["model"]) }),
+        effort: Object.freeze({ command: "/effort", aliases: Object.freeze(["effort", "thinking"]), requiresPiThinkingCapability: true }),
+      }),
+      cc: Object.freeze({
+        model: Object.freeze({ command: "/model", aliases: Object.freeze(["model"]) }),
+        effort: Object.freeze({ command: "/effort", aliases: Object.freeze(["effort"]) }),
+      }),
+      codex: Object.freeze({}),
+    });
 
-    function piSession() {
+    function selectedSession() {
       const sessionId = getSelected();
-      if (!sessionId) return null;
-      const session = getSessionInfo(sessionId);
-      return session && String(session.agent_backend || "").trim().toLowerCase() === "pi" ? session : null;
+      return sessionId ? getSessionInfo(sessionId) || null : null;
+    }
+
+    function sessionBackend(session) {
+      return String(session && session.agent_backend || "").trim().toLowerCase();
+    }
+
+    function commandSpec(session, kind) {
+      const backend = sessionBackend(session);
+      const spec = BACKEND_COMMAND_SPECS[backend] && BACKEND_COMMAND_SPECS[backend][kind];
+      if (!spec) return null;
+      if (spec.requiresPiThinkingCapability && session.pi_thinking_command !== true) return null;
+      return spec;
     }
 
     function piLaunchDefaults() {
       const defaults = getNewSessionDefaults();
       return defaults && defaults.backends && defaults.backends.pi && typeof defaults.backends.pi === "object" ? defaults.backends.pi : {};
+    }
+
+    function ccLaunchDefaults() {
+      const defaults = getNewSessionDefaults();
+      return defaults && defaults.backends && defaults.backends.cc && typeof defaults.backends.cc === "object" ? defaults.backends.cc : {};
     }
 
     function piModelIds() {
@@ -134,6 +164,16 @@
       return out;
     }
 
+    function ccModelIds() {
+      const models = ccLaunchDefaults().models;
+      const out = [];
+      for (const model of Array.isArray(models) ? models : []) {
+        const id = String(model || "").trim();
+        if (id && !out.includes(id)) out.push(id);
+      }
+      return out;
+    }
+
     function piThinkingLevels(session) {
       const pi = piLaunchDefaults();
       const byModel = pi.reasoning_efforts_by_model && typeof pi.reasoning_efforts_by_model === "object" ? pi.reasoning_efforts_by_model : {};
@@ -147,31 +187,49 @@
         .filter((level) => PI_THINKING_LEVELS.includes(level) && !seen.has(level) && seen.add(level));
     }
 
-    function modelPickerMatches() {
-      const match = String(textarea.value || "").match(/^\/model(?:\s+(.+?)\s*)?$/i);
-      const session = piSession();
-      if (!match || !session) return null;
+    function ccEffortLevels(session) {
+      const cc = ccLaunchDefaults();
+      const byModel = cc.reasoning_efforts_by_model && typeof cc.reasoning_efforts_by_model === "object" ? cc.reasoning_efforts_by_model : {};
+      const model = String(session.model || "").trim();
+      const scoped = model && Array.isArray(byModel[model]) ? byModel[model] : null;
+      const configured = scoped || (Array.isArray(cc.reasoning_efforts) ? cc.reasoning_efforts : CC_EFFORT_LEVELS);
+      const seen = new Set();
+      return configured
+        .map((level) => String(level || "").trim().toLowerCase())
+        .filter((level) => CC_EFFORT_LEVELS.includes(level) && !seen.has(level) && seen.add(level));
+    }
+
+    function commandPickerMatches(kind) {
+      const session = selectedSession();
+      const spec = commandSpec(session, kind);
+      if (!session || !spec) return null;
+      const aliases = spec.aliases.map((alias) => alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+      const match = String(textarea.value || "").match(new RegExp(`^/(?:${aliases})(?:\\s+(.*))?$`, "i"));
+      if (!match) return null;
       const query = String(match[1] || "").trim().toLowerCase();
-      return piModelIds().filter((id) => !query || id.toLowerCase().startsWith(query) || id.toLowerCase().includes(query));
+      const choices = kind === "model"
+        ? sessionBackend(session) === "pi" ? piModelIds() : ccModelIds()
+        : sessionBackend(session) === "pi" ? piThinkingLevels(session) : ccEffortLevels(session);
+      const matches = choices.filter((choice) => !query || choice.toLowerCase().startsWith(query) || choice.toLowerCase().includes(query));
+      if (kind !== "effort") return matches;
+      const current = String(session.reasoning_effort || "").trim().toLowerCase();
+      return current && matches.includes(current) ? [current, ...matches.filter((choice) => choice !== current)] : matches;
+    }
+
+    function modelPickerMatches() {
+      return commandPickerMatches("model");
+    }
+
+    function effortPickerMatches() {
+      return commandPickerMatches("effort");
     }
 
     function unsupportedPiThinkingCommand(raw, session) {
       return Boolean(
-        session
-        && String(session.agent_backend || "").trim().toLowerCase() === "pi"
+        sessionBackend(session) === "pi"
         && session.pi_thinking_command !== true
         && /^\/(?:effort|thinking)(?:\s|$)/i.test(String(raw || "")),
       );
-    }
-
-    function thinkingPickerMatches() {
-      const match = String(textarea.value || "").match(/^\/(?:effort|thinking)(?:\s+(.*))?$/i);
-      const session = piSession();
-      if (!match || !session || session.pi_thinking_command !== true) return null;
-      const query = String(match[1] || "").trim().toLowerCase();
-      const choices = piThinkingLevels(session).filter((level) => !query || level.startsWith(query) || level.includes(query));
-      const current = String(session.reasoning_effort || "").trim().toLowerCase();
-      return current && choices.includes(current) ? [current, ...choices.filter((level) => level !== current)] : choices;
     }
 
     function hideModelPicker() {
@@ -189,25 +247,16 @@
       textarea.removeAttribute("aria-activedescendant");
     }
 
-    function selectModel(modelId) {
-      const id = String(modelId || "").trim();
-      if (!id) return;
-      hideModelPicker();
-      clearComposer();
-      void sendText(`/model ${id}`);
-    }
-
-    function selectThinkingLevel(level) {
-      const choice = String(level || "").trim();
-      if (!choice) return;
-      hideModelPicker();
-      clearComposer();
-      void sendText(`/effort ${choice}`);
-    }
-
     function selectPickerOption(option) {
-      if (modelPickerKind === "thinking") selectThinkingLevel(option);
-      else selectModel(option);
+      const choice = String(option || "").trim();
+      const session = selectedSession();
+      const spec = commandSpec(session, modelPickerKind);
+      if (!choice || !spec) return;
+      hideModelPicker();
+      clearComposer();
+      // Delivery acknowledgement only: the session row changes later from
+      // backend-log evidence, never from this optimistic picker selection.
+      void sendText(`${spec.command} ${choice}`);
     }
 
     function syncModelPickerSelection({ scroll = false } = {}) {
@@ -233,14 +282,18 @@
       if (!modelPicker) return;
       modelPicker.innerHTML = "";
       modelPicker.setAttribute("role", "listbox");
-      modelPicker.setAttribute("aria-label", modelPickerKind === "thinking" ? "Available Pi thinking levels" : "Available Pi models");
+      const session = selectedSession();
+      const backend = sessionBackend(session);
+      const isPiThinking = backend === "pi" && modelPickerKind === "effort";
+      const kindLabel = modelPickerKind === "model" ? "models" : isPiThinking ? "thinking levels" : "effort levels";
+      modelPicker.setAttribute("aria-label", `Available ${backend === "cc" ? "Claude" : "Pi"} ${kindLabel}`);
       modelPickerOptions.forEach((id, index) => {
         const option = document.createElement("button");
         option.type = "button";
         option.tabIndex = -1;
         option.className = "modelPickerOption";
         option.setAttribute("role", "option");
-        option.id = `${modelPickerKind === "thinking" ? "thinking" : "model"}-picker-option-${index}`;
+        option.id = `${isPiThinking ? "thinking" : modelPickerKind}-picker-option-${index}`;
         option.textContent = id;
         option.onpointerdown = (event) => event.preventDefault();
         option.onclick = () => selectPickerOption(id);
@@ -259,10 +312,10 @@
 
     function syncModelPicker() {
       const models = modelPickerMatches();
-      const thinkingLevels = models ? null : thinkingPickerMatches();
-      const matches = models || thinkingLevels;
+      const effortLevels = models ? null : effortPickerMatches();
+      const matches = models || effortLevels;
       if (!matches || !matches.length) { hideModelPicker(); return; }
-      modelPickerKind = models ? "model" : "thinking";
+      modelPickerKind = models ? "model" : "effort";
       modelPickerOptions = matches;
       modelPickerFocus = Math.min(Math.max(modelPickerFocus, 0), matches.length - 1);
       renderModelPicker();

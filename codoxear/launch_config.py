@@ -13,6 +13,7 @@ from .cc_log import CC_SUPPORTED_REASONING_EFFORTS
 SUPPORTED_REASONING_EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max")
 SUPPORTED_PI_REASONING_EFFORTS = ("off", "minimal", "low", "medium", "high", "xhigh", "max")
 SUPPORTED_CC_REASONING_EFFORTS = CC_SUPPORTED_REASONING_EFFORTS
+CC_MODEL_ALIASES = ("sonnet", "opus", "fable", "haiku", "best", "default")
 
 
 @dataclass(frozen=True)
@@ -331,9 +332,13 @@ def fallback_cc_launch_defaults() -> dict[str, Any]:
         "provider_choice": None,
         "provider_choices": [],
         "model": None,
-        "models": ["sonnet", "opus", "fable"],
+        "models": list(CC_MODEL_ALIASES),
         "reasoning_effort": "medium",
         "reasoning_efforts": list(SUPPORTED_CC_REASONING_EFFORTS),
+        # Claude Code settings expose no per-model effort capability map.
+        # Keep the empty shape so a future authoritative map can narrow the
+        # live composer picker without changing its API contract.
+        "reasoning_efforts_by_model": {},
         "service_tier": None,
         "supports_fast": False,
     }
@@ -506,6 +511,10 @@ def read_cc_launch_defaults(paths: LaunchConfigPaths) -> dict[str, Any]:
             raise ValueError(f"invalid Claude Code settings in {paths.cc_settings_path}")
         configured_model = clean_optional_text(data.get("model")) or clean_optional_text(data.get("defaultModel"))
         configured_effort = normalize_requested_cc_reasoning_effort(data.get("effortLevel") or data.get("effort") or data.get("thinkingLevel")) or configured_effort
+    model_choices: list[str] = []
+    for candidate in (configured_model, *CC_MODEL_ALIASES):
+        if candidate and candidate not in model_choices:
+            model_choices.append(candidate)
     return {
         "agent_backend": "cc",
         "model_provider": None,
@@ -513,9 +522,12 @@ def read_cc_launch_defaults(paths: LaunchConfigPaths) -> dict[str, Any]:
         "provider_choice": None,
         "provider_choices": [],
         "model": configured_model,
-        "models": [m for m in [configured_model, "sonnet", "opus", "fable"] if isinstance(m, str) and m],
+        "models": model_choices,
         "reasoning_effort": configured_effort,
         "reasoning_efforts": list(SUPPORTED_CC_REASONING_EFFORTS),
+        # CC JSONL exposes assistant message.model, but no effort field. The
+        # server therefore has no model-specific capability evidence to send.
+        "reasoning_efforts_by_model": {},
         "service_tier": None,
         "supports_fast": False,
     }

@@ -15,7 +15,16 @@ from .token_signal import TokenObservation
 from .token_signal import token_update_observation
 
 
-CC_SUPPORTED_REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+CC_SUPPORTED_REASONING_EFFORTS = (
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+    "auto",
+)
+# Claude Code documents ``ultracode`` as experimental. Do not advertise an
+# experimental command value in the stable launch or live-session picker.
 CC_CONTEXT_WINDOW_200K = 200_000
 CC_CONTEXT_WINDOW_1M = 1_000_000
 CC_UNKNOWN_TOOL_USE_ID_PREFIX = "__codoxear_cc_unknown_tool_use__:"
@@ -582,6 +591,14 @@ def read_cc_log_cwd(path: Path) -> str | None:
 
 
 def read_cc_run_settings(path: Path, *, max_scan_bytes: int = 8 * 1024 * 1024) -> tuple[str | None, str | None, str | None]:
+    """Read observable Claude Code run settings from JSONL.
+
+    Assistant records expose ``message.model`` after a live ``/model`` change,
+    so the newest such value becomes sidebar model evidence. Claude Code JSONL
+    has no effort field consumed by this parser after ``/effort``; return
+    ``None`` for effort so the sidebar retains its launch-time value rather
+    than optimistically claiming that the command took effect.
+    """
     model: str | None = None
     try:
         size = int(path.stat().st_size)

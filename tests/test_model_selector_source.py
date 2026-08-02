@@ -10,7 +10,7 @@ APP_COMPOSER_JS = ROOT / "codoxear" / "static" / "app_composer.js"
 
 
 class TestComposerModelPicker(unittest.TestCase):
-    def test_model_prefix_filters_and_selects_only_for_pi(self) -> None:
+    def test_model_and_effort_pickers_follow_backend_command_specs(self) -> None:
         source = APP_COMPOSER_JS.read_text(encoding="utf-8")
         script = "(async () => {\n" + textwrap.dedent(
             f"""
@@ -47,7 +47,7 @@ class TestComposerModelPicker(unittest.TestCase):
             const nodes = Array.from({{ length: 10 }}, () => new Node());
             const [form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop, nowBtn, laterBtn, cancelBtn, modelPicker] = nodes;
             form.requestSubmit = () => {{ state.formSubmits += 1; }};
-            const state = {{ backend: "pi", thinkingCapability: true, sent: [], toasts: [], sending: false, formSubmits: 0 }};
+            const state = {{ backend: "pi", thinkingCapability: true, sent: [], toasts: [], sending: false, formSubmits: 0, ccModel: "claude-sonnet-4-6", ccEffort: "high" }};
             const noop = () => {{}};
             const controller = ctx.window.CodoxearComposer.createComposerController({{
               form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
@@ -58,12 +58,16 @@ class TestComposerModelPicker(unittest.TestCase):
                 agent_backend: state.backend,
                 pi_thinking_command: state.thinkingCapability,
                 model_provider: "anthropic",
-                model: "claude-sonnet-4",
-                reasoning_effort: "high",
+                model: state.backend === "cc" ? state.ccModel : "claude-sonnet-4",
+                reasoning_effort: state.backend === "cc" ? state.ccEffort : "high",
               }}),
               getNewSessionDefaults: () => ({{ backends: {{ pi: {{
                 provider_models: {{ anthropic: ["claude-sonnet-4"], openai: ["gpt-5"] }},
                 reasoning_efforts_by_model: {{ "anthropic/claude-sonnet-4": ["off", "low", "high"] }},
+              }}, cc: {{
+                models: ["sonnet", "opus", "fable", "haiku", "best", "default", "claude-sonnet-4-6"],
+                reasoning_efforts: ["low", "medium", "high", "xhigh", "max", "auto"],
+                reasoning_efforts_by_model: {{ "claude-sonnet-4-6": ["low", "high", "auto"] }},
               }} }} }}),
               patchSessionInfo: noop,
               sessionLaunchFailed: () => false,
@@ -149,17 +153,41 @@ class TestComposerModelPicker(unittest.TestCase):
             textarea.value = "ordinary text";
             await form.onsubmit({{ preventDefault() {{}} }});
             if (state.sent[3] !== "ordinary text") throw new Error("non-/thinking message behavior changed");
+            state.backend = "cc";
+            state.thinkingCapability = false;
+            textarea.value = "/model hai";
+            textarea.dispatch("input");
+            if (modelPicker.style.display !== "block" || modelPicker.children.length !== 1 || modelPicker.children[0].textContent !== "haiku") throw new Error("CC /model did not filter aliases from launch defaults");
+            const ccModelEnter = {{ key: "Enter", defaultPrevented: false, preventDefault() {{ this.defaultPrevented = true; }} }};
+            textarea.dispatch("keydown", ccModelEnter);
+            if (!ccModelEnter.defaultPrevented) throw new Error("CC model picker Enter was not consumed");
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            if (state.sent[4] !== "/model haiku") throw new Error("CC model picker did not send the selected alias");
+            textarea.value = "/effort";
+            textarea.dispatch("input");
+            if (modelPicker.style.display !== "block" || modelPicker.children.length !== 3 || modelPicker.children[0].textContent !== "high") throw new Error("CC /effort did not use the selected-model effort set");
+            textarea.value = "/effort au";
+            textarea.dispatch("input");
+            if (modelPicker.children.length !== 1 || modelPicker.children[0].textContent !== "auto") throw new Error("CC /effort did not include auto");
+            const ccEffortEnter = {{ key: "Enter", defaultPrevented: false, preventDefault() {{ this.defaultPrevented = true; }} }};
+            textarea.dispatch("keydown", ccEffortEnter);
+            if (!ccEffortEnter.defaultPrevented) throw new Error("CC effort picker Enter was not consumed");
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            if (state.sent[5] !== "/effort auto") throw new Error("CC effort picker did not send /effort auto");
             state.backend = "codex";
             textarea.value = "/model";
             textarea.dispatch("input");
-            if (modelPicker.style.display !== "none") throw new Error("non-Pi session opened picker");
+            if (modelPicker.style.display !== "none") throw new Error("Codex session opened a live command picker");
+            textarea.value = "/effort";
+            textarea.dispatch("input");
+            if (modelPicker.style.display !== "none") throw new Error("Codex session opened a live effort picker");
             process.stdout.write(JSON.stringify({{ sent: state.sent, selected: modelPicker.style.display }}));
             """
         ) + "\n})();"
         result = subprocess.run(["node", "-e", script], check=False, capture_output=True, text=True)
         if result.returncode:
             raise AssertionError(result.stderr or result.stdout)
-        self.assertEqual(json.loads(result.stdout), {"sent": ["/model openai/gpt-5", "/effort low", "/thinking high", "ordinary text"], "selected": "none"})
+        self.assertEqual(json.loads(result.stdout), {"sent": ["/model openai/gpt-5", "/effort low", "/thinking high", "ordinary text", "/model haiku", "/effort auto"], "selected": "none"})
 
 
 if __name__ == "__main__":

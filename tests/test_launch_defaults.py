@@ -35,6 +35,7 @@ from tempfile import TemporaryDirectory
 
 from codoxear.launch_config import LaunchConfigPaths
 from codoxear.launch_config import normalize_requested_model_provider
+from codoxear.launch_config import normalize_requested_cc_reasoning_effort
 from codoxear.launch_config import normalize_requested_pi_reasoning_effort
 from codoxear.launch_config import normalize_requested_preferred_auth_method
 from codoxear.launch_config import normalize_requested_service_tier
@@ -286,21 +287,26 @@ base_url = "https://example.com/v1"
                 "off",
             )
 
-    def test_read_cc_launch_defaults_reads_settings_model_and_effort(self) -> None:
+    def test_read_cc_launch_defaults_advertises_aliases_and_auto_effort(self) -> None:
         with TemporaryDirectory() as td:
             paths = _paths_for(Path(td))
             paths.cc_settings_path.write_text(
-                '{"model":"claude-haiku-4-5","effortLevel":"max"}\n', encoding="utf-8"
+                '{"model":"claude-haiku-4-5","effortLevel":"auto"}\n', encoding="utf-8"
             )
 
             defaults = read_cc_launch_defaults(paths)
 
         self.assertEqual(defaults["agent_backend"], "cc")
         self.assertEqual(defaults["model"], "claude-haiku-4-5")
-        self.assertEqual(defaults["reasoning_effort"], "max")
-        self.assertEqual(defaults["reasoning_efforts"], ["low", "medium", "high", "xhigh", "max"])
+        self.assertEqual(defaults["models"], ["claude-haiku-4-5", "sonnet", "opus", "fable", "haiku", "best", "default"])
+        self.assertEqual(defaults["reasoning_effort"], "auto")
+        self.assertEqual(defaults["reasoning_efforts"], ["low", "medium", "high", "xhigh", "max", "auto"])
+        self.assertEqual(defaults["reasoning_efforts_by_model"], {})
         self.assertEqual(defaults["provider_choices"], [])
         self.assertFalse(defaults["supports_fast"])
+        self.assertEqual(normalize_requested_cc_reasoning_effort("AUTO"), "auto")
+        with self.assertRaisesRegex(ValueError, "low, medium, high, xhigh, max, auto"):
+            normalize_requested_cc_reasoning_effort("ultracode")
 
     def test_read_new_session_defaults_includes_registered_backends(self) -> None:
         with TemporaryDirectory() as td:
@@ -320,6 +326,8 @@ base_url = "https://example.com/v1"
         self.assertIn("pi", defaults["backends"])
         self.assertIn("cc", defaults["backends"])
         self.assertEqual(defaults["backends"]["pi"]["provider_choice"], "macaron")
+        self.assertEqual(defaults["backends"]["cc"]["models"], ["sonnet", "opus", "fable", "haiku", "best", "default"])
+        self.assertEqual(defaults["backends"]["cc"]["reasoning_efforts"], ["low", "medium", "high", "xhigh", "max", "auto"])
         self.assertNotIn("warnings", defaults)
 
     def test_read_new_session_defaults_fails_soft_for_malformed_backend_configs(self) -> None:

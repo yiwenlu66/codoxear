@@ -159,7 +159,8 @@
       model: typeof raw.model === "string" ? raw.model : null,
       models: modelChoices,
       reasoning_effort: typeof raw.reasoning_effort === "string" ? raw.reasoning_effort : "medium",
-      reasoning_efforts: Array.isArray(raw.reasoning_efforts) ? raw.reasoning_efforts.slice() : ["low", "medium", "high", "xhigh", "max"],
+      reasoning_efforts: Array.isArray(raw.reasoning_efforts) ? raw.reasoning_efforts.slice() : ["low", "medium", "high", "xhigh", "max", "auto"],
+      reasoning_efforts_by_model: raw.reasoning_efforts_by_model && typeof raw.reasoning_efforts_by_model === "object" ? raw.reasoning_efforts_by_model : {},
       service_tier: null,
       supports_fast: false,
     };
