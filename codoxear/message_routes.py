@@ -13,6 +13,7 @@ from . import rollout_log as _rollout_log
 from .message_cursor import MessageCursorError
 from .message_cursor import attach_history_cursors as _attach_history_cursors_impl
 from .transcript_search import clip_search_match_text as _clip_search_match_text
+from .transcript_search import read_chat_window_around as _read_chat_window_around
 from .transcript_search import search_chat_log_bounded as _search_chat_log_bounded
 
 
@@ -183,7 +184,13 @@ def _launch_payload_events_with_cursors(payload: dict[str, Any], *, encode_curso
     return _attach_history_cursors_impl(events, session=_launch_payload_cursor_session(payload), encode_cursor=encode_cursor)
 
 
-def _attach_search_load_cursors(matches: list[dict[str, Any]], *, session: Any, encode_cursor: Callable[..., str]) -> list[dict[str, Any]]:
+def _attach_search_load_cursors(
+    matches: list[dict[str, Any]],
+    *,
+    session: Any,
+    encode_cursor: Callable[..., str],
+    query: str = "",
+) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for match in matches:
         if not isinstance(match, dict):
@@ -193,12 +200,20 @@ def _attach_search_load_cursors(matches: list[dict[str, Any]], *, session: Any, 
         if isinstance(before_byte, bool):
             before_byte = None
         if isinstance(before_byte, int) and before_byte >= 0:
-            item["history_cursor"] = encode_cursor(kind="history", session=session, pos=before_byte)
+            cursor = encode_cursor(kind="history", session=session, pos=before_byte)
+            item["history_cursor"] = cursor
+            item["before_byte"] = cursor
+            if not isinstance(item.get("message_id"), str) or not item["message_id"]:
+                item["message_id"] = f"byte-{before_byte}-{item.get('role', 'message')}"
         after_byte = item.pop("_after_byte", None)
         if isinstance(after_byte, bool):
             after_byte = None
         if isinstance(after_byte, int) and after_byte > 0:
             item["load_cursor"] = encode_cursor(kind="history", session=session, pos=after_byte)
+        text = item.get("text")
+        if isinstance(text, str):
+            snippet = _clip_search_match_text([{"text": text}], 60, query=query)[0].get("text", text)
+            item["snippet"] = snippet
         out.append(item)
     return out
 
@@ -272,6 +287,30 @@ def _merge_log_and_lifecycle_search_matches(
     if remaining_slots > 0:
         matches.extend(lifecycle_matches[:remaining_slots])
     return match_count, matches, match_count_truncated
+
+
+def _next_jsonl_record_byte(log_path: Path, record_start: int) -> int:
+    with log_path.open("rb") as stream:
+        stream.seek(max(0, int(record_start)))
+        stream.readline()
+        return int(stream.tell())
+
+
+def _search_result_fields(
+    query: str,
+    match_count: int,
+    match_count_truncated: bool,
+    matches: list[dict[str, Any]],
+) -> dict[str, Any]:
+    count = max(0, int(match_count))
+    return {
+        "query": query.strip(),
+        "match_count": count,
+        "match_count_truncated": bool(match_count_truncated),
+        "total": count,
+        "matches": matches,
+        "truncated": bool(match_count_truncated or count > len(matches)),
+    }
 
 
 def _sse_write_event(handler: Any, event_name: str, payload: Mapping[str, Any]) -> None:
@@ -514,6 +553,12 @@ def handle_messages_get_route(
     deps: MessageRouteDeps,
     match_session_route: RouteMatcher,
 ) -> bool:
+    # Public transcript search lives directly under the session.  Keep the
+    # legacy /messages/search route as a compatibility alias.
+    session_id = match_session_route(path, "search")
+    if session_id is not None:
+        handle_messages_search(handler, session_id=session_id, query=query, manager=manager, deps=deps)
+        return True
     for route_name, route_handler in MESSAGE_GET_ROUTES:
         session_id = match_session_route(path, "messages", route_name)
         if session_id is None:
@@ -579,7 +624,21 @@ def handle_messages_search(handler: Any, *, session_id: str, query: str, manager
     s = manager.get_session(session_id)
     qs = urllib.parse.parse_qs(query)
     search_query = (qs.get("q") or [""])[0]
-    match_limit, limit_error = _parse_bounded_query_int(qs, "limit", default=20, min_value=0, max_value=100)
+    role = (qs.get("role") or [""])[0]
+    if role not in {"", "user", "assistant"}:
+        deps.json_response(handler, 400, {"error": "role must be user or assistant"})
+        return
+    role_filter = role or None
+    # User-message navigation needs position metadata without a text query.
+    # Reserve q=* only when a role filter is present; ordinary search keeps '*'
+    # as a literal substring.
+    match_all = bool(role_filter and search_query.strip() == "*")
+    direction = (qs.get("direction") or [""])[0]
+    if direction not in {"", "previous", "next"}:
+        deps.json_response(handler, 400, {"error": "direction must be previous or next"})
+        return
+    anchor_q = qs.get("anchor")
+    match_limit, limit_error = _parse_bounded_query_int(qs, "limit", default=20, min_value=0, max_value=200)
     if limit_error is not None:
         deps.json_response(handler, 400, {"error": limit_error})
         return
@@ -599,13 +658,15 @@ def handle_messages_search(handler: Any, *, session_id: str, query: str, manager
         deps.json_response(handler, 400, {"error": "count_max is only supported with order=first"})
         return
     before_byte: int | None = None
+    after_byte = 0
     before_q = qs.get("before")
 
     if not s:
         launch_payload = _launch_payload_for_missing_session(deps, session_id)
         if launch_payload is not None:
-            if not isinstance(search_query, str) or not search_query.strip():
-                deps.json_response(handler, 200, {**_launch_payload_response_base(launch_payload, encode_cursor=deps.encode_message_cursor), "query": "", "match_count": 0, "match_count_truncated": False, "matches": []})
+            if not isinstance(search_query, str) or (not search_query.strip() and not match_all):
+                fields = _search_result_fields("", 0, False, [])
+                deps.json_response(handler, 200, {**_launch_payload_response_base(launch_payload, encode_cursor=deps.encode_message_cursor), **fields})
                 return
             log_path = _launch_payload_existing_log_path(launch_payload)
             if log_path is not None:
@@ -616,16 +677,31 @@ def handle_messages_search(handler: Any, *, session_id: str, query: str, manager
                     except MessageCursorError as e:
                         deps.json_response(handler, 409, {"error": str(e)})
                         return
+                if anchor_q is not None and anchor_q and anchor_q[0].strip():
+                    try:
+                        anchor_byte = deps.decode_message_cursor(anchor_q[0], kind="history", session=cursor_session)
+                    except MessageCursorError as e:
+                        deps.json_response(handler, 409, {"error": str(e)})
+                        return
+                    if direction == "previous":
+                        before_byte = anchor_byte
+                        order = "latest"
+                    elif direction == "next":
+                        after_byte = _next_jsonl_record_byte(log_path, anchor_byte)
+                        order = "first"
                 match_count, matches, match_count_truncated = _search_chat_log_bounded(
                     log_path,
                     search_query,
                     limit=match_limit,
                     max_line_bytes=deps.transcript_search_max_line_bytes,
                     before_byte=before_byte,
+                    after_byte=after_byte,
                     order=order,
                     count_limit=count_max if count_max > 0 else None,
+                    role=role_filter,
+                    match_all=match_all,
                 )
-                matches = _attach_search_load_cursors(matches, session=cursor_session, encode_cursor=deps.encode_message_cursor)
+                matches = _attach_search_load_cursors(matches, session=cursor_session, encode_cursor=deps.encode_message_cursor, query=search_query)
                 if before_byte is None:
                     lifecycle_count, lifecycle_matches = _search_launch_payload_lifecycle_events(
                         launch_payload,
@@ -651,10 +727,7 @@ def handle_messages_search(handler: Any, *, session_id: str, query: str, manager
                     200,
                     {
                         **_launch_payload_response_base(launch_payload, encode_cursor=deps.encode_message_cursor),
-                        "query": search_query.strip(),
-                        "match_count": match_count,
-                        "match_count_truncated": bool(match_count_truncated),
-                        "matches": matches,
+                        **_search_result_fields(search_query, match_count, match_count_truncated, matches),
                     },
                 )
                 return
@@ -675,10 +748,7 @@ def handle_messages_search(handler: Any, *, session_id: str, query: str, manager
                 200,
                 {
                     **_launch_payload_response_base(launch_payload, encode_cursor=deps.encode_message_cursor),
-                    "query": search_query.strip(),
-                    "match_count": match_count,
-                    "match_count_truncated": False,
-                    "matches": matches,
+                    **_search_result_fields(search_query, match_count, False, matches),
                 },
             )
             return
@@ -691,12 +761,24 @@ def handle_messages_search(handler: Any, *, session_id: str, query: str, manager
         except MessageCursorError as e:
             deps.json_response(handler, 409, {"error": str(e)})
             return
+    if anchor_q is not None and anchor_q and anchor_q[0].strip():
+        try:
+            anchor_byte = deps.decode_message_cursor(anchor_q[0], kind="history", session=s)
+        except MessageCursorError as e:
+            deps.json_response(handler, 409, {"error": str(e)})
+            return
+        if direction == "previous":
+            before_byte = anchor_byte
+            order = "latest"
+        elif direction == "next":
+            after_byte = _next_jsonl_record_byte(s.log_path, anchor_byte) if s.log_path and s.log_path.exists() else anchor_byte
+            order = "first"
     transcript = _message_transcript_identity(s)
-    if not isinstance(search_query, str) or not search_query.strip():
-        deps.json_response(handler, 200, {**transcript, "query": "", "match_count": 0, "match_count_truncated": False, "matches": []})
+    if not isinstance(search_query, str) or (not search_query.strip() and not match_all):
+        deps.json_response(handler, 200, {**transcript, **_search_result_fields("", 0, False, [])})
         return
     if s.log_path is None or (not s.log_path.exists()):
-        deps.json_response(handler, 200, {**transcript, "query": search_query.strip(), "match_count": 0, "match_count_truncated": False, "matches": []})
+        deps.json_response(handler, 200, {**transcript, **_search_result_fields(search_query, 0, False, [])})
         return
     match_count, matches, match_count_truncated = _search_chat_log_bounded(
         s.log_path,
@@ -704,13 +786,71 @@ def handle_messages_search(handler: Any, *, session_id: str, query: str, manager
         limit=match_limit,
         max_line_bytes=deps.transcript_search_max_line_bytes,
         before_byte=before_byte,
+        after_byte=after_byte,
         order=order,
         count_limit=count_max if count_max > 0 else None,
+        role=role_filter,
+        match_all=match_all,
     )
-    matches = _attach_search_load_cursors(matches, session=s, encode_cursor=deps.encode_message_cursor)
+    matches = _attach_search_load_cursors(matches, session=s, encode_cursor=deps.encode_message_cursor, query=search_query)
     matches = manager._attach_notification_texts(matches)
     matches = _clip_search_match_text(matches, text_max, query=search_query)
-    deps.json_response(handler, 200, {**transcript, "query": search_query.strip(), "match_count": match_count, "match_count_truncated": bool(match_count_truncated), "matches": matches})
+    deps.json_response(handler, 200, {**transcript, **_search_result_fields(search_query, match_count, match_count_truncated, matches)})
+
+
+def handle_messages_window(handler: Any, *, session_id: str, query: str, manager: Any, deps: MessageRouteDeps) -> None:
+    if not deps.require_auth(handler):
+        handler._unauthorized()
+        return
+    manager.refresh_session_meta(session_id)
+    session = manager.get_session(session_id)
+    launch_payload = None if session is not None else _launch_payload_for_missing_session(deps, session_id)
+    cursor_session = session if session is not None else (_launch_payload_cursor_session(launch_payload) if launch_payload else None)
+    if cursor_session is None:
+        deps.json_response(handler, 404, {"error": "unknown session"})
+        return
+    log_path = cursor_session.log_path
+    if log_path is None or not log_path.exists():
+        deps.json_response(handler, 409, {"error": "transcript_pending"})
+        return
+    qs = urllib.parse.parse_qs(query)
+    cursor_q = qs.get("cursor")
+    if cursor_q is None or not cursor_q or not cursor_q[0].strip():
+        deps.json_response(handler, 400, {"error": "cursor required"})
+        return
+    before_limit, before_error = _parse_bounded_query_int(qs, "before", default=30, min_value=0, max_value=100)
+    after_limit, after_error = _parse_bounded_query_int(qs, "after", default=30, min_value=0, max_value=100)
+    if before_error is not None or after_error is not None:
+        deps.json_response(handler, 400, {"error": before_error or after_error})
+        return
+    try:
+        position = deps.decode_message_cursor(cursor_q[0], kind="history", session=cursor_session)
+    except MessageCursorError as exc:
+        deps.json_response(handler, 409, {"error": str(exc)})
+        return
+    events, next_before, has_older, has_newer = _read_chat_window_around(
+        log_path,
+        position_byte=position,
+        before_limit=before_limit,
+        after_limit=after_limit,
+        max_line_bytes=deps.transcript_search_max_line_bytes,
+    )
+    events = manager._attach_notification_texts(events)
+    events = _attach_history_cursors_impl(events, session=cursor_session, encode_cursor=deps.encode_message_cursor)
+    history_cursor = deps.encode_message_cursor(kind="history", session=cursor_session, pos=next_before) if has_older and next_before > 0 else None
+    identity = _message_transcript_identity(session) if session is not None else _launch_payload_response_base(launch_payload, encode_cursor=deps.encode_message_cursor)
+    deps.json_response(
+        handler,
+        200,
+        {
+            **identity,
+            "events": events,
+            "history_cursor": history_cursor,
+            "has_older": bool(has_older),
+            "has_newer": bool(has_newer),
+            "jumped_window": True,
+        },
+    )
 
 
 def handle_messages_tail(handler: Any, *, session_id: str, query: str, manager: Any, deps: MessageRouteDeps) -> None:
@@ -1000,6 +1140,7 @@ def handle_messages_live(handler: Any, *, session_id: str, query: str, manager: 
 MESSAGE_GET_ROUTES = (
     ("export", handle_messages_export),
     ("search", handle_messages_search),
+    ("window", handle_messages_window),
     ("tail", handle_messages_tail),
     ("history", handle_messages_history),
     ("live", handle_messages_live),

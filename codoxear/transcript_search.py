@@ -12,10 +12,20 @@ from .rollout_chat_events import _build_no_response_event
 TRANSCRIPT_SEARCH_MAX_LINE_BYTES = int(os.environ.get("CODEX_WEB_TRANSCRIPT_SEARCH_MAX_LINE_BYTES", str(4 * 1024 * 1024)))
 
 
-def chat_event_matches_query(event: dict[str, Any], needle: str) -> bool:
-    role = event.get("role")
-    if role not in {"user", "assistant"}:
+def chat_event_matches_query(
+    event: dict[str, Any],
+    needle: str,
+    *,
+    role: str | None = None,
+    match_all: bool = False,
+) -> bool:
+    event_role = event.get("role")
+    if event_role not in {"user", "assistant"}:
         return False
+    if role is not None and event_role != role:
+        return False
+    if match_all:
+        return True
     text = event.get("text")
     return isinstance(text, str) and needle in text.casefold()
 
@@ -101,11 +111,14 @@ def iter_jsonl_records_forward_bounded(
     max_line_bytes: int = TRANSCRIPT_SEARCH_MAX_LINE_BYTES,
     on_oversized_skip: Callable[[int, int], None] | None = None,
     before_byte: int | None = None,
+    start_byte: int = 0,
 ) -> Iterator[_rollout_log.JsonlRecord]:
     limit = max(1, int(max_line_bytes))
     stop_before = None if before_byte is None else max(0, int(before_byte))
+    start_at = max(0, int(start_byte))
     with log_path.open("rb") as f:
-        offset = 0
+        f.seek(start_at)
+        offset = start_at
         while True:
             start = offset
             if stop_before is not None and start >= stop_before:
@@ -175,6 +188,7 @@ def iter_positioned_chat_events_forward(
     max_line_bytes: int = TRANSCRIPT_SEARCH_MAX_LINE_BYTES,
     on_oversized_skip: Callable[[int, int], None] | None = None,
     before_byte: int | None = None,
+    start_byte: int = 0,
 ) -> Iterator[dict[str, Any]]:
     # Search must project the same visible rows as tail/history/live without
     # first building whole-log record and event lists. The two batch transforms
@@ -185,16 +199,20 @@ def iter_positioned_chat_events_forward(
     # visible event is emitted so terminal error rows suppress generic
     # no-response injection exactly as the batch injector did.
     stop_before = None if before_byte is None else max(0, int(before_byte))
-    cc_pending_tool_ids: set[str] = set()
+    start_at = max(0, int(start_byte))
+    cc_pending_tool_ids: set[str] = _rollout_log._cc_pending_tool_ids_before(log_path, start_at) if start_at > 0 else set()
     last_assistant_key: tuple[str, str] | None = None
-    open_user_byte: int | None = None
-    open_turn_has_assistant = False
+    if start_at > 0:
+        open_user_byte, open_turn_has_assistant = _rollout_log._prior_open_turn_context(log_path, start_at)
+    else:
+        open_user_byte, open_turn_has_assistant = None, False
 
     for record in iter_jsonl_records_forward_bounded(
         log_path,
         max_line_bytes=max_line_bytes,
         on_oversized_skip=on_oversized_skip,
         before_byte=stop_before,
+        start_byte=start_at,
     ):
         if stop_before is not None and record.start >= stop_before:
             break
@@ -243,11 +261,14 @@ def search_chat_log_bounded(
     limit: int = 20,
     max_line_bytes: int = TRANSCRIPT_SEARCH_MAX_LINE_BYTES,
     before_byte: int | None = None,
+    after_byte: int = 0,
     order: str = "first",
     count_limit: int | None = None,
+    role: str | None = None,
+    match_all: bool = False,
 ) -> tuple[int, list[dict[str, Any]], bool]:
     needle = query.strip().casefold()
-    if not needle:
+    if not needle and not match_all:
         return 0, [], False
     max_matches = max(0, int(limit))
     stop_before = None if before_byte is None else max(0, int(before_byte))
@@ -265,11 +286,17 @@ def search_chat_log_bounded(
         if stop_before is None or start < stop_before:
             skipped_oversized = True
 
-    for event in iter_positioned_chat_events_forward(log_path, max_line_bytes=max_line_bytes, on_oversized_skip=mark_oversized_skip, before_byte=stop_before):
+    for event in iter_positioned_chat_events_forward(
+        log_path,
+        max_line_bytes=max_line_bytes,
+        on_oversized_skip=mark_oversized_skip,
+        before_byte=stop_before,
+        start_byte=max(0, int(after_byte)),
+    ):
         event_before = event.get("_before_byte")
         if stop_before is not None and isinstance(event_before, int) and event_before >= stop_before:
             break
-        if not chat_event_matches_query(event, needle):
+        if not chat_event_matches_query(event, needle, role=role, match_all=match_all):
             continue
         if max_count is not None and count >= max_count:
             truncated = True
@@ -284,6 +311,37 @@ def search_chat_log_bounded(
         elif len(matches) < max_matches:
             matches.append(event)
     return count, matches, truncated or skipped_oversized
+
+
+def read_chat_window_around(
+    log_path: Path,
+    *,
+    position_byte: int,
+    before_limit: int = 30,
+    after_limit: int = 30,
+    max_line_bytes: int = TRANSCRIPT_SEARCH_MAX_LINE_BYTES,
+) -> tuple[list[dict[str, Any]], int, bool, bool]:
+    """Return a bounded normalized transcript window straddling a record cursor."""
+    size = int(log_path.stat().st_size)
+    position = max(0, min(int(position_byte), size))
+    left, next_before, has_older = _rollout_log._read_chat_history_page(
+        log_path,
+        before_byte=position,
+        limit=max(0, int(before_limit)),
+    )
+    right_limit = max(0, int(after_limit)) + 1  # target plus following rows
+    right: list[dict[str, Any]] = []
+    has_newer = False
+    for event in iter_positioned_chat_events_forward(
+        log_path,
+        max_line_bytes=max_line_bytes,
+        start_byte=position,
+    ):
+        if len(right) >= right_limit:
+            has_newer = True
+            break
+        right.append(event)
+    return left + right, next_before, bool(has_older), has_newer
 
 
 def search_chat_log(

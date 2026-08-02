@@ -95,5 +95,7 @@ def attach_history_cursors(
         ev2 = {k: v for k, v in ev.items() if k != "_before_byte"}
         if isinstance(pos, int) and pos >= 0:
             ev2["history_cursor"] = encode_cursor(kind="history", session=session, pos=pos)
+            if not isinstance(ev2.get("message_id"), str) or not ev2["message_id"]:
+                ev2["message_id"] = f"byte-{pos}-{ev2.get('role', 'message')}"
         out.append(ev2)
     return out

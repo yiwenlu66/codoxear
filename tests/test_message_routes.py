@@ -17,6 +17,7 @@ from codoxear.message_routes import handle_messages_live
 from codoxear.message_routes import handle_messages_live_stream
 from codoxear.message_routes import handle_messages_search
 from codoxear.message_routes import handle_messages_tail
+from codoxear.message_routes import handle_messages_window
 from codoxear.post_log_recovery import POST_LOG_BOUND_BACKEND_STOPPED_TEXT
 from codoxear.session_model import Session
 from codoxear.token_signal import TOKEN_CLEAR
@@ -885,3 +886,120 @@ def test_messages_unauthorized_short_circuits() -> None:
     assert handler.unauthorized is True
     assert responses == []
     assert manager.touched is False
+
+
+def _write_search_rows(path: Path, rows: list[tuple[str, str]]) -> None:
+    payloads = []
+    for index, (role, text) in enumerate(rows):
+        if role == "user":
+            payloads.append({"type": "event_msg", "payload": {"type": "user_message", "message": text}, "ts": float(index)})
+        else:
+            payloads.append({
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": text}],
+                    "phase": "final_answer",
+                },
+                "ts": float(index),
+            })
+    path.write_text("".join(json.dumps(row) + "\n" for row in payloads), encoding="utf-8")
+
+
+def test_search_contract_has_exact_total_normalized_snippets_role_and_before_paging() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "search.jsonl"
+        _write_search_rows(log_path, [
+            ("user", "first Needle from user"),
+            ("assistant", "assistant context " + "x" * 50 + " NEEDLE " + "y" * 50),
+            ("user", "last needle from user"),
+        ])
+        session = _session(td, log_path)
+        deps, responses, _metrics = _deps()
+        manager = _TailManager(session)
+
+        handle_messages_search(_FakeHandler(), session_id="s1", query="q=needle&limit=2", manager=manager, deps=deps)
+        status, body = responses.pop()
+        assert status == 200
+        assert body["total"] == 3
+        assert body["truncated"] is True
+        assert [match["role"] for match in body["matches"]] == ["user", "assistant"]
+        assert all(isinstance(match["message_id"], str) for match in body["matches"])
+        assert all(isinstance(match["before_byte"], str) for match in body["matches"])
+        assert len(body["matches"][1]["snippet"]) <= 60
+        assert "needle" in body["matches"][1]["snippet"].casefold()
+
+        boundary = body["matches"][1]["before_byte"]
+        handle_messages_search(
+            _FakeHandler(),
+            session_id="s1",
+            query=f"q=*&role=user&before={boundary}&limit=200",
+            manager=manager,
+            deps=deps,
+        )
+        _status, prefix = responses.pop()
+        assert prefix["total"] == 1
+        assert [match["snippet"] for match in prefix["matches"]] == ["first Needle from user"]
+
+        handle_messages_search(_FakeHandler(), session_id="s1", query="q=needle&role=assistant&limit=200", manager=manager, deps=deps)
+        _status, assistants = responses.pop()
+        assert assistants["total"] == 1
+        assert assistants["matches"][0]["role"] == "assistant"
+
+
+def test_messages_window_straddles_search_cursor_and_stays_bounded() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "window.jsonl"
+        rows = [("user" if index % 2 == 0 else "assistant", f"message {index}" + (" TARGET" if index == 40 else "")) for index in range(90)]
+        _write_search_rows(log_path, rows)
+        session = _session(td, log_path)
+        deps, responses, _metrics = _deps()
+        manager = _TailManager(session)
+
+        handle_messages_search(_FakeHandler(), session_id="s1", query="q=TARGET&limit=1", manager=manager, deps=deps)
+        _status, search = responses.pop()
+        cursor = search["matches"][0]["before_byte"]
+        handle_messages_window(
+            _FakeHandler(),
+            session_id="s1",
+            query=f"cursor={cursor}&before=3&after=4",
+            manager=manager,
+            deps=deps,
+        )
+        status, window = responses.pop()
+        assert status == 200
+        assert window["jumped_window"] is True
+        assert window["has_older"] is True
+        assert window["has_newer"] is True
+        assert len(window["events"]) == 8  # 3 before + target + 4 after
+        target_index = next(index for index, event in enumerate(window["events"]) if "TARGET" in event["text"])
+        assert target_index == 3
+        assert all(isinstance(event.get("history_cursor"), str) for event in window["events"])
+
+
+def test_streaming_search_scans_five_megabytes_with_exact_count(record_property) -> None:
+    import time
+
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "large-search.jsonl"
+        rows = [("user", f"needle row {index} " + "x" * 720) for index in range(7000)]
+        _write_search_rows(log_path, rows)
+        assert log_path.stat().st_size >= 5 * 1024 * 1024
+        session = _session(td, log_path)
+        deps, responses, _metrics = _deps(transcript_search_max_line_bytes=4096)
+        started = time.perf_counter()
+        handle_messages_search(
+            _FakeHandler(),
+            session_id="s1",
+            query="q=needle&limit=200",
+            manager=_TailManager(session),
+            deps=deps,
+        )
+        elapsed = time.perf_counter() - started
+        record_property("five_mb_search_seconds", elapsed)
+        status, body = responses.pop()
+        assert status == 200
+        assert body["total"] == 7000
+        assert len(body["matches"]) == 200
+        assert body["truncated"] is True

@@ -66,11 +66,10 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertNotContains(["key-prevent-user"], calls)
         self.assertNotContains(["blocked-prevent"], calls)
 
-    def test_navigation_boundary_reports_loaded_message_limit(self) -> None:
-        calls = eval_navigation()["calls"]
-        self.assertContains(["prevent"], calls)
-        self.assertContains(["stop"], calls)
-        self.assertContains(["toast", "At first loaded user message"], calls)
+    def test_navigation_boundary_uses_server_transcript_wording(self) -> None:
+        source = APP_CHAT_NAVIGATION_JS.read_text(encoding="utf-8")
+        self.assertIn("At first user message", source)
+        self.assertNotIn("loaded user message", source.lower())
 
 
 if __name__ == "__main__":

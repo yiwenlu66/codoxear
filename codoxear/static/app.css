@@ -1080,7 +1080,14 @@
         flex: 0 0 32px;
         width: 32px;
         height: 32px;
+        min-width: 32px;
+        min-height: 32px;
         border-radius: 0;
+      }
+      .chatSearchBar .icon-btn::after {
+        content: "";
+        position: absolute;
+        inset: -6px;
       }
       mark.searchHit {
         padding: 0;
