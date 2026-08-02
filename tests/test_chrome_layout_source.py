@@ -43,23 +43,44 @@ class TestChromeLayoutSource(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.touch = media_block(CSS, "@media (max-width: 700px), (pointer: coarse)")
 
-    def test_message_copy_control_is_in_the_bubble_meta_row(self) -> None:
-        self.assertIn('const meta = el("div", { class: "msg-meta" });', ROWS)
-        self.assertLess(ROWS.index("bubble.appendChild(meta)"), ROWS.index("shell.appendChild(bubble)"))
-        self.assertNotIn("shell.appendChild(copyBtn)", ROWS)
-        meta = rule_body(CSS, ".msg-meta")
-        self.assertIn("display: flex", meta)
-        self.assertIn("justify-content: space-between", meta)
+    def test_message_copy_control_uses_the_shell_gutter(self) -> None:
+        self.assertIn("shell.appendChild(copyBtn)", ROWS)
+        self.assertNotIn('class: "msg-meta"', ROWS)
+        shell = rule_body(CSS, ".msg-shell")
+        self.assertIn("calc(100% - 36px)", shell)
         copy = rule_body(CSS, ".msg-copy-btn")
+        self.assertIn("position: absolute", copy)
+        self.assertIn("right: -36px", copy)
         self.assertIn("width: 30px", copy)
         self.assertIn("height: 30px", copy)
-        self.assertNotIn("position: absolute", copy)
-        self.assertNotIn("right:", copy)
+        self.assertIn("opacity: 0", copy)
+        self.assertIn("pointer-events: none", copy)
+        user_copy = rule_body(CSS, ".msg-shell.user .msg-copy-btn")
+        self.assertIn("left: -36px", user_copy)
+        self.assertIn("@media (hover: hover) and (pointer: fine) {\n        .msg-row:hover .msg-copy-btn", CSS)
+        self.assertIn(".msg-row:focus-within .msg-copy-btn", CSS)
+        self.assertIn(".msg-row.show-copy .msg-copy-btn", CSS)
+
+    def test_gutter_copy_geometry_stays_inside_a_390px_viewport(self) -> None:
+        viewport = 390
+        chat_padding = 10
+        button = 30
+        offset = 36
+        content_width = viewport - (2 * chat_padding)
+        shell_width = min(760, content_width * 0.82, content_width - offset)
+        assistant_left = chat_padding + shell_width + (offset - button)
+        user_left = chat_padding + (content_width - shell_width) - offset
+        self.assertGreaterEqual(assistant_left, chat_padding)
+        self.assertLessEqual(assistant_left + button, viewport - chat_padding)
+        self.assertGreaterEqual(user_left, chat_padding)
+        self.assertLessEqual(user_left + button, viewport - chat_padding)
+        self.assertEqual(offset - button, 6)
 
     def test_touch_secondary_controls_keep_visual_size_and_gain_hit_slop(self) -> None:
         copy = rule_body(self.touch, ".msg-copy-btn")
         self.assertIn("width: 30px", copy)
         self.assertIn("height: 30px", copy)
+        self.assertNotIn("opacity: 1", copy)
         self.assertNotIn("44px", copy)
         copy_slop = rule_body(self.touch, ".msg-copy-btn::after")
         self.assertIn("position: absolute", copy_slop)
@@ -97,15 +118,21 @@ class TestChromeLayoutSource(unittest.TestCase):
         self.assertIn('const chatHeader = el("div", { class: "chatHeader", id: "chatHeader" }, [chatTimeChip, chatNavRail]);', SHELL)
         header = rule_body(CSS, ".chatHeader")
         self.assertIn("display: grid", header)
+        self.assertIn("grid-template-columns: minmax(0, 1fr) auto auto", header)
         self.assertIn("padding: 6px 12px 8px", header)
-        time = rule_body(CSS, ".chatTimeChip", "grid-column: 2")
-        self.assertIn("grid-column: 2", time)
-        self.assertNotIn("position:", time)
-        self.assertNotIn("border:", time)
-        self.assertNotIn("background:", time)
+        self.assertIn("--chat-nav-rail-w: 120px", header)
+        time = rule_body(CSS, ".chatTimeChip", "grid-column: 1 / 3")
+        self.assertIn("grid-column: 1 / 3", time)
+        self.assertIn("max-width: min(220px, calc(100vw - 24px - var(--chat-nav-rail-w)))", time)
+        self.assertIn("overflow: hidden", time)
+        self.assertIn("text-overflow: ellipsis", time)
+        self.assertIn("text-align: center", time)
         rail = rule_body(CSS, ".chatNavRail")
         self.assertIn("grid-column: 3", rail)
         self.assertNotIn("align-self", rail)
+        self.assertIn("isTouchCopyMode", APP)
+        self.assertIn("window.getSelection().toString()", APP)
+        self.assertIn("a, button, input, select, textarea, [role='link'], mark", APP)
         self.assertNotIn("display: none !important", self.touch)
 
 

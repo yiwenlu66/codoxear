@@ -34,6 +34,11 @@ def eval_message_rows() -> dict:
               values: new Set(String(attrs.class || "").split(/\\s+/).filter(Boolean)),
               add(...names) {{ for (const name of names) this.values.add(name); }},
               remove(...names) {{ for (const name of names) this.values.delete(name); }},
+              toggle(name, force) {{
+                const next = force === undefined ? !this.values.has(name) : Boolean(force);
+                if (next) this.values.add(name); else this.values.delete(name);
+                return next;
+              }},
               has(name) {{ return this.values.has(name); }},
               contains(name) {{ return this.values.has(name); }},
             }},
@@ -61,7 +66,7 @@ def eval_message_rows() -> dict:
           consoleError: (...args) => calls.push(["error", args[0]]),
         }};
         const made = rows.makeRow({{ role: "assistant", text: "hello", ts: 7, history_cursor: "h1", message_class: "warning" }}, {{ ts: 12, pending: false }}, deps);
-        const copyBtn = made.row.children[0].children[0].children[1].children[1];
+        const copyBtn = made.row.children[0].children[1];
         copyBtn.onclick({{ preventDefault() {{}}, stopPropagation() {{}} }}).then(() => {{
           const fallbackDeps = {{ ...deps, chatMarkdownHtmlCached: () => {{ throw new Error("markdown boom"); }} }};
           const fallback = rows.safeMakeRow({{ role: "assistant", text: "raw", history_cursor: "h2", message_class: "error" }}, {{ ts: 14, pending: true }}, fallbackDeps);
@@ -115,12 +120,18 @@ def eval_message_rows() -> dict:
           }}
           const copyRuntimeRows = [makeCopyRow("c1", 10), makeCopyRow("c2", 30), makeCopyRow("c3", 50)];
           const copyRoot = {{
-            querySelectorAll: (selector) => selector === ".msg-copy-btn" ? copyRuntimeRows.map((row) => row.copyButton) : selector === ".msg-row" ? copyRuntimeRows : [],
+            querySelectorAll: (selector) => selector === ".msg-copy-btn" ? copyRuntimeRows.map((row) => row.copyButton) : selector === ".msg-row.show-copy" ? copyRuntimeRows.filter((row) => row.classList.has("show-copy")) : selector === ".msg-row" ? copyRuntimeRows : [],
           }};
           const copyRuntime = rows.createMessageCopyNavigationRuntime({{ root: copyRoot }});
           const copyRuntimeInitial = copyRuntime.syncTabStops(copyRuntimeRows);
           const copyRuntimeSet = copyRuntime.setActiveRow(copyRuntimeRows[0], {{ focusCopy: true }});
           const copyRuntimeJump = copyRuntime.jumpTarget(copyRuntimeRows, 1, 0);
+          const touchFirst = copyRuntime.toggleTouchRow(copyRuntimeRows[0]);
+          const touchFirstState = copyRuntimeRows.map((row) => row.classList.has("show-copy"));
+          const touchSecond = copyRuntime.toggleTouchRow(copyRuntimeRows[1]);
+          const touchSecondState = copyRuntimeRows.map((row) => row.classList.has("show-copy"));
+          const touchHidden = copyRuntime.toggleTouchRow(copyRuntimeRows[1]);
+          const touchHiddenState = copyRuntimeRows.map((row) => row.classList.has("show-copy"));
           const copyRuntimeReset = copyRuntime.reset();
           let copyRuntimeMissingRoot = false;
           try {{ rows.createMessageCopyNavigationRuntime({{}}); }} catch (err) {{ copyRuntimeMissingRoot = /root/.test(String(err && err.message || err)); }}
@@ -149,8 +160,8 @@ def eval_message_rows() -> dict:
             dedupeKey: made.row.dataset.assistantDedupeKey,
             bubbleClasses: Array.from(made.bubble.classList.values).sort(),
             markdownHtml: made.bubble.children[0].innerHTML,
-            timestampText: made.bubble.children[1].children[0].textContent,
-            copyInsideMeta: made.bubble.children[1].children[1] === copyBtn,
+            timestampText: made.bubble.children[1].textContent,
+            copyOutsideBubble: made.row.children[0].children[0] === made.bubble && made.row.children[0].children[1] === copyBtn,
             copyAttrs: copyBtn.attrs,
             copiedClassAfterTimer: copyBtn.classList.has("copied"),
             calls,
@@ -184,6 +195,12 @@ def eval_message_rows() -> dict:
             copyRuntimeSet: copyRuntimeSet.name,
             copyRuntimeJump: copyRuntimeJump.target.name,
             copyRuntimeReset: copyRuntimeReset.name,
+            touchFirst: touchFirst && touchFirst.name,
+            touchFirstState,
+            touchSecond: touchSecond && touchSecond.name,
+            touchSecondState,
+            touchHidden: touchHidden && touchHidden.name,
+            touchHiddenState,
             copyRuntimeTabs: copyRuntimeRows.map((row) => ({{ name: row.name, tabIndex: row.copyButton.tabIndex, disabled: row.copyButton.disabled, hidden: row.copyButton.attrs["aria-hidden"] || "" }})),
             copyRuntimeActive: copyRuntime.activeRow().name,
             copyRuntimeMissingRoot,
@@ -223,7 +240,7 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
         self.assertIn("warning", result["bubbleClasses"])
         self.assertEqual(result["markdownHtml"], "<p>s1:hello</p>")
         self.assertEqual(result["timestampText"], "T0")
-        self.assertTrue(result["copyInsideMeta"])
+        self.assertTrue(result["copyOutsideBubble"])
         self.assertEqual(result["copyAttrs"]["title"], "Copy raw markdown")
         self.assertFalse(result["copiedClassAfterTimer"])
         self.assertIn(["upgrade", "<p>s1:hello</p>"], result["calls"])
@@ -261,6 +278,12 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
         self.assertEqual(result["copyRuntimeSet"], "c1")
         self.assertEqual(result["copyRuntimeJump"], "c2")
         self.assertEqual(result["copyRuntimeReset"], "c3")
+        self.assertEqual(result["touchFirst"], "c1")
+        self.assertEqual(result["touchFirstState"], [True, False, False])
+        self.assertEqual(result["touchSecond"], "c2")
+        self.assertEqual(result["touchSecondState"], [False, True, False])
+        self.assertIsNone(result["touchHidden"])
+        self.assertEqual(result["touchHiddenState"], [False, False, False])
         self.assertEqual(result["copyRuntimeTabs"], [
             {"name": "c1", "tabIndex": -1, "disabled": False, "hidden": ""},
             {"name": "c2", "tabIndex": -1, "disabled": False, "hidden": ""},

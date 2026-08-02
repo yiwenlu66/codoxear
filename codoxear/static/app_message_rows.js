@@ -27,6 +27,7 @@
     const row = el("div", { class: `msg-row ${role}` });
     row.dataset.role = role;
     if (typeof ts === "number" && Number.isFinite(ts)) row.dataset.ts = String(ts);
+    if (!pending && typeof ev.message_id === "string" && ev.message_id) row.dataset.messageId = ev.message_id;
     if (!pending && typeof ev.history_cursor === "string" && ev.history_cursor) row.dataset.historyCursor = ev.history_cursor;
     const messageClass = typeof ev.message_class === "string" ? ev.message_class : "";
     const assistantDedupeKey = role === "assistant" ? chatAssistantDedupeKey(ev) : "";
@@ -39,6 +40,7 @@
     const md = el("div", { class: "md", html: chatMarkdownHtmlCached(ev.text, selectedSessionId) });
     bubble.appendChild(md);
     void upgradeCandidateFileRefs(md);
+    if (typeof ts === "number" && Number.isFinite(ts)) bubble.appendChild(el("div", { class: "ts", text: time24(new Date(ts * 1000)) }));
 
     let copyBtn = null;
     if (typeof ev.text === "string" && ev.text.length) {
@@ -63,13 +65,6 @@
         }
       };
     }
-    if ((typeof ts === "number" && Number.isFinite(ts)) || copyBtn) {
-      const meta = el("div", { class: "msg-meta" });
-      if (typeof ts === "number" && Number.isFinite(ts)) meta.appendChild(el("div", { class: "ts", text: time24(new Date(ts * 1000)) }));
-      if (copyBtn) meta.appendChild(copyBtn);
-      bubble.appendChild(meta);
-    }
-
     if (pending) {
       bubble.style.opacity = "0.72";
       bubble.setAttribute("data-pending", "1");
@@ -78,6 +73,7 @@
 
     const shell = el("div", { class: `msg-shell ${role}` });
     shell.appendChild(bubble);
+    if (copyBtn) shell.appendChild(copyBtn);
 
     row.appendChild(shell);
     return { row, bubble };
@@ -98,6 +94,7 @@
       const row = el("div", { class: `msg-row ${role}` });
       row.dataset.role = role;
       if (ts !== null) row.dataset.ts = String(ts);
+      if (!pending && typeof ev?.message_id === "string" && ev.message_id) row.dataset.messageId = ev.message_id;
       if (!pending && typeof ev?.history_cursor === "string" && ev.history_cursor) row.dataset.historyCursor = ev.history_cursor;
       const messageClass = typeof ev?.message_class === "string" ? ev.message_class : "";
       const assistantDedupeKey = role === "assistant" ? chatAssistantDedupeKey(ev) : "";
@@ -266,8 +263,18 @@
       return loadedCopyJumpTarget(rows, activeRowSnapshot(), direction, threshold);
     }
 
+    function toggleTouchRow(row) {
+      if (!row || !row.isConnected) return null;
+      const shown = row.classList.contains("show-copy");
+      const hasCopy = Boolean(messageCopyButtonForRow(row));
+      for (const candidate of root.querySelectorAll(".msg-row.show-copy")) candidate.classList.remove("show-copy");
+      if (!shown && hasCopy) row.classList.add("show-copy");
+      return !shown && hasCopy ? row : null;
+    }
+
     function reset() {
       activeRow = null;
+      for (const row of root.querySelectorAll(".msg-row.show-copy")) row.classList.remove("show-copy");
       return syncTabStops();
     }
 
@@ -277,6 +284,7 @@
       reset,
       setActiveRow,
       syncTabStops,
+      toggleTouchRow,
     });
   }
 

@@ -2259,6 +2259,20 @@
           if (row && chatInner.contains(row)) setActiveMessageCopyRow(row);
         });
 
+        function isTouchCopyMode() {
+          return window.matchMedia("(max-width: 700px), (pointer: coarse)").matches;
+        }
+
+        addAppEvent(chatInner, "click", (e) => {
+          if (!isTouchCopyMode() || window.getSelection().toString()) return;
+          const target = e.target && typeof e.target.closest === "function" ? e.target : null;
+          if (!target || target.closest("a, button, input, select, textarea, [role='link'], mark")) return;
+          const bubble = target.closest(".msg");
+          const row = bubble && bubble.closest(".msg-row");
+          if (!row || !chatInner.contains(row) || (target !== bubble && !target.closest(".md"))) return;
+          messageCopyNavigationRuntime.toggleTouchRow(row);
+        });
+
         function prefersReducedMotion() {
           return codoxearViewport.prefersReducedMotion();
         }
@@ -2423,6 +2437,9 @@
             prevUserBtn,
             nextUserBtn,
             getSelected: () => selected,
+            getPollGen: () => pollGen,
+            api,
+            loadTranscriptWindowAtCursor,
             loadedUserMessageRows,
             loadedCopyMessageRows,
             loadedUserJumpTarget,
@@ -2432,6 +2449,7 @@
             pulseNavigatedRow,
             setToast,
             openChatSearch,
+            handleAppAuthLoss,
             isTextEntryElement,
             modalIsolationTargets,
             isModalTargetOpen,
@@ -2571,28 +2589,15 @@
             getSelected: () => selected,
             getPollGen: () => pollGen,
             api,
-            setToast,
-            openSession,
+            loadTranscriptWindowAtCursor,
             handleAppAuthLoss,
-            chatSearchTranscriptHint,
             syncVisibleTimeIndicator: () => transcriptScrollRuntime.syncVisibleTimeIndicator(),
             renderedMessageRows,
             rowSearchText,
-            compareRowsInDomOrder,
             clearChatSearchMarks,
             applyChatSearchMarks,
             pulseNavigatedRow,
             prefersReducedMotion,
-            oldestRenderedHistoryCursor,
-            renderDetachedTranscriptWindow,
-            invalidateOlderLoad,
-            setOlderState,
-            showOlderLoadError,
-            hasOlderMessages,
-            isLoadingOlderMessages,
-            olderPageLimit,
-            loadOlderMessages,
-            olderLoadRuntime,
           });
         })();
 
@@ -3235,6 +3240,27 @@
 
         function renderDetachedTranscriptWindow(events, { hasMore = false } = {}) {
           return transcriptRenderRuntime.renderDetachedTranscriptWindow(events, { hasMore });
+        }
+
+        async function loadTranscriptWindowAtCursor(cursor) {
+          const cleanCursor = String(cursor || "").trim();
+          if (!selected || !cleanCursor) return null;
+          const sid = selected;
+          const gen = pollGen;
+          invalidateOlderLoad();
+          try {
+            const data = await api(`/api/sessions/${sid}/messages/window?cursor=${encodeURIComponent(cleanCursor)}&before=30&after=30`);
+            if (selected !== sid || pollGen !== gen) return null;
+            const events = Array.isArray(data.events) ? data.events : [];
+            activeTailHistoryCursor = usableOlderHistoryCursor(data);
+            setOlderState({ hasMore: Boolean(activeTailHistoryCursor), isLoading: false });
+            if (!renderDetachedTranscriptWindow(events, { hasMore: Boolean(activeTailHistoryCursor) })) return null;
+            return data;
+          } catch (error) {
+            if (error && error.status === 401) handleAppAuthLoss();
+            else if (selected === sid && pollGen === gen) showOlderLoadError();
+            return null;
+          }
         }
 
         function prependOlderEvents(allEvents, { preserveViewport = false } = {}) {
