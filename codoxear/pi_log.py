@@ -367,34 +367,55 @@ def read_pi_run_settings(path: Path, *, max_scan_bytes: int | None = None) -> tu
     except Exception:
         return provider, model, thinking_level
 
-    start = 0 if max_scan_bytes is None else max(0, size - max(0, int(max_scan_bytes)))
+    # Only the LATEST model_change and thinking_level_change are authoritative;
+    # everything older is overwritten. Scan the log backward from the end and
+    # stop once both are found, instead of replaying the entire file. A full
+    # replay still happens when the session never changed either value, but
+    # long sessions that switched stop reading early.
+    last_model_change: dict | None = None
+    last_thinking_change: dict | None = None
+    scan_floor = 0 if max_scan_bytes is None else max(0, size - max(0, int(max_scan_bytes)))
     try:
         with path.open("rb") as f:
-            if start > 0:
-                f.seek(start)
-                _ = f.readline()
-            for raw in f:
-                if not raw.strip():
-                    continue
-                try:
-                    obj = json.loads(raw.decode("utf-8"))
-                except Exception:
-                    continue
-                if not isinstance(obj, dict):
-                    continue
-                typ = obj.get("type")
-                if typ == "model_change":
-                    raw_provider = obj.get("provider")
-                    raw_model = obj.get("modelId")
-                    if isinstance(raw_provider, str) and raw_provider.strip():
-                        provider = raw_provider
-                    if isinstance(raw_model, str) and raw_model.strip():
-                        model = raw_model
-                    continue
-                if typ == "thinking_level_change":
-                    raw_thinking = obj.get("thinkingLevel")
-                    if isinstance(raw_thinking, str) and raw_thinking.strip():
-                        thinking_level = raw_thinking
+            f.seek(0, 2)
+            cursor = f.tell()
+            block = b""
+            while cursor > scan_floor and (last_model_change is None or last_thinking_change is None):
+                read_size = min(65536, cursor - scan_floor)
+                cursor -= read_size
+                f.seek(cursor)
+                block = f.read(read_size) + block
+                lines = block.split(b"\n")
+                if cursor > 0:
+                    block = lines.pop(0)
+                else:
+                    block = b""
+                for raw in reversed(lines):
+                    if not raw.strip():
+                        continue
+                    try:
+                        obj = json.loads(raw.decode("utf-8"))
+                    except Exception:
+                        continue
+                    if not isinstance(obj, dict):
+                        continue
+                    typ = obj.get("type")
+                    if typ == "model_change" and last_model_change is None:
+                        last_model_change = obj
+                    elif typ == "thinking_level_change" and last_thinking_change is None:
+                        last_thinking_change = obj
     except FileNotFoundError:
         return provider, model, thinking_level
+
+    if last_model_change is not None:
+        raw_provider = last_model_change.get("provider")
+        raw_model = last_model_change.get("modelId")
+        if isinstance(raw_provider, str) and raw_provider.strip():
+            provider = raw_provider
+        if isinstance(raw_model, str) and raw_model.strip():
+            model = raw_model
+    if last_thinking_change is not None:
+        raw_thinking = last_thinking_change.get("thinkingLevel")
+        if isinstance(raw_thinking, str) and raw_thinking.strip():
+            thinking_level = raw_thinking
     return provider, model, thinking_level
