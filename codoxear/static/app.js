@@ -291,9 +291,14 @@
         max: "max",
       });
 
-      function sidebarEffortCode(effort) {
+      function sidebarEffortCode(effort, agentBackend) {
         const normalized = typeof effort === "string" ? effort.trim().toLowerCase() : "";
-        return SIDEBAR_REASONING_EFFORT_CODES[normalized] || "";
+        const code = SIDEBAR_REASONING_EFFORT_CODES[normalized] || "";
+        // Claude Code logs carry no effort evidence: the value is launch-time
+        // metadata, not verified current state, so mark it instead of
+        // presenting it as live.
+        if (agentBackend === "cc" && code) return `${code}*`;
+        return code;
       }
 
       function sidebarModelText(s) {

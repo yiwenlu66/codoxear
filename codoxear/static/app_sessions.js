@@ -178,7 +178,7 @@
           const updatedTs = typeof session.updated_ts === "number" && Number.isFinite(session.updated_ts) ? session.updated_ts : session.start_ts;
           const ageSeconds = updatedTs ? Math.max(0, now() / 1000 - updatedTs) : 0;
           const effortText = String(session.reasoning_effort || "").trim().toLowerCase();
-          const effortCode = sidebarEffortCode(effortText);
+          const effortCode = sidebarEffortCode(effortText, session.agent_backend);
           const stateText = launchPending ? "starting" : fmtRelativeAge(ageSeconds);
           const modelText = sidebarModelText(session);
           const branchText = typeof session.git_branch === "string" ? session.git_branch.trim() : "";

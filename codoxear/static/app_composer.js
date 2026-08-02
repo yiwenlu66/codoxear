@@ -739,7 +739,7 @@
       if (!raw || !raw.trim() || getSending()) return;
       const sessionInfo = getSessionInfo(sessionId);
       if (unsupportedPiThinkingCommand(raw, sessionInfo)) {
-        setToast("this session runs an older bridge — send /reload to enable /thinking");
+        setToast("this session runs an older bridge — send /reload to enable /effort");
         return;
       }
       if (getCurrentRunning()) {

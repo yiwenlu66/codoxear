@@ -154,7 +154,7 @@ class TestComposerModelPicker(unittest.TestCase):
             textarea.value = "/thinking high";
             await form.onsubmit({{ preventDefault() {{}} }});
             if (state.sent.length !== 2) throw new Error("incapable Pi /thinking was sent");
-            if (state.toasts.at(-1) !== "this session runs an older bridge — send /reload to enable /thinking") throw new Error("incapable Pi /thinking did not explain how to enable it");
+            if (state.toasts.at(-1) !== "this session runs an older bridge — send /reload to enable /effort") throw new Error("incapable Pi /thinking did not explain how to enable it");
             state.thinkingCapability = true;
             textarea.value = "/thinking high";
             await form.onsubmit({{ preventDefault() {{}} }});
