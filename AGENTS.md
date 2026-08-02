@@ -79,7 +79,8 @@ The UI follows a single “paper” design language. These rules are invariants,
 - **Zero border radius everywhere.** No rounded corners on any element.
 - **Ink/paper/wash palette.** `--ink: #141111`, `--paper: #ffffff`, `--bg: #f6f5f1`, `--wash: #efeee9`, `--hairline: #dcdad4`. Borders are ink (`--border: #141111`), not a neutral gray.
 - **Inversion primaries, no accent blue.** Primary actions are ink-on-paper inversion (`background: var(--ink); color: var(--paper)`). Do not introduce a blue/accent primary.
-- **Square state dots.** Session state dots are squares; fill and motion distinguish busy (filled + pulse), idle (hollow), suppressed/snoozed/blocked (filled, no pulse), and pending/starting (filled amber + pulse). Motion, not hue, is the primary discriminator.
+- **Square state dots.** Session state dots are squares; fill and motion distinguish busy (filled + pulse), idle (hollow), suppressed/snoozed/blocked (filled, no pulse), and pending/starting (filled amber + pulse). Motion, not hue, is the primary discriminator. An active session is a full ink-on-paper inversion: its idle dot is a hollow paper ring, busy/suppressed dots are paper-filled, and pending stays amber.
+- **Bounded overlays.** Pickers and dialogs have deliberate max dimensions and scroll only their content area; they never bleed beneath fixed chrome. Diagnostics rows may switch from two columns to a stacked label/value layout at narrow widths, without changing their visual treatment.
 - **Monospace for data.** Use `--font-mono` for model names, token counts, paths, and other data-like text.
 - **No translucent colors.** No `rgba`/`hsla` with alpha for fills or borders. Backdrops are solid.
 - **No decorative shadows.** `box-shadow`/`outline` is allowed only for functional focus/state indication, never for depth. No `backdrop-filter`.

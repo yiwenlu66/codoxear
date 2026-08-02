@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_CSS = ROOT / "codoxear" / "static" / "app.css"
 APP_HINT_MODE = ROOT / "codoxear" / "static" / "app_hint_mode.js"
+APP_SHELL = ROOT / "codoxear" / "static" / "app_shell.js"
 
 CHROME_SELECTORS = [
     ".topActions .icon-btn",
@@ -90,12 +91,21 @@ class TestPaperDesignLanguageSource(unittest.TestCase):
         self.assertIn("opacity: 1", disabled)
         self.assertNotIn("drop-shadow", self.css)
 
-    def test_focus_and_active_session_use_hard_ink_outlines(self) -> None:
+    def test_focus_uses_ink_outline_and_active_session_uses_inversion(self) -> None:
         for selector in ("button:focus-visible", "input:focus-visible", "textarea:focus-visible", "select:focus-visible"):
             body = body_with(self.css, selector, "outline: 2px solid #141111")
             self.assertIn("outline-offset: 1px", body)
-        active = body_with(self.css, ".session.active", "outline: 2px solid #141111")
-        self.assertIn("outline-offset: -2px", active)
+        active = body_with(self.css, ".session.active", "background: var(--ink)")
+        self.assertIn("color: var(--paper)", active)
+        self.assertNotIn("outline:", active)
+        content = body_with(self.css, ".session.active .sessionContent", "background: var(--ink)")
+        self.assertIn("color: var(--paper)", content)
+        idle = body_with(self.css, ".session.active .stateDot.idle", "border-color: var(--paper)")
+        self.assertIn("border-color: var(--paper)", idle)
+        busy = body_with(self.css, ".session.active .stateDot.busy", "background: var(--paper)")
+        self.assertIn("border-color: var(--paper)", busy)
+        pending = body_with(self.css, ".session.active .stateDot.pending", "background: #f59e0b")
+        self.assertIn("border-color: #f59e0b", pending)
         shadow_values = re.findall(r"box-shadow\s*:\s*([^;]+);", COMMENT_RE.sub("", self.css))
         self.assertTrue(shadow_values)
         self.assertEqual({value.strip() for value in shadow_values}, {"none"})
@@ -157,6 +167,40 @@ class TestPaperDesignLanguageSource(unittest.TestCase):
         self.assertIn('border: "1px solid #141111"', source)
         self.assertIn('background: "#141111"', source)
         self.assertNotIn("boxShadow", source)
+
+    def test_design_audit_paper_surfaces_are_bounded_and_inked(self) -> None:
+        shell = APP_SHELL.read_text(encoding="utf-8")
+        self.assertIn('<svg class="sidebarLogo"', shell)
+        self.assertIn('fill="currentColor"', shell)
+        self.assertNotIn('class="sidebarLogo" src=', shell)
+        self.assertNotIn('codoxear-icon.png', shell)
+
+        picker = body_with(self.css, ".composer .modelPicker", "width: min(92vw, 420px)")
+        self.assertIn("max-width: min(92vw, 420px)", picker)
+        self.assertIn("max-height: min(50vh, 320px)", picker)
+        self.assertIn("overflow-y: auto", picker)
+        self.assertIn("border: 1px solid var(--border)", picker)
+        self.assertIn("background: var(--paper)", picker)
+
+        details = body_with(self.css, ".detailsValue", "font-family: var(--font-mono)")
+        self.assertIn("overflow-wrap: anywhere", details)
+        viewer = body_with(self.css, ".diagViewer", "max-height: min(calc(var(--appH, 100dvh) - 24px), 720px)")
+        self.assertIn("overflow: hidden", viewer)
+        detail_scroller = body_with(self.css, ".diagViewer .detailsGrid", "overflow-y: auto")
+        self.assertIn("min-height: 0", detail_scroller)
+        self.assertRegex(
+            self.css,
+            r"@media \(max-width: 700px\) \{\s*\.detailsRow \{\s*grid-template-columns: minmax\(0, 1fr\);",
+        )
+
+        table = body_with(self.css, ".md table", "border: 1px solid var(--border)")
+        self.assertIn("background: var(--paper)", table)
+        header = body_with(self.css, ".md th", "background: var(--wash)")
+        self.assertIn("border-bottom-color: var(--border)", header)
+        cell = body_with(self.css, ".md td", "background: var(--paper)")
+        self.assertIn("background: var(--paper)", cell)
+        typing = body_with(self.css, ".typingDot", "background: var(--ink)")
+        self.assertIn("animation: typingDot 1.2s infinite ease-in-out", typing)
 
 
 if __name__ == "__main__":
