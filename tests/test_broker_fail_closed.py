@@ -282,7 +282,9 @@ read -r -k 1 option
             session_idx = broker.codex_args.index("--session")
             session_path = Path(broker.codex_args[session_idx + 1])
             self.assertTrue(str(session_path).startswith(str(Path(td) / "agent" / "sessions" / "--tmp-pi-work--")))
-            self.assertEqual(broker.codex_args[-2:], ["--extension", str(_pi_bridge_extension_path())])
+            # Extension is disabled until it is load-safe (registerCommand at
+            # load aborts fresh Pi spawns); the marker env is still set.
+            self.assertNotIn("--extension", broker.codex_args)
             self.assertEqual(marker_env, str(broker.pi_active_session_marker_path))
             self.assertIsNone(broker._resume_session_id)
 
