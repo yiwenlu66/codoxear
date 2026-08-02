@@ -483,7 +483,17 @@
           position: relative;
           align-items: center;
         }
-        .session.desktop .sessionMain {
+        .swipeHint {
+        position: absolute;
+        right: 6px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--muted);
+        font-size: var(--font-sm);
+        opacity: 0.5;
+        pointer-events: none;
+      }
+      .session.desktop .sessionMain {
           padding-right: 0;
           transition: padding-right 140ms ease;
         }
@@ -1084,11 +1094,8 @@
         outline-offset: 0;
       }
       .chatSearchStatus {
-        flex: 0 1 auto;
+        flex: 0 0 auto;
         min-width: 0;
-        max-width: 88px;
-        overflow: hidden;
-        text-overflow: ellipsis;
         color: var(--muted);
         font-family: var(--font-mono);
         font-size: var(--font-xs);
@@ -3414,4 +3421,8 @@ select {
         display: none;
         align-items: center;
         justify-content: center;
+      }
+
+      .session.desktop .swipeHint {
+        display: none;
       }

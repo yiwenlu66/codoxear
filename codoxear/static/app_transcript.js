@@ -343,7 +343,8 @@
       const hasThinking = thinkingMode === "tokens" ? thinkingTokens > 0 : thinking > 0;
       const activity = tools || hasThinking ? `tools: ${tools} · thinking: ${thinkingValue}` : "";
       const subagents = typingSubagents ? `subagents: ${typingSubagents}` : "";
-      typingStatsNode.textContent = [activity, subagents].filter(Boolean).join(" · ");
+      const text = [activity, subagents].filter(Boolean).join(" · ");
+      typingStatsNode.textContent = text || "working";
     }
 
     function ensureSubagentActivityRow() {

@@ -263,7 +263,8 @@
           const editActions = launchRow ? [] : [renameBtn, duplicateBtn];
 
           if (swipeActions) {
-            const content = el("div", { class: "sessionContent" }, [el("div", { class: "sessionInner" }, [el("div", { class: "row" }, [titleRow, badgesWrap]), meta])]);
+            const swipeHint = el("span", { class: "swipeHint", "aria-hidden": "true", text: "‹" });
+            const content = el("div", { class: "sessionContent" }, [el("div", { class: "sessionInner" }, [el("div", { class: "row" }, [titleRow, badgesWrap]), meta]), swipeHint]);
             content.dataset.swipeX = "0";
             card.appendChild(el("div", { class: "sessionSwipe" }, [el("div", { class: "sessionActions left" }, [deleteBtn]), el("div", { class: "sessionActions right" }, editActions), content]));
             if (openSwipeSessionId === sessionId && openSwipeTargetX !== 0) {
