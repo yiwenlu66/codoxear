@@ -1325,6 +1325,19 @@ class SessionManager:
         if meta_path.exists():
             self.refresh_session_meta(session_id, drain_queue=drain_queue)
 
+    def update_live_settings(
+        self,
+        session_id: str,
+        *,
+        model: str | None = None,
+        effort: str | None = None,
+    ) -> dict[str, Any]:
+        return self._control_coordinator_for_manager().update_live_settings(
+            session_id,
+            model=model,
+            effort=effort,
+        )
+
     def inject_keys(self, session_id: str, seq: str, *, track_request_sent: bool = False, interrupt: bool = False) -> dict[str, Any]:
         return self._control_coordinator_for_manager().inject_keys(
             session_id,

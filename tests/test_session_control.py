@@ -82,6 +82,25 @@ def test_session_control_get_tail_validates_tail_shape() -> None:
         bad.get_tail("s1")
 
 
+def test_session_control_live_settings_uses_typed_broker_command() -> None:
+    calls = []
+
+    def sock_call(sock: Path, req: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+        calls.append((sock, req, kwargs))
+        return {"ok": True, "model": "gpt-5.4", "effort": None}
+
+    coordinator, _unlinked, _cleared = _coordinator(sock_call=sock_call)
+
+    assert coordinator.update_live_settings("s1", model="gpt-5.4") == {
+        "ok": True,
+        "model": "gpt-5.4",
+        "effort": None,
+    }
+    assert calls == [
+        (Path("/tmp/s1.sock"), {"cmd": "settings", "model": "gpt-5.4"}, {"timeout_s": 4.0})
+    ]
+
+
 def test_session_control_inject_keys_tracks_commit_unknown_after_request_sent() -> None:
     def sock_call(sock: Path, req: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
         raise ControlSocketCallError("reset", request_sent=True)

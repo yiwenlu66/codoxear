@@ -59,6 +59,13 @@ from codoxear.broker_metadata import _claimed_log_paths_from_sock_meta
 from codoxear.broker_metadata import _write_broker_sidecar_meta
 from codoxear.broker_process import _require_proc as _require_proc_impl
 from codoxear.broker_process import _set_pdeathsig
+from codoxear.codex_live_control import CODEX_LIVE_COMMANDS
+from codoxear.codex_live_control import CodexAppServerProcess
+from codoxear.codex_live_control import codex_app_server_config_args
+from codoxear.codex_live_control import codex_live_control_compatible_args
+from codoxear.codex_live_control import start_codex_app_server
+from codoxear.codex_live_control import stop_codex_app_server
+from codoxear.codex_live_control import update_codex_thread_settings
 from codoxear.broker_control import _handle_broker_control_connection
 from codoxear.broker_terminal import _reply_to_terminal_queries
 from codoxear.broker_turn_state import INTERRUPT_HINT_TAIL_MAX
@@ -316,36 +323,80 @@ class Broker:
         self._emulate_terminal = (os.environ.get("CODEX_WEB_EMULATE_TERMINAL", "0") == "1") or (not sys.stdin.isatty())
         self._term_query_buf = b""
         self._stdin_termios: list[Any] | None = None
+        self._codex_app_server: CodexAppServerProcess | None = None
 
         self.codex_home = DEFAULT_AGENT_HOME
         self.sessions_dir = BACKEND.sessions_dir()
         resume_env = str(os.environ.get("CODEX_WEB_RESUME_SESSION_ID") or "").strip()
         self._resume_session_id = resume_env or _resume_session_id_from_args(self.codex_args)
 
+    def _stop_codex_app_server(self) -> None:
+        server = getattr(self, "_codex_app_server", None)
+        self._codex_app_server = None
+        stop_codex_app_server(server)
+
+    def _prepare_codex_live_control(self) -> None:
+        if AGENT_BACKEND != "codex" or not codex_live_control_compatible_args(self.codex_args):
+            return
+        socket_path = SOCK_DIR / f"codex-app-server-{os.getpid()}.sock"
+        server, error = start_codex_app_server(
+            agent_bin=AGENT_BIN,
+            cwd=self.cwd,
+            codex_home=self.codex_home,
+            socket_path=socket_path,
+            shell_argv_for_command=_shell_argv_for_command,
+            config_args=codex_app_server_config_args(self.codex_args),
+            environ=dict(os.environ),
+            preexec_fn=lambda: _set_pdeathsig(signal.SIGHUP),
+        )
+        if server is None:
+            sys.stderr.write(f"warning: Codex live model control unavailable: {error or 'app-server startup failed'}\n")
+            sys.stderr.flush()
+            return
+        self._codex_app_server = server
+        self.codex_args = ["--remote", f"unix://{socket_path}", *self.codex_args]
+
+    def _update_codex_live_settings(
+        self,
+        *,
+        thread_id: str,
+        model: str | None,
+        effort: str | None,
+    ) -> dict[str, Any]:
+        server = getattr(self, "_codex_app_server", None)
+        if server is None:
+            raise RuntimeError("Codex live settings are unavailable for this session")
+        return update_codex_thread_settings(
+            server.socket_path,
+            thread_id=thread_id,
+            model=model,
+            effort=effort,
+        )
+
     def _teardown_managed_process_group(self, *, wait_seconds: float = 1.0) -> None:
         self._stop.set()
         with self._lock:
             st = self.state
         if not st:
+            self._stop_codex_app_server()
             return
         root_pid = int(st.codex_pid)
-        if not _process_group_alive(root_pid):
-            return
-        try:
-            os.killpg(root_pid, signal.SIGTERM)
-        except ProcessLookupError:
-            return
-        deadline = _now() + max(wait_seconds, 0.0)
-        while _process_group_alive(root_pid):
-            if _now() >= deadline:
-                break
-            time.sleep(0.05)
-        if not _process_group_alive(root_pid):
-            return
-        try:
-            os.killpg(root_pid, signal.SIGKILL)
-        except ProcessLookupError:
-            return
+        if _process_group_alive(root_pid):
+            try:
+                os.killpg(root_pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            deadline = _now() + max(wait_seconds, 0.0)
+            while _process_group_alive(root_pid):
+                if _now() >= deadline:
+                    break
+                time.sleep(0.05)
+            if _process_group_alive(root_pid):
+                try:
+                    os.killpg(root_pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        self._stop_codex_app_server()
 
     def _discover_log_watcher(self) -> None:
         try:
@@ -411,6 +462,15 @@ class Broker:
                             cwd=self.cwd,
                             ignored_paths=ignored_paths,
                         )
+                        app_server = getattr(self, "_codex_app_server", None)
+                        if lp is None and AGENT_BACKEND == "codex" and app_server is not None:
+                            lp = _proc_find_open_rollout_log(
+                                proc_root=PROC_ROOT,
+                                root_pid=int(app_server.process.pid),
+                                agent_backend=AGENT_BACKEND,
+                                cwd=self.cwd,
+                                ignored_paths=ignored_paths,
+                            )
                         if lp and lp.exists():
                             if current_log_path is None or (not _paths_match(lp, current_log_path)):
                                 self._maybe_register_or_switch_rollout(log_path=lp)
@@ -737,6 +797,11 @@ class Broker:
             inject=_inject,
             now=_now,
             teardown_managed_process_group=self._teardown_managed_process_group,
+            update_codex_settings=(
+                self._update_codex_live_settings
+                if getattr(self, "_codex_app_server", None) is not None
+                else None
+            ),
         )
 
     def _session_id_from_rollout_path(self, log_path: Path) -> str | None:
@@ -777,6 +842,7 @@ class Broker:
         _require_proc()
 
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
+        self._prepare_codex_live_control()
         start_ts = _now()
         prelaunch_rollout_paths: set[Path] = set()
         if AGENT_BACKEND in ("pi", "cc"):
@@ -855,6 +921,7 @@ class Broker:
                         traceback.print_exc()
                         os._exit(127)
         except Exception as e:
+            self._stop_codex_app_server()
             _record_launch_attempt(
                 _broker_launch_record(
                     stage="pty_fork",
@@ -889,7 +956,11 @@ class Broker:
             busy=False,
             resume_session_id=self._resume_session_id,
         )
-        st.slash_commands = default_slash_commands(AGENT_BACKEND)
+        st.slash_commands = (
+            list(CODEX_LIVE_COMMANDS)
+            if getattr(self, "_codex_app_server", None) is not None
+            else default_slash_commands(AGENT_BACKEND)
+        )
         declared_log_path = _session_log_path_from_args(args=self.codex_args, agent_backend=AGENT_BACKEND, sessions_dir=self.sessions_dir)
         st.declared_log_path = declared_log_path
         if AGENT_BACKEND in ("pi", "cc"):
@@ -1040,6 +1111,7 @@ class Broker:
                 st2.sock_path.with_suffix(".json").unlink()
             except Exception:
                 traceback.print_exc()
+        self._stop_codex_app_server()
         return exit_code
 
 

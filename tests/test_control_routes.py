@@ -59,6 +59,10 @@ class Manager:
         self.calls.append(("send", session_id, text, allow_pending_attachment))
         return {"queued": False, "queue_len": 0}
 
+    def update_live_settings(self, session_id, *, model=None, effort=None):
+        self.calls.append(("settings", session_id, model, effort))
+        return {"ok": True, "model": model, "effort": effort}
+
     def unattended_set(self, session_id, **kwargs):
         self.calls.append(("unattended", session_id, kwargs))
         return {"enabled": bool(kwargs.get("enabled")), "request": kwargs.get("request") or ""}
@@ -139,6 +143,30 @@ def test_delete_route_reads_body_and_maps_unknown_to_404() -> None:
     assert handler.read_body_count == 1
     assert manager.calls == [("delete", "s1")]
     assert responses == [(404, {"error": "unknown session"})]
+
+
+def test_settings_route_sends_exactly_one_typed_codex_setting() -> None:
+    responses = []
+    manager = Manager()
+    assert handle_control_post_route(
+        Handler({"model": "gpt-5.4"}),
+        path="/api/sessions/s1/settings",
+        manager=manager,
+        deps=_deps(responses),
+        match_session_route=_match_session_route,
+    ) is True
+    assert manager.calls == [("settings", "s1", "gpt-5.4", None)]
+    assert responses == [(200, {"ok": True, "model": "gpt-5.4", "effort": None})]
+
+    responses.clear()
+    assert handle_control_post_route(
+        Handler({"model": "gpt-5.4", "effort": "high"}),
+        path="/api/sessions/s1/settings",
+        manager=manager,
+        deps=_deps(responses),
+        match_session_route=_match_session_route,
+    ) is True
+    assert responses == [(400, {"error": "exactly one of model or effort is required"})]
 
 
 def test_send_route_preserves_allow_pending_and_commit_unknown_status() -> None:

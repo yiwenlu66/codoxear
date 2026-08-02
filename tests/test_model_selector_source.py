@@ -47,7 +47,7 @@ class TestComposerModelPicker(unittest.TestCase):
             const nodes = Array.from({{ length: 10 }}, () => new Node());
             const [form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop, nowBtn, laterBtn, cancelBtn, modelPicker] = nodes;
             form.requestSubmit = () => {{ state.formSubmits += 1; }};
-            const state = {{ backend: "pi", thinkingCapability: true, sent: [], toasts: [], sending: false, formSubmits: 0, ccModel: "claude-sonnet-4-6", ccEffort: "high" }};
+            const state = {{ backend: "pi", thinkingCapability: true, codexCapability: true, sent: [], settingsCalls: [], toasts: [], sending: false, formSubmits: 0, ccModel: "claude-sonnet-4-6", ccEffort: "high" }};
             const noop = () => {{}};
             const controller = ctx.window.CodoxearComposer.createComposerController({{
               form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
@@ -58,8 +58,9 @@ class TestComposerModelPicker(unittest.TestCase):
                 agent_backend: state.backend,
                 pi_thinking_command: state.thinkingCapability,
                 model_provider: "anthropic",
-                model: state.backend === "cc" ? state.ccModel : "claude-sonnet-4",
+                model: state.backend === "cc" ? state.ccModel : state.backend === "codex" ? "gpt-5.4" : "claude-sonnet-4",
                 reasoning_effort: state.backend === "cc" ? state.ccEffort : "high",
+                slash_commands: state.backend === "codex" && state.codexCapability ? [{{ name: "model" }}, {{ name: "effort" }}] : [],
               }}),
               getNewSessionDefaults: () => ({{ backends: {{ pi: {{
                 provider_models: {{ anthropic: ["claude-sonnet-4"], openai: ["gpt-5"] }},
@@ -68,6 +69,10 @@ class TestComposerModelPicker(unittest.TestCase):
                 models: ["sonnet", "opus", "fable", "haiku", "best", "default", "claude-sonnet-4-6"],
                 reasoning_efforts: ["low", "medium", "high", "xhigh", "max", "auto"],
                 reasoning_efforts_by_model: {{ "claude-sonnet-4-6": ["low", "high", "auto"] }},
+              }}, codex: {{
+                models: ["gpt-5.4", "gpt-5.4-mini"],
+                reasoning_efforts: ["minimal", "low", "medium", "high", "xhigh", "max"],
+                reasoning_efforts_by_model: {{ "gpt-5.4": ["low", "high", "max"] }},
               }} }} }}),
               patchSessionInfo: noop,
               sessionLaunchFailed: () => false,
@@ -79,7 +84,11 @@ class TestComposerModelPicker(unittest.TestCase):
               setSelectedSessionPendingAttachment: noop, setAttachCount: noop,
               syncAttachButtonState: noop, syncQueueSubmitState: noop,
               syncRecoveryUiForSession: noop, confirmAction: async () => false,
-              api: async (_path, options) => {{ state.sent.push(options.body.text); return {{}}; }},
+              api: async (path, options) => {{
+                if (path.endsWith("/settings")) state.settingsCalls.push({{ path, body: options.body }});
+                else state.sent.push(options.body.text);
+                return {{}};
+              }},
               setToast: (message) => {{ state.toasts.push(message); }}, handleAppAuthLoss: noop, refreshSessions: async () => [],
               setPollFastUntilMs: noop, kickPoll: noop, isTranscriptRenewalCommand: () => false,
               nextLocalEchoId: () => "local", renderedAtLiveTail: () => true,
@@ -175,19 +184,44 @@ class TestComposerModelPicker(unittest.TestCase):
             await new Promise((resolve) => setTimeout(resolve, 0));
             if (state.sent[5] !== "/effort auto") throw new Error("CC effort picker did not send /effort auto");
             state.backend = "codex";
-            textarea.value = "/model";
+            textarea.value = "/model mini";
             textarea.dispatch("input");
-            if (modelPicker.style.display !== "none") throw new Error("Codex session opened a live command picker");
+            if (modelPicker.style.display !== "block" || modelPicker.children.length !== 1 || modelPicker.children[0].textContent !== "gpt-5.4-mini") throw new Error("Codex session did not open advertised model picker");
+            const codexModelEnter = {{ key: "Enter", defaultPrevented: false, preventDefault() {{ this.defaultPrevented = true; }} }};
+            textarea.dispatch("keydown", codexModelEnter);
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            if (!codexModelEnter.defaultPrevented || state.settingsCalls[0].path !== "/api/sessions/sid/settings" || state.settingsCalls[0].body.model !== "gpt-5.4-mini") throw new Error("Codex model picker did not use typed settings route");
             textarea.value = "/effort";
             textarea.dispatch("input");
-            if (modelPicker.style.display !== "none") throw new Error("Codex session opened a live effort picker");
-            process.stdout.write(JSON.stringify({{ sent: state.sent, selected: modelPicker.style.display }}));
+            if (modelPicker.style.display !== "block" || modelPicker.children.length !== 3 || modelPicker.children[0].textContent !== "high") throw new Error("Codex effort picker did not use model-scoped levels/current-first ordering");
+            textarea.value = "/effort max";
+            textarea.dispatch("input");
+            const codexEffortEnter = {{ key: "Enter", defaultPrevented: false, preventDefault() {{ this.defaultPrevented = true; }} }};
+            textarea.dispatch("keydown", codexEffortEnter);
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            if (state.settingsCalls[1].body.effort !== "max") throw new Error("Codex effort picker did not use typed settings route");
+            if (state.sent.length !== 6) throw new Error("Codex typed settings leaked into PTY text send");
+            state.codexCapability = false;
+            textarea.value = "/model";
+            textarea.dispatch("input");
+            if (modelPicker.style.display !== "none") throw new Error("Codex session without advertised protocol capability opened picker");
+            process.stdout.write(JSON.stringify({{ sent: state.sent, settingsCalls: state.settingsCalls, selected: modelPicker.style.display }}));
             """
         ) + "\n})();"
         result = subprocess.run(["node", "-e", script], check=False, capture_output=True, text=True)
         if result.returncode:
             raise AssertionError(result.stderr or result.stdout)
-        self.assertEqual(json.loads(result.stdout), {"sent": ["/model openai/gpt-5", "/effort low", "/thinking high", "ordinary text", "/model haiku", "/effort auto"], "selected": "none"})
+        self.assertEqual(
+            json.loads(result.stdout),
+            {
+                "sent": ["/model openai/gpt-5", "/effort low", "/thinking high", "ordinary text", "/model haiku", "/effort auto"],
+                "settingsCalls": [
+                    {"path": "/api/sessions/sid/settings", "body": {"model": "gpt-5.4-mini"}},
+                    {"path": "/api/sessions/sid/settings", "body": {"effort": "max"}},
+                ],
+                "selected": "none",
+            },
+        )
 
 
 if __name__ == "__main__":

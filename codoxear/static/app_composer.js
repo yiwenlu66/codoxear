@@ -97,9 +97,9 @@
 
     const PI_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
     const CC_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max", "auto"];
-    // Each entry describes commands that can be injected into an existing
-    // shared PTY session. Codex's /model opens a TUI picker and its effort is
-    // launch-time only, so it deliberately has no live picker descriptor.
+    // Each entry describes controls that target the running shared session.
+    // Pi and Claude use native text commands. Codex advertises these entries
+    // only when its broker owns a reachable app-server settings transport.
     const BACKEND_COMMAND_SPECS = Object.freeze({
       pi: Object.freeze({
         model: Object.freeze({ command: "/model", aliases: Object.freeze(["model"]) }),
@@ -109,7 +109,10 @@
         model: Object.freeze({ command: "/model", aliases: Object.freeze(["model"]) }),
         effort: Object.freeze({ command: "/effort", aliases: Object.freeze(["effort"]) }),
       }),
-      codex: Object.freeze({}),
+      codex: Object.freeze({
+        model: Object.freeze({ command: "/model", aliases: Object.freeze(["model"]), requiresAdvertisedCommand: true, typedSettings: true }),
+        effort: Object.freeze({ command: "/effort", aliases: Object.freeze(["effort"]), requiresAdvertisedCommand: true, typedSettings: true }),
+      }),
     });
 
     function selectedSession() {
@@ -126,7 +129,17 @@
       const spec = BACKEND_COMMAND_SPECS[backend] && BACKEND_COMMAND_SPECS[backend][kind];
       if (!spec) return null;
       if (spec.requiresPiThinkingCapability && session.pi_thinking_command !== true) return null;
+      if (spec.requiresAdvertisedCommand) {
+        const advertised = Array.isArray(session.slash_commands)
+          && session.slash_commands.some((entry) => String(entry && entry.name || "").replace(/^\//, "").toLowerCase() === kind);
+        if (!advertised) return null;
+      }
       return spec;
+    }
+
+    function codexLaunchDefaults() {
+      const defaults = getNewSessionDefaults();
+      return defaults && defaults.backends && defaults.backends.codex && typeof defaults.backends.codex === "object" ? defaults.backends.codex : {};
     }
 
     function piLaunchDefaults() {
@@ -164,6 +177,16 @@
       return out;
     }
 
+    function codexModelIds() {
+      const models = codexLaunchDefaults().models;
+      const out = [];
+      for (const model of Array.isArray(models) ? models : []) {
+        const id = String(model || "").trim();
+        if (id && !out.includes(id)) out.push(id);
+      }
+      return out;
+    }
+
     function ccModelIds() {
       const models = ccLaunchDefaults().models;
       const out = [];
@@ -187,6 +210,18 @@
         .filter((level) => PI_THINKING_LEVELS.includes(level) && !seen.has(level) && seen.add(level));
     }
 
+    function codexEffortLevels(session) {
+      const codex = codexLaunchDefaults();
+      const byModel = codex.reasoning_efforts_by_model && typeof codex.reasoning_efforts_by_model === "object" ? codex.reasoning_efforts_by_model : {};
+      const model = String(session.model || "").trim();
+      const scoped = model && Array.isArray(byModel[model]) ? byModel[model] : null;
+      const configured = scoped || (Array.isArray(codex.reasoning_efforts) ? codex.reasoning_efforts : PI_THINKING_LEVELS.filter((level) => level !== "off"));
+      const seen = new Set();
+      return configured
+        .map((level) => String(level || "").trim().toLowerCase())
+        .filter((level) => level !== "off" && PI_THINKING_LEVELS.includes(level) && !seen.has(level) && seen.add(level));
+    }
+
     function ccEffortLevels(session) {
       const cc = ccLaunchDefaults();
       const byModel = cc.reasoning_efforts_by_model && typeof cc.reasoning_efforts_by_model === "object" ? cc.reasoning_efforts_by_model : {};
@@ -207,9 +242,10 @@
       const match = String(textarea.value || "").match(new RegExp(`^/(?:${aliases})(?:\\s+(.*))?$`, "i"));
       if (!match) return null;
       const query = String(match[1] || "").trim().toLowerCase();
+      const backend = sessionBackend(session);
       const choices = kind === "model"
-        ? sessionBackend(session) === "pi" ? piModelIds() : ccModelIds()
-        : sessionBackend(session) === "pi" ? piThinkingLevels(session) : ccEffortLevels(session);
+        ? backend === "pi" ? piModelIds() : backend === "codex" ? codexModelIds() : ccModelIds()
+        : backend === "pi" ? piThinkingLevels(session) : backend === "codex" ? codexEffortLevels(session) : ccEffortLevels(session);
       const matches = choices.filter((choice) => !query || choice.toLowerCase().startsWith(query) || choice.toLowerCase().includes(query));
       if (kind !== "effort") return matches;
       const current = String(session.reasoning_effort || "").trim().toLowerCase();
@@ -309,17 +345,35 @@
       }
       syncModelPickerSelection();
     }
+    async function applyCodexSetting(kind, choice, session) {
+      const sessionId = getSelected();
+      if (!sessionId || sessionBackend(session) !== "codex") return;
+      try {
+        await api(`/api/sessions/${sessionId}/settings`, { method: "POST", body: { [kind]: choice } });
+        setToast(`${kind === "model" ? "model" : "reasoning effort"} accepted for the next Codex turn`);
+        setPollFastUntilMs(now() + 5000);
+        kickPoll();
+      } catch (error) {
+        setToast(`Codex ${kind} change failed: ${error && error.message ? error.message : error}`);
+      }
+    }
+
     function selectPickerOption(option) {
       if (modelPickerKind === "command") { selectSlashCommand(option); return; }
       const choice = String(option || "").trim();
       const session = selectedSession();
-      const spec = commandSpec(session, modelPickerKind);
+      const kind = modelPickerKind;
+      const spec = commandSpec(session, kind);
       if (!choice || !spec) return;
       hideModelPicker();
       clearComposer();
       // Delivery acknowledgement only: the session row changes later from
-      // backend-log evidence, never from this optimistic picker selection.
-      void sendText(`${spec.command} ${choice}`);
+      // backend-log evidence, never from this picker selection.
+      if (spec.typedSettings) {
+        void applyCodexSetting(kind, choice, session);
+      } else {
+        void sendText(`${spec.command} ${choice}`);
+      }
     }
 
     function syncModelPickerSelection({ scroll = false } = {}) {
@@ -349,7 +403,8 @@
       const backend = sessionBackend(session);
       const isPiThinking = backend === "pi" && modelPickerKind === "effort";
       const kindLabel = modelPickerKind === "model" ? "models" : isPiThinking ? "thinking levels" : "effort levels";
-      modelPicker.setAttribute("aria-label", `Available ${backend === "cc" ? "Claude" : "Pi"} ${kindLabel}`);
+      const backendLabel = backend === "cc" ? "Claude" : backend === "codex" ? "Codex" : "Pi";
+      modelPicker.setAttribute("aria-label", `Available ${backendLabel} ${kindLabel}`);
       modelPickerOptions.forEach((id, index) => {
         const option = document.createElement("button");
         option.type = "button";

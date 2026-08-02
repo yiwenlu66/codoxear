@@ -100,6 +100,7 @@ def handle_control_post_route(
         ("attachments", "clear", _handle_attachments_clear),
         ("commit_unknown_send", "clear", _handle_commit_unknown_send_clear),
         ("send", None, _handle_send),
+        ("settings", None, _handle_settings),
         ("unattended", None, _handle_unattended),
         ("interrupt", None, _handle_interrupt),
     )
@@ -253,6 +254,31 @@ def _handle_send(handler: Any, *, session_id: str, manager: Any, deps: ControlRo
         deps.json_response(handler, 504, {"error": str(e), "commit_unknown": True})
         return
     deps.json_response(handler, 200, res)
+
+
+def _handle_settings(handler: Any, *, session_id: str, manager: Any, deps: ControlRouteDeps) -> None:
+    if not _authorized(handler, deps):
+        return
+    obj = deps.read_json_body(handler)
+    model_raw = obj.get("model")
+    effort_raw = obj.get("effort")
+    model = model_raw.strip() if isinstance(model_raw, str) and model_raw.strip() else None
+    effort = effort_raw.strip().lower() if isinstance(effort_raw, str) and effort_raw.strip() else None
+    if bool(model) == bool(effort):
+        deps.json_response(handler, 400, {"error": "exactly one of model or effort is required"})
+        return
+    try:
+        result = manager.update_live_settings(session_id, model=model, effort=effort)
+    except KeyError:
+        deps.json_response(handler, 404, {"error": "unknown session"})
+        return
+    except ValueError as exc:
+        deps.json_response(handler, 409, {"error": str(exc)})
+        return
+    except Exception as exc:
+        deps.json_response(handler, 502, {"error": f"Codex live settings failed: {exc}"})
+        return
+    deps.json_response(handler, 200, result)
 
 
 def _handle_unattended(handler: Any, *, session_id: str, manager: Any, deps: ControlRouteDeps) -> None:

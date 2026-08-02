@@ -24,6 +24,7 @@ def _handle_broker_control_connection(
     inject: Callable[..., None],
     now: Callable[[], float],
     teardown_managed_process_group: Callable[[], None],
+    update_codex_settings: Callable[..., dict[str, Any]] | None = None,
 ) -> None:
     def state_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
         with lock:
@@ -142,6 +143,27 @@ def _handle_broker_control_connection(
                     _mark_explicit_interrupt_request(st, now())
         return resp, None
 
+    def settings_handler(req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
+        if update_codex_settings is None:
+            return {"error": "live settings unavailable"}, None
+        model_raw = req.get("model")
+        effort_raw = req.get("effort")
+        model = model_raw.strip() if isinstance(model_raw, str) and model_raw.strip() else None
+        effort = effort_raw.strip().lower() if isinstance(effort_raw, str) and effort_raw.strip() else None
+        if bool(model) == bool(effort):
+            return {"error": "exactly one of model or effort is required"}, None
+        with lock:
+            st = get_state()
+            if not st:
+                return {"error": "no state"}, None
+            thread_id = str(st.session_id or "").strip()
+        if not thread_id:
+            return {"error": "Codex thread is not bound yet"}, None
+        try:
+            return update_codex_settings(thread_id=thread_id, model=model, effort=effort), None
+        except Exception as exc:
+            return {"error": str(exc)}, None
+
     def shutdown_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
         return {"ok": True}, teardown_managed_process_group
 
@@ -152,6 +174,7 @@ def _handle_broker_control_connection(
             "tail": tail_handler,
             "send": send_handler,
             "keys": keys_handler,
+            "settings": settings_handler,
             "shutdown": shutdown_handler,
         },
         send_json_line=_send_socket_json_line,

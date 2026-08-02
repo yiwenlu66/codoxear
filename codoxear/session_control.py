@@ -159,6 +159,35 @@ class SessionControlCoordinator:
         except timeout_errors as exc:
             raise_commit_unknown("send commit status unknown; broker did not reply before timeout", exc)
 
+    def update_live_settings(
+        self,
+        session_id: str,
+        *,
+        model: str | None = None,
+        effort: str | None = None,
+    ) -> dict[str, Any]:
+        session, sock = self._session_and_sock(session_id)
+        if session.agent_backend != "codex":
+            raise ValueError("live settings route is only available for Codex sessions")
+        request: dict[str, Any] = {"cmd": "settings"}
+        if model is not None:
+            request["model"] = model
+        if effort is not None:
+            request["effort"] = effort
+        try:
+            response = self.sock_call(sock, request, timeout_s=4.0)
+        except Exception:
+            if self._dead_processes(session):
+                self._drop_dead_session(session_id, session, sock, clear_deleted_state=False, stage="session_control_settings_after_log_bind")
+                raise KeyError("unknown session")
+            raise
+        error = response.get("error")
+        if isinstance(error, str) and error:
+            raise ValueError(error)
+        if response.get("ok") is not True:
+            raise ValueError("invalid live settings response")
+        return response
+
     def inject_keys(self, session_id: str, seq: str, *, track_request_sent: bool = False, interrupt: bool = False) -> dict[str, Any]:
         session, sock = self._session_and_sock(session_id)
         try:

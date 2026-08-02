@@ -26,6 +26,7 @@ No ``codoxear.server.*`` module-global monkeypatching remains. No file under
 ``codoxear/`` is modified. No ``try/except`` swallows.
 """
 
+import json
 import os
 import threading
 import time
@@ -135,7 +136,23 @@ name = "Right"
                 encoding="utf-8",
             )
             paths.models_cache_path.write_text(
-                '{"models":[{"slug":"gpt-5.4","default_reasoning_level":"medium","priority":1}]}',
+                json.dumps(
+                    {
+                        "models": [
+                            {
+                                "slug": "gpt-5.4",
+                                "visibility": "list",
+                                "default_reasoning_level": "medium",
+                                "supported_reasoning_levels": [
+                                    {"effort": "low", "description": "fast"},
+                                    {"effort": "high", "description": "deep"},
+                                ],
+                                "priority": 1,
+                            },
+                            {"slug": "hidden-model", "visibility": "hide", "priority": 2},
+                        ]
+                    }
+                ),
                 encoding="utf-8",
             )
 
@@ -147,6 +164,38 @@ name = "Right"
         self.assertEqual(defaults["model"], "gpt-5.4")
         self.assertEqual(defaults["model_providers"], ["chatgpt", "openai-api", "crs", "right"])
         self.assertEqual(defaults["service_tier"], "fast")
+        self.assertEqual(defaults["models"], [])
+        self.assertEqual(defaults["reasoning_efforts_by_model"], {})
+        self.assertEqual(defaults["reasoning_effort"], "medium")
+
+    def test_read_codex_launch_defaults_projects_picker_models_and_efforts_for_openai(self) -> None:
+        with TemporaryDirectory() as td:
+            paths = _paths_for(Path(td))
+            paths.models_cache_path.write_text(
+                json.dumps(
+                    {
+                        "models": [
+                            {
+                                "slug": "gpt-5.4",
+                                "visibility": "list",
+                                "default_reasoning_level": "medium",
+                                "supported_reasoning_levels": [
+                                    {"effort": "low", "description": "fast"},
+                                    {"effort": "high", "description": "deep"},
+                                ],
+                                "priority": 1,
+                            },
+                            {"slug": "hidden-model", "visibility": "hide", "priority": 2},
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            defaults = read_codex_launch_defaults(paths)
+
+        self.assertEqual(defaults["models"], ["gpt-5.4"])
+        self.assertEqual(defaults["reasoning_efforts_by_model"], {"gpt-5.4": ["low", "high"]})
         self.assertEqual(defaults["reasoning_effort"], "medium")
 
     def test_read_codex_launch_defaults_falls_back_to_openai_and_flex(self) -> None:
@@ -161,6 +210,8 @@ name = "Right"
         self.assertEqual(defaults["provider_choice"], "openai-api")
         self.assertIsNone(defaults["model"])
         self.assertEqual(defaults["model_providers"], ["chatgpt", "openai-api"])
+        self.assertEqual(defaults["models"], [])
+        self.assertEqual(defaults["reasoning_efforts_by_model"], {})
         self.assertEqual(defaults["service_tier"], "flex")
         self.assertIsNone(defaults["reasoning_effort"])
 

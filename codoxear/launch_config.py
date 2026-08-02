@@ -372,21 +372,42 @@ def read_codex_launch_defaults(paths: LaunchConfigPaths) -> dict[str, Any]:
         "provider_choice": provider_choice_for_settings(model_provider=configured_provider, preferred_auth_method=configured_auth_method),
         "model": configured_model,
         "model_providers": configured_providers,
+        "models": list(provider_models),
+        "reasoning_efforts_by_model": {},
         "service_tier": configured_service_tier,
     }
-    if provider_models:
-        defaults["models"] = provider_models
-    if configured_effort is not None:
-        defaults["reasoning_effort"] = configured_effort
-        return defaults
     if not paths.models_cache_path.exists():
-        defaults["reasoning_effort"] = None
+        defaults["reasoning_effort"] = configured_effort
         return defaults
     cache = json.loads(paths.models_cache_path.read_text(encoding="utf-8"))
     models = cache.get("models") if isinstance(cache, dict) else None
     if not isinstance(models, list):
         raise ValueError(f"invalid models cache in {paths.models_cache_path}")
     rows: list[dict[str, Any]] = [row for row in models if isinstance(row, dict)]
+    cached_models: list[str] = []
+    efforts_by_model: dict[str, list[str]] = {}
+    for row in rows:
+        slug = clean_optional_text(row.get("slug"))
+        if slug is None or row.get("visibility") not in (None, "list"):
+            continue
+        if slug not in cached_models:
+            cached_models.append(slug)
+        raw_efforts = row.get("supported_reasoning_levels")
+        if not isinstance(raw_efforts, list):
+            continue
+        efforts = clean_reasoning_effort_list(
+            [item.get("effort") for item in raw_efforts if isinstance(item, dict)],
+            supported=SUPPORTED_REASONING_EFFORTS,
+        )
+        if efforts:
+            efforts_by_model[slug] = efforts
+    defaults["models"] = list(
+        dict.fromkeys([*provider_models, *(cached_models if configured_provider == "openai" else [])])
+    )
+    defaults["reasoning_efforts_by_model"] = efforts_by_model if configured_provider == "openai" else {}
+    if configured_effort is not None:
+        defaults["reasoning_effort"] = configured_effort
+        return defaults
     if not rows:
         defaults["reasoning_effort"] = None
         return defaults

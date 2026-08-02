@@ -1,0 +1,24 @@
+# OPS
+
+## 2026-08-02 17:40
+- Initialized exploratory research task. Success requires discriminating evidence across config reload, runtime flags, protocols/extensions, and PTY picker determinism before choosing implementation or upstream-gap documentation.
+- Working tree at start: branch `main` ahead of origin; unrelated untracked `.memory/tasks/2026-07-31-issue-triage/OPS.md` and `.pi-subagents/`. These must not be staged or modified.
+- `codex` is not on this subagent's PATH. Local binary/package discovery and upstream source checkout are next; no global installation permitted.
+
+## 2026-08-02 17:58
+- Cloned `openai/codex` at `2b5bdcf67547860f2e5c5a605009a70026796b2b` into `/tmp/openai-codex-live-control` and inspected TUI, core config reload, app-server protocol, transports, and tests.
+- Source observations: TUI `/model` persists defaults via `config/batchWrite` but mutates the active thread through `thread/settings/update`; app-server docs state model/effort are session-static under config hot reload; core test `refresh_runtime_config_updates_runtime_refreshable_fields_and_keeps_session_static_settings` retains the original model; app-server treats SIGHUP as graceful shutdown; no TUI SIGHUP config-reload handler or model env-var mutation channel was found.
+- Picker source observation: model popups use non-searchable selection views by default. Full model order comes from the catalog, while auto models alone have fixed ordering. Model choice may traverse All models → model → effort, with extra Max/Ultra and Plan-scope branches. Broker output is an ANSI byte tail rather than screen state, ruling out deterministic PTY row selection/readback.
+- Downloaded and unpacked npm release `@openai/codex@0.146.0` plus its Linux x64 optional package under `/tmp/codex-release-probe`; nothing installed globally. `codex --help` confirms `--remote` supports Unix sockets and `app-server --listen` supports Unix/WebSocket transports.
+- Probe `/tmp/codex-release-probe/probe-live-settings.mjs`: two clients connected to released app-server 0.146.0; external `thread/settings/update` acknowledged `{}`; subscribed client received model `mock-model-2`, effort `high`; next mock Responses request carried the same settings and the update created no turn/transcript item.
+- Probe `/tmp/codex-release-probe/probe-remote-tui.mjs`: launched a real 0.146.0 TUI under an isolated PTY (`script`) against a loopback app-server, updated its loaded thread from a separate protocol client, injected `hello from shared PTY`, and observed provider request `{model:"mock-model-remote", reasoning.effort:"high"}`. Cleanup targeted only the probe-owned process groups; no brokers were touched.
+- Release evidence: Codex 0.133.0 release/PR #23502 introduced `thread/settings/update`; current API remains experimental and requires `experimentalApi=true`. TUI source consumes `thread/settings/updated` and applies the effective settings.
+- Decision: implement broker-owned app-server Unix socket plus runtime capability probing, advertise Codex model/effort only on capable sessions, and route browser choices through typed broker control rather than PTY navigation.
+
+## 2026-08-02 18:20
+- Implemented `codoxear/codex_live_control.py`: starts a broker-private app-server, copies only app-server-compatible config/feature flags, negotiates `experimentalApi`, probes method support, sends typed settings updates, and cleans up the owned process group/socket. TUI-only provider layers disable the mechanism rather than silently changing provider semantics.
+- Broker now launches capable Codex TUI processes with `--remote unix://...`, advertises model/effort via sidecar slash commands, scans the sibling app-server process for rollout FDs, forwards typed settings control, and stops both owned process groups. Linux app-server child uses parent-death SIGHUP.
+- Added HTTP `/settings` route, session-manager forwarding, Codex model/effort browser pickers, installed-model-cache projection, `websockets` runtime dependency, durable architecture docs, and focused behavioral tests.
+- Focused validation: 64 tests passed (`test_codex_live_control`, control routes, session control, launch defaults, composer VM); Python compile, Node syntax check, and `git diff --check` passed.
+- Actual released integration using the implementation module and unpacked Codex 0.146.0 over a Unix socket: model and effort updates acknowledged, next provider request used `mock-model-python` + `high`.
+- Docker broker integration was prepared but not run because this machine has no `docker` executable (`docker: command not found`). Per project policy, no host Codoxear broker session was created as a substitute. This leaves end-to-end broker process orchestration unverified in Docker, while the upstream TUI/PTTY probe, actual Unix-socket module probe, and focused broker/control tests cover the component boundaries.
