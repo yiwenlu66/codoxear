@@ -38,7 +38,7 @@ from .control_socket import ControlSocketCallError
 from .control_socket import call_control_socket as _call_control_socket_impl
 from .file_response import send_attachment_file_response as _send_attachment_file_response
 from .file_lock_runtime import file_write_lock as _file_write_lock_impl
-from .file_response import send_inline_file_response as _send_inline_file_response
+from .file_response import send_inline_file_response as _send_inline_file_response_impl
 from .file_response import single_byte_range as _single_byte_range
 from .file_search import FILE_LIST_IGNORED_DIRS
 from .file_search import FILE_SEARCH_LIMIT
@@ -482,6 +482,18 @@ def _password_hash() -> str:
 
 def _is_same_password(pw: str) -> bool:
     return hmac.compare_digest(_sha256_hex(pw.encode("utf-8")), _password_hash())
+
+
+def _is_immutable_upload(path: Path) -> bool:
+    try:
+        path.resolve().relative_to(UPLOAD_DIR.resolve())
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def _send_inline_file_response(handler: http.server.BaseHTTPRequestHandler, path: Path, content_type: str) -> None:
+    _send_inline_file_response_impl(handler, path, content_type, immutable=_is_immutable_upload(path))
 
 
 _resolve_under = _resolve_under_impl

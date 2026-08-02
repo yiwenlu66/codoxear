@@ -131,7 +131,13 @@ def _stream_file_bytes(handler: http.server.BaseHTTPRequestHandler, path: Path, 
         _stream_open_file_bytes(handler, f, start=start, length=length)
 
 
-def send_inline_file_response(handler: http.server.BaseHTTPRequestHandler, path: Path, content_type: str) -> None:
+def send_inline_file_response(
+    handler: http.server.BaseHTTPRequestHandler,
+    path: Path,
+    content_type: str,
+    *,
+    immutable: bool = False,
+) -> None:
     stream = _open_file_for_response(handler, path)
     if stream is None:
         return
@@ -156,9 +162,10 @@ def send_inline_file_response(handler: http.server.BaseHTTPRequestHandler, path:
         if byte_range is not None:
             handler.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         handler.send_header("Content-Disposition", f"inline; filename*=UTF-8''{urllib.parse.quote(_safe_name(path.name), safe='')}")
-        handler.send_header("Cache-Control", "no-store")
-        handler.send_header("Pragma", "no-cache")
-        handler.send_header("Expires", "0")
+        handler.send_header("Cache-Control", "private, max-age=31536000, immutable" if immutable else "no-store")
+        if not immutable:
+            handler.send_header("Pragma", "no-cache")
+            handler.send_header("Expires", "0")
         handler.end_headers()
         _stream_open_file_bytes(handler, opened_stream, start=start, length=length)
 

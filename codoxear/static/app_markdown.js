@@ -259,13 +259,104 @@
     }
   }
 
+  const IMAGE_DIMENSION_CACHE_KEY = "codoxear.image-dimensions.v1";
+  const IMAGE_DIMENSION_CACHE_LIMIT = 500;
+  const DEFAULT_IMAGE_DIMENSIONS = Object.freeze({ width: 16, height: 9 });
+
+  function imageDimensionStorage() {
+    try {
+      const storage = window.localStorage;
+      return storage && typeof storage.getItem === "function" && typeof storage.setItem === "function" ? storage : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function readImageDimensionCache() {
+    const storage = imageDimensionStorage();
+    if (!storage) return {};
+    try {
+      const parsed = JSON.parse(storage.getItem(IMAGE_DIMENSION_CACHE_KEY) || "{}");
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function writeImageDimensionCache(entries) {
+    const storage = imageDimensionStorage();
+    if (!storage) return;
+    const valid = Object.entries(entries)
+      .filter(([, value]) => {
+        const width = Number(value && value.width);
+        const height = Number(value && value.height);
+        return Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0;
+      })
+      .sort(([, a], [, b]) => Number(b.usedAt || 0) - Number(a.usedAt || 0))
+      .slice(0, IMAGE_DIMENSION_CACHE_LIMIT);
+    try {
+      storage.setItem(IMAGE_DIMENSION_CACHE_KEY, JSON.stringify(Object.fromEntries(valid)));
+    } catch {}
+  }
+
+  function nextImageUse(entries) {
+    const latest = Object.values(entries).reduce((max, entry) => Math.max(max, Number(entry && entry.usedAt) || 0), 0);
+    return Math.max(Date.now(), latest + 1);
+  }
+
+  function cachedImageDimensions(source) {
+    const entries = readImageDimensionCache();
+    const entry = entries[source];
+    const width = Number(entry && entry.width);
+    const height = Number(entry && entry.height);
+    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) return null;
+    entries[source] = { width, height, usedAt: nextImageUse(entries) };
+    writeImageDimensionCache(entries);
+    return { width, height };
+  }
+
+  function applyImageDimensions(image, source, dimensions) {
+    image.style.aspectRatio = `${dimensions.width} / ${dimensions.height}`;
+    image.style.width = "100%";
+    image.style.height = "auto";
+    image.setAttribute("width", String(dimensions.width));
+    image.setAttribute("height", String(dimensions.height));
+    image.dataset.codoxearImageKey = source;
+  }
+
+  function prepareImageForDisplay(image, source) {
+    const dimensions = cachedImageDimensions(source) || DEFAULT_IMAGE_DIMENSIONS;
+    applyImageDimensions(image, source, dimensions);
+  }
+
+  function rememberImageDimensions(image) {
+    const source = image && image.dataset ? image.dataset.codoxearImageKey : "";
+    const width = Number(image && image.naturalWidth);
+    const height = Number(image && image.naturalHeight);
+    if (!source || !Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) return;
+    const entries = readImageDimensionCache();
+    entries[source] = { width, height, usedAt: nextImageUse(entries) };
+    writeImageDimensionCache(entries);
+    applyImageDimensions(image, source, { width, height });
+  }
+
+  if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+    document.addEventListener("load", (event) => {
+      const image = event.target;
+      if (image && typeof image.matches === "function" && image.matches("img[data-codoxear-image-key]")) rememberImageDimensions(image);
+    }, true);
+  }
+
   function rewriteMarkedImages(root, doc, options) {
     for (const image of root.querySelectorAll("img[src]")) {
       const rawSrc = image.getAttribute("src") || "";
       const localRef = localFileRefFromRef(rawSrc, options);
       const src = options && typeof options.resolveImageSrc === "function" ? options.resolveImageSrc(rawSrc, localRef) : safeUrl(rawSrc);
       if (!src) image.replaceWith(doc.createTextNode(image.alt || ""));
-      else image.src = src;
+      else {
+        prepareImageForDisplay(image, src);
+        image.src = src;
+      }
       image.loading = "lazy";
     }
   }
@@ -446,5 +537,7 @@
     isMarkdownPreviewable,
     markdownPreviewHtml,
     chatMarkdownHtmlCached,
+    prepareImageForDisplay,
+    rememberImageDimensions,
   });
 })();
