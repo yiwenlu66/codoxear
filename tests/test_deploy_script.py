@@ -70,6 +70,8 @@ esac
         "PATH": f"{fake_bin}:{os.environ['PATH']}",
         "CODOXEAR_DEPLOY_DIR": str(deploy_dir),
         "CODOXEAR_SERVICE_UNIT": str(unit_path),
+        # The sandbox has no real server for the headless boot check to load.
+        "CODOXEAR_SKIP_BOOT_CHECK": "1",
     }
     try:
         completed = subprocess.run(

@@ -153,7 +153,7 @@ wait_for_status 401 "/api/sessions"
 # Boot check: the page must not only respond, the app must boot. A broken
 # frontend passes the HTTP health check, so assert the load-error surface is
 # absent and the core controller globals register before calling this a deploy.
-if command -v agent-browser >/dev/null; then
+if command -v agent-browser >/dev/null && [[ "${CODOXEAR_SKIP_BOOT_CHECK:-0}" != "1" ]]; then
   BOOT_OK=0
   for _ in {1..3}; do
     AGENT_BROWSER_SESSION=deploy-boot agent-browser open "$BASE_URL/" >/dev/null 2>&1 || true
