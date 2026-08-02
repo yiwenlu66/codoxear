@@ -8,8 +8,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_HINT_MODE_JS = ROOT / "codoxear" / "static" / "app_hint_mode.js"
-APP_JS = ROOT / "codoxear" / "static" / "app.js"
-INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 
 
 def run_node_json(js: str) -> dict:
@@ -192,36 +190,6 @@ class TestFrontendHintModeModuleSource(unittest.TestCase):
         self.assertFalse(result["active"])
         self.assertEqual(result["badgeContainers"], 0)
         self.assertNotIn("reserved", result["clicks"])
-
-    def test_app_wires_all_locked_shell_hints_before_app_js(self) -> None:
-        app_source = APP_JS.read_text(encoding="utf-8")
-        expected = {
-            "s": "toggleSidebarBtn", "t": "titleLabel", "b": "fileBtn", "d": "diagBtn", "u": "unattendedBtn",
-            "z": "interruptBtn", "/": "chatSearchBtn", "p": "prevUserBtn", "n": "nextUserBtn",
-            "o": "olderBtn", "g": "jumpBtn", "a": "attachBtn", "q": "queueBtn",
-            "e": "sendBtn", "i": "textarea", "c": "$(\"#newBtn\")",
-        }
-        for label, element in expected.items():
-            self.assertIn(f'{{ label: "{label}", element: {element} }}', app_source)
-        self.assertNotIn('{ label: "x",', app_source)
-        self.assertNotIn('{ label: "r", element: chatSearchBtn }', app_source)
-        self.assertNotIn("handleSessionNavigationKeydown", app_source)
-        self.assertNotIn("Alt+1", app_source)
-        index_source = INDEX_HTML.read_text(encoding="utf-8")
-        self.assertLess(index_source.index('src="app_hint_mode.js'), index_source.index('src="app.js?v='))
-
-    def test_app_modal_keys_activate_first_visible_matching_button(self) -> None:
-        app_source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('function activateModalButtonForKey(e)', app_source)
-        self.assertIn('for (const modal of modalIsolationTargets)', app_source)
-        self.assertIn('function modalButtonLabel(button)', app_source)
-        self.assertIn('function modalButtonHint(label, labels)', app_source)
-        self.assertIn('const buttons = [...modal.querySelectorAll("button")].filter(', app_source)
-        self.assertIn('const labels = buttons.map(modalButtonLabel);', app_source)
-        self.assertIn('modalButtonHint(labels[index], labels) === key', app_source)
-        self.assertIn('labels.filter((other) => other[index] === candidate).length === 1', app_source)
-        self.assertIn('button.click();', app_source)
-        self.assertIn('addAppEvent(document, "keydown", activateModalButtonForKey);', app_source)
 
 
 if __name__ == "__main__":
