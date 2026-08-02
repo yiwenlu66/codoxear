@@ -1054,13 +1054,15 @@
         height: 32px;
         border-radius: 0;
       }
-      .msg-row.chat-search-hit .msg {
-        border-color: #fcddaa;
+      mark.searchHit {
+        padding: 0;
+        border: 0;
+        background: var(--wash);
+        color: var(--ink);
       }
-      .msg-row.chat-search-current .msg {
-        border-color: var(--ink);
-        outline: 2px solid var(--ink);
-        outline-offset: 1px;
+      mark.searchHit.searchHitCurrent {
+        background: var(--ink);
+        color: var(--paper);
       }
       .msg-row {
         display: flex;

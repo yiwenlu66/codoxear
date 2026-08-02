@@ -20,6 +20,7 @@
   // for the search bar and controls stays in app.js.
 
   const CHAT_SEARCH_ALL_DEBOUNCE_MS = 300;
+  const CHAT_SEARCH_HIGHLIGHT_DEBOUNCE_MS = 150;
   const CHAT_SEARCH_ALL_COUNT_MAX = 1000;
 
   function requireFunction(value, name) {
@@ -93,6 +94,25 @@
       AbortControllerCtor: AbortController,
       debounceMs: CHAT_SEARCH_ALL_DEBOUNCE_MS,
     });
+    let loadedRefreshTimer = null;
+
+    function cancelLoadedRefresh() {
+      if (loadedRefreshTimer === null) return;
+      window.clearTimeout(loadedRefreshTimer);
+      loadedRefreshTimer = null;
+    }
+
+    function scheduleLoadedRefresh({ jump = true, preserveCurrent = false } = {}) {
+      cancelLoadedRefresh();
+      loadedRefreshTimer = window.setTimeout(() => {
+        loadedRefreshTimer = null;
+        if (isOpen()) refreshLoaded({ jump, preserveCurrent });
+      }, CHAT_SEARCH_HIGHLIGHT_DEBOUNCE_MS);
+    }
+
+    function focusSearchInput() {
+      if (typeof chatSearchInput.focus === "function") chatSearchInput.focus({ preventScroll: true });
+    }
 
     function snapshot() {
       return loadedChatSearchRuntime.snapshot();
@@ -132,7 +152,9 @@
       const atOldestLoadedMatch = total > 0 && searchState.index === 0;
       const showAllHint = Boolean(searchState.query && !searchState.loadingOlder && Number.isFinite(allState.count) && allState.hint);
       chatSearchStatus.textContent = searchState.query
-        ? `${total ? searchState.index + 1 : 0} of ${total}${atOldestLoadedMatch && mayHaveOlderMatches ? " · Older matches may exist; Previous loads them" : ""}`
+        ? total
+          ? `${searchState.index + 1} of ${total}${atOldestLoadedMatch && mayHaveOlderMatches ? " · Older matches may exist; Previous loads them" : ""}`
+          : "no matches"
         : "Search conversation";
       chatSearchAllHintEl.textContent = showAllHint ? allState.hint : "";
       chatSearchAllHintEl.title = showAllHint ? allState.hint : "";
@@ -187,14 +209,14 @@
       }
     }
 
-    function focusChatSearchMatch(index, { jump = true } = {}) {
-      clearChatSearchMarks();
+    function focusChatSearchMatch(index, { jump = true, resetMarks = true } = {}) {
+      if (resetMarks) clearChatSearchMarks();
       const result = loadedChatSearchRuntime.focusIndex(index);
       if (!result.row) {
         syncChatSearchStatus();
         return;
       }
-      applyChatSearchMarks(result.matches, result.row);
+      applyChatSearchMarks(result.matches, result.row, currentQuery());
       syncChatSearchStatus();
       if (jump) {
         result.row.scrollIntoView({ block: "center", behavior: prefersReducedMotion() ? "auto" : "smooth" });
@@ -211,6 +233,7 @@
     }
 
     function refreshLoaded({ jump = false, preserveCurrent = true, refreshAllCount = true } = {}) {
+      cancelLoadedRefresh();
       const query = loadedChatSearchRuntime.setQuery(chatSearchInput.value || "");
       clearChatSearchMarks();
       if (!query) {
@@ -226,7 +249,7 @@
         syncChatSearchStatus();
         return;
       }
-      focusChatSearchMatch(nextState.index, { jump });
+      focusChatSearchMatch(nextState.index, { jump, resetMarks: false });
     }
 
     function open() {
@@ -240,6 +263,7 @@
     }
 
     function close() {
+      cancelLoadedRefresh();
       loadedChatSearchRuntime.setOpen(false);
       chatSearchBar.style.display = "none";
       clearChatSearchMarks();
@@ -404,7 +428,7 @@
       if (loadedChatSearchRuntime.snapshot().open) close();
       else open();
     };
-    chatSearchInput.oninput = () => refreshLoaded({ jump: true, preserveCurrent: false });
+    chatSearchInput.oninput = () => scheduleLoadedRefresh({ jump: true, preserveCurrent: false });
     chatSearchInput.onkeydown = (e) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -417,11 +441,13 @@
     chatSearchPrevBtn.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
+      focusSearchInput();
       void step(-1);
     };
     chatSearchNextBtn.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
+      focusSearchInput();
       void step(1);
     };
     chatSearchCloseBtn.onclick = (e) => {
@@ -437,6 +463,7 @@
       chatSearchPrevBtn.onclick = null;
       chatSearchNextBtn.onclick = null;
       chatSearchCloseBtn.onclick = null;
+      cancelLoadedRefresh();
       chatSearchAllRuntime.dispose();
     }
 

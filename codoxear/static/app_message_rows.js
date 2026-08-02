@@ -278,12 +278,67 @@
   }
 
   function clearChatSearchMarks(rows) {
-    for (const row of rows) row.classList.remove("chat-search-hit", "chat-search-current");
+    for (const row of rows) {
+      const hits = row && typeof row.querySelectorAll === "function" ? Array.from(row.querySelectorAll("mark.searchHit")) : [];
+      for (const hit of hits) {
+        const parent = hit.parentNode;
+        if (!parent || typeof parent.replaceChild !== "function") continue;
+        const doc = hit.ownerDocument;
+        if (!doc || typeof doc.createTextNode !== "function") continue;
+        parent.replaceChild(doc.createTextNode(hit.textContent || ""), hit);
+        if (typeof parent.normalize === "function") parent.normalize();
+      }
+      if (row && row.classList) row.classList.remove("chat-search-hit", "chat-search-current");
+    }
   }
 
-  function applyChatSearchMarks(matches, currentRow) {
-    for (const match of matches) match.classList.add("chat-search-hit");
-    if (currentRow) currentRow.classList.add("chat-search-current");
+  function textNodesForSearch(root) {
+    const doc = root && root.ownerDocument;
+    if (!doc || typeof doc.createTreeWalker !== "function") return [];
+    const showText = doc.defaultView && doc.defaultView.NodeFilter ? doc.defaultView.NodeFilter.SHOW_TEXT : 4;
+    const walker = doc.createTreeWalker(root, showText);
+    const nodes = [];
+    let node;
+    while ((node = walker.nextNode())) nodes.push(node);
+    return nodes;
+  }
+
+  function markSearchHitsInRow(row, query) {
+    const cleanQuery = String(query || "").trim().toLowerCase();
+    if (!cleanQuery || !row || typeof row.querySelector !== "function") return;
+    const md = row.querySelector(".msg .md");
+    if (!md) return;
+    const doc = md.ownerDocument;
+    for (const textNode of textNodesForSearch(md)) {
+      const source = String(textNode.nodeValue || "");
+      const lower = source.toLowerCase();
+      if (!source || !lower.includes(cleanQuery) || !textNode.parentNode || !doc) continue;
+      const fragment = doc.createDocumentFragment();
+      let cursor = 0;
+      let index = lower.indexOf(cleanQuery, cursor);
+      while (index >= 0) {
+        if (index > cursor) fragment.appendChild(doc.createTextNode(source.slice(cursor, index)));
+        const hit = doc.createElement("mark");
+        hit.className = "searchHit";
+        hit.textContent = source.slice(index, index + cleanQuery.length);
+        fragment.appendChild(hit);
+        cursor = index + cleanQuery.length;
+        index = lower.indexOf(cleanQuery, cursor);
+      }
+      if (cursor < source.length) fragment.appendChild(doc.createTextNode(source.slice(cursor)));
+      textNode.parentNode.replaceChild(fragment, textNode);
+    }
+  }
+
+  function applyChatSearchMarks(matches, currentRow, query) {
+    for (const match of matches) {
+      match.classList.add("chat-search-hit");
+      markSearchHitsInRow(match, query);
+    }
+    if (!currentRow) return;
+    currentRow.classList.add("chat-search-current");
+    if (typeof currentRow.querySelectorAll !== "function") return;
+    for (const hit of currentRow.querySelectorAll("mark.searchHit")) hit.classList.add("searchHitCurrent");
   }
 
   function oldestRenderedHistoryCursor(rows) {
