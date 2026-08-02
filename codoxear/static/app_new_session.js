@@ -142,7 +142,7 @@
 
     function formatNewSessionProviderModelDisplay(model, providerChoice = "") {
       const cleanModel = String(model || "").trim() || "default";
-      const cleanProvider = abbreviatedNewSessionProvider(providerChoice);
+      const cleanProvider = String(providerChoice || "").trim();
       return cleanProvider ? `${cleanModel}${MODEL_PROVIDER_SEPARATOR}${cleanProvider}` : cleanModel;
     }
 

@@ -2523,7 +2523,23 @@ select {
         background: transparent;
       }
       .newSessionViewer {
+        position: fixed;
+        left: 50%;
+        right: auto;
+        top: 50%;
+        bottom: auto;
+        transform: translate(-50%, -50%);
         width: min(92vw, 480px);
+        height: max-content;
+        max-height: calc(var(--appH, 100dvh) - 24px);
+        gap: var(--dialog-group-gap);
+      }
+      .newSessionViewer .formBody {
+        flex: 0 1 auto;
+      }
+      #newSessionStatus:empty,
+      #newSessionCwdHint:empty {
+        display: none;
       }
       .newSessionHeaderLead {
         display: inline-flex;
@@ -2581,7 +2597,7 @@ select {
         gap: var(--dialog-group-gap, 10px);
       }
       .newSessionRunConfigRow {
-        grid-template-columns: minmax(0, 1.4fr) minmax(96px, auto) auto;
+        grid-template-columns: minmax(0, 1.4fr) minmax(96px, auto);
         align-items: start;
       }
       .newSessionOptionsRow {
@@ -2662,19 +2678,19 @@ select {
         outline: 2px solid var(--ink);
         outline-offset: 2px;
       }
-      .compactToggleField {
-        justify-content: flex-end;
+      #newSessionViewer .checkField {
+        gap: 6px;
+        min-height: 18px;
+        padding: 0;
       }
-      .compactToggleField .checkField {
-        min-height: 40px;
-        padding: 0 4px;
+      #newSessionViewer .compactToggleField,
+      #newSessionViewer #newSessionTmuxField {
+        justify-content: flex-start;
       }
-      .newSessionOptionsRow #newSessionTmuxField {
-        justify-content: flex-end;
-      }
-      .newSessionOptionsRow #newSessionTmuxField .checkField {
-        min-height: 40px;
-        padding: 0 4px;
+      #newSessionViewer .compactToggleField .checkField,
+      #newSessionViewer #newSessionTmuxField .checkField {
+        min-height: 18px;
+        padding: 0;
       }
       .formViewer .icon-btn,
       .formViewer .agentBackendTab,
@@ -2692,6 +2708,19 @@ select {
         content: "";
         position: absolute;
         inset: -2px;
+      }
+      #newSessionViewer input[type="text"],
+      #newSessionViewer .dialogPickerBtn,
+      #newSessionViewer .formActions > button,
+      #newSessionViewer .agentBackendTab,
+      #newSessionViewer .icon-btn {
+        height: var(--dialog-control-h);
+        min-height: var(--dialog-control-h);
+      }
+      #newSessionViewer .agentBackendTab,
+      #newSessionCloseBtn {
+        width: var(--dialog-control-h);
+        min-width: var(--dialog-control-h);
       }
       .pickerField {
         position: relative;
@@ -2728,6 +2757,7 @@ select {
         pointer-events: none;
         z-index: 1;
       }
+      #newSessionCwdInput,
       #newSessionModelInput {
         font-family: var(--font-mono);
       }
@@ -2950,7 +2980,6 @@ select {
         display: flex;
         justify-content: flex-end;
         gap: 10px;
-        padding-top: 2px;
       }
       .formActions button {
         min-width: 108px;
