@@ -1,14 +1,14 @@
       :root {
-        --ink: #141111;
+        --ink: #2f2b26;
         --paper: #ffffff;
         --bg: #f6f5f1;
         --wash: #efeee9;
         --hairline: #dcdad4;
         --panel: var(--paper);
-        --border: #141111;
+        --border: #2f2b26;
         --text: var(--ink);
         --muted: #6b6862;
-        --accent: #141111;
+        --accent: #2f2b26;
         --accent-weak: #efeee9;
         --danger: #b91c1c;
         --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -18,6 +18,7 @@
         --dialog-group-gap: 12px;
         --shadow-sm: none;
         --sidebar-w: 320px;
+        --composer-band-h: 48px;
         --bubble-user: var(--wash);
         --bubble-assistant: var(--paper);
       }
@@ -106,6 +107,8 @@
       }
       .sidebar header {
         padding: 12px 14px;
+        height: 56px;
+        box-sizing: border-box;
         border-bottom: 1px solid var(--border);
         display: flex;
         align-items: center;
@@ -126,7 +129,7 @@
         color: var(--ink);
       }
       .sidebar .sessions {
-        padding: 8px;
+        padding: 8px 8px calc(8px + var(--composer-band-h, 48px));
         overflow: auto;
         flex: 1;
         min-height: 0;
@@ -175,7 +178,7 @@
         border: 1px solid #dadfe6;
         border-radius: 0;
         background: #f8fafc;
-        color: #141111;
+        color: #2f2b26;
         font-size: 11px;
         line-height: 1.45;
         text-align: center;
@@ -239,10 +242,10 @@
         height: 8px;
         border-radius: 0;
         flex: 0 0 auto;
-        background: #141111;
+        background: #2f2b26;
       }
       .ownDot.owned {
-        background: #141111;
+        background: #2f2b26;
       }
       .stateDot {
         width: 8px;
@@ -601,7 +604,7 @@
       }
 	      .badge.busy {
 	        color: var(--accent);
-	        border-color: #141111;
+	        border-color: #2f2b26;
 	      }
 	      .badge.unattended {
 	        color: var(--paper);
@@ -645,6 +648,8 @@
       }
       .topbar {
         padding: calc(8px + env(safe-area-inset-top)) 12px 8px 12px;
+        height: 56px;
+        box-sizing: border-box;
         border-bottom: 1px solid var(--border);
         background: var(--panel);
         display: flex;
@@ -835,7 +840,7 @@
         height: 15px;
         padding: 0 4px;
         border-radius: 0;
-        background: #141111;
+        background: #2f2b26;
         color: #ffffff;
         font-size: 10px;
         line-height: 15px;
@@ -890,7 +895,7 @@
       input:focus-visible,
       textarea:focus-visible,
       select:focus-visible {
-        outline: 2px solid #141111;
+        outline: 2px solid #2f2b26;
         outline-offset: 1px;
       }
       /* The composer band is the input surface; focus there is self-evident
@@ -1136,7 +1141,7 @@
         min-width: 0;
         padding: 10px 12px 18px 12px;
         border-radius: 0;
-        border: 1px solid #141111;
+        border: 1px solid #2f2b26;
         position: relative;
         white-space: normal;
         line-height: 1.35;
@@ -1474,7 +1479,7 @@
         border-left: 3px solid #caccd0;
         border-radius: 0;
         background: #f4f5f5;
-        color: #141111;
+        color: #2f2b26;
       }
       .md blockquote > :last-child {
         margin-bottom: 0;
@@ -1596,7 +1601,7 @@
         width: var(--composerCtl);
         height: var(--composerCtl);
         min-height: 0;
-        border: 1px solid var(--border);
+        border: 0;
         border-radius: 0;
       }
       .composerInputRow {
@@ -1991,7 +1996,7 @@ select {
         display: none;
         position: fixed;
         inset: 0;
-        background: #908e8c;
+        background: transparent;
         z-index: 70;
       }
       .fileViewer {
@@ -2299,7 +2304,7 @@ select {
         display: flex;
         align-items: center;
         justify-content: center;
-        border: 1px solid #141111;
+        border: 1px solid #2f2b26;
         border-radius: 0;
         background: #ffffff;
         color: var(--muted);
@@ -2490,6 +2495,7 @@ select {
         height: var(--ctl-chrome);
         min-width: var(--ctl-chrome);
         min-height: var(--ctl-chrome);
+        border: 0;
       }
       .diagViewer .detailsGrid {
         flex: 1 1 auto;
@@ -2514,7 +2520,7 @@ select {
         display: flex;
       }
       .formDialog::backdrop {
-        background: #908e8c;
+        background: transparent;
       }
       .newSessionViewer {
         width: min(92vw, 480px);
@@ -2601,7 +2607,7 @@ select {
       .fieldLabel {
         font-size: 13px;
         font-weight: 600;
-        color: #141111;
+        color: #2f2b26;
       }
       .fieldHint {
         font-size: 12px;
@@ -2802,7 +2808,7 @@ select {
         gap: 2px;
       }
       .pickerButtonText.placeholder .pickerButtonPrimary {
-        color: #141111;
+        color: #2f2b26;
       }
       .pickerButtonPrimary {
         width: 100%;
@@ -3045,7 +3051,7 @@ select {
         border-radius: 0;
         background: #f8fafc;
         border-color: #e1e5eb;
-        color: #141111;
+        color: #2f2b26;
         box-shadow: none;
       }
       .queueIconBtn:hover:not(:disabled) {
@@ -3082,7 +3088,7 @@ select {
         outline-offset: 1px;
       }
       .queueText:disabled {
-        color: #141111;
+        color: #2f2b26;
       }
       .sendChoice {
         display: none;
@@ -3124,7 +3130,7 @@ select {
 		        display: none;
 		        position: absolute;
 		        inset: 0;
-	        background: #abaeb4;
+	        background: transparent;
 	        z-index: 20;
 	      }
       @media (max-width: 880px) {
