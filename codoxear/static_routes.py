@@ -162,6 +162,8 @@ def static_content_type(path: Path) -> str:
         return "image/x-icon"
     if path.suffix == ".json" or path.suffix == ".map":
         return "application/json; charset=utf-8"
+    if path.suffix in (".woff", ".woff2"):
+        return "font/woff2" if path.suffix == ".woff2" else "font/woff"
     if path.suffix == ".ttf":
         return "font/ttf"
     if path.suffix == ".wasm":
@@ -177,6 +179,9 @@ def handle_static_get_route(handler: Any, *, path: str, query: str, deps: Static
     return True
 
 
+STATIC_SERVABLE_SUFFIXES = {".js", ".css", ".html", ".png", ".svg", ".json", ".webmanifest", ".map", ".ico", ".woff", ".woff2"}
+
+
 def static_route_asset(path: str, *, top_level_static_assets: tuple[tuple[str, str], ...] = TOP_LEVEL_STATIC_ASSETS) -> str | None:
     for route, asset in top_level_static_assets:
         if path == route:
@@ -185,6 +190,13 @@ def static_route_asset(path: str, *, top_level_static_assets: tuple[tuple[str, s
         return path[len("/static/") :]
     if path.startswith("/monaco/"):
         return f"monaco/{path[len('/monaco/') :]}"
+    # Any real file present in the static dir with a servable extension is
+    # served from the top level too, so a new frontend module can never fall
+    # through to the SPA fallback (which broke boot when a file was added
+    # without a whitelist entry).
+    rel = path.lstrip("/")
+    if rel and not rel.startswith(".") and Path(rel).suffix in STATIC_SERVABLE_SUFFIXES:
+        return rel
     return None
 
 

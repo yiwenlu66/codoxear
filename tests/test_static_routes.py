@@ -80,8 +80,10 @@ def test_static_get_route_serves_html_headers_and_body(tmp_path: Path) -> None:
 
 def test_static_get_route_rejects_missing_and_escaped_paths(tmp_path: Path) -> None:
     handler = _FakeHandler()
-    assert handle_static_get_route(handler, path="/missing.js", query="", deps=_deps(tmp_path)) is False
-    assert handler.errors == []
+    # A servable-extension path is a candidate (handled) but 404s because the
+    # file does not exist; the SPA fallback is only for non-servable paths.
+    assert handle_static_get_route(handler, path="/missing.js", query="", deps=_deps(tmp_path)) is True
+    assert handler.errors == [404]
 
     handler = _FakeHandler()
     assert handle_static_get_route(handler, path="/static/../secret.txt", query="", deps=_deps(tmp_path)) is True

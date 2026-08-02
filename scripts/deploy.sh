@@ -149,4 +149,26 @@ wait_for_status() {
 
 wait_for_status 200 "/"
 wait_for_status 401 "/api/sessions"
+
+# Boot check: the page must not only respond, the app must boot. A broken
+# frontend passes the HTTP health check, so assert the load-error surface is
+# absent and the core controller globals register before calling this a deploy.
+if command -v agent-browser >/dev/null; then
+  BOOT_OK=0
+  for _ in {1..3}; do
+    AGENT_BROWSER_SESSION=deploy-boot agent-browser open "$BASE_URL/" >/dev/null 2>&1 || true
+    sleep 3
+    BOOT_CHECK="$(AGENT_BROWSER_SESSION=deploy-boot agent-browser eval '(() => { const err = !!document.querySelector("[data-codoxear-load-error]"); const globals = ["CodoxearUrls","CodoxearStorage","CodoxearApi"].every((k) => !!window[k]); return err || !globals ? "FAIL" : "OK"; })()' --json 2>/dev/null || true)"
+    AGENT_BROWSER_SESSION=deploy-boot agent-browser close >/dev/null 2>&1 || true
+    if [[ "$BOOT_CHECK" == *'"OK"'* ]]; then
+      BOOT_OK=1
+      break
+    fi
+    sleep 2
+  done
+  if [[ "$BOOT_OK" != 1 ]]; then
+    echo "boot check failed: the app did not boot cleanly after deploy (load-error surface present or core globals missing)" >&2
+    exit 1
+  fi
+fi
 printf 'deployed %s from %s\n' "$TARGET_COMMIT" "$DEPLOY_DIR"
