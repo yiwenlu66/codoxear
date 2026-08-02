@@ -1831,17 +1831,6 @@
           newSessionWorktreeInput,
         ]);
         const newSessionStartBtn = el("button", { class: "primary", id: "newSessionStartBtn", type: "button", text: "Start session" });
-        const newSessionRunConfigRow = el("div", { class: "formGrid newSessionRunConfigRow" }, [
-          el("label", { class: "field" }, [
-            newSessionModelLabel,
-            newSessionModelField,
-          ]),
-          el("label", { class: "field" }, [
-            el("span", { class: "fieldLabel", text: "Reasoning effort" }),
-            newSessionReasoningField,
-          ]),
-          newSessionFastField,
-        ]);
         const newSessionViewer = el("div", { class: "formViewer newSessionViewer", id: "newSessionViewer", role: "dialog", "aria-modal": "true", "aria-label": "New session" }, [
           el("div", { class: "queueHeader" }, [
             el("div", { class: "newSessionHeaderLead" }, [
@@ -1862,7 +1851,17 @@
               el("span", { class: "fieldLabel", text: "Session name" }),
               newSessionNameInput,
             ]),
-            newSessionRunConfigRow,
+            el("div", { class: "formGrid newSessionRunConfigRow" }, [
+              el("label", { class: "field" }, [
+                newSessionModelLabel,
+                newSessionModelField,
+              ]),
+              el("label", { class: "field" }, [
+                el("span", { class: "fieldLabel", text: "Reasoning effort" }),
+                newSessionReasoningField,
+              ]),
+              newSessionFastField,
+            ]),
             el("label", { class: "field" }, [
               el("span", { class: "fieldLabel", text: "Resume conversation" }),
               newSessionResumeBtn,
@@ -4475,7 +4474,7 @@
         }
 
         function applyDialogMenus() {
-          newSessionRunConfigRow.style.marginBottom = "";
+
           editDependencyMenu.classList.toggle("open", editDependencyMenuOpen);
           newSessionCwdMenu.classList.toggle("open", newSessionCwdMenuOpen);
           newSessionModelMenu.classList.toggle("open", newSessionModelMenuOpen);

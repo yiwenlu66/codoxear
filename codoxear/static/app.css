@@ -2464,9 +2464,11 @@ select {
       .formViewer {
         display: none;
         position: fixed;
-        left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
+        left: 0;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        margin: auto;
         z-index: 80;
         width: min(92vw, 820px);
         max-height: calc(var(--appH, 100dvh) - 24px);
@@ -2671,6 +2673,7 @@ select {
       .formViewer .icon-btn,
       .formViewer .agentBackendTab,
       .formViewer .choiceChip {
+        position: relative;
         width: auto;
         min-width: 0;
         height: var(--dialog-control-h);
