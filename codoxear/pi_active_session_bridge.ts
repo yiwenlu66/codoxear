@@ -76,7 +76,7 @@ function writeThinkingCapabilities(): void {
 	const capsPath = `${markerPath}.caps`;
 	const payload = {
 		bridgeVersion: 2,
-		features: ["thinking"],
+		features: ["effort", "thinking"],
 		pid: process.pid,
 		updatedAt: new Date().toISOString(),
 	};
@@ -100,23 +100,29 @@ export default function (pi: ExtensionAPI): void {
 	pi.on("session_start", (_event, ctx) => writeActiveSession(ctx, "session_start"));
 	pi.on("session_switch", (event, ctx) => writeActiveSession(ctx, event.reason));
 	pi.on("session_fork", (_event, ctx) => writeActiveSession(ctx, "fork"));
+	const effortHandler = (args, ctx) => {
+		const requested = args.trim().toLowerCase();
+		if (!THINKING_LEVELS.includes(requested as ThinkingLevel)) {
+			ctx.ui.notify(
+				`Thinking level: ${pi.getThinkingLevel()}. Choose one of: ${THINKING_LEVELS.join(", ")}.`,
+				"warning",
+			);
+			return;
+		}
+		pi.setThinkingLevel(requested as ThinkingLevel);
+		const effective = pi.getThinkingLevel();
+		const message = effective === requested
+			? `Thinking level: ${effective}`
+			: `Thinking level: ${effective} (requested ${requested}; adjusted for the current model)`;
+		ctx.ui.notify(message, "info");
+	};
+	pi.registerCommand("effort", {
+		description: "Set the reasoning effort (thinking level) for the current model",
+		handler: effortHandler,
+	});
+	// Backwards-compatible alias; /effort is the primary spelling.
 	pi.registerCommand("thinking", {
-		description: "Set the thinking level for the current model",
-		handler: (args, ctx) => {
-			const requested = args.trim().toLowerCase();
-			if (!THINKING_LEVELS.includes(requested as ThinkingLevel)) {
-				ctx.ui.notify(
-					`Thinking level: ${pi.getThinkingLevel()}. Choose one of: ${THINKING_LEVELS.join(", ")}.`,
-					"warning",
-				);
-				return;
-			}
-			pi.setThinkingLevel(requested as ThinkingLevel);
-			const effective = pi.getThinkingLevel();
-			const message = effective === requested
-				? `Thinking level: ${effective}`
-				: `Thinking level: ${effective} (requested ${requested}; adjusted for the current model)`;
-			ctx.ui.notify(message, "info");
-		},
+		description: "Alias for /effort",
+		handler: effortHandler,
 	});
 }

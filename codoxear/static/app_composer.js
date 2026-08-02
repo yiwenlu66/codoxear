@@ -160,12 +160,12 @@
         session
         && String(session.agent_backend || "").trim().toLowerCase() === "pi"
         && session.pi_thinking_command !== true
-        && /^\/thinking(?:\s|$)/i.test(String(raw || "")),
+        && /^\/(?:effort|thinking)(?:\s|$)/i.test(String(raw || "")),
       );
     }
 
     function thinkingPickerMatches() {
-      const match = String(textarea.value || "").match(/^\/thinking(?:\s+(.*))?$/i);
+      const match = String(textarea.value || "").match(/^\/(?:effort|thinking)(?:\s+(.*))?$/i);
       const session = piSession();
       if (!match || !session || session.pi_thinking_command !== true) return null;
       const query = String(match[1] || "").trim().toLowerCase();
@@ -202,7 +202,7 @@
       if (!choice) return;
       hideModelPicker();
       clearComposer();
-      void sendText(`/thinking ${choice}`);
+      void sendText(`/effort ${choice}`);
     }
 
     function selectPickerOption(option) {

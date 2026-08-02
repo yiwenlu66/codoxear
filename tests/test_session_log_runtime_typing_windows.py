@@ -219,3 +219,39 @@ def test_cross_chunk_steer_preserves_open_turn_counters(tmp_path: Path) -> None:
     runtime.update_meta_counters()
     assert session.meta_turn_open is True
     assert (session.meta_thinking, session.meta_tools) == (1, 3)
+
+
+def test_busy_false_preserves_counters_while_subagents_active(tmp_path: Path, monkeypatch) -> None:
+    """The episode continues in the background: with an active subagent run
+    whose parent is this session's log, the busy-false scan must NOT zero the
+    counters; once no runs are active the reset fires as before."""
+    log_path = tmp_path / "pi.jsonl"
+    log_path.touch()
+    session = _session(log_path, thinking=3, thinking_tokens=40, tools=5, turn_open=True)
+    session.busy = False
+    runtime = _runtime(session)
+
+    runs_root = tmp_path / "runs"
+    run_dir = runs_root / "run-1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "status.json").write_text(
+        json.dumps({"state": "running", "sessionId": str(log_path), "pid": 1, "startedAt": 1}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_WEB_SUBAGENT_RUNS_ROOT", str(runs_root))
+
+    runtime.update_meta_counters()
+    assert (session.meta_thinking, session.meta_thinking_tokens, session.meta_tools) == (3, 40, 5)
+    assert session.meta_turn_open is True
+
+    # Runs finished: the episode is over, the reset fires.
+    (run_dir / "status.json").write_text(
+        json.dumps({"state": "complete", "sessionId": str(log_path), "pid": 1, "startedAt": 1}),
+        encoding="utf-8",
+    )
+    # Force the scanner's 2s TTL cache to refresh so the "complete" status is seen.
+    import codoxear.util as util
+    monkeypatch.setattr(util, "_SUBAGENT_RUNS_CACHE_AT", 0.0)
+    runtime.update_meta_counters()
+    assert (session.meta_thinking, session.meta_thinking_tokens, session.meta_tools) == (0, 0, 0)
+    assert session.meta_turn_open is False

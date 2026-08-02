@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Callable, MutableMapping
 
 from .session_model import Session
+from .util import scan_active_pi_subagents
 from .session_runtime import suppress_session_interrupted_idle
 from .token_signal import TOKEN_NONE
 from .token_signal import TokenObservation
@@ -143,11 +144,17 @@ class SessionLogRuntimeCoordinator:
                         current.meta_system += total_system
                     current.meta_turn_open = turn_open
                 else:
-                    current.meta_thinking = 0
-                    current.meta_thinking_tokens = 0
-                    current.meta_tools = 0
-                    current.meta_system = 0
-                    current.meta_turn_open = False
+                    # Episode-aware reset: while the session has active
+                    # subagents, the user's work episode continues in the
+                    # background even though the main turn is closed. Preserve
+                    # the counters so the next delivery turn resumes them
+                    # monotonically instead of showing a mid-episode reset.
+                    if not scan_active_pi_subagents().get(str(log_path)):
+                        current.meta_thinking = 0
+                        current.meta_thinking_tokens = 0
+                        current.meta_tools = 0
+                        current.meta_system = 0
+                        current.meta_turn_open = False
                 if clear_interrupted_idle and current.interrupted_idle:
                     suppress_session_interrupted_idle(current)
                 current.meta_log_off = offset if offset >= 0 else current.meta_log_off

@@ -14,6 +14,7 @@ class TestPiThinkingBridgeSource(unittest.TestCase):
     def test_thinking_command_uses_pi_setter_and_reports_effective_level(self) -> None:
         source = BRIDGE.read_text(encoding="utf-8")
 
+        self.assertIn('pi.registerCommand("effort"', source)
         self.assertIn('pi.registerCommand("thinking"', source)
         self.assertIn("setThinkingLevel(level: ThinkingLevel): void", source)
         self.assertIn("getThinkingLevel(): ThinkingLevel", source)
@@ -70,7 +71,7 @@ class TestPiThinkingBridgeSource(unittest.TestCase):
             observed = json.loads(result.stdout)
 
         self.assertEqual(observed["payload"]["bridgeVersion"], 2)
-        self.assertEqual(observed["payload"]["features"], ["thinking"])
+        self.assertEqual(observed["payload"]["features"], ["effort", "thinking"])
         self.assertEqual(observed["payload"]["pid"], observed["pid"])
         self.assertIn("updatedAt", observed["payload"])
         self.assertEqual(observed["mode"], 0o600)

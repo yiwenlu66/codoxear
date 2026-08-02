@@ -124,7 +124,7 @@ class TestComposerModelPicker(unittest.TestCase):
             textarea.dispatch("keydown", thinkingEnter);
             if (!thinkingEnter.defaultPrevented) throw new Error("thinking picker Enter was not consumed");
             await new Promise((resolve) => setTimeout(resolve, 0));
-            if (state.sent[1] !== "/thinking low") throw new Error("selected thinking level was not sent through composer path");
+            if (state.sent[1] !== "/effort low") throw new Error("selected thinking level was not sent through composer path as /effort");
             textarea.value = "/thinking";
             textarea.dispatch("input");
             textarea.dispatch("keydown", {{ key: "Escape", preventDefault() {{}} }});
@@ -159,7 +159,7 @@ class TestComposerModelPicker(unittest.TestCase):
         result = subprocess.run(["node", "-e", script], check=False, capture_output=True, text=True)
         if result.returncode:
             raise AssertionError(result.stderr or result.stdout)
-        self.assertEqual(json.loads(result.stdout), {"sent": ["/model openai/gpt-5", "/thinking low", "/thinking high", "ordinary text"], "selected": "none"})
+        self.assertEqual(json.loads(result.stdout), {"sent": ["/model openai/gpt-5", "/effort low", "/thinking high", "ordinary text"], "selected": "none"})
 
 
 if __name__ == "__main__":
