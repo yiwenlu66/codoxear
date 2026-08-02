@@ -2763,7 +2763,7 @@ select {
         z-index: 1;
       }
       #newSessionCwdInput {
-        font-family: var(--font-mono);
+        font-family: inherit;
       }
       .cwdComboboxField.error .cwdComboboxIcon {
         color: #cd5c5c;
@@ -3043,6 +3043,11 @@ select {
         align-items: center;
         justify-content: space-between;
         gap: 10px;
+      }
+      .queueHeader .title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text);
       }
       .queueList {
         display: flex;
