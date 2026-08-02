@@ -39,25 +39,15 @@
     const md = el("div", { class: "md", html: chatMarkdownHtmlCached(ev.text, selectedSessionId) });
     bubble.appendChild(md);
     void upgradeCandidateFileRefs(md);
-    if (typeof ts === "number" && Number.isFinite(ts)) bubble.appendChild(el("div", { class: "ts", text: time24(new Date(ts * 1000)) }));
 
-    if (pending) {
-      bubble.style.opacity = "0.72";
-      bubble.setAttribute("data-pending", "1");
-      if (ev.localId) bubble.setAttribute("data-local-id", String(ev.localId));
-    }
-
-    const shell = el("div", { class: `msg-shell ${role}` });
-    shell.appendChild(bubble);
+    let copyBtn = null;
     if (typeof ev.text === "string" && ev.text.length) {
-      const copyBtn = el("button", {
+      copyBtn = el("button", {
         class: "icon-btn msg-copy-btn",
         type: "button",
         title: "Copy raw markdown",
         "aria-label": "Copy raw markdown",
         tabindex: "-1",
-        disabled: "true",
-        "aria-hidden": "true",
         html: iconSvg("copy"),
       });
       copyBtn.onclick = async (e) => {
@@ -72,8 +62,22 @@
           setToast(`copy failed: ${err && err.message ? err.message : "unknown error"}`);
         }
       };
-      shell.appendChild(copyBtn);
     }
+    if ((typeof ts === "number" && Number.isFinite(ts)) || copyBtn) {
+      const meta = el("div", { class: "msg-meta" });
+      if (typeof ts === "number" && Number.isFinite(ts)) meta.appendChild(el("div", { class: "ts", text: time24(new Date(ts * 1000)) }));
+      if (copyBtn) meta.appendChild(copyBtn);
+      bubble.appendChild(meta);
+    }
+
+    if (pending) {
+      bubble.style.opacity = "0.72";
+      bubble.setAttribute("data-pending", "1");
+      if (ev.localId) bubble.setAttribute("data-local-id", String(ev.localId));
+    }
+
+    const shell = el("div", { class: `msg-shell ${role}` });
+    shell.appendChild(bubble);
 
     row.appendChild(shell);
     return { row, bubble };
@@ -242,9 +246,8 @@
       for (const btn of buttons) {
         const active = btn === activeBtn;
         btn.tabIndex = active ? 0 : -1;
-        btn.disabled = !active;
-        if (active) btn.removeAttribute("aria-hidden");
-        else btn.setAttribute("aria-hidden", "true");
+        btn.disabled = false;
+        btn.removeAttribute("aria-hidden");
       }
       return activeRowSnapshot();
     }

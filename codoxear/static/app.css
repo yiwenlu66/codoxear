@@ -725,13 +725,11 @@
       }
       .chatNavRail {
         display: none;
-        order: 0;
+        grid-column: 3;
+        justify-self: end;
         flex: 0 0 auto;
-        align-self: flex-end;
-        z-index: 4;
         align-items: center;
         gap: 4px;
-        margin: 6px 12px 0 12px;
         padding: 2px;
         border: 1px solid var(--border);
         border-radius: 0;
@@ -985,18 +983,19 @@
         font-size: 12px;
         line-height: 1.1;
       }
+      .chatHeader {
+        order: 0;
+        flex: 0 0 auto;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        align-items: center;
+        min-height: 44px;
+        padding: 6px 12px 8px;
+      }
       .chatTimeChip {
-        position: absolute;
-        top: 12px;
-        left: 50%;
-        z-index: 7;
+        grid-column: 2;
         display: none;
         align-items: center;
-        transform: translateX(-50%);
-        padding: 5px 10px;
-        border: 1px solid var(--border);
-        border-radius: 0;
-        background: var(--panel);
         color: var(--muted);
         font-size: 12px;
         line-height: 1.1;
@@ -1097,7 +1096,7 @@
       .msg {
         max-width: min(760px, 82%);
         min-width: 0;
-        padding: 10px 12px 18px 12px;
+        padding: 10px 12px;
         border-radius: 0;
         border: 1px solid #141111;
         position: relative;
@@ -1167,34 +1166,35 @@
       .msg-shell .msg {
         max-width: 100%;
       }
+      .msg-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        min-height: 30px;
+        margin-top: 6px;
+      }
       .msg-copy-btn {
-        position: absolute;
-        right: -40px;
-        bottom: 0;
+        flex: 0 0 auto;
         width: 30px;
         height: 30px;
+        min-width: 30px;
+        min-height: 30px;
+        padding: 0;
+        border: 1px solid var(--border);
         border-radius: 0;
-        border-color: var(--border);
         background: var(--paper);
         color: var(--ink);
-        color: #141111;
+        opacity: 0.72;
       }
-      .msg-shell.user .msg-copy-btn {
-        left: -40px;
-        right: auto;
-      }
-      .msg-copy-btn[aria-hidden="true"],
-      .msg-copy-btn:disabled {
-        opacity: 0;
-        visibility: hidden;
-        pointer-events: none;
-        box-shadow: none;
-      }
-      .msg-copy-btn:hover {
-        border-color: #141111;
+      .msg:hover .msg-copy-btn,
+      .msg-copy-btn:focus-visible {
+        opacity: 1;
+        border-color: var(--ink);
         color: var(--accent);
       }
       .msg-copy-btn.copied {
+        opacity: 1;
         border-color: var(--ink);
         background: var(--ink);
         color: var(--paper);
@@ -1283,9 +1283,8 @@
         margin-top: 2px;
       }
       .ts {
-        position: absolute;
-        right: 10px;
-        bottom: 6px;
+        flex: 1 1 auto;
+        min-width: 0;
         font-size: 11px;
         line-height: 1.1;
         color: #7c8088;
@@ -1539,23 +1538,25 @@
         max-width: 900px;
         margin: 0 auto;
         display: flex;
-        align-items: center;
-        gap: 8px;
-        border: 1px solid var(--border);
-        background: var(--panel);
-        border-radius: 0;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
         padding: 6px 8px;
-        transition: border-color 120ms ease-out;
+        transition: background 120ms ease-out;
       }
       .composer.drop-active form {
-        border-color: var(--ink);
-        outline: 2px solid var(--ink);
-        outline-offset: 1px;
+        background: var(--wash);
       }
       .composer .icon-btn {
         width: var(--composerCtl);
         height: var(--composerCtl);
         border-radius: 0;
+      }
+      .composerInputRow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
       }
       .composer .inputWrap {
         flex: 1 1 auto;
@@ -1564,53 +1565,60 @@
       }
       .stagedAttachments {
         display: none;
-        flex-wrap: wrap;
+        width: 100%;
         align-items: center;
+        flex-wrap: wrap;
         gap: 6px;
-        padding: 2px 8px 4px;
+        min-width: 0;
       }
       .stagedAttachmentChip {
         display: inline-flex;
         align-items: center;
-        gap: 4px;
-        max-width: min(240px, 100%);
+        gap: 6px;
+        height: 32px;
+        min-width: 0;
+        max-width: min(280px, 100%);
         border: 1px solid var(--hairline);
         background: var(--wash);
         color: var(--ink);
         border-radius: 0;
-        padding: 1px 2px 1px 6px;
+        padding: 0 4px 0 8px;
         font-size: 11px;
       }
       .stagedAttachmentName {
         min-width: 0;
         overflow: hidden;
-        text-overflow: ellipsis;
         white-space: nowrap;
       }
       .stagedAttachmentMeta {
         flex: 0 0 auto;
-        color: #141111;
+        color: var(--muted);
         font-size: 10px;
       }
       .stagedAttachmentRemove,
       .stagedAttachmentsClear {
+        min-height: 0;
         border: 0;
-        background: #efeee9;
-        color: #141111;
+        background: transparent;
+        color: var(--ink);
         border-radius: 0;
         cursor: pointer;
         font: inherit;
       }
       .stagedAttachmentRemove {
+        position: relative;
         width: 18px;
         height: 18px;
-        line-height: 16px;
         padding: 0;
+        line-height: 16px;
       }
       .stagedAttachmentsClear {
-        padding: 1px 6px;
+        height: 32px;
+        margin-left: auto;
+        padding: 0 4px;
         font-size: 11px;
-        min-height: 0;
+        text-decoration: underline;
+        text-underline-offset: 2px;
       }
       .composer .ph {
         position: absolute;
@@ -3043,25 +3051,31 @@ select {
         .md pre {
           padding-right: 58px;
         }
-        /* The floating time chip overlaps the top-right nav rail on narrow
-           screens; the rail is the essential control, the chip goes. */
-        .chatTimeChip {
-          display: none !important;
-        }
         .code-copy-btn,
         .msg-copy-btn {
-          width: 44px;
-          height: 44px;
-          min-width: 44px;
-          min-height: 44px;
+          position: relative;
+          width: 30px;
+          height: 30px;
+          min-width: 30px;
+          min-height: 30px;
           opacity: 1;
         }
-        .msg-copy-btn {
-          right: -46px;
+        .code-copy-btn::after,
+        .msg-copy-btn::after,
+        .stagedAttachmentRemove::after {
+          content: "";
+          position: absolute;
+          inset: -7px;
+        }
+        .stagedAttachmentRemove {
+          min-width: 18px;
+          min-height: 18px;
         }
         .jumpBtn {
-          width: 40px;
-          height: 40px;
+          width: 32px;
+          height: 32px;
+          min-width: 32px;
+          min-height: 32px;
           padding: 0;
           align-items: center;
           justify-content: center;

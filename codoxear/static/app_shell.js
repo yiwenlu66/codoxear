@@ -58,7 +58,6 @@
     chatSearchBar.style.display = "none";
     chatInner.append(olderWrap, bottomSentinel);
     chat.appendChild(chatInner);
-    chatWrap.append(chat, chatEmptyState, jumpBtn, chatTimeChip, chatSearchBar);
 
     const titleLabel = el("div", { id: "threadTitle", text: "No session selected" });
     const statusChip = el("span", { class: "status-chip", id: "statusChip", text: "Idle" });
@@ -96,7 +95,8 @@
     const titleWrap = el("div", { class: "titleWrap" }, [titleRow]);
     const chatMessageNavControls = el("div", { class: "chatMessageNavControls", role: "group", "aria-label": "User message navigation" }, [prevUserBtn, nextUserBtn]);
     const chatNavRail = el("div", { class: "chatNavRail", id: "chatNavRail", "aria-label": "Loaded chat navigation" }, [chatSearchBtn, chatMessageNavControls]);
-    chatWrap.appendChild(chatNavRail);
+    const chatHeader = el("div", { class: "chatHeader", id: "chatHeader" }, [chatTimeChip, chatNavRail]);
+    chatWrap.append(chatHeader, chat, chatEmptyState, jumpBtn, chatSearchBar);
     const topbar = el("div", { class: "topbar" }, [el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap]), el("div", { class: "actions topActions" }, [fileBtn, diagBtn, unattendedBtn, interruptBtn])]);
     const composer = el("div", { class: "composer" });
     const stagedTray = el("div", { class: "stagedAttachments", id: "stagedAttachments", "aria-live": "polite" });
@@ -108,7 +108,12 @@
     const attachBtn = el("button", { class: "icon-btn", id: "attachBtn", type: "button", title: "Attach file", "aria-label": "Attach file", html: iconSvg("paperclip") });
     const queueBtn = el("button", { class: "icon-btn", id: "queueBtn", type: "button", title: "Queued messages", "aria-label": "Queued messages", html: iconSvg("queue") });
     const sendBtn = el("button", { class: "icon-btn primary", id: "sendBtn", type: "submit", title: "Send", "aria-label": "Send", html: iconSvg("send") });
-    const form = el("form", {}, [attachBtn, el("div", { class: "inputWrap" }, [stagedTray, textarea, msgPh]), modelPicker, imgInput, queueBtn, sendBtn]);
+    const form = el("form", {}, [
+      stagedTray,
+      el("div", { class: "composerInputRow" }, [attachBtn, el("div", { class: "inputWrap" }, [textarea, msgPh]), queueBtn, sendBtn]),
+      modelPicker,
+      imgInput,
+    ]);
     composer.appendChild(form);
     sidebar.appendChild(el("header", {}, [el("div", { class: "title", html: `<svg class="sidebarLogo" viewBox="0 0 24 24" data-logo-motif="dog-ear-terminal" aria-hidden="true" focusable="false"><path d="M4 2h10l6 6v14H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M14 2v6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="m7 13 3 3-3 3M12 19h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>Codoxear` }), el("div", { class: "actions" }, [el("button", { id: "newBtn", class: "icon-btn", title: "New session", "aria-label": "New session", html: iconSvg("plus") }), notificationBtn, announceBtn])]));
     sidebar.append(sessionsWrap, sidebarFooter);
@@ -116,7 +121,7 @@
     app.append(sidebar, main, backdrop);
     root.append(app, unattendedMenu, liveAudio);
 
-    const elements = Object.freeze({ root, app, backdrop, sidebar, sessionsWrap, sidebarEmptyHint, main, chatWrap, chatEmptyState, chat, chatInner, olderWrap, olderBtn, olderRetryBtn, olderError, olderErrorText, bottomSentinel, jumpBtn, chatTimeChip, chatSearchInput, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn, chatSearchStatus, chatSearchAllHintEl, chatSearchBar, chatNavRail, titleLabel, statusChip, ctxChip, interruptBtn, toast, toggleSidebarBtn, unattendedBtn, announceBtn, notificationBtn, diagBtn, prevUserBtn, nextUserBtn, chatSearchBtn, fileBtn, unattendedMenu, liveAudio, composer, form, textarea, msgPh, modelPicker, imgInput, attachBtn, queueBtn, sendBtn, stagedTray });
+    const elements = Object.freeze({ root, app, backdrop, sidebar, sessionsWrap, sidebarEmptyHint, main, chatWrap, chatHeader, chatEmptyState, chat, chatInner, olderWrap, olderBtn, olderRetryBtn, olderError, olderErrorText, bottomSentinel, jumpBtn, chatTimeChip, chatSearchInput, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn, chatSearchStatus, chatSearchAllHintEl, chatSearchBar, chatNavRail, titleLabel, statusChip, ctxChip, interruptBtn, toast, toggleSidebarBtn, unattendedBtn, announceBtn, notificationBtn, diagBtn, prevUserBtn, nextUserBtn, chatSearchBtn, fileBtn, unattendedMenu, liveAudio, composer, form, textarea, msgPh, modelPicker, imgInput, attachBtn, queueBtn, sendBtn, stagedTray });
     return Object.freeze({ elements, cleanup() { root.innerHTML = ""; } });
   }
 

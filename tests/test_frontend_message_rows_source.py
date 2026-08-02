@@ -61,7 +61,7 @@ def eval_message_rows() -> dict:
           consoleError: (...args) => calls.push(["error", args[0]]),
         }};
         const made = rows.makeRow({{ role: "assistant", text: "hello", ts: 7, history_cursor: "h1", message_class: "warning" }}, {{ ts: 12, pending: false }}, deps);
-        const copyBtn = made.row.children[0].children[1];
+        const copyBtn = made.row.children[0].children[0].children[1].children[1];
         copyBtn.onclick({{ preventDefault() {{}}, stopPropagation() {{}} }}).then(() => {{
           const fallbackDeps = {{ ...deps, chatMarkdownHtmlCached: () => {{ throw new Error("markdown boom"); }} }};
           const fallback = rows.safeMakeRow({{ role: "assistant", text: "raw", history_cursor: "h2", message_class: "error" }}, {{ ts: 14, pending: true }}, fallbackDeps);
@@ -149,7 +149,8 @@ def eval_message_rows() -> dict:
             dedupeKey: made.row.dataset.assistantDedupeKey,
             bubbleClasses: Array.from(made.bubble.classList.values).sort(),
             markdownHtml: made.bubble.children[0].innerHTML,
-            timestampText: made.bubble.children[1].textContent,
+            timestampText: made.bubble.children[1].children[0].textContent,
+            copyInsideMeta: made.bubble.children[1].children[1] === copyBtn,
             copyAttrs: copyBtn.attrs,
             copiedClassAfterTimer: copyBtn.classList.has("copied"),
             calls,
@@ -219,23 +220,24 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
         self.assertEqual(result["ts"], "12")
         self.assertEqual(result["historyCursor"], "h1")
         self.assertEqual(result["dedupeKey"], "assistant|hello")
-        self.assertContains("warning", result["bubbleClasses"])
+        self.assertIn("warning", result["bubbleClasses"])
         self.assertEqual(result["markdownHtml"], "<p>s1:hello</p>")
         self.assertEqual(result["timestampText"], "T0")
+        self.assertTrue(result["copyInsideMeta"])
         self.assertEqual(result["copyAttrs"]["title"], "Copy raw markdown")
         self.assertFalse(result["copiedClassAfterTimer"])
-        self.assertContains(["upgrade", "<p>s1:hello</p>"], result["calls"])
-        self.assertContains(["copy", "hello"], result["calls"])
-        self.assertContains(["timeout", 1200], result["calls"])
-        self.assertContains(["toast", "Copied markdown"], result["calls"])
-        self.assertContains(["error", "makeRow failed"], result["calls"])
+        self.assertIn(["upgrade", "<p>s1:hello</p>"], result["calls"])
+        self.assertIn(["copy", "hello"], result["calls"])
+        self.assertIn(["timeout", 1200], result["calls"])
+        self.assertIn(["toast", "Copied markdown"], result["calls"])
+        self.assertIn(["error", "makeRow failed"], result["calls"])
         self.assertEqual(result["fallbackRole"], "assistant")
         self.assertEqual(result["fallbackTs"], "14")
         self.assertEqual(result["fallbackHistoryCursor"], "")
         self.assertEqual(result["fallbackDedupeKey"], "assistant|raw")
         self.assertEqual(result["fallbackPending"], "1")
         self.assertEqual(result["fallbackText"], "raw")
-        self.assertContains("error", result["fallbackClasses"])
+        self.assertIn("error", result["fallbackClasses"])
         self.assertEqual(result["renderedCount"], 2)
         self.assertEqual(result["userCount"], 1)
         self.assertEqual(result["copyCount"], 1)
@@ -260,8 +262,8 @@ class TestFrontendMessageRowsSource(unittest.TestCase):
         self.assertEqual(result["copyRuntimeJump"], "c2")
         self.assertEqual(result["copyRuntimeReset"], "c3")
         self.assertEqual(result["copyRuntimeTabs"], [
-            {"name": "c1", "tabIndex": -1, "disabled": True, "hidden": "true"},
-            {"name": "c2", "tabIndex": -1, "disabled": True, "hidden": "true"},
+            {"name": "c1", "tabIndex": -1, "disabled": False, "hidden": ""},
+            {"name": "c2", "tabIndex": -1, "disabled": False, "hidden": ""},
             {"name": "c3", "tabIndex": 0, "disabled": False, "hidden": ""},
         ])
         self.assertEqual(result["copyRuntimeActive"], "c3")

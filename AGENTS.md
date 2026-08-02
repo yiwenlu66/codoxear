@@ -86,6 +86,7 @@ The UI follows a single “paper” design language. These rules are invariants,
 - **No translucent colors.** No `rgba`/`hsla` with alpha for fills or borders. Backdrops are solid.
 - **No decorative shadows.** `box-shadow`/`outline` is allowed only for functional focus/state indication, never for depth. No `backdrop-filter`.
 - **Chrome controls are compact with touch hit-slop.** Topbar/sidebar/nav chrome buttons are 32px (`--ctl-chrome`) on all viewports, with a 44px touch hit-slop via an `::after` inset pseudo-element. Composer and dialog controls use the `--ctl` token (38px desktop, 44px on touch).
+- **44px is a hit-area floor, not a visual-size floor.** Secondary icon controls keep their desktop visual size on touch and gain a 44px `::after` hit area; only primary frequent actions, such as composer send and dialog actions, are visually 44px.
 
 ### Media-query branching rule
 
