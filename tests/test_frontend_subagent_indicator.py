@@ -43,16 +43,25 @@ class TestFrontendSubagentIndicator(unittest.TestCase):
               for (const child of node.children) {{ const found = meta(child); if (found !== null) return found; }}
               return null;
             }};
+            const textOf = (node) => (node.attrs.text || "") + node.children.map((child) => textOf(child)).join("");
+            const title = (node) => {{
+              if (node.className === "sessionTitleRow") return node.children.map((child) => textOf(child)).join("");
+              for (const child of node.children) {{ const found = title(child); if (found !== null) return found; }}
+              return null;
+            }};
             const row = (n) => ({{ session_id: `s-${{n}}`, cwd: "/repo", start_ts: 0, updated_ts: 0, transport: "pty", owned: false, subagents_running: n }});
             controller.render([{{ type: "session", session: row(2) }}], {{ swipeActions: false }});
-            const active = meta(sessionsWrap);
+            const active = {{ meta: meta(sessionsWrap), title: title(sessionsWrap) }};
             controller.render([{{ type: "session", session: row(0) }}], {{ swipeActions: false }});
-            const inactive = meta(sessionsWrap);
+            const inactive = {{ meta: meta(sessionsWrap), title: title(sessionsWrap) }};
             process.stdout.write(JSON.stringify({{ active, inactive }}));
             """
         )
         proc = subprocess.run(["node", "-e", js], check=True, capture_output=True, text=True)
-        self.assertEqual(json.loads(proc.stdout), {"active": "now | repo ▸2", "inactive": "now | repo"})
+        self.assertEqual(json.loads(proc.stdout), {
+            "active": {"meta": "now | repo", "title": "▸2session"},
+            "inactive": {"meta": "now | repo", "title": "session"},
+        })
 
 
 if __name__ == "__main__":

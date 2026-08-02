@@ -1227,6 +1227,31 @@
       .typingStats:empty {
         display: none;
       }
+      .subagentActivity {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        color: var(--muted);
+        background: var(--wash);
+      }
+      .subagentActivitySquares {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        flex: 0 0 auto;
+      }
+      .subagentActivitySquare {
+        width: 5px;
+        height: 5px;
+        border-radius: 0;
+        background: var(--ink);
+      }
+      .subagentActivityText {
+        font-size: 11px;
+        line-height: 14px;
+        white-space: nowrap;
+      }
       .typingDot {
         width: 6px;
         height: 6px;
