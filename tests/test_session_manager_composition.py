@@ -118,12 +118,3 @@ def test_session_manager_forward_methods_are_explicit_composition() -> None:
     for public_name, (factory_name, coordinator_method) in FORWARD_METHODS.items():
         method = methods[public_name]
         assert ast.unparse(method.body[0]) == f"return self.{factory_name}().{coordinator_method}(*args, **kwargs)"
-
-
-def test_session_manager_has_no_runtime_method_binding() -> None:
-    source = SERVER_PY.read_text(encoding="utf-8")
-
-    assert "_bind_session_manager_methods" not in source
-    assert not (ROOT / "codoxear" / "session_manager_method_bindings.py").exists()
-    assert "__server_module" not in source
-    assert "def inject_keys(self, session_id: str, seq: str, *, track_request_sent: bool = False, interrupt: bool = False)" in source

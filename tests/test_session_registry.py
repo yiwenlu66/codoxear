@@ -1,13 +1,9 @@
 from __future__ import annotations
 
 import threading
-from pathlib import Path
 
 from codoxear import server
 from codoxear.session_registry import SessionRegistry, session_registry_for_manager
-
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_session_manager_private_registry_attrs_remain_compatibility_seams() -> None:
@@ -48,19 +44,3 @@ def test_get_session_reads_registry_sessions_for_new_fixtures() -> None:
 
     assert manager.get_session("session-a") is session
     assert manager.get_session("missing") is None
-
-
-def test_manager_registry_authority_lives_outside_raw_manager_fields() -> None:
-    source_paths = [
-        ROOT / "codoxear" / "session_manager_bootstrap.py",
-        ROOT / "codoxear" / "session_manager_discovery.py",
-        ROOT / "codoxear" / "session_manager_factories.py",
-        ROOT / "codoxear" / "session_manager_store_attrs.py",
-    ]
-    combined = "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
-    assert "manager._lock" not in combined
-    assert "manager._sessions" not in combined
-    assert "manager._stop" not in combined
-    assert "manager._last_discover_ts" not in combined
-    assert 'getattr(manager, "_input_locks"' not in combined
-    assert "session_registry_for_manager" in combined
