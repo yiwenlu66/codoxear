@@ -12,10 +12,27 @@
         --accent-weak: #efeee9;
         --danger: #b91c1c;
         --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        /* The paper rhythm uses a compact 4px-based spacing ladder. */
+        --space-1: 4px;
+        --space-2: 6px;
+        --space-3: 8px;
+        --space-4: 10px;
+        --space-5: 12px;
+        --space-6: 14px;
+        --space-7: 16px;
+        /* Text sizes are named by role, from compact labels to headings. */
+        --font-2xs: 10px;
+        --font-xs: 11px;
+        --font-sm: 12px;
+        --font-md: 13px;
+        --font-lg: 14px;
+        --font-xl: 16px;
+        --font-2xl: 18px;
+        --font-3xl: 20px;
         --ctl: 38px;
         --ctl-chrome: 32px;
         --dialog-control-h: 40px;
-        --dialog-group-gap: 12px;
+        --dialog-group-gap: var(--space-5);
         --shadow-sm: none;
         --sidebar-w: 320px;
         --composer-band-h: 48px;
@@ -106,21 +123,21 @@
         overflow: hidden;
       }
       .sidebar header {
-        padding: 12px 14px;
+        padding: var(--space-5) var(--space-6);
         height: 56px;
         box-sizing: border-box;
         border-bottom: 1px solid var(--border);
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 12px;
+        gap: var(--space-5);
       }
       .sidebar header .title {
         font-weight: 650;
         letter-spacing: 0.2px;
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-3);
       }
       .sidebarLogo {
         width: 20px;
@@ -129,21 +146,21 @@
         color: var(--ink);
       }
       .sidebar .sessions {
-        padding: 8px 8px calc(8px + var(--composer-band-h, 48px));
+        padding: var(--space-3) var(--space-3) calc(var(--space-3) + var(--composer-band-h, 48px));
         overflow: auto;
         flex: 1;
         min-height: 0;
         -webkit-overflow-scrolling: touch;
       }
       .sidebarEmptyHint {
-        padding: 12px 14px;
-        font-size: 13px;
+        padding: var(--space-5) var(--space-6);
+        font-size: var(--font-md);
       }
       .sidebar footer {
-        padding: 4px 12px;
+        padding: var(--space-1) var(--space-5);
         border-top: 1px solid var(--border);
         display: flex;
-        gap: 12px;
+        gap: var(--space-5);
       }
       .sidebar footer button {
         flex: 1 1 auto;
@@ -151,7 +168,7 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 8px;
+        gap: var(--space-3);
         height: 44px;
         border-radius: 0;
         font-weight: 500;
@@ -164,10 +181,10 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 10px;
-        padding: 10px 4px 6px;
+        gap: var(--space-4);
+        padding: var(--space-4) var(--space-1) var(--space-2);
         color: #797d88;
-        font-size: 11px;
+        font-size: var(--font-xs);
         font-weight: 700;
         letter-spacing: 0.08em;
         text-transform: uppercase;
@@ -179,7 +196,7 @@
         border-radius: 0;
         background: #f8fafc;
         color: #2f2b26;
-        font-size: 11px;
+        font-size: var(--font-xs);
         line-height: 1.45;
         text-align: center;
         letter-spacing: 0;
@@ -219,8 +236,8 @@
         bottom: 0;
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 0 10px;
+        gap: var(--space-3);
+        padding: 0 var(--space-4);
         z-index: 1;
         pointer-events: none;
       }
@@ -325,12 +342,12 @@
 	        min-width: 0;
 	        display: flex;
 	        flex-direction: column;
-	        gap: 4px;
+	        gap: var(--space-1);
 	      }
 	      .sessionMetaLine {
 	        display: flex;
 	        align-items: center;
-	        gap: 6px;
+	        gap: var(--space-2);
 	        min-width: 0;
 	        flex-wrap: nowrap;
 	      }
@@ -342,7 +359,7 @@
 	        display: inline-flex;
 	        align-items: center;
 	        justify-content: center;
-	        font-size: 10px;
+	        font-size: var(--font-2xs);
 	        font-weight: 700;
 	        line-height: 1;
 	        color: var(--muted);
@@ -374,7 +391,7 @@
 	        flex: 0 0 auto;
 	        min-width: 12px;
 	        height: 12px;
-	        font-size: 10px;
+	        font-size: var(--font-2xs);
 	        font-weight: 700;
 	        line-height: 12px;
 	        letter-spacing: 0.02em;
@@ -409,29 +426,29 @@
 	      .sessionTitleWithBadges {
 	        display: flex;
 	        align-items: flex-start;
-	        gap: 10px;
+	        gap: var(--space-4);
 	        min-width: 0;
 	      }
 	      .sessionTitleWithBadges .sessionTitleRow {
 	        flex: 1 1 auto;
 	      }
 	      .sessionInner {
-	        padding: 8px;
+	        padding: var(--space-3);
 	        display: flex;
 	        flex-direction: column;
-	        gap: 4px;
+	        gap: var(--space-1);
 	        min-width: 0;
 	      }
 	      .sessionInner.sessionDesktopLayout {
 	        flex-direction: row;
 	        align-items: flex-start;
 	        justify-content: space-between;
-	        gap: 12px;
+	        gap: var(--space-5);
 	      }
       .sessionTitleRow {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-3);
         min-width: 0;
       }
       .sessionBackendStatusIcon {
@@ -445,20 +462,20 @@
       .sessionBadges {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-3);
         flex-wrap: nowrap;
         min-width: 0;
       }
       .rowRight {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-3);
         min-width: 0;
       }
 	      .sessionActionsInline {
 	        display: inline-flex;
 	        align-items: center;
-	        gap: 8px;
+	        gap: var(--space-3);
 	        flex: 0 0 auto;
 	      }
       @media (hover: hover) and (pointer: fine) and (min-width: 521px) {
@@ -501,25 +518,25 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 6px;
+        gap: var(--space-2);
       }
       .sessionFiles {
         margin-top: 6px;
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: var(--space-2);
       }
       .sessionFilesLabel {
-        font-size: 11px;
+        font-size: var(--font-xs);
         color: var(--muted);
         text-transform: uppercase;
         letter-spacing: 0.04em;
       }
       .sessionFile {
         text-align: left;
-        padding: 6px 8px;
+        padding: var(--space-2) var(--space-3);
         border-radius: 0;
-        font-size: 12px;
+        font-size: var(--font-sm);
         line-height: 1.2;
         border: 1px solid var(--border);
         background: #ffffff;
@@ -533,7 +550,7 @@
         background: #f5f6f6;
       }
       .sessionFilesMore {
-        font-size: 11px;
+        font-size: var(--font-xs);
       }
       .sessionAction > .icon-btn {
         width: 36px;
@@ -543,7 +560,7 @@
       }
       .row {
         display: flex;
-        gap: 10px;
+        gap: var(--space-4);
         align-items: center;
         justify-content: space-between;
       }
@@ -557,10 +574,10 @@
       .titleLine {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: var(--space-2);
         min-width: 0;
         font-weight: 650;
-        font-size: 14px;
+        font-size: var(--font-lg);
         overflow: hidden;
         max-width: 220px;
       }
@@ -591,11 +608,11 @@
       }
       .muted {
         color: var(--muted);
-        font-size: 12px;
+        font-size: var(--font-sm);
       }
       .badge {
-        font-size: 12px;
-        padding: 2px 8px;
+        font-size: var(--font-sm);
+        padding: 2px var(--space-3);
         border-radius: 0;
         border: 1px solid var(--border);
         color: var(--muted);
@@ -647,7 +664,7 @@
         min-width: 0;
       }
       .topbar {
-        padding: calc(8px + env(safe-area-inset-top)) 12px 8px 12px;
+        padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-5) var(--space-3) var(--space-5);
         height: 56px;
         box-sizing: border-box;
         border-bottom: 1px solid var(--border);
@@ -656,12 +673,12 @@
         align-items: center;
         justify-content: space-between;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-3);
       }
       .pill {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-3);
         min-width: 0;
         flex: 1 1 auto;
       }
@@ -675,7 +692,7 @@
       .titleRow {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: var(--space-4);
         min-width: 0;
         flex-wrap: nowrap;
       }
@@ -694,19 +711,19 @@
       .topMeta {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: var(--space-2);
         flex: 0 0 auto;
         flex-wrap: nowrap;
       }
       .toast {
         align-self: flex-start;
         margin: 6px 12px 0 12px;
-        padding: 6px 12px;
+        padding: var(--space-2) var(--space-5);
         min-height: 0;
         border-radius: 0;
         background: var(--ink);
         color: var(--paper);
-        font-size: 13px;
+        font-size: var(--font-md);
         line-height: 1.4;
         max-width: min(70vw, 520px);
       }
@@ -715,7 +732,7 @@
       }
       .actions {
         display: flex;
-        gap: 8px;
+        gap: var(--space-3);
         flex: 0 0 auto;
         flex-wrap: nowrap;
         justify-content: flex-end;
@@ -728,7 +745,7 @@
       }
       .topActions {
         align-items: center;
-        gap: 6px;
+        gap: var(--space-2);
       }
       .chatNavRail {
         display: none;
@@ -736,7 +753,7 @@
         justify-self: end;
         flex: 0 0 auto;
         align-items: center;
-        gap: 6px;
+        gap: var(--space-2);
         padding: 0;
         border: 0;
         border-radius: 0;
@@ -745,7 +762,7 @@
       .chatMessageNavControls {
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: var(--space-1);
         margin-left: 0;
         padding-left: 0;
         border-left: 0;
@@ -755,7 +772,7 @@
         background: var(--paper);
         color: var(--text);
         border-radius: 0;
-        padding: 10px 12px;
+        padding: var(--space-4) var(--space-5);
         cursor: pointer;
       }
       button.primary,
@@ -823,8 +840,8 @@
       .icon-btn.text-btn {
         width: auto;
         min-width: 46px;
-        padding: 0 10px;
-        font-size: 12px;
+        padding: 0 var(--space-4);
+        font-size: var(--font-sm);
         line-height: 1;
       }
 	      .icon {
@@ -838,11 +855,11 @@
         right: -4px;
         min-width: 15px;
         height: 15px;
-        padding: 0 4px;
+        padding: 0 var(--space-1);
         border-radius: 0;
         background: #2f2b26;
         color: #ffffff;
-        font-size: 10px;
+        font-size: var(--font-2xs);
         line-height: 15px;
         text-align: center;
         display: none;
@@ -857,13 +874,13 @@
         align-items: center;
         height: 32px;
         box-sizing: border-box;
-        padding: 4px 10px;
+        padding: var(--space-1) var(--space-4);
         border-radius: 0;
         border: 1px solid var(--border);
         background: var(--panel);
         color: var(--muted);
         font-family: var(--font-mono);
-        font-size: 12px;
+        font-size: var(--font-sm);
         line-height: 1.2;
         white-space: nowrap;
       }
@@ -887,7 +904,7 @@
         font-family: var(--font-mono);
       }
       #ctxChip {
-        padding: 2px 6px;
+        padding: 2px var(--space-2);
       }
 
       button:focus-visible,
@@ -920,7 +937,7 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 12px;
+        gap: var(--space-5);
         text-align: center;
         pointer-events: none;
       }
@@ -928,14 +945,14 @@
         pointer-events: auto;
       }
       .chatEmptyCopy {
-        font-size: 14px;
+        font-size: var(--font-lg);
       }
       .chat {
         order: 1;
         flex: 1 1 auto;
         min-height: 0;
         height: auto;
-        padding: 14px 12px;
+        padding: var(--space-6) var(--space-5);
         overflow: auto;
         overscroll-behavior: contain;
         -webkit-overflow-scrolling: touch;
@@ -953,46 +970,46 @@
       .day-sep {
         align-self: center;
         margin: 14px 0 8px 0;
-        padding: 6px 10px;
+        padding: var(--space-2) var(--space-4);
         border-radius: 0;
         border: 1px solid #e7e8ea;
         background: transparent;
         color: var(--muted);
-        font-size: 12px;
+        font-size: var(--font-sm);
         line-height: 1.1;
       }
       .olderWrap {
         display: none;
         flex-direction: column;
         align-items: center;
-        gap: 6px;
+        gap: var(--space-2);
         align-self: center;
         margin: 4px 0 8px 0;
       }
       .olderBtn {
-        padding: 6px 12px;
+        padding: var(--space-2) var(--space-5);
         border-radius: 0;
-        font-size: 12px;
+        font-size: var(--font-sm);
         line-height: 1.1;
         color: var(--muted);
       }
       .olderError {
         display: none;
         align-items: center;
-        gap: 6px;
-        padding: 4px 8px;
+        gap: var(--space-2);
+        padding: var(--space-1) var(--space-3);
         border-radius: 0;
         background: #fef2f2;
         color: #7f1d1d;
-        font-size: 12px;
+        font-size: var(--font-sm);
         line-height: 1.2;
       }
       .olderRetryBtn {
-        padding: 4px 8px;
+        padding: var(--space-1) var(--space-3);
         border-radius: 0;
         border-color: #eec9c9;
         color: #7f1d1d;
-        font-size: 12px;
+        font-size: var(--font-sm);
         line-height: 1.1;
       }
       .chatHeader {
@@ -1003,7 +1020,7 @@
         grid-template-columns: minmax(0, 1fr) auto auto;
         align-items: center;
         min-height: 44px;
-        padding: 6px 12px 8px;
+        padding: var(--space-2) var(--space-5) var(--space-3);
       }
       .chatTimeChip {
         grid-column: 1 / 3;
@@ -1013,7 +1030,7 @@
         max-width: min(220px, calc(100vw - 24px - var(--chat-nav-rail-w)));
         overflow: hidden;
         color: var(--muted);
-        font-size: 12px;
+        font-size: var(--font-sm);
         line-height: 1.1;
         text-align: center;
         text-overflow: ellipsis;
@@ -1026,13 +1043,13 @@
         z-index: 8;
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: var(--space-1);
         width: 100%;
         min-width: 0;
         height: 40px;
         box-sizing: border-box;
         margin: 0;
-        padding: 4px 12px;
+        padding: var(--space-1) var(--space-5);
         border: 0;
         border-bottom: 1px solid var(--hairline);
         background: var(--paper);
@@ -1056,8 +1073,8 @@
         border: 0;
         border-bottom: 1px solid var(--hairline);
         border-radius: 0;
-        padding: 5px 6px;
-        font-size: 14px;
+        padding: 5px var(--space-2);
+        font-size: var(--font-lg);
         outline: none;
         background: var(--paper);
       }
@@ -1074,7 +1091,7 @@
         text-overflow: ellipsis;
         color: var(--muted);
         font-family: var(--font-mono);
-        font-size: 11px;
+        font-size: var(--font-xs);
         line-height: 1;
         white-space: nowrap;
         text-align: right;
@@ -1138,7 +1155,7 @@
       .msg {
         max-width: min(760px, 82%);
         min-width: 0;
-        padding: 10px 12px 18px 12px;
+        padding: var(--space-4) var(--space-5) 18px var(--space-5);
         border-radius: 0;
         border: 1px solid #2f2b26;
         position: relative;
@@ -1162,7 +1179,7 @@
         box-shadow: none;
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-3);
         flex-wrap: wrap;
       }
       .transcriptRetryBtn.icon-btn.text-btn {
@@ -1193,7 +1210,7 @@
         max-height: 140px;
         overflow: auto;
         margin: 10px 0 0;
-        padding: 8px;
+        padding: var(--space-3);
         white-space: pre-wrap;
         word-break: break-word;
         border-radius: 0;
@@ -1202,7 +1219,7 @@
       .recoveryPanelActions {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
+        gap: var(--space-3);
         margin-top: 10px;
       }
       .msg-shell .msg {
@@ -1251,11 +1268,11 @@
         height: 15px;
       }
       .msg.typing {
-        padding: 10px 12px;
+        padding: var(--space-4) var(--space-5);
         min-width: 54px;
       }
       .msg.loading {
-        padding: 9px 12px;
+        padding: 9px var(--space-5);
         color: var(--muted);
         box-shadow: none;
         background: #ffffff;
@@ -1263,13 +1280,13 @@
       .typingDots {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: var(--space-2);
         height: 14px;
       }
       .typingStats {
         margin-left: 8px;
         color: #888c93;
-        font-size: 11px;
+        font-size: var(--font-xs);
         line-height: 14px;
         white-space: nowrap;
       }
@@ -1279,15 +1296,15 @@
       .subagentActivity {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
-        padding: 8px 10px;
+        gap: var(--space-3);
+        padding: var(--space-3) var(--space-4);
         color: var(--muted);
         background: var(--wash);
       }
       .subagentActivitySquares {
         display: inline-flex;
         align-items: center;
-        gap: 4px;
+        gap: var(--space-1);
         flex: 0 0 auto;
       }
       .subagentActivitySquare {
@@ -1297,7 +1314,7 @@
         background: var(--ink);
       }
       .subagentActivityText {
-        font-size: 11px;
+        font-size: var(--font-xs);
         line-height: 14px;
         white-space: nowrap;
       }
@@ -1333,7 +1350,7 @@
         position: absolute;
         right: 10px;
         bottom: 6px;
-        font-size: 11px;
+        font-size: var(--font-xs);
         line-height: 1.1;
         color: #7c8088;
         user-select: none;
@@ -1357,16 +1374,16 @@
         line-height: 1.15;
       }
       .md h1 {
-        font-size: 18px;
+        font-size: var(--font-2xl);
       }
       .md h2 {
-        font-size: 16px;
+        font-size: var(--font-xl);
       }
       .md h3,
       .md h4,
       .md h5,
       .md h6 {
-        font-size: 14px;
+        font-size: var(--font-lg);
       }
       .md a {
         color: inherit;
@@ -1380,8 +1397,8 @@
       }
       .md code {
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-        font-size: 13px;
-        padding: 1px 6px;
+        font-size: var(--font-md);
+        padding: 1px var(--space-2);
         border-radius: 0;
         background: #f1f1f2;
         border: 1px solid #ececee;
@@ -1391,7 +1408,7 @@
       .md pre {
         position: relative;
         margin: 10px 0 12px 0;
-        padding: 12px;
+        padding: var(--space-5);
         border-radius: 0;
         overflow: auto;
         max-width: 100%;
@@ -1459,7 +1476,7 @@
       .md-list-line {
         display: grid;
         grid-template-columns: max-content minmax(0, 1fr);
-        gap: 8px;
+        gap: var(--space-3);
         align-items: baseline;
       }
       .md-list-marker {
@@ -1474,7 +1491,7 @@
       }
       .md blockquote {
         margin: 10px 0 12px 0;
-        padding: 10px 12px 10px 14px;
+        padding: var(--space-4) var(--space-5) var(--space-4) var(--space-6);
         border-left: 3px solid #caccd0;
         border-radius: 0;
         background: #f4f5f5;
@@ -1497,7 +1514,7 @@
         max-width: 100%;
         table-layout: auto;
         border-collapse: collapse;
-        font-size: 13px;
+        font-size: var(--font-md);
         line-height: 1.35;
         border: 1px solid var(--border);
         border-radius: 0;
@@ -1506,7 +1523,7 @@
       }
       .md th,
       .md td {
-        padding: 8px 10px;
+        padding: var(--space-3) var(--space-4);
         vertical-align: top;
         border: 0;
         border-bottom: 1px solid var(--hairline);
@@ -1560,7 +1577,7 @@
         font-size: 0.9em;
         background: #f1f1f2;
         border-radius: 0;
-        padding: 0 4px;
+        padding: 0 var(--space-1);
         white-space: nowrap;
       }
       .md-math-inline {
@@ -1569,7 +1586,7 @@
       .md-math-display {
         display: block;
         margin: 10px 0 12px 0;
-        padding: 8px 10px;
+        padding: var(--space-3) var(--space-4);
         text-align: center;
         white-space: pre-wrap;
         overflow-x: auto;
@@ -1579,7 +1596,7 @@
         --composerCtl: 32px;
         --composer-picker-inset: 8px;
         border-top: 1px solid var(--border);
-        padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
+        padding: var(--space-2) var(--space-5) calc(var(--space-2) + env(safe-area-inset-bottom));
         background: var(--panel);
       }
       .composer form {
@@ -1589,8 +1606,8 @@
         display: flex;
         flex-direction: column;
         align-items: stretch;
-        gap: 4px;
-        padding: 3px 6px;
+        gap: var(--space-1);
+        padding: 3px var(--space-2);
         transition: background 120ms ease-out;
       }
       .composer.drop-active form {
@@ -1606,7 +1623,7 @@
       .composerInputRow {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-3);
         min-width: 0;
       }
       .composer .inputWrap {
@@ -1619,13 +1636,13 @@
         width: 100%;
         align-items: center;
         flex-wrap: wrap;
-        gap: 6px;
+        gap: var(--space-2);
         min-width: 0;
       }
       .stagedAttachmentChip {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: var(--space-2);
         height: 32px;
         min-width: 0;
         max-width: min(280px, 100%);
@@ -1633,8 +1650,8 @@
         background: var(--wash);
         color: var(--ink);
         border-radius: 0;
-        padding: 0 4px 0 8px;
-        font-size: 11px;
+        padding: 0 var(--space-1) 0 var(--space-3);
+        font-size: var(--font-xs);
       }
       .stagedAttachmentName {
         min-width: 0;
@@ -1644,7 +1661,7 @@
       .stagedAttachmentMeta {
         flex: 0 0 auto;
         color: var(--muted);
-        font-size: 10px;
+        font-size: var(--font-2xs);
       }
       .stagedAttachmentRemove,
       .stagedAttachmentsClear {
@@ -1666,8 +1683,8 @@
       .stagedAttachmentsClear {
         height: 32px;
         margin-left: auto;
-        padding: 0 4px;
-        font-size: 11px;
+        padding: 0 var(--space-1);
+        font-size: var(--font-xs);
         text-decoration: underline;
         text-underline-offset: 2px;
       }
@@ -1676,7 +1693,7 @@
         inset: 0;
         display: flex;
         align-items: center;
-        padding: 0 10px;
+        padding: 0 var(--space-4);
         color: #acaeb3;
         pointer-events: none;
         white-space: nowrap;
@@ -1685,7 +1702,7 @@
       }
       .composer form.multiline .ph {
         align-items: flex-start;
-        padding: 6px 10px;
+        padding: var(--space-2) var(--space-4);
         white-space: normal;
       }
       .composer .modelPicker {
@@ -1697,7 +1714,7 @@
         max-width: min(calc(100% - var(--composerCtl) - 8px - var(--composer-picker-inset)), 420px);
         max-height: min(50vh, 320px);
         overflow-y: auto;
-        padding: 4px;
+        padding: var(--space-1);
         border: 1px solid var(--border);
         border-radius: 0;
         background: var(--paper);
@@ -1711,7 +1728,7 @@
         background: transparent;
         color: var(--text);
         font: inherit;
-        font-size: 13px;
+        font-size: var(--font-md);
         text-align: left;
         cursor: pointer;
       }
@@ -1730,9 +1747,9 @@ select {
   background: #ffffff;
   color: var(--text);
         border-radius: 0;
-        padding: 10px 12px;
+        padding: var(--space-4) var(--space-5);
         font-family: inherit;
-        font-size: 14px;
+        font-size: var(--font-lg);
         outline: none;
       }
       textarea {
@@ -1750,14 +1767,14 @@ select {
         box-shadow: none;
         box-sizing: border-box;
         line-height: 20px;
-        padding: calc((var(--composerCtl) - 20px) / 2) 10px;
+        padding: calc((var(--composerCtl) - 20px) / 2) var(--space-4);
         height: var(--composerCtl);
         min-height: var(--composerCtl);
         max-height: 140px;
         font-size: 15px;
       }
       .composer form.multiline textarea {
-        padding: 6px 10px;
+        padding: var(--space-2) var(--space-4);
         line-height: 20px;
       }
       .composer textarea:disabled {
@@ -1800,29 +1817,29 @@ select {
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: calc(26px + env(safe-area-inset-top)) 16px calc(26px + env(safe-area-inset-bottom)) 16px;
+        padding: calc(26px + env(safe-area-inset-top)) var(--space-7) calc(26px + env(safe-area-inset-bottom)) var(--space-7);
         box-sizing: border-box;
       }
       .login h1 {
         margin: 2px 0 14px 0;
-        font-size: 20px;
+        font-size: var(--font-3xl);
         text-align: center;
       }
       .login .err {
         color: var(--danger);
-        font-size: 13px;
+        font-size: var(--font-md);
         margin-top: 10px;
       }
       .login .row2 {
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: var(--space-4);
       }
       .login button {
         width: 100%;
       }
 	      .login input[type="password"] {
-	        font-size: 16px;
+	        font-size: var(--font-xl);
 	      }
 
 	      .unattendedMenu {
@@ -1833,32 +1850,32 @@ select {
 	        background: var(--panel);
 	        border: 1px solid var(--border);
 	        border-radius: 0;
-	        padding: 12px;
+	        padding: var(--space-5);
 	      }
 	      .unattendedMenu .row {
 	        display: flex;
 	        align-items: center;
 	        justify-content: space-between;
-	        gap: 10px;
+	        gap: var(--space-4);
 	        margin-bottom: 10px;
 	      }
 	      .unattendedMenu .label {
-	        font-size: 13px;
+	        font-size: var(--font-md);
 	        color: var(--muted);
 	        margin: 6px 0 8px 0;
 	      }
 	      .unattendedMenu .unattendedGrid {
 	        display: grid;
 	        grid-template-columns: repeat(2, minmax(0, 1fr));
-	        gap: 12px;
+	        gap: var(--space-5);
 	        margin-bottom: 6px;
 	      }
 	      .unattendedMenu label {
 	        position: relative;
 	        display: inline-flex;
 	        align-items: center;
-	        gap: 8px;
-	        font-size: 14px;
+	        gap: var(--space-3);
+	        font-size: var(--font-lg);
 	      }
 	      .unattendedMenu .row > label::after {
 	        content: "";
@@ -1886,7 +1903,7 @@ select {
 	      .unattendedMenu input[type="checkbox"]::after {
 	        content: "✓";
 	        color: var(--paper);
-	        font-size: 14px;
+	        font-size: var(--font-lg);
 	        font-weight: 700;
 	        line-height: 1;
 	        transform: scale(0);
@@ -1905,7 +1922,7 @@ select {
       .formViewer textarea,
       .unattendedMenu input,
       .unattendedMenu textarea {
-        font-size: 16px;
+        font-size: var(--font-xl);
       }
       .unattendedMenu input[type="number"] {
         width: 100%;
@@ -1913,9 +1930,9 @@ select {
         border: 1px solid var(--border);
         background: #ffffff;
         color: var(--text);
-        padding: 10px 12px;
+        padding: var(--space-4) var(--space-5);
         font-family: inherit;
-        font-size: 16px;
+        font-size: var(--font-xl);
         border-radius: 0;
       }
       .unattendedMenu textarea {
@@ -1937,7 +1954,7 @@ select {
         position: relative;
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-3);
         margin-bottom: 8px;
       }
       .voiceToggleRow::after {
@@ -1966,7 +1983,7 @@ select {
       .voiceToggleRow input[type="checkbox"]::after {
         content: "✓";
         color: var(--paper);
-        font-size: 14px;
+        font-size: var(--font-lg);
         font-weight: 700;
         line-height: 1;
         transform: scale(0);
@@ -2011,16 +2028,16 @@ select {
         background: var(--panel);
         border: 1px solid var(--border);
         border-radius: 0;
-        padding: 12px;
+        padding: var(--space-5);
         flex-direction: column;
-        gap: 8px;
+        gap: var(--space-3);
         box-sizing: border-box;
       }
       .fileViewerHeader {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 10px;
+        gap: var(--space-4);
       }
       .fileViewerHeader .title {
         flex: 1 1 auto;
@@ -2029,7 +2046,7 @@ select {
       .fileViewerHeader .actions {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-3);
         flex-wrap: wrap;
         justify-content: flex-end;
       }
@@ -2045,7 +2062,7 @@ select {
       }
       .fileCandRow {
         display: flex;
-        gap: 8px;
+        gap: var(--space-3);
         align-items: center;
         position: relative;
       }
@@ -2077,17 +2094,17 @@ select {
       .filePickerBtn {
         flex: 1 1 auto;
         min-width: 0;
-        padding: 10px 12px;
+        padding: var(--space-4) var(--space-5);
         border-radius: 0;
         border: 1px solid var(--border);
         background: #ffffff;
         color: var(--text);
         font-family: inherit;
-        font-size: 14px;
+        font-size: var(--font-lg);
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 12px;
+        gap: var(--space-5);
         text-align: left;
       }
       .filePickerMenu {
@@ -2107,8 +2124,8 @@ select {
         display: block;
       }
       .fileMenuSection {
-        padding: 8px 12px 5px 12px;
-        font-size: 11px;
+        padding: var(--space-3) var(--space-5) 5px var(--space-5);
+        font-size: var(--font-xs);
         font-weight: 700;
         letter-spacing: 0.04em;
         text-transform: uppercase;
@@ -2124,10 +2141,10 @@ select {
         border: 0;
         border-radius: 0;
         background: transparent;
-        padding: 9px 12px;
+        padding: 9px var(--space-5);
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: var(--space-5);
         justify-content: space-between;
         text-align: left;
       }
@@ -2153,8 +2170,8 @@ select {
       .cwdSuggestionSource {
         flex: 0 0 auto;
         border-radius: 0;
-        padding: 2px 6px;
-        font-size: 10px;
+        padding: 2px var(--space-2);
+        font-size: var(--font-2xs);
         font-weight: 700;
         line-height: 1.2;
         color: #6b7079;
@@ -2167,7 +2184,7 @@ select {
         background: #fdea9d;
       }
       .fileMenuHint {
-        font-size: 12px;
+        font-size: var(--font-sm);
         color: var(--muted);
       }
       .fileMenuIdentity {
@@ -2178,8 +2195,8 @@ select {
         flex: 0 0 auto;
         display: inline-flex;
         align-items: center;
-        gap: 8px;
-        font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        gap: var(--space-3);
+        font: var(--font-sm)/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         color: var(--muted);
       }
       .fileMenuAdd {
@@ -2209,7 +2226,7 @@ select {
       }
       .fileMarkdownPreview {
         min-height: 100%;
-        padding: 14px 16px 22px 16px;
+        padding: var(--space-6) var(--space-7) 22px var(--space-7);
         overflow: auto;
         -webkit-overflow-scrolling: touch;
         background: #ffffff;
@@ -2224,7 +2241,7 @@ select {
         flex-direction: column;
       }
       .fileFallbackNotice {
-        padding: 12px 14px;
+        padding: var(--space-5) var(--space-6);
         border-bottom: 1px solid #e7e8ea;
         background: #f8fafc;
       }
@@ -2238,10 +2255,10 @@ select {
       }
       .filePlainFallbackText {
         margin: 0;
-        padding: 14px 16px 22px 16px;
+        padding: var(--space-6) var(--space-7) 22px var(--space-7);
         white-space: pre-wrap;
         overflow-wrap: anywhere;
-        font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font: var(--font-sm)/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       }
       .filePlainEditTextarea {
         flex: 1 1 auto;
@@ -2250,11 +2267,11 @@ select {
         resize: none;
         border: 0;
         border-radius: 0;
-        padding: 14px 16px 22px 16px;
+        padding: var(--space-6) var(--space-7) 22px var(--space-7);
         outline: none;
         background: #ffffff;
         color: var(--text);
-        font: 16px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font: var(--font-xl)/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         tab-size: 2;
         white-space: pre;
         overflow: auto;
@@ -2291,11 +2308,11 @@ select {
       }
       .filePdfPages {
         min-height: 100%;
-        padding: 12px;
+        padding: var(--space-5);
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 14px;
+        gap: var(--space-6);
         background: #f3f4f6;
       }
       .filePdfPage {
@@ -2307,7 +2324,7 @@ select {
         border-radius: 0;
         background: #ffffff;
         color: var(--muted);
-        font-size: 12px;
+        font-size: var(--font-sm);
       }
       .filePdfPage canvas {
         display: block;
@@ -2324,7 +2341,7 @@ select {
         display: flex;
         flex-direction: column;
         justify-content: center;
-        gap: 10px;
+        gap: var(--space-4);
         color: var(--text);
       }
       .fileBlockedNotice .title {
@@ -2337,7 +2354,7 @@ select {
       }
       .fileFallbackActions {
         display: flex;
-        gap: 8px;
+        gap: var(--space-3);
         flex-wrap: wrap;
       }
       .fileStatus {
@@ -2349,7 +2366,7 @@ select {
       }
       .fileConflictActions {
         display: inline-flex;
-        gap: 6px;
+        gap: var(--space-2);
         margin-left: 8px;
         vertical-align: middle;
         flex-wrap: wrap;
@@ -2357,7 +2374,7 @@ select {
       .fileConflictActions .icon-btn.text-btn {
         min-width: 0;
         height: 28px;
-        padding: 0 8px;
+        padding: 0 var(--space-3);
       }
       .fileTouchToolbar {
         display: none;
@@ -2366,7 +2383,7 @@ select {
         right: 14px;
         bottom: calc(14px + env(safe-area-inset-bottom));
         z-index: 6;
-        gap: 10px;
+        gap: var(--space-4);
         flex-direction: row;
         align-items: flex-end;
         justify-content: space-between;
@@ -2374,7 +2391,7 @@ select {
       }
       .fileTouchActions {
         display: flex;
-        gap: 6px;
+        gap: var(--space-2);
         align-items: center;
         margin-left: auto;
         pointer-events: auto;
@@ -2383,7 +2400,7 @@ select {
         display: none;
         grid-template-columns: repeat(3, 34px);
         grid-template-rows: repeat(2, 34px);
-        gap: 6px;
+        gap: var(--space-2);
         align-items: center;
         justify-items: center;
         pointer-events: auto;
@@ -2420,7 +2437,7 @@ select {
         min-height: 120px;
         max-height: min(42vh, 320px);
         resize: vertical;
-        font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font: var(--font-md)/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       }
       .inlineFileLink {
         color: var(--accent);
@@ -2430,7 +2447,7 @@ select {
       .inlineFileAmbiguousRef {
         display: inline-flex;
         align-items: baseline;
-        gap: 4px;
+        gap: var(--space-1);
         text-decoration: none;
       }
       .inlineFileAmbiguousRef > span:first-child {
@@ -2438,7 +2455,7 @@ select {
       }
       .inlineFileChoiceHint {
         display: inline-block;
-        padding: 0 4px;
+        padding: 0 var(--space-1);
         border-radius: 0;
         background: var(--wash);
         color: var(--muted);
@@ -2458,9 +2475,9 @@ select {
         background: var(--panel);
         border: 1px solid var(--border);
         border-radius: 0;
-        padding: 12px;
+        padding: var(--space-5);
         flex-direction: column;
-        gap: 10px;
+        gap: var(--space-4);
         box-sizing: border-box;
       }
       .helpViewer,
@@ -2480,9 +2497,9 @@ select {
         background: var(--panel);
         border: 1px solid var(--border);
         border-radius: 0;
-        padding: 12px;
+        padding: var(--space-5);
         flex-direction: column;
-        gap: 10px;
+        gap: var(--space-4);
         box-sizing: border-box;
       }
       .diagViewer {
@@ -2508,7 +2525,7 @@ select {
       }
       .formDialog {
         border: 0;
-        padding: 12px;
+        padding: var(--space-5);
         position: fixed;
         left: 50%;
         top: 50%;
@@ -2545,16 +2562,16 @@ select {
       .newSessionHeaderLead {
         display: inline-flex;
         align-items: center;
-        gap: 10px;
+        gap: var(--space-4);
         min-width: 0;
       }
       .agentBackendTabs {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: var(--space-2);
       }
       .agentBackendTabName {
-        font-size: 13px;
+        font-size: var(--font-md);
         font-weight: 600;
         color: var(--text);
         white-space: nowrap;
@@ -2588,7 +2605,7 @@ select {
         flex-direction: column;
         flex: 0 1 auto;
         min-height: 0;
-        gap: var(--dialog-group-gap, 10px);
+        gap: var(--dialog-group-gap, var(--space-4));
         overflow-y: auto;
         overflow-x: hidden;
         -webkit-overflow-scrolling: touch;
@@ -2596,7 +2613,7 @@ select {
       }
       .formGrid {
         display: grid;
-        gap: var(--dialog-group-gap, 10px);
+        gap: var(--dialog-group-gap, var(--space-4));
       }
       .newSessionRunConfigRow {
         grid-template-columns: minmax(0, 1.4fr) minmax(96px, auto);
@@ -2612,7 +2629,7 @@ select {
       .field {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: var(--space-2);
       }
       .formViewer input[type="text"],
       .formViewer input[type="date"],
@@ -2623,12 +2640,12 @@ select {
         min-height: var(--dialog-control-h);
       }
       .fieldLabel {
-        font-size: 13px;
+        font-size: var(--font-md);
         font-weight: 600;
         color: #2f2b26;
       }
       .fieldHint {
-        font-size: 12px;
+        font-size: var(--font-sm);
         color: var(--muted);
         line-height: 1.35;
       }
@@ -2636,8 +2653,8 @@ select {
         position: relative;
         display: inline-flex;
         align-items: center;
-        gap: 8px;
-        font-size: 14px;
+        gap: var(--space-3);
+        font-size: var(--font-lg);
       }
       .checkField::after {
         content: "";
@@ -2665,7 +2682,7 @@ select {
       .checkField input[type="checkbox"]::after {
         content: "✓";
         color: var(--paper);
-        font-size: 14px;
+        font-size: var(--font-lg);
         font-weight: 700;
         line-height: 1;
         transform: scale(0);
@@ -2681,7 +2698,7 @@ select {
         outline-offset: 2px;
       }
       #newSessionViewer .checkField {
-        gap: 6px;
+        gap: var(--space-2);
         min-height: 18px;
         padding: 0;
       }
@@ -2771,7 +2788,7 @@ select {
       .pickerInputRow {
         display: grid;
         grid-template-columns: minmax(0, 1fr) 128px;
-        gap: 8px;
+        gap: var(--space-3);
         align-items: start;
       }
       .dialogPickerBtn {
@@ -2779,14 +2796,14 @@ select {
         min-height: var(--dialog-control-h);
         border-radius: 0;
         box-sizing: border-box;
-        font-size: 14px;
+        font-size: var(--font-lg);
         line-height: normal;
       }
       .dialogPickerBtn {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 12px;
+        gap: var(--space-5);
       }
       .sidePickerBtn {
         width: 100%;
@@ -2804,7 +2821,7 @@ select {
         #editViewer .sliderRow {
           display: grid;
           grid-template-columns: minmax(0, 1fr) auto auto;
-          gap: 10px;
+          gap: var(--space-4);
           align-items: center;
         }
         #editViewer .choiceChips {
@@ -2826,7 +2843,7 @@ select {
       .pickerButtonPrimary {
         width: 100%;
         min-width: 0;
-        font-size: 14px;
+        font-size: var(--font-lg);
         line-height: normal;
         white-space: nowrap;
         overflow: hidden;
@@ -2835,7 +2852,7 @@ select {
       .pickerButtonSecondary {
         width: 100%;
         min-width: 0;
-        font-size: 11px;
+        font-size: var(--font-xs);
         line-height: 1.25;
         color: var(--muted);
         white-space: nowrap;
@@ -2860,20 +2877,20 @@ select {
         inset: auto auto auto 0;
       }
       .pickerEmpty {
-        padding: 10px 12px;
-        font-size: 13px;
+        padding: var(--space-4) var(--space-5);
+        font-size: var(--font-md);
         color: var(--muted);
       }
       .choiceChips {
         display: flex;
         flex-wrap: nowrap;
-        gap: 8px;
+        gap: var(--space-3);
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
       }
       #editViewer .choiceChips {
         flex-wrap: wrap;
-        gap: 6px;
+        gap: var(--space-2);
         overflow: visible;
       }
       .choiceChip {
@@ -2881,8 +2898,8 @@ select {
         height: var(--dialog-control-h);
         min-height: var(--dialog-control-h);
         border-radius: 0;
-        padding: 0 12px;
-        font-size: 13px;
+        padding: 0 var(--space-5);
+        font-size: var(--font-md);
         line-height: 1;
         background: #ffffff;
         flex: 0 0 auto;
@@ -2898,12 +2915,12 @@ select {
       .customSnoozeRow {
         display: none;
         grid-template-columns: minmax(0, 1fr) 140px;
-        gap: 10px;
+        gap: var(--space-4);
       }
       .sliderRow {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: var(--space-5);
       }
       .sliderRow input[type="range"] {
         appearance: none;
@@ -2956,13 +2973,13 @@ select {
       .rangeValue {
         min-width: 56px;
         text-align: right;
-        font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font: var(--font-sm)/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         color: var(--muted);
       }
       .formActions {
         display: flex;
         justify-content: flex-end;
-        gap: 10px;
+        gap: var(--space-4);
       }
       .formActions button {
         min-width: 108px;
@@ -2982,8 +2999,8 @@ select {
       .detailsRow {
         display: grid;
         grid-template-columns: 110px minmax(0, 1fr);
-        gap: 12px;
-        padding: 10px 10px;
+        gap: var(--space-5);
+        padding: var(--space-4) var(--space-4);
         border-bottom: 1px solid var(--hairline);
         align-items: flex-start;
       }
@@ -2992,7 +3009,7 @@ select {
       }
       .detailsLabel {
         color: #6b6862;
-        font-size: 12px;
+        font-size: var(--font-sm);
         line-height: 1.2;
         padding-top: 2px;
       }
@@ -3000,29 +3017,29 @@ select {
         min-width: 0;
         color: var(--text);
         font-family: var(--font-mono);
-        font-size: 13px;
+        font-size: var(--font-md);
         line-height: 1.35;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
       }
       .detailsValue.mono {
-        font-size: 12px;
+        font-size: var(--font-sm);
       }
       .queueHeader {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 10px;
+        gap: var(--space-4);
       }
       .queueHeader .title {
-        font-size: 14px;
+        font-size: var(--font-lg);
         font-weight: 600;
         color: var(--text);
       }
       .queueList {
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: var(--space-4);
         overflow: auto;
         -webkit-overflow-scrolling: touch;
       }
@@ -3030,24 +3047,24 @@ select {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         align-items: start;
-        gap: 8px;
-        padding: 6px 0;
+        gap: var(--space-3);
+        padding: var(--space-2) 0;
       }
       .queueEditorShell {
         min-width: 0;
         border: 1px solid #e5e9ee;
         border-radius: 0;
         background: #ffffff;
-        padding: 8px 10px;
+        padding: var(--space-3) var(--space-4);
       }
       .queueActionRail {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: var(--space-2);
         align-self: start;
       }
       .queueSendingTag {
-        font-size: 11px;
+        font-size: var(--font-xs);
         line-height: 1;
         padding: 0 2px 0 0;
       }
@@ -3083,7 +3100,7 @@ select {
         min-height: 42px;
         max-height: 160px;
         resize: none;
-        font-size: 13px;
+        font-size: var(--font-md);
         line-height: 1.4;
         border: 0;
         border-radius: 0;
@@ -3110,15 +3127,15 @@ select {
         background: var(--panel);
         border: 1px solid var(--border);
         border-radius: 0;
-        padding: 12px;
+        padding: var(--space-5);
         flex-direction: column;
-        gap: 10px;
+        gap: var(--space-4);
         box-sizing: border-box;
       }
       .sendChoiceActions {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
+        gap: var(--space-3);
       }
       .sendChoiceActions button {
         flex: 1 1 auto;
@@ -3175,11 +3192,11 @@ select {
         .newSessionRunConfigRow .fieldLabel,
         .newSessionOptionsRow .fieldLabel,
         .unattendedMenu .label {
-          font-size: 12px;
+          font-size: var(--font-sm);
         }
         .newSessionRunConfigRow .checkField,
         .newSessionOptionsRow .checkField {
-          font-size: 13px;
+          font-size: var(--font-md);
         }
         .newSessionRunConfigRow #newSessionFastField .checkField,
         .newSessionOptionsRow #newSessionTmuxField .checkField {
@@ -3187,7 +3204,7 @@ select {
         }
         .detailsRow {
           grid-template-columns: minmax(0, 1fr);
-          gap: 4px;
+          gap: var(--space-1);
         }
         .detailsLabel {
           padding-top: 0;
@@ -3271,10 +3288,10 @@ select {
         input[type="search"],
         select,
         textarea {
-          font-size: 16px !important;
+          font-size: var(--font-xl) !important;
         }
         #jumpBtn {
-          padding: 7px 8px;
+          padding: 7px var(--space-3);
         }
       }
 
@@ -3297,7 +3314,7 @@ select {
           pointer-events: none;
         }
         .topbar {
-          padding: calc(8px + env(safe-area-inset-top)) 10px 8px 10px;
+          padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-4) var(--space-3) var(--space-4);
         }
         #threadTitle {
           max-width: 100%;
@@ -3305,15 +3322,15 @@ select {
           line-height: 1.2;
         }
         .chat {
-          padding: 10px;
+          padding: var(--space-4);
         }
         .composer {
           --composer-picker-inset: 5px;
-          padding: 5px 10px calc(5px + env(safe-area-inset-bottom));
+          padding: 5px var(--space-4) calc(5px + env(safe-area-inset-bottom));
         }
         .composer form {
           padding: 3px 5px;
-          gap: 4px;
+          gap: var(--space-1);
         }
         .msg {
           max-width: 88%;
@@ -3328,7 +3345,7 @@ select {
           bottom: 0;
           transform: none;
           border-radius: 0;
-          padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom)) 10px;
+          padding: calc(var(--space-4) + env(safe-area-inset-top)) var(--space-4) calc(var(--space-4) + env(safe-area-inset-bottom)) var(--space-4);
         }
         .fileTouchToolbar {
           left: 10px;
@@ -3339,7 +3356,7 @@ select {
           align-items: flex-start;
         }
         .fileViewerHeader .actions {
-          gap: 6px;
+          gap: var(--space-2);
         }
         .queueViewer {
           width: 100vw;
@@ -3350,7 +3367,7 @@ select {
           bottom: 0;
           transform: none;
           border-radius: 0;
-          padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom)) 10px;
+          padding: calc(var(--space-4) + env(safe-area-inset-top)) var(--space-4) calc(var(--space-4) + env(safe-area-inset-bottom)) var(--space-4);
         }
         .formViewer {
           width: min(94vw, 520px);
@@ -3361,7 +3378,7 @@ select {
           right: auto;
           transform: translateX(-50%);
           border-radius: 0;
-          padding: 12px;
+          padding: var(--space-5);
         }
         .formGrid.twoCol,
         .customSnoozeRow {
@@ -3371,17 +3388,17 @@ select {
           grid-template-columns: 1fr;
         }
 	        .sidebar .sessions {
-	          padding: 6px;
+	          padding: var(--space-2);
 	        }
 	        .session {
 	          margin-bottom: 6px;
 	        }
 	        .sessionInner {
-	          padding: 6px;
+	          padding: var(--space-2);
 	          gap: 2px;
 	        }
         .row {
-          gap: 8px;
+          gap: var(--space-3);
         }
       }
 
@@ -3392,7 +3409,7 @@ select {
         z-index: 10;
         display: none;
         border-radius: 0;
-        padding: 9px 10px;
+        padding: 9px var(--space-4);
         display: none;
         align-items: center;
         justify-content: center;
