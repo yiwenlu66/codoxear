@@ -210,6 +210,7 @@ def reset_session_log_caches(session: Session, *, meta_log_off: int) -> None:
     session.meta_thinking = 0
     session.meta_tools = 0
     session.meta_system = 0
+    session.meta_turn_open = False
     session.last_chat_ts = None
     session.last_chat_history_scanned = False
     session.meta_log_off = int(meta_log_off)

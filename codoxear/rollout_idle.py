@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ from .pi_log import pi_assistant_is_terminal_no_visible_response
 from .pi_log import pi_assistant_text
 from .pi_log import pi_assistant_thinking_count
 from .pi_log import pi_assistant_tool_use_count
+from .pi_log import pi_message_role
 from .pi_log import pi_user_text
 from .rollout_chat_batch import _extract_chat_events
 from .rollout_chat_events import _cc_message_keeps_turn_busy
@@ -52,16 +54,34 @@ def _has_assistant_output_text(obj: dict[str, Any]) -> bool:
     return False
 
 
+@dataclass(frozen=True)
+class LogChunkTurnState:
+    turn_open: bool
+    counters_reset: bool
+
+
 def _analyze_log_chunk(
     objs: list[dict[str, Any]],
-) -> tuple[int, int, int, float | None, Any, list[dict[str, Any]]]:
+    *,
+    initial_turn_open: bool = False,
+) -> tuple[int, int, int, float | None, Any, list[dict[str, Any]], LogChunkTurnState]:
     d_th = 0
     d_tools = 0
     d_sys = 0
     last_chat_ts: float | None = None
     token_update = _extract_token_observation(objs)
     chat_events, _meta, _flags, _diag = _extract_chat_events(objs)
-    turn_ended_in_chunk = False
+    turn_open = bool(initial_turn_open)
+    counters_reset = False
+
+    def open_on_user_message() -> None:
+        nonlocal d_th, d_tools, d_sys, turn_open, counters_reset
+        if not turn_open:
+            d_th = 0
+            d_tools = 0
+            d_sys = 0
+            counters_reset = True
+        turn_open = True
 
     for obj in objs:
         typ = obj.get("type")
@@ -70,44 +90,44 @@ def _analyze_log_chunk(
             last_chat_ts = sidebar_ts
         if typ == "message":
             if pi_user_text(obj):
-                # A user row can be a steer inside the active turn. Preserve
-                # activity before it unless an explicit terminal row in this
-                # same incremental chunk proved that a new turn began.
-                if turn_ended_in_chunk:
-                    d_th = 0
-                    d_tools = 0
-                    d_sys = 0
-                turn_ended_in_chunk = False
+                open_on_user_message()
                 continue
             d_th += pi_assistant_thinking_count(obj)
             d_tools += pi_assistant_tool_use_count(obj)
-            if (
+            if pi_assistant_error_text(obj):
+                turn_open = True
+            elif (
                 pi_assistant_is_aborted_turn(obj)
                 or pi_assistant_is_final_turn_end(obj)
                 or pi_assistant_is_terminal_no_visible_response(obj)
             ):
-                turn_ended_in_chunk = True
+                turn_open = False
+            elif (
+                pi_message_role(obj) == "toolResult"
+                or pi_assistant_tool_use_count(obj) > 0
+                or pi_assistant_thinking_count(obj) > 0
+            ):
+                turn_open = True
             continue
         if typ == "user":
             if cc_user_text(obj):
-                if turn_ended_in_chunk:
-                    d_th = 0
-                    d_tools = 0
-                    d_sys = 0
-                turn_ended_in_chunk = False
+                open_on_user_message()
                 continue
             if cc_message_role(obj) == "toolResult":
                 d_tools += 1
+                turn_open = True
                 continue
         if typ == "assistant":
             d_th += cc_assistant_thinking_count(obj)
             d_tools += cc_assistant_tool_use_count(obj)
             if cc_assistant_is_api_error(obj) or cc_assistant_is_final_turn_end(obj):
-                turn_ended_in_chunk = True
+                turn_open = False
+            elif cc_assistant_thinking_count(obj) > 0 or cc_assistant_tool_use_count(obj) > 0 or cc_assistant_text(obj):
+                turn_open = True
             continue
         if typ == "system" and cc_is_turn_end(obj):
             d_sys += 1
-            turn_ended_in_chunk = True
+            turn_open = False
             continue
         if typ == "event_msg":
             p = obj.get("payload")
@@ -116,16 +136,13 @@ def _analyze_log_chunk(
             pt = p.get("type")
             if pt == "agent_reasoning":
                 d_th += 1
+                turn_open = True
             if pt == "user_message":
-                if turn_ended_in_chunk:
-                    d_th = 0
-                    d_tools = 0
-                    d_sys = 0
-                turn_ended_in_chunk = False
+                open_on_user_message()
             if pt in ("turn_aborted", "thread_rolled_back", "task_complete", "turn_complete"):
-                turn_ended_in_chunk = True
+                turn_open = False
             if pt == "error" and _codex_error_affects_turn_status(p):
-                turn_ended_in_chunk = True
+                turn_open = False
         if typ == "response_item":
             p = obj.get("payload")
             if not isinstance(p, dict):
@@ -133,6 +150,7 @@ def _analyze_log_chunk(
             pt = p.get("type")
             if pt == "reasoning":
                 d_th += 1
+                turn_open = True
             if pt in (
                 "function_call",
                 "function_call_output",
@@ -142,10 +160,19 @@ def _analyze_log_chunk(
                 "local_shell_call",
             ):
                 d_tools += 1
+                turn_open = True
             if pt == "message" and p.get("role") in ("developer", "system"):
                 d_sys += 1
 
-    return d_th, d_tools, d_sys, last_chat_ts, token_update, chat_events
+    return (
+        d_th,
+        d_tools,
+        d_sys,
+        last_chat_ts,
+        token_update,
+        chat_events,
+        LogChunkTurnState(turn_open=turn_open, counters_reset=counters_reset),
+    )
 
 
 def _last_conversation_ts_from_tail(

@@ -466,7 +466,9 @@ class TestListingPendingLogIdle(unittest.TestCase):
             coordinator = SessionLogRuntimeCoordinator(
                 lock=lock,
                 sessions=lambda: {s.session_id: s},
-                analyze_log_chunk=lambda _rows: (0, 0, 0, None, None, []),
+                analyze_log_chunk=lambda _rows, **_kwargs: (
+                    0, 0, 0, None, None, [], SimpleNamespace(turn_open=False, counters_reset=False)
+                ),
                 turn_context_run_settings=lambda _payload: (None, None),
                 compute_idle_from_log=lambda _path: True,
                 read_jsonl_from_offset=lambda _path, _off, **_kw: ([], 0),

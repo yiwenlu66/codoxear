@@ -26,6 +26,10 @@ class Session:
     meta_thinking: int = 0
     meta_tools: int = 0
     meta_system: int = 0
+    # Persistent counting-window state for the incremental log scanner. This is
+    # distinct from public/runtime busy: an opt-in queue can keep a session busy
+    # across a completed turn while the next user row starts a fresh window.
+    meta_turn_open: bool = False
     meta_log_off: int = 0
     delivery_log_off: int = 0
     idle_cache_log_off: int = -1

@@ -15,7 +15,7 @@ from .token_signal import coerce_token_observation
 class SessionLogRuntimeCoordinator:
     lock: Any
     sessions: Callable[[], MutableMapping[str, Session]]
-    analyze_log_chunk: Callable[[list[dict[str, Any]]], tuple[Any, Any, Any, Any, Any, Any]]
+    analyze_log_chunk: Callable[..., tuple[Any, Any, Any, Any, Any, Any, Any]]
     turn_context_run_settings: Callable[[Any], tuple[str | None, str | None]]
     compute_idle_from_log: Callable[[Path], bool | None]
     read_jsonl_from_offset: Callable[..., tuple[list[dict[str, Any]], int]]
@@ -58,6 +58,8 @@ class SessionLogRuntimeCoordinator:
             total_thinking = 0
             total_tools = 0
             total_system = 0
+            turn_open = bool(session.meta_turn_open)
+            counters_reset = False
             latest_chat_ts: float | None = None
             latest_token_observation: TokenObservation = TOKEN_NONE
             loops = 0
@@ -65,11 +67,29 @@ class SessionLogRuntimeCoordinator:
                 objs, new_offset = self.read_jsonl_from_offset(log_path, offset, max_bytes=256 * 1024)
                 if new_offset <= offset:
                     break
-                delta_thinking, delta_tools, delta_system, chunk_chat_ts, token_update, chat_events = self.analyze_log_chunk(objs)
+                (
+                    delta_thinking,
+                    delta_tools,
+                    delta_system,
+                    chunk_chat_ts,
+                    token_update,
+                    chat_events,
+                    chunk_turn_state,
+                ) = self.analyze_log_chunk(objs, initial_turn_open=turn_open)
                 token_observation = coerce_token_observation(token_update)
-                total_thinking += delta_thinking
-                total_tools += delta_tools
-                total_system += delta_system
+                if chunk_turn_state.counters_reset:
+                    # A user row arrived while the scanner's persisted turn was
+                    # closed. Discard both prior-session counters and activity
+                    # from an older turn earlier in this multi-chunk scan.
+                    total_thinking = delta_thinking
+                    total_tools = delta_tools
+                    total_system = delta_system
+                    counters_reset = True
+                else:
+                    total_thinking += delta_thinking
+                    total_tools += delta_tools
+                    total_system += delta_system
+                turn_open = bool(chunk_turn_state.turn_open)
                 if chunk_chat_ts is not None:
                     latest_chat_ts = chunk_chat_ts if latest_chat_ts is None else max(latest_chat_ts, chunk_chat_ts)
                 if token_observation.observed:
@@ -107,19 +127,26 @@ class SessionLogRuntimeCoordinator:
                 elif fallback_token is not None:
                     current.token = fallback_token
                 if current.busy:
-                    current.meta_thinking += total_thinking
-                    current.meta_tools += total_tools
-                    current.meta_system += total_system
+                    if counters_reset:
+                        current.meta_thinking = total_thinking
+                        current.meta_tools = total_tools
+                        current.meta_system = total_system
+                    else:
+                        current.meta_thinking += total_thinking
+                        current.meta_tools += total_tools
+                        current.meta_system += total_system
+                    current.meta_turn_open = turn_open
                 else:
                     current.meta_thinking = 0
                     current.meta_tools = 0
                     current.meta_system = 0
+                    current.meta_turn_open = False
                 if clear_interrupted_idle and current.interrupted_idle:
                     suppress_session_interrupted_idle(current)
                 current.meta_log_off = offset if offset >= 0 else current.meta_log_off
 
     def mark_log_delta(self, session_id: str, *, objs: list[dict[str, Any]], new_off: int) -> None:
-        _thinking, _tools, _system, last_ts, _token_update, _chat_events = self.analyze_log_chunk(objs)
+        _thinking, _tools, _system, last_ts, _token_update, _chat_events, _turn_state = self.analyze_log_chunk(objs)
         with self.lock:
             current = self.sessions().get(session_id)
             agent_backend = current.agent_backend if current is not None else None
