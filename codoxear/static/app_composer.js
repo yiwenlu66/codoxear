@@ -32,6 +32,7 @@
     const getCurrentRunning = requireFunction(options.getCurrentRunning, "getCurrentRunning");
     const setCurrentRunning = requireFunction(options.setCurrentRunning, "setCurrentRunning");
     const setTurnOpen = requireFunction(options.setTurnOpen, "setTurnOpen");
+    const resetTypingStats = requireFunction(options.resetTypingStats, "resetTypingStats");
     const getStagedAttachments = requireFunction(options.getStagedAttachments, "getStagedAttachments");
     const normalizedStagedAttachments = requireFunction(options.normalizedStagedAttachments, "normalizedStagedAttachments");
     const setSelectedSessionPendingAttachment = requireFunction(options.setSelectedSessionPendingAttachment, "setSelectedSessionPendingAttachment");
@@ -391,6 +392,7 @@
         if (!confirmed) return false;
         allowPendingAttachment = true;
       }
+      const continuesOpenTurn = renderHere && getCurrentRunning();
       setSending(true);
       syncSendButtonState();
       syncAttachButtonState();
@@ -398,6 +400,7 @@
 
       const localId = nextLocalEchoId();
       const startedAt = now() / 1000;
+      if (renderHere && !continuesOpenTurn) resetTypingStats();
       if (renderHere && !renewsTranscript) {
         if (!renderedAtLiveTail()) {
           clearTranscriptDom();

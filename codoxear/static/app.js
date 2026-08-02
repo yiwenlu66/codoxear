@@ -3647,7 +3647,7 @@
           const turnStart = Boolean(data.turn_start);
           const turnEnd = Boolean(data.turn_end);
           const turnAborted = Boolean(data.turn_aborted);
-          const newTurn = turnStart || (!wasTurnOpen && nowBusy);
+          const newTurn = codoxearTranscript.startsTypingCountWindow({ wasTurnOpen, turnStart, nowBusy });
           if (newTurn) typingRowRuntime.resetTypingStats();
           if (turnStart) turnOpen = true;
           if (!turnOpen && nowBusy) turnOpen = true;
@@ -6774,6 +6774,7 @@
           getCurrentRunning: () => currentRunning,
           setCurrentRunning: (value) => { currentRunning = Boolean(value); },
           setTurnOpen: (value) => { turnOpen = Boolean(value); },
+          resetTypingStats: () => typingRowRuntime.resetTypingStats(),
           getStagedAttachments: () => stagedAttachments.slice(),
           normalizedStagedAttachments,
           setSelectedSessionPendingAttachment: (sessionId, value) => {

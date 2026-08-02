@@ -61,6 +61,7 @@ def _analyze_log_chunk(
     last_chat_ts: float | None = None
     token_update = _extract_token_observation(objs)
     chat_events, _meta, _flags, _diag = _extract_chat_events(objs)
+    turn_ended_in_chunk = False
 
     for obj in objs:
         typ = obj.get("type")
@@ -69,18 +70,31 @@ def _analyze_log_chunk(
             last_chat_ts = sidebar_ts
         if typ == "message":
             if pi_user_text(obj):
-                d_th = 0
-                d_tools = 0
-                d_sys = 0
+                # A user row can be a steer inside the active turn. Preserve
+                # activity before it unless an explicit terminal row in this
+                # same incremental chunk proved that a new turn began.
+                if turn_ended_in_chunk:
+                    d_th = 0
+                    d_tools = 0
+                    d_sys = 0
+                turn_ended_in_chunk = False
                 continue
             d_th += pi_assistant_thinking_count(obj)
             d_tools += pi_assistant_tool_use_count(obj)
+            if (
+                pi_assistant_is_aborted_turn(obj)
+                or pi_assistant_is_final_turn_end(obj)
+                or pi_assistant_is_terminal_no_visible_response(obj)
+            ):
+                turn_ended_in_chunk = True
             continue
         if typ == "user":
             if cc_user_text(obj):
-                d_th = 0
-                d_tools = 0
-                d_sys = 0
+                if turn_ended_in_chunk:
+                    d_th = 0
+                    d_tools = 0
+                    d_sys = 0
+                turn_ended_in_chunk = False
                 continue
             if cc_message_role(obj) == "toolResult":
                 d_tools += 1
@@ -88,9 +102,12 @@ def _analyze_log_chunk(
         if typ == "assistant":
             d_th += cc_assistant_thinking_count(obj)
             d_tools += cc_assistant_tool_use_count(obj)
+            if cc_assistant_is_api_error(obj) or cc_assistant_is_final_turn_end(obj):
+                turn_ended_in_chunk = True
             continue
         if typ == "system" and cc_is_turn_end(obj):
             d_sys += 1
+            turn_ended_in_chunk = True
             continue
         if typ == "event_msg":
             p = obj.get("payload")
@@ -100,9 +117,15 @@ def _analyze_log_chunk(
             if pt == "agent_reasoning":
                 d_th += 1
             if pt == "user_message":
-                d_th = 0
-                d_tools = 0
-                d_sys = 0
+                if turn_ended_in_chunk:
+                    d_th = 0
+                    d_tools = 0
+                    d_sys = 0
+                turn_ended_in_chunk = False
+            if pt in ("turn_aborted", "thread_rolled_back", "task_complete", "turn_complete"):
+                turn_ended_in_chunk = True
+            if pt == "error" and _codex_error_affects_turn_status(p):
+                turn_ended_in_chunk = True
         if typ == "response_item":
             p = obj.get("payload")
             if not isinstance(p, dict):

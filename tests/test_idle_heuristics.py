@@ -518,6 +518,41 @@ class TestAnalyzeLogChunkBackendRows(unittest.TestCase):
         self.assertEqual(d_th, 1)
         self.assertGreaterEqual(d_tools, 1)
 
+    def test_analyze_log_chunk_preserves_counts_across_pi_steer(self) -> None:
+        objs = [
+            {"type": "message", "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": "before steer"}]}},
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "steer now"}]}},
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "thinking", "thinking": "after steer"},
+                        {"type": "toolCall", "id": "t1", "name": "bash", "arguments": {"command": "pwd"}},
+                    ],
+                },
+            },
+        ]
+        d_th, d_tools, d_sys, _ts, _token, _events = _analyze_log_chunk(objs)
+        self.assertEqual(d_th, 2)
+        self.assertEqual(d_tools, 1)
+        self.assertEqual(d_sys, 0)
+
+    def test_analyze_log_chunk_resets_counts_after_closed_turn(self) -> None:
+        objs = [
+            {"type": "message", "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": "old"}]}},
+            {
+                "type": "message",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": "done"}], "stopReason": "stop"},
+            },
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "new turn"}]}},
+            {"type": "message", "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": "new"}]}},
+        ]
+        d_th, d_tools, d_sys, _ts, _token, _events = _analyze_log_chunk(objs)
+        self.assertEqual(d_th, 1)
+        self.assertEqual(d_tools, 0)
+        self.assertEqual(d_sys, 0)
+
     def test_compute_idle_handles_pi_tool_turn_and_cc_pending_rows(self) -> None:
         with TemporaryDirectory() as td:
             pi_log = Path(td) / "pi.jsonl"

@@ -69,7 +69,7 @@ class TestComposerModelPicker(unittest.TestCase):
               getSending: () => state.sending,
               setSending: (value) => {{ state.sending = value; }},
               getCurrentRunning: () => false,
-              setCurrentRunning: noop, setTurnOpen: noop,
+              setCurrentRunning: noop, setTurnOpen: noop, resetTypingStats: noop,
               getStagedAttachments: () => [], normalizedStagedAttachments: () => [],
               setSelectedSessionPendingAttachment: noop, setAttachCount: noop,
               syncAttachButtonState: noop, syncQueueSubmitState: noop,

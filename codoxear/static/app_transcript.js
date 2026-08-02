@@ -284,6 +284,12 @@
     });
   }
 
+  function startsTypingCountWindow({ wasTurnOpen, turnStart, nowBusy } = {}) {
+    // A steering user row is part of the already-open agent turn. Only an
+    // idle→active transition opens a fresh counting window.
+    return !Boolean(wasTurnOpen) && (Boolean(turnStart) || Boolean(nowBusy));
+  }
+
   function createTypingRowRuntime(options = {}) {
     const root = requireNode(options.root, "root");
     const bottomSentinel = requireNode(options.bottomSentinel, "bottomSentinel");
@@ -1313,6 +1319,7 @@
     rememberTailSnapshot,
     appendTailSnapshotEvents,
     createTranscriptSlotRuntime,
+    startsTypingCountWindow,
     createTypingRowRuntime,
     normalizedTranscriptEvents,
     createTranscriptRenderRuntime,

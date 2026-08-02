@@ -83,6 +83,29 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["replaced"], {"text": "tools: 7 · thinking: 3", "stats": {"thinking": 3, "tools": 7}})
         self.assertEqual(out["hidden"], {"text": "", "stats": {"thinking": 0, "tools": 0}})
 
+    def test_typing_count_window_starts_only_from_idle(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const ctx = {{ window: {{}} }};
+            const vm = require("vm");
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            const starts = ctx.window.CodoxearTranscript.startsTypingCountWindow;
+            process.stdout.write(JSON.stringify({{
+              idleUser: starts({{ wasTurnOpen: false, turnStart: true, nowBusy: true }}),
+              idleBusyFallback: starts({{ wasTurnOpen: false, turnStart: false, nowBusy: true }}),
+              steer: starts({{ wasTurnOpen: true, turnStart: true, nowBusy: true }}),
+              openSnapshot: starts({{ wasTurnOpen: true, turnStart: false, nowBusy: true }}),
+            }}));
+            """
+        )
+        out = _run_node(js)
+        self.assertEqual(
+            out,
+            {"idleUser": True, "idleBusyFallback": True, "steer": False, "openSnapshot": False},
+        )
+
     def test_transcript_scroll_runtime_owns_bottom_lock_and_input_policy(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
@@ -1517,6 +1540,62 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["final"]["calls"], [["make"], ["insert"], ["trim"], ["rebuild"], ["paint"], ["scroll"], ["jump"]])
         self.assertEqual(out["final"]["seen"], ["assistant|2400|same final text", "assistant|3000|same final text"])
 
+    def test_composer_resets_typing_counts_for_idle_send_but_not_steer(self) -> None:
+        composer_source = APP_COMPOSER_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const vm = require("vm");
+            const ctx = {{ window: {{}}, console, Date }};
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(composer_source)}, ctx);
+            const fakeNode = () => ({{
+              addEventListener: () => {{}}, removeEventListener: () => {{}},
+              setAttribute: () => {{}}, removeAttribute: () => {{}},
+              classList: {{ toggle: () => {{}} }}, style: {{}}, value: "",
+              scrollHeight: 32, disabled: false, focus: () => {{}},
+            }});
+            const noop = () => {{}};
+            function runSend(initialRunning) {{
+              const nodes = Array.from({{ length: 9 }}, fakeNode);
+              const [form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop, sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn] = nodes;
+              form.requestSubmit = noop;
+              const state = {{ sending: false, running: initialRunning, resets: 0 }};
+              const controller = ctx.window.CodoxearComposer.createComposerController({{
+                form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
+                sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn,
+                getSelected: () => "sid", getSessionInfo: () => ({{ agent_backend: "pi" }}),
+                patchSessionInfo: noop, sessionLaunchFailed: () => false,
+                getSending: () => state.sending, setSending: (value) => {{ state.sending = value; }},
+                getCurrentRunning: () => state.running, setCurrentRunning: (value) => {{ state.running = value; }},
+                setTurnOpen: noop, resetTypingStats: () => {{ state.resets += 1; }},
+                getStagedAttachments: () => [], normalizedStagedAttachments: () => [],
+                setSelectedSessionPendingAttachment: noop, setAttachCount: noop,
+                syncAttachButtonState: noop, syncQueueSubmitState: noop, syncRecoveryUiForSession: noop,
+                confirmAction: async () => false, api: async () => ({{ queued: false, queue_len: 0 }}),
+                setToast: noop, handleAppAuthLoss: noop, refreshSessions: async () => [],
+                setPollFastUntilMs: noop, kickPoll: noop, isTranscriptRenewalCommand: () => false,
+                nextLocalEchoId: () => 1, renderedAtLiveTail: () => true,
+                clearTranscriptDom: noop, clearRenderedTranscriptRange: noop, setOlderState: noop,
+                getSessionTranscriptSlot: () => ({{ epoch: 0 }}), addPendingUser: noop, appendEvent: noop,
+                deleteTailCache: noop, beginTranscriptRenewal: noop, clearLiveCursor: noop,
+                invalidateOlderLoad: noop, renderPendingTranscriptSlot: noop, dropPendingUser: noop,
+                removePendingUserRow: noop, hasPendingForSession: () => false,
+                enqueueComposerText: async () => false, prepareModalOpen: noop,
+                afterModalVisibilityChanged: noop, restoreModalFocus: noop,
+                storageGetItem: () => null, storageSetItem: noop, storageRemoveItem: noop,
+                getComputedStyle: () => ({{ minHeight: "32" }}), isHTMLElement: () => false, now: () => 1000,
+              }});
+              return controller.sendText("steer or start").then((ok) => ({{ ok, resets: state.resets }}));
+            }}
+            Promise.all([runSend(false), runSend(true)]).then(([idle, steer]) => {{
+              process.stdout.write(JSON.stringify({{ idle, steer }}));
+            }});
+            """
+        )
+        out = _run_node(js)
+        self.assertEqual(out["idle"], {"ok": True, "resets": 1})
+        self.assertEqual(out["steer"], {"ok": True, "resets": 0})
+
     def test_new_command_send_failure_does_not_detach_current_transcript(self) -> None:
         composer_source = APP_COMPOSER_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
@@ -1554,6 +1633,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               getCurrentRunning: () => false,
               setCurrentRunning: noop,
               setTurnOpen: noop,
+              resetTypingStats: noop,
               getStagedAttachments: () => [],
               normalizedStagedAttachments: (list) => Array.isArray(list) ? list : [],
               setSelectedSessionPendingAttachment: noop,
