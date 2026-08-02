@@ -3326,7 +3326,7 @@ select {
         .toast {
           position: fixed;
           left: 50%;
-          top: calc(56px + env(safe-area-inset-top));
+          top: calc(64px + env(safe-area-inset-top));
           transform: translateX(-50%);
           z-index: 95;
           max-width: min(88vw, 360px);
