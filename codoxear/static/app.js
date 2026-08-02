@@ -2170,11 +2170,8 @@
         }
 
         const codoxearMessageRows = window.CodoxearMessageRows;
-        const codoxearTranscriptView = window.CodoxearTranscriptView;
         if (
           !codoxearMessageRows ||
-          !codoxearTranscriptView ||
-          typeof codoxearTranscriptView.createTranscriptViewController !== "function" ||
           typeof codoxearMessageRows.makeRow !== "function" ||
           typeof codoxearMessageRows.safeMakeRow !== "function" ||
           typeof codoxearMessageRows.messageCopyButtonForRow !== "function" ||
@@ -2194,27 +2191,20 @@
           typeof codoxearMessageRows.trimRenderedRowTargets !== "function" ||
           typeof codoxearMessageRows.trimRowsBeforeViewportTargets !== "function"
         )
-          throw new Error("Codoxear transcript view helpers failed to load");
-
-        let transcriptViewController = null;
-
-        function transcriptView() {
-          if (!transcriptViewController) throw new Error("transcript view controller is not initialized");
-          return transcriptViewController;
-        }
+          throw new Error("Codoxear message row helpers failed to load");
 
         const messageCopyNavigationRuntime = codoxearMessageRows.createMessageCopyNavigationRuntime({ root: chatInner });
 
         function renderedMessageRows() {
-          return transcriptView().renderedMessageRows();
+          return codoxearMessageRows.renderedMessageRows(chatInner);
         }
 
         function loadedUserMessageRows() {
-          return transcriptView().loadedUserMessageRows();
+          return codoxearMessageRows.loadedUserMessageRows(chatInner);
         }
 
         function loadedCopyMessageRows() {
-          return transcriptView().loadedCopyMessageRows();
+          return codoxearMessageRows.loadedCopyMessageRows(chatInner);
         }
 
         function messageCopyButtonForRow(row) {
@@ -2242,7 +2232,7 @@
         }
 
         function applyChatSearchMarks(matches, currentRow, query) {
-          return transcriptView().applyChatSearchMarks(matches, currentRow, query);
+          codoxearMessageRows.applyChatSearchMarks(matches, currentRow, query);
         }
 
         function firstVisibleMessageRow() {
@@ -2485,7 +2475,7 @@
         }
 
         function clearChatSearchMarks() {
-          transcriptView().clearChatSearchMarks();
+          codoxearMessageRows.clearChatSearchMarks(renderedMessageRows());
         }
 
         function compactChatSearchSnippet(text, query, limit = 96) {
@@ -2531,7 +2521,7 @@
         }
 
         function oldestRenderedHistoryCursor() {
-          return transcriptView().oldestRenderedHistoryCursor() || activeTailHistoryCursor;
+          return codoxearMessageRows.oldestRenderedHistoryCursor(renderedMessageRows()) || activeTailHistoryCursor;
         }
 
         function clearRenderedTranscriptRange() {
@@ -2903,6 +2893,7 @@
           return {
             el,
             chatMarkdownHtmlCached,
+            selectedSessionId: selected,
             upgradeCandidateFileRefs,
             time24,
             iconSvg,
@@ -2912,6 +2903,14 @@
             setTimeout: window.setTimeout.bind(window),
             consoleError: console.error.bind(console),
           };
+        }
+
+        function makeRow(ev, { ts, pending }) {
+          return codoxearMessageRows.makeRow(ev, { ts, pending }, messageRowDeps());
+        }
+
+        function safeMakeRow(ev, opts) {
+          return codoxearMessageRows.safeMakeRow(ev, opts, messageRowDeps());
         }
 
       const codoxearMessageIdentity = window.CodoxearMessageIdentity;
@@ -2997,34 +2996,28 @@
           return true;
         }
 
-        transcriptViewController = codoxearTranscriptView.createTranscriptViewController({
+        const transcriptRenderRuntime = codoxearTranscript.createTranscriptRenderRuntime({
           root: chatInner,
           bottomSentinel,
           document,
-          messageRows: codoxearMessageRows,
-          transcript: codoxearTranscript,
+          safeMakeRow,
+          normalizeEvents: normalizedTranscriptEvents,
+          consumePendingUserIfMatches,
+          isDuplicateEvent,
+          isAdjacentAssistantDuplicateEvent,
+          markEventSeen,
+          markFirstPaint: markClickFirstPaint,
+          restorePendingRows: restorePendingUserRowsForSession,
+          resetRecentEvents: () => transcriptEventRuntime.resetRecentEvents(),
+          setOlderState,
+          firstVisibleMessageRow,
+          getScrollTop: () => chat.scrollTop,
           getSelectedSessionId: () => selected,
-          getMessageRowDeps: messageRowDeps,
-          renderRuntime: {
-            normalizeEvents: normalizedTranscriptEvents,
-            consumePendingUserIfMatches,
-            isDuplicateEvent,
-            isAdjacentAssistantDuplicateEvent,
-            markEventSeen,
-            markFirstPaint: markClickFirstPaint,
-            restorePendingRows: restorePendingUserRowsForSession,
-            resetRecentEvents: () => transcriptEventRuntime.resetRecentEvents(),
-            setOlderState,
-            firstVisibleMessageRow,
-            getScrollTop: () => chat.scrollTop,
-            getSelectedSessionId: () => selected,
-            domRuntime: transcriptDomRuntime,
-            scrollRuntime: transcriptScrollRuntime,
-            typingRowRuntime,
-            historySlackRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK,
-          },
+          domRuntime: transcriptDomRuntime,
+          scrollRuntime: transcriptScrollRuntime,
+          typingRowRuntime,
+          historySlackRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK,
         });
-
 
         function isMobile() {
           return codoxearViewport.isMobile();
@@ -3236,7 +3229,7 @@
         }
 
         function appendEvent(ev) {
-          transcriptView().appendEvent(ev);
+          transcriptRenderRuntime.appendEvent(ev);
         }
 
         function normalizedTranscriptEvents(events, { consumePending = false } = {}) {
@@ -3249,11 +3242,11 @@
         }
 
         function renderTranscript(events, { preserveScroll = false } = {}) {
-          return transcriptView().renderTranscript(events, { preserveScroll });
+          return transcriptRenderRuntime.renderTranscript(events, { preserveScroll });
         }
 
         function renderDetachedTranscriptWindow(events, { hasMore = false } = {}) {
-          return transcriptView().renderDetachedTranscriptWindow(events, { hasMore });
+          return transcriptRenderRuntime.renderDetachedTranscriptWindow(events, { hasMore });
         }
 
         async function loadTranscriptWindowAtCursor(cursor) {
@@ -3278,7 +3271,7 @@
         }
 
         function prependOlderEvents(allEvents, { preserveViewport = false } = {}) {
-          return transcriptView().prependOlderEvents(allEvents, { preserveViewport });
+          return transcriptRenderRuntime.prependOlderEvents(allEvents, { preserveViewport });
         }
 
         async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {
