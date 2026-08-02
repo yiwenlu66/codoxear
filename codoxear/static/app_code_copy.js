@@ -21,6 +21,11 @@
     return closestElement(target, ".code-copy-btn");
   }
 
+  function codePreFromTarget(target) {
+    const pre = closestElement(target, "pre");
+    return pre && typeof pre.querySelector === "function" && pre.querySelector(":scope > .code-copy-btn") ? pre : null;
+  }
+
   function createCodeBlockCopyRuntime(deps = {}) {
     const copyToClipboard = requireFunction(deps.copyToClipboard, "copyToClipboard");
     const setToast = requireFunction(deps.setToast, "setToast");
@@ -64,15 +69,26 @@
       return true;
     }
 
+    function toggleTouchPre(pre, root) {
+      if (!pre || !root || typeof root.querySelectorAll !== "function" || !pre.classList) return null;
+      const shown = pre.classList.contains("show-copy");
+      for (const candidate of root.querySelectorAll("pre.show-copy")) candidate.classList.remove("show-copy");
+      if (!shown) pre.classList.add("show-copy");
+      return !shown ? pre : null;
+    }
+
     return Object.freeze({
       handleClick,
       codeTextForCopyButton,
+      codePreFromTarget,
+      toggleTouchPre,
     });
   }
 
   window.CodoxearCodeCopy = Object.freeze({
     createCodeBlockCopyRuntime,
     codeCopyButtonFromEvent,
+    codePreFromTarget,
     codeTextForCopyButton,
   });
 })();

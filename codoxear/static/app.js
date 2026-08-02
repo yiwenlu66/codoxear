@@ -2267,6 +2267,11 @@
           if (!isTouchCopyMode() || window.getSelection().toString()) return;
           const target = e.target && typeof e.target.closest === "function" ? e.target : null;
           if (!target || target.closest("a, button, input, select, textarea, [role='link'], mark")) return;
+          const pre = codoxearCodeCopy.codePreFromTarget(target);
+          if (pre && chatInner.contains(pre)) {
+            codeBlockCopyRuntime.toggleTouchPre(pre, chatInner);
+            return;
+          }
           const bubble = target.closest(".msg");
           const row = bubble && bubble.closest(".msg-row");
           if (!row || !chatInner.contains(row) || (target !== bubble && !target.closest(".md"))) return;

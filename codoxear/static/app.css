@@ -1385,7 +1385,7 @@
       .md pre {
         position: relative;
         margin: 10px 0 12px 0;
-        padding: 12px 46px 12px 12px;
+        padding: 12px;
         border-radius: 0;
         overflow: auto;
         max-width: 100%;
@@ -1418,11 +1418,12 @@
         min-width: 30px;
         min-height: 30px;
         padding: 0;
-        border: 1px solid #141111;
+        border: 1px solid var(--ink);
         border-radius: 0;
-        background: #ffffff;
-        color: #5d626c;
-        opacity: 0.72;
+        background: var(--paper);
+        color: var(--ink);
+        opacity: 0;
+        pointer-events: none;
       }
       .code-copy-btn::before {
         content: "⧉";
@@ -1430,14 +1431,13 @@
         line-height: 1;
       }
       .md pre:hover .code-copy-btn,
-      .code-copy-btn:focus-visible {
-        opacity: 1;
-        border-color: #141111;
-        color: var(--accent);
-      }
+      .md pre:focus-within .code-copy-btn,
+      .md pre.show-copy .code-copy-btn,
       .code-copy-btn.copied {
         opacity: 1;
-        border-color: var(--ink);
+        pointer-events: auto;
+      }
+      .code-copy-btn.copied {
         background: var(--ink);
         color: var(--paper);
       }
@@ -3089,9 +3089,6 @@ select {
           content: "";
           position: absolute;
           inset: -6px;
-        }
-        .md pre {
-          padding-right: 58px;
         }
         .code-copy-btn,
         .msg-copy-btn {

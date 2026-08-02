@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import textwrap
 import unittest
@@ -71,8 +72,14 @@ def eval_code_copy_runtime() -> dict:
         }}
         const code = {{ textContent: "first <block> & only\\n" }};
         const otherCode = {{ textContent: "second block" }};
-        const pre = {{ querySelector: (selector) => selector === "code" ? code : null }};
-        const otherPre = {{ querySelector: (selector) => selector === "code" ? otherCode : null }};
+        const pre = {{
+          classList: classList(),
+          querySelector: (selector) => selector === "code" || selector === ":scope > .code-copy-btn" ? (selector === "code" ? code : button) : null,
+        }};
+        const otherPre = {{
+          classList: classList(),
+          querySelector: (selector) => selector === "code" || selector === ":scope > .code-copy-btn" ? (selector === "code" ? otherCode : otherButton) : null,
+        }};
         const attrs = {{ "aria-label": "Copy code", title: "Copy code" }};
         const button = {{
           classList: classList(),
@@ -82,12 +89,22 @@ def eval_code_copy_runtime() -> dict:
         }};
         const child = {{ closest: (selector) => selector === ".code-copy-btn" ? button : null }};
         const otherButton = {{ closest: (selector) => selector === "pre" ? otherPre : null }};
+        const toggleRoot = {{
+          querySelectorAll: (selector) => selector === "pre.show-copy" ? [pre, otherPre].filter((item) => item.classList.contains("show-copy")) : [],
+        }};
         const runtime = ctx.window.CodoxearCodeCopy.createCodeBlockCopyRuntime({{
           copyToClipboard: async (text) => calls.push(["copy", text]),
           setToast: (text) => calls.push(["toast", text]),
           setTimeout: (fn, ms) => {{ calls.push(["timeout", ms]); ctx.resetCopy = fn; return 7; }},
           clearTimeout: (id) => calls.push(["clearTimeout", id]),
         }});
+        const touchFirst = runtime.toggleTouchPre(pre, toggleRoot);
+        const touchFirstState = [pre, otherPre].map((item) => item.classList.contains("show-copy"));
+        const touchSecond = runtime.toggleTouchPre(otherPre, toggleRoot);
+        const touchSecondState = [pre, otherPre].map((item) => item.classList.contains("show-copy"));
+        const touchHidden = runtime.toggleTouchPre(otherPre, toggleRoot);
+        const touchHiddenState = [pre, otherPre].map((item) => item.classList.contains("show-copy"));
+        const codePreFound = ctx.window.CodoxearCodeCopy.codePreFromTarget({{ closest: (selector) => selector === "pre" ? pre : null }});
         let prevented = 0;
         let stopped = 0;
         let fileRefCalls = 0;
@@ -112,6 +129,13 @@ def eval_code_copy_runtime() -> dict:
             ariaLabel: attrs["aria-label"],
             title: attrs.title,
             copiedClassAfterReset: button.classList.contains("copied"),
+            touchFirst: touchFirst === pre,
+            touchFirstState,
+            touchSecond: touchSecond === otherPre,
+            touchSecondState,
+            touchHidden,
+            touchHiddenState,
+            codePreFound: codePreFound === pre,
           }}));
         }});
         """
@@ -157,6 +181,45 @@ class TestCodeBlockCopySource(unittest.TestCase):
         self.assertFalse(result["miss"])
         self.assertEqual(result["fileRefCalls"], 0)
         self.assertEqual(result["directText"], "second block")
+
+    def test_code_copy_runtime_toggles_one_touch_block_at_a_time(self) -> None:
+        result = eval_code_copy_runtime()
+        self.assertTrue(result["touchFirst"])
+        self.assertEqual(result["touchFirstState"], [True, False])
+        self.assertTrue(result["touchSecond"])
+        self.assertEqual(result["touchSecondState"], [False, True])
+        self.assertIsNone(result["touchHidden"])
+        self.assertEqual(result["touchHiddenState"], [False, False])
+        self.assertTrue(result["codePreFound"])
+
+    def test_code_copy_reveal_css_reclaims_code_width(self) -> None:
+        css = APP_CSS.read_text(encoding="utf-8")
+        button = re.search(r"\.code-copy-btn\s*\{(?P<body>[^}]*)\}", css)
+        self.assertIsNotNone(button)
+        self.assertIn("opacity: 0", button.group("body"))
+        self.assertIn("pointer-events: none", button.group("body"))
+        self.assertIn(".md pre:hover .code-copy-btn", css)
+        self.assertIn(".md pre:focus-within .code-copy-btn", css)
+        self.assertIn(".md pre.show-copy .code-copy-btn", css)
+        pre = re.search(r"\.md pre\s*\{(?P<body>[^}]*)\}", css)
+        self.assertIsNotNone(pre)
+        self.assertIn("padding: 12px", pre.group("body"))
+        self.assertNotIn("padding-right", pre.group("body"))
+        touch = css_media_block(css, "@media (max-width: 700px), (pointer: coarse)")
+        self.assertNotIn(".md pre {", touch)
+        self.assertIn(".code-copy-btn::after", touch)
+        self.assertIn("inset: -7px", touch)
+
+    def test_touch_code_copy_toggle_is_wired_before_message_copy_toggle(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("window.getSelection().toString()", source)
+        self.assertIn("a, button, input, select, textarea, [role='link'], mark", source)
+        self.assertIn("const pre = codoxearCodeCopy.codePreFromTarget(target);", source)
+        self.assertIn("codeBlockCopyRuntime.toggleTouchPre(pre, chatInner);", source)
+        self.assertLess(
+            source.index("codeBlockCopyRuntime.toggleTouchPre(pre, chatInner);"),
+            source.index("messageCopyNavigationRuntime.toggleTouchRow(row);"),
+        )
 
 
 if __name__ == "__main__":
