@@ -24,6 +24,7 @@ from .pi_log import pi_assistant_thinking_count
 from .pi_log import pi_assistant_reasoning_tokens
 from .pi_log import pi_assistant_tool_use_count
 from .pi_log import pi_message_role
+from .pi_log import pi_user_is_agent_internal_delivery
 from .pi_log import pi_user_text
 from .rollout_chat_batch import _extract_chat_events
 from .rollout_chat_events import _cc_message_keeps_turn_busy
@@ -76,9 +77,9 @@ def _analyze_log_chunk(
     turn_open = bool(initial_turn_open)
     counters_reset = False
 
-    def open_on_user_message() -> None:
+    def open_on_user_message(*, reset_counters: bool) -> None:
         nonlocal d_th, d_thinking_tokens, d_tools, d_sys, turn_open, counters_reset
-        if not turn_open:
+        if not turn_open and reset_counters:
             d_th = 0
             d_thinking_tokens = 0
             d_tools = 0
@@ -93,7 +94,7 @@ def _analyze_log_chunk(
             last_chat_ts = sidebar_ts
         if typ == "message":
             if pi_user_text(obj):
-                open_on_user_message()
+                open_on_user_message(reset_counters=not pi_user_is_agent_internal_delivery(obj))
                 continue
             d_th += pi_assistant_thinking_count(obj)
             d_thinking_tokens += pi_assistant_reasoning_tokens(obj)
@@ -115,7 +116,7 @@ def _analyze_log_chunk(
             continue
         if typ == "user":
             if cc_user_text(obj):
-                open_on_user_message()
+                open_on_user_message(reset_counters=True)
                 continue
             if cc_message_role(obj) == "toolResult":
                 d_tools += 1
@@ -142,7 +143,7 @@ def _analyze_log_chunk(
                 d_th += 1
                 turn_open = True
             if pt == "user_message":
-                open_on_user_message()
+                open_on_user_message(reset_counters=True)
             if pt in ("turn_aborted", "thread_rolled_back", "task_complete", "turn_complete"):
                 turn_open = False
             if pt == "error" and _codex_error_affects_turn_status(p):

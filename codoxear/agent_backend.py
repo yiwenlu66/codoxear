@@ -688,6 +688,7 @@ class PiBackend(AgentBackend):
         from .pi_log import pi_assistant_is_final_turn_end
         from .pi_log import pi_assistant_is_terminal_no_visible_response
         from .pi_log import pi_assistant_text
+        from .pi_log import pi_user_is_agent_internal_delivery
         from .pi_log import pi_user_text
         from .rollout_events import _event_ts
         from .rollout_events import _text_message_id
@@ -708,6 +709,8 @@ class PiBackend(AgentBackend):
         if isinstance(user_text, str) and user_text:
             ts = _event_ts(row)
             event: dict[str, Any] = {"role": "user", "text": user_text}
+            if pi_user_is_agent_internal_delivery(row):
+                event["agent_internal_delivery"] = True
             if ts is not None:
                 event["ts"] = ts
             return event

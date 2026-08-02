@@ -41,6 +41,7 @@ from .pi_message import pi_pending_tool_call_is_duplicate
 from .pi_message import pi_pending_tool_call_is_unknown
 from .pi_message import pi_tool_result_id
 from .pi_message import pi_unknown_tool_call_id
+from .pi_message import pi_user_is_agent_internal_delivery
 from .pi_message import pi_user_text
 
 PI_UNKNOWN_TOOL_CALL_ID_PREFIX = "__pi_unknown_tool_call__:"

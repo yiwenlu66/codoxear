@@ -2532,6 +2532,7 @@
           typeof codoxearTranscript.appendTailSnapshotEvents !== "function" ||
           typeof codoxearTranscript.createTranscriptSlotRuntime !== "function" ||
           typeof codoxearTranscript.createTypingRowRuntime !== "function" ||
+          typeof codoxearTranscript.hasHumanOriginatedUserEvent !== "function" ||
           typeof codoxearTranscript.createTranscriptRenderRuntime !== "function" ||
           typeof codoxearTranscript.createTranscriptDomRuntime !== "function" ||
           typeof codoxearTranscript.createTranscriptScrollRuntime !== "function" ||
@@ -3664,7 +3665,7 @@
           const turnEnd = Boolean(data.turn_end);
           const turnAborted = Boolean(data.turn_aborted);
           const newTurn = codoxearTranscript.startsTypingCountWindow({ wasTurnOpen, turnStart, nowBusy });
-          if (newTurn) typingRowRuntime.resetTypingStats();
+          if (newTurn && codoxearTranscript.hasHumanOriginatedUserEvent(evs)) typingRowRuntime.resetTypingStats();
           if (turnStart) turnOpen = true;
           if (!turnOpen && nowBusy) turnOpen = true;
           if ((turnEnd || turnAborted) && turnOpen) turnOpen = false;

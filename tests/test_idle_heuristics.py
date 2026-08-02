@@ -556,6 +556,45 @@ class TestAnalyzeLogChunkBackendRows(unittest.TestCase):
         self.assertEqual(d_tools, 0)
         self.assertEqual(d_sys, 0)
 
+    def test_analyze_log_chunk_keeps_episode_counts_across_pi_subagent_delivery(self) -> None:
+        objs = [
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "human request"}]}},
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "thinking", "thinking": "before"}, {"type": "toolCall", "id": "t1", "name": "bash", "arguments": {}}],
+                    "usage": {"reasoning": 20},
+                },
+            },
+            {
+                "type": "message",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": "first response"}], "stopReason": "stop"},
+            },
+            {
+                "type": "message",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "**📨 From subagent-result** (/workspace)\n"},
+                        {"type": "text", "text": "subagent results"},
+                    ],
+                },
+            },
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "thinking", "thinking": "after"}, {"type": "toolCall", "id": "t2", "name": "bash", "arguments": {}}],
+                    "usage": {"reasoning": 16},
+                },
+            },
+        ]
+        d_th, d_thinking_tokens, d_tools, _d_sys, _ts, _token, _events, turn_state = _analyze_log_chunk(objs)
+        self.assertEqual((d_th, d_thinking_tokens, d_tools), (2, 36, 2))
+        self.assertTrue(turn_state.turn_open)
+        self.assertTrue(turn_state.counters_reset)  # The episode began with the human row.
+
     def test_analyze_log_chunk_counts_exact_pi_reasoning_tokens(self) -> None:
         objs = [
             {

@@ -84,6 +84,59 @@ def _pi_tool(call_id: str) -> dict:
     }
 
 
+def _pi_final(text: str) -> dict:
+    return {
+        "type": "message",
+        "message": {"role": "assistant", "content": [{"type": "text", "text": text}], "stopReason": "stop"},
+    }
+
+
+def _pi_subagent_result() -> dict:
+    return {
+        "type": "message",
+        "message": {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "**📨 From subagent-result** (/workspace)\n\n"},
+                {"type": "text", "text": "subagent results"},
+            ],
+        },
+    }
+
+
+def test_subagent_delivery_reopens_turn_without_resetting_episode_counters(tmp_path: Path) -> None:
+    log_path = tmp_path / "pi.jsonl"
+    log_path.touch()
+    session = _session(log_path, thinking=0, thinking_tokens=0, tools=0, turn_open=False)
+    runtime = _runtime(session)
+
+    # Human input begins the episode. Two tools and their reasoning tokens are
+    # retained after the assistant's first model turn completes.
+    _append(log_path, _pi_user("human request"), _pi_thinking("first", 20), _pi_tool("one"), _pi_tool("two"), _pi_final("first response"))
+    runtime.update_meta_counters()
+    assert session.meta_turn_open is False
+    assert (session.meta_thinking, session.meta_thinking_tokens, session.meta_tools) == (1, 20, 2)
+
+    # The subagent result is a Pi user-role row but an episode-internal
+    # delivery: it reopens busy/turn state and adds to the same counters.
+    _append(log_path, _pi_subagent_result(), _pi_thinking("second", 16), _pi_tool("three"))
+    runtime.update_meta_counters()
+    assert session.meta_turn_open is True
+    assert (session.meta_thinking, session.meta_thinking_tokens, session.meta_tools) == (2, 36, 3)
+
+
+def test_human_input_after_final_resets_episode_counters(tmp_path: Path) -> None:
+    log_path = tmp_path / "pi.jsonl"
+    log_path.touch()
+    session = _session(log_path, thinking=2, thinking_tokens=36, tools=3, turn_open=False)
+    runtime = _runtime(session)
+
+    _append(log_path, _pi_user("next human request"), _pi_thinking("fresh", 8), _pi_tool("fresh-tool"))
+    runtime.update_meta_counters()
+    assert session.meta_turn_open is True
+    assert (session.meta_thinking, session.meta_thinking_tokens, session.meta_tools) == (1, 8, 1)
+
+
 def test_queued_turn_resets_counters_when_user_arrives_after_cross_chunk_close(tmp_path: Path) -> None:
     log_path = tmp_path / "pi.jsonl"
     log_path.touch()

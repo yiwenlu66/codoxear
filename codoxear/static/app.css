@@ -891,6 +891,12 @@
         outline: 2px solid #141111;
         outline-offset: 1px;
       }
+      /* The composer band is the input surface; focus there is self-evident
+         (keyboard opens, cursor blinks) and a 2px ink outline reads as a
+         heavy box floating inside the band. */
+      .composer textarea:focus-visible {
+        outline: none;
+      }
 
       .chatWrap {
         flex: 1;
@@ -984,10 +990,11 @@
         line-height: 1.1;
       }
       .chatHeader {
+        --chat-nav-rail-w: 120px;
         order: 0;
         flex: 0 0 auto;
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        grid-template-columns: minmax(0, 1fr) auto auto;
         align-items: center;
         min-height: 44px;
         padding: 6px 12px 8px;
@@ -995,10 +1002,15 @@
       .chatTimeChip {
         grid-column: 2;
         display: none;
-        align-items: center;
+        justify-self: end;
+        min-width: 0;
+        max-width: min(220px, calc(100vw - 24px - var(--chat-nav-rail-w)));
+        overflow: hidden;
         color: var(--muted);
         font-size: 12px;
         line-height: 1.1;
+        text-align: center;
+        text-overflow: ellipsis;
         white-space: nowrap;
         pointer-events: none;
       }
@@ -1090,13 +1102,13 @@
         position: relative;
         display: inline-flex;
         align-items: flex-end;
-        max-width: min(760px, 82%);
+        max-width: min(760px, 82%, calc(100% - 36px));
         min-width: 0;
       }
       .msg {
         max-width: min(760px, 82%);
         min-width: 0;
-        padding: 10px 12px;
+        padding: 10px 12px 18px 12px;
         border-radius: 0;
         border: 1px solid #141111;
         position: relative;
@@ -1166,16 +1178,10 @@
       .msg-shell .msg {
         max-width: 100%;
       }
-      .msg-meta {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        min-height: 30px;
-        margin-top: 6px;
-      }
       .msg-copy-btn {
-        flex: 0 0 auto;
+        position: absolute;
+        right: -36px;
+        bottom: 0;
         width: 30px;
         height: 30px;
         min-width: 30px;
@@ -1185,16 +1191,31 @@
         border-radius: 0;
         background: var(--paper);
         color: var(--ink);
-        opacity: 0.72;
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
       }
-      .msg:hover .msg-copy-btn,
-      .msg-copy-btn:focus-visible {
+      .msg-shell.user .msg-copy-btn {
+        right: auto;
+        left: -36px;
+      }
+      .msg-row.show-copy .msg-copy-btn {
         opacity: 1;
-        border-color: var(--ink);
-        color: var(--accent);
+        visibility: visible;
+        pointer-events: auto;
+      }
+      @media (hover: hover) and (pointer: fine) {
+        .msg-row:hover .msg-copy-btn,
+        .msg-row:focus-within .msg-copy-btn {
+          opacity: 1;
+          visibility: visible;
+          pointer-events: auto;
+        }
       }
       .msg-copy-btn.copied {
         opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
         border-color: var(--ink);
         background: var(--ink);
         color: var(--paper);
@@ -1283,8 +1304,9 @@
         margin-top: 2px;
       }
       .ts {
-        flex: 1 1 auto;
-        min-width: 0;
+        position: absolute;
+        right: 10px;
+        bottom: 6px;
         font-size: 11px;
         line-height: 1.1;
         color: #7c8088;
@@ -3053,12 +3075,10 @@ select {
         }
         .code-copy-btn,
         .msg-copy-btn {
-          position: relative;
           width: 30px;
           height: 30px;
           min-width: 30px;
           min-height: 30px;
-          opacity: 1;
         }
         .code-copy-btn::after,
         .msg-copy-btn::after,

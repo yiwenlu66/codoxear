@@ -12,6 +12,25 @@ PI_MESSAGE_PY = ROOT / "codoxear" / "pi_message.py"
 
 class TestPiMessageSource(unittest.TestCase):
 
+    def test_pi_user_delivery_classifier_uses_nested_envelope_text(self) -> None:
+        def user(content: object) -> dict:
+            return {"type": "message", "message": {"role": "user", "content": content}}
+
+        result_delivery = user(
+            [
+                {"type": "text", "text": "  **📨 From subagent-result** (/workspace)\n\n"},
+                {"type": "text", "text": "subagent results"},
+            ]
+        )
+        control_delivery = user([{"type": "text", "text": "**📨 From subagent-control**\nstatus"}])
+        progress_delivery = user([{"type": "text", "text": "Subagent progress update.\nRun: abc"}])
+        human_message = user([{"type": "text", "text": "Please inspect the result."}])
+
+        self.assertTrue(pi_message.pi_user_is_agent_internal_delivery(result_delivery))
+        self.assertTrue(pi_message.pi_user_is_agent_internal_delivery(control_delivery))
+        self.assertTrue(pi_message.pi_user_is_agent_internal_delivery(progress_delivery))
+        self.assertFalse(pi_message.pi_user_is_agent_internal_delivery(human_message))
+
     def test_pi_terminal_no_visible_response_predicate_semantics(self) -> None:
         def row(stop_reason: object, content: object = None, role: str = "assistant") -> dict:
             return {

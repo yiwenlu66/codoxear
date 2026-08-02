@@ -52,6 +52,23 @@ def pi_user_text(obj: dict[str, Any]) -> str | None:
     return "".join(parts)
 
 
+# Pi's harness writes these envelopes when it delivers subagent/intercom state
+# into the parent conversation. The row still has role=user, but it represents
+# agent-internal continuation rather than a human message boundary.
+_PI_AGENT_INTERNAL_DELIVERY_PREFIXES = (
+    "**📨 From ",
+    "Subagent progress update.",
+    "Background task completed:",
+)
+
+
+def pi_user_is_agent_internal_delivery(obj: dict[str, Any]) -> bool:
+    text = pi_user_text(obj)
+    if not isinstance(text, str):
+        return False
+    return text.lstrip().startswith(_PI_AGENT_INTERNAL_DELIVERY_PREFIXES)
+
+
 def pi_assistant_content_parts(obj: dict[str, Any]) -> list[dict[str, Any]]:
     if obj.get("type") != "message":
         return []

@@ -284,6 +284,23 @@
     });
   }
 
+  const AGENT_INTERNAL_DELIVERY_PREFIXES = [
+    "**📨 From ",
+    "Subagent progress update.",
+    "Background task completed:",
+  ];
+
+  function isAgentInternalDeliveryUserEvent(event) {
+    if (!event || event.role !== "user") return false;
+    if (event.agent_internal_delivery === true) return true;
+    const text = typeof event.text === "string" ? event.text.trimStart() : "";
+    return AGENT_INTERNAL_DELIVERY_PREFIXES.some((prefix) => text.startsWith(prefix));
+  }
+
+  function hasHumanOriginatedUserEvent(events) {
+    return Array.isArray(events) && events.some((event) => event && event.role === "user" && !isAgentInternalDeliveryUserEvent(event));
+  }
+
   function startsTypingCountWindow({ wasTurnOpen, turnStart, nowBusy } = {}) {
     // A steering user row is part of the already-open agent turn. Only an
     // idle→active transition opens a fresh counting window.
@@ -1391,6 +1408,8 @@
     rememberTailSnapshot,
     appendTailSnapshotEvents,
     createTranscriptSlotRuntime,
+    isAgentInternalDeliveryUserEvent,
+    hasHumanOriginatedUserEvent,
     startsTypingCountWindow,
     createTypingRowRuntime,
     normalizedTranscriptEvents,

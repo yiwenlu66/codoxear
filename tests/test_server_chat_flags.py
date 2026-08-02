@@ -139,6 +139,24 @@ class TestServerChatFlags(unittest.TestCase):
         self.assertEqual(events[0]["message_class"], "final_response")
         self.assertIsInstance(events[0]["message_id"], str)
 
+    def test_pi_internal_delivery_is_tagged_but_still_starts_agent_work(self) -> None:
+        events, _meta, flags, _diag = _extract_chat_events(
+            [
+                {
+                    "type": "message",
+                    "message": {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "**📨 From subagent-result** (/workspace)\n"},
+                            {"type": "text", "text": "subagent results"},
+                        ],
+                    },
+                }
+            ]
+        )
+        self.assertTrue(flags["turn_start"])
+        self.assertTrue(events[0]["agent_internal_delivery"])
+
     def test_pi_message_sets_turn_end_for_final_text(self) -> None:
         events, meta, flags, diag = _extract_chat_events(
             [

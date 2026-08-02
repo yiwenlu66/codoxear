@@ -150,18 +150,34 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             vm.createContext(ctx);
             vm.runInContext({json.dumps(transcript_source)}, ctx);
             const starts = ctx.window.CodoxearTranscript.startsTypingCountWindow;
+            const hasHuman = ctx.window.CodoxearTranscript.hasHumanOriginatedUserEvent;
+            const shouldReset = (wasTurnOpen, turnStart, nowBusy, events) =>
+              starts({{ wasTurnOpen, turnStart, nowBusy }}) && hasHuman(events);
             process.stdout.write(JSON.stringify({{
               idleUser: starts({{ wasTurnOpen: false, turnStart: true, nowBusy: true }}),
               idleBusyFallback: starts({{ wasTurnOpen: false, turnStart: false, nowBusy: true }}),
               steer: starts({{ wasTurnOpen: true, turnStart: true, nowBusy: true }}),
               openSnapshot: starts({{ wasTurnOpen: true, turnStart: false, nowBusy: true }}),
+              resetForHuman: shouldReset(false, true, true, [{{ role: "user", text: "human request" }}]),
+              resetForSubagentResult: shouldReset(false, true, true, [{{ role: "user", text: "**📨 From subagent-result** (/workspace)" }}]),
+              resetForTaggedSubagentControl: shouldReset(false, true, true, [{{ role: "user", text: "ignored", agent_internal_delivery: true }}]),
+              resetForBusyWithoutUser: shouldReset(false, false, true, []),
             }}));
             """
         )
         out = _run_node(js)
         self.assertEqual(
             out,
-            {"idleUser": True, "idleBusyFallback": True, "steer": False, "openSnapshot": False},
+            {
+                "idleUser": True,
+                "idleBusyFallback": True,
+                "steer": False,
+                "openSnapshot": False,
+                "resetForHuman": True,
+                "resetForSubagentResult": False,
+                "resetForTaggedSubagentControl": False,
+                "resetForBusyWithoutUser": False,
+            },
         )
 
     def test_transcript_scroll_runtime_owns_bottom_lock_and_input_policy(self) -> None:
