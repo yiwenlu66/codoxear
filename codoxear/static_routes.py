@@ -101,10 +101,17 @@ def _static_version_asset_paths(base: Path) -> list[tuple[str, Path]]:
     return assets
 
 
+import time as _time
+
+_ASSET_VERSION_SALT = f"{int(_time.time())}x"
+
+
 @lru_cache(maxsize=None)
 def static_asset_version(static_dir: Path = STATIC_DIR) -> str:
     base = static_dir.resolve()
     digest = hashlib.sha256()
+    digest.update(_ASSET_VERSION_SALT.encode("ascii"))
+    digest.update(b"\0")
     for rel, raw_path in _static_version_asset_paths(base):
         path = raw_path.resolve()
         if not str(path).startswith(str(base)):
