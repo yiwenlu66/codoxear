@@ -6,11 +6,13 @@ from pathlib import Path
 
 from codoxear.agent_backend import normalize_agent_backend
 from codoxear.broker_turn_state import State
+from codoxear.broker_turn_state import _clear_pi_error_probe
 from codoxear.broker_turn_state import _close_turn_state
 from codoxear.broker_turn_state import _hint_seen_in_new_text
 from codoxear.cc_log import cc_current_turn_state_before as _cc_current_turn_state_before
 from codoxear.pi_log import PiPendingToolCallId as _PiPendingToolCallId
 from codoxear.pi_log import pi_complete_jsonl_offset_before as _pi_complete_jsonl_offset_before
+from codoxear.pi_log import pi_current_turn_ends_in_error_before as _pi_current_turn_ends_in_error_before
 from codoxear.pi_log import pi_current_turn_state_before as _pi_current_turn_state_before
 from codoxear.util import _paths_match
 from codoxear.util import find_session_log_for_session_id as _find_session_log_for_session_id
@@ -32,6 +34,7 @@ class BrokerLogSeed:
     log_offset: int
     pending_calls: set[str | _PiPendingToolCallId]
     idle: bool | None
+    pi_error_pending: bool = False
 
 
 @dataclass(frozen=True)
@@ -147,6 +150,7 @@ def _seed_broker_log_state(*, log_path: Path, agent_backend: str) -> BrokerLogSe
         log_size = 0
     seed_pending: set[str | _PiPendingToolCallId] = set()
     seed_idle: bool | None = None
+    seed_pi_error_pending = False
     seed_log_off = log_size
     if backend == "cc" and log_size > 0:
         try:
@@ -158,11 +162,17 @@ def _seed_broker_log_state(*, log_path: Path, agent_backend: str) -> BrokerLogSe
         try:
             seed_log_off = _pi_complete_jsonl_offset_before(log_path, log_size)
             seed_pending, seed_idle = _pi_current_turn_state_before(log_path, seed_log_off)
+            seed_pi_error_pending = _pi_current_turn_ends_in_error_before(log_path, seed_log_off)
         except Exception:
             seed_log_off = 0
             seed_pending = set()
             seed_idle = None
-    return BrokerLogSeed(log_offset=seed_log_off, pending_calls=seed_pending, idle=seed_idle)
+    return BrokerLogSeed(
+        log_offset=seed_log_off,
+        pending_calls=seed_pending,
+        idle=seed_idle,
+        pi_error_pending=seed_pi_error_pending,
+    )
 
 
 def _apply_broker_log_binding_to_state(
@@ -170,6 +180,7 @@ def _apply_broker_log_binding_to_state(
     *,
     binding: BrokerLogBinding,
     seed: BrokerLogSeed,
+    now_ts: float,
 ) -> BrokerLogStateApplyResult | None:
     lp = binding.log_path
     last = st.last_rollout_path
@@ -181,6 +192,7 @@ def _apply_broker_log_binding_to_state(
     if prev_lp is None or not _paths_match(prev_lp, lp):
         st.last_interrupt_request_ts = 0.0
         st.last_interrupted_idle_ts = 0.0
+        _clear_pi_error_probe(st)
     st.session_id = binding.session_id
     st.log_path = lp
     st.known_rollout_paths.add(lp)
@@ -190,6 +202,8 @@ def _apply_broker_log_binding_to_state(
         st.busy = True
         st.turn_open = True
         st.turn_has_completion_candidate = False
+        if seed.pi_error_pending:
+            st.last_pi_error_probe_ts = now_ts
     elif seed.idle is True:
         _close_turn_state(st)
     return BrokerLogStateApplyResult(have_sock=have_sock, previous_log_path=prev_lp)
@@ -204,6 +218,7 @@ def _detach_current_session_binding(st: "State") -> None:
     st.log_off = 0
     st.last_interrupt_request_ts = 0.0
     st.last_interrupted_idle_ts = 0.0
+    _clear_pi_error_probe(st)
     st.last_rollout_path = None
     st.last_detected_rollout_path = None
     st.detach_trigger_tail = ""

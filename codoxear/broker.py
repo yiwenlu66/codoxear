@@ -734,7 +734,7 @@ class Broker:
             st = self.state
             if not st:
                 return
-            result = _apply_broker_log_binding_to_state(st, binding=binding, seed=seed)
+            result = _apply_broker_log_binding_to_state(st, binding=binding, seed=seed, now_ts=_now())
             if result is None:
                 return
 

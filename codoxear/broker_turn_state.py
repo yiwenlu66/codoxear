@@ -29,9 +29,11 @@ from codoxear.pi_log import pi_user_text as _pi_user_text
 
 
 INTERRUPT_HINT_TAIL_MAX = 4096
+_PI_PROGRESS_ACTIVE_SEQUENCE = "\x1b]9;4;3\x07"
 
 _ANSI_OSC_RE = re.compile("\x1B\\][^\x07]*(?:\x07|\x1B\\\\)")
 _ANSI_CSI_RE = re.compile("\x1B(?:[@-Z\\\\-_]|\\[[0-?]*[ -/]*[@-~])")
+_PI_RETRY_STATUS_RE = re.compile(r"Retrying \(\d+/\d+\) in \d+s\.\.\. \([^\r\n]{0,48} to cancel\)", re.IGNORECASE)
 
 
 def _codex_error_affects_turn_status(payload: dict[str, Any]) -> bool:
@@ -71,12 +73,30 @@ def _compacting_hint_seen_in_new_text(*, tail: str, cleaned: str) -> bool:
     )
 
 
+def _pi_retry_hint_seen_in_new_text(*, tail: str, cleaned: str) -> bool:
+    stitched = tail[-160:] + cleaned
+    return _PI_RETRY_STATUS_RE.search(stitched) is not None
+
+
+def _pi_working_hint_seen_in_new_text(*, tail: str, cleaned: str, raw: str) -> bool:
+    return _PI_PROGRESS_ACTIVE_SEQUENCE in raw or _hint_seen_in_new_text(tail=tail, cleaned=cleaned, phrase="Working...")
+
+
 def _update_busy_from_pty_text(st: "State", text: str, now_ts: float) -> None:
     cleaned = _strip_ansi(text)
+    tail = st.interrupt_hint_tail
+    if _pi_working_hint_seen_in_new_text(tail=tail, cleaned=cleaned, raw=text):
+        # A retry attempt has left backoff and started a new request. Retire the
+        # prior error probe; a failing attempt will persist a fresh error row.
+        _clear_pi_error_probe(st)
     if not cleaned:
         return
-    tail = st.interrupt_hint_tail
     st.interrupt_hint_tail = (st.interrupt_hint_tail + cleaned)[-st.interrupt_hint_tail_max :]
+    if _pi_retry_hint_seen_in_new_text(tail=tail, cleaned=cleaned):
+        # Pi's JSONL error row is identical for retryable and terminal failures.
+        # The TUI supplies the missing positive discriminator during backoff.
+        st.pi_retry_status_active = True
+        st.last_pi_retry_hint_ts = now_ts
     if _interrupt_hint_seen_in_new_text(tail=tail, cleaned=cleaned):
         st.busy = True
         st.last_interrupt_hint_ts = now_ts
@@ -115,6 +135,13 @@ def _should_clear_busy_state(
 ) -> bool:
     if not st.busy:
         return False
+    if st.last_pi_error_probe_ts > 0.0:
+        if st.pi_retry_status_active:
+            return False
+        # Pi renders the retry status immediately after persisting the failed
+        # assistant row. Once the quiet window passes without that status, the
+        # TUI has settled back at its editor after a terminal failure.
+        return (now_ts - st.last_pi_error_probe_ts) >= busy_quiet_seconds
     if st.pending_calls:
         return False
     if st.turn_open and (not st.turn_has_completion_candidate):
@@ -132,19 +159,33 @@ def _should_clear_busy_state(
 def _mark_explicit_interrupt_request(st: "State", now_ts: float) -> None:
     st.last_interrupt_request_ts = now_ts
     st.last_interrupted_idle_ts = 0.0
+    # Esc cancels Pi's backoff. The old retry frame must not keep the error
+    # probe busy after the user has explicitly ended that retry wait.
+    st.pi_retry_status_active = False
     if now_ts > st.last_turn_activity_ts:
         st.last_turn_activity_ts = now_ts
 
 
+def _clear_pi_error_probe(st: "State") -> None:
+    st.last_pi_error_probe_ts = 0.0
+    st.last_pi_retry_hint_ts = 0.0
+    st.pi_retry_status_active = False
+
+
 def _mark_busy_state_idle(st: "State", now_ts: float) -> None:
     interrupted_idle = st.turn_open and st.last_interrupt_request_ts > 0.0
+    terminal_error_idle = st.turn_open and st.last_pi_error_probe_ts > 0.0 and not st.pi_retry_status_active
     st.busy = False
     st.turn_open = False
     st.turn_has_completion_candidate = False
     st.last_turn_activity_ts = 0.0
     st.last_interrupt_hint_ts = 0.0
     st.last_interrupt_request_ts = 0.0
-    st.last_interrupted_idle_ts = now_ts if interrupted_idle else 0.0
+    _clear_pi_error_probe(st)
+    # ``interrupted_idle`` is the control protocol's established override for
+    # a non-final log tail whose live PTY has nevertheless settled. A terminal
+    # Pi error has the same projection need as an explicit interrupt.
+    st.last_interrupted_idle_ts = now_ts if interrupted_idle or terminal_error_idle else 0.0
 
 
 def _reopen_turn_on_activity(st: "State") -> None:
@@ -161,6 +202,7 @@ def _close_turn_state(st: "State") -> None:
     st.turn_has_completion_candidate = False
     st.last_interrupt_hint_ts = 0.0
     st.last_interrupt_request_ts = 0.0
+    _clear_pi_error_probe(st)
     st.last_interrupted_idle_ts = 0.0
     st.last_turn_activity_ts = 0.0
 
@@ -217,6 +259,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
     if typ == "message":
         user_text = _pi_user_text(obj)
         if isinstance(user_text, str) and user_text:
+            _clear_pi_error_probe(st)
             st.pending_calls.clear()
             st.busy = True
             st.turn_open = True
@@ -247,6 +290,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
                 st.turn_has_completion_candidate = False
             st.busy = True
             st.last_turn_activity_ts = now_ts
+            st.last_pi_error_probe_ts = now_ts
             return
 
         if role == "assistant" and _pi_assistant_is_terminal_no_visible_response(obj):
@@ -264,6 +308,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             return
 
         if is_tool_result or tool_count > 0 or thinking_count > 0:
+            _clear_pi_error_probe(st)
             _reopen_turn_on_activity(st)
             if st.turn_open:
                 st.turn_has_completion_candidate = False
@@ -428,6 +473,9 @@ class State:
     last_interrupt_hint_ts: float = 0.0
     last_interrupt_request_ts: float = 0.0
     last_interrupted_idle_ts: float = 0.0
+    last_pi_error_probe_ts: float = 0.0
+    last_pi_retry_hint_ts: float = 0.0
+    pi_retry_status_active: bool = False
     pending_calls: set[str | _PiPendingToolCallId] = field(default_factory=set)
     turn_open: bool = False
     turn_has_completion_candidate: bool = False

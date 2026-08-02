@@ -21,6 +21,9 @@ from codoxear.broker import (
     _should_clear_busy_state,
     _update_busy_from_pty_text,
 )
+from codoxear.broker_log_binding import BrokerLogBinding
+from codoxear.broker_log_binding import _apply_broker_log_binding_to_state
+from codoxear.broker_log_binding import _seed_broker_log_state
 from codoxear.pi_log import pi_current_turn_state_before
 from codoxear.pi_log import pi_pending_tool_call_is_duplicate
 from codoxear.pi_log import pi_pending_tool_call_is_unknown
@@ -1237,6 +1240,7 @@ class TestBrokerBusyState(unittest.TestCase):
         self.assertFalse(st.turn_has_completion_candidate)
         self.assertEqual(st.pending_calls, set())
         self.assertEqual(st.last_turn_activity_ts, 11.0)
+        self.assertEqual(st.last_pi_error_probe_ts, 11.0)
 
         _apply_rollout_obj_to_state(
             st,
@@ -1253,6 +1257,111 @@ class TestBrokerBusyState(unittest.TestCase):
         self.assertTrue(st.busy)
         self.assertTrue(st.turn_open)
         self.assertEqual(st.last_turn_activity_ts, 12.0)
+        self.assertEqual(st.last_pi_error_probe_ts, 0.0)
+
+    def test_pi_terminal_error_closes_after_retry_status_grace(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "fail"}]}},
+            now_ts=10.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [],
+                    "stopReason": "error",
+                    "errorMessage": "401 Invalid API key",
+                },
+            },
+            now_ts=11.0,
+        )
+
+        self.assertFalse(_should_clear_busy_state(st, 11.0 + BUSY_QUIET_SECONDS - 0.01))
+        self.assertTrue(_should_clear_busy_state(st, 11.0 + BUSY_QUIET_SECONDS))
+        _mark_busy_state_idle(st, 11.0 + BUSY_QUIET_SECONDS)
+        self.assertFalse(st.busy)
+        self.assertFalse(st.turn_open)
+        self.assertEqual(st.last_pi_error_probe_ts, 0.0)
+        self.assertGreater(st.last_interrupted_idle_ts, 0.0)
+
+    def test_pi_retry_status_keeps_error_turn_busy(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "retry"}]}},
+            now_ts=10.0,
+        )
+        _update_busy_from_pty_text(st, "\x1b[33m⠋ Ret", now_ts=10.8)
+        _update_busy_from_pty_text(st, "rying (1/3) in 2s... (esc to cancel)\x1b[0m", now_ts=10.9)
+        _apply_rollout_obj_to_state(
+            st,
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [],
+                    "stopReason": "error",
+                    "errorMessage": "503 overloaded",
+                },
+            },
+            now_ts=11.0,
+        )
+
+        # The PTY reader may observe Pi's retry frame before the log watcher
+        # consumes the already-persisted error row; active status survives that
+        # cross-thread ordering.
+        self.assertTrue(st.pi_retry_status_active)
+        self.assertLess(st.last_pi_retry_hint_ts, st.last_pi_error_probe_ts)
+        self.assertFalse(_should_clear_busy_state(st, 11.0 + BUSY_QUIET_SECONDS + 60.0))
+        self.assertTrue(st.busy)
+        self.assertTrue(st.turn_open)
+
+    def test_pi_retry_status_does_not_survive_explicit_cancel(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "retry"}]}},
+            now_ts=10.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {
+                "type": "message",
+                "message": {"role": "assistant", "content": [], "stopReason": "error", "errorMessage": "503 overloaded"},
+            },
+            now_ts=11.0,
+        )
+        _update_busy_from_pty_text(st, "Retrying (1/3) in 2s... (esc to cancel)", now_ts=11.1)
+        self.assertTrue(st.pi_retry_status_active)
+
+        _mark_explicit_interrupt_request(st, now_ts=20.0)
+        self.assertFalse(st.pi_retry_status_active)
+        self.assertTrue(_should_clear_busy_state(st, 20.0))
+
+    def test_pi_final_retry_error_closes_when_only_older_retry_status_exists(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "retry"}]}},
+            now_ts=10.0,
+        )
+        first_error = {
+            "type": "message",
+            "message": {"role": "assistant", "content": [], "stopReason": "error", "errorMessage": "503 overloaded"},
+        }
+        _apply_rollout_obj_to_state(st, first_error, now_ts=11.0)
+        _update_busy_from_pty_text(st, "Retrying (1/1) in 1s... (esc to cancel)", now_ts=11.1)
+        _update_busy_from_pty_text(st, "\x1b]9;4;3\x07", now_ts=19.0)
+        self.assertFalse(st.pi_retry_status_active)
+        self.assertEqual(st.last_pi_error_probe_ts, 0.0)
+        _apply_rollout_obj_to_state(st, first_error, now_ts=20.0)
+
+        self.assertLess(st.last_pi_retry_hint_ts, st.last_pi_error_probe_ts)
+        self.assertTrue(_should_clear_busy_state(st, 20.0 + BUSY_QUIET_SECONDS))
 
     def test_pi_error_message_does_not_seed_idle_on_broker_bind(self) -> None:
         with TemporaryDirectory() as td:
@@ -1275,6 +1384,39 @@ class TestBrokerBusyState(unittest.TestCase):
 
         self.assertEqual(pending, set())
         self.assertIs(idle, False)
+
+    def test_pi_error_already_present_at_bind_starts_terminal_probe(self) -> None:
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "session.jsonl"
+            rows = [
+                {"type": "session", "id": "sid"},
+                {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "fail"}]}},
+                {
+                    "type": "message",
+                    "message": {
+                        "role": "assistant",
+                        "content": [],
+                        "stopReason": "error",
+                        "errorMessage": "401 Invalid API key",
+                    },
+                },
+            ]
+            log_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            seed = _seed_broker_log_state(log_path=log_path, agent_backend="pi")
+            st = _state()
+            result = _apply_broker_log_binding_to_state(
+                st,
+                binding=BrokerLogBinding(log_path=log_path, session_id="sid"),
+                seed=seed,
+                now_ts=50.0,
+            )
+
+        self.assertIsNotNone(result)
+        self.assertTrue(seed.pi_error_pending)
+        self.assertTrue(st.busy)
+        self.assertTrue(st.turn_open)
+        self.assertEqual(st.last_pi_error_probe_ts, 50.0)
+        self.assertTrue(_should_clear_busy_state(st, 50.0 + BUSY_QUIET_SECONDS))
 
     def test_pi_aborted_message_clears_busy_and_pending_calls(self) -> None:
         st = _state()

@@ -215,6 +215,28 @@ def pi_complete_jsonl_offset_before(log_path: Path, before: int) -> int:
     return 0
 
 
+def pi_current_turn_ends_in_error_before(log_path: Path, before: int) -> bool:
+    before = pi_complete_jsonl_offset_before(log_path, before)
+    if before <= 0:
+        return False
+    for obj in _iter_jsonl_objects_reverse(log_path, before=before):
+        if obj.get("type") != "message":
+            continue
+        if pi_assistant_error_text(obj):
+            return True
+        if (
+            pi_user_text(obj)
+            or pi_assistant_is_aborted_turn(obj)
+            or pi_assistant_is_terminal_no_visible_response(obj)
+            or pi_message_role(obj) == "toolResult"
+            or pi_assistant_tool_use_count(obj) > 0
+            or pi_assistant_text(obj)
+            or pi_assistant_thinking_count(obj) > 0
+        ):
+            return False
+    return False
+
+
 def pi_current_turn_state_before(log_path: Path, before: int) -> tuple[set[PiPendingToolCallId], bool | None]:
     before = pi_complete_jsonl_offset_before(log_path, before)
     if before <= 0:

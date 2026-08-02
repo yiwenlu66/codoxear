@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 from codoxear.broker_turn_state import State
+from codoxear.broker_turn_state import _clear_pi_error_probe
 from codoxear.broker_turn_state import _mark_explicit_interrupt_request
 from codoxear.control_socket import handle_control_socket_connection as _handle_control_socket_connection
 from codoxear.util import _send_socket_json_line
@@ -60,7 +61,11 @@ def _handle_broker_control_connection(
             prev_last_interrupt_hint_ts = st.last_interrupt_hint_ts
             prev_last_interrupt_request_ts = st.last_interrupt_request_ts
             prev_last_interrupted_idle_ts = st.last_interrupted_idle_ts
+            prev_last_pi_error_probe_ts = st.last_pi_error_probe_ts
+            prev_last_pi_retry_hint_ts = st.last_pi_retry_hint_ts
+            prev_pi_retry_status_active = st.pi_retry_status_active
             prev_last_turn_activity_ts = st.last_turn_activity_ts
+            _clear_pi_error_probe(st)
             st.pending_calls.clear()
             st.busy = True
             st.turn_open = True
@@ -82,6 +87,9 @@ def _handle_broker_control_connection(
                     st.last_interrupt_hint_ts = prev_last_interrupt_hint_ts
                     st.last_interrupt_request_ts = prev_last_interrupt_request_ts
                     st.last_interrupted_idle_ts = prev_last_interrupted_idle_ts
+                    st.last_pi_error_probe_ts = prev_last_pi_error_probe_ts
+                    st.last_pi_retry_hint_ts = prev_last_pi_retry_hint_ts
+                    st.pi_retry_status_active = prev_pi_retry_status_active
                     st.last_turn_activity_ts = prev_last_turn_activity_ts
 
         if sync_commit:

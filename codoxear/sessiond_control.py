@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from .broker_turn_state import _clear_pi_error_probe
 from .broker_turn_state import _mark_explicit_interrupt_request
 
 
@@ -58,7 +59,11 @@ def handle_sessiond_control_connection(conn: Any, *, deps: SessiondControlDeps) 
             prev_last_interrupt_hint_ts = st.last_interrupt_hint_ts
             prev_last_interrupt_request_ts = st.last_interrupt_request_ts
             prev_last_interrupted_idle_ts = st.last_interrupted_idle_ts
+            prev_last_pi_error_probe_ts = st.last_pi_error_probe_ts
+            prev_last_pi_retry_hint_ts = st.last_pi_retry_hint_ts
+            prev_pi_retry_status_active = st.pi_retry_status_active
             prev_pending_calls = set(st.pending_calls)
+            _clear_pi_error_probe(st)
             st.pending_calls.clear()
             st.busy = True
             st.turn_open = True
@@ -79,6 +84,9 @@ def handle_sessiond_control_connection(conn: Any, *, deps: SessiondControlDeps) 
                     st.last_interrupt_hint_ts = prev_last_interrupt_hint_ts
                     st.last_interrupt_request_ts = prev_last_interrupt_request_ts
                     st.last_interrupted_idle_ts = prev_last_interrupted_idle_ts
+                    st.last_pi_error_probe_ts = prev_last_pi_error_probe_ts
+                    st.last_pi_retry_hint_ts = prev_last_pi_retry_hint_ts
+                    st.pi_retry_status_active = prev_pi_retry_status_active
                     st.pending_calls.clear()
                     st.pending_calls.update(prev_pending_calls)
 

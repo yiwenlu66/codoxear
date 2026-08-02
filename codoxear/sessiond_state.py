@@ -27,6 +27,9 @@ class State:
     last_interrupt_hint_ts: float = 0.0
     last_interrupt_request_ts: float = 0.0
     last_interrupted_idle_ts: float = 0.0
+    last_pi_error_probe_ts: float = 0.0
+    last_pi_retry_hint_ts: float = 0.0
+    pi_retry_status_active: bool = False
     pending_calls: set[Any] = field(default_factory=set)
     interrupt_hint_tail: str = ""
     interrupt_hint_tail_max: int = 4096
@@ -65,6 +68,9 @@ def _state_snapshot(st: State) -> tuple[Any, ...]:
         st.last_interrupt_hint_ts,
         st.last_interrupt_request_ts,
         st.last_interrupted_idle_ts,
+        st.last_pi_error_probe_ts,
+        st.last_pi_retry_hint_ts,
+        st.pi_retry_status_active,
         frozenset(st.pending_calls),
         st.token,
         st.interrupt_hint_tail,
