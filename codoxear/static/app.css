@@ -2581,7 +2581,7 @@ select {
         gap: var(--dialog-group-gap, 10px);
       }
       .newSessionRunConfigRow {
-        grid-template-columns: minmax(0, 1fr) minmax(96px, auto) auto;
+        grid-template-columns: minmax(0, 1.4fr) minmax(96px, auto) auto;
         align-items: start;
       }
       .newSessionOptionsRow {
@@ -2950,6 +2950,7 @@ select {
         display: flex;
         justify-content: flex-end;
         gap: 10px;
+        padding-top: 2px;
       }
       .formActions button {
         min-width: 108px;
