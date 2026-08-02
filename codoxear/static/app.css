@@ -1573,6 +1573,7 @@
 
       .composer {
         --composerCtl: 32px;
+        --composer-picker-inset: 8px;
         border-top: 1px solid var(--border);
         padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
         background: var(--panel);
@@ -1684,10 +1685,10 @@
       .composer .modelPicker {
         position: absolute;
         z-index: 20;
-        left: calc(var(--composerCtl) + 8px);
+        left: calc(var(--composerCtl) + 8px + var(--composer-picker-inset));
         bottom: calc(100% + 6px);
-        width: min(calc(100% - var(--composerCtl) - 8px), 420px);
-        max-width: min(calc(100% - var(--composerCtl) - 8px), 420px);
+        width: min(calc(100% - var(--composerCtl) - 8px - var(--composer-picker-inset)), 420px);
+        max-width: min(calc(100% - var(--composerCtl) - 8px - var(--composer-picker-inset)), 420px);
         max-height: min(50vh, 320px);
         overflow-y: auto;
         padding: 4px;
@@ -1908,7 +1909,7 @@ select {
         color: var(--text);
         padding: 10px 12px;
         font-family: inherit;
-        font-size: 14px;
+        font-size: 16px;
         border-radius: 0;
       }
       .unattendedMenu textarea {
@@ -3170,6 +3171,7 @@ select {
           padding: 10px;
         }
         .composer {
+          --composer-picker-inset: 5px;
           padding: 5px 10px calc(5px + env(safe-area-inset-bottom));
         }
         .composer form {

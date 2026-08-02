@@ -1831,6 +1831,17 @@
           newSessionWorktreeInput,
         ]);
         const newSessionStartBtn = el("button", { class: "primary", id: "newSessionStartBtn", type: "button", text: "Start session" });
+        const newSessionRunConfigRow = el("div", { class: "formGrid newSessionRunConfigRow" }, [
+          el("label", { class: "field" }, [
+            newSessionModelLabel,
+            newSessionModelField,
+          ]),
+          el("label", { class: "field" }, [
+            el("span", { class: "fieldLabel", text: "Reasoning effort" }),
+            newSessionReasoningField,
+          ]),
+          newSessionFastField,
+        ]);
         const newSessionViewer = el("div", { class: "formViewer newSessionViewer", id: "newSessionViewer", role: "dialog", "aria-modal": "true", "aria-label": "New session" }, [
           el("div", { class: "queueHeader" }, [
             el("div", { class: "newSessionHeaderLead" }, [
@@ -1851,17 +1862,7 @@
               el("span", { class: "fieldLabel", text: "Session name" }),
               newSessionNameInput,
             ]),
-            el("div", { class: "formGrid newSessionRunConfigRow" }, [
-              el("label", { class: "field" }, [
-                newSessionModelLabel,
-                newSessionModelField,
-              ]),
-              el("label", { class: "field" }, [
-                el("span", { class: "fieldLabel", text: "Reasoning effort" }),
-                newSessionReasoningField,
-              ]),
-              newSessionFastField,
-            ]),
+            newSessionRunConfigRow,
             el("label", { class: "field" }, [
               el("span", { class: "fieldLabel", text: "Resume conversation" }),
               newSessionResumeBtn,
@@ -4474,6 +4475,7 @@
         }
 
         function applyDialogMenus() {
+          newSessionRunConfigRow.style.marginBottom = "";
           editDependencyMenu.classList.toggle("open", editDependencyMenuOpen);
           newSessionCwdMenu.classList.toggle("open", newSessionCwdMenuOpen);
           newSessionModelMenu.classList.toggle("open", newSessionModelMenuOpen);
@@ -4488,7 +4490,10 @@
           newSessionResumeBtn.setAttribute("aria-expanded", newSessionResumeMenuOpen ? "true" : "false");
           if (editDependencyMenuOpen) positionDialogMenu(editDependencyMenu, editDependencyBtn);
           if (newSessionCwdMenuOpen) positionDialogMenu(newSessionCwdMenu, newSessionCwdInput);
-          if (newSessionModelMenuOpen) positionDialogMenu(newSessionModelMenu, newSessionModelInput);
+          if (newSessionModelMenuOpen) {
+            positionDialogMenu(newSessionModelMenu, newSessionModelInput);
+            newSessionRunConfigRow.style.marginBottom = `${Math.ceil(newSessionModelMenu.getBoundingClientRect().height) + 8}px`;
+          }
           if (newSessionReasoningMenuOpen) positionDialogMenu(newSessionReasoningMenu, newSessionReasoningBtn);
           if (newSessionResumeMenuOpen) positionDialogMenu(newSessionResumeMenu, newSessionResumeBtn);
         }
