@@ -104,8 +104,33 @@ function writeThinkingCapabilities(): void {
 export default function (pi: ExtensionAPI): void {
 	activePi = pi;
 	writeThinkingCapabilities();
-	pi.on("session_start", (_event, ctx) => writeActiveSession(ctx, "session_start"));
-	pi.on("session_switch", (event, ctx) => writeActiveSession(ctx, event.reason));
+	let commandsRegistered = false;
+	function registerEffortCommands(): void {
+		if (commandsRegistered) return;
+		try {
+			pi.registerCommand("effort", {
+				description: "Set the reasoning effort (thinking level) for the current model",
+				handler: effortHandler,
+			});
+			// Backwards-compatible alias; /effort is the primary spelling.
+			pi.registerCommand("thinking", {
+				description: "Alias for /effort",
+				handler: effortHandler,
+			});
+			commandsRegistered = true;
+		} catch {
+			// Runtime not yet bound (extension loading) or already registered;
+			// retried on subsequent lifecycle events until it succeeds.
+		}
+	}
+	pi.on("session_start", (event, ctx) => {
+		registerEffortCommands();
+		writeActiveSession(ctx, "session_start");
+	});
+	pi.on("session_switch", (event, ctx) => {
+		registerEffortCommands();
+		writeActiveSession(ctx, event.reason);
+	});
 	pi.on("session_fork", (_event, ctx) => writeActiveSession(ctx, "fork"));
 	const effortHandler = (args, ctx) => {
 		const requested = args.trim().toLowerCase();
@@ -123,13 +148,4 @@ export default function (pi: ExtensionAPI): void {
 			: `Thinking level: ${effective} (requested ${requested}; adjusted for the current model)`;
 		ctx.ui.notify(message, "info");
 	};
-	pi.registerCommand("effort", {
-		description: "Set the reasoning effort (thinking level) for the current model",
-		handler: effortHandler,
-	});
-	// Backwards-compatible alias; /effort is the primary spelling.
-	pi.registerCommand("thinking", {
-		description: "Alias for /effort",
-		handler: effortHandler,
-	});
 }

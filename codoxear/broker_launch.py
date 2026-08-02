@@ -128,12 +128,7 @@ def _ensure_pi_bridge_args(*, args: list[str], marker_path: Path, agent_backend:
             os.environ["CODEX_WEB_PI_ACTIVE_SESSION_FILE"] = str(marker_path)
             return out
     os.environ["CODEX_WEB_PI_ACTIVE_SESSION_FILE"] = str(marker_path)
-    # Extension disabled (2026-08-02): pi_active_session_bridge.ts calls
-    # registerCommand at extension load, which this Pi version rejects
-    # ("Action methods cannot be called during extension loading"),
-    # killing every fresh session spawn (agent_exit_before_log_bind).
-    # Active-session markers and /effort capability ride on it; both are
-    # being reworked to a load-safe form before re-enabling.
+    out.extend(["--extension", bridge])
     return out
 
 
