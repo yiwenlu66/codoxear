@@ -182,6 +182,15 @@ class SessionLogRuntimeCoordinator:
                     effort_value = obj.get("thinkingLevel")
                     if isinstance(effort_value, str) and effort_value.strip():
                         reasoning_effort = effort_value.strip()
+        elif agent_backend == "cc":
+            for obj in reversed(objs):
+                if not isinstance(obj, dict) or obj.get("type") != "assistant":
+                    continue
+                message = obj.get("message")
+                model_value = message.get("model") if isinstance(message, dict) else None
+                if isinstance(model_value, str) and model_value.strip():
+                    model = model_value.strip()
+                    break
         else:
             for obj in reversed(objs):
                 if not isinstance(obj, dict) or obj.get("type") != "turn_context":
