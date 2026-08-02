@@ -19,6 +19,10 @@ from typing import Any
 
 from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
+from .broker_launch import _ensure_pi_bridge_args
+from .broker_launch import _pi_active_session_marker_path
+from .broker_launch import _read_pi_active_session_marker_capability
+from .broker_launch import _reset_pi_active_session_marker
 from .broker_terminal import _reply_to_terminal_queries
 from .broker_turn_state import _mark_busy_state_idle
 from .broker_turn_state import _should_clear_busy_state as _should_clear_busy_state_impl
@@ -112,6 +116,25 @@ class Sessiond:
         self.state: State | None = None
         self.codex_home = DEFAULT_AGENT_HOME
         self.sessions_dir = BACKEND.sessions_dir()
+        self.pi_active_session_marker_path = _pi_active_session_marker_path()
+        if AGENT_BACKEND == "pi":
+            _reset_pi_active_session_marker(self.pi_active_session_marker_path)
+
+    def _refresh_pi_thinking_capability(self) -> None:
+        if AGENT_BACKEND != "pi":
+            return
+        capable = _read_pi_active_session_marker_capability(
+            self.pi_active_session_marker_path,
+            sessions_dir=self.sessions_dir,
+        )
+        changed = False
+        with self._lock:
+            st = self.state
+            if st is not None and st.pi_thinking_command != capable:
+                st.pi_thinking_command = capable
+                changed = True
+        if changed:
+            self._write_meta()
 
     def _teardown_managed_process_group(self, *, wait_seconds: float = 1.0) -> None:
         self._stop.set()
@@ -194,6 +217,7 @@ class Sessiond:
             "service_tier": SERVICE_TIER_OVERRIDE or None,
             "control_protocol_version": 2,
             "control_capabilities": {"sync_send": True, "key_write_errors": True},
+            "pi_thinking_command": bool(st.pi_thinking_command),
         }
         SOCK_META_DIR.mkdir(parents=True, exist_ok=True)
         meta_path = st.sock_path.with_suffix(".json")
@@ -212,6 +236,7 @@ class Sessiond:
                     st2 = self.state
                     if st2 and _should_clear_busy_state(st2, now_ts):
                         _mark_busy_state_idle(st2, now_ts)
+                self._refresh_pi_thinking_capability()
                 time.sleep(0.25)
                 continue
             st.log_off = off
@@ -219,6 +244,7 @@ class Sessiond:
             with self._lock:
                 if self.state:
                     apply_log_batch_to_state(self.state, objs, now_ts=_now())
+            self._refresh_pi_thinking_capability()
 
     def _sock_server(self) -> None:
         st = self.state
@@ -349,6 +375,12 @@ class Sessiond:
                     reasoning_effort=REASONING_EFFORT_OVERRIDE or None,
                     service_tier=SERVICE_TIER_OVERRIDE or None,
                 )
+                if AGENT_BACKEND == "pi":
+                    launch_args = _ensure_pi_bridge_args(
+                        args=launch_args,
+                        marker_path=self.pi_active_session_marker_path,
+                        agent_backend=AGENT_BACKEND,
+                    )
                 argv = [AGENT_BIN, *launch_args]
                 os.execvp(argv[0], argv)
             except Exception:

@@ -51,6 +51,7 @@ class DiscoveryRegistration:
     sync_send_supported: bool
     key_write_errors_supported: bool
     interrupted_idle: bool
+    pi_thinking_command: bool = False
 
 
 @dataclass(frozen=True)
@@ -333,6 +334,7 @@ def discover_sessions(
         try:
             broker_busy, broker_queue_len = deps.broker_busy_queue_from_state(resp)
             broker_interrupted_idle = deps.broker_interrupted_idle_from_state(resp)
+            pi_thinking_command = agent_backend == "pi" and resp.get("pi_thinking_command") is True
         except ValueError as e:
             sys.stderr.write(f"error: discover: invalid broker state for {sock}: {e}\n")
             sys.stderr.flush()
@@ -370,6 +372,7 @@ def discover_sessions(
                 sync_send_supported=sync_send_supported,
                 key_write_errors_supported=key_write_errors_supported,
                 interrupted_idle=broker_interrupted_idle,
+                pi_thinking_command=bool(pi_thinking_command),
             )
         )
 

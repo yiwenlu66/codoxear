@@ -20,6 +20,7 @@ class Session:
     busy: bool = False
     queue_len: int = 0
     token: dict[str, Any] | None = None
+    pi_thinking_command: bool = False
     last_turn_id: str | None = None
     last_chat_ts: float | None = None
     last_chat_history_scanned: bool = False

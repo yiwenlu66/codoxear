@@ -88,6 +88,7 @@ class SessionDiscoveryRegistryCoordinator:
             commit_unknown_send=dict(unknown_sends.get(registration.session_id) or {}) or None,
             sync_send_supported=registration.sync_send_supported,
             key_write_errors_supported=registration.key_write_errors_supported,
+            pi_thinking_command=bool(registration.pi_thinking_command),
             interrupted_idle=registration.interrupted_idle,
             interrupted_idle_log_off=(registration.meta_log_off if registration.interrupted_idle else 0),
         )
@@ -153,3 +154,4 @@ class SessionDiscoveryRegistryCoordinator:
                 previous.commit_unknown_send = dict(self.commit_unknown_sends().get(registration.session_id) or {}) or None
                 previous.sync_send_supported = registration.sync_send_supported
                 previous.key_write_errors_supported = registration.key_write_errors_supported
+                previous.pi_thinking_command = bool(registration.pi_thinking_command)

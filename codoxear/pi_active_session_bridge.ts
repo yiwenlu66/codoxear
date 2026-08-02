@@ -47,6 +47,7 @@ function writeActiveSession(ctx: ExtensionContext, reason: string): void {
 	if (!sessionFile) return;
 	const payload = {
 		version: 1,
+		bridgeVersion: 2,
 		reason,
 		sessionFile,
 		sessionId: ctx.sessionManager.getSessionId(),

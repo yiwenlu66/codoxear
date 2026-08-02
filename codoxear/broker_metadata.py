@@ -75,6 +75,7 @@ def _broker_sidecar_meta(
         "spawn_nonce": (os.environ.get("CODEX_WEB_SPAWN_NONCE") or "").strip() or None,
         "control_protocol_version": 2,
         "control_capabilities": {"sync_send": True, "key_write_errors": True},
+        "pi_thinking_command": bool(st.pi_thinking_command),
     }
 
 

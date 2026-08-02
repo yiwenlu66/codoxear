@@ -10,6 +10,7 @@ from .sidecar_metadata import detaches_current_log as metadata_detaches_current_
 from .sidecar_metadata import ignored_rollout_paths as metadata_ignored_rollout_paths
 from .sidecar_metadata import key_write_errors_supported as metadata_key_write_errors_supported
 from .sidecar_metadata import log_path as metadata_log_path
+from .sidecar_metadata import pi_thinking_command as metadata_pi_thinking_command
 from .sidecar_metadata import read_metadata as read_sidecar_metadata
 from .sidecar_metadata import required_int as metadata_required_int
 from .sidecar_metadata import required_text as metadata_required_text
@@ -77,6 +78,7 @@ class SessionRefreshCoordinator:
         transport, tmux_session, tmux_window = self.session_transport(meta=meta)
         sync_send_supported = metadata_sync_send_supported(meta)
         key_write_errors_supported = metadata_key_write_errors_supported(meta)
+        pi_thinking_command = agent_backend == "pi" and metadata_pi_thinking_command(meta)
         if log_path is not None and not log_path.exists():
             log_path = None
         if metadata_detaches_current_log(meta, current_log_path):
@@ -141,5 +143,6 @@ class SessionRefreshCoordinator:
             current.resume_session_id = resume_session_id
             current.sync_send_supported = sync_send_supported
             current.key_write_errors_supported = key_write_errors_supported
+            current.pi_thinking_command = bool(pi_thinking_command)
         if drain_queue and self.queue_len(session_id) > 0:
             self.maybe_drain_session_queue(session_id)

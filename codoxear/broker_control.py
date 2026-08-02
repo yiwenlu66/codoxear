@@ -35,6 +35,7 @@ def _handle_broker_control_connection(
                 "queue_len": 0,
                 "token": st.token,
                 "interrupted_idle": (not st.busy) and st.last_interrupted_idle_ts > 0.0,
+                "pi_thinking_command": bool(st.pi_thinking_command),
             }, None
 
     def tail_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:

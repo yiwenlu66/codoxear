@@ -47,7 +47,7 @@ class TestComposerModelPicker(unittest.TestCase):
             const nodes = Array.from({{ length: 10 }}, () => new Node());
             const [form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop, nowBtn, laterBtn, cancelBtn, modelPicker] = nodes;
             form.requestSubmit = () => {{ state.formSubmits += 1; }};
-            const state = {{ backend: "pi", sent: [], sending: false, formSubmits: 0 }};
+            const state = {{ backend: "pi", thinkingCapability: true, sent: [], sending: false, formSubmits: 0 }};
             const noop = () => {{}};
             const controller = ctx.window.CodoxearComposer.createComposerController({{
               form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
@@ -56,6 +56,7 @@ class TestComposerModelPicker(unittest.TestCase):
               getSelected: () => "sid",
               getSessionInfo: () => ({{
                 agent_backend: state.backend,
+                pi_thinking_command: state.thinkingCapability,
                 model_provider: "anthropic",
                 model: "claude-sonnet-4",
                 reasoning_effort: "high",
@@ -128,6 +129,14 @@ class TestComposerModelPicker(unittest.TestCase):
             textarea.dispatch("input");
             textarea.dispatch("keydown", {{ key: "Escape", preventDefault() {{}} }});
             if (modelPicker.style.display !== "none") throw new Error("thinking picker Escape did not dismiss picker");
+            state.thinkingCapability = false;
+            textarea.value = "/thinking";
+            textarea.dispatch("input");
+            if (modelPicker.style.display !== "none") throw new Error("incapable Pi session opened thinking picker");
+            state.thinkingCapability = true;
+            textarea.value = "/thinking";
+            textarea.dispatch("input");
+            if (modelPicker.style.display !== "block") throw new Error("capability refresh did not restore thinking picker");
             state.backend = "codex";
             textarea.value = "/model";
             textarea.dispatch("input");

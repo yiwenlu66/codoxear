@@ -165,6 +165,34 @@ def _read_pi_active_session_marker(marker_path: Path, *, sessions_dir: Path) -> 
     return resolved
 
 
+def _read_pi_active_session_marker_capability(marker_path: Path, *, sessions_dir: Path) -> bool:
+    """Return the thinking-command capability from a valid current marker.
+
+    Marker files written by older bridge extensions intentionally lack
+    ``bridgeVersion`` and therefore remain incapable. Parsing is fail-closed:
+    malformed, missing, or out-of-tree markers never enable the picker.
+    """
+    try:
+        data = json.loads(marker_path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    if not isinstance(data, dict) or data.get("version") != 1 or data.get("bridgeVersion") != 2:
+        return False
+    raw = data.get("sessionFile")
+    if not isinstance(raw, str) or not raw.strip() or not raw.endswith(".jsonl"):
+        return False
+    path = Path(raw).expanduser()
+    try:
+        resolved = path.resolve()
+    except Exception:
+        resolved = path
+    try:
+        resolved.relative_to(sessions_dir.resolve())
+    except Exception:
+        return False
+    return True
+
+
 def _ensure_pi_session_arg(*, args: list[str], cwd: str, sessions_dir: Path, agent_backend: str) -> list[str]:
     if normalize_agent_backend(agent_backend) != "pi":
         return list(args)

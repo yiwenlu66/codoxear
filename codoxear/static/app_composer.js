@@ -158,7 +158,7 @@
     function thinkingPickerMatches() {
       const match = String(textarea.value || "").match(/^\/thinking(?:\s+(.*))?$/i);
       const session = piSession();
-      if (!match || !session) return null;
+      if (!match || !session || session.pi_thinking_command !== true) return null;
       const query = String(match[1] || "").trim().toLowerCase();
       const choices = piThinkingLevels(session).filter((level) => !query || level.startsWith(query) || level.includes(query));
       const current = String(session.reasoning_effort || "").trim().toLowerCase();

@@ -21,6 +21,7 @@ class State:
     output_tail_max: int = 64 * 1024
     log_off: int = 0
     token: dict[str, Any] | None = None
+    pi_thinking_command: bool = False
     turn_open: bool = False
     turn_has_completion_candidate: bool = False
     last_turn_activity_ts: float = 0.0

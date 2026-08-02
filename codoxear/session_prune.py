@@ -48,6 +48,7 @@ class SessionPruneCoordinator:
                 session.busy = busy_val
                 session.queue_len = queue_len
                 set_session_interrupted_idle(session, interrupted_idle)
+                session.pi_thinking_command = session.agent_backend == "pi" and response.get("pi_thinking_command") is True
                 if "token" in response:
                     token = response.get("token")
                     if isinstance(token, dict) or token is None:

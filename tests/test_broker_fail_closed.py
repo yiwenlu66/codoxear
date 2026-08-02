@@ -20,6 +20,7 @@ from codoxear.broker import _observe_shell_pre_exec_marker
 from codoxear.broker import _pi_bridge_extension_path
 from codoxear.broker import _read_jsonl_from_offset
 from codoxear.broker import _read_pi_active_session_marker
+from codoxear.broker_launch import _read_pi_active_session_marker_capability
 from codoxear.agent_backend import get_agent_backend
 from codoxear.util import append_launch_attempt
 from codoxear.util import read_launch_attempts
@@ -305,6 +306,21 @@ read -r -k 1 option
             marker.write_text(json.dumps({"version": 1, "sessionFile": str(log_path)}) + "\n", encoding="utf-8")
 
             self.assertEqual(_read_pi_active_session_marker(marker, sessions_dir=sessions_dir), log_path.resolve())
+
+    def test_pi_active_session_marker_capability_is_fail_closed_for_legacy_and_malformed(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            sessions_dir = root / "sessions"
+            sessions_dir.mkdir()
+            log_path = sessions_dir / "session.jsonl"
+            marker = root / "marker.json"
+            for payload, expected in (
+                ({"version": 1, "sessionFile": str(log_path)}, False),
+                ({"version": 1, "bridgeVersion": 2, "sessionFile": str(log_path)}, True),
+                ({"version": 1, "bridgeVersion": 2, "sessionFile": str(root / "outside.jsonl")}, False),
+            ):
+                marker.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+                self.assertEqual(_read_pi_active_session_marker_capability(marker, sessions_dir=sessions_dir), expected)
 
     def test_pi_discover_log_watcher_switches_to_marker_log_while_current_exists(self) -> None:
         fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)

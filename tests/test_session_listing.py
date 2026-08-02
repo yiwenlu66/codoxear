@@ -120,6 +120,8 @@ def test_build_active_session_rows_snapshot_combines_session_and_store_state(tmp
     row = snapshot.rows[0]
     assert row["session_id"] == "s1"
     assert row["files"] == ["legacy.py"]
+    assert row["agent_backend"] == "codex"
+    assert row["pi_thinking_command"] is False
     assert row["alias"] == "Alias"
     assert row["queue_len"] == 1
     assert row["queue_recovery"] is True
@@ -194,6 +196,7 @@ def test_build_active_session_row_projects_public_and_staging_fields() -> None:
         final_priority=0.0,
         blocked=True,
         snoozed=True,
+        pi_thinking_command=True,
     )
 
     row = build_active_session_row(facts)
@@ -204,6 +207,7 @@ def test_build_active_session_row_projects_public_and_staging_fields() -> None:
     assert row["pid"] == 11
     assert row["broker_pid"] == 22
     assert row["agent_backend"] == "pi"
+    assert row["pi_thinking_command"] is True
     assert row["owned"] is True
     assert row["transport"] == "pty"
     assert row["cwd"] == "/repo"

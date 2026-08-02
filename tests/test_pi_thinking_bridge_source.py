@@ -23,6 +23,8 @@ class TestPiThinkingBridgeSource(unittest.TestCase):
         source = BRIDGE.read_text(encoding="utf-8")
 
         self.assertIn("if (!markerPath) return", source)
+        self.assertIn("bridgeVersion: 2", source)
+        self.assertIn("sessionFile,", source)
         self.assertIn("fs.renameSync(tmp, markerPath)", source)
         self.assertIn('pi.on("session_start"', source)
         self.assertIn('pi.on("session_switch"', source)

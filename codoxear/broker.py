@@ -32,6 +32,7 @@ from codoxear.broker_launch import _pi_new_session_log_path
 from codoxear.broker_launch import _pi_session_dir_from_args
 from codoxear.broker_launch import _pi_session_dir_name
 from codoxear.broker_launch import _read_pi_active_session_marker
+from codoxear.broker_launch import _read_pi_active_session_marker_capability
 from codoxear.broker_launch import _reset_pi_active_session_marker
 from codoxear.broker_launch import _resume_session_id_from_args as _resume_session_id_from_args_impl
 from codoxear.broker_launch import _session_log_path_from_args
@@ -373,6 +374,18 @@ class Broker:
                             self.pi_active_session_marker_path,
                             sessions_dir=self.sessions_dir,
                         )
+                        capability = bool(lp is not None and _read_pi_active_session_marker_capability(
+                            self.pi_active_session_marker_path,
+                            sessions_dir=self.sessions_dir,
+                        ))
+                        capability_changed = False
+                        with self._lock:
+                            st_cap = self.state
+                            if st_cap is not None and st_cap.pi_thinking_command != capability:
+                                st_cap.pi_thinking_command = capability
+                                capability_changed = True
+                        if capability_changed:
+                            self._write_meta()
                         if lp is not None and lp.exists():
                             if current_log_path is None or (not _paths_match(lp, current_log_path)):
                                 self._maybe_register_or_switch_rollout(log_path=lp)

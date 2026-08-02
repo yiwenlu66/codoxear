@@ -55,6 +55,7 @@ def test_sessiond_control_state_tail_and_shutdown_handlers_are_executable() -> N
         "queue_len": 0,
         "token": {"tokens_in_context": 12},
         "interrupted_idle": False,
+        "pi_thinking_command": False,
     }
     state.busy = False
     state.last_interrupted_idle_ts = 42.0
@@ -63,7 +64,10 @@ def test_sessiond_control_state_tail_and_shutdown_handlers_are_executable() -> N
         "queue_len": 0,
         "token": {"tokens_in_context": 12},
         "interrupted_idle": True,
+        "pi_thinking_command": False,
     }
+    state.pi_thinking_command = True
+    assert _run_handler("state", state=state)["response"]["pi_thinking_command"] is True
     assert _run_handler("tail", state=state)["response"] == {"tail": "tail"}
     shutdown = _run_handler("shutdown", state=state)
     assert shutdown["response"] == {"ok": True}

@@ -81,6 +81,7 @@ class ActiveSessionRowFacts:
     final_priority: float
     blocked: bool
     snoozed: bool
+    pi_thinking_command: bool = False
 
 
 def clip01(value: float) -> float:
@@ -218,6 +219,7 @@ def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
         "pid": facts.pid,
         "broker_pid": facts.broker_pid,
         "agent_backend": facts.agent_backend,
+        "pi_thinking_command": bool(facts.agent_backend == "pi" and facts.pi_thinking_command),
         "owned": facts.owned,
         "transport": facts.transport,
         "cwd": facts.cwd,
@@ -405,6 +407,7 @@ def build_active_session_rows_snapshot(
                     final_priority=priority.final_priority,
                     blocked=blocked,
                     snoozed=snoozed,
+                    pi_thinking_command=bool(s.pi_thinking_command),
                 )
             )
         )

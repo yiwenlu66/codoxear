@@ -169,7 +169,7 @@ class TestSessiondFailClosed(unittest.TestCase):
 
         handle_sessiond_control_connection(object(), deps=deps)
 
-        self.assertEqual(captured["response"], {"busy": True, "queue_len": 0, "token": None, "interrupted_idle": False})
+        self.assertEqual(captured["response"], {"busy": True, "queue_len": 0, "token": None, "interrupted_idle": False, "pi_thinking_command": False})
         self.assertIsNone(captured["after"])
 
     def test_sessiond_reader_preserves_missing_file_contract(self) -> None:

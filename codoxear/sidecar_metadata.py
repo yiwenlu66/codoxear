@@ -96,6 +96,10 @@ def key_write_errors_supported(meta: dict[str, Any]) -> bool:
     return meta.get("control_protocol_version") == 2 and isinstance(caps, dict) and caps.get("key_write_errors") is True
 
 
+def pi_thinking_command(meta: dict[str, Any]) -> bool:
+    """Only an explicit true sidecar capability enables Pi /thinking."""
+
+
 def _clean_optional_text(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
