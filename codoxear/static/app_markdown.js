@@ -476,7 +476,9 @@
     if (!window.marked || typeof window.marked.parse !== "function") throw new Error("marked failed to load");
     const mathStore = [];
     const prepared = extractMathFromText(rewriteOaiMemCitations(String(src ?? "").replaceAll("\r\n", "\n")), mathStore);
-    return substituteMath(postProcessMarkedHtml(window.marked.parse(prepared), options), mathStore);
+    // breaks: true preserves single newlines from the raw text as line
+    // breaks — agent messages are plain-text-first, not print-style prose.
+    return substituteMath(postProcessMarkedHtml(window.marked.parse(prepared, { breaks: true }), options), mathStore);
   }
 
   const mdCache = new Map();
