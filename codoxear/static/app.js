@@ -2072,20 +2072,20 @@
         }
 
         let currentQueueLen = 0;
+        let currentSubagentsRunning = 0;
+        function renderStatusChip() {
+          const q = currentQueueLen;
+          const base = currentRunning ? "Busy" : q ? (isMobile() ? `Q ${q}` : `Queue ${q}`) : "Idle";
+          statusChip.style.display = "inline-flex";
+          statusChip.textContent = currentSubagentsRunning > 0 ? `${base} · ▸${currentSubagentsRunning}` : base;
+        }
+
         function setStatus({ running, queueLen }) {
           const q = Math.max(0, Number(queueLen) || 0);
-          const mobile = isMobile();
           const wasRunning = currentRunning;
           currentRunning = Boolean(running);
           currentQueueLen = q;
-          if (running) {
-            statusChip.style.display = "none";
-            statusChip.classList.remove("running");
-          } else {
-            statusChip.style.display = "inline-flex";
-               if (q) statusChip.textContent = mobile ? `Q ${q}` : `Queue ${q}`;
-               else statusChip.textContent = "Idle";
-          }
+          renderStatusChip();
           const canInterrupt = Boolean(running && selected);
           interruptBtn.style.display = canInterrupt ? "inline-flex" : "none";
           interruptBtn.disabled = !canInterrupt;
@@ -2232,8 +2232,8 @@
           return messageCopyNavigationRuntime.jumpTarget(rows, direction, threshold);
         }
 
-        function applyChatSearchMarks(matches, currentRow) {
-          codoxearMessageRows.applyChatSearchMarks(matches, currentRow);
+        function applyChatSearchMarks(matches, currentRow, query) {
+          codoxearMessageRows.applyChatSearchMarks(matches, currentRow, query);
         }
 
         function firstVisibleMessageRow() {
@@ -2802,13 +2802,15 @@
           }
 
         function updateTypingStatsFromSession(session) {
+          currentSubagentsRunning = session ? Math.max(0, Math.floor(Number(session.subagents_running) || 0)) : 0;
+          typingRowRuntime.updateSubagentGauge(currentSubagentsRunning);
+          renderStatusChip();
           if (!session) return;
-          // This is a live gauge from the session-list snapshot, not an event
-          // counter. Replace it on every snapshot so completed subagents clear
-          // promptly; only tool/thinking totals use monotonic reconciliation.
-          typingRowRuntime.updateSubagentGauge(session.subagents_running);
+          const thinkingMode = sessionAgentBackend(session) === "pi" ? "tokens" : "blocks";
           const stats = {
             thinking: session.thinking,
+            thinkingTokens: session.thinking_tokens,
+            thinkingMode,
             tools: session.tools,
           };
           // Two feeds write these counts: live per-event deltas (exact, sees
@@ -2821,9 +2823,11 @@
             typingRowRuntime.updateTypingStats(stats);
             return;
           }
-          const current = typingRowRuntime.snapshot().stats || { thinking: 0, tools: 0 };
+          const current = typingRowRuntime.snapshot().stats || { thinking: 0, thinkingTokens: 0, tools: 0 };
           typingRowRuntime.updateTypingStats({
             thinking: Math.max(current.thinking, stats.thinking || 0),
+            thinkingTokens: Math.max(current.thinkingTokens, stats.thinkingTokens || 0),
+            thinkingMode,
             tools: Math.max(current.tools, stats.tools || 0),
           });
         }
@@ -2831,15 +2835,23 @@
         function applyTypingMetaDelta(data) {
           const delta = data && data.meta_delta;
           if (!delta || typeof delta !== "object") return;
+          const selectedSession = selected ? sessionIndex.get(selected) : null;
+          const thinkingMode = sessionAgentBackend(selectedSession) === "pi" ? "tokens" : "blocks";
           typingRowRuntime.updateTypingStats(
-            { thinking: delta.thinking, tools: delta.tool },
+            {
+              thinking: delta.thinking,
+              thinkingTokens: delta.thinking_tokens,
+              thinkingMode,
+              tools: delta.tool,
+            },
             { delta: true },
           );
         }
 
-	        function setTyping(show) {
-	          typingRowRuntime.setVisible(show);
-	        }
+        function setTyping(show) {
+          typingRowRuntime.setVisible(show);
+          typingRowRuntime.setSubagentVisible(!show);
+        }
 
         function ymd(d) {
           return codoxearDisplay.ymd(d);
@@ -6301,6 +6313,13 @@
           const size = item && Number.isFinite(Number(item.size)) ? fmtBytes(Number(item.size)) : "0 B";
           return id ? `${name} · ${size} · attachment ${id}` : `${name} · ${size}`;
         }
+        function middleEllipsis(text, limit = 44) {
+          const value = String(text || "");
+          if (value.length <= limit) return value;
+          const left = Math.ceil((limit - 1) / 2);
+          const right = Math.floor((limit - 1) / 2);
+          return `${value.slice(0, left)}…${value.slice(-right)}`;
+        }
         function setStagedAttachments(list) {
           stagedAttachments = normalizedStagedAttachments(list);
           attachedFiles = stagedAttachments.length;
@@ -6340,7 +6359,8 @@
           tray.style.display = "flex";
           for (const item of stagedAttachments) {
             const chip = el("div", { class: "stagedAttachmentChip", title: attachmentIdentityText(item) });
-            chip.appendChild(el("span", { class: "stagedAttachmentName", text: item.display_name || item.filename || "file" }));
+            const name = item.display_name || item.filename || "file";
+            chip.appendChild(el("span", { class: "stagedAttachmentName", text: middleEllipsis(name) }));
             chip.appendChild(el("span", { class: "stagedAttachmentMeta", text: fmtBytes(item.size || 0) }));
             const removeBtn = el("button", { class: "stagedAttachmentRemove", type: "button", text: "×", title: `Remove ${item.display_name || "attachment"}`, "aria-label": `Remove ${item.display_name || "attachment"}` });
             removeBtn.onclick = async () => {

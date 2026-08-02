@@ -55,6 +55,7 @@ class ActiveSessionRowFacts:
     commit_unknown_send: Mapping[str, Any] | None
     token: Any
     thinking: int
+    thinking_tokens: int
     tools: int
     system: int
     unattended_enabled: bool
@@ -247,6 +248,7 @@ def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
         "commit_unknown_send_ts": _commit_unknown_created_ts(commit_unknown),
         "token": facts.token,
         "thinking": facts.thinking,
+        "thinking_tokens": facts.thinking_tokens,
         "tools": facts.tools,
         "system": facts.system,
         "unattended_enabled": facts.unattended_enabled,
@@ -387,6 +389,7 @@ def build_active_session_rows_snapshot(
                     commit_unknown_send=s.commit_unknown_send if isinstance(s.commit_unknown_send, dict) else None,
                     token=s.token,
                     thinking=int(s.meta_thinking),
+                    thinking_tokens=int(s.meta_thinking_tokens),
                     tools=int(s.meta_tools),
                     system=int(s.meta_system),
                     unattended_enabled=unattended_enabled,

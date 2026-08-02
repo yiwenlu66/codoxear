@@ -245,6 +245,20 @@ def pi_assistant_thinking_count(obj: dict[str, Any]) -> int:
     return count
 
 
+def pi_assistant_reasoning_tokens(obj: dict[str, Any]) -> int:
+    """Return Pi's exact per-assistant-message reasoning-token usage."""
+    if obj.get("type") != "message":
+        return 0
+    message = obj.get("message")
+    if not isinstance(message, dict) or message.get("role") != "assistant":
+        return 0
+    usage = message.get("usage")
+    if not isinstance(usage, dict):
+        return 0
+    reasoning = usage.get("reasoning")
+    return reasoning if isinstance(reasoning, int) and not isinstance(reasoning, bool) and reasoning > 0 else 0
+
+
 def pi_message_role(obj: dict[str, Any]) -> str | None:
     if obj.get("type") != "message":
         return None

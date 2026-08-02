@@ -10,7 +10,15 @@ from codoxear.session_model import Session
 from codoxear.util import read_jsonl_from_offset
 
 
-def _session(log_path: Path, *, thinking: int, tools: int, turn_open: bool, queue_len: int = 0) -> Session:
+def _session(
+    log_path: Path,
+    *,
+    thinking: int,
+    thinking_tokens: int = 0,
+    tools: int,
+    turn_open: bool,
+    queue_len: int = 0,
+) -> Session:
     return Session(
         session_id="sid",
         thread_id="thread",
@@ -25,6 +33,7 @@ def _session(log_path: Path, *, thinking: int, tools: int, turn_open: bool, queu
         busy=True,
         queue_len=queue_len,
         meta_thinking=thinking,
+        meta_thinking_tokens=thinking_tokens,
         meta_tools=tools,
         meta_turn_open=turn_open,
     )
@@ -51,6 +60,17 @@ def _append(log_path: Path, *rows: dict) -> None:
 
 def _pi_user(text: str) -> dict:
     return {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": text}]}}
+
+
+def _pi_thinking(text: str, reasoning_tokens: int) -> dict:
+    return {
+        "type": "message",
+        "message": {
+            "role": "assistant",
+            "content": [{"type": "thinking", "thinking": text}],
+            "usage": {"reasoning": reasoning_tokens},
+        },
+    }
 
 
 def _pi_tool(call_id: str) -> dict:
@@ -93,6 +113,39 @@ def test_queued_turn_resets_counters_when_user_arrives_after_cross_chunk_close(t
     runtime.update_meta_counters()
     assert session.meta_turn_open is True
     assert (session.meta_thinking, session.meta_tools) == (0, 1)
+
+
+def test_reasoning_tokens_reset_after_closed_turn_and_accumulate_across_steer(tmp_path: Path) -> None:
+    log_path = tmp_path / "pi.jsonl"
+    log_path.touch()
+    session = _session(log_path, thinking=2, thinking_tokens=20, tools=1, turn_open=True, queue_len=1)
+    runtime = _runtime(session)
+
+    # A closed turn leaves its counter visible until queued work starts.
+    _append(
+        log_path,
+        {
+            "type": "message",
+            "message": {"role": "assistant", "content": [{"type": "text", "text": "turn one done"}], "stopReason": "stop"},
+        },
+    )
+    runtime.update_meta_counters()
+    assert session.meta_turn_open is False
+    assert session.meta_thinking_tokens == 20
+
+    # A user row after that close replaces the window; the following assistant
+    # row contributes Pi's recorded (not estimated) reasoning usage.
+    _append(log_path, _pi_user("queued turn"), _pi_thinking("queued thought", 40))
+    runtime.update_meta_counters()
+    assert session.meta_turn_open is True
+    assert session.meta_thinking_tokens == 40
+
+    # The user row is a steer while the same turn remains open, so exact token
+    # usage is preserved and extended rather than reset.
+    _append(log_path, _pi_user("steer"), _pi_thinking("steered thought", 16))
+    runtime.update_meta_counters()
+    assert session.meta_turn_open is True
+    assert session.meta_thinking_tokens == 56
 
 
 def test_cross_chunk_steer_preserves_open_turn_counters(tmp_path: Path) -> None:

@@ -21,6 +21,7 @@ from .pi_log import pi_assistant_is_final_turn_end
 from .pi_log import pi_assistant_is_terminal_no_visible_response
 from .pi_log import pi_assistant_text
 from .pi_log import pi_assistant_thinking_count
+from .pi_log import pi_assistant_reasoning_tokens
 from .pi_log import pi_assistant_tool_use_count
 from .pi_log import pi_message_role
 from .pi_log import pi_user_text
@@ -64,8 +65,9 @@ def _analyze_log_chunk(
     objs: list[dict[str, Any]],
     *,
     initial_turn_open: bool = False,
-) -> tuple[int, int, int, float | None, Any, list[dict[str, Any]], LogChunkTurnState]:
+) -> tuple[int, int, int, int, float | None, Any, list[dict[str, Any]], LogChunkTurnState]:
     d_th = 0
+    d_thinking_tokens = 0
     d_tools = 0
     d_sys = 0
     last_chat_ts: float | None = None
@@ -75,9 +77,10 @@ def _analyze_log_chunk(
     counters_reset = False
 
     def open_on_user_message() -> None:
-        nonlocal d_th, d_tools, d_sys, turn_open, counters_reset
+        nonlocal d_th, d_thinking_tokens, d_tools, d_sys, turn_open, counters_reset
         if not turn_open:
             d_th = 0
+            d_thinking_tokens = 0
             d_tools = 0
             d_sys = 0
             counters_reset = True
@@ -93,6 +96,7 @@ def _analyze_log_chunk(
                 open_on_user_message()
                 continue
             d_th += pi_assistant_thinking_count(obj)
+            d_thinking_tokens += pi_assistant_reasoning_tokens(obj)
             d_tools += pi_assistant_tool_use_count(obj)
             if pi_assistant_error_text(obj):
                 turn_open = True
@@ -166,6 +170,7 @@ def _analyze_log_chunk(
 
     return (
         d_th,
+        d_thinking_tokens,
         d_tools,
         d_sys,
         last_chat_ts,

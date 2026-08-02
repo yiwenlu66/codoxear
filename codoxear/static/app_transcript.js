@@ -298,20 +298,69 @@
     const scheduleScrollToBottom = requireFunction(options.scheduleScrollToBottom, "scheduleScrollToBottom");
     let typingRow = null;
     let typingStatsNode = null;
-    let typingStats = { thinking: 0, tools: 0 };
+    let typingStats = { thinking: 0, thinkingTokens: 0, thinkingMode: "blocks", tools: 0 };
     let typingSubagents = 0;
+    let subagentActivityRow = null;
+    let subagentActivityTextNode = null;
 
     function normalizeTypingCount(value) {
       const count = Number(value);
       return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
     }
 
+    function formatThinkingTokens(value) {
+      const tokens = normalizeTypingCount(value);
+      if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`;
+      if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}k`;
+      return String(tokens);
+    }
+
     function renderTypingStats() {
       if (!typingStatsNode) return;
-      const { thinking, tools } = typingStats;
-      const activity = tools || thinking ? `tools: ${tools} · thinking: ${thinking}` : "";
+      const { thinking, thinkingTokens, thinkingMode, tools } = typingStats;
+      const thinkingValue = thinkingMode === "tokens" ? formatThinkingTokens(thinkingTokens) : String(thinking);
+      const hasThinking = thinkingMode === "tokens" ? thinkingTokens > 0 : thinking > 0;
+      const activity = tools || hasThinking ? `tools: ${tools} · thinking: ${thinkingValue}` : "";
       const subagents = typingSubagents ? `subagents: ${typingSubagents}` : "";
       typingStatsNode.textContent = [activity, subagents].filter(Boolean).join(" · ");
+    }
+
+    function ensureSubagentActivityRow() {
+      if (subagentActivityRow && subagentActivityRow.isConnected) return subagentActivityRow;
+      const row = el("div", { class: "msg-row assistant subagent-activity-row" });
+      row.dataset.role = "assistant";
+      const bubble = el("div", { class: "msg assistant subagentActivity" });
+      const squares = el("span", { class: "subagentActivitySquares", "aria-hidden": "true" }, [
+        el("span", { class: "subagentActivitySquare" }),
+        el("span", { class: "subagentActivitySquare" }),
+      ]);
+      subagentActivityTextNode = el("span", { class: "subagentActivityText" });
+      bubble.appendChild(squares);
+      bubble.appendChild(subagentActivityTextNode);
+      row.appendChild(bubble);
+      subagentActivityRow = row;
+      renderSubagentActivity();
+      return row;
+    }
+
+    function renderSubagentActivity() {
+      if (subagentActivityTextNode) {
+        const count = typingSubagents;
+        subagentActivityTextNode.textContent = `▸${count} subagent${count === 1 ? "" : "s"} working`;
+      }
+    }
+
+    function setSubagentVisible(show) {
+      if (!show || typingSubagents < 1) {
+        if (subagentActivityRow && subagentActivityRow.isConnected && typeof subagentActivityRow.remove === "function") subagentActivityRow.remove();
+        return snapshot();
+      }
+      const row = ensureSubagentActivityRow();
+      renderSubagentActivity();
+      if (!row.isConnected) root.insertBefore(row, bottomSentinel);
+      else if (row.nextSibling !== bottomSentinel) root.insertBefore(row, bottomSentinel);
+      if (shouldAutoScroll()) scheduleScrollToBottom();
+      return snapshot();
     }
 
     function ensureRow() {
@@ -333,14 +382,18 @@
       return row;
     }
 
-    function updateTypingStats({ thinking, tools } = {}, { delta = false } = {}) {
+    function updateTypingStats({ thinking, thinkingTokens, thinkingMode, tools } = {}, { delta = false } = {}) {
       const next = {
         thinking: normalizeTypingCount(thinking),
+        thinkingTokens: normalizeTypingCount(thinkingTokens),
+        thinkingMode: thinkingMode === "tokens" ? "tokens" : "blocks",
         tools: normalizeTypingCount(tools),
       };
       typingStats = delta
         ? {
             thinking: typingStats.thinking + next.thinking,
+            thinkingTokens: typingStats.thinkingTokens + next.thinkingTokens,
+            thinkingMode: typeof thinkingMode === "string" ? next.thinkingMode : typingStats.thinkingMode,
             tools: typingStats.tools + next.tools,
           }
         : next;
@@ -348,9 +401,9 @@
       return snapshot();
     }
 
-    function resetTypingStats() {
-      typingStats = { thinking: 0, tools: 0 };
-      typingSubagents = 0;
+    function resetTypingStats({ resetGauge = false } = {}) {
+      typingStats = { thinking: 0, thinkingTokens: 0, thinkingMode: "blocks", tools: 0 };
+      if (resetGauge) typingSubagents = 0;
       renderTypingStats();
       return snapshot();
     }
@@ -358,16 +411,20 @@
     function updateSubagentGauge(count) {
       typingSubagents = normalizeTypingCount(count);
       renderTypingStats();
+      renderSubagentActivity();
+      if (!typingSubagents && subagentActivityRow && subagentActivityRow.isConnected && typeof subagentActivityRow.remove === "function") subagentActivityRow.remove();
       return snapshot();
     }
 
     function anchor() {
-      return typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
+      if (typingRow && typingRow.isConnected) return typingRow;
+      if (subagentActivityRow && subagentActivityRow.isConnected) return subagentActivityRow;
+      return bottomSentinel;
     }
 
     function setVisible(show) {
       if (!show) {
-        resetTypingStats();
+        resetTypingStats({ resetGauge: false });
         if (typingRow && typingRow.isConnected && typeof typingRow.remove === "function") typingRow.remove();
         return snapshot();
       }
@@ -382,10 +439,13 @@
     }
 
     function reset() {
-      resetTypingStats();
+      resetTypingStats({ resetGauge: true });
       if (typingRow && typingRow.isConnected && typeof typingRow.remove === "function") typingRow.remove();
+      if (subagentActivityRow && subagentActivityRow.isConnected && typeof subagentActivityRow.remove === "function") subagentActivityRow.remove();
       typingRow = null;
       typingStatsNode = null;
+      subagentActivityRow = null;
+      subagentActivityTextNode = null;
       return snapshot();
     }
 
@@ -401,6 +461,7 @@
       reset,
       resetTypingStats,
       setVisible,
+      setSubagentVisible,
       snapshot,
       updateSubagentGauge,
       updateTypingStats,

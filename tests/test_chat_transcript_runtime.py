@@ -72,22 +72,74 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             const incremented = {{ text: statsNode.textContent, stats: runtime.snapshot().stats }};
             runtime.updateTypingStats({{ tools: 7, thinking: 3 }});
             const replaced = {{ text: statsNode.textContent, stats: runtime.snapshot().stats }};
+            runtime.updateTypingStats({{ tools: 7, thinking: 3, thinkingTokens: 999, thinkingMode: "tokens" }});
+            const token999 = {{ text: statsNode.textContent, stats: runtime.snapshot().stats }};
+            runtime.updateTypingStats({{ thinkingTokens: 201 }}, {{ delta: true }});
+            const token1200 = {{ text: statsNode.textContent, stats: runtime.snapshot().stats }};
+            runtime.updateTypingStats({{ thinkingTokens: 1500000, thinkingMode: "tokens", tools: 7 }});
+            const tokenMillion = {{ text: statsNode.textContent, stats: runtime.snapshot().stats }};
+            runtime.updateTypingStats({{ tools: 7, thinking: 3, thinkingMode: "blocks" }});
+            const nonPiBlocks = {{ text: statsNode.textContent, stats: runtime.snapshot().stats }};
             runtime.updateSubagentGauge(2);
             const withGauge = {{ text: statsNode.textContent, stats: runtime.snapshot().stats }};
             runtime.updateSubagentGauge(0);
             const gaugeCleared = {{ text: statsNode.textContent, stats: runtime.snapshot().stats }};
             runtime.setVisible(false);
             const hidden = {{ text: statsNode.textContent, stats: runtime.snapshot().stats }};
-            process.stdout.write(JSON.stringify({{ initial, incremented, replaced, withGauge, gaugeCleared, hidden }}));
+            process.stdout.write(JSON.stringify({{ initial, incremented, replaced, token999, token1200, tokenMillion, nonPiBlocks, withGauge, gaugeCleared, hidden }}));
             """
         )
         out = _run_node(js)
-        self.assertEqual(out["initial"], {"text": "", "stats": {"thinking": 0, "tools": 0}})
-        self.assertEqual(out["incremented"], {"text": "tools: 2 · thinking: 1", "stats": {"thinking": 1, "tools": 2}})
-        self.assertEqual(out["replaced"], {"text": "tools: 7 · thinking: 3", "stats": {"thinking": 3, "tools": 7}})
-        self.assertEqual(out["withGauge"], {"text": "tools: 7 · thinking: 3 · subagents: 2", "stats": {"thinking": 3, "tools": 7}})
-        self.assertEqual(out["gaugeCleared"], {"text": "tools: 7 · thinking: 3", "stats": {"thinking": 3, "tools": 7}})
-        self.assertEqual(out["hidden"], {"text": "", "stats": {"thinking": 0, "tools": 0}})
+        self.assertEqual(out["initial"], {"text": "", "stats": {"thinking": 0, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 0}})
+        self.assertEqual(out["incremented"], {"text": "tools: 2 · thinking: 1", "stats": {"thinking": 1, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 2}})
+        self.assertEqual(out["replaced"], {"text": "tools: 7 · thinking: 3", "stats": {"thinking": 3, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 7}})
+        self.assertEqual(out["token999"], {"text": "tools: 7 · thinking: 999", "stats": {"thinking": 3, "thinkingTokens": 999, "thinkingMode": "tokens", "tools": 7}})
+        self.assertEqual(out["token1200"], {"text": "tools: 7 · thinking: 1.2k", "stats": {"thinking": 3, "thinkingTokens": 1200, "thinkingMode": "tokens", "tools": 7}})
+        self.assertEqual(out["tokenMillion"], {"text": "tools: 7 · thinking: 1.5M", "stats": {"thinking": 0, "thinkingTokens": 1500000, "thinkingMode": "tokens", "tools": 7}})
+        self.assertEqual(out["nonPiBlocks"], {"text": "tools: 7 · thinking: 3", "stats": {"thinking": 3, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 7}})
+        self.assertEqual(out["withGauge"], {"text": "tools: 7 · thinking: 3 · subagents: 2", "stats": {"thinking": 3, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 7}})
+        self.assertEqual(out["gaugeCleared"], {"text": "tools: 7 · thinking: 3", "stats": {"thinking": 3, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 7}})
+        self.assertEqual(out["hidden"], {"text": "", "stats": {"thinking": 0, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 0}})
+
+    def test_idle_subagent_activity_row_is_static_and_replaced(self) -> None:
+        source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const vm = require("vm");
+            const ctx = {{ window: {{}} }};
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(source)}, ctx);
+            function node(attrs = {{}}, children = []) {{
+              const out = {{ ...attrs, children: [], dataset: {{}}, isConnected: false, appendChild(child) {{ out.children.push(child); return child; }}, remove() {{ out.isConnected = false; }} }};
+              out.nextSibling = null;
+              for (const child of children) out.appendChild(child);
+              return out;
+            }}
+            const bottom = node();
+            const root = {{ insertBefore: (row) => {{ row.isConnected = true; }} }};
+            const runtime = ctx.window.CodoxearTranscript.createTypingRowRuntime({{
+              root, bottomSentinel: bottom, el: (tag, attrs, children) => node(attrs, children),
+              shouldAutoScroll: () => false, scheduleScrollToBottom: () => {{}},
+            }});
+            runtime.updateSubagentGauge(2);
+            runtime.setSubagentVisible(true);
+            const first = runtime.anchor();
+            const firstBubble = first.children[0];
+            const firstText = firstBubble.children[1].textContent;
+            runtime.updateSubagentGauge(3);
+            const replacedText = firstBubble.children[1].textContent;
+            runtime.setSubagentVisible(false);
+            process.stdout.write(JSON.stringify({{ className: first.class, squares: firstBubble.children[0].children.length, firstText, replacedText, connected: first.isConnected }}));
+            """
+        )
+        proc = subprocess.run(["node", "-e", js], check=True, capture_output=True, text=True)
+        self.assertEqual(json.loads(proc.stdout), {
+            "className": "msg-row assistant subagent-activity-row",
+            "squares": 2,
+            "firstText": "▸2 subagents working",
+            "replacedText": "▸3 subagents working",
+            "connected": False,
+        })
 
     def test_typing_count_window_starts_only_from_idle(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")

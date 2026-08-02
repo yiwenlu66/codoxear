@@ -207,6 +207,7 @@ def test_build_active_session_row_projects_public_and_staging_fields() -> None:
         commit_unknown_send={"text": "maybe", "created_ts": 4.0},
         token={"total": 5},
         thinking=6,
+        thinking_tokens=1200,
         tools=7,
         system=8,
         unattended_enabled=True,
@@ -272,6 +273,7 @@ def test_build_active_session_row_projects_public_and_staging_fields() -> None:
     assert row["commit_unknown_send_ts"] == 4.0
     assert row["token"] == {"total": 5}
     assert row["thinking"] == 6
+    assert row["thinking_tokens"] == 1200
     assert row["tools"] == 7
     assert row["system"] == 8
     assert row["unattended_enabled"] is True

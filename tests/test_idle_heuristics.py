@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from codoxear.rollout_chat_batch import _extract_chat_events
 from codoxear.rollout_idle import _analyze_log_chunk
 from codoxear.server import _compute_idle_from_log
 
@@ -504,8 +505,9 @@ class TestAnalyzeLogChunkBackendRows(unittest.TestCase):
             {"type": "message", "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": "hmm"}]}},
             {"type": "message", "message": {"role": "assistant", "content": [{"type": "toolCall", "id": "t1", "name": "bash", "arguments": {"command": "pwd"}}]}},
         ]
-        d_th, d_tools, d_sys, _ts, _token, _events, _turn_state = _analyze_log_chunk(objs)
+        d_th, d_thinking_tokens, d_tools, d_sys, _ts, _token, _events, _turn_state = _analyze_log_chunk(objs)
         self.assertEqual(d_th, 1)
+        self.assertEqual(d_thinking_tokens, 0)
         self.assertEqual(d_tools, 1)
         self.assertEqual(d_sys, 0)
 
@@ -514,8 +516,9 @@ class TestAnalyzeLogChunkBackendRows(unittest.TestCase):
             {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": "hmm"}]}},
             {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]}},
         ]
-        d_th, d_tools, d_sys, _ts, _token, _events, _turn_state = _analyze_log_chunk(objs)
+        d_th, d_thinking_tokens, d_tools, d_sys, _ts, _token, _events, _turn_state = _analyze_log_chunk(objs)
         self.assertEqual(d_th, 1)
+        self.assertEqual(d_thinking_tokens, 0)
         self.assertGreaterEqual(d_tools, 1)
 
     def test_analyze_log_chunk_preserves_counts_across_pi_steer(self) -> None:
@@ -533,8 +536,8 @@ class TestAnalyzeLogChunkBackendRows(unittest.TestCase):
                 },
             },
         ]
-        d_th, d_tools, d_sys, _ts, _token, _events, _turn_state = _analyze_log_chunk(objs)
-        self.assertEqual(d_th, 2)
+        d_th, d_thinking_tokens, d_tools, d_sys, _ts, _token, _events, _turn_state = _analyze_log_chunk(objs)
+        self.assertEqual((d_th, d_thinking_tokens), (2, 0))
         self.assertEqual(d_tools, 1)
         self.assertEqual(d_sys, 0)
 
@@ -548,10 +551,48 @@ class TestAnalyzeLogChunkBackendRows(unittest.TestCase):
             {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "new turn"}]}},
             {"type": "message", "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": "new"}]}},
         ]
-        d_th, d_tools, d_sys, _ts, _token, _events, _turn_state = _analyze_log_chunk(objs)
-        self.assertEqual(d_th, 1)
+        d_th, d_thinking_tokens, d_tools, d_sys, _ts, _token, _events, _turn_state = _analyze_log_chunk(objs)
+        self.assertEqual((d_th, d_thinking_tokens), (1, 0))
         self.assertEqual(d_tools, 0)
         self.assertEqual(d_sys, 0)
+
+    def test_analyze_log_chunk_counts_exact_pi_reasoning_tokens(self) -> None:
+        objs = [
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "thinking", "thinking": "first"}],
+                    "usage": {"reasoning": 108, "input": 1, "output": 1, "cacheRead": 0, "totalTokens": 110},
+                },
+            },
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "thinking", "thinking": "second"}],
+                    "usage": {"reasoning": 16, "input": 1, "output": 1, "cacheRead": 0, "totalTokens": 18},
+                },
+            },
+        ]
+        d_th, d_thinking_tokens, *_rest = _analyze_log_chunk(objs)
+        self.assertEqual((d_th, d_thinking_tokens), (2, 124))
+
+    def test_live_meta_delta_carries_exact_pi_reasoning_tokens(self) -> None:
+        _events, meta_delta, _flags, _diag = _extract_chat_events(
+            [
+                {
+                    "type": "message",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "thinking", "thinking": "live"}],
+                        "usage": {"reasoning": 1200},
+                    },
+                }
+            ]
+        )
+        self.assertEqual(meta_delta["thinking"], 1)
+        self.assertEqual(meta_delta["thinking_tokens"], 1200)
 
     def test_compute_idle_handles_pi_tool_turn_and_cc_pending_rows(self) -> None:
         with TemporaryDirectory() as td:

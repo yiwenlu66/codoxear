@@ -9,6 +9,7 @@ from .cc_log import cc_message_role
 from .cc_log import cc_system_api_error_is_terminal
 from .cc_log import cc_user_text
 from .pi_log import pi_assistant_thinking_count
+from .pi_log import pi_assistant_reasoning_tokens
 from .pi_log import pi_assistant_tool_use_count
 from .pi_log import pi_assistant_is_aborted_turn
 from .pi_log import pi_user_text
@@ -23,6 +24,7 @@ def _extract_chat_events(
 ) -> tuple[list[dict[str, Any]], dict[str, int], dict[str, bool], dict[str, Any]]:
     events: list[dict[str, Any]] = []
     total_thinking = 0
+    total_thinking_tokens = 0
     total_tools = 0
     total_system = 0
     turn_start = False
@@ -101,8 +103,11 @@ def _extract_chat_events(
 
             tool_count = pi_assistant_tool_use_count(obj)
             thinking_count = pi_assistant_thinking_count(obj)
+            reasoning_tokens = pi_assistant_reasoning_tokens(obj)
             if thinking_count > 0:
                 total_thinking += thinking_count
+            if reasoning_tokens > 0:
+                total_thinking_tokens += reasoning_tokens
             if tool_count > 0:
                 total_tools += tool_count
                 tool_names.add("pi_tool")
@@ -172,7 +177,7 @@ def _extract_chat_events(
 
     return (
         events,
-        {"thinking": total_thinking, "tool": total_tools, "system": total_system},
+        {"thinking": total_thinking, "thinking_tokens": total_thinking_tokens, "tool": total_tools, "system": total_system},
         {"turn_start": turn_start, "turn_end": turn_end, "turn_aborted": turn_aborted},
         {"tool_names": sorted(tool_names), "last_tool": last_tool},
     )

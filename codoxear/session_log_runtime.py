@@ -15,7 +15,7 @@ from .token_signal import coerce_token_observation
 class SessionLogRuntimeCoordinator:
     lock: Any
     sessions: Callable[[], MutableMapping[str, Session]]
-    analyze_log_chunk: Callable[..., tuple[Any, Any, Any, Any, Any, Any, Any]]
+    analyze_log_chunk: Callable[..., tuple[Any, Any, Any, Any, Any, Any, Any, Any]]
     turn_context_run_settings: Callable[[Any], tuple[str | None, str | None]]
     compute_idle_from_log: Callable[[Path], bool | None]
     read_jsonl_from_offset: Callable[..., tuple[list[dict[str, Any]], int]]
@@ -56,6 +56,7 @@ class SessionLogRuntimeCoordinator:
                 post_baseline = True
 
             total_thinking = 0
+            total_thinking_tokens = 0
             total_tools = 0
             total_system = 0
             turn_open = bool(session.meta_turn_open)
@@ -69,6 +70,7 @@ class SessionLogRuntimeCoordinator:
                     break
                 (
                     delta_thinking,
+                    delta_thinking_tokens,
                     delta_tools,
                     delta_system,
                     chunk_chat_ts,
@@ -82,11 +84,13 @@ class SessionLogRuntimeCoordinator:
                     # closed. Discard both prior-session counters and activity
                     # from an older turn earlier in this multi-chunk scan.
                     total_thinking = delta_thinking
+                    total_thinking_tokens = delta_thinking_tokens
                     total_tools = delta_tools
                     total_system = delta_system
                     counters_reset = True
                 else:
                     total_thinking += delta_thinking
+                    total_thinking_tokens += delta_thinking_tokens
                     total_tools += delta_tools
                     total_system += delta_system
                 turn_open = bool(chunk_turn_state.turn_open)
@@ -129,15 +133,18 @@ class SessionLogRuntimeCoordinator:
                 if current.busy:
                     if counters_reset:
                         current.meta_thinking = total_thinking
+                        current.meta_thinking_tokens = total_thinking_tokens
                         current.meta_tools = total_tools
                         current.meta_system = total_system
                     else:
                         current.meta_thinking += total_thinking
+                        current.meta_thinking_tokens += total_thinking_tokens
                         current.meta_tools += total_tools
                         current.meta_system += total_system
                     current.meta_turn_open = turn_open
                 else:
                     current.meta_thinking = 0
+                    current.meta_thinking_tokens = 0
                     current.meta_tools = 0
                     current.meta_system = 0
                     current.meta_turn_open = False
@@ -146,7 +153,7 @@ class SessionLogRuntimeCoordinator:
                 current.meta_log_off = offset if offset >= 0 else current.meta_log_off
 
     def mark_log_delta(self, session_id: str, *, objs: list[dict[str, Any]], new_off: int) -> None:
-        _thinking, _tools, _system, last_ts, _token_update, _chat_events, _turn_state = self.analyze_log_chunk(objs)
+        _thinking, _thinking_tokens, _tools, _system, last_ts, _token_update, _chat_events, _turn_state = self.analyze_log_chunk(objs)
         with self.lock:
             current = self.sessions().get(session_id)
             agent_backend = current.agent_backend if current is not None else None

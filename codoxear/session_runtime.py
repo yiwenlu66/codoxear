@@ -208,6 +208,7 @@ def reset_session_log_caches(session: Session, *, meta_log_off: int) -> None:
     session.interrupted_idle_log_off = 0
     session.interrupted_idle_suppressed = False
     session.meta_thinking = 0
+    session.meta_thinking_tokens = 0
     session.meta_tools = 0
     session.meta_system = 0
     session.meta_turn_open = False

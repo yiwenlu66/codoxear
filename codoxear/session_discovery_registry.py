@@ -71,6 +71,7 @@ class SessionDiscoveryRegistryCoordinator:
             queue_len=registration.queue_len,
             token=registration.token,
             meta_thinking=0,
+            meta_thinking_tokens=0,
             meta_tools=0,
             meta_system=0,
             meta_log_off=registration.meta_log_off,

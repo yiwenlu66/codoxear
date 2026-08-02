@@ -25,6 +25,7 @@ class Session:
     last_chat_ts: float | None = None
     last_chat_history_scanned: bool = False
     meta_thinking: int = 0
+    meta_thinking_tokens: int = 0
     meta_tools: int = 0
     meta_system: int = 0
     # Persistent counting-window state for the incremental log scanner. This is
