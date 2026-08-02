@@ -148,4 +148,3 @@ That repoints the same snapshot worktree and service at the previous committed c
 ## Testing policy (absolute)
 
 - **No source-string tests, ever.** They are worse than nothing: they break on every refactor, produce false confidence without verifying behavior, and cost maintenance on every change. Do not assert on raw file contents (`read_text` + `assertIn`, regex over source, checking that code contains a literal). Tests verify BEHAVIOR: execute the code (VM harnesses for JS, direct calls for Python) and assert outcomes; for CSS, parse the stylesheet and assert computed rules per selector — never substring matching. If a contract has no behavioral check feasible, document it in AGENTS.md instead of a test.
-- A guardrail test forbids the pattern; do not add exceptions.
