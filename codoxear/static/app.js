@@ -4490,13 +4490,35 @@
           newSessionResumeBtn.setAttribute("aria-expanded", newSessionResumeMenuOpen ? "true" : "false");
           if (editDependencyMenuOpen) positionDialogMenu(editDependencyMenu, editDependencyBtn);
           if (newSessionCwdMenuOpen) positionDialogMenu(newSessionCwdMenu, newSessionCwdInput);
-          if (newSessionModelMenuOpen) {
-            positionDialogMenu(newSessionModelMenu, newSessionModelInput);
-            newSessionRunConfigRow.style.marginBottom = `${Math.ceil(newSessionModelMenu.getBoundingClientRect().height) + 8}px`;
-          }
+          if (newSessionModelMenuOpen) positionDialogMenu(newSessionModelMenu, newSessionModelInput);
           if (newSessionReasoningMenuOpen) positionDialogMenu(newSessionReasoningMenu, newSessionReasoningBtn);
           if (newSessionResumeMenuOpen) positionDialogMenu(newSessionResumeMenu, newSessionResumeBtn);
         }
+
+        const dialogMenuTargets = () => [
+          newSessionModelMenu, newSessionReasoningMenu, newSessionResumeMenu,
+          newSessionCwdMenu, editDependencyMenu,
+        ].filter(Boolean);
+        const anyDialogMenuOpen = () =>
+          newSessionModelMenuOpen || newSessionReasoningMenuOpen ||
+          newSessionResumeMenuOpen || newSessionCwdMenuOpen || editDependencyMenuOpen;
+        addAppEvent(document, "mousedown", (e) => {
+          if (!anyDialogMenuOpen()) return;
+          const t = e.target;
+          const anchors = [newSessionModelField, newSessionReasoningBtn, newSessionResumeBtn, newSessionCwdInput, editDependencyBtn].filter(Boolean);
+          if (anchors.some((a) => a && a.contains(t))) return;
+          if (dialogMenuTargets().some((m) => m && m.contains(t))) return;
+          // Outside click: dismiss all transient menus and swallow the event so
+          // the click cannot land on a tab/footer element beneath the menu.
+          e.preventDefault();
+          e.stopPropagation();
+          newSessionModelMenuOpen = false; newSessionModelMenuFocus = -1;
+          newSessionReasoningMenuOpen = false;
+          newSessionResumeMenuOpen = false;
+          newSessionCwdMenuOpen = false; newSessionCwdMenuFocus = -1;
+          editDependencyMenuOpen = false;
+          applyDialogMenus();
+        }, true);
 
         function positionDialogMenu(menu, anchorBtn) {
           if (!menu || !anchorBtn) return;
