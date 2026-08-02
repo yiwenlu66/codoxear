@@ -319,6 +319,7 @@
     const scheduleScrollToBottom = requireFunction(options.scheduleScrollToBottom, "scheduleScrollToBottom");
     let typingRow = null;
     let typingStatsNode = null;
+    let typingRowVisible = false;
     let typingStats = { thinking: 0, thinkingTokens: 0, thinkingMode: "blocks", tools: 0 };
     let typingSubagents = 0;
     let subagentActivityRow = null;
@@ -344,7 +345,7 @@
       const activity = tools || hasThinking ? `tools: ${tools} · thinking: ${thinkingValue}` : "";
       const subagents = typingSubagents ? `subagents: ${typingSubagents}` : "";
       const text = [activity, subagents].filter(Boolean).join(" · ");
-      typingStatsNode.textContent = text || "working";
+      typingStatsNode.textContent = text || (typingRowVisible ? "working" : "");
     }
 
     function ensureSubagentActivityRow() {
@@ -445,6 +446,7 @@
     }
 
     function setVisible(show) {
+      typingRowVisible = Boolean(show);
       if (!show) {
         resetTypingStats({ resetGauge: false });
         if (typingRow && typingRow.isConnected && typeof typingRow.remove === "function") typingRow.remove();

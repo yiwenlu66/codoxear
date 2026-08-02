@@ -90,7 +90,9 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             """
         )
         out = _run_node(js)
-        self.assertEqual(out["initial"], {"text": "", "stats": {"thinking": 0, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 0}})
+        # With no counts yet the bubble communicates "working" instead of three
+        # cryptic dots; the counts replace the hint as they arrive.
+        self.assertEqual(out["initial"], {"text": "working", "stats": {"thinking": 0, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 0}})
         self.assertEqual(out["incremented"], {"text": "tools: 2 · thinking: 1", "stats": {"thinking": 1, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 2}})
         self.assertEqual(out["replaced"], {"text": "tools: 7 · thinking: 3", "stats": {"thinking": 3, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 7}})
         self.assertEqual(out["token999"], {"text": "tools: 7 · thinking: 999", "stats": {"thinking": 3, "thinkingTokens": 999, "thinkingMode": "tokens", "tools": 7}})
