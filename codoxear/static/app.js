@@ -1502,7 +1502,7 @@
           title: "Copy conversation",
           "aria-label": "Copy conversation",
           type: "button",
-          html: iconSvg("copy"),
+          html: iconSvg("copy-all"),
         });
         const diagCopyBtn = el("button", {
           id: "diagCopyBtn",

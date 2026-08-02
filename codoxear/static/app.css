@@ -1595,6 +1595,8 @@
       .composer .icon-btn {
         width: var(--composerCtl);
         height: var(--composerCtl);
+        min-height: 0;
+        border: 1px solid var(--border);
         border-radius: 0;
       }
       .composerInputRow {
@@ -1762,8 +1764,8 @@ select {
         flex: 0 0 auto;
       }
       .composer .icon-btn {
-        border: 0;
-        background: transparent;
+        border: 1px solid var(--border);
+        background: var(--paper);
         box-shadow: none;
       }
       .composer .icon-btn:hover {
@@ -2481,6 +2483,12 @@ select {
         min-height: 0;
         overflow: hidden;
       }
+      .diagViewer .queueHeader .icon-btn {
+        width: var(--ctl-chrome);
+        height: var(--ctl-chrome);
+        min-width: var(--ctl-chrome);
+        min-height: var(--ctl-chrome);
+      }
       .diagViewer .detailsGrid {
         flex: 1 1 auto;
         min-height: 0;
@@ -2663,10 +2671,11 @@ select {
       .formViewer .icon-btn,
       .formViewer .agentBackendTab,
       .formViewer .choiceChip {
-        width: var(--dialog-control-h);
+        width: auto;
+        min-width: 0;
         height: var(--dialog-control-h);
-        min-width: var(--dialog-control-h);
         min-height: var(--dialog-control-h);
+        white-space: nowrap;
       }
       .formViewer .icon-btn::after,
       .formViewer .agentBackendTab::after,
