@@ -2,24 +2,26 @@
 
 ## Current state
 
-`recovery/product-gaps` has no remaining bounded, mechanism-backed, product-visible defect currently justified by source evidence and accepted invariants. Further work should be treated as feature/polish unless a fresh observation contradicts this state.
+Codoxear is on the "paper" design language with a written constitution (AGENTS.md § Design language): radius 0, ink #141111 on white, warm wash #efeee9, inversion for primary/active, mono for data, no alpha colors, no decorative shadows. Viewport branching is restricted to tokens, visibility flips, and layout modes; the five sanctioned component branches are enumerated there.
 
-Evidence basis: fresh scout after coarse-pointer code-copy closure (`/tmp/codoxear-next-slice-after-coarse-code-copy.md`, theorist run `a558de2b-d417-42ce-b9e2-c0f7ffa96c21`) inspected current source/tests/memory at `53768a3` and found prior candidates either closed or non-defects.
+State display follows the authority principle (ARCHITECTURE.md): every displayed state has one declared authoritative source plus an explicit reconciliation rule. The 21-state authority table was produced by audit (2026-08-02); all violations found were fixed.
 
-## Recently closed defect themes
+## Closed themes (2026-07-31 → 2026-08-02)
 
-- Code-block copy buttons: block-local accessible `.code-copy-btn`, exact nearest-code payload, mobile/coarse-pointer touch target coverage, no overflow.
-- Destructive confirmations: destructive app confirmations declare `destructive:true`, focus Cancel initially, trap Tab/Shift-Tab, preserve cancel-before-mutation and no-native-confirm invariants.
-- Copy Conversation count truthfulness: success toast counts formatter-owned copied sections, not raw export rows.
-- Coarse-pointer code-copy targets: `pointer:coarse` + `hover:none` surfaces get 44x44 `.code-copy-btn` and 58px `<pre>` right padding; fine-pointer desktop stays compact.
+- Send-path: one unconditional confirmed-send path; steering on all backends; queue is opt-in.
+- State honesty: typing counts monotonic per turn (max of live deltas and snapshots; cross-chunk `meta_turn_open` windows so steers preserve and queued turns reset); Pi error+retry stays busy; terminal Pi errors close via PTY retry-status probe (`Retrying (n/m)`); Pi run settings (model/effort/provider) authoritative from full-log replay; unattended edits reconciled server → in-flight → pending; no control shown without backing (`pi_thinking_command` capability gating).
+- Control completeness: `/model` and `/thinking` composer pickers (bridge-registered Pi command with clamp readback); interrupt is topbar-only on all viewports (composerStopBtn removed).
+- Design: paper sweep (86 radii zeroed, all alpha colors solidified), chrome 32px + 44px touch hit-slop, sidebar middle-ellipsis model + `·eff` suffix, search bar rewrite (`/` hint), diag view cleanup (no new-like, icon copy buttons).
+- Markdown on `marked`; SSE live transcript with polling fallback; subagent narration rows.
+- Mobile: 15 surfaces structurally verified at 390px; visual audit by image-capable agent with findings fixed (logo, active-card inversion, picker bounds, details mono/scroll, table palette, typing-row presence).
 
-## Remaining non-defects / feature territory
+## Residuals (known, written down)
 
-- Range/partial conversation copy is new functionality; per-message and per-code-block copy already satisfy the existing too-large message’s “copy a smaller range” advice.
-- Code-copy opacity `0.72` on coarse-pointer tablets is visible cosmetic polish, not a target-size/overflow contract violation.
-- `.msg-copy-btn` at 40px on coarse-pointer is not covered by the documented code-copy 44px contract.
-- Non-`appConfirm` Tab traps and secondary-viewer Escape-chain cleanup are defensive/code-quality work; current modal isolation prevents app-control reach and no data-affecting defect is shown.
+- Pi retry detector follows Pi 0.82.1 status-text contract (`Retrying (n/m) in Ns`); a future Pi changing it needs a detector update.
+- Terminal-error busy→idle relies on a 3s quiet window; pathological >3s PTY lag could briefly show idle before retry rows arrive.
+- Full-log replay for run-settings authority may cost I/O on very large Pi logs; a checkpoint optimization must not reintroduce a bounded lossy scan.
+- Slash commands sent before a session's first model turn execute but leave no log evidence until the log is created.
 
 ## Continuation rule
 
-Do not keep mining the same surface for defect slices without a new observation. The next justified roadmap step should be either explicit feature work, release/promotion planning, or a fresh user-reported defect with a falsifiable mechanism.
+The user's remaining open item is aesthetic judgment of the paper language on real hardware. Do not re-min fixed surfaces without new observation. Next justified work: fresh user-reported defects, or feature work from the user's direction.
