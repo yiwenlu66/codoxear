@@ -75,12 +75,11 @@
       if (!codoxearDom || typeof codoxearDom.createElement !== "function") throw new Error("Codoxear DOM helpers failed to load");
       const el = (tag, attrs = {}, children = []) => codoxearDom.createElement(tag, attrs, children, defaultButtonTooltip);
       const codoxearShell = window.CodoxearShell;
-      if (
-        !codoxearShell ||
-        typeof codoxearShell.createShellDOM !== "function" ||
-        typeof codoxearShell.createSidebarController !== "function"
-      )
+      if (!codoxearShell || typeof codoxearShell.createShellDOM !== "function")
         throw new Error("Codoxear shell module failed to load");
+      const codoxearSessions = window.CodoxearSessions;
+      if (!codoxearSessions || typeof codoxearSessions.createSessionsController !== "function")
+        throw new Error("Codoxear sessions controller failed to load");
       const codoxearComposer = window.CodoxearComposer;
       if (!codoxearComposer || typeof codoxearComposer.createComposerController !== "function")
         throw new Error("Codoxear composer module failed to load");
@@ -3090,12 +3089,13 @@
           }
         }
 
-         const sidebarController = codoxearShell.createSidebarController({
+         const sidebarController = codoxearSessions.createSessionsController({
            sessionsWrap,
            sidebarEmptyHint,
            el,
            iconSvg,
            sidebarRenderSignature,
+           sidebarSessionEntries,
            sessionDisplayName,
            sessionLaunchFailed,
            sessionLaunchPending,
@@ -3216,7 +3216,7 @@
           }
           if (selected) syncStagedAttachmentsFromSelectedSession();
           else setStagedAttachments([]);
-          const renderedSidebar = sidebarController.render(sidebarSessionEntries(sessions), {
+          const renderedSidebar = sidebarController.renderSessions(sessions, {
             selectedId: selected,
             swipeActions,
           });
