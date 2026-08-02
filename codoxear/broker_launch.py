@@ -170,6 +170,27 @@ def _read_pi_active_session_marker(marker_path: Path, *, sessions_dir: Path) -> 
     return resolved
 
 
+def _read_pi_active_session_commands(
+    marker_path: Path,
+    *,
+    sessions_dir: Path,
+    process_pid: int,
+) -> list[dict[str, str]] | None:
+    """Read full command registry from a current bridge caps file."""
+    if not isinstance(process_pid, int) or process_pid <= 0:
+        return None
+    try:
+        data = json.loads(_pi_active_session_caps_path(marker_path).read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(data, dict) or data.get("bridgeVersion", 0) < 2 or data.get("pid") != process_pid:
+        return None
+    commands = data.get("commands")
+    if not isinstance(commands, list):
+        return None
+    return [item for item in commands if isinstance(item, dict) and isinstance(item.get("name"), str)]
+
+
 def _read_pi_active_session_marker_capability(
     marker_path: Path,
     *,

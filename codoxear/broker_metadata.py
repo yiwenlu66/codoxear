@@ -76,6 +76,7 @@ def _broker_sidecar_meta(
         "control_protocol_version": 2,
         "control_capabilities": {"sync_send": True, "key_write_errors": True},
         "pi_thinking_command": bool(st.pi_thinking_command),
+        "slash_commands": list(st.slash_commands),
     }
 
 

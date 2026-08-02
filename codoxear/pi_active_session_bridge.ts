@@ -35,6 +35,7 @@ type ExtensionAPI = {
 		},
 	): void;
 	getThinkingLevel(): ThinkingLevel;
+	getCommands(): Array<{ name: string; description?: string }>;
 	setThinkingLevel(level: ThinkingLevel): void;
 };
 
@@ -70,13 +71,18 @@ function writeActiveSession(ctx: ExtensionContext, reason: string): void {
 	}
 }
 
+let activePi;
+
 function writeThinkingCapabilities(): void {
+	const pi = activePi;
 	const markerPath = process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE;
 	if (!markerPath) return;
 	const capsPath = `${markerPath}.caps`;
+	const commands = pi && typeof pi.getCommands === "function" ? pi.getCommands() : undefined;
 	const payload = {
 		bridgeVersion: 2,
 		features: ["effort", "thinking"],
+		commands: Array.isArray(commands) ? commands.map((command) => ({ name: command.name, description: command.description || "" })) : undefined,
 		pid: process.pid,
 		updatedAt: new Date().toISOString(),
 	};
@@ -96,6 +102,7 @@ function writeThinkingCapabilities(): void {
 }
 
 export default function (pi: ExtensionAPI): void {
+	activePi = pi;
 	writeThinkingCapabilities();
 	pi.on("session_start", (_event, ctx) => writeActiveSession(ctx, "session_start"));
 	pi.on("session_switch", (event, ctx) => writeActiveSession(ctx, event.reason));

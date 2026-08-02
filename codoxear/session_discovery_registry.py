@@ -90,6 +90,7 @@ class SessionDiscoveryRegistryCoordinator:
             sync_send_supported=registration.sync_send_supported,
             key_write_errors_supported=registration.key_write_errors_supported,
             pi_thinking_command=bool(registration.pi_thinking_command),
+            slash_commands=list(registration.slash_commands),
             interrupted_idle=registration.interrupted_idle,
             interrupted_idle_log_off=(registration.meta_log_off if registration.interrupted_idle else 0),
         )

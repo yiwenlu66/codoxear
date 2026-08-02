@@ -18,6 +18,8 @@ from typing import Any
 
 from codoxear.agent_backend import get_agent_backend
 from codoxear.agent_backend import normalize_agent_backend
+from codoxear.slash_commands import default_slash_commands
+from codoxear.slash_commands import slash_commands_for_backend
 from codoxear.pi_log import pi_complete_jsonl_offset_before as _pi_complete_jsonl_offset_before
 from codoxear import pty_util as _pty_util
 from codoxear.broker_launch import SHELL_PRE_EXEC_MARKER
@@ -33,6 +35,7 @@ from codoxear.broker_launch import _pi_session_dir_from_args
 from codoxear.broker_launch import _pi_session_dir_name
 from codoxear.broker_launch import _read_pi_active_session_marker
 from codoxear.broker_launch import _read_pi_active_session_marker_capability
+from codoxear.broker_launch import _read_pi_active_session_commands
 from codoxear.broker_launch import _reset_pi_active_session_marker
 from codoxear.broker_launch import _resume_session_id_from_args as _resume_session_id_from_args_impl
 from codoxear.broker_launch import _session_log_path_from_args
@@ -379,12 +382,20 @@ class Broker:
                             sessions_dir=self.sessions_dir,
                             process_pid=root_pid,
                         )
+                        commands = _read_pi_active_session_commands(
+                            self.pi_active_session_marker_path,
+                            sessions_dir=self.sessions_dir,
+                            process_pid=root_pid,
+                        )
                         capability_changed = False
                         with self._lock:
                             st_cap = self.state
-                            if st_cap is not None and st_cap.pi_thinking_command != capability:
-                                st_cap.pi_thinking_command = capability
-                                capability_changed = True
+                            if st_cap is not None:
+                                next_commands = slash_commands_for_backend("pi", commands, pi_bridge_capable=capability)
+                                if st_cap.pi_thinking_command != capability or st_cap.slash_commands != next_commands:
+                                    st_cap.pi_thinking_command = capability
+                                    st_cap.slash_commands = next_commands
+                                    capability_changed = True
                         if capability_changed:
                             self._write_meta()
                         if lp is not None and lp.exists():
@@ -878,6 +889,7 @@ class Broker:
             busy=False,
             resume_session_id=self._resume_session_id,
         )
+        st.slash_commands = default_slash_commands(AGENT_BACKEND)
         declared_log_path = _session_log_path_from_args(args=self.codex_args, agent_backend=AGENT_BACKEND, sessions_dir=self.sessions_dir)
         st.declared_log_path = declared_log_path
         if AGENT_BACKEND in ("pi", "cc"):

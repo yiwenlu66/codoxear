@@ -485,6 +485,7 @@ class State:
     detach_trigger_tail_max: int = 8192
     token: dict[str, Any] | None = None
     pi_thinking_command: bool = False
+    slash_commands: list[dict[str, str]] = field(default_factory=list)
     declared_log_path: Path | None = None
     last_rollout_path: Path | None = None
     last_detected_rollout_path: Path | None = None

@@ -224,6 +224,19 @@
       return commandPickerMatches("effort");
     }
 
+    function slashCommandMatches() {
+      const session = selectedSession();
+      if (!session || String(textarea.value || "")[0] !== "/") return null;
+      const raw = String(textarea.value || "").slice(1);
+      if (/^(?:model|effort|thinking)(?:\s|$)/i.test(raw)) return null;
+      const query = raw.toLowerCase();
+      const entries = Array.isArray(session.slash_commands) ? session.slash_commands : [];
+      const merged = entries.map((entry) => ({ name: String(entry && entry.name || "").replace(/^\//, ""), description: String(entry && entry.description || "") }));
+      for (const kind of ["model", "effort"]) {
+        if (commandSpec(session, kind) && !merged.some((entry) => entry.name.toLowerCase() === kind)) merged.push({ name: kind, description: kind === "model" ? "Select model" : "Set reasoning effort", pickerKind: kind });
+      }
+      return merged.filter((entry) => entry.name && (!query || entry.name.toLowerCase().includes(query) || entry.description.toLowerCase().includes(query)));
+    }
     function unsupportedPiThinkingCommand(raw, session) {
       return Boolean(
         sessionBackend(session) === "pi"
@@ -247,7 +260,57 @@
       textarea.removeAttribute("aria-activedescendant");
     }
 
+    function selectSlashCommand(entry) {
+      const name = String(entry && entry.name || "").trim();
+      if (!name) return;
+      const session = selectedSession();
+      const pickerKind = entry && entry.pickerKind || (name.toLowerCase() === "model" || name.toLowerCase() === "effort" ? name.toLowerCase() : null);
+      if (pickerKind && commandSpec(session, pickerKind)) {
+        textarea.value = `${commandSpec(session, pickerKind).command} `;
+        modelPickerKind = pickerKind;
+        modelPickerFocus = -1;
+        syncModelPicker();
+        autoGrow();
+        textarea.focus();
+        return;
+      }
+      textarea.value = `/${name} `;
+      hideModelPicker();
+      autoGrow();
+      textarea.focus();
+      saveSessionDraft(getSelected());
+    }
+
+    function renderCommandPicker(entries) {
+      if (!modelPicker) return;
+      modelPicker.innerHTML = "";
+      modelPicker.setAttribute("role", "listbox");
+      modelPicker.setAttribute("aria-label", "Available commands");
+      entries.forEach((entry, index) => {
+        const option = document.createElement("button");
+        option.type = "button";
+        option.tabIndex = -1;
+        option.className = "modelPickerOption commandPickerOption";
+        option.setAttribute("role", "option");
+        option.id = `command-picker-option-${index}`;
+        option.textContent = `/${entry.name}${entry.description ? ` — ${entry.description}` : ""}`;
+        option.onpointerdown = (event) => event.preventDefault();
+        option.onclick = () => selectSlashCommand(entry);
+        modelPicker.appendChild(option);
+      });
+      modelPickerOptions = entries;
+      modelPicker.style.display = entries.length ? "block" : "none";
+      modelPickerOpen = entries.length > 0;
+      if (modelPickerOpen) {
+        textarea.setAttribute("role", "combobox");
+        textarea.setAttribute("aria-autocomplete", "list");
+        textarea.setAttribute("aria-controls", modelPicker.id || "modelPicker");
+        textarea.setAttribute("aria-expanded", "true");
+      }
+      syncModelPickerSelection();
+    }
     function selectPickerOption(option) {
+      if (modelPickerKind === "command") { selectSlashCommand(option); return; }
       const choice = String(option || "").trim();
       const session = selectedSession();
       const spec = commandSpec(session, modelPickerKind);
@@ -311,6 +374,13 @@
     }
 
     function syncModelPicker() {
+      const commands = slashCommandMatches();
+      if (commands) {
+        modelPickerKind = "command";
+        modelPickerFocus = Math.min(Math.max(modelPickerFocus, 0), commands.length - 1);
+        renderCommandPicker(commands);
+        return;
+      }
       const models = modelPickerMatches();
       const effortLevels = models ? null : effortPickerMatches();
       const matches = models || effortLevels;

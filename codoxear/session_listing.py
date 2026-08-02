@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -8,6 +8,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 from .session_model import Session
 from .session_store import SessionStore
 from .session_store import public_staged_attachments
+from .slash_commands import slash_commands_for_backend
 from .util import scan_active_pi_subagents
 
 
@@ -84,6 +85,7 @@ class ActiveSessionRowFacts:
     blocked: bool
     snoozed: bool
     pi_thinking_command: bool = False
+    slash_commands: list[dict[str, str]] = field(default_factory=list)
     subagents_running: int = 0
 
 
@@ -223,6 +225,7 @@ def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
         "broker_pid": facts.broker_pid,
         "agent_backend": facts.agent_backend,
         "pi_thinking_command": bool(facts.agent_backend == "pi" and facts.pi_thinking_command),
+        "slash_commands": slash_commands_for_backend(facts.agent_backend, facts.slash_commands, pi_bridge_capable=bool(facts.pi_thinking_command)),
         "owned": facts.owned,
         "transport": facts.transport,
         "cwd": facts.cwd,
@@ -424,6 +427,7 @@ def build_active_session_rows_snapshot(
                     blocked=blocked,
                     snoozed=snoozed,
                     pi_thinking_command=bool(s.pi_thinking_command),
+                    slash_commands=list(s.slash_commands),
                     subagents_running=len(matching_subagents),
                 )
             )

@@ -22,6 +22,7 @@ class State:
     log_off: int = 0
     token: dict[str, Any] | None = None
     pi_thinking_command: bool = False
+    slash_commands: list[dict[str, str]] = field(default_factory=list)
     turn_open: bool = False
     turn_has_completion_candidate: bool = False
     last_turn_activity_ts: float = 0.0

@@ -18,6 +18,7 @@ from .sidecar_metadata import read_metadata as _read_sidecar_metadata
 from .sidecar_metadata import required_int as _metadata_required_int
 from .sidecar_metadata import required_text as _metadata_required_text
 from .sidecar_metadata import start_ts as _metadata_start_ts
+from .sidecar_metadata import slash_commands as _metadata_slash_commands
 from .sidecar_metadata import sync_send_supported as _metadata_sync_send_supported
 
 
@@ -52,7 +53,7 @@ class DiscoveryRegistration:
     key_write_errors_supported: bool
     interrupted_idle: bool
     pi_thinking_command: bool = False
-
+    slash_commands: list[dict[str, str]] = field(default_factory=list)
 
 @dataclass(frozen=True)
 class DiscoveryStaleAction:
@@ -335,6 +336,7 @@ def discover_sessions(
             broker_busy, broker_queue_len = deps.broker_busy_queue_from_state(resp)
             broker_interrupted_idle = deps.broker_interrupted_idle_from_state(resp)
             pi_thinking_command = agent_backend == "pi" and resp.get("pi_thinking_command") is True
+            slash_commands = _metadata_slash_commands(meta) or (resp.get("slash_commands") if isinstance(resp.get("slash_commands"), list) else [])
         except ValueError as e:
             sys.stderr.write(f"error: discover: invalid broker state for {sock}: {e}\n")
             sys.stderr.flush()
@@ -373,6 +375,7 @@ def discover_sessions(
                 key_write_errors_supported=key_write_errors_supported,
                 interrupted_idle=broker_interrupted_idle,
                 pi_thinking_command=bool(pi_thinking_command),
+                slash_commands=list(slash_commands),
             )
         )
 

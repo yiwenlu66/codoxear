@@ -22,6 +22,7 @@ from .agent_backend import normalize_agent_backend
 from .broker_launch import _ensure_pi_bridge_args
 from .broker_launch import _pi_active_session_marker_path
 from .broker_launch import _read_pi_active_session_marker_capability
+from .broker_launch import _read_pi_active_session_commands
 from .broker_launch import _reset_pi_active_session_marker
 from .broker_terminal import _reply_to_terminal_queries
 from .broker_turn_state import _mark_busy_state_idle
@@ -31,6 +32,8 @@ from .control_socket import handle_control_socket_connection as _handle_control_
 from . import pty_util as _pty_util
 from .sessiond_control import SessiondControlDeps
 from .sessiond_control import handle_sessiond_control_connection
+from .slash_commands import default_slash_commands
+from .slash_commands import slash_commands_for_backend
 from .sessiond_state import State
 from .sessiond_state import _busy_value_after_log_batch
 from .sessiond_state import _log_busy_signals
@@ -131,12 +134,17 @@ class Sessiond:
             sessions_dir=self.sessions_dir,
             process_pid=process_pid,
         )
+        commands = _read_pi_active_session_commands(self.pi_active_session_marker_path, sessions_dir=self.sessions_dir, process_pid=process_pid)
+
         changed = False
         with self._lock:
             st = self.state
-            if st is not None and st.pi_thinking_command != capable:
-                st.pi_thinking_command = capable
-                changed = True
+            if st is not None:
+                next_commands = slash_commands_for_backend("pi", commands, pi_bridge_capable=capable)
+                if st.pi_thinking_command != capable or st.slash_commands != next_commands:
+                    st.pi_thinking_command = capable
+                    st.slash_commands = next_commands
+                    changed = True
         if changed:
             self._write_meta()
 
@@ -222,6 +230,7 @@ class Sessiond:
             "control_protocol_version": 2,
             "control_capabilities": {"sync_send": True, "key_write_errors": True},
             "pi_thinking_command": bool(st.pi_thinking_command),
+            "slash_commands": list(st.slash_commands),
         }
         SOCK_META_DIR.mkdir(parents=True, exist_ok=True)
         meta_path = st.sock_path.with_suffix(".json")
@@ -415,6 +424,7 @@ class Sessiond:
             start_ts=float(start_ts),
             busy=False,
         )
+        st.slash_commands = default_slash_commands(AGENT_BACKEND)
         self.state = st
         return st
 

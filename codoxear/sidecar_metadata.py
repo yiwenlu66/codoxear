@@ -96,9 +96,19 @@ def key_write_errors_supported(meta: dict[str, Any]) -> bool:
     return meta.get("control_protocol_version") == 2 and isinstance(caps, dict) and caps.get("key_write_errors") is True
 
 
-def pi_thinking_command(meta: dict[str, Any]) -> bool:
-    """Only an explicit true sidecar capability enables Pi /thinking."""
+def slash_commands(meta: dict[str, Any]) -> list[dict[str, str]]:
+    value = meta.get("slash_commands")
+    if not isinstance(value, list):
+        return []
+    return [
+        {"name": item["name"].strip().lstrip("/").lower(), "description": str(item.get("description") or "").strip()}
+        for item in value
+        if isinstance(item, dict) and isinstance(item.get("name"), str) and item["name"].strip()
+    ]
 
+
+def pi_thinking_command(meta: dict[str, Any]) -> bool:
+    return meta.get("pi_thinking_command") is True
 
 def _clean_optional_text(value: Any) -> str | None:
     if not isinstance(value, str):
