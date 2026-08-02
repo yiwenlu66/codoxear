@@ -20,7 +20,7 @@ codoxear-sessiond = "codoxear.sessiond:main"
 pythonpath = ["."]
 
 [tool.setuptools]
-packages = ["codoxear"]
+packages = ["codoxear", "codoxear.agent_backend"]
 include-package-data = true
 
 [tool.setuptools.package-data]
