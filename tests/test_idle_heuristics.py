@@ -617,6 +617,66 @@ class TestAnalyzeLogChunkBackendRows(unittest.TestCase):
         d_th, d_thinking_tokens, *_rest = _analyze_log_chunk(objs)
         self.assertEqual((d_th, d_thinking_tokens), (2, 124))
 
+    def test_analyze_log_chunk_counts_exact_cc_reasoning_tokens(self) -> None:
+        objs = [
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "thinking", "thinking": "first"}],
+                    "usage": {"output_tokens_details": {"thinking_tokens": 108}},
+                },
+            },
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "thinking", "thinking": "second"}],
+                    "usage": {"output_tokens_details": {"thinking_tokens": 16}},
+                },
+            },
+            {
+                "type": "assistant",
+                "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": "unknown"}]},
+            },
+        ]
+        d_th, d_thinking_tokens, *_rest = _analyze_log_chunk(objs)
+        self.assertEqual((d_th, d_thinking_tokens), (3, 124))
+
+    def test_analyze_log_chunk_differences_codex_cumulative_reasoning_tokens(self) -> None:
+        def token_count(total: int) -> dict[str, object]:
+            return {
+                "type": "event_msg",
+                "payload": {
+                    "type": "token_count",
+                    "info": {
+                        "last_token_usage": {"reasoning_output_tokens": total},
+                        "total_token_usage": {"reasoning_output_tokens": total},
+                    },
+                },
+            }
+
+        _thinking, thinking_tokens, *_rest, turn_state = _analyze_log_chunk(
+            [token_count(130), token_count(160)],
+            initial_codex_reasoning_total=100,
+        )
+        self.assertEqual(thinking_tokens, 60)
+        self.assertEqual(turn_state.codex_reasoning_total, 160)
+
+    def test_codex_cumulative_reasoning_fork_rebaselines_without_negative_delta(self) -> None:
+        def token_count(total: int) -> dict[str, object]:
+            return {
+                "type": "event_msg",
+                "payload": {"type": "token_count", "info": {"total_token_usage": {"reasoning_output_tokens": total}}},
+            }
+
+        _thinking, thinking_tokens, *_rest, turn_state = _analyze_log_chunk(
+            [token_count(160), token_count(90), token_count(110)],
+            initial_codex_reasoning_total=100,
+        )
+        self.assertEqual(thinking_tokens, 80)
+        self.assertEqual(turn_state.codex_reasoning_total, 110)
+
     def test_live_meta_delta_carries_exact_pi_reasoning_tokens(self) -> None:
         _events, meta_delta, _flags, _diag = _extract_chat_events(
             [

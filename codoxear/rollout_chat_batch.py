@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .cc_log import cc_assistant_thinking_count
+from .cc_log import cc_assistant_thinking_tokens
 from .cc_log import cc_assistant_tool_use_count
 from .cc_log import cc_is_turn_end
 from .cc_log import cc_message_role
@@ -61,6 +62,7 @@ def _extract_chat_events(
             thinking_count = cc_assistant_thinking_count(obj)
             if thinking_count > 0:
                 total_thinking += thinking_count
+            total_thinking_tokens += cc_assistant_thinking_tokens(obj)
             if tool_count > 0:
                 # `_single_chat_event` already updates `cc_pending_tool_ids`; do
                 # not call `cc_assistant_pending_tool_use_ids()` again here

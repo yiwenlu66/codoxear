@@ -307,6 +307,10 @@
     return !Boolean(wasTurnOpen) && (Boolean(turnStart) || Boolean(nowBusy));
   }
 
+  function thinkingModeForTokens(thinkingTokens) {
+    return Number.isFinite(Number(thinkingTokens)) && Number(thinkingTokens) > 0 ? "tokens" : "blocks";
+  }
+
   function createTypingRowRuntime(options = {}) {
     const root = requireNode(options.root, "root");
     const bottomSentinel = requireNode(options.bottomSentinel, "bottomSentinel");
@@ -1411,6 +1415,7 @@
     isAgentInternalDeliveryUserEvent,
     hasHumanOriginatedUserEvent,
     startsTypingCountWindow,
+    thinkingModeForTokens,
     createTypingRowRuntime,
     normalizedTranscriptEvents,
     createTranscriptRenderRuntime,

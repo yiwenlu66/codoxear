@@ -20,8 +20,11 @@ def user(content="hello"):
     return {"type": "user", "sessionId": SESSION_ID, "timestamp": "2026-06-11T00:00:00.000Z", "cwd": "/repo", "message": {"role": "user", "content": content}}
 
 
-def assistant(content, stop_reason="end_turn"):
-    return {"type": "assistant", "sessionId": SESSION_ID, "timestamp": "2026-06-11T00:00:01.000Z", "message": {"role": "assistant", "content": content, "stop_reason": stop_reason}}
+def assistant(content, stop_reason="end_turn", usage=None):
+    message = {"role": "assistant", "content": content, "stop_reason": stop_reason}
+    if usage is not None:
+        message["usage"] = usage
+    return {"type": "assistant", "sessionId": SESSION_ID, "timestamp": "2026-06-11T00:00:01.000Z", "message": message}
 
 
 def write_log(path: Path, rows) -> None:
@@ -45,6 +48,22 @@ class TestCcChatAndIdle(unittest.TestCase):
         self.assertEqual(diag["tool_names"], ["Bash"])
         self.assertTrue(flags["turn_start"])
         self.assertFalse(flags["turn_end"])
+
+    def test_cc_live_meta_accumulates_only_recorded_thinking_tokens(self) -> None:
+        _events, meta, _flags, _diag = _extract_chat_events(
+            [
+                assistant(
+                    [{"type": "thinking", "thinking": "first"}],
+                    usage={"output_tokens_details": {"thinking_tokens": 108}},
+                ),
+                assistant(
+                    [{"type": "thinking", "thinking": "second"}],
+                    usage={"output_tokens_details": {"thinking_tokens": 16}},
+                ),
+                assistant([{"type": "thinking", "thinking": "unknown"}]),
+            ]
+        )
+        self.assertEqual(meta["thinking_tokens"], 124)
 
     def test_xml_looking_cc_user_prompt_remains_visible(self) -> None:
         events, _meta, flags, _diag = _extract_chat_events([user("<task>summarize</task>")])

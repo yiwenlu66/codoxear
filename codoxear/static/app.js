@@ -2817,7 +2817,7 @@
           typingRowRuntime.updateSubagentGauge(currentSubagentsRunning);
           renderStatusChip();
           if (!session) return;
-          const thinkingMode = sessionAgentBackend(session) === "pi" ? "tokens" : "blocks";
+          const thinkingMode = codoxearTranscript.thinkingModeForTokens(session.thinking_tokens);
           const stats = {
             thinking: session.thinking,
             thinkingTokens: session.thinking_tokens,
@@ -2846,8 +2846,10 @@
         function applyTypingMetaDelta(data) {
           const delta = data && data.meta_delta;
           if (!delta || typeof delta !== "object") return;
-          const selectedSession = selected ? sessionIndex.get(selected) : null;
-          const thinkingMode = sessionAgentBackend(selectedSession) === "pi" ? "tokens" : "blocks";
+          const currentStats = typingRowRuntime.snapshot().stats || { thinkingTokens: 0 };
+          const thinkingMode = codoxearTranscript.thinkingModeForTokens(
+            Math.max(Number(currentStats.thinkingTokens) || 0, Number(delta.thinking_tokens) || 0),
+          );
           typingRowRuntime.updateTypingStats(
             {
               thinking: delta.thinking,

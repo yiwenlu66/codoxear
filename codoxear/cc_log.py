@@ -420,6 +420,28 @@ def cc_assistant_thinking_count(obj: dict[str, Any]) -> int:
     return sum(1 for part in cc_assistant_content_parts(obj) if part.get("type") == "thinking")
 
 
+def cc_assistant_thinking_tokens(obj: dict[str, Any]) -> int:
+    """Return Claude Code's recorded reasoning-token count for one assistant row.
+
+    ``output_tokens_details.thinking_tokens`` is an optional per-record usage
+    field. Missing or malformed values are unknown rather than estimable, so
+    they contribute zero and leave the UI in block-count mode.
+    """
+    msg = _message(obj, role="assistant")
+    if msg is None:
+        return 0
+    usage = msg.get("usage")
+    if not isinstance(usage, dict):
+        return 0
+    output_details = usage.get("output_tokens_details")
+    if not isinstance(output_details, dict):
+        return 0
+    thinking_tokens = output_details.get("thinking_tokens")
+    if isinstance(thinking_tokens, bool) or not isinstance(thinking_tokens, int) or thinking_tokens < 0:
+        return 0
+    return thinking_tokens
+
+
 def cc_assistant_is_final_turn_end(obj: dict[str, Any]) -> bool:
     if obj.get("type") != "assistant":
         return False

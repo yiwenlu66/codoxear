@@ -18,13 +18,14 @@ def _session(
     tools: int,
     turn_open: bool,
     queue_len: int = 0,
+    agent_backend: str = "pi",
 ) -> Session:
     return Session(
         session_id="sid",
         thread_id="thread",
         broker_pid=1,
         codex_pid=2,
-        agent_backend="pi",
+        agent_backend=agent_backend,
         owned=False,
         start_ts=1.0,
         cwd="/tmp",
@@ -102,6 +103,36 @@ def _pi_subagent_result() -> dict:
             ],
         },
     }
+
+
+def _codex_token_count(total_reasoning_tokens: int) -> dict:
+    return {
+        "type": "event_msg",
+        "payload": {"type": "token_count", "info": {"total_token_usage": {"reasoning_output_tokens": total_reasoning_tokens}}},
+    }
+
+
+def test_codex_cumulative_reasoning_tokens_persist_across_scans_and_reset_by_episode(tmp_path: Path) -> None:
+    log_path = tmp_path / "codex.jsonl"
+    log_path.touch()
+    session = _session(log_path, thinking=0, thinking_tokens=0, tools=0, turn_open=True, agent_backend="codex")
+    session.meta_codex_reasoning_total = 100
+    runtime = _runtime(session)
+
+    _append(log_path, _codex_token_count(130))
+    runtime.update_meta_counters()
+    assert (session.meta_thinking_tokens, session.meta_codex_reasoning_total) == (30, 130)
+
+    # The next snapshot reports the whole rollout total; only its increase is
+    # added, and a queued user turn replaces the public episode counter.
+    _append(
+        log_path,
+        {"type": "event_msg", "payload": {"type": "turn_complete"}},
+        {"type": "event_msg", "payload": {"type": "user_message", "message": "next turn"}},
+        _codex_token_count(150),
+    )
+    runtime.update_meta_counters()
+    assert (session.meta_thinking_tokens, session.meta_codex_reasoning_total) == (20, 150)
 
 
 def test_subagent_delivery_reopens_turn_without_resetting_episode_counters(tmp_path: Path) -> None:

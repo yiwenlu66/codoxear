@@ -62,6 +62,7 @@ class SessionLogRuntimeCoordinator:
             total_system = 0
             turn_open = bool(session.meta_turn_open)
             counters_reset = False
+            codex_reasoning_total = session.meta_codex_reasoning_total
             latest_chat_ts: float | None = None
             latest_token_observation: TokenObservation = TOKEN_NONE
             loops = 0
@@ -78,7 +79,12 @@ class SessionLogRuntimeCoordinator:
                     token_update,
                     chat_events,
                     chunk_turn_state,
-                ) = self.analyze_log_chunk(objs, initial_turn_open=turn_open)
+                ) = self.analyze_log_chunk(
+                    objs,
+                    initial_turn_open=turn_open,
+                    initial_codex_reasoning_total=codex_reasoning_total,
+                )
+                codex_reasoning_total = chunk_turn_state.codex_reasoning_total
                 token_observation = coerce_token_observation(token_update)
                 if chunk_turn_state.counters_reset:
                     # A user row arrived while the scanner's persisted turn was
@@ -131,6 +137,7 @@ class SessionLogRuntimeCoordinator:
                     current.token = latest_token_observation.public_token
                 elif fallback_token is not None:
                     current.token = fallback_token
+                current.meta_codex_reasoning_total = codex_reasoning_total
                 if current.busy:
                     if counters_reset:
                         current.meta_thinking = total_thinking

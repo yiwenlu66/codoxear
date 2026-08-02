@@ -10,6 +10,7 @@ from .cc_log import cc_assistant_is_final_turn_end
 from .cc_log import cc_assistant_pending_tool_use_ids
 from .cc_log import cc_assistant_text
 from .cc_log import cc_assistant_thinking_count
+from .cc_log import cc_assistant_thinking_tokens
 from .cc_log import cc_assistant_tool_use_count
 from .cc_log import cc_current_turn_state_before
 from .cc_log import cc_is_turn_end
@@ -35,6 +36,7 @@ from .rollout_events import _event_ts
 from .rollout_jsonl import _iter_jsonl_objects_reverse
 from .rollout_jsonl import _read_jsonl_tail
 from .rollout_tokens import _extract_token_observation
+from .rollout_tokens import codex_cumulative_reasoning_tokens
 
 
 def _has_assistant_output_text(obj: dict[str, Any]) -> bool:
@@ -60,12 +62,14 @@ def _has_assistant_output_text(obj: dict[str, Any]) -> bool:
 class LogChunkTurnState:
     turn_open: bool
     counters_reset: bool
+    codex_reasoning_total: int | None
 
 
 def _analyze_log_chunk(
     objs: list[dict[str, Any]],
     *,
     initial_turn_open: bool = False,
+    initial_codex_reasoning_total: int | None = None,
 ) -> tuple[int, int, int, int, float | None, Any, list[dict[str, Any]], LogChunkTurnState]:
     d_th = 0
     d_thinking_tokens = 0
@@ -75,6 +79,7 @@ def _analyze_log_chunk(
     token_update = _extract_token_observation(objs)
     chat_events, _meta, _flags, _diag = _extract_chat_events(objs)
     turn_open = bool(initial_turn_open)
+    codex_reasoning_total = initial_codex_reasoning_total if isinstance(initial_codex_reasoning_total, int) and initial_codex_reasoning_total >= 0 else None
     counters_reset = False
 
     def open_on_user_message(*, reset_counters: bool) -> None:
@@ -124,6 +129,7 @@ def _analyze_log_chunk(
                 continue
         if typ == "assistant":
             d_th += cc_assistant_thinking_count(obj)
+            d_thinking_tokens += cc_assistant_thinking_tokens(obj)
             d_tools += cc_assistant_tool_use_count(obj)
             if cc_assistant_is_api_error(obj) or cc_assistant_is_final_turn_end(obj):
                 turn_open = False
@@ -146,6 +152,16 @@ def _analyze_log_chunk(
                 open_on_user_message(reset_counters=True)
             if pt in ("turn_aborted", "thread_rolled_back", "task_complete", "turn_complete"):
                 turn_open = False
+            if pt == "token_count":
+                cumulative_reasoning_tokens = codex_cumulative_reasoning_tokens(obj)
+                if cumulative_reasoning_tokens is not None:
+                    if codex_reasoning_total is not None and cumulative_reasoning_tokens >= codex_reasoning_total:
+                        d_thinking_tokens += cumulative_reasoning_tokens - codex_reasoning_total
+                    # A smaller snapshot is a fork/rollback boundary. Its
+                    # count belongs to a different cumulative history, so do
+                    # not subtract or add it; subsequent snapshots diff from
+                    # this new baseline.
+                    codex_reasoning_total = cumulative_reasoning_tokens
             if pt == "error" and _codex_error_affects_turn_status(p):
                 turn_open = False
         if typ == "response_item":
@@ -177,7 +193,11 @@ def _analyze_log_chunk(
         last_chat_ts,
         token_update,
         chat_events,
-        LogChunkTurnState(turn_open=turn_open, counters_reset=counters_reset),
+        LogChunkTurnState(
+            turn_open=turn_open,
+            counters_reset=counters_reset,
+            codex_reasoning_total=codex_reasoning_total,
+        ),
     )
 
 

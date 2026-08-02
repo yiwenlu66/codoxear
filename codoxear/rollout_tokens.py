@@ -12,6 +12,30 @@ from .token_signal import TokenObservation
 from .token_signal import token_update_observation
 
 
+def codex_cumulative_reasoning_tokens(obj: dict[str, Any]) -> int | None:
+    """Return Codex's cumulative reasoning total from a token-count snapshot.
+
+    Codex repeats cumulative totals in successive snapshots. The caller owns
+    differencing against its prior snapshot; summing these values would count
+    the same reasoning again and would inflate forked rollouts.
+    """
+    if obj.get("type") != "event_msg":
+        return None
+    payload = obj.get("payload")
+    if not isinstance(payload, dict) or payload.get("type") != "token_count":
+        return None
+    info = payload.get("info")
+    if not isinstance(info, dict):
+        return None
+    total_usage = info.get("total_token_usage")
+    if not isinstance(total_usage, dict):
+        return None
+    reasoning_tokens = total_usage.get("reasoning_output_tokens")
+    if isinstance(reasoning_tokens, bool) or not isinstance(reasoning_tokens, int) or reasoning_tokens < 0:
+        return None
+    return reasoning_tokens
+
+
 def _extract_token_observation(objs: list[dict[str, Any]]) -> TokenObservation:
     # Prefer the newest token signal in this batch.  A CC assistant usage row
     # with an unknown model is an explicit clear signal; do not scan behind it

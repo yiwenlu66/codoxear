@@ -101,6 +101,34 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["gaugeCleared"], {"text": "tools: 7 · thinking: 3", "stats": {"thinking": 3, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 7}})
         self.assertEqual(out["hidden"], {"text": "", "stats": {"thinking": 0, "thinkingTokens": 0, "thinkingMode": "blocks", "tools": 0}})
 
+    def test_typing_token_mode_requires_authoritative_positive_tokens(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const vm = require("vm");
+            const ctx = {{ window: {{}} }};
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            const mode = ctx.window.CodoxearTranscript.thinkingModeForTokens;
+            process.stdout.write(JSON.stringify({{
+              pi: mode(1200),
+              codex: mode(48),
+              claude: mode(7),
+              absent: mode(undefined),
+              zero: mode(0),
+              malformed: mode("unknown"),
+            }}));
+            """
+        )
+        self.assertEqual(_run_node(js), {
+            "pi": "tokens",
+            "codex": "tokens",
+            "claude": "tokens",
+            "absent": "blocks",
+            "zero": "blocks",
+            "malformed": "blocks",
+        })
+
     def test_idle_subagent_activity_row_is_static_and_replaced(self) -> None:
         source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(

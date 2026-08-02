@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 from codoxear.cc_log import cc_assistant_is_final_turn_end
 from codoxear.cc_log import cc_assistant_text
 from codoxear.cc_log import cc_assistant_thinking_count
+from codoxear.cc_log import cc_assistant_thinking_tokens
 from codoxear.cc_log import cc_assistant_tool_use_count
 from codoxear.cc_log import cc_is_turn_end
 from codoxear.cc_log import cc_message_role
@@ -73,6 +74,24 @@ class TestCcLog(unittest.TestCase):
         self.assertEqual(cc_assistant_thinking_count(obj), 1)
         self.assertEqual(cc_assistant_tool_use_count(obj), 1)
         self.assertFalse(cc_assistant_is_final_turn_end(obj))
+
+    def test_assistant_thinking_tokens_reads_only_recorded_usage(self) -> None:
+        self.assertEqual(
+            cc_assistant_thinking_tokens(
+                cc_assistant(
+                    [{"type": "thinking", "thinking": "hmm"}],
+                    usage={"output_tokens_details": {"thinking_tokens": 271}},
+                )
+            ),
+            271,
+        )
+        self.assertEqual(cc_assistant_thinking_tokens(cc_assistant([{"type": "thinking", "thinking": "hmm"}])), 0)
+        self.assertEqual(
+            cc_assistant_thinking_tokens(
+                cc_assistant([{"type": "thinking", "thinking": "hmm"}], usage={"output_tokens_details": {"thinking_tokens": -1}})
+            ),
+            0,
+        )
 
     def test_final_turn_end_requires_end_turn_without_tool_use(self) -> None:
         self.assertTrue(cc_assistant_is_final_turn_end(cc_assistant([{"type": "text", "text": "done"}], stop_reason="end_turn")))

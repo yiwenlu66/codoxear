@@ -26,6 +26,10 @@ class Session:
     last_chat_history_scanned: bool = False
     meta_thinking: int = 0
     meta_thinking_tokens: int = 0
+    # Codex token-count rows repeat a cumulative reasoning total. Keep the
+    # last total separately from the visible per-episode counter so a new
+    # snapshot can be safely differenced (including fork re-baselining).
+    meta_codex_reasoning_total: int | None = None
     meta_tools: int = 0
     meta_system: int = 0
     # Persistent counting-window state for the incremental log scanner. This is
