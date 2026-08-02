@@ -65,9 +65,11 @@ def test_apply_history_backfill_ignores_stale_binding_or_already_scanned_session
     assert apply_history_backfill(session, expected_log_path=Path("/tmp/log.jsonl"), conversation_ts=20.0) is None
 
 
-def test_apply_run_settings_backfill_fills_only_missing_fields() -> None:
+def test_apply_run_settings_backfill_prefers_log_evidence_and_preserves_missing_evidence() -> None:
     session = _session()
-    session.model = "existing-model"
+    session.model_provider = "launch-provider"
+    session.model = "launch-model"
+    session.reasoning_effort = "max"
     session.preferred_auth_method = "api-key"
 
     update = apply_run_settings_backfill(
@@ -81,10 +83,23 @@ def test_apply_run_settings_backfill_fills_only_missing_fields() -> None:
     assert update is not None
     assert update.model_provider == "provider"
     assert update.preferred_auth_method == "api-key"
-    assert update.model == "existing-model"
+    assert update.model == "log-model"
     assert update.reasoning_effort == "high"
     assert session.model_provider == "provider"
-    assert session.model == "existing-model"
+    assert session.model == "log-model"
+    assert session.reasoning_effort == "high"
+
+    missing_evidence_update = apply_run_settings_backfill(
+        session,
+        expected_log_path=Path("/tmp/log.jsonl"),
+        log_provider=None,
+        log_model=None,
+        log_effort=None,
+    )
+
+    assert missing_evidence_update is not None
+    assert session.model_provider == "provider"
+    assert session.model == "log-model"
     assert session.reasoning_effort == "high"
 
 

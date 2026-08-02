@@ -521,13 +521,18 @@ class CodexBackend(AgentBackend):
         model_provider = clean_optional_text(meta.get("model_provider")) if meta is not None else None
         model = clean_optional_text(meta.get("model")) if meta is not None else None
         reasoning_effort = display_reasoning_effort(meta.get("reasoning_effort")) if meta is not None else None
-        if model is None or reasoning_effort is None:
-            payload = find_latest_turn_context(log_path, max_scan_bytes=8 * 1024 * 1024)
-            if isinstance(payload, dict):
-                if model is None:
-                    model = clean_optional_text(payload.get("model"))
-                if reasoning_effort is None:
-                    reasoning_effort = display_reasoning_effort(payload.get("reasoning_effort") or payload.get("effort"))
+        payload = find_latest_turn_context(log_path, max_scan_bytes=8 * 1024 * 1024)
+        if isinstance(payload, dict):
+            # A turn context records the settings active for that turn, so its
+            # model and effort are newer authority than the launch/session
+            # metadata that opened the log. Missing fields retain that
+            # launch-time baseline.
+            context_model = clean_optional_text(payload.get("model"))
+            context_effort = display_reasoning_effort(payload.get("reasoning_effort") or payload.get("effort"))
+            if context_model is not None:
+                model = context_model
+            if context_effort is not None:
+                reasoning_effort = context_effort
         return model_provider, model, reasoning_effort
 
     def build_launch_args(

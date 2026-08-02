@@ -612,4 +612,7 @@ def read_cc_run_settings(path: Path, *, max_scan_bytes: int = 8 * 1024 * 1024) -
                     model = raw_model
     except FileNotFoundError:
         return None, model, None
+    # Claude Code logs expose the model on assistant messages but do not
+    # record effort. The third value is intentionally ``None`` so launch
+    # metadata remains the sole effort authority.
     return None, model, None

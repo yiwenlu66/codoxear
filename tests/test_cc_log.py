@@ -231,7 +231,11 @@ class TestCcLog(unittest.TestCase):
     def test_read_session_header_and_run_settings(self) -> None:
         with TemporaryDirectory() as td:
             path = Path(td) / "session.jsonl"
-            rows = [cc_user("hello"), cc_assistant([{"type": "text", "text": "done"}], model="claude-sonnet-4-5")]
+            rows = [
+                cc_user("hello"),
+                cc_assistant([{"type": "text", "text": "first"}], model="claude-haiku-4-5"),
+                cc_assistant([{"type": "text", "text": "done"}], model="claude-sonnet-4-5"),
+            ]
             path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
             header = read_cc_session_header(path)
             self.assertEqual(header, {"id": SESSION_ID, "sessionId": SESSION_ID, "cwd": "/repo", "timestamp": "2026-06-11T00:00:00.000Z"})

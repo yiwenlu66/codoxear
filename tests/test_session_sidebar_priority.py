@@ -825,6 +825,65 @@ class TestSessionSidebarPriority(unittest.TestCase):
             self.assertEqual(rows[0]["model"], "gpt-5.4")
             self.assertEqual(rows[0]["reasoning_effort"], "high")
 
+    def test_list_sessions_replays_codex_turn_context_over_launch_metadata(self) -> None:
+        with TemporaryDirectory() as td:
+            store = _store(Path(td))
+            lock = threading.Lock()
+            now = time.time()
+            log_path = Path(td) / "rollout-2026-03-17T00-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
+            log_path.write_text(
+                "\n".join(
+                    [
+                        '{"type":"session_meta","payload":{"id":"current","cwd":"/tmp/current","model":"launch-model","reasoning_effort":"low"}}',
+                        '{"type":"turn_context","payload":{"model":"turn-model","reasoning_effort":"high"}}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            for session_id in ("current", "replayed"):
+                current = _session(sid=session_id, start_ts=now - 100, last_chat_ts=now - 5)
+                current.log_path = log_path
+                current.model = "launch-model"
+                current.reasoning_effort = "low"
+                coordinator = _list_coordinator(store=store, sessions={session_id: current}, lock=lock)
+
+                rows = coordinator.list_sessions()
+
+                self.assertEqual(rows[0]["model"], "turn-model")
+                self.assertEqual(rows[0]["reasoning_effort"], "high")
+
+    def test_list_sessions_replays_cc_assistant_model_over_launch_metadata(self) -> None:
+        with TemporaryDirectory() as td:
+            store = _store(Path(td))
+            lock = threading.Lock()
+            now = time.time()
+            log_path = Path(td) / "cc-session.jsonl"
+            log_path.write_text(
+                "\n".join(
+                    [
+                        '{"type":"assistant","message":{"role":"assistant","model":"launch-model","content":[{"type":"text","text":"first"}]}}',
+                        '{"type":"assistant","message":{"role":"assistant","model":"observed-model","content":[{"type":"text","text":"latest"}]}}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            for session_id in ("current", "replayed"):
+                current = _session(sid=session_id, start_ts=now - 100, last_chat_ts=now - 5)
+                current.agent_backend = "cc"
+                current.log_path = log_path
+                current.model = "launch-model"
+                current.reasoning_effort = "max"
+                coordinator = _list_coordinator(store=store, sessions={session_id: current}, lock=lock)
+
+                rows = coordinator.list_sessions()
+
+                self.assertEqual(rows[0]["model"], "observed-model")
+                self.assertEqual(rows[0]["reasoning_effort"], "max")
+
 
 if __name__ == "__main__":
     unittest.main()

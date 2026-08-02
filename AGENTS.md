@@ -119,10 +119,33 @@ The sanctioned component branches are:
   - Broker (Pi): `CODEX_WEB_AGENT_BACKEND=pi codoxear-broker -- <pi args>`
   - Broker (Claude Code): `CODEX_WEB_AGENT_BACKEND=cc codoxear-broker -- <claude args>`
 
+## Deployment: committed snapshot only
+
+The deployed server must never import Python or static assets from `/home/yiwen/codoxear`, because concurrent edits in that checkout are development state, not release state. Deploy a reviewed commit with:
+
+```sh
+scripts/deploy.sh <commit-ish>
+```
+
+The script resolves the commit, creates or updates the detached worktree at `~/.local/share/codoxear/deploy`, verifies it reached that exact commit, runs `pipx install --force` against the snapshot, rewrites only the service's `WorkingDirectory` and `ExecStart`, then reloads and restarts **only** `codoxear-server.service`. It preserves the existing unit's `Environment=` and `EnvironmentFile=` settings, so the password/config remains external to the code snapshot and all runtime data remains under `~/.local/share/codoxear/` (`socks/`, uploads, queues, session stores, and so on).
+
+The script refuses to reinstall or restart when the snapshot path is not this repository's clean worktree or the worktree cannot be updated to the requested commit. Its health boundary is `/` → `200` and unauthenticated `/api/sessions` → `401`.
+
+To roll back, deploy the previous release commit:
+
+```sh
+scripts/deploy.sh <previous-commit>
+```
+
+That repoints the same snapshot worktree and service at the previous committed code; it does not move or delete live brokers, backend CLIs, sockets, uploads, or session state. Do not restart via process matching or manually point the service back at the editable checkout.
+
 ## Ops notes
 
 - Restarting `codoxear.server` does **not** lose session content. Sessions live in backend log files on disk; the server only reads them.
-- To avoid losing live sessions, **only** stop the server process. Do **not** kill `codoxear-broker` or the underlying backend CLI process.
-- Safe restart example (server only):
-  - `pgrep -f "python3 -m codoxear.server" | xargs -r kill`
-  - `CODEX_WEB_PASSWORD=... CODEX_WEB_PORT=13780 CODEX_WEB_HOST=0.0.0.0 nohup python3 -m codoxear.server >/tmp/codoxear-13780.log 2>&1 &`
+- To avoid losing live sessions, **only** restart the server service. Do **not** kill `codoxear-broker` or the underlying backend CLI process.
+- The supported service operation is `systemctl --user restart codoxear-server.service`; deploys must use `scripts/deploy.sh <commit-ish>` above.`
+
+## Testing policy (absolute)
+
+- **No source-string tests, ever.** Do not assert on raw file contents (`read_text` + `assertIn`, regex over source, checking that code contains a literal). Tests verify BEHAVIOR: execute the code (VM harnesses for JS, direct calls for Python) and assert outcomes; for CSS, parse the stylesheet and assert computed rules per selector — never substring matching. If a contract has no behavioral check feasible, document it in AGENTS.md instead of a test.
+- A guardrail test forbids the pattern; do not add exceptions.

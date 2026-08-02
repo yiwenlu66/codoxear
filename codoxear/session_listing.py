@@ -323,7 +323,10 @@ def build_active_session_rows_snapshot(
         files, file_history_dirty = store.file_history_for_keys(f"sid:{s.session_id}", [s.session_id])
         files_dirty = files_dirty or file_history_dirty
         log_exists = bool(s.log_path is not None and s.log_path.exists())
-        needs_run_settings = bool(log_exists and s.log_path is not None and (s.model_provider is None or s.model is None or s.reasoning_effort is None))
+        # Scan every bound backend log: newer backend evidence must be able to
+        # replace populated launch metadata after a model/effort change and
+        # after a server reconnect/replay.
+        needs_run_settings = bool(log_exists and s.log_path is not None)
         needs_history_scan = bool(s.last_chat_ts is None and log_exists and s.log_path is not None and (not s.last_chat_history_scanned))
         updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
         recent_cwd_dirty = recent_cwd_dirty or store.note_recent_cwd(s.cwd, updated_ts)

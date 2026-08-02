@@ -294,11 +294,14 @@ def apply_run_settings_backfill(
 ) -> RunSettingsUpdate | None:
     if session is None or session.log_path != expected_log_path:
         return None
-    if session.model_provider is None:
+    # Log evidence is authoritative over launch metadata per field. A missing
+    # log field is not evidence of a reset, so it leaves the launch baseline
+    # intact.
+    if log_provider is not None:
         session.model_provider = log_provider
-    if session.model is None:
+    if log_model is not None:
         session.model = log_model
-    if session.reasoning_effort is None:
+    if log_effort is not None:
         session.reasoning_effort = log_effort
     return RunSettingsUpdate(
         model_provider=session.model_provider,

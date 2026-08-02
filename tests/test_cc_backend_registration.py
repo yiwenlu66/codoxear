@@ -42,7 +42,7 @@ class TestCcBackendRegistration(unittest.TestCase):
             Path("/tmp/codex.jsonl"),
             read_pi_run_settings=lambda path: calls.append(("pi", path)) or ("pi-provider", "pi-model", "medium"),
             read_cc_run_settings=lambda path: calls.append(("cc", path)) or (None, "cc-model", "high"),
-            read_session_meta_or_none_func=lambda path, **kwargs: {"model_provider": " openai ", "model": "", "reasoning_effort": ""},
+            read_session_meta_or_none_func=lambda path, **kwargs: {"model_provider": " openai ", "model": " launch-model ", "reasoning_effort": "LOW"},
             clean_optional_text=clean,
             display_reasoning_effort=effort,
             find_latest_turn_context=lambda path, **kwargs: {"model": " gpt-5.4 ", "effort": "HIGH"},
