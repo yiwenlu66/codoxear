@@ -374,10 +374,11 @@ class Broker:
                             self.pi_active_session_marker_path,
                             sessions_dir=self.sessions_dir,
                         )
-                        capability = bool(lp is not None and _read_pi_active_session_marker_capability(
+                        capability = _read_pi_active_session_marker_capability(
                             self.pi_active_session_marker_path,
                             sessions_dir=self.sessions_dir,
-                        ))
+                            process_pid=root_pid,
+                        )
                         capability_changed = False
                         with self._lock:
                             st_cap = self.state

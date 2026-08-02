@@ -47,7 +47,7 @@ class TestComposerModelPicker(unittest.TestCase):
             const nodes = Array.from({{ length: 10 }}, () => new Node());
             const [form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop, nowBtn, laterBtn, cancelBtn, modelPicker] = nodes;
             form.requestSubmit = () => {{ state.formSubmits += 1; }};
-            const state = {{ backend: "pi", thinkingCapability: true, sent: [], sending: false, formSubmits: 0 }};
+            const state = {{ backend: "pi", thinkingCapability: true, sent: [], toasts: [], sending: false, formSubmits: 0 }};
             const noop = () => {{}};
             const controller = ctx.window.CodoxearComposer.createComposerController({{
               form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
@@ -76,7 +76,7 @@ class TestComposerModelPicker(unittest.TestCase):
               syncAttachButtonState: noop, syncQueueSubmitState: noop,
               syncRecoveryUiForSession: noop, confirmAction: async () => false,
               api: async (_path, options) => {{ state.sent.push(options.body.text); return {{}}; }},
-              setToast: noop, handleAppAuthLoss: noop, refreshSessions: async () => [],
+              setToast: (message) => {{ state.toasts.push(message); }}, handleAppAuthLoss: noop, refreshSessions: async () => [],
               setPollFastUntilMs: noop, kickPoll: noop, isTranscriptRenewalCommand: () => false,
               nextLocalEchoId: () => "local", renderedAtLiveTail: () => true,
               clearTranscriptDom: noop, clearRenderedTranscriptRange: noop, setOlderState: noop,
@@ -137,6 +137,18 @@ class TestComposerModelPicker(unittest.TestCase):
             textarea.value = "/thinking";
             textarea.dispatch("input");
             if (modelPicker.style.display !== "block") throw new Error("capability refresh did not restore thinking picker");
+            state.thinkingCapability = false;
+            textarea.value = "/thinking high";
+            await form.onsubmit({{ preventDefault() {{}} }});
+            if (state.sent.length !== 2) throw new Error("incapable Pi /thinking was sent");
+            if (state.toasts.at(-1) !== "this session runs an older bridge — send /reload to enable /thinking") throw new Error("incapable Pi /thinking did not explain how to enable it");
+            state.thinkingCapability = true;
+            textarea.value = "/thinking high";
+            await form.onsubmit({{ preventDefault() {{}} }});
+            if (state.sent[2] !== "/thinking high") throw new Error("capable Pi /thinking did not pass through");
+            textarea.value = "ordinary text";
+            await form.onsubmit({{ preventDefault() {{}} }});
+            if (state.sent[3] !== "ordinary text") throw new Error("non-/thinking message behavior changed");
             state.backend = "codex";
             textarea.value = "/model";
             textarea.dispatch("input");
@@ -147,7 +159,7 @@ class TestComposerModelPicker(unittest.TestCase):
         result = subprocess.run(["node", "-e", script], check=False, capture_output=True, text=True)
         if result.returncode:
             raise AssertionError(result.stderr or result.stdout)
-        self.assertEqual(json.loads(result.stdout), {"sent": ["/model openai/gpt-5", "/thinking low"], "selected": "none"})
+        self.assertEqual(json.loads(result.stdout), {"sent": ["/model openai/gpt-5", "/thinking low", "/thinking high", "ordinary text"], "selected": "none"})
 
 
 if __name__ == "__main__":

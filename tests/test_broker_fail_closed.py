@@ -307,20 +307,36 @@ read -r -k 1 option
 
             self.assertEqual(_read_pi_active_session_marker(marker, sessions_dir=sessions_dir), log_path.resolve())
 
-    def test_pi_active_session_marker_capability_is_fail_closed_for_legacy_and_malformed(self) -> None:
+    def test_pi_thinking_capability_accepts_live_marker_or_caps_and_rejects_stale_processes(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             sessions_dir = root / "sessions"
             sessions_dir.mkdir()
             log_path = sessions_dir / "session.jsonl"
             marker = root / "marker.json"
-            for payload, expected in (
-                ({"version": 1, "sessionFile": str(log_path)}, False),
-                ({"version": 1, "bridgeVersion": 2, "sessionFile": str(log_path)}, True),
-                ({"version": 1, "bridgeVersion": 2, "sessionFile": str(root / "outside.jsonl")}, False),
-            ):
-                marker.write_text(json.dumps(payload) + "\n", encoding="utf-8")
-                self.assertEqual(_read_pi_active_session_marker_capability(marker, sessions_dir=sessions_dir), expected)
+            process_pid = 4321
+            marker_payload = {
+                "version": 1,
+                "bridgeVersion": 2,
+                "sessionFile": str(log_path),
+                "pid": process_pid,
+            }
+            caps_payload = {"bridgeVersion": 3, "features": ["thinking"], "pid": process_pid}
+
+            marker.write_text(json.dumps(marker_payload) + "\n", encoding="utf-8")
+            self.assertTrue(_read_pi_active_session_marker_capability(marker, sessions_dir=sessions_dir, process_pid=process_pid))
+
+            marker.unlink()
+            marker.with_name(f"{marker.name}.caps").write_text(json.dumps(caps_payload) + "\n", encoding="utf-8")
+            self.assertTrue(_read_pi_active_session_marker_capability(marker, sessions_dir=sessions_dir, process_pid=process_pid))
+
+            marker.with_name(f"{marker.name}.caps").write_text(
+                json.dumps({**caps_payload, "pid": process_pid + 1}) + "\n", encoding="utf-8"
+            )
+            self.assertFalse(_read_pi_active_session_marker_capability(marker, sessions_dir=sessions_dir, process_pid=process_pid))
+
+            marker.with_name(f"{marker.name}.caps").unlink()
+            self.assertFalse(_read_pi_active_session_marker_capability(marker, sessions_dir=sessions_dir, process_pid=process_pid))
 
     def test_pi_discover_log_watcher_switches_to_marker_log_while_current_exists(self) -> None:
         fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)

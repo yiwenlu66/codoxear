@@ -132,13 +132,18 @@ def _ensure_pi_bridge_args(*, args: list[str], marker_path: Path, agent_backend:
     return out
 
 
+def _pi_active_session_caps_path(marker_path: Path) -> Path:
+    return Path(f"{marker_path}.caps")
+
+
 def _reset_pi_active_session_marker(marker_path: Path) -> None:
-    try:
-        marker_path.unlink()
-    except FileNotFoundError:
-        return
-    except Exception:
-        return
+    for path in (marker_path, _pi_active_session_caps_path(marker_path)):
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            continue
+        except Exception:
+            continue
 
 
 def _read_pi_active_session_marker(marker_path: Path, *, sessions_dir: Path) -> Path | None:
@@ -165,32 +170,59 @@ def _read_pi_active_session_marker(marker_path: Path, *, sessions_dir: Path) -> 
     return resolved
 
 
-def _read_pi_active_session_marker_capability(marker_path: Path, *, sessions_dir: Path) -> bool:
-    """Return the thinking-command capability from a valid current marker.
+def _read_pi_active_session_marker_capability(
+    marker_path: Path,
+    *,
+    sessions_dir: Path,
+    process_pid: int,
+) -> bool:
+    """Return the Pi thinking capability advertised by the live bridge process.
 
-    Marker files written by older bridge extensions intentionally lack
-    ``bridgeVersion`` and therefore remain incapable. Parsing is fail-closed:
-    malformed, missing, or out-of-tree markers never enable the picker.
+    A session marker proves the feature only when it is valid for this Pi
+    session and was written by the current Pi process. A companion caps file
+    lets an extension reload advertise the feature without a session event.
+    Parsing remains fail-closed: malformed, stale, and foreign files do not
+    enable the picker.
     """
-    try:
-        data = json.loads(marker_path.read_text(encoding="utf-8"))
-    except Exception:
+    if not isinstance(process_pid, int) or process_pid <= 0:
         return False
-    if not isinstance(data, dict) or data.get("version") != 1 or data.get("bridgeVersion") != 2:
+
+    def read_json(path: Path) -> dict[str, object] | None:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+        return data if isinstance(data, dict) else None
+
+    def has_current_bridge(data: dict[str, object]) -> bool:
+        return (
+            isinstance(data.get("bridgeVersion"), int)
+            and not isinstance(data.get("bridgeVersion"), bool)
+            and data["bridgeVersion"] >= 2
+            and data.get("pid") == process_pid
+        )
+
+    marker = read_json(marker_path)
+    if marker is not None and marker.get("version") == 1 and has_current_bridge(marker):
+        raw = marker.get("sessionFile")
+        if isinstance(raw, str) and raw.strip() and raw.endswith(".jsonl"):
+            path = Path(raw).expanduser()
+            try:
+                resolved = path.resolve()
+            except Exception:
+                resolved = path
+            try:
+                resolved.relative_to(sessions_dir.resolve())
+            except Exception:
+                pass
+            else:
+                return True
+
+    caps = read_json(_pi_active_session_caps_path(marker_path))
+    if caps is None or not has_current_bridge(caps):
         return False
-    raw = data.get("sessionFile")
-    if not isinstance(raw, str) or not raw.strip() or not raw.endswith(".jsonl"):
-        return False
-    path = Path(raw).expanduser()
-    try:
-        resolved = path.resolve()
-    except Exception:
-        resolved = path
-    try:
-        resolved.relative_to(sessions_dir.resolve())
-    except Exception:
-        return False
-    return True
+    features = caps.get("features")
+    return isinstance(features, list) and "thinking" in features
 
 
 def _ensure_pi_session_arg(*, args: list[str], cwd: str, sessions_dir: Path, agent_backend: str) -> list[str]:

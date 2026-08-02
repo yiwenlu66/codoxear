@@ -70,7 +70,33 @@ function writeActiveSession(ctx: ExtensionContext, reason: string): void {
 	}
 }
 
+function writeThinkingCapabilities(): void {
+	const markerPath = process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE;
+	if (!markerPath) return;
+	const capsPath = `${markerPath}.caps`;
+	const payload = {
+		bridgeVersion: 2,
+		features: ["thinking"],
+		pid: process.pid,
+		updatedAt: new Date().toISOString(),
+	};
+	try {
+		fs.mkdirSync(path.dirname(capsPath), { recursive: true });
+		const tmp = `${capsPath}.${process.pid}.tmp`;
+		fs.writeFileSync(tmp, `${JSON.stringify(payload)}\n`, { mode: 0o600 });
+		fs.renameSync(tmp, capsPath);
+		try {
+			fs.chmodSync(capsPath, 0o600);
+		} catch {
+			// Best effort; write mode already restricts newly created files.
+		}
+	} catch {
+		// Do not let Codoxear bookkeeping affect Pi session operation.
+	}
+}
+
 export default function (pi: ExtensionAPI): void {
+	writeThinkingCapabilities();
 	pi.on("session_start", (_event, ctx) => writeActiveSession(ctx, "session_start"));
 	pi.on("session_switch", (event, ctx) => writeActiveSession(ctx, event.reason));
 	pi.on("session_fork", (_event, ctx) => writeActiveSession(ctx, "fork"));

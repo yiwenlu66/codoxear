@@ -123,9 +123,13 @@ class Sessiond:
     def _refresh_pi_thinking_capability(self) -> None:
         if AGENT_BACKEND != "pi":
             return
+        with self._lock:
+            st = self.state
+            process_pid = st.codex_pid if st is not None else 0
         capable = _read_pi_active_session_marker_capability(
             self.pi_active_session_marker_path,
             sessions_dir=self.sessions_dir,
+            process_pid=process_pid,
         )
         changed = False
         with self._lock:

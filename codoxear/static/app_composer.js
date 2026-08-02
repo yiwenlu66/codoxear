@@ -155,6 +155,15 @@
       return piModelIds().filter((id) => !query || id.toLowerCase().startsWith(query) || id.toLowerCase().includes(query));
     }
 
+    function unsupportedPiThinkingCommand(raw, session) {
+      return Boolean(
+        session
+        && String(session.agent_backend || "").trim().toLowerCase() === "pi"
+        && session.pi_thinking_command !== true
+        && /^\/thinking(?:\s|$)/i.test(String(raw || "")),
+      );
+    }
+
     function thinkingPickerMatches() {
       const match = String(textarea.value || "").match(/^\/thinking(?:\s+(.*))?$/i);
       const session = piSession();
@@ -550,6 +559,11 @@
       if (sessionLaunchFailed(getSessionInfo(sessionId))) { setToast("failed session cannot receive messages"); return; }
       const raw = textarea.value;
       if (!raw || !raw.trim() || getSending()) return;
+      const sessionInfo = getSessionInfo(sessionId);
+      if (unsupportedPiThinkingCommand(raw, sessionInfo)) {
+        setToast("this session runs an older bridge — send /reload to enable /thinking");
+        return;
+      }
       if (getCurrentRunning()) {
         const focused = activeElement();
         showSendChoice(raw, { opener: isHTMLElement(focused) ? focused : textarea });
