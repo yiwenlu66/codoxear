@@ -850,6 +850,9 @@
       .status-chip {
         display: inline-flex;
         align-items: center;
+        /* Chips hug their content; the touch button min-height floor must
+           not inflate them above the row's buttons. */
+        min-height: 0;
         padding: 4px 10px;
         border-radius: 0;
         border: 1px solid var(--border);
