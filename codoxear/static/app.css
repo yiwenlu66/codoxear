@@ -3297,7 +3297,7 @@ select {
 
       @media (max-width: 520px) {
         :root {
-          --sidebar-w: min(92vw, 360px);
+          --sidebar-w: 100vw;
         }
         .pill {
           flex: 1 1 auto;
@@ -3338,6 +3338,7 @@ select {
 
         .fileViewer {
           width: 100vw;
+          height: auto;
           max-height: none;
           left: 0;
           right: 0;
