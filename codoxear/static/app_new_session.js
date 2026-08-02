@@ -132,6 +132,32 @@
     let cwdSuggestLoadSeq = 0;
     let cwdSuggestTimer = null;
 
+    const MODEL_PROVIDER_SEPARATOR = " · ";
+
+    function abbreviatedNewSessionProvider(providerChoice) {
+      const cleanProvider = String(providerChoice || "").trim();
+      if (cleanProvider.length <= 14) return cleanProvider;
+      return `${cleanProvider.slice(0, 2)}…${cleanProvider.slice(-2)}`;
+    }
+
+    function formatNewSessionProviderModelDisplay(model, providerChoice = "") {
+      const cleanModel = String(model || "").trim() || "default";
+      const cleanProvider = abbreviatedNewSessionProvider(providerChoice);
+      return cleanProvider ? `${cleanModel}${MODEL_PROVIDER_SEPARATOR}${cleanProvider}` : cleanModel;
+    }
+
+    function displayedNewSessionProviderModel(value, { choices, allowCustomProvider }) {
+      const raw = String(value || "").trim();
+      const separator = raw.lastIndexOf(MODEL_PROVIDER_SEPARATOR);
+      if (separator < 1) return null;
+      const model = raw.slice(0, separator).trim();
+      const providerDisplay = raw.slice(separator + MODEL_PROVIDER_SEPARATOR.length).trim();
+      const candidates = choices.concat(provider()).filter((candidate, index, values) => candidate && values.indexOf(candidate) === index);
+      const providerChoice = candidates.find((candidate) => candidate === providerDisplay || abbreviatedNewSessionProvider(candidate) === providerDisplay) || "";
+      if (!model || !providerChoice || (!choices.includes(providerChoice) && !allowCustomProvider)) return null;
+      return { model, providerChoice };
+    }
+
     function newSessionProviderChoices() {
       return codoxearLaunch.providerChoicesForBackend(backend(), defaultsSource());
     }
@@ -154,10 +180,7 @@
     }
 
     function newSessionProviderModelDisplay(model, providerChoice = "") {
-      return codoxearLaunch.providerModelDisplay(model, providerChoice, {
-        hasProviderChoices: newSessionHasProviderChoices(),
-        allowCustomProvider: newSessionAllowsCustomProvider(),
-      });
+      return formatNewSessionProviderModelDisplay(model, providerChoice);
     }
 
     function newSessionAllowsCustomProvider() {
@@ -176,7 +199,11 @@
       let providerError = "";
       const providerAbsent = Boolean(launchPresetProviderAbsent() && raw && raw === literalModelInputValue());
       if (providerAbsent) providerChoice = "";
-      if (hasProviders && raw.includes("/") && raw !== literalModelInputValue()) {
+      const display = displayedNewSessionProviderModel(raw, { choices, allowCustomProvider });
+      if (display) {
+        providerChoice = display.providerChoice;
+        model = display.model;
+      } else if (hasProviders && raw.includes("/") && raw !== literalModelInputValue()) {
         const slash = raw.indexOf("/");
         const typedProvider = raw.slice(0, slash).trim();
         const typedModel = raw.slice(slash + 1).trim();
@@ -315,7 +342,12 @@
     }
 
     function filteredNewSessionModelOptions() {
-      const query = String(modelInput.value || "").trim().toLowerCase();
+      const rawQuery = String(modelInput.value || "").trim();
+      const display = displayedNewSessionProviderModel(rawQuery, {
+        choices: newSessionProviderChoices(),
+        allowCustomProvider: newSessionAllowsCustomProvider(),
+      });
+      const query = display ? `${display.providerChoice}/${display.model}`.toLowerCase() : rawQuery.toLowerCase();
       const options = sessionModelOptions();
       if (!query) return options.slice(0, 12);
       const exact = options.filter((item) => String(item.model || "").toLowerCase() === query || String(item.searchText || "").toLowerCase() === query);

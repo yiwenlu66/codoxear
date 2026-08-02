@@ -14,6 +14,8 @@
         --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
         --ctl: 38px;
         --ctl-chrome: 32px;
+        --dialog-control-h: 40px;
+        --dialog-group-gap: 12px;
         --shadow-sm: none;
         --sidebar-w: 320px;
         --bubble-user: var(--wash);
@@ -2466,17 +2468,17 @@ select {
         flex-direction: column;
         flex: 1 1 auto;
         min-height: 0;
-        gap: 10px;
+        gap: var(--dialog-group-gap, 10px);
         overflow: auto;
         -webkit-overflow-scrolling: touch;
         overscroll-behavior: contain;
       }
       .formGrid {
         display: grid;
-        gap: 10px;
+        gap: var(--dialog-group-gap, 10px);
       }
       .newSessionRunConfigRow {
-        grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 1.65fr) minmax(0, 0.55fr) auto;
         align-items: start;
       }
       .newSessionOptionsRow {
@@ -2490,6 +2492,14 @@ select {
         display: flex;
         flex-direction: column;
         gap: 6px;
+      }
+      .formViewer input[type="text"],
+      .formViewer input[type="date"],
+      .formViewer input[type="time"],
+      .formViewer .dialogPickerBtn,
+      .formViewer .formActions > button {
+        height: var(--dialog-control-h);
+        min-height: var(--dialog-control-h);
       }
       .fieldLabel {
         font-size: 13px;
@@ -2508,9 +2518,36 @@ select {
         font-size: 14px;
       }
       .checkField input[type="checkbox"] {
-        width: 16px;
-        height: 16px;
+        appearance: none;
+        -webkit-appearance: none;
+        width: 18px;
+        height: 18px;
         margin: 0;
+        flex: 0 0 18px;
+        border: 1px solid var(--ink);
+        border-radius: 0;
+        background: var(--paper);
+        display: grid;
+        place-content: center;
+        cursor: pointer;
+      }
+      .checkField input[type="checkbox"]::after {
+        content: "✓";
+        color: var(--paper);
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1;
+        transform: scale(0);
+      }
+      .checkField input[type="checkbox"]:checked {
+        background: var(--ink);
+      }
+      .checkField input[type="checkbox"]:checked::after {
+        transform: scale(1);
+      }
+      .checkField input[type="checkbox"]:focus-visible {
+        outline: 2px solid var(--ink);
+        outline-offset: 2px;
       }
       .compactToggleField {
         justify-content: flex-end;
@@ -2557,9 +2594,12 @@ select {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        color: #8d9097;
+        color: var(--ink);
         pointer-events: none;
         z-index: 1;
+      }
+      #newSessionModelInput {
+        font-family: var(--font-mono);
       }
       .cwdComboboxField.error .cwdComboboxIcon {
         color: #cd5c5c;
@@ -2571,8 +2611,8 @@ select {
         align-items: start;
       }
       .dialogPickerBtn {
-        min-height: 39px;
-        height: 39px;
+        height: var(--dialog-control-h);
+        min-height: var(--dialog-control-h);
         border-radius: 0;
         box-sizing: border-box;
         font-size: 14px;
@@ -2588,9 +2628,6 @@ select {
         width: 100%;
       }
       @media (max-width: 700px) {
-        .newSessionRunConfigRow {
-          grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) auto;
-        }
         .newSessionOptionsRow {
           grid-template-columns: minmax(0, 1fr);
         }
@@ -2606,17 +2643,9 @@ select {
         .newSessionOptionsRow .checkField {
           font-size: 13px;
         }
-        .newSessionRunConfigRow .dialogPickerBtn,
-        .newSessionOptionsRow .dialogPickerBtn,
-        .newSessionRunConfigRow input[type="text"],
-        .newSessionOptionsRow input[type="text"] {
-          min-height: 37px;
-          height: 37px;
-          font-size: 13px;
-        }
         .newSessionRunConfigRow #newSessionFastField .checkField,
         .newSessionOptionsRow #newSessionTmuxField .checkField {
-          min-height: 37px;
+          min-height: var(--dialog-control-h);
         }
       }
       @media (min-width: 881px) {
@@ -2675,7 +2704,7 @@ select {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        color: #7c8088;
+        color: var(--ink);
       }
       .pickerChevronIcon {
         width: 16px;
@@ -2698,6 +2727,11 @@ select {
         gap: 8px;
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
+      }
+      #editViewer .choiceChips {
+        flex-wrap: wrap;
+        gap: 6px;
+        overflow: visible;
       }
       .choiceChip {
         border-radius: 0;
@@ -2726,8 +2760,52 @@ select {
         gap: 12px;
       }
       .sliderRow input[type="range"] {
+        appearance: none;
+        -webkit-appearance: none;
         flex: 1 1 auto;
+        height: var(--dialog-control-h);
         margin: 0;
+        background: transparent;
+        cursor: pointer;
+      }
+      .sliderRow input[type="range"]::-webkit-slider-runnable-track {
+        height: 1px;
+        background: var(--ink);
+        border: 0;
+        border-radius: 0;
+      }
+      .sliderRow input[type="range"]::-webkit-slider-thumb {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 16px;
+        height: 16px;
+        margin-top: -7.5px;
+        border: 0;
+        border-radius: 0;
+        background: var(--ink);
+        box-shadow: none;
+      }
+      .sliderRow input[type="range"]::-moz-range-track {
+        height: 1px;
+        background: var(--ink);
+        border: 0;
+        border-radius: 0;
+      }
+      .sliderRow input[type="range"]::-moz-range-progress {
+        height: 1px;
+        background: var(--ink);
+      }
+      .sliderRow input[type="range"]::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+        border: 0;
+        border-radius: 0;
+        background: var(--ink);
+        box-shadow: none;
+      }
+      .sliderRow input[type="range"]:focus-visible {
+        outline: 2px solid var(--ink);
+        outline-offset: 2px;
       }
       .rangeValue {
         min-width: 56px;
@@ -2742,6 +2820,8 @@ select {
       }
       .formActions button {
         min-width: 108px;
+        height: var(--dialog-control-h);
+        min-height: var(--dialog-control-h);
       }
       .helpBody {
         overflow: auto;

@@ -30,7 +30,11 @@ def eval_model_options(query: str, *, backend: str = "codex", provider_choices: 
           cwdInput:{{value:""}},cwdMenu:{{innerHTML:""}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},recentCwds:()=>[],cwdMenuFocus:()=>-1,assignCwdMenuFocus:noop,closeCwdMenu:noop,el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:""}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
         }});
         const options=c.sessionModelOptions(); const filtered=c.filteredNewSessionModelOptions(); const parsed=c.parseNewSessionProviderModelInput(); if (filtered[0] || options[0]) c.selectNewSessionModel(filtered[0] || options[0]);
-        process.stdout.write(JSON.stringify({{options,filtered,parsed,input:modelInput.value,provider,literal,absent}}));
+        const selectedInput = modelInput.value;
+        const longDisplay = c.newSessionProviderModelDisplay("glm-5.2", "dexgem-completions");
+        modelInput.value = longDisplay;
+        const longParsed = c.parseNewSessionProviderModelInput();
+        process.stdout.write(JSON.stringify({{options,filtered,parsed,input:selectedInput,provider,literal,absent,longDisplay,longParsed}}));
         """
     )
     proc = subprocess.run(["node", "-e", script], check=True, text=True, capture_output=True)
@@ -44,18 +48,23 @@ class TestNewSessionModelOptionsBehavior(unittest.TestCase):
         self.assertContains(("chatgpt", "gpt-5.4"), pairs)
         self.assertContains(("crs", "gpt-5.4"), pairs)
         self.assertNotContains(("anthropic", "other"), pairs)
-        self.assertEqual(result["options"][0]["displayText"], "chatgpt/gpt-5.4-mini")
+        self.assertEqual(result["options"][0]["displayText"], "gpt-5.4-mini · chatgpt")
 
     def test_provider_model_filter_and_selection_render_a_single_input_value(self) -> None:
         result = eval_model_options("crs/gpt")
         self.assertEqual([(x["providerChoice"], x["model"]) for x in result["filtered"]], [("crs", "gpt-5.4")])
-        self.assertEqual(result["input"], "crs/gpt-5.4")
+        self.assertEqual(result["input"], "gpt-5.4 · crs")
 
     def test_pi_accepts_a_custom_provider_model_pair(self) -> None:
         result = eval_model_options("anthropic/claude-haiku-4-5", backend="pi", provider_choices=[])
         self.assertEqual(result["parsed"]["providerChoice"], "anthropic")
         self.assertEqual(result["parsed"]["model"], "claude-haiku-4-5")
         self.assertEqual(result["parsed"]["providerError"], "")
+    def test_long_provider_is_middle_ellipsized_without_losing_model_or_provider_identity(self) -> None:
+        result = eval_model_options("", provider_choices=["chatgpt", "openai-api", "dexgem-completions"])
+        self.assertEqual(result["longDisplay"], "glm-5.2 · de…ns")
+        self.assertEqual(result["longParsed"]["model"], "glm-5.2")
+        self.assertEqual(result["longParsed"]["providerChoice"], "dexgem-completions")
 
 
 if __name__ == "__main__":
