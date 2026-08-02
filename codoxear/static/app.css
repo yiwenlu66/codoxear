@@ -140,7 +140,7 @@
         font-size: 13px;
       }
       .sidebar footer {
-        padding: 10px 12px;
+        padding: 4px 12px;
         border-top: 1px solid var(--border);
         display: flex;
         gap: 12px;
@@ -152,7 +152,7 @@
         align-items: center;
         justify-content: center;
         gap: 8px;
-        height: 38px;
+        height: 44px;
         border-radius: 0;
         font-weight: 500;
         line-height: 1;
@@ -2535,7 +2535,8 @@ select {
         gap: var(--dialog-group-gap);
       }
       .newSessionViewer .formBody {
-        flex: 0 1 auto;
+        flex: 0 0 auto;
+        overflow: visible;
       }
       #newSessionStatus:empty,
       #newSessionCwdHint:empty {
@@ -2722,6 +2723,9 @@ select {
       #newSessionCloseBtn {
         width: var(--dialog-control-h);
         min-width: var(--dialog-control-h);
+      }
+      .formViewer .queueHeader .icon-btn {
+        border: 0;
       }
       .pickerField {
         position: relative;
