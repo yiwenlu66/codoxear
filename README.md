@@ -93,6 +93,18 @@ Install Codoxear (installs `codoxear-server`, `codoxear-broker`, and `codoxear-s
    - Unattended mode runs in the server process (not the browser tab), so it continues even if you close the web page.
    - Settings are per session; each injection decrements the remaining count and unattended mode turns itself off at zero. Enabled sessions show an `unattended` badge in the sidebar.
 
+## Deployment and operations
+
+Deploy a reviewed commit as an immutable snapshot; do not point the service at this editable checkout:
+
+```sh
+scripts/deploy.sh HEAD
+```
+
+The deploy script resolves the commit, creates or updates a detached worktree at `~/.local/share/codoxear/deploy`, installs that snapshot with pipx, and rewrites only the service `WorkingDirectory` and `ExecStart` to use it. It preserves the service environment and runtime state, then restarts only `codoxear-server.service` and verifies `/` (200) plus unauthenticated `/api/sessions` (401).
+
+A server restart does not lose conversations: they remain in backend logs. Do not kill `codoxear-broker` or an underlying agent CLI to deploy or restart the server. Roll back by deploying the previous commit with the same command.
+
 ## Tailscale HTTPS
 
 If you want browser notifications or iOS Web Push, use HTTPS instead of plain `http://<host>:8743`.
@@ -159,10 +171,13 @@ If you start a web-owned session and later want to continue it in your terminal 
 ## UI features
 
 - **Live transcript via SSE.** When a session is selected and bound to a backend log, the browser opens a persistent `EventSource` connection (`/api/sessions/<id>/live`) so new messages stream in real time; polling is the automatic fallback.
-- **Subagent activity (Pi).** Pi subagent events surface as inline narration rows in the transcript, showing delegation, background-task progress, and results without the terminal.
-- **Typing indicator with counts.** While a session is busy, the typing row shows live tool and thinking counts (`tools: N · thinking: N`).
-- **Markdown rendering.** Assistant messages render with the `marked` library, with clickable file-reference links, KaTeX math, and per-code-block copy buttons.
-- **Paper design language.** A flat, high-contrast ink/paper palette (`#141111` ink, paper white, warm wash) with zero border radius, square state dots, inversion (ink-on-paper) primaries instead of accent blue, no translucent colors, and no decorative shadows. Chrome controls stay a compact 32px with a 44px touch hit-slop; composer and dialog controls grow to 44px on touch screens.
+- **Full-transcript search.** Press `/` to search the whole backend transcript. The browser queries the server, which searches the normalized log and returns cursored matches so selecting one can load its surrounding history.
+- **Subagent activity (Pi).** Pi subagent events surface as inline narration rows in the transcript. Active work also has a `▸N` sidebar marker and remains visible as a compact activity row when the parent session is otherwise idle.
+- **Typing and thinking-token indicators.** Busy rows show live tool/thinking activity and reasoning-token counts when available. The common counter path recognizes Codex cumulative reasoning snapshots, Pi per-message reasoning usage, and Claude Code thinking-token usage.
+- **Live model and effort pickers.** Type `/model` or `/effort` in the composer and choose a completion. Pi model selection goes through its shared TUI command; Pi effort is supplied by the live bridge (`/thinking` remains an alias). Claude Code receives its native `/model` and `/effort` commands.
+- **Slash-command completion.** Type `/` in the composer to browse and filter the browser-safe commands advertised for the selected backend.
+- **Markdown rendering.** Assistant messages render with the `marked` library, preserve single line breaks, support clickable file-reference links and KaTeX math, and include per-code-block copy buttons. Rendered image dimensions are cached locally to prevent layout jumps on later renders.
+- **Paper design language.** A square, high-contrast warm-charcoal/paper interface (`#2f2b26` ink, paper white, warm wash) with ink-on-paper primaries, square state dots, transparent backdrops without dimming, and no decorative shadows. Chrome controls stay visually compact while touch hit areas reach 44px; composer and dialog controls grow to 44px on touch screens.
 
 ## Keyboard shortcuts
 
@@ -172,8 +187,10 @@ If you start a web-owned session and later want to continue it in your terminal 
 - `d` / `u` — scroll half a page down / up.
 - `G` — jump to the bottom of the conversation.
 - `D` — delete the current session (with confirmation).
-- `/` — search the conversation.
-- On a Pi session, type `/model` in the composer to switch models live, or `/thinking` to switch the reasoning level (start typing to filter).
+- `/` — search the full conversation.
+- Type `/` in the composer — browse and filter slash-command completions for the selected backend.
+- On a Pi session, type `/model` to open Pi's model selector, or `/effort` to switch the reasoning level through the live bridge; `/thinking` is an alias. Existing sessions need `/reload` or a restart before the bridge can advertise effort support.
+- On a Claude Code session, type `/model` or `/effort` to open Codoxear's picker, which sends Claude Code's corresponding native command.
 - In an open dialog, press a visible button's first distinctive letter to activate it. When buttons share their first letter, use a later distinctive letter (for example Confirm→`o`, Cancel→`a`). `Esc` closes the dialog.
 
 Most shortcuts are ignored while the message composer is focused; press `Esc` to leave it.

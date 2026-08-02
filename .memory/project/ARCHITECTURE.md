@@ -1,17 +1,17 @@
 # Codoxear architecture (distilled)
 
 Single repo: `/home/yiwen/codoxear` on `main` (remote `git@github.com:yiwenlu66/codoxear.git`). The former `recovery/product-gaps` branch was merged into `main` (merge `1976c30b`); the old two-checkout model (recovery worktree + protected `/home/yiwen/codex-web` checkout) is obsolete and removed.
-Deployed service: `codoxear-server.service` (systemd user unit) runs from a NON-editable pipx install of this repo on `127.0.0.1:8743` (tailscale https `:8443`). A `git pull` alone does NOT redeploy — reinstall with `pipx install --force /home/yiwen/codoxear`, then `systemctl --user restart codoxear-server.service`. Restart is safe for live broker/backend sessions; never kill brokers or backend CLIs.
+Deployed service: `codoxear-server.service` runs from a pipx installation of a detached committed worktree at `~/.local/share/codoxear/deploy`, never from `/home/yiwen/codoxear`. Deploy a reviewed revision with `scripts/deploy.sh <commit-ish>` (normally `scripts/deploy.sh HEAD`). The script verifies the worktree reaches that exact commit, installs it with pipx, rewrites only the unit's `WorkingDirectory` and `ExecStart`, restarts only the server, and verifies `/` → 200 and unauthenticated `/api/sessions` → 401. It preserves the unit environment and the runtime state under `~/.local/share/codoxear`; server restarts are safe for live broker/backend sessions, so never kill brokers or backend CLIs.
 
 ## Ownership map (post-refactor, 2026-07)
 
-- **Backend adapters** (`agent_backend.py`): CodexBackend / PiBackend / ClaudeCodeBackend own launch argv, env, log path recognition, session-id extraction, run-settings, row-busy predicates, chat-event parsing hooks, launch defaults/validation. `backend_launch.py`, `session_log_paths.py`, `process_log_paths.py`, `launch_config.py`, `session_log_metadata.py`, `rollout_chat_events.py` are compatibility facades over adapters, not branch owners.
+- **Backend adapters** (`agent_backend/`): `CodexBackend`, `PiBackend`, and `ClaudeCodeBackend` own launch argv, env, log path recognition, session-id extraction, run-settings, row-busy predicates, chat-event parsing hooks, launch defaults, and validation. Compatibility facades may delegate into adapters, but must not become branch owners. Keep backend-specific parsing in the backend package or its focused log module instead of adding cross-backend conditionals to routes.
 - **Runtime status authority** (`session_runtime.py`): `RuntimeStatus` is the single busy/idle/interrupted-idle synthesis; `SessionRuntimeReadiness` projects send/queue/attachment/unattended eligibility. Routes and coordinators consume `manager._runtime_status_from_state_and_log(...)`; they must not recompute busy/idle.
 - **Turn-state reducer** (`broker_turn_state.py`): the only log→busy reducer. Broker and sessiond both consume it (`_apply_log_objects_to_state`, `_should_clear_busy_state`, `_mark_busy_state_idle`, `_mark_explicit_interrupt_request`, `_update_busy_from_pty_text`). Do not add a second reducer.
 - **Persistent state** (`session_store.py`): SessionStore owns per-session lifecycle (reset/load/delete/save-ordering/prune/recent-cwd). New per-session maps must extend SessionStore lifecycle methods, not add ad-hoc deletion/load code in coordinators.
 - **SessionManager** is a thin coordinator host: methods are bound via `session_manager_method_bindings.py` forwarders to coordinator objects (`session_queue.py`, `session_readiness.py`, `session_recent_cwd.py`, etc.).
 - **sessiond** (`sessiond.py`): supported headless runner. Same control-state schema as broker: `busy`, `queue_len`, `token`, `interrupted_idle`. Intentionally no foreground terminal UX.
-- **Frontend**: `app.js` is the app shell/wiring. Stateful subsystems live in `app_file_viewer.js`, `app_file_editor.js`, `app_file_picker.js`, `app_transcript.js`, `app_message_rows.js`, `app_launch.js`, `app_new_session.js`, `app_queue.js`, `app_diagnostics.js`, `app_recovery.js`, `app_unattended.js`, `app_chat_navigation.js`, `app_chat_search.js`, `app_voice.js`, plus helper modules. Ownership pattern: controller modules own their state/actions/rendering; app.js owns DOM construction when still coupled to the shell and delegates through thin wrappers with fail-loud module checks. Chat search owns loaded/all-history search orchestration while app.js retains transcript rendering and shared row-helper authority; Voice owns settings/notification/announcement/audio orchestration while app.js retains dialog/button/audio DOM construction and thin wrappers. Remaining app.js work is residual shell projection/code-size cleanup, not a single known stateful subsystem concentration.
+- **Frontend**: `app.js` is the app shell/wiring and remains under extraction. Focused controllers own their state/actions/rendering (`app_file_viewer.js`, `app_file_editor.js`, `app_file_picker.js`, `app_transcript.js`, `app_message_rows.js`, `app_launch.js`, `app_new_session.js`, `app_queue.js`, `app_diagnostics.js`, `app_recovery.js`, `app_unattended.js`, `app_chat_navigation.js`, `app_chat_search.js`, `app_voice.js`, and the in-progress `app_sessions.js`). New stateful work belongs in a focused module; `app.js` should retain only shell construction and explicit composition seams. Controller modules fail loudly on missing dependencies rather than silently recreating state.
 
 ## Product model invariants
 
@@ -47,28 +47,25 @@ Deployed service: `codoxear-server.service` (systemd user unit) runs from a NON-
 - Live transcript delivery uses SSE (`EventSource`) with polling fallback. When a session is selected and bound to a backend log, the browser opens `/api/sessions/<id>/live` (`message_routes.py` `handle_messages_live_stream`, `text/event-stream`) for real-time message deltas. The SSE handler and the poll handler share the same live-delta/normalization path (`_read_chat_live_delta`, `applyLiveMessageData`), so both produce identical transcript state. If SSE fails or is unavailable, polling resumes automatically.
 - Send path is unconditional confirmed-send: the busy/queue gate was removed. `require_send_preconditions` only blocks on commit-unknown resolution, a pending attachment, a stale queue item, or missing broker `sync_send`. Steering via confirmed-send works on all backends; the queue is an opt-in alternative, not a hard gate. Do not reintroduce a busy-gate that blocks direct sends.
 - Performance: static asset responses are gzip-compressed (`static_routes.py`), served over HTTP/1.1 (`server_handler.py`), versioned assets (`?v=...`) carry immutable one-year cache headers, the asset version is memoized, and poll cadence is tuned via `CODEX_WEB_*_INTERVAL_SECONDS` env vars.
-- Paper design language invariants (see “Paper design invariants” below for the full set): zero `border-radius` everywhere; ink `#141111`/paper/wash palette with ink borders (`--border: #141111`, not neutral gray); inversion (ink-on-paper) primaries, no accent blue; square state dots discriminated by fill + motion, not hue; `--font-mono` for data; no translucent colors (`rgba`/`hsla` with alpha); no decorative `box-shadow`/`outline` and no `backdrop-filter`. Chrome controls are 32px (`--ctl-chrome`) with a 44px touch hit-slop (`::after` inset); composer/dialog controls use the `--ctl` token (38px desktop, 44px on touch). Media queries may only retune tokens, flip visibility, or switch layout mode — never restyle a component; sanctioned component branches are sidebar drawer, session-card reveal (LOCKED DOM), viewer fullscreen takeover, hover→always-visible flips, and composer safe-area/anti-zoom.
+- Paper design language: square geometry; warm-charcoal `--ink`/`--border: #2f2b26` on paper/wash; ink-on-paper primaries; square state dots; `--font-mono` for data; transparent, undimmed backdrops; no decorative `box-shadow`/`outline` or `backdrop-filter`. Chrome controls are visually 32px (`--ctl-chrome`) with a 44px touch hit-slop; composer/dialog controls use `--ctl` (38px desktop, 44px on touch). The design constitution restricts new media-query behavior to token retuning, visibility changes, and layout changes; component-level differences require a named branch. A 44px hit area is not a demand for a 44px visual control.
 - Session card DOM is a locked two-branch design: touch uses swipe actions, desktop uses hover-revealed actions (`useDesktopSessionActions()` / `swipeActions`). Do not unify the branches.
-- Keyboard: vimium-style hint mode (`f` leader, then a per-control letter) plus direct shortcuts (`i`, `j`/`k`, `d`/`u`, `G`, `D`, `/`); the topbar interrupt button (`interruptBtn`, hint `z`) is the sole interrupt control on all viewports (composer stop button removed). On Pi sessions `/model` and `/thinking` in the composer switch models and reasoning levels live. The `/thinking` command is registered by the `pi_active_session_bridge.ts` extension, so existing live sessions need `/reload` or a restart to load the updated bridge; when the requested level is unsupported by the current model, Pi reports its clamp. On Claude Code sessions, `/model` and `/effort` pickers inject native commands; model rows update only after assistant `message.model` log evidence, while CC effort remains the launch value because its JSONL parser has no effort field. Modal buttons activate by first distinctive letter, with a later letter breaking first-letter ties (`activateModalButtonForKey`).
+- Keyboard: vimium-style hint mode (`f` leader, then a per-control letter) plus direct shortcuts (`i`, `j`/`k`, `d`/`u`, `G`, `D`, `/`); `/` searches the full transcript, while typing `/` in the composer opens slash-command completion. The topbar interrupt button (`interruptBtn`, hint `z`) is the sole interrupt control on all viewports (composer stop button removed). On Pi sessions `/model` uses Pi's native command and bridge-provided `/effort` changes reasoning level (`/thinking` is an alias); existing live sessions need `/reload` or restart before the bridge advertises the capability. On Claude Code sessions, `/model` and `/effort` pickers inject native commands; model rows update only after assistant `message.model` log evidence, while CC effort remains the launch value because its JSONL parser has no effort field. Modal buttons activate by first distinctive letter, with a later letter breaking first-letter ties (`activateModalButtonForKey`).
 
 ## Paper design invariants
 
 The frontend follows one “paper” design language. These are mechanical invariants, enforced in `app.css` and auditable:
 
-- **Zero `border-radius`.** Every element has `border-radius: 0`.
-- **Ink/paper/wash palette.** `--ink: #141111`, `--paper: #ffffff`, `--bg: #f6f5f1`, `--wash: #efeee9`, `--hairline: #dcdad4`. `--border` is ink (`#141111`), not neutral gray.
-- **Inversion primaries, no accent blue.** Primary actions are ink-on-paper inversion. `--accent` is ink. Do not reintroduce a blue/accent primary.
-- **Square state dots.** `.stateDot` is a square (`border-radius: 0`); busy = filled ink + pulse, idle = hollow, suppressed (snoozed/blocked) = filled ink no pulse, pending (starting) = filled amber (`#f59e0b`) + pulse. Motion, not hue, is the primary discriminator; the only colored dot is pending/starting.
+- **Square warm-charcoal palette.** `border-radius: 0`; `--ink` and `--border` are `#2f2b26`; `--paper` is `#ffffff`, `--bg` is `#f6f5f1`, and `--wash` is `#efeee9`.
+- **Ink-on-paper primaries.** `--accent` is ink; no accent-blue primary.
+- **Square state dots.** `.stateDot` is square; busy is filled + pulse, idle hollow, suppressed filled without pulse, pending amber + pulse. Motion, not hue, is the primary discriminator.
+- **Transparent backdrops.** Overlay backdrops remain transparent and do not dim the app.
 - **Monospace for data.** `--font-mono` carries model names, token counts, paths, and other data-like text.
-- **No translucent colors.** No `rgba`/`hsla` alpha fills or borders; backdrops are solid.
-- **No decorative depth.** `box-shadow: none` is the default; `outline`/`box-shadow` only for functional focus/state. No `backdrop-filter`.
-- **Compact chrome + touch hit-slop.** Chrome buttons (topbar/sidebar/nav) are 32px (`--ctl-chrome`) on all viewports with a 44px touch hit-slop (`::after { inset: -6px }`). Composer and dialog controls use the `--ctl` token: 38px desktop, flipped to 44px under the consolidated `@media (max-width: 700px), (pointer: coarse)` touch block. That block is the single sanctioned place where the `--ctl`/`--composerCtl` token and touch target sizes flip.
+- **No decorative depth.** `box-shadow`/`outline` only signal focus/state. No `backdrop-filter`.
+- **Compact chrome + touch hit-slop.** Chrome buttons remain visually 32px (`--ctl-chrome`) and use a 44px touch hit-slop. Composer/dialog controls use `--ctl`: 38px desktop, 44px on touch. Hit-area floor and visual size are distinct requirements.
 
 ### Media-query branching rule
 
-Media queries may only retune tokens (e.g. `--ctl`, `--sidebar-w`, `--composerCtl`), flip visibility (show/hide a branch), or switch layout mode (grid columns, fixed/flow positioning). They must never restyle an existing component — no per-viewport color, radius, font, or border overrides on a component. When viewport-specific behavior is genuinely component-level, branch the component instead.
-
-Sanctioned component branches: sidebar drawer (off-canvas on narrow), session-card reveal mechanism (touch swipe vs desktop hover — LOCKED DOM, do not unify), viewer fullscreen takeover, hover→always-visible flips, and composer safe-area/anti-zoom.
+The design constitution restricts new media-query behavior to retuning tokens, visibility, and layout. Do not compensate for a component-level difference with a viewport-specific color, radius, font, or border override. Use an explicit branch when behavior truly differs. The sanctioned branches remain sidebar drawer, locked touch/desktop session-card reveal, viewer fullscreen takeover, hover→always-visible controls, and composer safe-area/anti-zoom.
 
 ## State-authority principle
 
@@ -112,22 +109,17 @@ Every piece of displayed state has exactly one declared authoritative source. Wh
 
 ### Current mechanism
 Codoxear wraps Pi (and all backends) in a PTY. For Pi specifically:
-- Prompts via bracketed-paste + Enter injection into PTY
-- Busy/state inferred from JSONL log reconstruction
-- Model/thinking set only at launch time (--model, --thinking flags)
-- `pi_active_session_bridge.ts` extension injected for session-path discovery only
+- Prompts use bracketed-paste + Enter injection into the shared PTY.
+- Busy/state is inferred from JSONL log reconstruction.
+- `/model` is Pi's shared native command; the browser picker selects an option by sending that command into the same TUI.
+- `pi_active_session_bridge.ts` supplies `/effort` and its `/thinking` alias from inside the live TUI process, calling `pi.setThinkingLevel()` and reading back the effective level. It writes a PID-bound `.caps` marker at load so a reload can advertise capability before another session event.
+- Extension load must remain passive: write capability metadata and register lifecycle listeners only. Command registration and other runtime action methods are deferred to `session_start`/`session_switch`, with later lifecycle retries if Pi is not ready.
 
 ### No web-only RPC path — PTY sharing is the core invariant
-The whole point of Codoxear is web and terminal share the SAME PTY session.
-Pi native RPC mode (`pi --mode rpc`) cannot coexist with the interactive TUI —
-it's a separate headless mode. Splitting transport by ownership (web=RPC,
-terminal=PTY) would break the shared-session invariant. Therefore:
-- ALL sessions stay on PTY. No web-owned-only RPC adapter.
-- To get authoritative model/thinking control for shared sessions, expand
-  `pi_active_session_bridge.ts` into a structured extension side-channel
-  (Wherever/remote-pi pattern) that calls `pi.setModel()`,
-  `pi.setThinkingLevel()` etc. from WITHIN the live TUI process.
-  This preserves terminal visibility while gaining structured control.
+The whole point of Codoxear is web and terminal share the **same PTY session**. Pi native RPC mode (`pi --mode rpc`) cannot coexist with the interactive TUI: it is a separate headless mode. Splitting transport by ownership (web=RPC, terminal=PTY) would break that invariant.
+
+- All sessions stay on PTY; do not add a web-owned-only RPC adapter.
+- Shared-session effort control belongs in the live extension bridge, where it can call Pi's runtime API without hiding the action from the terminal. Keep model control on Pi's shared native `/model` command unless Pi exposes an equally shared authoritative path.
 
 ### Future: official Pi remote-session protocol
 Pi upstream merged experimental `pi-protocol`/`pi-client`/`pi-server` packages
@@ -143,28 +135,22 @@ authoritative session. Depends on upstream evolution.
 
 ---
 
-# Architectural review — 2026-08-02 (post-overhaul)
+# Current architectural decisions and debt
 
-## What held
+## Decisions that hold
 
-- **PTY sharing as the one invariant.** Every feature this session (steering, /model, /effort, interrupt, subagent visibility) works because web and terminal share one PTY. No feature needed a parallel control channel; when one was tempting (Pi RPC mode), refusing it stayed correct.
-- **State-authority principle.** The 21-state table plus "one writer + declared reconciliation" turned the bug class (counts, busy, settings) from whack-a-mole into checkable contracts. Every fix since follows it.
-- **Normalization seam.** rollout_log/pi_log/cc_log normalization kept search, SSE, transcripts, and counters on one interpretation of each backend's log — the full-transcript search reused it instead of adding a parser, which is the pattern to defend.
-- **Broker/sessiond symmetry.** The capability and launch work touched both with one shape; the bridge extension pattern (load-time advertising) generalized cleanly.
+- **Committed snapshot deployment is the release boundary.** The deploy script makes the reviewed commit, not an editable checkout, the import/static root for the service.
+- **PTY sharing is the core session invariant.** Browser and terminal operate one live CLI session; Pi RPC mode remains incompatible with that contract.
+- **State authority is explicit.** Each displayed value has one writer, or a declared reconciliation rule when an exact live feed and a resumable snapshot both contribute.
+- **Normalization is shared.** Transcript search, SSE, history, export, and session counters use backend-normalized log events rather than separate parsers.
+- **Pi bridge load is passive.** Capability advertisement may occur at load; runtime command registration waits for a live Pi lifecycle event.
 
-## Structural debts (ranked by evidence of harm)
+## Remaining structural debt
 
-1. **Deployment serves the working tree.** Statics and Python resolve from the source checkout, so any half-edited tree state reaches users (two broken windows this session, one user-visible outage). The clean-tree deploy rule is a band-aid over a wrong mechanism. **Fix: deploy from a committed snapshot** (git worktree or build dir; point the service at it), making "what runs" == "what was reviewed at HEAD".
-2. **app.js is a 6993-line god-module.** The app_*.js extraction pattern (search, navigation, transcript, composer, diagnostics) works and should continue: transcript rendering, session list, and the send/queue flows are the next extractions. Rule: new features go into a focused module, not app.js.
-3. **Source-string tests are brittle under concurrency.** Dozens of this session's red tests were string assertions on CSS/JS text (they broke on any refactor of the same feature). Behavioral VM tests (the composer/search harnesses) are the durable kind; source-string assertions should be reserved for genuine contracts (hint map, capability names).
-4. **Three width cutoffs (520/700/880) accreted.** Target: two (880 layout, 520 phone) + pointer axis. The 700px rules (dialog sizing, topActions) fold into tokens.
-5. **agent_backend.py (1028 lines) accumulates per-backend parsing without a per-backend module boundary.** pi_log/cc_log exist; the backend class file should shrink to dispatch.
-
-## Process architecture (what the subagent era proved)
-
-- One-writer-per-file at commit boundaries is necessary but not sufficient: the shared INDEX is also a race surface (three swept commits this session). Rule now enforced: pathspec commits only; deploy only at clean-tree points; main agent reconciles.
-- Review gates caught real regressions (queued-turn count merge, modal Confirm/Cancel) that the writer's own tests missed. Keep independent review for state-machine changes.
+1. **`app.js` extraction is in progress.** Focused modules now own substantial subsystems, including the in-progress session-list split. Continue moving transcript/session-list and remaining composition-heavy flows behind explicit controller boundaries; do not put new stateful features back into `app.js`.
+2. **Width-cutoff consolidation remains unfinished.** The stylesheet still carries 520px, 700px, and 880px behavior. Consolidate the 700px behavior into the 520px phone and 880px layout axes plus pointer capability, while preserving the design constitution: tokens, visibility, layout, or an explicit component branch.
+3. **Backend boundaries need continued tightening.** The adapter package has per-backend modules, but compatibility facades and cross-backend normalization seams still need clear ownership. Keep backend recognition/launch/parser facts in `agent_backend/` or focused `pi_log`/`cc_log` modules, and keep routes/reducers backend-neutral.
 
 ## Next review trigger
 
-After the app.js extraction of transcript + session list, or when a fourth backend lands — whichever first.
+Review again when the session-list/transcript extraction reaches a coherent controller boundary, when width-cutoff consolidation changes responsive behavior, or before adding a fourth backend.
