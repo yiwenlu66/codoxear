@@ -73,12 +73,10 @@ function writeActiveSession(ctx: ExtensionContext, reason: string): void {
 
 let activePi;
 
-function writeThinkingCapabilities(): void {
-	const pi = activePi;
+function writeThinkingCapabilities(commands?: Array<{ name: string; description: string }>): void {
 	const markerPath = process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE;
 	if (!markerPath) return;
 	const capsPath = `${markerPath}.caps`;
-	const commands = pi && typeof pi.getCommands === "function" ? pi.getCommands() : undefined;
 	const payload = {
 		bridgeVersion: 2,
 		features: ["effort", "thinking"],
@@ -118,6 +116,14 @@ export default function (pi: ExtensionAPI): void {
 				handler: effortHandler,
 			});
 			commandsRegistered = true;
+			try {
+				const live = typeof pi.getCommands === "function" ? pi.getCommands() : undefined;
+				writeThinkingCapabilities(
+					Array.isArray(live) ? live.map((c: { name: string; description?: string }) => ({ name: c.name, description: c.description || "" })) : undefined,
+				);
+			} catch {
+				// Caps without the command list is fine; the next lifecycle event retries.
+			}
 		} catch {
 			// Runtime not yet bound (extension loading) or already registered;
 			// retried on subsequent lifecycle events until it succeeds.
