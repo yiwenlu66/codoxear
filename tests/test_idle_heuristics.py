@@ -643,6 +643,17 @@ class TestAnalyzeLogChunkBackendRows(unittest.TestCase):
         d_th, d_thinking_tokens, *_rest = _analyze_log_chunk(objs)
         self.assertEqual((d_th, d_thinking_tokens), (3, 124))
 
+    def test_analyze_log_chunk_counts_initial_codex_cumulative_reasoning_tokens(self) -> None:
+        obj = {
+            "type": "event_msg",
+            "payload": {"type": "token_count", "info": {"total_token_usage": {"reasoning_output_tokens": 23}}},
+        }
+
+        _thinking, thinking_tokens, *_rest, turn_state = _analyze_log_chunk([obj])
+
+        self.assertEqual(thinking_tokens, 23)
+        self.assertEqual(turn_state.codex_reasoning_total, 23)
+
     def test_analyze_log_chunk_differences_codex_cumulative_reasoning_tokens(self) -> None:
         def token_count(total: int) -> dict[str, object]:
             return {

@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any, Callable, MutableMapping
 
 from .session_model import Session
+from .util import _codex_sessions_dir_for_log
+from .util import scan_active_codex_subagents
 from .util import scan_active_pi_subagents
 from .session_runtime import suppress_session_interrupted_idle
 from .token_signal import TOKEN_NONE
@@ -156,7 +158,17 @@ class SessionLogRuntimeCoordinator:
                     # background even though the main turn is closed. Preserve
                     # the counters so the next delivery turn resumes them
                     # monotonically instead of showing a mid-episode reset.
-                    if not scan_active_pi_subagents().get(str(log_path)):
+                    if current.agent_backend == "pi":
+                        subagents_active = bool(scan_active_pi_subagents().get(str(log_path)))
+                    elif current.agent_backend == "codex":
+                        sessions_dir = _codex_sessions_dir_for_log(log_path)
+                        subagents_active = bool(
+                            sessions_dir is not None
+                            and scan_active_codex_subagents(sessions_dirs=(sessions_dir,)).get(current.thread_id)
+                        )
+                    else:
+                        subagents_active = False
+                    if not subagents_active:
                         current.meta_thinking = 0
                         current.meta_thinking_tokens = 0
                         current.meta_tools = 0

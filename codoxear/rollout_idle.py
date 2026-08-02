@@ -155,7 +155,12 @@ def _analyze_log_chunk(
             if pt == "token_count":
                 cumulative_reasoning_tokens = codex_cumulative_reasoning_tokens(obj)
                 if cumulative_reasoning_tokens is not None:
-                    if codex_reasoning_total is not None and cumulative_reasoning_tokens >= codex_reasoning_total:
+                    if codex_reasoning_total is None:
+                        # The scanner starts at a user-turn boundary for a new
+                        # log. Its first cumulative snapshot therefore owns all
+                        # reasoning emitted in that observed episode.
+                        d_thinking_tokens += cumulative_reasoning_tokens
+                    elif cumulative_reasoning_tokens >= codex_reasoning_total:
                         d_thinking_tokens += cumulative_reasoning_tokens - codex_reasoning_total
                     # A smaller snapshot is a fork/rollback boundary. Its
                     # count belongs to a different cumulative history, so do

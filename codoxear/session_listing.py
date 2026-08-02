@@ -9,6 +9,8 @@ from .session_model import Session
 from .session_store import SessionStore
 from .session_store import public_staged_attachments
 from .slash_commands import slash_commands_for_backend
+from .util import _codex_sessions_dir_for_log
+from .util import scan_active_codex_subagents
 from .util import scan_active_pi_subagents
 
 
@@ -307,7 +309,17 @@ def build_active_session_rows_snapshot(
     sidebar_dirty = False
     recent_cwd_dirty = False
     rows: list[dict[str, Any]] = []
-    active_subagent_runs = scan_active_pi_subagents() if subagent_runs is None else subagent_runs
+    active_subagent_runs = dict(scan_active_pi_subagents()) if subagent_runs is None else subagent_runs
+    if subagent_runs is None:
+        codex_sessions_dirs = {
+            sessions_dir
+            for s in session_list
+            if s.agent_backend == "codex" and s.log_path is not None
+            for sessions_dir in (_codex_sessions_dir_for_log(s.log_path),)
+            if sessions_dir is not None
+        }
+        for parent_thread_id, runs in scan_active_codex_subagents(sessions_dirs=codex_sessions_dirs).items():
+            active_subagent_runs[parent_thread_id] = runs
     for s in session_list:
         cfg0 = unattended.get(s.session_id)
         unattended_cooldown_minutes = (
@@ -363,6 +375,8 @@ def build_active_session_rows_snapshot(
         matching_subagents = (
             active_subagent_runs.get(str(s.log_path), ())
             if s.agent_backend == "pi" and s.log_path is not None
+            else active_subagent_runs.get(s.thread_id, ())
+            if s.agent_backend == "codex" and s.thread_id
             else ()
         )
         rows.append(

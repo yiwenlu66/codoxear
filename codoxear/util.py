@@ -7,7 +7,7 @@ import sys
 import time
 import traceback
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from .app_dir_runtime import resolve_default_app_dir as _resolve_default_app_dir
 from .agent_backend import get_agent_backend
@@ -74,6 +74,169 @@ _SUBAGENT_RUNS_CACHE_ROOT: str | None = None
 _SUBAGENT_RUNS_CACHE_AT = 0.0
 _SUBAGENT_RUNS_CACHE: dict[str, list[dict[str, Any]]] = {}
 _ACTIVE_SUBAGENT_STATES = frozenset({"running", "pending"})
+# Codex retains completed child rollout files indefinitely. Child liveness is a
+# process signal when a writer still has the file open, with a short mtime grace
+# period for a just-started writer that has not yet exposed its FD through
+# /proc. The cache keeps session-list polling from walking a rollout tree and
+# /proc on every request.
+_CODEX_SUBAGENT_ACTIVITY_GRACE_S = 8.0
+_CODEX_SUBAGENT_CACHE_TTL_S = 2.0
+_CODEX_SUBAGENT_CACHE_ROOTS: tuple[str, ...] | None = None
+_CODEX_SUBAGENT_CACHE_AT = 0.0
+_CODEX_SUBAGENT_CACHE: dict[str, list[dict[str, Any]]] = {}
+
+
+def _codex_sessions_dir_for_log(log_path: Path) -> Path | None:
+    for parent in (log_path.parent, *log_path.parents):
+        if parent.name == "sessions":
+            return parent
+    return None
+
+
+def _writable_codex_rollout_paths(proc_root: Path = Path("/proc")) -> set[Path]:
+    """Find Codex rollout files held writable by a process owned by this user.
+
+    Codex subagents may be owned by an app-server rather than the parent TUI,
+    so walking only a main session's process tree misses real child activity.
+    """
+    if sys.platform == "darwin":
+        # The portable fallback below is the recent-mtime grace; lsof's
+        # PID-scoped helper cannot enumerate every user process safely here.
+        return set()
+    out: set[Path] = set()
+    try:
+        process_entries = list(proc_root.iterdir())
+    except OSError:
+        return out
+    uid = os.getuid()
+    backend = get_agent_backend("codex")
+    for process_entry in process_entries:
+        try:
+            pid = int(process_entry.name)
+        except ValueError:
+            continue
+        if _proc_pid_uid(proc_root, pid) != uid:
+            continue
+        fd_dir = process_entry / "fd"
+        try:
+            fds = list(fd_dir.iterdir())
+        except OSError:
+            continue
+        for fd in fds:
+            flags = _proc_fd_flags(proc_root, pid, fd.name)
+            if flags is None or not _fd_has_write_intent(flags):
+                continue
+            try:
+                target = os.readlink(fd)
+            except OSError:
+                continue
+            if target.endswith(" (deleted)"):
+                continue
+            path = Path(target)
+            if target.startswith("/") and backend.is_session_log_path(path):
+                out.add(path)
+    return out
+
+
+def _codex_child_rollout_is_terminal(log_path: Path) -> bool:
+    """Whether the last decisive child event closes its work episode."""
+    try:
+        with log_path.open("rb") as stream:
+            stream.seek(0, os.SEEK_END)
+            size = stream.tell()
+            stream.seek(max(0, size - 64 * 1024))
+            rows = stream.read().splitlines()
+    except OSError:
+        return False
+    terminal_events = frozenset({"turn_aborted", "thread_rolled_back", "task_complete", "turn_complete"})
+    activity_events = frozenset({"user_message", "agent_reasoning", "agent_message", "function_call", "function_call_output"})
+    for raw in reversed(rows):
+        try:
+            obj = json.loads(raw)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(obj, dict) or obj.get("type") != "event_msg":
+            continue
+        payload = obj.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        event_type = payload.get("type")
+        if event_type in terminal_events:
+            return True
+        if event_type in activity_events:
+            return False
+    return False
+
+
+def scan_active_codex_subagents(
+    *,
+    sessions_dirs: Iterable[Path] | None = None,
+    now_monotonic: float | None = None,
+    now_wall: float | None = None,
+    writable_paths: set[Path] | None = None,
+) -> dict[str, list[dict[str, Any]]]:
+    """Return live Codex child rollouts grouped by parent thread ID.
+
+    A child header establishes lineage. A retained header alone is never
+    activity: the child must have a writable owner or have changed inside the
+    short writer-discovery grace period, and its latest decisive event must not
+    close the child work episode.
+    """
+    global _CODEX_SUBAGENT_CACHE_AT, _CODEX_SUBAGENT_CACHE_ROOTS, _CODEX_SUBAGENT_CACHE
+    roots_source = (get_agent_backend("codex").sessions_dir(),) if sessions_dirs is None else sessions_dirs
+    roots = tuple(sorted({os.fspath(path) for path in roots_source}))
+    monotonic = time.monotonic() if now_monotonic is None else float(now_monotonic)
+    if writable_paths is None and _CODEX_SUBAGENT_CACHE_ROOTS == roots and monotonic - _CODEX_SUBAGENT_CACHE_AT < _CODEX_SUBAGENT_CACHE_TTL_S:
+        return {parent: [dict(run) for run in runs] for parent, runs in _CODEX_SUBAGENT_CACHE.items()}
+
+    active_paths = _writable_codex_rollout_paths() if writable_paths is None else set(writable_paths)
+    active_resolved: set[Path] = set()
+    for path in active_paths:
+        try:
+            active_resolved.add(path.resolve())
+        except OSError:
+            active_resolved.add(path)
+    wall_time = time.time() if now_wall is None else float(now_wall)
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for root_raw in roots:
+        root = Path(root_raw)
+        try:
+            child_paths = list(root.rglob("rollout-*.jsonl"))
+        except OSError:
+            continue
+        for child_path in child_paths:
+            try:
+                stat = child_path.stat()
+                resolved = child_path.resolve()
+            except OSError:
+                continue
+            writable = resolved in active_resolved
+            mtime_age = wall_time - float(stat.st_mtime)
+            recent = 0.0 <= mtime_age <= _CODEX_SUBAGENT_ACTIVITY_GRACE_S
+            if not writable and not recent:
+                continue
+            if _codex_child_rollout_is_terminal(child_path):
+                continue
+            payload = read_session_meta_payload(child_path, agent_backend="codex", timeout_s=0.0)
+            if not payload or not is_subagent_session_meta(payload):
+                continue
+            parent_thread_id = subagent_parent_thread_id(payload)
+            if parent_thread_id is None:
+                continue
+            child_thread_id = payload.get("id")
+            grouped.setdefault(parent_thread_id, []).append({
+                "thread_id": child_thread_id if isinstance(child_thread_id, str) and child_thread_id else child_path.stem,
+                "log_path": str(child_path),
+                "updated_at": float(stat.st_mtime),
+            })
+
+    for runs in grouped.values():
+        runs.sort(key=lambda run: str(run["thread_id"]))
+    if writable_paths is None:
+        _CODEX_SUBAGENT_CACHE_ROOTS = roots
+        _CODEX_SUBAGENT_CACHE_AT = monotonic
+        _CODEX_SUBAGENT_CACHE = grouped
+    return {parent: [dict(run) for run in runs] for parent, runs in grouped.items()}
 
 
 def _subagent_runs_root() -> Path:

@@ -139,7 +139,7 @@ def test_build_active_session_rows_snapshot_combines_session_and_store_state(tmp
     assert row["subagents_running"] == 0
 
 
-def test_session_listing_projects_only_matching_pi_subagent_runs(tmp_path: Path) -> None:
+def test_session_listing_projects_matching_backend_subagent_runs(tmp_path: Path) -> None:
     pi_log = tmp_path / "pi.jsonl"
     codex_log = tmp_path / "codex.jsonl"
     pi_log.write_text("", encoding="utf-8")
@@ -166,6 +166,7 @@ def test_session_listing_projects_only_matching_pi_subagent_runs(tmp_path: Path)
         priority_bucket_seconds=10.0,
         subagent_runs={
             str(pi_log): [{"run_id": "one"}, {"run_id": "two"}],
+            "codex-thread": [{"thread_id": "codex-child"}],
             str(codex_log): [{"run_id": "ignored"}],
             str(tmp_path / "unbound.jsonl"): [{"run_id": "ignored"}],
         },
@@ -173,7 +174,7 @@ def test_session_listing_projects_only_matching_pi_subagent_runs(tmp_path: Path)
 
     by_id = {row["session_id"]: row for row in snapshot.rows}
     assert by_id["pi"]["subagents_running"] == 2
-    assert by_id["codex"]["subagents_running"] == 0
+    assert by_id["codex"]["subagents_running"] == 1
 
 
 def test_build_active_session_row_projects_public_and_staging_fields() -> None:
