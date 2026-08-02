@@ -358,6 +358,10 @@
             if (index) metaText.appendChild(el("span", { text: " | " }));
             metaText.appendChild(typeof segment === "string" ? el("span", { text: segment }) : segment);
           });
+          const subagentsRunning = Number(session.subagents_running);
+          if (Number.isFinite(subagentsRunning) && subagentsRunning > 0) {
+            metaText.appendChild(el("span", { class: "muted", text: ` ▸${Math.floor(subagentsRunning)}` }));
+          }
           metaItems.push(metaText);
           const meta = el("div", { class: "muted subLine sessionMetaLine" }, metaItems);
           if (launchFailed) meta.title = redactedLaunchErrorText(session.launch_error) || "Session launch failed";

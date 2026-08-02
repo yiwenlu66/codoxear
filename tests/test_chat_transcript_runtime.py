@@ -72,15 +72,21 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             const incremented = {{ text: statsNode.textContent, stats: runtime.snapshot().stats }};
             runtime.updateTypingStats({{ tools: 7, thinking: 3 }});
             const replaced = {{ text: statsNode.textContent, stats: runtime.snapshot().stats }};
+            runtime.updateSubagentGauge(2);
+            const withGauge = {{ text: statsNode.textContent, stats: runtime.snapshot().stats }};
+            runtime.updateSubagentGauge(0);
+            const gaugeCleared = {{ text: statsNode.textContent, stats: runtime.snapshot().stats }};
             runtime.setVisible(false);
             const hidden = {{ text: statsNode.textContent, stats: runtime.snapshot().stats }};
-            process.stdout.write(JSON.stringify({{ initial, incremented, replaced, hidden }}));
+            process.stdout.write(JSON.stringify({{ initial, incremented, replaced, withGauge, gaugeCleared, hidden }}));
             """
         )
         out = _run_node(js)
         self.assertEqual(out["initial"], {"text": "", "stats": {"thinking": 0, "tools": 0}})
         self.assertEqual(out["incremented"], {"text": "tools: 2 · thinking: 1", "stats": {"thinking": 1, "tools": 2}})
         self.assertEqual(out["replaced"], {"text": "tools: 7 · thinking: 3", "stats": {"thinking": 3, "tools": 7}})
+        self.assertEqual(out["withGauge"], {"text": "tools: 7 · thinking: 3 · subagents: 2", "stats": {"thinking": 3, "tools": 7}})
+        self.assertEqual(out["gaugeCleared"], {"text": "tools: 7 · thinking: 3", "stats": {"thinking": 3, "tools": 7}})
         self.assertEqual(out["hidden"], {"text": "", "stats": {"thinking": 0, "tools": 0}})
 
     def test_typing_count_window_starts_only_from_idle(self) -> None:

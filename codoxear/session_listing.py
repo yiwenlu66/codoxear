@@ -8,6 +8,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 from .session_model import Session
 from .session_store import SessionStore
 from .session_store import public_staged_attachments
+from .util import scan_active_pi_subagents
 
 
 @dataclass(frozen=True)
@@ -82,6 +83,7 @@ class ActiveSessionRowFacts:
     blocked: bool
     snoozed: bool
     pi_thinking_command: bool = False
+    subagents_running: int = 0
 
 
 def clip01(value: float) -> float:
@@ -272,6 +274,7 @@ def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
         "final_priority": facts.final_priority,
         "blocked": facts.blocked,
         "snoozed": facts.snoozed,
+        "subagents_running": max(0, int(facts.subagents_running)),
     }
 
 
@@ -291,6 +294,7 @@ def build_active_session_rows_snapshot(
     resolve_session_cwd: Callable[[str], Path],
     priority_half_life_seconds: float,
     priority_bucket_seconds: float,
+    subagent_runs: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
 ) -> ActiveSessionSnapshot:
     session_list = list(sessions)
     active_ids = {s.session_id for s in session_list}
@@ -298,6 +302,7 @@ def build_active_session_rows_snapshot(
     sidebar_dirty = False
     recent_cwd_dirty = False
     rows: list[dict[str, Any]] = []
+    active_subagent_runs = scan_active_pi_subagents() if subagent_runs is None else subagent_runs
     for s in session_list:
         cfg0 = unattended.get(s.session_id)
         unattended_cooldown_minutes = (
@@ -347,6 +352,11 @@ def build_active_session_rows_snapshot(
             cwd_path: Path | None = resolve_session_cwd(s.cwd)
         except ValueError:
             cwd_path = None
+        matching_subagents = (
+            active_subagent_runs.get(str(s.log_path), ())
+            if s.agent_backend == "pi" and s.log_path is not None
+            else ()
+        )
         rows.append(
             build_active_session_row(
                 ActiveSessionRowFacts(
@@ -408,6 +418,7 @@ def build_active_session_rows_snapshot(
                     blocked=blocked,
                     snoozed=snoozed,
                     pi_thinking_command=bool(s.pi_thinking_command),
+                    subagents_running=len(matching_subagents),
                 )
             )
         )

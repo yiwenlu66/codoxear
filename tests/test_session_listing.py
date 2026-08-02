@@ -136,6 +136,44 @@ def test_build_active_session_rows_snapshot_combines_session_and_store_state(tmp
     assert row["_cwd_path_obj"] == Path("/repo")
     assert row["blocked"] is False
     assert row["snoozed"] is False
+    assert row["subagents_running"] == 0
+
+
+def test_session_listing_projects_only_matching_pi_subagent_runs(tmp_path: Path) -> None:
+    pi_log = tmp_path / "pi.jsonl"
+    codex_log = tmp_path / "codex.jsonl"
+    pi_log.write_text("", encoding="utf-8")
+    codex_log.write_text("", encoding="utf-8")
+    sessions = [
+        Session(session_id="pi", thread_id="pi-thread", broker_pid=2, codex_pid=1, agent_backend="pi", owned=True, start_ts=1.0, cwd="/repo", log_path=pi_log, sock_path=tmp_path / "pi.sock"),
+        Session(session_id="codex", thread_id="codex-thread", broker_pid=4, codex_pid=3, agent_backend="codex", owned=True, start_ts=1.0, cwd="/repo", log_path=codex_log, sock_path=tmp_path / "codex.sock"),
+    ]
+
+    snapshot = build_active_session_rows_snapshot(
+        sessions=sessions,
+        queues={},
+        unattended={},
+        aliases={},
+        store=_store(tmp_path),
+        now_ts=10.0,
+        unattended_default_idle_minutes=5,
+        unattended_default_max_injections=10,
+        clean_unattended_cooldown_minutes=lambda value: int(value),
+        clean_unattended_remaining_injections=lambda value, *, allow_zero=False: int(value),
+        provider_choice_for_settings=lambda **_kwargs: "",
+        resolve_session_cwd=lambda _cwd: Path("/repo"),
+        priority_half_life_seconds=100.0,
+        priority_bucket_seconds=10.0,
+        subagent_runs={
+            str(pi_log): [{"run_id": "one"}, {"run_id": "two"}],
+            str(codex_log): [{"run_id": "ignored"}],
+            str(tmp_path / "unbound.jsonl"): [{"run_id": "ignored"}],
+        },
+    )
+
+    by_id = {row["session_id"]: row for row in snapshot.rows}
+    assert by_id["pi"]["subagents_running"] == 2
+    assert by_id["codex"]["subagents_running"] == 0
 
 
 def test_build_active_session_row_projects_public_and_staging_fields() -> None:
@@ -197,6 +235,7 @@ def test_build_active_session_row_projects_public_and_staging_fields() -> None:
         blocked=True,
         snoozed=True,
         pi_thinking_command=True,
+        subagents_running=3,
     )
 
     row = build_active_session_row(facts)
@@ -208,6 +247,7 @@ def test_build_active_session_row_projects_public_and_staging_fields() -> None:
     assert row["broker_pid"] == 22
     assert row["agent_backend"] == "pi"
     assert row["pi_thinking_command"] is True
+    assert row["subagents_running"] == 3
     assert row["owned"] is True
     assert row["transport"] == "pty"
     assert row["cwd"] == "/repo"

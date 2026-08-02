@@ -299,6 +299,7 @@
     let typingRow = null;
     let typingStatsNode = null;
     let typingStats = { thinking: 0, tools: 0 };
+    let typingSubagents = 0;
 
     function normalizeTypingCount(value) {
       const count = Number(value);
@@ -308,7 +309,9 @@
     function renderTypingStats() {
       if (!typingStatsNode) return;
       const { thinking, tools } = typingStats;
-      typingStatsNode.textContent = tools || thinking ? `tools: ${tools} · thinking: ${thinking}` : "";
+      const activity = tools || thinking ? `tools: ${tools} · thinking: ${thinking}` : "";
+      const subagents = typingSubagents ? `subagents: ${typingSubagents}` : "";
+      typingStatsNode.textContent = [activity, subagents].filter(Boolean).join(" · ");
     }
 
     function ensureRow() {
@@ -347,6 +350,13 @@
 
     function resetTypingStats() {
       typingStats = { thinking: 0, tools: 0 };
+      typingSubagents = 0;
+      renderTypingStats();
+      return snapshot();
+    }
+
+    function updateSubagentGauge(count) {
+      typingSubagents = normalizeTypingCount(count);
       renderTypingStats();
       return snapshot();
     }
@@ -392,6 +402,7 @@
       resetTypingStats,
       setVisible,
       snapshot,
+      updateSubagentGauge,
       updateTypingStats,
     });
   }

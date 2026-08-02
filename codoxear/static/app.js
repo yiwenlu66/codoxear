@@ -2803,6 +2803,10 @@
 
         function updateTypingStatsFromSession(session) {
           if (!session) return;
+          // This is a live gauge from the session-list snapshot, not an event
+          // counter. Replace it on every snapshot so completed subagents clear
+          // promptly; only tool/thinking totals use monotonic reconciliation.
+          typingRowRuntime.updateSubagentGauge(session.subagents_running);
           const stats = {
             thinking: session.thinking,
             tools: session.tools,

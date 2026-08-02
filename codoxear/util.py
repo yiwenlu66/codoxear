@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 import os
 import sys
 import time
@@ -63,6 +64,83 @@ from .pi_log import read_pi_log_cwd
 
 _LEGACY_WARNED = False
 LAUNCH_ATTEMPTS_FILENAME = "session_launches.jsonl"
+
+# pi-subagents leaves completed runs on disk, so callers must not rescan the
+# entire tree for every /api/sessions request. The cache is deliberately small:
+# the session list poll is slower than this TTL, while an active run disappears
+# from the UI within one additional poll after it completes.
+_SUBAGENT_RUNS_CACHE_TTL_S = 2.0
+_SUBAGENT_RUNS_CACHE_ROOT: str | None = None
+_SUBAGENT_RUNS_CACHE_AT = 0.0
+_SUBAGENT_RUNS_CACHE: dict[str, list[dict[str, Any]]] = {}
+_ACTIVE_SUBAGENT_STATES = frozenset({"running", "pending"})
+
+
+def _subagent_runs_root() -> Path:
+    configured = os.environ.get("CODEX_WEB_SUBAGENT_RUNS_ROOT", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return Path(f"/tmp/pi-subagents-uid-{os.getuid()}/async-subagent-runs")
+
+
+def scan_active_pi_subagents(*, now_monotonic: float | None = None) -> dict[str, list[dict[str, Any]]]:
+    """Return active pi-subagents grouped by their parent session log path.
+
+    pi-subagents status files are an auxiliary, best-effort signal. A missing
+    or concurrently changing run directory must therefore project as no runs,
+    rather than making the session-list route fail.
+    """
+    global _SUBAGENT_RUNS_CACHE_AT, _SUBAGENT_RUNS_CACHE_ROOT, _SUBAGENT_RUNS_CACHE
+    root = _subagent_runs_root()
+    root_key = os.fspath(root)
+    now_value = time.monotonic() if now_monotonic is None else float(now_monotonic)
+    if _SUBAGENT_RUNS_CACHE_ROOT == root_key and now_value - _SUBAGENT_RUNS_CACHE_AT < _SUBAGENT_RUNS_CACHE_TTL_S:
+        return {parent: [dict(run) for run in runs] for parent, runs in _SUBAGENT_RUNS_CACHE.items()}
+
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    try:
+        status_paths = list(root.glob("*/status.json"))
+    except OSError:
+        status_paths = []
+    for status_path in sorted(status_paths):
+        try:
+            with status_path.open("r", encoding="utf-8") as stream:
+                payload = json.load(stream)
+        except (OSError, UnicodeDecodeError, ValueError, TypeError):
+            continue
+        if not isinstance(payload, dict) or str(payload.get("state", "")).strip().lower() not in _ACTIVE_SUBAGENT_STATES:
+            continue
+        parent = payload.get("sessionId")
+        run_id = payload.get("runId") or status_path.parent.name
+        started_at = payload.get("startedAt")
+        if not isinstance(parent, str) or not parent or not isinstance(run_id, str) or not run_id:
+            continue
+        if not isinstance(started_at, (int, float)) or isinstance(started_at, bool):
+            continue
+        agent = payload.get("agent")
+        if not isinstance(agent, str) or not agent.strip():
+            steps = payload.get("steps")
+            if isinstance(steps, list):
+                current_step = payload.get("currentStep")
+                ordered_steps = (
+                    [steps[current_step], *steps[:current_step], *steps[current_step + 1 :]]
+                    if isinstance(current_step, int) and not isinstance(current_step, bool) and 0 <= current_step < len(steps)
+                    else steps
+                )
+                for step in ordered_steps:
+                    if isinstance(step, dict) and isinstance(step.get("agent"), str) and step["agent"].strip():
+                        agent = step["agent"]
+                        break
+        grouped.setdefault(parent, []).append({
+            "run_id": run_id,
+            "agent": agent.strip() if isinstance(agent, str) else None,
+            "started_at": started_at,
+        })
+
+    _SUBAGENT_RUNS_CACHE_ROOT = root_key
+    _SUBAGENT_RUNS_CACHE_AT = now_value
+    _SUBAGENT_RUNS_CACHE = grouped
+    return {parent: [dict(run) for run in runs] for parent, runs in grouped.items()}
 
 
 def _log_error(msg: str) -> None:
