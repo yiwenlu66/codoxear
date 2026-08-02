@@ -2563,6 +2563,19 @@ select {
         flex: 0 0 auto;
         overflow: visible;
       }
+      #newSessionStatus {
+        color: var(--muted);
+      }
+      #newSessionStatus:not(:empty)::before {
+        content: "";
+        display: inline-block;
+        width: 6px;
+        height: 6px;
+        margin-right: var(--space-2);
+        border: 1.5px solid var(--ink);
+        animation: stateDotPulse 1.2s ease-in-out infinite;
+        vertical-align: 1px;
+      }
       #newSessionStatus:empty,
       #newSessionCwdHint:empty {
         display: none;
