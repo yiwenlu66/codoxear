@@ -175,8 +175,8 @@ class TestPaperDesignLanguageSource(unittest.TestCase):
         self.assertNotIn('class="sidebarLogo" src=', shell)
         self.assertNotIn('codoxear-icon.png', shell)
 
-        picker = body_with(self.css, ".composer .modelPicker", "width: min(92vw, 420px)")
-        self.assertIn("max-width: min(92vw, 420px)", picker)
+        picker = body_with(self.css, ".composer .modelPicker", "width: min(100%, 420px)")
+        self.assertIn("max-width: min(100%, 420px)", picker)
         self.assertIn("max-height: min(50vh, 320px)", picker)
         self.assertIn("overflow-y: auto", picker)
         self.assertIn("border: 1px solid var(--border)", picker)
