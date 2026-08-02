@@ -175,7 +175,10 @@ class TestPaperDesignLanguageSource(unittest.TestCase):
     def test_design_audit_paper_surfaces_are_bounded_and_inked(self) -> None:
         shell = APP_SHELL.read_text(encoding="utf-8")
         self.assertIn('<svg class="sidebarLogo"', shell)
-        self.assertIn('fill="currentColor"', shell)
+        self.assertIn('data-logo-motif="dog-ear-terminal"', shell)
+        self.assertIn('M14 2v6h6', shell)
+        self.assertIn('m7 13 3 3-3 3', shell)
+        self.assertIn('stroke="currentColor"', shell)
         self.assertNotIn('class="sidebarLogo" src=', shell)
         self.assertNotIn('codoxear-icon.png', shell)
 
