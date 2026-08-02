@@ -11,6 +11,7 @@ from .git_ops import path_has_surrogate_bytes
 from .git_ops import path_json_text
 from .git_ops import path_token_query
 from .git_ops import path_token_response_fields
+from .image_dimensions import read_image_dimensions
 from .file_view import ClientFileView
 from .video_preview import video_response_payload
 
@@ -114,6 +115,7 @@ class FileGetRouteDeps:
     send_inline_file_response: Callable[[Any, Path, str], None]
     send_attachment_file_response: Callable[..., None]
     file_search_limit: int
+    read_image_dimensions: Callable[[Path], tuple[int, int]] = read_image_dimensions
 
 
 def handle_file_get_route(
@@ -138,6 +140,11 @@ def handle_file_get_route(
     session_id = match_session_route(path, "file", "list")
     if session_id is not None:
         _handle_session_file_list(handler, session_id=session_id, manager=manager, deps=deps)
+        return True
+
+    session_id = match_session_route(path, "file", "image-dimensions")
+    if session_id is not None:
+        _handle_session_image_dimensions(handler, session_id=session_id, query=query, manager=manager, deps=deps)
         return True
 
     session_id = match_session_route(path, "file", "blob")
@@ -168,6 +175,9 @@ def handle_absolute_file_preview_route(
     query: str,
     deps: FileGetRouteDeps,
 ) -> bool:
+    if path == "/api/files/image-dimensions":
+        _handle_absolute_image_dimensions(handler, query=query, deps=deps)
+        return True
     if path == "/api/files/blob":
         _handle_absolute_file_blob(handler, query=query, deps=deps)
         return True
@@ -396,6 +406,13 @@ def _handle_session_file_blob(handler: Any, *, session_id: str, query: str, mana
     _send_preview_blob(handler, path_obj=path_obj, deps=deps)
 
 
+def _handle_session_image_dimensions(handler: Any, *, session_id: str, query: str, manager: Any, deps: FileGetRouteDeps) -> None:
+    path_obj = _session_file_path_for_preview(handler, session_id=session_id, query=query, manager=manager, deps=deps)
+    if path_obj is None:
+        return
+    _send_image_dimensions(handler, path_obj=path_obj, deps=deps)
+
+
 def _handle_session_file_video_preview(handler: Any, *, session_id: str, query: str, manager: Any, deps: FileGetRouteDeps) -> None:
     path_obj = _session_file_path_for_preview(handler, session_id=session_id, query=query, manager=manager, deps=deps)
     if path_obj is None:
@@ -410,6 +427,15 @@ def _handle_absolute_file_blob(handler: Any, *, query: str, deps: FileGetRouteDe
     if path_obj is None:
         return
     _send_preview_blob(handler, path_obj=path_obj, deps=deps)
+
+
+def _handle_absolute_image_dimensions(handler: Any, *, query: str, deps: FileGetRouteDeps) -> None:
+    if not _authorized(handler, deps):
+        return
+    path_obj = _absolute_file_path(handler, query=query, deps=deps)
+    if path_obj is None:
+        return
+    _send_image_dimensions(handler, path_obj=path_obj, deps=deps)
 
 
 def _handle_absolute_file_video_preview(handler: Any, *, query: str, deps: FileGetRouteDeps) -> None:
@@ -468,6 +494,15 @@ def _send_preview_blob(handler: Any, *, path_obj: Path, deps: FileGetRouteDeps) 
         deps.json_response(handler, 400, {"error": "file is not previewable inline"})
         return
     deps.send_inline_file_response(handler, path_obj, content_type)
+
+
+def _send_image_dimensions(handler: Any, *, path_obj: Path, deps: FileGetRouteDeps) -> None:
+    try:
+        width, height = deps.read_image_dimensions(path_obj)
+    except (FileNotFoundError, PermissionError, ValueError) as e:
+        _map_resolve_error(handler, e, deps)
+        return
+    deps.json_response(handler, 200, {"width": width, "height": height})
 
 
 def _send_video_preview(handler: Any, *, path_obj: Path, deps: FileGetRouteDeps) -> None:

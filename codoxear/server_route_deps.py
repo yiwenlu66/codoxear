@@ -178,6 +178,7 @@ class ServerRouteDepsFactory:
             resolve_existing_absolute_file=server._resolve_existing_absolute_file,
             read_client_file_view=server._read_client_file_view,
             read_regular_file_prefix=server._read_regular_file_prefix_no_symlink,
+            read_image_dimensions=server._read_image_dimensions,
             search_session_relative_files=server._search_session_relative_files,
             list_session_relative_files=server._list_session_relative_files,
             list_session_relative_file_entries=server._list_session_relative_file_entries,

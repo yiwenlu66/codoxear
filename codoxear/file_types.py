@@ -68,6 +68,8 @@ def sniff_image_ext(raw: bytes) -> str | None:
         return ".png"
     if len(raw) >= 3 and raw[:3] == b"\xff\xd8\xff":
         return ".jpg"
+    if len(raw) >= 6 and raw[:6] in {b"GIF87a", b"GIF89a"}:
+        return ".gif"
     if len(raw) >= 12 and raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
         return ".webp"
     return None
@@ -81,6 +83,8 @@ def image_content_type(path: Path, raw: bytes) -> str | None:
         return "image/png"
     if ext == ".jpg":
         return "image/jpeg"
+    if ext == ".gif":
+        return "image/gif"
     if ext == ".webp":
         return "image/webp"
     return None

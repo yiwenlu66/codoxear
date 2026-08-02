@@ -262,6 +262,8 @@
   const IMAGE_DIMENSION_CACHE_KEY = "codoxear.image-dimensions.v1";
   const IMAGE_DIMENSION_CACHE_LIMIT = 500;
   const DEFAULT_IMAGE_DIMENSIONS = Object.freeze({ width: 16, height: 9 });
+  const imageDimensionRequests = new Map();
+  let imageHydrationScheduled = false;
 
   function imageDimensionStorage() {
     try {
@@ -329,6 +331,64 @@
     applyImageDimensions(image, source, dimensions);
   }
 
+  function validImageDimensions(value) {
+    const width = Number(value && value.width);
+    const height = Number(value && value.height);
+    return Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0 ? { width, height } : null;
+  }
+
+  function requestImageDimensions(url) {
+    const existing = imageDimensionRequests.get(url);
+    if (existing) return existing;
+    if (typeof fetch !== "function") return Promise.reject(new Error("image dimension fetch unavailable"));
+    const request = fetch(url, { credentials: "same-origin" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`image dimensions request failed: ${response.status}`);
+        const dimensions = validImageDimensions(await response.json());
+        if (!dimensions) throw new Error("image dimensions response is invalid");
+        return dimensions;
+      })
+      .finally(() => imageDimensionRequests.delete(url));
+    imageDimensionRequests.set(url, request);
+    return request;
+  }
+
+  function assignImageSource(image, source, dimensions) {
+    applyImageDimensions(image, source, dimensions);
+    image.removeAttribute("data-codoxear-image-src");
+    image.removeAttribute("data-codoxear-image-dimensions-url");
+    image.src = source;
+  }
+
+  function hydrateMarkedImage(image) {
+    const source = image && image.dataset ? image.dataset.codoxearImageSrc : "";
+    const dimensionsUrl = image && image.dataset ? image.dataset.codoxearImageDimensionsUrl : "";
+    if (!source || !dimensionsUrl) return;
+    const cached = cachedImageDimensions(source);
+    if (cached) {
+      assignImageSource(image, source, cached);
+      return;
+    }
+    requestImageDimensions(dimensionsUrl).then(
+      (dimensions) => assignImageSource(image, source, dimensions),
+      () => assignImageSource(image, source, DEFAULT_IMAGE_DIMENSIONS)
+    );
+  }
+
+  function hydrateMarkedImages(root = document) {
+    if (!root || typeof root.querySelectorAll !== "function") return;
+    for (const image of root.querySelectorAll("img[data-codoxear-image-src][data-codoxear-image-dimensions-url]")) hydrateMarkedImage(image);
+  }
+
+  function scheduleMarkedImageHydration() {
+    if (imageHydrationScheduled || typeof Promise === "undefined") return;
+    imageHydrationScheduled = true;
+    Promise.resolve().then(() => {
+      imageHydrationScheduled = false;
+      hydrateMarkedImages();
+    });
+  }
+
   function rememberImageDimensions(image) {
     const source = image && image.dataset ? image.dataset.codoxearImageKey : "";
     const width = Number(image && image.naturalWidth);
@@ -352,13 +412,22 @@
       const rawSrc = image.getAttribute("src") || "";
       const localRef = localFileRefFromRef(rawSrc, options);
       const src = options && typeof options.resolveImageSrc === "function" ? options.resolveImageSrc(rawSrc, localRef) : safeUrl(rawSrc);
+      const dimensionsUrl = options && typeof options.resolveImageDimensionsUrl === "function" ? options.resolveImageDimensionsUrl(rawSrc, localRef) : null;
       if (!src) image.replaceWith(doc.createTextNode(image.alt || ""));
-      else {
+      else if (dimensionsUrl && !cachedImageDimensions(src)) {
+        // A server-readable file stays source-less until its header dimensions
+        // arrive. This prevents the browser from beginning the image request
+        // with a guessed 16:9 layout box.
+        image.removeAttribute("src");
+        image.dataset.codoxearImageSrc = src;
+        image.dataset.codoxearImageDimensionsUrl = dimensionsUrl;
+      } else {
         prepareImageForDisplay(image, src);
         image.src = src;
       }
       image.loading = "lazy";
     }
+    scheduleMarkedImageHydration();
   }
 
   function decorateCodeBlocks(root, doc) {
@@ -487,7 +556,10 @@
     const scope = options && typeof options.cacheKey === "string" ? options.cacheKey : "";
     const key = `${scope}\0${text}`;
     const hit = mdCache.get(key);
-    if (hit !== undefined) return hit;
+    if (hit !== undefined) {
+      scheduleMarkedImageHydration();
+      return hit;
+    }
     const html = mdToHtml(text, options);
     mdCache.set(key, html);
     if (mdCache.size > 1200) mdCache.clear();
@@ -506,6 +578,13 @@
     return safeUrl(rawRef);
   }
 
+  function previewImageDimensionsUrlForRef(rawRef, localRef, { filePath, sessionId } = {}) {
+    if (!localRef || !localRef.path) return null;
+    if (sessionId) return resolveAppUrl(`/api/sessions/${sessionId}/file/image-dimensions?path=${encodeURIComponent(localRef.path)}`);
+    if (localRef.path.startsWith("/")) return resolveAppUrl(`/api/files/image-dimensions?path=${encodeURIComponent(localRef.path)}`);
+    return null;
+  }
+
   function markdownPreviewHtml(src, { filePath = "", sessionId = "" } = {}) {
     const basePath = String(filePath || "").trim();
     const sid = String(sessionId || "").trim();
@@ -517,6 +596,9 @@
       resolveImageSrc(rawRef, localRef) {
         return previewImageUrlForRef(rawRef, localRef, { filePath: basePath, sessionId: sid });
       },
+      resolveImageDimensionsUrl(rawRef, localRef) {
+        return previewImageDimensionsUrlForRef(rawRef, localRef, { filePath: basePath, sessionId: sid });
+      },
     });
   }
 
@@ -526,6 +608,9 @@
       cacheKey: sid ? `chat:${sid}` : "chat",
       resolveImageSrc(rawRef, localRef) {
         return previewImageUrlForRef(rawRef, localRef, { sessionId: sid });
+      },
+      resolveImageDimensionsUrl(rawRef, localRef) {
+        return previewImageDimensionsUrlForRef(rawRef, localRef, { sessionId: sid });
       },
     });
   }
@@ -541,5 +626,6 @@
     chatMarkdownHtmlCached,
     prepareImageForDisplay,
     rememberImageDimensions,
+    hydrateMarkedImages,
   });
 })();
