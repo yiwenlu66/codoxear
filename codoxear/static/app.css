@@ -1715,10 +1715,11 @@
       .composer .modelPicker {
         position: absolute;
         z-index: 20;
-        left: calc(var(--composerCtl) + 8px + var(--composer-picker-inset));
+        left: 0;
+        right: 0;
         bottom: calc(100% + 6px);
-        width: min(calc(100% - var(--composerCtl) - 8px - var(--composer-picker-inset)), 420px);
-        max-width: min(calc(100% - var(--composerCtl) - 8px - var(--composer-picker-inset)), 420px);
+        width: auto;
+        max-width: 420px;
         max-height: min(50vh, 320px);
         overflow-y: auto;
         padding: var(--space-1);
