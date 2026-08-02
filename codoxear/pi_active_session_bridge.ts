@@ -73,7 +73,7 @@ function writeActiveSession(ctx: ExtensionContext, reason: string): void {
 
 let activePi;
 
-function writeThinkingCapabilities(commands?: Array<{ name: string; description: string }>): void {
+function writeThinkingCapabilities(commands) {
 	const markerPath = process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE;
 	if (!markerPath) return;
 	const capsPath = `${markerPath}.caps`;
@@ -103,7 +103,7 @@ export default function (pi: ExtensionAPI): void {
 	activePi = pi;
 	writeThinkingCapabilities();
 	let commandsRegistered = false;
-	function registerEffortCommands(): void {
+	function registerEffortCommands() {
 		if (commandsRegistered) return;
 		try {
 			pi.registerCommand("effort", {
@@ -119,7 +119,7 @@ export default function (pi: ExtensionAPI): void {
 			try {
 				const live = typeof pi.getCommands === "function" ? pi.getCommands() : undefined;
 				writeThinkingCapabilities(
-					Array.isArray(live) ? live.map((c: { name: string; description?: string }) => ({ name: c.name, description: c.description || "" })) : undefined,
+					Array.isArray(live) ? live.map((c) => ({ name: c.name, description: c.description || "" })) : undefined,
 				);
 			} catch {
 				// Caps without the command list is fine; the next lifecycle event retries.

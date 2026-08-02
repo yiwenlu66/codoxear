@@ -660,7 +660,7 @@
       }
       .pill {
         display: inline-flex;
-        align-items: stretch;
+        align-items: center;
         gap: 8px;
         min-width: 0;
         flex: 1 1 auto;
@@ -855,9 +855,8 @@
       .status-chip {
         display: inline-flex;
         align-items: center;
-        /* Chips hug their content; the touch button min-height floor must
-           not inflate them above the row's buttons. */
-        min-height: 0;
+        height: 32px;
+        box-sizing: border-box;
         padding: 4px 10px;
         border-radius: 0;
         border: 1px solid var(--border);
@@ -1769,8 +1768,8 @@ select {
         flex: 0 0 auto;
       }
       .composer .icon-btn {
-        border: 1px solid var(--border);
-        background: var(--paper);
+        border: 0;
+        background: transparent;
         box-shadow: none;
       }
       .composer .icon-btn:hover {
@@ -2476,6 +2475,7 @@ select {
         margin: auto;
         z-index: 80;
         width: min(92vw, 820px);
+        height: fit-content;
         max-height: calc(var(--appH, 100dvh) - 24px);
         background: var(--panel);
         border: 1px solid var(--border);
@@ -2585,10 +2585,11 @@ select {
       .formBody {
         display: flex;
         flex-direction: column;
-        flex: 1 1 auto;
+        flex: 0 1 auto;
         min-height: 0;
         gap: var(--dialog-group-gap, 10px);
-        overflow: auto;
+        overflow-y: auto;
+        overflow-x: hidden;
         -webkit-overflow-scrolling: touch;
         overscroll-behavior: contain;
       }
@@ -2757,8 +2758,7 @@ select {
         pointer-events: none;
         z-index: 1;
       }
-      #newSessionCwdInput,
-      #newSessionModelInput {
+      #newSessionCwdInput {
         font-family: var(--font-mono);
       }
       .cwdComboboxField.error .cwdComboboxIcon {

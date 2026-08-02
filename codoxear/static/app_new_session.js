@@ -180,7 +180,7 @@
     }
 
     function newSessionProviderModelDisplay(model, providerChoice = "") {
-      return formatNewSessionProviderModelDisplay(model, providerChoice);
+      return formatNewSessionProviderModelDisplay(model, abbreviatedNewSessionProvider(providerChoice));
     }
 
     function newSessionAllowsCustomProvider() {
