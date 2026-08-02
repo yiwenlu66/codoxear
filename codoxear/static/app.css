@@ -2791,27 +2791,6 @@ select {
       .sidePickerBtn {
         width: 100%;
       }
-      @media (max-width: 700px) {
-        .newSessionOptionsRow {
-          grid-template-columns: minmax(0, 1fr);
-        }
-        .newSessionOptionsRow #newSessionTmuxField {
-          justify-content: flex-start;
-        }
-        .newSessionRunConfigRow .fieldLabel,
-        .newSessionOptionsRow .fieldLabel,
-        .unattendedMenu .label {
-          font-size: 12px;
-        }
-        .newSessionRunConfigRow .checkField,
-        .newSessionOptionsRow .checkField {
-          font-size: 13px;
-        }
-        .newSessionRunConfigRow #newSessionFastField .checkField,
-        .newSessionOptionsRow #newSessionTmuxField .checkField {
-          min-height: var(--dialog-control-h);
-        }
-      }
       @media (min-width: 881px) {
         .formViewer.newSessionViewer {
           width: min(92vw, 560px);
@@ -3029,15 +3008,6 @@ select {
       .detailsValue.mono {
         font-size: 12px;
       }
-      @media (max-width: 700px) {
-        .detailsRow {
-          grid-template-columns: minmax(0, 1fr);
-          gap: 4px;
-        }
-        .detailsLabel {
-          padding-top: 0;
-        }
-      }
       .queueHeader {
         display: flex;
         align-items: center;
@@ -3196,6 +3166,116 @@ select {
         #threadTitle {
           max-width: 48vw;
         }
+        .newSessionOptionsRow {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .newSessionOptionsRow #newSessionTmuxField {
+          justify-content: flex-start;
+        }
+        .newSessionRunConfigRow .fieldLabel,
+        .newSessionOptionsRow .fieldLabel,
+        .unattendedMenu .label {
+          font-size: 12px;
+        }
+        .newSessionRunConfigRow .checkField,
+        .newSessionOptionsRow .checkField {
+          font-size: 13px;
+        }
+        .newSessionRunConfigRow #newSessionFastField .checkField,
+        .newSessionOptionsRow #newSessionTmuxField .checkField {
+          min-height: var(--dialog-control-h);
+        }
+        .detailsRow {
+          grid-template-columns: minmax(0, 1fr);
+          gap: 4px;
+        }
+        .detailsLabel {
+          padding-top: 0;
+        }
+      }
+
+      @media (max-width: 880px), (pointer: coarse) {
+        :root {
+          --ctl: 44px;
+        }
+        .composer .icon-btn {
+          position: relative;
+        }
+        .composer .icon-btn::after {
+          content: "";
+          position: absolute;
+          inset: -6px;
+        }
+        button {
+          min-height: 44px;
+          touch-action: manipulation;
+        }
+        .topActions .icon-btn,
+        .pill > .icon-btn,
+        .sidebar header .icon-btn,
+        .chatNavRail .icon-btn {
+          position: relative;
+        }
+        .topActions .icon-btn::after,
+        .pill > .icon-btn::after,
+        .sidebar header .icon-btn::after,
+        .chatNavRail .icon-btn::after {
+          content: "";
+          position: absolute;
+          inset: -6px;
+        }
+        .code-copy-btn,
+        .msg-copy-btn {
+          width: 30px;
+          height: 30px;
+          min-width: 30px;
+          min-height: 30px;
+        }
+        .code-copy-btn::after,
+        .msg-copy-btn::after,
+        .stagedAttachmentRemove::after {
+          content: "";
+          position: absolute;
+          inset: -7px;
+        }
+        .stagedAttachmentRemove {
+          min-width: 18px;
+          min-height: 18px;
+        }
+        .jumpBtn {
+          width: 32px;
+          height: 32px;
+          min-width: 32px;
+          min-height: 32px;
+          padding: 0;
+          align-items: center;
+          justify-content: center;
+        }
+        .fileViewer .fileTouchDpad {
+          grid-template-columns: repeat(3, 44px);
+          grid-template-rows: repeat(2, 44px);
+        }
+        .fileViewer .fileTouchSpacer {
+          width: 44px;
+          height: 44px;
+        }
+        .fileViewer .fileTouchBtn {
+          width: 44px;
+          height: 44px;
+          min-width: 44px;
+          min-height: 44px;
+        }
+        input[type="text"],
+        input[type="password"],
+        input[type="datetime-local"],
+        input[type="search"],
+        select,
+        textarea {
+          font-size: 16px !important;
+        }
+        #jumpBtn {
+          padding: 7px 8px;
+        }
       }
 
       @media (max-width: 520px) {
@@ -3316,88 +3396,4 @@ select {
         display: none;
         align-items: center;
         justify-content: center;
-      }
-
-      @media (max-width: 700px), (pointer: coarse) {
-        :root {
-          --ctl: 44px;
-        }
-        .composer .icon-btn {
-          position: relative;
-        }
-        .composer .icon-btn::after {
-          content: "";
-          position: absolute;
-          inset: -6px;
-        }
-        button {
-          min-height: 44px;
-          touch-action: manipulation;
-        }
-        .topActions .icon-btn,
-        .pill > .icon-btn,
-        .sidebar header .icon-btn,
-        .chatNavRail .icon-btn {
-          position: relative;
-        }
-        .topActions .icon-btn::after,
-        .pill > .icon-btn::after,
-        .sidebar header .icon-btn::after,
-        .chatNavRail .icon-btn::after {
-          content: "";
-          position: absolute;
-          inset: -6px;
-        }
-        .code-copy-btn,
-        .msg-copy-btn {
-          width: 30px;
-          height: 30px;
-          min-width: 30px;
-          min-height: 30px;
-        }
-        .code-copy-btn::after,
-        .msg-copy-btn::after,
-        .stagedAttachmentRemove::after {
-          content: "";
-          position: absolute;
-          inset: -7px;
-        }
-        .stagedAttachmentRemove {
-          min-width: 18px;
-          min-height: 18px;
-        }
-        .jumpBtn {
-          width: 32px;
-          height: 32px;
-          min-width: 32px;
-          min-height: 32px;
-          padding: 0;
-          align-items: center;
-          justify-content: center;
-        }
-        .fileViewer .fileTouchDpad {
-          grid-template-columns: repeat(3, 44px);
-          grid-template-rows: repeat(2, 44px);
-        }
-        .fileViewer .fileTouchSpacer {
-          width: 44px;
-          height: 44px;
-        }
-        .fileViewer .fileTouchBtn {
-          width: 44px;
-          height: 44px;
-          min-width: 44px;
-          min-height: 44px;
-        }
-        input[type="text"],
-        input[type="password"],
-        input[type="datetime-local"],
-        input[type="search"],
-        select,
-        textarea {
-          font-size: 16px !important;
-        }
-        #jumpBtn {
-          padding: 7px 8px;
-        }
       }
