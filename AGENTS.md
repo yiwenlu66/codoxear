@@ -143,7 +143,7 @@ That repoints the same snapshot worktree and service at the previous committed c
 
 - Restarting `codoxear.server` does **not** lose session content. Sessions live in backend log files on disk; the server only reads them.
 - To avoid losing live sessions, **only** restart the server service. Do **not** kill `codoxear-broker` or the underlying backend CLI process.
-- The supported service operation is `systemctl --user restart codoxear-server.service`; deploys must use `scripts/deploy.sh <commit-ish>` above.`
+- The supported service operation is `systemctl --user restart codoxear-server.service`; deploys must use `scripts/deploy.sh <commit-ish>` above.
 
 ## Testing policy (absolute)
 
