@@ -1493,9 +1493,9 @@
         -webkit-overflow-scrolling: touch;
       }
       .md table {
-        width: 100%;
+        width: auto;
         max-width: 100%;
-        table-layout: fixed;
+        table-layout: auto;
         border-collapse: collapse;
         font-size: 13px;
         line-height: 1.35;
