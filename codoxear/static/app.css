@@ -1574,7 +1574,7 @@
       .composer {
         --composerCtl: 32px;
         border-top: 1px solid var(--border);
-        padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+        padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
         background: var(--panel);
       }
       .composer form {
@@ -1584,8 +1584,8 @@
         display: flex;
         flex-direction: column;
         align-items: stretch;
-        gap: 6px;
-        padding: 6px 8px;
+        gap: 4px;
+        padding: 3px 6px;
         transition: background 120ms ease-out;
       }
       .composer.drop-active form {
@@ -1847,15 +1847,59 @@ select {
 	        margin-bottom: 6px;
 	      }
 	      .unattendedMenu label {
+	        position: relative;
 	        display: inline-flex;
 	        align-items: center;
 	        gap: 8px;
 	        font-size: 14px;
 	      }
-	      .unattendedMenu input[type="checkbox"] {
-	        width: 16px;
-	        height: 16px;
+	      .unattendedMenu .row > label::after {
+	        content: "";
+	        position: absolute;
+	        left: -13px;
+	        top: 50%;
+	        width: 44px;
+	        height: 44px;
+	        transform: translateY(-50%);
 	      }
+	      .unattendedMenu input[type="checkbox"] {
+	        appearance: none;
+	        -webkit-appearance: none;
+	        width: 18px;
+	        height: 18px;
+	        margin: 0;
+	        flex: 0 0 18px;
+	        border: 1px solid var(--ink);
+	        border-radius: 0;
+	        background: var(--paper);
+	        display: grid;
+	        place-content: center;
+	        cursor: pointer;
+	      }
+	      .unattendedMenu input[type="checkbox"]::after {
+	        content: "✓";
+	        color: var(--paper);
+	        font-size: 14px;
+	        font-weight: 700;
+	        line-height: 1;
+	        transform: scale(0);
+	      }
+	      .unattendedMenu input[type="checkbox"]:checked {
+	        background: var(--ink);
+	      }
+	      .unattendedMenu input[type="checkbox"]:checked::after {
+	        transform: scale(1);
+	      }
+	      .unattendedMenu input[type="checkbox"]:focus-visible {
+	        outline: 2px solid var(--ink);
+	        outline-offset: 2px;
+	      }
+      .formViewer input,
+      .formViewer textarea,
+      .unattendedMenu input,
+      .unattendedMenu textarea {
+        font-size: 16px;
+      }
       .unattendedMenu input[type="number"] {
         width: 100%;
         box-sizing: border-box;
@@ -1883,10 +1927,52 @@ select {
         min-width: 0;
       }
       .voiceToggleRow {
+        position: relative;
         display: inline-flex;
         align-items: center;
         gap: 8px;
         margin-bottom: 8px;
+      }
+      .voiceToggleRow::after {
+        content: "";
+        position: absolute;
+        left: -13px;
+        top: 50%;
+        width: 44px;
+        height: 44px;
+        transform: translateY(-50%);
+      }
+      .voiceToggleRow input[type="checkbox"] {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 18px;
+        height: 18px;
+        margin: 0;
+        flex: 0 0 18px;
+        border: 1px solid var(--ink);
+        border-radius: 0;
+        background: var(--paper);
+        display: grid;
+        place-content: center;
+        cursor: pointer;
+      }
+      .voiceToggleRow input[type="checkbox"]::after {
+        content: "✓";
+        color: var(--paper);
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1;
+        transform: scale(0);
+      }
+      .voiceToggleRow input[type="checkbox"]:checked {
+        background: var(--ink);
+      }
+      .voiceToggleRow input[type="checkbox"]:checked::after {
+        transform: scale(1);
+      }
+      .voiceToggleRow input[type="checkbox"]:focus-visible {
+        outline: 2px solid var(--ink);
+        outline-offset: 2px;
       }
       .voiceStatusText {
         margin: 4px 0 10px 0;
@@ -3084,11 +3170,11 @@ select {
           padding: 10px;
         }
         .composer {
-          padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+          padding: 5px 10px calc(5px + env(safe-area-inset-bottom));
         }
         .composer form {
-          padding: 5px 6px;
-          gap: 6px;
+          padding: 3px 5px;
+          gap: 4px;
         }
         .msg {
           max-width: 88%;
