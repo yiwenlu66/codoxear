@@ -3002,6 +3002,7 @@
           root: chatInner,
           bottomSentinel,
           document,
+          el,
           messageRows: codoxearMessageRows,
           transcript: codoxearTranscript,
           getSelectedSessionId: () => selected,
@@ -3491,10 +3492,7 @@
           setOlderState({ hasMore: false, isLoading: false });
           transcriptScrollRuntime.markLiveTail();
           restorePendingUserRowsForSession(sessionId);
-          const row = el("div", { class: "msg-row assistant typing-row transcript-loading-row" });
-          row.dataset.role = "assistant";
-          row.appendChild(el("div", { class: "msg assistant loading", role: "status", "aria-live": "polite", text: "Loading transcript…" }));
-          chatInner.insertBefore(row, bottomSentinel);
+          transcriptView().renderLoadingRow();
           transcriptScrollRuntime.syncJumpButton();
         }
 
@@ -3508,26 +3506,15 @@
             restorePendingUserRowsForSession(sessionId);
           }
           const reason = err && err.message ? ` ${err.message}` : "";
-          const row = el("div", { class: "msg-row assistant typing-row transcript-error-row" });
-          row.dataset.role = "assistant";
-          const bubble = el("div", { class: "msg assistant error transcript-error", role: "alert" });
-          bubble.appendChild(el("span", { class: "transcriptErrorText", text: `Could not load transcript.${reason}` }));
-          const retryBtn = el("button", {
-            class: "icon-btn text-btn transcriptRetryBtn",
-            type: "button",
-            text: "Retry",
-            title: "Retry loading this transcript",
-            "aria-label": "Retry loading this transcript",
+          transcriptView().renderLoadErrorRow({
+            message: `Could not load transcript.${reason}`,
+            onRetry: (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (selected !== sessionId) return;
+              void openSession(sessionId, { useCache: true });
+            },
           });
-          retryBtn.onclick = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (selected !== sessionId) return;
-            void openSession(sessionId, { useCache: true });
-          };
-          bubble.appendChild(retryBtn);
-          row.appendChild(bubble);
-          chatInner.insertBefore(row, bottomSentinel);
           turnOpen = false;
           setTyping(false);
           markClickFirstPaint();
