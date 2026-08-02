@@ -140,3 +140,31 @@ authoritative session. Depends on upstream evolution.
 ### Competitor landscape
 - **Wherever** (@wherever-dev/pi, AGPL-3.0): direct competitor. Multi-session web dashboard + Pi extension bridge + headless SDK sessions. Architecture reference for terminal/headless handover.
 - **remote-pi**: mobile control + daemon supervisor + agent mesh. Reference for typed mobile actions, correlated delivery, persistent daemon patterns.
+
+---
+
+# Architectural review — 2026-08-02 (post-overhaul)
+
+## What held
+
+- **PTY sharing as the one invariant.** Every feature this session (steering, /model, /effort, interrupt, subagent visibility) works because web and terminal share one PTY. No feature needed a parallel control channel; when one was tempting (Pi RPC mode), refusing it stayed correct.
+- **State-authority principle.** The 21-state table plus "one writer + declared reconciliation" turned the bug class (counts, busy, settings) from whack-a-mole into checkable contracts. Every fix since follows it.
+- **Normalization seam.** rollout_log/pi_log/cc_log normalization kept search, SSE, transcripts, and counters on one interpretation of each backend's log — the full-transcript search reused it instead of adding a parser, which is the pattern to defend.
+- **Broker/sessiond symmetry.** The capability and launch work touched both with one shape; the bridge extension pattern (load-time advertising) generalized cleanly.
+
+## Structural debts (ranked by evidence of harm)
+
+1. **Deployment serves the working tree.** Statics and Python resolve from the source checkout, so any half-edited tree state reaches users (two broken windows this session, one user-visible outage). The clean-tree deploy rule is a band-aid over a wrong mechanism. **Fix: deploy from a committed snapshot** (git worktree or build dir; point the service at it), making "what runs" == "what was reviewed at HEAD".
+2. **app.js is a 6993-line god-module.** The app_*.js extraction pattern (search, navigation, transcript, composer, diagnostics) works and should continue: transcript rendering, session list, and the send/queue flows are the next extractions. Rule: new features go into a focused module, not app.js.
+3. **Source-string tests are brittle under concurrency.** Dozens of this session's red tests were string assertions on CSS/JS text (they broke on any refactor of the same feature). Behavioral VM tests (the composer/search harnesses) are the durable kind; source-string assertions should be reserved for genuine contracts (hint map, capability names).
+4. **Three width cutoffs (520/700/880) accreted.** Target: two (880 layout, 520 phone) + pointer axis. The 700px rules (dialog sizing, topActions) fold into tokens.
+5. **agent_backend.py (1028 lines) accumulates per-backend parsing without a per-backend module boundary.** pi_log/cc_log exist; the backend class file should shrink to dispatch.
+
+## Process architecture (what the subagent era proved)
+
+- One-writer-per-file at commit boundaries is necessary but not sufficient: the shared INDEX is also a race surface (three swept commits this session). Rule now enforced: pathspec commits only; deploy only at clean-tree points; main agent reconciles.
+- Review gates caught real regressions (queued-turn count merge, modal Confirm/Cancel) that the writer's own tests missed. Keep independent review for state-machine changes.
+
+## Next review trigger
+
+After the app.js extraction of transcript + session list, or when a fourth backend lands — whichever first.
