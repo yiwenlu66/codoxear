@@ -694,20 +694,13 @@ class PiBackend(AgentBackend):
 
         row = dict(obj)
         row_type = row.get("type")
+        # Harness<->agent coordination traffic (subagent control notices,
+        # intercom deliveries, long-running pings) is not agent->user
+        # communication and must not surface as transcript rows. Awareness of
+        # background work lives in the ambient subagent indicator instead.
         if row_type == "active_long_running":
-            return self._subagent_narration_event(row, "Background task in progress...")
+            return None
         if row_type == "custom_message":
-            content = row.get("content")
-            if not isinstance(content, str) or not content.strip():
-                return None
-            custom_type = row.get("customType")
-            if custom_type == "subagent_control_notice":
-                details = row.get("details") if isinstance(row.get("details"), Mapping) else None
-                summary = _pi_subagent_control_summary(content, details)
-                return self._subagent_narration_event(row, summary) if summary else None
-            if custom_type == "intercom_message":
-                summary = _pi_subagent_intercom_summary(content)
-                return self._subagent_narration_event(row, summary) if summary else None
             return None
         if row_type != "message":
             return None
