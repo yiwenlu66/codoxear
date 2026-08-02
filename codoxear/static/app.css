@@ -396,7 +396,6 @@
 	        color: #777777;
 	      }
 	      .metaText {
-          font-family: var(--font-mono);
 	        min-width: 0;
 	        overflow: hidden;
 	        text-overflow: ellipsis;
@@ -832,14 +831,14 @@
         position: absolute;
         top: -4px;
         right: -4px;
-        min-width: 18px;
-        height: 18px;
-        padding: 0 5px;
+        min-width: 15px;
+        height: 15px;
+        padding: 0 4px;
         border-radius: 0;
         background: #141111;
         color: #ffffff;
-        font-size: 11px;
-        line-height: 18px;
+        font-size: 10px;
+        line-height: 15px;
         text-align: center;
         display: none;
         box-shadow: none;
@@ -874,12 +873,14 @@
         border-color: var(--ink);
         background: var(--ink);
       }
-      .metaText,
       .status-chip,
       #ctxChip,
       .chatTimeChip,
       .ts {
         font-family: var(--font-mono);
+      }
+      #ctxChip {
+        padding: 2px 6px;
       }
 
       button:focus-visible,
@@ -1168,8 +1169,9 @@
         width: 30px;
         height: 30px;
         border-radius: 0;
-        border-color: #cfd1d4;
-        background: #f6f5f1;
+        border-color: var(--border);
+        background: var(--paper);
+        color: var(--ink);
         color: #141111;
       }
       .msg-shell.user .msg-copy-btn {
@@ -1540,14 +1542,14 @@
       .stagedAttachmentChip {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
-        max-width: min(320px, 100%);
+        gap: 4px;
+        max-width: min(240px, 100%);
         border: 1px solid var(--hairline);
         background: var(--wash);
         color: var(--ink);
         border-radius: 0;
-        padding: 3px 4px 3px 9px;
-        font-size: 12px;
+        padding: 1px 2px 1px 6px;
+        font-size: 11px;
       }
       .stagedAttachmentName {
         min-width: 0;
@@ -1558,7 +1560,7 @@
       .stagedAttachmentMeta {
         flex: 0 0 auto;
         color: #141111;
-        font-size: 11px;
+        font-size: 10px;
       }
       .stagedAttachmentRemove,
       .stagedAttachmentsClear {
@@ -1570,14 +1572,15 @@
         font: inherit;
       }
       .stagedAttachmentRemove {
-        width: 22px;
-        height: 22px;
-        line-height: 18px;
+        width: 18px;
+        height: 18px;
+        line-height: 16px;
         padding: 0;
       }
       .stagedAttachmentsClear {
-        padding: 4px 8px;
-        font-size: 12px;
+        padding: 1px 6px;
+        font-size: 11px;
+        min-height: 0;
       }
       .composer .ph {
         position: absolute;
@@ -2977,6 +2980,9 @@ select {
         display: none;
         border-radius: 0;
         padding: 9px 10px;
+        display: none;
+        align-items: center;
+        justify-content: center;
       }
 
       @media (max-width: 700px), (pointer: coarse) {
@@ -3007,12 +3013,28 @@ select {
         .md pre {
           padding-right: 58px;
         }
-        .code-copy-btn {
+        /* The floating time chip overlaps the top-right nav rail on narrow
+           screens; the rail is the essential control, the chip goes. */
+        .chatTimeChip {
+          display: none !important;
+        }
+        .code-copy-btn,
+        .msg-copy-btn {
           width: 44px;
           height: 44px;
           min-width: 44px;
           min-height: 44px;
           opacity: 1;
+        }
+        .msg-copy-btn {
+          right: -46px;
+        }
+        .jumpBtn {
+          width: 40px;
+          height: 40px;
+          padding: 0;
+          align-items: center;
+          justify-content: center;
         }
         .fileViewer .fileTouchDpad {
           grid-template-columns: repeat(3, 44px);

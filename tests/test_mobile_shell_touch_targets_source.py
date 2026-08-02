@@ -158,8 +158,12 @@ class TestPaperDesignLanguageSource(unittest.TestCase):
         self.assertEqual(selector_bodies(self.touch, ".chatMessageNavControls"), [])
 
     def test_data_surfaces_use_monospace_typography(self) -> None:
-        for selector in (".metaText", ".status-chip", "#ctxChip", ".chatTimeChip", ".ts"):
+        for selector in (".status-chip", "#ctxChip", ".chatTimeChip", ".ts"):
             self.assertIn("font-family: var(--font-mono)", body_with(self.css, selector, "font-family: var(--font-mono)"))
+        # Sidebar meta lines are the deliberate sans exception: monospace is
+        # too wide for the narrow card meta row (user decision 2026-08-02).
+        for body in selector_bodies(self.css, ".metaText"):
+            self.assertNotIn("font-family: var(--font-mono)", body)
 
     def test_hint_badge_uses_solid_paper_border_treatment(self) -> None:
         source = APP_HINT_MODE.read_text(encoding="utf-8")
