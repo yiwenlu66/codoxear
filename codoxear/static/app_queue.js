@@ -47,6 +47,42 @@
   const QUEUE_UPDATE_DEBOUNCE_MS = 350;
   const QUEUE_REFRESH_EDIT_GUARD_MS = 900;
 
+  function createQueueDom(options = {}) {
+    if (!options || typeof options !== "object") throw new TypeError("queue DOM dependency missing: options");
+    const root = options.root;
+    const el = requireFunction(options.el, "el");
+    const iconSvg = requireFunction(options.iconSvg, "iconSvg");
+    if (!root || typeof root.appendChild !== "function") throw new TypeError("queue DOM dependency missing: root");
+    const queueBackdrop = el("div", { class: "modalBackdrop", id: "queueBackdrop" });
+    const queueCloseBtn = el("button", {
+      id: "queueCloseBtn",
+      class: "icon-btn",
+      title: "Close",
+      "aria-label": "Close",
+      type: "button",
+      html: iconSvg("x"),
+    });
+    const queueList = el("div", { class: "queueList", id: "queueList" });
+    const queueEmpty = el("div", { class: "muted", id: "queueEmpty", text: "No queued messages." });
+    const queueViewer = el("div", {
+      class: "queueViewer",
+      id: "queueViewer",
+      role: "dialog",
+      "aria-modal": "true",
+      "aria-label": "Queued messages",
+    }, [
+      el("div", { class: "queueHeader" }, [
+        el("div", { class: "title", text: "Queued messages" }),
+        el("div", { class: "actions" }, [queueCloseBtn]),
+      ]),
+      queueEmpty,
+      queueList,
+    ]);
+    root.appendChild(queueBackdrop);
+    root.appendChild(queueViewer);
+    return Object.freeze({ queueBackdrop, queueCloseBtn, queueList, queueEmpty, queueViewer });
+  }
+
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`queue controller dependency missing: ${name}`);
     return value;
@@ -76,7 +112,14 @@
     const setToast = requireFunction(options.setToast, "setToast");
     const clearCommitUnknownSend = requireFunction(options.clearCommitUnknownSend, "clearCommitUnknownSend");
     const refreshSessions = requireFunction(options.refreshSessions, "refreshSessions");
-    const updateQueueBadge = requireFunction(options.updateQueueBadge, "updateQueueBadge");
+    const getQueueLen = typeof options.getQueueLen === "function"
+      ? options.getQueueLen
+      : () => {
+          const selected = getSelected();
+          const info = selected ? getSessionInfo(selected) : null;
+          return info && info.queue_len;
+        };
+    const notifyQueueState = typeof options.updateQueueBadge === "function" ? options.updateQueueBadge : () => {};
     const syncRecoveryUiForSession = requireFunction(options.syncRecoveryUiForSession, "syncRecoveryUiForSession");
     const kickPoll = requireFunction(options.kickPoll, "kickPoll");
     const setPollFastUntilMs = requireFunction(options.setPollFastUntilMs, "setPollFastUntilMs");
@@ -87,6 +130,8 @@
     const iconSvg = requireFunction(options.iconSvg, "iconSvg");
     const recoveryPanelFocusFallback = requireFunction(options.recoveryPanelFocusFallback, "recoveryPanelFocusFallback");
     const confirmAction = requireFunction(options.confirmAction, "confirmAction");
+    const clearComposerInput = typeof options.clearComposerInput === "function" ? options.clearComposerInput : () => {};
+    const getComposerText = typeof options.getComposerText === "function" ? options.getComposerText : () => "";
 
     const requestFrame = typeof options.requestFrame === "function" ? options.requestFrame : requestAnimationFrame;
     const setTimeoutFn = typeof options.setTimeout === "function" ? options.setTimeout : setTimeout;
@@ -103,6 +148,17 @@
     let queueViewerSid = null;
     let queueViewerItems = [];
     let queueReturnFocusEl = null;
+
+    const queueBadge = el("span", { class: "attachBadge queueBadge", id: "queueBadge" });
+    queueBtn.appendChild(queueBadge);
+
+    function updateQueueBadge() {
+      const selected = getSelected();
+      const n = selected ? Math.max(0, Number(getQueueLen()) || 0) : 0;
+      queueBadge.textContent = n > 0 ? String(n) : "";
+      queueBadge.style.display = n > 0 ? "inline-flex" : "none";
+      notifyQueueState();
+    }
 
     function selectedSessionHasUnknownSend() {
       const selected = getSelected();
@@ -477,6 +533,34 @@
       }
     }
 
+    function onQueueButtonClick(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const selected = getSelected();
+      if (selectedSessionLaunchFailed()) {
+        setToast("failed session cannot receive messages");
+        return;
+      }
+      const raw = getComposerText();
+      if (raw && raw.trim()) {
+        if (!selected) return;
+        const sid = selected;
+        void enqueueComposerText(raw, { sid }).then((ok) => {
+          if (ok && getSelected() === sid && getComposerText() === raw) clearComposerInput();
+        });
+        return;
+      }
+      showQueueViewer({ opener: e.currentTarget });
+    }
+
+    queueBtn.onclick = onQueueButtonClick;
+    queueCloseBtn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      hideQueueViewer();
+    };
+    queueBackdrop.onclick = () => hideQueueViewer();
+
     function dispose() {
       queueUpdateTimers.forEach((timer) => clearTimeoutFn(timer));
       queueUpdateTimers.clear();
@@ -500,9 +584,12 @@
       refreshQueueViewer,
       showQueueViewer,
       hideQueueViewer,
+      updateQueueBadge,
       dispose,
     });
   }
 
-  window.CodoxearQueue = Object.freeze({ createQueueController });
+  const queueApi = { createQueueController };
+  Object.defineProperty(queueApi, "createQueueDom", { value: createQueueDom, enumerable: false });
+  window.CodoxearQueue = Object.freeze(queueApi);
 })();

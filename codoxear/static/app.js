@@ -857,7 +857,6 @@
         }
 				    let lastToken = null;
         let attachBadgeEl = null;
-        let queueBadgeEl = null;
         let editDependencyMenuOpen = false;
         newSessionDefaults = {
           default_backend: "pi",
@@ -1398,27 +1397,16 @@
         root.appendChild(appConfirmBackdrop);
         root.appendChild(appConfirm);
 
-        const queueBackdrop = el("div", { class: "modalBackdrop", id: "queueBackdrop" });
-        const queueCloseBtn = el("button", {
-          id: "queueCloseBtn",
-          class: "icon-btn",
-          title: "Close",
-          "aria-label": "Close",
-          type: "button",
-          html: iconSvg("x"),
-        });
-        const queueList = el("div", { class: "queueList", id: "queueList" });
-        const queueEmpty = el("div", { class: "muted", id: "queueEmpty", text: "No queued messages." });
-        const queueViewer = el("div", { class: "queueViewer", id: "queueViewer", role: "dialog", "aria-modal": "true", "aria-label": "Queued messages" }, [
-          el("div", { class: "queueHeader" }, [
-            el("div", { class: "title", text: "Queued messages" }),
-            el("div", { class: "actions" }, [queueCloseBtn]),
-          ]),
-          queueEmpty,
+        const codoxearQueue = window.CodoxearQueue;
+        if (!codoxearQueue || typeof codoxearQueue.createQueueDom !== "function")
+          throw new Error("Codoxear queue DOM failed to load");
+        const {
+          queueBackdrop,
+          queueCloseBtn,
           queueList,
-        ]);
-        root.appendChild(queueBackdrop);
-        root.appendChild(queueViewer);
+          queueEmpty,
+          queueViewer,
+        } = codoxearQueue.createQueueDom({ root, el, iconSvg });
 
         const helpBackdrop = el("div", { class: "modalBackdrop", id: "helpBackdrop" });
         const helpCloseBtn = el("button", {
@@ -2635,22 +2623,9 @@
         }
 
         function updateQueueBadge() {
-          if (!queueBadgeEl) return;
-          if (!selected) {
-            queueBadgeEl.textContent = "";
-            queueBadgeEl.style.display = "none";
-            return;
-          }
-          const n = Math.max(0, Number(currentQueueLen) || 0);
-          if (n > 0) {
-            queueBadgeEl.textContent = String(n);
-            queueBadgeEl.style.display = "inline-flex";
-          } else {
-            queueBadgeEl.textContent = "";
-            queueBadgeEl.style.display = "none";
-          }
-          if (queueViewer.style.display === "flex") {
-            void refreshQueueViewer();
+          if (queueController) {
+            queueController.updateQueueBadge();
+            if (queueViewer.style.display === "flex") void refreshQueueViewer();
           }
         }
 
@@ -4917,7 +4892,9 @@
             setToast,
             clearCommitUnknownSend,
             refreshSessions,
-            updateQueueBadge,
+            getQueueLen: () => currentQueueLen,
+            getComposerText: () => (textarea ? textarea.value : ""),
+            clearComposerInput,
             syncRecoveryUiForSession,
             kickPoll,
             setPollFastUntilMs: (ms) => { pollFastUntilMs = ms; },
@@ -5024,34 +5001,7 @@
           return diagController.hide(opts);
         }
 
-        if (queueBtn) {
-          queueBtn.onclick = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const selectedInfo = sessionIndex.get(selected);
-            if (sessionLaunchFailed(selectedInfo)) {
-              setToast("failed session cannot receive messages");
-              return;
-            }
-            const raw = $("#msg") ? $("#msg").value : "";
-            if (raw && raw.trim()) {
-              if (!selected) return;
-              const sid = selected;
-              void enqueueComposerText(raw, { sid }).then((ok) => {
-                if (ok && selected === sid && $("#msg").value === raw) clearComposerInput();
-              });
-              return;
-            }
-            showQueueViewer({ opener: e.currentTarget });
-          };
-        }
         syncQueueSubmitState();
-        queueCloseBtn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          hideQueueViewer();
-        };
-        queueBackdrop.onclick = () => hideQueueViewer();
 
         $("#helpBtnSide").onclick = (e) => {
           e.preventDefault();
@@ -5290,10 +5240,6 @@
            attachBadgeEl = el("span", { class: "attachBadge", id: "attachBadge" });
            attachBtn.appendChild(attachBadgeEl);
          }
-        if (!queueBadgeEl && queueBtn) {
-          queueBadgeEl = el("span", { class: "attachBadge queueBadge", id: "queueBadge" });
-          queueBtn.appendChild(queueBadgeEl);
-        }
         function normalizedStagedAttachments(list) {
           if (!Array.isArray(list)) return [];
           return list
