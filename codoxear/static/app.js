@@ -2935,8 +2935,13 @@
 	           const data = await api("/api/sessions");
           if (appDisposed) return latestSessions;
           const notModified = apiResponseNotModified(data);
-          if (notModified && !sidebarController.hasDeferredRefresh()) return latestSessions;
-          if (!notModified) {
+          // A 304/notModified response returns the OLD latestSessions by design —
+          // but on first load that old value is [] and the render would never run.
+          // Treat "notModified but latestSessions is empty and the cached body
+          // carries sessions" as a changed response: populate and apply defaults.
+          const firstLoadNeedsPopulation = notModified && latestSessions.length === 0 && Array.isArray(data.sessions) && data.sessions.length > 0;
+          if (notModified && !sidebarController.hasDeferredRefresh() && !firstLoadNeedsPopulation) return latestSessions;
+          if (!notModified || firstLoadNeedsPopulation) {
             latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
             newSessionDefaults =
               data && typeof data.new_session_defaults === "object" && data.new_session_defaults
