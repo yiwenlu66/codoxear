@@ -90,6 +90,7 @@ class TestComposerModelPicker(unittest.TestCase):
                 return {{}};
               }},
               setToast: (message) => {{ state.toasts.push(message); }}, handleAppAuthLoss: noop, refreshSessions: async () => [],
+              sendText: async (text) => {{ state.sent.push(text); return true; }},
               setPollFastUntilMs: noop, kickPoll: noop, isTranscriptRenewalCommand: () => false,
               nextLocalEchoId: () => "local", renderedAtLiveTail: () => true,
               clearTranscriptDom: noop, clearRenderedTranscriptRange: noop, setOlderState: noop,

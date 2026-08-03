@@ -80,11 +80,9 @@ def eval_launch_recovery_details() -> dict:
 
 def eval_open_session_tail_request_abort() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
-    helper_start = source.index("function abortController(controller)")
-    helper_end = source.index("function cleanupApp", helper_start)
     open_start = source.index("async function openSession(")
     open_end = source.index("async function pollMessages(", open_start)
-    snippet = "let openSessionTailAbortController = null;\nlet messagePollAbortController = null;\n" + source[helper_start:helper_end] + "\n" + source[open_start:open_end]
+    snippet = source[open_start:open_end]
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -197,8 +195,32 @@ def eval_open_session_tail_request_abort() -> dict:
           renderSessionTail: (...args) => calls.push(["renderSessionTail", ...args]),
           refreshFileCandidates: async (...args) => calls.push(["refreshFileCandidates", ...args]),
         }};
+        let activeTailController = null;
+        ctx.messageFlowController = {{
+          prepareSessionOpen: () => {{
+            if (activeTailController) activeTailController.abort();
+            activeTailController = null;
+          }},
+          beginOpenSessionTailRequest: (sessionId, generation) => {{
+            if (activeTailController) activeTailController.abort();
+            const controller = new AbortController();
+            activeTailController = controller;
+            return {{ sessionId, generation, controller, signal: controller.signal }};
+          }},
+          isOpenSessionTailAbortError: (request, error) => Boolean(error && error.name === "AbortError" && request && request.signal && request.signal.aborted),
+          isCurrentOpenSessionTailRequest: (request) => Boolean(request && ctx.selected === request.sessionId && ctx.pollGen === request.generation),
+          markMessagePollFailure: () => calls.push(["markMessagePollFailure"]),
+          finishOpenSessionTailRequest: (request) => {{ if (request && activeTailController === request.controller) activeTailController = null; }},
+          markMessagePollSuccess: () => calls.push(["markMessagePollSuccess"]),
+          openMessageEventSource: (...args) => calls.push(["openMessageEventSource", ...args]),
+          kickPoll: (...args) => calls.push(["kickPoll", ...args]),
+          messagePollDelayMs: () => 900,
+        }};
+        ctx.kickPoll = (...args) => ctx.messageFlowController.kickPoll(...args);
+        ctx.messagePollDelayMs = () => ctx.messageFlowController.messagePollDelayMs();
+        ctx.openMessageEventSource = (...args) => ctx.messageFlowController.openMessageEventSource(...args);
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = { openSession, abortOpenSessionTailRequest };\n")}, ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = { openSession };\n")}, ctx);
         (async () => {{
           const firstPromise = ctx.__test.openSession("sid-a", {{ useCache: false }});
           await Promise.resolve();
@@ -294,8 +316,15 @@ def eval_clear_selected_session_after_removal() -> dict:
           turnOpen: true,
           titleLabel: {{ textContent: "old title" }},
           handleFileViewerSessionUnavailable: (sid) => calls.push(["handleFileViewerSessionUnavailable", sid, ctx.selected]),
-          abortMessagePollRequest: () => calls.push(["abortMessagePollRequest"]),
-          clearTimeout: (...args) => calls.push(["clearTimeout", ...args]),
+          messageFlowController: {{
+            abortMessagePollRequest: () => calls.push(["abortMessagePollRequest"]),
+            clearPollSchedule: () => {{
+              if (ctx.pollTimer) calls.push(["clearTimeout", ctx.pollTimer]);
+              ctx.pollTimer = null;
+              ctx.pollKickPending = false;
+              ctx.pollKickDelayMs = null;
+            }},
+          }},
           clearRenderedTranscriptRange: () => calls.push(["clearRenderedTranscriptRange"]),
           storageRemoveItem: (...args) => calls.push(["storageRemoveItem", ...args]),
           setSessionHash: (...args) => calls.push(["setSessionHash", ...args]),

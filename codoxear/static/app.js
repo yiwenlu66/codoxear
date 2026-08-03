@@ -402,7 +402,11 @@
         !codoxearPolling ||
         !codoxearPolling.POLLING_INTERVALS ||
         typeof codoxearPolling.sessionsPollDelayMs !== "function" ||
-        typeof codoxearPolling.secondaryPollDelayMs !== "function"
+        typeof codoxearPolling.secondaryPollDelayMs !== "function" ||
+        typeof codoxearPolling.browserOffline !== "function" ||
+        typeof codoxearPolling.messagePollErrorDelayMs !== "function" ||
+        typeof codoxearPolling.messagePollDelayMs !== "function" ||
+        typeof codoxearPolling.normalizeMessagePollKickDelay !== "function"
       )
         throw new Error("Codoxear polling helpers failed to load");
 
