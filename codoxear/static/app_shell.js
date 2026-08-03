@@ -71,8 +71,9 @@
     const toggleSidebarBtn = el("button", { id: "toggleSidebarBtn", class: "icon-btn", title: "Toggle sidebar", "aria-label": "Toggle sidebar", html: iconSvg("menu") });
     const unattendedBtn = el("button", { id: "unattendedBtn", class: "icon-btn", title: "Unattended mode", "aria-label": "Unattended mode", "aria-controls": "unattendedMenu", "aria-expanded": "false", "aria-haspopup": "dialog", type: "button", html: iconSvg("unattended") });
     unattendedBtn.disabled = true;
-    const announceBtn = el("button", { id: "announceBtn", class: "icon-btn", title: "Voice announcements", "aria-label": "Voice announcements", type: "button", html: iconSvg("volume") });
-    const notificationBtn = el("button", { id: "notificationBtn", class: "icon-btn", title: "Notifications", "aria-label": "Notifications", type: "button", html: iconSvg("bell") });
+    const sidebarHeaderActions = el("div", { class: "actions" });
+    const newBtn = el("button", { id: "newBtn", class: "icon-btn", title: "New session", "aria-label": "New session", html: iconSvg("plus") });
+    sidebarHeaderActions.appendChild(newBtn);
     const diagBtn = el("button", { id: "diagBtn", class: "icon-btn", title: "Details", "aria-label": "Details", type: "button", html: iconSvg("info") });
     diagBtn.disabled = true;
     const prevUserBtn = el("button", { id: "prevUserBtn", class: "icon-btn", title: "Previous user message", "aria-label": "Previous user message", type: "button", html: iconSvg("up") });
@@ -89,8 +90,8 @@
       el("div", { class: "label", text: "Additional request to append (optional; per session)" }),
       el("textarea", { id: "unattendedRequest", "aria-label": "Additional request for unattended prompt" }),
     ]);
-    const liveAudio = el("audio", { id: "liveAudio", preload: "none", playsinline: "true" });
-    liveAudio.style.display = "none";
+    const voiceHost = el("div", { class: "actions voiceActions", id: "voiceActions" });
+    sidebarHeaderActions.appendChild(voiceHost);
     const topMeta = el("div", { class: "topMeta" }, [ctxChip]);
     const titleRow = el("div", { class: "titleRow" }, [titleLabel, topMeta]);
     const titleWrap = el("div", { class: "titleWrap" }, [titleRow]);
@@ -116,13 +117,13 @@
       imgInput,
     ]);
     composer.appendChild(form);
-    sidebar.appendChild(el("header", {}, [el("div", { class: "title", html: `<svg class="sidebarLogo" viewBox="0 0 24 24" data-logo-motif="dog-ear-terminal" aria-hidden="true" focusable="false"><path d="M4 2h10l6 6v14H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M14 2v6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="m7 13 3 3-3 3M12 19h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>Codoxear` }), el("div", { class: "actions" }, [el("button", { id: "newBtn", class: "icon-btn", title: "New session", "aria-label": "New session", html: iconSvg("plus") }), notificationBtn, announceBtn])]));
+    sidebar.appendChild(el("header", {}, [el("div", { class: "title", html: `<svg class="sidebarLogo" viewBox="0 0 24 24" data-logo-motif="dog-ear-terminal" aria-hidden="true" focusable="false"><path d="M4 2h10l6 6v14H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M14 2v6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="m7 13 3 3-3 3M12 19h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>Codoxear` }), sidebarHeaderActions]));
     sidebar.append(sessionsWrap, sidebarFooter);
     main.append(topbar, toast, chatWrap, composer);
     app.append(sidebar, main, backdrop);
-    root.append(app, unattendedMenu, liveAudio);
+    root.append(app, unattendedMenu);
 
-    const elements = Object.freeze({ root, app, backdrop, sidebar, sessionsWrap, sidebarEmptyHint, main, chatWrap, chatHeader, chatEmptyState, chat, chatInner, olderWrap, olderBtn, olderRetryBtn, olderError, olderErrorText, bottomSentinel, jumpBtn, chatTimeChip, chatSearchInput, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn, chatSearchStatus, chatSearchAllHintEl, chatSearchBar, chatNavRail, titleLabel, statusChip, ctxChip, interruptBtn, toast, toggleSidebarBtn, unattendedBtn, announceBtn, notificationBtn, diagBtn, prevUserBtn, nextUserBtn, chatSearchBtn, fileBtn, unattendedMenu, liveAudio, composer, form, textarea, msgPh, modelPicker, imgInput, attachBtn, queueBtn, sendBtn, stagedTray });
+    const elements = Object.freeze({ root, app, backdrop, sidebar, sessionsWrap, sidebarEmptyHint, main, chatWrap, chatHeader, chatEmptyState, chat, chatInner, olderWrap, olderBtn, olderRetryBtn, olderError, olderErrorText, bottomSentinel, jumpBtn, chatTimeChip, chatSearchInput, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn, chatSearchStatus, chatSearchAllHintEl, chatSearchBar, chatNavRail, titleLabel, statusChip, ctxChip, interruptBtn, toast, toggleSidebarBtn, unattendedBtn, sidebarHeaderActions, voiceHost, diagBtn, prevUserBtn, nextUserBtn, chatSearchBtn, fileBtn, unattendedMenu, composer, form, textarea, msgPh, modelPicker, imgInput, attachBtn, queueBtn, sendBtn, stagedTray });
     return Object.freeze({ elements, cleanup() { root.innerHTML = ""; } });
   }
 

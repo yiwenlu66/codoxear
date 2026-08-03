@@ -16,13 +16,14 @@
   // voice settings dialog show/hide/focus behavior) and the announceBtn /
   // notificationBtn / liveAudio / voice-settings-dialog event handlers.
   //
-  // app.js keeps DOM construction for announceBtn, notificationBtn, liveAudio,
-  // and the voice settings dialog nodes; it injects them plus the app-level
-  // runtime accessors (api, toasts, auth loss, modal open/close coordination,
-  // storage, url/version helpers, timer/animation-frame/window/navigator/
-  // document targets) through createVoiceController(options) so the controller
-  // has no hidden coupling to app.js globals and can be exercised in a VM with
-  // fakes.
+  // app.js supplies the shell root and voice host; this module constructs and
+  // owns the announce/notification buttons, hidden live-audio node, and voice
+  // settings dialog through createVoiceDom(options), then injects those nodes
+  // into createVoiceController(options). App-level runtime accessors (api,
+  // toasts, auth loss, modal open/close coordination, storage, url/version
+  // helpers, timer/animation-frame/window/navigator/document targets) remain
+  // injected so the controller has no hidden coupling to app.js globals and
+  // can be exercised in a VM with fakes.
   //
   // Pure helpers (browserSupports*/base64UrlToUint8Array/isMobileNotificationDevice/
   // notificationDeviceClass) come from window.CodoxearVoiceHelpers; the modal
@@ -73,6 +74,98 @@
   function requireNode(value, name) {
     if (!value || typeof value !== "object" || !value.style) throw new TypeError(`voice controller dependency missing: ${name}`);
     return value;
+  }
+
+  function createVoiceDom(options = {}) {
+    if (!options || typeof options !== "object") throw new TypeError("voice DOM dependency missing: options");
+    const root = options.root;
+    const el = requireFunction(options.el, "el");
+    const iconSvg = requireFunction(options.iconSvg, "iconSvg");
+    const voiceHost = requireNode(options.voiceHost, "voiceHost");
+    if (!root || typeof root.appendChild !== "function") throw new TypeError("voice DOM dependency missing: root");
+
+    const announceBtn = el("button", { id: "announceBtn", class: "icon-btn", title: "Voice announcements", "aria-label": "Voice announcements", type: "button", html: iconSvg("volume") });
+    const notificationBtn = el("button", { id: "notificationBtn", class: "icon-btn", title: "Notifications", "aria-label": "Notifications", type: "button", html: iconSvg("bell") });
+    voiceHost.appendChild(notificationBtn);
+    voiceHost.appendChild(announceBtn);
+
+    const liveAudio = el("audio", { id: "liveAudio", preload: "none", playsinline: "true" });
+    liveAudio.style.display = "none";
+    const voiceSettingsBackdrop = el("div", { class: "modalBackdrop", id: "voiceSettingsBackdrop" });
+    const voiceSettingsCloseBtn = el("button", {
+      id: "voiceSettingsCloseBtn",
+      class: "icon-btn",
+      title: "Close",
+      "aria-label": "Close",
+      type: "button",
+      html: iconSvg("x"),
+    });
+    const voiceSettingsStatus = el("div", { class: "muted", id: "voiceSettingsStatus", text: "" });
+    const voiceBaseUrlInput = el("input", { id: "voiceBaseUrlInput", type: "text", autocomplete: "off", spellcheck: "false" });
+    const voiceApiKeyInput = el("input", { id: "voiceApiKeyInput", type: "password", autocomplete: "off", spellcheck: "false" });
+    const voiceClearApiKeyToggle = el("input", { id: "voiceClearApiKeyToggle", type: "checkbox" });
+    const narrationSettingToggle = el("input", { id: "narrationSettingToggle", type: "checkbox" });
+    const unattendedPromptInput = el("textarea", {
+      id: "unattendedPromptInput",
+      rows: "14",
+      spellcheck: "true",
+      "aria-describedby": "unattendedPromptHint",
+    });
+    const unattendedPromptResetBtn = el("button", { id: "unattendedPromptResetBtn", class: "text-btn", type: "button", text: "Reset to default" });
+    const voiceSettingsCancelBtn = el("button", { id: "voiceSettingsCancelBtn", type: "button", text: "Cancel" });
+    const voiceSettingsSaveBtn = el("button", { id: "voiceSettingsSaveBtn", class: "primary", type: "button", text: "Save" });
+    const voiceSettingsViewer = el("dialog", { class: "formViewer formDialog", id: "voiceSettingsViewer", "aria-label": "Settings" }, [
+      el("div", { class: "queueHeader" }, [
+        el("div", { class: "title", text: "Settings" }),
+        el("div", { class: "actions" }, [voiceSettingsCloseBtn]),
+      ]),
+      voiceSettingsStatus,
+      el("div", { class: "formBody" }, [
+        el("label", { class: "field" }, [
+          el("span", { class: "fieldLabel", text: "OpenAI-compatible API base URL" }),
+          voiceBaseUrlInput,
+          el("span", { class: "fieldHint", text: "Used for both summarization and speech." }),
+        ]),
+        el("label", { class: "field" }, [
+          el("span", { class: "fieldLabel", text: "OpenAI-compatible API key" }),
+          voiceApiKeyInput,
+          el("span", { class: "fieldHint", text: "Leave blank to keep the saved key." }),
+        ]),
+        el("div", { class: "field" }, [
+          el("label", { class: "voiceToggleRow" }, [voiceClearApiKeyToggle, el("span", { text: "Clear saved API key" })]),
+        ]),
+        el("div", { class: "field" }, [
+          el("label", { class: "voiceToggleRow" }, [narrationSettingToggle, el("span", { text: "Announce narration messages" })]),
+        ]),
+        el("div", { class: "field" }, [
+          el("span", { class: "fieldLabel", text: "Unattended mode prompt" }),
+          unattendedPromptInput,
+          el("span", { class: "fieldHint", id: "unattendedPromptHint", text: "Sent when unattended mode resumes an idle session. Reset then Save to restore the built-in constitution." }),
+          unattendedPromptResetBtn,
+        ]),
+      ]),
+      el("div", { class: "formActions" }, [voiceSettingsCancelBtn, voiceSettingsSaveBtn]),
+    ]);
+    root.appendChild(liveAudio);
+    root.appendChild(voiceSettingsBackdrop);
+    root.appendChild(voiceSettingsViewer);
+    return Object.freeze({
+      announceBtn,
+      notificationBtn,
+      liveAudio,
+      voiceSettingsBackdrop,
+      voiceSettingsCloseBtn,
+      voiceSettingsStatus,
+      voiceBaseUrlInput,
+      voiceApiKeyInput,
+      voiceClearApiKeyToggle,
+      narrationSettingToggle,
+      unattendedPromptInput,
+      unattendedPromptResetBtn,
+      voiceSettingsViewer,
+      voiceSettingsCancelBtn,
+      voiceSettingsSaveBtn,
+    });
   }
 
   function createVoiceController(options = {}) {
@@ -1038,5 +1131,5 @@
     });
   }
 
-  window.CodoxearVoice = Object.freeze({ createVoiceController });
+  window.CodoxearVoice = Object.freeze({ createVoiceDom, createVoiceController });
 })();

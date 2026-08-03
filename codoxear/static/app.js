@@ -68,7 +68,7 @@
       )
         throw new Error("Codoxear voice helpers failed to load");
       const codoxearVoice = window.CodoxearVoice;
-      if (!codoxearVoice || typeof codoxearVoice.createVoiceController !== "function")
+      if (!codoxearVoice || typeof codoxearVoice.createVoiceDom !== "function" || typeof codoxearVoice.createVoiceController !== "function")
         throw new Error("Codoxear voice controller failed to load");
 
       const codoxearDom = window.CodoxearDom;
@@ -779,15 +779,12 @@
           toast,
           toggleSidebarBtn,
           unattendedBtn,
-          announceBtn,
-          notificationBtn,
           diagBtn,
           prevUserBtn,
           nextUserBtn,
           chatSearchBtn,
           fileBtn,
           unattendedMenu,
-          liveAudio,
           composer,
           form,
           textarea,
@@ -798,7 +795,6 @@
           queueBtn,
           sendBtn,
         } = shellDOM.elements;
-
         let selected = null;
         let pendingHashSessionId = "";
         let pendingHashSessionSelectInFlight = false;
@@ -1613,71 +1609,24 @@
         ]);
         root.appendChild(editViewer);
         editViewer.appendChild(editDependencyMenu);
-        const voiceSettingsBackdrop = el("div", { class: "modalBackdrop", id: "voiceSettingsBackdrop" });
-        const voiceSettingsCloseBtn = el("button", {
-          id: "voiceSettingsCloseBtn",
-          class: "icon-btn",
-          title: "Close",
-          "aria-label": "Close",
-          type: "button",
-          html: iconSvg("x"),
-        });
-        const voiceSettingsStatus = el("div", { class: "muted", id: "voiceSettingsStatus", text: "" });
-        const voiceBaseUrlInput = el("input", { id: "voiceBaseUrlInput", type: "text", autocomplete: "off", spellcheck: "false" });
-        const voiceApiKeyInput = el("input", { id: "voiceApiKeyInput", type: "password", autocomplete: "off", spellcheck: "false" });
-        const voiceClearApiKeyToggle = el("input", { id: "voiceClearApiKeyToggle", type: "checkbox" });
-        const narrationSettingToggle = el("input", { id: "narrationSettingToggle", type: "checkbox" });
-        const unattendedPromptInput = el("textarea", {
-          id: "unattendedPromptInput",
-          rows: "14",
-          spellcheck: "true",
-          "aria-describedby": "unattendedPromptHint",
-        });
-        const unattendedPromptResetBtn = el("button", { id: "unattendedPromptResetBtn", class: "text-btn", type: "button", text: "Reset to default" });
-        const voiceSettingsViewer = el("dialog", { class: "formViewer formDialog", id: "voiceSettingsViewer", "aria-label": "Settings" }, [
-          el("div", { class: "queueHeader" }, [
-            el("div", { class: "title", text: "Settings" }),
-            el("div", { class: "actions" }, [voiceSettingsCloseBtn]),
-          ]),
+        const voiceDom = codoxearVoice.createVoiceDom({ root, el, iconSvg, voiceHost: shellDOM.elements.voiceHost });
+        const {
+          announceBtn,
+          notificationBtn,
+          liveAudio,
+          voiceSettingsBackdrop,
+          voiceSettingsCloseBtn,
           voiceSettingsStatus,
-          el("div", { class: "formBody" }, [
-            el("label", { class: "field" }, [
-              el("span", { class: "fieldLabel", text: "OpenAI-compatible API base URL" }),
-              voiceBaseUrlInput,
-              el("span", { class: "fieldHint", text: "Used for both summarization and speech." }),
-            ]),
-            el("label", { class: "field" }, [
-              el("span", { class: "fieldLabel", text: "OpenAI-compatible API key" }),
-              voiceApiKeyInput,
-              el("span", { class: "fieldHint", text: "Leave blank to keep the saved key." }),
-            ]),
-            el("div", { class: "field" }, [
-              el("label", { class: "voiceToggleRow" }, [
-                voiceClearApiKeyToggle,
-                el("span", { text: "Clear saved API key" }),
-              ]),
-            ]),
-            el("div", { class: "field" }, [
-              el("label", { class: "voiceToggleRow" }, [
-                narrationSettingToggle,
-                el("span", { text: "Announce narration messages" }),
-              ]),
-            ]),
-            el("div", { class: "field" }, [
-              el("span", { class: "fieldLabel", text: "Unattended mode prompt" }),
-              unattendedPromptInput,
-              el("span", { class: "fieldHint", id: "unattendedPromptHint", text: "Sent when unattended mode resumes an idle session. Reset then Save to restore the built-in constitution." }),
-              unattendedPromptResetBtn,
-            ]),
-          ]),
-          el("div", { class: "formActions" }, [
-            el("button", { id: "voiceSettingsCancelBtn", type: "button", text: "Cancel" }),
-            el("button", { id: "voiceSettingsSaveBtn", class: "primary", type: "button", text: "Save" }),
-          ]),
-        ]);
-        root.appendChild(voiceSettingsBackdrop);
-        root.appendChild(voiceSettingsViewer);
-
+          voiceBaseUrlInput,
+          voiceApiKeyInput,
+          voiceClearApiKeyToggle,
+          narrationSettingToggle,
+          unattendedPromptInput,
+          unattendedPromptResetBtn,
+          voiceSettingsViewer,
+          voiceSettingsCancelBtn,
+          voiceSettingsSaveBtn,
+        } = voiceDom;
         const codoxearModal = window.CodoxearModal;
         if (
           !codoxearModal ||
@@ -3778,13 +3727,10 @@
           return unattendedController.toggle(opts);
         }
         // --- Voice / Settings / Notifications / Announcement orchestration
-        // now lives in the CodoxearVoice controller
-        // (codoxear/static/app_voice.js). app.js keeps DOM construction for
-        // announceBtn, notificationBtn, liveAudio, and the voice settings
-        // dialog nodes, and delegates every voice/settings/notification/
-        // announcement call site through the thin wrappers below. The
-        // controller owns its state, handlers, timers, and HLS lifecycle and
-        // exposes dispose() for cleanupApp.
+        // announcement state through thin wrappers below. app_voice.js owns
+        // voice DOM construction, state, handlers, timers, and HLS lifecycle;
+        // app.js supplies shell/runtime dependencies and keeps event wiring that
+        // feeds voice from the poll/SSE orchestration.
         let voiceController;
         function instantiateVoiceController() {
           return codoxearVoice.createVoiceController({
@@ -3801,8 +3747,8 @@
             unattendedPromptInput,
             unattendedPromptResetBtn,
             voiceSettingsViewer,
-            voiceSettingsCancelBtn: $("#voiceSettingsCancelBtn"),
-            voiceSettingsSaveBtn: $("#voiceSettingsSaveBtn"),
+            voiceSettingsCancelBtn,
+            voiceSettingsSaveBtn,
             isAppDisposed: () => appDisposed,
             api,
             setToast,
