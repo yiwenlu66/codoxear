@@ -1644,7 +1644,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["final"]["calls"], [["make"], ["insert"], ["trim"], ["rebuild"], ["paint"], ["scroll"], ["jump"]])
         self.assertEqual(out["final"]["seen"], ["assistant|2400|same final text", "assistant|3000|same final text"])
 
-    def test_composer_resets_typing_counts_for_idle_send_but_not_steer(self) -> None:
+    def test_composer_send_method_delegates_to_message_flow(self) -> None:
         composer_source = APP_COMPOSER_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
             f"""
@@ -1663,7 +1663,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               const nodes = Array.from({{ length: 9 }}, fakeNode);
               const [form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop, sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn] = nodes;
               form.requestSubmit = noop;
-              const state = {{ sending: false, running: initialRunning, resets: 0 }};
+              const state = {{ sending: false, running: initialRunning, calls: [] }};
               const controller = ctx.window.CodoxearComposer.createComposerController({{
                 form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
                 sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn,
@@ -1688,8 +1688,9 @@ class TestChatTranscriptRuntime(unittest.TestCase):
                 afterModalVisibilityChanged: noop, restoreModalFocus: noop,
                 storageGetItem: () => null, storageSetItem: noop, storageRemoveItem: noop,
                 getComputedStyle: () => ({{ minHeight: "32" }}), isHTMLElement: () => false, now: () => 1000,
+                sendText: async (text, options) => {{ state.calls.push([text, options || null]); return !state.running; }},
               }});
-              return controller.sendText("steer or start").then((ok) => ({{ ok, resets: state.resets }}));
+              return controller.sendText("steer or start").then((ok) => ({{ ok, calls: state.calls }}));
             }}
             Promise.all([runSend(false), runSend(true)]).then(([idle, steer]) => {{
               process.stdout.write(JSON.stringify({{ idle, steer }}));
@@ -1697,10 +1698,10 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             """
         )
         out = _run_node(js)
-        self.assertEqual(out["idle"], {"ok": True, "resets": 1})
-        self.assertEqual(out["steer"], {"ok": True, "resets": 0})
+        self.assertEqual(out["idle"], {"ok": True, "calls": [["steer or start", None]]})
+        self.assertEqual(out["steer"], {"ok": False, "calls": [["steer or start", None]]})
 
-    def test_new_command_send_failure_does_not_detach_current_transcript(self) -> None:
+    def test_composer_propagates_message_flow_send_failure_without_transcript_mutation(self) -> None:
         composer_source = APP_COMPOSER_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
             f"""
@@ -1779,6 +1780,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               getComputedStyle: () => ({{ minHeight: "32" }}),
               isHTMLElement: () => false,
               now: () => 1000,
+              sendText: async () => {{ state.toast = "send error: broker down"; return false; }},
             }});
             controller.sendText("/new").then((ok) => {{
               process.stdout.write(JSON.stringify({{ ok, ...state }}));
