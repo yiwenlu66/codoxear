@@ -81,15 +81,6 @@
     const chatSearchBtn = el("button", { id: "chatSearchBtn", class: "icon-btn", title: "Search conversation", "aria-label": "Search conversation", type: "button", html: iconSvg("search") });
     const fileBtn = el("button", { id: "fileBtn", class: "icon-btn", title: "View file", "aria-label": "View file", type: "button", html: iconSvg("file") });
     prevUserBtn.disabled = nextUserBtn.disabled = chatSearchBtn.disabled = fileBtn.disabled = true;
-    const unattendedMenu = el("div", { id: "unattendedMenu", class: "unattendedMenu", role: "dialog", "aria-label": "Unattended mode settings" }, [
-      el("div", { class: "row" }, [el("label", {}, [el("input", { type: "checkbox", id: "unattendedEnabled" }), el("span", { text: "Unattended mode" })])]),
-      el("div", { class: "unattendedGrid" }, [
-        el("div", {}, [el("div", { class: "label", text: "Cooldown time (minutes)" }), el("input", { id: "unattendedCooldownMinutes", type: "number", min: "1", step: "1", inputmode: "numeric", "aria-label": "Unattended cooldown time in minutes" })]),
-        el("div", {}, [el("div", { class: "label", text: "Number of injections" }), el("input", { id: "unattendedRemainingInjections", type: "number", min: "0", step: "1", inputmode: "numeric", "aria-label": "Unattended remaining injections" })]),
-      ]),
-      el("div", { class: "label", text: "Additional request to append (optional; per session)" }),
-      el("textarea", { id: "unattendedRequest", "aria-label": "Additional request for unattended prompt" }),
-    ]);
     const voiceHost = el("div", { class: "actions voiceActions", id: "voiceActions" });
     sidebarHeaderActions.appendChild(voiceHost);
     const topMeta = el("div", { class: "topMeta" }, [ctxChip]);
@@ -121,9 +112,9 @@
     sidebar.append(sessionsWrap, sidebarFooter);
     main.append(topbar, toast, chatWrap, composer);
     app.append(sidebar, main, backdrop);
-    root.append(app, unattendedMenu);
+    root.append(app);
 
-    const elements = Object.freeze({ root, app, backdrop, sidebar, sessionsWrap, sidebarEmptyHint, main, chatWrap, chatHeader, chatEmptyState, chat, chatInner, olderWrap, olderBtn, olderRetryBtn, olderError, olderErrorText, bottomSentinel, jumpBtn, chatTimeChip, chatSearchInput, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn, chatSearchStatus, chatSearchAllHintEl, chatSearchBar, chatNavRail, titleLabel, statusChip, ctxChip, interruptBtn, toast, toggleSidebarBtn, unattendedBtn, sidebarHeaderActions, voiceHost, diagBtn, prevUserBtn, nextUserBtn, chatSearchBtn, fileBtn, unattendedMenu, composer, form, textarea, msgPh, modelPicker, imgInput, attachBtn, queueBtn, sendBtn, stagedTray });
+    const elements = Object.freeze({ root, app, backdrop, sidebar, sessionsWrap, sidebarEmptyHint, main, chatWrap, chatHeader, chatEmptyState, chat, chatInner, olderWrap, olderBtn, olderRetryBtn, olderError, olderErrorText, bottomSentinel, jumpBtn, chatTimeChip, chatSearchInput, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn, chatSearchStatus, chatSearchAllHintEl, chatSearchBar, chatNavRail, titleLabel, statusChip, ctxChip, interruptBtn, toast, toggleSidebarBtn, unattendedBtn, sidebarHeaderActions, voiceHost, diagBtn, prevUserBtn, nextUserBtn, chatSearchBtn, fileBtn, composer, form, textarea, msgPh, modelPicker, imgInput, attachBtn, queueBtn, sendBtn, stagedTray });
     return Object.freeze({ elements, cleanup() { root.innerHTML = ""; } });
   }
 

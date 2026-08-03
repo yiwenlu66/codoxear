@@ -40,6 +40,60 @@
 
   const UNATTENDED_SAVE_DEBOUNCE_MS = 450;
 
+  function createUnattendedDom(options = {}) {
+    if (!options || typeof options !== "object") throw new TypeError("unattended DOM dependency missing: options");
+    const el = requireFunction(options.el, "el");
+    const iconSvg = requireFunction(options.iconSvg, "iconSvg");
+    const unattendedBtn = options.unattendedBtn || el("button", {
+      id: "unattendedBtn",
+      class: "icon-btn",
+      title: "Unattended mode",
+      "aria-label": "Unattended mode",
+      "aria-controls": "unattendedMenu",
+      "aria-expanded": "false",
+      "aria-haspopup": "dialog",
+      type: "button",
+      html: iconSvg("unattended"),
+    });
+    unattendedBtn.disabled = true;
+    const enabledEl = el("input", { type: "checkbox", id: "unattendedEnabled" });
+    const cooldownEl = el("input", {
+      id: "unattendedCooldownMinutes",
+      type: "number",
+      min: "1",
+      step: "1",
+      inputmode: "numeric",
+      "aria-label": "Unattended cooldown time in minutes",
+    });
+    const remainingEl = el("input", {
+      id: "unattendedRemainingInjections",
+      type: "number",
+      min: "0",
+      step: "1",
+      inputmode: "numeric",
+      "aria-label": "Unattended remaining injections",
+    });
+    const requestEl = el("textarea", {
+      id: "unattendedRequest",
+      "aria-label": "Additional request for unattended prompt",
+    });
+    const unattendedMenu = el("div", {
+      id: "unattendedMenu",
+      class: "unattendedMenu",
+      role: "dialog",
+      "aria-label": "Unattended mode settings",
+    }, [
+      el("div", { class: "row" }, [el("label", {}, [enabledEl, el("span", { text: "Unattended mode" })])]),
+      el("div", { class: "unattendedGrid" }, [
+        el("div", {}, [el("div", { class: "label", text: "Cooldown time (minutes)" }), cooldownEl]),
+        el("div", {}, [el("div", { class: "label", text: "Number of injections" }), remainingEl]),
+      ]),
+      el("div", { class: "label", text: "Additional request to append (optional; per session)" }),
+      requestEl,
+    ]);
+    return Object.freeze({ unattendedBtn, unattendedMenu, enabledEl, cooldownEl, remainingEl, requestEl });
+  }
+
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`unattended controller dependency missing: ${name}`);
     return value;
@@ -53,7 +107,7 @@
   function createUnattendedController(options = {}) {
     if (!options || typeof options !== "object") throw new TypeError("unattended controller dependency missing: options");
 
-    // DOM nodes (created and owned by app.js).
+    // DOM nodes (created and owned by app.js through createUnattendedDom).
     const unattendedBtn = requireNode(options.unattendedBtn, "unattendedBtn");
     const unattendedMenu = requireNode(options.unattendedMenu, "unattendedMenu");
     const enabledEl = options.enabledEl == null ? null : options.enabledEl;
@@ -541,5 +595,7 @@
     });
   }
 
-  window.CodoxearUnattended = Object.freeze({ createUnattendedController });
+  const unattendedApi = { createUnattendedController };
+  Object.defineProperty(unattendedApi, "createUnattendedDom", { value: createUnattendedDom });
+  window.CodoxearUnattended = Object.freeze(unattendedApi);
 })();

@@ -784,7 +784,6 @@
           nextUserBtn,
           chatSearchBtn,
           fileBtn,
-          unattendedMenu,
           composer,
           form,
           textarea,
@@ -795,7 +794,12 @@
           queueBtn,
           sendBtn,
         } = shellDOM.elements;
-        let selected = null;
+        const codoxearUnattendedDom = window.CodoxearUnattended;
+        if (!codoxearUnattendedDom || typeof codoxearUnattendedDom.createUnattendedDom !== "function")
+          throw new Error("Codoxear unattended DOM failed to load");
+        const unattendedDom = codoxearUnattendedDom.createUnattendedDom({ el, iconSvg, unattendedBtn });
+        const { unattendedMenu, enabledEl: unattendedEnabledEl, cooldownEl: unattendedCooldownEl, remainingEl: unattendedRemainingEl, requestEl: unattendedRequestEl } = unattendedDom;
+        root.appendChild(unattendedMenu);
         let pendingHashSessionId = "";
         let pendingHashSessionSelectInFlight = false;
         const INIT_PAGE_LIMIT_DESKTOP = 60;
@@ -3669,10 +3673,10 @@
           return codoxearUnattended.createUnattendedController({
             unattendedBtn,
             unattendedMenu,
-            enabledEl: $("#unattendedEnabled"),
-            cooldownEl: $("#unattendedCooldownMinutes"),
-            remainingEl: $("#unattendedRemainingInjections"),
-            requestEl: $("#unattendedRequest"),
+            enabledEl: unattendedEnabledEl,
+            cooldownEl: unattendedCooldownEl,
+            remainingEl: unattendedRemainingEl,
+            requestEl: unattendedRequestEl,
             getSelected: () => selected,
             getSessionInfo: (sid) => sessionIndex.get(sid),
             isAppDisposed: () => appDisposed,
