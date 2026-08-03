@@ -334,6 +334,12 @@ def pi_token_update(obj: dict[str, Any], *, models_path: Path | None = None, set
     return pi_context_token_update(context_window=context_window, tokens_in_context=total_tokens, as_of=as_of, settings_path=settings_path)
 
 
+_RUN_SETTINGS_CACHE: dict[str, tuple[int, tuple]] = {}
+
+
+TAIL_SCAN_BYTES = 8 * 1024 * 1024
+
+
 def read_pi_run_settings(path: Path, *, max_scan_bytes: int | None = None) -> tuple[str | None, str | None, str | None]:
     """Replay Pi's authoritative model/thinking changes.
 
@@ -347,6 +353,18 @@ def read_pi_run_settings(path: Path, *, max_scan_bytes: int | None = None) -> tu
     provider: str | None = None
     model: str | None = None
     thinking_level: str | None = None
+
+    # mtime gate: a log that hasn't changed since the last read yields the same
+    # result; production callers hit this on every poll, so skip re-reading
+    # unchanged (possibly huge) logs entirely.
+    try:
+        _size = int(path.stat().st_size)
+    except Exception:
+        _size = -1
+    if max_scan_bytes is None:
+        cached = _RUN_SETTINGS_CACHE.get(str(path))
+        if cached is not None and cached[0] == _size:
+            return cached[1]
 
     header = read_pi_session_header(path)
     if isinstance(header, dict):
@@ -374,7 +392,13 @@ def read_pi_run_settings(path: Path, *, max_scan_bytes: int | None = None) -> tu
     # long sessions that switched stop reading early.
     last_model_change: dict | None = None
     last_thinking_change: dict | None = None
-    scan_floor = 0 if max_scan_bytes is None else max(0, size - max(0, int(max_scan_bytes)))
+    # Bound the scan to the tail: the latest settings live in the last few MB.
+    # A full GB read is never required — for an ancient session with no recent
+    # change, the header baseline (the launch settings the sidecar recorded) is
+    # the correct answer anyway. ``max_scan_bytes`` (diagnostic callers) further
+    # bounds it when set.
+    tail_bytes = TAIL_SCAN_BYTES if max_scan_bytes is None else min(TAIL_SCAN_BYTES, max(0, int(max_scan_bytes)))
+    scan_floor = max(0, size - tail_bytes)
     try:
         with path.open("rb") as f:
             f.seek(0, 2)
@@ -418,4 +442,6 @@ def read_pi_run_settings(path: Path, *, max_scan_bytes: int | None = None) -> tu
         raw_thinking = last_thinking_change.get("thinkingLevel")
         if isinstance(raw_thinking, str) and raw_thinking.strip():
             thinking_level = raw_thinking
+    if max_scan_bytes is None:
+        _RUN_SETTINGS_CACHE[str(path)] = (_size, (provider, model, thinking_level))
     return provider, model, thinking_level

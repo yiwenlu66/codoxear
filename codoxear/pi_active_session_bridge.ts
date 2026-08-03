@@ -73,6 +73,27 @@ function writeActiveSession(ctx: ExtensionContext, reason: string): void {
 
 let activePi;
 
+function readLiveRunSettings(pi) {
+	if (!pi) return {};
+	const out = {};
+	try {
+		if (typeof pi.getModel === "function") {
+			const m = pi.getModel();
+			if (m && typeof m === "object") {
+				if (typeof m.provider === "string" && m.provider) out.model_provider = m.provider;
+				if (typeof m.id === "string" && m.id) out.model = m.id;
+			}
+		}
+	} catch {}
+	try {
+		if (typeof pi.getThinkingLevel === "function") {
+			const level = pi.getThinkingLevel();
+			if (typeof level === "string" && level) out.reasoning_effort = level;
+		}
+	} catch {}
+	return out;
+}
+
 function writeThinkingCapabilities(commands) {
 	const markerPath = process.env.CODEX_WEB_PI_ACTIVE_SESSION_FILE;
 	if (!markerPath) return;
@@ -83,6 +104,7 @@ function writeThinkingCapabilities(commands) {
 		commands: Array.isArray(commands) ? commands.map((command) => ({ name: command.name, description: command.description || "" })) : undefined,
 		pid: process.pid,
 		updatedAt: new Date().toISOString(),
+		...readLiveRunSettings(activePi),
 	};
 	try {
 		fs.mkdirSync(path.dirname(capsPath), { recursive: true });

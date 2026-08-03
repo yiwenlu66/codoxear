@@ -488,6 +488,9 @@ class State:
     slash_commands: list[dict[str, str]] = field(default_factory=list)
     declared_log_path: Path | None = None
     last_rollout_path: Path | None = None
+    model_provider: str | None = None
+    model: str | None = None
+    reasoning_effort: str | None = None
     last_detected_rollout_path: Path | None = None
     ignored_rollout_paths: set[Path] = field(default_factory=set)
     known_rollout_paths: set[Path] = field(default_factory=set)

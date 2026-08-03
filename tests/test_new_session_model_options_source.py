@@ -62,7 +62,9 @@ class TestNewSessionModelOptionsBehavior(unittest.TestCase):
         self.assertEqual(result["parsed"]["providerError"], "")
     def test_long_provider_is_middle_ellipsized_without_losing_model_or_provider_identity(self) -> None:
         result = eval_model_options("", provider_choices=["chatgpt", "openai-api", "dexgem-completions"])
-        self.assertEqual(result["longDisplay"], "glm-5.2 · de…ns")
+        # Providers are shown in full — lossy abbreviation is non-injective and
+        # resolved to the wrong provider (dexgem-messages vs dexgem-responses).
+        self.assertEqual(result["longDisplay"], "glm-5.2 · dexgem-completions")
         self.assertEqual(result["longParsed"]["model"], "glm-5.2")
         self.assertEqual(result["longParsed"]["providerChoice"], "dexgem-completions")
 

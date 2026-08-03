@@ -35,6 +35,7 @@ from codoxear.broker_launch import _pi_session_dir_from_args
 from codoxear.broker_launch import _pi_session_dir_name
 from codoxear.broker_launch import _read_pi_active_session_marker
 from codoxear.broker_launch import _read_pi_active_session_marker_capability
+from codoxear.broker_launch import _read_pi_active_session_run_settings
 from codoxear.broker_launch import _read_pi_active_session_commands
 from codoxear.broker_launch import _reset_pi_active_session_marker
 from codoxear.broker_launch import _resume_session_id_from_args as _resume_session_id_from_args_impl
@@ -438,6 +439,10 @@ class Broker:
                             sessions_dir=self.sessions_dir,
                             process_pid=root_pid,
                         )
+                        live_settings = _read_pi_active_session_run_settings(
+                            self.pi_active_session_marker_path,
+                            process_pid=root_pid,
+                        )
                         capability_changed = False
                         with self._lock:
                             st_cap = self.state
@@ -447,6 +452,12 @@ class Broker:
                                     st_cap.pi_thinking_command = capability
                                     st_cap.slash_commands = next_commands
                                     capability_changed = True
+                                if isinstance(live_settings, dict):
+                                    for k, attr in (("model_provider", "model_provider"), ("model", "model"), ("reasoning_effort", "reasoning_effort")):
+                                        v = live_settings.get(k)
+                                        if isinstance(v, str) and getattr(st_cap, attr) != v:
+                                            setattr(st_cap, attr, v)
+                                            capability_changed = True
                         if capability_changed:
                             self._write_meta()
                         if lp is not None and lp.exists():
@@ -745,15 +756,21 @@ class Broker:
         st = self.state
         if not st or not st.sock_path:
             return
+        # Live run settings from the bridge caps win over launch args when set:
+        # a running session reports its own current model/effort, so the sidecar
+        # stays current and the server never needs a log replay for a live session.
+        live_model_provider = getattr(st, "model_provider", None) or MODEL_PROVIDER_OVERRIDE
+        live_model = getattr(st, "model", None) or MODEL_OVERRIDE
+        live_effort = getattr(st, "reasoning_effort", None) or REASONING_EFFORT_OVERRIDE
         _write_broker_sidecar_meta(
             st,
             sock_dir=SOCK_DIR,
             owner_tag=OWNER_TAG,
             agent_backend=AGENT_BACKEND,
-            model_provider=MODEL_PROVIDER_OVERRIDE,
+            model_provider=live_model_provider,
             preferred_auth_method=PREFERRED_AUTH_METHOD_OVERRIDE,
-            model=MODEL_OVERRIDE,
-            reasoning_effort=REASONING_EFFORT_OVERRIDE,
+            model=live_model,
+            reasoning_effort=live_effort,
             service_tier=SERVICE_TIER_OVERRIDE,
         )
 

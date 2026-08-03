@@ -146,6 +146,28 @@ def _reset_pi_active_session_marker(marker_path: Path) -> None:
             continue
 
 
+def _read_pi_active_session_run_settings(marker_path: Path, *, process_pid: int) -> dict[str, str] | None:
+    """Read live model/effort from the bridge caps file, when written by the current Pi process.
+
+    The live source (the bridge inside Pi) knows the current settings directly,
+    so a running session never needs a log replay to learn its own model/effort.
+    """
+    if not isinstance(process_pid, int) or process_pid <= 0:
+        return None
+    try:
+        data = json.loads(_pi_active_session_caps_path(marker_path).read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(data, dict) or data.get("bridgeVersion", 0) < 2 or data.get("pid") != process_pid:
+        return None
+    out: dict[str, str] = {}
+    for key, target in (("model_provider", "model_provider"), ("model", "model"), ("reasoning_effort", "reasoning_effort")):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            out[target] = value.strip()
+    return out or None
+
+
 def _read_pi_active_session_marker(marker_path: Path, *, sessions_dir: Path) -> Path | None:
     try:
         data = json.loads(marker_path.read_text(encoding="utf-8"))
