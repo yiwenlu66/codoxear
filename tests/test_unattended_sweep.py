@@ -45,6 +45,7 @@ from codoxear.session_unattended_config import SessionUnattendedConfigCoordinato
 from codoxear.unattended import UNATTENDED_PROMPT_PREFIX
 from codoxear.unattended import clean_unattended_cooldown_minutes as _clean_cooldown_impl
 from codoxear.unattended import clean_unattended_remaining_injections as _clean_remaining_impl
+from codoxear.unattended import unattended_config_key
 from codoxear.unattended_sweep import UnattendedSweepCoordinator
 
 # Server-configured defaults (codoxear/server_config.py): kept as module
@@ -102,6 +103,12 @@ class _SweepHarness:
         self._lock = threading.Lock()
         self._input_locks: dict[str, threading.Lock] = {}
         self.saves: list[bool] = []
+
+    def config_for(self, sid: str) -> dict:
+        session = self.sessions[sid]
+        scoped = self.unattended.get(unattended_config_key(session))
+        legacy = self.unattended.get(sid)
+        return scoped if isinstance(scoped, dict) else legacy
 
     def _input_lock(self, sid: str) -> threading.Lock:
         return self._input_locks.setdefault(sid, threading.Lock())
@@ -174,6 +181,46 @@ class _SweepHarness:
 
 
 class TestUnattendedSweep(unittest.TestCase):
+    def test_config_set_migrates_legacy_entry_and_resumed_thread_inherits_it(self) -> None:
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            log_path.write_text("{}", encoding="utf-8")
+            h = _SweepHarness()
+            original = _make_session(sid="broker-old", thread_id="thread-1", log_path=log_path)
+            resumed = _make_session(sid="broker-new", thread_id="thread-1", log_path=log_path)
+            h.sessions[original.session_id] = original
+            h.sessions[resumed.session_id] = resumed
+            h.unattended[original.session_id] = {
+                "enabled": True,
+                "request": "finish the migration",
+                "cooldown_minutes": 7,
+                "remaining_injections": 3,
+            }
+
+            coordinator = h.config_coordinator()
+            self.assertEqual(coordinator.get(original.session_id)["request"], "finish the migration")
+            updated = coordinator.set(original.session_id, cooldown_minutes=9)
+
+            self.assertEqual(
+                updated,
+                {
+                    "enabled": True,
+                    "request": "finish the migration",
+                    "cooldown_minutes": 9,
+                    "remaining_injections": 3,
+                },
+            )
+            self.assertEqual(
+                h.unattended[unattended_config_key(original)],
+                {
+                    "enabled": True,
+                    "request": "finish the migration",
+                    "cooldown_minutes": 9,
+                    "remaining_injections": 3,
+                },
+            )
+            self.assertEqual(coordinator.get(resumed.session_id), updated)
+
     def test_unattended_set_never_stores_enabled_with_zero_remaining(self) -> None:
         with TemporaryDirectory() as td:
             p = Path(td) / "rollout.jsonl"
@@ -188,8 +235,8 @@ class TestUnattendedSweep(unittest.TestCase):
             cfg = cfg_coord.set("sid-a", enabled=True)
 
             self.assertFalse(cfg["enabled"])
-            self.assertFalse(h.unattended["sid-a"]["enabled"])
-            self.assertEqual(h.unattended["sid-a"]["remaining_injections"], 0)
+            self.assertFalse(h.config_for("sid-a")["enabled"])
+            self.assertEqual(h.config_for("sid-a")["remaining_injections"], 0)
             self.assertNotIn("sid-a", h.unattended_last_injected)
 
     def test_unattended_partial_request_save_preserves_server_budget_decrement(self) -> None:
@@ -207,7 +254,7 @@ class TestUnattendedSweep(unittest.TestCase):
             self.assertEqual(cfg["request"], "new")
             self.assertFalse(cfg["enabled"])
             self.assertEqual(cfg["remaining_injections"], 0)
-            self.assertEqual(h.unattended["sid-a"]["remaining_injections"], 0)
+            self.assertEqual(h.config_for("sid-a")["remaining_injections"], 0)
 
     def test_unattended_get_masks_stale_enabled_zero_remaining(self) -> None:
         with TemporaryDirectory() as td:
@@ -253,7 +300,7 @@ class TestUnattendedSweep(unittest.TestCase):
             coord.sweep()
 
             self.assertEqual(sent, [])
-            self.assertEqual(h.unattended["sid-a"]["remaining_injections"], 10)
+            self.assertEqual(h.config_for("sid-a")["remaining_injections"], 10)
 
     def test_rechecks_latest_assistant_timestamp_before_send(self) -> None:
         # Injected tail reader with a side-effect sequence: the pre-probe tail
@@ -281,7 +328,7 @@ class TestUnattendedSweep(unittest.TestCase):
             coord.sweep()
 
             self.assertEqual(sent, [])
-            self.assertEqual(h.unattended["sid-a"]["remaining_injections"], 10)
+            self.assertEqual(h.config_for("sid-a")["remaining_injections"], 10)
 
     def test_rechecks_config_after_idle_probe_before_send(self) -> None:
         # The coordinator re-reads the live config under the input lock before
@@ -309,8 +356,8 @@ class TestUnattendedSweep(unittest.TestCase):
             coord.sweep()
 
             self.assertEqual(sent, [])
-            self.assertFalse(h.unattended["sid-a"]["enabled"])
-            self.assertEqual(h.unattended["sid-a"]["remaining_injections"], 0)
+            self.assertFalse(h.config_for("sid-a")["enabled"])
+            self.assertEqual(h.config_for("sid-a")["remaining_injections"], 0)
 
     def test_dedupes_injection_for_same_thread(self) -> None:
         with TemporaryDirectory() as td:
@@ -335,7 +382,7 @@ class TestUnattendedSweep(unittest.TestCase):
 
             self.assertEqual(sent, [("sid-a", "PFX\n\n---\n\nAdditional request from user: A\n")])
             self.assertIn("thread:thread-1", h.unattended_last_injected_scope)
-            self.assertEqual(h.unattended["sid-a"]["remaining_injections"], 9)
+            self.assertEqual(h.config_for("sid-a")["remaining_injections"], 9)
 
     def test_injects_once_per_distinct_thread(self) -> None:
         with TemporaryDirectory() as td:
@@ -392,8 +439,8 @@ class TestUnattendedSweep(unittest.TestCase):
             coord.sweep()
 
             self.assertEqual(len(attempts), 1)
-            self.assertEqual(h.unattended["sid-a"]["remaining_injections"], 3)
-            self.assertTrue(h.unattended["sid-a"]["enabled"])
+            self.assertEqual(h.config_for("sid-a")["remaining_injections"], 3)
+            self.assertTrue(h.config_for("sid-a")["enabled"])
             self.assertNotIn("sid-a", h.unattended_last_injected)
             self.assertNotIn("thread:thread-1", h.unattended_last_injected_scope)
             self.assertEqual(h.saves, [])
@@ -472,9 +519,9 @@ class TestUnattendedSweep(unittest.TestCase):
             coord.sweep()
 
             self.assertEqual(sent, [("sid-a", "PFX\n\n---\n\nAdditional request from user: A\n")])
-            self.assertEqual(h.unattended["sid-a"]["remaining_injections"], 9)
-            self.assertEqual(h.unattended["sid-b"]["remaining_injections"], 10)
-            self.assertEqual(h.unattended["sid-c"]["remaining_injections"], 10)
+            self.assertEqual(h.config_for("sid-a")["remaining_injections"], 9)
+            self.assertEqual(h.config_for("sid-b")["remaining_injections"], 9)
+            self.assertEqual(h.config_for("sid-c")["remaining_injections"], 9)
 
     def test_zero_remaining_disables_without_sending(self) -> None:
         with TemporaryDirectory() as td:
@@ -496,8 +543,9 @@ class TestUnattendedSweep(unittest.TestCase):
             coord.sweep()
 
             self.assertEqual(sent, [])
-            self.assertEqual(h.unattended["sid-a"]["remaining_injections"], 0)
-            self.assertFalse(h.unattended["sid-a"]["enabled"])
+            self.assertEqual(h.config_for("sid-a")["remaining_injections"], 0)
+            self.assertFalse(h.config_for("sid-a")["enabled"])
+            self.assertIn("thread:thread-1", h.unattended)
             self.assertNotIn("sid-a", h.unattended_last_injected)
 
     def test_disables_unattended_after_last_injection(self) -> None:
@@ -520,8 +568,8 @@ class TestUnattendedSweep(unittest.TestCase):
             coord.sweep()
 
             self.assertEqual(sent, [("sid-a", "PFX\n\n---\n\nAdditional request from user: A\n")])
-            self.assertEqual(h.unattended["sid-a"]["remaining_injections"], 0)
-            self.assertFalse(h.unattended["sid-a"]["enabled"])
+            self.assertEqual(h.config_for("sid-a")["remaining_injections"], 0)
+            self.assertFalse(h.config_for("sid-a")["enabled"])
 
 
 if __name__ == "__main__":

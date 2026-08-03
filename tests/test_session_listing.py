@@ -97,7 +97,7 @@ def test_build_active_session_rows_snapshot_combines_session_and_store_state(tmp
     snapshot = build_active_session_rows_snapshot(
         sessions=[session],
         queues={"s1": [{"commit_unknown": True}]},
-        unattended={"s1": {"enabled": True, "request": "continue with the refactor", "cooldown_minutes": 7, "remaining_injections": 2}},
+        unattended={"thread:t1": {"enabled": True, "request": "continue with the refactor", "cooldown_minutes": 7, "remaining_injections": 2}},
         aliases={"s1": "Alias"},
         store=store,
         now_ts=10.0,

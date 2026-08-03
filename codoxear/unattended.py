@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 import uuid
 
+from .session_model import Session
 from .util import atomic_write_json
 from .util import load_json_file
 
@@ -158,6 +159,15 @@ def unattended_config_state(
 
 def unattended_scope_key(*, thread_id: str | None, log_path: Path) -> str:
     return f"thread:{thread_id}" if thread_id else f"log:{str(log_path)}"
+
+
+def unattended_config_key(session: Session) -> str:
+    """Return the resume-stable storage key for a live session's config."""
+    if session.thread_id:
+        return f"thread:{session.thread_id}"
+    if session.log_path is not None:
+        return unattended_scope_key(thread_id=None, log_path=session.log_path)
+    raise ValueError("unattended config requires a session thread_id or log_path")
 
 
 def unattended_cooldown_blocked(*, now_ts: float, cooldown_seconds: float, session_last_ts: float, scope_last_ts: float) -> bool:

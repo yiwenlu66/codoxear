@@ -4,6 +4,15 @@ from dataclasses import dataclass
 from typing import Any, Callable, MutableMapping
 
 from .session_model import Session
+from .unattended import unattended_config_key
+
+
+def _config_for_session(unattended: MutableMapping[str, dict[str, Any]], session: Session) -> tuple[str, dict[str, Any]]:
+    config_key = unattended_config_key(session)
+    scoped = unattended.get(config_key)
+    legacy = unattended.get(session.session_id)
+    raw = scoped if isinstance(scoped, dict) else legacy
+    return config_key, dict(raw) if isinstance(raw, dict) else {}
 
 
 @dataclass(frozen=True)
@@ -22,8 +31,7 @@ class SessionUnattendedConfigCoordinator:
             session = self.sessions().get(session_id)
             if not session:
                 raise KeyError("unknown session")
-            cfg0 = self.unattended().get(session_id)
-            cfg = dict(cfg0) if isinstance(cfg0, dict) else {}
+            _config_key, cfg = _config_for_session(self.unattended(), session)
         request = cfg.get("request")
         if not isinstance(request, str):
             request = ""
@@ -52,8 +60,7 @@ class SessionUnattendedConfigCoordinator:
                 session = self.sessions().get(session_id)
                 if not session:
                     raise KeyError("unknown session")
-                cur0 = self.unattended().get(session_id)
-                cur = dict(cur0) if isinstance(cur0, dict) else {}
+                config_key, cur = _config_for_session(self.unattended(), session)
                 if enabled is not None:
                     cur["enabled"] = bool(enabled)
                 if request is not None:
@@ -66,7 +73,7 @@ class SessionUnattendedConfigCoordinator:
                 cur["remaining_injections"] = self.clean_unattended_remaining_injections(cur.get("remaining_injections"), allow_zero=True)
                 if int(cur["remaining_injections"]) <= 0:
                     cur["enabled"] = False
-                self.unattended()[session_id] = cur
+                self.unattended()[config_key] = cur
                 if not bool(cur.get("enabled")):
                     self.unattended_last_injected().pop(session_id, None)
             self.save_unattended()

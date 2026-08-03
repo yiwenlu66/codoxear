@@ -11,11 +11,19 @@ from .session_runtime import RuntimeStatus
 from .session_runtime import session_runtime_readiness
 from .unattended import disable_unattended_if_exhausted
 from .unattended import record_unattended_success
+from .unattended import unattended_config_key
 from .unattended import unattended_config_state
 from .unattended import unattended_cooldown_blocked
 from .unattended import unattended_prompt_decision
-from .unattended import unattended_scope_key
 from .unattended import unattended_tail_allows_injection
+
+
+def _config_for_session(unattended: MutableMapping[str, Any], session: Session) -> tuple[str, dict[str, Any]]:
+    config_key = unattended_config_key(session)
+    scoped = unattended.get(config_key)
+    legacy = unattended.get(session.session_id)
+    raw = scoped if isinstance(scoped, dict) else legacy
+    return config_key, dict(raw) if isinstance(raw, dict) else {}
 
 
 @dataclass(frozen=True)
@@ -45,14 +53,13 @@ class UnattendedSweepCoordinator:
         self.discover_existing_if_stale()
         self.prune_dead_sessions()
         with self.lock:
-            items: list[tuple[str, Session, dict[str, Any], float]] = []
+            items: list[tuple[str, Session, str, dict[str, Any], float]] = []
             for sid, session in self.sessions().items():
-                cfg0 = self.unattended().get(sid)
-                cfg = dict(cfg0) if isinstance(cfg0, dict) else {}
+                config_key, cfg = _config_for_session(self.unattended(), session)
                 last_injected = float(self.unattended_last_injected().get(sid, 0.0))
-                items.append((sid, session, cfg, last_injected))
+                items.append((sid, session, config_key, cfg, last_injected))
 
-        for sid, session, cfg, last_injected in items:
+        for sid, session, config_key, cfg, last_injected in items:
             if not bool(cfg.get("enabled")):
                 continue
             try:
@@ -66,14 +73,13 @@ class UnattendedSweepCoordinator:
                     save_zero_cleanup = False
                     with input_lock:
                         with self.lock:
-                            cur0 = self.unattended().get(sid)
-                            cur = dict(cur0) if isinstance(cur0, dict) else {}
+                            live_config_key, cur = _config_for_session(self.unattended(), session)
                             disabled, did_disable = disable_unattended_if_exhausted(
                                 cur,
                                 default_max_injections=self.default_max_injections,
                             )
                             if did_disable:
-                                self.unattended()[sid] = disabled
+                                self.unattended()[live_config_key] = disabled
                                 self.unattended_last_injected().pop(sid, None)
                                 save_zero_cleanup = True
                     if save_zero_cleanup:
@@ -82,7 +88,7 @@ class UnattendedSweepCoordinator:
                 log_path = session.log_path
                 if log_path is None or (not log_path.exists()):
                     continue
-                scope_key = unattended_scope_key(thread_id=session.thread_id, log_path=log_path)
+                scope_key = config_key
                 with self.lock:
                     scope_last = float(self.unattended_last_injected_scope().get(scope_key, 0.0))
                 if unattended_cooldown_blocked(
@@ -117,8 +123,7 @@ class UnattendedSweepCoordinator:
                 live_cooldown_seconds = state.cooldown_seconds
                 with input_lock:
                     with self.lock:
-                        cur0 = self.unattended().get(sid)
-                        cur = dict(cur0) if isinstance(cur0, dict) else {}
+                        live_config_key, cur = _config_for_session(self.unattended(), session)
                         live_last_injected = float(self.unattended_last_injected().get(sid, 0.0))
                         live_scope_last = float(self.unattended_last_injected_scope().get(scope_key, 0.0))
                         decision = unattended_prompt_decision(
@@ -132,7 +137,7 @@ class UnattendedSweepCoordinator:
                         )
                         live_cooldown_seconds = decision.cooldown_seconds
                         if decision.disabled_exhausted:
-                            self.unattended()[sid] = decision.config
+                            self.unattended()[live_config_key] = decision.config
                             self.unattended_last_injected().pop(sid, None)
                             save_after_disable = True
                         prompt = decision.prompt
@@ -147,15 +152,14 @@ class UnattendedSweepCoordinator:
                     with self.lock:
                         self.unattended_last_injected()[sid] = now_ts
                         self.unattended_last_injected_scope()[scope_key] = now_ts
-                        cur0 = self.unattended().get(sid)
-                        cur = dict(cur0) if isinstance(cur0, dict) else {}
+                        live_config_key, cur = _config_for_session(self.unattended(), session)
                         update = record_unattended_success(
                             cur,
                             default_max_injections=self.default_max_injections,
                         )
                         if not update.enabled:
                             self.unattended_last_injected().pop(sid, None)
-                        self.unattended()[sid] = update.config
+                        self.unattended()[live_config_key] = update.config
                     self.save_unattended()
             except Exception as exc:
                 sys.stderr.write(f"error: unattended session {sid} skipped: {type(exc).__name__}: {exc}\n")

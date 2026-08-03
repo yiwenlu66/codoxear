@@ -9,6 +9,7 @@ from .session_model import Session
 from .session_store import SessionStore
 from .session_store import public_staged_attachments
 from .slash_commands import slash_commands_for_backend
+from .unattended import unattended_config_key
 from .util import _codex_sessions_dir_for_log
 from .util import scan_active_codex_subagents
 from .util import scan_active_pi_subagents
@@ -321,7 +322,10 @@ def build_active_session_rows_snapshot(
         for parent_thread_id, runs in scan_active_codex_subagents(sessions_dirs=codex_sessions_dirs).items():
             active_subagent_runs[parent_thread_id] = runs
     for s in session_list:
-        cfg0 = unattended.get(s.session_id)
+        config_key = unattended_config_key(s)
+        scoped_cfg = unattended.get(config_key)
+        legacy_cfg = unattended.get(s.session_id)
+        cfg0 = scoped_cfg if isinstance(scoped_cfg, dict) else legacy_cfg
         unattended_cooldown_minutes = (
             clean_unattended_cooldown_minutes(cfg0.get("cooldown_minutes")) if isinstance(cfg0, dict) else unattended_default_idle_minutes
         )
