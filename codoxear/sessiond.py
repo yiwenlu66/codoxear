@@ -366,6 +366,9 @@ class Sessiond:
 
     def _start(self) -> State:
         SOCK_DIR.mkdir(parents=True, exist_ok=True)
+        if AGENT_BACKEND == "cc" and OWNER_TAG == "web":
+            os.environ.setdefault("CODEX_WEB_CC_SUBAGENT_RUNS_ROOT", str(APP_DIR / "cc-subagent-runs"))
+            os.environ["CODEX_WEB_CC_SUBAGENT_BROKER_PID"] = str(os.getpid())
         self._ensure_root_repo()
         start_ts = _now()
 

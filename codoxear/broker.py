@@ -858,6 +858,10 @@ class Broker:
         rows, cols = _term_size()
         _require_proc()
 
+        if AGENT_BACKEND == "cc" and OWNER_TAG == "web":
+            os.environ.setdefault("CODEX_WEB_CC_SUBAGENT_RUNS_ROOT", str(APP_DIR / "cc-subagent-runs"))
+            os.environ["CODEX_WEB_CC_SUBAGENT_BROKER_PID"] = str(os.getpid())
+
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
         self._prepare_codex_live_control()
         start_ts = _now()

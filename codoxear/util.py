@@ -7,7 +7,7 @@ import sys
 import time
 import traceback
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from .app_dir_runtime import resolve_default_app_dir as _resolve_default_app_dir
 from .agent_backend import get_agent_backend
@@ -237,6 +237,62 @@ def scan_active_codex_subagents(
         _CODEX_SUBAGENT_CACHE_AT = monotonic
         _CODEX_SUBAGENT_CACHE = grouped
     return {parent: [dict(run) for run in runs] for parent, runs in grouped.items()}
+
+
+def _cc_subagent_runs_root() -> Path:
+    configured = os.environ.get("CODEX_WEB_CC_SUBAGENT_RUNS_ROOT", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return _resolve_default_app_dir(legacy_warned=False).app_dir / "cc-subagent-runs"
+
+
+def scan_active_cc_subagents(*, parent_broker_pids: Mapping[str, int]) -> dict[str, list[dict[str, Any]]]:
+    """Return hook-authoritative Claude Code subagents for live web sessions.
+
+    Claude child transcripts remain on disk after completion and do not encode
+    live state. The only accepted records are app-owned Start-hook records that
+    still belong to the exact live broker PID for their parent session. The
+    Stop hook removes the record; missing, malformed, terminal-owned, or stale
+    records project no activity.
+    """
+    root = _cc_subagent_runs_root()
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    try:
+        parent_dirs = list(root.iterdir())
+    except OSError:
+        return grouped
+    for parent_dir in parent_dirs:
+        if not parent_dir.is_dir():
+            continue
+        parent_session_id = parent_dir.name
+        expected_broker_pid = parent_broker_pids.get(parent_session_id)
+        if not isinstance(expected_broker_pid, int) or expected_broker_pid <= 0 or not pid_alive(expected_broker_pid):
+            continue
+        try:
+            status_paths = list(parent_dir.glob("*.json"))
+        except OSError:
+            continue
+        for status_path in status_paths:
+            try:
+                payload = load_json_file(status_path)
+            except (OSError, ValueError, TypeError):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            agent_id = payload.get("agent_id")
+            if (
+                payload.get("version") != 1
+                or payload.get("state") != "running"
+                or payload.get("parent_session_id") != parent_session_id
+                or not isinstance(agent_id, str)
+                or status_path.stem != agent_id
+                or payload.get("broker_pid") != expected_broker_pid
+            ):
+                continue
+            grouped.setdefault(parent_session_id, []).append({"agent_id": agent_id})
+    for runs in grouped.values():
+        runs.sort(key=lambda run: str(run["agent_id"]))
+    return grouped
 
 
 def _subagent_runs_root() -> Path:

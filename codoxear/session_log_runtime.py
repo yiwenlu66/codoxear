@@ -6,6 +6,7 @@ from typing import Any, Callable, MutableMapping
 
 from .session_model import Session
 from .util import _codex_sessions_dir_for_log
+from .util import scan_active_cc_subagents
 from .util import scan_active_codex_subagents
 from .util import scan_active_pi_subagents
 from .session_runtime import suppress_session_interrupted_idle
@@ -165,6 +166,12 @@ class SessionLogRuntimeCoordinator:
                         subagents_active = bool(
                             sessions_dir is not None
                             and scan_active_codex_subagents(sessions_dirs=(sessions_dir,)).get(current.thread_id)
+                        )
+                    elif current.agent_backend == "cc":
+                        subagents_active = bool(
+                            current.owned
+                            and current.thread_id
+                            and scan_active_cc_subagents(parent_broker_pids={current.thread_id: current.broker_pid}).get(current.thread_id)
                         )
                     else:
                         subagents_active = False

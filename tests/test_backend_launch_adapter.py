@@ -1,3 +1,4 @@
+import json
 import unittest
 from pathlib import Path
 
@@ -25,7 +26,13 @@ class TestBackendLaunchAdapter(unittest.TestCase):
         self.assertIsInstance(get_agent_backend("pi"), PiBackend)
         self.assertIsInstance(get_agent_backend("cc"), ClaudeCodeBackend)
         self.assertEqual(get_agent_backend("pi").build_resume_args(resume_id="sid", resume_row={"log_path": "/tmp/pi.jsonl"}), ["--session", "/tmp/pi.jsonl"])
-        self.assertEqual(get_agent_backend("cc").build_launch_args(spawn_cwd=Path("/repo"), codex_trust_override="", model="sonnet"), ["--dangerously-skip-permissions", "--model", "sonnet"])
+        cc_args = get_agent_backend("cc").build_launch_args(spawn_cwd=Path("/repo"), codex_trust_override="", model="sonnet")
+        self.assertEqual(cc_args[:2], ["--dangerously-skip-permissions", "--settings"])
+        settings = json.loads(cc_args[2])
+        self.assertEqual(set(settings["hooks"]), {"SubagentStart", "SubagentStop"})
+        self.assertEqual(settings["hooks"]["SubagentStart"][0]["matcher"], "*")
+        self.assertIn("codoxear.cc_subagents", settings["hooks"]["SubagentStop"][0]["hooks"][0]["command"])
+        self.assertEqual(cc_args[3:], ["--model", "sonnet"])
 
 
     def test_backend_adapters_normalize_launch_request_options(self) -> None:
@@ -145,7 +152,9 @@ class TestBackendLaunchAdapter(unittest.TestCase):
             model="sonnet",
             reasoning_effort="max",
         )
-        self.assertEqual(cc, ["--dangerously-skip-permissions", "--model", "sonnet", "--effort", "max"])
+        self.assertEqual(cc[:2], ["--dangerously-skip-permissions", "--settings"])
+        self.assertEqual(set(json.loads(cc[2])["hooks"]), {"SubagentStart", "SubagentStop"})
+        self.assertEqual(cc[3:], ["--model", "sonnet", "--effort", "max"])
         self.assertEqual(get_agent_backend("codex").sessiond_working_dir(root_repo_dir=Path("/root-repo"), requested_cwd="/work"), Path("/root-repo"))
         self.assertEqual(get_agent_backend("pi").sessiond_working_dir(root_repo_dir=Path("/root-repo"), requested_cwd="/work"), Path("/work"))
 
@@ -154,10 +163,10 @@ class TestBackendLaunchAdapter(unittest.TestCase):
             build_backend_args(agent_backend="pi", spawn_cwd=Path("/repo"), codex_trust_override="", model_provider="macaron", model="gpt-5.4", reasoning_effort="medium"),
             ["--provider", "macaron", "--model", "gpt-5.4", "--thinking", "medium"],
         )
-        self.assertEqual(
-            build_backend_args(agent_backend="cc", spawn_cwd=Path("/repo"), codex_trust_override="", model="sonnet", reasoning_effort="max"),
-            ["--dangerously-skip-permissions", "--model", "sonnet", "--effort", "max"],
-        )
+        cc_args = build_backend_args(agent_backend="cc", spawn_cwd=Path("/repo"), codex_trust_override="", model="sonnet", reasoning_effort="max")
+        self.assertEqual(cc_args[:2], ["--dangerously-skip-permissions", "--settings"])
+        self.assertEqual(set(json.loads(cc_args[2])["hooks"]), {"SubagentStart", "SubagentStop"})
+        self.assertEqual(cc_args[3:], ["--model", "sonnet", "--effort", "max"])
         self.assertEqual(build_backend_resume_args(agent_backend="codex", resume_id="resume-a"), ["resume", "resume-a"])
         self.assertEqual(
             build_backend_resume_args(agent_backend="pi", resume_id="resume-a", resume_row={"log_path": "/tmp/pi.jsonl"}),

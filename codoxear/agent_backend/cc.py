@@ -1,12 +1,59 @@
 from __future__ import annotations
 
+import json
+import shlex
+import sys
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from ..app_dir_runtime import resolve_default_app_dir
 from .base import AgentBackend
 
 
 class ClaudeCodeBackend(AgentBackend):
+    def apply_launch_environment(
+        self,
+        env: dict[str, str],
+        *,
+        homes: Mapping[str, str | Path],
+        model_provider: str | None = None,
+        preferred_auth_method: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+        service_tier: str | None = None,
+        resume_session_id: str | None = None,
+    ) -> dict[str, str]:
+        out = super().apply_launch_environment(
+            env,
+            homes=homes,
+            model_provider=model_provider,
+            preferred_auth_method=preferred_auth_method,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            service_tier=service_tier,
+            resume_session_id=resume_session_id,
+        )
+        out["CODEX_WEB_CC_SUBAGENT_RUNS_ROOT"] = str(resolve_default_app_dir(legacy_warned=False).app_dir / "cc-subagent-runs")
+        return out
+
+    @staticmethod
+    def _subagent_hook_settings() -> str:
+        command = shlex.join([sys.executable, "-m", "codoxear.cc_subagents"])
+        return json.dumps(
+            {
+                "hooks": {
+                    event_name: [
+                        {
+                            "matcher": "*",
+                            "hooks": [{"type": "command", "command": command, "timeout": 5}],
+                        }
+                    ]
+                    for event_name in ("SubagentStart", "SubagentStop")
+                }
+            },
+            separators=(",", ":"),
+        )
+
     def is_session_log_path(self, path: Path, *, sessions_dir: Path | None = None) -> bool:
         if path.suffix != ".jsonl":
             return False
@@ -165,7 +212,7 @@ class ClaudeCodeBackend(AgentBackend):
             raise ValueError("preferred_auth_method is not supported for cc")
         if service_tier is not None:
             raise ValueError("service_tier is not supported for cc")
-        args = ["--dangerously-skip-permissions"]
+        args = ["--dangerously-skip-permissions", "--settings", self._subagent_hook_settings()]
         if model is not None:
             args.extend(["--model", model])
         if reasoning_effort is not None:

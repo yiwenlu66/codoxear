@@ -142,11 +142,15 @@ def test_build_active_session_rows_snapshot_combines_session_and_store_state(tmp
 def test_session_listing_projects_matching_backend_subagent_runs(tmp_path: Path) -> None:
     pi_log = tmp_path / "pi.jsonl"
     codex_log = tmp_path / "codex.jsonl"
+    cc_log = tmp_path / "cc.jsonl"
     pi_log.write_text("", encoding="utf-8")
     codex_log.write_text("", encoding="utf-8")
+    cc_log.write_text("", encoding="utf-8")
     sessions = [
         Session(session_id="pi", thread_id="pi-thread", broker_pid=2, codex_pid=1, agent_backend="pi", owned=True, start_ts=1.0, cwd="/repo", log_path=pi_log, sock_path=tmp_path / "pi.sock"),
         Session(session_id="codex", thread_id="codex-thread", broker_pid=4, codex_pid=3, agent_backend="codex", owned=True, start_ts=1.0, cwd="/repo", log_path=codex_log, sock_path=tmp_path / "codex.sock"),
+        Session(session_id="cc", thread_id="cc-thread", broker_pid=6, codex_pid=5, agent_backend="cc", owned=True, start_ts=1.0, cwd="/repo", log_path=cc_log, sock_path=tmp_path / "cc.sock"),
+        Session(session_id="cc-terminal", thread_id="cc-terminal-thread", broker_pid=8, codex_pid=7, agent_backend="cc", owned=False, start_ts=1.0, cwd="/repo", log_path=cc_log, sock_path=tmp_path / "cc-terminal.sock"),
     ]
 
     snapshot = build_active_session_rows_snapshot(
@@ -167,6 +171,8 @@ def test_session_listing_projects_matching_backend_subagent_runs(tmp_path: Path)
         subagent_runs={
             str(pi_log): [{"run_id": "one"}, {"run_id": "two"}],
             "codex-thread": [{"thread_id": "codex-child"}],
+            "cc-thread": [{"agent_id": "cc-child"}],
+            "cc-terminal-thread": [{"agent_id": "must-not-project"}],
             str(codex_log): [{"run_id": "ignored"}],
             str(tmp_path / "unbound.jsonl"): [{"run_id": "ignored"}],
         },
@@ -175,6 +181,8 @@ def test_session_listing_projects_matching_backend_subagent_runs(tmp_path: Path)
     by_id = {row["session_id"]: row for row in snapshot.rows}
     assert by_id["pi"]["subagents_running"] == 2
     assert by_id["codex"]["subagents_running"] == 1
+    assert by_id["cc"]["subagents_running"] == 1
+    assert by_id["cc-terminal"]["subagents_running"] == 0
 
 
 def test_build_active_session_row_projects_public_and_staging_fields() -> None:

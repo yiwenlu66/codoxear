@@ -11,6 +11,7 @@ from .session_store import public_staged_attachments
 from .slash_commands import slash_commands_for_backend
 from .unattended import unattended_config_key
 from .util import _codex_sessions_dir_for_log
+from .util import scan_active_cc_subagents
 from .util import scan_active_codex_subagents
 from .util import scan_active_pi_subagents
 
@@ -321,6 +322,13 @@ def build_active_session_rows_snapshot(
         }
         for parent_thread_id, runs in scan_active_codex_subagents(sessions_dirs=codex_sessions_dirs).items():
             active_subagent_runs[parent_thread_id] = runs
+        cc_parent_broker_pids = {
+            s.thread_id: s.broker_pid
+            for s in session_list
+            if s.agent_backend == "cc" and s.owned and s.thread_id and s.broker_pid > 0
+        }
+        for parent_session_id, runs in scan_active_cc_subagents(parent_broker_pids=cc_parent_broker_pids).items():
+            active_subagent_runs[parent_session_id] = runs
     for s in session_list:
         config_key = unattended_config_key(s)
         scoped_cfg = unattended.get(config_key)
@@ -381,6 +389,8 @@ def build_active_session_rows_snapshot(
             if s.agent_backend == "pi" and s.log_path is not None
             else active_subagent_runs.get(s.thread_id, ())
             if s.agent_backend == "codex" and s.thread_id
+            else active_subagent_runs.get(s.thread_id, ())
+            if s.agent_backend == "cc" and s.owned and s.thread_id
             else ()
         )
         rows.append(
