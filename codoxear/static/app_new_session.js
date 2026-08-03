@@ -136,9 +136,10 @@
     const MODEL_PROVIDER_SEPARATOR = " · ";
 
     function abbreviatedNewSessionProvider(providerChoice) {
-      const cleanProvider = String(providerChoice || "").trim();
-      if (cleanProvider.length <= 14) return cleanProvider;
-      return `${cleanProvider.slice(0, 2)}…${cleanProvider.slice(-2)}`;
+      // Do not abbreviate: a lossy provider abbreviation is non-injective
+      // (dexgem-messages and dexgem-responses both became "de…es"), which made
+      // the display ambiguous and the parse resolve to the wrong provider.
+      return String(providerChoice || "").trim();
     }
 
     function formatNewSessionProviderModelDisplay(model, providerChoice = "") {
