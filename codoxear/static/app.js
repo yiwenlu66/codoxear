@@ -83,9 +83,6 @@
       const codoxearComposer = window.CodoxearComposer;
       if (!codoxearComposer || typeof codoxearComposer.createComposerController !== "function")
         throw new Error("Codoxear composer module failed to load");
-      const codoxearMessageFlow = window.CodoxearMessageFlow;
-      if (!codoxearMessageFlow || typeof codoxearMessageFlow.createMessageFlowController !== "function")
-        throw new Error("Codoxear message flow module failed to load");
 
       const codoxearPerfHelpers = window.CodoxearPerf;
       if (!codoxearPerfHelpers || typeof codoxearPerfHelpers.pushSample !== "function" || typeof codoxearPerfHelpers.summarize !== "function") throw new Error("Codoxear performance helpers failed to load");
@@ -812,8 +809,21 @@
         const CHAT_DOM_WINDOW_WITH_HISTORY_SLACK = CHAT_DOM_WINDOW + OLDER_PAGE_LIMIT;
         const OLDER_TOP_TRIGGER_PX = 1;
         const OLDER_CANCEL_PX = 48;
+        let openSessionTailAbortController = null;
+        let messagePollAbortController = null;
+        let messageEventSource = null;
+        let messageSseRetryTimer = null;
+        let messageSseOpen = false;
+        let messageSseFallbackUntil = 0;
+        const OLDER_AUTO_COOLDOWN_MS = 450;
+        let pollTimer = null;
         let pollGen = 0;
-        let turnOpen = false;
+        let pollLoopBusy = false;
+        let pollKickPending = false;
+        let pollKickDelayMs = null;
+        let messagePollErrorStreak = 0;
+	        let pollFastUntilMs = 0;
+	         let turnOpen = false;
 	         let sessionsTimer = null;
          let secondaryPollTimer = null;
          let sessionsPollingEnabled = true;
@@ -827,7 +837,6 @@
 	        let attachedFiles = 0;
         let stagedAttachments = [];
         let composerController = null;
-        let messageFlowController = null;
         function resizeComposer() {
           if (composerController) composerController.autoGrow();
         }
@@ -873,11 +882,128 @@
           appEventCleanups.push(() => target.removeEventListener(type, handler, options));
           return handler;
         }
+        function closeMessageEventSource() {
+          if (messageSseRetryTimer) clearTimeout(messageSseRetryTimer);
+          messageSseRetryTimer = null;
+          const source = messageEventSource;
+          messageEventSource = null;
+          messageSseOpen = false;
+          if (source && typeof source.close === "function") {
+            try { source.close(); } catch (_error) {}
+          }
+        }
+        function scheduleMessageEventSourceRetry(sessionId, gen) {
+          if (appDisposed || selected !== sessionId || pollGen !== gen || messageSseRetryTimer) return;
+          const delay = Math.max(1000, messageSseFallbackUntil - Date.now());
+          messageSseRetryTimer = setTimeout(() => {
+            messageSseRetryTimer = null;
+            if (!appDisposed && selected === sessionId && pollGen === gen) openMessageEventSource(sessionId, gen);
+          }, delay);
+        }
+        function openMessageEventSource(sessionId = selected, gen = pollGen) {
+          if (appDisposed || !sessionId || selected !== sessionId || pollGen !== gen) return;
+          if (typeof EventSource !== "function") return;
+          const snapshot = transcriptSlotRuntime.activeSnapshot();
+          if (snapshot.state !== "bound" || !snapshot.liveCursor) return;
+          closeMessageEventSource();
+          const url = resolveAppUrl(`/api/sessions/${sessionId}/live?cursor=${encodeURIComponent(snapshot.liveCursor)}`);
+          const source = new EventSource(url);
+          messageEventSource = source;
+          source.onopen = () => {
+            if (messageEventSource !== source || selected !== sessionId || pollGen !== gen) return;
+            messageSseOpen = true;
+            messageSseFallbackUntil = 0;
+            messagePollErrorStreak = 0;
+            abortMessagePollRequest();
+            if (pollTimer) clearTimeout(pollTimer);
+            pollTimer = null;
+          };
+          source.addEventListener("message", (event) => {
+            if (messageEventSource !== source || selected !== sessionId || pollGen !== gen) return;
+            let data;
+            try { data = JSON.parse(event.data); } catch (error) {
+              console.warn("message SSE payload was invalid", error);
+              return;
+            }
+            Promise.resolve(applyLiveMessageData(sessionId, gen, data)).catch((error) => {
+              console.warn("message SSE update failed", error);
+              source.close();
+              if (messageEventSource === source) {
+                messageEventSource = null;
+                messageSseOpen = false;
+                messageSseFallbackUntil = Date.now() + 6000;
+                kickPoll(0);
+                scheduleMessageEventSourceRetry(sessionId, gen);
+              }
+            });
+          });
+          source.addEventListener("error", () => {
+            if (messageEventSource !== source || selected !== sessionId || pollGen !== gen) return;
+            source.close();
+            messageEventSource = null;
+            messageSseOpen = false;
+            messageSseFallbackUntil = Date.now() + 6000;
+            markMessagePollFailure();
+            kickPoll(0);
+            scheduleMessageEventSourceRetry(sessionId, gen);
+          });
+        }
         function stopMessagePolling() {
           selected = null;
           pollGen += 1;
-          if (messageFlowController) messageFlowController.stop();
+          closeMessageEventSource();
+          abortOpenSessionTailRequest();
+          abortMessagePollRequest();
+          if (pollTimer) clearTimeout(pollTimer);
+          pollTimer = null;
+          pollKickPending = false;
+          pollKickDelayMs = null;
+          messagePollErrorStreak = 0;
+          pollFastUntilMs = 0;
           turnOpen = false;
+        }
+        function abortController(controller) {
+          if (!controller || typeof controller.abort !== "function") return;
+          try {
+            controller.abort();
+          } catch (_error) {}
+        }
+        function abortOpenSessionTailRequest() {
+          const controller = openSessionTailAbortController;
+          openSessionTailAbortController = null;
+          abortController(controller);
+        }
+        function beginOpenSessionTailRequest(sessionId, gen) {
+          abortOpenSessionTailRequest();
+          const controller = typeof AbortController === "function" ? new AbortController() : null;
+          openSessionTailAbortController = controller;
+          return Object.freeze({ sessionId, gen, controller, signal: controller ? controller.signal : undefined });
+        }
+        function isCurrentOpenSessionTailRequest(request) {
+          return Boolean(request && selected === request.sessionId && pollGen === request.gen);
+        }
+        function isOpenSessionTailAbortError(request, error) {
+          return Boolean(error && error.name === "AbortError" && request && request.signal && request.signal.aborted);
+        }
+        function finishOpenSessionTailRequest(request) {
+          if (request && openSessionTailAbortController === request.controller) openSessionTailAbortController = null;
+        }
+        function abortMessagePollRequest() {
+          const controller = messagePollAbortController;
+          messagePollAbortController = null;
+          abortController(controller);
+        }
+        function beginMessagePollRequest(sessionId, gen) {
+          abortMessagePollRequest();
+          const controller = typeof AbortController === "function" ? new AbortController() : null;
+          messagePollAbortController = controller;
+          return Object.freeze({ sessionId, gen, controller, signal: controller ? controller.signal : undefined });
+        }
+        function isMessagePollAbortError(request, error) {
+          return Boolean(error && error.name === "AbortError" && request && request.signal && request.signal.aborted);
+        }
+        function finishMessagePollRequest(request) {
+          if (request && messagePollAbortController === request.controller) messagePollAbortController = null;
         }
         function cleanupApp() {
           if (appDisposed) return;
@@ -926,7 +1052,38 @@
         function secondaryPollDelayMs() {
           return codoxearPolling.secondaryPollDelayMs(document.visibilityState);
         }
-
+        function browserOffline() {
+          return codoxearPolling.browserOffline(typeof navigator === "undefined" ? undefined : navigator);
+        }
+        function messagePollErrorDelayMs() {
+          return codoxearPolling.messagePollErrorDelayMs(messagePollErrorStreak);
+        }
+        function messagePollDelayMs(now = Date.now()) {
+          return codoxearPolling.messagePollDelayMs({
+            now,
+            visibilityState: document.visibilityState,
+            offline: browserOffline(),
+            errorStreak: messagePollErrorStreak,
+            pollFastUntilMs,
+            turnOpen,
+          });
+        }
+        function markMessagePollSuccess() {
+          messagePollErrorStreak = 0;
+        }
+        function markMessagePollFailure() {
+          messagePollErrorStreak = Math.min(messagePollErrorStreak + 1, 20);
+        }
+        function normalizeMessagePollKickDelay(ms = 0) {
+          return codoxearPolling.normalizeMessagePollKickDelay({
+            requested: ms,
+            visibilityState: document.visibilityState,
+            offline: browserOffline(),
+            errorStreak: messagePollErrorStreak,
+            pollFastUntilMs,
+            turnOpen,
+          });
+        }
         function stopSessionsPolling() {
           if (sessionsTimer) clearTimeout(sessionsTimer);
           sessionsTimer = null;
@@ -2433,7 +2590,52 @@
           }
 
         function updateTypingStatsFromSession(session) {
-          return messageFlowController.updateTypingStatsFromSession(session);
+          currentSubagentsRunning = session ? Math.max(0, Math.floor(Number(session.subagents_running) || 0)) : 0;
+          typingRowRuntime.updateSubagentGauge(currentSubagentsRunning);
+          renderStatusChip();
+          if (!session) return;
+          const thinkingMode = codoxearTranscript.thinkingModeForTokens(session.thinking_tokens);
+          const stats = {
+            thinking: session.thinking,
+            thinkingTokens: session.thinking_tokens,
+            thinkingMode,
+            tools: session.tools,
+          };
+          // Two feeds write these counts: live per-event deltas (exact, sees
+          // every event from turn start) and session-list snapshots (the
+          // server's resumable scan, which can lag or start mid-turn). While
+          // a turn is open the display must be monotonic, so the snapshot may
+          // only raise the count (recovering from an SSE gap), never lower
+          // it. With no turn open the snapshot is the seed projection.
+          if (!turnOpen) {
+            typingRowRuntime.updateTypingStats(stats);
+            return;
+          }
+          const current = typingRowRuntime.snapshot().stats || { thinking: 0, thinkingTokens: 0, tools: 0 };
+          typingRowRuntime.updateTypingStats({
+            thinking: Math.max(current.thinking, stats.thinking || 0),
+            thinkingTokens: Math.max(current.thinkingTokens, stats.thinkingTokens || 0),
+            thinkingMode,
+            tools: Math.max(current.tools, stats.tools || 0),
+          });
+        }
+
+        function applyTypingMetaDelta(data) {
+          const delta = data && data.meta_delta;
+          if (!delta || typeof delta !== "object") return;
+          const currentStats = typingRowRuntime.snapshot().stats || { thinkingTokens: 0 };
+          const thinkingMode = codoxearTranscript.thinkingModeForTokens(
+            Math.max(Number(currentStats.thinkingTokens) || 0, Number(delta.thinking_tokens) || 0),
+          );
+          typingRowRuntime.updateTypingStats(
+            {
+              thinking: delta.thinking,
+              thinkingTokens: delta.thinking_tokens,
+              thinkingMode,
+              tools: delta.tool,
+            },
+            { delta: true },
+          );
         }
 
         function setTyping(show) {
@@ -2592,108 +2794,6 @@
           },
         });
 
-        messageFlowController = codoxearMessageFlow.createMessageFlowController({
-          getSelected: () => selected,
-          getGeneration: () => pollGen,
-          isAppDisposed: () => appDisposed,
-          getTurnOpen: () => turnOpen,
-          setTurnOpen: (value) => { turnOpen = Boolean(value); },
-          getSessionInfo: (sessionId) => sessionIndex.get(sessionId) || null,
-          patchSessionInfo: (sessionId, patch) => {
-            const current = sessionIndex.get(sessionId);
-            if (!current) return;
-            Object.assign(current, patch || {});
-            sessionIndex.set(sessionId, current);
-          },
-          sessionLaunchFailed,
-          api,
-          resolveAppUrl,
-          handleAppAuthLoss,
-          refreshSessions,
-          openSession,
-          clearSelectedSessionAfterRemoval,
-          activeTranscriptSnapshot,
-          updateSessionTranscriptSlot,
-          renderPendingTranscriptSlot,
-          renderSessionTail,
-          applySessionRuntimeFromTail,
-          resetChatRenderState,
-          setAttachCount,
-          setLiveCursor: (cursor) => transcriptSlotRuntime.setLiveCursor(cursor),
-          appendEvent,
-          appendTailSnapshotEvents,
-          setStatus,
-          setContext,
-          setTyping,
-          setSubagentsRunning: (value) => {
-            currentSubagentsRunning = value;
-            renderStatusChip();
-          },
-          updateSessionTitle: (session) => { titleLabel.textContent = sessionTitleWithId(session); },
-          initPageLimit,
-          typingRowRuntime,
-          getSending: () => sending,
-          setSending: (value) => { sending = Boolean(value); },
-          getCurrentRunning: () => currentRunning,
-          setCurrentRunning: (value) => { currentRunning = Boolean(value); },
-          getStagedAttachments: () => stagedAttachments.slice(),
-          normalizedStagedAttachments,
-          setSelectedSessionPendingAttachment: (sessionId, value) => {
-            if (selected === sessionId) setSelectedSessionPendingAttachment(value);
-          },
-          syncSendButtonState: syncComposerSendButton,
-          syncAttachButtonState,
-          syncQueueSubmitState,
-          syncRecoveryUiForSession,
-          confirmAction: (options) => confirmApp(options),
-          setToast,
-          isTranscriptRenewalCommand,
-          nextLocalEchoId: () => transcriptEventRuntime.nextLocalEchoId(),
-          renderedAtLiveTail: () => transcriptScrollRuntime.snapshot().renderedAtLiveTail,
-          clearTranscriptDom,
-          clearRenderedTranscriptRange,
-          setOlderState,
-          getSessionTranscriptSlot,
-          addPendingUser: (pending) => transcriptEventRuntime.addPendingUser(pending),
-          deleteTailCache: (sessionId) => transcriptSlotRuntime.deleteTailCache(sessionId),
-          beginTranscriptRenewal,
-          clearLiveCursor: () => transcriptSlotRuntime.clearLiveCursor(),
-          invalidateOlderLoad,
-          dropPendingUser: (sessionId, localId) => transcriptEventRuntime.dropPendingUsers(sessionId, (pending) => pending && pending.id === localId),
-          removePendingUserRow: (localId) => {
-            const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${localId}"]`);
-            if (!pendingEl) return;
-            const pendingRow = pendingEl.closest(".msg-row");
-            if (pendingRow) pendingRow.remove();
-            else pendingEl.remove();
-          },
-          hasPendingForSession: (sessionId) => transcriptEventRuntime.hasPendingForSession(sessionId),
-          visibilityState: () => document.visibilityState,
-          navigatorValue: () => (typeof navigator === "undefined" ? undefined : navigator),
-          EventSource: typeof EventSource === "function" ? EventSource : null,
-          AbortController: typeof AbortController === "function" ? AbortController : null,
-          setTimeout: window.setTimeout.bind(window),
-          clearTimeout: window.clearTimeout.bind(window),
-          now: () => Date.now(),
-          consoleWarn: (...args) => console.warn(...args),
-          consoleError: (...args) => console.error(...args),
-        });
-
-        function messagePollDelayMs(now = Date.now()) {
-          return messageFlowController.messagePollDelayMs(now);
-        }
-
-        function kickPoll(ms = 0) {
-          return messageFlowController.kickPoll(ms);
-        }
-
-        function setPollFastUntilMs(value) {
-          messageFlowController.setPollFastUntilMs(value);
-        }
-
-        function openMessageEventSource(sessionId = selected, generation = pollGen) {
-          return messageFlowController.openMessageEventSource(sessionId, generation);
-        }
 
         function isMobile() {
           return codoxearViewport.isMobile();
@@ -3063,9 +3163,14 @@
           if (selected !== sessionId) return false;
           handleFileViewerSessionUnavailable(sessionId);
           selected = null;
-          messageFlowController.abortMessagePollRequest();
+          abortMessagePollRequest();
           if (incrementPollGen) pollGen += 1;
-          if (clearPollState) messageFlowController.clearPollSchedule();
+          if (clearPollState) {
+            if (pollTimer) clearTimeout(pollTimer);
+            pollTimer = null;
+            pollKickPending = false;
+            pollKickDelayMs = null;
+          }
           transcriptSlotRuntime.setActivePending();
           clearRenderedTranscriptRange();
           turnOpen = false;
@@ -3206,7 +3311,15 @@
         async function openSession(sessionId, { useCache = true, fallbackToCacheOnFailure = false } = {}) {
           pollGen += 1;
           const myGen = pollGen;
-          messageFlowController.prepareSessionOpen();
+          if (typeof closeMessageEventSource === "function") closeMessageEventSource();
+          abortOpenSessionTailRequest();
+          abortMessagePollRequest();
+          if (pollTimer) {
+            clearTimeout(pollTimer);
+            pollTimer = null;
+          }
+          pollKickPending = false;
+          pollKickDelayMs = null;
 
           const oldSelected = selected;
           selected = sessionId;
@@ -3258,7 +3371,7 @@
           if (!displayedCachedTail) renderTranscriptLoading(sessionId);
 
           let data;
-          const tailRequest = messageFlowController.beginOpenSessionTailRequest(sessionId, myGen);
+          const tailRequest = beginOpenSessionTailRequest(sessionId, myGen);
           try {
             data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`, {
               signal: tailRequest.signal,
@@ -3268,9 +3381,9 @@
               handleAppAuthLoss();
               return null;
             }
-            if (messageFlowController.isOpenSessionTailAbortError(tailRequest, e)) return null;
-            if (!messageFlowController.isCurrentOpenSessionTailRequest(tailRequest)) return null;
-            messageFlowController.markMessagePollFailure();
+            if (isOpenSessionTailAbortError(tailRequest, e)) return null;
+            if (!isCurrentOpenSessionTailRequest(tailRequest)) return null;
+            markMessagePollFailure();
             if (e && e.status === 404) {
               clearSelectedSessionAfterRemoval(sessionId, { clearPollState: true });
               void refreshSessions().catch((e2) => {
@@ -3287,10 +3400,10 @@
             if (!appDisposed && selected === sessionId && pollGen === myGen) kickPoll(messagePollDelayMs());
             return null;
           } finally {
-            messageFlowController.finishOpenSessionTailRequest(tailRequest);
+            finishOpenSessionTailRequest(tailRequest);
           }
-          if (!messageFlowController.isCurrentOpenSessionTailRequest(tailRequest)) return null;
-          messageFlowController.markMessagePollSuccess();
+          if (!isCurrentOpenSessionTailRequest(tailRequest)) return null;
+          markMessagePollSuccess();
           const slotChange = updateSessionTranscriptSlot(sessionId, data);
           if (slotChange.ignoredStaleBound) {
             renderPendingTranscriptSlot(sessionId);
@@ -3302,7 +3415,7 @@
           else renderPendingTranscriptSlot(sessionId);
           applySessionRuntimeFromTail(sessionId, data);
           if (slotChange.current.state !== "failed") {
-            openMessageEventSource(sessionId, myGen);
+            if (typeof openMessageEventSource === "function") openMessageEventSource(sessionId, myGen);
             kickPoll(900);
           }
           if (isMobile()) setSidebarOpen(false);
@@ -3316,11 +3429,154 @@
         }
 
 			        async function applyLiveMessageData(sid, gen, data) {
-          return messageFlowController.applyLiveMessageData(sid, gen, data);
+          if (gen !== pollGen || sid !== selected) return;
+          markMessagePollSuccess();
+          const slotInfo = transcriptSnapshotFromData(data);
+          const nowBusy = Boolean(data.busy);
+          const wasTurnOpen = turnOpen;
+          if (activeTranscriptSnapshot().state === "bound" && slotInfo.state === "pending_bind") {
+            updateSessionTranscriptSlot(sid, data);
+            resetChatRenderState();
+            renderPendingTranscriptSlot(sid);
+            setAttachCount(0);
+            applySessionRuntimeFromTail(sid, data);
+            return;
+          }
+          if (activeTranscriptSnapshot().state === "bound" && slotInfo.state === "bound" && slotInfo.logPath !== activeTranscriptSnapshot().logPath) {
+            await openSession(sid, { useCache: false });
+            return;
+          }
+          transcriptSlotRuntime.setLiveCursor(typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null);
+          const evs = Array.isArray(data.events) ? data.events : [];
+          for (const ev of evs) appendEvent(ev);
+          const turnStart = Boolean(data.turn_start);
+          const turnEnd = Boolean(data.turn_end);
+          const turnAborted = Boolean(data.turn_aborted);
+          const newTurn = codoxearTranscript.startsTypingCountWindow({ wasTurnOpen, turnStart, nowBusy });
+          if (newTurn && codoxearTranscript.hasHumanOriginatedUserEvent(evs)) typingRowRuntime.resetTypingStats();
+          if (turnStart) turnOpen = true;
+          if (!turnOpen && nowBusy) turnOpen = true;
+          if ((turnEnd || turnAborted) && turnOpen) turnOpen = false;
+          if (turnOpen && !nowBusy) turnOpen = false;
+          applyTypingMetaDelta(data);
+          setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
+          setContext(data.token);
+          setTyping(Boolean(turnOpen || nowBusy));
+          const s2 = sessionIndex.get(sid);
+          if (evs.length) {
+            appendTailSnapshotEvents(sid, evs, {
+              session: s2,
+              liveCursor: transcriptSlotRuntime.activeSnapshot().liveCursor,
+              busy: Boolean(turnOpen || nowBusy),
+              queueLen: data.queue_len,
+              token: data.token,
+              identityData: data,
+            });
+          }
+          if (s2) titleLabel.textContent = sessionTitleWithId(s2);
         }
 
         async function pollMessages(sid = selected, gen = pollGen) {
-          return messageFlowController.pollMessages(sid, gen);
+          if (appDisposed || !sid) return;
+          let pollRequest = null;
+          try {
+            if (!transcriptSlotRuntime.activeSnapshot().liveCursor) {
+              if (activeTranscriptSnapshot().state === "pending_bind") {
+                pollRequest = beginMessagePollRequest(sid, gen);
+                const data = await api(`/api/sessions/${sid}/messages/tail?limit=${initPageLimit()}`, { signal: pollRequest.signal });
+                if (gen !== pollGen || sid !== selected) return;
+                markMessagePollSuccess();
+                const slotChange = updateSessionTranscriptSlot(sid, data);
+                if (slotChange.ignoredStaleBound) {
+                  renderPendingTranscriptSlot(sid);
+                  applySessionRuntimeFromTail(sid, { transcript_state: "pending_bind", busy: data.busy, queue_len: data.queue_len, token: data.token });
+                  return;
+                }
+                if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);
+                applySessionRuntimeFromTail(sid, data);
+                return;
+              }
+              if (activeTranscriptSnapshot().state === "failed") return;
+              await openSession(sid, { useCache: false });
+              return;
+            }
+            const reqCursor = transcriptSlotRuntime.activeSnapshot().liveCursor;
+            pollRequest = beginMessagePollRequest(sid, gen);
+            const data = await api(`/api/sessions/${sid}/messages/live?cursor=${encodeURIComponent(reqCursor)}`, { signal: pollRequest.signal });
+            await applyLiveMessageData(sid, gen, data);
+          } catch (e) {
+            if (e && e.status === 401) {
+              handleAppAuthLoss();
+              return;
+            }
+            if (isMessagePollAbortError(pollRequest, e)) return;
+            if (gen !== pollGen || sid !== selected) return;
+            if (e && e.status === 409) {
+              await openSession(sid, { useCache: false });
+              return;
+            }
+            if (e && e.status === 404) {
+              clearSelectedSessionAfterRemoval(sid, { incrementPollGen: true, clearPollState: true });
+              try {
+                await refreshSessions();
+              } catch (e2) {
+                console.error("refreshSessions failed after session disappeared", e2);
+                toast.textContent = `refresh error: ${e2 && e2.message ? e2.message : "unknown error"}`;
+              }
+              return;
+            }
+            markMessagePollFailure();
+            // Transient network errors (fetch failed entirely, no HTTP status)
+            // are self-recovering via poll backoff — don't toast them. Only
+            // surface errors where the server actually responded with a status.
+            if (e && typeof e.status === "number") {
+              toast.textContent = `error: ${e.message}`;
+            } else {
+              console.warn("message poll network error", e && e.message);
+            }
+          } finally {
+            finishMessagePollRequest(pollRequest);
+          }
+        }
+
+        async function pollLoop() {
+          if (appDisposed || !selected || messageSseOpen) return;
+          if (pollLoopBusy) {
+            pollKickPending = true;
+            return;
+          }
+          pollLoopBusy = true;
+          const mySid = selected;
+          const myGen = pollGen;
+          try {
+            await pollMessages(mySid, myGen);
+          } finally {
+            pollLoopBusy = false;
+          }
+          if (pollKickPending) {
+            const delay = pollKickDelayMs == null ? 0 : pollKickDelayMs;
+            pollKickPending = false;
+            pollKickDelayMs = null;
+            kickPoll(delay);
+            return;
+          }
+          if (appDisposed || selected !== mySid || pollGen !== myGen) return;
+          pollTimer = setTimeout(pollLoop, messagePollDelayMs());
+        }
+
+        function kickPoll(ms = 0) {
+          if (appDisposed || messageSseOpen) return;
+          const delay = normalizeMessagePollKickDelay(ms);
+          if (pollTimer) {
+            clearTimeout(pollTimer);
+            pollTimer = null;
+          }
+          if (pollLoopBusy) {
+            pollKickPending = true;
+            pollKickDelayMs = delay;
+            return;
+          }
+          pollTimer = setTimeout(pollLoop, delay);
         }
 
         async function jumpToLatest() {
@@ -4591,7 +4847,7 @@
             clearComposerInput,
             syncRecoveryUiForSession,
             kickPoll,
-            setPollFastUntilMs,
+            setPollFastUntilMs: (ms) => { pollFastUntilMs = ms; },
             handleAppAuthLoss,
             prepareModalOpen,
             afterModalVisibilityChanged,
@@ -4796,7 +5052,7 @@
 	          try {
 	            setToast("interrupting...");
             await api(`/api/sessions/${selected}/interrupt`, { method: "POST" });
-            setPollFastUntilMs(Date.now() + 2500);
+            pollFastUntilMs = Date.now() + 2500;
             kickPoll(0);
           } catch (e) {
             setToast(`interrupt error: ${e.message}`);
@@ -5293,7 +5549,7 @@
             else if (successes) setToast(successes === 1 ? "file staged" : `${successes} files staged`);
             else if (failures.length) setToast(`attach error: ${failures[0]}`);
             else if (stoppedByBlocker) setToast(stoppedByBlocker);
-            setPollFastUntilMs(Date.now() + 4000);
+            pollFastUntilMs = Date.now() + 4000;
             kickPoll(0);
             void refreshSessions().catch((refreshErr) => {
               if (refreshErr && refreshErr.status === 401) handleAppAuthLoss();
@@ -5425,15 +5681,58 @@
           getSelected: () => selected,
           getSessionInfo: (sessionId) => sessionIndex.get(sessionId) || null,
           getNewSessionDefaults: () => newSessionDefaults,
+          patchSessionInfo: (sessionId, patch) => {
+            const current = sessionIndex.get(sessionId);
+            if (!current) return;
+            Object.assign(current, patch || {});
+            sessionIndex.set(sessionId, current);
+          },
           sessionLaunchFailed,
           getSending: () => sending,
+          setSending: (value) => { sending = Boolean(value); },
           getCurrentRunning: () => currentRunning,
+          setCurrentRunning: (value) => { currentRunning = Boolean(value); },
+          setTurnOpen: (value) => { turnOpen = Boolean(value); },
+          resetTypingStats: () => typingRowRuntime.resetTypingStats(),
           getStagedAttachments: () => stagedAttachments.slice(),
+          normalizedStagedAttachments,
+          setSelectedSessionPendingAttachment: (sessionId, value) => {
+            if (selected === sessionId) setSelectedSessionPendingAttachment(value);
+          },
+          setAttachCount,
+          syncAttachButtonState,
+          syncQueueSubmitState,
+          syncRecoveryUiForSession,
+          confirmAction: (options) => confirmApp(options),
           api,
           setToast,
-          setPollFastUntilMs,
+          handleAppAuthLoss,
+          refreshSessions,
+          setPollFastUntilMs: (value) => { pollFastUntilMs = value; },
           kickPoll,
-          sendText: (raw, options) => messageFlowController.sendText(raw, options),
+          isTranscriptRenewalCommand,
+          nextLocalEchoId: () => transcriptEventRuntime.nextLocalEchoId(),
+          renderedAtLiveTail: () => transcriptScrollRuntime.snapshot().renderedAtLiveTail,
+          clearTranscriptDom,
+          clearRenderedTranscriptRange,
+          setOlderState,
+          getSessionTranscriptSlot,
+          addPendingUser: (pending) => transcriptEventRuntime.addPendingUser(pending),
+          appendEvent,
+          deleteTailCache: (sessionId) => transcriptSlotRuntime.deleteTailCache(sessionId),
+          beginTranscriptRenewal,
+          clearLiveCursor: () => transcriptSlotRuntime.clearLiveCursor(),
+          invalidateOlderLoad,
+          renderPendingTranscriptSlot,
+          dropPendingUser: (sessionId, localId) => transcriptEventRuntime.dropPendingUsers(sessionId, (pending) => pending && pending.id === localId),
+          removePendingUserRow: (localId) => {
+            const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${localId}"]`);
+            if (!pendingEl) return;
+            const pendingRow = pendingEl.closest(".msg-row");
+            if (pendingRow) pendingRow.remove();
+            else pendingEl.remove();
+          },
+          hasPendingForSession: (sessionId) => transcriptEventRuntime.hasPendingForSession(sessionId),
           enqueueComposerText,
           prepareModalOpen,
           afterModalVisibilityChanged,
@@ -5518,7 +5817,7 @@
               });
               addAppEvent(window, "online", () => {
                 if (appDisposed) return;
-                messageFlowController.resetMessagePollBackoff();
+                messagePollErrorStreak = 0;
                 if (selected) kickPoll(0);
                 scheduleSessionsPoll(0);
               });

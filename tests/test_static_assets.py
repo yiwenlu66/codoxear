@@ -116,7 +116,6 @@ class TestStaticAssets(unittest.TestCase):
             "app_shell.js": "window.CodoxearShell = {};\n",
             "app_sessions.js": "window.CodoxearSessions = {};\n",
             "app_transcript_view.js": "window.CodoxearTranscriptView = {};\n",
-            "app_message_flow.js": "window.CodoxearMessageFlow = {};\n",
             "app_composer.js": "window.CodoxearComposer = {};\n",
             "app.js": "console.log('one');\n",
             "app.css": "body { color: black; }\n",
