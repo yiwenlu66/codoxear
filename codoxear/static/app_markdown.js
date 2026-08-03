@@ -7,7 +7,7 @@
     if (window.__codoxearKatexLoading) return;
     window.__codoxearKatexLoading = true;
     if (typeof document === "undefined" || !document.createElement) return;
-    const base = "https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/";
+    const base = (typeof window !== "undefined" && window.location && window.location.origin ? window.location.origin : "") + "/vendor/";
     const link = document.createElement("link");
     link.rel = "stylesheet";
     link.href = base + "katex.min.css";
