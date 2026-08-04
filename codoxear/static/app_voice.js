@@ -754,9 +754,11 @@
         });
       }
       updateVoiceUi();
-      if (localAnnouncementEnabled && !liveAudioStarted && browserSupportsLiveAudioPlayback(liveAudio, windowTarget) && liveAudioHasReadySegments()) {
-        scheduleLiveAudioRetry(100, { resetSource: false });
-      }
+      // The server keeps active listeners only in memory. Reassert the
+      // persisted browser opt-in whenever a fresh settings snapshot arrives:
+      // this reconnects a tab after a server restart even when the page itself
+      // never received a visibility/focus event.
+      if (localAnnouncementEnabled) resumeAnnouncementRuntime({ resetSource: false });
       return data;
     }
 
@@ -1115,6 +1117,11 @@
       swRegistration = null;
       liveAudioErrorState = false;
     }
+
+    // A browser opt-in survives reloads in local storage while the server's
+    // listener registry does not. Register before initial session selection,
+    // so an active/new/resumed session cannot finish during that bootstrap gap.
+    if (localAnnouncementEnabled) resumeAnnouncementRuntime({ resetSource: false });
 
     return Object.freeze({
       voiceAnnouncementsEnabled,
