@@ -221,6 +221,16 @@ def eval_open_session_tail_request_abort() -> dict:
           if (request && activeTailController === request.controller) activeTailController = null;
         }};
         ctx.abortMessagePollRequest = () => {{}};
+        ctx.messageFlowController = {{
+          prepareSessionOpen: () => ctx.abortOpenSessionTailRequest(),
+          beginOpenSessionTailRequest: ctx.beginOpenSessionTailRequest,
+          isOpenSessionTailAbortError: ctx.isOpenSessionTailAbortError,
+          isCurrentOpenSessionTailRequest: ctx.isCurrentOpenSessionTailRequest,
+          finishOpenSessionTailRequest: ctx.finishOpenSessionTailRequest,
+          markMessagePollFailure: ctx.markMessagePollFailure,
+          markMessagePollSuccess: ctx.markMessagePollSuccess,
+        }};
+        ctx.openMessageEventSource = () => {{}};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = { openSession };\n")}, ctx);
         (async () => {{
@@ -334,6 +344,15 @@ def eval_clear_selected_session_after_removal() -> dict:
           syncComposerSendButton: () => calls.push(["syncSendButtonState"]),
           syncQueueSubmitState: () => calls.push(["syncQueueSubmitState"]),
           syncAttachButtonState: () => calls.push(["syncAttachButtonState"]),
+          messageFlowController: {{
+            abortMessagePollRequest: () => calls.push(["abortMessagePollRequest"]),
+            clearPollSchedule: () => {{
+              if (ctx.pollTimer) ctx.clearTimeout(ctx.pollTimer);
+              ctx.pollTimer = null;
+              ctx.pollKickPending = false;
+              ctx.pollKickDelayMs = null;
+            }},
+          }},
         }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_clear = clearSelectedSessionAfterRemoval;\n")}, ctx);

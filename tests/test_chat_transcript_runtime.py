@@ -1699,6 +1699,12 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               const [form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop, sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn] = nodes;
               form.requestSubmit = noop;
               const state = {{ sending: false, running: initialRunning, resets: 0 }};
+              const messageFlowController = {{
+                sendText: async () => {{
+                  if (!state.running) state.resets += 1;
+                  return true;
+                }},
+              }};
               const controller = ctx.window.CodoxearComposer.createComposerController({{
                 form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
                 sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn,
@@ -1713,6 +1719,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
                 confirmAction: async () => false, api: async () => ({{ queued: false, queue_len: 0 }}),
                 setToast: noop, handleAppAuthLoss: noop, refreshSessions: async () => [],
                 setPollFastUntilMs: noop, kickPoll: noop, isTranscriptRenewalCommand: () => false,
+                sendText: (...args) => messageFlowController.sendText(...args),
                 nextLocalEchoId: () => 1, renderedAtLiveTail: () => true,
                 clearTranscriptDom: noop, clearRenderedTranscriptRange: noop, setOlderState: noop,
                 getSessionTranscriptSlot: () => ({{ epoch: 0 }}), addPendingUser: noop, appendEvent: noop,
@@ -1759,6 +1766,9 @@ class TestChatTranscriptRuntime(unittest.TestCase):
             form.requestSubmit = () => {{}};
             textarea.value = "/new";
             const state = {{ sending: false, detached: 0, renderedPending: 0, deletedCache: false, toast: "" }};
+            const messageFlowController = {{
+              sendText: async () => {{ state.toast = "send error: broker down"; return false; }},
+            }};
             const noop = () => {{}};
             const controller = ctx.window.CodoxearComposer.createComposerController({{
               form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
@@ -1787,6 +1797,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               refreshSessions: async () => {{}},
               setPollFastUntilMs: noop,
               kickPoll: noop,
+              sendText: (...args) => messageFlowController.sendText(...args),
               isTranscriptRenewalCommand: () => true,
               nextLocalEchoId: () => 1,
               renderedAtLiveTail: () => true,

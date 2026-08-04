@@ -55,10 +55,6 @@
       // (loaded after app_voice_helpers.js and before app.js). app.js fails
       // loud here if either module is missing; the controller itself
       // additionally validates every helper API it consumes.
-      const codoxearSse = window.CodoxearSse;
-      if (!codoxearSse || typeof codoxearSse.createMessageEventSourceController !== "function")
-        throw new Error("Codoxear SSE controller failed to load");
-
       const codoxearVoiceHelpers = window.CodoxearVoiceHelpers;
       if (
         !codoxearVoiceHelpers ||
@@ -81,15 +77,15 @@
       const codoxearShell = window.CodoxearShell;
       if (!codoxearShell || typeof codoxearShell.createShellDOM !== "function")
         throw new Error("Codoxear shell module failed to load");
-      const codoxearToast = window.CodoxearToast;
-      if (!codoxearToast || typeof codoxearToast.createToastController !== "function")
-        throw new Error("Codoxear toast module failed to load");
       const codoxearSessions = window.CodoxearSessions;
       if (!codoxearSessions || typeof codoxearSessions.createSessionsController !== "function")
         throw new Error("Codoxear sessions controller failed to load");
       const codoxearComposer = window.CodoxearComposer;
       if (!codoxearComposer || typeof codoxearComposer.createComposerController !== "function")
         throw new Error("Codoxear composer module failed to load");
+      const codoxearMessageFlow = window.CodoxearMessageFlow;
+      if (!codoxearMessageFlow || typeof codoxearMessageFlow.createMessageFlowController !== "function")
+        throw new Error("Codoxear message flow module failed to load");
 
       const codoxearPerfHelpers = window.CodoxearPerf;
       if (!codoxearPerfHelpers || typeof codoxearPerfHelpers.pushSample !== "function" || typeof codoxearPerfHelpers.summarize !== "function") throw new Error("Codoxear performance helpers failed to load");
@@ -409,15 +405,10 @@
         typeof codoxearPolling.secondaryPollDelayMs !== "function" ||
         typeof codoxearPolling.browserOffline !== "function" ||
         typeof codoxearPolling.messagePollErrorDelayMs !== "function" ||
-        typeof codoxearPolling.networkRetryDelayMs !== "function" ||
         typeof codoxearPolling.messagePollDelayMs !== "function" ||
         typeof codoxearPolling.normalizeMessagePollKickDelay !== "function"
       )
         throw new Error("Codoxear polling helpers failed to load");
-
-      const codoxearNetwork = window.CodoxearNetwork;
-      if (!codoxearNetwork || typeof codoxearNetwork.createNetworkStatusController !== "function")
-        throw new Error("Codoxear network status helpers failed to load");
 
       const codoxearConversationCopy = window.CodoxearConversationCopy;
       if (
@@ -789,7 +780,6 @@
           ctxChip,
           interruptBtn,
           toast,
-          networkBanner,
           toggleSidebarBtn,
           unattendedBtn,
           diagBtn,
@@ -807,9 +797,6 @@
           queueBtn,
           sendBtn,
         } = shellDOM.elements;
-        const toastController = codoxearToast.createToastController({ toast });
-        const setToast = (text) => toastController.show(text);
-        const networkStatus = codoxearNetwork.createNetworkStatusController({ banner: networkBanner, navigatorLike: typeof navigator === "undefined" ? undefined : navigator });
         const codoxearUnattendedDom = window.CodoxearUnattended;
         if (!codoxearUnattendedDom || typeof codoxearUnattendedDom.createUnattendedDom !== "function")
           throw new Error("Codoxear unattended DOM failed to load");
@@ -825,21 +812,9 @@
         const CHAT_DOM_WINDOW_WITH_HISTORY_SLACK = CHAT_DOM_WINDOW + OLDER_PAGE_LIMIT;
         const OLDER_TOP_TRIGGER_PX = 1;
         const OLDER_CANCEL_PX = 48;
-        let openSessionTailAbortController = null;
-        let messagePollAbortController = null;
-        let messageSseOpen = false;
-        let messageSseController = null;
         const OLDER_AUTO_COOLDOWN_MS = 450;
-        let pollTimer = null;
         let pollGen = 0;
-        let pollLoopBusy = false;
-        let pollKickPending = false;
-        let pollKickDelayMs = null;
-        let messagePollErrorStreak = 0;
-        let sessionsPollErrorStreak = 0;
-        let secondaryPollErrorStreak = 0;
-	        let pollFastUntilMs = 0;
-	         let turnOpen = false;
+        let turnOpen = false;
 	         let sessionsTimer = null;
          let secondaryPollTimer = null;
          let sessionsPollingEnabled = true;
@@ -848,14 +823,13 @@
          let sessionsRefreshInFlight = null;
          let sessionsRefreshQueued = false;
         let selected = null; // selected session_id (null until chosen)
-        let activeFirstUnreadEventId = "";
-        let activeLastUnreadEventId = "";
 	        let sessionIndex = new Map(); // session_id -> session info
         let recentCwds = [];
 	        let sending = false;
 	        let attachedFiles = 0;
         let stagedAttachments = [];
         let composerController = null;
+        let messageFlowController = null;
         function resizeComposer() {
           if (composerController) composerController.autoGrow();
         }
@@ -876,7 +850,7 @@
         }
 				    let lastToken = null;
         let attachBadgeEl = null;
-        let editDependencyMenuOpen = false;
+        let sessionEditController = null;
         newSessionDefaults = {
           default_backend: "pi",
           backends: {
@@ -892,7 +866,6 @@
               // Unattended menu state, cfg cache, number-input drafts, and the
               // per-session save timers/in-flight/pending maps live in the
               // CodoxearUnattended controller (codoxear/static/app_unattended.js).
-              let editSessionId = null;
         let appDisposed = false;
         const appEventCleanups = [];
         function addAppEvent(target, type, handler, options) {
@@ -901,73 +874,11 @@
           appEventCleanups.push(() => target.removeEventListener(type, handler, options));
           return handler;
         }
-        function closeMessageEventSource() {
-          if (messageSseController) messageSseController.close();
-        }
-        function openMessageEventSource(sessionId = selected, gen = pollGen) {
-          if (!messageSseController) return;
-          messageSseController.open(sessionId, gen);
-        }
-        function resumeMessageEventSource(sessionId = selected, gen = pollGen) {
-          if (!messageSseController) return;
-          messageSseController.resume(sessionId, gen);
-        }
         function stopMessagePolling() {
           selected = null;
           pollGen += 1;
-          closeMessageEventSource();
-          abortOpenSessionTailRequest();
-          abortMessagePollRequest();
-          if (pollTimer) clearTimeout(pollTimer);
-          pollTimer = null;
-          pollKickPending = false;
-          pollKickDelayMs = null;
-          messagePollErrorStreak = 0;
-          pollFastUntilMs = 0;
+          if (messageFlowController) messageFlowController.stop();
           turnOpen = false;
-        }
-        function abortController(controller) {
-          if (!controller || typeof controller.abort !== "function") return;
-          try {
-            controller.abort();
-          } catch (_error) {}
-        }
-        function abortOpenSessionTailRequest() {
-          const controller = openSessionTailAbortController;
-          openSessionTailAbortController = null;
-          abortController(controller);
-        }
-        function beginOpenSessionTailRequest(sessionId, gen) {
-          abortOpenSessionTailRequest();
-          const controller = typeof AbortController === "function" ? new AbortController() : null;
-          openSessionTailAbortController = controller;
-          return Object.freeze({ sessionId, gen, controller, signal: controller ? controller.signal : undefined });
-        }
-        function isCurrentOpenSessionTailRequest(request) {
-          return Boolean(request && selected === request.sessionId && pollGen === request.gen);
-        }
-        function isOpenSessionTailAbortError(request, error) {
-          return Boolean(error && error.name === "AbortError" && request && request.signal && request.signal.aborted);
-        }
-        function finishOpenSessionTailRequest(request) {
-          if (request && openSessionTailAbortController === request.controller) openSessionTailAbortController = null;
-        }
-        function abortMessagePollRequest() {
-          const controller = messagePollAbortController;
-          messagePollAbortController = null;
-          abortController(controller);
-        }
-        function beginMessagePollRequest(sessionId, gen) {
-          abortMessagePollRequest();
-          const controller = typeof AbortController === "function" ? new AbortController() : null;
-          messagePollAbortController = controller;
-          return Object.freeze({ sessionId, gen, controller, signal: controller ? controller.signal : undefined });
-        }
-        function isMessagePollAbortError(request, error) {
-          return Boolean(error && error.name === "AbortError" && request && request.signal && request.signal.aborted);
-        }
-        function finishMessagePollRequest(request) {
-          if (request && messagePollAbortController === request.controller) messagePollAbortController = null;
         }
         function cleanupApp() {
           if (appDisposed) return;
@@ -991,7 +902,7 @@
           fileViewerController.abortPendingFileOpenTransport();
           hideUnattendedMenu();
           hideFilePasteDialog();
-          hideFileUnsavedDialog("cancel");
+          sessionEditController.hideFileUnsavedDialog("cancel");
           closeSendChoiceDialog();
           if (composerController) composerController.dispose();
           sidebarController.dispose();
@@ -1011,69 +922,12 @@
           renderLogin(renderApp);
         }
         function sessionsPollDelayMs() {
-          return codoxearPolling.networkRetryDelayMs({
-            normalDelayMs: codoxearPolling.sessionsPollDelayMs(document.visibilityState),
-            offline: browserOffline(),
-            errorStreak: sessionsPollErrorStreak,
-          });
+          return codoxearPolling.sessionsPollDelayMs(document.visibilityState);
         }
         function secondaryPollDelayMs() {
-          return codoxearPolling.networkRetryDelayMs({
-            normalDelayMs: codoxearPolling.secondaryPollDelayMs(document.visibilityState),
-            offline: browserOffline(),
-            errorStreak: secondaryPollErrorStreak,
-          });
+          return codoxearPolling.secondaryPollDelayMs(document.visibilityState);
         }
-        function browserOffline() {
-          return codoxearPolling.browserOffline(typeof navigator === "undefined" ? undefined : navigator);
-        }
-        function messagePollErrorDelayMs() {
-          return codoxearPolling.messagePollErrorDelayMs(messagePollErrorStreak);
-        }
-        function messagePollDelayMs(now = Date.now()) {
-          return codoxearPolling.messagePollDelayMs({
-            now,
-            visibilityState: document.visibilityState,
-            offline: browserOffline(),
-            errorStreak: messagePollErrorStreak,
-            pollFastUntilMs,
-            turnOpen,
-          });
-        }
-        function markMessagePollSuccess() {
-          messagePollErrorStreak = 0;
-          networkStatus.reportSuccess();
-        }
-        function markMessagePollFailure(transportFailed = true) {
-          messagePollErrorStreak = Math.min(messagePollErrorStreak + 1, 20);
-          if (transportFailed) networkStatus.reportFailure();
-        }
-        function markSessionsPollSuccess() {
-          sessionsPollErrorStreak = 0;
-          networkStatus.reportSuccess();
-        }
-        function markSessionsPollFailure(transportFailed = true) {
-          sessionsPollErrorStreak = Math.min(sessionsPollErrorStreak + 1, 20);
-          if (transportFailed) networkStatus.reportFailure();
-        }
-        function markSecondaryPollSuccess() {
-          secondaryPollErrorStreak = 0;
-          networkStatus.reportSuccess();
-        }
-        function markSecondaryPollFailure(transportFailed = true) {
-          secondaryPollErrorStreak = Math.min(secondaryPollErrorStreak + 1, 20);
-          if (transportFailed) networkStatus.reportFailure();
-        }
-        function normalizeMessagePollKickDelay(ms = 0) {
-          return codoxearPolling.normalizeMessagePollKickDelay({
-            requested: ms,
-            visibilityState: document.visibilityState,
-            offline: browserOffline(),
-            errorStreak: messagePollErrorStreak,
-            pollFastUntilMs,
-            turnOpen,
-          });
-        }
+
         function stopSessionsPolling() {
           if (sessionsTimer) clearTimeout(sessionsTimer);
           sessionsTimer = null;
@@ -1090,13 +944,11 @@
           if (appDisposed || !sessionsPollingEnabled) return;
           try {
             await refreshSessions();
-            markSessionsPollSuccess();
           } catch (e2) {
             if (e2 && e2.status === 401) {
               handleAppAuthLoss();
               return;
             }
-            markSessionsPollFailure(!(e2 && typeof e2.status === "number"));
             console.error("refreshSessions timer failed", e2);
           }
           scheduleSessionsPoll();
@@ -1106,14 +958,12 @@
           try {
             await loadVoiceSettings();
             await syncNotificationState();
-            await pollNotificationFeed();
-            markSecondaryPollSuccess();
+            if (notificationsEnabledLocally()) await pollNotificationFeed();
           } catch (e2) {
             if (e2 && e2.status === 401) {
               handleAppAuthLoss();
               return;
             }
-            markSecondaryPollFailure(!(e2 && typeof e2.status === "number"));
             console.error("secondary poll failed", e2);
           }
           scheduleSecondaryPoll();
@@ -1139,13 +989,13 @@
             titleLabel.title = "No session selected";
             titleLabel.onclick = () => {
               if (!selected) return;
-              openEditSession(selected);
+              sessionEditController.openEditSession(selected);
             };
             titleLabel.onkeydown = (e) => {
               if (!selected) return;
               if (e.key !== "Enter" && e.key !== " ") return;
               e.preventDefault();
-              openEditSession(selected);
+              sessionEditController.openEditSession(selected);
             };
             function syncTitleEditState() {
               const interactive = Boolean(selected);
@@ -1611,11 +1461,6 @@
         const {
           announceBtn,
           notificationBtn,
-          notificationPanel,
-          notificationList,
-          notificationEmpty,
-          notificationClearBtn,
-          notificationEnableBtn,
           liveAudio,
           voiceSettingsBackdrop,
           voiceSettingsCloseBtn,
@@ -1675,9 +1520,9 @@
         });
 
         const modalIsolationTargets = [
+          fileViewer,
           fileUnsavedDialog,
           filePasteDialog,
-          fileViewer,
           sendChoice,
           appConfirm,
           queueViewer,
@@ -1704,8 +1549,7 @@
           filePickerMenu.classList.remove("open");
           filePickerInput.setAttribute("aria-expanded", "false");
           newSessionDialogController.closeMenus();
-          editDependencyMenuOpen = false;
-          applyDialogMenus();
+          sessionEditController.closeDependencyMenu();
         }
 
         function prepareModalOpen(options = {}) {
@@ -1800,6 +1644,14 @@
         if (!codoxearCodeCopy || typeof codoxearCodeCopy.createCodeBlockCopyRuntime !== "function")
           throw new Error("Codoxear code copy helpers failed to load");
 
+        function setToast(text) {
+          toast.textContent = text || "";
+          if (!text) return;
+          setTimeout(() => {
+            if (toast.textContent === text) toast.textContent = "";
+          }, 2200);
+        }
+
         async function copyToClipboard(text) {
           return codoxearClipboard.copyToClipboard(text);
         }
@@ -1842,44 +1694,20 @@
           }
         }
 
-        function queueLenForSelected() {
-          const session = selected ? sessionIndex.get(selected) : null;
-          return Math.max(0, Number(session && session.queue_len) || 0);
-        }
-
-        // Queue count authority is sessionIndex[session_id].queue_len, populated
-        // from server queue-store snapshots. Session-list, messages/live, and
-        // queue-panel responses all replace this snapshot; the sidebar, status
-        // chip, and composer badge only read it. A newer snapshot wins rather
-        // than merging counts, since queue operations can both add and drain.
-        function reconcileQueueLen(sessionId, rawQueueLen) {
-          const queueLen = Number(rawQueueLen);
-          if (!sessionId || !Number.isFinite(queueLen) || queueLen < 0) return false;
-          const session = sessionIndex.get(sessionId);
-          if (!session) return false;
-          const nextQueueLen = Math.floor(queueLen);
-          if (Number(session.queue_len || 0) === nextQueueLen) return false;
-          session.queue_len = nextQueueLen;
-          if (sessionId === selected) {
-            renderStatusChip();
-            rerenderSidebarQueueProjection();
-          }
-          return true;
-        }
-
-        let rerenderSidebarQueueProjection = () => {};
+        let currentQueueLen = 0;
         let currentSubagentsRunning = 0;
         function renderStatusChip() {
-          const q = queueLenForSelected();
+          const q = currentQueueLen;
           const base = currentRunning ? "Busy" : q ? (isMobile() ? `Q ${q}` : `Queue ${q}`) : "Idle";
           statusChip.style.display = "inline-flex";
           statusChip.textContent = currentSubagentsRunning > 0 ? `${base} · ▸${currentSubagentsRunning}` : base;
         }
 
         function setStatus({ running, queueLen }) {
+          const q = Math.max(0, Number(queueLen) || 0);
           const wasRunning = currentRunning;
           currentRunning = Boolean(running);
-          reconcileQueueLen(selected, queueLen);
+          currentQueueLen = q;
           renderStatusChip();
           const canInterrupt = Boolean(running && selected);
           interruptBtn.style.display = canInterrupt ? "inline-flex" : "none";
@@ -2104,7 +1932,7 @@
             documentTarget: document,
             isTextEntryElement,
             isMobile,
-            modalIsolationTargets: [...modalIsolationTargets, unattendedMenu],
+            modalIsolationTargets,
             isModalTargetOpen,
             addAppEvent,
             shellHints: [
@@ -2308,6 +2136,14 @@
           chatSearchController.close();
         }
 
+        function refreshLoadedChatSearch(options) {
+          chatSearchController.refreshLoaded(options);
+        }
+
+        function stepChatSearch(delta) {
+          return chatSearchController.step(delta);
+        }
+
         // The direct-to-search shortcut (`/`) lives in the
         // CodoxearChatNavigation controller (codoxear/static/app_chat_navigation.js),
         // wired via chatNavigationController above.
@@ -2465,6 +2301,10 @@
           return olderLoadSnapshot().hasMore;
         }
 
+        function isLoadingOlderMessages() {
+          return olderLoadSnapshot().isLoading;
+        }
+
         function normalizeTailEvent(ev) {
           return codoxearTranscript.normalizeTailEvent(ev);
         }
@@ -2593,52 +2433,7 @@
           }
 
         function updateTypingStatsFromSession(session) {
-          currentSubagentsRunning = session ? Math.max(0, Math.floor(Number(session.subagents_running) || 0)) : 0;
-          typingRowRuntime.updateSubagentGauge(currentSubagentsRunning);
-          renderStatusChip();
-          if (!session) return;
-          const thinkingMode = codoxearTranscript.thinkingModeForTokens(session.thinking_tokens);
-          const stats = {
-            thinking: session.thinking,
-            thinkingTokens: session.thinking_tokens,
-            thinkingMode,
-            tools: session.tools,
-          };
-          // Two feeds write these counts: live per-event deltas (exact, sees
-          // every event from turn start) and session-list snapshots (the
-          // server's resumable scan, which can lag or start mid-turn). While
-          // a turn is open the display must be monotonic, so the snapshot may
-          // only raise the count (recovering from an SSE gap), never lower
-          // it. With no turn open the snapshot is the seed projection.
-          if (!turnOpen) {
-            typingRowRuntime.updateTypingStats(stats);
-            return;
-          }
-          const current = typingRowRuntime.snapshot().stats || { thinking: 0, thinkingTokens: 0, tools: 0 };
-          typingRowRuntime.updateTypingStats({
-            thinking: Math.max(current.thinking, stats.thinking || 0),
-            thinkingTokens: Math.max(current.thinkingTokens, stats.thinkingTokens || 0),
-            thinkingMode,
-            tools: Math.max(current.tools, stats.tools || 0),
-          });
-        }
-
-        function applyTypingMetaDelta(data) {
-          const delta = data && data.meta_delta;
-          if (!delta || typeof delta !== "object") return;
-          const currentStats = typingRowRuntime.snapshot().stats || { thinkingTokens: 0 };
-          const thinkingMode = codoxearTranscript.thinkingModeForTokens(
-            Math.max(Number(currentStats.thinkingTokens) || 0, Number(delta.thinking_tokens) || 0),
-          );
-          typingRowRuntime.updateTypingStats(
-            {
-              thinking: delta.thinking,
-              thinkingTokens: delta.thinking_tokens,
-              thinkingMode,
-              tools: delta.tool,
-            },
-            { delta: true },
-          );
+          return messageFlowController.updateTypingStatsFromSession(session);
         }
 
         function setTyping(show) {
@@ -2664,6 +2459,10 @@
 
         function trimRenderedRows({ fromTop, maxRows = CHAT_DOM_WINDOW }) {
           transcriptDomRuntime.trimRenderedRows({ fromTop, maxRows });
+        }
+
+        function trimRenderedRowsBeforeViewport({ maxRows = CHAT_DOM_WINDOW } = {}) {
+          transcriptDomRuntime.trimRowsBeforeViewport({ maxRows, viewportTop: chat.scrollTop + 1 });
         }
 
         function messageRowDeps() {
@@ -2793,6 +2592,108 @@
           },
         });
 
+        messageFlowController = codoxearMessageFlow.createMessageFlowController({
+          getSelected: () => selected,
+          getGeneration: () => pollGen,
+          isAppDisposed: () => appDisposed,
+          getTurnOpen: () => turnOpen,
+          setTurnOpen: (value) => { turnOpen = Boolean(value); },
+          getSessionInfo: (sessionId) => sessionIndex.get(sessionId) || null,
+          patchSessionInfo: (sessionId, patch) => {
+            const current = sessionIndex.get(sessionId);
+            if (!current) return;
+            Object.assign(current, patch || {});
+            sessionIndex.set(sessionId, current);
+          },
+          sessionLaunchFailed,
+          api,
+          resolveAppUrl,
+          handleAppAuthLoss,
+          refreshSessions,
+          openSession,
+          clearSelectedSessionAfterRemoval,
+          activeTranscriptSnapshot,
+          updateSessionTranscriptSlot,
+          renderPendingTranscriptSlot,
+          renderSessionTail,
+          applySessionRuntimeFromTail,
+          resetChatRenderState,
+          setAttachCount: (count) => setAttachCount(count),
+          setLiveCursor: (cursor) => transcriptSlotRuntime.setLiveCursor(cursor),
+          appendEvent,
+          appendTailSnapshotEvents,
+          setStatus,
+          setContext,
+          setTyping,
+          setSubagentsRunning: (value) => {
+            currentSubagentsRunning = value;
+            renderStatusChip();
+          },
+          updateSessionTitle: (session) => { titleLabel.textContent = sessionTitleWithId(session); },
+          initPageLimit,
+          typingRowRuntime,
+          getSending: () => sending,
+          setSending: (value) => { sending = Boolean(value); },
+          getCurrentRunning: () => currentRunning,
+          setCurrentRunning: (value) => { currentRunning = Boolean(value); },
+          getStagedAttachments: () => stagedAttachments.slice(),
+          normalizedStagedAttachments,
+          setSelectedSessionPendingAttachment: (sessionId, value) => {
+            if (selected === sessionId) setSelectedSessionPendingAttachment(value);
+          },
+          syncSendButtonState: syncComposerSendButton,
+          syncAttachButtonState,
+          syncQueueSubmitState,
+          syncRecoveryUiForSession,
+          confirmAction: (options) => confirmApp(options),
+          setToast,
+          isTranscriptRenewalCommand,
+          nextLocalEchoId: () => transcriptEventRuntime.nextLocalEchoId(),
+          renderedAtLiveTail: () => transcriptScrollRuntime.snapshot().renderedAtLiveTail,
+          clearTranscriptDom,
+          clearRenderedTranscriptRange,
+          setOlderState,
+          getSessionTranscriptSlot,
+          addPendingUser: (pending) => transcriptEventRuntime.addPendingUser(pending),
+          deleteTailCache: (sessionId) => transcriptSlotRuntime.deleteTailCache(sessionId),
+          beginTranscriptRenewal,
+          clearLiveCursor: () => transcriptSlotRuntime.clearLiveCursor(),
+          invalidateOlderLoad,
+          dropPendingUser: (sessionId, localId) => transcriptEventRuntime.dropPendingUsers(sessionId, (pending) => pending && pending.id === localId),
+          removePendingUserRow: (localId) => {
+            const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${localId}"]`);
+            if (!pendingEl) return;
+            const pendingRow = pendingEl.closest(".msg-row");
+            if (pendingRow) pendingRow.remove();
+            else pendingEl.remove();
+          },
+          hasPendingForSession: (sessionId) => transcriptEventRuntime.hasPendingForSession(sessionId),
+          visibilityState: () => document.visibilityState,
+          navigatorValue: () => (typeof navigator === "undefined" ? undefined : navigator),
+          EventSource: typeof EventSource === "function" ? EventSource : null,
+          AbortController: typeof AbortController === "function" ? AbortController : null,
+          setTimeout: window.setTimeout.bind(window),
+          clearTimeout: window.clearTimeout.bind(window),
+          now: () => Date.now(),
+          consoleWarn: (...args) => console.warn(...args),
+          consoleError: (...args) => console.error(...args),
+        });
+
+        function messagePollDelayMs(now = Date.now()) {
+          return messageFlowController.messagePollDelayMs(now);
+        }
+
+        function kickPoll(ms = 0) {
+          return messageFlowController.kickPoll(ms);
+        }
+
+        function setPollFastUntilMs(value) {
+          messageFlowController.setPollFastUntilMs(value);
+        }
+
+        function openMessageEventSource(sessionId = selected, generation = pollGen) {
+          return messageFlowController.openMessageEventSource(sessionId, generation);
+        }
 
         function isMobile() {
           return codoxearViewport.isMobile();
@@ -2882,7 +2783,7 @@
            clearDeletedSessionClientState,
            refreshSessions,
            setToast,
-           openEditSession,
+           openEditSession: (sid) => sessionEditController.openEditSession(sid),
            duplicateSession: async (session) => {
              const cwd = session && session.cwd && session.cwd !== "?" ? session.cwd : "";
              if (!cwd) {
@@ -2909,29 +2810,6 @@
            performanceNow: () => performance.now(),
            consoleError: (...args) => console.error(...args),
          });
-
-         function sortedSidebarSessions() {
-           return latestSessions
-             .slice()
-             .sort((a, b) => {
-               const p = Number(b.final_priority || 0) - Number(a.final_priority || 0);
-               if (p) return p;
-               const u = Number(b.updated_ts || b.start_ts || 0) - Number(a.updated_ts || a.start_ts || 0);
-               if (u) return u;
-               const s0 = Number(b.start_ts || 0) - Number(a.start_ts || 0);
-               if (s0) return s0;
-               return String(a.session_id || "").localeCompare(String(b.session_id || ""));
-             });
-         }
-
-         function renderSidebarSessions() {
-           return sidebarController.renderSessions(sortedSidebarSessions(), {
-             selectedId: selected,
-             swipeActions: !useDesktopSessionActions(),
-           });
-         }
-
-         rerenderSidebarQueueProjection = renderSidebarSessions;
 
          async function refreshSessions() {
            if (sessionsRefreshInFlight) {
@@ -2965,16 +2843,6 @@
           if (notModified && !sidebarController.hasDeferredRefresh() && !firstLoadNeedsPopulation) return latestSessions;
           if (!notModified || firstLoadNeedsPopulation) {
             latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
-            await Promise.all(latestSessions.map(async (session) => {
-              if (!session || !session.session_id) return;
-              try {
-                const unread = await api(`/api/sessions/${session.session_id}/unread`);
-                session.unread_count = Math.max(0, Number(unread && unread.count) || 0);
-              } catch (error) {
-                session.unread_count = 0;
-                if (error && error.status === 401) handleAppAuthLoss();
-              }
-            }));
             newSessionDefaults =
               data && typeof data.new_session_defaults === "object" && data.new_session_defaults
                 ? data.new_session_defaults
@@ -2993,7 +2861,18 @@
             if (newSessionDialogController.isOpen()) newSessionDialogController.refreshDefaults();
             fileReferenceRuntime.clearDiscoveryCaches();
           }
-          const sessions = sortedSidebarSessions();
+          const swipeActions = !useDesktopSessionActions();
+          const sessions = latestSessions
+            .slice()
+            .sort((a, b) => {
+              const p = Number(b.final_priority || 0) - Number(a.final_priority || 0);
+              if (p) return p;
+              const u = Number(b.updated_ts || b.start_ts || 0) - Number(a.updated_ts || a.start_ts || 0);
+              if (u) return u;
+              const s0 = Number(b.start_ts || 0) - Number(a.start_ts || 0);
+              if (s0) return s0;
+              return String(a.session_id || "").localeCompare(String(b.session_id || ""));
+            });
           sessionIndex = new Map();
           for (const session of sessions) sessionIndex.set(session.session_id, session);
           if (selected && !sessionIndex.has(selected)) clearSelectedSessionAfterRemoval(selected);
@@ -3003,7 +2882,10 @@
           }
           if (selected) syncStagedAttachmentsFromSelectedSession();
           else setStagedAttachments([]);
-          const renderedSidebar = renderSidebarSessions();
+          const renderedSidebar = sidebarController.renderSessions(sessions, {
+            selectedId: selected,
+            swipeActions,
+          });
           if (!renderedSidebar) return sessions;
           if (selected) {
             const session = sessionIndex.get(selected);
@@ -3086,7 +2968,7 @@
             clearOlderLoadError();
             setOlderState({ hasMore: nextHasOlder, isLoading: false });
             if (evs.length) {
-              prependOlderEvents(evs, { preserveViewport: true });
+              prependOlderEvents(evs, { preserveViewport: auto });
               return true;
             }
             return false;
@@ -3142,19 +3024,9 @@
         }
 
         function renderSessionTail(events) {
-          const firstUnreadEventId = activeFirstUnreadEventId;
-          const lastUnreadEventId = activeLastUnreadEventId;
-          activeFirstUnreadEventId = "";
-          activeLastUnreadEventId = "";
-          renderTranscript(events, { preserveScroll: false, firstUnreadEventId });
-          if (firstUnreadEventId) {
-            void api(`/api/sessions/${selected}/read`, { method: "POST", body: { event_id: lastUnreadEventId || firstUnreadEventId } }).catch((error) => {
-              if (error && error.status === 401) handleAppAuthLoss();
-              else console.error("failed to mark transcript read", error);
-            });
-          }
+          renderTranscript(events, { preserveScroll: false });
           markClickFirstPaint();
-          if (!firstUnreadEventId) transcriptScrollRuntime.scheduleScrollToBottom({ double: true });
+          transcriptScrollRuntime.scheduleScrollToBottom({ double: true });
         }
 
 
@@ -3196,14 +3068,9 @@
           if (selected !== sessionId) return false;
           handleFileViewerSessionUnavailable(sessionId);
           selected = null;
-          abortMessagePollRequest();
+          messageFlowController.abortMessagePollRequest();
           if (incrementPollGen) pollGen += 1;
-          if (clearPollState) {
-            if (pollTimer) clearTimeout(pollTimer);
-            pollTimer = null;
-            pollKickPending = false;
-            pollKickDelayMs = null;
-          }
+          if (clearPollState) messageFlowController.clearPollSchedule();
           transcriptSlotRuntime.setActivePending();
           clearRenderedTranscriptRange();
           turnOpen = false;
@@ -3230,6 +3097,30 @@
           transcriptSlotRuntime.deleteSession(sessionId);
           dropPendingUserRows(sessionId, () => true);
           return selectedCleared;
+        }
+
+        async function dismissFailedLaunchRecord(sessionId) {
+          const s = sessionIndex.get(sessionId);
+          if (!sessionLaunchFailed(s)) {
+            setToast("launch record is not failed");
+            return;
+          }
+          const confirmed = await confirmApp({
+            title: "Dismiss launch record?",
+            message: "Dismiss this launch record?",
+            confirmText: "Dismiss",
+            cancelText: "Cancel",
+            destructive: true,
+          });
+          if (!confirmed) return;
+          try {
+            await api(`/api/sessions/${sessionId}/delete`, { method: "POST", body: {} });
+            clearDeletedSessionClientState(sessionId);
+            await refreshSessions();
+            setToast("Dismissed launch record");
+          } catch (err) {
+            setToast(`dismiss error: ${err && err.message ? err.message : "unknown error"}`);
+          }
         }
 
         function syncRecoveryUiForSession(sessionId) {
@@ -3320,15 +3211,7 @@
         async function openSession(sessionId, { useCache = true, fallbackToCacheOnFailure = false } = {}) {
           pollGen += 1;
           const myGen = pollGen;
-          if (typeof closeMessageEventSource === "function") closeMessageEventSource();
-          abortOpenSessionTailRequest();
-          abortMessagePollRequest();
-          if (pollTimer) {
-            clearTimeout(pollTimer);
-            pollTimer = null;
-          }
-          pollKickPending = false;
-          pollKickDelayMs = null;
+          messageFlowController.prepareSessionOpen();
 
           const oldSelected = selected;
           selected = sessionId;
@@ -3380,15 +3263,7 @@
           if (!displayedCachedTail) renderTranscriptLoading(sessionId);
 
           let data;
-          try {
-            const unread = await api(`/api/sessions/${sessionId}/unread`);
-            activeFirstUnreadEventId = unread && typeof unread.first_unread_event_id === "string" ? unread.first_unread_event_id : "";
-            activeLastUnreadEventId = unread && typeof unread.last_unread_event_id === "string" ? unread.last_unread_event_id : activeFirstUnreadEventId;
-          } catch (error) {
-            activeFirstUnreadEventId = "";
-            if (error && error.status === 401) handleAppAuthLoss();
-          }
-          const tailRequest = beginOpenSessionTailRequest(sessionId, myGen);
+          const tailRequest = messageFlowController.beginOpenSessionTailRequest(sessionId, myGen);
           try {
             data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`, {
               signal: tailRequest.signal,
@@ -3398,9 +3273,9 @@
               handleAppAuthLoss();
               return null;
             }
-            if (isOpenSessionTailAbortError(tailRequest, e)) return null;
-            if (!isCurrentOpenSessionTailRequest(tailRequest)) return null;
-            markMessagePollFailure();
+            if (messageFlowController.isOpenSessionTailAbortError(tailRequest, e)) return null;
+            if (!messageFlowController.isCurrentOpenSessionTailRequest(tailRequest)) return null;
+            messageFlowController.markMessagePollFailure();
             if (e && e.status === 404) {
               clearSelectedSessionAfterRemoval(sessionId, { clearPollState: true });
               void refreshSessions().catch((e2) => {
@@ -3413,15 +3288,14 @@
               applyCachedTail(sessionId, cachedTail, s);
               displayedCachedTail = true;
             }
-            if (!(e && typeof e.status === "number")) networkStatus.reportFailure();
             renderTranscriptLoadError(sessionId, e, { preserveTranscript: displayedCachedTail });
             if (!appDisposed && selected === sessionId && pollGen === myGen) kickPoll(messagePollDelayMs());
             return null;
           } finally {
-            finishOpenSessionTailRequest(tailRequest);
+            messageFlowController.finishOpenSessionTailRequest(tailRequest);
           }
-          if (!isCurrentOpenSessionTailRequest(tailRequest)) return null;
-          markMessagePollSuccess();
+          if (!messageFlowController.isCurrentOpenSessionTailRequest(tailRequest)) return null;
+          messageFlowController.markMessagePollSuccess();
           const slotChange = updateSessionTranscriptSlot(sessionId, data);
           if (slotChange.ignoredStaleBound) {
             renderPendingTranscriptSlot(sessionId);
@@ -3433,7 +3307,7 @@
           else renderPendingTranscriptSlot(sessionId);
           applySessionRuntimeFromTail(sessionId, data);
           if (slotChange.current.state !== "failed") {
-            if (typeof openMessageEventSource === "function") openMessageEventSource(sessionId, myGen);
+            openMessageEventSource(sessionId, myGen);
             kickPoll(900);
           }
           if (isMobile()) setSidebarOpen(false);
@@ -3447,174 +3321,12 @@
         }
 
 			        async function applyLiveMessageData(sid, gen, data) {
-          if (gen !== pollGen || sid !== selected) return;
-          markMessagePollSuccess();
-          const slotInfo = transcriptSnapshotFromData(data);
-          const nowBusy = Boolean(data.busy);
-          const wasTurnOpen = turnOpen;
-          if (activeTranscriptSnapshot().state === "bound" && slotInfo.state === "pending_bind") {
-            updateSessionTranscriptSlot(sid, data);
-            resetChatRenderState();
-            renderPendingTranscriptSlot(sid);
-            setAttachCount(0);
-            applySessionRuntimeFromTail(sid, data);
-            return;
-          }
-          if (activeTranscriptSnapshot().state === "bound" && slotInfo.state === "bound" && slotInfo.logPath !== activeTranscriptSnapshot().logPath) {
-            await openSession(sid, { useCache: false });
-            return;
-          }
-          transcriptSlotRuntime.setLiveCursor(typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null);
-          const evs = Array.isArray(data.events) ? data.events : [];
-          for (const ev of evs) appendEvent(ev);
-          const turnStart = Boolean(data.turn_start);
-          const turnEnd = Boolean(data.turn_end);
-          const turnAborted = Boolean(data.turn_aborted);
-          const newTurn = codoxearTranscript.startsTypingCountWindow({ wasTurnOpen, turnStart, nowBusy });
-          if (newTurn && codoxearTranscript.hasHumanOriginatedUserEvent(evs)) typingRowRuntime.resetTypingStats();
-          if (turnStart) turnOpen = true;
-          if (!turnOpen && nowBusy) turnOpen = true;
-          if ((turnEnd || turnAborted) && turnOpen) turnOpen = false;
-          if (turnOpen && !nowBusy) turnOpen = false;
-          applyTypingMetaDelta(data);
-          setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
-          setContext(data.token);
-          setTyping(Boolean(turnOpen || nowBusy));
-          const s2 = sessionIndex.get(sid);
-          if (evs.length) {
-            appendTailSnapshotEvents(sid, evs, {
-              session: s2,
-              liveCursor: transcriptSlotRuntime.activeSnapshot().liveCursor,
-              busy: Boolean(turnOpen || nowBusy),
-              queueLen: data.queue_len,
-              token: data.token,
-              identityData: data,
-            });
-          }
-          if (s2) titleLabel.textContent = sessionTitleWithId(s2);
+          return messageFlowController.applyLiveMessageData(sid, gen, data);
         }
 
         async function pollMessages(sid = selected, gen = pollGen) {
-          if (appDisposed || !sid) return;
-          let pollRequest = null;
-          try {
-            if (!transcriptSlotRuntime.activeSnapshot().liveCursor) {
-              if (activeTranscriptSnapshot().state === "pending_bind") {
-                pollRequest = beginMessagePollRequest(sid, gen);
-                const data = await api(`/api/sessions/${sid}/messages/tail?limit=${initPageLimit()}`, { signal: pollRequest.signal });
-                if (gen !== pollGen || sid !== selected) return;
-                markMessagePollSuccess();
-                const slotChange = updateSessionTranscriptSlot(sid, data);
-                if (slotChange.ignoredStaleBound) {
-                  renderPendingTranscriptSlot(sid);
-                  applySessionRuntimeFromTail(sid, { transcript_state: "pending_bind", busy: data.busy, queue_len: data.queue_len, token: data.token });
-                  return;
-                }
-                if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);
-                applySessionRuntimeFromTail(sid, data);
-                return;
-              }
-              if (activeTranscriptSnapshot().state === "failed") return;
-              await openSession(sid, { useCache: false });
-              return;
-            }
-            const reqCursor = transcriptSlotRuntime.activeSnapshot().liveCursor;
-            pollRequest = beginMessagePollRequest(sid, gen);
-            const data = await api(`/api/sessions/${sid}/messages/live?cursor=${encodeURIComponent(reqCursor)}`, { signal: pollRequest.signal });
-            await applyLiveMessageData(sid, gen, data);
-          } catch (e) {
-            if (e && e.status === 401) {
-              handleAppAuthLoss();
-              return;
-            }
-            if (isMessagePollAbortError(pollRequest, e)) return;
-            if (gen !== pollGen || sid !== selected) return;
-            if (e && e.status === 409) {
-              await openSession(sid, { useCache: false });
-              return;
-            }
-            if (e && e.status === 404) {
-              clearSelectedSessionAfterRemoval(sid, { incrementPollGen: true, clearPollState: true });
-              try {
-                await refreshSessions();
-              } catch (e2) {
-                console.error("refreshSessions failed after session disappeared", e2);
-                setToast(`refresh error: ${e2 && e2.message ? e2.message : "unknown error"}`);
-              }
-              return;
-            }
-            markMessagePollFailure(!(e && typeof e.status === "number"));
-            // Transient network errors (fetch failed entirely, no HTTP status)
-            // are self-recovering via poll backoff — don't toast them. Only
-            // surface errors where the server actually responded with a status.
-            if (e && typeof e.status === "number") {
-              setToast(`error: ${e.message}`);
-            } else {
-              console.warn("message poll network error", e && e.message);
-            }
-          } finally {
-            finishMessagePollRequest(pollRequest);
-          }
+          return messageFlowController.pollMessages(sid, gen);
         }
-
-        async function pollLoop() {
-          if (appDisposed || !selected || messageSseOpen) return;
-          if (pollLoopBusy) {
-            pollKickPending = true;
-            return;
-          }
-          pollLoopBusy = true;
-          const mySid = selected;
-          const myGen = pollGen;
-          try {
-            await pollMessages(mySid, myGen);
-          } finally {
-            pollLoopBusy = false;
-          }
-          if (pollKickPending) {
-            const delay = pollKickDelayMs == null ? 0 : pollKickDelayMs;
-            pollKickPending = false;
-            pollKickDelayMs = null;
-            kickPoll(delay);
-            return;
-          }
-          if (appDisposed || selected !== mySid || pollGen !== myGen) return;
-          pollTimer = setTimeout(pollLoop, messagePollDelayMs());
-        }
-
-        function kickPoll(ms = 0) {
-          if (appDisposed || messageSseOpen) return;
-          const delay = normalizeMessagePollKickDelay(ms);
-          if (pollTimer) {
-            clearTimeout(pollTimer);
-            pollTimer = null;
-          }
-          if (pollLoopBusy) {
-            pollKickPending = true;
-            pollKickDelayMs = delay;
-            return;
-          }
-          pollTimer = setTimeout(pollLoop, delay);
-        }
-
-        messageSseController = codoxearSse.createMessageEventSourceController({
-          resolveUrl: resolveAppUrl,
-          getSnapshot: () => transcriptSlotRuntime.activeSnapshot(),
-          isActive: (sessionId, generation) => !appDisposed && Boolean(sessionId) && selected === sessionId && pollGen === generation,
-          onStateChange: (open) => { messageSseOpen = open; },
-          onOpen: () => {
-            messagePollErrorStreak = 0;
-            abortMessagePollRequest();
-            if (pollTimer) clearTimeout(pollTimer);
-            pollTimer = null;
-          },
-          onMessage: (sessionId, generation, data) => applyLiveMessageData(sessionId, generation, data),
-          onFallback: () => {
-            markMessagePollFailure();
-            kickPoll(0);
-          },
-          onMalformedMessage: (error) => console.warn("message SSE payload was invalid", error),
-        });
 
         async function jumpToLatest() {
           if (!selected) return;
@@ -3727,9 +3439,6 @@
             requestFrame: requestAnimationFrame,
             setTimeout,
             clearTimeout,
-            storageGetItem,
-            storageSetItem,
-            storageRemoveItem,
             requestShellProjection: updateUnattendedBtnState,
           });
         })();
@@ -3780,11 +3489,6 @@
           return codoxearVoice.createVoiceController({
             announceBtn,
             notificationBtn,
-            notificationPanel,
-            notificationList,
-            notificationEmpty,
-            notificationClearBtn,
-            notificationEnableBtn,
             liveAudio,
             voiceSettingsBackdrop,
             voiceSettingsCloseBtn,
@@ -3844,9 +3548,7 @@
           return voiceController.hideVoiceSettingsDialog();
         }
         function applyDialogMenus() {
-          editDependencyMenu.classList.toggle("open", editDependencyMenuOpen);
-          editDependencyBtn.setAttribute("aria-expanded", editDependencyMenuOpen ? "true" : "false");
-          if (editDependencyMenuOpen) positionDialogMenu(editDependencyMenu, editDependencyBtn);
+          if (sessionEditController) sessionEditController.applyMenus();
           newSessionDialogController.applyMenus();
         }
 
@@ -3884,31 +3586,6 @@
             const top = Math.min(viewportBottom - margin - hostRect.top - Math.min(menuHeight, maxHeight), rect.bottom - hostRect.top + 8);
             menu.style.top = `${top}px`;
           }
-        }
-
-        function openEditSession(sid) {
-          if (!sid) return;
-          const s = sessionIndex.get(sid);
-          if (!s) return;
-          editSessionId = sid;
-          editStatus.textContent = "";
-          editSaveBtn.disabled = false;
-          editNameInput.value = typeof s.alias === "string" ? s.alias : "";
-          editNameInput.placeholder = sessionDisplayName(s) || "Conversation title";
-          editPriorityRange.value = String(Number(s.priority_offset || 0));
-          syncEditPriorityLabel();
-          const snoozeUntil = Number(s.snooze_until || 0);
-          if (snoozeUntil > Date.now() / 1000) {
-            setEditSnoozeMode("custom");
-            fillCustomSnoozeInputs(snoozeUntil);
-          } else {
-            setEditSnoozeMode("none");
-            fillCustomSnoozeInputs(tomorrowSnoozeSeconds());
-          }
-          fillDependencyOptions(sid, s.dependency_session_id || "");
-          prepareModalOpen();
-          if (!editViewer.open) editViewer.showModal();
-          afterModalVisibilityChanged();
         }
 
         const FILE_CANDIDATE_CACHE_TTL_MS = 15000;
@@ -4355,11 +4032,11 @@
         }
 
         function hideFileUnsavedDialog(choice = "cancel") {
-          return fileUnsavedDialogRuntime.hide(choice);
+          return sessionEditController.hideFileUnsavedDialog(choice);
         }
 
         function promptFileUnsavedChoice() {
-          return fileUnsavedDialogRuntime.promptChoice(document.activeElement, HTMLElement);
+          return sessionEditController.promptFileUnsavedChoice();
         }
 
         const fileInspectRuntime = codoxearFileViewer.createFileInspectRuntime({
@@ -4431,6 +4108,43 @@
           rememberOpenedFile: (rel, absPath) => rememberOpenedFile(rel, absPath),
           historyFileSelectionForSession: (sessionId) => openedFileRuntime.historySelection(sessionId),
           renderFilePickerMenu: () => renderFilePickerMenu(),
+        });
+        sessionEditController = window.CodoxearSessionEdit.createSessionEditController({
+          documentTarget: document,
+          ElementCtor: HTMLElement,
+          el,
+          editCloseBtn,
+          editStatus,
+          editNameInput,
+          editPriorityRange,
+          editPriorityValue,
+          editPriorityResetBtn,
+          editSnoozeModeButtons,
+          editSnoozeCustomDate,
+          editSnoozeCustomTime,
+          editSnoozeCustomRow,
+          editDependencyBtn,
+          editDependencyMenu,
+          editSaveBtn,
+          editCancelBtn: $("#editCancelBtn"),
+          editViewer,
+          fileUnsavedDialogRuntime,
+          fileViewerController,
+          getSessionInfo: (sid) => sessionIndex.get(sid),
+          getSessions: () => Array.from(sessionIndex.values()),
+          selectedSessionId: () => selected,
+          sessionDisplayName,
+          baseName,
+          formatPriorityOffset,
+          setPickerButtonContent,
+          api,
+          refreshSessions,
+          setToast,
+          setTitle: (_sid, session) => { if (session) titleLabel.textContent = sessionTitleWithId(session); },
+          prepareModalOpen,
+          afterModalVisibilityChanged,
+          positionDialogMenu,
+          addAppEvent,
         });
         const fileViewerPanelRuntime = codoxearFileViewer.createFileViewerPanelRuntime({
           controller: fileViewerController,
@@ -4560,19 +4274,19 @@
         });
 
         async function maybeHandleUnsavedFileChanges() {
-          return await fileViewerController.maybeHandleUnsavedFileChanges();
+          return await sessionEditController.maybeHandleUnsavedFileChanges();
         }
 
         function handleFileUnsavedSaveChoice() {
-          return fileViewerController.handleFileUnsavedSaveChoice();
+          return sessionEditController.handleFileUnsavedSaveChoice();
         }
 
         function handleFileUnsavedDiscardChoice() {
-          return fileViewerController.handleFileUnsavedDiscardChoice();
+          return sessionEditController.handleFileUnsavedDiscardChoice();
         }
 
         function handleFileUnsavedCancelChoice() {
-          return fileViewerController.handleFileUnsavedCancelChoice();
+          return sessionEditController.handleFileUnsavedCancelChoice();
         }
 
         async function openDraftFilePathWithGuard(path) {
@@ -4794,10 +4508,6 @@
           if (isFileViewerOpen() && filePickerMenuState.isOpen() && !t.closest("#fileCandRow")) {
             closeFilePickerMenu({ restoreInput: true });
           }
-          if (editDependencyMenuOpen && !t.closest("#editDependencyBtn") && !t.closest("#editDependencyMenu")) {
-            editDependencyMenuOpen = false;
-            applyDialogMenus();
-          }
         });
         function handleFileTouchSelectionKeydown(e) {
           return fileViewerController.handleFileTouchSelectionKeydown(e);
@@ -4847,7 +4557,7 @@
             return;
           }
           if (fileUnsavedDialog.style.display === "flex") {
-            hideFileUnsavedDialog("cancel");
+            sessionEditController.hideFileUnsavedDialog("cancel");
             return;
           }
           if (isFileViewerOpen()) {
@@ -4865,7 +4575,7 @@
           if (helpViewer.style.display === "flex") hideHelpViewer();
           if (diagViewer.style.display === "flex") hideDiagViewer();
           if (voiceController.isSettingsOpen()) hideVoiceSettingsDialog();
-          if (editViewer.style.display === "flex") hideEditSession();
+          if (sessionEditController.viewer.style.display === "flex" || sessionEditController.viewer.open) sessionEditController.hideEditSession();
           if (newSessionDialogController.isOpen()) newSessionDialogController.close();
         });
 
@@ -4887,13 +4597,12 @@
             setToast,
             clearCommitUnknownSend,
             refreshSessions,
-            getQueueLen: () => queueLenForSelected(),
-            reconcileQueueLen,
+            getQueueLen: () => currentQueueLen,
             getComposerText: () => (textarea ? textarea.value : ""),
             clearComposerInput,
             syncRecoveryUiForSession,
             kickPoll,
-            setPollFastUntilMs: (ms) => { pollFastUntilMs = ms; },
+            setPollFastUntilMs,
             handleAppAuthLoss,
             prepareModalOpen,
             afterModalVisibilityChanged,
@@ -5098,7 +4807,7 @@
 	          try {
 	            setToast("interrupting...");
             await api(`/api/sessions/${selected}/interrupt`, { method: "POST" });
-            pollFastUntilMs = Date.now() + 2500;
+            setPollFastUntilMs(Date.now() + 2500);
             kickPoll(0);
           } catch (e) {
             setToast(`interrupt error: ${e.message}`);
@@ -5595,7 +5304,7 @@
             else if (successes) setToast(successes === 1 ? "file staged" : `${successes} files staged`);
             else if (failures.length) setToast(`attach error: ${failures[0]}`);
             else if (stoppedByBlocker) setToast(stoppedByBlocker);
-            pollFastUntilMs = Date.now() + 4000;
+            setPollFastUntilMs(Date.now() + 4000);
             kickPoll(0);
             void refreshSessions().catch((refreshErr) => {
               if (refreshErr && refreshErr.status === 401) handleAppAuthLoss();
@@ -5727,58 +5436,15 @@
           getSelected: () => selected,
           getSessionInfo: (sessionId) => sessionIndex.get(sessionId) || null,
           getNewSessionDefaults: () => newSessionDefaults,
-          patchSessionInfo: (sessionId, patch) => {
-            const current = sessionIndex.get(sessionId);
-            if (!current) return;
-            Object.assign(current, patch || {});
-            sessionIndex.set(sessionId, current);
-          },
           sessionLaunchFailed,
           getSending: () => sending,
-          setSending: (value) => { sending = Boolean(value); },
           getCurrentRunning: () => currentRunning,
-          setCurrentRunning: (value) => { currentRunning = Boolean(value); },
-          setTurnOpen: (value) => { turnOpen = Boolean(value); },
-          resetTypingStats: () => typingRowRuntime.resetTypingStats(),
           getStagedAttachments: () => stagedAttachments.slice(),
-          normalizedStagedAttachments,
-          setSelectedSessionPendingAttachment: (sessionId, value) => {
-            if (selected === sessionId) setSelectedSessionPendingAttachment(value);
-          },
-          setAttachCount,
-          syncAttachButtonState,
-          syncQueueSubmitState,
-          syncRecoveryUiForSession,
-          confirmAction: (options) => confirmApp(options),
           api,
           setToast,
-          handleAppAuthLoss,
-          refreshSessions,
-          setPollFastUntilMs: (value) => { pollFastUntilMs = value; },
+          setPollFastUntilMs,
           kickPoll,
-          isTranscriptRenewalCommand,
-          nextLocalEchoId: () => transcriptEventRuntime.nextLocalEchoId(),
-          renderedAtLiveTail: () => transcriptScrollRuntime.snapshot().renderedAtLiveTail,
-          clearTranscriptDom,
-          clearRenderedTranscriptRange,
-          setOlderState,
-          getSessionTranscriptSlot,
-          addPendingUser: (pending) => transcriptEventRuntime.addPendingUser(pending),
-          appendEvent,
-          deleteTailCache: (sessionId) => transcriptSlotRuntime.deleteTailCache(sessionId),
-          beginTranscriptRenewal,
-          clearLiveCursor: () => transcriptSlotRuntime.clearLiveCursor(),
-          invalidateOlderLoad,
-          renderPendingTranscriptSlot,
-          dropPendingUser: (sessionId, localId) => transcriptEventRuntime.dropPendingUsers(sessionId, (pending) => pending && pending.id === localId),
-          removePendingUserRow: (localId) => {
-            const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${localId}"]`);
-            if (!pendingEl) return;
-            const pendingRow = pendingEl.closest(".msg-row");
-            if (pendingRow) pendingRow.remove();
-            else pendingEl.remove();
-          },
-          hasPendingForSession: (sessionId) => transcriptEventRuntime.hasPendingForSession(sessionId),
+          sendText: (raw, options) => messageFlowController.sendText(raw, options),
           enqueueComposerText,
           prepareModalOpen,
           afterModalVisibilityChanged,
@@ -5822,7 +5488,7 @@
                   await Promise.all([loadVoiceSettings(), syncNotificationState()]);
                   if (appDisposed) return;
                   if (voiceAnnouncementsEnabled()) resumeAnnouncementRuntime({ resetSource: false });
-                  await pollNotificationFeed({ prime: true });
+                  if (notificationsEnabledLocally()) await pollNotificationFeed({ prime: true });
                 } catch (e) {
                   if (e && e.status === 401) handleAppAuthLoss();
                   else console.error("initial voice and notification sync failed", e);
@@ -5851,9 +5517,11 @@
               addAppEvent(document, "visibilitychange", () => {
                 if (appDisposed) return;
                 if (document.visibilityState === "visible") {
-                  resumeMessageEventSource(selected, pollGen);
                   resumeAnnouncementRuntime({ resetSource: false });
-                  if (selected) kickPoll(0);
+                  if (selected) {
+                    messageFlowController.resumeLiveDelivery();
+                    kickPoll(0);
+                  }
                   scheduleSessionsPoll(0);
                   scheduleSecondaryPoll(0);
                   return;
@@ -5864,22 +5532,13 @@
               });
               addAppEvent(window, "online", () => {
                 if (appDisposed) return;
-                networkStatus.reportSuccess();
-                messagePollErrorStreak = 0;
-                sessionsPollErrorStreak = 0;
-                secondaryPollErrorStreak = 0;
-                resumeMessageEventSource(selected, pollGen);
+                messageFlowController.resetMessagePollBackoff();
                 if (selected) kickPoll(0);
                 scheduleSessionsPoll(0);
-                scheduleSecondaryPoll(0);
               });
               addAppEvent(window, "offline", () => {
                 if (appDisposed) return;
-                networkStatus.sync();
-                closeMessageEventSource();
                 if (selected) kickPoll(messagePollDelayMs());
-                scheduleSessionsPoll(sessionsPollDelayMs());
-                scheduleSecondaryPoll(secondaryPollDelayMs());
               });
               addAppEvent(window, "pageshow", () => {
                 if (!appDisposed) resumeAnnouncementRuntime({ resetSource: false });
