@@ -122,6 +122,31 @@ def test_session_queue_coordinator_blocks_recovery_barrier_with_retryable_error(
         coordinator.append_item_local("s1", "next", reject_recovery_barrier=True)
 
 
+
+def test_session_queue_coordinator_keeps_prompt_until_explicit_delete_and_accepts_replacement(tmp_path: Path) -> None:
+    """A cancelled browser confirmation issues no delete; the queue remains drainable later."""
+    sent: list[str] = []
+    session = _session()
+    session.sync_send_supported = True
+    coordinator, _saves = _coordinator(
+        tmp_path,
+        sessions={"s1": session},
+        remote_ready=lambda _session_id, _log_path: False,
+        send=lambda _session_id, text, **_kwargs: sent.append(text) or {"queued": False, "queue_len": 0},
+    )
+
+    retained = coordinator.enqueue("s1", "retain this prompt")
+    assert retained["queued"] is True
+    assert [item["text"] for item in coordinator.list_local("s1")] == ["retain this prompt"]
+    assert sent == []
+
+    # The frontend's Cancel branch deliberately makes no queue_delete call.
+    replacement = coordinator.enqueue("s1", "replacement prompt")
+    assert replacement["queued"] is True
+    assert [item["text"] for item in coordinator.list_local("s1")] == ["retain this prompt", "replacement prompt"]
+    assert sent == []
+
+
 def test_session_queue_coordinator_remote_not_ready_resets_idle_without_sending(tmp_path: Path) -> None:
     sent: list[str] = []
     session = _session()

@@ -260,18 +260,25 @@
       const item = queueViewerItems.find((candidate) => String((candidate && candidate.id) || "") === key) || null;
       const commitUnknown = Boolean(item && item.commitUnknown);
       const orphanRecovery = Boolean(item && item.orphanRecovery);
-      if (commitUnknown || orphanRecovery) {
-        const text = String((item && item.text) || "").trim();
-        const suffix = text ? `\n\nQueued prompt: ${text.slice(0, 240)}${text.length > 240 ? "..." : ""}` : "";
-        const confirmed = await confirmAction({
-          title: "Delete recovery item?",
-          message: `Delete this recovery item only after checking the transcript or terminal.${commitUnknown ? " This may allow later queued prompts to send." : ""}${suffix}`,
-          confirmText: "Delete",
-          cancelText: "Cancel",
-          destructive: true,
-        });
-        if (!confirmed) return;
-      }
+      const text = String((item && item.text) || "").trim();
+      const suffix = text ? `\n\nQueued prompt: ${text.slice(0, 240)}${text.length > 240 ? "..." : ""}` : "";
+      const recoveryItem = commitUnknown || orphanRecovery;
+      const confirmed = await confirmAction(recoveryItem
+        ? {
+            title: "Delete recovery item?",
+            message: `Delete this recovery item only after checking the transcript or terminal.${commitUnknown ? " This may allow later queued prompts to send." : ""}${suffix}`,
+            confirmText: "Delete",
+            cancelText: "Cancel",
+            destructive: true,
+          }
+        : {
+            title: "Delete queued prompt?",
+            message: `Delete this prompt from the queue? It will not be sent.${suffix}`,
+            confirmText: "Delete",
+            cancelText: "Cancel",
+            destructive: true,
+          });
+      if (!confirmed) return;
       const timerKey = `${sid}:${key}`;
       const pendingUpdate = queueUpdateTimers.get(timerKey);
       if (pendingUpdate) {

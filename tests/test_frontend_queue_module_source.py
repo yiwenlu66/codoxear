@@ -170,6 +170,7 @@ function inspectRows() {
     return {
       class: row._class || "",
       tagTexts: tagNodes.map((n) => n.textContent),
+      text: String(ta.value || ""),
       taDisabled: !!ta.disabled,
       upDisabled: !!byAria("Move up").disabled,
       downDisabled: !!byAria("Move down").disabled,
@@ -418,6 +419,7 @@ class TestFrontendQueueModuleBehavior(unittest.TestCase):
             const h = globalThis.__harness;
             h.sessions.set("sid-1", {{ launch_state: "ready", queue_len: 1 }});
             h.select("sid-1");
+            h.setConfirm(true);
             const err = new Error("no auth"); err.status = 401;
             h.setApiResponses([err]);
             try {{ {op_script} }} catch (e) {{}}
@@ -668,7 +670,56 @@ class TestFrontendQueueModuleBehavior(unittest.TestCase):
         self.assertTrue(rows[2]["upDisabled"])  # would cross commit item b
         self.assertTrue(rows[2]["downDisabled"])  # last row
 
-    # --- 9. delete confirmation sends allow_commit_unknown / allow_orphan_recovery ---
+    def test_cancel_normal_queue_delete_preserves_prompt_and_allows_replacement(self) -> None:
+        js = harness_script(
+            """
+            const h = globalThis.__harness;
+            h.sessions.set("sid-1", { launch_state: "ready", queue_len: 1 });
+            h.select("sid-1");
+            h.dom.queueViewer.style.display = "flex";
+            h.setApiResponses([{ items: [{ id: "keep", text: "retain this prompt" }] }]);
+            await h.controller.refreshQueueViewer();
+
+            // Cancel is a no-op: no queue/delete request and the rendered text remains.
+            h.setConfirm(false);
+            await h.controller.deleteQueueItem("sid-1", "keep");
+            const afterCancel = h.inspectRows();
+            const deleteCallsAfterCancel = h.calls.filter((c) => c[0] === "api" && String(c[1]).indexOf("/queue/delete") !== -1).length;
+
+            // A later queue action appends a replacement without executing either prompt.
+            h.sessions.set("sid-1", { launch_state: "ready", queue_len: 2 });
+            h.setApiResponses([
+              { queued: true, queue_len: 2 },
+              { items: [
+                { id: "keep", text: "retain this prompt" },
+                { id: "replacement", text: "replacement prompt" },
+              ] },
+            ]);
+            await h.controller.enqueueComposerText("replacement prompt", { sid: "sid-1" });
+            const afterReplacement = h.inspectRows();
+            const apiUrls = h.calls.filter((c) => c[0] === "api").map((c) => c[1]);
+            const enqueueCall = h.calls.find((c) => c[0] === "api" && String(c[1]).indexOf("/enqueue") !== -1);
+            globalThis.__result = {
+              cancelConfirm: h.confirmCalls[0],
+              afterCancel,
+              afterReplacement,
+              deleteCallsAfterCancel,
+              enqueueBody: enqueueCall && enqueueCall[2],
+              sent: apiUrls.some((url) => String(url).indexOf("/send") !== -1),
+            };
+            """
+        )
+        result = run_node_json(js)
+
+        self.assertEqual(result["cancelConfirm"]["title"], "Delete queued prompt?")
+        self.assertTrue(result["cancelConfirm"]["destructive"])
+        self.assertEqual(result["deleteCallsAfterCancel"], 0)
+        self.assertEqual([row["text"] for row in result["afterCancel"]], ["retain this prompt"])
+        self.assertEqual([row["text"] for row in result["afterReplacement"]], ["retain this prompt", "replacement prompt"])
+        self.assertEqual(result["enqueueBody"], {"text": "replacement prompt"})
+        self.assertFalse(result["sent"])
+
+    # --- 10. delete confirmation sends allow_commit_unknown / allow_orphan_recovery ---
 
     def test_delete_confirmation_sends_recovery_flags(self) -> None:
         js = harness_script(
@@ -759,7 +810,9 @@ class TestFrontendQueueModuleBehavior(unittest.TestCase):
             ]);
             h.runPendingTimers();                              // fires update: api(update) pending, lock held
             h.sessions.set("sid-1", { launch_state: "ready", queue_len: 0 });
+            h.setConfirm(true);
             const deletePromise = h.controller.deleteQueueItem("sid-1", "a");
+            await new Promise((r) => setTimeout(r, 0));
             const deleteQueuedToast = h.toasts.some((t) => t === "delete queued");
             const deleteApiBeforeFinalize = h.calls.some((c) => c[0] === "api" && String(c[1]).indexOf("/queue/delete") !== -1);
             // Finalize the update: refreshQueueViewer consumes the 2nd response,
