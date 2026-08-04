@@ -62,6 +62,11 @@ class SessionPruneCoordinator:
             items = list(self.sessions().items())
         dead: list[tuple[str, Path, Session]] = []
         for sid, session in items:
+            # The watchdog owns broker-death cleanup. A lost session stays in
+            # the registry as a non-interactive tombstone after it unlinks the
+            # stale sidecar, until the user dismisses it.
+            if session.lost:
+                continue
             if not session.sock_path.exists():
                 dead.append((sid, session.sock_path, session))
                 continue
@@ -69,6 +74,16 @@ class SessionPruneCoordinator:
             if ok:
                 continue
             if err is not None and self.sock_error_definitely_stale(err):
+                # A broker PID is the browser-control authority. Retain a
+                # crashed broker's session as a watchdog tombstone even if an
+                # orphaned backend child is still alive.
+                if not self.pid_alive(session.broker_pid):
+                    with self.lock:
+                        current = self.sessions().get(sid)
+                        if current is not None and not current.lost:
+                            current.lost = True
+                            current.lost_since = None
+                    continue
                 dead.append((sid, session.sock_path, session))
                 continue
             if self.pid_alive(session.broker_pid) or self.pid_alive(session.codex_pid):

@@ -52,6 +52,7 @@ class DiscoveryRegistration:
     sync_send_supported: bool
     key_write_errors_supported: bool
     interrupted_idle: bool
+    lost: bool = False
     pi_thinking_command: bool = False
     slash_commands: list[dict[str, str]] = field(default_factory=list)
 
@@ -381,6 +382,7 @@ def discover_sessions(
                 sync_send_supported=sync_send_supported,
                 key_write_errors_supported=key_write_errors_supported,
                 interrupted_idle=broker_interrupted_idle,
+                lost=False,
                 pi_thinking_command=bool(pi_thinking_command),
                 slash_commands=list(slash_commands),
             )

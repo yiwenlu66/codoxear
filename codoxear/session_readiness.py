@@ -66,7 +66,7 @@ class SessionReadinessCoordinator:
         self.refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
         with self.lock:
             session = self.sessions().get(session_id)
-            if not session:
+            if not session or session.lost:
                 raise KeyError("unknown session")
             log_path = session.log_path
         if log_path != log_path_before_state:
@@ -77,7 +77,7 @@ class SessionReadinessCoordinator:
         self.refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
         with self.lock:
             session = self.sessions().get(session_id)
-            if not session:
+            if not session or session.lost:
                 raise KeyError("unknown session")
             if not session_allows_direct_send(session, allow_pending_attachment=allow_pending_attachment):
                 return False
@@ -93,7 +93,7 @@ class SessionReadinessCoordinator:
         self.refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
         with self.lock:
             session = self.sessions().get(session_id)
-            if not session:
+            if not session or session.lost:
                 raise KeyError("unknown session")
             if not session_allows_queue_promotion(session):
                 return False
@@ -101,7 +101,7 @@ class SessionReadinessCoordinator:
         state, refreshed_log_path = self.remote_state_after_metadata_probe(session_id, log_path_before_state=log_path_before_state)
         with self.lock:
             current = self.sessions().get(session_id)
-            if not current:
+            if not current or current.lost:
                 raise KeyError("unknown session")
             if not session_allows_queue_promotion(current):
                 return False
@@ -115,7 +115,7 @@ class SessionReadinessCoordinator:
         self.refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
         with self.lock:
             session = self.sessions().get(session_id)
-            if not session:
+            if not session or session.lost:
                 raise KeyError("unknown session")
             if session.commit_unknown_send:
                 raise self.not_ready_error("resolve the unknown send before attaching a file")
@@ -131,7 +131,7 @@ class SessionReadinessCoordinator:
         state, log_path = self.remote_state_after_metadata_probe(session_id, log_path_before_state=log_path_before_state)
         with self.lock:
             current = self.sessions().get(session_id)
-            if not current:
+            if not current or current.lost:
                 raise KeyError("unknown session")
             if current.commit_unknown_send:
                 raise self.not_ready_error("resolve the unknown send before attaching a file")
@@ -155,7 +155,7 @@ class SessionReadinessCoordinator:
         self.refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
         with self.lock:
             session = self.sessions().get(session_id)
-            if not session:
+            if not session or session.lost:
                 raise KeyError("unknown session")
             if session.commit_unknown_send:
                 raise self.not_ready_error("resolve the unknown send before attaching a file")

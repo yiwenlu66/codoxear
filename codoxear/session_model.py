@@ -77,3 +77,8 @@ class Session:
     last_send_boundary_active: bool = False
     last_send_log_path: Path | None = None
     last_send_log_size: int | None = None
+    # A dead broker removes the only PTY/control authority. Keep the session as
+    # a non-interactive listing tombstone while the watchdog removes its stale
+    # sidecar after grace.
+    lost: bool = False
+    lost_since: float | None = None

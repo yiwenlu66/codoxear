@@ -460,20 +460,23 @@ def build_runtime_enriched_session_rows(
                 "interrupted_idle": bool(it.get("interrupted_idle")),
             }
         )
-        try:
-            log_idle = (
-                bool(probes.idle_from_log_path(sid, log_path_obj))
-                if log_exists and isinstance(log_path_obj, Path) and not boundary_unresolved
-                else None
-            )
-            busy_out = resolve_runtime_status(
-                broker=broker_runtime,
-                log_exists=log_exists and isinstance(log_path_obj, Path),
-                log_idle=log_idle,
-                send_boundary_unresolved=boundary_unresolved,
-            ).busy
-        except FileNotFoundError:
+        if bool(it.get("lost")):
             busy_out = False
+        else:
+            try:
+                log_idle = (
+                    bool(probes.idle_from_log_path(sid, log_path_obj))
+                    if log_exists and isinstance(log_path_obj, Path) and not boundary_unresolved
+                    else None
+                )
+                busy_out = resolve_runtime_status(
+                    broker=broker_runtime,
+                    log_exists=log_exists and isinstance(log_path_obj, Path),
+                    log_idle=log_idle,
+                    send_boundary_unresolved=boundary_unresolved,
+                ).busy
+            except FileNotFoundError:
+                busy_out = False
         cwd_path_obj = it.get("_cwd_path_obj")
         git_branch = probes.current_git_branch(cwd_path_obj) if isinstance(cwd_path_obj, Path) else None
         out.append(build_public_session_row(it, git_branch=git_branch, busy=bool(busy_out)))

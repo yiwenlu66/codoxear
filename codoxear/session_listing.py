@@ -88,6 +88,7 @@ class ActiveSessionRowFacts:
     final_priority: float
     blocked: bool
     snoozed: bool
+    lost: bool = False
     pi_thinking_command: bool = False
     slash_commands: list[dict[str, str]] = field(default_factory=list)
     subagents_running: int = 0
@@ -286,6 +287,7 @@ def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
         "final_priority": facts.final_priority,
         "blocked": facts.blocked,
         "snoozed": facts.snoozed,
+        "lost": bool(facts.lost),
         "subagents_running": max(0, int(facts.subagents_running)),
     }
 
@@ -468,6 +470,7 @@ def build_active_session_rows_snapshot(
                     final_priority=priority.final_priority,
                     blocked=blocked,
                     snoozed=snoozed,
+                    lost=bool(s.lost),
                     pi_thinking_command=bool(s.pi_thinking_command),
                     slash_commands=list(s.slash_commands),
                     subagents_running=len(matching_subagents),

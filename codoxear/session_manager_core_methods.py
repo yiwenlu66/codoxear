@@ -152,6 +152,18 @@ def queue_loop_for_manager(manager: Any, server: Any) -> None:
     return server._queue_loop_impl(manager, wait_seconds=server.QUEUE_SWEEP_SECONDS, stderr=server.sys.stderr)
 
 
+def broker_watchdog_loop_for_manager(manager: Any, server: Any) -> None:
+    return server._broker_watchdog_loop_impl(
+        manager,
+        wait_seconds=server.BROKER_WATCHDOG_SWEEP_SECONDS,
+        stderr=server.sys.stderr,
+    )
+
+
+def broker_watchdog_sweep_for_manager(manager: Any, server: Any) -> None:
+    return manager._broker_watchdog_coordinator_for_manager().sweep()
+
+
 def maybe_drain_session_queue_for_manager(manager: Any, server: Any, session_id: str, *, now_ts: float | None = None) -> bool:
     response = manager._promote_queue_head_if_sendable(session_id, require_idle_grace=True, now_ts=now_ts)
     return isinstance(response, dict)

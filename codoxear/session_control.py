@@ -31,7 +31,7 @@ class SessionControlCoordinator:
     def _session_and_sock(self, session_id: str) -> tuple[Session, Path]:
         with self.lock:
             session = self.sessions().get(session_id)
-            if not session:
+            if not session or session.lost:
                 raise KeyError("unknown session")
             return session, session.sock_path
 

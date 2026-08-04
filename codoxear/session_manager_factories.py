@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from .broker_watchdog import BrokerWatchdogCoordinator
 from .queue_sweep import QueueSweepCoordinator
 from .session_discovery import DiscoveryDeps
 from .session_cleanup import SessionCleanupCoordinator
@@ -46,6 +47,7 @@ class SessionManagerFactoryCaps:
     analyze_log_chunk: Any
     broker_interrupted_idle_from_state: Any
     broker_tail_has_session_detach_marker: Any
+    broker_watchdog_grace_seconds: float
     cc_pending_tool_ids_before: Any
     clean_alias: Any
     clean_dependency_session_id: Any
@@ -132,6 +134,7 @@ def session_manager_factory_caps(server: Any) -> SessionManagerFactoryCaps:
         analyze_log_chunk=server._analyze_log_chunk,
         broker_interrupted_idle_from_state=server._broker_interrupted_idle_from_state,
         broker_tail_has_session_detach_marker=server._broker_tail_has_session_detach_marker,
+        broker_watchdog_grace_seconds=server.BROKER_WATCHDOG_GRACE_SECONDS,
         cc_pending_tool_ids_before=server._rollout_log._cc_pending_tool_ids_before,
         clean_alias=server._clean_alias,
         clean_dependency_session_id=server._clean_dependency_session_id,
@@ -581,6 +584,17 @@ def prune_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps)
         unlink_quiet=caps.unlink_quiet,
         compute_idle_from_log=caps.compute_idle_from_log,
         stderr=caps.stderr,
+    )
+
+
+def broker_watchdog_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
+    return BrokerWatchdogCoordinator(
+        lock=_registry_lock(manager),
+        sessions=lambda: _registry_sessions(manager),
+        pid_alive=caps.pid_alive,
+        unlink_quiet=caps.unlink_quiet,
+        now=caps.now,
+        grace_seconds=caps.broker_watchdog_grace_seconds,
     )
 
 

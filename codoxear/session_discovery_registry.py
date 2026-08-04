@@ -28,6 +28,17 @@ class SessionDiscoveryRegistryCoordinator:
     def apply_result(self, result: DiscoveryResult) -> None:
         recent_cwd_dirty = False
         for action in result.stale_actions:
+            # A discovered sidecar can outlive a crashed broker. Preserve an
+            # already-active session as a lost tombstone so the watchdog can
+            # apply its grace period; missing metadata remains ordinary stale
+            # state and is still cleaned immediately.
+            with self.lock:
+                current = self.sessions().get(action.session_id)
+                if current is not None and (not action.clear_session_state) and action.meta_path.exists():
+                    if not current.lost:
+                        current.lost = True
+                        current.lost_since = None
+                    continue
             if action.failure_record is not None:
                 try:
                     self.record_launch_attempt(action.failure_record)
@@ -93,6 +104,7 @@ class SessionDiscoveryRegistryCoordinator:
             slash_commands=list(registration.slash_commands),
             interrupted_idle=registration.interrupted_idle,
             interrupted_idle_log_off=(registration.meta_log_off if registration.interrupted_idle else 0),
+            lost=bool(registration.lost),
         )
         with self.lock:
             previous = self.sessions().get(registration.session_id)
@@ -156,4 +168,7 @@ class SessionDiscoveryRegistryCoordinator:
                 previous.commit_unknown_send = dict(self.commit_unknown_sends().get(registration.session_id) or {}) or None
                 previous.sync_send_supported = registration.sync_send_supported
                 previous.key_write_errors_supported = registration.key_write_errors_supported
+                previous.lost = bool(registration.lost)
+                if not previous.lost:
+                    previous.lost_since = None
                 previous.pi_thinking_command = bool(registration.pi_thinking_command)

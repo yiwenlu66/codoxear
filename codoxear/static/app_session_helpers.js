@@ -8,7 +8,7 @@
   ]);
 
   function sessionLaunchFailed(s) {
-    return !!(s && String(s.launch_state || "").trim().toLowerCase() === "failed");
+    return !!(s && (s.lost || String(s.launch_state || "").trim().toLowerCase() === "failed"));
   }
 
   function sessionLaunchPending(s) {

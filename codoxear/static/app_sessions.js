@@ -169,8 +169,9 @@
           const badges = [];
           const launchFailed = sessionLaunchFailed(session);
           const launchPending = sessionLaunchPending(session);
+          const lost = !!session.lost;
           const launchRow = launchFailed || launchPending;
-          if (launchFailed) badges.push(el("span", { class: "badge launchFailed", text: "failed", title: redactedLaunchErrorText(session.launch_error) || "Session launch failed" }));
+          if (launchFailed) badges.push(el("span", { class: "badge launchFailed", text: lost ? "lost" : "failed", title: lost ? "Broker stopped; this session can no longer accept control." : redactedLaunchErrorText(session.launch_error) || "Session launch failed" }));
           if (launchPending) badges.push(el("span", { class: "badge launchPending", text: "starting", title: "Session is still starting" }));
           if (session.unattended_enabled) badges.push(el("span", { class: "badge unattended", text: "unattended", title: "Unattended mode enabled" }));
           if (session.queue_len) badges.push(el("span", { class: "badge queue", text: `queue ${session.queue_len}` }));
@@ -180,7 +181,7 @@
           const ageSeconds = updatedTs ? Math.max(0, now() / 1000 - updatedTs) : 0;
           const effortText = String(session.reasoning_effort || "").trim().toLowerCase();
           const effortCode = sidebarEffortCode(effortText, session.agent_backend);
-          const stateText = launchPending ? "starting" : fmtRelativeAge(ageSeconds);
+          const stateText = lost ? "lost" : launchPending ? "starting" : fmtRelativeAge(ageSeconds);
           const modelText = sidebarModelText(session);
           const branchText = typeof session.git_branch === "string" ? session.git_branch.trim() : "";
 
@@ -188,8 +189,8 @@
             if (event) { event.preventDefault(); event.stopPropagation(); }
             closeOpenSwipe();
             const confirmed = await confirmAction({
-              title: launchRow ? "Dismiss launch record?" : "Delete session?",
-              message: launchRow ? "Dismiss this launch record?" : "Delete this session?",
+              title: lost ? "Dismiss lost session?" : launchRow ? "Dismiss launch record?" : "Delete session?",
+              message: lost ? "Dismiss this lost session?" : launchRow ? "Dismiss this launch record?" : "Delete this session?",
               confirmText: launchRow ? "Dismiss" : "Delete",
               cancelText: "Cancel",
               destructive: true,
@@ -213,12 +214,12 @@
             closeOpenSwipe();
             if (launchRow) {
               if (launchFailed) void selectSession(sessionId);
-              setToast(launchFailed ? "review failed launch before retrying" : "session still starting");
+              setToast(lost ? "broker stopped" : launchFailed ? "review failed launch before retrying" : "session still starting");
               return;
             }
             await duplicateSession(session);
           };
-          const deleteBtn = el("button", { class: "icon-btn danger sessionDel", title: launchRow ? "Dismiss launch record" : "Delete session", "aria-label": launchRow ? "Dismiss launch record" : "Delete session", type: "button", html: iconSvg("trash") });
+          const deleteBtn = el("button", { class: "icon-btn danger sessionDel", title: lost ? "Dismiss lost session" : launchRow ? "Dismiss launch record" : "Delete session", "aria-label": lost ? "Dismiss lost session" : launchRow ? "Dismiss launch record" : "Delete session", type: "button", html: iconSvg("trash") });
           deleteBtn.onclick = (event) => void doDelete(event);
           const stateDot = el("span", { class: `stateDot${launchPending ? " pending" : session.snoozed || session.blocked ? " suppressed" : session.busy ? " busy" : " idle"}` });
           const subagentsRunning = Number(session.subagents_running);
@@ -259,7 +260,8 @@
           });
           metaItems.push(metaText);
           const meta = el("div", { class: "muted subLine sessionMetaLine" }, metaItems);
-          if (launchFailed) meta.title = redactedLaunchErrorText(session.launch_error) || "Session launch failed";
+          if (lost) meta.title = "Broker stopped; stale control sidecar was removed.";
+          else if (launchFailed) meta.title = redactedLaunchErrorText(session.launch_error) || "Session launch failed";
           if (launchPending) meta.title = "Session is still starting";
           const editActions = launchRow ? [] : [renameBtn, duplicateBtn];
 

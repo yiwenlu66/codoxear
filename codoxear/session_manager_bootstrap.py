@@ -101,6 +101,17 @@ def queue_loop(manager: Any, *, wait_seconds: float, stderr: Any) -> None:
         stop_event.wait(wait_seconds)
 
 
+def broker_watchdog_loop(manager: Any, *, wait_seconds: float, stderr: Any) -> None:
+    stop_event = session_registry_for_manager(manager).stop_event
+    while not stop_event.is_set():
+        try:
+            manager._broker_watchdog_sweep()
+        except Exception as exc:
+            stderr.write(f"error: broker watchdog sweep failed: {type(exc).__name__}: {exc}\n")
+            stderr.flush()
+        stop_event.wait(wait_seconds)
+
+
 def start_manager_worker_threads(*, manager: Any, thread_factory: Callable[..., threading.Thread]) -> None:
     manager._unattended_thr = start_worker_thread(
         thread_factory=thread_factory,
@@ -116,4 +127,9 @@ def start_manager_worker_threads(*, manager: Any, thread_factory: Callable[..., 
         thread_factory=thread_factory,
         target=manager._voice_push_scan_loop,
         name="voice-push-scan",
+    )
+    manager._broker_watchdog_thr = start_worker_thread(
+        thread_factory=thread_factory,
+        target=manager._broker_watchdog_loop,
+        name="broker-watchdog",
     )

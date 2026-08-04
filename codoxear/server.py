@@ -146,6 +146,7 @@ from .session_listing import sidebar_time_priority_from_elapsed_seconds as _list
 from .session_manager_bootstrap import create_voice_push_coordinator as _create_voice_push_coordinator_impl
 from .session_manager_bootstrap import input_lock_for_session as _input_lock_for_session_impl
 from .session_manager_bootstrap import load_manager_persistent_state as _load_manager_persistent_state_impl
+from .session_manager_bootstrap import broker_watchdog_loop as _broker_watchdog_loop_impl
 from .session_manager_bootstrap import queue_loop as _queue_loop_impl
 from .session_manager_bootstrap import seed_manager_in_memory_state as _seed_manager_in_memory_state_impl
 from .session_manager_bootstrap import start_manager_worker_threads as _start_manager_worker_threads_impl
@@ -995,6 +996,12 @@ class SessionManager:
     def _queue_loop(self, *args: Any, **kwargs: Any) -> Any:
         return _core_methods.queue_loop_for_manager(self, sys.modules[__name__], *args, **kwargs)
 
+    def _broker_watchdog_loop(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.broker_watchdog_loop_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
+    def _broker_watchdog_sweep(self, *args: Any, **kwargs: Any) -> Any:
+        return _core_methods.broker_watchdog_sweep_for_manager(self, sys.modules[__name__], *args, **kwargs)
+
     def _maybe_drain_session_queue(self, *args: Any, **kwargs: Any) -> Any:
         return _core_methods.maybe_drain_session_queue_for_manager(self, sys.modules[__name__], *args, **kwargs)
 
@@ -1063,6 +1070,9 @@ class SessionManager:
 
     def _prune_coordinator_for_manager(self) -> Any:
         return _factories.prune_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
+
+    def _broker_watchdog_coordinator_for_manager(self) -> Any:
+        return _factories.broker_watchdog_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
 
     def _send_coordinator_for_manager(self) -> Any:
         return _factories.send_coordinator_for_manager(self, _session_manager_factory_caps_impl(sys.modules[__name__]))
