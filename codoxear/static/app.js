@@ -726,13 +726,17 @@
         wrap.appendChild(form);
         root.appendChild(wrap);
         form.onsubmit = async (e) => {
+          console.log("DBG:form-submit");
           e.preventDefault();
           err.textContent = "";
           const pw = pwInput.value;
           try {
             await api("/api/login", { method: "POST", body: { password: pw } });
+            console.log("DBG:login-ok");
             onAuthed();
+            console.log("DBG:onAuthed-returned");
           } catch (e2) {
+            console.log("DBG:login-failed", e2);
             err.textContent = e2.obj?.error || e2.message;
           }
         };
@@ -5468,11 +5472,14 @@
         if (typeof window.__codoxearMarkBootstrapped === "function") window.__codoxearMarkBootstrapped();
 
 	        (async () => {
+          console.log("DBG:iife-start");
 	          if (storageGetItem("codexweb.sidebarCollapsed") === "1") setSidebarCollapsed(true);
 	          if (storageGetItem("codexweb.sidebarOpen") === "1") setSidebarOpen(true);
 
 	          try {
+            console.log("DBG:iife-before-refresh");
 	            const sessions = await refreshSessions();
+            console.log("DBG:iife-after-refresh", sessions);
               const hashed = sessionIdFromHash();
 	            const remembered = storageGetItem("codexweb.selected");
 	            const first = sessions && sessions.length ? (sessions.find(sessionSelectable) || {}).session_id || null : null;
