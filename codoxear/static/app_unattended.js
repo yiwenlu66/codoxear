@@ -39,6 +39,9 @@
   const restoreModalFocus = codoxearModal.restoreModalFocus;
 
   const UNATTENDED_SAVE_DEBOUNCE_MS = 450;
+  const UNATTENDED_SAVE_RETRY_INITIAL_MS = 1500;
+  const UNATTENDED_SAVE_RETRY_MAX_MS = 30000;
+  const UNATTENDED_PENDING_STORAGE_KEY = "codexweb.unattended.pending.v1";
 
   function createUnattendedDom(options = {}) {
     if (!options || typeof options !== "object") throw new TypeError("unattended DOM dependency missing: options");
@@ -130,6 +133,12 @@
     const requestFrame = typeof options.requestFrame === "function" ? options.requestFrame : requestAnimationFrame;
     const setTimeoutFn = typeof options.setTimeout === "function" ? options.setTimeout : setTimeout;
     const clearTimeoutFn = typeof options.clearTimeout === "function" ? options.clearTimeout : clearTimeout;
+    // The pending patch is browser-owned until the server has acknowledged it.
+    // app.js injects its guarded localStorage facade so private-mode/storage
+    // failures follow the rest of the browser persistence contract.
+    const storageGetItem = requireFunction(options.storageGetItem, "storageGetItem");
+    const storageSetItem = requireFunction(options.storageSetItem, "storageSetItem");
+    const storageRemoveItem = requireFunction(options.storageRemoveItem, "storageRemoveItem");
     // Optional callback app.js wires to its full shell button projection
     // (updateUnattendedBtnState). Invoked after an input handler mutates cfg /
     // session state so the app-shell projection (attach/file/send/queue/diag
@@ -147,6 +156,9 @@
     const unattendedSaveTimers = new Map();
     const unattendedSaveInFlight = new Map();
     const unattendedSavePending = new Map();
+    const unattendedPersistedPending = new Map();
+    const unattendedSaveRetryCounts = new Map();
+    const unattendedSaveRetryPaused = new Set();
 
     function selectedSessionLaunchFailed() {
       const selected = getSelected();
@@ -247,17 +259,166 @@
       return out;
     }
 
+    function validateUnattendedPatch(patch) {
+      if (!patch || typeof patch !== "object" || Array.isArray(patch)) throw new Error("invalid persisted unattended patch");
+      const names = Object.keys(patch);
+      if (names.length !== 1 || names[0] !== "request" || typeof patch.request !== "string") throw new Error("invalid persisted unattended request draft");
+    }
+
+    function readPersistedUnattendedPatches() {
+      let raw;
+      try {
+        raw = storageGetItem(UNATTENDED_PENDING_STORAGE_KEY);
+      } catch (error) {
+        console.error("read unattended pending drafts failed", error);
+        return;
+      }
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object" || parsed.version !== 1 || !parsed.patches || typeof parsed.patches !== "object" || Array.isArray(parsed.patches)) throw new Error("invalid persisted unattended draft envelope");
+        for (const [sid, record] of Object.entries(parsed.patches)) {
+          if (!sid || !record || typeof record !== "object" || !Number.isInteger(record.revision) || record.revision < 1) throw new Error("invalid persisted unattended draft record");
+          validateUnattendedPatch(record.patch);
+          const snapshot = { revision: record.revision, patch: { request: record.patch.request } };
+          unattendedPersistedPending.set(sid, snapshot);
+          unattendedSavePending.set(sid, snapshot);
+        }
+      } catch (error) {
+        // A malformed local entry must be visible in diagnostics but cannot
+        // strand every later controller construction behind the same bad JSON.
+        console.error("invalid persisted unattended drafts", error);
+        try { storageRemoveItem(UNATTENDED_PENDING_STORAGE_KEY); }
+        catch (removeError) { console.error("clear invalid unattended pending drafts failed", removeError); }
+        unattendedPersistedPending.clear();
+        unattendedSavePending.clear();
+      }
+    }
+
+    function storedUnattendedRequestPatch(sid) {
+      try {
+        const raw = storageGetItem(UNATTENDED_PENDING_STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object" || parsed.version !== 1 || !parsed.patches || typeof parsed.patches !== "object" || Array.isArray(parsed.patches)) throw new Error("invalid persisted unattended draft envelope");
+        const record = parsed.patches[sid];
+        if (!record) return null;
+        if (!Number.isInteger(record.revision) || record.revision < 1) throw new Error("invalid persisted unattended draft record");
+        validateUnattendedPatch(record.patch);
+        return { revision: record.revision, patch: { request: record.patch.request }, envelope: parsed };
+      } catch (error) {
+        console.error("read unattended pending draft acknowledgement failed", error);
+        return null;
+      }
+    }
+
+    function clearAcknowledgedUnattendedRequest(sid, snapshot) {
+      const stored = storedUnattendedRequestPatch(sid);
+      if (
+        !stored
+        || stored.revision !== snapshot.revision
+        || !Object.prototype.hasOwnProperty.call(snapshot.patch, "request")
+        || stored.patch.request !== snapshot.patch.request
+      ) return false;
+      try {
+        delete stored.envelope.patches[sid];
+        if (Object.keys(stored.envelope.patches).length) storageSetItem(UNATTENDED_PENDING_STORAGE_KEY, JSON.stringify(stored.envelope));
+        else storageRemoveItem(UNATTENDED_PENDING_STORAGE_KEY);
+        unattendedPersistedPending.delete(sid);
+        return true;
+      } catch (error) {
+        console.error("clear acknowledged unattended pending draft failed", error);
+        if (!isAppDisposed()) setToast(`unattended draft persistence error: ${error && error.message ? error.message : "unknown error"}`);
+        return false;
+      }
+    }
+
+    function persistUnattendedPatches() {
+      const patches = {};
+      try {
+        const raw = storageGetItem(UNATTENDED_PENDING_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (!parsed || typeof parsed !== "object" || parsed.version !== 1 || !parsed.patches || typeof parsed.patches !== "object" || Array.isArray(parsed.patches)) throw new Error("invalid persisted unattended draft envelope");
+          for (const [sid, record] of Object.entries(parsed.patches)) {
+            if (!sid || !record || typeof record !== "object" || !Number.isInteger(record.revision) || record.revision < 1) throw new Error("invalid persisted unattended draft record");
+            validateUnattendedPatch(record.patch);
+            patches[sid] = { revision: record.revision, patch: { request: record.patch.request } };
+          }
+        }
+      } catch (error) {
+        console.error("read unattended pending drafts before persist failed", error);
+      }
+      unattendedPersistedPending.forEach((record, sid) => {
+        const existing = patches[sid];
+        if (!existing || record.revision >= existing.revision) patches[sid] = { revision: record.revision, patch: { request: record.patch.request } };
+      });
+      try {
+        if (Object.keys(patches).length) storageSetItem(UNATTENDED_PENDING_STORAGE_KEY, JSON.stringify({ version: 1, patches }));
+        else storageRemoveItem(UNATTENDED_PENDING_STORAGE_KEY);
+      } catch (error) {
+        console.error("persist unattended pending drafts failed", error);
+        if (!isAppDisposed()) setToast(`unattended draft persistence error: ${error && error.message ? error.message : "unknown error"}`);
+      }
+    }
+
+    function persistedUnattendedPatch(sid) {
+      return unattendedPersistedPending.get(sid) || null;
+    }
+
+    function latestUnattendedPatch(sid) {
+      return unattendedSavePending.get(sid) || unattendedSaveInFlight.get(sid) || null;
+    }
+
+    function applyPersistedUnattendedPatch(sid) {
+      const record = persistedUnattendedPatch(sid);
+      if (record) unattendedCfg = { ...unattendedCfg, ...record.patch };
+    }
+
     function unattendedPatchIsLocallyAuthoritative(sid, name) {
-      const has = (value) => Boolean(value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, name));
-      return has(unattendedSavePending.get(sid)) || has(unattendedSaveInFlight.get(sid));
+      const latest = latestUnattendedPatch(sid);
+      const persisted = persistedUnattendedPatch(sid);
+      return Boolean(
+        (latest && Object.prototype.hasOwnProperty.call(latest.patch, name))
+        || (persisted && Object.prototype.hasOwnProperty.call(persisted.patch, name)),
+      );
     }
 
     function reconcileUnattendedServerPayload(serverPayload, sid) {
+      const inFlight = unattendedSaveInFlight.get(sid);
+      const pending = unattendedSavePending.get(sid);
+      const persisted = persistedUnattendedPatch(sid);
       return {
         ...serverPayload,
-        ...(unattendedSaveInFlight.get(sid) || {}),
-        ...(unattendedSavePending.get(sid) || {}),
+        ...(inFlight ? inFlight.patch : {}),
+        ...(pending ? pending.patch : {}),
+        ...(persisted ? persisted.patch : {}),
       };
+    }
+
+    function retryDelayForUnattendedSave(sid) {
+      const failures = (unattendedSaveRetryCounts.get(sid) || 0) + 1;
+      unattendedSaveRetryCounts.set(sid, failures);
+      return Math.min(UNATTENDED_SAVE_RETRY_INITIAL_MS * (2 ** Math.min(failures - 1, 5)), UNATTENDED_SAVE_RETRY_MAX_MS);
+    }
+
+    function scheduleUnattendedFlush(sid, delay) {
+      if (!sid || unattendedSaveRetryPaused.has(sid) || unattendedSaveInFlight.has(sid) || !unattendedSavePending.has(sid)) return;
+      const existing = unattendedSaveTimers.get(sid);
+      if (existing) clearTimeoutFn(existing);
+      const timer = setTimeoutFn(() => {
+        unattendedSaveTimers.delete(sid);
+        void flushUnattendedSave(sid);
+      }, delay);
+      unattendedSaveTimers.set(sid, timer);
+    }
+
+    function resumePersistedUnattendedSave(sid) {
+      if (!sid || unattendedSaveRetryPaused.has(sid) || unattendedSaveInFlight.has(sid) || unattendedSaveTimers.has(sid)) return;
+      const record = persistedUnattendedPatch(sid);
+      if (!record) return;
+      unattendedSavePending.set(sid, record);
+      scheduleUnattendedFlush(sid, UNATTENDED_SAVE_DEBOUNCE_MS);
     }
 
     function applySavedUnattendedCfg(saved, sid) {
@@ -284,38 +445,65 @@
     }
 
     async function flushUnattendedSave(sid) {
-      if (!sid || isAppDisposed() || unattendedSaveInFlight.get(sid)) return;
+      if (!sid || isAppDisposed() || unattendedSaveInFlight.has(sid) || unattendedSaveRetryPaused.has(sid)) return;
       const snapshot = unattendedSavePending.get(sid);
       if (!snapshot) return;
       unattendedSavePending.delete(sid);
       unattendedSaveInFlight.set(sid, snapshot);
+      let outcome = "success";
       try {
         const saved = await api(`/api/sessions/${sid}/unattended`, {
           method: "POST",
-          body: snapshot,
+          body: snapshot.patch,
         });
         validateUnattendedPayload(saved);
         if (isAppDisposed()) return;
-        if (!unattendedSavePending.has(sid)) applySavedUnattendedCfg(saved, sid);
+        // Only the user-authored request is durable. Numeric budget/config is
+        // server authority because another tab or unattended injection can
+        // change it while this request is in flight. An old acknowledgement
+        // can clear a WAL record only when it carried that exact request and
+        // no newer request revision has replaced it.
+        const persisted = persistedUnattendedPatch(sid);
+        if (persisted) clearAcknowledgedUnattendedRequest(sid, snapshot);
+        unattendedSaveRetryCounts.delete(sid);
+        if (!unattendedSavePending.has(sid) && !persistedUnattendedPatch(sid)) applySavedUnattendedCfg(saved, sid);
         await refreshSessions();
       } catch (e) {
+        if (isAppDisposed()) return;
         if (e && e.status === 401) {
+          outcome = "auth";
+          unattendedSaveRetryPaused.add(sid);
           handleAppAuthLoss();
           return;
         }
+        outcome = "retry";
         console.error("save unattended mode failed", e);
-        if (!isAppDisposed() && getSelected() === sid) setToast(`unattended save error: ${e && e.message ? e.message : "unknown error"}`);
+        // Keep the in-memory full patch for this tab and the browser-owned
+        // request WAL for a replacement controller. A retry is delayed and
+        // bounded exponentially rather than recursively spinning on outage.
+        const newer = unattendedSavePending.get(sid);
+        unattendedSavePending.set(sid, newer || snapshot);
+        if (getSelected() === sid) setToast(`unattended save error: ${e && e.message ? e.message : "unknown error"}`);
       } finally {
         unattendedSaveInFlight.delete(sid);
-        if (!isAppDisposed() && unattendedSavePending.has(sid)) void flushUnattendedSave(sid);
-        else if (!isAppDisposed() && getSelected() === sid) {
-          // Mirror the pre-extraction finally, which called app.js
-          // updateUnattendedBtnState (full shell projection). When app.js wires
-          // requestShellProjection that re-runs the whole shell projection
-          // (including syncButtonState); otherwise project the unattended
-          // control directly so the button reflects the just-applied cfg.
-          if (requestShellProjection) requestShellProjection();
-          else projectButtonState();
+        if (!isAppDisposed()) {
+          if (outcome === "retry" && getSelected() === sid) {
+            scheduleUnattendedFlush(sid, retryDelayForUnattendedSave(sid));
+          } else if (outcome === "success" && unattendedSavePending.has(sid)) {
+            // This is a newer local edit that arrived while the prior POST
+            // crossed the network boundary; drain it once, without waiting
+            // for a stale response to rewrite the controls.
+            void flushUnattendedSave(sid);
+          }
+          if (getSelected() === sid) {
+            // Mirror the pre-extraction finally, which called app.js
+            // updateUnattendedBtnState (full shell projection). When app.js wires
+            // requestShellProjection that re-runs the whole shell projection
+            // (including syncButtonState); otherwise project the unattended
+            // control directly so the button reflects the just-applied cfg.
+            if (requestShellProjection) requestShellProjection();
+            else projectButtonState();
+          }
         }
       }
     }
@@ -323,17 +511,32 @@
     function scheduleUnattendedSave(patch = {}) {
       const sid = getSelected();
       if (!sid) return;
-      const snapshot = unattendedSaveSnapshot(patch);
-      if (!Object.keys(snapshot).length) return;
-      unattendedSavePending.set(sid, { ...(unattendedSavePending.get(sid) || {}), ...snapshot });
-      const existing = unattendedSaveTimers.get(sid);
-      if (existing) clearTimeoutFn(existing);
-      const timer = setTimeoutFn(() => {
-        unattendedSaveTimers.delete(sid);
-        void flushUnattendedSave(sid);
-      }, UNATTENDED_SAVE_DEBOUNCE_MS);
-      unattendedSaveTimers.set(sid, timer);
+      const patchSnapshot = unattendedSaveSnapshot(patch);
+      if (!Object.keys(patchSnapshot).length) return;
+      const prior = latestUnattendedPatch(sid);
+      const stored = storedUnattendedRequestPatch(sid);
+      const priorRevision = Math.max(
+        prior ? prior.revision : 0,
+        persistedUnattendedPatch(sid) ? persistedUnattendedPatch(sid).revision : 0,
+        stored ? stored.revision : 0,
+      );
+      const snapshot = {
+        revision: priorRevision + 1,
+        patch: { ...(prior ? prior.patch : {}), ...patchSnapshot },
+      };
+      unattendedSaveRetryPaused.delete(sid);
+      unattendedSavePending.set(sid, snapshot);
+      if (Object.prototype.hasOwnProperty.call(snapshot.patch, "request")) {
+        unattendedPersistedPending.set(sid, { revision: snapshot.revision, patch: { request: snapshot.patch.request } });
+        persistUnattendedPatches();
+      }
+      scheduleUnattendedFlush(sid, UNATTENDED_SAVE_DEBOUNCE_MS);
     }
+
+    // Browser persistence deliberately contains only the user-authored request
+    // text. The server remains sole authority for enabled state and injection
+    // budget, which can change in another tab or through an injection.
+    readPersistedUnattendedPatches();
 
     // Unattended-specific button + cfg/input projection. This is the body that
     // used to live inside app.js updateUnattendedBtnState for the unattended
@@ -341,6 +544,10 @@
     // context bar, chat nav) stays in app.js and calls syncButtonState().
     function projectButtonState() {
       const selected = getSelected();
+      if (selected) {
+        applyPersistedUnattendedPatch(selected);
+        resumePersistedUnattendedSave(selected);
+      }
       const s = selected ? getSessionInfo(selected) : null;
       // The session-list poll is server truth, except for fields whose user
       // edit has not crossed the debounced-save commit boundary yet.  Keep the
@@ -574,8 +781,13 @@
     function dispose() {
       unattendedSaveTimers.forEach((timer) => clearTimeoutFn(timer));
       unattendedSaveTimers.clear();
+      // Pending request text remains in browser storage until its matching
+      // server acknowledgement. Disposal only releases this controller's
+      // volatile retry/in-flight bookkeeping.
       unattendedSavePending.clear();
       unattendedSaveInFlight.clear();
+      unattendedSaveRetryCounts.clear();
+      unattendedSaveRetryPaused.clear();
       unattendedMenuToken += 1;
       unattendedMenuSessionId = null;
       unattendedMenuOpen = false;

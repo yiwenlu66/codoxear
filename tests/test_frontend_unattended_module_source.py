@@ -30,6 +30,7 @@ const calls = [];
 const toasts = [];
 const rafCalls = [];
 const shellProjections = [];
+const browserStorage = new Map();
 const sessions = new Map();
 let selected = null;
 let disposed = false;
@@ -66,14 +67,17 @@ function fakeClearTimeout(handle) {
   pendingTimers.delete(handle);
   calls.push(["clearTimeout", handle]);
 }
+function runNextTimer() {
+  const next = Array.from(pendingTimers.entries())[0];
+  if (!next) return false;
+  const [handle, fn] = next;
+  pendingTimers.delete(handle);
+  fn();
+  return true;
+}
 function runPendingTimers() {
   let guard = 0;
-  while (pendingTimers.size && guard < 50) {
-    guard += 1;
-    const [handle, fn] = Array.from(pendingTimers.entries())[0];
-    pendingTimers.delete(handle);
-    fn();
-  }
+  while (runNextTimer() && guard < 50) guard += 1;
 }
 
 function fakeNode(extra = {}) {
@@ -141,6 +145,9 @@ const deps = {
   requestFrame: (fn) => { rafCalls.push(fn); fn(); },
   setTimeout: fakeSetTimeout,
   clearTimeout: fakeClearTimeout,
+  storageGetItem: (key) => browserStorage.has(key) ? browserStorage.get(key) : null,
+  storageSetItem: (key, value) => { browserStorage.set(key, String(value)); calls.push(["storageSetItem", key, String(value)]); },
+  storageRemoveItem: (key) => { browserStorage.delete(key); calls.push(["storageRemoveItem", key]); },
   requestShellProjection: () => { shellProjections.push(1); calls.push(["shellProjection"]); },
 };
 
@@ -154,7 +161,8 @@ vm.createContext(ctx);
 vm.runInContext(MODAL_SOURCE, ctx);
 vm.runInContext(HELPERS_SOURCE, ctx);
 vm.runInContext(UNATTENDED_SOURCE, ctx);
-const controller = ctx.window.CodoxearUnattended.createUnattendedController(deps);
+const makeController = () => ctx.window.CodoxearUnattended.createUnattendedController(deps);
+const controller = makeController();
 
 globalThis.__harness = {
   controller,
@@ -168,6 +176,7 @@ globalThis.__harness = {
   setDisposed: (v) => { disposed = v; },
   setApiResponses,
   runPendingTimers,
+  runNextTimer,
   pendingTimerCount: () => pendingTimers.size,
   dispatchEvent,
   documentTarget,
@@ -176,6 +185,8 @@ globalThis.__harness = {
   setBtnRect: (rect) => { unattendedBtn.getBoundingClientRect = () => rect; },
   setWindowSize: (h, w) => { windowTarget.innerHeight = h; windowTarget.innerWidth = w; },
   setActiveElement: (el) => { documentTarget.activeElement = el; },
+  makeController,
+  storage: browserStorage,
 };
 """
 
@@ -819,12 +830,15 @@ class TestFrontendUnattendedModuleBehavior(unittest.TestCase):
             const order = h.calls.map((c) => c[0]);
             const authIdx = order.indexOf("handleAppAuthLoss");
             const errorToasts = h.toasts.filter((t) => String(t).indexOf("unattended save error") !== -1);
-            globalThis.__result = { authIdx, errorToasts };
+            const postCount = h.calls.filter((c) => c[0] === "api" && c[2]).length;
+            globalThis.__result = { authIdx, errorToasts, postCount, pendingTimers: h.pendingTimerCount() };
             """
         )
         result = run_node_json(js)
         self.assertGreaterEqual(result["authIdx"], 0)
         self.assertEqual(result["errorToasts"], [])
+        self.assertEqual(result["postCount"], 1)
+        self.assertEqual(result["pendingTimers"], 0)
 
     def test_non401_save_toasts_error(self) -> None:
         js = harness_script(
@@ -843,6 +857,146 @@ class TestFrontendUnattendedModuleBehavior(unittest.TestCase):
         result = run_node_json(js)
         self.assertTrue(any(t == "unattended save error: server down" for t in result["toasts"]))
         self.assertFalse(result["authCalled"])
+
+    def test_failed_post_preserves_request_draft_and_retries_after_recovery(self) -> None:
+        js = harness_script(
+            """
+            const h = globalThis.__harness;
+            h.sessions.set("sid-1", { launch_state: "ready" });
+            h.select("sid-1");
+            h.dom.requestEl.value = "preserve this request";
+            h.dom.requestEl.oninput({ target: h.dom.requestEl });
+            h.setApiResponses([new Error("server restarting")]);
+            h.runNextTimer();
+            await new Promise((r) => setTimeout(r, 0));
+            const key = "codexweb.unattended.pending.v1";
+            const afterFailure = JSON.parse(h.storage.get(key));
+            const retryDelay = h.calls.filter((c) => c[0] === "setTimeout").slice(-1)[0][1];
+            h.setApiResponses([{ enabled: false, request: "preserve this request", cooldown_minutes: 5, remaining_injections: 10 }]);
+            h.runNextTimer();
+            await new Promise((r) => setTimeout(r, 0));
+            const bodies = h.calls.filter((c) => c[0] === "api" && c[2]).map((c) => c[2]);
+            globalThis.__result = { afterFailure, retryDelay, bodies, cleared: !h.storage.has(key) };
+            """
+        )
+        result = run_node_json(js)
+        self.assertEqual(result["afterFailure"]["patches"]["sid-1"]["patch"], {"request": "preserve this request"})
+        self.assertEqual(result["retryDelay"], 1500)
+        self.assertEqual(result["bodies"], [{"request": "preserve this request"}, {"request": "preserve this request"}])
+        self.assertTrue(result["cleared"])
+
+    def test_newer_edit_wins_over_in_flight_acknowledgement(self) -> None:
+        js = harness_script(
+            """
+            const h = globalThis.__harness;
+            h.sessions.set("sid-1", { launch_state: "ready" });
+            h.select("sid-1");
+            let resolveFirst;
+            const first = new Promise((resolve) => { resolveFirst = resolve; });
+            h.setApiResponses([
+              { __promise: first },
+              { enabled: false, request: "newer", cooldown_minutes: 5, remaining_injections: 10 },
+            ]);
+            h.dom.requestEl.value = "older";
+            h.dom.requestEl.oninput({ target: h.dom.requestEl });
+            h.runNextTimer();
+            h.dom.requestEl.value = "newer";
+            h.dom.requestEl.oninput({ target: h.dom.requestEl });
+            h.runNextTimer();
+            resolveFirst({ enabled: false, request: "older", cooldown_minutes: 5, remaining_injections: 10 });
+            await new Promise((r) => setTimeout(r, 0));
+            const bodies = h.calls.filter((c) => c[0] === "api" && c[2]).map((c) => c[2]);
+            globalThis.__result = {
+              bodies,
+              request: h.dom.requestEl.value,
+              cleared: !h.storage.has("codexweb.unattended.pending.v1"),
+            };
+            """
+        )
+        result = run_node_json(js)
+        self.assertEqual(result["bodies"], [{"request": "older"}, {"request": "newer"}])
+        self.assertEqual(result["request"], "newer")
+        self.assertTrue(result["cleared"])
+
+    def test_stale_acknowledgement_cannot_clear_newer_shared_storage_request(self) -> None:
+        js = harness_script(
+            """
+            const h = globalThis.__harness;
+            h.sessions.set("sid-1", { launch_state: "ready" });
+            h.select("sid-1");
+            let resolveFirst;
+            const first = new Promise((resolve) => { resolveFirst = resolve; });
+            h.setApiResponses([{ __promise: first }]);
+            h.dom.requestEl.value = "older";
+            h.dom.requestEl.oninput({ target: h.dom.requestEl });
+            h.runNextTimer();
+            const key = "codexweb.unattended.pending.v1";
+            h.storage.set(key, JSON.stringify({ version: 1, patches: { "sid-1": { revision: 2, patch: { request: "newer tab draft" } } } }));
+            resolveFirst({ enabled: false, request: "older", cooldown_minutes: 5, remaining_injections: 10 });
+            await new Promise((r) => setTimeout(r, 0));
+            const stored = JSON.parse(h.storage.get(key));
+            globalThis.__result = { stored: stored.patches["sid-1"].patch.request };
+            """
+        )
+        result = run_node_json(js)
+        self.assertEqual(result["stored"], "newer tab draft")
+
+    def test_disposal_recreation_rehydrates_and_sends_request_draft(self) -> None:
+        js = harness_script(
+            """
+            const h = globalThis.__harness;
+            h.sessions.set("sid-1", { launch_state: "ready" });
+            h.select("sid-1");
+            h.dom.requestEl.value = "draft across reload";
+            h.dom.requestEl.oninput({ target: h.dom.requestEl });
+            h.controller.dispose();
+            const recreated = h.makeController();
+            recreated.syncButtonState();
+            h.setApiResponses([{ enabled: false, request: "draft across reload", cooldown_minutes: 5, remaining_injections: 10 }]);
+            h.runNextTimer();
+            await new Promise((r) => setTimeout(r, 0));
+            const body = h.calls.filter((c) => c[0] === "api" && c[2]).at(-1)[2];
+            globalThis.__result = { body, cleared: !h.storage.has("codexweb.unattended.pending.v1") };
+            """
+        )
+        result = run_node_json(js)
+        self.assertEqual(result["body"], {"request": "draft across reload"})
+        self.assertTrue(result["cleared"])
+
+    def test_persisted_wal_never_contains_server_owned_budget_or_enabled_state(self) -> None:
+        js = harness_script(
+            """
+            const h = globalThis.__harness;
+            h.sessions.set("sid-1", { launch_state: "ready", unattended_remaining_injections: 10 });
+            h.select("sid-1");
+            h.dom.requestEl.value = "keep only prose";
+            h.dom.requestEl.oninput({ target: h.dom.requestEl });
+            h.dom.remainingEl.value = "3";
+            h.dom.remainingEl.oninput({ target: h.dom.remainingEl });
+            h.dom.enabledEl.checked = true;
+            h.dom.enabledEl.onchange({ target: h.dom.enabledEl });
+            const stored = JSON.parse(h.storage.get("codexweb.unattended.pending.v1"));
+            globalThis.__result = { patch: stored.patches["sid-1"].patch };
+            """
+        )
+        result = run_node_json(js)
+        self.assertEqual(result["patch"], {"request": "keep only prose"})
+
+    def test_corrupt_persisted_wal_is_cleared_without_blocking_controller_boot(self) -> None:
+        js = harness_script(
+            """
+            const h = globalThis.__harness;
+            h.storage.set("codexweb.unattended.pending.v1", "{bad json");
+            const recreated = h.makeController();
+            h.sessions.set("sid-1", { launch_state: "ready" });
+            h.select("sid-1");
+            recreated.syncButtonState();
+            globalThis.__result = { cleared: !h.storage.has("codexweb.unattended.pending.v1"), disabled: h.dom.unattendedBtn.disabled };
+            """
+        )
+        result = run_node_json(js)
+        self.assertTrue(result["cleared"])
+        self.assertFalse(result["disabled"])
 
     # --- 11. applySavedCfg updates session fields + inputs only when guards allow ---
 
@@ -951,7 +1105,7 @@ class TestFrontendUnattendedModuleBehavior(unittest.TestCase):
         result = run_node_json(js)
         self.assertFalse(result["open"])
 
-    # --- 13. dispose clears timers/pending/in-flight and invalidates menu ---
+    # --- 14. dispose cancels volatile timers and invalidates menu; browser WAL remains ---
 
     def test_dispose_clears_state_and_invalidates_menu(self) -> None:
         js = harness_script(
@@ -975,7 +1129,8 @@ class TestFrontendUnattendedModuleBehavior(unittest.TestCase):
             // After dispose, firing any pending timer must not call the API.
             h.runPendingTimers();
             const apiAfterDispose = h.calls.some((c) => c[0] === "api" && c[1].indexOf("/unattended") !== -1 && c[2]);
-            globalThis.__result = { timersBefore, timersAfter, openBefore, openAfter, menuSessionAfter, display, ariaExpanded, apiAfterDispose };
+            const persisted = h.storage.has("codexweb.unattended.pending.v1");
+            globalThis.__result = { timersBefore, timersAfter, openBefore, openAfter, menuSessionAfter, display, ariaExpanded, apiAfterDispose, persisted };
             """
         )
         result = run_node_json(js)
@@ -986,6 +1141,7 @@ class TestFrontendUnattendedModuleBehavior(unittest.TestCase):
         self.assertEqual(result["display"], "none")
         self.assertEqual(result["ariaExpanded"], "false")
         self.assertFalse(result["apiAfterDispose"])
+        self.assertTrue(result["persisted"])
 
 if __name__ == "__main__":
     unittest.main()
