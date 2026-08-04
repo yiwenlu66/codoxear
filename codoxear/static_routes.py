@@ -70,6 +70,8 @@ TOP_LEVEL_STATIC_ASSETS = (
     ("/favicon.ico", "favicon.png"),
     ("/manifest.webmanifest", "manifest.webmanifest"),
     ("/service-worker.js", "service-worker.js"),
+    ("/pdf.mjs", "vendor/pdf.mjs"),
+    ("/pdf.worker.mjs", "vendor/pdf.worker.mjs"),
     *((f"/{name}", name) for name in FRONTEND_ASSET_FILES),
     ("/favicon.png", "favicon.png"),
     ("/", "index.html"),
@@ -137,7 +139,7 @@ def read_static_bytes(path: Path, *, attach_upload_max_bytes: int) -> bytes:
 def static_content_type(path: Path) -> str:
     if path.suffix == ".html":
         return "text/html; charset=utf-8"
-    if path.suffix == ".js":
+    if path.suffix in (".js", ".mjs"):
         return "text/javascript; charset=utf-8"
     if path.suffix == ".css":
         return "text/css; charset=utf-8"
@@ -172,7 +174,7 @@ def handle_static_get_route(handler: Any, *, path: str, query: str, deps: Static
     return True
 
 
-STATIC_SERVABLE_SUFFIXES = {".js", ".css", ".html", ".png", ".svg", ".json", ".webmanifest", ".map", ".ico", ".woff", ".woff2"}
+STATIC_SERVABLE_SUFFIXES = {".js", ".mjs", ".css", ".html", ".png", ".svg", ".json", ".webmanifest", ".map", ".ico", ".woff", ".woff2"}
 
 
 def static_route_asset(path: str, *, top_level_static_assets: tuple[tuple[str, str], ...] = TOP_LEVEL_STATIC_ASSETS) -> str | None:
