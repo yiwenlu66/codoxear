@@ -326,11 +326,11 @@ def discover_sessions(
                 )
             continue
 
+        log_size = 0
         if log_path is not None:
-            meta_log_off = int(log_path.stat().st_size)
+            log_size = int(log_path.stat().st_size)
             token = deps.token_update_finder(log_path)
         else:
-            meta_log_off = 0
             token = None
         try:
             broker_busy, broker_queue_len = deps.broker_busy_queue_from_state(resp)
@@ -341,6 +341,13 @@ def discover_sessions(
             sys.stderr.write(f"error: discover: invalid broker state for {sock}: {e}\n")
             sys.stderr.flush()
             continue
+        # Codex token-count snapshots are cumulative and the public thinking
+        # counter is episode-relative. A server restart has no persisted
+        # baseline, so a still-busy Codex session must replay its bound log in
+        # order to recover the current episode rather than wait for and then
+        # misattribute its next cumulative snapshot.
+        meta_log_off = 0 if (agent_backend == "codex" and broker_busy and log_path is not None) else log_size
+
         if token is None and log_path is None:
             token = resp.get("token") if isinstance(resp.get("token"), (dict, type(None))) else None
 
