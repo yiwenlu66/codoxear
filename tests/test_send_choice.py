@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import textwrap
+import tempfile
 import threading
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,9 @@ from codoxear.session_queue import SessionQueueCoordinator
 
 
 ROOT = Path(__file__).resolve().parents[1]
+POLLING_SOURCE = (ROOT / "codoxear" / "static" / "app_polling.js").read_text(encoding="utf-8")
+TRANSCRIPT_SOURCE = (ROOT / "codoxear" / "static" / "app_transcript.js").read_text(encoding="utf-8")
+MESSAGE_FLOW_SOURCE = (ROOT / "codoxear" / "static" / "app_message_flow.js").read_text(encoding="utf-8")
 COMPOSER_SOURCE = (ROOT / "codoxear" / "static" / "app_composer.js").read_text(encoding="utf-8")
 
 
@@ -29,12 +33,15 @@ class CommitUnknown(Exception):
 
 
 def _run_node(script: str) -> dict[str, Any]:
-    completed = subprocess.run(
-        ["node", "-e", script],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".js", encoding="utf-8") as script_file:
+        script_file.write(script)
+        script_file.flush()
+        completed = subprocess.run(
+            ["node", script_file.name],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
     return json.loads(completed.stdout)
 
 
@@ -45,6 +52,9 @@ def test_busy_send_choice_routes_now_later_and_cancel_through_distinct_actions()
         const vm = require("vm");
         const ctx = {{ window: {{}}, console, Date }};
         vm.createContext(ctx);
+        vm.runInContext({json.dumps(POLLING_SOURCE)}, ctx);
+        vm.runInContext({json.dumps(TRANSCRIPT_SOURCE)}, ctx);
+        vm.runInContext({json.dumps(MESSAGE_FLOW_SOURCE)}, ctx);
         vm.runInContext({json.dumps(COMPOSER_SOURCE)}, ctx);
 
         function node() {{
@@ -55,34 +65,60 @@ def test_busy_send_choice_routes_now_later_and_cancel_through_distinct_actions()
             scrollHeight: 32, disabled: false, focus: () => {{}}, blur: () => {{}},
           }};
         }}
+        function createMessageFlow(state) {{
+          const noop = () => {{}};
+          const typingRowRuntime = {{
+            snapshot: () => ({{ stats: {{ thinking: 0, thinkingTokens: 0, thinkingMode: "blocks", tools: 0 }} }}),
+            updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop,
+          }};
+          return ctx.window.CodoxearMessageFlow.createMessageFlowController({{
+            getSelected: () => "busy-session", getGeneration: () => 1, isAppDisposed: () => false,
+            getTurnOpen: () => true, setTurnOpen: noop,
+            getSessionInfo: () => ({{ session_id: "busy-session", agent_backend: "pi" }}), patchSessionInfo: noop,
+            sessionLaunchFailed: () => false,
+            api: async (path, options) => {{ state.apiCalls.push({{ path, body: options.body }}); return {{ queued: false, queue_len: 0, busy: true }}; }},
+            resolveAppUrl: (path) => `http://example.test${{path}}`, handleAppAuthLoss: noop, refreshSessions: async () => [],
+            openSession: async () => null, clearSelectedSessionAfterRemoval: noop,
+            activeTranscriptSnapshot: () => ({{ state: "bound", liveCursor: "c1", logPath: "/tmp/log.jsonl" }}),
+            updateSessionTranscriptSlot: () => ({{ ignoredStaleBound: false, current: {{ state: "bound" }} }}),
+            renderPendingTranscriptSlot: noop, renderSessionTail: noop, applySessionRuntimeFromTail: noop,
+            resetChatRenderState: noop, setAttachCount: noop, setLiveCursor: noop, appendEvent: noop,
+            appendTailSnapshotEvents: noop, setStatus: noop, setContext: noop, setTyping: noop,
+            setSubagentsRunning: noop, updateSessionTitle: noop, initPageLimit: () => 60, typingRowRuntime,
+            getSending: () => state.sending, setSending: (value) => {{ state.sending = Boolean(value); }},
+            getCurrentRunning: () => true, setCurrentRunning: noop,
+            getStagedAttachments: () => [], normalizedStagedAttachments: () => [], setSelectedSessionPendingAttachment: noop,
+            syncSendButtonState: noop, syncAttachButtonState: noop, syncQueueSubmitState: noop, syncRecoveryUiForSession: noop,
+            confirmAction: async () => false, setToast: (message) => state.toasts.push(message),
+            isTranscriptRenewalCommand: () => false, nextLocalEchoId: () => 1, renderedAtLiveTail: () => true,
+            clearTranscriptDom: noop, clearRenderedTranscriptRange: noop, setOlderState: noop,
+            getSessionTranscriptSlot: () => ({{ epoch: 0 }}), addPendingUser: noop, deleteTailCache: noop,
+            beginTranscriptRenewal: noop, clearLiveCursor: noop, invalidateOlderLoad: noop,
+            dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false,
+            visibilityState: () => "visible", navigatorValue: () => ({{ onLine: true }}), EventSource: null,
+            AbortController: null, setTimeout: () => 0, clearTimeout: noop, now: () => 1000,
+            consoleWarn: noop, consoleError: noop,
+          }});
+        }}
         function harness() {{
           const nodes = Array.from({{ length: 9 }}, node);
           const [form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop, sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn] = nodes;
           form.requestSubmit = () => {{}};
           const state = {{ sending: false, apiCalls: [], queueCalls: [], toasts: [] }};
           const noop = () => {{}};
+          const messageFlowController = createMessageFlow(state);
           const controller = ctx.window.CodoxearComposer.createComposerController({{
             form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
             sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn,
             getSelected: () => "busy-session", getSessionInfo: () => ({{ agent_backend: "pi" }}),
-            patchSessionInfo: noop, sessionLaunchFailed: () => false,
-            getSending: () => state.sending, setSending: (value) => {{ state.sending = value; }},
-            getCurrentRunning: () => true, setCurrentRunning: noop, setTurnOpen: noop, resetTypingStats: noop,
-            getStagedAttachments: () => [], normalizedStagedAttachments: () => [],
-            setSelectedSessionPendingAttachment: noop, setAttachCount: noop, syncAttachButtonState: noop,
-            syncQueueSubmitState: noop, syncRecoveryUiForSession: noop, confirmAction: async () => false,
-            api: async (path, options) => {{ state.apiCalls.push({{ path, body: options.body }}); return {{ queued: false, queue_len: 0, busy: true }}; }},
-            setToast: (message) => state.toasts.push(message), handleAppAuthLoss: noop, refreshSessions: async () => [],
-            setPollFastUntilMs: noop, kickPoll: noop, isTranscriptRenewalCommand: () => false,
-            nextLocalEchoId: () => 1, renderedAtLiveTail: () => true, clearTranscriptDom: noop,
-            clearRenderedTranscriptRange: noop, setOlderState: noop, getSessionTranscriptSlot: () => ({{ epoch: 0 }}),
-            addPendingUser: noop, appendEvent: noop, deleteTailCache: noop, beginTranscriptRenewal: noop,
-            clearLiveCursor: noop, invalidateOlderLoad: noop, renderPendingTranscriptSlot: noop,
-            dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false,
+            sessionLaunchFailed: () => false, getSending: () => state.sending,
+            getCurrentRunning: () => true, getStagedAttachments: () => [],
+            api: async () => ({{}}), setToast: noop, setPollFastUntilMs: noop, kickPoll: noop,
+            sendText: (...args) => messageFlowController.sendText(...args),
             enqueueComposerText: async (text, options) => {{ state.queueCalls.push({{ text, sid: options.sid }}); return true; }},
             prepareModalOpen: noop, afterModalVisibilityChanged: noop, restoreModalFocus: noop,
             storageGetItem: () => null, storageSetItem: noop, storageRemoveItem: noop,
-            getComputedStyle: () => ({{ minHeight: "32" }}), isHTMLElement: () => false,
+            getComputedStyle: () => ({{ minHeight: "32px" }}), isHTMLElement: () => false,
             activeElement: () => null, requestFrame: (callback) => callback(), now: () => 1000,
           }});
           return {{ nodes: {{ form, textarea, sendChoice, sendChoiceBackdrop, sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn }}, state, controller }};
@@ -137,7 +173,6 @@ def test_busy_send_choice_routes_now_later_and_cancel_through_distinct_actions()
         "dialog": "none",
         "value": "keep draft",
     }
-
 
 def _busy_session() -> Session:
     return Session(

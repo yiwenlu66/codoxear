@@ -1,25 +1,71 @@
 import json
 import subprocess
 import textwrap
+import tempfile
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_POLLING_JS = ROOT / "codoxear" / "static" / "app_polling.js"
 APP_COMPOSER_JS = ROOT / "codoxear" / "static" / "app_composer.js"
 APP_TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
+APP_MESSAGE_FLOW_JS = ROOT / "codoxear" / "static" / "app_message_flow.js"
 APP_MESSAGE_IDENTITY_JS = ROOT / "codoxear" / "static" / "app_message_identity.js"
 
 
+MESSAGE_FLOW_HARNESS_JS = """
+function createMessageFlow(state, overrides = {}) {
+  const noop = () => {};
+  const active = state.active || { state: "bound", liveCursor: "c1", logPath: "/tmp/log.jsonl" };
+  const typingRowRuntime = {
+    snapshot: () => ({ stats: { thinking: 0, thinkingTokens: 0, thinkingMode: "blocks", tools: 0 } }),
+    updateTypingStats: noop,
+    updateSubagentGauge: noop,
+    resetTypingStats: () => { state.resets = (state.resets || 0) + 1; },
+  };
+  return ctx.window.CodoxearMessageFlow.createMessageFlowController({
+    getSelected: () => "sid", getGeneration: () => 1, isAppDisposed: () => false,
+    getTurnOpen: () => false, setTurnOpen: noop,
+    getSessionInfo: () => ({ agent_backend: "pi" }), patchSessionInfo: noop, sessionLaunchFailed: () => false,
+    api: async () => ({ queued: false, queue_len: 0 }), resolveAppUrl: (path) => `http://example.test${path}`,
+    handleAppAuthLoss: noop, refreshSessions: async () => [], openSession: async () => null,
+    clearSelectedSessionAfterRemoval: noop, activeTranscriptSnapshot: () => active,
+    updateSessionTranscriptSlot: () => ({ ignoredStaleBound: false, current: { state: "bound" } }),
+    renderPendingTranscriptSlot: noop, renderSessionTail: noop, applySessionRuntimeFromTail: noop,
+    resetChatRenderState: noop, setAttachCount: noop, setLiveCursor: (cursor) => { active.liveCursor = cursor; },
+    appendEvent: noop, appendTailSnapshotEvents: noop, setStatus: noop, setContext: noop, setTyping: noop,
+    setSubagentsRunning: noop, updateSessionTitle: noop, initPageLimit: () => 60, typingRowRuntime,
+    getSending: () => Boolean(state.sending), setSending: (value) => { state.sending = Boolean(value); },
+    getCurrentRunning: () => Boolean(state.running), setCurrentRunning: (value) => { state.running = Boolean(value); },
+    getStagedAttachments: () => [], normalizedStagedAttachments: () => [], setSelectedSessionPendingAttachment: noop,
+    syncSendButtonState: noop, syncAttachButtonState: noop, syncQueueSubmitState: noop, syncRecoveryUiForSession: noop,
+    confirmAction: async () => false, setToast: (text) => { state.toast = text; }, isTranscriptRenewalCommand: () => false,
+    nextLocalEchoId: () => 1, renderedAtLiveTail: () => true, clearTranscriptDom: noop,
+    clearRenderedTranscriptRange: noop, setOlderState: noop, getSessionTranscriptSlot: () => ({ epoch: 0 }),
+    addPendingUser: noop, deleteTailCache: noop, beginTranscriptRenewal: noop, clearLiveCursor: noop,
+    invalidateOlderLoad: noop, dropPendingUser: noop, removePendingUserRow: noop, hasPendingForSession: () => false,
+    visibilityState: () => "visible", navigatorValue: () => ({ onLine: true }), EventSource: null,
+    AbortController: null, setTimeout: () => 0, clearTimeout: noop, now: () => 1000,
+    consoleWarn: noop, consoleError: noop,
+    ...overrides,
+  });
+}
+"""
+
+
 def _run_node(js: str) -> dict:
-    proc = subprocess.run(
-        ["node", "-e", js],
-        check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".js", encoding="utf-8") as script:
+        script.write(js)
+        script.flush()
+        proc = subprocess.run(
+            ["node", script.name],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
     return json.loads(proc.stdout)
 
 
@@ -1680,18 +1726,25 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["final"]["seen"], ["assistant|2400|same final text", "assistant|3000|same final text"])
 
     def test_composer_resets_typing_counts_for_idle_send_but_not_steer(self) -> None:
+        polling_source = APP_POLLING_JS.read_text(encoding="utf-8")
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        message_flow_source = APP_MESSAGE_FLOW_JS.read_text(encoding="utf-8")
         composer_source = APP_COMPOSER_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
             f"""
             const vm = require("vm");
             const ctx = {{ window: {{}}, console, Date }};
             vm.createContext(ctx);
+            vm.runInContext({json.dumps(polling_source)}, ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            vm.runInContext({json.dumps(message_flow_source)}, ctx);
             vm.runInContext({json.dumps(composer_source)}, ctx);
+            {MESSAGE_FLOW_HARNESS_JS}
             const fakeNode = () => ({{
               addEventListener: () => {{}}, removeEventListener: () => {{}},
               setAttribute: () => {{}}, removeAttribute: () => {{}},
               classList: {{ toggle: () => {{}} }}, style: {{}}, value: "",
-              scrollHeight: 32, disabled: false, focus: () => {{}},
+              scrollHeight: 32, disabled: false, focus: () => {{}}, blur: () => {{}},
             }});
             const noop = () => {{}};
             function runSend(initialRunning) {{
@@ -1699,34 +1752,16 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               const [form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop, sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn] = nodes;
               form.requestSubmit = noop;
               const state = {{ sending: false, running: initialRunning, resets: 0 }};
-              const messageFlowController = {{
-                sendText: async () => {{
-                  if (!state.running) state.resets += 1;
-                  return true;
-                }},
-              }};
+              const messageFlowController = createMessageFlow(state);
               const controller = ctx.window.CodoxearComposer.createComposerController({{
                 form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
                 sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn,
                 getSelected: () => "sid", getSessionInfo: () => ({{ agent_backend: "pi" }}),
-                patchSessionInfo: noop, sessionLaunchFailed: () => false,
-                getSending: () => state.sending, setSending: (value) => {{ state.sending = value; }},
-                getCurrentRunning: () => state.running, setCurrentRunning: (value) => {{ state.running = value; }},
-                setTurnOpen: noop, resetTypingStats: () => {{ state.resets += 1; }},
-                getStagedAttachments: () => [], normalizedStagedAttachments: () => [],
-                setSelectedSessionPendingAttachment: noop, setAttachCount: noop,
-                syncAttachButtonState: noop, syncQueueSubmitState: noop, syncRecoveryUiForSession: noop,
-                confirmAction: async () => false, api: async () => ({{ queued: false, queue_len: 0 }}),
-                setToast: noop, handleAppAuthLoss: noop, refreshSessions: async () => [],
-                setPollFastUntilMs: noop, kickPoll: noop, isTranscriptRenewalCommand: () => false,
+                sessionLaunchFailed: () => false, getSending: () => state.sending,
+                getCurrentRunning: () => state.running, getStagedAttachments: () => [],
+                api: async () => ({{}}), setToast: noop, setPollFastUntilMs: noop, kickPoll: noop,
                 sendText: (...args) => messageFlowController.sendText(...args),
-                nextLocalEchoId: () => 1, renderedAtLiveTail: () => true,
-                clearTranscriptDom: noop, clearRenderedTranscriptRange: noop, setOlderState: noop,
-                getSessionTranscriptSlot: () => ({{ epoch: 0 }}), addPendingUser: noop, appendEvent: noop,
-                deleteTailCache: noop, beginTranscriptRenewal: noop, clearLiveCursor: noop,
-                invalidateOlderLoad: noop, renderPendingTranscriptSlot: noop, dropPendingUser: noop,
-                removePendingUserRow: noop, hasPendingForSession: () => false,
-                enqueueComposerText: async () => false, sendText: async () => true, prepareModalOpen: noop,
+                enqueueComposerText: async () => false, prepareModalOpen: noop,
                 afterModalVisibilityChanged: noop, restoreModalFocus: noop,
                 storageGetItem: () => null, storageSetItem: noop, storageRemoveItem: noop,
                 getComputedStyle: () => ({{ minHeight: "32" }}), isHTMLElement: () => false, now: () => 1000,
@@ -1743,89 +1778,52 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["steer"], {"ok": True, "resets": 0})
 
     def test_new_command_send_failure_does_not_detach_current_transcript(self) -> None:
+        polling_source = APP_POLLING_JS.read_text(encoding="utf-8")
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        message_flow_source = APP_MESSAGE_FLOW_JS.read_text(encoding="utf-8")
         composer_source = APP_COMPOSER_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
             f"""
             const vm = require("vm");
             const ctx = {{ window: {{}}, console, Date }};
             vm.createContext(ctx);
+            vm.runInContext({json.dumps(polling_source)}, ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            vm.runInContext({json.dumps(message_flow_source)}, ctx);
             vm.runInContext({json.dumps(composer_source)}, ctx);
+            {MESSAGE_FLOW_HARNESS_JS}
             const fakeNode = () => ({{
-              addEventListener: () => {{}},
-              removeEventListener: () => {{}},
-              setAttribute: () => {{}},
-              classList: {{ toggle: () => {{}} }},
-              style: {{}},
-              value: "",
-              scrollHeight: 32,
-              disabled: false,
-              focus: () => {{}},
+              addEventListener: () => {{}}, removeEventListener: () => {{}},
+              setAttribute: () => {{}}, removeAttribute: () => {{}},
+              classList: {{ toggle: () => {{}} }}, style: {{}}, value: "",
+              scrollHeight: 32, disabled: false, focus: () => {{}},
             }});
             const nodes = Array.from({{ length: 9 }}, fakeNode);
             const [form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop, sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn] = nodes;
             form.requestSubmit = () => {{}};
             textarea.value = "/new";
             const state = {{ sending: false, detached: 0, renderedPending: 0, deletedCache: false, toast: "" }};
-            const messageFlowController = {{
-              sendText: async () => {{ state.toast = "send error: broker down"; return false; }},
-            }};
             const noop = () => {{}};
+            const messageFlowController = createMessageFlow(state, {{
+              getSessionInfo: () => ({{ agent_backend: "codex" }}),
+              api: async () => {{ throw new Error("broker down"); }},
+              isTranscriptRenewalCommand: () => true,
+              deleteTailCache: () => {{ state.deletedCache = true; }},
+              beginTranscriptRenewal: () => {{ state.detached += 1; }},
+              renderPendingTranscriptSlot: () => {{ state.renderedPending += 1; }},
+            }});
             const controller = ctx.window.CodoxearComposer.createComposerController({{
               form, textarea, msgPh, sendBtn, sendChoice, sendChoiceBackdrop,
               sendChoiceNowBtn, sendChoiceLaterBtn, sendChoiceCancelBtn,
-              getSelected: () => "sid",
-              getSessionInfo: () => ({{ agent_backend: "codex" }}),
-              patchSessionInfo: noop,
-              sessionLaunchFailed: () => false,
-              getSending: () => state.sending,
-              setSending: (value) => {{ state.sending = value; }},
-              getCurrentRunning: () => false,
-              setCurrentRunning: noop,
-              setTurnOpen: noop,
-              resetTypingStats: noop,
-              getStagedAttachments: () => [],
-              normalizedStagedAttachments: (list) => Array.isArray(list) ? list : [],
-              setSelectedSessionPendingAttachment: noop,
-              setAttachCount: noop,
-              syncAttachButtonState: noop,
-              syncQueueSubmitState: noop,
-              syncRecoveryUiForSession: noop,
-              confirmAction: async () => false,
-              api: async () => {{ throw new Error("broker down"); }},
-              setToast: (text) => {{ state.toast = text; }},
-              handleAppAuthLoss: noop,
-              refreshSessions: async () => {{}},
-              setPollFastUntilMs: noop,
-              kickPoll: noop,
+              getSelected: () => "sid", getSessionInfo: () => ({{ agent_backend: "codex" }}),
+              sessionLaunchFailed: () => false, getSending: () => state.sending,
+              getCurrentRunning: () => false, getStagedAttachments: () => [],
+              api: async () => ({{}}), setToast: noop, setPollFastUntilMs: noop, kickPoll: noop,
               sendText: (...args) => messageFlowController.sendText(...args),
-              isTranscriptRenewalCommand: () => true,
-              nextLocalEchoId: () => 1,
-              renderedAtLiveTail: () => true,
-              clearTranscriptDom: noop,
-              clearRenderedTranscriptRange: noop,
-              setOlderState: noop,
-              getSessionTranscriptSlot: () => ({{ epoch: 0 }}),
-              addPendingUser: noop,
-              appendEvent: noop,
-              deleteTailCache: () => {{ state.deletedCache = true; }},
-              beginTranscriptRenewal: () => {{ state.detached += 1; }},
-              clearLiveCursor: noop,
-              invalidateOlderLoad: noop,
-              renderPendingTranscriptSlot: () => {{ state.renderedPending += 1; }},
-              dropPendingUser: noop,
-              removePendingUserRow: noop,
-              hasPendingForSession: () => false,
-              enqueueComposerText: async () => false,
-              sendText: async () => true,
-              prepareModalOpen: noop,
-              afterModalVisibilityChanged: noop,
-              restoreModalFocus: noop,
-              storageGetItem: () => null,
-              storageSetItem: noop,
-              storageRemoveItem: noop,
-              getComputedStyle: () => ({{ minHeight: "32" }}),
-              isHTMLElement: () => false,
-              now: () => 1000,
+              enqueueComposerText: async () => false, prepareModalOpen: noop,
+              afterModalVisibilityChanged: noop, restoreModalFocus: noop,
+              storageGetItem: () => null, storageSetItem: noop, storageRemoveItem: noop,
+              getComputedStyle: () => ({{ minHeight: "32" }}), isHTMLElement: () => false, now: () => 1000,
             }});
             controller.sendText("/new").then((ok) => {{
               process.stdout.write(JSON.stringify({{ ok, ...state }}));
@@ -1839,7 +1837,6 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["renderedPending"], 0)
         self.assertFalse(out["deletedCache"])
         self.assertEqual(out["toast"], "send error: broker down")
-
 
 if __name__ == "__main__":
     unittest.main()
