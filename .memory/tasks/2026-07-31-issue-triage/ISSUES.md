@@ -9,4 +9,9 @@ Final dispositions:
 - ISSUE-5/6/7 (mobile nav/stop/toast): closed by paper redesign — unified topbar interrupt, 32px chrome + hit-slop, toast at top.
 - ISSUE-8 (voice button red): closed (gated on voiceAnnouncementsEnabled).
 
+## PR #21 and #22 reconciliation (2026-08-04)
+
+- **PR #21 — “Add Claude backend support with interactive prompt UI”: close without merge; superseded.** Its useful Claude Code parser/backend scope was reimplemented as the focused shared-broker `cc` backend in [`f4a06a2e`](https://github.com/yiwenlu66/codoxear/commit/f4a06a2e876c8c4535713b7c6d25d76455f6838c), then hardened by later CC transcript, terminal-outcome, context, live-control, and subagent-liveness commits. The PR's coupled interactive-prompt UI was deliberately not adopted.
+- **PR #22 — “Fix macOS web session launches”: rewrite and ship.** The old branch bypassed the login shell but did not preserve the broker PTY for direct Codex execution. [`d86bdda6`](https://github.com/yiwenlu66/codoxear/commit/d86bdda6) directly attaches web-owned Codex to that PTY before exec, preserves login-shell startup only for Pi/Claude, resolves standard user CLI locations without a shell profile, and degrades legacy `flex`/`default` service tiers to an omitted Codex flag. Close the stale PR without merging its branch.
+
 Later same-session concerns (design language, state honesty, keyboard map, /model + /thinking, search UX, sidebar display, diag view, unattended persistence, idle-on-error, terminal-error idle, count monotonicity across steer/queue) were tracked in-conversation and are all closed; see PRODUCT_GAP_STATUS.md "Closed themes".
