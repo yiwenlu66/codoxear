@@ -2141,11 +2141,81 @@ select {
         margin: var(--space-1) 0 var(--space-4) 0;
         line-height: 1.4;
       }
-      #announceBtn.active,
+      #announceBtn.active {
+        background: var(--ink);
+        border-color: var(--ink);
+        color: var(--paper);
+      }
       #notificationBtn.active {
         background: var(--ink);
         border-color: var(--ink);
         color: var(--paper);
+      }
+      #notificationBtn[data-unread]:not([data-unread="0"])::before {
+        content: attr(data-unread);
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        min-width: 14px;
+        height: 14px;
+        padding: 0 3px;
+        box-sizing: border-box;
+        background: var(--paper);
+        border: 1px solid var(--ink);
+        color: var(--ink);
+        font: var(--font-2xs)/12px var(--font-mono);
+        text-align: center;
+      }
+      .notificationPanel {
+        position: fixed;
+        z-index: 80;
+        top: var(--space-7);
+        left: var(--space-7);
+        width: min(360px, calc(100vw - 2 * var(--space-7)));
+        max-height: min(480px, calc(var(--appH, 100dvh) - 2 * var(--space-7)));
+        box-sizing: border-box;
+        flex-direction: column;
+        gap: var(--space-3);
+        padding: var(--space-4);
+        background: var(--paper);
+        border: 1px solid var(--border);
+      }
+      .notificationPanelHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-3);
+      }
+      .notificationList {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+        overflow: auto;
+      }
+      .notificationItem {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--space-1);
+        width: 100%;
+        padding: var(--space-3);
+        text-align: left;
+        background: var(--paper);
+        border: 1px solid var(--border);
+        color: var(--ink);
+      }
+      .notificationItem.unread {
+        background: var(--wash);
+        border-left-width: 3px;
+      }
+      .notificationItemTitle {
+        font-size: var(--font-sm);
+        font-weight: 700;
+      }
+      .notificationItemBody {
+        color: var(--muted);
+        font-size: var(--font-sm);
+        line-height: 1.35;
       }
       .modalBackdrop {
         display: none;

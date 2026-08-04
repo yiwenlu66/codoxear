@@ -102,7 +102,7 @@ def notification_feed_since(
     for row in ledger.values():
         if not isinstance(row, dict):
             continue
-        if row.get("message_class") != "final_response":
+        if row.get("message_class") not in {"final_response", "intercom"}:
             continue
         updated_ts = float(row.get("updated_ts") or 0.0)
         if updated_ts <= float(since_ts):

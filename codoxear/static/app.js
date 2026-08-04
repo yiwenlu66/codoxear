@@ -1069,7 +1069,7 @@
           try {
             await loadVoiceSettings();
             await syncNotificationState();
-            if (notificationsEnabledLocally()) await pollNotificationFeed();
+            await pollNotificationFeed();
           } catch (e2) {
             if (e2 && e2.status === 401) {
               handleAppAuthLoss();
@@ -1572,6 +1572,11 @@
         const {
           announceBtn,
           notificationBtn,
+          notificationPanel,
+          notificationList,
+          notificationEmpty,
+          notificationClearBtn,
+          notificationEnableBtn,
           liveAudio,
           voiceSettingsBackdrop,
           voiceSettingsCloseBtn,
@@ -3739,6 +3744,11 @@
           return codoxearVoice.createVoiceController({
             announceBtn,
             notificationBtn,
+            notificationPanel,
+            notificationList,
+            notificationEmpty,
+            notificationClearBtn,
+            notificationEnableBtn,
             liveAudio,
             voiceSettingsBackdrop,
             voiceSettingsCloseBtn,
@@ -5775,7 +5785,7 @@
                   await Promise.all([loadVoiceSettings(), syncNotificationState()]);
                   if (appDisposed) return;
                   if (voiceAnnouncementsEnabled()) resumeAnnouncementRuntime({ resetSource: false });
-                  if (notificationsEnabledLocally()) await pollNotificationFeed({ prime: true });
+                  await pollNotificationFeed({ prime: true });
                 } catch (e) {
                   if (e && e.status === 401) handleAppAuthLoss();
                   else console.error("initial voice and notification sync failed", e);

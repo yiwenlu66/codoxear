@@ -85,7 +85,17 @@
     if (!root || typeof root.appendChild !== "function") throw new TypeError("voice DOM dependency missing: root");
 
     const announceBtn = el("button", { id: "announceBtn", class: "icon-btn", title: "Voice announcements", "aria-label": "Voice announcements", type: "button", html: iconSvg("volume") });
-    const notificationBtn = el("button", { id: "notificationBtn", class: "icon-btn", title: "Notifications", "aria-label": "Notifications", type: "button", html: iconSvg("bell") });
+    const notificationBtn = el("button", { id: "notificationBtn", class: "icon-btn", title: "Notifications", "aria-label": "Notifications", "aria-controls": "notificationPanel", "aria-expanded": "false", type: "button", html: iconSvg("bell") });
+    const notificationPanel = el("section", { id: "notificationPanel", class: "notificationPanel", role: "dialog", "aria-label": "Notifications" });
+    const notificationPanelHeader = el("div", { class: "notificationPanelHeader" }, [
+      el("div", { class: "title", text: "Notifications" }),
+      el("button", { id: "notificationClearBtn", class: "text-btn", type: "button", text: "Mark read" }),
+    ]);
+    const notificationEnableBtn = el("button", { id: "notificationEnableBtn", class: "text-btn", type: "button", text: "Enable browser alerts" });
+    const notificationEmpty = el("div", { id: "notificationEmpty", class: "muted", text: "No notifications" });
+    const notificationList = el("div", { id: "notificationList", class: "notificationList", role: "list" });
+    notificationPanel.append(notificationPanelHeader, notificationEnableBtn, notificationEmpty, notificationList);
+    notificationPanel.style.display = "none";
     voiceHost.appendChild(notificationBtn);
     voiceHost.appendChild(announceBtn);
 
@@ -146,12 +156,18 @@
       ]),
       el("div", { class: "formActions" }, [voiceSettingsCancelBtn, voiceSettingsSaveBtn]),
     ]);
+    root.appendChild(notificationPanel);
     root.appendChild(liveAudio);
     root.appendChild(voiceSettingsBackdrop);
     root.appendChild(voiceSettingsViewer);
     return Object.freeze({
       announceBtn,
       notificationBtn,
+      notificationPanel,
+      notificationList,
+      notificationEmpty,
+      notificationClearBtn,
+      notificationEnableBtn,
       liveAudio,
       voiceSettingsBackdrop,
       voiceSettingsCloseBtn,
@@ -174,6 +190,14 @@
     // DOM nodes (created and owned by app.js).
     const announceBtn = requireNode(options.announceBtn, "announceBtn");
     const notificationBtn = requireNode(options.notificationBtn, "notificationBtn");
+    const notificationPanel = options.notificationPanel || null;
+    const notificationList = options.notificationList || null;
+    const notificationEmpty = options.notificationEmpty || null;
+    const notificationClearBtn = options.notificationClearBtn || null;
+    const notificationEnableBtn = options.notificationEnableBtn || null;
+    const hasNotificationPanel = Boolean(
+      notificationPanel && notificationList && notificationEmpty && notificationClearBtn && notificationEnableBtn
+    );
     const liveAudio = requireNode(options.liveAudio, "liveAudio");
     const voiceSettingsBackdrop = requireNode(options.voiceSettingsBackdrop, "voiceSettingsBackdrop");
     const voiceSettingsCloseBtn = requireNode(options.voiceSettingsCloseBtn, "voiceSettingsCloseBtn");
@@ -208,6 +232,9 @@
     const documentTarget = options.documentTarget || document;
     const NotificationCtor = typeof options.Notification !== "undefined" ? options.Notification : (typeof Notification !== "undefined" ? Notification : undefined);
     const cryptoRef = typeof options.crypto !== "undefined" ? options.crypto : (typeof windowTarget.crypto !== "undefined" ? windowTarget.crypto : undefined);
+    const AudioContextCtor = typeof options.AudioContext !== "undefined"
+      ? options.AudioContext
+      : (windowTarget.AudioContext || windowTarget.webkitAudioContext || null);
 
     const requestFrame = typeof options.requestFrame === "function" ? options.requestFrame : (typeof requestAnimationFrame === "function" ? requestAnimationFrame : null);
     const setTimeoutFn = typeof options.setTimeout === "function" ? options.setTimeout : setTimeout;
@@ -235,7 +262,11 @@
     let localNotificationEnabled = storageGetItem("codoxear.notificationEnabled") === "1";
     const desktopNotificationTimers = new Map();
     const deliveredDesktopNotificationIds = new Set();
-    let notificationFeedSinceTs = Date.now() / 1000;
+    let notificationFeedSinceTs = 0;
+    const notificationItems = new Map();
+    const readNotificationIds = new Set();
+    let notificationPanelOpen = false;
+    let notificationAudioContext = null;
     const announcementClientId = (() => {
       const key = "codoxear.announcementClientId";
       const current = storageGetItem(key);
@@ -536,9 +567,6 @@
       localNotificationEnabled = !!enabled;
       if (localNotificationEnabled) storageSetItem("codoxear.notificationEnabled", "1");
       else storageRemoveItem("codoxear.notificationEnabled");
-      if (localNotificationEnabled) {
-        notificationFeedSinceTs = Date.now() / 1000;
-      }
       updateVoiceUi();
     }
 
@@ -622,13 +650,13 @@
     }
 
     function showDesktopNotification({ messageId, title, body, sessionId }) {
-      if (!desktopNotificationsEnabled()) return;
+      if (!desktopNotificationsEnabled()) return false;
       const id = String(messageId || "").trim();
-      if (id && deliveredDesktopNotificationIds.has(id)) return;
+      if (id && deliveredDesktopNotificationIds.has(id)) return false;
       const sid = String(sessionId || "").trim();
       const safeTitle = String(title || "Session").trim() || "Session";
       const safeBody = String(body || "").replace(/\s+/g, " ").trim();
-      if (!safeBody) return;
+      if (!safeBody) return false;
       try {
         const notification = new NotificationCtor(safeTitle, {
           body: safeBody.length <= 180 ? safeBody : `${safeBody.slice(0, 179).trimEnd()}...`,
@@ -644,28 +672,124 @@
           };
         }
         if (id) deliveredDesktopNotificationIds.add(id);
+        return true;
       } catch (e) {
         console.error("desktop notification failed", e);
+        return false;
+      }
+    }
+
+    async function primeNotificationSound() {
+      if (!AudioContextCtor) return;
+      if (!notificationAudioContext) notificationAudioContext = new AudioContextCtor();
+      if (notificationAudioContext.state === "suspended" && typeof notificationAudioContext.resume === "function") {
+        await notificationAudioContext.resume();
+      }
+    }
+
+    function playNotificationSound() {
+      if (!notificationAudioContext || notificationAudioContext.state === "suspended") return;
+      try {
+        const oscillator = notificationAudioContext.createOscillator();
+        const gain = notificationAudioContext.createGain();
+        oscillator.frequency.value = 740;
+        gain.gain.setValueAtTime(0.05, notificationAudioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, notificationAudioContext.currentTime + 0.14);
+        oscillator.connect(gain);
+        gain.connect(notificationAudioContext.destination);
+        oscillator.start();
+        oscillator.stop(notificationAudioContext.currentTime + 0.14);
+      } catch (e) {
+        console.error("notification sound failed", e);
+      }
+    }
+
+    function sortedNotificationItems() {
+      return Array.from(notificationItems.values()).sort((a, b) => {
+        const byUpdated = Number(b.updated_ts || 0) - Number(a.updated_ts || 0);
+        return byUpdated || String(b.message_id || "").localeCompare(String(a.message_id || ""));
+      });
+    }
+
+    function markNotificationRead(messageId) {
+      const id = String(messageId || "").trim();
+      if (id) readNotificationIds.add(id);
+    }
+
+    function markAllNotificationsRead() {
+      notificationItems.forEach((_item, messageId) => markNotificationRead(messageId));
+    }
+
+    function unreadNotificationCount() {
+      let count = 0;
+      notificationItems.forEach((_item, messageId) => {
+        if (!readNotificationIds.has(messageId)) count += 1;
+      });
+      return count;
+    }
+
+    function renderNotificationPanel() {
+      if (!hasNotificationPanel) return;
+      const unread = unreadNotificationCount();
+      const suffix = unread ? `, ${unread} unread` : "";
+      notificationBtn.dataset.unread = String(unread);
+      notificationBtn.setAttribute("aria-label", `Notifications${suffix}`);
+      notificationBtn.title = `Notifications${suffix}`;
+      notificationBtn.classList.toggle("active", unread > 0);
+      notificationBtn.setAttribute("aria-expanded", notificationPanelOpen ? "true" : "false");
+      notificationPanel.style.display = notificationPanelOpen ? "flex" : "none";
+      notificationEmpty.style.display = notificationItems.size ? "none" : "block";
+      notificationClearBtn.disabled = unread === 0;
+      const alertsEnabled = notificationsEnabledLocally();
+      notificationEnableBtn.textContent = alertsEnabled ? "Disable browser alerts" : "Enable browser alerts";
+      notificationList.replaceChildren();
+      for (const item of sortedNotificationItems()) {
+        const row = documentTarget.createElement("button");
+        row.type = "button";
+        row.className = "notificationItem";
+        row.setAttribute("role", "listitem");
+        row.classList.toggle("unread", !readNotificationIds.has(item.message_id));
+        const title = documentTarget.createElement("span");
+        title.className = "notificationItemTitle";
+        title.textContent = String(item.session_display_name || "Session");
+        const body = documentTarget.createElement("span");
+        body.className = "notificationItemBody";
+        body.textContent = String(item.notification_text || "");
+        row.append(title, body);
+        row.onclick = () => {
+          markNotificationRead(item.message_id);
+          notificationPanelOpen = false;
+          renderNotificationPanel();
+          focusSessionFromDesktopNotification(item.session_id);
+        };
+        notificationList.appendChild(row);
       }
     }
 
     async function pollNotificationFeed({ prime = false } = {}) {
-      if (isAppDisposed() || !desktopNotificationsEnabled()) return;
+      if (isAppDisposed()) return;
       let maxSeen = notificationFeedSinceTs;
       try {
         const data = await api(`/api/notifications/feed?since=${encodeURIComponent(notificationFeedSinceTs)}`);
         if (isAppDisposed()) return;
         const items = Array.isArray(data.items) ? data.items : [];
         for (const item of items) {
+          const messageId = String(item && item.message_id ? item.message_id : "").trim();
+          if (!messageId) continue;
           const updatedTs = Number(item && item.updated_ts ? item.updated_ts : 0);
           if (updatedTs > maxSeen) maxSeen = updatedTs;
-          if (prime) continue;
-          showDesktopNotification({
-            messageId: item && item.message_id,
-            title: item && item.session_display_name,
-            body: item && item.notification_text,
-            sessionId: item && item.session_id,
-          });
+          const alreadyKnown = notificationItems.has(messageId);
+          notificationItems.set(messageId, { ...item, message_id: messageId });
+          if (prime || notificationPanelOpen) markNotificationRead(messageId);
+          if (!prime && !alreadyKnown && desktopNotificationsEnabled()) {
+            showDesktopNotification({
+              messageId,
+              title: item && item.session_display_name,
+              body: item && item.notification_text,
+              sessionId: item && item.session_id,
+            });
+            playNotificationSound();
+          }
         }
       } catch (e) {
         if (e && e.status === 401) {
@@ -676,6 +800,7 @@
         return;
       }
       notificationFeedSinceTs = maxSeen;
+      renderNotificationPanel();
     }
 
     function syncVoiceSettingsFormFromState() {
@@ -734,8 +859,9 @@
             : "Notifications pending"
         : "Notifications off";
       notificationBtn.setAttribute("aria-label", notificationBtn.title);
-      if (!isSettingsOpen()) syncVoiceSettingsFormFromState();
       notificationState.permission = NotificationCtor ? NotificationCtor.permission : "unsupported";
+      renderNotificationPanel();
+      if (!isSettingsOpen()) syncVoiceSettingsFormFromState();
     }
 
     async function loadVoiceSettings() {
@@ -1002,22 +1128,51 @@
     notificationBtn.onclick = async (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const pending = notificationsEnabledLocally() && activeNotificationTransport() === "none";
-      const next = pending ? true : !notificationsEnabledLocally();
-      try {
-        if (next) {
-          setNotificationEnabledLocal(true);
+      if (!hasNotificationPanel) {
+        try {
           await enableNotificationsOnDevice();
-        } else {
-          await toggleCurrentDeviceNotifications(false);
+        } catch (err) {
+          console.error("notification toggle failed", err);
           setNotificationEnabledLocal(false);
+          setToast(`notification error: ${err && err.message ? err.message : "unknown error"}`);
         }
-      } catch (err) {
-        console.error("notification toggle failed", err);
-        setNotificationEnabledLocal(false);
-        setToast(`notification error: ${err && err.message ? err.message : "unknown error"}`);
+        return;
       }
+      notificationPanelOpen = !notificationPanelOpen;
+      if (notificationPanelOpen) {
+        markAllNotificationsRead();
+        renderNotificationPanel();
+        await pollNotificationFeed();
+        return;
+      }
+      renderNotificationPanel();
     };
+    if (notificationClearBtn) {
+      notificationClearBtn.onclick = () => {
+        markAllNotificationsRead();
+        renderNotificationPanel();
+      };
+    }
+    if (notificationEnableBtn) {
+      notificationEnableBtn.onclick = async () => {
+        try {
+          await syncNotificationState();
+          if (notificationsEnabledLocally()) {
+            await toggleCurrentDeviceNotifications(false);
+            setNotificationEnabledLocal(false);
+          } else {
+            await primeNotificationSound();
+            setNotificationEnabledLocal(true);
+            await enableNotificationsOnDevice();
+          }
+        } catch (err) {
+          console.error("notification toggle failed", err);
+          setNotificationEnabledLocal(false);
+          setToast(`notification error: ${err && err.message ? err.message : "unknown error"}`);
+        }
+        renderNotificationPanel();
+      };
+    }
     addEvent(liveAudio, "error", () => {
       liveAudioStarted = false;
       liveAudioErrorState = true;
@@ -1108,12 +1263,21 @@
       voiceSettingsReturnFocusEl = null;
       announceBtn.onclick = null;
       notificationBtn.onclick = null;
+      if (notificationClearBtn) notificationClearBtn.onclick = null;
+      if (notificationEnableBtn) notificationEnableBtn.onclick = null;
       narrationSettingToggle.onchange = null;
       if (unattendedPromptResetBtn) unattendedPromptResetBtn.onclick = null;
       voiceSettingsCloseBtn.onclick = null;
       voiceSettingsCancelBtn.onclick = null;
       voiceSettingsBackdrop.onclick = null;
       voiceSettingsSaveBtn.onclick = null;
+      if (notificationAudioContext && typeof notificationAudioContext.close === "function") {
+        void notificationAudioContext.close();
+      }
+      notificationAudioContext = null;
+      notificationItems.clear();
+      readNotificationIds.clear();
+      notificationPanelOpen = false;
       swRegistration = null;
       liveAudioErrorState = false;
     }

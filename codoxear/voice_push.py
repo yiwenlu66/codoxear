@@ -280,17 +280,22 @@ class VoicePushCoordinator:
                 self._latest_observed_serial_by_slot[slot_key] = observed_serial
                 listener_epoch = self._listener_epoch
                 listener_count = self._active_listener_count_locked(now_ts=now_ts)
+                is_final_response = msg.message_class == "final_response"
+                is_intercom = msg.message_class == "intercom"
                 self._delivery_ledger[msg.message_id] = {
                     "message_id": msg.message_id,
                     "session_id": session_id,
                     "session_display_name": session_display_name,
                     "message_class": msg.message_class,
                     "preview_text": _clip_text(msg.text, limit=160),
-                    "notification_text": "",
+                    # Intercom is an explicit outside-attention event. It does
+                    # not require an LLM summary before it is useful in the
+                    # notification feed, unlike a final agent response.
+                    "notification_text": _clip_text(_compact_text(msg.text), limit=120) if is_intercom else "",
                     "summary_text": "",
-                    "summary_status": "pending" if (msg.message_class == "final_response" or narration_enabled) else "skipped",
-                    "narrated_status": "pending" if (msg.message_class == "final_response" or narration_enabled) else "skipped",
-                    "push_status": "pending" if msg.message_class == "final_response" else "skipped",
+                    "summary_status": "pending" if (is_final_response or narration_enabled) else "skipped",
+                    "narrated_status": "pending" if (is_final_response or narration_enabled) else "skipped",
+                    "push_status": "pending" if is_final_response else "skipped",
                     "voice": "",
                     "created_ts": now_ts,
                     "updated_ts": now_ts,

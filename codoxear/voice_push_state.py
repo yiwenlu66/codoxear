@@ -154,7 +154,7 @@ def _clean_ledger(raw: Any) -> dict[str, dict[str, Any]]:
             continue
         session_id = str(row.get("session_id") or "").strip()
         message_class = str(row.get("message_class") or "").strip()
-        if not session_id or message_class not in {"narration", "final_response"}:
+        if not session_id or message_class not in {"narration", "final_response", "intercom"}:
             continue
         cleaned[message_id] = {
             "message_id": message_id,
