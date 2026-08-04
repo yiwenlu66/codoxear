@@ -521,11 +521,14 @@
       const openOrClose = line.match(/^\s{0,3}(`{3,}|~{3,})/);
       if (fence) {
         out.push(line);
-        if (openOrClose && openOrClose[1][0] === fence) fence = null;
+        // CommonMark permits a closing fence only when it uses the same
+        // delimiter and is at least as long as its opening fence. Keeping the
+        // length protects a ``` example nested inside a ```` code block.
+        if (openOrClose && openOrClose[1][0] === fence.delimiter && openOrClose[1].length >= fence.length) fence = null;
         continue;
       }
       if (openOrClose) {
-        fence = openOrClose[1][0];
+        fence = { delimiter: openOrClose[1][0], length: openOrClose[1].length };
         out.push(line);
         continue;
       }
