@@ -177,14 +177,45 @@
       return out;
     }
 
-    function codexModelIds() {
-      const models = codexLaunchDefaults().models;
-      const out = [];
-      for (const model of Array.isArray(models) ? models : []) {
-        const id = String(model || "").trim();
-        if (id && !out.includes(id)) out.push(id);
-      }
-      return out;
+    function codexProviderChoice(session) {
+      const explicit = String(session && session.provider_choice || "").trim();
+      if (explicit) return explicit;
+      const provider = String(session && session.model_provider || "").trim();
+      if (provider !== "openai") return provider;
+      return String(session && session.preferred_auth_method || "").trim() === "chatgpt" ? "chatgpt" : "openai-api";
+    }
+
+    function codexProviderGroups(session) {
+      const codex = codexLaunchDefaults();
+      const providerModels = codex.provider_models && typeof codex.provider_models === "object" ? codex.provider_models : {};
+      const configuredProviders = Array.isArray(codex.provider_choices)
+        ? codex.provider_choices
+        : Array.isArray(codex.model_providers) ? codex.model_providers : [];
+      const activeProvider = codexProviderChoice(session);
+      const providers = configuredProviders.length ? configuredProviders : activeProvider ? [activeProvider] : [];
+      const fallbackModels = Array.isArray(codex.models) ? codex.models : [];
+      return providers.map((rawProvider) => {
+        const provider = String(rawProvider || "").trim();
+        if (!provider) return null;
+        const configured = providerModels[provider];
+        const rawModels = Array.isArray(configured)
+          ? configured
+          : provider === activeProvider ? fallbackModels : [];
+        const models = [];
+        for (const rawModel of rawModels) {
+          const model = String(rawModel || "").trim();
+          if (model && !models.includes(model)) models.push(model);
+        }
+        return { provider, models, active: provider === activeProvider };
+      }).filter(Boolean);
+    }
+
+    function codexModelIds(session) {
+      const current = String(session && session.model || "").trim();
+      const group = codexProviderGroups(session).find((candidate) => candidate.active);
+      const models = group ? group.models.slice() : [];
+      if (current && !models.includes(current)) models.unshift(current);
+      return models.map((model) => ({ model, provider: group ? group.provider : codexProviderChoice(session), current: model === current }));
     }
 
     function ccModelIds() {
@@ -244,9 +275,12 @@
       const query = String(match[1] || "").trim().toLowerCase();
       const backend = sessionBackend(session);
       const choices = kind === "model"
-        ? backend === "pi" ? piModelIds() : backend === "codex" ? codexModelIds() : ccModelIds()
+        ? backend === "pi" ? piModelIds() : backend === "codex" ? codexModelIds(session) : ccModelIds()
         : backend === "pi" ? piThinkingLevels(session) : backend === "codex" ? codexEffortLevels(session) : ccEffortLevels(session);
-      const matches = choices.filter((choice) => !query || choice.toLowerCase().startsWith(query) || choice.toLowerCase().includes(query));
+      const matches = choices.filter((choice) => {
+        const name = typeof choice === "object" && choice !== null ? String(choice.model || "") : String(choice || "");
+        return !query || name.toLowerCase().startsWith(query) || name.toLowerCase().includes(query);
+      });
       if (kind !== "effort") return matches;
       const current = String(session.reasoning_effort || "").trim().toLowerCase();
       return current && matches.includes(current) ? [current, ...matches.filter((choice) => choice !== current)] : matches;
@@ -360,7 +394,7 @@
 
     function selectPickerOption(option) {
       if (modelPickerKind === "command") { selectSlashCommand(option); return; }
-      const choice = String(option || "").trim();
+      const choice = typeof option === "object" && option !== null ? String(option.model || "").trim() : String(option || "").trim();
       const session = selectedSession();
       const kind = modelPickerKind;
       const spec = commandSpec(session, kind);
@@ -405,16 +439,46 @@
       const kindLabel = modelPickerKind === "model" ? "models" : isPiThinking ? "thinking levels" : "effort levels";
       const backendLabel = backend === "cc" ? "Claude" : backend === "codex" ? "Codex" : "Pi";
       modelPicker.setAttribute("aria-label", `Available ${backendLabel} ${kindLabel}`);
-      modelPickerOptions.forEach((id, index) => {
+      if (backend === "codex" && modelPickerKind === "model") {
+        const groups = codexProviderGroups(session);
+        const activeProvider = codexProviderChoice(session);
+        for (const group of groups) {
+          const label = document.createElement("div");
+          label.className = "modelPickerProvider";
+          label.textContent = group.active
+            ? `${group.provider} — active provider`
+            : group.models.length
+              ? `${group.provider} — unavailable on current provider`
+              : `${group.provider} — no configured models`;
+          label.setAttribute("data-provider", group.provider);
+          if (group.active) label.setAttribute("data-active", "true");
+          if (!group.active && group.models.length) label.title = "Model provider changes require starting a new Codex session.";
+          modelPicker.appendChild(label);
+        }
+        if (!groups.some((group) => group.active)) {
+          const label = document.createElement("div");
+          label.className = "modelPickerProvider";
+          label.textContent = `${activeProvider || "current provider"} — active provider`;
+          label.setAttribute("data-active", "true");
+          modelPicker.appendChild(label);
+        }
+      }
+      modelPickerOptions.forEach((entry, index) => {
+        const id = typeof entry === "object" && entry !== null ? String(entry.model || "") : String(entry || "");
+        const current = Boolean(entry && typeof entry === "object" && entry.current);
         const option = document.createElement("button");
         option.type = "button";
         option.tabIndex = -1;
         option.className = "modelPickerOption";
         option.setAttribute("role", "option");
         option.id = `${isPiThinking ? "thinking" : modelPickerKind}-picker-option-${index}`;
-        option.textContent = id;
+        option.textContent = current ? `${id} — current model` : id;
+        if (current) {
+          option.className += " currentModel";
+          option.setAttribute("aria-current", "true");
+        }
         option.onpointerdown = (event) => event.preventDefault();
-        option.onclick = () => selectPickerOption(id);
+        option.onclick = () => selectPickerOption(entry);
         modelPicker.appendChild(option);
       });
       modelPicker.style.display = modelPickerOptions.length ? "block" : "none";

@@ -195,6 +195,7 @@ name = "Right"
             defaults = read_codex_launch_defaults(paths)
 
         self.assertEqual(defaults["models"], ["gpt-5.4"])
+        self.assertEqual(defaults["provider_models"], {"openai-api": ["gpt-5.4"]})
         self.assertEqual(defaults["reasoning_efforts_by_model"], {"gpt-5.4": ["low", "high"]})
         self.assertEqual(defaults["reasoning_effort"], "medium")
 

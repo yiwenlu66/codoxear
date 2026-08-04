@@ -274,22 +274,39 @@ def configured_model_providers(data: dict[str, Any]) -> list[str]:
     return providers
 
 
-def provider_models_from_config(data: dict[str, Any]) -> list[str]:
-    """Extract per-provider model lists declared in config.toml model_providers."""
+def provider_models_from_config(data: dict[str, Any]) -> dict[str, list[str]]:
+    """Extract model ids declared by each configured Codex provider."""
     raw = data.get("model_providers")
     if not isinstance(raw, dict):
-        return []
-    models: list[str] = []
-    seen: set[str] = set()
-    for value in raw.values():
-        if not isinstance(value, dict):
+        return {}
+    out: dict[str, list[str]] = {}
+    for provider, value in raw.items():
+        name = clean_optional_text(provider)
+        if name is None or not isinstance(value, dict):
             continue
-        for model in value.get("models", []):
-            name = clean_optional_text(model)
-            if name and name not in seen:
-                seen.add(name)
-                models.append(name)
-    return models
+        models = value.get("models")
+        if not isinstance(models, list):
+            continue
+        seen: set[str] = set()
+        entries: list[str] = []
+        for model in models:
+            model_id = clean_optional_text(model)
+            if model_id and model_id not in seen:
+                seen.add(model_id)
+                entries.append(model_id)
+        if entries:
+            out[name] = entries
+    return out
+
+
+def provider_models_from_config_flat(data: dict[str, Any]) -> list[str]:
+    """Extract unique model ids declared in Codex provider sections."""
+    out: list[str] = []
+    for models in provider_models_from_config(data).values():
+        for model in models:
+            if model not in out:
+                out.append(model)
+    return out
 
 
 def provider_choice_for_settings(*, model_provider: str | None, preferred_auth_method: str | None) -> str:
@@ -306,6 +323,7 @@ def fallback_codex_launch_defaults() -> dict[str, Any]:
         "provider_choice": "openai-api",
         "model": None,
         "model_providers": ["chatgpt", "openai-api"],
+        "provider_models": {},
         "service_tier": None,
         "reasoning_effort": None,
     }
@@ -355,7 +373,9 @@ def read_codex_launch_defaults(paths: LaunchConfigPaths) -> dict[str, Any]:
     configured_auth_method = "apikey"
     configured_service_tier = None
     configured_providers = ["chatgpt", "openai-api"]
-    provider_models: list[str] = []
+    provider_models: dict[str, list[str]] = {}
+    configured_model_list: list[str] = []
+
     if paths.codex_config_path.exists():
         data = tomllib.loads(paths.codex_config_path.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
@@ -370,13 +390,15 @@ def read_codex_launch_defaults(paths: LaunchConfigPaths) -> dict[str, Any]:
         ) or configured_provider
         configured_service_tier = normalize_requested_service_tier(data.get("service_tier"))
         provider_models = provider_models_from_config(data)
+        configured_model_list = provider_models_from_config_flat(data)
     defaults: dict[str, Any] = {
         "model_provider": configured_provider,
         "preferred_auth_method": configured_auth_method,
         "provider_choice": provider_choice_for_settings(model_provider=configured_provider, preferred_auth_method=configured_auth_method),
         "model": configured_model,
         "model_providers": configured_providers,
-        "models": list(provider_models),
+        "models": list(configured_model_list),
+        "provider_models": dict(provider_models),
         "reasoning_efforts_by_model": {},
         "service_tier": configured_service_tier,
     }
@@ -406,8 +428,15 @@ def read_codex_launch_defaults(paths: LaunchConfigPaths) -> dict[str, Any]:
         if efforts:
             efforts_by_model[slug] = efforts
     defaults["models"] = list(
-        dict.fromkeys([*provider_models, *(cached_models if configured_provider == "openai" else [])])
+        dict.fromkeys([*configured_model_list, *(cached_models if configured_provider == "openai" else [])])
     )
+    if configured_provider == "openai":
+        provider_choice = provider_choice_for_settings(
+            model_provider=configured_provider,
+            preferred_auth_method=configured_auth_method,
+        )
+        defaults["provider_models"][provider_choice] = list(cached_models)
+
     defaults["reasoning_efforts_by_model"] = efforts_by_model if configured_provider == "openai" else {}
     if configured_effort is not None:
         defaults["reasoning_effort"] = configured_effort
