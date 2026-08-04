@@ -39,6 +39,7 @@ APP_FILE_EDITOR_JS = ROOT / "codoxear" / "static" / "app_file_editor.js"
 APP_SESSION_HELPERS_JS = ROOT / "codoxear" / "static" / "app_session_helpers.js"
 APP_VIEWPORT_JS = ROOT / "codoxear" / "static" / "app_viewport.js"
 APP_POLLING_JS = ROOT / "codoxear" / "static" / "app_polling.js"
+APP_SSE_JS = ROOT / "codoxear" / "static" / "app_sse.js"
 APP_TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
 APP_MESSAGE_IDENTITY_JS = ROOT / "codoxear" / "static" / "app_message_identity.js"
 APP_MESSAGE_ROWS_JS = ROOT / "codoxear" / "static" / "app_message_rows.js"
@@ -97,6 +98,7 @@ class TestStaticAssets(unittest.TestCase):
             "app_session_helpers.js": "window.CodoxearSessionHelpers = {};\n",
             "app_viewport.js": "window.CodoxearViewport = {};\n",
             "app_polling.js": "window.CodoxearPolling = {};\n",
+            "app_sse.js": "window.CodoxearSse = {};\n",
             "app_transcript.js": "window.CodoxearTranscript = {};\n",
             "app_message_identity.js": "window.CodoxearMessageIdentity = {};\n",
             "app_message_rows.js": "window.CodoxearMessageRows = {};\n",
@@ -117,6 +119,7 @@ class TestStaticAssets(unittest.TestCase):
             "app_sessions.js": "window.CodoxearSessions = {};\n",
             "app_transcript_view.js": "window.CodoxearTranscriptView = {};\n",
             "app_composer.js": "window.CodoxearComposer = {};\n",
+            "app_session_edit.js": "window.CodoxearSessionEdit = {};\n",
             "app.js": "console.log('one');\n",
             "app.css": "body { color: black; }\n",
             "favicon.png": "png bytes\n",
@@ -171,6 +174,7 @@ class TestStaticAssets(unittest.TestCase):
                     '<script src="app_session_helpers.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_viewport.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_polling.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
+                    '<script src="app_sse.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_transcript.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_message_identity.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_message_rows.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
@@ -216,6 +220,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertIn(f"app_session_helpers.js?v={version}", rendered)
             self.assertIn(f"app_viewport.js?v={version}", rendered)
             self.assertIn(f"app_polling.js?v={version}", rendered)
+            self.assertIn(f"app_sse.js?v={version}", rendered)
             self.assertIn(f"app_transcript.js?v={version}", rendered)
             self.assertIn(f"app_message_identity.js?v={version}", rendered)
             self.assertIn(f"app_message_rows.js?v={version}", rendered)
@@ -308,6 +313,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn("codoxear/static/app_session_helpers.js", names)
         self.assertIn("codoxear/static/app_viewport.js", names)
         self.assertIn("codoxear/static/app_polling.js", names)
+        self.assertIn("codoxear/static/app_sse.js", names)
         self.assertIn("codoxear/static/app_transcript.js", names)
         self.assertIn("codoxear/static/app_message_identity.js", names)
         self.assertIn("codoxear/static/app_message_rows.js", names)

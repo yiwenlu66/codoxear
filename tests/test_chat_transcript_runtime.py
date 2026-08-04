@@ -31,6 +31,41 @@ def _source_between(start: str, end: str) -> str:
 
 
 class TestChatTranscriptRuntime(unittest.TestCase):
+    def test_first_unread_message_row_scrolls_to_matching_transcript_row(self) -> None:
+        transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
+        js = textwrap.dedent(
+            f"""
+            const vm = require("vm");
+            const ctx = {{ window: {{}} }};
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(transcript_source)}, ctx);
+            const scrolled = [];
+            const rows = ["m-old", "m-first-unread", "m-newer"].map((messageId, index) => ({{
+              dataset: {{ messageId }}, offsetTop: (index + 1) * 100,
+              scrollIntoView: () => scrolled.push(messageId),
+            }}));
+            const root = {{ querySelectorAll: () => rows }};
+            let autoScrollDisabled = 0;
+            const runtime = ctx.window.CodoxearTranscript.createTranscriptRenderRuntime({{
+              root, bottomSentinel: {{}}, document: {{ createDocumentFragment: () => ({{ appendChild: () => {{}} }}) }},
+              safeMakeRow: () => ({{ row: {{}} }}), normalizeEvents: (events) => events,
+              consumePendingUserIfMatches: () => false, isDuplicateEvent: () => false,
+              isAdjacentAssistantDuplicateEvent: () => false, markEventSeen: () => {{}}, markFirstPaint: () => {{}},
+              restorePendingRows: () => {{}}, resetRecentEvents: () => {{}}, setOlderState: () => {{}},
+              firstVisibleMessageRow: () => null, getScrollTop: () => 0, getSelectedSessionId: () => "sid",
+              domRuntime: {{ clear: () => {{}}, rebuildDecorations: () => {{}}, trimRenderedRows: () => {{}} }},
+              scrollRuntime: {{ shouldStickToBottom: () => false, snapshot: () => ({{}}), syncJumpButton: () => {{}},
+                scheduleScrollToBottom: () => {{}}, markLiveTail: () => {{}}, disableAutoScroll: () => {{ autoScrollDisabled += 1; }},
+                setRenderedAtLiveTail: () => {{}}, setScrollTop: () => {{}} }},
+              typingRowRuntime: {{ anchor: () => ({{}}) }},
+            }});
+            const found = runtime.scrollToFirstUnread("m-first-unread");
+            const missing = runtime.scrollToFirstUnread("missing");
+            process.stdout.write(JSON.stringify({{ found, missing, scrolled, autoScrollDisabled }}));
+            """
+        )
+        self.assertEqual(_run_node(js), {"found": True, "missing": False, "scrolled": ["m-first-unread"], "autoScrollDisabled": 1})
+
     def test_typing_row_runtime_projects_activity_stats_without_replacing_dots(self) -> None:
         transcript_source = APP_TRANSCRIPT_JS.read_text(encoding="utf-8")
         js = textwrap.dedent(
@@ -1684,7 +1719,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
                 deleteTailCache: noop, beginTranscriptRenewal: noop, clearLiveCursor: noop,
                 invalidateOlderLoad: noop, renderPendingTranscriptSlot: noop, dropPendingUser: noop,
                 removePendingUserRow: noop, hasPendingForSession: () => false,
-                enqueueComposerText: async () => false, prepareModalOpen: noop,
+                enqueueComposerText: async () => false, sendText: async () => true, prepareModalOpen: noop,
                 afterModalVisibilityChanged: noop, restoreModalFocus: noop,
                 storageGetItem: () => null, storageSetItem: noop, storageRemoveItem: noop,
                 getComputedStyle: () => ({{ minHeight: "32" }}), isHTMLElement: () => false, now: () => 1000,
@@ -1770,6 +1805,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               removePendingUserRow: noop,
               hasPendingForSession: () => false,
               enqueueComposerText: async () => false,
+              sendText: async () => true,
               prepareModalOpen: noop,
               afterModalVisibilityChanged: noop,
               restoreModalFocus: noop,
