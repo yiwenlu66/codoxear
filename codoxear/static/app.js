@@ -1677,9 +1677,9 @@
         });
 
         const modalIsolationTargets = [
-          fileViewer,
           fileUnsavedDialog,
           filePasteDialog,
+          fileViewer,
           sendChoice,
           appConfirm,
           queueViewer,
