@@ -65,13 +65,33 @@ esac
 """,
     )
 
+    _write_executable(
+        fake_bin / "node",
+        f"""#!/usr/bin/env bash
+set -eu
+printf 'node %s\\n' "$*" >> {operation_log!s}
+[[ "$1" == "-c" ]]
+[[ -f "$2" ]]
+""",
+    )
+    _write_executable(
+        fake_bin / "agent-browser",
+        f"""#!/usr/bin/env bash
+set -eu
+printf 'agent-browser %s\\n' "$*" >> {operation_log!s}
+case "$1" in
+  eval) printf '\"OK\"\\n' ;;
+  errors) printf '%s\\n' '{{"success":true,"data":{{"errors":[]}},"error":null}}' ;;
+esac
+""",
+    )
+
     commit = subprocess.check_output(["git", "-C", ROOT, "rev-parse", "HEAD"], text=True).strip()
     environment = os.environ | {
         "PATH": f"{fake_bin}:{os.environ['PATH']}",
         "CODOXEAR_DEPLOY_DIR": str(deploy_dir),
         "CODOXEAR_SERVICE_UNIT": str(unit_path),
-        # The sandbox has no real server for the headless boot check to load.
-        "CODOXEAR_SKIP_BOOT_CHECK": "1",
+        "CODOXEAR_BOOT_CHECK_PASSWORD": "test-password",
     }
     try:
         completed = subprocess.run(
@@ -96,6 +116,12 @@ esac
         operations = operation_log.read_text()
         assert "pipx install --force" in operations
         assert "systemctl --user restart codoxear-server.service" in operations
+        assert f"node -c {deploy_dir}/codoxear/static/app.js" in operations
+        assert "agent-browser fill #pw test-password" in operations
+        assert "agent-browser click #loginBtn" in operations
+        assert "agent-browser eval" in operations
+        assert "agent-browser errors --json" in operations
+        assert operations.index(f"node -c {deploy_dir}/codoxear/static/app.js") < operations.index("pipx install --force")
 
         (deploy_dir / "must-stay-unmodified").write_text("dirty")
         operation_log.write_text("")

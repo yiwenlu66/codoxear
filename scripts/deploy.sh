@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 # Deploy a committed Codoxear snapshot without ever serving the source checkout.
+#
+# Release guards:
+# - Node parses the snapshot's app.js before pipx or service operations.
+# - The selected/session-index/session-list state declarations are explicit
+#   regression tripwires for the renderApp closure.
+# - An authenticated browser smoke check requires a rendered session list
+#   (zero cards with its empty state, or one or more cards), no page/load error,
+#   and the controller globals that app.js depends on.
 set -euo pipefail
 
 readonly SERVICE_NAME="codoxear-server.service"
@@ -32,6 +40,10 @@ if ! command -v pipx >/dev/null; then
 fi
 if ! command -v curl >/dev/null; then
   echo "curl is required for the health check" >&2
+  exit 1
+fi
+if ! command -v node >/dev/null; then
+  echo "node is required to syntax-check app.js before deployment" >&2
   exit 1
 fi
 if [[ ! -f "$UNIT_PATH" ]]; then
@@ -83,6 +95,23 @@ update_snapshot || {
   echo "snapshot update failed; service was not reinstalled or restarted" >&2
   exit 1
 }
+
+# Parse the exact immutable app snapshot before changing the installed package
+# or restarting the service. The declaration tripwires cover renderApp state
+# whose absence can otherwise surface only after the async session-list render.
+if ! node -c "$DEPLOY_DIR/codoxear/static/app.js"; then
+  echo "app.js syntax check failed in deploy snapshot" >&2
+  exit 1
+fi
+for declaration in \
+  'let[[:space:]]+latestSessions[[:space:]]*=' \
+  'let[[:space:]]+selected[[:space:]]*=' \
+  'let[[:space:]]+sessionIndex[[:space:]]*='; do
+  if ! grep -Eq "$declaration" "$DEPLOY_DIR/codoxear/static/app.js"; then
+    echo "app.js render state declaration check failed: $declaration" >&2
+    exit 1
+  fi
+done
 
 pipx install --force "$DEPLOY_DIR"
 PIPX_HOME="$(pipx environment --value PIPX_HOME)"
@@ -150,24 +179,63 @@ wait_for_status() {
 wait_for_status 200 "/"
 wait_for_status 401 "/api/sessions"
 
-# Boot check: the page must not only respond, the app must boot. A broken
-# frontend passes the HTTP health check, so assert the load-error surface is
-# absent and the core controller globals register before calling this a deploy.
+# Browser smoke check: syntactic validity and global registration do not prove
+# renderApp's closure has every declaration it uses. Authenticate through the
+# deployed UI, let its first /api/sessions render settle, then require either
+# cards or the zero-session empty state while rejecting load/page errors.
 if command -v agent-browser >/dev/null && [[ "${CODOXEAR_SKIP_BOOT_CHECK:-0}" != "1" ]]; then
+  BOOT_CHECK_PASSWORD="${CODOXEAR_BOOT_CHECK_PASSWORD:-${CODEX_WEB_PASSWORD:-}}"
+  if [[ -z "$BOOT_CHECK_PASSWORD" ]]; then
+    BOOT_CHECK_PASSWORD="$(python3 - "$SERVICE_ENVIRONMENT" <<'PY'
+import shlex
+import sys
+
+try:
+    fields = shlex.split(sys.argv[1])
+except ValueError:
+    fields = []
+for field in fields:
+    if field.startswith("CODEX_WEB_PASSWORD="):
+        print(field.split("=", 1)[1])
+        break
+PY
+)"
+  fi
+  if [[ -z "$BOOT_CHECK_PASSWORD" ]]; then
+    echo "boot check failed: no CODEX_WEB_PASSWORD available for authenticated app smoke test" >&2
+    exit 1
+  fi
+
   BOOT_OK=0
   for _ in {1..3}; do
     AGENT_BROWSER_SESSION=deploy-boot agent-browser open "$BASE_URL/" >/dev/null 2>&1 || true
+    AGENT_BROWSER_SESSION=deploy-boot agent-browser fill "#pw" "$BOOT_CHECK_PASSWORD" >/dev/null 2>&1 || true
+    AGENT_BROWSER_SESSION=deploy-boot agent-browser click "#loginBtn" >/dev/null 2>&1 || true
     sleep 3
-    BOOT_CHECK="$(AGENT_BROWSER_SESSION=deploy-boot agent-browser eval '(() => { const err = !!document.querySelector("[data-codoxear-load-error]"); const globals = ["CodoxearUrls","CodoxearStorage","CodoxearApi"].every((k) => !!window[k]); return err || !globals ? "FAIL" : "OK"; })()' --json 2>/dev/null || true)"
+    BOOT_CHECK="$(AGENT_BROWSER_SESSION=deploy-boot agent-browser eval '(() => { const loadError = window.__codoxearLoadError; const globals = [["CodoxearUrls", "resolveAppUrl"], ["CodoxearStorage", "getItem"], ["CodoxearApi", "api"], ["CodoxearShell", "createShellDOM"], ["CodoxearSessions", "createSessionsController"]].every(([host, method]) => window[host] && typeof window[host][method] === "function"); const sessions = document.querySelector("#sessions"); const cards = sessions ? sessions.querySelectorAll(":scope > .session").length : -1; const emptyState = Boolean(sessions && sessions.querySelector(":scope > .sidebarEmptyHint")); const sessionListRendered = cards >= 0 && (cards > 0 || emptyState); return !loadError && window.__codoxearAppBootstrapped && globals && sessionListRendered ? "OK" : "FAIL"; })()' --json 2>/dev/null || true)"
+    PAGE_ERRORS="$(AGENT_BROWSER_SESSION=deploy-boot agent-browser errors --json 2>/dev/null || true)"
+    PAGE_ERRORS_OK="$(python3 - "$PAGE_ERRORS" <<'PY'
+import json
+import sys
+
+try:
+    result = json.loads(sys.argv[1])
+except json.JSONDecodeError:
+    print("FAIL")
+else:
+    errors = result.get("data", {}).get("errors", [])
+    print("OK" if isinstance(errors, list) and not errors else "FAIL")
+PY
+)"
     AGENT_BROWSER_SESSION=deploy-boot agent-browser close >/dev/null 2>&1 || true
-    if [[ "$BOOT_CHECK" == *'"OK"'* ]]; then
+    if [[ "$BOOT_CHECK" == *'"OK"'* ]] && [[ "$PAGE_ERRORS_OK" == "OK" ]]; then
       BOOT_OK=1
       break
     fi
     sleep 2
   done
   if [[ "$BOOT_OK" != 1 ]]; then
-    echo "boot check failed: the app did not boot cleanly after deploy (load-error surface present or core globals missing)" >&2
+    echo "boot check failed: deployed app did not render a clean session list after authentication" >&2
     exit 1
   fi
 fi
