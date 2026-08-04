@@ -106,12 +106,6 @@
         :root {
           --sidebar-w: 380px;
         }
-        .app {
-          grid-template-columns: var(--nav-rail-w) var(--sidebar-w) 1fr;
-        }
-        body.sidebar-collapsed .app {
-          grid-template-columns: var(--nav-rail-w) 1fr;
-        }
       }
       *,
       *::before,
@@ -180,6 +174,14 @@
       }
       body.sidebar-collapsed .sidebar {
         display: none;
+      }
+      @media (min-width: 881px) {
+        .app {
+          grid-template-columns: var(--nav-rail-w) var(--sidebar-w) 1fr;
+        }
+        body.sidebar-collapsed .app {
+          grid-template-columns: var(--nav-rail-w) 1fr;
+        }
       }
 
       .navRail {
