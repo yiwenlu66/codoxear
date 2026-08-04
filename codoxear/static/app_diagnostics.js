@@ -160,6 +160,19 @@
       addRow("Broker PID", d && typeof d.broker_pid === "number" ? String(d.broker_pid) : "-");
       addRow("Agent", d ? agentBackendDisplayName(d.agent_backend) : "-");
       addRow("Agent PID", d && typeof d.codex_pid === "number" ? String(d.codex_pid) : "-");
+      const piBridge = d && d.pi_bridge_marker && typeof d.pi_bridge_marker === "object" ? d.pi_bridge_marker : null;
+      if (piBridge) {
+        const marker = piBridge.marker && typeof piBridge.marker === "object" ? piBridge.marker : null;
+        const caps = piBridge.caps && typeof piBridge.caps === "object" ? piBridge.caps : null;
+        const markerState = marker && marker.active ? "active" : marker && marker.present ? "invalid" : "missing";
+        addRow("Pi bridge marker", markerState);
+        addRow("Pi bridge PID", marker && typeof marker.pid === "number" ? String(marker.pid) : "-");
+        if (caps) {
+          const commands = Array.isArray(caps.command_names) ? caps.command_names.length : 0;
+          const capability = caps.thinking_capable ? "thinking" : "no thinking capability";
+          addRow("Pi bridge caps", `${capability}; ${commands} commands`);
+        }
+      }
       addRow("Log", d && d.log_path ? d.log_path : "-", { mono: true });
       addRow("tmux", d && d.tmux_session ? `${d.tmux_session}${d.tmux_window ? ":" + d.tmux_window : ""}` : "-");
       addRow("Branch", d && d.git_branch ? d.git_branch : "-");

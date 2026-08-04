@@ -371,7 +371,7 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
         js = harness_script(
             """
             const h = globalThis.__harness;
-            h.sessions.set("sid-1", { session_id: "sid-1", launch_state: "ready", agent_backend: "codex" });
+            h.sessions.set("sid-1", { session_id: "sid-1", launch_state: "ready", agent_backend: "pi" });
             h.select("sid-1");
             h.setApiResponse({
               session_id: "sid-1",
@@ -382,7 +382,11 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
               start_ts: 1000,
               updated_ts: 2000,
               broker_pid: 11,
-              agent_backend: "codex",
+              agent_backend: "pi",
+              pi_bridge_marker: {
+                marker: { active: true, pid: 22 },
+                caps: { thinking_capable: true, command_names: ["effort", "thinking"] },
+              },
               codex_pid: 22,
               log_path: "/log/path",
               tmux_session: "t",
@@ -412,11 +416,14 @@ class TestFrontendDiagnosticsModuleBehavior(unittest.TestCase):
         result = run_node_json(js)
         self.assertEqual(result["apiCalls"], ["/api/sessions/sid-1/diagnostics"])
         rows = result["rows"]
-        for label in ["Session", "Thread", "Owned", "Busy", "Queue", "CWD", "Started", "Updated", "Broker PID", "Agent", "Agent PID", "Log", "tmux", "Branch", "Provider", "Model", "Reasoning", "Service tier", "Priority", "Priority offset", "Snooze", "Depends on", "UI", "Context"]:
+        for label in ["Session", "Thread", "Owned", "Busy", "Queue", "CWD", "Started", "Updated", "Broker PID", "Agent", "Agent PID", "Pi bridge marker", "Pi bridge PID", "Pi bridge caps", "Log", "tmux", "Branch", "Provider", "Model", "Reasoning", "Service tier", "Priority", "Priority offset", "Snooze", "Depends on", "UI", "Context"]:
             self.assertContains(label, rows, label)
         self.assertEqual(rows["Provider"], "PROV:chatgpt")
         self.assertEqual(rows["Model"], "gpt-5.4")
         self.assertEqual(rows["Reasoning"], "high")
+        self.assertEqual(rows["Pi bridge marker"], "active")
+        self.assertEqual(rows["Pi bridge PID"], "22")
+        self.assertEqual(rows["Pi bridge caps"], "thinking; 2 commands")
         self.assertEqual(rows["UI"], "test-ver")
         self.assertContains("Context", rows)
         # Copy text includes the Session row via diagnosticsCopyText semantics.

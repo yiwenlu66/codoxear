@@ -269,6 +269,139 @@ def _read_pi_active_session_marker_capability(
     return isinstance(features, list) and "thinking" in features
 
 
+def _read_pi_active_session_marker_state(
+    marker_path: Path,
+    *,
+    sessions_dir: Path,
+    process_pid: int,
+) -> dict[str, object]:
+    """Return a diagnostic-only projection of the live Pi bridge files.
+
+    This reader deliberately reports invalid and foreign writers instead of
+    treating them as absent: discovery still fails closed, while diagnostics
+    can show why a bridge was not accepted. No arbitrary marker payload is
+    exposed; session files remain subject to the same sessions-dir boundary as
+    log discovery.
+    """
+    caps_path = _pi_active_session_caps_path(marker_path)
+
+    def read_json(path: Path) -> tuple[bool, dict[str, object] | None]:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return False, None
+        except Exception:
+            return True, None
+        return True, data if isinstance(data, dict) else None
+
+    def bridge_valid(data: dict[str, object] | None) -> bool:
+        return bool(
+            data is not None
+            and isinstance(data.get("bridgeVersion"), int)
+            and not isinstance(data.get("bridgeVersion"), bool)
+            and data["bridgeVersion"] >= 2
+        )
+
+    def current_process(data: dict[str, object] | None) -> bool:
+        return bool(bridge_valid(data) and isinstance(process_pid, int) and process_pid > 0 and data.get("pid") == process_pid)
+
+    marker_present, marker_data = read_json(marker_path)
+    caps_present, caps_data = read_json(caps_path)
+    marker_file = None
+    marker_file_valid = False
+    if marker_data is not None and marker_data.get("version") == 1:
+        raw = marker_data.get("sessionFile")
+        if isinstance(raw, str) and raw.strip() and raw.endswith(".jsonl"):
+            candidate = Path(raw).expanduser()
+            try:
+                resolved = candidate.resolve()
+            except Exception:
+                resolved = candidate
+            try:
+                resolved.relative_to(sessions_dir.resolve())
+            except Exception:
+                pass
+            else:
+                marker_file = str(resolved)
+                marker_file_valid = True
+
+    def string_value(data: dict[str, object] | None, key: str) -> str | None:
+        value = data.get(key) if data is not None else None
+        return value if isinstance(value, str) and value else None
+
+    def pid_value(data: dict[str, object] | None) -> int | None:
+        value = data.get("pid") if data is not None else None
+        return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
+
+    features = caps_data.get("features") if caps_data is not None else None
+    feature_names = [item for item in features if isinstance(item, str)] if isinstance(features, list) else []
+    commands = caps_data.get("commands") if caps_data is not None else None
+    command_names = [item["name"] for item in commands if isinstance(item, dict) and isinstance(item.get("name"), str)] if isinstance(commands, list) else []
+    thinking_capable = current_process(caps_data) and "thinking" in feature_names
+    commands_registered = isinstance(commands, list)
+    marker_current = current_process(marker_data)
+
+    return {
+        "marker_path": str(marker_path),
+        "caps_path": str(caps_path),
+        "expected_process_pid": process_pid if isinstance(process_pid, int) and process_pid > 0 else None,
+        "marker": {
+            "present": marker_present,
+            "parse_valid": marker_data is not None and marker_data.get("version") == 1 and bridge_valid(marker_data),
+            "current_process": marker_current,
+            "session_file_valid": marker_file_valid,
+            "active": marker_current and marker_file_valid,
+            "pid": pid_value(marker_data),
+            "session_file": marker_file,
+            "session_id": string_value(marker_data, "sessionId"),
+            "reason": string_value(marker_data, "reason"),
+            "updated_at": string_value(marker_data, "updatedAt"),
+        },
+        "caps": {
+            "present": caps_present,
+            "parse_valid": bridge_valid(caps_data),
+            "current_process": current_process(caps_data),
+            "pid": pid_value(caps_data),
+            "features": feature_names,
+            "thinking_capable": thinking_capable,
+            "commands_registered": commands_registered,
+            "command_names": command_names,
+            "updated_at": string_value(caps_data, "updatedAt"),
+        },
+        "commands_without_thinking_capability": commands_registered and not thinking_capable,
+    }
+
+
+class PiActiveSessionMarkerObserver:
+    """Emits one diagnostic message for each meaningful bridge-state transition."""
+
+    def __init__(self) -> None:
+        self._previous: dict[str, object] | None = None
+
+    def observe(self, state: dict[str, object]) -> list[str]:
+        previous = self._previous
+        self._previous = state
+        if previous is None:
+            return []
+        previous_marker = previous.get("marker") if isinstance(previous.get("marker"), dict) else {}
+        marker = state.get("marker") if isinstance(state.get("marker"), dict) else {}
+        caps = state.get("caps") if isinstance(state.get("caps"), dict) else {}
+        messages: list[str] = []
+        previous_pid = previous_marker.get("pid")
+        pid = marker.get("pid")
+        if isinstance(previous_pid, int) and isinstance(pid, int) and previous_pid != pid:
+            messages.append(f"Pi bridge marker handover: writer pid changed {previous_pid} -> {pid}")
+        if previous_marker.get("present") is True and marker.get("present") is False:
+            messages.append("Pi bridge marker went stale: marker file was deleted")
+        if (
+            previous.get("commands_without_thinking_capability") is not True
+            and state.get("commands_without_thinking_capability") is True
+        ):
+            command_count = len(caps.get("command_names", [])) if isinstance(caps.get("command_names"), list) else 0
+            messages.append(f"Pi bridge caps anomaly: command registry ({command_count} commands) has no current thinking capability")
+        return messages
+
+
 def _ensure_pi_session_arg(*, args: list[str], cwd: str, sessions_dir: Path, agent_backend: str) -> list[str]:
     if normalize_agent_backend(agent_backend) != "pi":
         return list(args)

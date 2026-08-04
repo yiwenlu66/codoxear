@@ -35,6 +35,8 @@ from codoxear.broker_launch import _pi_bridge_extension_path
 from codoxear.broker_launch import _pi_new_session_log_path
 from codoxear.broker_launch import _pi_session_dir_from_args
 from codoxear.broker_launch import _pi_session_dir_name
+from codoxear.broker_launch import PiActiveSessionMarkerObserver
+from codoxear.broker_launch import _read_pi_active_session_marker_state
 from codoxear.broker_launch import _read_pi_active_session_marker
 from codoxear.broker_launch import _read_pi_active_session_marker_capability
 from codoxear.broker_launch import _read_pi_active_session_run_settings
@@ -314,6 +316,7 @@ class Broker:
     def __init__(self, *, cwd: str, codex_args: list[str]) -> None:
         self.cwd = cwd
         self.pi_active_session_marker_path = _pi_active_session_marker_path()
+        self._pi_active_session_marker_observer = PiActiveSessionMarkerObserver()
         if AGENT_BACKEND == "pi":
             _reset_pi_active_session_marker(self.pi_active_session_marker_path)
         base_args = _ensure_pi_session_arg(args=codex_args, cwd=self.cwd, sessions_dir=BACKEND.sessions_dir())
@@ -457,6 +460,18 @@ class Broker:
         if changed:
             self._write_meta()
 
+    def _refresh_pi_active_session_observability(self, *, process_pid: int) -> None:
+        if AGENT_BACKEND != "pi":
+            return
+        state = _read_pi_active_session_marker_state(
+            self.pi_active_session_marker_path,
+            sessions_dir=self.sessions_dir,
+            process_pid=process_pid,
+        )
+        for message in self._pi_active_session_marker_observer.observe(state):
+            sys.stderr.write(f"info: {message}\n")
+            sys.stderr.flush()
+
     def _discover_log_watcher(self) -> None:
         try:
             while not self._stop.is_set():
@@ -473,6 +488,7 @@ class Broker:
                     ignored_paths = set(st.ignored_rollout_paths)
                 if root_pid > 0:
                     if AGENT_BACKEND == "pi":
+                        self._refresh_pi_active_session_observability(process_pid=root_pid)
                         # The live bridge marker is authoritative over the launch-intent
                         # declared log: after /new the active session moves to a new log
                         # while declared_log_path still points at the old one, and

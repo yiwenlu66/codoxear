@@ -122,6 +122,7 @@ Codoxear wraps Pi (and all backends) in a PTY. For Pi specifically:
 - Busy/state is inferred from JSONL log reconstruction.
 - `/model` is Pi's shared native command; the browser picker selects an option by sending that command into the same TUI.
 - `pi_active_session_bridge.ts` supplies `/effort` and its `/thinking` alias from inside the live TUI process, calling `pi.setThinkingLevel()` and reading back the effective level. It writes a PID-bound `.caps` marker at load so a reload can advertise capability before another session event.
+- Pi bridge marker state is observable through the selected session's `/api/sessions/<id>/diagnostics` response as `pi_bridge_marker`. It projects marker/caps presence, PID ownership, validated log binding, capabilities, and command registry; broker/sessiond log PID handover, marker deletion, and a command registry without current thinking capability once per transition.
 - Extension load must remain passive: write capability metadata and register lifecycle listeners only. Command registration and other runtime action methods are deferred to `session_start`/`session_switch`, with later lifecycle retries if Pi is not ready.
 
 ### No web-only RPC path — PTY sharing is the core invariant

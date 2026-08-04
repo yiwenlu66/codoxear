@@ -21,6 +21,8 @@ from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
 from .broker_launch import _ensure_pi_bridge_args
 from .broker_launch import _pi_active_session_marker_path
+from .broker_launch import PiActiveSessionMarkerObserver
+from .broker_launch import _read_pi_active_session_marker_state
 from .broker_launch import _read_pi_active_session_marker_capability
 from .broker_launch import _read_pi_active_session_commands
 from .broker_launch import _reset_pi_active_session_marker
@@ -120,6 +122,7 @@ class Sessiond:
         self.codex_home = DEFAULT_AGENT_HOME
         self.sessions_dir = BACKEND.sessions_dir()
         self.pi_active_session_marker_path = _pi_active_session_marker_path()
+        self._pi_active_session_marker_observer = PiActiveSessionMarkerObserver()
         if AGENT_BACKEND == "pi":
             _reset_pi_active_session_marker(self.pi_active_session_marker_path)
 
@@ -129,6 +132,14 @@ class Sessiond:
         with self._lock:
             st = self.state
             process_pid = st.codex_pid if st is not None else 0
+        marker_state = _read_pi_active_session_marker_state(
+            self.pi_active_session_marker_path,
+            sessions_dir=self.sessions_dir,
+            process_pid=process_pid,
+        )
+        for message in self._pi_active_session_marker_observer.observe(marker_state):
+            sys.stderr.write(f"info: {message}\n")
+            sys.stderr.flush()
         capable = _read_pi_active_session_marker_capability(
             self.pi_active_session_marker_path,
             sessions_dir=self.sessions_dir,

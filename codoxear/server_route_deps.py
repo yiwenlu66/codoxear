@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from .auth_routes import AuthRouteDeps
+from .agent_backend import get_agent_backend
+from .broker_launch import _pi_active_session_marker_path
+from .broker_launch import _read_pi_active_session_marker_state
 from .server_config import ServerConfig
 from .control_routes import ControlRouteDeps
 from .diagnostics_routes import DiagnosticsRouteDeps
@@ -117,6 +120,11 @@ class ServerRouteDepsFactory:
             sidebar_time_priority_from_elapsed_seconds=server._sidebar_time_priority_from_elapsed_seconds,
             clip01=server._clip01,
             time_fn=server.time.time,
+            read_pi_bridge_marker_state=lambda broker_pid, process_pid: _read_pi_active_session_marker_state(
+                _pi_active_session_marker_path(broker_pid=broker_pid),
+                sessions_dir=get_agent_backend("pi").sessions_dir(),
+                process_pid=process_pid,
+            ),
         )
 
     def auth_route_deps(self) -> AuthRouteDeps:

@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 import tempfile
 
@@ -164,6 +165,35 @@ def test_diagnostics_route_uses_broker_token_when_no_log() -> None:
     )
     assert responses[0][1]["busy"] is False
     assert responses[0][1]["token"] == {"tokens_in_context": 1}
+
+
+def test_diagnostics_route_exposes_pi_bridge_marker_state_for_pi_sessions() -> None:
+    session = _session(None)
+    session.agent_backend = "pi"
+    manager = Manager(session)
+    responses = []
+    seen: list[tuple[int, int]] = []
+    marker_state = {
+        "marker": {"active": True, "pid": 12},
+        "caps": {"thinking_capable": True, "command_names": ["effort", "thinking"]},
+        "commands_without_thinking_capability": False,
+    }
+    deps = replace(
+        _deps(responses),
+        read_pi_bridge_marker_state=lambda broker_pid, process_pid: seen.append((broker_pid, process_pid)) or marker_state,
+    )
+
+    handle_diagnostics_get_route(
+        Handler(),
+        path="/api/sessions/s1/diagnostics",
+        manager=manager,
+        deps=deps,
+        match_session_route=_match_session_route,
+    )
+
+    assert seen == [(11, 12)]
+    assert responses[0][0] == 200
+    assert responses[0][1]["pi_bridge_marker"] == marker_state
 
 
 def test_diagnostics_route_auth_and_unknown_session() -> None:

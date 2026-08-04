@@ -23,6 +23,7 @@ class DiagnosticsRouteDeps:
     sidebar_time_priority_from_elapsed_seconds: Callable[[float], float]
     clip01: Callable[[float], float]
     time_fn: Callable[[], float] = time.time
+    read_pi_bridge_marker_state: Callable[[int, int], dict[str, object]] | None = None
 
 
 def handle_diagnostics_get_route(
@@ -80,6 +81,9 @@ def handle_diagnostics_get_route(
     blocked = sidebar_meta["dependency_session_id"] is not None
     snoozed = sidebar_meta["snooze_until"] is not None and float(sidebar_meta["snooze_until"]) > deps.time_fn()
     final_priority = 0.0 if (snoozed or blocked) else base_priority
+    pi_bridge_marker = None
+    if s.agent_backend == "pi" and deps.read_pi_bridge_marker_state is not None:
+        pi_bridge_marker = deps.read_pi_bridge_marker_state(int(s.broker_pid), int(s.codex_pid))
     deps.json_response(
         handler,
         200,
@@ -117,6 +121,7 @@ def handle_diagnostics_get_route(
             "priority_offset": sidebar_meta["priority_offset"],
             "snooze_until": sidebar_meta["snooze_until"],
             "dependency_session_id": sidebar_meta["dependency_session_id"],
+            "pi_bridge_marker": pi_bridge_marker,
         },
     )
     return True
