@@ -1803,20 +1803,44 @@
           }
         }
 
-        let currentQueueLen = 0;
+        function queueLenForSelected() {
+          const session = selected ? sessionIndex.get(selected) : null;
+          return Math.max(0, Number(session && session.queue_len) || 0);
+        }
+
+        // Queue count authority is sessionIndex[session_id].queue_len, populated
+        // from server queue-store snapshots. Session-list, messages/live, and
+        // queue-panel responses all replace this snapshot; the sidebar, status
+        // chip, and composer badge only read it. A newer snapshot wins rather
+        // than merging counts, since queue operations can both add and drain.
+        function reconcileQueueLen(sessionId, rawQueueLen) {
+          const queueLen = Number(rawQueueLen);
+          if (!sessionId || !Number.isFinite(queueLen) || queueLen < 0) return false;
+          const session = sessionIndex.get(sessionId);
+          if (!session) return false;
+          const nextQueueLen = Math.floor(queueLen);
+          if (Number(session.queue_len || 0) === nextQueueLen) return false;
+          session.queue_len = nextQueueLen;
+          if (sessionId === selected) {
+            renderStatusChip();
+            rerenderSidebarQueueProjection();
+          }
+          return true;
+        }
+
+        let rerenderSidebarQueueProjection = () => {};
         let currentSubagentsRunning = 0;
         function renderStatusChip() {
-          const q = currentQueueLen;
+          const q = queueLenForSelected();
           const base = currentRunning ? "Busy" : q ? (isMobile() ? `Q ${q}` : `Queue ${q}`) : "Idle";
           statusChip.style.display = "inline-flex";
           statusChip.textContent = currentSubagentsRunning > 0 ? `${base} · ▸${currentSubagentsRunning}` : base;
         }
 
         function setStatus({ running, queueLen }) {
-          const q = Math.max(0, Number(queueLen) || 0);
           const wasRunning = currentRunning;
           currentRunning = Boolean(running);
-          currentQueueLen = q;
+          reconcileQueueLen(selected, queueLen);
           renderStatusChip();
           const canInterrupt = Boolean(running && selected);
           interruptBtn.style.display = canInterrupt ? "inline-flex" : "none";
@@ -2863,6 +2887,29 @@
            consoleError: (...args) => console.error(...args),
          });
 
+         function sortedSidebarSessions() {
+           return latestSessions
+             .slice()
+             .sort((a, b) => {
+               const p = Number(b.final_priority || 0) - Number(a.final_priority || 0);
+               if (p) return p;
+               const u = Number(b.updated_ts || b.start_ts || 0) - Number(a.updated_ts || a.start_ts || 0);
+               if (u) return u;
+               const s0 = Number(b.start_ts || 0) - Number(a.start_ts || 0);
+               if (s0) return s0;
+               return String(a.session_id || "").localeCompare(String(b.session_id || ""));
+             });
+         }
+
+         function renderSidebarSessions() {
+           return sidebarController.renderSessions(sortedSidebarSessions(), {
+             selectedId: selected,
+             swipeActions: !useDesktopSessionActions(),
+           });
+         }
+
+         rerenderSidebarQueueProjection = renderSidebarSessions;
+
          async function refreshSessions() {
            if (sessionsRefreshInFlight) {
              sessionsRefreshQueued = true;
@@ -2923,18 +2970,7 @@
             if (newSessionDialogController.isOpen()) newSessionDialogController.refreshDefaults();
             fileReferenceRuntime.clearDiscoveryCaches();
           }
-          const swipeActions = !useDesktopSessionActions();
-          const sessions = latestSessions
-            .slice()
-            .sort((a, b) => {
-              const p = Number(b.final_priority || 0) - Number(a.final_priority || 0);
-              if (p) return p;
-              const u = Number(b.updated_ts || b.start_ts || 0) - Number(a.updated_ts || a.start_ts || 0);
-              if (u) return u;
-              const s0 = Number(b.start_ts || 0) - Number(a.start_ts || 0);
-              if (s0) return s0;
-              return String(a.session_id || "").localeCompare(String(b.session_id || ""));
-            });
+          const sessions = sortedSidebarSessions();
           sessionIndex = new Map();
           for (const session of sessions) sessionIndex.set(session.session_id, session);
           if (selected && !sessionIndex.has(selected)) clearSelectedSessionAfterRemoval(selected);
@@ -2944,10 +2980,7 @@
           }
           if (selected) syncStagedAttachmentsFromSelectedSession();
           else setStagedAttachments([]);
-          const renderedSidebar = sidebarController.renderSessions(sessions, {
-            selectedId: selected,
-            swipeActions,
-          });
+          const renderedSidebar = renderSidebarSessions();
           if (!renderedSidebar) return sessions;
           if (selected) {
             const session = sessionIndex.get(selected);
@@ -3565,7 +3598,7 @@
         }
 
         messageSseController = codoxearSse.createMessageEventSourceController({
-          resolveUrl,
+          resolveUrl: resolveAppUrl,
           getSnapshot: () => transcriptSlotRuntime.activeSnapshot(),
           isActive: (sessionId, generation) => !appDisposed && Boolean(sessionId) && selected === sessionId && pollGen === generation,
           onStateChange: (open) => { messageSseOpen = open; },
@@ -3694,6 +3727,9 @@
             requestFrame: requestAnimationFrame,
             setTimeout,
             clearTimeout,
+            storageGetItem,
+            storageSetItem,
+            storageRemoveItem,
             requestShellProjection: updateUnattendedBtnState,
           });
         })();
@@ -4851,7 +4887,8 @@
             setToast,
             clearCommitUnknownSend,
             refreshSessions,
-            getQueueLen: () => currentQueueLen,
+            getQueueLen: () => queueLenForSelected(),
+            reconcileQueueLen,
             getComposerText: () => (textarea ? textarea.value : ""),
             clearComposerInput,
             syncRecoveryUiForSession,
