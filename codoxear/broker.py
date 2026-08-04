@@ -950,6 +950,22 @@ class Broker:
             self._write_meta()
 
     def run(self) -> int:
+        """Run the broker lifecycle for this configured agent process.
+
+        Inputs come from the ``Broker`` instance: launch arguments, cwd,
+        backend/owner settings, terminal-emulation mode, and the broker-owned
+        app-server configuration. The method creates the PTY and child process,
+        starts socket/terminal/log watcher threads, waits for the child, records
+        applicable web-launch failures, and removes broker runtime artifacts.
+
+        Returns:
+            The agent child process's exit status (or the signal-style status).
+
+        State touched:
+            Updates ``self.state``, ``self._stop``, and ``self._stdin_termios``;
+            writes broker metadata and launch-ledger records; and creates then
+            removes the control socket and its metadata sidecar.
+        """
         rows, cols = _term_size()
         _require_proc()
 

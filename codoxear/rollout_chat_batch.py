@@ -24,6 +24,22 @@ def _extract_chat_events(
     *,
     initial_cc_pending_tool_ids: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int], dict[str, bool], dict[str, Any]]:
+    """Normalize an ordered log batch into transcript events and turn aggregates.
+
+    Args:
+        objs: Decoded backend-native rows from Codex, Pi, or Claude Code.
+        initial_cc_pending_tool_ids: Claude Code tool IDs already pending before
+            this batch; copied before rows are processed.
+
+    Returns:
+        A four-tuple of normalized transcript events, aggregate thinking/tool/
+        system counts, turn start/end/aborted flags, and observed tool metadata.
+
+    State touched:
+        Does not mutate either input. It maintains local pending-tool and
+        duplicate-subagent tracking so batch-level event and turn status remain
+        consistent across backend log formats.
+    """
     events: list[dict[str, Any]] = []
     total_thinking = 0
     total_thinking_tokens = 0

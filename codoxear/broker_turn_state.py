@@ -208,6 +208,18 @@ def _close_turn_state(st: "State") -> None:
 
 
 def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float) -> None:
+    """Reduce one backend-native log row into the broker's mutable turn state.
+
+    Args:
+        st: Current broker ``State``; its busy/turn flags, pending tool calls,
+            interruption markers, and activity timestamps are updated in place.
+        obj: One decoded Codex, Pi, or Claude Code rollout-log object.
+        now_ts: Timestamp assigned to activity observed in this row.
+
+    Returns:
+        ``None``. Invalid ``event_msg`` or ``response_item`` payloads raise
+        ``ValueError`` rather than producing an ambiguous state transition.
+    """
     typ = obj.get("type")
 
     if typ == "event_msg":
