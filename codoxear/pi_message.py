@@ -61,6 +61,53 @@ _PI_AGENT_INTERNAL_DELIVERY_PREFIXES = (
     "Background task completed:",
 )
 
+# These fields identify transport metadata, never human-authored text. A tag
+# is deliberately exact after tokenization so a user asking about an
+# "intercom" is still a transcript message.
+_PI_TRANSCRIPT_EXCLUDED_TAGS = frozenset({"intercom", "harness", "test"})
+_PI_TRANSCRIPT_TAG_FIELDS = ("tag", "tags", "source", "channel", "origin", "kind", "customType")
+
+
+def _contains_transcript_excluded_tag(value: Any) -> bool:
+    if isinstance(value, str):
+        tokens = value.lower().replace("_", "-").split("-")
+        return any(token in _PI_TRANSCRIPT_EXCLUDED_TAGS for token in tokens)
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return any(_contains_transcript_excluded_tag(item) for item in value)
+    return False
+
+
+def _mapping_has_transcript_excluded_tag(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    return any(
+        _contains_transcript_excluded_tag(value.get(field))
+        for field in _PI_TRANSCRIPT_TAG_FIELDS
+    )
+
+
+def pi_log_row_is_transcript_excluded(obj: dict[str, Any]) -> bool:
+    """Whether a Pi log row is agent plumbing rather than user transcript.
+
+    This is the shared recording boundary: tail, history, live SSE, search,
+    and export all normalize log rows through it. Structured tags are checked
+    only in transport metadata on the row/message/envelope, while known Pi
+    delivery envelopes remain covered for older extension versions.
+    """
+    if obj.get("type") == "active_long_running":
+        return True
+    if _mapping_has_transcript_excluded_tag(obj):
+        return True
+    message = obj.get("message")
+    if isinstance(message, dict):
+        if _mapping_has_transcript_excluded_tag(message):
+            return True
+        if _mapping_has_transcript_excluded_tag(message.get("metadata")):
+            return True
+    if _mapping_has_transcript_excluded_tag(obj.get("metadata")):
+        return True
+    return pi_user_is_agent_internal_delivery(obj)
+
 
 def pi_user_is_agent_internal_delivery(obj: dict[str, Any]) -> bool:
     text = pi_user_text(obj)

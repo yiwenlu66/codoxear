@@ -37,6 +37,7 @@ from .pi_message import pi_assistant_reasoning_tokens
 from .pi_message import pi_assistant_tool_use_count
 from .pi_message import pi_duplicate_tool_call_id
 from .pi_message import pi_message_role
+from .pi_message import pi_log_row_is_transcript_excluded
 from .pi_message import pi_pending_tool_call_is_duplicate
 from .pi_message import pi_pending_tool_call_is_unknown
 from .pi_message import pi_tool_result_id

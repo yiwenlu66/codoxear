@@ -17,6 +17,7 @@ from .pi_log import pi_assistant_is_aborted_turn
 from .pi_log import pi_assistant_is_terminal_no_visible_response
 from .pi_log import pi_assistant_text
 from .pi_log import pi_assistant_is_final_turn_end
+from .pi_log import pi_log_row_is_transcript_excluded
 from .pi_log import pi_user_text
 from .rollout_events import _codex_error_affects_turn_status
 from .rollout_events import _codex_event_text
@@ -104,6 +105,11 @@ def _single_chat_event(obj: dict[str, Any], *, cc_pending_tool_ids: set[str] | N
     if typ in ("user", "assistant", "system"):
         return get_agent_backend("cc").chat_event_from_log_row(obj, cc_pending_tool_ids=cc_pending_tool_ids)
     if typ in ("message", "custom_message", "active_long_running"):
+        # All transcript projections call this normalizer. Filtering here keeps
+        # harness/intercom/test traffic out of tail, history, live SSE, search,
+        # and export even when a backend adapter has another internal consumer.
+        if pi_log_row_is_transcript_excluded(obj):
+            return None
         return get_agent_backend("pi").chat_event_from_log_row(obj)
     if typ in ("event_msg", "response_item"):
         return get_agent_backend("codex").chat_event_from_log_row(obj)
