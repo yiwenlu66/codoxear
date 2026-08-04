@@ -3030,7 +3030,7 @@
             clearOlderLoadError();
             setOlderState({ hasMore: nextHasOlder, isLoading: false });
             if (evs.length) {
-              prependOlderEvents(evs, { preserveViewport: auto });
+              prependOlderEvents(evs, { preserveViewport: true });
               return true;
             }
             return false;

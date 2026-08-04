@@ -634,9 +634,19 @@
     }
 
     function prependOlderEvents(allEvents, { preserveViewport = false } = {}) {
+      const renderedMessageIds = new Set();
+      const renderedRows = typeof root.querySelectorAll === "function" ? Array.from(root.querySelectorAll(".msg-row[data-message-id]")) : [];
+      for (const row of renderedRows) {
+        const messageId = typeof row.dataset?.messageId === "string" ? row.dataset.messageId : "";
+        if (messageId) renderedMessageIds.add(messageId);
+      }
+      const prependedMessageIds = new Set();
       const msgs = [];
       for (const ev of allEvents || []) {
         if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
+        const messageId = typeof ev.message_id === "string" ? ev.message_id : "";
+        if (messageId && (renderedMessageIds.has(messageId) || prependedMessageIds.has(messageId))) continue;
+        if (messageId) prependedMessageIds.add(messageId);
         msgs.push(ev);
       }
       if (!msgs.length) return false;
