@@ -2269,14 +2269,6 @@
           chatSearchController.close();
         }
 
-        function refreshLoadedChatSearch(options) {
-          chatSearchController.refreshLoaded(options);
-        }
-
-        function stepChatSearch(delta) {
-          return chatSearchController.step(delta);
-        }
-
         // The direct-to-search shortcut (`/`) lives in the
         // CodoxearChatNavigation controller (codoxear/static/app_chat_navigation.js),
         // wired via chatNavigationController above.
@@ -2432,10 +2424,6 @@
 
         function hasOlderMessages() {
           return olderLoadSnapshot().hasMore;
-        }
-
-        function isLoadingOlderMessages() {
-          return olderLoadSnapshot().isLoading;
         }
 
         function normalizeTailEvent(ev) {
@@ -2637,10 +2625,6 @@
 
         function trimRenderedRows({ fromTop, maxRows = CHAT_DOM_WINDOW }) {
           transcriptDomRuntime.trimRenderedRows({ fromTop, maxRows });
-        }
-
-        function trimRenderedRowsBeforeViewport({ maxRows = CHAT_DOM_WINDOW } = {}) {
-          transcriptDomRuntime.trimRowsBeforeViewport({ maxRows, viewportTop: chat.scrollTop + 1 });
         }
 
         function messageRowDeps() {
@@ -3207,30 +3191,6 @@
           transcriptSlotRuntime.deleteSession(sessionId);
           dropPendingUserRows(sessionId, () => true);
           return selectedCleared;
-        }
-
-        async function dismissFailedLaunchRecord(sessionId) {
-          const s = sessionIndex.get(sessionId);
-          if (!sessionLaunchFailed(s)) {
-            setToast("launch record is not failed");
-            return;
-          }
-          const confirmed = await confirmApp({
-            title: "Dismiss launch record?",
-            message: "Dismiss this launch record?",
-            confirmText: "Dismiss",
-            cancelText: "Cancel",
-            destructive: true,
-          });
-          if (!confirmed) return;
-          try {
-            await api(`/api/sessions/${sessionId}/delete`, { method: "POST", body: {} });
-            clearDeletedSessionClientState(sessionId);
-            await refreshSessions();
-            setToast("Dismissed launch record");
-          } catch (err) {
-            setToast(`dismiss error: ${err && err.message ? err.message : "unknown error"}`);
-          }
         }
 
         function syncRecoveryUiForSession(sessionId) {

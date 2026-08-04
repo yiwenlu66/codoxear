@@ -20,9 +20,8 @@ def eval_launch_recovery_details() -> dict:
     launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
     redactor_start = source.index("function redactedLaunchErrorText(value) {")
     redactor_end = source.index("function sessionLaunchLabel(s)", redactor_start)
-    # recoverySessionInfo moved into the CodoxearRecovery controller; the pure
-    # helpers (recoveryPromptPreview / recoveryDetailsText) stay in app.js and
-    # are exercised here so diagnostics and recovery share a single source of truth.
+    # The pure helpers (recoveryPromptPreview / recoveryDetailsText) stay in
+    # app.js so diagnostics and recovery share a single source of truth.
     start = source.index("function recoveryPromptPreview(text, maxLen = 320)")
     end = source.index("function clearSelectedSessionAfterRemoval(sessionId, {", start)
     snippet = source[redactor_start:redactor_end] + "\n" + source[start:end]
@@ -260,7 +259,7 @@ def eval_open_session_tail_request_abort() -> dict:
 def eval_clear_deleted_session_client_state() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function clearDeletedSessionClientState(")
-    end = source.index("async function dismissFailedLaunchRecord", start)
+    end = source.index("function syncRecoveryUiForSession", start)
     snippet = source[start:end]
     js = textwrap.dedent(
         f"""
@@ -289,7 +288,7 @@ def eval_clear_deleted_session_client_state() -> dict:
 def eval_clear_selected_session_after_removal() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function clearSelectedSessionAfterRemoval(")
-    end = source.index("async function dismissFailedLaunchRecord", start)
+    end = source.index("function syncRecoveryUiForSession", start)
     snippet = source[start:end]
     js = textwrap.dedent(
         f"""

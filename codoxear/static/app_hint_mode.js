@@ -33,10 +33,6 @@
     let badgeContainer = null;
     let hintedTargets = new Map();
 
-    function anyModalOpen() {
-      return modalIsolationTargets.some(isModalTargetOpen);
-    }
-
     function targetIsVisible(target) {
       if (!target || target.disabled || target.offsetParent === null) return false;
       const style = target.style || {};

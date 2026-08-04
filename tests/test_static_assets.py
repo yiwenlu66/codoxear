@@ -52,7 +52,6 @@ APP_VOICE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_voice_helpers.js"
 APP_VOICE_JS = ROOT / "codoxear" / "static" / "app_voice.js"
 APP_QUEUE_JS = ROOT / "codoxear" / "static" / "app_queue.js"
 APP_DIAGNOSTICS_JS = ROOT / "codoxear" / "static" / "app_diagnostics.js"
-APP_RECOVERY_JS = ROOT / "codoxear" / "static" / "app_recovery.js"
 APP_UNATTENDED_JS = ROOT / "codoxear" / "static" / "app_unattended.js"
 APP_CHAT_NAVIGATION_JS = ROOT / "codoxear" / "static" / "app_chat_navigation.js"
 APP_CHAT_SEARCH_JS = ROOT / "codoxear" / "static" / "app_chat_search.js"
@@ -111,7 +110,6 @@ class TestStaticAssets(unittest.TestCase):
             "app_voice.js": "window.CodoxearVoice = {};\n",
             "app_queue.js": "window.CodoxearQueue = {};\n",
             "app_diagnostics.js": "window.CodoxearDiagnostics = {};\n",
-            "app_recovery.js": "window.CodoxearRecovery = {};\n",
             "app_unattended.js": "window.CodoxearUnattended = {};\n",
             "app_chat_navigation.js": "window.CodoxearChatNavigation = {};\n",
             "app_chat_search.js": "window.CodoxearChatSearch = {};\n",
@@ -187,7 +185,6 @@ class TestStaticAssets(unittest.TestCase):
                     '<script src="app_voice.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_queue.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_diagnostics.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
-                    '<script src="app_recovery.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_unattended.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_chat_navigation.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_chat_search.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
@@ -233,7 +230,6 @@ class TestStaticAssets(unittest.TestCase):
             self.assertIn(f"app_voice.js?v={version}", rendered)
             self.assertIn(f"app_queue.js?v={version}", rendered)
             self.assertIn(f"app_diagnostics.js?v={version}", rendered)
-            self.assertIn(f"app_recovery.js?v={version}", rendered)
             self.assertIn(f"app_unattended.js?v={version}", rendered)
             self.assertIn(f"app_chat_navigation.js?v={version}", rendered)
             self.assertIn(f"app_chat_search.js?v={version}", rendered)
@@ -326,7 +322,6 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn("codoxear/static/app_voice.js", names)
         self.assertIn("codoxear/static/app_queue.js", names)
         self.assertIn("codoxear/static/app_diagnostics.js", names)
-        self.assertIn("codoxear/static/app_recovery.js", names)
         self.assertIn("codoxear/static/app_unattended.js", names)
         self.assertIn("codoxear/static/app_chat_navigation.js", names)
         self.assertIn("codoxear/static/app_chat_search.js", names)

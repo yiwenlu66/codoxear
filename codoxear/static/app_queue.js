@@ -165,11 +165,6 @@
       return sessionHasUnknownSend(selected ? getSessionInfo(selected) : null);
     }
 
-    function selectedSessionIsOrphanRecovery() {
-      const selected = getSelected();
-      return sessionIsOrphanRecovery(selected ? getSessionInfo(selected) : null);
-    }
-
     function selectedSessionHasOrphanQueueRecovery() {
       const selected = getSelected();
       return sessionHasOrphanQueueRecovery(selected ? getSessionInfo(selected) : null);
