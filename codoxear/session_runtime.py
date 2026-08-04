@@ -237,6 +237,23 @@ def session_transport_from_meta(*, meta: dict[str, Any], clean_optional_text: Ca
     return transport, tmux_session, tmux_window
 
 
+def _pid_alive(pid: Any) -> bool:
+    try:
+        pid_int = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if pid_int <= 0:
+        return False
+    try:
+        os.kill(pid_int, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except Exception:
+        return False
+    return True
+
 def session_run_settings_from_meta(
     *,
     meta: dict[str, Any],
@@ -277,13 +294,19 @@ def session_run_settings_from_meta(
         model = live_model
     if live_effort:
         reasoning_effort = live_effort
+    # A live broker maintains the sidecar's model/effort from the bridge caps on
+    # every turn, so for a running session the sidecar value is current — and it
+    # beats the log replay, which lags a terminal change (a native-selector change
+    # is logged at the next turn, not immediately). Only a dead/stale broker falls
+    # back to the log for settings the sidecar never recorded.
+    broker_alive = _pid_alive(meta.get("broker_pid"))
     if log_path is not None and log_path.exists():
         log_provider, log_model, log_effort = read_run_settings_from_log(log_path, agent_backend=backend_name)
-        if log_provider is not None and not live_provider:
+        if log_provider is not None and not live_provider and not broker_alive:
             model_provider = log_provider
-        if log_model is not None and not live_model:
+        if log_model is not None and not live_model and not broker_alive:
             model = log_model
-        if log_effort is not None and not live_effort:
+        if log_effort is not None and not live_effort and not broker_alive:
             reasoning_effort = log_effort
     return model_provider, preferred_auth_method, model, reasoning_effort
 
