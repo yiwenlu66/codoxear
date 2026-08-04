@@ -877,6 +877,20 @@
       .toast:empty {
         display: none;
       }
+      .networkBanner {
+        align-self: stretch;
+        margin: var(--space-2) var(--space-5) 0 var(--space-5);
+        padding: var(--space-2) var(--space-5);
+        border: 1px solid var(--ink);
+        border-radius: 0;
+        background: var(--wash);
+        color: var(--ink);
+        font-size: var(--font-md);
+        line-height: 1.4;
+      }
+      .networkBanner[hidden] {
+        display: none;
+      }
       .actions {
         display: flex;
         gap: var(--space-3);

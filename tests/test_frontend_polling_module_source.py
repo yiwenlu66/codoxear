@@ -30,6 +30,9 @@ def eval_polling_policy() -> dict:
         const error2 = helpers.messagePollDelayMs({{ now: 1000, errorStreak: 2 }});
         const offlineHighError = helpers.messagePollDelayMs({{ now: 1000, offline: true, errorStreak: 7 }});
         const offlineHighErrorKick0 = helpers.normalizeMessagePollKickDelay({{ requested: 0, offline: true, errorStreak: 7 }});
+        const sessionsOffline = helpers.networkRetryDelayMs({{ normalDelayMs: helpers.sessionsPollDelayMs("visible"), offline: true }});
+        const secondaryOffline = helpers.networkRetryDelayMs({{ normalDelayMs: helpers.secondaryPollDelayMs("hidden"), offline: true }});
+        const sessionsFailed = helpers.networkRetryDelayMs({{ normalDelayMs: helpers.sessionsPollDelayMs("visible"), errorStreak: 2 }});
         const recovered = helpers.messagePollDelayMs({{ now: 1000, errorStreak: 0 }});
         process.stdout.write(JSON.stringify({{
           intervals: helpers.POLLING_INTERVALS,
@@ -50,6 +53,9 @@ def eval_polling_policy() -> dict:
           error2,
           offlineHighError,
           offlineHighErrorKick0,
+          sessionsOffline,
+          secondaryOffline,
+          sessionsFailed,
           recovered,
           negativeKick: helpers.normalizeMessagePollKickDelay({{ requested: -5 }}),
           stringKick: helpers.normalizeMessagePollKickDelay({{ requested: "42" }}),
@@ -94,7 +100,7 @@ class TestFrontendPollingModuleSource(unittest.TestCase):
         )
         self.assertEqual(partial, {"ok": False, "message": "Codoxear polling helpers failed to load"})
         complete = run_app_polling_guard(
-            "window.CodoxearPolling = { POLLING_INTERVALS: {}, sessionsPollDelayMs() {}, secondaryPollDelayMs() {}, browserOffline() {}, messagePollErrorDelayMs() {}, messagePollDelayMs() {}, normalizeMessagePollKickDelay() {} };"
+            "window.CodoxearPolling = { POLLING_INTERVALS: {}, sessionsPollDelayMs() {}, secondaryPollDelayMs() {}, browserOffline() {}, messagePollErrorDelayMs() {}, networkRetryDelayMs() {}, messagePollDelayMs() {}, normalizeMessagePollKickDelay() {} }; window.CodoxearNetwork = { createNetworkStatusController() {} };"
         )
         self.assertEqual(complete, {"ok": True, "message": ""})
 
@@ -130,6 +136,9 @@ class TestFrontendPollingModuleSource(unittest.TestCase):
         self.assertEqual(result["error2"], 4000)
         self.assertEqual(result["offlineHighError"], 30000)
         self.assertEqual(result["offlineHighErrorKick0"], 30000)
+        self.assertEqual(result["sessionsOffline"], 15000)
+        self.assertEqual(result["secondaryOffline"], 60000)
+        self.assertEqual(result["sessionsFailed"], 4000)
         self.assertEqual(result["recovered"], 1500)
         self.assertEqual(result["negativeKick"], 0)
         self.assertEqual(result["stringKick"], 42)

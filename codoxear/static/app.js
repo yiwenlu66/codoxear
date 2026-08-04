@@ -409,10 +409,15 @@
         typeof codoxearPolling.secondaryPollDelayMs !== "function" ||
         typeof codoxearPolling.browserOffline !== "function" ||
         typeof codoxearPolling.messagePollErrorDelayMs !== "function" ||
+        typeof codoxearPolling.networkRetryDelayMs !== "function" ||
         typeof codoxearPolling.messagePollDelayMs !== "function" ||
         typeof codoxearPolling.normalizeMessagePollKickDelay !== "function"
       )
         throw new Error("Codoxear polling helpers failed to load");
+
+      const codoxearNetwork = window.CodoxearNetwork;
+      if (!codoxearNetwork || typeof codoxearNetwork.createNetworkStatusController !== "function")
+        throw new Error("Codoxear network status helpers failed to load");
 
       const codoxearConversationCopy = window.CodoxearConversationCopy;
       if (
@@ -784,6 +789,7 @@
           ctxChip,
           interruptBtn,
           toast,
+          networkBanner,
           toggleSidebarBtn,
           unattendedBtn,
           diagBtn,
@@ -803,6 +809,7 @@
         } = shellDOM.elements;
         const toastController = codoxearToast.createToastController({ toast });
         const setToast = (text) => toastController.show(text);
+        const networkStatus = codoxearNetwork.createNetworkStatusController({ banner: networkBanner, navigatorLike: typeof navigator === "undefined" ? undefined : navigator });
         const codoxearUnattendedDom = window.CodoxearUnattended;
         if (!codoxearUnattendedDom || typeof codoxearUnattendedDom.createUnattendedDom !== "function")
           throw new Error("Codoxear unattended DOM failed to load");
@@ -829,6 +836,8 @@
         let pollKickPending = false;
         let pollKickDelayMs = null;
         let messagePollErrorStreak = 0;
+        let sessionsPollErrorStreak = 0;
+        let secondaryPollErrorStreak = 0;
 	        let pollFastUntilMs = 0;
 	         let turnOpen = false;
 	         let sessionsTimer = null;
@@ -1002,10 +1011,18 @@
           renderLogin(renderApp);
         }
         function sessionsPollDelayMs() {
-          return codoxearPolling.sessionsPollDelayMs(document.visibilityState);
+          return codoxearPolling.networkRetryDelayMs({
+            normalDelayMs: codoxearPolling.sessionsPollDelayMs(document.visibilityState),
+            offline: browserOffline(),
+            errorStreak: sessionsPollErrorStreak,
+          });
         }
         function secondaryPollDelayMs() {
-          return codoxearPolling.secondaryPollDelayMs(document.visibilityState);
+          return codoxearPolling.networkRetryDelayMs({
+            normalDelayMs: codoxearPolling.secondaryPollDelayMs(document.visibilityState),
+            offline: browserOffline(),
+            errorStreak: secondaryPollErrorStreak,
+          });
         }
         function browserOffline() {
           return codoxearPolling.browserOffline(typeof navigator === "undefined" ? undefined : navigator);
@@ -1025,9 +1042,27 @@
         }
         function markMessagePollSuccess() {
           messagePollErrorStreak = 0;
+          networkStatus.reportSuccess();
         }
-        function markMessagePollFailure() {
+        function markMessagePollFailure(transportFailed = true) {
           messagePollErrorStreak = Math.min(messagePollErrorStreak + 1, 20);
+          if (transportFailed) networkStatus.reportFailure();
+        }
+        function markSessionsPollSuccess() {
+          sessionsPollErrorStreak = 0;
+          networkStatus.reportSuccess();
+        }
+        function markSessionsPollFailure(transportFailed = true) {
+          sessionsPollErrorStreak = Math.min(sessionsPollErrorStreak + 1, 20);
+          if (transportFailed) networkStatus.reportFailure();
+        }
+        function markSecondaryPollSuccess() {
+          secondaryPollErrorStreak = 0;
+          networkStatus.reportSuccess();
+        }
+        function markSecondaryPollFailure(transportFailed = true) {
+          secondaryPollErrorStreak = Math.min(secondaryPollErrorStreak + 1, 20);
+          if (transportFailed) networkStatus.reportFailure();
         }
         function normalizeMessagePollKickDelay(ms = 0) {
           return codoxearPolling.normalizeMessagePollKickDelay({
@@ -1055,11 +1090,13 @@
           if (appDisposed || !sessionsPollingEnabled) return;
           try {
             await refreshSessions();
+            markSessionsPollSuccess();
           } catch (e2) {
             if (e2 && e2.status === 401) {
               handleAppAuthLoss();
               return;
             }
+            markSessionsPollFailure(!(e2 && typeof e2.status === "number"));
             console.error("refreshSessions timer failed", e2);
           }
           scheduleSessionsPoll();
@@ -1070,11 +1107,13 @@
             await loadVoiceSettings();
             await syncNotificationState();
             await pollNotificationFeed();
+            markSecondaryPollSuccess();
           } catch (e2) {
             if (e2 && e2.status === 401) {
               handleAppAuthLoss();
               return;
             }
+            markSecondaryPollFailure(!(e2 && typeof e2.status === "number"));
             console.error("secondary poll failed", e2);
           }
           scheduleSecondaryPoll();
@@ -3374,6 +3413,7 @@
               applyCachedTail(sessionId, cachedTail, s);
               displayedCachedTail = true;
             }
+            if (!(e && typeof e.status === "number")) networkStatus.reportFailure();
             renderTranscriptLoadError(sessionId, e, { preserveTranscript: displayedCachedTail });
             if (!appDisposed && selected === sessionId && pollGen === myGen) kickPoll(messagePollDelayMs());
             return null;
@@ -3503,7 +3543,7 @@
               }
               return;
             }
-            markMessagePollFailure();
+            markMessagePollFailure(!(e && typeof e.status === "number"));
             // Transient network errors (fetch failed entirely, no HTTP status)
             // are self-recovering via poll backoff — don't toast them. Only
             // surface errors where the server actually responded with a status.
@@ -5824,13 +5864,22 @@
               });
               addAppEvent(window, "online", () => {
                 if (appDisposed) return;
+                networkStatus.reportSuccess();
                 messagePollErrorStreak = 0;
+                sessionsPollErrorStreak = 0;
+                secondaryPollErrorStreak = 0;
+                resumeMessageEventSource(selected, pollGen);
                 if (selected) kickPoll(0);
                 scheduleSessionsPoll(0);
+                scheduleSecondaryPoll(0);
               });
               addAppEvent(window, "offline", () => {
                 if (appDisposed) return;
+                networkStatus.sync();
+                closeMessageEventSource();
                 if (selected) kickPoll(messagePollDelayMs());
+                scheduleSessionsPoll(sessionsPollDelayMs());
+                scheduleSecondaryPoll(secondaryPollDelayMs());
               });
               addAppEvent(window, "pageshow", () => {
                 if (!appDisposed) resumeAnnouncementRuntime({ resetSource: false });

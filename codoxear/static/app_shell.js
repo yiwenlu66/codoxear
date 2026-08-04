@@ -77,6 +77,8 @@
     const interruptBtn = el("button", { id: "interruptBtn", class: "icon-btn", title: "Interrupt (Esc)", "aria-label": "Interrupt (Esc)", type: "button", html: iconSvg("stop") });
     interruptBtn.style.display = "none";
     const toast = el("div", { class: "muted toast", id: "toast", role: "status", "aria-live": "polite" });
+    const networkBanner = el("div", { class: "networkBanner", id: "networkBanner", role: "status", "aria-live": "polite", "aria-atomic": "true", "aria-hidden": "true" });
+    networkBanner.hidden = true;
     const toggleSidebarBtn = el("button", { id: "toggleSidebarBtn", class: "icon-btn", title: "Toggle sidebar", "aria-label": "Toggle sidebar", html: iconSvg("menu") });
     const unattendedBtn = el("button", { id: "unattendedBtn", class: "icon-btn", title: "Unattended mode", "aria-label": "Unattended mode", "aria-controls": "unattendedMenu", "aria-expanded": "false", "aria-haspopup": "dialog", type: "button", html: iconSvg("unattended") });
     unattendedBtn.disabled = true;
@@ -119,11 +121,11 @@
     composer.appendChild(form);
     sidebar.appendChild(el("header", {}, [el("div", { class: "title", html: `<svg class="sidebarLogo" viewBox="0 0 24 24" data-logo-motif="dog-ear-terminal" aria-hidden="true" focusable="false"><path d="M4 2h10l6 6v14H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M14 2v6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="m7 13 3 3-3 3M12 19h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>Codoxear` }), sidebarHeaderActions]));
     sidebar.append(sessionsWrap, sidebarFooter);
-    main.append(topbar, toast, chatWrap, composer);
+    main.append(topbar, networkBanner, toast, chatWrap, composer);
     app.append(navRail, sidebar, main, backdrop);
     root.append(app);
 
-    const elements = Object.freeze({ root, app, navRail, backdrop, sidebar, sessionsWrap, sidebarEmptyHint, main, chatWrap, chatHeader, chatEmptyState, chat, chatInner, olderWrap, olderBtn, olderRetryBtn, olderError, olderErrorText, bottomSentinel, jumpBtn, chatTimeChip, chatSearchInput, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn, chatSearchStatus, chatSearchAllHintEl, chatSearchBar, chatNavRail, titleLabel, statusChip, ctxChip, interruptBtn, toast, toggleSidebarBtn, unattendedBtn, sidebarHeaderActions, voiceHost, diagBtn, prevUserBtn, nextUserBtn, chatSearchBtn, fileBtn, composer, form, textarea, msgPh, modelPicker, imgInput, attachBtn, queueBtn, sendBtn, stagedTray });
+    const elements = Object.freeze({ root, app, navRail, backdrop, sidebar, sessionsWrap, sidebarEmptyHint, main, chatWrap, chatHeader, chatEmptyState, chat, chatInner, olderWrap, olderBtn, olderRetryBtn, olderError, olderErrorText, bottomSentinel, jumpBtn, chatTimeChip, chatSearchInput, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn, chatSearchStatus, chatSearchAllHintEl, chatSearchBar, chatNavRail, titleLabel, statusChip, ctxChip, interruptBtn, toast, networkBanner, toggleSidebarBtn, unattendedBtn, sidebarHeaderActions, voiceHost, diagBtn, prevUserBtn, nextUserBtn, chatSearchBtn, fileBtn, composer, form, textarea, msgPh, modelPicker, imgInput, attachBtn, queueBtn, sendBtn, stagedTray });
     return Object.freeze({ elements, cleanup() { root.innerHTML = ""; } });
   }
 

@@ -38,6 +38,12 @@
     return Math.min(POLLING_INTERVALS.MESSAGE_POLL_ERROR_MAX_MS, POLLING_INTERVALS.MESSAGE_POLL_ERROR_MIN_MS * 2 ** exponent);
   }
 
+  function networkRetryDelayMs({ normalDelayMs = 0, offline = false, errorStreak = 0 } = {}) {
+    const normalDelay = Math.max(0, Number(normalDelayMs) || 0);
+    const errorDelay = messagePollErrorDelayMs(errorStreak);
+    return Math.max(normalDelay, offline ? POLLING_INTERVALS.MESSAGE_POLL_OFFLINE_MS : 0, errorDelay);
+  }
+
   function messagePollDelayMs({ now = Date.now(), visibilityState = "visible", offline = false, errorStreak = 0, pollFastUntilMs = 0, turnOpen = false } = {}) {
     const errorDelay = messagePollErrorDelayMs(errorStreak);
     if (offline) return Math.max(POLLING_INTERVALS.MESSAGE_POLL_OFFLINE_MS, errorDelay);
@@ -63,6 +69,7 @@
     secondaryPollDelayMs,
     browserOffline,
     messagePollErrorDelayMs,
+    networkRetryDelayMs,
     messagePollDelayMs,
     normalizeMessagePollKickDelay,
   });
