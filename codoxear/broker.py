@@ -414,7 +414,22 @@ class Broker:
                     ignored_paths = set(st.ignored_rollout_paths)
                 if root_pid > 0:
                     if AGENT_BACKEND == "pi":
-                        if declared_log_path is not None and declared_log_path.exists():
+                        # The live bridge marker is authoritative over the launch-intent
+                        # declared log: after /new the active session moves to a new log
+                        # while declared_log_path still points at the old one, and
+                        # asserting the stale declared log first would fight the marker
+                        # every scan (the old/new oscillation). Read the marker first.
+                        marker_lp = _read_pi_active_session_marker(
+                            self.pi_active_session_marker_path,
+                            sessions_dir=self.sessions_dir,
+                        )
+                        marker_live = bool(
+                            marker_lp is not None
+                            and marker_lp.exists()
+                            and declared_log_path is not None
+                            and not _paths_match(marker_lp, declared_log_path)
+                        )
+                        if declared_log_path is not None and declared_log_path.exists() and not marker_live:
                             if (
                                 current_log_path is None
                                 or (not _paths_match(declared_log_path, current_log_path))
@@ -425,10 +440,7 @@ class Broker:
                                 self._maybe_register_or_switch_rollout(log_path=declared_log_path)
                                 time.sleep(0.25)
                                 continue
-                        lp = _read_pi_active_session_marker(
-                            self.pi_active_session_marker_path,
-                            sessions_dir=self.sessions_dir,
-                        )
+                        lp = marker_lp
                         capability = _read_pi_active_session_marker_capability(
                             self.pi_active_session_marker_path,
                             sessions_dir=self.sessions_dir,
