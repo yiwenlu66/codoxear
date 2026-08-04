@@ -3348,13 +3348,6 @@ select {
         .newSessionOptionsRow #newSessionTmuxField .checkField {
           min-height: var(--dialog-control-h);
         }
-        .detailsRow {
-          grid-template-columns: minmax(0, 1fr);
-          gap: var(--space-1);
-        }
-        .detailsLabel {
-          padding-top: 0;
-        }
       }
 
       @media (max-width: 880px), (pointer: coarse) {
@@ -3444,6 +3437,13 @@ select {
       @media (max-width: 520px) {
         :root {
           --sidebar-w: 100vw;
+        }
+        .detailsRow {
+          grid-template-columns: minmax(0, 1fr);
+          gap: var(--space-1);
+        }
+        .detailsLabel {
+          padding-top: 0;
         }
         .pill {
           flex: 1 1 auto;
