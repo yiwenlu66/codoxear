@@ -117,6 +117,7 @@ class TestStaticAssets(unittest.TestCase):
             "app_sessions.js": "window.CodoxearSessions = {};\n",
             "app_transcript_view.js": "window.CodoxearTranscriptView = {};\n",
             "app_composer.js": "window.CodoxearComposer = {};\n",
+            "app_session_edit.js": "window.CodoxearSessionEdit = {};\n",
             "app.js": "console.log('one');\n",
             "app.css": "body { color: black; }\n",
             "favicon.png": "png bytes\n",
