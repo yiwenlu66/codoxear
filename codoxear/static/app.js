@@ -831,6 +831,7 @@
          let currentRunning = false;
          let sessionsRefreshInFlight = null;
          let sessionsRefreshQueued = false;
+        let selected = null; // selected session_id (null until chosen)
 	        let sessionIndex = new Map(); // session_id -> session info
         let recentCwds = [];
 	        let sending = false;
