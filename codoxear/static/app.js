@@ -2618,7 +2618,7 @@
           renderSessionTail,
           applySessionRuntimeFromTail,
           resetChatRenderState,
-          setAttachCount,
+          setAttachCount: (count) => setAttachCount(count),
           setLiveCursor: (cursor) => transcriptSlotRuntime.setLiveCursor(cursor),
           appendEvent,
           appendTailSnapshotEvents,
