@@ -1,0 +1,153 @@
+"""Restart persistence contract for queued prompts and unattended settings.
+
+The composer draft is browser-owned localStorage (``codexweb.draft.<session_id>``),
+so it has no server-side file or SessionManager state to reload. This test covers
+the server-owned half of the same restart scenario: a queued staged prompt and
+its unattended configuration survive a fresh manager/store bootstrap. Browser
+validation exercises the localStorage draft separately.
+"""
+
+from __future__ import annotations
+
+import threading
+from pathlib import Path
+
+from codoxear.session_model import Session
+from codoxear.session_store import SessionStore
+from codoxear.session_store import SessionStorePaths
+from codoxear.session_unattended_config import SessionUnattendedConfigCoordinator
+from codoxear.unattended import unattended_config_key
+
+
+DEFAULT_IDLE_MINUTES = 5
+DEFAULT_MAX_INJECTIONS = 10
+
+
+def _session(*, session_id: str, thread_id: str, log_path: Path) -> Session:
+    return Session(
+        session_id=session_id,
+        thread_id=thread_id,
+        broker_pid=1,
+        codex_pid=1,
+        agent_backend="codex",
+        owned=False,
+        start_ts=1.0,
+        cwd="/workspace",
+        log_path=log_path,
+        sock_path=log_path.with_suffix(".sock"),
+        sync_send_supported=True,
+        key_write_errors_supported=True,
+    )
+
+
+def _store(root: Path) -> SessionStore:
+    return SessionStore(
+        paths=SessionStorePaths(
+            aliases=root / "session_aliases.json",
+            sidebar_meta=root / "session_sidebar.json",
+            hidden_sessions=root / "hidden_sessions.json",
+            files=root / "session_files.json",
+            queues=root / "session_queues.json",
+            pending_attachments=root / "pending_attachments.json",
+            staged_attachments=root / "staged_attachments.json",
+            commit_unknown_sends=root / "commit_unknown_sends.json",
+            recent_cwds=root / "recent_cwds.json",
+            unattended=root / "unattended.json",
+            uploads_root=root / "uploads",
+        ),
+        file_history_max=10,
+        recent_cwd_max=10,
+        unattended_default_idle_minutes=DEFAULT_IDLE_MINUTES,
+        unattended_default_max_injections=DEFAULT_MAX_INJECTIONS,
+        clean_alias=lambda value: value,
+        clean_priority_offset=lambda value: value,
+        clean_snooze_until=lambda value: value,
+        clean_dependency_session_id=lambda value: value,
+        clean_recent_cwd=lambda value: value,
+        clean_commit_unknown_send_record=lambda value: value,
+    )
+
+
+class _SessionManagerHarness:
+    """Minimal SessionManager persistence boundary with a real SessionStore.
+
+    Each instance deliberately creates a new store and loads it from disk. That
+    is the relevant boundary for a server restart; a live broker keeps its
+    socket-derived ``session_id`` while the manager process is recreated.
+    """
+
+    def __init__(self, *, root: Path, sessions: dict[str, Session]) -> None:
+        self.store = _store(root)
+        self.store.load_persistent_state()
+        self.sessions = sessions
+        self.lock = threading.Lock()
+        self.input_locks: dict[str, threading.RLock] = {}
+        self.unattended_last_injected: dict[str, float] = {}
+
+    def input_lock_for_session(self, session_id: str) -> threading.RLock:
+        return self.input_locks.setdefault(session_id, threading.RLock())
+
+    def unattended_config(self) -> SessionUnattendedConfigCoordinator:
+        return SessionUnattendedConfigCoordinator(
+            lock=self.lock,
+            sessions=lambda: self.sessions,
+            unattended=lambda: self.store.unattended,
+            unattended_last_injected=lambda: self.unattended_last_injected,
+            input_lock_for_session=self.input_lock_for_session,
+            save_unattended=lambda: self.store.save_unattended(self.store.unattended),
+            clean_unattended_cooldown_minutes=self.store.unattended_store.clean_cooldown_minutes,
+            clean_unattended_remaining_injections=self.store.unattended_store.clean_remaining_injections,
+        )
+
+
+def test_unattended_restart_preserves_staged_prompt_queue_and_thread_config(tmp_path: Path) -> None:
+    """A fresh server manager reloads the queued prompt and unattended intent.
+
+    The original session id remains the queue key across a server-only restart;
+    the resumed session id changes below to prove unattended configuration is
+    recovered by the stable backend thread identity rather than broker identity.
+    """
+    app_dir = tmp_path / ".local" / "share" / "codoxear"
+    original = _session(
+        session_id="broker-before-restart",
+        thread_id="thread-continues",
+        log_path=app_dir / "sessions" / "thread-continues.jsonl",
+    )
+    before_restart = _SessionManagerHarness(root=app_dir, sessions={original.session_id: original})
+
+    staged_prompt = "Continue from the failing unattended restart test."
+    queued, queue_len = before_restart.store.queue_store.append(
+        before_restart.store.queues,
+        original.session_id,
+        staged_prompt,
+    )
+    before_restart.store.save_queues(before_restart.store.queues)
+    saved_config = before_restart.unattended_config().set(
+        original.session_id,
+        enabled=True,
+        request="Finish the queued validation and report the result.",
+        cooldown_minutes=7,
+        remaining_injections=3,
+    )
+
+    assert queue_len == 1
+    assert (app_dir / "session_queues.json").is_file()
+    assert (app_dir / "unattended.json").is_file()
+
+    # New SessionStore instance = a new SessionManager process after restart.
+    # The original broker session is rediscovered with its unchanged socket id.
+    restarted = _SessionManagerHarness(root=app_dir, sessions={original.session_id: original})
+    assert restarted.store.queue_store.list_items(restarted.store.queues, original.session_id) == [
+        {**queued, "sending": False, "commit_unknown": False}
+    ]
+
+    # A broker/session replacement for the same backend thread receives the
+    # persisted unattended config through its thread-scoped storage key.
+    resumed = _session(
+        session_id="broker-after-restart",
+        thread_id=original.thread_id,
+        log_path=original.log_path,
+    )
+    restarted.sessions[resumed.session_id] = resumed
+    assert unattended_config_key(original) == unattended_config_key(resumed) == "thread:thread-continues"
+    assert restarted.unattended_config().get(resumed.session_id) == saved_config
