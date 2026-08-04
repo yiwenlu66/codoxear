@@ -65,6 +65,7 @@
   const LIVE_AUDIO_RESTART_THROTTLE_MS = 4000;
   const ANNOUNCEMENT_HEARTBEAT_INTERVAL_MS = 15000;
   const VOICE_SAVE_DEBOUNCE_MS = 250;
+  const NOTIFICATION_PANEL_MAX_ITEMS = 100;
 
   function requireFunction(value, name) {
     if (typeof value !== "function") throw new TypeError(`voice controller dependency missing: ${name}`);
@@ -711,6 +712,13 @@
       });
     }
 
+    function trimNotificationItems() {
+      for (const item of sortedNotificationItems().slice(NOTIFICATION_PANEL_MAX_ITEMS)) {
+        notificationItems.delete(item.message_id);
+        readNotificationIds.delete(item.message_id);
+      }
+    }
+
     function markNotificationRead(messageId) {
       const id = String(messageId || "").trim();
       if (id) readNotificationIds.add(id);
@@ -791,6 +799,7 @@
             playNotificationSound();
           }
         }
+        trimNotificationItems();
       } catch (e) {
         if (e && e.status === 401) {
           handleAppAuthLoss();
