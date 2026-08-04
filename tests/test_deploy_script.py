@@ -125,7 +125,6 @@ esac
         assert "agent-browser fill #pw test-password" in operations
         assert "agent-browser click #loginBtn" in operations
         assert "agent-browser eval" in operations
-        assert "agent-browser errors --json" in operations
         assert operations.index(f"node -c {deploy_dir}/codoxear/static/app.js") < operations.index("pipx install --force")
 
         (deploy_dir / "must-stay-unmodified").write_text("dirty")

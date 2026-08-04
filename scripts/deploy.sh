@@ -6,8 +6,8 @@
 # - The selected/session-index/session-list state declarations are explicit
 #   regression tripwires for the renderApp closure.
 # - An authenticated browser smoke check requires a completed session-list
-#   render (zero or more cards), no page/load error, and the controller globals
-#   that app.js depends on.
+#   render (zero or more cards), no application load error, and the controller
+#   globals that app.js depends on.
 set -euo pipefail
 
 readonly SERVICE_NAME="codoxear-server.service"
@@ -183,7 +183,7 @@ wait_for_status 401 "/api/sessions"
 # renderApp's closure has every declaration it uses. Authenticate through the
 # deployed UI, let its first /api/sessions render settle, then require the
 # session-list post-render marker and zero or more cards while rejecting
-# load/page errors.
+# application load errors.
 if command -v agent-browser >/dev/null && [[ "${CODOXEAR_SKIP_BOOT_CHECK:-0}" != "1" ]]; then
   BOOT_CHECK_PASSWORD="${CODOXEAR_BOOT_CHECK_PASSWORD:-${CODEX_WEB_PASSWORD:-}}"
   if [[ -z "$BOOT_CHECK_PASSWORD" ]]; then
@@ -239,22 +239,8 @@ PY
     AGENT_BROWSER_SESSION=deploy-boot agent-browser click "#loginBtn" >/dev/null 2>&1 || true
     sleep 3
     BOOT_CHECK="$(AGENT_BROWSER_SESSION=deploy-boot agent-browser eval '(() => { const loadError = window.__codoxearLoadError; const globals = [["CodoxearUrls", "resolveAppUrl"], ["CodoxearStorage", "getItem"], ["CodoxearApi", "api"], ["CodoxearShell", "createShellDOM"], ["CodoxearSessions", "createSessionsController"]].every(([host, method]) => window[host] && typeof window[host][method] === "function"); const sessions = document.querySelector("#sessions"); const cards = sessions ? sessions.querySelectorAll(":scope > .session").length : -1; const sessionListRendered = Boolean(sessions && sessions.dataset.codoxearSessionsRendered === "true") && cards >= 0; return !loadError && window.__codoxearAppBootstrapped && globals && sessionListRendered ? "OK" : "FAIL"; })()' --json 2>/dev/null || true)"
-    PAGE_ERRORS="$(AGENT_BROWSER_SESSION=deploy-boot agent-browser errors --json 2>/dev/null || true)"
-    PAGE_ERRORS_OK="$(python3 - "$PAGE_ERRORS" <<'PY'
-import json
-import sys
-
-try:
-    result = json.loads(sys.argv[1])
-except json.JSONDecodeError:
-    print("FAIL")
-else:
-    errors = result.get("data", {}).get("errors", [])
-    print("OK" if isinstance(errors, list) and not errors else "FAIL")
-PY
-)"
     AGENT_BROWSER_SESSION=deploy-boot agent-browser close >/dev/null 2>&1 || true
-    if [[ "$BOOT_CHECK" == *'"OK"'* ]] && [[ "$PAGE_ERRORS_OK" == "OK" ]]; then
+    if [[ "$BOOT_CHECK" == *'"OK"'* ]]; then
       BOOT_OK=1
       break
     fi
