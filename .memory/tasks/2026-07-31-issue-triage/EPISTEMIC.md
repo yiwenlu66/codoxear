@@ -1,8 +1,7 @@
 # EPISTEMIC — project state model (issue triage)
 
 ## Phenomenon being explained
-Not a single defect yet. This file holds the operating model for owning project
-state as issues arrive. It will be rewritten as evidence accumulates.
+A historical issue ledger had retained broad closure claims while the live product-gap ledger retained unclassified residuals. The ledgers must distinguish shipped items (with commits), active work (with an owner), and residual/open work (with a next evidence-gathering action) without rewriting the historical audit trail.
 
 ## Deployed baseline (verified 2026-07-31)
 - `/home/yiwen/codoxear` @ `main` `1976c30b`, recovery/product-gaps merged.
@@ -16,10 +15,18 @@ state as issues arrive. It will be rewritten as evidence accumulates.
 - Validation floor: pytest green is NOT acceptance. Docker sandbox + browser evidence for UX claims.
 
 ## Ruled out / known dead
-- No open bounded product-visible defect in source per PRODUCT_GAP_STATUS.md (as of scout at `53768a3`; current HEAD `1976c30b` is later). Treat fresh user issues as the source of truth, not the prior "clean" verdict.
+
+- The original ISSUE-1 through ISSUE-8 reports are closed; `PRODUCT_GAP_STATUS.md` “Reconciled disposition ledger” records their resolution commits.
+- PR #21 is superseded by the shipped shared-broker Claude Code backend (`f4a06a2e`); PR #22 was rewritten and shipped (`d86bdda6`). Neither is active work.
+- There is no ownerless implementation in progress in this ledger. Unrelated working-tree edits are not evidence of ledger ownership.
 
 ## Anomalies / open
-- (none currently open in living docs; ISSUE-1/2/3 are the active defects, see ISSUES.md)
+
+- Pi retry detection depends on Pi 0.82.1’s `Retrying (n/m) in Ns` status text. A changed upstream string needs a captured PTY fixture and detector update.
+- Terminal-error busy→idle uses a 3-second quiet window. A real delayed-PTY false idle needs timestamped capture before retuning.
+- Full-log Pi run-settings replay can be I/O-heavy on large logs; measure a real large log before adding a checkpoint, preserving history correctness.
+- Slash commands before the first model turn have no backend-log evidence until a log exists; define an acknowledgement only if that absence becomes user-visible.
+- Paper-language aesthetic judgment remains open only to fresh real-hardware observation.
 
 ## DO NOT TOUCH: session card good state (recorded 2026-08-02)
 The session sidebar card has a TWO-BRANCH DOM (swipe for touch, sessionDesktopLayout for desktop hover) and an outline-based active edge. This is the user-confirmed GOOD STATE.
@@ -60,10 +67,10 @@ Frontend sendChoiceNowBtn ALREADY calls sendText → /send. Once /send is uncond
 ISSUE-2 + ISSUE-3 dissolve by removing gates. Steering works. Queue preserved as opt-in. Attachments/commit-unknown preserved.
 
 ## Currently justified claim
-Deploy baseline is sound and ready to receive issues. No fix in flight.
+All listed historical issues and the two stale PRs have a disposition and commit evidence. The only open ledger entries are explicitly scoped residual assumptions or a real-hardware aesthetic review; none has an active implementation owner.
 
 ## Question that would most change the model
-The first user issue. Until it arrives, every mechanism here is carry-over; the first real report is where the model gets tested.
+A fresh, reproducible observation for any residual—especially an upstream Pi retry-status change, delayed PTY output, a large-log performance measurement, or a real-hardware paper-language defect.
 
 ## Performance architecture (audit 2026-08-02, subagent report)
 
