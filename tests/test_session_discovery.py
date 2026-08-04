@@ -116,7 +116,7 @@ def test_discover_valid_registration_from_sidecar(tmp_path: Path) -> None:
     assert reg.preferred_auth_method == "apikey"
     assert reg.model == "gpt-test"
     assert reg.reasoning_effort == "low"
-    assert reg.service_tier == "flex"
+    assert reg.service_tier is None
     assert reg.sync_send_supported is True
     assert reg.key_write_errors_supported is True
 
