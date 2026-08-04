@@ -196,29 +196,29 @@ def eval_open_session_tail_request_abort() -> dict:
           refreshFileCandidates: async (...args) => calls.push(["refreshFileCandidates", ...args]),
         }};
         let activeTailController = null;
-        ctx.messageFlowController = {{
-          prepareSessionOpen: () => {{
-            if (activeTailController) activeTailController.abort();
-            activeTailController = null;
-          }},
-          beginOpenSessionTailRequest: (sessionId, generation) => {{
-            if (activeTailController) activeTailController.abort();
-            const controller = new AbortController();
-            activeTailController = controller;
-            return {{ sessionId, generation, controller, signal: controller.signal }};
-          }},
-          isOpenSessionTailAbortError: (request, error) => Boolean(error && error.name === "AbortError" && request && request.signal && request.signal.aborted),
-          isCurrentOpenSessionTailRequest: (request) => Boolean(request && ctx.selected === request.sessionId && ctx.pollGen === request.generation),
-          markMessagePollFailure: () => calls.push(["markMessagePollFailure"]),
-          finishOpenSessionTailRequest: (request) => {{ if (request && activeTailController === request.controller) activeTailController = null; }},
-          markMessagePollSuccess: () => calls.push(["markMessagePollSuccess"]),
-          openMessageEventSource: (...args) => calls.push(["openMessageEventSource", ...args]),
-          kickPoll: (...args) => calls.push(["kickPoll", ...args]),
-          messagePollDelayMs: () => 900,
+        ctx.abortController = (controller) => {{
+          if (!controller || typeof controller.abort !== "function") return;
+          controller.abort();
         }};
-        ctx.kickPoll = (...args) => ctx.messageFlowController.kickPoll(...args);
-        ctx.messagePollDelayMs = () => ctx.messageFlowController.messagePollDelayMs();
-        ctx.openMessageEventSource = (...args) => ctx.messageFlowController.openMessageEventSource(...args);
+        ctx.abortOpenSessionTailRequest = () => {{
+          const controller = activeTailController;
+          activeTailController = null;
+          ctx.abortController(controller);
+        }};
+        ctx.beginOpenSessionTailRequest = (sessionId, gen) => {{
+          ctx.abortOpenSessionTailRequest();
+          const controller = new AbortController();
+          activeTailController = controller;
+          return Object.freeze({{ sessionId, gen, controller, signal: controller.signal }});
+        }};
+        ctx.isOpenSessionTailAbortError = (request, error) =>
+          Boolean(error && error.name === "AbortError" && request && request.signal && request.signal.aborted);
+        ctx.isCurrentOpenSessionTailRequest = (request) =>
+          Boolean(request && ctx.selected === request.sessionId && ctx.pollGen === request.gen);
+        ctx.finishOpenSessionTailRequest = (request) => {{
+          if (request && activeTailController === request.controller) activeTailController = null;
+        }};
+        ctx.abortMessagePollRequest = () => {{}};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = { openSession };\n")}, ctx);
         (async () => {{
@@ -316,15 +316,8 @@ def eval_clear_selected_session_after_removal() -> dict:
           turnOpen: true,
           titleLabel: {{ textContent: "old title" }},
           handleFileViewerSessionUnavailable: (sid) => calls.push(["handleFileViewerSessionUnavailable", sid, ctx.selected]),
-          messageFlowController: {{
-            abortMessagePollRequest: () => calls.push(["abortMessagePollRequest"]),
-            clearPollSchedule: () => {{
-              if (ctx.pollTimer) calls.push(["clearTimeout", ctx.pollTimer]);
-              ctx.pollTimer = null;
-              ctx.pollKickPending = false;
-              ctx.pollKickDelayMs = null;
-            }},
-          }},
+          abortMessagePollRequest: () => calls.push(["abortMessagePollRequest"]),
+          clearTimeout: (timer) => calls.push(["clearTimeout", timer]),
           clearRenderedTranscriptRange: () => calls.push(["clearRenderedTranscriptRange"]),
           storageRemoveItem: (...args) => calls.push(["storageRemoveItem", ...args]),
           setSessionHash: (...args) => calls.push(["setSessionHash", ...args]),
