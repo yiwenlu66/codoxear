@@ -303,6 +303,10 @@
         openSwipeTargetX = 0;
         openSwipeContent = null;
       }
+      // The deploy browser smoke check uses this post-render marker. It proves
+      // the first session-list projection completed even when there are no
+      // session cards to count.
+      sessionsWrap.dataset.codoxearSessionsRendered = "true";
       return true;
     }
 

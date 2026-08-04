@@ -5,9 +5,9 @@
 # - Node parses the snapshot's app.js before pipx or service operations.
 # - The selected/session-index/session-list state declarations are explicit
 #   regression tripwires for the renderApp closure.
-# - An authenticated browser smoke check requires a rendered session list
-#   (zero cards with its empty state, or one or more cards), no page/load error,
-#   and the controller globals that app.js depends on.
+# - An authenticated browser smoke check requires a completed session-list
+#   render (zero or more cards), no page/load error, and the controller globals
+#   that app.js depends on.
 set -euo pipefail
 
 readonly SERVICE_NAME="codoxear-server.service"
@@ -181,8 +181,9 @@ wait_for_status 401 "/api/sessions"
 
 # Browser smoke check: syntactic validity and global registration do not prove
 # renderApp's closure has every declaration it uses. Authenticate through the
-# deployed UI, let its first /api/sessions render settle, then require either
-# cards or the zero-session empty state while rejecting load/page errors.
+# deployed UI, let its first /api/sessions render settle, then require the
+# session-list post-render marker and zero or more cards while rejecting
+# load/page errors.
 if command -v agent-browser >/dev/null && [[ "${CODOXEAR_SKIP_BOOT_CHECK:-0}" != "1" ]]; then
   BOOT_CHECK_PASSWORD="${CODOXEAR_BOOT_CHECK_PASSWORD:-${CODEX_WEB_PASSWORD:-}}"
   if [[ -z "$BOOT_CHECK_PASSWORD" ]]; then
@@ -237,7 +238,7 @@ PY
     AGENT_BROWSER_SESSION=deploy-boot agent-browser fill "#pw" "$BOOT_CHECK_PASSWORD" >/dev/null 2>&1 || true
     AGENT_BROWSER_SESSION=deploy-boot agent-browser click "#loginBtn" >/dev/null 2>&1 || true
     sleep 3
-    BOOT_CHECK="$(AGENT_BROWSER_SESSION=deploy-boot agent-browser eval '(() => { const loadError = window.__codoxearLoadError; const globals = [["CodoxearUrls", "resolveAppUrl"], ["CodoxearStorage", "getItem"], ["CodoxearApi", "api"], ["CodoxearShell", "createShellDOM"], ["CodoxearSessions", "createSessionsController"]].every(([host, method]) => window[host] && typeof window[host][method] === "function"); const sessions = document.querySelector("#sessions"); const cards = sessions ? sessions.querySelectorAll(":scope > .session").length : -1; const emptyState = Boolean(sessions && sessions.querySelector(":scope > .sidebarEmptyHint")); const sessionListRendered = cards >= 0 && (cards > 0 || emptyState); return !loadError && window.__codoxearAppBootstrapped && globals && sessionListRendered ? "OK" : "FAIL"; })()' --json 2>/dev/null || true)"
+    BOOT_CHECK="$(AGENT_BROWSER_SESSION=deploy-boot agent-browser eval '(() => { const loadError = window.__codoxearLoadError; const globals = [["CodoxearUrls", "resolveAppUrl"], ["CodoxearStorage", "getItem"], ["CodoxearApi", "api"], ["CodoxearShell", "createShellDOM"], ["CodoxearSessions", "createSessionsController"]].every(([host, method]) => window[host] && typeof window[host][method] === "function"); const sessions = document.querySelector("#sessions"); const cards = sessions ? sessions.querySelectorAll(":scope > .session").length : -1; const sessionListRendered = Boolean(sessions && sessions.dataset.codoxearSessionsRendered === "true") && cards >= 0; return !loadError && window.__codoxearAppBootstrapped && globals && sessionListRendered ? "OK" : "FAIL"; })()' --json 2>/dev/null || true)"
     PAGE_ERRORS="$(AGENT_BROWSER_SESSION=deploy-boot agent-browser errors --json 2>/dev/null || true)"
     PAGE_ERRORS_OK="$(python3 - "$PAGE_ERRORS" <<'PY'
 import json
