@@ -139,6 +139,53 @@ def test_build_active_session_rows_snapshot_combines_session_and_store_state(tmp
     assert row["subagents_running"] == 0
 
 
+def test_session_listing_only_replays_run_settings_when_log_changes(tmp_path: Path) -> None:
+    log_path = tmp_path / "session.jsonl"
+    log_path.write_text('{"type":"session"}\n', encoding="utf-8")
+    session = Session(
+        session_id="s1",
+        thread_id="t1",
+        broker_pid=2,
+        codex_pid=1,
+        agent_backend="codex",
+        owned=True,
+        start_ts=5.0,
+        cwd="/repo",
+        log_path=log_path,
+        sock_path=tmp_path / "s1.sock",
+    )
+    kwargs = dict(
+        sessions=[session],
+        queues={},
+        unattended={},
+        aliases={},
+        store=_store(tmp_path),
+        now_ts=10.0,
+        unattended_default_idle_minutes=5,
+        unattended_default_max_injections=10,
+        clean_unattended_cooldown_minutes=lambda value: int(value),
+        clean_unattended_remaining_injections=lambda value, *, allow_zero=False: int(value),
+        provider_choice_for_settings=lambda **_kwargs: "",
+        resolve_session_cwd=lambda _cwd: Path("/repo"),
+        priority_half_life_seconds=100.0,
+        priority_bucket_seconds=10.0,
+    )
+
+    initial = build_active_session_rows_snapshot(**kwargs).rows[0]
+    assert initial["needs_run_settings"] is True
+    revision = initial["run_settings_log_revision"]
+    assert isinstance(revision, tuple)
+
+    session.run_settings_log_revision = revision
+    unchanged = build_active_session_rows_snapshot(**kwargs).rows[0]
+    assert unchanged["needs_run_settings"] is False
+
+    log_path.write_text('{"type":"session"}\n{"type":"turn_context"}\n', encoding="utf-8")
+    changed = build_active_session_rows_snapshot(**kwargs).rows[0]
+    assert changed["needs_run_settings"] is True
+    assert changed["run_settings_log_revision"] != revision
+
+
 def test_session_listing_projects_matching_backend_subagent_runs(tmp_path: Path) -> None:
     pi_log = tmp_path / "pi.jsonl"
     codex_log = tmp_path / "codex.jsonl"

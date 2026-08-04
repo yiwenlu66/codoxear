@@ -72,12 +72,14 @@ def test_apply_run_settings_backfill_prefers_log_evidence_and_preserves_missing_
     session.reasoning_effort = "max"
     session.preferred_auth_method = "api-key"
 
+    revision = (1, 2, 3, 4)
     update = apply_run_settings_backfill(
         session,
         expected_log_path=Path("/tmp/log.jsonl"),
         log_provider="provider",
         log_model="log-model",
         log_effort="high",
+        log_revision=revision,
     )
 
     assert update is not None
@@ -88,6 +90,7 @@ def test_apply_run_settings_backfill_prefers_log_evidence_and_preserves_missing_
     assert session.model_provider == "provider"
     assert session.model == "log-model"
     assert session.reasoning_effort == "high"
+    assert session.run_settings_log_revision == revision
 
     missing_evidence_update = apply_run_settings_backfill(
         session,
@@ -270,6 +273,7 @@ def _staged_listing_row(log_path: Path) -> dict[str, Any]:
         "blocked": False,
         "snoozed": False,
         "log_exists": True,
+        "run_settings_log_revision": (1, 2, 3, 4),
         "needs_history_scan": True,
         "needs_run_settings": True,
         "state_busy": True,
@@ -316,6 +320,7 @@ def test_build_runtime_enriched_session_rows_applies_backfills_and_public_projec
     assert session.model_provider == "provider"
     assert session.model == "log-model"
     assert session.reasoning_effort == "high"
+    assert session.run_settings_log_revision == (1, 2, 3, 4)
     assert len(result.rows) == 1
     row = result.rows[0]
     assert row["updated_ts"] == 25.0

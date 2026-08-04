@@ -25,6 +25,9 @@ class Session:
     last_turn_id: str | None = None
     last_chat_ts: float | None = None
     last_chat_history_scanned: bool = False
+    # Identity of the log last replayed for model/provider/effort settings.
+    # Session-list polling replays run settings only after the file changes.
+    run_settings_log_revision: tuple[int, int, int, int] | None = None
     meta_thinking: int = 0
     meta_thinking_tokens: int = 0
     # Codex token-count rows repeat a cumulative reasoning total. Keep the

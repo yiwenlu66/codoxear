@@ -91,6 +91,7 @@ class ActiveSessionRowFacts:
     pi_thinking_command: bool = False
     slash_commands: list[dict[str, str]] = field(default_factory=list)
     subagents_running: int = 0
+    run_settings_log_revision: tuple[int, int, int, int] | None = None
 
 
 def clip01(value: float) -> float:
@@ -209,6 +210,7 @@ _PRIVATE_LISTING_KEYS = (
     "_log_path_obj",
     "_cwd_path_obj",
     "log_exists",
+    "run_settings_log_revision",
     "needs_run_settings",
     "needs_history_scan",
     "state_busy",
@@ -238,6 +240,7 @@ def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
         "log_path": (str(facts.log_path) if facts.log_path is not None else None),
         "_log_path_obj": facts.log_path,
         "log_exists": facts.log_exists,
+        "run_settings_log_revision": facts.run_settings_log_revision,
         "needs_run_settings": facts.needs_run_settings,
         "needs_history_scan": facts.needs_history_scan,
         "state_busy": facts.state_busy,
@@ -285,6 +288,16 @@ def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
         "snoozed": facts.snoozed,
         "subagents_running": max(0, int(facts.subagents_running)),
     }
+
+
+def _log_revision(log_path: Path | None) -> tuple[int, int, int, int] | None:
+    if log_path is None:
+        return None
+    try:
+        stat = log_path.stat()
+    except FileNotFoundError:
+        return None
+    return (int(stat.st_dev), int(stat.st_ino), int(stat.st_size), int(stat.st_mtime_ns))
 
 
 def build_active_session_rows_snapshot(
@@ -349,11 +362,12 @@ def build_active_session_rows_snapshot(
             alias = ""
         files, file_history_dirty = store.file_history_for_keys(f"sid:{s.session_id}", [s.session_id])
         files_dirty = files_dirty or file_history_dirty
-        log_exists = bool(s.log_path is not None and s.log_path.exists())
-        # Scan every bound backend log: newer backend evidence must be able to
-        # replace populated launch metadata after a model/effort change and
-        # after a server reconnect/replay.
-        needs_run_settings = bool(log_exists and s.log_path is not None)
+        log_revision = _log_revision(s.log_path)
+        log_exists = log_revision is not None
+        # Log settings are log-authoritative after a dead/reconnected broker,
+        # but an unchanged file cannot produce a new setting.  Avoid replaying
+        # its (potentially multi-megabyte) tail on every sidebar poll.
+        needs_run_settings = bool(log_revision is not None and s.run_settings_log_revision != log_revision)
         needs_history_scan = bool(s.last_chat_ts is None and log_exists and s.log_path is not None and (not s.last_chat_history_scanned))
         updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
         recent_cwd_dirty = recent_cwd_dirty or store.note_recent_cwd(s.cwd, updated_ts)
@@ -457,6 +471,7 @@ def build_active_session_rows_snapshot(
                     pi_thinking_command=bool(s.pi_thinking_command),
                     slash_commands=list(s.slash_commands),
                     subagents_running=len(matching_subagents),
+                    run_settings_log_revision=log_revision,
                 )
             )
         )

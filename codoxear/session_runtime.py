@@ -344,6 +344,7 @@ def apply_run_settings_backfill(
     log_provider: str | None,
     log_model: str | None,
     log_effort: str | None,
+    log_revision: tuple[int, int, int, int] | None = None,
 ) -> RunSettingsUpdate | None:
     if session is None or session.log_path != expected_log_path:
         return None
@@ -359,6 +360,8 @@ def apply_run_settings_backfill(
         session.model = log_model
     if log_effort is not None and not bridge_live:
         session.reasoning_effort = log_effort
+    if log_revision is not None:
+        session.run_settings_log_revision = log_revision
     return RunSettingsUpdate(
         model_provider=session.model_provider,
         preferred_auth_method=session.preferred_auth_method,
@@ -414,6 +417,13 @@ def build_runtime_enriched_session_rows(
                     it["base_priority"] = priority.base_priority
                     it["final_priority"] = priority.final_priority
         if bool(it.get("needs_run_settings")) and isinstance(log_path_obj, Path):
+            log_revision = it.get("run_settings_log_revision")
+            if not (
+                isinstance(log_revision, tuple)
+                and len(log_revision) == 4
+                and all(isinstance(value, int) for value in log_revision)
+            ):
+                log_revision = None
             try:
                 log_provider, log_model, log_effort = probes.read_run_settings_from_log(
                     log_path_obj,
@@ -429,6 +439,7 @@ def build_runtime_enriched_session_rows(
                     log_provider=log_provider,
                     log_model=log_model,
                     log_effort=log_effort,
+                    log_revision=log_revision,
                 )
                 if run_settings_update is not None:
                     it["model_provider"] = run_settings_update.model_provider
