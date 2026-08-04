@@ -57,6 +57,7 @@ from .session_log_discovery import is_subagent_session_meta as _is_subagent_sess
 from .session_log_discovery import iter_session_logs as _iter_session_logs_impl
 from .session_log_discovery import read_session_meta_payload as _read_session_meta_payload_impl
 from .session_log_discovery import subagent_parent_thread_id as _subagent_parent_thread_id_impl
+from .subagent_events import emit_subagent_event
 from .socket_json import send_socket_json_line as _send_socket_json_line
 from .socket_json import socket_peer_disconnected as _socket_peer_disconnected
 from .pi_log import read_pi_log_cwd
@@ -224,11 +225,17 @@ def scan_active_codex_subagents(
             if parent_thread_id is None:
                 continue
             child_thread_id = payload.get("id")
-            grouped.setdefault(parent_thread_id, []).append({
+            run = {
                 "thread_id": child_thread_id if isinstance(child_thread_id, str) and child_thread_id else child_path.stem,
                 "log_path": str(child_path),
                 "updated_at": float(stat.st_mtime),
-            })
+            }
+            run["event"] = emit_subagent_event(
+                "codex",
+                event_id=str(run["thread_id"]),
+                text=f"Subagent started (thread {str(run['thread_id'])[:8]})",
+            )
+            grouped.setdefault(parent_thread_id, []).append(run)
 
     for runs in grouped.values():
         runs.sort(key=lambda run: str(run["thread_id"]))
@@ -289,7 +296,11 @@ def scan_active_cc_subagents(*, parent_broker_pids: Mapping[str, int]) -> dict[s
                 or payload.get("broker_pid") != expected_broker_pid
             ):
                 continue
-            grouped.setdefault(parent_session_id, []).append({"agent_id": agent_id})
+            event = payload.get("event")
+            run: dict[str, Any] = {"agent_id": agent_id}
+            if isinstance(event, dict):
+                run["event"] = dict(event)
+            grouped.setdefault(parent_session_id, []).append(run)
     for runs in grouped.values():
         runs.sort(key=lambda run: str(run["agent_id"]))
     return grouped
@@ -328,6 +339,9 @@ def scan_active_pi_subagents(*, now_monotonic: float | None = None) -> dict[str,
         except (OSError, UnicodeDecodeError, ValueError, TypeError):
             continue
         if not isinstance(payload, dict) or str(payload.get("state", "")).strip().lower() not in _ACTIVE_SUBAGENT_STATES:
+            continue
+        runner_pid = payload.get("pid")
+        if not isinstance(runner_pid, int) or isinstance(runner_pid, bool) or not pid_alive(runner_pid):
             continue
         parent = payload.get("sessionId")
         run_id = payload.get("runId") or status_path.parent.name

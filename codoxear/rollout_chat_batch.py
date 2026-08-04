@@ -16,6 +16,7 @@ from .pi_log import pi_assistant_is_aborted_turn
 from .pi_log import pi_user_text
 from .rollout_chat_events import _single_chat_event
 from .rollout_events import _codex_error_affects_turn_status
+from .subagent_events import is_subagent_event_id
 
 
 def _extract_chat_events(
@@ -34,17 +35,17 @@ def _extract_chat_events(
     tool_names: set[str] = set()
     last_tool: str | None = None
     cc_pending_tool_ids: set[str] = set(initial_cc_pending_tool_ids or set())
-    seen_pi_subagent_ids: set[str] = set()
+    seen_subagent_ids: set[str] = set()
     for obj in objs:
         typ = obj.get("type")
         event = _single_chat_event(obj, cc_pending_tool_ids=cc_pending_tool_ids)
         if event is not None:
             message_id = event.get("message_id")
-            if isinstance(message_id, str) and message_id.startswith("pi-subagent:"):
-                if message_id in seen_pi_subagent_ids:
+            if is_subagent_event_id(message_id):
+                if message_id in seen_subagent_ids:
                     event = None
                 else:
-                    seen_pi_subagent_ids.add(message_id)
+                    seen_subagent_ids.add(message_id)
             if event is not None:
                 events.append(event)
 

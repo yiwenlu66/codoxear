@@ -23,6 +23,7 @@ from .rollout_events import _codex_error_affects_turn_status
 from .rollout_events import _codex_event_text
 from .rollout_events import _event_ts
 from .rollout_events import _strip_oai_mem_citation_tail
+from .subagent_events import is_subagent_event_id
 from .rollout_events import _text_message_id
 
 
@@ -140,7 +141,7 @@ def _chat_assistant_dedupe_key(event: dict[str, Any]) -> tuple[str, str] | None:
 def _dedupe_assistant_chat_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     last_assistant_key: tuple[str, str] | None = None
-    seen_pi_subagent_ids: set[str] = set()
+    seen_subagent_ids: set[str] = set()
     for event in events:
         role = event.get("role")
         if role == "user":
@@ -149,10 +150,10 @@ def _dedupe_assistant_chat_events(events: list[dict[str, Any]]) -> list[dict[str
             continue
         if role == "assistant":
             message_id = event.get("message_id")
-            if isinstance(message_id, str) and message_id.startswith("pi-subagent:"):
-                if message_id in seen_pi_subagent_ids:
+            if is_subagent_event_id(message_id):
+                if message_id in seen_subagent_ids:
                     continue
-                seen_pi_subagent_ids.add(message_id)
+                seen_subagent_ids.add(message_id)
             key = _chat_assistant_dedupe_key(event)
             if key is not None and key == last_assistant_key:
                 continue

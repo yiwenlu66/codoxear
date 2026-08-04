@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .json_state import atomic_write_json
+from .subagent_events import emit_subagent_event
 
 
 _ENV_ROOT = "CODEX_WEB_CC_SUBAGENT_RUNS_ROOT"
@@ -65,6 +66,8 @@ def handle_hook_event(event: Mapping[str, Any], *, environ: Mapping[str, str] | 
         return False
     path = _status_path(root, session_id=session_id, agent_id=agent_id)
     if event_name == "SubagentStart":
+        agent_type = event.get("agent_type")
+        label = f"Subagent started{f' — {agent_type}' if isinstance(agent_type, str) and agent_type.strip() else ''}"
         atomic_write_json(
             path,
             {
@@ -73,6 +76,7 @@ def handle_hook_event(event: Mapping[str, Any], *, environ: Mapping[str, str] | 
                 "parent_session_id": session_id,
                 "agent_id": agent_id,
                 "broker_pid": broker_pid,
+                "event": emit_subagent_event("cc", event_id=agent_id, text=label),
             },
         )
         return True

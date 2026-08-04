@@ -4,10 +4,8 @@ import re
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from ..subagent_events import emit_subagent_event
 from .base import AgentBackend
-
-
-_PI_SUBAGENT_EVENT_PREFIX = "pi-subagent:"
 
 
 def _compact_pi_subagent_text(text: str, *, limit: int) -> str:
@@ -175,14 +173,26 @@ class PiBackend(AgentBackend):
 
         row = dict(obj)
         row_type = row.get("type")
-        # Harness<->agent coordination traffic (subagent control notices,
-        # intercom deliveries, long-running pings) is not agent->user
-        # communication and must not surface as transcript rows. Awareness of
-        # background work lives in the ambient subagent indicator instead.
+        # Pi writes harness coordination rows for subagent progress and
+        # results.  Normalize their user-meaningful summaries as assistant
+        # narration; generic coordination traffic remains private.
         if row_type == "active_long_running":
             return None
         if row_type == "custom_message":
-            return None
+            custom_type = row.get("customType")
+            content = row.get("content")
+            if not isinstance(content, str):
+                return None
+            if custom_type == "subagent_control_notice":
+                summary = _pi_subagent_control_summary(
+                    content,
+                    row.get("details") if isinstance(row.get("details"), Mapping) else None,
+                )
+            elif custom_type == "intercom_message":
+                summary = _pi_subagent_intercom_summary(content)
+            else:
+                summary = None
+            return self._subagent_narration_event(row, summary) if summary else None
         if row_type != "message":
             return None
         user_text = pi_user_text(row)
@@ -234,20 +244,12 @@ class PiBackend(AgentBackend):
 
         ts = _event_ts(dict(row))
         row_id = row.get("id")
-        message_id = (
-            f"{_PI_SUBAGENT_EVENT_PREFIX}{row_id}"
+        event_id = (
+            row_id
             if isinstance(row_id, str) and row_id
-            else f"{_PI_SUBAGENT_EVENT_PREFIX}{_text_message_id(message_class='narration', text=text, ts=ts)}"
+            else _text_message_id(message_class="narration", text=text, ts=ts)
         )
-        event: dict[str, Any] = {
-            "role": "assistant",
-            "text": text,
-            "message_class": "narration",
-            "message_id": message_id,
-        }
-        if ts is not None:
-            event["ts"] = ts
-        return event
+        return emit_subagent_event("pi", event_id=event_id, text=text, ts=ts)
 
     def build_launch_args(
         self,

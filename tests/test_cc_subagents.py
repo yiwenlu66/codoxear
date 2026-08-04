@@ -28,7 +28,9 @@ def test_cc_hook_status_is_live_only_between_start_and_stop(tmp_path: Path, monk
         {"hook_event_name": "SubagentStart", "session_id": SESSION_ID, "agent_id": "agent-abc", "agent_type": "Explore"},
         environ=env,
     )
-    assert scan_active_cc_subagents(parent_broker_pids={SESSION_ID: os.getpid()}) == {SESSION_ID: [{"agent_id": "agent-abc"}]}
+    runs = scan_active_cc_subagents(parent_broker_pids={SESSION_ID: os.getpid()})
+    assert [run["agent_id"] for run in runs[SESSION_ID]] == ["agent-abc"]
+    assert runs[SESSION_ID][0]["event"]["message_id"] == "cc-subagent:agent-abc"
 
     assert handle_hook_event(
         {"hook_event_name": "SubagentStop", "session_id": SESSION_ID, "agent_id": "agent-abc"},

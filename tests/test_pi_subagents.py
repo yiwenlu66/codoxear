@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from codoxear import util
@@ -19,12 +20,12 @@ def test_scan_active_pi_subagents_groups_active_runs_and_ignores_bad_statuses(tm
     _write_status(
         root,
         "running-run",
-        {"runId": "running-run", "sessionId": parent, "state": "running", "startedAt": 100, "steps": [{"agent": "executor"}]},
+        {"runId": "running-run", "sessionId": parent, "state": "running", "startedAt": 100, "pid": os.getpid(), "steps": [{"agent": "executor"}]},
     )
     _write_status(
         root,
         "pending-run",
-        {"runId": "pending-run", "sessionId": parent, "state": "pending", "startedAt": 101, "agent": "critic"},
+        {"runId": "pending-run", "sessionId": parent, "state": "pending", "startedAt": 101, "pid": os.getpid(), "agent": "critic"},
     )
     _write_status(root, "complete-run", {"runId": "complete-run", "sessionId": parent, "state": "complete", "startedAt": 102})
     malformed = root / "malformed"
@@ -43,10 +44,10 @@ def test_scan_active_pi_subagents_caches_for_two_seconds_then_refreshes(tmp_path
     root = tmp_path / "runs"
     monkeypatch.setenv("CODEX_WEB_SUBAGENT_RUNS_ROOT", str(root))
     parent = "/tmp/parent.jsonl"
-    _write_status(root, "run", {"runId": "run", "sessionId": parent, "state": "running", "startedAt": 1, "agent": "executor"})
+    _write_status(root, "run", {"runId": "run", "sessionId": parent, "state": "running", "startedAt": 1, "pid": os.getpid(), "agent": "executor"})
 
     assert util.scan_active_pi_subagents(now_monotonic=200.0)[parent][0]["run_id"] == "run"
-    _write_status(root, "run", {"runId": "run", "sessionId": parent, "state": "complete", "startedAt": 1, "agent": "executor"})
+    _write_status(root, "run", {"runId": "run", "sessionId": parent, "state": "complete", "startedAt": 1, "pid": os.getpid(), "agent": "executor"})
     assert util.scan_active_pi_subagents(now_monotonic=201.9)[parent][0]["run_id"] == "run"
     assert util.scan_active_pi_subagents(now_monotonic=202.1) == {}
 

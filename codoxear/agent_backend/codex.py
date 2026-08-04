@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from ..subagent_events import emit_subagent_event
 from .base import AgentBackend, _SESSION_ID_RE
 
 
@@ -35,6 +36,21 @@ class CodexBackend(AgentBackend):
 
         row = dict(obj)
         typ = row.get("type")
+        if typ == "session_meta":
+            payload = row.get("payload")
+            source = payload.get("source") if isinstance(payload, dict) else None
+            subagent = source.get("subagent") if isinstance(source, dict) else None
+            thread_spawn = subagent.get("thread_spawn") if isinstance(subagent, dict) else None
+            parent_thread_id = thread_spawn.get("parent_thread_id") if isinstance(thread_spawn, dict) else None
+            child_thread_id = payload.get("id") if isinstance(payload, dict) else None
+            if isinstance(parent_thread_id, str) and parent_thread_id and isinstance(child_thread_id, str) and child_thread_id:
+                return emit_subagent_event(
+                    "codex",
+                    event_id=child_thread_id,
+                    text=f"Subagent started (thread {child_thread_id[:8]})",
+                    ts=_event_ts(row),
+                )
+            return None
         if typ == "event_msg":
             payload = row.get("payload")
             if not isinstance(payload, dict):
