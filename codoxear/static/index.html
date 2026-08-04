@@ -23,7 +23,7 @@
     </script>
     <script>
       (function () {
-        window.__codoxearLoadError = null;
+        delete window.__codoxearLoadError;
         // Bootstrap-success marker. Set by app.js once renderLogin()/renderApp()
         // has constructed a valid synchronous UI shell. The load-error fallback
         // uses this to decide whether a partially-populated #root is a usable

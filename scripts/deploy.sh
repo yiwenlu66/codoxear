@@ -181,9 +181,8 @@ wait_for_status 401 "/api/sessions"
 
 # Browser smoke check: syntactic validity and global registration do not prove
 # renderApp's closure has every declaration it uses. Authenticate through the
-# deployed UI, let its first /api/sessions render settle, then require the
-# session-list post-render marker and zero or more cards while rejecting
-# application load errors.
+# deployed UI, then use the reusable command to require a visible clean app on
+# both its first load and a reload.
 if command -v agent-browser >/dev/null && [[ "${CODOXEAR_SKIP_BOOT_CHECK:-0}" != "1" ]]; then
   BOOT_CHECK_PASSWORD="${CODOXEAR_BOOT_CHECK_PASSWORD:-${CODEX_WEB_PASSWORD:-}}"
   if [[ -z "$BOOT_CHECK_PASSWORD" ]]; then
@@ -232,21 +231,7 @@ PY
     exit 1
   fi
 
-  BOOT_OK=0
-  for _ in {1..3}; do
-    AGENT_BROWSER_SESSION=deploy-boot agent-browser open "$BASE_URL/" >/dev/null 2>&1 || true
-    AGENT_BROWSER_SESSION=deploy-boot agent-browser fill "#pw" "$BOOT_CHECK_PASSWORD" >/dev/null 2>&1 || true
-    AGENT_BROWSER_SESSION=deploy-boot agent-browser click "#loginBtn" >/dev/null 2>&1 || true
-    sleep 3
-    BOOT_CHECK="$(AGENT_BROWSER_SESSION=deploy-boot agent-browser eval '(() => { const loadError = window.__codoxearLoadError; const globals = [["CodoxearUrls", "resolveAppUrl"], ["CodoxearStorage", "getItem"], ["CodoxearApi", "api"], ["CodoxearShell", "createShellDOM"], ["CodoxearSessions", "createSessionsController"]].every(([host, method]) => window[host] && typeof window[host][method] === "function"); const sessions = document.querySelector("#sessions"); const cards = sessions ? sessions.querySelectorAll(":scope > .session").length : -1; const sessionListRendered = Boolean(sessions && sessions.dataset.codoxearSessionsRendered === "true") && cards >= 0; return !loadError && window.__codoxearAppBootstrapped && globals && sessionListRendered ? "OK" : "FAIL"; })()' --json 2>/dev/null || true)"
-    AGENT_BROWSER_SESSION=deploy-boot agent-browser close >/dev/null 2>&1 || true
-    if [[ "$BOOT_CHECK" == *'"OK"'* ]]; then
-      BOOT_OK=1
-      break
-    fi
-    sleep 2
-  done
-  if [[ "$BOOT_OK" != 1 ]]; then
+  if ! CODOXEAR_SMOKE_SESSION=deploy-boot CODOXEAR_SMOKE_ATTEMPTS=3 "$SOURCE_ROOT/scripts/smoke_test.sh" "$BASE_URL" "$BOOT_CHECK_PASSWORD"; then
     echo "boot check failed: deployed app did not render a clean session list after authentication" >&2
     exit 1
   fi
