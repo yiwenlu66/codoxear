@@ -5,6 +5,7 @@ import os
 import pwd
 import re
 import shlex
+import shutil
 import sys
 import uuid
 from collections.abc import Callable
@@ -312,6 +313,59 @@ def _shell_argv_for_command(cmd: str, *, user_shell: Callable[[], str] = _user_s
     shell = user_shell()
     # -l: login (read profile); -i: interactive (read rc); -c: run command; command begins with exec to avoid wrapper processes.
     return [shell, "-l", "-i", "-c", cmd]
+
+
+def _augmented_exec_path(raw_path: str | None) -> str:
+    """Return a PATH that can find common user-installed CLI locations.
+
+    Web-owned brokers do not inherit an interactive shell's PATH.  Keeping the
+    original entries first preserves explicit deployment configuration, while
+    the appended locations cover standard macOS/Linux package installs.
+    """
+    parts: list[str] = []
+    seen: set[str] = set()
+
+    def add(path: str) -> None:
+        cleaned = str(path or "").strip()
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            parts.append(cleaned)
+
+    for item in str(raw_path or "").split(os.pathsep):
+        add(item)
+    for item in (
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/bin",
+        "/usr/local/sbin",
+        str(Path.home() / ".local" / "bin"),
+        str(Path.home() / ".cargo" / "bin"),
+    ):
+        add(item)
+    return os.pathsep.join(parts)
+
+
+def _agent_exec_argv_and_env(*, agent_bin: str, agent_args: list[str]) -> tuple[list[str], dict[str, str]]:
+    """Build a resolvable CLI argv without relying on a shell profile."""
+    env = dict(os.environ)
+    env["PATH"] = _augmented_exec_path(env.get("PATH"))
+    executable = agent_bin
+    if os.sep not in executable and not os.path.isabs(executable):
+        resolved = shutil.which(executable, path=env["PATH"])
+        if resolved:
+            executable = resolved
+    return [executable, *agent_args], env
+
+
+def _attach_pty_slave(pty_slave_path: str) -> None:
+    """Make a pre-opened PTY slave this process's terminal before exec."""
+    fd = os.open(pty_slave_path, os.O_RDWR)
+    try:
+        for target in (0, 1, 2):
+            os.dup2(fd, target)
+    finally:
+        if fd > 2:
+            os.close(fd)
 
 
 def _agent_shell_command(argv: list[str], *, pty_slave_path: str) -> str:

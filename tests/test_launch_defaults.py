@@ -212,15 +212,19 @@ name = "Right"
         self.assertEqual(defaults["model_providers"], ["chatgpt", "openai-api"])
         self.assertEqual(defaults["models"], [])
         self.assertEqual(defaults["reasoning_efforts_by_model"], {})
-        self.assertEqual(defaults["service_tier"], "flex")
+        self.assertIsNone(defaults["service_tier"])
         self.assertIsNone(defaults["reasoning_effort"])
 
     def test_normalize_requested_model_provider_rejects_unknown_value(self) -> None:
         with self.assertRaisesRegex(ValueError, "model_provider must be one of openai, right"):
             normalize_requested_model_provider("bytecat", allowed={"openai", "right"})
 
+    def test_normalize_requested_service_tier_maps_legacy_values_to_unset(self) -> None:
+        self.assertIsNone(normalize_requested_service_tier("flex"))
+        self.assertIsNone(normalize_requested_service_tier("default"))
+
     def test_normalize_requested_service_tier_rejects_unknown_value(self) -> None:
-        with self.assertRaisesRegex(ValueError, "service_tier must be one of fast, flex"):
+        with self.assertRaisesRegex(ValueError, "service_tier must be fast or omitted"):
             normalize_requested_service_tier("slow")
 
     def test_normalize_requested_preferred_auth_method_rejects_unknown_value(self) -> None:
@@ -265,6 +269,7 @@ base_url = "https://example.com/v1"
             defaults = read_codex_launch_defaults(paths)
 
         self.assertEqual(defaults["model_providers"], ["chatgpt", "openai-api", "crs", "custom"])
+        self.assertIsNone(defaults["service_tier"])
 
     def test_read_pi_launch_defaults_reads_provider_model_and_thinking(self) -> None:
         with TemporaryDirectory() as td:

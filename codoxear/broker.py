@@ -24,7 +24,9 @@ from codoxear.pi_log import pi_complete_jsonl_offset_before as _pi_complete_json
 from codoxear import pty_util as _pty_util
 from codoxear.broker_launch import SHELL_PRE_EXEC_MARKER
 from codoxear.broker_launch import SHELL_PRE_EXEC_MARKER_BYTES
+from codoxear.broker_launch import _agent_exec_argv_and_env
 from codoxear.broker_launch import _agent_shell_command
+from codoxear.broker_launch import _attach_pty_slave
 from codoxear.broker_launch import _ensure_pi_bridge_args as _ensure_pi_bridge_args_impl
 from codoxear.broker_launch import _ensure_pi_session_arg as _ensure_pi_session_arg_impl
 from codoxear.broker_launch import _expand_cwd
@@ -215,17 +217,20 @@ def _require_proc() -> None:
 
 
 
-def _exec_agent(*, cwd: str, agent_args: list[str]) -> None:
-    argv = [AGENT_BIN, *agent_args]
+def _exec_agent(*, cwd: str, agent_args: list[str], pty_slave_path: str | None = None) -> None:
+    argv, env = _agent_exec_argv_and_env(agent_bin=AGENT_BIN, agent_args=agent_args)
     os.chdir(cwd)
-    os.execvpe(argv[0], argv, os.environ)
+    if pty_slave_path is not None:
+        _attach_pty_slave(pty_slave_path)
+    os.execvpe(argv[0], argv, env)
+
 
 def _exec_agent_via_login_shell(*, cwd: str, agent_args: list[str], pty_slave_path: str) -> None:
-    argv = [AGENT_BIN, *agent_args]
+    argv, env = _agent_exec_argv_and_env(agent_bin=AGENT_BIN, agent_args=agent_args)
     cmd = _agent_shell_command(argv, pty_slave_path=pty_slave_path)
     shell_argv = _shell_argv_for_command(cmd)
     os.chdir(cwd)
-    os.execvpe(shell_argv[0], shell_argv, os.environ)
+    os.execvpe(shell_argv[0], shell_argv, env)
 
 
 def _enter_seq_bytes() -> bytes:
@@ -330,6 +335,18 @@ class Broker:
         self.sessions_dir = BACKEND.sessions_dir()
         resume_env = str(os.environ.get("CODEX_WEB_RESUME_SESSION_ID") or "").strip()
         self._resume_session_id = resume_env or _resume_session_id_from_args(self.codex_args)
+
+    def _headless_launch_uses_login_shell(self) -> bool:
+        """Only non-Codex web launches need shell profile initialization."""
+        return OWNER_TAG == "web" and AGENT_BACKEND != "codex"
+
+    def _launch_agent_process(self, *, headless: bool, pty_slave_path: str | None = None) -> None:
+        if headless and self._headless_launch_uses_login_shell():
+            if not pty_slave_path:
+                raise RuntimeError("pty_slave_path required for login-shell headless launch")
+            _exec_agent_via_login_shell(cwd=self.cwd, agent_args=self.codex_args, pty_slave_path=pty_slave_path)
+            return
+        _exec_agent(cwd=self.cwd, agent_args=self.codex_args, pty_slave_path=pty_slave_path if headless else None)
 
     def _stop_codex_app_server(self) -> None:
         server = getattr(self, "_codex_app_server", None)
@@ -640,7 +657,7 @@ class Broker:
                 pass
 
     def _shell_startup_watchdog(self) -> None:
-        if OWNER_TAG != "web" or SHELL_STARTUP_TIMEOUT_SECONDS <= 0:
+        if OWNER_TAG != "web" or SHELL_STARTUP_TIMEOUT_SECONDS <= 0 or not self._headless_launch_uses_login_shell():
             return
         deadline = _now() + SHELL_STARTUP_TIMEOUT_SECONDS
         while not self._stop.is_set():
@@ -925,11 +942,7 @@ class Broker:
                         os.environ["COLUMNS"] = str(cols)
                         os.environ["LINES"] = str(rows)
                         os.environ[BACKEND.home_env_var] = str(self.codex_home)
-                        _exec_agent_via_login_shell(
-                            cwd=self.cwd,
-                            agent_args=self.codex_args,
-                            pty_slave_path=pty_slave_path,
-                        )
+                        self._launch_agent_process(headless=headless, pty_slave_path=pty_slave_path)
                     except Exception:
                         traceback.print_exc()
                         os._exit(127)

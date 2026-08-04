@@ -106,6 +106,29 @@ class TestBrokerFailClosed(unittest.TestCase):
 
         self.assertEqual(argv, ["/bin/example-shell", "-l", "-i", "-c", "exec /bin/sh -c true"])
 
+    def test_agent_exec_argv_and_env_resolves_common_user_cli_path(self) -> None:
+        with patch("codoxear.broker.AGENT_BIN", "codex"), patch.dict("os.environ", {"PATH": "/usr/bin:/bin"}, clear=False), patch(
+            "codoxear.broker_launch.shutil.which", return_value="/opt/homebrew/bin/codex"
+        ) as which:
+            argv, env = broker_mod._agent_exec_argv_and_env(agent_bin=broker_mod.AGENT_BIN, agent_args=["--model", "gpt-5.4"])
+
+        self.assertEqual(argv[:2], ["/opt/homebrew/bin/codex", "--model"])
+        self.assertIn("/opt/homebrew/bin", env["PATH"].split(os.pathsep))
+        which.assert_called_once_with("codex", path=env["PATH"])
+
+    def test_web_owned_codex_headless_launch_bypasses_login_shell(self) -> None:
+        fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
+        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin):
+            broker = Broker(cwd=td, codex_args=["--model", "gpt-5.4"])
+
+        with patch("codoxear.broker.OWNER_TAG", "web"), patch("codoxear.broker.AGENT_BACKEND", "codex"), patch(
+            "codoxear.broker._exec_agent"
+        ) as exec_agent, patch("codoxear.broker._exec_agent_via_login_shell") as exec_shell:
+            broker._launch_agent_process(headless=True, pty_slave_path="/dev/pts/19")
+
+        exec_agent.assert_called_once_with(cwd=td, agent_args=broker.codex_args, pty_slave_path="/dev/pts/19")
+        exec_shell.assert_not_called()
+
     def test_web_login_shell_exec_uses_attach_trampoline(self) -> None:
         calls: dict[str, object] = {}
 
@@ -127,8 +150,7 @@ class TestBrokerFailClosed(unittest.TestCase):
         self.assertIn(SHELL_PRE_EXEC_MARKER, argv[-1])
         self.assertIn("/dev/pts/19", argv[-1])
 
-    @unittest.skipUnless(shutil.which("zsh"), "zsh is required")
-    def test_web_startup_prompt_reaches_agent_exec_without_input(self) -> None:
+    def test_web_owned_codex_direct_launch_bypasses_shell_startup_and_keeps_tty(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             home = root / "home"
@@ -136,7 +158,7 @@ class TestBrokerFailClosed(unittest.TestCase):
             home.mkdir()
             bin_dir.mkdir()
             fake_codex = bin_dir / "codex"
-            fake_codex.write_text("#!/bin/sh\necho FAKE_AGENT_STARTED rc=$RC_SECRET tty=$(test -t 0; echo $?)\n", encoding="utf-8")
+            fake_codex.write_text("#!/bin/sh\necho FAKE_AGENT_STARTED rc=${RC_SECRET:-unset} tty=$(test -t 0; echo $?)\n", encoding="utf-8")
             fake_codex.chmod(0o755)
             (home / ".zshrc").write_text(
                 """
@@ -171,7 +193,7 @@ read -r -k 1 option
             )
 
         self.assertIn("FAKE_AGENT_STARTED", proc.stdout)
-        self.assertIn("rc=from_rc", proc.stdout)
+        self.assertIn("rc=unset", proc.stdout)
         self.assertIn("tty=0", proc.stdout)
         self.assertNotIn("Would you like to continue", proc.stdout)
         self.assertNotIn("shell_startup", proc.stdout)
@@ -193,7 +215,7 @@ read -r -k 1 option
         broker.state.output_tail = "Update [Y/n] "
         records: list[dict[str, object]] = []
 
-        with patch("codoxear.broker.OWNER_TAG", "web"), patch("codoxear.broker.SHELL_STARTUP_TIMEOUT_SECONDS", 0.5), patch(
+        with patch("codoxear.broker.OWNER_TAG", "web"), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch("codoxear.broker.SHELL_STARTUP_TIMEOUT_SECONDS", 0.5), patch(
             "codoxear.broker._now", side_effect=[0.0, 1.0]
         ), patch("codoxear.broker._record_launch_attempt", side_effect=lambda rec: records.append(rec)), patch.object(
             broker, "_teardown_managed_process_group"
@@ -265,7 +287,7 @@ read -r -k 1 option
         broker.state = _broker_state(codex_pid=1234, sock_path=Path("/tmp/test-broker.sock"))
         broker.state.shell_pre_exec_marker_seen = True
 
-        with patch("codoxear.broker.OWNER_TAG", "web"), patch("codoxear.broker._record_launch_attempt") as record:
+        with patch("codoxear.broker.OWNER_TAG", "web"), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch("codoxear.broker._record_launch_attempt") as record:
             broker._shell_startup_watchdog()
 
         record.assert_not_called()

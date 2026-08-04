@@ -239,9 +239,13 @@ def normalize_requested_service_tier(value: Any) -> str | None:
     tier = clean_optional_text(value)
     if tier is None:
         return None
-    if tier not in {"fast", "flex"}:
-        raise ValueError("service_tier must be one of fast, flex")
-    return tier
+    if tier == "fast":
+        return "fast"
+    if tier in {"flex", "default"}:
+        # Codex no longer accepts its former implicit default as an explicit
+        # launch override.  Preserve old stored values by omitting the flag.
+        return None
+    raise ValueError("service_tier must be fast or omitted")
 
 
 def normalize_requested_preferred_auth_method(value: Any) -> str | None:
@@ -302,7 +306,7 @@ def fallback_codex_launch_defaults() -> dict[str, Any]:
         "provider_choice": "openai-api",
         "model": None,
         "model_providers": ["chatgpt", "openai-api"],
-        "service_tier": "flex",
+        "service_tier": None,
         "reasoning_effort": None,
     }
 
@@ -349,7 +353,7 @@ def read_codex_launch_defaults(paths: LaunchConfigPaths) -> dict[str, Any]:
     configured_effort = None
     configured_provider = "openai"
     configured_auth_method = "apikey"
-    configured_service_tier = "flex"
+    configured_service_tier = None
     configured_providers = ["chatgpt", "openai-api"]
     provider_models: list[str] = []
     if paths.codex_config_path.exists():
@@ -364,7 +368,7 @@ def read_codex_launch_defaults(paths: LaunchConfigPaths) -> dict[str, Any]:
             data.get("model_provider") or data.get("model_provider_id"),
             allowed=set(["openai", *[p for p in configured_providers if p not in {"chatgpt", "openai-api"}]]),
         ) or configured_provider
-        configured_service_tier = normalize_requested_service_tier(data.get("service_tier")) or configured_service_tier
+        configured_service_tier = normalize_requested_service_tier(data.get("service_tier"))
         provider_models = provider_models_from_config(data)
     defaults: dict[str, Any] = {
         "model_provider": configured_provider,
