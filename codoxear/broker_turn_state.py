@@ -491,6 +491,7 @@ class State:
     model_provider: str | None = None
     model: str | None = None
     reasoning_effort: str | None = None
+    live_run_settings: dict[str, str] | None = None
     last_detected_rollout_path: Path | None = None
     ignored_rollout_paths: set[Path] = field(default_factory=set)
     known_rollout_paths: set[Path] = field(default_factory=set)

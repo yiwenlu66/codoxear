@@ -458,6 +458,14 @@ class Broker:
                                         if isinstance(v, str) and getattr(st_cap, attr) != v:
                                             setattr(st_cap, attr, v)
                                             capability_changed = True
+                                    # Mark the settings as live (bridge-sourced) so the
+                                    # listing prefers them over a stale log replay: the
+                                    # terminal's latest thinking/model change may not be
+                                    # in the log yet, so the live bridge value is authoritative.
+                                    live_marker = {k: v for k, v in live_settings.items() if isinstance(v, str) and v}
+                                    if live_marker and getattr(st_cap, "live_run_settings", None) != live_marker:
+                                        st_cap.live_run_settings = live_marker
+                                        capability_changed = True
                         if capability_changed:
                             self._write_meta()
                         if lp is not None and lp.exists():

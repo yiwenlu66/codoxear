@@ -259,13 +259,31 @@ def session_run_settings_from_meta(
         reasoning_effort = display_pi_reasoning_effort(meta.get("reasoning_effort"))
     else:
         reasoning_effort = normalize_requested_cc_reasoning_effort(meta.get("reasoning_effort"))
+    # Live bridge-sourced settings win over the log replay: the terminal's
+    # latest model/thinking change may not be in the log yet (a native-selector
+    # change is logged at the next turn, not immediately), so a live session's
+    # self-reported value is authoritative over a stale log record.
+    live = meta.get("live_run_settings")
+    live_effort = None
+    live_model = None
+    live_provider = None
+    if isinstance(live, dict):
+        live_provider = live.get("model_provider") if isinstance(live.get("model_provider"), str) else None
+        live_model = live.get("model") if isinstance(live.get("model"), str) else None
+        live_effort = live.get("reasoning_effort") if isinstance(live.get("reasoning_effort"), str) else None
+    if live_provider:
+        model_provider = live_provider
+    if live_model:
+        model = live_model
+    if live_effort:
+        reasoning_effort = live_effort
     if log_path is not None and log_path.exists():
         log_provider, log_model, log_effort = read_run_settings_from_log(log_path, agent_backend=backend_name)
-        if log_provider is not None:
+        if log_provider is not None and not live_provider:
             model_provider = log_provider
-        if log_model is not None:
+        if log_model is not None and not live_model:
             model = log_model
-        if log_effort is not None:
+        if log_effort is not None and not live_effort:
             reasoning_effort = log_effort
     return model_provider, preferred_auth_method, model, reasoning_effort
 
