@@ -287,7 +287,18 @@ def session_run_settings_from_meta(
     if isinstance(live, dict):
         live_provider = live.get("model_provider") if isinstance(live.get("model_provider"), str) else None
         live_model = live.get("model") if isinstance(live.get("model"), str) else None
-        live_effort = live.get("reasoning_effort") if isinstance(live.get("reasoning_effort"), str) else None
+        raw_live_effort = live.get("reasoning_effort")
+        if backend_name == "cc":
+            live_effort = normalize_requested_cc_reasoning_effort(raw_live_effort)
+        elif backend_name == "pi":
+            live_effort = display_pi_reasoning_effort(raw_live_effort)
+        else:
+            live_effort = display_reasoning_effort(raw_live_effort)
+    # A live sidecar value is direct evidence from the currently-running
+    # backend and therefore wins over launch intent and delayed JSONL replay.
+    # This includes CC: its effort is observed from a post-launch
+    # ``settings.json`` revision because CC JSONL deliberately has no effort
+    # field to replay.
     if live_provider:
         model_provider = live_provider
     if live_model:

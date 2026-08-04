@@ -81,6 +81,8 @@ from codoxear.broker_turn_state import _mark_explicit_interrupt_request
 from codoxear.broker_turn_state import _should_clear_busy_state as _should_clear_busy_state_impl
 from codoxear.broker_turn_state import _strip_ansi
 from codoxear.broker_turn_state import _update_busy_from_pty_text
+from codoxear.cc_live_settings import cc_settings_mtime_ns
+from codoxear.cc_live_settings import changed_cc_settings_reasoning_effort
 from codoxear.util import default_app_dir as _default_app_dir
 from codoxear.util import find_new_session_log as _find_new_session_log
 from codoxear.util import iter_session_logs as _iter_session_logs
@@ -333,6 +335,11 @@ class Broker:
 
         self.codex_home = DEFAULT_AGENT_HOME
         self.sessions_dir = BACKEND.sessions_dir()
+        self._cc_settings_path = self.codex_home / "settings.json"
+        # Settings present before launch are launch defaults, not evidence that
+        # this session changed effort. Only a later revision may replace the
+        # explicit --effort/launch value in the sidecar.
+        self._cc_settings_mtime_ns = cc_settings_mtime_ns(self._cc_settings_path) if AGENT_BACKEND == "cc" else None
         resume_env = str(os.environ.get("CODEX_WEB_RESUME_SESSION_ID") or "").strip()
         self._resume_session_id = resume_env or _resume_session_id_from_args(self.codex_args)
 
@@ -416,9 +423,44 @@ class Broker:
                     pass
         self._stop_codex_app_server()
 
+    def _refresh_cc_live_effort(self) -> None:
+        """Publish a post-launch Claude ``/effort`` change through the sidecar.
+
+        Claude Code's transcript records model evidence but no effort field.
+        Its interactive effort control persists the selected level in
+        ``CLAUDE_CONFIG_DIR/settings.json``. The mtime boundary prevents an
+        old global preference from overriding a session's launch ``--effort``;
+        a new file revision is live evidence for the current CLI process.
+        """
+        if AGENT_BACKEND != "cc":
+            return
+        current_mtime_ns, effort = changed_cc_settings_reasoning_effort(
+            self._cc_settings_path,
+            previous_mtime_ns=self._cc_settings_mtime_ns,
+        )
+        self._cc_settings_mtime_ns = current_mtime_ns
+        if effort is None:
+            return
+        changed = False
+        with self._lock:
+            st = self.state
+            if st is None:
+                return
+            live_settings = dict(st.live_run_settings or {})
+            if st.reasoning_effort != effort:
+                st.reasoning_effort = effort
+                changed = True
+            if live_settings.get("reasoning_effort") != effort:
+                live_settings["reasoning_effort"] = effort
+                st.live_run_settings = live_settings
+                changed = True
+        if changed:
+            self._write_meta()
+
     def _discover_log_watcher(self) -> None:
         try:
             while not self._stop.is_set():
+                self._refresh_cc_live_effort()
                 with self._lock:
                     st = self.state
                     if not st:

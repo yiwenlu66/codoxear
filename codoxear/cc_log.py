@@ -618,8 +618,8 @@ def read_cc_run_settings(path: Path, *, max_scan_bytes: int = 8 * 1024 * 1024) -
     Assistant records expose ``message.model`` after a live ``/model`` change,
     so the newest such value becomes sidebar model evidence. Claude Code JSONL
     has no effort field consumed by this parser after ``/effort``; return
-    ``None`` for effort so the sidebar retains its launch-time value rather
-    than optimistically claiming that the command took effect.
+    ``None`` so session discovery retains launch intent until the broker
+    observes a live ``settings.json`` revision.
     """
     model: str | None = None
     try:
@@ -652,6 +652,6 @@ def read_cc_run_settings(path: Path, *, max_scan_bytes: int = 8 * 1024 * 1024) -
     except FileNotFoundError:
         return None, model, None
     # Claude Code logs expose the model on assistant messages but do not
-    # record effort. The third value is intentionally ``None`` so launch
-    # metadata remains the sole effort authority.
+    # record effort. The broker's settings-file observer supplies live effort
+    # evidence; this parser intentionally returns no competing value.
     return None, model, None
