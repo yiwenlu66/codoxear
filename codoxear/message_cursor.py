@@ -5,7 +5,7 @@ import hashlib
 import hmac
 import json
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Iterable, Protocol
 
 
 class MessageCursorError(ValueError):
@@ -78,6 +78,40 @@ def decode_message_cursor(token: str, *, kind: str, session: MessageCursorSessio
         if pos > size:
             raise MessageCursorError("cursor_invalid")
     return int(pos)
+
+
+def decode_message_cursor_target(
+    token: str,
+    *,
+    kind: str,
+    session: MessageCursorSession,
+    allowed_log_paths: Iterable[Path],
+    secret: bytes,
+) -> tuple[Path, int]:
+    payload = verify_message_cursor(token, secret=secret)
+    if payload.get("v") != 1 or payload.get("kind") != kind or payload.get("thread_id") != session.thread_id:
+        raise MessageCursorError("cursor_invalid")
+    raw_path = payload.get("log_path")
+    if not isinstance(raw_path, str) or not raw_path:
+        raise MessageCursorError("cursor_invalid")
+    target = Path(raw_path)
+    allowed = [Path(session.log_path)] if session.log_path is not None else []
+    allowed.extend(Path(path) for path in allowed_log_paths)
+    if not any(_same_cursor_path(target, path) for path in allowed):
+        raise MessageCursorError("cursor_invalid")
+    pos = payload.get("pos")
+    if not isinstance(pos, int) or pos < 0:
+        raise MessageCursorError("cursor_invalid")
+    if not target.exists() or pos > int(target.stat().st_size):
+        raise MessageCursorError("cursor_invalid")
+    return target, int(pos)
+
+
+def _same_cursor_path(a: Path, b: Path) -> bool:
+    try:
+        return a.resolve() == b.resolve()
+    except OSError:
+        return a.absolute() == b.absolute()
 
 
 def attach_history_cursors(

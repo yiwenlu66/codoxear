@@ -14,7 +14,8 @@ from .message_cursor import MessageCursorError
 from .message_cursor import attach_history_cursors as _attach_history_cursors_impl
 from .transcript_search import clip_search_match_text as _clip_search_match_text
 from .transcript_search import read_chat_window_around as _read_chat_window_around
-from .transcript_search import search_chat_log_bounded as _search_chat_log_bounded
+from .transcript_search import search_chat_logs_bounded as _search_chat_logs_bounded
+from .transcript_search import session_log_paths_for_search as _session_log_paths_for_search
 
 
 JsonResponse = Callable[[Any, int, dict[str, Any]], None]
@@ -37,6 +38,7 @@ class MessageRouteDeps:
     encode_message_cursor: Callable[..., str]
     record_metric: Callable[[str, float], None]
     message_runtime_snapshot: Callable[..., tuple[dict[str, Any], bool, int, Any]]
+    decode_message_cursor_target: Callable[..., tuple[Path, int]] | None = None
 
 
 def _parse_bounded_query_int(
@@ -196,11 +198,15 @@ def _attach_search_load_cursors(
         if not isinstance(match, dict):
             continue
         item = dict(match)
+        log_path = item.pop("_log_path", None)
+        cursor_session = session
+        if isinstance(log_path, str) and log_path:
+            cursor_session = SimpleNamespace(thread_id=session.thread_id, log_path=Path(log_path))
         before_byte = item.get("_before_byte")
         if isinstance(before_byte, bool):
             before_byte = None
         if isinstance(before_byte, int) and before_byte >= 0:
-            cursor = encode_cursor(kind="history", session=session, pos=before_byte)
+            cursor = encode_cursor(kind="history", session=cursor_session, pos=before_byte)
             item["history_cursor"] = cursor
             item["before_byte"] = cursor
             if not isinstance(item.get("message_id"), str) or not item["message_id"]:
@@ -209,7 +215,7 @@ def _attach_search_load_cursors(
         if isinstance(after_byte, bool):
             after_byte = None
         if isinstance(after_byte, int) and after_byte > 0:
-            item["load_cursor"] = encode_cursor(kind="history", session=session, pos=after_byte)
+            item["load_cursor"] = encode_cursor(kind="history", session=cursor_session, pos=after_byte)
         text = item.get("text")
         if isinstance(text, str):
             snippet = _clip_search_match_text([{"text": text}], 60, query=query)[0].get("text", text)
@@ -287,6 +293,12 @@ def _merge_log_and_lifecycle_search_matches(
     if remaining_slots > 0:
         matches.extend(lifecycle_matches[:remaining_slots])
     return match_count, matches, match_count_truncated
+
+
+def _decode_cursor_target(deps: MessageRouteDeps, token: str, *, kind: str, session: Any) -> tuple[Path | None, int]:
+    if deps.decode_message_cursor_target is not None:
+        return deps.decode_message_cursor_target(token, kind=kind, session=session)
+    return session.log_path, deps.decode_message_cursor(token, kind=kind, session=session)
 
 
 def _next_jsonl_record_byte(log_path: Path, record_start: int) -> int:
@@ -693,8 +705,12 @@ def handle_messages_search(handler: Any, *, session_id: str, query: str, manager
                     elif direction == "next":
                         after_byte = _next_jsonl_record_byte(log_path, anchor_byte)
                         order = "first"
-                match_count, matches, match_count_truncated = _search_chat_log_bounded(
-                    log_path,
+                match_count, matches, match_count_truncated = _search_chat_logs_bounded(
+                    _session_log_paths_for_search(
+                        log_path,
+                        agent_backend=launch_payload.get("agent_backend") if isinstance(launch_payload.get("agent_backend"), str) else None,
+                        session_id=cursor_session.thread_id,
+                    ),
                     search_query,
                     limit=match_limit,
                     max_line_bytes=deps.transcript_search_max_line_bytes,
@@ -784,8 +800,8 @@ def handle_messages_search(handler: Any, *, session_id: str, query: str, manager
     if s.log_path is None or (not s.log_path.exists()):
         deps.json_response(handler, 200, {**transcript, **_search_result_fields(search_query, 0, False, [])})
         return
-    match_count, matches, match_count_truncated = _search_chat_log_bounded(
-        s.log_path,
+    match_count, matches, match_count_truncated = _search_chat_logs_bounded(
+        _session_log_paths_for_search(s.log_path, agent_backend=s.agent_backend, session_id=s.thread_id),
         search_query,
         limit=match_limit,
         max_line_bytes=deps.transcript_search_max_line_bytes,
@@ -813,10 +829,6 @@ def handle_messages_window(handler: Any, *, session_id: str, query: str, manager
     if cursor_session is None:
         deps.json_response(handler, 404, {"error": "unknown session"})
         return
-    log_path = cursor_session.log_path
-    if log_path is None or not log_path.exists():
-        deps.json_response(handler, 409, {"error": "transcript_pending"})
-        return
     qs = urllib.parse.parse_qs(query)
     cursor_q = qs.get("cursor")
     if cursor_q is None or not cursor_q or not cursor_q[0].strip():
@@ -828,10 +840,14 @@ def handle_messages_window(handler: Any, *, session_id: str, query: str, manager
         deps.json_response(handler, 400, {"error": before_error or after_error})
         return
     try:
-        position = deps.decode_message_cursor(cursor_q[0], kind="history", session=cursor_session)
+        log_path, position = _decode_cursor_target(deps, cursor_q[0], kind="history", session=cursor_session)
     except MessageCursorError as exc:
         deps.json_response(handler, 409, {"error": str(exc)})
         return
+    if log_path is None or not log_path.exists():
+        deps.json_response(handler, 409, {"error": "transcript_pending"})
+        return
+    cursor_session = SimpleNamespace(thread_id=cursor_session.thread_id, log_path=log_path)
     events, next_before, has_older, has_newer = _read_chat_window_around(
         log_path,
         position_byte=position,

@@ -174,6 +174,7 @@
           if (launchPending) badges.push(el("span", { class: "badge launchPending", text: "starting", title: "Session is still starting" }));
           if (session.unattended_enabled) badges.push(el("span", { class: "badge unattended", text: "unattended", title: "Unattended mode enabled" }));
           if (session.queue_len) badges.push(el("span", { class: "badge queue", text: `queue ${session.queue_len}` }));
+          if (Number(session.unread_count) > 0) badges.push(el("span", { class: "badge unread", text: `unread ${session.unread_count}`, title: "Unread messages" }));
 
           const updatedTs = typeof session.updated_ts === "number" && Number.isFinite(session.updated_ts) ? session.updated_ts : session.start_ts;
           const ageSeconds = updatedTs ? Math.max(0, now() / 1000 - updatedTs) : 0;

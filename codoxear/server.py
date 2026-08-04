@@ -98,6 +98,7 @@ from .cc_log import read_cc_run_settings as _read_cc_run_settings
 from .message_cursor import MessageCursorError
 from .message_cursor import attach_history_cursors as _attach_history_cursors_impl
 from .message_cursor import decode_message_cursor as _decode_message_cursor_impl
+from .message_cursor import decode_message_cursor_target as _decode_message_cursor_target_impl
 from .message_cursor import encode_message_cursor as _encode_message_cursor_impl
 from .transcript_search import TRANSCRIPT_SEARCH_MAX_LINE_BYTES
 from .transcript_search import clip_search_match_text as _clip_search_match_text
@@ -454,6 +455,22 @@ def _encode_message_cursor(*, kind: str, session: "Session", pos: int) -> str:
 def _decode_message_cursor(token: str, *, kind: str, session: "Session") -> int:
     return _decode_message_cursor_impl(token, kind=kind, session=session, secret=HMAC_SECRET)
 
+
+def _decode_message_cursor_target(token: str, *, kind: str, session: "Session") -> tuple[Path, int]:
+    from .transcript_search import session_log_paths_for_search
+
+    paths = session_log_paths_for_search(
+        session.log_path,
+        agent_backend=getattr(session, "agent_backend", None),
+        session_id=session.thread_id,
+    ) if session.log_path else []
+    return _decode_message_cursor_target_impl(
+        token,
+        kind=kind,
+        session=session,
+        allowed_log_paths=paths,
+        secret=HMAC_SECRET,
+    )
 
 def _require_auth(handler: http.server.BaseHTTPRequestHandler) -> bool:
     return _require_auth_impl(handler, settings=_cookie_auth_settings(), verify=_verify_cookie)

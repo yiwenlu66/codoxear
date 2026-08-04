@@ -29,6 +29,7 @@ SERVER_CONFIG_EXPORT_NAMES = (
     "QUEUE_PATH",
     "PENDING_ATTACHMENTS_PATH",
     "STAGED_ATTACHMENTS_PATH",
+    "SESSION_UNREAD_PATH",
     "COMMIT_UNKNOWN_SENDS_PATH",
     "RECENT_CWD_PATH",
     "VOICE_SETTINGS_PATH",
@@ -104,6 +105,7 @@ class ServerConfig:
     QUEUE_PATH: Path
     PENDING_ATTACHMENTS_PATH: Path
     STAGED_ATTACHMENTS_PATH: Path
+    SESSION_UNREAD_PATH: Path
     COMMIT_UNKNOWN_SENDS_PATH: Path
     RECENT_CWD_PATH: Path
     VOICE_SETTINGS_PATH: Path
@@ -260,6 +262,7 @@ def build_server_config(
         QUEUE_PATH=app_dir / "session_queues.json",
         PENDING_ATTACHMENTS_PATH=app_dir / "pending_attachments.json",
         STAGED_ATTACHMENTS_PATH=app_dir / "staged_attachments.json",
+        SESSION_UNREAD_PATH=app_dir / "session_unread.json",
         COMMIT_UNKNOWN_SENDS_PATH=app_dir / "commit_unknown_sends.json",
         RECENT_CWD_PATH=app_dir / "recent_cwds.json",
         VOICE_SETTINGS_PATH=app_dir / "voice_settings.json",

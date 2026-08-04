@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Callable
 import urllib.parse
 
+from . import rollout_log as _rollout_log
 from .cwd_suggest import cwd_suggestions
 
 
@@ -59,6 +60,11 @@ def handle_session_get_route(
         _handle_metrics(handler, deps=deps)
         return True
 
+    session_id = match_session_route(path, "unread")
+    if session_id is not None:
+        _handle_unread_get(handler, session_id=session_id, manager=manager, deps=deps)
+        return True
+
     session_id = match_session_route(path, "tail")
     if session_id is not None:
         _handle_tail(handler, session_id=session_id, manager=manager, deps=deps)
@@ -78,11 +84,79 @@ def handle_session_post_route(
     path: str,
     manager: Any,
     deps: SessionRouteDeps,
+    match_session_route: RouteMatcher | None = None,
 ) -> bool:
     if path != "/api/sessions":
+        session_id = match_session_route(path, "read") if match_session_route is not None else None
+        if session_id is not None:
+            _handle_read_post(handler, session_id=session_id, manager=manager, deps=deps)
+            return True
         return False
     _handle_session_create(handler, manager=manager, deps=deps)
     return True
+
+
+def _transcript_events_for_unread(session: Any) -> list[dict[str, Any]]:
+    path = getattr(session, "log_path", None)
+    if path is None or not path.exists():
+        return []
+    return _read_chat_export_events(path, max_bytes=max(1, int(path.stat().st_size)))
+
+
+def _event_id(event: dict[str, Any]) -> str:
+    value = event.get("message_id") or event.get("event_id")
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _handle_unread_get(handler: Any, *, session_id: str, manager: Any, deps: SessionRouteDeps) -> None:
+    if not _authorized(handler, deps):
+        return
+    session = manager.get_session(session_id)
+    if session is None:
+        deps.json_response(handler, 404, {"error": "unknown session"})
+        return
+    events = [event for event in _transcript_events_for_unread(session) if _event_id(event)]
+    store = getattr(manager, "_unread_store", None)
+    watermark = store.watermark(session_id) if store is not None else None
+    ids = [_event_id(event) for event in events]
+    if watermark is None:
+        if ids and store is not None:
+            store.mark_read(session_id, ids[-1])
+        deps.json_response(handler, 200, {"count": 0, "first_unread_event_id": None, "last_unread_event_id": None})
+        return
+    try:
+        start = ids.index(watermark) + 1
+    except ValueError:
+        start = 0
+    unread_ids = ids[start:]
+    deps.json_response(handler, 200, {
+        "count": len(unread_ids),
+        "first_unread_event_id": unread_ids[0] if unread_ids else None,
+        "last_unread_event_id": unread_ids[-1] if unread_ids else None,
+    })
+
+
+def _handle_read_post(handler: Any, *, session_id: str, manager: Any, deps: SessionRouteDeps) -> None:
+    if not _authorized(handler, deps):
+        return
+    session = manager.get_session(session_id)
+    if session is None:
+        deps.json_response(handler, 404, {"error": "unknown session"})
+        return
+    obj = deps.read_json_body(handler)
+    event_id = str(obj.get("event_id") or "").strip()
+    events = [event for event in _transcript_events_for_unread(session) if _event_id(event)]
+    ids = [_event_id(event) for event in events]
+    if not event_id:
+        event_id = ids[-1] if ids else ""
+    if event_id and event_id not in ids:
+        deps.json_response(handler, 400, {"error": "unknown event_id"})
+        return
+    if event_id:
+        store = getattr(manager, "_unread_store", None)
+        if store is not None:
+            store.mark_read(session_id, event_id)
+    deps.json_response(handler, 200, {"ok": True, "event_id": event_id})
 
 
 def _authorized(handler: Any, deps: SessionRouteDeps) -> bool:

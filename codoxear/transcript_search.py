@@ -5,11 +5,125 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Iterator
 
+from .agent_backend import get_agent_backend
+from .agent_backend import infer_agent_backend_from_log_path
 from . import rollout_log as _rollout_log
 from .rollout_chat_events import _build_no_response_event
 
 
 TRANSCRIPT_SEARCH_MAX_LINE_BYTES = int(os.environ.get("CODEX_WEB_TRANSCRIPT_SEARCH_MAX_LINE_BYTES", str(4 * 1024 * 1024)))
+
+
+def session_log_paths_for_search(log_path: Path, *, agent_backend: str | None = None, session_id: str | None = None) -> list[Path]:
+    """Return every backend log belonging to the active session.
+
+    A broker sidecar stores only the currently bound file. Resume and rotation
+    can leave earlier files in the backend's session tree, so searching that
+    one path silently loses history. The backend-specific log identity check
+    prevents unrelated sessions in the same tree from entering the projection.
+    """
+    current = Path(log_path)
+    backend = get_agent_backend(agent_backend or infer_agent_backend_from_log_path(current) or "codex")
+    sid = session_id or backend.session_id_from_log_path(current)
+    if not sid:
+        return [current]
+    directory_names = {"codex": "sessions", "pi": "sessions", "cc": "projects"}
+    root: Path | None = None
+    for parent in (current.parent, *current.parents):
+        if parent.name == directory_names[backend.name]:
+            root = parent
+            break
+    if root is None or not root.exists():
+        return [current]
+    paths: list[Path] = []
+    try:
+        candidates = root.rglob("*.jsonl")
+    except OSError:
+        candidates = ()
+    for candidate in candidates:
+        if not backend.is_session_log_path(candidate, sessions_dir=root):
+            continue
+        try:
+            if backend.log_matches_session_id(candidate, sid):
+                paths.append(candidate)
+        except (FileNotFoundError, OSError, ValueError):
+            continue
+    if not any(_same_path(candidate, current) for candidate in paths):
+        paths.append(current)
+    def sort_key(path: Path) -> tuple[float, int, str]:
+        try:
+            mtime = float(path.stat().st_mtime)
+        except OSError:
+            mtime = 0.0
+        return (mtime, 1 if _same_path(path, current) else 0, str(path))
+    paths.sort(key=sort_key)
+    return paths
+
+
+def _same_path(a: Path, b: Path) -> bool:
+    try:
+        return a.resolve() == b.resolve()
+    except OSError:
+        return a.absolute() == b.absolute()
+
+
+def search_chat_logs_bounded(
+    log_paths: list[Path],
+    query: str,
+    *,
+    limit: int = 20,
+    max_line_bytes: int = TRANSCRIPT_SEARCH_MAX_LINE_BYTES,
+    before_byte: int | None = None,
+    after_byte: int = 0,
+    order: str = "first",
+    count_limit: int | None = None,
+    role: str | None = None,
+    match_all: bool = False,
+) -> tuple[int, list[dict[str, Any]], bool]:
+    """Search an ordered set of session logs as one transcript projection."""
+    if not log_paths:
+        return 0, [], False
+    max_matches = max(0, int(limit))
+    max_count = None if count_limit is None else max(0, int(count_limit))
+    if order == "latest" and max_count is not None:
+        raise ValueError("count_limit is only supported with order=first")
+    total = 0
+    truncated = False
+    matches: list[dict[str, Any]] = []
+    for index, path in enumerate(log_paths):
+        remaining = None if max_count is None else max(0, max_count - total)
+        if remaining == 0:
+            # A bounded count is only marked truncated when another match is
+            # observed; avoid claiming truncation merely because the boundary
+            # landed exactly at EOF.
+            break
+        per_limit = max_matches if order == "latest" else max(0, max_matches - len(matches))
+        count, found, file_truncated = search_chat_log_bounded(
+            path,
+            query,
+            limit=max_matches if order == "latest" else per_limit,
+            max_line_bytes=max_line_bytes,
+            before_byte=before_byte if index == len(log_paths) - 1 else None,
+            after_byte=after_byte if index == len(log_paths) - 1 else 0,
+            order="first",
+            count_limit=remaining,
+            role=role,
+            match_all=match_all,
+        )
+        total += count
+        for event in found:
+            tagged = dict(event)
+            tagged["_log_path"] = str(path)
+            matches.append(tagged)
+        if order == "latest" and len(matches) > max_matches:
+            del matches[:-max_matches]
+        if file_truncated:
+            truncated = True
+            break
+    if order == "latest":
+        # Files are oldest-first; each file's matches are oldest-first too.
+        matches = matches[-max_matches:] if max_matches else []
+    return total, matches, truncated
 
 
 def chat_event_matches_query(

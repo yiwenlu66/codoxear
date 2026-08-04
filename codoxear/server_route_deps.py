@@ -69,6 +69,7 @@ class ServerRouteDepsFactory:
             encode_message_cursor=server._encode_message_cursor,
             record_metric=server._record_metric,
             message_runtime_snapshot=self.message_runtime_snapshot,
+            decode_message_cursor_target=server._decode_message_cursor_target,
         )
 
     def queue_route_deps(self) -> QueueRouteDeps:

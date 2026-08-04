@@ -49,6 +49,7 @@
       firstVisibleMessageRow: (scrollTop) => messageRows.firstVisibleMessageRow(renderedMessageRows(), scrollTop),
       appendEvent: (event) => renderRuntime.appendEvent(event),
       renderTranscript: (events, renderOptions) => renderRuntime.renderTranscript(events, renderOptions),
+      scrollToFirstUnread: (eventId) => renderRuntime.scrollToFirstUnread(eventId),
       renderDetachedTranscriptWindow: (events, renderOptions) => renderRuntime.renderDetachedTranscriptWindow(events, renderOptions),
       prependOlderEvents: (events, renderOptions) => renderRuntime.prependOlderEvents(events, renderOptions),
       renderLoadingRow: () => {

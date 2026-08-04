@@ -510,6 +510,12 @@
     return msgs;
   }
 
+  function firstUnreadMessageRow(rows, eventId) {
+    const target = String(eventId || "").trim();
+    if (!target) return null;
+    return (Array.isArray(rows) ? rows : []).find((row) => row && row.dataset && row.dataset.messageId === target) || null;
+  }
+
   function createTranscriptRenderRuntime(options = {}) {
     const root = requireNode(options.root, "root");
     const bottomSentinel = requireNode(options.bottomSentinel, "bottomSentinel");
@@ -581,7 +587,18 @@
       return true;
     }
 
-    function renderTranscript(events, { preserveScroll = false } = {}) {
+    function scrollToFirstUnread(eventId) {
+      const targetId = String(eventId || "").trim();
+      if (!targetId) return false;
+      const row = firstUnreadMessageRow(Array.from(root.querySelectorAll(".msg-row")), targetId);
+      if (!row) return false;
+      if (typeof row.scrollIntoView === "function") row.scrollIntoView({ block: "start", behavior: "auto" });
+      else scrollRuntime.setScrollTop(Math.max(0, Number(row.offsetTop) || 0));
+      scrollRuntime.disableAutoScroll();
+      return true;
+    }
+
+    function renderTranscript(events, { preserveScroll = false, firstUnreadEventId = "" } = {}) {
       const selectedSessionId = getSelectedSessionId();
       const msgs = normalizeEvents(events, { consumePending: true });
       scrollRuntime.markLiveTail();
@@ -593,6 +610,7 @@
       resetRecentEvents();
       root.insertBefore(fragmentFor(msgs, { markSeen: true, pending: false }), bottomSentinel);
       domRuntime.rebuildDecorations({ preserveScroll });
+      if (firstUnreadEventId) scrollToFirstUnread(firstUnreadEventId);
       restorePendingRows(selectedSessionId);
       return true;
     }
@@ -649,6 +667,7 @@
       prependOlderEvents,
       renderDetachedTranscriptWindow,
       renderTranscript,
+      scrollToFirstUnread,
     });
   }
 
@@ -1421,6 +1440,7 @@
     thinkingModeForTokens,
     createTypingRowRuntime,
     normalizedTranscriptEvents,
+    firstUnreadMessageRow,
     createTranscriptRenderRuntime,
     createTranscriptDomRuntime,
     createTranscriptScrollRuntime,

@@ -5,6 +5,7 @@ from typing import Any
 
 from .session_registry import SessionRegistry
 from .session_registry import session_registry_for_manager
+from .unread_store import UnreadStore
 
 
 def session_store_paths_for_server(server: Any) -> Any:
@@ -27,6 +28,7 @@ def init_for_manager(manager: Any, server: Any) -> None:
     registry = SessionRegistry()
     manager._registry = registry
     manager._store = manager._new_session_store_for_manager(session_store_paths_for_server(server))
+    manager._unread_store = UnreadStore(server.SESSION_UNREAD_PATH)
     server._seed_manager_in_memory_state_impl(manager)
     server._load_manager_persistent_state_impl(manager)
     manager._voice_push = server._create_voice_push_coordinator_impl(

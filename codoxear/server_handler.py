@@ -252,6 +252,7 @@ class CodoxearHandler(http.server.BaseHTTPRequestHandler):
                 path=path,
                 manager=manager,
                 deps=self.deps.session_route_deps(),
+                match_session_route=self.deps.match_session_route,
             ):
                 return
             if handle_global_file_post_route(

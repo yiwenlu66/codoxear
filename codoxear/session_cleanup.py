@@ -24,6 +24,7 @@ class SessionCleanupCoordinator:
     save_files: Callable[[], None]
     save_queues: Callable[[], None]
     save_staged_attachments: Callable[[], None] = lambda: None
+    clear_unread: Callable[[str], None] = lambda _session_id: None
 
     def prune_stale_socket_without_metadata(self, session_id: str, sock: Path) -> None:
         with self.lock:
@@ -38,6 +39,7 @@ class SessionCleanupCoordinator:
             input_locks = self.input_locks()
             if isinstance(input_locks, dict):
                 input_locks.pop(session_id, None)
+        self.clear_unread(session_id)
         self.store().save_deleted_session_state_changes(
             changes,
             save_pending_attachments=self.save_pending_attachments,

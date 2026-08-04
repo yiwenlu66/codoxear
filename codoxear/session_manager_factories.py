@@ -489,6 +489,7 @@ def cleanup_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCap
         save_unattended=manager._save_unattended,
         save_files=manager._save_files,
         save_queues=manager._save_queues,
+        clear_unread=lambda session_id: getattr(manager, "_unread_store", None).clear(session_id) if getattr(manager, "_unread_store", None) is not None else None,
     )
 
 

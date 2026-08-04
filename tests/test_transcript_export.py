@@ -1,4 +1,5 @@
 import json
+import os
 import unittest
 import urllib.parse
 from pathlib import Path
@@ -7,6 +8,7 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 
 from codoxear.message_cursor import decode_message_cursor
+from codoxear.message_cursor import decode_message_cursor_target
 from codoxear.message_cursor import encode_message_cursor
 from codoxear.message_routes import MessageRouteDeps
 from codoxear.message_routes import _read_chat_export_events
@@ -25,6 +27,8 @@ from codoxear.transcript_search import clip_search_text_around_query
 from codoxear.transcript_search import search_chat_events
 from codoxear.transcript_search import search_chat_log
 from codoxear.transcript_search import search_chat_log_bounded
+from codoxear.transcript_search import search_chat_logs_bounded
+from codoxear.transcript_search import session_log_paths_for_search
 
 
 APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
@@ -68,6 +72,28 @@ class TestTranscriptExport(unittest.TestCase):
             _write_assistant_rows(path, 2)
             with self.assertRaisesRegex(ValueError, "too large to export"):
                 _read_chat_export_events(path, max_bytes=1)
+
+    def test_search_spans_rotated_logs_for_one_session(self) -> None:
+        with TemporaryDirectory() as td:
+            sessions = Path(td) / "sessions"
+            sessions.mkdir()
+            session_id = "12345678-1234-1234-1234-123456789abc"
+            old_path = sessions / f"rollout-2026-01-01T00-00-00-{session_id}.jsonl"
+            current_path = sessions / f"rollout-2026-01-02T00-00-00-{session_id}.jsonl"
+            _write_assistant_rows(old_path, 1)
+            _write_assistant_rows(current_path, 1)
+            old_path.write_text(old_path.read_text().replace("a0", "needle in rotated log"), encoding="utf-8")
+            current_path.write_text(current_path.read_text().replace("a0", "needle in active log"), encoding="utf-8")
+            os.utime(old_path, (1, 1))
+            os.utime(current_path, (2, 2))
+            paths = session_log_paths_for_search(current_path, agent_backend="codex", session_id=session_id)
+            count, matches, truncated = search_chat_logs_bounded(paths, "needle", limit=20)
+
+        self.assertEqual(paths, [old_path, current_path])
+        self.assertEqual(count, 2)
+        self.assertFalse(truncated)
+        self.assertEqual([match["text"] for match in matches], ["needle in rotated log", "needle in active log"])
+        self.assertEqual([Path(match["_log_path"]) for match in matches], [old_path, current_path])
 
     def test_streaming_search_can_bound_count_without_changing_default(self) -> None:
         with TemporaryDirectory() as td:
@@ -500,6 +526,46 @@ def _deps(**overrides):
     for name, value in overrides.items():
         object.__setattr__(deps, name, value)
     return deps, responses, metrics
+
+
+def test_messages_search_route_finds_matches_in_rotated_session_logs() -> None:
+    with TemporaryDirectory() as td:
+        sessions = Path(td) / "sessions"
+        sessions.mkdir()
+        old_path = sessions / "rollout-thread-1-old.jsonl"
+        current_path = sessions / "rollout-thread-1-current.jsonl"
+        old_path.write_text(json.dumps({
+            "type": "response_item",
+            "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "needle in old log"}], "phase": "final_answer"},
+        }) + "\n", encoding="utf-8")
+        current_path.write_text(json.dumps({
+            "type": "response_item",
+            "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "needle in current log"}], "phase": "final_answer"},
+        }) + "\n", encoding="utf-8")
+        session = _session(td, current_path)
+        deps, responses, _metrics = _deps()
+        handle_messages_search(
+            _FakeHandler(),
+            session_id="s1",
+            query="q=needle",
+            manager=_search_manager(session),
+            deps=deps,
+        )
+        status, body = responses[0]
+        old_cursor = body["matches"][0]["load_cursor"]
+        target_path, _position = decode_message_cursor_target(
+            old_cursor,
+            kind="history",
+            session=session,
+            allowed_log_paths=[old_path, current_path],
+            secret=_SECRET,
+        )
+
+    assert status == 200
+    assert body["match_count"] == 2
+    assert [match["text"] for match in body["matches"]] == ["needle in old log", "needle in current log"]
+    assert target_path == old_path
+    assert all(isinstance(match.get("history_cursor"), str) for match in body["matches"])
 
 
 def test_messages_search_route_applies_text_max_to_response_matches() -> None:
