@@ -169,6 +169,9 @@ def eval_open_session_tail_request_abort() -> dict:
           initPageLimit: () => 60,
           api: (url, options = {{}}) => {{
             calls.push(["api", url, Boolean(options.signal)]);
+            if (url.endsWith("/unread")) {{
+              return Promise.resolve({{ count: 0, first_unread_event_id: null, last_unread_event_id: null }});
+            }}
             return new Promise((resolve, reject) => {{
               const req = {{ url, signal: options.signal || null, resolve, reject }};
               pending.push(req);
@@ -223,10 +226,10 @@ def eval_open_session_tail_request_abort() -> dict:
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = { openSession };\n")}, ctx);
         (async () => {{
           const firstPromise = ctx.__test.openSession("sid-a", {{ useCache: false }});
-          await Promise.resolve();
+          await new Promise((resolve) => setTimeout(resolve, 0));
           const firstSignal = pending[0] && pending[0].signal;
           const secondPromise = ctx.__test.openSession("sid-b", {{ useCache: false }});
-          await Promise.resolve();
+          await new Promise((resolve) => setTimeout(resolve, 0));
           const secondReq = pending[1];
           secondReq.resolve({{ transcript_state: "bound", events: [{{ role: "assistant", text: "ok" }}], busy: false, queue_len: 0, token: null }});
           const secondResult = await secondPromise;
@@ -428,8 +431,10 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertEqual(result["pollGen"], 2)
         self.assertEqual(result["selected"], "sid-b")
         self.assertEqual(result["title"], "title:sid-b")
-        self.assertEqual(len(result["apiCalls"]), 2)
-        self.assertTrue(all(call[2] for call in result["apiCalls"]))
+        self.assertEqual(len(result["apiCalls"]), 4)
+        self.assertEqual([call[2] for call in result["apiCalls"]], [False, True, False, True])
+        self.assertTrue(result["apiCalls"][0][1].endswith("/unread"))
+        self.assertTrue(result["apiCalls"][2][1].endswith("/unread"))
         self.assertEqual(len(result["abortCalls"]), 1)
         self.assertEqual(result["failureCalls"], [])
         self.assertEqual(result["loadErrorCalls"], [])

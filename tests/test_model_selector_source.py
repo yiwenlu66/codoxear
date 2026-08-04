@@ -187,7 +187,7 @@ class TestComposerModelPicker(unittest.TestCase):
             state.backend = "codex";
             textarea.value = "/model mini";
             textarea.dispatch("input");
-            if (modelPicker.style.display !== "block" || modelPicker.children.length !== 1 || modelPicker.children[0].textContent !== "gpt-5.4-mini") throw new Error("Codex session did not open advertised model picker");
+            if (modelPicker.style.display !== "block" || modelPicker.children.length !== 2 || modelPicker.children[1].textContent !== "gpt-5.4-mini") throw new Error("Codex session did not expose the active provider and advertised model picker");
             const codexModelEnter = {{ key: "Enter", defaultPrevented: false, preventDefault() {{ this.defaultPrevented = true; }} }};
             textarea.dispatch("keydown", codexModelEnter);
             await new Promise((resolve) => setTimeout(resolve, 0));
