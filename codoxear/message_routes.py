@@ -332,14 +332,18 @@ def _live_payload_from_records(
     deps: MessageRouteDeps,
 ) -> dict[str, Any]:
     objs = [record.obj for record in records]
-    initial_cc_pending = _rollout_log._cc_pending_tool_ids_before(log_path, after_byte) if records and after_byte > 0 else set()
+    initial_cc_pending = (
+        _rollout_log._cc_pending_tool_ids_before(log_path, after_byte)
+        if records and after_byte > 0 and _rollout_log._records_contain_claude_code_rows(records)
+        else set()
+    )
     events, meta_delta, flags, _diag = _rollout_log._extract_chat_events(
         objs,
         initial_cc_pending_tool_ids=initial_cc_pending,
     )
     token_update = _rollout_log._extract_token_observation(objs)
     prior_user_byte, prior_turn_has_assistant = (
-        _rollout_log._prior_open_turn_context(log_path, after_byte) if after_byte > 0 else (None, False)
+        _rollout_log._prior_open_turn_context(log_path, after_byte) if records and after_byte > 0 else (None, False)
     )
     events = _rollout_log._extract_positioned_chat_events(
         records,
@@ -1094,13 +1098,32 @@ def handle_messages_live(handler: Any, *, session_id: str, query: str, manager: 
     except MessageCursorError as e:
         deps.json_response(handler, 409, {"error": str(e)})
         return
-    records, next_after = _rollout_log._read_jsonl_records_from_offset(s.log_path, after_byte, max_bytes=LIVE_POLL_READ_MAX_BYTES)
+    try:
+        size = int(s.log_path.stat().st_size)
+    except OSError:
+        size = 0
+    if size > after_byte:
+        records, next_after = _rollout_log._read_jsonl_records_from_offset(
+            s.log_path,
+            after_byte,
+            max_bytes=LIVE_POLL_READ_MAX_BYTES,
+        )
+    else:
+        # A cursor at EOF is the steady state. Avoid opening/parsing the log
+        # again; a later append makes ``size > after_byte`` and consumes only
+        # those new bytes. Truncation retains the existing cursor-clamp
+        # behavior of ``_read_jsonl_records_from_offset``.
+        records, next_after = [], min(after_byte, size)
     objs = [record.obj for record in records]
-    initial_cc_pending = _rollout_log._cc_pending_tool_ids_before(s.log_path, after_byte) if records and after_byte > 0 else set()
+    initial_cc_pending = (
+        _rollout_log._cc_pending_tool_ids_before(s.log_path, after_byte)
+        if records and after_byte > 0 and _rollout_log._records_contain_claude_code_rows(records)
+        else set()
+    )
     events, meta_delta, flags, _diag = _rollout_log._extract_chat_events(objs, initial_cc_pending_tool_ids=initial_cc_pending)
     token_update = _rollout_log._extract_token_observation(objs)
     prior_user_byte, prior_turn_has_assistant = (
-        _rollout_log._prior_open_turn_context(s.log_path, after_byte) if after_byte > 0 else (None, False)
+        _rollout_log._prior_open_turn_context(s.log_path, after_byte) if records and after_byte > 0 else (None, False)
     )
     events = _rollout_log._extract_positioned_chat_events(
         records,

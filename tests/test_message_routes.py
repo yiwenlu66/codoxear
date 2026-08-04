@@ -4,6 +4,9 @@ import json
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
+
+import codoxear.message_routes as message_routes_module
 
 from codoxear.launch_ledger import POST_LOG_RECOVERY_TRANSCRIPT_MAX_BYTES
 from codoxear.launch_ledger import launch_attempt_transcript_payload
@@ -349,6 +352,32 @@ def test_messages_live_streams_new_events_after_valid_cursor() -> None:
     # The consumed delta must be marked so busy/idle caches advance.
     assert manager.marked and manager.marked[0][1]["new_off"] > 0
     assert metrics and metrics[0][0] == "api_messages_poll_ms"
+
+
+def test_messages_live_at_eof_skips_jsonl_reopen() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        log_path = Path(td) / "rollout.jsonl"
+        log_path.write_text(json.dumps({"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}}) + "\n", encoding="utf-8")
+        session = _session(td, log_path)
+        eof = log_path.stat().st_size
+        cursor = encode_message_cursor(kind="live", session=session, pos=eof, secret=_SECRET)
+        deps, responses, _metrics = _deps()
+
+        with mock.patch.object(message_routes_module._rollout_log, "_read_jsonl_records_from_offset") as reader:
+            handle_messages_live(
+                _FakeHandler(),
+                session_id="s1",
+                query=f"cursor={cursor}",
+                manager=_LiveManager(session),
+                deps=deps,
+            )
+
+        reader.assert_not_called()
+    assert len(responses) == 1
+    status, body = responses[0]
+    assert status == 200
+    assert body["events"] == []
+    assert decode_message_cursor(body["live_cursor"], kind="live", session=session, secret=_SECRET) == eof
 
 
 def test_messages_live_unknown_cc_usage_clears_stale_session_token() -> None:

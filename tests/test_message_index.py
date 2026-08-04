@@ -2,6 +2,9 @@ import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
+
+import codoxear.rollout_log as rollout_log
 
 from codoxear.rollout_log import _read_chat_history_page
 from codoxear.rollout_log import _read_chat_live_delta
@@ -74,7 +77,33 @@ class TestMessageIndex(unittest.TestCase):
             self.assertFalse(has_older3)
             self.assertEqual(before3, 0)
 
-    def test_tail_page_dedupes_adjacent_assistant_duplicate_texts(self) -> None:
+    def test_tail_page_bounds_sparse_recent_history_and_caches_unchanged_identity(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "rollout.jsonl"
+            old = _assistant_text("old", 1.0)
+            newest = _assistant_text("new", 2.0)
+            filler = {"type": "debug", "payload": "x" * (64 * 1024)}
+            with path.open("w", encoding="utf-8") as stream:
+                stream.write(json.dumps(old) + "\n")
+                for _ in range(130):
+                    stream.write(json.dumps(filler) + "\n")
+                stream.write(json.dumps(newest) + "\n")
+
+            with mock.patch.object(rollout_log, "_read_chat_page_reverse", wraps=rollout_log._read_chat_page_reverse) as reader:
+                tail1, before1, after1, has_older1 = rollout_log._read_chat_tail_page(path, limit=80)
+                tail2, before2, after2, has_older2 = rollout_log._read_chat_tail_page(path, limit=80)
+
+            self.assertEqual(reader.call_count, 1)
+            self.assertEqual([event.get("text") for event in tail1], ["new"])
+            self.assertEqual(tail2, tail1)
+            self.assertTrue(has_older1)
+            self.assertTrue(has_older2)
+            self.assertGreater(before1, 0)
+            self.assertEqual((before2, after2), (before1, after1))
+
+            history, _next_before, _has_older = _read_chat_history_page(path, before_byte=before1, limit=80)
+            self.assertEqual([event.get("text") for event in history], ["old"])
+
         with TemporaryDirectory() as td:
             path = Path(td) / "rollout.jsonl"
             rows = [

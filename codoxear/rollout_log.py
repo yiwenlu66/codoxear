@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -81,6 +82,11 @@ def _with_chat_position(event: dict[str, Any], *, before_byte: int | None = None
 
 
 
+def _records_contain_claude_code_rows(records: list[JsonlRecord]) -> bool:
+    """Whether a window needs Claude's carried pending-tool state."""
+    return any(record.obj.get("type") in {"user", "assistant", "system"} for record in records)
+
+
 def _cc_pending_tool_ids_before(log_path: Path, before: int, *, max_scan_bytes: int | None = None) -> set[str]:
     before = max(0, int(before))
     if before <= 0 or (max_scan_bytes is not None and max_scan_bytes <= 0):
@@ -99,6 +105,13 @@ def _cc_pending_tool_ids_before(log_path: Path, before: int, *, max_scan_bytes: 
     return pending
 
 
+_TAIL_PAGE_MAX_SCAN_BYTES = 8 * 1024 * 1024
+_TAIL_PAGE_CACHE_MAX_ENTRIES = 64
+_TAIL_PAGE_CACHE: dict[tuple[str, int, int, int], tuple[list[dict[str, Any]], int, int, bool]] = {}
+_TAIL_PAGE_CACHE_ORDER: list[tuple[str, int, int, int]] = []
+_TAIL_PAGE_CACHE_LOCK = threading.Lock()
+
+
 def _read_chat_page_reverse(
     log_path: Path,
     *,
@@ -110,6 +123,8 @@ def _read_chat_page_reverse(
     end = size if before_byte is None else max(0, min(int(before_byte), size))
     page_limit = max(0, int(limit))
     skip = max(0, int(skip_events))
+    scan_limit = _TAIL_PAGE_MAX_SCAN_BYTES if before_byte is None else None
+    lower_bound = max(0, end - scan_limit) if scan_limit is not None else 0
     if page_limit <= 0 or end <= 0:
         return [], 0, False, size
 
@@ -118,6 +133,9 @@ def _read_chat_page_reverse(
     kept_events = 0
     has_older = False
     for record in _iter_jsonl_records_reverse(log_path, before=end):
+        if scan_limit is not None and record.start < lower_bound:
+            has_older = lower_bound > 0
+            break
         event = _single_chat_event(record.obj)
         if event is not None:
             if skipped < skip:
@@ -130,8 +148,18 @@ def _read_chat_page_reverse(
         if skipped >= skip:
             newest_first_records.append(record)
 
+    if scan_limit is not None and not has_older and lower_bound > 0 and newest_first_records:
+        # A bounded tail can stop before the page limit only when the scan
+        # reached the lower bound. The first retained record is a valid,
+        # line-aligned history cursor; older content is loaded on demand.
+        has_older = newest_first_records[-1].start > 0
+
     records = list(reversed(newest_first_records))
-    initial_pending = _cc_pending_tool_ids_before(log_path, records[0].start) if records else set()
+    initial_pending = (
+        _cc_pending_tool_ids_before(log_path, records[0].start)
+        if records and _records_contain_claude_code_rows(records)
+        else set()
+    )
     prior_user_byte, prior_turn_has_assistant = (
         _prior_open_turn_context(log_path, records[0].start) if records else (None, False)
     )
@@ -141,8 +169,36 @@ def _read_chat_page_reverse(
         prior_user_byte=prior_user_byte,
         prior_turn_has_assistant=prior_turn_has_assistant,
     )
-    next_before = records[0].start if records else 0
+    next_before = records[0].start if records else (lower_bound if scan_limit is not None else 0)
     return events, next_before, has_older, size
+
+
+def _read_chat_tail_page(log_path: Path, *, limit: int) -> tuple[list[dict[str, Any]], int, int, bool]:
+    """Read a recent transcript page without replaying the whole log.
+
+    The tail is bounded to the same 8 MiB scale used by the session-list
+    scanner.  A cache entry is valid only for one ``(path, size, mtime_ns,
+    limit)`` identity, so unchanged reopen/resume requests avoid reparsing and
+    appends naturally read only the new file identity.
+    """
+    stat = log_path.stat()
+    key = (str(log_path), int(stat.st_size), int(getattr(stat, "st_mtime_ns", 0)), max(0, int(limit)))
+    with _TAIL_PAGE_CACHE_LOCK:
+        cached = _TAIL_PAGE_CACHE.get(key)
+        if cached is not None:
+            events, before_byte, after_byte, has_older = cached
+            return [dict(event) for event in events], before_byte, after_byte, has_older
+
+    result = _read_chat_page_reverse(log_path, limit=limit, before_byte=None, skip_events=0)
+    events, before_byte, has_older, after_byte = result
+    frozen = ([dict(event) for event in events], before_byte, after_byte, has_older)
+    with _TAIL_PAGE_CACHE_LOCK:
+        _TAIL_PAGE_CACHE[key] = frozen
+        _TAIL_PAGE_CACHE_ORDER.append(key)
+        while len(_TAIL_PAGE_CACHE_ORDER) > _TAIL_PAGE_CACHE_MAX_ENTRIES:
+            old_key = _TAIL_PAGE_CACHE_ORDER.pop(0)
+            _TAIL_PAGE_CACHE.pop(old_key, None)
+    return [dict(event) for event in events], before_byte, after_byte, has_older
 
 
 def _extract_positioned_chat_events(
@@ -166,11 +222,6 @@ def _extract_positioned_chat_events(
         prior_turn_has_assistant=prior_turn_has_assistant,
     )
     return events
-
-
-def _read_chat_tail_page(log_path: Path, *, limit: int) -> tuple[list[dict[str, Any]], int, int, bool]:
-    events, before_byte, has_older, after_byte = _read_chat_page_reverse(log_path, limit=limit, before_byte=None, skip_events=0)
-    return events, before_byte, after_byte, has_older
 
 
 def _read_chat_history_page(log_path: Path, *, before_byte: int, limit: int) -> tuple[list[dict[str, Any]], int, bool]:
@@ -308,9 +359,13 @@ def _read_chat_live_delta(
     max_bytes: int = 2 * 1024 * 1024,
 ) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, bool], dict[str, Any], dict[str, Any] | None]:
     records, next_after = _read_jsonl_records_from_offset(log_path, after_byte, max_bytes=max_bytes)
-    initial_pending = _cc_pending_tool_ids_before(log_path, after_byte) if records and after_byte > 0 else set()
+    initial_pending = (
+        _cc_pending_tool_ids_before(log_path, after_byte)
+        if records and after_byte > 0 and _records_contain_claude_code_rows(records)
+        else set()
+    )
     prior_user_byte, prior_turn_has_assistant = (
-        _prior_open_turn_context(log_path, after_byte) if after_byte > 0 else (None, False)
+        _prior_open_turn_context(log_path, after_byte) if records and after_byte > 0 else (None, False)
     )
     events = _extract_positioned_chat_events(
         records,
