@@ -842,7 +842,7 @@ def handle_messages_window(handler: Any, *, session_id: str, query: str, manager
     try:
         log_path, position = _decode_cursor_target(deps, cursor_q[0], kind="history", session=cursor_session)
     except MessageCursorError as exc:
-        deps.json_response(handler, 409, {"error": str(exc)})
+        deps.json_response(handler, 400, {"error": str(exc)})
         return
     if log_path is None or not log_path.exists():
         deps.json_response(handler, 409, {"error": "transcript_pending"})
