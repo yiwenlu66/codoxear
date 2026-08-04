@@ -61,7 +61,13 @@ def eval_hint_mode() -> dict:
         const hiddenDetails = makeNode("details", {{ hidden: true }});
         const reserved = makeNode("reserved");
         const textInput = makeNode("input", {{ textEntry: true }});
+        const modalClose = makeNode("modal-close");
+        modalClose.getAttribute = (name) => name === "aria-label" ? "Close" : "";
+        const modalCopy = makeNode("modal-copy");
+        modalCopy.getAttribute = (name) => name === "aria-label" ? "Copy details" : "";
         const modal = makeNode("modal");
+        modal.contains = (target) => target === modal || target === modalClose || target === modalCopy;
+        modal.querySelectorAll = (selector) => selector.indexOf("button") >= 0 ? [modalClose, modalCopy] : [];
         const documentTarget = {{
           body,
           activeElement: null,
@@ -121,7 +127,8 @@ def eval_hint_mode() -> dict:
         const textEntry = press("f", textInput);
         documentTarget.activeElement = null;
         modalOpen = true;
-        const modalBlocked = press("f");
+        const modalEnter = press("f");
+        const modalHint = press("c");
         modalOpen = false;
         mobile = true;
         const mobileBlocked = press("f");
@@ -140,7 +147,8 @@ def eval_hint_mode() -> dict:
         process.stdout.write(JSON.stringify({{
           frozen: Object.isFrozen(ctx.window.CodoxearHintMode),
           textEntry: {{ active: controller.isActive(), prevented: textEntry.defaultPrevented }},
-          modalBlocked: {{ active: controller.isActive(), prevented: modalBlocked.defaultPrevented }},
+          modalEnter: {{ active: controller.isActive(), prevented: modalEnter.defaultPrevented }},
+          modalHintPrevented: modalHint.defaultPrevented,
           mobileBlocked: {{ active: controller.isActive(), prevented: mobileBlocked.defaultPrevented }},
           enterSessionPrevented: enterSession.defaultPrevented,
           sessionHintPrevented: sessionHint.defaultPrevented,
@@ -167,7 +175,8 @@ class TestFrontendHintModeModuleSource(unittest.TestCase):
         result = eval_hint_mode()
         self.assertTrue(result["frozen"])
         self.assertFalse(result["textEntry"]["prevented"])
-        self.assertFalse(result["modalBlocked"]["prevented"])
+        self.assertTrue(result["modalEnter"]["prevented"])
+        self.assertTrue(result["modalHintPrevented"])
         self.assertFalse(result["mobileBlocked"]["prevented"])
         self.assertTrue(result["enterSessionPrevented"])
         self.assertTrue(result["sessionHintPrevented"])
@@ -175,7 +184,7 @@ class TestFrontendHintModeModuleSource(unittest.TestCase):
         self.assertTrue(result["shellHintPrevented"])
         self.assertTrue(result["enterSearchPrevented"])
         self.assertTrue(result["searchHintPrevented"])
-        self.assertEqual(result["clicks"], ["session-2", "sidebar", "search"])
+        self.assertEqual(result["clicks"], ["modal-close", "session-2", "sidebar", "search"])
         self.assertIn("/", result["labels"])
         self.assertNotIn("b", result["labels"])
         self.assertNotIn("d", result["labels"])

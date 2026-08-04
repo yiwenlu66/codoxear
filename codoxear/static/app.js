@@ -55,6 +55,10 @@
       // (loaded after app_voice_helpers.js and before app.js). app.js fails
       // loud here if either module is missing; the controller itself
       // additionally validates every helper API it consumes.
+      const codoxearSse = window.CodoxearSse;
+      if (!codoxearSse || typeof codoxearSse.createMessageEventSourceController !== "function")
+        throw new Error("Codoxear SSE controller failed to load");
+
       const codoxearVoiceHelpers = window.CodoxearVoiceHelpers;
       if (
         !codoxearVoiceHelpers ||
@@ -77,6 +81,9 @@
       const codoxearShell = window.CodoxearShell;
       if (!codoxearShell || typeof codoxearShell.createShellDOM !== "function")
         throw new Error("Codoxear shell module failed to load");
+      const codoxearToast = window.CodoxearToast;
+      if (!codoxearToast || typeof codoxearToast.createToastController !== "function")
+        throw new Error("Codoxear toast module failed to load");
       const codoxearSessions = window.CodoxearSessions;
       if (!codoxearSessions || typeof codoxearSessions.createSessionsController !== "function")
         throw new Error("Codoxear sessions controller failed to load");
@@ -794,6 +801,8 @@
           queueBtn,
           sendBtn,
         } = shellDOM.elements;
+        const toastController = codoxearToast.createToastController({ toast });
+        const setToast = (text) => toastController.show(text);
         const codoxearUnattendedDom = window.CodoxearUnattended;
         if (!codoxearUnattendedDom || typeof codoxearUnattendedDom.createUnattendedDom !== "function")
           throw new Error("Codoxear unattended DOM failed to load");
@@ -811,10 +820,8 @@
         const OLDER_CANCEL_PX = 48;
         let openSessionTailAbortController = null;
         let messagePollAbortController = null;
-        let messageEventSource = null;
-        let messageSseRetryTimer = null;
         let messageSseOpen = false;
-        let messageSseFallbackUntil = 0;
+        let messageSseController = null;
         const OLDER_AUTO_COOLDOWN_MS = 450;
         let pollTimer = null;
         let pollGen = 0;
@@ -832,6 +839,8 @@
          let sessionsRefreshInFlight = null;
          let sessionsRefreshQueued = false;
         let selected = null; // selected session_id (null until chosen)
+        let activeFirstUnreadEventId = "";
+        let activeLastUnreadEventId = "";
 	        let sessionIndex = new Map(); // session_id -> session info
         let recentCwds = [];
 	        let sending = false;
@@ -884,70 +893,15 @@
           return handler;
         }
         function closeMessageEventSource() {
-          if (messageSseRetryTimer) clearTimeout(messageSseRetryTimer);
-          messageSseRetryTimer = null;
-          const source = messageEventSource;
-          messageEventSource = null;
-          messageSseOpen = false;
-          if (source && typeof source.close === "function") {
-            try { source.close(); } catch (_error) {}
-          }
-        }
-        function scheduleMessageEventSourceRetry(sessionId, gen) {
-          if (appDisposed || selected !== sessionId || pollGen !== gen || messageSseRetryTimer) return;
-          const delay = Math.max(1000, messageSseFallbackUntil - Date.now());
-          messageSseRetryTimer = setTimeout(() => {
-            messageSseRetryTimer = null;
-            if (!appDisposed && selected === sessionId && pollGen === gen) openMessageEventSource(sessionId, gen);
-          }, delay);
+          if (messageSseController) messageSseController.close();
         }
         function openMessageEventSource(sessionId = selected, gen = pollGen) {
-          if (appDisposed || !sessionId || selected !== sessionId || pollGen !== gen) return;
-          if (typeof EventSource !== "function") return;
-          const snapshot = transcriptSlotRuntime.activeSnapshot();
-          if (snapshot.state !== "bound" || !snapshot.liveCursor) return;
-          closeMessageEventSource();
-          const url = resolveAppUrl(`/api/sessions/${sessionId}/live?cursor=${encodeURIComponent(snapshot.liveCursor)}`);
-          const source = new EventSource(url);
-          messageEventSource = source;
-          source.onopen = () => {
-            if (messageEventSource !== source || selected !== sessionId || pollGen !== gen) return;
-            messageSseOpen = true;
-            messageSseFallbackUntil = 0;
-            messagePollErrorStreak = 0;
-            abortMessagePollRequest();
-            if (pollTimer) clearTimeout(pollTimer);
-            pollTimer = null;
-          };
-          source.addEventListener("message", (event) => {
-            if (messageEventSource !== source || selected !== sessionId || pollGen !== gen) return;
-            let data;
-            try { data = JSON.parse(event.data); } catch (error) {
-              console.warn("message SSE payload was invalid", error);
-              return;
-            }
-            Promise.resolve(applyLiveMessageData(sessionId, gen, data)).catch((error) => {
-              console.warn("message SSE update failed", error);
-              source.close();
-              if (messageEventSource === source) {
-                messageEventSource = null;
-                messageSseOpen = false;
-                messageSseFallbackUntil = Date.now() + 6000;
-                kickPoll(0);
-                scheduleMessageEventSourceRetry(sessionId, gen);
-              }
-            });
-          });
-          source.addEventListener("error", () => {
-            if (messageEventSource !== source || selected !== sessionId || pollGen !== gen) return;
-            source.close();
-            messageEventSource = null;
-            messageSseOpen = false;
-            messageSseFallbackUntil = Date.now() + 6000;
-            markMessagePollFailure();
-            kickPoll(0);
-            scheduleMessageEventSourceRetry(sessionId, gen);
-          });
+          if (!messageSseController) return;
+          messageSseController.open(sessionId, gen);
+        }
+        function resumeMessageEventSource(sessionId = selected, gen = pollGen) {
+          if (!messageSseController) return;
+          messageSseController.resume(sessionId, gen);
         }
         function stopMessagePolling() {
           selected = null;
@@ -1802,14 +1756,6 @@
         if (!codoxearCodeCopy || typeof codoxearCodeCopy.createCodeBlockCopyRuntime !== "function")
           throw new Error("Codoxear code copy helpers failed to load");
 
-        function setToast(text) {
-          toast.textContent = text || "";
-          if (!text) return;
-          setTimeout(() => {
-            if (toast.textContent === text) toast.textContent = "";
-          }, 2200);
-        }
-
         async function copyToClipboard(text) {
           return codoxearClipboard.copyToClipboard(text);
         }
@@ -2090,7 +2036,7 @@
             documentTarget: document,
             isTextEntryElement,
             isMobile,
-            modalIsolationTargets,
+            modalIsolationTargets: [...modalIsolationTargets, unattendedMenu],
             isModalTargetOpen,
             addAppEvent,
             shellHints: [
@@ -2944,6 +2890,16 @@
           if (notModified && !sidebarController.hasDeferredRefresh() && !firstLoadNeedsPopulation) return latestSessions;
           if (!notModified || firstLoadNeedsPopulation) {
             latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
+            await Promise.all(latestSessions.map(async (session) => {
+              if (!session || !session.session_id) return;
+              try {
+                const unread = await api(`/api/sessions/${session.session_id}/unread`);
+                session.unread_count = Math.max(0, Number(unread && unread.count) || 0);
+              } catch (error) {
+                session.unread_count = 0;
+                if (error && error.status === 401) handleAppAuthLoss();
+              }
+            }));
             newSessionDefaults =
               data && typeof data.new_session_defaults === "object" && data.new_session_defaults
                 ? data.new_session_defaults
@@ -3125,9 +3081,19 @@
         }
 
         function renderSessionTail(events) {
-          renderTranscript(events, { preserveScroll: false });
+          const firstUnreadEventId = activeFirstUnreadEventId;
+          const lastUnreadEventId = activeLastUnreadEventId;
+          activeFirstUnreadEventId = "";
+          activeLastUnreadEventId = "";
+          renderTranscript(events, { preserveScroll: false, firstUnreadEventId });
+          if (firstUnreadEventId) {
+            void api(`/api/sessions/${selected}/read`, { method: "POST", body: { event_id: lastUnreadEventId || firstUnreadEventId } }).catch((error) => {
+              if (error && error.status === 401) handleAppAuthLoss();
+              else console.error("failed to mark transcript read", error);
+            });
+          }
           markClickFirstPaint();
-          transcriptScrollRuntime.scheduleScrollToBottom({ double: true });
+          if (!firstUnreadEventId) transcriptScrollRuntime.scheduleScrollToBottom({ double: true });
         }
 
 
@@ -3377,6 +3343,14 @@
           if (!displayedCachedTail) renderTranscriptLoading(sessionId);
 
           let data;
+          try {
+            const unread = await api(`/api/sessions/${sessionId}/unread`);
+            activeFirstUnreadEventId = unread && typeof unread.first_unread_event_id === "string" ? unread.first_unread_event_id : "";
+            activeLastUnreadEventId = unread && typeof unread.last_unread_event_id === "string" ? unread.last_unread_event_id : activeFirstUnreadEventId;
+          } catch (error) {
+            activeFirstUnreadEventId = "";
+            if (error && error.status === 401) handleAppAuthLoss();
+          }
           const tailRequest = beginOpenSessionTailRequest(sessionId, myGen);
           try {
             data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`, {
@@ -3527,7 +3501,7 @@
                 await refreshSessions();
               } catch (e2) {
                 console.error("refreshSessions failed after session disappeared", e2);
-                toast.textContent = `refresh error: ${e2 && e2.message ? e2.message : "unknown error"}`;
+                setToast(`refresh error: ${e2 && e2.message ? e2.message : "unknown error"}`);
               }
               return;
             }
@@ -3536,7 +3510,7 @@
             // are self-recovering via poll backoff — don't toast them. Only
             // surface errors where the server actually responded with a status.
             if (e && typeof e.status === "number") {
-              toast.textContent = `error: ${e.message}`;
+              setToast(`error: ${e.message}`);
             } else {
               console.warn("message poll network error", e && e.message);
             }
@@ -3584,6 +3558,25 @@
           }
           pollTimer = setTimeout(pollLoop, delay);
         }
+
+        messageSseController = codoxearSse.createMessageEventSourceController({
+          resolveUrl,
+          getSnapshot: () => transcriptSlotRuntime.activeSnapshot(),
+          isActive: (sessionId, generation) => !appDisposed && Boolean(sessionId) && selected === sessionId && pollGen === generation,
+          onStateChange: (open) => { messageSseOpen = open; },
+          onOpen: () => {
+            messagePollErrorStreak = 0;
+            abortMessagePollRequest();
+            if (pollTimer) clearTimeout(pollTimer);
+            pollTimer = null;
+          },
+          onMessage: (sessionId, generation, data) => applyLiveMessageData(sessionId, generation, data),
+          onFallback: () => {
+            markMessagePollFailure();
+            kickPoll(0);
+          },
+          onMalformedMessage: (error) => console.warn("message SSE payload was invalid", error),
+        });
 
         async function jumpToLatest() {
           if (!selected) return;
@@ -5811,6 +5804,7 @@
               addAppEvent(document, "visibilitychange", () => {
                 if (appDisposed) return;
                 if (document.visibilityState === "visible") {
+                  resumeMessageEventSource(selected, pollGen);
                   resumeAnnouncementRuntime({ resetSource: false });
                   if (selected) kickPoll(0);
                   scheduleSessionsPoll(0);

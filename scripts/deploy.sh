@@ -186,18 +186,43 @@ wait_for_status 401 "/api/sessions"
 if command -v agent-browser >/dev/null && [[ "${CODOXEAR_SKIP_BOOT_CHECK:-0}" != "1" ]]; then
   BOOT_CHECK_PASSWORD="${CODOXEAR_BOOT_CHECK_PASSWORD:-${CODEX_WEB_PASSWORD:-}}"
   if [[ -z "$BOOT_CHECK_PASSWORD" ]]; then
-    BOOT_CHECK_PASSWORD="$(python3 - "$SERVICE_ENVIRONMENT" <<'PY'
+    SERVICE_ENVIRONMENT_FILES="$(systemctl --user show "$SERVICE_NAME" -p EnvironmentFiles --value)"
+    BOOT_CHECK_PASSWORD="$(python3 - "$SERVICE_ENVIRONMENT" "$SERVICE_ENVIRONMENT_FILES" <<'PY'
 import shlex
 import sys
+from pathlib import Path
+
+
+def password_from_fields(fields):
+    for field in fields:
+        if field.startswith("CODEX_WEB_PASSWORD="):
+            return field.split("=", 1)[1]
+    return ""
+
 
 try:
-    fields = shlex.split(sys.argv[1])
+    password = password_from_fields(shlex.split(sys.argv[1]))
 except ValueError:
-    fields = []
-for field in fields:
-    if field.startswith("CODEX_WEB_PASSWORD="):
-        print(field.split("=", 1)[1])
-        break
+    password = ""
+if not password:
+    for configured_file in sys.argv[2].splitlines():
+        path_text = configured_file.rsplit(" (ignore_errors=", 1)[0].strip()
+        if not path_text:
+            continue
+        try:
+            lines = Path(path_text).read_text().splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            try:
+                password = password_from_fields(shlex.split(line, comments=True))
+            except ValueError:
+                continue
+            if password:
+                break
+        if password:
+            break
+print(password)
 PY
 )"
   fi

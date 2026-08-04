@@ -18,11 +18,13 @@ def _write_executable(path: Path, content: str) -> None:
 def test_deploy_script_updates_only_a_clean_snapshot_before_service_operations(tmp_path: Path) -> None:
     deploy_dir = tmp_path / "deploy"
     unit_path = tmp_path / "codoxear-server.service"
+    environment_file = tmp_path / "codoxear-server.env"
+    environment_file.write_text("CODEX_WEB_PASSWORD=test-password\n")
     unit_path.write_text(
         "[Service]\n"
         "WorkingDirectory=/editable/checkout\n"
         "ExecStart=/old/venv/bin/python -u -m codoxear.server\n"
-        "EnvironmentFile=-/editable/checkout/.env\n"
+        "EnvironmentFile=-" + str(environment_file) + "\n"
         "Environment=CODEX_WEB_PORT=9876 PRESERVE_ME=yes\n"
     )
 
@@ -48,7 +50,9 @@ fi
         f"""#!/usr/bin/env bash
 set -eu
 printf 'systemctl %s\\n' "$*" >> {operation_log!s}
-if [[ "$*" == *"show codoxear-server.service -p Environment --value"* ]]; then
+if [[ "$*" == *"show codoxear-server.service -p EnvironmentFiles --value"* ]]; then
+  printf '%s (ignore_errors=no)\\n' {environment_file!s}
+elif [[ "$*" == *"show codoxear-server.service -p Environment --value"* ]]; then
   printf 'CODEX_WEB_PORT=9876\\n'
 fi
 """,
@@ -91,7 +95,8 @@ esac
         "PATH": f"{fake_bin}:{os.environ['PATH']}",
         "CODOXEAR_DEPLOY_DIR": str(deploy_dir),
         "CODOXEAR_SERVICE_UNIT": str(unit_path),
-        "CODOXEAR_BOOT_CHECK_PASSWORD": "test-password",
+        "CODOXEAR_BOOT_CHECK_PASSWORD": "",
+        "CODEX_WEB_PASSWORD": "",
     }
     try:
         completed = subprocess.run(
@@ -111,7 +116,7 @@ esac
         service = unit_config["Service"]
         assert service["WorkingDirectory"] == str(deploy_dir)
         assert service["ExecStart"] == f"{pipx_home}/venvs/codoxear/bin/python -u -m codoxear.server"
-        assert service["EnvironmentFile"] == "-/editable/checkout/.env"
+        assert service["EnvironmentFile"] == f"-{environment_file}"
         assert service["Environment"] == "CODEX_WEB_PORT=9876 PRESERVE_ME=yes"
         operations = operation_log.read_text()
         assert "pipx install --force" in operations

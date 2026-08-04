@@ -62,34 +62,102 @@
       return modalIsolationTargets.some((modal) => isModalTargetOpen(modal) && modal && typeof modal.contains === "function" && modal.contains(target));
     }
 
+    function safeQueryAll(root, selector) {
+      if (!root || typeof root.querySelectorAll !== "function") return [];
+      try {
+        return Array.from(root.querySelectorAll(selector));
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function controlLabel(target) {
+      if (!target) return "";
+      const labels = [
+        typeof target.getAttribute === "function" ? target.getAttribute("aria-label") : "",
+        typeof target.getAttribute === "function" ? target.getAttribute("title") : "",
+        target.textContent,
+        typeof target.getAttribute === "function" ? target.getAttribute("id") : "",
+      ];
+      return labels.map((value) => String(value || "").trim()).find(Boolean) || "control";
+    }
+
+    function visibleInteractiveTargets(root) {
+      return safeQueryAll(root, "button, input, textarea, select, [role='button'], [role='option'], a[href]")
+        .filter((target) => targetIsVisible(target) && !target.disabled);
+    }
+
+    function targetIsInChat(target) {
+      if (!target || typeof target.closest !== "function") return false;
+      return Boolean(target.closest(".chat"));
+    }
+
+    function assignAvailableLetter(targets, target, usedLabels, pool) {
+      if (!target || Array.from(targets.values()).includes(target)) return;
+      const label = controlLabel(target).toLowerCase();
+      for (const candidate of label) {
+        if (!/[a-z]/.test(candidate) || candidate === "f" || usedLabels.has(candidate)) continue;
+        targets.set(candidate, target);
+        usedLabels.add(candidate);
+        const index = pool.indexOf(candidate);
+        if (index >= 0) pool.splice(index, 1);
+        return;
+      }
+      const fallback = pool.shift();
+      if (!fallback) return;
+      targets.set(fallback, target);
+      usedLabels.add(fallback);
+    }
+
+    function openIsolationTarget() {
+      return modalIsolationTargets.find((target) => isModalTargetOpen(target)) || null;
+    }
+
     function collectTargets() {
       const targets = new Map();
+      const isolationTarget = openIsolationTarget();
+      if (isolationTarget) {
+        // Dialogs/popovers are independent hint regions. Their controls get
+        // letter hints even though the background shell is isolated.
+        const controls = visibleInteractiveTargets(isolationTarget);
+        const usedLabels = new Set(["f"]);
+        const pool = "abcdefghijklmnopqrstuvwxyz".split("").filter((ch) => ch !== "f");
+        for (const control of controls) assignAvailableLetter(targets, control, usedLabels, pool);
+        return targets;
+      }
+
       const sessionCards = Array.from(documentTarget.querySelectorAll("#sessions .session[data-session-id]"))
         .filter((card) => targetIsVisible(card) && !targetIsInsideOpenModal(card))
         .slice(0, SESSION_HINTS.length);
       for (const [index, card] of sessionCards.entries()) {
         targets.set(SESSION_HINTS[index], card);
       }
+      const usedLabels = new Set(targets.keys());
+      usedLabels.add("f"); // reserved leader
+      const pool = "abcdefghijklmnopqrstuvwxyz".split("").filter((ch) => !usedLabels.has(ch));
       for (const hint of shellHints) {
         const label = String(hint && hint.label || "").toLowerCase();
         const target = hint && hint.element;
         if (!label || label === "f" || targets.has(label) || !targetIsVisible(target) || targetIsInsideOpenModal(target)) continue;
         targets.set(label, target);
+        usedLabels.add(label);
+        const index = pool.indexOf(label);
+        if (index >= 0) pool.splice(index, 1);
       }
+
+      // Shell controls added by focused controllers (voice, settings, logout,
+      // context details, attachments, and transient menus) are discovered at
+      // runtime so a new button cannot silently become keyboard-inaccessible.
+      for (const control of visibleInteractiveTargets(documentTarget.body)) {
+        if (targetIsInChat(control) || targetIsInsideOpenModal(control)) continue;
+        assignAvailableLetter(targets, control, usedLabels, pool);
+      }
+
       // Dynamic hints: assign available letters to clickable file references
       // in the conversation view (a[data-file-path] and a[data-file-picker-query]).
-      // These are not locked — labels are assigned on the fly from whatever
-      // single-char letters remain after sessions and shell hints.
-      const ALPHABET = "abcdefghijklmnopqrstuvwxyz";
-      const usedLabels = new Set(targets.keys());
-      usedLabels.add("f"); // reserved leader
-      const pool = ALPHABET.split("").filter((ch) => !usedLabels.has(ch));
       const fileLinks = Array.from(documentTarget.querySelectorAll(".chat a[data-file-path], .chat a[data-file-picker-query]"))
         .filter((link) => targetIsVisible(link) && !targetIsInsideOpenModal(link));
-      for (const link of fileLinks) {
-        if (!pool.length) break;
-        targets.set(pool.shift(), link);
-      }
+      for (const link of fileLinks) assignAvailableLetter(targets, link, usedLabels, pool);
       return targets;
     }
 
@@ -115,7 +183,7 @@
     }
 
     function enter() {
-      if (hintedTargets.size || anyModalOpen() || isMobile()) return false;
+      if (hintedTargets.size || isMobile()) return false;
       hintedTargets = collectTargets();
       if (!hintedTargets.size) return false;
       badgeContainer = documentTarget.createElement("div");
@@ -137,7 +205,7 @@
     }
 
     function canEnter(target) {
-      return !isMobile() && !anyModalOpen() && !isTextEntryElement(target) && !isTextEntryElement(documentTarget.activeElement);
+      return !isTextEntryElement(target) && !isTextEntryElement(documentTarget.activeElement);
     }
 
     function handleKeydown(event) {
