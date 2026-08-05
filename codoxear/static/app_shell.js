@@ -23,15 +23,6 @@
     root.innerHTML = "";
     const backdrop = el("div", { class: "backdrop", id: "backdrop" });
     const app = el("div", { class: "app" });
-    const navRail = el("aside", { class: "navRail", "aria-label": "Primary navigation" }, [
-      el("div", { class: "navRailBrand", title: "Codoxear", "aria-label": "Codoxear", html: iconSvg("terminal") }),
-      el("nav", { class: "navRailNav", "aria-label": "Workspace" }, [
-        el("div", { class: "navRailItem", "aria-current": "page", title: "Sessions" }, [
-          el("span", { class: "navRailIcon", "aria-hidden": "true", html: iconSvg("terminal") }),
-          el("span", { class: "navRailItemLabel", text: "Sessions" }),
-        ]),
-      ]),
-    ]);
     const sidebar = el("div", { class: "sidebar" });
     const sessionsWrap = el("div", { class: "sessions", id: "sessions" });
     const sidebarEmptyHint = el("div", { class: "sidebarEmptyHint muted", text: "No sessions yet" });
@@ -122,10 +113,10 @@
     sidebar.appendChild(el("header", {}, [el("div", { class: "title", html: `<svg class="sidebarLogo" viewBox="0 0 24 24" data-logo-motif="dog-ear-terminal" aria-hidden="true" focusable="false"><path d="M4 2h10l6 6v14H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M14 2v6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="m7 13 3 3-3 3M12 19h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>Codoxear` }), sidebarHeaderActions]));
     sidebar.append(sessionsWrap, sidebarFooter);
     main.append(topbar, networkBanner, toast, chatWrap, composer);
-    app.append(navRail, sidebar, main, backdrop);
+    app.append(sidebar, main, backdrop);
     root.append(app);
 
-    const elements = Object.freeze({ root, app, navRail, backdrop, sidebar, sessionsWrap, sidebarEmptyHint, main, chatWrap, chatHeader, chatEmptyState, chat, chatInner, olderWrap, olderBtn, olderRetryBtn, olderError, olderErrorText, bottomSentinel, jumpBtn, chatTimeChip, chatSearchInput, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn, chatSearchStatus, chatSearchAllHintEl, chatSearchBar, chatNavRail, titleLabel, statusChip, ctxChip, interruptBtn, toast, networkBanner, toggleSidebarBtn, unattendedBtn, sidebarHeaderActions, voiceHost, diagBtn, prevUserBtn, nextUserBtn, chatSearchBtn, fileBtn, composer, form, textarea, msgPh, modelPicker, imgInput, attachBtn, queueBtn, sendBtn, stagedTray });
+    const elements = Object.freeze({ root, app, backdrop, sidebar, sessionsWrap, sidebarEmptyHint, main, chatWrap, chatHeader, chatEmptyState, chat, chatInner, olderWrap, olderBtn, olderRetryBtn, olderError, olderErrorText, bottomSentinel, jumpBtn, chatTimeChip, chatSearchInput, chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn, chatSearchStatus, chatSearchAllHintEl, chatSearchBar, chatNavRail, titleLabel, statusChip, ctxChip, interruptBtn, toast, networkBanner, toggleSidebarBtn, unattendedBtn, sidebarHeaderActions, voiceHost, diagBtn, prevUserBtn, nextUserBtn, chatSearchBtn, fileBtn, composer, form, textarea, msgPh, modelPicker, imgInput, attachBtn, queueBtn, sendBtn, stagedTray });
     return Object.freeze({ elements, cleanup() { root.innerHTML = ""; } });
   }
 
