@@ -20,7 +20,7 @@ CALL_PATTERN = re.compile(rf"(?<![.$\w])({IDENTIFIER})\s*\(")
 FUNCTION_DECLARATION = re.compile(rf"\b(?:async\s+)?function\s+({IDENTIFIER})\s*\(")
 CLASS_DECLARATION = re.compile(rf"\bclass\s+({IDENTIFIER})\b")
 VARIABLE_DECLARATION = re.compile(rf"\b(?:const|let|var)\s+({IDENTIFIER})\b")
-DESTRUCTURE_PATTERN = re.compile(rf"\b(?:const|let|var)\s*\{{\s*([^}}]+)\s*\}}\s*=")
+CONST_OBJECT_DESTRUCTURE = re.compile(r"\bconst\s*\{(?P<bindings>[^{}]*)\}\s*=")
 FUNCTION_PARAMETERS = re.compile(r"\b(?:async\s+)?function(?:\s+[A-Za-z_$][A-Za-z0-9_$]*)?\s*\(([^)]*)\)")
 ARROW_PARAMETERS = re.compile(r"\(([^)]*)\)\s*=>|\b([A-Za-z_$][A-Za-z0-9_$]*)\s*=>")
 WINDOW_GLOBAL = re.compile(rf"\b(?:window|globalThis)\.({IDENTIFIER})\s*=")
@@ -290,11 +290,29 @@ def _names_in_parameters(parameter_text: str) -> set[str]:
     return set(re.findall(IDENTIFIER, parameter_text))
 
 
+def _names_in_object_destructuring(bindings: str) -> set[str]:
+    """Return local names from a flat ``const { property } = object`` assignment."""
+    names: set[str] = set()
+    for binding in bindings.split(","):
+        local_binding = binding.strip()
+        if local_binding.startswith("..."):
+            local_binding = local_binding[3:].strip()
+        elif ":" in local_binding:
+            _, local_binding = local_binding.split(":", 1)
+            local_binding = local_binding.strip()
+        local_binding = local_binding.split("=", 1)[0].strip()
+        if re.fullmatch(IDENTIFIER, local_binding):
+            names.add(local_binding)
+    return names
+
+
 def app_defined_names(app_source: str) -> set[str]:
     code = mask_non_code(app_source)
     names = set(FUNCTION_DECLARATION.findall(code))
     names.update(CLASS_DECLARATION.findall(code))
     names.update(VARIABLE_DECLARATION.findall(code))
+    for match in CONST_OBJECT_DESTRUCTURE.finditer(code):
+        names.update(_names_in_object_destructuring(match.group("bindings")))
     for match in FUNCTION_PARAMETERS.finditer(code):
         names.update(_names_in_parameters(match.group(1)))
     for match in ARROW_PARAMETERS.finditer(code):
