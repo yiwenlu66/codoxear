@@ -791,6 +791,7 @@
             await api("/api/login", { method: "POST", body: { password: pw } });
           onAuthed();
           } catch (e2) {
+          console.error("login app initialization failed", e2);
           err.textContent = e2.obj?.error || e2.message;
           }
         };
