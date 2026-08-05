@@ -97,6 +97,7 @@
     return Object.freeze({
       attachmentsController, messageFlowController: sendLifecycleController.messageFlowController, sidebarController,
       chatSearchController: transcript.chatSearchController, chatNavigationController: transcript.chatNavigationController,
+      hintModeController: transcript.hintModeController,
       transcriptSlotRuntime: transcript.transcriptSlotRuntime, typingRowRuntime: transcript.typingRowRuntime,
       transcriptScrollRuntime: transcript.transcriptScrollRuntime, transcriptDomRuntime: transcript.transcriptDomRuntime,
       transcriptEventRuntime: transcript.transcriptEventRuntime, olderLoadRuntime: historyController.olderLoadRuntime,

@@ -672,7 +672,7 @@
         }));
         ({ attachmentsController, messageFlowController } = chatInteractionController);
         const {
-          chatSearchController, chatNavigationController, sidebarController, transcriptSlotRuntime, typingRowRuntime,
+          chatSearchController, chatNavigationController, hintModeController, sidebarController, transcriptSlotRuntime, typingRowRuntime,
           transcriptScrollRuntime, transcriptDomRuntime, transcriptEventRuntime, olderLoadRuntime,
           resetChatRenderState, clearOlderLoadError, updateChatNavButtons,
           closeChatSearch, clearRenderedTranscriptRange, initPageLimit, dropPendingUserRows,

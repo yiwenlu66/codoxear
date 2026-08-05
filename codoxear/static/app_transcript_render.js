@@ -830,6 +830,7 @@ function prependOlderEvents(events, { preserveViewport = false } = {}) {
       renderedMessageRows, loadedUserMessageRows, loadedCopyMessageRows, loadedUserJumpTarget,
       loadedCopyJumpTarget, rowSearchText, firstVisibleMessageRow, prefersReducedMotion,
       updateChatNavButtons, closeChatSearch, openChatSearch, clearChatSearchMarks,
+      hintModeController,
       eventKey, markEventSeen, isDuplicateEvent, isAdjacentAssistantDuplicateEvent,
       takePendingUserMatch, isTranscriptRenewalCommand,
       transcriptView, markClickFirstPaint, syncActiveTranscriptSlot,
