@@ -7,6 +7,7 @@
     const {
       window, document, navigator, HTMLElement, EventSource, AbortController, getComputedStyle,
       requestAnimationFrame, setTimeout, clearTimeout, $, UI_VERSION, ATTACH_UPLOAD_MAX_BYTES,
+      isTextEntryElement, updateAppHeightVar,
       codoxearViewport, codoxearDisplay, defaultButtonTooltip, codoxearVoiceHelpers, codoxearVoice,
       codoxearDom, el, codoxearShell, codoxearSessions, codoxearComposer, codoxearAttachments,
       codoxearMessageFlow, codoxearSecondaryPoll, codoxearInterrupt, codoxearDialogMenus,
@@ -3582,7 +3583,6 @@
                 }
               })();
           } catch (e) {
-            console.log("[session-refresh] initial refreshSessions caught", e);
 	            if (e && e.status === 401) {
               handleAppAuthLoss();
 	              return;

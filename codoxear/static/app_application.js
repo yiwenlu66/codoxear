@@ -791,7 +791,6 @@
             await api("/api/login", { method: "POST", body: { password: pw } });
           onAuthed();
           } catch (e2) {
-          console.error("login app initialization failed", e2);
           err.textContent = e2.obj?.error || e2.message;
           }
         };
@@ -805,6 +804,7 @@
       const applicationComposition = codoxearApplicationComposition.createApplicationComposition({
         window, document, navigator, HTMLElement, EventSource, AbortController, getComputedStyle,
         requestAnimationFrame, setTimeout, clearTimeout, $, UI_VERSION, ATTACH_UPLOAD_MAX_BYTES,
+        isTextEntryElement, updateAppHeightVar,
         codoxearViewport, codoxearDisplay, defaultButtonTooltip, codoxearVoiceHelpers, codoxearVoice,
         codoxearDom, el, codoxearShell, codoxearSessions, codoxearComposer, codoxearAttachments,
         codoxearMessageFlow, codoxearSecondaryPoll, codoxearInterrupt, codoxearDialogMenus,
