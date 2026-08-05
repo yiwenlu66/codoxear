@@ -1,16 +1,16 @@
-/* Application runtime: the concrete shell, controller composition, lifecycle, event
- * handlers, and boot flow. app_application.js supplies its explicit outer dependencies. */
-(function installCodoxearApplicationRuntime(global) {
+/* Application composition owns concrete lifecycle, controller assembly, and UI behavior.
+ * app_application_runtime.js remains the stable bootstrap facade. */
+(function installCodoxearApplicationComposition(global) {
   "use strict";
 
-  function createApplicationRuntime(deps = {}) {
+  function createApplicationComposition(deps = {}) {
     const {
       window, document, navigator, HTMLElement, EventSource, AbortController, getComputedStyle,
       requestAnimationFrame, setTimeout, clearTimeout, $, UI_VERSION, ATTACH_UPLOAD_MAX_BYTES,
       codoxearViewport, codoxearDisplay, defaultButtonTooltip, codoxearVoiceHelpers, codoxearVoice,
       codoxearDom, el, codoxearShell, codoxearSessions, codoxearComposer, codoxearAttachments,
       codoxearMessageFlow, codoxearSecondaryPoll, codoxearInterrupt, codoxearDialogMenus,
-      codoxearFileEditMode, codoxearPendingUser, codoxearNavigationPulse, codoxearSessionOpen,
+      codoxearFileEditMode, codoxearPendingUser, codoxearNavigationPulse,
       codoxearFileTouch, codoxearPerfHelpers, pushPerfSample, summarizePerf, codoxearUrls,
       resolveAppUrl, versionedShellAssetPath, codoxearStorage, optionalLocalStorage, storageGetItem,
       storageSetItem, storageRemoveItem, codoxearLaunch, codoxearNewSession, lastProviderKey,
@@ -143,6 +143,8 @@
         let attachmentsController = null;
         let composerController = null;
         let messageFlowController = null;
+        let sessionLifecycleController = null;
+        let sessionRefreshController = null;
         function resizeComposer() {
           if (composerController) composerController.autoGrow();
         }
@@ -186,6 +188,10 @@
           appEventCleanups.push(() => target.removeEventListener(type, handler, options));
           return handler;
         }
+        const codoxearEventBindings = window.CodoxearEventBindings;
+        if (!codoxearEventBindings || typeof codoxearEventBindings.createEventBindings !== "function")
+          throw new Error("Codoxear event bindings failed to load");
+        const eventBindings = codoxearEventBindings.createEventBindings({ addEvent: addAppEvent });
         function stopMessagePolling() {
           selected = null;
           pollGen += 1;
@@ -337,467 +343,29 @@
           openEditSession: (sessionId) => sessionEditController.openEditSession(sessionId),
         });
 
-        const fileBackdrop = el("div", { class: "modalBackdrop", id: "fileBackdrop" });
-        const fileCloseBtn = el("button", {
-          id: "fileCloseBtn",
-          class: "icon-btn",
-          title: "Close",
-          "aria-label": "Close",
-          type: "button",
-          html: iconSvg("x"),
-        });
-        const fileStatus = el("div", { class: "muted fileStatus", id: "fileStatus", role: "status", "aria-live": "polite", text: "" });
-        const filePickerInput = el("input", {
-          id: "filePickerInput",
-          class: "filePickerInput",
-          type: "text",
-          placeholder: "Choose or search files",
-          autocomplete: "off",
-          spellcheck: "false",
-          role: "combobox",
-          "aria-autocomplete": "list",
-          "aria-controls": "filePickerMenu",
-          "aria-expanded": "false",
-        });
-        const filePickerMenu = el("div", { id: "filePickerMenu", class: "filePickerMenu", role: "listbox" });
-        const filePickerField = el("div", { class: "pickerField filePickerField", id: "filePickerField" }, [
-          el("span", { class: "filePickerIcon", html: iconSvg("chevronDown"), "aria-hidden": "true" }),
-          filePickerInput,
-          filePickerMenu,
-        ]);
-        const fileModeDiffBtn = el("button", {
-          id: "fileModeDiffBtn",
-          class: "icon-btn",
-          type: "button",
-          title: "Toggle diff",
-          "aria-label": "Toggle diff",
-          html: iconSvg("diff"),
-        });
-        const fileModePreviewBtn = el("button", {
-          id: "fileModePreviewBtn",
-          class: "icon-btn",
-          type: "button",
-          title: "Toggle markdown preview",
-          "aria-label": "Toggle markdown preview",
-          html: iconSvg("preview"),
-        });
-        const fileEditBtn = el("button", {
-          id: "fileEditBtn",
-          class: "icon-btn",
-          type: "button",
-          title: "Edit file",
-          "aria-label": "Edit file",
-          html: iconSvg("edit"),
-        });
-        const fileVideoPreviewBtn = el("button", {
-          id: "fileVideoPreviewBtn",
-          class: "icon-btn",
-          type: "button",
-          title: "Use compatible MP4 preview",
-          "aria-label": "Use compatible MP4 preview",
-          html: iconSvg("play"),
-        });
-        fileVideoPreviewBtn.style.display = "none";
-        const fileDownloadBtn = el("button", {
-          id: "fileDownloadBtn",
-          class: "icon-btn",
-          type: "button",
-          title: "Download file",
-          "aria-label": "Download file",
-          html: iconSvg("download"),
-        });
-        const fileTouchSelectBtn = el("button", {
-          id: "fileTouchSelectBtn",
-          class: "icon-btn fileTouchBtn",
-          type: "button",
-          title: "Select",
-          "aria-label": "Select",
-          html: iconSvg("select"),
-        });
-        const fileTouchCopyBtn = el("button", {
-          id: "fileTouchCopyBtn",
-          class: "icon-btn fileTouchBtn",
-          type: "button",
-          title: "Copy selection",
-          "aria-label": "Copy selection",
-          html: iconSvg("copy"),
-        });
-        const fileTouchPasteBtn = el("button", {
-          id: "fileTouchPasteBtn",
-          class: "icon-btn fileTouchBtn",
-          type: "button",
-          title: "Paste",
-          "aria-label": "Paste",
-          html: iconSvg("paste"),
-        });
-        const fileTouchUpBtn = el("button", {
-          id: "fileTouchUpBtn",
-          class: "icon-btn fileTouchBtn",
-          type: "button",
-          title: "Select up",
-          "aria-label": "Select up",
-          html: iconSvg("up"),
-        });
-        const fileTouchLeftBtn = el("button", {
-          id: "fileTouchLeftBtn",
-          class: "icon-btn fileTouchBtn",
-          type: "button",
-          title: "Select left",
-          "aria-label": "Select left",
-          html: iconSvg("left"),
-        });
-        const fileTouchDownBtn = el("button", {
-          id: "fileTouchDownBtn",
-          class: "icon-btn fileTouchBtn",
-          type: "button",
-          title: "Select down",
-          "aria-label": "Select down",
-          html: iconSvg("down"),
-        });
-        const fileTouchRightBtn = el("button", {
-          id: "fileTouchRightBtn",
-          class: "icon-btn fileTouchBtn",
-          type: "button",
-          title: "Select right",
-          "aria-label": "Select right",
-          html: iconSvg("right"),
-        });
-        const fileTouchDpad = el("div", { id: "fileTouchDpad", class: "fileTouchDpad" }, [
-          el("span", { class: "fileTouchSpacer", "aria-hidden": "true" }),
-          fileTouchUpBtn,
-          el("span", { class: "fileTouchSpacer", "aria-hidden": "true" }),
-          fileTouchLeftBtn,
-          fileTouchDownBtn,
-          fileTouchRightBtn,
-        ]);
-        const fileTouchActions = el("div", { id: "fileTouchActions", class: "fileTouchActions" }, [
-          fileTouchSelectBtn,
-          fileTouchCopyBtn,
-          fileTouchPasteBtn,
-        ]);
-        const fileTouchToolbar = el("div", { id: "fileTouchToolbar", class: "fileTouchToolbar" }, [
-          fileTouchDpad,
-          fileTouchActions,
-        ]);
-        const fileDiff = el("div", { class: "fileDiff", id: "fileDiff" });
-        const fileImage = el("img", { id: "fileImage", class: "fileImage", alt: "" });
-        const fileVideo = el("video", { id: "fileVideo", class: "fileVideo", controls: true, preload: "metadata" });
-        const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-modal": "true", "aria-label": "File viewer" }, [
-          el("div", { class: "fileViewerHeader" }, [
-            el("div", { class: "title", text: "View file" }),
-            el("div", { class: "actions" }, [fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, fileVideoPreviewBtn, fileDownloadBtn, fileCloseBtn]),
-          ]),
-          el("div", { class: "fileCandRow", id: "fileCandRow" }, [filePickerField]),
-          fileStatus,
-          fileDiff,
-          fileImage,
-          fileVideo,
-          fileTouchToolbar,
-        ]);
-        root.appendChild(fileBackdrop);
-        root.appendChild(fileViewer);
-
-        const fileUnsavedBackdrop = el("div", { class: "modalBackdrop", id: "fileUnsavedBackdrop" });
-        const fileUnsavedDialog = el("div", { class: "sendChoice fileUnsavedDialog", id: "fileUnsavedDialog", role: "dialog", "aria-modal": "true", "aria-label": "Unsaved file changes" }, [
-          el("div", { class: "title", text: "Unsaved changes" }),
-          el("div", { class: "muted", text: "Save this file before leaving the editor?" }),
-          el("div", { class: "sendChoiceActions" }, [
-            el("button", { class: "primary", id: "fileUnsavedSaveBtn", type: "button", text: "Save" }),
-            el("button", { id: "fileUnsavedDiscardBtn", type: "button", text: "Discard" }),
-            el("button", { id: "fileUnsavedCancelBtn", type: "button", text: "Cancel" }),
-          ]),
-        ]);
-        root.appendChild(fileUnsavedBackdrop);
-        root.appendChild(fileUnsavedDialog);
-        const filePasteBackdrop = el("div", { class: "modalBackdrop", id: "filePasteBackdrop" });
-        const filePasteInput = el("textarea", {
-          id: "filePasteInput",
-          class: "filePasteInput",
-          placeholder: "Paste text here",
-          spellcheck: "false",
-          autocapitalize: "off",
-          autocomplete: "off",
-          autocorrect: "off",
-        });
-        const filePasteDialog = el("div", { class: "sendChoice filePasteDialog", id: "filePasteDialog", role: "dialog", "aria-modal": "true", "aria-label": "Paste into file" }, [
-          el("div", { class: "title", text: "Paste into file" }),
-          el("div", { class: "muted", text: "Long-press in this box to use the browser paste menu, then insert into the editor." }),
-          filePasteInput,
-          el("div", { class: "sendChoiceActions" }, [
-            el("button", { class: "primary", id: "filePasteInsertBtn", type: "button", text: "Insert" }),
-            el("button", { id: "filePasteCancelBtn", type: "button", text: "Cancel" }),
-          ]),
-        ]);
-        root.appendChild(filePasteBackdrop);
-        root.appendChild(filePasteDialog);
-
-        const sendChoiceBackdrop = el("div", { class: "modalBackdrop", id: "sendChoiceBackdrop" });
-        const sendChoice = el("div", { class: "sendChoice", id: "sendChoice", role: "dialog", "aria-modal": "true", "aria-label": "Send options" }, [
-          el("div", { class: "title", text: "Current response is running" }),
-          el("div", { class: "muted", text: "Choose how to handle your next message." }),
-          el("div", { class: "sendChoiceActions" }, [
-            el("button", { class: "primary", id: "sendChoiceNow", type: "button", text: "Send now" }),
-            el("button", { id: "sendChoiceLater", type: "button", text: "Send after current" }),
-            el("button", { id: "sendChoiceCancel", type: "button", text: "Cancel" }),
-          ]),
-        ]);
-        root.appendChild(sendChoiceBackdrop);
-        root.appendChild(sendChoice);
-
-        const appConfirmBackdrop = el("div", { class: "modalBackdrop appConfirmBackdrop", id: "appConfirmBackdrop" });
-        const appConfirmTitle = el("div", { class: "title", id: "appConfirmTitle", text: "Confirm action" });
-        const appConfirmMessage = el("div", { class: "muted appConfirmMessage", id: "appConfirmMessage", text: "" });
-        const appConfirmConfirmBtn = el("button", { class: "primary", id: "appConfirmConfirmBtn", type: "button", text: "Confirm" });
-        const appConfirmCancelBtn = el("button", { id: "appConfirmCancelBtn", type: "button", text: "Cancel" });
-        const appConfirm = el("div", {
-          class: "sendChoice appConfirm",
-          id: "appConfirm",
-          role: "dialog",
-          "aria-modal": "true",
-          "aria-labelledby": "appConfirmTitle",
-          "aria-describedby": "appConfirmMessage",
-        }, [
-          appConfirmTitle,
-          appConfirmMessage,
-          el("div", { class: "sendChoiceActions appConfirmActions" }, [appConfirmConfirmBtn, appConfirmCancelBtn]),
-        ]);
-        root.appendChild(appConfirmBackdrop);
-        root.appendChild(appConfirm);
-
-        const codoxearQueue = window.CodoxearQueue;
-        if (!codoxearQueue || typeof codoxearQueue.createQueueDom !== "function")
-          throw new Error("Codoxear queue DOM failed to load");
-        const {
-          queueBackdrop,
-          queueCloseBtn,
-          queueList,
-          queueEmpty,
-          queueViewer,
-        } = codoxearQueue.createQueueDom({ root, el, iconSvg });
-
-        const helpBackdrop = el("div", { class: "modalBackdrop", id: "helpBackdrop" });
-        const helpCloseBtn = el("button", {
-          id: "helpCloseBtn",
-          class: "icon-btn",
-          title: "Close",
-          "aria-label": "Close",
-          type: "button",
-          html: iconSvg("x"),
-        });
         let helpReturnFocusEl = null;
-        const helpViewer = el("div", { class: "helpViewer", id: "helpViewer", role: "dialog", "aria-modal": "true", "aria-label": "Help" }, [
-          el("div", { class: "queueHeader" }, [
-            el("div", { class: "title", text: "Help" }),
-            el("div", { class: "actions" }, [helpCloseBtn]),
-          ]),
-          el("div", {
-            class: "helpBody",
-            html: `<div class="muted">Sessions</div>
-<ul class="md">
-  <li>Choose a conversation from the sidebar. On desktop, hover a row to reveal <b>Edit</b>, <b>Duplicate</b>, and <b>Delete</b>. On touch, swipe left for <b>Edit</b>/<b>Duplicate</b> and right for <b>Delete</b>.</li>
-  <li>The dot on the title row shows state: <b>filled + pulsing</b> = busy, <b>hollow</b> = idle, <b>filled (no pulse)</b> = snoozed or blocked, <b>filled amber + pulsing</b> = starting.</li>
-  <li>The metadata line shows the agent-backend icon first, then the session-type icon, followed by recency, model and reasoning suffix (for example <b>·hi</b>), folder, and branch.</li>
-  <li>Click the conversation title to rename or reprioritize it. <b>Details</b> in the session utilities bar shows the exact backend, provider, model, reasoning level, queue state, and token usage.</li>
-</ul>
-<div class="muted">New session</div>
-<ul class="md">
-  <li><b>New session</b> can start fresh or resume a matching conversation for the currently selected backend in the current working directory.</li>
-  <li>The backend tabs choose between the supported agent backends. Right now that is <b>Codex</b>, <b>Pi</b>, and <b>Claude</b>.</li>
-  <li>You can choose working directory, a combined provider/model pair, reasoning level, and whether the session should start in tmux. If the directory is a Git repo, you can also start in a new worktree branch.</li>
-  <li>For Pi, the reasoning level is set when the session launches. To change it later on a live session, type <b>/thinking</b> in the composer (see Messages and queue).</li>
-  <li>Codoxear remembers the last backend you used and the last provider/model pair for each backend.</li>
-</ul>
-<div class="muted">Messages and queue</div>
-<ul class="md">
-  <li><b>Send</b> submits immediately when the session is idle. When it is busy, a dialog offers <b>Send now</b> (sends right away, steering the running turn) or <b>Send after current</b> (queues the prompt for when the session becomes idle).</li>
-  <li>The queue is stored per session and drains automatically when that session becomes idle. Use <b>Queued messages</b> to review or edit queued prompts.</li>
-  <li><b>Load older messages</b> fetches more scrollback. <b>Jump to latest</b> returns to the newest turn when you are reading history.</li>
-  <li>The <b>Search</b> button and <b>Previous</b>/<b>Next</b> message controls live in the navigation bar at the top of the conversation (not a floating rail). Use <b>/</b> to search the conversation. The search bar shows a position such as <b>2 of 5</b>; at the oldest visible match, it tells you when <b>Previous</b> can load older matches.</li>
-  <li>On a <b>Pi</b> session, type <b>/model</b> in the composer to switch models live, or <b>/thinking</b> to switch the reasoning level. Start typing to filter the list, then choose an entry. The model picker lists configured providers and models; the thinking picker lists the levels the current model supports.</li>
-  <li>Press <b>f</b> to show keyboard hints over every visible control; type the label exactly as shown. Stable shell labels include <b>1</b>–<b>9</b> sessions; <b>s</b> sidebar; <b>t</b> edit conversation; <b>b</b> files; <b>d</b> details; <b>u</b> unattended; <b>z</b> interrupt; <b>/</b> search; <b>p</b>/<b>n</b> previous/next user message; <b>o</b> older messages; <b>g</b> latest; <b>a</b> attach; <b>q</b> queued messages; <b>e</b> send; <b>i</b> message box; <b>c</b> new session; <b>h</b> help; <b>w</b> settings; and <b>l</b> log out. Extra visible controls receive their displayed dynamic label. Press <b>Escape</b> or <b>Backspace</b> to cancel.</li>
-  <li>In an open dialog, press a visible button's first distinctive letter to activate it. When buttons share their first letter, use a later distinctive letter. <b>Esc</b> closes the dialog.</li>
-  <li>Direct shortcuts (no leader): <b>i</b> focus message box; <b>j</b>/<b>k</b> scroll down/up; <b>d</b>/<b>u</b> scroll half-page down/up; <b>G</b> go to bottom; <b>D</b> delete current session (confirm); <b>/</b> search; <b>Esc</b> exit message box or close dialog.</li>
-</ul>
-<div class="muted">Unattended mode</div>
-<ul class="md">
-  <li>Unattended mode is a per-session idle nudge. Open the Unattended button in the session utilities bar, turn it on, and optionally add an extra request to append to the built-in unattended-work prompt.</li>
-  <li><b>Cooldown time</b> is how many idle minutes must pass after the assistant finishes before the next unattended prompt is injected.</li>
-  <li><b>Number of injections</b> is the remaining auto-injection budget for that session. Each unattended prompt decrements it, and unattended mode turns itself off when it reaches zero.</li>
-  <li>Unattended mode runs in the server process, so it keeps working even if you close the browser tab. Enabled sessions show an <b>unattended</b> badge in the sidebar.</li>
-</ul>
-<div class="muted">Files</div>
-<ul class="md">
-  <li><b>View file</b> opens recent or changed files from the selected session, with diff, file, and preview modes where available.</li>
-  <li>File paths mentioned in assistant messages become clickable when the server can resolve them.</li>
-  <li><b>Attach file</b> adds local files or images to the current prompt.</li>
-</ul>
-<div class="muted">Announcements and notifications</div>
-<ul class="md">
-  <li><b>Announcement</b> is a per-browser toggle. It plays the shared server audio stream and announces every end-of-turn response. Narration announcements are optional in Settings.</li>
-  <li><b>Notification</b> is a per-browser toggle. On desktop it enables live browser notifications for final responses. On iPhone/iPad it can also enable Web Push when you use the installed Home Screen app over HTTPS.</li>
-  <li>If Announcement cannot be enabled yet, open <b>Settings</b> and fill in the OpenAI-compatible API base URL and API key used for summarization and speech.</li>
-</ul>`,
-          }),
-        ]);
-        root.appendChild(helpBackdrop);
-        root.appendChild(helpViewer);
-
-        const diagBackdrop = el("div", { class: "modalBackdrop", id: "diagBackdrop" });
-        const diagCopyConversationBtn = el("button", {
-          id: "diagCopyConversationBtn",
-          class: "icon-btn",
-          title: "Copy conversation",
-          "aria-label": "Copy conversation",
-          type: "button",
-          html: iconSvg("copy-all"),
+        const applicationModalDOM = codoxearShell.createApplicationModalDOM({
+          root, el, iconSvg, windowTarget: window, codoxearVoice, voiceHost: shellDOM.elements.voiceHost,
         });
-        const diagCopyBtn = el("button", {
-          id: "diagCopyBtn",
-          class: "icon-btn",
-          title: "Copy details",
-          "aria-label": "Copy details",
-          type: "button",
-          html: iconSvg("copy"),
-        });
-        const diagCloseBtn = el("button", {
-          id: "diagCloseBtn",
-          class: "icon-btn",
-          title: "Close",
-          "aria-label": "Close",
-          type: "button",
-          html: iconSvg("x"),
-        });
-        // Detail actions start disabled until the controller loads the selected
-        // session's details and enables their corresponding payloads.
-        diagCopyConversationBtn.disabled = true;
-        diagCopyBtn.disabled = true;
-        const diagStatus = el("div", { class: "muted", id: "diagStatus", text: "" });
-        const diagContent = el("div", { class: "detailsGrid", id: "diagContent" });
-        const diagViewer = el("div", { class: "diagViewer", id: "diagViewer", role: "dialog", "aria-modal": "true", "aria-label": "Details" }, [
-          el("div", { class: "queueHeader" }, [
-            el("div", { class: "title", text: "Details" }),
-            el("div", { class: "actions" }, [diagCopyConversationBtn, diagCopyBtn, diagCloseBtn]),
-          ]),
-          diagStatus,
-          diagContent,
-        ]);
-        root.appendChild(diagBackdrop);
-        root.appendChild(diagViewer);
-
-        const editCloseBtn = el("button", {
-          id: "editCloseBtn",
-          class: "icon-btn",
-          title: "Close",
-          "aria-label": "Close",
-          type: "button",
-          html: iconSvg("x"),
-        });
-        const editStatus = el("div", { class: "muted", id: "editStatus", text: "" });
-        const editNameInput = el("input", {
-          id: "editNameInput",
-          type: "text",
-          placeholder: "Conversation title",
-          maxlength: "80",
-          autocomplete: "off",
-        });
-        const editPriorityRange = el("input", {
-          id: "editPriorityRange",
-          type: "range",
-          min: "-1",
-          max: "1",
-          step: "0.05",
-          value: "0",
-        });
-        const editPriorityValue = el("span", { class: "rangeValue", id: "editPriorityValue", text: "+0.00" });
-        const editPriorityResetBtn = el("button", {
-          id: "editPriorityResetBtn",
-          class: "icon-btn text-btn subtleBtn",
-          type: "button",
-          text: "Reset",
-        });
-        const editSnoozeModeButtons = new Map();
-        let editSnoozeMode = "none";
-        const editSnoozeButtons = el("div", { class: "choiceChips", id: "editSnoozeButtons" });
-        for (const [value, label] of [
-          ["none", "No snooze"],
-          ["4h", "4 hours"],
-          ["tomorrow", "Tomorrow"],
-          ["custom", "Custom"],
-        ]) {
-          const btn = el("button", {
-            type: "button",
-            class: "choiceChip",
-            "data-snooze-mode": value,
-            text: label,
-          });
-          editSnoozeModeButtons.set(value, btn);
-          editSnoozeButtons.appendChild(btn);
-        }
-        const editSnoozeCustomDate = el("input", { id: "editSnoozeCustomDate", type: "date" });
-        const editSnoozeCustomTime = el("input", { id: "editSnoozeCustomTime", type: "time", step: "60" });
-        const editSnoozeCustomRow = el("div", { class: "customSnoozeRow", id: "editSnoozeCustomRow" }, [
-          editSnoozeCustomDate,
-          editSnoozeCustomTime,
-        ]);
-        const editDependencyBtn = el("button", {
-          id: "editDependencyBtn",
-          class: "filePickerBtn dialogPickerBtn",
-          type: "button",
-          "aria-label": "Choose dependency",
-        });
-        const editDependencyMenu = el("div", { id: "editDependencyMenu", class: "filePickerMenu dialogPickerMenu" });
-        const editDependencyField = el("div", { class: "pickerField" }, [editDependencyBtn]);
-        const editSaveBtn = el("button", { class: "primary", id: "editSaveBtn", type: "button", text: "Save" });
-        const editViewer = el("dialog", { class: "formViewer formDialog", id: "editViewer", "aria-label": "Edit conversation" }, [
-          el("div", { class: "queueHeader" }, [
-            el("div", { class: "title", text: "Edit conversation" }),
-            el("div", { class: "actions" }, [editCloseBtn]),
-          ]),
-          editStatus,
-          el("div", { class: "formBody" }, [
-            el("label", { class: "field" }, [
-              el("span", { class: "fieldLabel", text: "Conversation name" }),
-              editNameInput,
-            ]),
-            el("label", { class: "field editPriorityField" }, [
-              el("span", { class: "fieldLabel", text: "Priority offset" }),
-              el("div", { class: "sliderRow" }, [editPriorityRange, editPriorityValue, editPriorityResetBtn]),
-            ]),
-            el("label", { class: "field" }, [
-              el("span", { class: "fieldLabel", text: "Snooze" }),
-              editSnoozeButtons,
-              editSnoozeCustomRow,
-            ]),
-            el("label", { class: "field" }, [
-              el("span", { class: "fieldLabel", text: "Depends on" }),
-              editDependencyField,
-            ]),
-          ]),
-          el("div", { class: "formActions" }, [
-            el("button", { id: "editCancelBtn", type: "button", text: "Cancel" }),
-            editSaveBtn,
-          ]),
-        ]);
-        root.appendChild(editViewer);
-        editViewer.appendChild(editDependencyMenu);
-        const voiceDom = codoxearVoice.createVoiceDom({ root, el, iconSvg, voiceHost: shellDOM.elements.voiceHost });
         const {
-          announceBtn,
-          notificationBtn,
-          liveAudio,
-          voiceSettingsBackdrop,
-          voiceSettingsCloseBtn,
-          voiceSettingsStatus,
-          voiceBaseUrlInput,
-          voiceApiKeyInput,
-          voiceClearApiKeyToggle,
-          narrationSettingToggle,
-          unattendedPromptInput,
-          unattendedPromptResetBtn,
-          voiceSettingsViewer,
-          voiceSettingsCancelBtn,
-          voiceSettingsSaveBtn,
-        } = voiceDom;
+          fileBackdrop, fileCloseBtn, fileStatus, filePickerInput, filePickerMenu, filePickerField,
+      fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, fileVideoPreviewBtn, fileDownloadBtn,
+      fileTouchSelectBtn, fileTouchCopyBtn, fileTouchPasteBtn, fileTouchUpBtn, fileTouchLeftBtn,
+      fileTouchDownBtn, fileTouchRightBtn, fileTouchDpad, fileTouchActions, fileTouchToolbar,
+      fileDiff, fileImage, fileVideo, fileViewer, fileUnsavedBackdrop, fileUnsavedDialog,
+      filePasteBackdrop, filePasteInput, filePasteDialog, sendChoiceBackdrop, sendChoice,
+      appConfirmBackdrop, appConfirmTitle, appConfirmMessage, appConfirmConfirmBtn,
+      appConfirmCancelBtn, appConfirm, queueBackdrop, queueCloseBtn, queueList, queueEmpty,
+      queueViewer, helpBackdrop, helpCloseBtn, helpViewer, diagBackdrop, diagCopyConversationBtn,
+      diagCopyBtn, diagCloseBtn, diagStatus, diagContent, diagViewer, editCloseBtn, editStatus,
+      editNameInput, editPriorityRange, editPriorityValue, editPriorityResetBtn,
+      editSnoozeModeButtons, editSnoozeButtons, editSnoozeCustomDate, editSnoozeCustomTime,
+      editSnoozeCustomRow, editDependencyBtn, editDependencyMenu, editDependencyField,
+      editSaveBtn, editViewer, announceBtn, notificationBtn, liveAudio, voiceSettingsBackdrop,
+      voiceSettingsCloseBtn, voiceSettingsStatus, voiceBaseUrlInput, voiceApiKeyInput,
+      voiceClearApiKeyToggle, narrationSettingToggle, unattendedPromptInput,
+      unattendedPromptResetBtn, voiceSettingsViewer, voiceSettingsCancelBtn, voiceSettingsSaveBtn
+        } = applicationModalDOM;
         const codoxearModal = window.CodoxearModal;
         if (
           !codoxearModal ||
@@ -845,7 +413,7 @@
           positionDialogMenu: (menu, anchorBtn) => dialogMenuController.positionDialogMenu(menu, anchorBtn),
           setPickerButtonContent,
           fetchResumeCandidates: (cwd, backend) => api(`/api/session_resume_candidates?cwd=${encodeURIComponent(cwd)}&agent_backend=${encodeURIComponent(backend)}`),
-          spawnSession: spawnSessionWithCwd,
+          spawnSession: (...args) => sessionLifecycleController.spawnSessionWithCwd(...args),
         });
 
         const modalIsolationTargets = [
@@ -962,9 +530,9 @@
           });
         }
 
-        appConfirmConfirmBtn.onclick = () => resolveAppConfirm(true);
-        appConfirmCancelBtn.onclick = () => resolveAppConfirm(false);
-        appConfirmBackdrop.onclick = () => resolveAppConfirm(false);
+        eventBindings.on(appConfirmConfirmBtn, 'click', () => resolveAppConfirm(true));
+        eventBindings.on(appConfirmCancelBtn, 'click', () => resolveAppConfirm(false));
+        eventBindings.on(appConfirmBackdrop, 'click', () => resolveAppConfirm(false));
 
         const codoxearClipboard = window.CodoxearClipboard;
         if (!codoxearClipboard || typeof codoxearClipboard.copyToClipboard !== "function")
@@ -1077,10 +645,10 @@
 	          ctxChip.textContent = p === null ? "Ctx" : `Ctx ${p}%`;
 	          ctxChip.title = `Context input: ${used}/${lastToken.maxInput} tokens (${lastToken.reserved} reserved; window ${ctx}).`;
 	        }
-        ctxChip.onclick = () => {
+        eventBindings.on(ctxChip, 'click', () => {
           if (!lastToken) return;
           setToast(`ctx ${lastToken.used}/${lastToken.ctx} (${lastToken.pct ?? "?"}% left)`);
-        };
+        });
 
         function invalidateOlderLoad() {
           olderLoadRuntime.invalidate();
@@ -1308,7 +876,7 @@
                 if (selected !== sid) return;
                 try {
                   await api(`/api/sessions/${sid}/delete`, { method: "POST", body: {} });
-                  clearDeletedSessionClientState(sid);
+                  sessionLifecycleController.clearDeletedSessionClientState(sid);
                   await refreshSessions();
                   setToast("session deleted");
                 } catch (err) {
@@ -1920,8 +1488,8 @@
           resolveAppUrl,
           handleAppAuthLoss,
           refreshSessions,
-          openSession: (...args) => sessionOpenController.openSession(...args),
-          clearSelectedSessionAfterRemoval,
+          openSession: (...args) => sessionLifecycleController.openSession(...args),
+          clearSelectedSessionAfterRemoval: (...args) => sessionLifecycleController.clearSelectedSessionAfterRemoval(...args),
           activeTranscriptSnapshot,
           updateSessionTranscriptSlot,
           renderPendingTranscriptSlot,
@@ -2037,35 +1605,10 @@
           }
         }
 
-        async function clearCommitUnknownSend(sid, previewText = "") {
-          const sessionId = String(sid || "").trim();
-          if (!sessionId) return false;
-          const preview = String(previewText || "").trim();
-          const suffix = preview ? `\n\nPrompt: ${preview.slice(0, 240)}${preview.length > 240 ? "..." : ""}` : "";
-          const confirmed = await confirmApp({
-            title: "Clear unknown-send marker?",
-            message: `Clear the unknown-send marker only after checking the transcript or terminal. This does not undo a prompt that may already have been sent.${suffix}`,
-            confirmText: "Clear marker",
-            cancelText: "Cancel",
-            destructive: true,
-          });
-          if (!confirmed) return false;
-          try {
-            await api(`/api/sessions/${sessionId}/commit_unknown_send/clear`, { method: "POST", body: {} });
-            setToast("unknown send marker cleared");
-            await refreshSessions();
-            updateQueueBadge();
-            if (selected === sessionId) syncRecoveryUiForSession(sessionId);
-            return true;
-          } catch (e) {
-            if (e && e.status === 401) {
-              handleAppAuthLoss();
-              return false;
-            }
-            setToast(`clear unknown send error: ${e && e.message ? e.message : "unknown error"}`);
-            return false;
-          }
+        function clearCommitUnknownSend(sid, previewText = "") {
+          return sessionLifecycleController.clearCommitUnknownSend(sid, previewText);
         }
+
 
          const sidebarController = codoxearSessions.createSessionsController({
            sessionsWrap,
@@ -2090,7 +1633,7 @@
            sessionLaunchLabel,
            confirmAction: (options) => confirmApp(options),
            api,
-           clearDeletedSessionClientState,
+           clearDeletedSessionClientState: (...args) => sessionLifecycleController.clearDeletedSessionClientState(...args),
            refreshSessions,
            setToast,
            openEditSession: (sid) => sessionEditController.openEditSession(sid),
@@ -2100,7 +1643,7 @@
                setToast("cwd unavailable");
                return;
              }
-             await spawnSessionWithCwd(
+             await sessionLifecycleController.spawnSessionWithCwd(
                cwd,
                null,
                null,
@@ -2114,103 +1657,17 @@
                sessionAgentBackend(session)
              );
            },
-           selectSession,
+           selectSession: (...args) => sessionLifecycleController.selectSession(...args),
            setSidebarOpen,
            now: () => Date.now(),
            performanceNow: () => performance.now(),
            consoleError: (...args) => console.error(...args),
          });
 
-         async function refreshSessions() {
-           if (sessionsRefreshInFlight) {
-             sessionsRefreshQueued = true;
-             return sessionsRefreshInFlight;
-           }
-           sessionsRefreshInFlight = (async () => {
-             let result = latestSessions;
-             try {
-               do {
-                 sessionsRefreshQueued = false;
-                 result = await refreshSessionsOnce();
-               } while (sessionsRefreshQueued && !appDisposed);
-               return result;
-             } finally {
-               sessionsRefreshInFlight = null;
-             }
-           })();
-           return sessionsRefreshInFlight;
-         }
-
-	         async function refreshSessionsOnce() {
-	           const data = await api("/api/sessions");
-          if (appDisposed) return latestSessions;
-          const notModified = apiResponseNotModified(data);
-          // A 304/notModified response returns the OLD latestSessions by design —
-          // but on first load that old value is [] and the render would never run.
-          // Treat "notModified but latestSessions is empty and the cached body
-          // carries sessions" as a changed response: populate and apply defaults.
-          const firstLoadNeedsPopulation = notModified && latestSessions.length === 0 && Array.isArray(data.sessions) && data.sessions.length > 0;
-          if (notModified && !sidebarController.hasDeferredRefresh() && !firstLoadNeedsPopulation) return latestSessions;
-          if (!notModified || firstLoadNeedsPopulation) {
-            latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
-            newSessionDefaults =
-              data && typeof data.new_session_defaults === "object" && data.new_session_defaults
-                ? data.new_session_defaults
-                : {
-                    default_backend: "pi",
-                    backends: {
-                      codex: legacyCodexLaunchDefaults(),
-                      pi: emptyPiLaunchDefaults(),
-                      cc: emptyCcLaunchDefaults(),
-                    },
-                  };
-            tmuxAvailable = !!data.tmux_available;
-            recentCwds = Array.isArray(data.recent_cwds)
-              ? data.recent_cwds.filter((cwd, idx, arr) => typeof cwd === "string" && cwd.trim() && arr.indexOf(cwd) === idx)
-              : [];
-            if (newSessionDialogController.isOpen()) newSessionDialogController.refreshDefaults();
-            fileReferenceRuntime.clearDiscoveryCaches();
-          }
-          const swipeActions = !useDesktopSessionActions();
-          const sessions = latestSessions
-            .slice()
-            .sort((a, b) => {
-              const p = Number(b.final_priority || 0) - Number(a.final_priority || 0);
-              if (p) return p;
-              const u = Number(b.updated_ts || b.start_ts || 0) - Number(a.updated_ts || a.start_ts || 0);
-              if (u) return u;
-              const s0 = Number(b.start_ts || 0) - Number(a.start_ts || 0);
-              if (s0) return s0;
-              return String(a.session_id || "").localeCompare(String(b.session_id || ""));
-            });
-          sessionIndex = new Map();
-          for (const session of sessions) sessionIndex.set(session.session_id, session);
-          if (selected && !sessionIndex.has(selected)) clearSelectedSessionAfterRemoval(selected);
-          if (selected) {
-            applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));
-            syncRecoveryUiForSession(selected);
-          }
-          if (selected) attachmentsController.syncStagedAttachmentsFromSelectedSession();
-          else attachmentsController.setStagedAttachments([]);
-          const renderedSidebar = sidebarController.renderSessions(sessions, {
-            selectedId: selected,
-            swipeActions,
-          });
-          if (!renderedSidebar) return sessions;
-          if (selected) {
-            const session = sessionIndex.get(selected);
-            if (session) {
-              titleLabel.textContent = sessionTitleWithId(session);
-              updateTypingStatsFromSession(session);
-            }
-          }
-          updateUnattendedBtnState();
-          updateQueueBadge();
-          syncComposerSendButton();
-          syncQueueSubmitState();
-          maybeSelectPendingHashSession();
-          return sessions;
+        function refreshSessions() {
+          return sessionRefreshController.refreshSessions();
         }
+
 
         function appendEvent(ev) {
           transcriptView().appendEvent(ev);
@@ -2289,7 +1746,7 @@
             }
             if (selected !== sid || pollGen !== gen || !olderLoadRuntime.isCurrent(load)) return false;
             if (e && e.status === 409) {
-              await sessionOpenController.openSession(sid, { useCache: false });
+              await sessionLifecycleController.openSession(sid, { useCache: false });
               return false;
             }
             setOlderState({ hasMore: hasOlderMessages(), isLoading: false });
@@ -2374,40 +1831,6 @@
           return lines.join("\n");
         }
 
-        function clearSelectedSessionAfterRemoval(sessionId, { incrementPollGen = false, clearPollState = false } = {}) {
-          if (selected !== sessionId) return false;
-          handleFileViewerSessionUnavailable(sessionId);
-          selected = null;
-          messageFlowController.abortMessagePollRequest();
-          if (incrementPollGen) pollGen += 1;
-          if (clearPollState) messageFlowController.clearPollSchedule();
-          transcriptSlotRuntime.setActivePending();
-          clearRenderedTranscriptRange();
-          turnOpen = false;
-          storageRemoveItem("codexweb.selected");
-          setSessionHash("");
-          titleLabel.textContent = "No session selected";
-          setStatus({ running: false, queueLen: 0 });
-          setContext(null);
-          setTyping(false);
-          attachmentsController.setStagedAttachments([]);
-          resetChatRenderState();
-          updateQueueBadge();
-          if (unattendedController.isOpen()) hideUnattendedMenu();
-          updateUnattendedBtnState();
-          syncComposerSendButton();
-          syncQueueSubmitState();
-          attachmentsController.syncAttachButtonState();
-          return true;
-        }
-
-        function clearDeletedSessionClientState(sessionId) {
-          const selectedCleared = clearSelectedSessionAfterRemoval(sessionId);
-          transcriptSlotRuntime.deleteSession(sessionId);
-          dropPendingUserRows(sessionId, () => true);
-          return selectedCleared;
-        }
-
         async function dismissFailedLaunchRecord(sessionId) {
           const s = sessionIndex.get(sessionId);
           if (!sessionLaunchFailed(s)) {
@@ -2424,7 +1847,7 @@
           if (!confirmed) return;
           try {
             await api(`/api/sessions/${sessionId}/delete`, { method: "POST", body: {} });
-            clearDeletedSessionClientState(sessionId);
+            sessionLifecycleController.clearDeletedSessionClientState(sessionId);
             await refreshSessions();
             setToast("Dismissed launch record");
           } catch (err) {
@@ -2482,7 +1905,7 @@
               e.preventDefault();
               e.stopPropagation();
               if (selected !== sessionId) return;
-              void sessionOpenController.openSession(sessionId, { useCache: true });
+              void sessionLifecycleController.openSession(sessionId, { useCache: true });
             },
           });
           turnOpen = false;
@@ -2517,78 +1940,7 @@
           setTyping(cachedBusy);
         }
 
-        const sessionOpenController = codoxearSessionOpen.createSessionOpenController({
-          nextPollGeneration: () => { pollGen += 1; return pollGen; },
-          prepareSessionOpen: () => messageFlowController.prepareSessionOpen(),
-          getSelected: () => selected,
-          setSelected: (sessionId) => { selected = sessionId; },
-          setActiveSession: (sessionId) => {
-            sessionsWrap.querySelectorAll(".session.active").forEach((element) => element.classList.remove("active"));
-            const active = sessionsWrap.querySelector(`.session[data-session-id="${sessionId}"]`);
-            if (active) active.classList.add("active");
-          },
-          saveComposerDraft: saveSelectedComposerDraft,
-          loadComposerDraft: loadSelectedComposerDraft,
-          closeUnattendedForOtherSession: (sessionId) => {
-            if (unattendedController.isOpen() && unattendedController.menuSessionId() !== sessionId) hideUnattendedMenu();
-          },
-          persistSelected: (sessionId) => storageSetItem("codexweb.selected", sessionId),
-          setSessionHash,
-          resetTranscriptForSession: () => {
-            transcriptSlotRuntime.setActivePending();
-            clearRenderedTranscriptRange();
-            turnOpen = false;
-          },
-          syncAttachments: () => attachmentsController.syncStagedAttachmentsFromSelectedSession(),
-          updateQueueBadge,
-          setStatus,
-          setContext,
-          setTyping,
-          resetChatRenderState,
-          getSession: (sessionId) => sessionIndex.get(sessionId),
-          isCurrent: (sessionId, generation) => selected === sessionId && pollGen === generation,
-          setTitle: (session, sessionId) => { titleLabel.textContent = session ? sessionTitleWithId(session) : sessionId ? String(sessionId) : "No session selected"; },
-          markClickLoad: () => { clickLoadT0 = performance.now(); clickMetricPending = true; },
-          setTurnOpen: (value) => { turnOpen = Boolean(value); },
-          updateTypingStats: updateTypingStatsFromSession,
-          beginFileViewerSync: () => {
-            const started = Boolean(isFileViewerOpen() && !currentFileDirty());
-            if (started) void ensureCurrentFileViewerSession().catch((error) => console.error("file viewer session sync failed after selection", error));
-            return started;
-          },
-          finishFileViewerSync: (sessionId, started, refreshCandidates) => {
-            if (isFileViewerOpen() && !currentFileDirty() && !started) void ensureCurrentFileViewerSession();
-            else if (isFileViewerOpen() && !currentFileDirty() && currentFileViewerSessionId() === sessionId) {
-              void refreshCandidates({ sessionId }).catch((error) => console.error("file candidates refresh failed after transcript load", error));
-            }
-          },
-          getTailCache: (sessionId) => transcriptSlotRuntime.getTailCache(sessionId),
-          tailCacheMatchesSession,
-          applyCachedTail,
-          renderTranscriptLoading,
-          messageFlow: () => messageFlowController,
-          api,
-          initPageLimit,
-          handleAuthLoss: handleAppAuthLoss,
-          clearRemovedSession: clearSelectedSessionAfterRemoval,
-          refreshSessions,
-          renderTranscriptLoadError,
-          isDisposed: () => appDisposed,
-          kickPoll,
-          messagePollDelayMs,
-          updateTranscriptSlot: updateSessionTranscriptSlot,
-          renderPendingTranscriptSlot,
-          applySessionRuntimeFromTail,
-          renderSessionTail,
-          openMessageEventSource,
-          isMobile,
-          closeSidebar: () => setSidebarOpen(false),
-          updateUnattendedButton: updateUnattendedBtnState,
-          refreshFileCandidates,
-          consoleError: (...args) => console.error(...args),
-        });
-
-			        async function applyLiveMessageData(sid, gen, data) {
+        async function applyLiveMessageData(sid, gen, data) {
           return messageFlowController.applyLiveMessageData(sid, gen, data);
         }
 
@@ -2602,7 +1954,7 @@
           invalidateOlderLoad();
           transcriptScrollRuntime.enableAutoScroll();
           try {
-            await sessionOpenController.openSession(sid, { useCache: false, fallbackToCacheOnFailure: true });
+            await sessionLifecycleController.openSession(sid, { useCache: false, fallbackToCacheOnFailure: true });
           } catch (e) {
             if (selected !== sid) return;
             setToast(`jump error: ${e && e.message ? e.message : "unknown error"}`);
@@ -2610,10 +1962,6 @@
           if (selected !== sid) return;
           transcriptScrollRuntime.scheduleScrollToBottom({ syncJump: true });
           kickPoll(0);
-        }
-
-        async function selectSession(id) {
-          await sessionOpenController.openSession(id, { useCache: true });
         }
 
         function rememberPendingHashSession(sid) {
@@ -2635,7 +1983,7 @@
           if (!sessionSelectable(session)) return;
           rememberPendingHashSession("");
           pendingHashSessionSelectInFlight = true;
-          void selectSession(sid)
+          void sessionLifecycleController.selectSession(sid)
             .catch((e) => {
               if (e && e.status === 401) handleAppAuthLoss();
               else console.error("pending hash session select failed", e);
@@ -2643,35 +1991,6 @@
             .finally(() => {
               pendingHashSessionSelectInFlight = false;
             });
-        }
-
-        async function selectSessionFromHash({ refreshIfMissing = false, deferIfMissing = false } = {}) {
-          const sid = sessionIdFromHash();
-          if (!sid) {
-            rememberPendingHashSession("");
-            return;
-          }
-          if (sid === selected) {
-            rememberPendingHashSession("");
-            return;
-          }
-          let session = sessionIndex.get(sid);
-          if (!session && refreshIfMissing) {
-            try {
-              await refreshSessions();
-            } catch (e) {
-              if (e && e.status === 401) handleAppAuthLoss();
-              else console.error("hash session refresh failed", e);
-              return;
-            }
-            session = sessionIndex.get(sid);
-          }
-          if (!sessionSelectable(session)) {
-            if (deferIfMissing) rememberPendingHashSession(sid);
-            return;
-          }
-          rememberPendingHashSession("");
-          await selectSession(sid);
         }
 
         // Unattended menu state, async load/save orchestration, input draft
@@ -2786,7 +2105,7 @@
             storageRemoveItem,
             focusSessionFromNotification: (sid) => {
               if (sessionIdFromHash() !== sid) setSessionHash(sid);
-              void selectSessionFromHash({ refreshIfMissing: true, deferIfMissing: true }).catch((e) => {
+              void sessionLifecycleController.selectSessionFromHash({ refreshIfMissing: true, deferIfMissing: true }).catch((e) => {
                 if (e && e.status === 401) handleAppAuthLoss();
                 else console.error("desktop notification session select failed", e);
               });
@@ -3503,7 +2822,7 @@
           normalizeLineNumber: (value) => normalizeLineNumber(value),
           parseLocalFileRef,
           showFileViewer: (options) => showFileViewer(options),
-          selectSession: (sessionId) => selectSession(sessionId),
+          selectSession: (sessionId) => sessionLifecycleController.selectSession(sessionId),
           openDirectorySession: (options) => newSessionDialogController.open(options),
           setToast: (message) => setToast(message),
           api: (url, options) => api(url, options),
@@ -3644,42 +2963,42 @@
           return await fileLoadResultRuntime.apply(rel, result, request, { viewMode });
         }
 
-        fileBtn.onclick = (e) => {
+        eventBindings.on(fileBtn, 'click', (e) => {
           e.preventDefault();
           e.stopPropagation();
           void showFileViewer();
-        };
-        filePickerInput.onfocus = () => filePickerInputRuntime.focus();
-        filePickerInput.onclick = (e) => filePickerInputRuntime.click(e);
-        filePickerInput.oninput = () => filePickerInputRuntime.input();
-        filePickerInput.onblur = () => filePickerInputRuntime.blur();
-        filePickerInput.onkeydown = (e) => filePickerInputRuntime.keydown(e);
-        fileModeDiffBtn.onclick = (e) => {
+        });
+        eventBindings.on(filePickerInput, 'focus', () => filePickerInputRuntime.focus());
+        eventBindings.on(filePickerInput, 'click', (e) => filePickerInputRuntime.click(e));
+        eventBindings.on(filePickerInput, 'input', () => filePickerInputRuntime.input());
+        eventBindings.on(filePickerInput, 'blur', () => filePickerInputRuntime.blur());
+        eventBindings.on(filePickerInput, 'keydown', (e) => filePickerInputRuntime.keydown(e));
+        eventBindings.on(fileModeDiffBtn, 'click', (e) => {
           e.preventDefault();
           e.stopPropagation();
           void handleFileDiffModeButtonPress();
-        };
-        fileModePreviewBtn.onclick = (e) => {
+        });
+        eventBindings.on(fileModePreviewBtn, 'click', (e) => {
           e.preventDefault();
           e.stopPropagation();
           void handleFilePreviewModeButtonPress();
-        };
-        fileEditBtn.onclick = async (e) => {
+        });
+        eventBindings.on(fileEditBtn, 'click', async (e) => {
           e.preventDefault();
           e.stopPropagation();
           await handleFileEditButtonPress();
-        };
-        fileVideoPreviewBtn.onclick = (e) => {
+        });
+        eventBindings.on(fileVideoPreviewBtn, 'click', (e) => {
           e.preventDefault();
           e.stopPropagation();
           void fileVideoPreviewRuntime.handleButtonPress();
-        };
+        });
 
-        fileDownloadBtn.onclick = (e) => {
+        eventBindings.on(fileDownloadBtn, 'click', (e) => {
           e.preventDefault();
           e.stopPropagation();
           fileDownloadRuntime.download(activeFileDownloadApiPath());
-        };
+        });
         codoxearFileViewer.bindFileTouchPress(fileTouchSelectBtn, () => {
           toggleFileTouchSelectionMode();
         });
@@ -3701,21 +3020,21 @@
         codoxearFileViewer.bindFileTouchPress(fileTouchRightBtn, () => {
           handleFileTouchMoveButtonPress("right");
         });
-        fileCloseBtn.onclick = (e) => {
+        eventBindings.on(fileCloseBtn, 'click', (e) => {
           e.preventDefault();
           e.stopPropagation();
           void requestHideFileViewer();
-        };
-        fileBackdrop.onclick = () => void requestHideFileViewer();
-        $("#fileUnsavedSaveBtn").onclick = () => fileUnsavedController.handleFileUnsavedSaveChoice();
-        $("#fileUnsavedDiscardBtn").onclick = () => fileUnsavedController.handleFileUnsavedDiscardChoice();
-        $("#fileUnsavedCancelBtn").onclick = () => fileUnsavedController.handleFileUnsavedCancelChoice();
-        fileUnsavedBackdrop.onclick = () => fileUnsavedController.handleFileUnsavedCancelChoice();
-        $("#filePasteInsertBtn").onclick = () => {
+        });
+        eventBindings.on(fileBackdrop, 'click', () => void requestHideFileViewer());
+        eventBindings.on($("#fileUnsavedSaveBtn"), 'click', () => fileUnsavedController.handleFileUnsavedSaveChoice());
+        eventBindings.on($("#fileUnsavedDiscardBtn"), 'click', () => fileUnsavedController.handleFileUnsavedDiscardChoice());
+        eventBindings.on($("#fileUnsavedCancelBtn"), 'click', () => fileUnsavedController.handleFileUnsavedCancelChoice());
+        eventBindings.on(fileUnsavedBackdrop, 'click', () => fileUnsavedController.handleFileUnsavedCancelChoice());
+        eventBindings.on($("#filePasteInsertBtn"), 'click', () => {
           handleFilePasteInsert(filePasteInput.value);
-        };
-        $("#filePasteCancelBtn").onclick = () => hideFilePasteDialog({ restoreFocus: true });
-        filePasteBackdrop.onclick = () => hideFilePasteDialog({ restoreFocus: true });
+        });
+        eventBindings.on($("#filePasteCancelBtn"), 'click', () => hideFilePasteDialog({ restoreFocus: true }));
+        eventBindings.on(filePasteBackdrop, 'click', () => hideFilePasteDialog({ restoreFocus: true }));
         chatInner.addEventListener("click", (e) => {
           if (codeBlockCopyRuntime.handleClick(e)) return;
           void fileReferenceRuntime.handleClick(e);
@@ -3916,8 +3235,8 @@
           });
         })();
 
-        diagCopyConversationBtn.onclick = (e) => void diagController.onCopyConversationClick(e);
-        diagCopyBtn.onclick = (e) => diagController.onCopyClick(e);
+        eventBindings.on(diagCopyConversationBtn, 'click', (e) => void diagController.onCopyConversationClick(e));
+        eventBindings.on(diagCopyBtn, 'click', (e) => diagController.onCopyClick(e));
 
         async function showDiagViewer(opts) {
           return diagController.show(opts);
@@ -3929,100 +3248,177 @@
 
         syncQueueSubmitState();
 
-        $("#helpBtnSide").onclick = (e) => {
+        const codoxearSessionLifecycle = window.CodoxearSessionLifecycle;
+        if (!codoxearSessionLifecycle || typeof codoxearSessionLifecycle.createSessionLifecycleController !== "function")
+          throw new Error("Codoxear session lifecycle controller failed to load");
+        sessionLifecycleController = codoxearSessionLifecycle.createSessionLifecycleController({
+          nextPollGeneration: () => { pollGen += 1; return pollGen; },
+          incrementPollGeneration: () => { pollGen += 1; },
+          prepareSessionOpen: () => messageFlowController.prepareSessionOpen(),
+          getSelected: () => selected,
+          setSelected: (sessionId) => { selected = sessionId; },
+          setActiveSession: (sessionId) => {
+            sessionsWrap.querySelectorAll(".session.active").forEach((element) => element.classList.remove("active"));
+            const active = sessionsWrap.querySelector(`.session[data-session-id="${sessionId}"]`);
+            if (active) active.classList.add("active");
+          },
+          saveComposerDraft: saveSelectedComposerDraft,
+          loadComposerDraft: loadSelectedComposerDraft,
+          closeUnattendedForOtherSession: (sessionId) => {
+            if (unattendedController.isOpen() && unattendedController.menuSessionId() !== sessionId) hideUnattendedMenu();
+          },
+          persistSelected: (sessionId) => storageSetItem("codexweb.selected", sessionId),
+          removePersistedSelected: () => storageRemoveItem("codexweb.selected"),
+          setSessionHash,
+          resetTranscriptForSession: () => {
+            transcriptSlotRuntime.setActivePending();
+            clearRenderedTranscriptRange();
+            turnOpen = false;
+          },
+          clearTranscriptForRemovedSession: clearRenderedTranscriptRange,
+          syncAttachments: () => attachmentsController.syncStagedAttachmentsFromSelectedSession(),
+          clearAttachments: () => attachmentsController.setStagedAttachments([]),
+          syncAttachmentButton: () => attachmentsController.syncAttachButtonState(),
+          updateQueueBadge,
+          setStatus,
+          setContext,
+          setTyping,
+          resetChatRenderState,
+          getSession: (sessionId) => sessionIndex.get(sessionId),
+          isCurrent: (sessionId, generation) => selected === sessionId && pollGen === generation,
+          setTitle: (session, sessionId) => { titleLabel.textContent = session ? sessionTitleWithId(session) : sessionId ? String(sessionId) : "No session selected"; },
+          setNoSessionTitle: () => { titleLabel.textContent = "No session selected"; },
+          markClickLoad: () => { clickLoadT0 = performance.now(); clickMetricPending = true; },
+          setTurnOpen: (value) => { turnOpen = Boolean(value); },
+          updateTypingStats: updateTypingStatsFromSession,
+          beginFileViewerSync: () => {
+            const started = Boolean(isFileViewerOpen() && !currentFileDirty());
+            if (started) void ensureCurrentFileViewerSession().catch((error) => console.error("file viewer session sync failed after selection", error));
+            return started;
+          },
+          finishFileViewerSync: (sessionId, started, refreshCandidates) => {
+            if (isFileViewerOpen() && !currentFileDirty() && !started) void ensureCurrentFileViewerSession();
+            else if (isFileViewerOpen() && !currentFileDirty() && currentFileViewerSessionId() === sessionId) {
+              void refreshCandidates({ sessionId }).catch((error) => console.error("file candidates refresh failed after transcript load", error));
+            }
+          },
+          handleFileViewerSessionUnavailable,
+          getTailCache: (sessionId) => transcriptSlotRuntime.getTailCache(sessionId),
+          tailCacheMatchesSession,
+          applyCachedTail,
+          renderTranscriptLoading,
+          renderTranscriptLoadError,
+          messageFlow: () => messageFlowController,
+          api,
+          initPageLimit,
+          handleAuthLoss: handleAppAuthLoss,
+          refreshSessions,
+          isDisposed: () => appDisposed,
+          kickPoll,
+          messagePollDelayMs,
+          updateTranscriptSlot: updateSessionTranscriptSlot,
+          renderPendingTranscriptSlot,
+          applySessionRuntimeFromTail,
+          renderSessionTail,
+          openMessageEventSource,
+          isMobile,
+          closeSidebar: () => setSidebarOpen(false),
+          updateUnattendedButton: updateUnattendedBtnState,
+          refreshFileCandidates,
+          isUnattendedOpen: () => unattendedController.isOpen(),
+          hideUnattendedMenu,
+          syncComposerSendButton,
+          syncQueueSubmitState,
+          setActiveTranscriptPending: () => transcriptSlotRuntime.setActivePending(),
+          deleteTranscriptSession: (sessionId) => transcriptSlotRuntime.deleteSession(sessionId),
+          dropPendingUserRows: (sessionId) => dropPendingUserRows(sessionId, () => true),
+          sessionIdFromHash,
+          rememberPendingHashSession,
+          sessionSelectable,
+          normalizeAgentBackendName,
+          providerChoiceToSettings,
+          backendSupportsFast,
+          setToast,
+          confirmAction: (options) => confirmApp(options),
+          syncRecoveryUiForSession,
+          sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+          consoleError: (...args) => console.error(...args),
+        });
+
+        const codoxearSessionRefresh = window.CodoxearSessionRefresh;
+        if (!codoxearSessionRefresh || typeof codoxearSessionRefresh.createSessionRefreshController !== "function")
+          throw new Error("Codoxear session refresh controller failed to load");
+        sessionRefreshController = codoxearSessionRefresh.createSessionRefreshController({
+          api,
+          isDisposed: () => appDisposed,
+          apiResponseNotModified,
+          getLatestSessions: () => latestSessions,
+          setLatestSessions: (sessions) => { latestSessions = sessions; },
+          setNewSessionDefaults: (defaults) => { newSessionDefaults = defaults; },
+          emptyDefaults: () => ({
+            default_backend: "pi",
+            backends: { codex: legacyCodexLaunchDefaults(), pi: emptyPiLaunchDefaults(), cc: emptyCcLaunchDefaults() },
+          }),
+          setTmuxAvailable: (available) => { tmuxAvailable = Boolean(available); },
+          setRecentCwds: (cwds) => { recentCwds = cwds; },
+          refreshNewSessionDefaults: () => {
+            if (newSessionDialogController.isOpen()) newSessionDialogController.refreshDefaults();
+          },
+          clearFileDiscoveryCaches: () => fileReferenceRuntime.clearDiscoveryCaches(),
+          useDesktopSessionActions,
+          setSessionIndex: (index) => { sessionIndex = index; },
+          getSelected: () => selected,
+          clearSelectedSessionAfterRemoval: (...args) => sessionLifecycleController.clearSelectedSessionAfterRemoval(...args),
+          applySessionListTranscriptIdentity,
+          syncRecoveryUiForSession,
+          syncAttachments: () => attachmentsController.syncStagedAttachmentsFromSelectedSession(),
+          clearAttachments: () => attachmentsController.setStagedAttachments([]),
+          renderSessions: (sessions, options) => sidebarController.renderSessions(sessions, options),
+          hasDeferredRefresh: () => sidebarController.hasDeferredRefresh(),
+          setTitle: (title) => { titleLabel.textContent = title; },
+          sessionTitle: sessionTitleWithId,
+          updateTypingStats: updateTypingStatsFromSession,
+          updateUnattendedButton: updateUnattendedBtnState,
+          updateQueueBadge,
+          syncComposerSendButton,
+          syncQueueSubmitState,
+          maybeSelectPendingHashSession,
+        });
+
+        eventBindings.on($("#helpBtnSide"), 'click', (e) => {
           e.preventDefault();
           e.stopPropagation();
           showHelpViewer({ opener: e.currentTarget });
-        };
-        $("#settingsBtnSide").onclick = (e) => {
+        });
+        eventBindings.on($("#settingsBtnSide"), 'click', (e) => {
           e.preventDefault();
           e.stopPropagation();
           showVoiceSettingsDialog();
-        };
-        helpCloseBtn.onclick = (e) => {
+        });
+        eventBindings.on(helpCloseBtn, 'click', (e) => {
           e.preventDefault();
           e.stopPropagation();
           hideHelpViewer();
-        };
-        helpBackdrop.onclick = () => hideHelpViewer();
+        });
+        eventBindings.on(helpBackdrop, 'click', () => hideHelpViewer());
 
-        diagBtn.onclick = (e) => {
+        eventBindings.on(diagBtn, 'click', (e) => {
           e.preventDefault();
           e.stopPropagation();
           void showDiagViewer({ opener: e.currentTarget });
-        };
-        diagCloseBtn.onclick = (e) => {
+        });
+        eventBindings.on(diagCloseBtn, 'click', (e) => {
           e.preventDefault();
           e.stopPropagation();
           hideDiagViewer();
-        };
-        diagBackdrop.onclick = () => hideDiagViewer();
-        async function spawnSessionWithCwd(cwd, resumeSessionId = null, worktreeBranch = null, sessionName = "", providerChoice = "chatgpt", model = "default", reasoningEffort = "high", fast = false, createInTmux = false, errorHandler = null, agentBackend = "codex") {
-          if (!cwd || !String(cwd).trim()) {
-            setToast("cwd unavailable");
-            return null;
-          }
-          try {
-            const backend = normalizeAgentBackendName(agentBackend);
-            const modeLabel = resumeSessionId ? "resuming..." : worktreeBranch ? "creating worktree..." : createInTmux ? "starting in tmux..." : "starting...";
-            const alias = String(sessionName || "").trim();
-            const providerName = String(providerChoice || "").trim();
-            const providerSettings = providerChoiceToSettings(providerName, backend);
-            const modelName = String(model || "").trim();
-            const effortName = String(reasoningEffort || "").trim().toLowerCase();
-            setToast(modeLabel);
-            const body = { cwd: String(cwd), agent_backend: backend };
-            if (resumeSessionId) body.resume_session_id = String(resumeSessionId);
-            if (worktreeBranch) body.worktree_branch = String(worktreeBranch);
-            if (providerSettings.model_provider) body.model_provider = providerSettings.model_provider;
-            if (providerSettings.preferred_auth_method) body.preferred_auth_method = providerSettings.preferred_auth_method;
-            if (modelName) body.model = modelName;
-            if (effortName) body.reasoning_effort = effortName;
-            if (backendSupportsFast(backend) && fast) body.service_tier = "fast";
-            if (createInTmux) body.create_in_tmux = true;
-            const res = await api("/api/sessions", { method: "POST", body });
-            if (res && res.pending && res.launch_id) {
-              setToast(createInTmux ? "tmux session still starting" : "session still starting");
-              await refreshSessions();
-              return String(res.launch_id);
-            }
-            const brokerPid = res && res.broker_pid ? Number(res.broker_pid) : null;
-            if (!brokerPid) {
-              setToast("start failed");
-              return null;
-            }
-            const doneLabel = resumeSessionId ? "resumed" : worktreeBranch ? "worktree started" : createInTmux ? "tmux started" : "started";
-            setToast(`${doneLabel} (broker ${brokerPid})`);
-            for (let i = 0; i < 60; i++) {
-              const sessions = await refreshSessions();
-              let found = (sessions || []).find((x) => Number(x.broker_pid || 0) === brokerPid);
-              if (found) {
-                if (alias && String(found.alias || "").trim() !== alias) {
-                  await api(`/api/sessions/${found.session_id}/rename`, { method: "POST", body: { name: alias } });
-                  const renamed = await refreshSessions();
-                  found = (renamed || []).find((x) => x.session_id === found.session_id) || found;
-                }
-                selectSession(found.session_id);
-                return brokerPid;
-              }
-              await new Promise((r) => setTimeout(r, 250));
-            }
-            setToast(`${doneLabel} session will appear once the agent writes its session log`);
-            return brokerPid;
-          } catch (e) {
-            const errLabel = resumeSessionId ? "resume" : worktreeBranch ? "worktree start" : "start";
-            if (typeof errorHandler === "function") errorHandler(e);
-            setToast(`${errLabel} error: ${e.message}`);
-            void refreshSessions().catch((err) => console.error("refreshSessions failed after launch error", err));
-            return null;
-          }
-        }
-        $("#newBtn").onclick = async () => {
+        });
+        eventBindings.on(diagBackdrop, 'click', () => hideDiagViewer());
+        eventBindings.on($("#newBtn"), 'click', async () => {
           newSessionDialogController.open();
-        };
-        $("#chatEmptyNewBtn").onclick = async () => {
+        });
+        eventBindings.on($("#chatEmptyNewBtn"), 'click', async () => {
           newSessionDialogController.open();
-        };
+        });
         const interruptController = codoxearInterrupt.createInterruptController({
           selectedSessionId: () => selected,
           setToast,
@@ -4031,13 +3427,13 @@
           setPollFastUntilMs,
           kickPoll,
         });
-        interruptBtn.onclick = (e) => {
+        eventBindings.on(interruptBtn, 'click', (e) => {
           e.preventDefault();
           e.stopPropagation();
           void interruptController.interruptSelectedSession();
-        };
+        });
 
-        $("#logoutBtnSide").onclick = async () => {
+        eventBindings.on($("#logoutBtnSide"), 'click', async () => {
           try {
             await api("/api/logout", { method: "POST" });
           } catch (e) {
@@ -4047,16 +3443,16 @@
             cleanupApp();
             renderLogin(renderApp);
           }
-        };
+        });
 
-        toggleSidebarBtn.onclick = () => {
+        eventBindings.on(toggleSidebarBtn, 'click', () => {
           if (isMobile()) {
             setSidebarOpen(!document.body.classList.contains("sidebar-open"));
             return;
           }
           setSidebarCollapsed(!document.body.classList.contains("sidebar-collapsed"));
-        };
-	        backdrop.onclick = () => setSidebarOpen(false);
+        });
+	        eventBindings.on(backdrop, 'click', () => setSidebarOpen(false));
 
         chat.addEventListener("scroll", () => {
           transcriptScrollRuntime.handleScroll();
@@ -4083,16 +3479,16 @@
           },
           { passive: true }
         );
-        jumpBtn.onclick = () => {
+        eventBindings.on(jumpBtn, 'click', () => {
           void jumpToLatest();
-        };
-        olderBtn.onclick = () => {
+        });
+        eventBindings.on(olderBtn, 'click', () => {
           void loadOlderMessages({ auto: false });
-        };
-        olderRetryBtn.onclick = () => {
+        });
+        eventBindings.on(olderRetryBtn, 'click', () => {
           clearOlderLoadError();
           void loadOlderMessages({ auto: false });
-        };
+        });
 
         const codoxearIOSViewport = window.CodoxearIOSViewport;
         if (!codoxearIOSViewport || typeof codoxearIOSViewport.createIOSViewportController !== "function")
@@ -4174,7 +3570,7 @@
 	                : remembered && sessionSelectable(sessionIndex.get(remembered))
 	                  ? remembered
 	                  : first;
-	            if (pick) await selectSession(pick);
+	            if (pick) await sessionLifecycleController.selectSession(pick);
               void (async () => {
                 try {
                   await refreshVoiceBackgroundState({ force: true, primeNotifications: true });
@@ -4198,7 +3594,7 @@
 	            scheduleSessionsPoll();
             secondaryPollController.scheduleSecondaryPoll();
               addAppEvent(window, "hashchange", async () => {
-                await selectSessionFromHash({ refreshIfMissing: true, deferIfMissing: true });
+                await sessionLifecycleController.selectSessionFromHash({ refreshIfMissing: true, deferIfMissing: true });
               });
               addAppEvent(window, "beforeunload", () => {
                 cleanupApp();
@@ -4252,5 +3648,6 @@
     return Object.freeze({ renderApp });
   }
 
-  global.CodoxearApplicationRuntime = Object.freeze({ createApplicationRuntime });
+
+  global.CodoxearApplicationComposition = Object.freeze({ createApplicationComposition });
 })(window);

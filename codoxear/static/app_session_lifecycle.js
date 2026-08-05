@@ -25,6 +25,7 @@
     const clearTranscriptForRemovedSession = get("clearTranscriptForRemovedSession");
     const syncAttachments = get("syncAttachments");
     const clearAttachments = get("clearAttachments");
+    const syncAttachmentButton = get("syncAttachmentButton");
     const updateQueueBadge = get("updateQueueBadge");
     const setStatus = get("setStatus");
     const setContext = get("setContext");
@@ -76,6 +77,8 @@
     const providerChoiceToSettings = get("providerChoiceToSettings");
     const backendSupportsFast = get("backendSupportsFast");
     const setToast = get("setToast");
+    const confirmAction = get("confirmAction");
+    const syncRecoveryUiForSession = get("syncRecoveryUiForSession");
     const sleep = get("sleep");
     const consoleError = get("consoleError");
 
@@ -96,6 +99,7 @@
       setContext(null);
       setTyping(false);
       clearAttachments();
+      syncAttachmentButton();
       resetChatRenderState();
       updateQueueBadge();
       if (isUnattendedOpen()) hideUnattendedMenu();
@@ -230,6 +234,36 @@
       await selectSession(sid);
     }
 
+    async function clearCommitUnknownSend(sid, previewText = "") {
+      const sessionId = String(sid || "").trim();
+      if (!sessionId) return false;
+      const preview = String(previewText || "").trim();
+      const suffix = preview ? `\n\nPrompt: ${preview.slice(0, 240)}${preview.length > 240 ? "..." : ""}` : "";
+      const confirmed = await confirmAction({
+        title: "Clear unknown-send marker?",
+        message: `Clear the unknown-send marker only after checking the transcript or terminal. This does not undo a prompt that may already have been sent.${suffix}`,
+        confirmText: "Clear marker",
+        cancelText: "Cancel",
+        destructive: true,
+      });
+      if (!confirmed) return false;
+      try {
+        await api(`/api/sessions/${sessionId}/commit_unknown_send/clear`, { method: "POST", body: {} });
+        setToast("unknown send marker cleared");
+        await refreshSessions();
+        updateQueueBadge();
+        if (getSelected() === sessionId) syncRecoveryUiForSession(sessionId);
+        return true;
+      } catch (error) {
+        if (error && error.status === 401) {
+          handleAuthLoss();
+          return false;
+        }
+        setToast(`clear unknown send error: ${error && error.message ? error.message : "unknown error"}`);
+        return false;
+      }
+    }
+
     async function spawnSessionWithCwd(cwd, resumeSessionId = null, worktreeBranch = null, sessionName = "", providerChoice = "chatgpt", model = "default", reasoningEffort = "high", fast = false, createInTmux = false, errorHandler = null, agentBackend = "codex") {
       if (!cwd || !String(cwd).trim()) {
         setToast("cwd unavailable");
@@ -297,6 +331,7 @@
       clearSelectedSessionAfterRemoval,
       selectSessionFromHash,
       clearDeletedSessionClientState,
+      clearCommitUnknownSend,
       spawnSessionWithCwd,
     });
   }
