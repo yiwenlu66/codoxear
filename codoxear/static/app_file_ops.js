@@ -22,9 +22,9 @@
       sessionLaunchFailed, normalizeLineNumber, markdownPreviewHtml,
       blockedFileMessage, listFromFilesField, listFromFileRecords, baseName,
       codoxearFilePicker, codoxearFileViewer, codoxearFileEditor, codoxearFileEditMode,
-      codoxearFileTouch, codoxearFileViewerIntegration, codoxearDialogMenus,
+      codoxearFileTouch, codoxearDialogMenus,
       prepareModalOpen, afterModalVisibilityChanged, focusModalCloseButton, restoreModalFocus,
-      isModalTargetOpen, newSessionDialogController, sessionEditController, eventBindings,
+      isModalTargetOpen, newSessionDialogController, eventBindings,
       codoxearFileHelpers, copyToClipboard, dialogMenuController, duplicateFilePickerPaths,
       editCloseBtn, editDependencyBtn, editDependencyMenu, editNameInput, editPriorityRange,
       editPriorityResetBtn, editPriorityValue, editSaveBtn, editSnoozeCustomDate,
@@ -577,7 +577,7 @@ const fileViewerController = codoxearFileViewer.createFileViewerController(wirin
   historyFileSelectionForSession: (sessionId) => openedFileRuntime.historySelection(sessionId),
   renderFilePickerMenu: () => renderFilePickerMenu(),
 }));
-sessionEditController = window.CodoxearSessionEdit.createSessionEditController(wiring.createSessionEditOptions({
+const sessionEditController = window.CodoxearSessionEdit.createSessionEditController(wiring.createSessionEditOptions({
   documentTarget: document,
   ElementCtor: HTMLElement,
   el,
@@ -1032,6 +1032,7 @@ addAppEvent(document, "keydown", (e) => {
 
     return Object.freeze({
       dialogMenusController,
+      sessionEditController,
       filePickerSearchState,
       fileViewerController,
       fileUnsavedController,

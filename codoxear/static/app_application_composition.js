@@ -408,7 +408,7 @@
           tmuxAvailable: () => tmuxAvailable,
           selectedSession: () => selected,
           sessionForId: (sessionId) => sessionIndex.get(sessionId),
-          isMobile,
+          isMobile: () => codoxearViewport.isMobile(),
           prepareModalOpen,
           afterModalVisibilityChanged,
           isModalTargetOpen,
@@ -610,13 +610,15 @@
           updateQueueBadge: () => updateQueueBadge(),
           setToast, statusChip, interruptBtn, ctxChip, eventBindings,
         }));
-        const { setStatus, setContext } = sessionDisplayController;
+        const { renderStatusChip, setStatus, setContext } = sessionDisplayController;
+        let fileOpsController = null;
 
         const codoxearChatInteraction = window.CodoxearChatInteraction;
         if (!codoxearChatInteraction || typeof codoxearChatInteraction.createChatInteractionController !== "function")
           throw new Error("Codoxear chat interaction controller failed to load");
         const chatInteractionController = codoxearChatInteraction.createChatInteractionController(wiring.createChatInteractionOptions({
           ...deps,
+          wiring,
           window, document, navigator, HTMLElement, EventSource, AbortController, getComputedStyle,
           requestAnimationFrame, setTimeout, clearTimeout, $, el, iconSvg,
           getSelected: () => selected,
@@ -638,28 +640,32 @@
           olderError, olderErrorText, bottomSentinel, jumpBtn, chatTimeChip, chatSearchInput,
           chatSearchPrevBtn, chatSearchNextBtn, chatSearchCloseBtn, chatSearchStatus, chatSearchAllHintEl,
           chatSearchBar, chatSearchBtn, prevUserBtn, nextUserBtn, textarea, statusChip, ctxChip,
-          interruptBtn, toast, sessionsWrap, queueViewer, fileViewer, appConfirm, sendChoice,
-          codoxearCodeCopy, codoxearMessageRows, codoxearTranscriptView, codoxearTranscript,
-          codoxearMessageIdentity, codoxearPendingUser, codoxearNavigationPulse, codoxearHintMode,
-          codoxearModal, codoxearViewport, codoxearDisplay, codoxearChatNavigation, codoxearChatSearch,
+          interruptBtn, toast, sessionsWrap, sidebarEmptyHint, queueViewer, helpViewer, diagViewer, editViewer,
+          fileViewer, appConfirm, sendChoice, composer, attachBtn, imgInput, codeBlockCopyRuntime,
+          networkStatus, Node: window.Node, resizeComposer, renderStatusChip,
+          syncComposerSendButton, syncQueueSubmitState,
+          codoxearCodeCopy: window.CodoxearCodeCopy,
+          codoxearPendingUser, codoxearNavigationPulse,
+          codoxearModal, codoxearViewport, codoxearDisplay,
           codoxearMessageFlow, codoxearAttachments, codoxearComposer, codoxearConversationCopy,
           codoxearPolling, codoxearNetwork, codoxearSessionHelpers,
-          modalIsolationTargets, newSessionDialogController, filePickerMenuState, filePickerMenu,
-          filePickerInput, sessionEditController, sidebarController, queueController,
+          modalIsolationTargets, newSessionDialogController,
+          getSessionEditController: () => sessionEditController,
+          getQueueController: () => queueController,
           handleAppAuthLoss, confirmApp, copyToClipboard, setToast, closeTransientOverlays,
           prepareModalOpen, afterModalVisibilityChanged, restoreModalFocus, isModalTargetOpen,
           normalizeAppConfirmOptions, appConfirmFocusableControls, focusAppConfirmInitial, resolveAppConfirm,
           sessionLaunchFailed, sessionAgentBackend, sessionTitleWithId, normalizeAgentBackendName,
           providerChoiceToSettings, backendSupportsFast, sessionHasUnknownSend, sessionIsOrphanRecovery,
           sessionHasOrphanQueueRecovery, normalizeQueueItems, api, resolveAppUrl, clearApiCache,
-          chatMarkdownHtmlCached, upgradeCandidateFileRefs, versionedShellAssetPath, performance,
-          fileViewerController, fileUnsavedController, hideFilePasteDialog, isFileViewerOpen,
-          currentFileDirty, currentFileViewerSessionId, ensureCurrentFileViewerSession,
-          handleFileViewerSessionUnavailable, refreshFileCandidates,
+          chatMarkdownHtmlCached,
+          upgradeCandidateFileRefs: (...args) => fileOpsController.fileReferenceRuntime.upgradeCandidateRefs(...args),
+          versionedShellAssetPath, performance,
+          isFileViewerOpen: () => fileOpsController.isFileViewerOpen(),
         }));
         ({ attachmentsController, messageFlowController } = chatInteractionController);
         const {
-          chatSearchController, chatNavigationController, transcriptSlotRuntime, typingRowRuntime,
+          chatSearchController, chatNavigationController, sidebarController, transcriptSlotRuntime, typingRowRuntime,
           transcriptScrollRuntime, transcriptDomRuntime, transcriptEventRuntime, olderLoadRuntime,
           resetChatRenderState, clearOlderLoadError, updateChatNavButtons,
           closeChatSearch, clearRenderedTranscriptRange, initPageLimit, dropPendingUserRows,
@@ -813,15 +819,15 @@
         const codoxearFileOps = window.CodoxearFileOps;
         if (!codoxearFileOps || typeof codoxearFileOps.createFileOpsController !== "function")
           throw new Error("Codoxear file operations controller failed to load");
-        const fileOpsController = codoxearFileOps.createFileOpsController(wiring.createFileOpsOptions({
+        fileOpsController = codoxearFileOps.createFileOpsController(wiring.createFileOpsOptions({
           wiring, document, window, HTMLElement, requestAnimationFrame, setTimeout,
           $, el, iconSvg, resolveAppUrl, api, setToast, confirmApp, addAppEvent,
-          sessionLaunchFailed, normalizeLineNumber, markdownPreviewHtml, upgradeCandidateFileRefs,
+          sessionLaunchFailed, normalizeLineNumber, markdownPreviewHtml,
           blockedFileMessage, listFromFilesField, listFromFileRecords, baseName,
           codoxearFilePicker, codoxearFileViewer, codoxearFileEditor, codoxearFileEditMode,
-          codoxearFileTouch, codoxearFileUnsaved, codoxearFileViewerIntegration, codoxearDialogMenus,
+          codoxearFileTouch, codoxearDialogMenus,
           prepareModalOpen, afterModalVisibilityChanged, focusModalCloseButton, restoreModalFocus,
-          isModalTargetOpen, newSessionDialogController, sessionEditController, eventBindings,
+          isModalTargetOpen, newSessionDialogController, eventBindings,
           codoxearFileHelpers, copyToClipboard, dialogMenuController, duplicateFilePickerPaths,
           editCloseBtn, editDependencyBtn, editDependencyMenu, editNameInput, editPriorityRange,
           editPriorityResetBtn, editPriorityValue, editSaveBtn, editSnoozeCustomDate,
@@ -829,9 +835,10 @@
           fileBtn, filePickerIdentityHint, filePickerSectionLabel, filePickerTitle, fmtBytes,
           formatPriorityOffset, handleAppAuthLoss, isDiffableFileKind, isMarkdownPreviewable,
           isTextEntryElement, isTextFileKind, modalIsolationTargets, normalizeDraftFilePath,
-          parseLocalFileRef, rawByteDuplicatePaths, refreshSessions, selectedSessionLaunchFailed,
+          parseLocalFileRef, rawByteDuplicatePaths, refreshSessions: () => sessionRefreshController.refreshSessions(), selectedSessionLaunchFailed,
           sessionDisplayName, sessionTitleWithId, setPickerButtonContent, storageGetItem,
-          storageSetItem, stripPathLocationSuffix, titleLabel, useTouchFileEditorControls,
+          storageSetItem, stripPathLocationSuffix, titleLabel,
+          useTouchFileEditorControls: () => codoxearViewport.useTouchFileEditorControls(),
           filePickerField, filePickerMenu, filePickerInput, fileStatus, fileDiff, fileImage,
           fileVideo, fileVideoPreviewBtn, fileTouchToolbar, fileTouchActions, fileTouchDpad,
           fileTouchCopyBtn, fileTouchPasteBtn, fileTouchSelectBtn, fileTouchUpBtn, fileTouchLeftBtn,
@@ -846,10 +853,12 @@
           getSessionLifecycleController: () => sessionLifecycleController,
         }));
         const {
-          dialogMenusController, filePickerSearchState, fileViewerController, fileUnsavedController, fileReferenceRuntime,
+          dialogMenusController, sessionEditController: fileOpsSessionEditController,
+          filePickerSearchState, fileViewerController, fileUnsavedController, fileReferenceRuntime,
           hideFilePasteDialog, currentFileViewerSessionId, ensureCurrentFileViewerSession,
           currentFileDirty, isFileViewerOpen, handleFileViewerSessionUnavailable, refreshFileCandidates,
         } = fileOpsController;
+        sessionEditController = fileOpsSessionEditController;
         const queueController = (function instantiateQueueController() {
           const codoxearQueue = window.CodoxearQueue;
           if (!codoxearQueue || typeof codoxearQueue.createQueueController !== "function")

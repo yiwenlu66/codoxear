@@ -22,6 +22,10 @@
     const getCurrentSubagentsRunning = requireFunction(options.getCurrentSubagentsRunning, "getCurrentSubagentsRunning");
     const setCurrentSubagentsRunning = requireFunction(options.setCurrentSubagentsRunning, "setCurrentSubagentsRunning");
     const isAppDisposed = requireFunction(options.isAppDisposed, "isAppDisposed");
+    const getSessionEditController = requireFunction(options.getSessionEditController, "getSessionEditController");
+    const getQueueController = requireFunction(options.getQueueController, "getQueueController");
+    const isFileViewerOpen = requireFunction(options.isFileViewerOpen, "isFileViewerOpen");
+    const upgradeCandidateFileRefs = requireFunction(options.upgradeCandidateFileRefs, "upgradeCandidateFileRefs");
     const { setStatus, setContext,
       $, ATTACH_UPLOAD_MAX_BYTES, AbortController, CHAT_DOM_WINDOW, CHAT_DOM_WINDOW_WITH_HISTORY_SLACK,
       EventSource, INIT_PAGE_LIMIT, Node, OLDER_AUTO_COOLDOWN_MS, OLDER_CANCEL_PX, OLDER_PAGE_LIMIT,
@@ -33,18 +37,18 @@
       codoxearNavigationPulse, codoxearPendingUser, codoxearSessions, codoxearViewport, composer,
       confirmApp, copyToClipboard, dataTransferHasFiles, diagViewer, document, editViewer, el,
       extractFilesFromClipboardData, extractFilesFromDropData, fmtBytes, fmtRelativeAge, handleAppAuthLoss,
-      helpViewer, iconSvg, imgInput, isFileViewerOpen, isLikelyHeic, isModalTargetOpen,
+      helpViewer, iconSvg, imgInput, isLikelyHeic, isModalTargetOpen,
       isTextEntryElement, jumpBtn, looksLikeImage, modalIsolationTargets, navigator, networkStatus,
       newSessionDialogController, nextUserBtn, olderBtn, olderError, olderErrorText, olderWrap,
-      performance, prevUserBtn, pushPerfSample, queueController, queueViewer, redactedLaunchErrorText,
+      performance, prevUserBtn, pushPerfSample, queueViewer, redactedLaunchErrorText,
       refreshQueueViewer, renderStatusChip, requestAnimationFrame, resizeComposer, resolveAppUrl,
-      safeAttachmentStem, sendChoice, sessionAgentBackend, sessionDisplayName, sessionEditController,
+      safeAttachmentStem, sendChoice, sessionAgentBackend, sessionDisplayName,
       sessionHasOrphanQueueRecovery, sessionHasUnknownSend, sessionIdFromHash, sessionIsFast,
       sessionIsOrphanRecovery, sessionLaunchFailed, sessionLaunchIcon, sessionLaunchLabel,
       sessionLaunchPending, sessionProviderChoice, sessionSelectable, sessionTitleWithId, sessionsWrap,
       setTimeout, setToast, sidebarEffortCode, sidebarEmptyHint, sidebarModelText, sidebarRenderSignature,
       sidebarSessionEntries, storageRemoveItem, storageSetItem, syncComposerSendButton,
-      syncQueueSubmitState, textarea, titleLabel, updateUnattendedBtnState, upgradeCandidateFileRefs,
+      syncQueueSubmitState, textarea, titleLabel, updateUnattendedBtnState,
       window, wiring
     } = options;
     let pendingHashSessionId = "";
@@ -676,6 +680,7 @@ function applySessionListTranscriptIdentity(sessionId, sessionMeta) {
 }
 
 function updateQueueBadge() {
+  const queueController = getQueueController();
   if (queueController) {
     queueController.updateQueueBadge();
     if (queueViewer.style.display === "flex") void refreshQueueViewer();
@@ -1041,7 +1046,7 @@ function clearCommitUnknownSend(sid, previewText = "") {
    clearDeletedSessionClientState: (...args) => getSessionLifecycleController().clearDeletedSessionClientState(...args),
    refreshSessions,
    setToast,
-   openEditSession: (sid) => sessionEditController.openEditSession(sid),
+   openEditSession: (sid) => getSessionEditController().openEditSession(sid),
    duplicateSession: async (session) => {
      const cwd = session && session.cwd && session.cwd !== "?" ? session.cwd : "";
      if (!cwd) {
@@ -1409,7 +1414,7 @@ function maybeSelectPendingHashSession() {
 // document Escape/click + window resize listeners itself.
 
     return Object.freeze({
-      attachmentsController, messageFlowController, chatSearchController, chatNavigationController,
+      attachmentsController, messageFlowController, sidebarController, chatSearchController, chatNavigationController,
       transcriptSlotRuntime, typingRowRuntime, transcriptScrollRuntime, transcriptDomRuntime,
       transcriptEventRuntime, olderLoadRuntime,
       resetChatRenderState, clearOlderLoadError, updateChatNavButtons, closeChatSearch,
