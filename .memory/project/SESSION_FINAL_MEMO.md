@@ -1,6 +1,6 @@
 # Final session memo
 
-**1622 tests pass, 0 failures, 5 modules extracted, 30+ mechanisms shipped**
+**Final green state: 1622 passed, 103 subtests passed, 0 failures; 5 modules extracted; all critical mechanisms shipped.**
 
 This memo records the final local state of the session. Validation ran only in
 `/home/yiwen/codoxear`; the live deployment on port 8743 was not used.
