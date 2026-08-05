@@ -18,8 +18,8 @@ def eval_code_copy_runtime() -> dict:
         vm.createContext(ctx);
         vm.runInContext({json.dumps(source)}, ctx);
         const calls = [];
-        function classList() {{
-          const values = new Set();
+        function classList(initial = []) {{
+          const values = new Set(initial);
           return {{
             values,
             add(name) {{ values.add(name); calls.push(["class-add", name]); }},
@@ -29,23 +29,34 @@ def eval_code_copy_runtime() -> dict:
         }}
         const code = {{ textContent: "first <block> & only\\n" }};
         const otherCode = {{ textContent: "second block" }};
+        const wrapper = {{
+          classList: classList(["codeBlockWrap"]),
+          querySelector: (selector) => selector === ":scope > pre" ? pre : selector === ":scope > .code-copy-btn" ? button : null,
+        }};
+        const otherWrapper = {{
+          classList: classList(["codeBlockWrap"]),
+          querySelector: (selector) => selector === ":scope > pre" ? otherPre : selector === ":scope > .code-copy-btn" ? otherButton : null,
+        }};
         const pre = {{
+          parentElement: wrapper,
           classList: classList(),
-          querySelector: (selector) => selector === "code" || selector === ":scope > .code-copy-btn" ? (selector === "code" ? code : button) : null,
+          querySelector: (selector) => selector === "code" ? code : null,
         }};
         const otherPre = {{
+          parentElement: otherWrapper,
           classList: classList(),
-          querySelector: (selector) => selector === "code" || selector === ":scope > .code-copy-btn" ? (selector === "code" ? otherCode : otherButton) : null,
+          querySelector: (selector) => selector === "code" ? otherCode : null,
         }};
         const attrs = {{ "aria-label": "Copy code", title: "Copy code" }};
         const button = {{
+          parentElement: wrapper,
           classList: classList(),
-          closest: (selector) => selector === "pre" ? pre : null,
+          closest: (selector) => selector === ".codeBlockWrap" ? wrapper : null,
           getAttribute: (name) => attrs[name] || "",
           setAttribute: (name, value) => {{ attrs[name] = String(value); calls.push(["attr", name, String(value)]); }},
         }};
         const child = {{ closest: (selector) => selector === ".code-copy-btn" ? button : null }};
-        const otherButton = {{ closest: (selector) => selector === "pre" ? otherPre : null }};
+        const otherButton = {{ parentElement: otherWrapper, closest: (selector) => selector === ".codeBlockWrap" ? otherWrapper : null }};
         const toggleRoot = {{
           querySelectorAll: (selector) => selector === "pre.show-copy" ? [pre, otherPre].filter((item) => item.classList.contains("show-copy")) : [],
         }};

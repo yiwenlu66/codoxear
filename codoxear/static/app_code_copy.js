@@ -11,7 +11,8 @@
   }
 
   function codeTextForCopyButton(button) {
-    const pre = closestElement(button, "pre");
+    const wrapper = closestElement(button, ".codeBlockWrap");
+    const pre = wrapper && typeof wrapper.querySelector === "function" ? wrapper.querySelector(":scope > pre") : null;
     const code = pre && typeof pre.querySelector === "function" ? pre.querySelector("code") : null;
     return code ? String(code.textContent || "") : "";
   }
@@ -23,7 +24,8 @@
 
   function codePreFromTarget(target) {
     const pre = closestElement(target, "pre");
-    return pre && pre.parentElement && typeof pre.parentElement.querySelector === "function" && pre.parentElement.querySelector(":scope > .code-copy-btn") ? pre.parentElement : null;
+    const wrapper = pre && pre.parentElement;
+    return pre && wrapper && typeof wrapper.querySelector === "function" && wrapper.querySelector(":scope > .code-copy-btn") ? pre : null;
   }
 
   function createCodeBlockCopyRuntime(deps = {}) {

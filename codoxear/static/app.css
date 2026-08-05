@@ -1493,7 +1493,6 @@
         margin: var(--space-4) 0 var(--space-5) 0;
       }
       .md pre {
-        position: relative;
         margin: 0;
         padding: var(--space-5);
         border-radius: 0;
@@ -1540,9 +1539,9 @@
         font-size: var(--font-xl);
         line-height: 1;
       }
-      .md pre:hover .code-copy-btn,
-      .md pre:focus-within .code-copy-btn,
-      .md pre.show-copy .code-copy-btn,
+      .md .codeBlockWrap:hover > .code-copy-btn,
+      .md .codeBlockWrap:focus-within > .code-copy-btn,
+      .md .codeBlockWrap > pre.show-copy + .code-copy-btn,
       .code-copy-btn.copied {
         opacity: 1;
         pointer-events: auto;
