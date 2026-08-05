@@ -37,8 +37,9 @@
         --dialog-group-gap: var(--space-5);
         --sidebar-w: 320px;
         --composer-band-h: 48px;
-        --bubble-user: var(--wash);
+        --bubble-user: var(--bg);
         --bubble-assistant: var(--paper);
+        --session-active: var(--wash);
         /* Semantic surface and state tokens keep UI colors on the paper palette. */
         --surface-subtle: #f8fafc;
         --surface-muted: #f5f6f6;
@@ -303,7 +304,7 @@
         touch-action: pan-y;
       }
       .session.active .sessionContent {
-        background: var(--wash);
+        background: var(--session-active);
       }
       .swipeHint {
         position: absolute;
@@ -350,9 +351,9 @@
         background: var(--ink);
       }
       .stateDot {
-        width: 8px;
-        height: 8px;
-        border: 1.5px solid var(--ink);
+        width: 9px;
+        height: 9px;
+        border: 2px solid var(--ink);
         border-radius: 0;
         flex: 0 0 auto;
         /* Idle is hollow; fill and motion distinguish active states without
@@ -362,7 +363,7 @@
       .stateDot.busy,
       .stateDot.suppressed,
       .stateDot.pending {
-        border-color: transparent;
+        border-color: var(--ink);
         background: var(--stateDot-fill, var(--ink));
       }
       .stateDot.busy {
@@ -392,35 +393,27 @@
           animation: none;
         }
       }
-      .session.active,
+      .session.active {
+        border: 2px solid var(--ink);
+        background: var(--session-active);
+        color: var(--ink);
+      }
       .session.active .sessionContent {
-        background: var(--ink);
-        color: var(--paper);
+        background: var(--session-active);
+        color: inherit;
       }
       .session.active .muted,
       .session.active .ownerBadge,
       .session.active .sessionFastIcon {
-        color: var(--paper);
+        color: var(--muted);
       }
       .session.active .sessionBackendStatusIcon {
-        filter: brightness(0) invert(1);
-      }
-      .session.active .stateDot.idle {
-        border-color: var(--paper);
-      }
-      .session.active .stateDot.busy,
-      .session.active .stateDot.suppressed {
-        border-color: var(--paper);
-        background: var(--paper);
-      }
-      .session.active .stateDot.pending {
-        border-color: var(--state-pending);
-        background: var(--state-pending);
+        filter: grayscale(1) brightness(0) opacity(0.62);
       }
       .session.active .badge {
-        border-color: var(--paper);
-        background: var(--ink);
-        color: var(--paper);
+        border-color: var(--ink);
+        background: var(--paper);
+        color: var(--muted);
       }
       .sessionMetaLine {
         display: flex;
@@ -428,9 +421,14 @@
         gap: var(--space-2);
         min-width: 0;
         flex-wrap: nowrap;
+        white-space: nowrap;
         font-family: sans-serif;
       }
       .sidebarMetaData {
+        display: inline-flex;
+        align-items: baseline;
+        min-width: 0;
+        white-space: nowrap;
         font-family: var(--font-mono);
       }
       .sidebarMetaLabel,
@@ -504,6 +502,7 @@
 	        color: var(--text-effort-off);
 	      }
 	      .metaText {
+	        flex: 1 1 auto;
 	        min-width: 0;
 	        overflow: hidden;
 	        text-overflow: ellipsis;
@@ -774,16 +773,21 @@
         flex-wrap: nowrap;
       }
       .toast {
-        align-self: flex-start;
-        margin: var(--space-2) var(--space-5) 0 var(--space-5);
+        position: fixed;
+        top: calc(56px + env(safe-area-inset-top));
+        right: var(--space-5);
+        z-index: 95;
+        margin: 0;
         padding: var(--space-2) var(--space-5);
         min-height: 0;
+        border: 1px solid var(--border);
         border-radius: 0;
-        background: var(--ink);
-        color: var(--paper);
+        background: var(--paper);
+        color: var(--ink);
         font-size: var(--font-md);
         line-height: 1.4;
         max-width: min(70vw, 520px);
+        pointer-events: none;
       }
       .toast:empty {
         display: none;
@@ -885,7 +889,7 @@
 	        display: inline-flex;
 	        align-items: center;
 	        justify-content: center;
-	        border: 0;
+	        border: 1px solid var(--border);
 	        border-radius: 0;
 	        background: transparent;
 	        position: relative;
@@ -1321,9 +1325,9 @@
         min-width: 30px;
         min-height: 30px;
         padding: 0;
-        border: 0;
+        border: 1px solid var(--border);
         border-radius: 0;
-        background: transparent;
+        background: var(--paper);
         color: var(--ink);
         opacity: 0;
         pointer-events: none;
@@ -3418,7 +3422,7 @@ select {
 
       }
 
-      @media (max-width: 700px) {
+      @media (max-width: 880px) {
         .detailsRow {
           grid-template-columns: minmax(0, 1fr);
           gap: var(--space-1);
@@ -3436,15 +3440,39 @@ select {
           flex: 1 1 auto;
         }
         .toast {
-          position: fixed;
           left: 50%;
-          top: calc(64px + env(safe-area-inset-top));
+          right: auto;
+          top: calc(56px + env(safe-area-inset-top));
           transform: translateX(-50%);
-          z-index: 95;
           max-width: min(88vw, 360px);
           text-align: center;
           white-space: normal;
-          pointer-events: none;
+        }
+        .chatSearchBar {
+          flex-basis: 36px;
+          height: 36px;
+          padding: var(--space-1) var(--space-4);
+          gap: 2px;
+        }
+        .chatSearchGlyph {
+          display: none;
+        }
+        .chatSearchInput {
+          height: 28px;
+          padding: 2px var(--space-1);
+        }
+        .chatSearchStatus {
+          max-width: 36px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          font-size: var(--font-2xs);
+        }
+        .chatSearchBar .icon-btn {
+          flex-basis: 28px;
+          width: 28px;
+          height: 28px;
+          min-width: 28px;
+          min-height: 28px;
         }
         .topbar {
           padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-4) var(--space-3) var(--space-4);
