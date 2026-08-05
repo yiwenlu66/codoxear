@@ -81,10 +81,17 @@ def test_archive_visual_contracts_preserve_focusable_layout_and_data_typography(
     assert _computed(".sidebarMetaSeparator")["font-family"] == "sans-serif"
 
 
-def test_archive_reduced_motion_contract_neutralizes_all_animation_and_transition() -> None:
-    reduced_rules = [
-        declarations
-        for selector, declarations, media in _rules(parse_stylesheet(APP_CSS.read_text(encoding="utf-8"), skip_comments=True, skip_whitespace=True))
-        if selector == "*" and media is not None and "prefers-reduced-motion" in media and "reduce" in media
-    ]
-    assert {"animation": "none !important", "transition": "none !important"} in reduced_rules
+def test_archive_reduced_motion_contract_disables_attention_animations() -> None:
+    reduced_rules = {
+        selector: declarations
+        for selector, declarations, media in _rules(
+            parse_stylesheet(APP_CSS.read_text(encoding="utf-8"), skip_comments=True, skip_whitespace=True)
+        )
+        if media is not None and "prefers-reduced-motion" in media and "reduce" in media
+    }
+    assert reduced_rules == {
+        ".stateDot.busy": {"animation": "none"},
+        ".stateDot.pending": {"animation": "none"},
+        ".msg-row.nav-pulse .msg": {"animation": "none"},
+        ".typingDot": {"animation": "none"},
+    }
