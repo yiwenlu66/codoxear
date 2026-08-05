@@ -110,6 +110,9 @@
       const codoxearSecondaryPoll = window.CodoxearSecondaryPoll;
       if (!codoxearSecondaryPoll || typeof codoxearSecondaryPoll.createSecondaryPollController !== "function")
         throw new Error("Codoxear secondary poll controller failed to load");
+      const codoxearInterrupt = window.CodoxearInterrupt;
+      if (!codoxearInterrupt || typeof codoxearInterrupt.createInterruptController !== "function")
+        throw new Error("Codoxear interrupt controller failed to load");
 
       const codoxearPerfHelpers = window.CodoxearPerf;
       if (!codoxearPerfHelpers || typeof codoxearPerfHelpers.pushSample !== "function" || typeof codoxearPerfHelpers.summarize !== "function") throw new Error("Codoxear performance helpers failed to load");
@@ -4812,21 +4815,18 @@
         $("#chatEmptyNewBtn").onclick = async () => {
           newSessionDialogController.open();
         };
-	        async function interruptSelectedSession() {
-	          if (!selected) return;
-	          try {
-	            setToast("interrupting...");
-            await api(`/api/sessions/${selected}/interrupt`, { method: "POST" });
-            setPollFastUntilMs(Date.now() + 2500);
-            kickPoll(0);
-          } catch (e) {
-            setToast(`interrupt error: ${e.message}`);
-          }
-        }
+        const interruptController = codoxearInterrupt.createInterruptController({
+          selectedSessionId: () => selected,
+          setToast,
+          api,
+          now: Date.now,
+          setPollFastUntilMs,
+          kickPoll,
+        });
         interruptBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          void interruptSelectedSession();
+          void interruptController.interruptSelectedSession();
         };
 
         $("#logoutBtnSide").onclick = async () => {

@@ -31,6 +31,7 @@ FRONTEND_ASSET_FILES = (
     "app_viewport.js",
     "app_polling.js",
     "app_secondary_poll.js",
+    "app_interrupt.js",
     "app_sse.js",
     "app_transcript.js",
     "app_message_identity.js",
