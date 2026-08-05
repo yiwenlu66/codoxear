@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app_application.js"
+APP_SESSION_OPEN_JS = ROOT / "codoxear" / "static" / "app_session_open.js"
 APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
 APP_LAUNCH_JS = ROOT / "codoxear" / "static" / "app_launch.js"
 APP_TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
@@ -78,10 +79,7 @@ def eval_launch_recovery_details() -> dict:
 
 
 def eval_open_session_tail_request_abort() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    open_start = source.index("async function openSession(")
-    open_end = source.index("async function pollMessages(", open_start)
-    snippet = source[open_start:open_end]
+    source = APP_SESSION_OPEN_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -92,166 +90,92 @@ def eval_open_session_tail_request_abort() -> dict:
             const listeners = [];
             this.signal = {{
               aborted: false,
-              addEventListener(type, cb) {{ if (type === "abort") listeners.push(cb); }},
-              _listeners: listeners,
+              addEventListener(type, callback) {{ if (type === "abort") listeners.push(callback); }},
+              listeners,
             }};
           }}
           abort() {{
             if (this.signal.aborted) return;
             this.signal.aborted = true;
-            for (const cb of this.signal._listeners.slice()) cb();
+            this.signal.listeners.slice().forEach((callback) => callback());
           }}
         }}
-        const ctx = {{
-          AbortController,
-          console,
-          performance: {{ now: () => 123 }},
-          clearTimeout: () => calls.push(["clearTimeout"]),
-          pollGen: 0,
-          pollTimer: null,
-          pollKickPending: false,
-          pollKickDelayMs: null,
-          selected: null,
-          typingRowRuntime: {{ resetTypingStats: () => {{}}, updateTypingStats: () => ({{ stats: {{ thinking: 0, tools: 0 }} }}), snapshot: () => ({{ stats: {{ thinking: 0, tools: 0 }} }}), setVisible: () => {{}}, reset: () => {{}} }},
-          updateTypingStatsFromSession: () => {{}},
-          applyTypingMetaDelta: () => {{}},
-          sessionsWrap: {{ querySelectorAll: () => [], querySelector: () => null }},
-          unattendedController: {{ isOpen: () => false, menuSessionId: () => null }},
-          activeTranscriptState: "pending_bind",
-          activeLogPath: null,
-          activeThreadId: null,
-          liveCursor: null,
-          turnOpen: false,
-          clickLoadT0: 0,
-          clickMetricPending: false,
-          fileDirty: false,
-          currentFileDirty: () => false,
-          appDisposed: false,
-          sessionIndex: new Map([
-            ["sid-a", {{ session_id: "sid-a", busy: false, queue_len: 0, token: null }}],
-            ["sid-b", {{ session_id: "sid-b", busy: false, queue_len: 0, token: null }}],
-          ]),
-          sessionTailCache: new Map(),
-          transcriptSlotRuntime: {{
-            setActivePending: () => calls.push(["transcriptSlotRuntime.setActivePending"]),
-            setActiveFailed: () => calls.push(["transcriptSlotRuntime.setActiveFailed"]),
-            getTailCache: () => null,
-          }},
-          titleLabel: {{ textContent: "" }},
-          hideUnattendedMenu: () => calls.push(["hideUnattendedMenu"]),
-          storageSetItem: (...args) => calls.push(["storageSetItem", ...args]),
-          storageRemoveItem: (...args) => calls.push(["storageRemoveItem", ...args]),
-          storageGetItem: () => null,
-          saveSelectedComposerDraft: () => {{}},
-          loadSelectedComposerDraft: () => {{}},
-          setSessionHash: (...args) => calls.push(["setSessionHash", ...args]),
-          clearRenderedTranscriptRange: () => calls.push(["clearRenderedTranscriptRange"]),
-          setAttachCount: (...args) => calls.push(["setAttachCount", ...args]),
-          updateQueueBadge: () => calls.push(["updateQueueBadge"]),
-          setStatus: (...args) => calls.push(["setStatus", ...args]),
-          setContext: (...args) => calls.push(["setContext", ...args]),
-          setTyping: (...args) => calls.push(["setTyping", ...args]),
-          resetChatRenderState: () => calls.push(["resetChatRenderState"]),
-          sessionTitleWithId: (s) => `title:${{s.session_id}}`,
-          isFileViewerOpen: () => false,
-          ensureCurrentFileViewerSession: async () => calls.push(["ensureCurrentFileViewerSession"]),
-          renderPendingTranscriptSlot: (...args) => calls.push(["renderPendingTranscriptSlot", ...args]),
-          syncAttachButtonState: () => calls.push(["syncAttachButtonState"]),
-          syncQueueSubmitState: () => calls.push(["syncQueueSubmitState"]),
-          syncComposerSendButton: () => calls.push(["syncSendButtonState"]),
-          updateUnattendedBtnState: () => calls.push(["updateUnattendedBtnState"]),
-          isMobile: () => false,
-          setSidebarOpen: (...args) => calls.push(["setSidebarOpen", ...args]),
-          tailCacheMatchesSession: () => false,
-          applyCachedTail: (...args) => calls.push(["applyCachedTail", ...args]),
-          renderTranscriptLoading: (...args) => calls.push(["renderTranscriptLoading", ...args]),
-          initPageLimit: () => 60,
-          api: (url, options = {{}}) => {{
-            calls.push(["api", url, Boolean(options.signal)]);
-            if (url.endsWith("/unread")) {{
-              return Promise.resolve({{ count: 0, first_unread_event_id: null, last_unread_event_id: null }});
-            }}
-            return new Promise((resolve, reject) => {{
-              const req = {{ url, signal: options.signal || null, resolve, reject }};
-              pending.push(req);
-              if (options.signal && typeof options.signal.addEventListener === "function") {{
-                options.signal.addEventListener("abort", () => {{
-                  calls.push(["abort", url]);
-                  const err = new Error("aborted");
-                  err.name = "AbortError";
-                  reject(err);
-                }});
-              }}
-            }});
-          }},
-          handleAppAuthLoss: () => calls.push(["handleAppAuthLoss"]),
-          markMessagePollFailure: () => calls.push(["markMessagePollFailure"]),
-          handleFileViewerSessionUnavailable: (...args) => calls.push(["handleFileViewerSessionUnavailable", ...args]),
-          refreshSessions: async () => calls.push(["refreshSessions"]),
-          renderTranscriptLoadError: (...args) => calls.push(["renderTranscriptLoadError", ...args]),
-          kickPoll: (...args) => calls.push(["kickPoll", ...args]),
-          messagePollDelayMs: () => 900,
-          markMessagePollSuccess: () => calls.push(["markMessagePollSuccess"]),
-          updateSessionTranscriptSlot: (sid, data) => {{ calls.push(["updateSessionTranscriptSlot", sid]); return {{ ignoredStaleBound: false, current: {{ state: "bound" }} }}; }},
-          applySessionRuntimeFromTail: (...args) => calls.push(["applySessionRuntimeFromTail", ...args]),
-          renderSessionTail: (...args) => calls.push(["renderSessionTail", ...args]),
-          refreshFileCandidates: async (...args) => calls.push(["refreshFileCandidates", ...args]),
-        }};
+        const ctx = {{ window: {{}}, console, AbortController }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(source)}, ctx);
+        const sessions = new Map([
+          ["sid-a", {{ session_id: "sid-a", busy: false, queue_len: 0, token: null }}],
+          ["sid-b", {{ session_id: "sid-b", busy: false, queue_len: 0, token: null }}],
+        ]);
+        const state = {{ selected: null, pollGen: 0, title: "" }};
         let activeTailController = null;
-        ctx.abortController = (controller) => {{
-          if (!controller || typeof controller.abort !== "function") return;
-          controller.abort();
-        }};
-        ctx.abortOpenSessionTailRequest = () => {{
+        const abortOpen = () => {{
           const controller = activeTailController;
           activeTailController = null;
-          ctx.abortController(controller);
+          if (controller) controller.abort();
         }};
-        ctx.beginOpenSessionTailRequest = (sessionId, gen) => {{
-          ctx.abortOpenSessionTailRequest();
-          const controller = new AbortController();
-          activeTailController = controller;
-          return Object.freeze({{ sessionId, gen, controller, signal: controller.signal }});
+        const messageFlow = {{
+          prepareSessionOpen: abortOpen,
+          beginOpenSessionTailRequest(sessionId, generation) {{
+            abortOpen();
+            const controller = new AbortController();
+            activeTailController = controller;
+            return {{ sessionId, generation, controller, signal: controller.signal }};
+          }},
+          isOpenSessionTailAbortError: (request, error) => Boolean(error && error.name === "AbortError" && request.signal.aborted),
+          isCurrentOpenSessionTailRequest: (request) => state.selected === request.sessionId && state.pollGen === request.generation,
+          finishOpenSessionTailRequest(request) {{ if (activeTailController === request.controller) activeTailController = null; }},
+          markMessagePollFailure: () => calls.push(["markMessagePollFailure"]),
+          markMessagePollSuccess: () => calls.push(["markMessagePollSuccess"]),
         }};
-        ctx.isOpenSessionTailAbortError = (request, error) =>
-          Boolean(error && error.name === "AbortError" && request && request.signal && request.signal.aborted);
-        ctx.isCurrentOpenSessionTailRequest = (request) =>
-          Boolean(request && ctx.selected === request.sessionId && ctx.pollGen === request.gen);
-        ctx.finishOpenSessionTailRequest = (request) => {{
-          if (request && activeTailController === request.controller) activeTailController = null;
-        }};
-        ctx.abortMessagePollRequest = () => {{}};
-        ctx.attachmentsController = {{ syncStagedAttachmentsFromSelectedSession: () => calls.push(["attachmentsController.syncStagedAttachmentsFromSelectedSession"]) }};
-        ctx.messageFlowController = {{
-          prepareSessionOpen: () => ctx.abortOpenSessionTailRequest(),
-          beginOpenSessionTailRequest: ctx.beginOpenSessionTailRequest,
-          isOpenSessionTailAbortError: ctx.isOpenSessionTailAbortError,
-          isCurrentOpenSessionTailRequest: ctx.isCurrentOpenSessionTailRequest,
-          finishOpenSessionTailRequest: ctx.finishOpenSessionTailRequest,
-          markMessagePollFailure: ctx.markMessagePollFailure,
-          markMessagePollSuccess: ctx.markMessagePollSuccess,
-        }};
-        ctx.openMessageEventSource = () => {{}};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = { openSession };\n")}, ctx);
+        const api = (url, options = {{}}) => new Promise((resolve, reject) => {{
+          calls.push(["api", url, Boolean(options.signal)]);
+          const request = {{ url, signal: options.signal, resolve, reject }};
+          pending.push(request);
+          options.signal.addEventListener("abort", () => {{
+            calls.push(["abort", url]);
+            const error = new Error("aborted");
+            error.name = "AbortError";
+            reject(error);
+          }});
+        }});
+        const controller = ctx.window.CodoxearSessionOpen.createSessionOpenController({{
+          nextPollGeneration: () => ++state.pollGen,
+          prepareSessionOpen: () => messageFlow.prepareSessionOpen(),
+          getSelected: () => state.selected,
+          setSelected: (sid) => {{ state.selected = sid; }},
+          setActiveSession: () => {{}}, saveComposerDraft: () => {{}}, loadComposerDraft: () => {{}},
+          closeUnattendedForOtherSession: () => {{}}, persistSelected: () => {{}}, setSessionHash: () => {{}},
+          resetTranscriptForSession: () => {{}}, syncAttachments: () => {{}}, updateQueueBadge: () => {{}},
+          setStatus: () => {{}}, setContext: () => {{}}, setTyping: () => {{}}, resetChatRenderState: () => {{}},
+          getSession: (sid) => sessions.get(sid),
+          isCurrent: (sid, generation) => state.selected === sid && state.pollGen === generation,
+          setTitle: (session) => {{ state.title = `title:${{session.session_id}}`; }}, markClickLoad: () => {{}},
+          setTurnOpen: () => {{}}, updateTypingStats: () => {{}}, beginFileViewerSync: () => false,
+          finishFileViewerSync: () => {{}}, getTailCache: () => null, tailCacheMatchesSession: () => false,
+          applyCachedTail: () => {{}}, renderTranscriptLoading: () => {{}}, messageFlow: () => messageFlow, api,
+          initPageLimit: () => 60, handleAuthLoss: () => calls.push(["handleAuthLoss"]),
+          clearRemovedSession: () => {{}}, refreshSessions: async () => {{}},
+          renderTranscriptLoadError: () => calls.push(["renderTranscriptLoadError"]), isDisposed: () => false,
+          kickPoll: () => {{}}, messagePollDelayMs: () => 900,
+          updateTranscriptSlot: () => ({{ ignoredStaleBound: false, current: {{ state: "bound" }} }}),
+          renderPendingTranscriptSlot: () => {{}}, applySessionRuntimeFromTail: () => {{}},
+          renderSessionTail: () => calls.push(["renderSessionTail"]), openMessageEventSource: () => {{}},
+          isMobile: () => false, closeSidebar: () => {{}}, updateUnattendedButton: () => {{}},
+          refreshFileCandidates: async () => {{}}, consoleError: () => {{}},
+        }});
         (async () => {{
-          const firstPromise = ctx.__test.openSession("sid-a", {{ useCache: false }});
-          await new Promise((resolve) => setTimeout(resolve, 0));
-          const firstSignal = pending[0] && pending[0].signal;
-          const secondPromise = ctx.__test.openSession("sid-b", {{ useCache: false }});
-          await new Promise((resolve) => setTimeout(resolve, 0));
-          const secondReq = pending[1];
-          secondReq.resolve({{ transcript_state: "bound", events: [{{ role: "assistant", text: "ok" }}], busy: false, queue_len: 0, token: null }});
+          const firstPromise = controller.openSession("sid-a", {{ useCache: false }});
+          const firstSignal = pending[0].signal;
+          const secondPromise = controller.openSession("sid-b", {{ useCache: false }});
+          const secondRequest = pending[1];
+          secondRequest.resolve({{ transcript_state: "bound", events: [{{ role: "assistant", text: "ok" }}], busy: false, queue_len: 0, token: null }});
           const secondResult = await secondPromise;
           const firstResult = await firstPromise;
           process.stdout.write(JSON.stringify({{
-            firstResult,
-            secondResult,
-            firstSignalAborted: Boolean(firstSignal && firstSignal.aborted),
-            secondSignalAborted: Boolean(secondReq.signal && secondReq.signal.aborted),
-            pollGen: ctx.pollGen,
-            selected: ctx.selected,
-            title: ctx.titleLabel.textContent,
+            firstResult, secondResult, firstSignalAborted: firstSignal.aborted,
+            secondSignalAborted: secondRequest.signal.aborted, pollGen: state.pollGen,
+            selected: state.selected, title: state.title,
             apiCalls: calls.filter((call) => call[0] === "api"),
             abortCalls: calls.filter((call) => call[0] === "abort"),
             failureCalls: calls.filter((call) => call[0] === "markMessagePollFailure"),
@@ -259,13 +183,11 @@ def eval_open_session_tail_request_abort() -> dict:
             successCalls: calls.filter((call) => call[0] === "markMessagePollSuccess"),
             renderTailCalls: calls.filter((call) => call[0] === "renderSessionTail"),
           }}));
-        }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
+        }})().catch((error) => {{ console.error(error && error.stack || error); process.exit(1); }});
         """
     )
     proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
-
-
 
 def eval_clear_deleted_session_client_state() -> dict:
     source = APP_JS.read_text(encoding="utf-8")

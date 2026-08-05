@@ -116,7 +116,6 @@ class TestStaticAssets(unittest.TestCase):
             "app_shell.js": "window.CodoxearShell = {};\n",
             "app_sessions.js": "window.CodoxearSessions = {};\n",
             "app_transcript_view.js": "window.CodoxearTranscriptView = {};\n",
-            "": "window.CodoxearUnread = {};\n",
             "app_session_edit.js": "window.CodoxearSessionEdit = {};\n",
             "app_message_flow.js": "window.CodoxearMessageFlow = {};\n",
             "app_attachments.js": "window.CodoxearAttachments = {};\n",
@@ -134,6 +133,11 @@ class TestStaticAssets(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
+            # The frontend manifest grows as modules are extracted. Give every
+            # declared asset a fixture so this remains a manifest behavior test,
+            # rather than assuming an old hand-maintained module inventory.
+            for name in STATIC_ASSET_VERSION_FILES:
+                initial_content.setdefault(name, f"fixture for {name}\n")
             for name, content in initial_content.items():
                 target = root / name
                 target.parent.mkdir(parents=True, exist_ok=True)

@@ -90,33 +90,33 @@ def _computed_rule(width: int, selector: str) -> dict[str, str]:
     return computed
 
 
-def test_diagnostics_rows_stack_through_phone_layout_width() -> None:
+def test_diagnostics_rows_stack_through_sidebar_layout_width() -> None:
     phone = _computed_rule(390, ".detailsRow")
     phone_layout = _computed_rule(521, ".detailsRow")
-    wider = _computed_rule(701, ".detailsRow")
+    drawer_layout = _computed_rule(880, ".detailsRow")
+    desktop = _computed_rule(881, ".detailsRow")
 
     assert phone["display"] == "grid"
-    assert phone["grid-template-columns"] == "minmax(0, 1fr)"
-    assert phone["gap"] == "var(--space-1)"
-    assert phone_layout["grid-template-columns"] == "minmax(0, 1fr)"
-    assert phone_layout["gap"] == "var(--space-1)"
-    assert wider["grid-template-columns"] == "110px minmax(0, 1fr)"
-    assert wider["gap"] == "var(--space-5)"
+    for style in (phone, phone_layout, drawer_layout):
+        assert style["grid-template-columns"] == "minmax(0, 1fr)"
+        assert style["gap"] == "var(--space-1)"
+    assert desktop["grid-template-columns"] == "110px minmax(0, 1fr)"
+    assert desktop["gap"] == "var(--space-5)"
 
 
-def test_diagnostics_phone_layout_preserves_row_treatment() -> None:
-    phone_row = _computed_rule(390, ".detailsRow")
-    wider_row = _computed_rule(701, ".detailsRow")
-    phone_label = _computed_rule(390, ".detailsLabel")
-    wider_label = _computed_rule(701, ".detailsLabel")
+def test_diagnostics_drawer_layout_preserves_row_treatment() -> None:
+    drawer_row = _computed_rule(880, ".detailsRow")
+    desktop_row = _computed_rule(881, ".detailsRow")
+    drawer_label = _computed_rule(880, ".detailsLabel")
+    desktop_label = _computed_rule(881, ".detailsLabel")
 
-    assert {name for name in phone_row if phone_row[name] != wider_row.get(name)} == {
+    assert {name for name in drawer_row if drawer_row[name] != desktop_row.get(name)} == {
         "grid-template-columns",
         "gap",
     }
-    assert phone_row["padding"] == wider_row["padding"]
-    assert phone_row["border-bottom"] == wider_row["border-bottom"]
-    assert phone_label["color"] == wider_label["color"]
-    assert phone_label["font-size"] == wider_label["font-size"]
-    assert phone_label["padding-top"] == "0"
-    assert wider_label["padding-top"] == "2px"
+    assert drawer_row["padding"] == desktop_row["padding"]
+    assert drawer_row["border-bottom"] == desktop_row["border-bottom"]
+    assert drawer_label["color"] == desktop_label["color"]
+    assert drawer_label["font-size"] == desktop_label["font-size"]
+    assert drawer_label["padding-top"] == "0"
+    assert desktop_label["padding-top"] == "2px"

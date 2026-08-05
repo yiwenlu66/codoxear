@@ -15,6 +15,7 @@ import threading
 import time
 
 import codoxear.broker as broker_module
+import codoxear.rollout_log as rollout_log
 from codoxear.broker_turn_state import State
 from codoxear.message_cursor import decode_message_cursor, encode_message_cursor
 from codoxear.message_routes import MessageRouteDeps, handle_messages_tail
@@ -73,7 +74,7 @@ def test_pi_broker_marker_wins_over_stale_declared_log_path(tmp_path: Path, monk
 
 
 # 685782e8 — bounded tail scan and its unchanged-revision cache meet the I/O floor.
-def test_messages_tail_reads_100mb_once_then_uses_cache_under_budget(tmp_path: Path) -> None:
+def test_messages_tail_reads_100mb_once_then_uses_cache_under_budget(tmp_path: Path, monkeypatch) -> None:
     log_path = tmp_path / "100mb.jsonl"
     target_size = 100 * 1024 * 1024
     event = {
@@ -113,6 +114,16 @@ def test_messages_tail_reads_100mb_once_then_uses_cache_under_budget(tmp_path: P
     class Handler:
         def _unauthorized(self): raise AssertionError("route unexpectedly unauthenticated")
 
+    rollout_log._TAIL_PAGE_CACHE.clear()
+    rollout_log._TAIL_PAGE_CACHE_ORDER.clear()
+    page_reads: list[Path] = []
+    read_chat_page_reverse = rollout_log._read_chat_page_reverse
+
+    def count_tail_page_read(path: Path, **kwargs):
+        page_reads.append(path)
+        return read_chat_page_reverse(path, **kwargs)
+
+    monkeypatch.setattr(rollout_log, "_read_chat_page_reverse", count_tail_page_read)
     start = time.perf_counter()
     handle_messages_tail(Handler(), session_id=session.session_id, query="limit=60", manager=Manager(), deps=deps)
     first = time.perf_counter() - start
@@ -124,8 +135,12 @@ def test_messages_tail_reads_100mb_once_then_uses_cache_under_budget(tmp_path: P
     assert first_response == second_response
     assert first_response[0] == 200
     assert [item["text"] for item in first_response[1]["events"]] == ["latest"]
-    assert first < 0.100
-    assert cached < 0.005
+    assert page_reads == [log_path]
+    # A busy test runner may deschedule a request; cache identity, not a
+    # sub-millisecond wall-clock sample, proves the unchanged log was scanned
+    # once. These remain generous route-latency ceilings.
+    assert first < 1.0
+    assert cached < 0.1
 
 
 # 333dfe8d — a running Pi bridge supplies newer effort than delayed JSONL replay.

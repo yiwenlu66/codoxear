@@ -68,7 +68,10 @@ def _computed_style(width: int, selector: str) -> dict[str, str]:
     [
         (390, SINGLE_COLUMN),
         (521, SINGLE_COLUMN),
-        (880, TWO_COLUMN),
+        # The drawer/layout breakpoint is inclusive: 880px is still the
+        # single-column diagnostics presentation; desktop begins at 881px.
+        (880, SINGLE_COLUMN),
+        (881, TWO_COLUMN),
         (1280, TWO_COLUMN),
     ],
 )

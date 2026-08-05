@@ -81,7 +81,8 @@ def _computed_style(width: int, selector: str) -> dict[str, str]:
         # minmax(0, 1fr) is one flexible track: labels and values occupy
         # consecutive grid rows while retaining a zero minimum for long values.
         (390, PHONE_COLUMNS),
-        (880, DESKTOP_COLUMNS),
+        (880, PHONE_COLUMNS),
+        (881, DESKTOP_COLUMNS),
         (1280, DESKTOP_COLUMNS),
     ],
 )
@@ -96,7 +97,7 @@ def test_diagnostics_row_grid_layout_is_pinned_at_representative_viewports(
 
 
 def test_diagnostics_row_desktop_layout_has_no_later_width_override() -> None:
-    assert _computed_style(880, ".detailsRow") == _computed_style(1280, ".detailsRow")
+    assert _computed_style(881, ".detailsRow") == _computed_style(1280, ".detailsRow")
 
 
 @pytest.mark.parametrize("width", [390, 880, 1280])
@@ -108,6 +109,7 @@ def test_diagnostics_row_components_preserve_flat_paper_treatment(width: int) ->
         assert style.get("backdrop-filter", "none") == "none"
 
 
-def test_diagnostics_label_lifts_to_its_own_phone_grid_row() -> None:
+def test_diagnostics_label_lifts_to_its_own_drawer_grid_row() -> None:
     assert _computed_style(390, ".detailsLabel")["padding-top"] == "0"
-    assert _computed_style(880, ".detailsLabel")["padding-top"] == "2px"
+    assert _computed_style(880, ".detailsLabel")["padding-top"] == "0"
+    assert _computed_style(881, ".detailsLabel")["padding-top"] == "2px"

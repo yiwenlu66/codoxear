@@ -383,8 +383,10 @@ def test_web_owned_session_shipping_mechanisms_share_the_public_api_contract(
 
         status, queue = _request(connection, "GET", f"/api/sessions/{session_id}/queue")
         assert status == 200
-        assert isinstance(queue["items"], list)
-        assert queue["queue_len"] == len(queue["items"])
+        assert queue == {"ok": True, "items": [], "queue": []}
+        # Queue contents are the panel payload; the selected session listing is
+        # the authoritative count used by sidebar/header badges.
+        assert session["queue_len"] == len(queue["items"])
 
         status, diagnostics = _request(connection, "GET", f"/api/sessions/{session_id}/diagnostics")
         assert status == 200
