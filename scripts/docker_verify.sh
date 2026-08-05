@@ -100,7 +100,7 @@ wait_for_server() {
     if [[ "$code" == "401" ]]; then
       return 0
     fi
-    sleep 0.25
+    sleep 1
   done
   echo "container server did not become reachable at $url" >&2
   return 1
@@ -132,7 +132,7 @@ PY
     then
       return 0
     fi
-    sleep 0.25
+    sleep 1
   done
   echo "the container-created Pi session never appeared in /api/sessions" >&2
   return 1
@@ -204,7 +204,7 @@ install -m 644 "$repo_root/docker/verify.Dockerfile" "$build_context/docker/veri
       if test -n "$meta" && grep -Eq "\\\"session_id\\\"[[:space:]]*:[[:space:]]*\\\"[^\\\"]+\\\"" "$meta"; then
         break
       fi
-      sleep 0.25
+      sleep 1
     done
     test -n "${meta:-}" && grep -Eq "\\\"session_id\\\"[[:space:]]*:[[:space:]]*\\\"[^\\\"]+\\\"" "$meta"
     exec python3 -m codoxear.server
