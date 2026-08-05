@@ -36,6 +36,7 @@ FRONTEND_ASSET_FILES = (
     "app_sse.js",
     "app_transcript.js",
     "app_message_identity.js",
+    "app_pending_user.js",
     "app_message_rows.js",
     "app_conversation_copy.js",
     "app_modal.js",

@@ -119,6 +119,9 @@
       const codoxearFileEditMode = window.CodoxearFileEditMode;
       if (!codoxearFileEditMode || typeof codoxearFileEditMode.createFileEditModeController !== "function")
         throw new Error("Codoxear file edit mode controller failed to load");
+      const codoxearPendingUser = window.CodoxearPendingUser;
+      if (!codoxearPendingUser || typeof codoxearPendingUser.createPendingUserController !== "function")
+        throw new Error("Codoxear pending user controller failed to load");
 
       const codoxearPerfHelpers = window.CodoxearPerf;
       if (!codoxearPerfHelpers || typeof codoxearPerfHelpers.pushSample !== "function" || typeof codoxearPerfHelpers.summarize !== "function") throw new Error("Codoxear performance helpers failed to load");
@@ -2568,28 +2571,15 @@
         return transcriptEventRuntime.takePendingUserMatch(ev, sessionId, Number(slot.epoch || 0), { allowUntimedCommit });
       }
 
-      function consumePendingUserIfMatches(ev, sessionId = selected) {
-        const match = takePendingUserMatch(ev, sessionId);
-        if (!match) return false;
-        const { id } = match;
-        const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${id}"]`);
-        if (!pendingEl) return false;
-
-          pendingEl.style.opacity = "1";
-          pendingEl.removeAttribute("data-local-id");
-          pendingEl.removeAttribute("data-pending");
-
-          const mdEl = pendingEl.querySelector(".md");
-          if (mdEl && typeof ev.text === "string") mdEl.innerHTML = chatMarkdownHtmlCached(ev.text, sessionId);
-
-          const row = pendingEl.closest(".msg-row");
-          if (row && typeof ev.ts === "number" && Number.isFinite(ev.ts)) row.dataset.ts = String(ev.ts);
-          const tsEl = pendingEl.querySelector(".ts");
-          if (tsEl && typeof ev.ts === "number" && Number.isFinite(ev.ts)) tsEl.textContent = time24(new Date(ev.ts * 1000));
-          rebuildDecorations({ preserveScroll: true });
-          markEventSeen(ev);
-          return true;
-        }
+      const pendingUserController = codoxearPendingUser.createPendingUserController({
+        selectedSessionId: () => selected,
+        takePendingUserMatch,
+        chatInner,
+        markdownHtml: chatMarkdownHtmlCached,
+        time24,
+        rebuildDecorations,
+        markEventSeen,
+      });
 
         transcriptViewController = codoxearTranscriptView.createTranscriptViewController({
           root: chatInner,
@@ -2602,7 +2592,7 @@
           getMessageRowDeps: messageRowDeps,
           renderRuntime: {
             normalizeEvents: normalizedTranscriptEvents,
-            consumePendingUserIfMatches,
+            consumePendingUserIfMatches: (event, sessionId) => pendingUserController.consumePendingUserIfMatches(event, sessionId),
             isDuplicateEvent,
             isAdjacentAssistantDuplicateEvent,
             markEventSeen,
