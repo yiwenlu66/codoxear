@@ -7,7 +7,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app_application.js"
-APP_SESSION_OPEN_JS = ROOT / "codoxear" / "static" / "app_session_open.js"
+APP_COMPOSITION_JS = ROOT / "codoxear" / "static" / "app_application_composition.js"
+APP_SESSION_LIFECYCLE_JS = ROOT / "codoxear" / "static" / "app_session_lifecycle.js"
 APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
 APP_LAUNCH_JS = ROOT / "codoxear" / "static" / "app_launch.js"
 APP_TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"
@@ -16,7 +17,7 @@ APP_CSS = ROOT / "codoxear" / "static" / "app.css"
 
 
 def eval_launch_recovery_details() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
+    source = APP_JS.read_text(encoding="utf-8") + "\n" + APP_COMPOSITION_JS.read_text(encoding="utf-8")
     display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
     launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
     redactor_start = source.index("function redactedLaunchErrorText(value) {")
@@ -24,7 +25,7 @@ def eval_launch_recovery_details() -> dict:
     # The pure helpers (recoveryPromptPreview / recoveryDetailsText) stay in
     # app.js so diagnostics and recovery share a single source of truth.
     start = source.index("function recoveryPromptPreview(text, maxLen = 320)")
-    end = source.index("function clearSelectedSessionAfterRemoval(sessionId, {", start)
+    end = source.index("async function dismissFailedLaunchRecord(sessionId)", start)
     snippet = source[redactor_start:redactor_end] + "\n" + source[start:end]
     js = textwrap.dedent(
         f"""
@@ -79,7 +80,7 @@ def eval_launch_recovery_details() -> dict:
 
 
 def eval_open_session_tail_request_abort() -> dict:
-    source = APP_SESSION_OPEN_JS.read_text(encoding="utf-8")
+    source = APP_SESSION_LIFECYCLE_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -139,30 +140,35 @@ def eval_open_session_tail_request_abort() -> dict:
             reject(error);
           }});
         }});
-        const controller = ctx.window.CodoxearSessionOpen.createSessionOpenController({{
+        const controller = ctx.window.CodoxearSessionLifecycle.createSessionLifecycleController({{
           nextPollGeneration: () => ++state.pollGen,
+          incrementPollGeneration: () => ++state.pollGen,
           prepareSessionOpen: () => messageFlow.prepareSessionOpen(),
           getSelected: () => state.selected,
           setSelected: (sid) => {{ state.selected = sid; }},
           setActiveSession: () => {{}}, saveComposerDraft: () => {{}}, loadComposerDraft: () => {{}},
-          closeUnattendedForOtherSession: () => {{}}, persistSelected: () => {{}}, setSessionHash: () => {{}},
-          resetTranscriptForSession: () => {{}}, syncAttachments: () => {{}}, updateQueueBadge: () => {{}},
+          closeUnattendedForOtherSession: () => {{}}, persistSelected: () => {{}}, removePersistedSelected: () => {{}}, setSessionHash: () => {{}},
+          resetTranscriptForSession: () => {{}}, clearTranscriptForRemovedSession: () => {{}}, syncAttachments: () => {{}}, clearAttachments: () => {{}}, syncAttachmentButton: () => {{}}, updateQueueBadge: () => {{}},
           setStatus: () => {{}}, setContext: () => {{}}, setTyping: () => {{}}, resetChatRenderState: () => {{}},
           getSession: (sid) => sessions.get(sid),
           isCurrent: (sid, generation) => state.selected === sid && state.pollGen === generation,
-          setTitle: (session) => {{ state.title = `title:${{session.session_id}}`; }}, markClickLoad: () => {{}},
-          setTurnOpen: () => {{}}, updateTypingStats: () => {{}}, beginFileViewerSync: () => false,
+          setTitle: (session) => {{ state.title = `title:${{session.session_id}}`; }}, setNoSessionTitle: () => {{}}, markClickLoad: () => {{}},
+          setTurnOpen: () => {{}}, updateTypingStats: () => {{}}, beginFileViewerSync: () => false, handleFileViewerSessionUnavailable: () => {{}},
           finishFileViewerSync: () => {{}}, getTailCache: () => null, tailCacheMatchesSession: () => false,
           applyCachedTail: () => {{}}, renderTranscriptLoading: () => {{}}, messageFlow: () => messageFlow, api,
           initPageLimit: () => 60, handleAuthLoss: () => calls.push(["handleAuthLoss"]),
-          clearRemovedSession: () => {{}}, refreshSessions: async () => {{}},
+          refreshSessions: async () => {{}},
           renderTranscriptLoadError: () => calls.push(["renderTranscriptLoadError"]), isDisposed: () => false,
           kickPoll: () => {{}}, messagePollDelayMs: () => 900,
           updateTranscriptSlot: () => ({{ ignoredStaleBound: false, current: {{ state: "bound" }} }}),
           renderPendingTranscriptSlot: () => {{}}, applySessionRuntimeFromTail: () => {{}},
           renderSessionTail: () => calls.push(["renderSessionTail"]), openMessageEventSource: () => {{}},
           isMobile: () => false, closeSidebar: () => {{}}, updateUnattendedButton: () => {{}},
-          refreshFileCandidates: async () => {{}}, consoleError: () => {{}},
+          refreshFileCandidates: async () => {{}}, isUnattendedOpen: () => false, hideUnattendedMenu: () => {{}},
+          syncComposerSendButton: () => {{}}, syncQueueSubmitState: () => {{}}, setActiveTranscriptPending: () => {{}},
+          deleteTranscriptSession: () => {{}}, dropPendingUserRows: () => {{}}, sessionIdFromHash: () => "", rememberPendingHashSession: () => {{}},
+          sessionSelectable: () => false, normalizeAgentBackendName: (value) => value, providerChoiceToSettings: () => ({{}}),
+          backendSupportsFast: () => false, setToast: () => {{}}, confirmAction: async () => false, syncRecoveryUiForSession: () => {{}}, sleep: async () => {{}}, consoleError: () => {{}},
         }});
         (async () => {{
           const firstPromise = controller.openSession("sid-a", {{ useCache: false }});
@@ -189,183 +195,89 @@ def eval_open_session_tail_request_abort() -> dict:
     proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
 
-def eval_clear_deleted_session_client_state() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function clearDeletedSessionClientState(")
-    end = source.index("function syncRecoveryUiForSession", start)
-    snippet = source[start:end]
+def _run_lifecycle(body: str) -> dict:
+    source = APP_SESSION_LIFECYCLE_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const calls = [];
-        const ctx = {{
-          clearSelectedSessionAfterRemoval: (sid) => {{ calls.push(["clearSelectedSessionAfterRemoval", sid]); return sid === "selected"; }},
-          transcriptSlotRuntime: {{ deleteSession: (sid) => calls.push(["transcriptSlotRuntime.deleteSession", sid]) }},
-          dropPendingUserRows: (sid, predicate) => calls.push(["dropPendingUserRows", sid, predicate({{}})]),
-        }};
+        const ctx = {{ window: {{}}, console }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_clear_deleted = clearDeletedSessionClientState;\n")}, ctx);
-        const selectedResult = ctx.__test_clear_deleted("selected");
-        const selectedCalls = calls.slice();
-        calls.length = 0;
-        const otherResult = ctx.__test_clear_deleted("other");
-        const otherCalls = calls.slice();
-        process.stdout.write(JSON.stringify({{ selectedResult, selectedCalls, otherResult, otherCalls }}));
+        vm.runInContext({json.dumps(source)}, ctx);
+        const calls = [];
+        const noop = () => {{}};
+        const selected = {{ value: "sid-1" }};
+        const options = new Proxy({{
+          getSelected: () => selected.value,
+          setSelected: (value) => {{ selected.value = value; }},
+          incrementPollGeneration: () => {{ calls.push(["incrementPollGeneration"]); }},
+          messageFlow: () => ({{ abortMessagePollRequest: () => calls.push(["abortMessagePollRequest"]), clearPollSchedule: () => calls.push(["clearPollSchedule"]) }}),
+          handleFileViewerSessionUnavailable: (sid) => calls.push(["handleFileViewerSessionUnavailable", sid]),
+          setActiveTranscriptPending: () => calls.push(["setActiveTranscriptPending"]),
+          clearTranscriptForRemovedSession: () => calls.push(["clearTranscriptForRemovedSession"]),
+          removePersistedSelected: () => calls.push(["removePersistedSelected"]),
+          setSessionHash: (value) => calls.push(["setSessionHash", value]),
+          setNoSessionTitle: () => calls.push(["setNoSessionTitle"]),
+          setStatus: (value) => calls.push(["setStatus", value]), setContext: (value) => calls.push(["setContext", value]), setTyping: (value) => calls.push(["setTyping", value]),
+          clearAttachments: () => calls.push(["clearAttachments"]), syncAttachmentButton: () => calls.push(["syncAttachmentButton"]), resetChatRenderState: () => calls.push(["resetChatRenderState"]), updateQueueBadge: () => calls.push(["updateQueueBadge"]),
+          isUnattendedOpen: () => true, hideUnattendedMenu: () => calls.push(["hideUnattendedMenu"]), updateUnattendedButton: () => calls.push(["updateUnattendedButton"]),
+          syncComposerSendButton: () => calls.push(["syncComposerSendButton"]), syncQueueSubmitState: () => calls.push(["syncQueueSubmitState"]),
+          deleteTranscriptSession: (sid) => calls.push(["deleteTranscriptSession", sid]), dropPendingUserRows: (sid) => calls.push(["dropPendingUserRows", sid]),
+        }}, {{ get: (target, name) => name in target ? target[name] : noop }});
+        const controller = ctx.window.CodoxearSessionLifecycle.createSessionLifecycleController(options);
+        {body}
         """
     )
     proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
 
+
+def eval_clear_deleted_session_client_state() -> dict:
+    return _run_lifecycle(
+        """
+        const selectedResult = controller.clearDeletedSessionClientState("sid-1");
+        const selectedCalls = calls.slice();
+        calls.length = 0;
+        const otherResult = controller.clearDeletedSessionClientState("other");
+        process.stdout.write(JSON.stringify({ selectedResult, selectedCalls, otherResult, otherCalls: calls }));
+        """
+    )
 
 
 def eval_clear_selected_session_after_removal() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function clearSelectedSessionAfterRemoval(")
-    end = source.index("function syncRecoveryUiForSession", start)
-    snippet = source[start:end]
-    js = textwrap.dedent(
-        f"""
-        const vm = require("vm");
-        const calls = [];
-        const ctx = {{
-          selected: "sid-1",
-          pollGen: 7,
-          pollTimer: 123,
-          pollKickPending: true,
-          pollKickDelayMs: 50,
-          unattendedController: {{ isOpen: () => true, menuSessionId: () => null }},
-          activeTranscriptState: "bound",
-          activeLogPath: "/old.jsonl",
-          activeThreadId: "old-thread",
-          liveCursor: "cursor",
-          transcriptSlotRuntime: {{
-            setActivePending: () => {{
-              calls.push(["transcriptSlotRuntime.setActivePending"]);
-              ctx.activeTranscriptState = "pending_bind";
-              ctx.activeLogPath = null;
-              ctx.activeThreadId = null;
-              ctx.liveCursor = null;
-            }},
-            deleteSession: (sid) => calls.push(["transcriptSlotRuntime.deleteSession", sid]),
-          }},
-          turnOpen: true,
-          titleLabel: {{ textContent: "old title" }},
-          handleFileViewerSessionUnavailable: (sid) => calls.push(["handleFileViewerSessionUnavailable", sid, ctx.selected]),
-          abortMessagePollRequest: () => calls.push(["abortMessagePollRequest"]),
-          clearTimeout: (timer) => calls.push(["clearTimeout", timer]),
-          clearRenderedTranscriptRange: () => calls.push(["clearRenderedTranscriptRange"]),
-          storageRemoveItem: (...args) => calls.push(["storageRemoveItem", ...args]),
-          setSessionHash: (...args) => calls.push(["setSessionHash", ...args]),
-          setStatus: (...args) => calls.push(["setStatus", ...args]),
-          setContext: (...args) => calls.push(["setContext", ...args]),
-          setTyping: (...args) => calls.push(["setTyping", ...args]),
-          setAttachCount: (...args) => calls.push(["setAttachCount", ...args]),
-          resetChatRenderState: () => calls.push(["resetChatRenderState"]),
-          updateQueueBadge: () => calls.push(["updateQueueBadge"]),
-          hideUnattendedMenu: () => calls.push(["hideUnattendedMenu"]),
-          updateUnattendedBtnState: () => calls.push(["updateUnattendedBtnState"]),
-          syncComposerSendButton: () => calls.push(["syncSendButtonState"]),
-          syncQueueSubmitState: () => calls.push(["syncQueueSubmitState"]),
-          syncAttachButtonState: () => calls.push(["syncAttachButtonState"]),
-          attachmentsController: {{
-            setStagedAttachments: (...args) => calls.push(["attachmentsController.setStagedAttachments", ...args]),
-            syncAttachButtonState: () => calls.push(["attachmentsController.syncAttachButtonState"]),
-          }},
-          messageFlowController: {{
-            abortMessagePollRequest: () => calls.push(["abortMessagePollRequest"]),
-            clearPollSchedule: () => {{
-              if (ctx.pollTimer) ctx.clearTimeout(ctx.pollTimer);
-              ctx.pollTimer = null;
-              ctx.pollKickPending = false;
-              ctx.pollKickDelayMs = null;
-            }},
-          }},
-        }};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_clear = clearSelectedSessionAfterRemoval;\n")}, ctx);
-        const noop = ctx.__test_clear("other", {{ incrementPollGen: true, clearPollState: true }});
-        const noopState = {{ selected: ctx.selected, pollGen: ctx.pollGen, calls: calls.slice() }};
+    return _run_lifecycle(
+        """
+        const noopResult = controller.clearSelectedSessionAfterRemoval("other", { incrementPollGen: true, clearPollState: true });
+        const noopCalls = calls.slice();
         calls.length = 0;
-        const applied = ctx.__test_clear("sid-1", {{ incrementPollGen: true, clearPollState: true }});
-        const appliedState = {{
-          selected: ctx.selected,
-          pollGen: ctx.pollGen,
-          pollTimer: ctx.pollTimer,
-          pollKickPending: ctx.pollKickPending,
-          pollKickDelayMs: ctx.pollKickDelayMs,
-          activeTranscriptState: ctx.activeTranscriptState,
-          activeLogPath: ctx.activeLogPath,
-          activeThreadId: ctx.activeThreadId,
-          liveCursor: ctx.liveCursor,
-          turnOpen: ctx.turnOpen,
-          title: ctx.titleLabel.textContent,
-          calls: calls.slice(),
-        }};
-        process.stdout.write(JSON.stringify({{ noop, noopState, applied, appliedState }}));
+        const applied = controller.clearSelectedSessionAfterRemoval("sid-1", { incrementPollGen: true, clearPollState: true });
+        process.stdout.write(JSON.stringify({ noopResult, noopCalls, applied, calls }));
         """
     )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    return json.loads(proc.stdout)
 
 
 class TestChatScrollbackSource(unittest.TestCase):
     def test_clear_deleted_session_client_state_clears_explicit_delete_state(self) -> None:
         result = eval_clear_deleted_session_client_state()
         self.assertTrue(result["selectedResult"])
-        self.assertEqual(
-            result["selectedCalls"],
-            [
-                ["clearSelectedSessionAfterRemoval", "selected"],
-                ["transcriptSlotRuntime.deleteSession", "selected"],
-                ["dropPendingUserRows", "selected", True],
-            ],
-        )
+        self.assertContains(["deleteTranscriptSession", "sid-1"], result["selectedCalls"])
+        self.assertContains(["dropPendingUserRows", "sid-1"], result["selectedCalls"])
         self.assertFalse(result["otherResult"])
-        self.assertEqual(
-            result["otherCalls"],
-            [
-                ["clearSelectedSessionAfterRemoval", "other"],
-                ["transcriptSlotRuntime.deleteSession", "other"],
-                ["dropPendingUserRows", "other", True],
-            ],
-        )
+        self.assertEqual(result["otherCalls"], [["deleteTranscriptSession", "other"], ["dropPendingUserRows", "other"]])
 
     def test_clear_selected_session_after_removal_resets_missing_session_state(self) -> None:
         result = eval_clear_selected_session_after_removal()
-        self.assertFalse(result["noop"])
-        self.assertEqual(result["noopState"], {"selected": "sid-1", "pollGen": 7, "calls": []})
+        self.assertFalse(result["noopResult"])
+        self.assertEqual(result["noopCalls"], [])
         self.assertTrue(result["applied"])
-        state = result["appliedState"]
-        self.assertIsNone(state["selected"])
-        self.assertEqual(state["pollGen"], 8)
-        self.assertIsNone(state["pollTimer"])
-        self.assertFalse(state["pollKickPending"])
-        self.assertIsNone(state["pollKickDelayMs"])
-        self.assertEqual(state["activeTranscriptState"], "pending_bind")
-        self.assertIsNone(state["activeLogPath"])
-        self.assertIsNone(state["activeThreadId"])
-        self.assertIsNone(state["liveCursor"])
-        self.assertFalse(state["turnOpen"])
-        self.assertEqual(state["title"], "No session selected")
-        self.assertEqual(state["calls"][0], ["handleFileViewerSessionUnavailable", "sid-1", "sid-1"])
-        self.assertContains(["abortMessagePollRequest"], state["calls"])
+        self.assertEqual(result["calls"][0], ["handleFileViewerSessionUnavailable", "sid-1"])
         for expected in [
-            ["clearTimeout", 123],
-            ["storageRemoveItem", "codexweb.selected"],
-            ["setSessionHash", ""],
-            ["setStatus", {"running": False, "queueLen": 0}],
-            ["setContext", None],
-            ["setTyping", False],
-            ["attachmentsController.setStagedAttachments", []],
-            ["resetChatRenderState"],
-            ["updateQueueBadge"],
-            ["hideUnattendedMenu"],
-            ["updateUnattendedBtnState"],
-            ["syncSendButtonState"],
-            ["syncQueueSubmitState"],
-            ["attachmentsController.syncAttachButtonState"],
+            ["abortMessagePollRequest"], ["clearPollSchedule"], ["incrementPollGeneration"], ["setActiveTranscriptPending"],
+            ["clearTranscriptForRemovedSession"], ["removePersistedSelected"], ["setSessionHash", ""], ["setNoSessionTitle"],
+            ["setStatus", {"running": False, "queueLen": 0}], ["setContext", None], ["setTyping", False], ["clearAttachments"],
+            ["syncAttachmentButton"], ["resetChatRenderState"], ["updateQueueBadge"], ["hideUnattendedMenu"], ["updateUnattendedButton"],
+            ["syncComposerSendButton"], ["syncQueueSubmitState"],
         ]:
-            self.assertContains(expected, state["calls"])
+            self.assertContains(expected, result["calls"])
 
     def test_open_session_tail_request_aborts_superseded_open(self) -> None:
         result = eval_open_session_tail_request_abort()

@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_JS = ROOT / "codoxear" / "static" / "app_application.js"
+APP_JS = ROOT / "codoxear" / "static" / "app_application_composition.js"
 APP_POLLING_JS = ROOT / "codoxear" / "static" / "app_polling.js"
 APP_COMPOSER_JS = ROOT / "codoxear" / "static" / "app_composer.js"
 APP_TRANSCRIPT_JS = ROOT / "codoxear" / "static" / "app_transcript.js"

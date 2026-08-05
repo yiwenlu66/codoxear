@@ -120,6 +120,492 @@
     return Object.freeze({ elements, cleanup() { root.innerHTML = ""; } });
   }
 
+  function createApplicationModalDOM(options = {}) {
+    const { root, el, iconSvg, windowTarget: window, codoxearVoice, voiceHost } = options;
+    if (!root || typeof root.appendChild !== "function") throw new TypeError("shell dependency missing: root");
+    if (typeof el !== "function" || typeof iconSvg !== "function") throw new TypeError("shell dependency missing: DOM helpers");
+    if (!window || !codoxearVoice || typeof codoxearVoice.createVoiceDom !== "function") throw new TypeError("shell dependency missing: modal runtime");
+    const fileBackdrop = el("div", { class: "modalBackdrop", id: "fileBackdrop" });
+    const fileCloseBtn = el("button", {
+      id: "fileCloseBtn",
+      class: "icon-btn",
+      title: "Close",
+      "aria-label": "Close",
+      type: "button",
+      html: iconSvg("x"),
+    });
+    const fileStatus = el("div", { class: "muted fileStatus", id: "fileStatus", role: "status", "aria-live": "polite", text: "" });
+    const filePickerInput = el("input", {
+      id: "filePickerInput",
+      class: "filePickerInput",
+      type: "text",
+      placeholder: "Choose or search files",
+      autocomplete: "off",
+      spellcheck: "false",
+      role: "combobox",
+      "aria-autocomplete": "list",
+      "aria-controls": "filePickerMenu",
+      "aria-expanded": "false",
+    });
+    const filePickerMenu = el("div", { id: "filePickerMenu", class: "filePickerMenu", role: "listbox" });
+    const filePickerField = el("div", { class: "pickerField filePickerField", id: "filePickerField" }, [
+      el("span", { class: "filePickerIcon", html: iconSvg("chevronDown"), "aria-hidden": "true" }),
+      filePickerInput,
+      filePickerMenu,
+    ]);
+    const fileModeDiffBtn = el("button", {
+      id: "fileModeDiffBtn",
+      class: "icon-btn",
+      type: "button",
+      title: "Toggle diff",
+      "aria-label": "Toggle diff",
+      html: iconSvg("diff"),
+    });
+    const fileModePreviewBtn = el("button", {
+      id: "fileModePreviewBtn",
+      class: "icon-btn",
+      type: "button",
+      title: "Toggle markdown preview",
+      "aria-label": "Toggle markdown preview",
+      html: iconSvg("preview"),
+    });
+    const fileEditBtn = el("button", {
+      id: "fileEditBtn",
+      class: "icon-btn",
+      type: "button",
+      title: "Edit file",
+      "aria-label": "Edit file",
+      html: iconSvg("edit"),
+    });
+    const fileVideoPreviewBtn = el("button", {
+      id: "fileVideoPreviewBtn",
+      class: "icon-btn",
+      type: "button",
+      title: "Use compatible MP4 preview",
+      "aria-label": "Use compatible MP4 preview",
+      html: iconSvg("play"),
+    });
+    fileVideoPreviewBtn.style.display = "none";
+    const fileDownloadBtn = el("button", {
+      id: "fileDownloadBtn",
+      class: "icon-btn",
+      type: "button",
+      title: "Download file",
+      "aria-label": "Download file",
+      html: iconSvg("download"),
+    });
+    const fileTouchSelectBtn = el("button", {
+      id: "fileTouchSelectBtn",
+      class: "icon-btn fileTouchBtn",
+      type: "button",
+      title: "Select",
+      "aria-label": "Select",
+      html: iconSvg("select"),
+    });
+    const fileTouchCopyBtn = el("button", {
+      id: "fileTouchCopyBtn",
+      class: "icon-btn fileTouchBtn",
+      type: "button",
+      title: "Copy selection",
+      "aria-label": "Copy selection",
+      html: iconSvg("copy"),
+    });
+    const fileTouchPasteBtn = el("button", {
+      id: "fileTouchPasteBtn",
+      class: "icon-btn fileTouchBtn",
+      type: "button",
+      title: "Paste",
+      "aria-label": "Paste",
+      html: iconSvg("paste"),
+    });
+    const fileTouchUpBtn = el("button", {
+      id: "fileTouchUpBtn",
+      class: "icon-btn fileTouchBtn",
+      type: "button",
+      title: "Select up",
+      "aria-label": "Select up",
+      html: iconSvg("up"),
+    });
+    const fileTouchLeftBtn = el("button", {
+      id: "fileTouchLeftBtn",
+      class: "icon-btn fileTouchBtn",
+      type: "button",
+      title: "Select left",
+      "aria-label": "Select left",
+      html: iconSvg("left"),
+    });
+    const fileTouchDownBtn = el("button", {
+      id: "fileTouchDownBtn",
+      class: "icon-btn fileTouchBtn",
+      type: "button",
+      title: "Select down",
+      "aria-label": "Select down",
+      html: iconSvg("down"),
+    });
+    const fileTouchRightBtn = el("button", {
+      id: "fileTouchRightBtn",
+      class: "icon-btn fileTouchBtn",
+      type: "button",
+      title: "Select right",
+      "aria-label": "Select right",
+      html: iconSvg("right"),
+    });
+    const fileTouchDpad = el("div", { id: "fileTouchDpad", class: "fileTouchDpad" }, [
+      el("span", { class: "fileTouchSpacer", "aria-hidden": "true" }),
+      fileTouchUpBtn,
+      el("span", { class: "fileTouchSpacer", "aria-hidden": "true" }),
+      fileTouchLeftBtn,
+      fileTouchDownBtn,
+      fileTouchRightBtn,
+    ]);
+    const fileTouchActions = el("div", { id: "fileTouchActions", class: "fileTouchActions" }, [
+      fileTouchSelectBtn,
+      fileTouchCopyBtn,
+      fileTouchPasteBtn,
+    ]);
+    const fileTouchToolbar = el("div", { id: "fileTouchToolbar", class: "fileTouchToolbar" }, [
+      fileTouchDpad,
+      fileTouchActions,
+    ]);
+    const fileDiff = el("div", { class: "fileDiff", id: "fileDiff" });
+    const fileImage = el("img", { id: "fileImage", class: "fileImage", alt: "" });
+    const fileVideo = el("video", { id: "fileVideo", class: "fileVideo", controls: true, preload: "metadata" });
+    const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-modal": "true", "aria-label": "File viewer" }, [
+      el("div", { class: "fileViewerHeader" }, [
+        el("div", { class: "title", text: "View file" }),
+        el("div", { class: "actions" }, [fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, fileVideoPreviewBtn, fileDownloadBtn, fileCloseBtn]),
+      ]),
+      el("div", { class: "fileCandRow", id: "fileCandRow" }, [filePickerField]),
+      fileStatus,
+      fileDiff,
+      fileImage,
+      fileVideo,
+      fileTouchToolbar,
+    ]);
+    root.appendChild(fileBackdrop);
+    root.appendChild(fileViewer);
 
-  window.CodoxearShell = Object.freeze({ createShellDOM });
+    const fileUnsavedBackdrop = el("div", { class: "modalBackdrop", id: "fileUnsavedBackdrop" });
+    const fileUnsavedDialog = el("div", { class: "sendChoice fileUnsavedDialog", id: "fileUnsavedDialog", role: "dialog", "aria-modal": "true", "aria-label": "Unsaved file changes" }, [
+      el("div", { class: "title", text: "Unsaved changes" }),
+      el("div", { class: "muted", text: "Save this file before leaving the editor?" }),
+      el("div", { class: "sendChoiceActions" }, [
+        el("button", { class: "primary", id: "fileUnsavedSaveBtn", type: "button", text: "Save" }),
+        el("button", { id: "fileUnsavedDiscardBtn", type: "button", text: "Discard" }),
+        el("button", { id: "fileUnsavedCancelBtn", type: "button", text: "Cancel" }),
+      ]),
+    ]);
+    root.appendChild(fileUnsavedBackdrop);
+    root.appendChild(fileUnsavedDialog);
+    const filePasteBackdrop = el("div", { class: "modalBackdrop", id: "filePasteBackdrop" });
+    const filePasteInput = el("textarea", {
+      id: "filePasteInput",
+      class: "filePasteInput",
+      placeholder: "Paste text here",
+      spellcheck: "false",
+      autocapitalize: "off",
+      autocomplete: "off",
+      autocorrect: "off",
+    });
+    const filePasteDialog = el("div", { class: "sendChoice filePasteDialog", id: "filePasteDialog", role: "dialog", "aria-modal": "true", "aria-label": "Paste into file" }, [
+      el("div", { class: "title", text: "Paste into file" }),
+      el("div", { class: "muted", text: "Long-press in this box to use the browser paste menu, then insert into the editor." }),
+      filePasteInput,
+      el("div", { class: "sendChoiceActions" }, [
+        el("button", { class: "primary", id: "filePasteInsertBtn", type: "button", text: "Insert" }),
+        el("button", { id: "filePasteCancelBtn", type: "button", text: "Cancel" }),
+      ]),
+    ]);
+    root.appendChild(filePasteBackdrop);
+    root.appendChild(filePasteDialog);
+
+    const sendChoiceBackdrop = el("div", { class: "modalBackdrop", id: "sendChoiceBackdrop" });
+    const sendChoice = el("div", { class: "sendChoice", id: "sendChoice", role: "dialog", "aria-modal": "true", "aria-label": "Send options" }, [
+      el("div", { class: "title", text: "Current response is running" }),
+      el("div", { class: "muted", text: "Choose how to handle your next message." }),
+      el("div", { class: "sendChoiceActions" }, [
+        el("button", { class: "primary", id: "sendChoiceNow", type: "button", text: "Send now" }),
+        el("button", { id: "sendChoiceLater", type: "button", text: "Send after current" }),
+        el("button", { id: "sendChoiceCancel", type: "button", text: "Cancel" }),
+      ]),
+    ]);
+    root.appendChild(sendChoiceBackdrop);
+    root.appendChild(sendChoice);
+
+    const appConfirmBackdrop = el("div", { class: "modalBackdrop appConfirmBackdrop", id: "appConfirmBackdrop" });
+    const appConfirmTitle = el("div", { class: "title", id: "appConfirmTitle", text: "Confirm action" });
+    const appConfirmMessage = el("div", { class: "muted appConfirmMessage", id: "appConfirmMessage", text: "" });
+    const appConfirmConfirmBtn = el("button", { class: "primary", id: "appConfirmConfirmBtn", type: "button", text: "Confirm" });
+    const appConfirmCancelBtn = el("button", { id: "appConfirmCancelBtn", type: "button", text: "Cancel" });
+    const appConfirm = el("div", {
+      class: "sendChoice appConfirm",
+      id: "appConfirm",
+      role: "dialog",
+      "aria-modal": "true",
+      "aria-labelledby": "appConfirmTitle",
+      "aria-describedby": "appConfirmMessage",
+    }, [
+      appConfirmTitle,
+      appConfirmMessage,
+      el("div", { class: "sendChoiceActions appConfirmActions" }, [appConfirmConfirmBtn, appConfirmCancelBtn]),
+    ]);
+    root.appendChild(appConfirmBackdrop);
+    root.appendChild(appConfirm);
+
+    const codoxearQueue = window.CodoxearQueue;
+    if (!codoxearQueue || typeof codoxearQueue.createQueueDom !== "function")
+      throw new Error("Codoxear queue DOM failed to load");
+    const {
+      queueBackdrop,
+      queueCloseBtn,
+      queueList,
+      queueEmpty,
+      queueViewer,
+    } = codoxearQueue.createQueueDom({ root, el, iconSvg });
+
+    const helpBackdrop = el("div", { class: "modalBackdrop", id: "helpBackdrop" });
+    const helpCloseBtn = el("button", {
+      id: "helpCloseBtn",
+      class: "icon-btn",
+      title: "Close",
+      "aria-label": "Close",
+      type: "button",
+      html: iconSvg("x"),
+    });
+    const helpViewer = el("div", { class: "helpViewer", id: "helpViewer", role: "dialog", "aria-modal": "true", "aria-label": "Help" }, [
+      el("div", { class: "queueHeader" }, [
+        el("div", { class: "title", text: "Help" }),
+        el("div", { class: "actions" }, [helpCloseBtn]),
+      ]),
+      el("div", {
+        class: "helpBody",
+        html: `<div class="muted">Sessions</div>
+<ul class="md">
+  <li>Choose a conversation from the sidebar. On desktop, hover a row to reveal <b>Edit</b>, <b>Duplicate</b>, and <b>Delete</b>. On touch, swipe left for <b>Edit</b>/<b>Duplicate</b> and right for <b>Delete</b>.</li>
+  <li>The dot on the title row shows state: <b>filled + pulsing</b> = busy, <b>hollow</b> = idle, <b>filled (no pulse)</b> = snoozed or blocked, <b>filled amber + pulsing</b> = starting.</li>
+  <li>The metadata line shows the agent-backend icon first, then the session-type icon, followed by recency, model and reasoning suffix (for example <b>·hi</b>), folder, and branch.</li>
+  <li>Click the conversation title to rename or reprioritize it. <b>Details</b> in the session utilities bar shows the exact backend, provider, model, reasoning level, queue state, and token usage.</li>
+</ul>
+<div class="muted">New session</div>
+<ul class="md">
+  <li><b>New session</b> can start fresh or resume a matching conversation for the currently selected backend in the current working directory.</li>
+  <li>The backend tabs choose between the supported agent backends. Right now that is <b>Codex</b>, <b>Pi</b>, and <b>Claude</b>.</li>
+  <li>You can choose working directory, a combined provider/model pair, reasoning level, and whether the session should start in tmux. If the directory is a Git repo, you can also start in a new worktree branch.</li>
+  <li>For Pi, the reasoning level is set when the session launches. To change it later on a live session, type <b>/thinking</b> in the composer (see Messages and queue).</li>
+  <li>Codoxear remembers the last backend you used and the last provider/model pair for each backend.</li>
+</ul>
+<div class="muted">Messages and queue</div>
+<ul class="md">
+  <li><b>Send</b> submits immediately when the session is idle. When it is busy, a dialog offers <b>Send now</b> (sends right away, steering the running turn) or <b>Send after current</b> (queues the prompt for when the session becomes idle).</li>
+  <li>The queue is stored per session and drains automatically when that session becomes idle. Use <b>Queued messages</b> to review or edit queued prompts.</li>
+  <li><b>Load older messages</b> fetches more scrollback. <b>Jump to latest</b> returns to the newest turn when you are reading history.</li>
+  <li>The <b>Search</b> button and <b>Previous</b>/<b>Next</b> message controls live in the navigation bar at the top of the conversation (not a floating rail). Use <b>/</b> to search the conversation. The search bar shows a position such as <b>2 of 5</b>; at the oldest visible match, it tells you when <b>Previous</b> can load older matches.</li>
+  <li>On a <b>Pi</b> session, type <b>/model</b> in the composer to switch models live, or <b>/thinking</b> to switch the reasoning level. Start typing to filter the list, then choose an entry. The model picker lists configured providers and models; the thinking picker lists the levels the current model supports.</li>
+  <li>Press <b>f</b> to show keyboard hints over every visible control; type the label exactly as shown. Stable shell labels include <b>1</b>–<b>9</b> sessions; <b>s</b> sidebar; <b>t</b> edit conversation; <b>b</b> files; <b>d</b> details; <b>u</b> unattended; <b>z</b> interrupt; <b>/</b> search; <b>p</b>/<b>n</b> previous/next user message; <b>o</b> older messages; <b>g</b> latest; <b>a</b> attach; <b>q</b> queued messages; <b>e</b> send; <b>i</b> message box; <b>c</b> new session; <b>h</b> help; <b>w</b> settings; and <b>l</b> log out. Extra visible controls receive their displayed dynamic label. Press <b>Escape</b> or <b>Backspace</b> to cancel.</li>
+  <li>In an open dialog, press a visible button's first distinctive letter to activate it. When buttons share their first letter, use a later distinctive letter. <b>Esc</b> closes the dialog.</li>
+  <li>Direct shortcuts (no leader): <b>i</b> focus message box; <b>j</b>/<b>k</b> scroll down/up; <b>d</b>/<b>u</b> scroll half-page down/up; <b>G</b> go to bottom; <b>D</b> delete current session (confirm); <b>/</b> search; <b>Esc</b> exit message box or close dialog.</li>
+</ul>
+<div class="muted">Unattended mode</div>
+<ul class="md">
+  <li>Unattended mode is a per-session idle nudge. Open the Unattended button in the session utilities bar, turn it on, and optionally add an extra request to append to the built-in unattended-work prompt.</li>
+  <li><b>Cooldown time</b> is how many idle minutes must pass after the assistant finishes before the next unattended prompt is injected.</li>
+  <li><b>Number of injections</b> is the remaining auto-injection budget for that session. Each unattended prompt decrements it, and unattended mode turns itself off when it reaches zero.</li>
+  <li>Unattended mode runs in the server process, so it keeps working even if you close the browser tab. Enabled sessions show an <b>unattended</b> badge in the sidebar.</li>
+</ul>
+<div class="muted">Files</div>
+<ul class="md">
+  <li><b>View file</b> opens recent or changed files from the selected session, with diff, file, and preview modes where available.</li>
+  <li>File paths mentioned in assistant messages become clickable when the server can resolve them.</li>
+  <li><b>Attach file</b> adds local files or images to the current prompt.</li>
+</ul>
+<div class="muted">Announcements and notifications</div>
+<ul class="md">
+  <li><b>Announcement</b> is a per-browser toggle. It plays the shared server audio stream and announces every end-of-turn response. Narration announcements are optional in Settings.</li>
+  <li><b>Notification</b> is a per-browser toggle. On desktop it enables live browser notifications for final responses. On iPhone/iPad it can also enable Web Push when you use the installed Home Screen app over HTTPS.</li>
+  <li>If Announcement cannot be enabled yet, open <b>Settings</b> and fill in the OpenAI-compatible API base URL and API key used for summarization and speech.</li>
+</ul>`,
+      }),
+    ]);
+    root.appendChild(helpBackdrop);
+    root.appendChild(helpViewer);
+
+    const diagBackdrop = el("div", { class: "modalBackdrop", id: "diagBackdrop" });
+    const diagCopyConversationBtn = el("button", {
+      id: "diagCopyConversationBtn",
+      class: "icon-btn",
+      title: "Copy conversation",
+      "aria-label": "Copy conversation",
+      type: "button",
+      html: iconSvg("copy-all"),
+    });
+    const diagCopyBtn = el("button", {
+      id: "diagCopyBtn",
+      class: "icon-btn",
+      title: "Copy details",
+      "aria-label": "Copy details",
+      type: "button",
+      html: iconSvg("copy"),
+    });
+    const diagCloseBtn = el("button", {
+      id: "diagCloseBtn",
+      class: "icon-btn",
+      title: "Close",
+      "aria-label": "Close",
+      type: "button",
+      html: iconSvg("x"),
+    });
+    // Detail actions start disabled until the controller loads the selected
+    // session's details and enables their corresponding payloads.
+    diagCopyConversationBtn.disabled = true;
+    diagCopyBtn.disabled = true;
+    const diagStatus = el("div", { class: "muted", id: "diagStatus", text: "" });
+    const diagContent = el("div", { class: "detailsGrid", id: "diagContent" });
+    const diagViewer = el("div", { class: "diagViewer", id: "diagViewer", role: "dialog", "aria-modal": "true", "aria-label": "Details" }, [
+      el("div", { class: "queueHeader" }, [
+        el("div", { class: "title", text: "Details" }),
+        el("div", { class: "actions" }, [diagCopyConversationBtn, diagCopyBtn, diagCloseBtn]),
+      ]),
+      diagStatus,
+      diagContent,
+    ]);
+    root.appendChild(diagBackdrop);
+    root.appendChild(diagViewer);
+
+    const editCloseBtn = el("button", {
+      id: "editCloseBtn",
+      class: "icon-btn",
+      title: "Close",
+      "aria-label": "Close",
+      type: "button",
+      html: iconSvg("x"),
+    });
+    const editStatus = el("div", { class: "muted", id: "editStatus", text: "" });
+    const editNameInput = el("input", {
+      id: "editNameInput",
+      type: "text",
+      placeholder: "Conversation title",
+      maxlength: "80",
+      autocomplete: "off",
+    });
+    const editPriorityRange = el("input", {
+      id: "editPriorityRange",
+      type: "range",
+      min: "-1",
+      max: "1",
+      step: "0.05",
+      value: "0",
+    });
+    const editPriorityValue = el("span", { class: "rangeValue", id: "editPriorityValue", text: "+0.00" });
+    const editPriorityResetBtn = el("button", {
+      id: "editPriorityResetBtn",
+      class: "icon-btn text-btn subtleBtn",
+      type: "button",
+      text: "Reset",
+    });
+    const editSnoozeModeButtons = new Map();
+    let editSnoozeMode = "none";
+    const editSnoozeButtons = el("div", { class: "choiceChips", id: "editSnoozeButtons" });
+    for (const [value, label] of [
+      ["none", "No snooze"],
+      ["4h", "4 hours"],
+      ["tomorrow", "Tomorrow"],
+      ["custom", "Custom"],
+    ]) {
+      const btn = el("button", {
+        type: "button",
+        class: "choiceChip",
+        "data-snooze-mode": value,
+        text: label,
+      });
+      editSnoozeModeButtons.set(value, btn);
+      editSnoozeButtons.appendChild(btn);
+    }
+    const editSnoozeCustomDate = el("input", { id: "editSnoozeCustomDate", type: "date" });
+    const editSnoozeCustomTime = el("input", { id: "editSnoozeCustomTime", type: "time", step: "60" });
+    const editSnoozeCustomRow = el("div", { class: "customSnoozeRow", id: "editSnoozeCustomRow" }, [
+      editSnoozeCustomDate,
+      editSnoozeCustomTime,
+    ]);
+    const editDependencyBtn = el("button", {
+      id: "editDependencyBtn",
+      class: "filePickerBtn dialogPickerBtn",
+      type: "button",
+      "aria-label": "Choose dependency",
+    });
+    const editDependencyMenu = el("div", { id: "editDependencyMenu", class: "filePickerMenu dialogPickerMenu" });
+    const editDependencyField = el("div", { class: "pickerField" }, [editDependencyBtn]);
+    const editSaveBtn = el("button", { class: "primary", id: "editSaveBtn", type: "button", text: "Save" });
+    const editViewer = el("dialog", { class: "formViewer formDialog", id: "editViewer", "aria-label": "Edit conversation" }, [
+      el("div", { class: "queueHeader" }, [
+        el("div", { class: "title", text: "Edit conversation" }),
+        el("div", { class: "actions" }, [editCloseBtn]),
+      ]),
+      editStatus,
+      el("div", { class: "formBody" }, [
+        el("label", { class: "field" }, [
+          el("span", { class: "fieldLabel", text: "Conversation name" }),
+          editNameInput,
+        ]),
+        el("label", { class: "field editPriorityField" }, [
+          el("span", { class: "fieldLabel", text: "Priority offset" }),
+          el("div", { class: "sliderRow" }, [editPriorityRange, editPriorityValue, editPriorityResetBtn]),
+        ]),
+        el("label", { class: "field" }, [
+          el("span", { class: "fieldLabel", text: "Snooze" }),
+          editSnoozeButtons,
+          editSnoozeCustomRow,
+        ]),
+        el("label", { class: "field" }, [
+          el("span", { class: "fieldLabel", text: "Depends on" }),
+          editDependencyField,
+        ]),
+      ]),
+      el("div", { class: "formActions" }, [
+        el("button", { id: "editCancelBtn", type: "button", text: "Cancel" }),
+        editSaveBtn,
+      ]),
+    ]);
+    root.appendChild(editViewer);
+    editViewer.appendChild(editDependencyMenu);
+    const voiceDom = codoxearVoice.createVoiceDom({ root, el, iconSvg, voiceHost: voiceHost });
+    const {
+      announceBtn,
+      notificationBtn,
+      liveAudio,
+      voiceSettingsBackdrop,
+      voiceSettingsCloseBtn,
+      voiceSettingsStatus,
+      voiceBaseUrlInput,
+      voiceApiKeyInput,
+      voiceClearApiKeyToggle,
+      narrationSettingToggle,
+      unattendedPromptInput,
+      unattendedPromptResetBtn,
+      voiceSettingsViewer,
+      voiceSettingsCancelBtn,
+      voiceSettingsSaveBtn,
+    } = voiceDom;
+
+    return Object.freeze({
+      fileBackdrop, fileCloseBtn, fileStatus, filePickerInput, filePickerMenu, filePickerField,
+      fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, fileVideoPreviewBtn, fileDownloadBtn,
+      fileTouchSelectBtn, fileTouchCopyBtn, fileTouchPasteBtn, fileTouchUpBtn, fileTouchLeftBtn,
+      fileTouchDownBtn, fileTouchRightBtn, fileTouchDpad, fileTouchActions, fileTouchToolbar,
+      fileDiff, fileImage, fileVideo, fileViewer, fileUnsavedBackdrop, fileUnsavedDialog,
+      filePasteBackdrop, filePasteInput, filePasteDialog, sendChoiceBackdrop, sendChoice,
+      appConfirmBackdrop, appConfirmTitle, appConfirmMessage, appConfirmConfirmBtn,
+      appConfirmCancelBtn, appConfirm, queueBackdrop, queueCloseBtn, queueList, queueEmpty,
+      queueViewer, helpBackdrop, helpCloseBtn, helpViewer, diagBackdrop, diagCopyConversationBtn,
+      diagCopyBtn, diagCloseBtn, diagStatus, diagContent, diagViewer, editCloseBtn, editStatus,
+      editNameInput, editPriorityRange, editPriorityValue, editPriorityResetBtn,
+      editSnoozeModeButtons, editSnoozeButtons, editSnoozeCustomDate, editSnoozeCustomTime,
+      editSnoozeCustomRow, editDependencyBtn, editDependencyMenu, editDependencyField,
+      editSaveBtn, editViewer, announceBtn, notificationBtn, liveAudio, voiceSettingsBackdrop,
+      voiceSettingsCloseBtn, voiceSettingsStatus, voiceBaseUrlInput, voiceApiKeyInput,
+      voiceClearApiKeyToggle, narrationSettingToggle, unattendedPromptInput,
+      unattendedPromptResetBtn, voiceSettingsViewer, voiceSettingsCancelBtn, voiceSettingsSaveBtn
+    });
+  }
+
+  window.CodoxearShell = Object.freeze({ createShellDOM, createApplicationModalDOM });
 })();

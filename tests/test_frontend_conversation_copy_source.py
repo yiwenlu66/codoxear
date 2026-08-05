@@ -7,7 +7,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_JS = ROOT / "codoxear" / "static" / "app_application.js"
+APP_JS = ROOT / "codoxear" / "static" / "app_application_composition.js"
+APP_GUARD_JS = ROOT / "codoxear" / "static" / "app_application.js"
 APP_CONVERSATION_COPY_JS = ROOT / "codoxear" / "static" / "app_conversation_copy.js"
 INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 
@@ -51,7 +52,7 @@ def eval_conversation_copy_helpers(expression: str) -> dict:
 
 
 def run_app_conversation_copy_guard(setup_js: str = "") -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
+    source = APP_GUARD_JS.read_text(encoding="utf-8")
     start = source.index("const codoxearConversationCopy = window.CodoxearConversationCopy;")
     end = source.index("function normalizeAgentBackendName", start)
     guard_source = source[start:end]
@@ -73,7 +74,7 @@ def run_app_conversation_copy_guard(setup_js: str = "") -> dict:
 
 
 def eval_app_copy_failure_toasts() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
+    source = APP_GUARD_JS.read_text(encoding="utf-8")
     start = source.index("const codoxearConversationCopy = window.CodoxearConversationCopy;")
     end = source.index("function normalizeAgentBackendName", start)
     guard_source = source[start:end]

@@ -185,3 +185,96 @@ def test_extracted_controller_behavior() -> None:
         "height",
         "clear",
     ]
+
+
+def run_file_viewer_integration_harness() -> dict:
+    source = (STATIC / "app_file_viewer_integration.js").read_text(encoding="utf-8")
+    program = textwrap.dedent(
+        """
+        const vm = require("vm");
+        const context = { window: {} };
+        vm.createContext(context);
+        vm.runInContext(__SOURCE__, context, { filename: "app_file_viewer_integration.js" });
+
+        let launchFailed = true;
+        const calls = [];
+        const integration = context.window.CodoxearFileViewerIntegration.createFileViewerIntegration({
+          selectedSessionLaunchFailed: () => launchFailed,
+          setToast: (message) => calls.push(["toast", message]),
+          lifecycleRuntime: {
+            show: (options) => { calls.push(["show", options]); return Promise.resolve("shown"); },
+            hide: () => { calls.push(["hide"]); return "hidden"; },
+          },
+          fileViewerController: {
+            setFileEditMode: (mode) => { calls.push(["edit", mode]); return mode; },
+            handleFileTouchSelectionKeydown: (event) => { calls.push(["touch", event.key]); return event.key; },
+          },
+          fileLoadResultRuntime: {
+            apply: (rel, result, request, options) => {
+              calls.push(["load", rel, result, request, options]);
+              return Promise.resolve("loaded");
+            },
+          },
+          confirmAction: (options) => { calls.push(["confirm", options]); return Promise.resolve(true); },
+          fileUnsavedController: {
+            promptFileUnsavedChoice: () => { calls.push(["unsaved"]); return Promise.resolve("discard"); },
+          },
+        });
+
+        const blocked = integration.openFileViewer();
+        launchFailed = false;
+        Promise.all([
+          integration.openFileViewer({ path: "notes.txt", mode: "preview", line: 4, pickerQuery: "notes" }),
+          integration.applyFileLoadResult("notes.txt", { text: "x" }, "request-1", { viewMode: "diff" }),
+          integration.confirmReload("Discard draft?"),
+          integration.promptUnsavedFileChoice(),
+        ]).then(([opened, loaded, confirmed, unsaved]) => {
+          const closed = integration.closeFileViewer();
+          const edit = integration.setFileEditMode(true);
+          const touch = integration.handleFileTouchSelectionKeydown({ key: "ArrowDown" });
+          process.stdout.write(JSON.stringify({ blocked, opened, loaded, confirmed, unsaved, closed, edit, touch, calls }));
+        });
+        """
+    ).replace("__SOURCE__", json.dumps(source))
+    completed = subprocess.run(
+        ["node", "-e", program],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={"PATH": os.environ.get("PATH", ""), "TZ": "UTC"},
+    )
+    return json.loads(completed.stdout)
+
+
+def test_file_viewer_integration_behavior() -> None:
+    result = run_file_viewer_integration_harness()
+
+    assert result == {
+        "blocked": False,
+        "opened": "shown",
+        "loaded": "loaded",
+        "confirmed": True,
+        "unsaved": "discard",
+        "closed": "hidden",
+        "edit": True,
+        "touch": "ArrowDown",
+        "calls": [
+            ["toast", "failed launch has no file browser"],
+            ["show", {"path": "notes.txt", "mode": "preview", "line": 4, "pickerQuery": "notes"}],
+            ["load", "notes.txt", {"text": "x"}, "request-1", {"viewMode": "diff"}],
+            [
+                "confirm",
+                {
+                    "title": "Reload file from disk?",
+                    "message": "Discard draft?",
+                    "confirmText": "Reload",
+                    "cancelText": "Cancel",
+                    "destructive": True,
+                },
+            ],
+            ["unsaved"],
+            ["hide"],
+            ["edit", True],
+            ["touch", "ArrowDown"],
+        ],
+    }
