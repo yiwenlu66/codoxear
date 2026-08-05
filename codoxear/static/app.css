@@ -543,10 +543,10 @@
         gap: var(--space-3);
         min-width: 0;
       }
-      @media (hover: hover) and (pointer: fine) and (min-width: 881px) {
         .session.desktop .sessionSwipe {
           overflow: visible;
         }
+      @media (hover: hover) and (pointer: fine) and (min-width: 881px) {
         .session.desktop .sessionActions {
           background: transparent;
           opacity: 0;
