@@ -16,6 +16,8 @@ import re
 import subprocess
 import textwrap
 
+from tinycss2 import parse_declaration_list, parse_rule_list, parse_stylesheet, serialize
+
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_CSS = ROOT / "codoxear" / "static" / "app.css"
@@ -36,54 +38,34 @@ class _ViewportParser(HTMLParser):
             self.content = properties.get("content")
 
 
-def _matching_brace(css: str, opening_brace: int) -> int:
-    depth = 1
-    for index in range(opening_brace + 1, len(css)):
-        if css[index] == "{":
-            depth += 1
-        elif css[index] == "}":
-            depth -= 1
-            if depth == 0:
-                return index
-    raise AssertionError("unclosed CSS block")
-
-
-def _declarations(body: str) -> dict[str, str]:
-    declarations: dict[str, str] = {}
-    for declaration in body.split(";"):
-        if ":" not in declaration:
-            continue
-        name, value = declaration.split(":", 1)
-        name, value = name.strip(), value.strip()
-        if name and value:
-            declarations[name] = value
-    return declarations
-
-
 def _rules_at_width(css: str, width: int) -> list[tuple[str, dict[str, str]]]:
-    css = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    def media_applies(prelude: str) -> bool:
+        max_widths = [int(value) for value in re.findall(r"max-width\s*:\s*(\d+)px", prelude)]
+        min_widths = [int(value) for value in re.findall(r"min-width\s*:\s*(\d+)px", prelude)]
+        return all(width <= value for value in max_widths) and all(width >= value for value in min_widths)
 
-    def walk(block: str, active: bool = True) -> list[tuple[str, dict[str, str]]]:
-        rules: list[tuple[str, dict[str, str]]] = []
-        cursor = 0
-        while cursor < len(block):
-            opening_brace = block.find("{", cursor)
-            if opening_brace < 0:
-                break
-            header = block[cursor:opening_brace].strip()
-            closing_brace = _matching_brace(block, opening_brace)
-            body = block[opening_brace + 1 : closing_brace]
-            cursor = closing_brace + 1
-            if header.startswith("@media"):
-                max_widths = [int(value) for value in re.findall(r"max-width\s*:\s*(\d+)px", header)]
-                min_widths = [int(value) for value in re.findall(r"min-width\s*:\s*(\d+)px", header)]
-                applies = all(width <= value for value in max_widths) and all(width >= value for value in min_widths)
-                rules.extend(walk(body, active and applies))
-            elif active and not header.startswith("@"):
-                rules.extend((selector.strip(), _declarations(body)) for selector in header.split(","))
-        return rules
+    def declarations(tokens: list[object]) -> dict[str, str]:
+        return {
+            declaration.lower_name: serialize(declaration.value).strip()
+            for declaration in parse_declaration_list(tokens, skip_comments=True, skip_whitespace=True)
+            if declaration.type == "declaration"
+        }
 
-    return walk(css)
+    def walk(rules: list[object], active: bool = True) -> list[tuple[str, dict[str, str]]]:
+        computed: list[tuple[str, dict[str, str]]] = []
+        for rule in rules:
+            if rule.type == "at-rule" and rule.at_keyword == "media" and rule.content is not None:
+                computed.extend(walk(
+                    parse_rule_list(rule.content, skip_comments=True, skip_whitespace=True),
+                    active and media_applies(serialize(rule.prelude)),
+                ))
+            elif active and rule.type == "qualified-rule":
+                declaration_map = declarations(rule.content)
+                for selector in serialize(rule.prelude).split(","):
+                    computed.append((selector.strip(), declaration_map))
+        return computed
+
+    return walk(parse_stylesheet(css, skip_comments=True, skip_whitespace=True))
 
 
 def _computed_rule(width: int, selector: str) -> dict[str, str]:
