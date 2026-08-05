@@ -731,6 +731,7 @@
         justify-content: space-between;
         align-items: center;
         gap: var(--space-3);
+        overflow: hidden;
       }
       .pill {
         display: inline-flex;
@@ -817,6 +818,7 @@
       .topActions {
         align-items: center;
         gap: var(--space-2);
+        overflow: hidden;
       }
       .chatNavRail {
         display: none;
