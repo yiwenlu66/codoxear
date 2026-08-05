@@ -24,7 +24,7 @@ A healthy recovery may show an immediate poll update while EventSource reconnect
 4. Verify that the next visible marker is newer than the pre-sleep marker, no markers are duplicated, and the spinner/status matches the live session.
 5. Send one short steering message from the phone. It should reach the same terminal session, and its next answer should appear in the phone transcript.
 
-**Pass:** the transcript catches up within ten seconds of visibility, then continues with the same ordered marker sequence. The browser reconnect controller retries after one second; a poll can supply the catch-up state while the stream reconnects.
+**Pass:** the transcript catches up within ten seconds of visibility, then continues with the same ordered marker sequence. The page immediately kicks its poll fallback and schedules the live-flow SSE reconnect after six seconds; a poll can supply the catch-up state while the stream reconnects.
 
 ## 2. Tailscale / network change
 
@@ -60,4 +60,20 @@ Do not restart or kill the broker to recover a failed phone test. A server resta
 
 ## Automated counterpart
 
-`tests/test_sse_battle.py` runs the repeatable socket-level portion: abrupt server-side stream loss with cursor recovery, a 30-second idle period with the production heartbeat, 1,000 ordered Codex-native log events, fragmented/slow relay failure with replay, and the browser EventSource controller's one-second retry plus visibility-resume path. It cannot reproduce mobile OS radio suspension, Tailscale path changes, or browser tab eviction; those are the purpose of this field run.
+`tests/test_sse_battle_advanced.py` is the repeatable, isolated battle runner. It starts a real loopback HTTP/1.1 server that calls the production `handle_messages_live_stream` handler over a broker-shaped native JSONL log; it never contacts the deployed service or port 8743. The suite proves these boundaries:
+
+- Killing the server-side stream after a confirmed event and reconnecting from the signed live cursor delivers the appended boundary event once, in order; the replacement connection is accepted in under one second.
+- A virtual monotonic clock advances the production handler through more than 60 seconds of silence. Three 25-second heartbeat frames are emitted before the harness disconnects it at 75 seconds, proving the handler does not self-close during that idle interval without making CI wait a minute.
+- A burst of 1,000 native log events arrives in exact insertion order, with no duplicate or missing event.
+- A relay which fragments output into 17-byte chunks and drops partway through an event leaves that unconfirmed delta to be replayed exactly once from the durable cursor.
+- The poll fallback (`/api/sessions/<id>/messages/tail`) rehydrates the log and returns the next signed live cursor.
+- The actual live page controller in `app_message_flow.js` defers a scheduled SSE retry while `visibilityState` is `hidden`, then opens the cursor-bearing EventSource when visibility resumes. Its scheduled retry floor is six seconds; the visibility-resume path also kicks polling immediately.
+- The standalone `app_sse.js` EventSource controller reports malformed JSON through its `onMalformedMessage` hook and accepts the following valid event without closing the connection. `app_message_flow.js` is the controller currently wired by `app.js`; `app_sse.js` remains a separately loaded controller with its own unit-level contract.
+
+Run it directly with:
+
+```sh
+python3 -m unittest discover -s tests -p 'test_sse_battle_advanced.py' -v
+```
+
+This runner exercises server/process-stream failure, cursor recovery, long idle heartbeat scheduling, slow/chunked transport, poll fallback, and browser-controller visibility logic. It cannot reproduce mobile OS radio suspension, Tailscale route changes, browser tab eviction, or multi-day timer/network behavior; those remain the purpose of the real-device field run above.

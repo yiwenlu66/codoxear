@@ -17,6 +17,7 @@ import threading
 import time
 import unittest
 import urllib.parse
+from io import BytesIO
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from types import SimpleNamespace
@@ -25,12 +26,16 @@ from codoxear.message_cursor import decode_message_cursor
 from codoxear.message_cursor import encode_message_cursor
 from codoxear.message_routes import MessageRouteDeps
 from codoxear.message_routes import handle_messages_live_stream
+from codoxear.message_routes import handle_messages_tail
 from codoxear.server_main import ThreadingHTTPServer
 from codoxear.session_model import Session
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SSE_CONTROLLER = ROOT / "codoxear" / "static" / "app_sse.js"
+MESSAGE_FLOW_CONTROLLER = ROOT / "codoxear" / "static" / "app_message_flow.js"
+POLLING_HELPERS = ROOT / "codoxear" / "static" / "app_polling.js"
+TRANSCRIPT_HELPERS = ROOT / "codoxear" / "static" / "app_transcript.js"
 _CURSOR_SECRET = b"sse-battle-test-cursor-secret"
 
 
@@ -243,6 +248,48 @@ class _SseTranscriptClient:
         self.response = None
 
 
+class _VirtualHeartbeatHandler:
+    """In-memory transport that disconnects only after three heartbeats."""
+
+    def __init__(self) -> None:
+        self.status: int | None = None
+        self.headers: list[tuple[str, str]] = []
+        self.unauthorized = False
+        self.wfile = _HeartbeatDisconnectingStream()
+
+    def _unauthorized(self) -> None:
+        self.unauthorized = True
+
+    def send_response(self, status: int) -> None:
+        self.status = status
+
+    def send_header(self, name: str, value: str) -> None:
+        self.headers.append((name, value))
+
+    def end_headers(self) -> None:
+        return None
+
+
+class _HeartbeatDisconnectingStream(BytesIO):
+    def flush(self) -> None:
+        super().flush()
+        if self.getvalue().count(b"event: heartbeat") >= 3:
+            raise BrokenPipeError()
+
+
+class _VirtualClock:
+    """Advances the live handler through a long quiet period without wall time."""
+
+    def __init__(self) -> None:
+        self.value = 100.0
+
+    def monotonic(self) -> float:
+        return self.value
+
+    def sleep(self, seconds: float) -> None:
+        self.value += seconds
+
+
 class _SlowDisconnectRelay(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
@@ -278,7 +325,7 @@ class _SlowDisconnectRelayHandler(socketserver.BaseRequestHandler):
                     return
 
 
-class TestSseBattle(unittest.TestCase):
+class TestSseBattleAdvanced(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.broker = _BrokerSession(Path(self.tmp.name))
@@ -318,21 +365,60 @@ class TestSseBattle(unittest.TestCase):
         finally:
             client.close()
 
-    def test_idle_stream_survives_a_thirty_second_pause_via_heartbeat(self) -> None:
-        client = self._open_at_eof()
+    def test_idle_stream_remains_open_past_sixty_seconds_with_heartbeats(self) -> None:
+        """Virtual time proves the production heartbeat loop through 75 idle seconds.
+
+        A real 60-second wall-clock test would make every local and CI run wait
+        a minute while testing only the handler's monotonic-time branch.  The
+        HTTP socket tests above still prove that these unbuffered writes reach a
+        connected client; this clock advances that same handler past the phone
+        idle threshold without slowing the suite.
+        """
+        import codoxear.message_routes as message_routes
+
+        clock = _VirtualClock()
+        handler = _VirtualHeartbeatHandler()
+        original_monotonic = message_routes.time.monotonic
+        original_sleep = message_routes.time.sleep
+        message_routes.time.monotonic = clock.monotonic
+        message_routes.time.sleep = clock.sleep
         try:
-            started = time.monotonic()
-            name, payload = client.read_event(timeout=30)
-            self.assertEqual(name, "heartbeat")
-            self.assertEqual(payload, {})
-            self.assertGreaterEqual(time.monotonic() - started, 24.0)
-            time.sleep(6.0)
-            self.broker.publish_assistant("after-30-second-idle")
-            name, _payload = client.read_event(timeout=5)
-            self.assertEqual(name, "message")
-            self.assertEqual(client.transcript, ["after-30-second-idle"])
+            handle_messages_live_stream(
+                handler,
+                session_id="sse-battle",
+                query="",
+                manager=self.manager,
+                deps=_route_deps(),
+            )
         finally:
-            client.close()
+            message_routes.time.monotonic = original_monotonic
+            message_routes.time.sleep = original_sleep
+
+        self.assertEqual(handler.status, 200)
+        self.assertGreaterEqual(clock.value - 100.0, 60.0)
+        self.assertEqual(handler.wfile.getvalue().count(b"event: heartbeat"), 3)
+
+    def test_tail_fallback_rehydrates_the_log_with_a_resume_cursor(self) -> None:
+        self.broker.publish_assistant("tail-fallback-one")
+        self.broker.publish_assistant("tail-fallback-two")
+        handler = _VirtualHeartbeatHandler()
+
+        handle_messages_tail(
+            handler,
+            session_id="sse-battle",
+            query="limit=20",
+            manager=self.manager,
+            deps=_route_deps(),
+        )
+
+        payload = json.loads(handler.wfile.getvalue())
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(
+            [event["text"] for event in payload["events"]],
+            ["tail-fallback-one", "tail-fallback-two"],
+        )
+        self.assertIsInstance(payload["live_cursor"], str)
+        self.assertTrue(payload["live_cursor"])
 
     def test_rapid_native_log_events_arrive_once_and_in_order(self) -> None:
         client = self._open_at_eof()
@@ -367,6 +453,102 @@ class TestSseBattle(unittest.TestCase):
             relay.shutdown()
             relay.server_close()
             relay_thread.join(timeout=2)
+
+    def test_visible_resume_reopens_the_actual_message_flow_sse_after_hidden_retry(self) -> None:
+        """The flow called by app.js must defer reconnects while hidden."""
+        sources = [
+            POLLING_HELPERS.read_text(encoding="utf-8"),
+            TRANSCRIPT_HELPERS.read_text(encoding="utf-8"),
+            MESSAGE_FLOW_CONTROLLER.read_text(encoding="utf-8"),
+        ]
+        js = f"""
+const vm = require("vm");
+const sources = [];
+const timers = [];
+let visibility = "visible";
+const noop = () => {{}};
+class FakeEventSource {{
+  constructor(url) {{ this.url = url; this.listeners = {{}}; sources.push(this); }}
+  addEventListener(type, callback) {{ this.listeners[type] = callback; }}
+  close() {{ this.closed = true; }}
+}}
+const ctx = {{ window: {{}}, console, Date, URL, encodeURIComponent }};
+vm.createContext(ctx);
+{''.join(f'vm.runInContext({json.dumps(source)}, ctx);' for source in sources)}
+const options = new Proxy({{
+  getSelected: () => "sse-battle", getGeneration: () => 7, isAppDisposed: () => false,
+  getTurnOpen: () => false, setTurnOpen: noop, getSessionInfo: () => ({{ session_id: "sse-battle" }}),
+  activeTranscriptSnapshot: () => ({{ state: "bound", liveCursor: "cursor-7" }}),
+  resolveAppUrl: (path) => "https://phone.tailnet.example" + path,
+  visibilityState: () => visibility, EventSource: FakeEventSource,
+  typingRowRuntime: {{ snapshot: () => ({{ stats: {{}} }}), updateTypingStats: noop, updateSubagentGauge: noop, resetTypingStats: noop }},
+  setTimeout: (callback, delay) => {{ const timer = {{ callback, delay, cleared: false }}; timers.push(timer); return timer; }},
+  clearTimeout: (timer) => {{ if (timer) timer.cleared = true; }}, now: () => 1000,
+}}, {{ get: (target, key) => key in target ? target[key] : noop }});
+const controller = ctx.window.CodoxearMessageFlow.createMessageFlowController(options);
+controller.openMessageEventSource("sse-battle", 7);
+sources[0].onopen();
+sources[0].listeners.error();
+const retry = timers.find((timer) => timer.delay === 6000);
+visibility = "hidden";
+retry.callback();
+const whileHidden = sources.length;
+visibility = "visible";
+controller.resumeLiveDelivery();
+process.stdout.write(JSON.stringify({{ retryDelay: retry.delay, whileHidden, afterVisible: sources.length, resumeUrl: sources[1].url }}));
+"""
+        result = subprocess.run(["node", "-e", js], check=True, capture_output=True, text=True)
+        self.assertEqual(json.loads(result.stdout), {
+            "retryDelay": 6000,
+            "whileHidden": 1,
+            "afterVisible": 2,
+            "resumeUrl": "https://phone.tailnet.example/api/sessions/sse-battle/live?cursor=cursor-7",
+        })
+
+    def test_malformed_event_surfaces_error_and_next_event_is_delivered(self) -> None:
+        source = SSE_CONTROLLER.read_text(encoding="utf-8")
+        js = f"""
+const vm = require("vm");
+const sources = [];
+class FakeEventSource {{
+  constructor(url) {{ this.url = url; this.listeners = {{}}; sources.push(this); }}
+  addEventListener(type, callback) {{ this.listeners[type] = callback; }}
+  close() {{ this.closed = true; }}
+  emit(type, data) {{
+    if (type === "open") return this.onopen();
+    return this.listeners[type]({{ data }});
+  }}
+}}
+const ctx = {{ window: {{}}, EventSource: FakeEventSource, setTimeout, clearTimeout }};
+vm.createContext(ctx);
+vm.runInContext({json.dumps(source)}, ctx);
+const malformed = [];
+const delivered = [];
+const controller = ctx.window.CodoxearSse.createMessageEventSourceController({{
+  EventSourceImpl: FakeEventSource,
+  resolveUrl: (path) => "https://phone.tailnet.example" + path,
+  getSnapshot: () => ({{ state: "bound", liveCursor: "cursor-1" }}),
+  isActive: () => true,
+  onStateChange: () => {{}},
+  onOpen: () => {{}},
+  onMessage: (_sid, _gen, payload) => delivered.push(payload.text),
+  onFallback: () => {{}},
+  onMalformedMessage: (error) => malformed.push(error.name),
+}});
+controller.open("sse-battle", 9);
+sources[0].emit("open");
+sources[0].emit("message", "{{not-json");
+sources[0].emit("message", JSON.stringify({{ text: "after-malformed" }}));
+process.stdout.write(JSON.stringify({{ sourceCount: sources.length, malformed, delivered, closed: Boolean(sources[0].closed) }}));
+"""
+        result = subprocess.run(["node", "-e", js], check=True, capture_output=True, text=True)
+        outcome = json.loads(result.stdout)
+        self.assertEqual(outcome, {
+            "sourceCount": 1,
+            "malformed": ["SyntaxError"],
+            "delivered": ["after-malformed"],
+            "closed": False,
+        })
 
     def test_browser_controller_retries_errors_and_visibility_resume_bypasses_backoff(self) -> None:
         source = SSE_CONTROLLER.read_text(encoding="utf-8")
