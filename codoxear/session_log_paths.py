@@ -44,13 +44,15 @@ def _path_in_set(path: Path, paths: set[Path]) -> bool:
 def is_pi_subagent_session_log_path(path: Path) -> bool:
     """Return whether *path* is Pi's nested async-subagent transcript.
 
-    Pi keeps parent sessions as a JSONL file directly under its sessions
-    directory, while pi-subagents writes each child below that parent transcript
-    directory as ``.../<parent>.jsonl/<run>/session.jsonl``.  Run directory
-    names are implementation details, so the enclosing parent JSONL directory
-    is the stable lineage signal available during resume discovery.
+    Pi writes each child as ``.../<run>/session.jsonl`` beside the parent
+    transcript. Current run directories start with ``run-``; an enclosing
+    ``.jsonl`` directory captures the alternate nested layout. The child header
+    has no parent marker, so these path shapes are the stable lineage signals
+    available during resume discovery.
     """
-    return path.name == "session.jsonl" and any(parent.name.endswith(".jsonl") for parent in path.parents)
+    return path.name == "session.jsonl" and (
+        path.parent.name.startswith("run-") or any(parent.name.endswith(".jsonl") for parent in path.parents)
+    )
 
 
 def _payload_cwd_matches(payload_cwd: object, cwd: str) -> bool:

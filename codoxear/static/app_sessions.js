@@ -241,22 +241,22 @@
             el("span", { class: `ownerBadge ownerIconBadge ${session.transport === "tmux" ? "owner-tmux" : session.owned ? "owner-web" : "owner-terminal"}`, html: iconSvg(sessionLaunchIcon(session)), title: sessionLaunchLabel(session) }),
           ];
           const metadataSegments = [
-            stateText,
+            el("span", { class: "sidebarMetaLabel", text: stateText }),
             modelText
-              ? el("span", {}, [
+              ? el("span", { class: "sidebarMetaData" }, [
                   el("span", { text: modelText }),
-                  effortCode ? el("span", { class: "muted", text: ` ·${effortCode}` }) : null,
+                  effortCode ? el("span", { text: ` ·${effortCode}` }) : null,
                 ].filter(Boolean))
               : effortCode
-                ? el("span", { class: "muted", text: `·${effortCode}` })
+                ? el("span", { class: "sidebarMetaData", text: `·${effortCode}` })
                 : null,
-            baseName(session.cwd),
-            branchText,
+            el("span", { class: "sidebarMetaLabel", text: baseName(session.cwd) }),
+            branchText ? el("span", { class: "sidebarMetaLabel", text: branchText }) : null,
           ].filter(Boolean);
           const metaText = el("span", { class: "metaText" });
           metadataSegments.forEach((segment, index) => {
-            if (index) metaText.appendChild(el("span", { text: " | " }));
-            metaText.appendChild(typeof segment === "string" ? el("span", { text: segment }) : segment);
+            if (index) metaText.appendChild(el("span", { class: "sidebarMetaSeparator", text: " | " }));
+            metaText.appendChild(segment);
           });
           metaItems.push(metaText);
           const meta = el("div", { class: "muted subLine sessionMetaLine" }, metaItems);

@@ -11,9 +11,20 @@ DISPLAY = ROOT / "codoxear" / "static" / "app_display.js"
 NEW_SESSION = ROOT / "codoxear" / "static" / "app_new_session.js"
 
 
-def eval_model_options(query: str, *, backend: str = "codex", provider_choices: list[str] | None = None) -> dict:
+def eval_model_options(
+    query: str,
+    *,
+    backend: str = "codex",
+    provider_choices: list[str] | None = None,
+    latest_sessions: list[dict] | None = None,
+) -> dict:
     sources = [path.read_text(encoding="utf-8") for path in (LAUNCH, DISPLAY, NEW_SESSION)]
     providers = provider_choices if provider_choices is not None else ["chatgpt", "openai-api", "crs"]
+    sessions = latest_sessions if latest_sessions is not None else [
+        {"agent_backend": "codex", "model": "gpt-5.4", "model_provider": "openai", "preferred_auth_method": "chatgpt"},
+        {"agent_backend": "codex", "model": "gpt-5.4", "model_provider": "crs", "preferred_auth_method": "apikey"},
+        {"agent_backend": "pi", "model": "other", "model_provider": "anthropic"},
+    ]
     script = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -25,7 +36,7 @@ def eval_model_options(query: str, *, backend: str = "codex", provider_choices: 
         const c=ctx.window.CodoxearNewSession.createNewSessionController({{
           backend:()=>currentBackend, provider:()=>provider, reasoningEffort:()=>"high", literalModelInputValue:()=>literal, launchPresetProviderAbsent:()=>absent,
           defaultsSource:()=>({{model:"gpt-5.4-mini",models:["gpt-5.4","o4-mini"],model_providers:{json.dumps(providers)},provider_choices:{json.dumps(providers)},reasoning_efforts:["off","low","high"],reasoning_efforts_by_model:{{}}}}),
-          latestSessions:()=>[{{agent_backend:"codex",model:"gpt-5.4",model_provider:"openai",preferred_auth_method:"chatgpt"}},{{agent_backend:"codex",model:"gpt-5.4",model_provider:"crs",preferred_auth_method:"apikey"}},{{agent_backend:"pi",model:"other",model_provider:"anthropic"}}], tmuxAvailable:()=>true,
+          latestSessions:()=>{json.dumps(sessions)}, tmuxAvailable:()=>true,
           assignProvider:v=>provider=v, assignReasoningEffort:noop, assignLiteralModelInputValue:v=>literal=v, assignLaunchPresetProviderAbsent:v=>absent=Boolean(v), modelInput, modelField:{{classList:cls}},status:{{textContent:""}},reasoningBtn:node,setPickerButtonContent:noop,renderReasoningMenu:noop,renderModelMenu:noop,setFast:noop,setBackend:noop,setTmuxChecked:noop,applyDialogMenus:noop,closeModelMenu:noop,
           cwdInput:{{value:""}},cwdMenu:{{innerHTML:""}},cwdField:{{classList:cls}},cwdHint:{{classList:cls}},nameInput:{{value:""}},recentCwds:()=>[],cwdMenuFocus:()=>-1,assignCwdMenuFocus:noop,closeCwdMenu:noop,el:()=>({{appendChild:noop}}),resumeMenu:{{innerHTML:""}},resumeBtn:{{}},closeResumeMenu:noop,fetchResumeCandidates:async()=>({{sessions:[]}}),tmuxToggle:{{}},tmuxField:{{style:{{}}}},worktreeToggle:{{}},worktreeInput:{{value:""}},worktreeField:{{style:{{}}}},startBtn:{{}}
         }});
@@ -60,7 +71,20 @@ class TestNewSessionModelOptionsBehavior(unittest.TestCase):
         self.assertEqual(result["parsed"]["providerChoice"], "anthropic")
         self.assertEqual(result["parsed"]["model"], "claude-haiku-4-5")
         self.assertEqual(result["parsed"]["providerError"], "")
-    def test_long_provider_is_middle_ellipsized_without_losing_model_or_provider_identity(self) -> None:
+    def test_recent_models_must_match_a_configured_provider_model_pair(self) -> None:
+        result = eval_model_options(
+            "",
+            provider_choices=["chatgpt"],
+            latest_sessions=[
+                {"agent_backend": "codex", "model": "gpt-5.4", "model_provider": "openai", "preferred_auth_method": "chatgpt"},
+                {"agent_backend": "codex", "model": "ghost-model", "model_provider": "retired", "preferred_auth_method": "apikey"},
+            ],
+        )
+        pairs = {(item["providerChoice"], item["model"]) for item in result["options"]}
+        self.assertContains(("chatgpt", "gpt-5.4"), pairs)
+        self.assertNotContains(("", "ghost-model"), pairs)
+
+    def test_long_provider_is_shown_without_abbreviation_and_preserves_identity(self) -> None:
         result = eval_model_options("", provider_choices=["chatgpt", "openai-api", "dexgem-completions"])
         # Providers are shown in full — lossy abbreviation is non-injective and
         # resolved to the wrong provider (dexgem-messages vs dexgem-responses).

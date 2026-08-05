@@ -41,9 +41,9 @@ JS = textwrap.dedent("""
       sidebarEmptyHint: el('div'),
       el, iconSvg,
       agentBackendDisplayName: noop, agentBackendLogoPath: noop,
-      api: noop, baseName: noop, clearDeletedSessionClientState: noop,
+      api: noop, baseName: (path) => String(path).split('/').filter(Boolean).pop() || '', clearDeletedSessionClientState: noop,
       confirmAction: () => Promise.resolve(true), duplicateSession: noop,
-      fmtRelativeAge: noop, openEditSession: () => { ctx.__editOpened = true; },
+      fmtRelativeAge: () => '1m ago', openEditSession: () => { ctx.__editOpened = true; },
       redactedLaunchErrorText: noop, refreshSessions: noop, selectSession: noop,
       sessionAgentBackend: noop, sessionDisplayName: noop,
       sessionIsFast: () => false,
@@ -57,14 +57,20 @@ JS = textwrap.dedent("""
     const ctrl = ctx.window.CodoxearSessions.createSessionsController(deps);
 
     const cases = [
-      { label: 'normal busy session', session: { session_id: 's1', busy: true, cwd: '/x', agent_backend: 'pi', launch_state: null, lost: false } },
-      { label: 'idle session', session: { session_id: 's2', busy: false, cwd: '/x', agent_backend: 'pi', launch_state: null, lost: false } },
+      { label: 'normal busy session', session: { session_id: 's1', busy: true, cwd: '/x', git_branch: 'main', agent_backend: 'pi', launch_state: null, lost: false } },
+      { label: 'idle session', session: { session_id: 's2', busy: false, cwd: '/x', git_branch: 'main', agent_backend: 'pi', launch_state: null, lost: false } },
     ];
     function findEditBtn(node) {
       if (!node) return null;
       if (node.attrs && node.attrs['aria-label'] === 'Edit conversation') return node;
       for (const c of node.children || []) { const r = findEditBtn(c); if (r) return r; }
       return null;
+    }
+    function nodesWithClass(node, className, out = []) {
+      if (!node) return out;
+      if (node.attrs && String(node.attrs.class || '').split(/\\s+/).includes(className)) out.push(node);
+      for (const c of node.children || []) nodesWithClass(c, className, out);
+      return out;
     }
     const results = [];
     for (const c of cases) {
@@ -75,7 +81,13 @@ JS = textwrap.dedent("""
       let opened = false;
       if (btn) btn.onclick({ preventDefault(){}, stopPropagation(){} });
       opened = ctx.__editOpened;
-      results.push({ label: c.label, hasBtn: !!btn, clickOpensEditor: opened });
+      results.push({
+        label: c.label,
+        hasBtn: !!btn,
+        clickOpensEditor: opened,
+        metadataDataSegments: nodesWithClass(sessionsWrap, 'sidebarMetaData').length,
+        metadataLabelSegments: nodesWithClass(sessionsWrap, 'sidebarMetaLabel').length,
+      });
     }
     console.log(JSON.stringify(results));
     """)
@@ -94,5 +106,7 @@ class TestSidebarEditButton:
             for case in data:
                 assert case['hasBtn'], f"edit button missing for {case['label']}"
                 assert case['clickOpensEditor'], f"click did not open editor for {case['label']}"
+            assert case['metadataDataSegments'] == 1, f"model/effort should be the sole data segment for {case['label']}"
+            assert case['metadataLabelSegments'] == 3, f"state, cwd, and branch should remain proportional labels for {case['label']}"
         finally:
             Path(js_path).unlink(missing_ok=True)
