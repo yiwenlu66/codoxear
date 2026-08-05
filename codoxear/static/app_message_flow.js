@@ -107,6 +107,8 @@
 
     const visibilityState = typeof options.visibilityState === "function" ? options.visibilityState : () => document.visibilityState;
     const navigatorValue = typeof options.navigatorValue === "function" ? options.navigatorValue : () => (typeof navigator === "undefined" ? undefined : navigator);
+    const reportTransportSuccess = typeof options.reportTransportSuccess === "function" ? options.reportTransportSuccess : () => {};
+    const reportTransportFailure = typeof options.reportTransportFailure === "function" ? options.reportTransportFailure : () => {};
     const EventSourceCtor = Object.prototype.hasOwnProperty.call(options, "EventSource") ? options.EventSource : window.EventSource;
     const AbortControllerCtor = Object.prototype.hasOwnProperty.call(options, "AbortController") ? options.AbortController : window.AbortController;
     const setTimeoutFn = typeof options.setTimeout === "function" ? options.setTimeout : window.setTimeout.bind(window);
@@ -126,6 +128,7 @@
     let pollKickPending = false;
     let pollKickDelayMs = null;
     let messagePollErrorStreak = 0;
+    let messageTransportUnavailable = false;
     let pollFastUntilMs = 0;
 
     function isCurrent(sessionId, generation) {
@@ -200,10 +203,16 @@
 
     function markMessagePollSuccess() {
       messagePollErrorStreak = 0;
+      messageTransportUnavailable = false;
+      reportTransportSuccess();
     }
 
-    function markMessagePollFailure() {
+    function markMessagePollFailure(transportFailed = true) {
       messagePollErrorStreak = Math.min(messagePollErrorStreak + 1, 20);
+      if (!transportFailed) return;
+      messageTransportUnavailable = true;
+      reportTransportFailure();
+      closeMessageEventSource();
     }
 
     function resetMessagePollBackoff() {
@@ -233,7 +242,7 @@
     }
 
     function scheduleMessageEventSourceRetry(sessionId, generation) {
-      if (!isCurrent(sessionId, generation) || messageSseRetryTimer || visibilityState() !== "visible") return;
+      if (messageTransportUnavailable || !isCurrent(sessionId, generation) || messageSseRetryTimer || visibilityState() !== "visible") return;
       const delay = Math.max(1000, messageSseFallbackUntil - now());
       messageSseRetryTimer = setTimeoutFn(() => {
         messageSseRetryTimer = null;
@@ -283,7 +292,7 @@
         messageEventSource = null;
         messageSseOpen = false;
         messageSseFallbackUntil = now() + 6000;
-        markMessagePollFailure();
+        markMessagePollFailure(false);
         kickPoll(0);
         scheduleMessageEventSourceRetry(sessionId, generation);
       });
@@ -315,6 +324,7 @@
       abortMessagePollRequest();
       clearPollSchedule();
       messagePollErrorStreak = 0;
+      messageTransportUnavailable = false;
       pollFastUntilMs = 0;
     }
 
@@ -419,6 +429,7 @@
 
     async function pollMessages(sessionId = getSelected(), generation = getGeneration()) {
       if (isAppDisposed() || !sessionId) return;
+      const reconnectSseAfterSuccess = messageTransportUnavailable;
       let pollRequest = null;
       try {
         const active = activeTranscriptSnapshot();
@@ -438,6 +449,7 @@
               renderSessionTail(Array.isArray(data.events) ? data.events : []);
             }
             applySessionRuntimeFromTail(sessionId, data);
+            if (reconnectSseAfterSuccess) resumeLiveDelivery();
             return;
           }
           if (active.state === "failed") return;
@@ -448,6 +460,7 @@
         pollRequest = beginMessagePollRequest(sessionId, generation);
         const data = await api(`/api/sessions/${sessionId}/messages/live?cursor=${encodeURIComponent(requestedCursor)}`, { signal: pollRequest.signal });
         await applyLiveMessageData(sessionId, generation, data);
+        if (reconnectSseAfterSuccess) resumeLiveDelivery();
       } catch (error) {
         if (error && error.status === 401) {
           handleAppAuthLoss();
@@ -469,7 +482,7 @@
           }
           return;
         }
-        markMessagePollFailure();
+        markMessagePollFailure(!(error && typeof error.status === "number"));
         if (error && typeof error.status === "number") setToast(`error: ${error.message}`);
         else consoleWarn("message poll network error", error && error.message);
       } finally {
@@ -691,6 +704,7 @@
       snapshot: () => Object.freeze({
         messageSseOpen,
         messagePollErrorStreak,
+        messageTransportUnavailable,
         pollFastUntilMs,
         hasEventSource: Boolean(messageEventSource),
         hasRetryTimer: Boolean(messageSseRetryTimer),
