@@ -168,12 +168,16 @@ The current UI offers Delete for all session kinds. Delete sends a shutdown requ
 
 If you start a web-owned session and later want to continue it in your terminal while keeping it registered with Codoxear, use the matching backend workflow: Codex sessions resume through `codox ...`, Pi sessions through `piox ...` or plain `pi --session <session-file>` if you want to continue the same Pi session file directly, and Claude Code sessions through `ccox --resume <session-id>`.
 
+## Frontend architecture
+
+`codoxear/static/app.js` is a 34-line bootstrap: it authenticates, creates the application controller, and selects login or application rendering. The former application shell is composed through six explicit modules: `app_application.js` (dependency facade), `app_application_composition.js` (lifecycle assembly), `app_chat_interaction.js` (transcript/session interaction), `app_file_ops.js` (viewer/editor/picker integration), `app_session_display.js` (status/context projection), and `app_wiring.js` (controller dependency contracts). Focused controllers own their stateful workflows; add new behavior to that owner rather than to the bootstrap.
+
 ## UI features
 
 - **Live transcript via SSE.** When a session is selected and bound to a backend log, the browser opens a persistent `EventSource` connection (`/api/sessions/<id>/live`) so new messages stream in real time; polling is the automatic fallback.
 - **Full-transcript search.** Press `/` to search the whole backend transcript. The browser queries the server, which searches the normalized log and returns cursored matches so selecting one can load its surrounding history.
 - **Subagent activity (Pi).** Pi subagent events surface as inline narration rows in the transcript. Active work also has a `▸N` sidebar marker and remains visible as a compact activity row when the parent session is otherwise idle.
-- **Typing and thinking-token indicators.** Busy rows show live tool/thinking activity and reasoning-token counts when available. The common counter path recognizes Codex cumulative reasoning snapshots, Pi per-message reasoning usage, and Claude Code thinking-token usage.
+- **Typing, thinking, and subagent indicators.** Busy rows show live tool activity and a reasoning-token count only when positive authoritative token data exists. During an open turn, resumable session snapshots can recover a missed increase but never lower live tool/thinking counts. Active subagents are a separate current-liveness gauge (`▸N`), so that number may fall as workers finish without changing the turn counters.
 - **Live model and effort pickers.** Type `/model` or `/effort` in the composer and choose a completion. Pi model selection goes through its shared TUI command; Pi effort is supplied by the live bridge (`/thinking` remains an alias). Claude Code receives its native `/model` and `/effort` commands.
 - **Slash-command completion.** Type `/` in the composer to browse and filter the browser-safe commands advertised for the selected backend.
 - **Markdown rendering.** Assistant messages render with the `marked` library, preserve single line breaks, support clickable file-reference links and KaTeX math, and include per-code-block copy buttons. Rendered image dimensions are cached locally to prevent layout jumps on later renders.
@@ -181,7 +185,7 @@ If you start a web-owned session and later want to continue it in your terminal 
 
 ## Keyboard shortcuts
 
-- `f` — Vimium-style hint mode. Press `f`, then the letter shown over any visible control to activate it (sessions `1`–`9`, `s` sidebar, `t` edit conversation title, `b` files, `d` details, `u` unattended, `z` interrupt, `/` search, `p`/`n` previous/next message, `o` older messages, `g` latest, `a` attach, `q` queued messages, `e` send, `i` message box, `c` new session, and dynamically-assigned hints on clickable file references). Press `Esc` or `Backspace` to cancel.
+- `f` — Vimium-style hint mode. Press `f`, then the letter shown over an activatable control in the current viewport. Hidden, off-screen, disabled, and hit-test-covered controls never receive a hint. Stable labels include sessions `1`–`9`, `s` sidebar, `t` edit conversation title, `b` files, `d` details, `u` unattended, `z` interrupt, `/` search, `p`/`n` previous/next message, `o` older messages, `g` latest, `a` attach, `q` queued messages, `e` send, `i` message box, and `c` new session; visible clickable file references receive dynamic labels. Press `Esc` or `Backspace` to cancel.
 - `i` — focus the message composer.
 - `j` / `k` — scroll down / up.
 - `d` / `u` — scroll half a page down / up.
