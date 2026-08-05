@@ -29,7 +29,7 @@
         --font-xl: 16px;
         --font-2xl: 18px;
         --font-3xl: 20px;
-        --ctl: 38px;
+        --ctl: 44px;
         --ctl-chrome: 32px;
         --dialog-control-h: 40px;
         --dialog-group-gap: var(--space-5);
@@ -291,17 +291,27 @@
         overflow: hidden;
         border-radius: 0;
       }
-	      .sessionContent {
-	        position: relative;
-	        z-index: 2;
-	        background: var(--paper);
-	        transform: translate3d(0px, 0, 0);
-	        transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
-	        will-change: transform;
-	        touch-action: pan-y;
-	      }
+      .sessionContent {
+        position: relative;
+        z-index: 2;
+        background: var(--paper);
+        transform: translate3d(0px, 0, 0);
+        transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+        will-change: transform;
+        touch-action: pan-y;
+      }
       .session.active .sessionContent {
         background: var(--wash);
+      }
+      .swipeHint {
+        position: absolute;
+        right: 6px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--muted);
+        font-size: var(--font-sm);
+        opacity: 0.5;
+        pointer-events: none;
       }
       .sessionActions {
         position: absolute;
@@ -410,13 +420,6 @@
         background: var(--ink);
         color: var(--paper);
       }
-	      .sessionMain {
-	        flex: 1 1 auto;
-	        min-width: 0;
-	        display: flex;
-	        flex-direction: column;
-	        gap: var(--space-1);
-	      }
 	      .sessionMetaLine {
 	        display: flex;
 	        align-items: center;
@@ -496,28 +499,13 @@
 	        text-overflow: ellipsis;
 	        white-space: nowrap;
 	      }
-	      .sessionTitleWithBadges {
-	        display: flex;
-	        align-items: flex-start;
-	        gap: var(--space-4);
-	        min-width: 0;
-	      }
-	      .sessionTitleWithBadges .sessionTitleRow {
-	        flex: 1 1 auto;
-	      }
-	      .sessionInner {
-	        padding: var(--space-3);
-	        display: flex;
-	        flex-direction: column;
-	        gap: var(--space-1);
-	        min-width: 0;
-	      }
-	      .sessionInner.sessionDesktopLayout {
-	        flex-direction: row;
-	        align-items: flex-start;
-	        justify-content: space-between;
-	        gap: var(--space-5);
-	      }
+      .sessionInner {
+        padding: var(--space-3);
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+        min-width: 0;
+      }
       .sessionTitleRow {
         display: flex;
         align-items: center;
@@ -545,36 +533,12 @@
         gap: var(--space-3);
         min-width: 0;
       }
-	      .sessionActionsInline {
-	        display: inline-flex;
-	        align-items: center;
-	        gap: var(--space-3);
-	        flex: 0 0 auto;
-	      }
-      @media (hover: hover) and (pointer: fine) and (min-width: 521px) {
-        .session.desktop .sessionDesktopLayout {
-          position: relative;
-          align-items: center;
+      @media (hover: hover) and (pointer: fine) and (min-width: 881px) {
+        .session.desktop .sessionSwipe {
+          overflow: visible;
         }
-        .swipeHint {
-        position: absolute;
-        right: 6px;
-        top: 50%;
-        transform: translateY(-50%);
-        color: var(--muted);
-        font-size: var(--font-sm);
-        opacity: 0.5;
-        pointer-events: none;
-      }
-      .session.desktop .sessionMain {
-          padding-right: 0;
-          transition: padding-right 140ms ease;
-        }
-        .session.desktop .sessionActionsInline {
-          position: absolute;
-          top: 50%;
-          right: 8px;
-          transform: translateY(-50%);
+        .session.desktop .sessionActions {
+          background: transparent;
           opacity: 0;
           visibility: hidden;
           pointer-events: none;
@@ -582,12 +546,12 @@
             opacity 140ms ease,
             visibility 140ms step-end;
         }
-        .session.desktop:hover .sessionMain,
-        .session.desktop:focus-within .sessionMain {
-          padding-right: 132px;
+        .session.desktop .sessionActions.left {
+          left: auto;
+          right: calc(var(--ctl) + var(--ctl) + var(--space-3) + var(--space-5) + var(--space-5));
         }
-        .session.desktop:hover .sessionActionsInline,
-        .session.desktop:focus-within .sessionActionsInline {
+        .session.desktop:hover .sessionActions,
+        .session.desktop:focus-within .sessionActions {
           opacity: 1;
           visibility: visible;
           pointer-events: auto;
@@ -868,6 +832,8 @@
         border-left: 0;
       }
       button {
+        min-height: 44px;
+        touch-action: manipulation;
         border: 1px solid var(--border);
         background: var(--paper);
         color: var(--text);
@@ -920,6 +886,17 @@
         height: var(--ctl-chrome);
         min-width: var(--ctl-chrome);
         min-height: var(--ctl-chrome);
+        position: relative;
+        border: 1px solid var(--border);
+      }
+      .composer .icon-btn::after,
+      .topActions .icon-btn::after,
+      .pill > .icon-btn::after,
+      .sidebar header .icon-btn::after,
+      .chatNavRail .icon-btn::after {
+        content: "";
+        position: absolute;
+        inset: -6px;
       }
       .icon-btn.active {
         border-color: var(--ink);
@@ -2563,21 +2540,21 @@ select {
       }
       .fileTouchDpad {
         display: none;
-        grid-template-columns: repeat(3, 34px);
-        grid-template-rows: repeat(2, 34px);
+        grid-template-columns: repeat(3, 44px);
+        grid-template-rows: repeat(2, 44px);
         gap: var(--space-2);
         align-items: center;
         justify-items: center;
         pointer-events: auto;
       }
       .fileTouchSpacer {
-        width: 34px;
-        height: 34px;
+        width: 44px;
+        height: 44px;
       }
       .fileTouchBtn {
-        width: 34px;
-        height: 34px;
-        min-height: 34px;
+        width: 44px;
+        height: 44px;
+        min-height: 44px;
         border-radius: 0;
         border: 1px solid var(--border);
         background: var(--paper);
@@ -2781,9 +2758,10 @@ select {
         padding: 0;
       }
       .agentBackendTab.active {
-        border-color: var(--ink);
-        background: var(--wash);
+        border: 2px solid var(--ink);
+        background: var(--paper);
         color: var(--ink);
+        font-weight: 600;
       }
       .agentBackendTabLogo {
         width: 20px;
@@ -3396,77 +3374,14 @@ select {
         }
       }
 
+      .code-copy-btn::after,
+      .msg-copy-btn::after,
+      .stagedAttachmentRemove::after {
+        content: "";
+        position: absolute;
+        inset: -7px;
+      }
       @media (max-width: 880px), (pointer: coarse) {
-        :root {
-          --ctl: 44px;
-        }
-        .composer .icon-btn {
-          position: relative;
-        }
-        .composer .icon-btn::after {
-          content: "";
-          position: absolute;
-          inset: -6px;
-        }
-        button {
-          min-height: 44px;
-          touch-action: manipulation;
-        }
-        .topActions .icon-btn,
-        .pill > .icon-btn,
-        .sidebar header .icon-btn,
-        .chatNavRail .icon-btn {
-          position: relative;
-        }
-        .topActions .icon-btn::after,
-        .pill > .icon-btn::after,
-        .sidebar header .icon-btn::after,
-        .chatNavRail .icon-btn::after {
-          content: "";
-          position: absolute;
-          inset: -6px;
-        }
-        .code-copy-btn,
-        .msg-copy-btn {
-          width: 30px;
-          height: 30px;
-          min-width: 30px;
-          min-height: 30px;
-        }
-        .code-copy-btn::after,
-        .msg-copy-btn::after,
-        .stagedAttachmentRemove::after {
-          content: "";
-          position: absolute;
-          inset: -7px;
-        }
-        .stagedAttachmentRemove {
-          min-width: 18px;
-          min-height: 18px;
-        }
-        .jumpBtn {
-          width: 32px;
-          height: 32px;
-          min-width: 32px;
-          min-height: 32px;
-          padding: 0;
-          align-items: center;
-          justify-content: center;
-        }
-        .fileViewer .fileTouchDpad {
-          grid-template-columns: repeat(3, 44px);
-          grid-template-rows: repeat(2, 44px);
-        }
-        .fileViewer .fileTouchSpacer {
-          width: 44px;
-          height: 44px;
-        }
-        .fileViewer .fileTouchBtn {
-          width: 44px;
-          height: 44px;
-          min-width: 44px;
-          min-height: 44px;
-        }
         input[type="text"],
         input[type="password"],
         input[type="datetime-local"],
@@ -3475,9 +3390,7 @@ select {
         textarea {
           font-size: var(--font-xl) !important;
         }
-        #jumpBtn {
-          padding: 7px var(--space-3);
-        }
+
       }
 
       @media (max-width: 700px) {
@@ -3589,10 +3502,6 @@ select {
 	        .session {
 	          margin-bottom: var(--space-2);
 	        }
-	        .sessionInner {
-	          padding: var(--space-2);
-	          gap: 2px;
-	        }
         .row {
           gap: var(--space-3);
         }
@@ -3604,9 +3513,12 @@ select {
         bottom: 14px;
         z-index: 10;
         display: none;
+        width: 32px;
+        height: 32px;
+        min-width: 32px;
+        min-height: 32px;
+        padding: 0;
         border-radius: 0;
-        padding: 9px var(--space-4);
-        display: none;
         align-items: center;
         justify-content: center;
       }
