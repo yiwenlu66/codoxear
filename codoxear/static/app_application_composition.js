@@ -643,7 +643,7 @@
           interruptBtn, toast, sessionsWrap, sidebarEmptyHint, queueViewer, helpViewer, diagViewer, editViewer,
           fileViewer, appConfirm, sendChoice, composer, attachBtn, imgInput, codeBlockCopyRuntime,
           networkStatus, Node: window.Node, resizeComposer, renderStatusChip,
-          syncComposerSendButton, syncQueueSubmitState,
+          syncComposerSendButton, syncQueueSubmitState, updateUnattendedBtnState: () => updateUnattendedBtnState(),
           codoxearCodeCopy: window.CodoxearCodeCopy,
           codoxearPendingUser, codoxearNavigationPulse,
           codoxearModal, codoxearViewport, codoxearDisplay,
