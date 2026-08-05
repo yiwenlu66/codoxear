@@ -38,6 +38,9 @@
     let attachmentsController = null;
     const transcript = transcriptModule.createTranscriptRenderController({
       ...options,
+      isMobile: () => isMobile(),
+      refreshSessions: () => getSessionRefreshController().refreshSessions(),
+      jumpToLatest: () => historyController.jumpToLatest(),
       getHistoryController: () => historyController,
       getSendLifecycleController: () => sendLifecycleController,
       getAttachmentsController: () => attachmentsController,

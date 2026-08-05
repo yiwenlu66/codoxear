@@ -39,6 +39,10 @@
     }));
 let activeTailHistoryCursor = null;
 
+function invalidateOlderLoad() {
+  olderLoadRuntime.invalidate();
+}
+
 function usableOlderHistoryCursor(data) {
   return codoxearTranscript.hasUsableOlderHistory(data) ? codoxearTranscript.historyCursorFromPayload(data) : null;
 }

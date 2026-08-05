@@ -170,7 +170,7 @@ messageFlowController = codoxearMessageFlow.createMessageFlowController(wiring.c
   deleteTailCache: (sessionId) => transcriptSlotRuntime.deleteTailCache(sessionId),
   beginTranscriptRenewal,
   clearLiveCursor: () => transcriptSlotRuntime.clearLiveCursor(),
-  invalidateOlderLoad,
+  invalidateOlderLoad: () => history.invalidateOlderLoad(),
   dropPendingUser: (sessionId, localId) => transcriptEventRuntime.dropPendingUsers(sessionId, (pending) => pending && pending.id === localId),
   removePendingUserRow: (localId) => {
     const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${localId}"]`);

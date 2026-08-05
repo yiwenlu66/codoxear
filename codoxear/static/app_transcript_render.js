@@ -26,6 +26,9 @@
     const getQueueController = requireFunction(options.getQueueController, "getQueueController");
     const isFileViewerOpen = requireFunction(options.isFileViewerOpen, "isFileViewerOpen");
     const upgradeCandidateFileRefs = requireFunction(options.upgradeCandidateFileRefs, "upgradeCandidateFileRefs");
+    const isMobile = requireFunction(options.isMobile, "isMobile");
+    const refreshSessions = requireFunction(options.refreshSessions, "refreshSessions");
+    const jumpToLatest = requireFunction(options.jumpToLatest, "jumpToLatest");
     const { setStatus, setContext,
       $, ATTACH_UPLOAD_MAX_BYTES, AbortController, CHAT_DOM_WINDOW, CHAT_DOM_WINDOW_WITH_HISTORY_SLACK,
       EventSource, INIT_PAGE_LIMIT, Node, OLDER_AUTO_COOLDOWN_MS, OLDER_CANCEL_PX, OLDER_PAGE_LIMIT,
@@ -411,6 +414,40 @@ function stepChatSearch(delta) {
 // CodoxearChatNavigation controller (codoxear/static/app_chat_navigation.js),
 // wired via chatNavigationController above.
 
+const codoxearTranscript = window.CodoxearTranscript;
+if (!codoxearTranscript || typeof codoxearTranscript.createTranscriptSlotRuntime !== "function")
+  throw new Error("Codoxear transcript helpers failed to load");
+
+chatSearchController = (function instantiateChatSearchController() {
+  const codoxearChatSearch = window.CodoxearChatSearch;
+  if (!codoxearChatSearch || typeof codoxearChatSearch.createChatSearchController !== "function")
+    throw new Error("Codoxear chat search controller failed to load");
+  return codoxearChatSearch.createChatSearchController(wiring.createChatSearchOptions({
+    chatSearchBtn,
+    chatSearchInput,
+    chatSearchPrevBtn,
+    chatSearchNextBtn,
+    chatSearchCloseBtn,
+    chatSearchStatus,
+    chatSearchAllHintEl,
+    chatSearchBar,
+    createLoadedChatSearchRuntime: codoxearTranscript.createLoadedChatSearchRuntime,
+    createChatSearchAllRuntime: codoxearTranscript.createChatSearchAllRuntime,
+    getSelected: () => getSelected(),
+    getPollGen: () => getPollGeneration(),
+    api,
+    loadTranscriptWindowAtCursor: (...args) => getHistoryController().loadTranscriptWindowAtCursor(...args),
+    handleAppAuthLoss,
+    syncVisibleTimeIndicator: () => transcriptScrollRuntime.syncVisibleTimeIndicator(),
+    renderedMessageRows,
+    rowSearchText,
+    clearChatSearchMarks,
+    applyChatSearchMarks,
+    pulseNavigatedRow: (row) => navigationPulseController.pulseNavigatedRow(row),
+    prefersReducedMotion,
+  }));
+})();
+
 const transcriptSlotRuntime = codoxearTranscript.createTranscriptSlotRuntime(wiring.createTranscriptSlotOptions({
   getSession: (sessionId) => getSessionIndex().get(sessionId) || null,
   maxTailEvents: INIT_PAGE_LIMIT,
@@ -418,6 +455,10 @@ const transcriptSlotRuntime = codoxearTranscript.createTranscriptSlotRuntime(wir
 
 function activeTranscriptSnapshot() {
   return transcriptSlotRuntime.activeSnapshot();
+}
+
+function initPageLimit() {
+  return INIT_PAGE_LIMIT;
 }
 
 const typingRowRuntime = codoxearTranscript.createTypingRowRuntime(wiring.createTypingRowOptions({
@@ -770,6 +811,10 @@ function renderTranscript(events, { preserveScroll = false } = {}) {
 
 function renderDetachedTranscriptWindow(events, { hasMore = false } = {}) {
   return transcriptView().renderDetachedTranscriptWindow(events, { hasMore });
+}
+
+function prependOlderEvents(events, { preserveViewport = false } = {}) {
+  return transcriptView().prependOlderEvents(events, { preserveViewport });
 }
 
     return Object.freeze({
