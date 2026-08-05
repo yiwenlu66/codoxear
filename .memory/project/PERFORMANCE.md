@@ -8,10 +8,17 @@ Codoxear's warm-cache idle budget is **fewer than 25 requests and fewer than
 bytes**. This is a floor for an idle session, not a promise for a busy session
 whose authoritative state is changing.
 
-The visible session-list cadence is fixed at **5 seconds per visible session
-view** (`sessionsPollDelayMs("visible")`), yielding 12 sidebar polls in a
+The visible session-list cadence is fixed at **5,000 ms** per visible session
+view (`sessionsPollDelayMs("visible")`), yielding 12 sidebar polls in a
 60-second idle window. An unchanged list response is one initial `200` followed
 by 11 ETag-driven `304` responses.
+
+Hidden traffic uses a **3–15 second backoff envelope** in the audit plan. The
+current polling module's active hidden intervals are 5 seconds for transcript
+fallback and 15 seconds for session-list polls (15 seconds offline); it has no
+3,000-ms hidden timer. Keep that distinction explicit when changing cadence:
+the 60-second floor below measures the visible 5,000-ms session-list path, not
+a hidden-page path.
 
 ## Baseline
 
@@ -49,7 +56,7 @@ continuous session traffic.
 | --- | --- | --- |
 | Poll retuning (`2bf0f325`, then `47bcb687`) | Raised/tuned visible and hidden polling intervals and removed diagnostics from periodic responses. | The visible session-list policy is now five seconds, rather than an aggressive general-purpose refresh loop. |
 | SSE live delivery (`29910fc4`) | A selected bound transcript opens one SSE stream; HTTP live polling is a fallback. | Idle transcript state no longer requires repeated tail payload fetches while the stream is healthy. |
-| Bounded tail cache (`685782e8`) | Initial tail pages are bounded to 8 MiB and cached by `(path, size, mtime_ns, limit)`; an EOF live cursor skips JSONL reopening/parsing. | Unchanged tail/resume reads reuse the cached page instead of replaying a large log. The original measurement improved a 2.245 GiB Pi-log open from 10.7 s to 33 ms and a cached poll to 0.34 ms. |
+| Bounded tail cache (`685782e8`; regression floor `8b7a6a33`, represented in this history by `28dc6b94`) | Initial tail pages are bounded to 8 MiB and cached by `(path, size, mtime_ns, limit)`; an EOF live cursor skips JSONL reopening/parsing. | Unchanged tail/resume reads reuse the cached page instead of replaying a large log. The original measurement improved a 2.245 GiB Pi-log open from 10.7 s to 33 ms and a cached poll to 0.34 ms. |
 | Run-settings revision gate (`1ea5b5d8`) | Session-list enrichment records the log's `(device, inode, size, mtime_ns)` revision and replays model/provider/effort only when it changes. | An ETag-cached sidebar poll no longer also scans an unchanged multi-megabyte log. |
 | Aggregate VoicePush snapshot | `/api/settings/voice` carries the subscription projection owned by the same VoicePush snapshot. | Visibility/bootstrap refresh does not also fetch `/api/notifications/subscription`; background refresh does nothing when both local announcements and browser notifications are disabled. |
 | SSE ownership on visibility resume | An in-flight EventSource has the same transcript/cursor authority as an open one. | Resume reuses the stream rather than opening a duplicate fallback HTTP poll for the same cursor. |
@@ -77,7 +84,9 @@ The tests are local; they do not contact the live deployment.
   no redundant subscription snapshot request.
 - `tests/test_perf_floor_regression.py` proves that the bounded-tail cache and
   EOF live-poll path keep a one-GiB log within their read-time floor, so the
-  request budget cannot hide a repeated log replay.
+  request budget cannot hide a repeated log replay. This is the regression
+  floor introduced by `8b7a6a33` (the equivalent committed test in this
+  branch is `28dc6b94`).
 
 ## Remaining gaps and boundary
 
