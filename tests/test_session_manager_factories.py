@@ -1,24 +1,18 @@
-import ast
-from pathlib import Path
+from codoxear import server
+from codoxear.session_manager_factories import session_manager_factory_caps
 
 
-ROOT = Path(__file__).resolve().parents[1]
-FACTORIES_PY = ROOT / "codoxear" / "session_manager_factories.py"
+def test_factory_caps_capture_live_server_dependencies() -> None:
+    """Factory construction exposes the server's concrete runtime dependencies."""
+    caps = session_manager_factory_caps(server)
 
-
-def test_factories_use_explicit_caps_after_construction() -> None:
-    module = ast.parse(FACTORIES_PY.read_text(encoding="utf-8"))
-
-    for node in module.body:
-        if not isinstance(node, ast.FunctionDef):
-            continue
-        if node.name == "session_manager_factory_caps":
-            continue
-        arg_names = [arg.arg for arg in node.args.args]
-        assert "server" not in arg_names, node.name
-        for child in ast.walk(node):
-            assert not (
-                isinstance(child, ast.Attribute)
-                and isinstance(child.value, ast.Name)
-                and child.value.id == "server"
-            ), node.name
+    assert caps.homes == {
+        "codex": server.CODEX_HOME,
+        "pi": server.PI_HOME,
+        "cc": server.CC_HOME,
+    }
+    assert caps.tmux_session_name == server.TMUX_SESSION_NAME
+    assert caps.recent_cwd_max == server.RECENT_CWD_MAX
+    assert caps.prompt_prefix() == server._load_unattended_prompt(server.UNATTENDED_PROMPT_PATH)
+    assert caps.run is server.subprocess.run
+    assert caps.which_tmux is server.shutil.which

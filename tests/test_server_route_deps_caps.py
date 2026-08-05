@@ -1,34 +1,17 @@
-import ast
-from pathlib import Path
+from codoxear import server
+from codoxear.server_route_deps import ServerRouteDepsFactory
 
 
-ROOT = Path(__file__).resolve().parents[1]
-ROUTE_DEPS_PY = ROOT / "codoxear" / "server_route_deps.py"
+def test_route_dependency_factory_uses_its_supplied_server_config() -> None:
+    """Route dependency values come from the explicit factory config."""
+    factory = ServerRouteDepsFactory(server=server, config=server._SERVER_CONFIG)
 
+    message_deps = factory.message_route_deps()
+    session_deps = factory.session_route_deps()
 
-def test_route_deps_accept_server_config_directly() -> None:
-    module = ast.parse(ROUTE_DEPS_PY.read_text(encoding="utf-8"))
-
-    assert not any(
-        isinstance(node, ast.ClassDef) and node.name == "ServerRouteCaps"
-        for node in module.body
-    )
-    assert not any(
-        isinstance(node, ast.FunctionDef) and node.name == "server_route_caps"
-        for node in module.body
-    )
-
-    factory = next(
-        node
-        for node in module.body
-        if isinstance(node, ast.ClassDef) and node.name == "ServerRouteDepsFactory"
-    )
-    config_field = next(
-        node
-        for node in factory.body
-        if isinstance(node, ast.AnnAssign)
-        and isinstance(node.target, ast.Name)
-        and node.target.id == "config"
-    )
-    assert isinstance(config_field.annotation, ast.Name)
-    assert config_field.annotation.id == "ServerConfig"
+    assert message_deps.transcript_export_max_bytes == server._SERVER_CONFIG.TRANSCRIPT_EXPORT_MAX_BYTES
+    assert message_deps.transcript_search_max_line_bytes == server.TRANSCRIPT_SEARCH_MAX_LINE_BYTES
+    assert session_deps.default_agent_backend == server._SERVER_CONFIG.DEFAULT_AGENT_BACKEND
+    assert session_deps.tmux_session_name == server._SERVER_CONFIG.TMUX_SESSION_NAME
+    assert message_deps.require_auth is server._require_auth
+    assert session_deps.json_response is server._json_response
