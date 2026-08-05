@@ -24,6 +24,7 @@ RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && ln -sf ../lib/node_modules/@earendil-works/pi-coding-agent/dist/cli.js /usr/local/bin/pi
 
 COPY . /workspace
+RUN chmod -R a+rX /workspace
 
 WORKDIR /workspace
 USER tester

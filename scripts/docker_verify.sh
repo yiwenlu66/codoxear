@@ -143,6 +143,7 @@ capture_container_diagnostics() {
   "${docker[@]}" exec "$container" sh -lc '
     printf "HOME=%s\\n" "$HOME"
     printf "APP_DIR=%s\\n" "$(python3 -c "from codoxear.util import default_app_dir; print(default_app_dir())")"
+    printf "CODOXEAR_MODULE=%s\\n" "$(python3 -c "import codoxear; print(codoxear.__file__)")"
     find "$HOME/.pi/agent/sessions" -type f -name "*.jsonl" -printf "%p\\n" 2>/dev/null
     find "$HOME/.local/share/codoxear/socks" -maxdepth 1 -type f -name "*.json" -printf "%p\\n" 2>/dev/null
   ' > "$artifacts/isolation-and-session.txt" 2>&1 || true
@@ -182,8 +183,10 @@ install -m 644 "$repo_root/docker/verify.Dockerfile" "$build_context/docker/veri
   --mount "type=bind,src=$home_dir,dst=/home/tester" \
   --workdir /workspace \
   "$image" \
-  bash -lc '
+  bash -c '
     set -eu
+    cd /workspace
+    export PYTHONPATH=/workspace
     # Pi only materializes a native session JSONL after its first turn. Run an
     # offline initialization turn first; its expected provider failure is still
     # recorded in the Pi-owned session file, then the container broker resumes it.
@@ -210,11 +213,12 @@ install -m 644 "$repo_root/docker/verify.Dockerfile" "$build_context/docker/veri
 wait_for_server || fail "server readiness check failed"
 login_and_wait_for_pi_session || fail "Pi session creation/discovery failed"
 
-# Start capture before browser navigation so every page error and console error
-# from login and bootstrap belongs to this verification result.
+browser open "http://127.0.0.1:${port}/" > "$artifacts/browser-open.txt" 2>&1 || fail "browser could not open app"
+# The unauthenticated shell intentionally probes /api/me and receives 401. Clear
+# that expected pre-login network diagnostic; the captured buffers below cover
+# only the authenticated application bootstrap.
 browser errors --clear --json > "$artifacts/browser-errors-before.json" 2>&1 || fail "unable to clear browser error buffer"
 browser console --clear --json > "$artifacts/browser-console-before.json" 2>&1 || fail "unable to clear browser console buffer"
-browser open "http://127.0.0.1:${port}/" > "$artifacts/browser-open.txt" 2>&1 || fail "browser could not open app"
 browser fill '#pw' "$password" > "$artifacts/browser-login-fill.txt" 2>&1 || fail "login password field was not available"
 browser click '#loginBtn' > "$artifacts/browser-login-click.txt" 2>&1 || fail "login button was not available"
 browser wait 3500 > "$artifacts/browser-settle.txt" 2>&1 || fail "browser did not settle after login"
@@ -258,9 +262,27 @@ def load(path):
     except Exception as exc:
         raise SystemExit(f"invalid JSON from {path.name}: {exc}")
 
-report = load(report_path)
-errors = load(errors_path)
-console = load(console_path)
+raw_report = load(report_path)
+raw_errors = load(errors_path)
+raw_console = load(console_path)
+
+def browser_data(payload, name):
+    if not isinstance(payload, dict) or payload.get("success") is not True or not isinstance(payload.get("data"), dict):
+        raise SystemExit(f"agent-browser {name} returned an unsuccessful response: {payload!r}")
+    return payload["data"]
+
+report_data = browser_data(raw_report, "eval")
+errors_data = browser_data(raw_errors, "errors")
+console_data = browser_data(raw_console, "console")
+report = report_data.get("result")
+errors = errors_data.get("errors")
+console = console_data.get("messages")
+if not isinstance(report, dict):
+    raise SystemExit(f"agent-browser eval did not return an object: {report!r}")
+if not isinstance(errors, list):
+    raise SystemExit(f"agent-browser errors did not return a list: {errors!r}")
+if not isinstance(console, list):
+    raise SystemExit(f"agent-browser console did not return a list: {console!r}")
 checks = {
     "app_bootstrapped": report.get("appBootstrapped") is True,
     "no_load_error": report.get("loadError") is None,
@@ -274,13 +296,10 @@ checks = {
 }
 # agent-browser emits console entries as a list. Any console error is a browser
 # failure even when application code catches it before it becomes pageerror.
-if isinstance(console, list):
-    error_console = [entry for entry in console if str((entry or {}).get("type") or (entry or {}).get("level") or "").lower() == "error"]
-elif isinstance(console, dict):
-    entries = console.get("logs", console.get("entries", []))
-    error_console = [entry for entry in entries if isinstance(entry, dict) and str(entry.get("type") or entry.get("level") or "").lower() == "error"]
-else:
-    error_console = [console]
+error_console = [
+    entry for entry in console
+    if isinstance(entry, dict) and str(entry.get("type") or entry.get("level") or "").lower() == "error"
+]
 checks["no_console_errors"] = not error_console
 summary = {
     "pass": all(checks.values()),
