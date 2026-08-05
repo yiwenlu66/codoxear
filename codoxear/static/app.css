@@ -3520,16 +3520,19 @@ select {
         }
       }
 
-      @media (max-width: 520px) {
-        :root {
-          --sidebar-w: 100vw;
-        }
+      @media (max-width: 700px) {
         .detailsRow {
           grid-template-columns: minmax(0, 1fr);
           gap: var(--space-1);
         }
         .detailsLabel {
           padding-top: 0;
+        }
+      }
+
+      @media (max-width: 520px) {
+        :root {
+          --sidebar-w: 100vw;
         }
         .pill {
           flex: 1 1 auto;

@@ -90,22 +90,25 @@ def _computed_rule(width: int, selector: str) -> dict[str, str]:
     return computed
 
 
-def test_diagnostics_rows_stack_only_at_phone_width() -> None:
+def test_diagnostics_rows_stack_through_phone_layout_width() -> None:
     phone = _computed_rule(390, ".detailsRow")
-    wider = _computed_rule(521, ".detailsRow")
+    phone_layout = _computed_rule(521, ".detailsRow")
+    wider = _computed_rule(701, ".detailsRow")
 
     assert phone["display"] == "grid"
     assert phone["grid-template-columns"] == "minmax(0, 1fr)"
     assert phone["gap"] == "var(--space-1)"
+    assert phone_layout["grid-template-columns"] == "minmax(0, 1fr)"
+    assert phone_layout["gap"] == "var(--space-1)"
     assert wider["grid-template-columns"] == "110px minmax(0, 1fr)"
     assert wider["gap"] == "var(--space-5)"
 
 
 def test_diagnostics_phone_layout_preserves_row_treatment() -> None:
     phone_row = _computed_rule(390, ".detailsRow")
-    wider_row = _computed_rule(521, ".detailsRow")
+    wider_row = _computed_rule(701, ".detailsRow")
     phone_label = _computed_rule(390, ".detailsLabel")
-    wider_label = _computed_rule(521, ".detailsLabel")
+    wider_label = _computed_rule(701, ".detailsLabel")
 
     assert {name for name in phone_row if phone_row[name] != wider_row.get(name)} == {
         "grid-template-columns",
