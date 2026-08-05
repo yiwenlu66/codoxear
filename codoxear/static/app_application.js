@@ -107,6 +107,9 @@
       const codoxearMessageFlow = window.CodoxearMessageFlow;
       if (!codoxearMessageFlow || typeof codoxearMessageFlow.createMessageFlowController !== "function")
         throw new Error("Codoxear message flow module failed to load");
+      const codoxearSecondaryPoll = window.CodoxearSecondaryPoll;
+      if (!codoxearSecondaryPoll || typeof codoxearSecondaryPoll.createSecondaryPollController !== "function")
+        throw new Error("Codoxear secondary poll controller failed to load");
 
       const codoxearPerfHelpers = window.CodoxearPerf;
       if (!codoxearPerfHelpers || typeof codoxearPerfHelpers.pushSample !== "function" || typeof codoxearPerfHelpers.summarize !== "function") throw new Error("Codoxear performance helpers failed to load");
@@ -1035,7 +1038,7 @@
             markSecondaryPollFailure(!(e2 && typeof e2.status === "number"));
             console.error("secondary poll failed", e2);
           }
-          scheduleSecondaryPoll();
+          secondaryPollController.scheduleSecondaryPoll();
         }
         function scheduleSessionsPoll(delayMs = sessionsPollDelayMs()) {
           if (appDisposed || !sessionsPollingEnabled) return;
@@ -1045,14 +1048,17 @@
             void runSessionsPollTick();
           }, Math.max(0, Number(delayMs) || 0));
         }
-        function scheduleSecondaryPoll(delayMs = secondaryPollDelayMs()) {
-          if (appDisposed || !secondaryPollingEnabled) return;
-          stopSecondaryPolling();
-          secondaryPollTimer = setTimeout(() => {
-            secondaryPollTimer = null;
-            void runSecondaryPollTick();
-          }, Math.max(0, Number(delayMs) || 0));
-        }
+        const secondaryPollController = codoxearSecondaryPoll.createSecondaryPollController({
+          isDisposed: () => appDisposed,
+          isPollingEnabled: () => secondaryPollingEnabled,
+          stopPolling: stopSecondaryPolling,
+          setTimer: (timer) => {
+            secondaryPollTimer = timer;
+          },
+          setTimeout,
+          runTick: runSecondaryPollTick,
+          delayForPoll: secondaryPollDelayMs,
+        });
 
         const codoxearSessionTitle = window.CodoxearSessionTitle;
         if (!codoxearSessionTitle || typeof codoxearSessionTitle.createSessionTitleController !== "function")
@@ -4982,7 +4988,7 @@
 	            resizeComposer();
 
 	            scheduleSessionsPoll();
-            scheduleSecondaryPoll();
+            secondaryPollController.scheduleSecondaryPoll();
               addAppEvent(window, "hashchange", async () => {
                 await selectSessionFromHash({ refreshIfMissing: true, deferIfMissing: true });
               });
@@ -4994,12 +5000,12 @@
                 if (document.visibilityState === "visible") {
                   if (selected) messageFlowController.resumeLiveDelivery();
                   scheduleSessionsPoll(0);
-                  scheduleSecondaryPoll(0);
+                  secondaryPollController.scheduleSecondaryPoll(0);
                   return;
                 }
                 if (selected) kickPoll(messagePollDelayMs());
                 scheduleSessionsPoll(sessionsPollDelayMs());
-                scheduleSecondaryPoll(secondaryPollDelayMs());
+                secondaryPollController.scheduleSecondaryPoll(secondaryPollDelayMs());
               });
               addAppEvent(window, "online", () => {
                 if (appDisposed) return;
@@ -5012,7 +5018,7 @@
                   kickPoll(0);
                 }
                 scheduleSessionsPoll(0);
-                scheduleSecondaryPoll(0);
+                secondaryPollController.scheduleSecondaryPoll(0);
               });
               addAppEvent(window, "offline", () => {
                 if (appDisposed) return;
@@ -5020,7 +5026,7 @@
                 messageFlowController.closeMessageEventSource();
                 if (selected) kickPoll(messagePollDelayMs());
                 scheduleSessionsPoll(sessionsPollDelayMs());
-                scheduleSecondaryPoll(secondaryPollDelayMs());
+                secondaryPollController.scheduleSecondaryPoll(secondaryPollDelayMs());
               });
               addAppEvent(window, "pageshow", () => {
                 if (!appDisposed) resumeAnnouncementRuntime({ resetSource: false });
